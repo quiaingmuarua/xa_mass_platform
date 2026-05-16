@@ -9,7 +9,6 @@ import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.TaskCommandResult;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
-import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 
 import java.util.Collection;
@@ -20,7 +19,9 @@ import java.util.Collection;
  * <p>External bootstrap code, dev shells, fixture loaders, and custom
  * embedders should depend on this interface instead of reaching into
  * engine/starter internals. It covers the full supported mutation surface
- * for managing workers, contexts, rules, and task lifecycle after startup.
+ * for managing workers, rules, and task lifecycle after startup.
+ * WorkerContext bootstrap remains available only through
+ * {@link WorkerContextCompatibilityOperations}.
  */
 public interface MassRuntimeControl {
 
@@ -92,12 +93,6 @@ public interface MassRuntimeControl {
      * until a transport connect/heartbeat event marks it online.
      */
     void registerWorker(WorkerRegistration request);
-
-    /**
-     * Register an allocatable worker context. The context starts IDLE.
-     */
-    @Deprecated(forRemoval = false)
-    void registerWorkerContext(WorkerContextRegistration request);
 
     // --- Rule management ---
 

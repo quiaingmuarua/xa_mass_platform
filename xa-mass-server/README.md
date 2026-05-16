@@ -156,7 +156,7 @@ Startup behavior:
 
 ### Worker Resource Fixtures
 
-`MockRuntimeDataLoader` is now test-only fixture support for local/E2E startup data. JSON is only a fixture input format; resource creation still goes through `MassSdkApplication.registerWorker(...)` and `registerWorkerContext(...)`.
+`MockRuntimeDataLoader` is now test-only fixture support for local/E2E startup data. JSON is only a fixture input format; worker resource creation still goes through `MassSdkApplication.registerWorker(...)`. Worker-context fixture loading is compatibility-only and must go through `WorkerContextCompatibilityOperations`, not the runtime-control mainline.
 
 Current fixture behavior:
 
@@ -443,7 +443,7 @@ High-signal classes:
 
 Fixture rules:
 
-- prefer `registerWorker(...)`, `registerWorkerContext(...)`, `replaceDefaultRules(...)`, `createTaskShell(...)`, `appendTaskItems(...)`, and `executeTaskCommand(..., "SEAL")`
+- prefer `registerWorker(...)`, `replaceDefaultRules(...)`, `createTaskShell(...)`, `appendTaskItems(...)`, and `executeTaskCommand(..., "SEAL")`; only legacy compatibility tests should use `WorkerContextCompatibilityOperations.registerWorkerContext(...)`
 - worker JSON and worker-context JSON are fixture inputs, not runtime truth
 - direct `WorkerManager` and `RuleManager` setup writes are not mainline E2E setup
 - direct `TaskManager`, `TaskStorage`, or runtime writes stay limited to

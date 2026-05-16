@@ -2,6 +2,7 @@ package com.xa.mass.server.bootstrap;
 
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassRuntimeControl;
+import com.xa.mass.sdk.WorkerContextCompatibilityOperations;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.authz.TaskOwnershipSupport;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
@@ -102,7 +103,7 @@ public final class DevDemoBootstrapDataProvider implements MassBootstrapDataProv
                             "capacity", "standard"
                     ))
                     .build());
-            runtime.registerWorkerContext(WorkerContextRegistration.builder()
+            registerWorkerContextCompatibility(runtime, WorkerContextRegistration.builder()
                     .workerContextId("ctx-" + workerId)
                     .workerId(workerId)
                     .routingTags(Set.of(lane))
@@ -112,6 +113,15 @@ public final class DevDemoBootstrapDataProvider implements MassBootstrapDataProv
                     ))
                     .build());
         }
+    }
+
+    private void registerWorkerContextCompatibility(MassRuntimeControl runtime,
+                                                    WorkerContextRegistration request) {
+        if (runtime instanceof WorkerContextCompatibilityOperations compatibility) {
+            compatibility.registerWorkerContext(request);
+            return;
+        }
+        throw new IllegalStateException("Dev demo WorkerContext bootstrap requires WorkerContextCompatibilityOperations");
     }
 
     private void createTasks(MassRuntimeControl runtime) {

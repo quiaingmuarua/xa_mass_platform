@@ -728,12 +728,17 @@ Request notes:
 
 - Method: `POST`
 - Path: `/worker-api/v1/workers/{workerId}/contexts`
-- Status: `Implemented`
+- Status: `Implemented, compatibility-only`
 
 Request notes:
 
 - `workerContextId` is required
-- stateless workers may skip this API entirely
+- this route is a WorkerContext compatibility path for legacy/context-aware
+  workers
+- new external workers should declare capability with
+  `/worker-api/v1/workers` `eventBindings` and may skip this API entirely
+- server wiring keeps this route on `WorkerContextCompatibilityOperations`, not
+  the worker registry/client mainline
 
 ### 6.3 Worker Online
 

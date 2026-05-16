@@ -3007,6 +3007,7 @@ class MassSdkTest {
         assertMissingMethod(MassSdkApplication.class, "enqueueRawMessage", Map.class);
         assertMissingMethod(MassSdkApplication.class, "getQueueDetail");
         assertMissingMethod(MassSdkApplication.class, "getQueueMetrics");
+        assertMissingMethod(MassRuntimeControl.class, "registerWorkerContext", WorkerContextRegistration.class);
         assertMissingMethod(MassSdk.Builder.class, "unwrap");
         assertMissingMethod(MassSdk.TransportOptions.class, "unwrap");
         assertMissingMethod(MassSdk.EngineOptions.class, "unwrap");

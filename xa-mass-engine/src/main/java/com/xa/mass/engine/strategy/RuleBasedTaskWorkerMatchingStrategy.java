@@ -135,17 +135,13 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
             WorkerMatchContext matchContext = new WorkerMatchContext(candidate, task);
 
             if (log.isDebugEnabled()) {
-                log.debug("[Debug] WorkerId={}, workerGroupId={}, status={}, locked={}, supportedProjects={}, workerContextId={}, workerContextStatus={}, workerContextChannel={}",
+                log.debug("[Debug] WorkerId={}, workerGroupId={}, status={}, locked={}, supportedProjects={}, legacyWorkerContextId={}",
                         worker.getWorkerId(),
                         worker.getWorkerGroupId(),
                         worker.getStatus(),
                         workerManager.isLocked(worker.getWorkerId()),
                         String.join(", ", worker.getSupportedProjects()),
-                        candidate.getWorkerContextId() != null ? candidate.getWorkerContextId() : "null",
-                        candidate.getSchedulingView().workerContextStatusName() != null
-                                ? candidate.getSchedulingView().workerContextStatusName() : "null",
-                        candidate.getSchedulingView().hasWorkerContext()
-                                ? candidate.getSchedulingView().workerContextRoutingTags() : "null"
+                        candidate.getWorkerContextId() != null ? candidate.getWorkerContextId() : "null"
                 );
                 log.debug("[Debug] WorkerMatchContext: {}", matchContext.getContext());
             }
@@ -347,21 +343,6 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
 
         String routingCode = TaskSharedConfig.routingCode(task);
         boolean taskHasRoutingRequirement = routingCode != null && !routingCode.isBlank();
-        if (!schedulingView.hasWorkerContext()) {
-            if (taskHasRoutingRequirement && !schedulingView.schedulingRoutingTagsContain(routingCode)) {
-                return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
-                        "routing code mismatch", contextSnapshot, false);
-            }
-            return PrefilterDecision.allow();
-        }
-        if (!schedulingView.workerContextAllocatable()) {
-            return PrefilterDecision.reject(AssignmentResult.RESOURCE_UNAVAILABLE,
-                    "workerContext not allocatable", contextSnapshot, false);
-        }
-        if (schedulingView.schedulingProject() != null && !schedulingView.schedulingProjectMatches(task.getProject())) {
-            return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
-                    "workerContext project mismatch", contextSnapshot, false);
-        }
         if (taskHasRoutingRequirement && !schedulingView.schedulingRoutingTagsContain(routingCode)) {
             return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
                     "routing code mismatch", contextSnapshot, false);

@@ -43,8 +43,9 @@ Preferred rule:
 `WorkerContext` is still live in multiple meanings:
 
 - legacy rule/read-model compatibility:
-  - `workerContext*` variables are still exposed by `WorkerMatchContext`
-  - model tests still verify those variables until the rule surface is removed
+  - `workerContext*` variables have been retired from `WorkerMatchContext`
+  - model tests verify worker-level scheduling fields and absence of legacy
+    rule-context keys
 - runtime payload compatibility:
   - `workerContextId` can still be carried on runtime attempts and dispatch
     bindings when a legacy context-backed candidate is selected
@@ -206,8 +207,8 @@ During retirement, rule variables should converge to:
 - `workerSchedulingProject`
 - `workerSchedulingMatchesRoutingCode`
 
-Remove `workerContext*` rule variables only after all in-repo rules and fixtures
-are migrated.
+`workerContext*` rule variables are retired from the engine rule context after
+all in-repo rules and fixtures moved to worker-level scheduling fields.
 
 ### Context Project
 
@@ -264,7 +265,8 @@ Scope:
 
 - add or extend source guards so new production scheduling code cannot call
   WorkerContext storage APIs
-- guard against new `workerContext*` default rules or test fixtures
+- guard against new `workerContext*` default rules, test fixtures, and engine
+  rule-context fields
 - record all remaining references by owner:
   - engine hot path
   - engine diagnostics
@@ -343,7 +345,9 @@ not unwrap WorkerContext payloads directly. `WorkerMatchContext` owns
 the rule and diagnostic snapshot field map used by both QLExpress evaluation
 and prefilter rejection records, so `RuleBasedTaskWorkerMatchingStrategy` no
 longer carries a duplicate `workerScheduling*` / `workerContext*` snapshot
-builder. Canonical trace includes worker scheduling evidence on worker match
+builder. WC-3E removed `workerContext*` variables from `WorkerMatchContext`
+and stopped `WorkerSchedulingView` from flattening WorkerContext
+status/project/routing/attributes into scheduling facts. Canonical trace includes worker scheduling evidence on worker match
 rows, and `worker-attribute-routing-without-context` proves stateless worker
 attribute routing without using `workerContextId`. `WorkerSchedulingCandidate`
 now carries only `Worker` plus `WorkerSchedulingView`; legacy `workerContextId`
@@ -364,8 +368,9 @@ Scope:
   (done)
 - update `WorkerSchedulingView.from(...)` so it no longer accepts a
   `WorkerContext`
-- remove context allocatability/project/routing prefilter branches
+- remove context allocatability/project/routing prefilter branches (done)
 - update `WorkerMatchContext` to stop exposing `workerContext*` variables
+  (done)
 - update assignment diagnostics to snapshot worker scheduling view, not context
   snapshot (done)
 
@@ -392,7 +397,7 @@ Acceptance:
 - no production matching code reads WorkerContext storage
 - no context-backed matching fixtures remain in
   `RuleBasedTaskWorkerMatchingStrategyTest`
-- future completion: no rule context exposes `workerContext*`
+- no rule context exposes `workerContext*`
 - context-first source guard is updated from "allowed transitional use" to
   "forbidden in matching"
 

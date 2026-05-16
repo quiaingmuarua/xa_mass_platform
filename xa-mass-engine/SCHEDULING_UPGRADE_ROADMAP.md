@@ -16,7 +16,7 @@ Progress:
   beside legacy `workerContext*` rule variables.
 - 2026-05-15: Step 2 continued. Default routing rules and representative
   routing tests now read `workerScheduling*` fields while legacy
-  `workerContext*` variables remain available.
+  `workerContext*` variables remained available until WC-3E.
 - 2026-05-15: Step 2 continued. Matching prefilter decisions and diagnostic
   snapshots now consume `WorkerSchedulingView` for context allocatability,
   project, and routing checks while preserving legacy trace/record fields.
@@ -25,8 +25,8 @@ Progress:
   `WorkerSchedulingCandidate` instead of a context-first matched resource type.
 - 2026-05-15: Step 2 rule surface convergence was implemented. Default and
   derived rule sets now use `workerScheduling*` / `isWorkerScheduling*`
-  variables, while legacy `workerContext*` variables remain available for
-  transition compatibility.
+  variables. Legacy `workerContext*` transition variables were removed from
+  `WorkerMatchContext` later in WC-3E.
 - 2026-05-15: Step 4 observational foundation was implemented early. A
   process-local `WorkerLoadView` now tracks runtime claim/final callbacks and
   exposes load fields through `WorkerSchedulingView` / `WorkerMatchContext`.
@@ -182,6 +182,11 @@ Progress:
   `WorkerSchedulingView`; binder/resource/trace paths read legacy
   `workerContextId` compatibility identity from the view instead of carrying a
   nullable `WorkerContext` object through the scheduling handoff.
+- 2026-05-16: WorkerContext retirement WC-3E rule/read-model compatibility
+  shrink was implemented. `WorkerSchedulingView` no longer flattens
+  WorkerContext status/project/routing/attributes into scheduling facts,
+  `WorkerMatchContext` no longer exposes `workerContext*` rule variables, and
+  matching prefilter now uses only worker-level scheduling evidence.
 
 This document records the intended path for a long-running engine scheduling
 upgrade. The work is deliberately split into small, independently verifiable
@@ -1060,11 +1065,12 @@ Do not jump directly to public WorkerContext API/storage deletion.
 
 Matching context expansion is now removed from the production strategy package.
 The candidate handoff no longer carries a nullable `WorkerContext` object. The
-next step should reduce the remaining read-model compatibility dependency:
-`WorkerSchedulingView` and `WorkerMatchContext` still expose `workerContext*`
-fields for transitional QLExpress and trace compatibility. Remove those fields
-only after rule fixtures, trace analyzers, and server proof use
-`workerScheduling*` and worker-level resource evidence end to end.
+rule/read-model compatibility surface has also been reduced: `WorkerSchedulingView`
+does not flatten WorkerContext scheduling facts and `WorkerMatchContext` does
+not expose `workerContext*` rule variables. The next step should target the
+remaining runtime/trace compatibility identity: `workerContextId` can still
+appear on attempts, dispatch bindings, assignment snapshots, and public/storage
+surfaces.
 
 Full WorkerContext model/API deletion should still wait until engine runtime
 payloads, trace analyzers, SDK/server calls, and storage tests no longer need

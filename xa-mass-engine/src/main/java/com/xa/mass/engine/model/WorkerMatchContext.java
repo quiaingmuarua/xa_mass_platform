@@ -11,9 +11,9 @@ import java.util.Objects;
 /**
  * Rule-evaluation context for worker matching.
  *
- * <p>The routing signal is task-owned input, but the country truth used
- * for matching should come from workerContext/account-facing data rather than worker
- * grouping. Worker group remains exposed only as a diagnostic signal.
+ * <p>The routing signal is task-owned input, and scheduling truth is read from
+ * worker-level attributes/capabilities. Worker group remains exposed only as a
+ * diagnostic signal.
  */
 public class WorkerMatchContext {
     private final Worker worker;
@@ -77,9 +77,6 @@ public class WorkerMatchContext {
                 || workerAttributesMatch(schedulingView.workerAttributes(), targetWorkerAttributes));
         ctx.put("workerSchedulingProjectMatchesTaskProject", workerSchedulingProjectMatchesTaskProject);
         ctx.put("workerSchedulingMatchesRoutingCode", workerSchedulingMatchesRoutingCode);
-        ctx.put("workerContextProjectMatchesTaskProject",
-                schedulingView.hasWorkerContext() && workerSchedulingProjectMatchesTaskProject);
-        ctx.put("workerContextMatchesRoutingCode", workerSchedulingMatchesRoutingCode);
 
         return ctx;
     }
@@ -139,24 +136,12 @@ public class WorkerMatchContext {
         ctx.put("workerSchedulingProject", schedulingView.schedulingProject());
         ctx.put("workerSchedulingRoutingTags", schedulingView.schedulingRoutingTags());
         ctx.put("workerSchedulingAttributes", schedulingView.schedulingAttributes());
-        ctx.put("hasWorkerSchedulingResource", schedulingView.hasWorkerContext());
+        ctx.put("hasWorkerSchedulingResource", schedulingView.schedulingResourceId() != null);
         ctx.put("isWorkerSchedulingResourceAllocatable", schedulingView.schedulingResourceAllocatable());
         ctx.put("isWorkerSchedulingResourceAvailable", schedulingView.schedulingResourceAvailable());
         ctx.put("isWorkerSchedulingResourceUsable", schedulingView.schedulingResourceUsable());
         ctx.put("isWorkerSchedulingResourceReserved", schedulingView.schedulingResourceReserved());
         ctx.put("isWorkerSchedulingResourceOccupied", schedulingView.schedulingResourceOccupied());
-
-        ctx.put("hasWorkerContext", schedulingView.hasWorkerContext());
-        ctx.put("workerContextId", schedulingView.workerContextId());
-        ctx.put("workerContextProject", schedulingView.workerContextProject());
-        ctx.put("workerContextStatus", schedulingView.workerContextStatusName());
-        ctx.put("workerContextRoutingTags", schedulingView.workerContextRoutingTags());
-        ctx.put("workerContextAttributes", schedulingView.workerContextAttributes());
-        ctx.put("isWorkerContextAllocatable", schedulingView.workerContextAllocatable());
-        ctx.put("isWorkerContextAvailable", schedulingView.workerContextAvailable());
-        ctx.put("isWorkerContextUsable", schedulingView.workerContextUsable());
-        ctx.put("isWorkerContextReserved", schedulingView.workerContextReserved());
-        ctx.put("isWorkerContextOccupied", schedulingView.workerContextOccupied());
     }
 
     @Override
@@ -168,7 +153,7 @@ public class WorkerMatchContext {
                 ", supportsEvent=" + context.get("supportsEvent") +
                 ", matchesTargetWorkerId=" + context.get("matchesTargetWorkerId") +
                 ", matchesTargetWorkerAttributes=" + context.get("matchesTargetWorkerAttributes") +
-                ", workerContextMatchesRoutingCode=" + context.get("workerContextMatchesRoutingCode") +
+                ", workerSchedulingMatchesRoutingCode=" + context.get("workerSchedulingMatchesRoutingCode") +
                 '}';
     }
 }

@@ -1,11 +1,9 @@
 package com.xa.mass.engine.strategy;
 
 import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.WorkerReachabilityState;
 import com.xa.mass.engine.load.WorkerLoadSnapshot;
 import com.xa.mass.engine.model.WorkerMatchContext;
@@ -59,18 +57,12 @@ class DefaultWorkerCandidateRankerTest {
         worker.setStatus(WorkerStatus.ONLINE);
         worker.setSupportedProjects(List.of("demoApp"));
         worker.setAttributes(Map.of());
-        WorkerContext workerContext = null;
         if (routingTags != null) {
-            workerContext = new WorkerContext();
-            workerContext.setWorkerId(workerId);
-            workerContext.setWorkerContextId("ctx-" + workerId);
-            workerContext.setStatus(WorkerContextStatus.IDLE);
-            workerContext.setRoutingTags(routingTags);
-            workerContext.setAttributes(Map.of());
+            worker.setAttributes(Map.of("routingTags", String.join(",", routingTags)));
         }
         WorkerSchedulingView view = WorkerSchedulingView.from(
                 worker,
-                workerContext,
+                null,
                 WorkerReachabilityState.ONLINE,
                 true,
                 false,

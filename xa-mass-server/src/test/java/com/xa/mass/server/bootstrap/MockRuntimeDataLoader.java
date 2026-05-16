@@ -6,6 +6,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassRuntimeControl;
+import com.xa.mass.sdk.WorkerContextCompatibilityOperations;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
@@ -136,10 +137,19 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
                 logger.warn("Skipping worker context {} - workerId missing", ctx.getWorkerContextId());
                 continue;
             }
-            runtime.registerWorkerContext(toRegistration(ctx));
+            registerWorkerContextCompatibility(runtime, toRegistration(ctx));
             accepted++;
         }
         logger.info("Loaded {} worker contexts via SDK registration [path={}]", accepted, workerContextConfigPath);
+    }
+
+    private void registerWorkerContextCompatibility(MassRuntimeControl runtime,
+                                                    WorkerContextRegistration request) {
+        if (runtime instanceof WorkerContextCompatibilityOperations compatibility) {
+            compatibility.registerWorkerContext(request);
+            return;
+        }
+        throw new IllegalStateException("WorkerContext fixture loading requires WorkerContextCompatibilityOperations");
     }
 
     private void loadRules(MassRuntimeControl runtime) {

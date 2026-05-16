@@ -22,7 +22,10 @@ attempt/terminal close lock-release paths and dispatch-submit failure retry
 compensation. These owner boundaries are now guarded by
 `EngineSchedulingCoreArchitectureGuardTest`. Matching candidate enumeration now
 creates one worker-level candidate per worker and no longer reads or expands
-WorkerContext storage.
+WorkerContext storage. `WorkerSchedulingView` and `WorkerMatchContext` no
+longer flatten context status/project/routing/attributes into scheduling facts;
+the remaining context-facing engine identity is `workerContextId` compatibility
+evidence for runtime/trace surfaces.
 
 This document records the current engine scheduling read model after the first
 WorkerContext convergence slices. It is intentionally narrow: this path does
@@ -36,8 +39,9 @@ account/context/device lifecycle as an engine-owned scheduling resource.
 The immediate convergence target is:
 
 - current behavior stays intact
-- existing `workerContext*` QLExpress variables remain available
-- new worker-level scheduling variables are exposed beside them
+- `workerContext*` QLExpress variables are retired from the engine scheduling
+  rule context
+- worker-level scheduling variables are the rule and diagnostic surface
 - matching/allocation/dispatch handoff uses a worker scheduling candidate
 - default rules use the worker scheduling surface rather than `workerContext*`
 - matching can observe process-local worker load without runtime hot-path
@@ -49,8 +53,8 @@ The immediate convergence target is:
   snapshots for canonical schedule analysis
 - task assignment trace includes `foreground` so future behavior changes can be
   proved against the declared task scheduling mode
-- later phases can remove legacy `workerContext*` rule variables
-  without a single destructive rewrite
+- later phases can remove legacy `workerContextId` runtime/trace fields without
+  a single destructive rewrite
 
 ## Current Hot-Path Inventory
 
@@ -88,7 +92,6 @@ WorkerContext is still live in these engine paths:
   - is constructed from `WorkerSchedulingCandidate`
   - owns the rule-evaluation and diagnostic snapshot field map consumed by
     matching prefilter records and QLExpress evaluation
-  - exposes legacy `workerContext*` variables to QLExpress rules
   - exposes flattened `workerScheduling*` variables
   - exposes `isWorkerSchedulingResource*` aliases for resource state checks
   - exposes worker load and reservation fields from `WorkerLoadView`
@@ -125,20 +128,21 @@ WorkerContext is still live in these engine paths:
   - prevents `RuleBasedTaskWorkerMatchingStrategy` from owning a duplicate
     rule/prefilter snapshot field builder
   - prevents strategy-level tests from registering WorkerContext fixtures
+  - prevents `WorkerSchedulingView` from flattening WorkerContext scheduling
+    facts and prevents `WorkerMatchContext` from exposing `workerContext*`
+    rule fields
 
 WorkerContext is therefore still:
 
-- a legacy rule/read-model compatibility surface through `workerContext*`
-  variables
 - a legacy compatibility identity that can still appear in attempts and
   trace/runtime compatibility fields
 
 The production matching hot path no longer uses WorkerContext as a scheduling
 attribute source, and `WorkerSchedulingCandidate` no longer carries a
-`WorkerContext` object. The next target is to remove remaining `workerContext*`
-rule/read-model compatibility fields from `WorkerSchedulingView` and
-`WorkerMatchContext` after trace and server proof stay worker-level. Physical
-model/API deletion is a later phase.
+`WorkerContext` object. `WorkerSchedulingView` no longer flattens context
+project/routing/status/attributes into scheduling evidence, and
+`WorkerMatchContext` no longer exposes `workerContext*` rule variables.
+Physical model/API deletion is a later phase.
 
 ## Transitional View
 
@@ -155,21 +159,18 @@ It is built from:
 It exposes worker-level scheduling fields:
 
 - `workerSchedulingResourceId`
-  - `workerContextId` when a context exists
-  - otherwise `workerId`
+  - `workerId`
 - `workerSchedulingProject`
-  - current context project, if any
+  - currently `null`; project eligibility comes from `Worker.supportedProjects`
+    and event capability
 - `workerSchedulingRoutingTags`
-  - current context routing tags, if any
-  - otherwise worker attribute `routingTag` or comma-separated `routingTags`
+  - worker attribute `routingTag` or comma-separated `routingTags`
 - `workerSchedulingAttributes`
-  - worker attributes merged with current context attributes
-  - context attributes win on key conflict during the transition
+  - worker attributes
 - `hasWorkerSchedulingResource`
-  - true when the view was built from a WorkerContext
+  - true when the view has a worker-level scheduling resource id
 - `isWorkerSchedulingResourceAllocatable`
-  - true for stateless worker candidates or allocatable context-backed
-    scheduling resources
+  - true when worker dispatch is enabled
 - `isWorkerSchedulingResourceAvailable`
 - `isWorkerSchedulingResourceUsable`
 - `isWorkerSchedulingResourceReserved`
@@ -237,9 +238,8 @@ future code must not reintroduce WorkerContext enumeration in the matching
 strategy package, context-first handoff types, hidden WorkerContext state
 mutation, or listener-owned resource cleanup.
 
-Legacy fields remain available:
+Legacy rule/read-model fields are retired:
 
-- `workerContextId`
 - `workerContextProject`
 - `workerContextStatus`
 - `workerContextRoutingTags`
@@ -249,6 +249,9 @@ Legacy fields remain available:
 - `isWorkerContextUsable`
 - `isWorkerContextReserved`
 - `isWorkerContextOccupied`
+
+`workerContextId` remains only as runtime/trace compatibility identity outside
+the rule context.
 
 ## Current Rule Guidance
 
@@ -263,8 +266,9 @@ New or migrated matching rules should prefer:
 
 Default routing rules and representative routing tests now read the
 `workerScheduling*` / `isWorkerScheduling*` view. The matching prefilter also
-consumes `WorkerSchedulingView` for resource allocatability, project, and
-routing decisions. The main matching handoff now passes
+consumes `WorkerSchedulingView` for worker reachability, worker availability,
+target-worker constraints, event/project capability, and worker-level routing
+decisions. The main matching handoff now passes
 `WorkerSchedulingCandidate` rather than a context-first matched resource.
 Prefilter diagnostics now use `WorkerMatchContext.contextSnapshot(...)`, so rule
 evaluation and rejected-candidate records share one scheduling read-model field
@@ -281,11 +285,10 @@ coverage until the retirement phases remove it.
 `RuleBasedTaskWorkerMatchingStrategyTest` now treats context-backed fixtures as
 explicit legacy coverage; normal matching, trace, prefilter, and routing proof
 uses stateless workers plus worker scheduling attributes.
-Existing rules may continue using `workerContext*` variables until their owning
-fixtures are migrated.
-
-Do not add new default rules or new in-repo routing fixtures that depend on
-`workerContext*` variables. `RuleConfigTest` guards the default rule sets.
+Do not add default rules or in-repo routing fixtures that depend on
+`workerContext*` variables. `RuleConfigTest` and
+`EngineSchedulingCoreArchitectureGuardTest` guard the default rule sets and
+the engine rule-context source.
 
 Do not add new engine behavior that depends on WorkerContext as an account or
 device lifecycle owner. If account/device state is needed, it should enter the
@@ -305,15 +308,15 @@ engine as system-event-updated worker scheduling attributes.
 Focused proof for this step:
 
 - `WorkerMatchContextTest`
-  - proves legacy context fields still exist
   - proves new worker-level scheduling fields are present
-  - proves context attributes are flattened into scheduling attributes
+  - proves legacy `workerContext*` rule fields are absent
+  - proves context attributes are not flattened into scheduling attributes
 - `RuleConfigTest`
   - proves default and derived rule sets do not use the legacy
     `workerContext*` rule surface
 - `WorkerSchedulingCandidateTest`
-  - proves the handoff keeps worker, nullable legacy context, scheduling view,
-    and `workerContextId`
+  - proves the handoff keeps worker plus scheduling view and reads legacy
+    `workerContextId` compatibility identity from the view
 - `InMemoryWorkerLoadViewTest`
   - proves claim/final accounting, reservation accounting, and concurrent
     update safety

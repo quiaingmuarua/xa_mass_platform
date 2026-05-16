@@ -1,6 +1,7 @@
 package com.xa.mass.server.bootstrap;
 
 import com.xa.mass.sdk.MassRuntimeControl;
+import com.xa.mass.sdk.WorkerContextCompatibilityOperations;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.authz.TaskOwnershipStamp;
 import com.xa.mass.sdk.event.EventRequest;
@@ -79,7 +80,7 @@ class DevDemoBootstrapDataProviderTest {
         assertEquals(Set.of("us"), firstContext.getRoutingTags());
     }
 
-    private static final class RecordingRuntime implements MassRuntimeControl {
+    private static final class RecordingRuntime implements MassRuntimeControl, WorkerContextCompatibilityOperations {
 
         private final List<WorkerRegistration> workers = new ArrayList<>();
         private final List<WorkerContextRegistration> workerContexts = new ArrayList<>();
@@ -187,6 +188,21 @@ class DevDemoBootstrapDataProviderTest {
         @Override
         public void registerWorkerContext(WorkerContextRegistration request) {
             workerContexts.add(request);
+        }
+
+        @Override
+        public List<com.xa.mass.sdk.model.WorkerContextSnapshot> getAllWorkerContexts() {
+            return List.of();
+        }
+
+        @Override
+        public List<com.xa.mass.sdk.model.WorkerContextSnapshot> getWorkerContexts(String workerId) {
+            return List.of();
+        }
+
+        @Override
+        public com.xa.mass.sdk.model.WorkerContextSnapshot getWorkerContextById(String workerContextId) {
+            return null;
         }
 
         @Override

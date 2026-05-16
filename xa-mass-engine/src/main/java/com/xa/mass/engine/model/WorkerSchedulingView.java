@@ -212,10 +212,6 @@ public final class WorkerSchedulingView {
         return schedulingAttributes;
     }
 
-    public boolean schedulingProjectMatches(String project) {
-        return schedulingProject != null && schedulingProject.equals(project);
-    }
-
     public boolean schedulingRoutingTagsContain(String routingCode) {
         return routingCode != null && schedulingRoutingTags.contains(routingCode);
     }

@@ -70,7 +70,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
         assertTrue(violations.isEmpty(),
                 "New scheduling-core rule fixtures must use workerScheduling* / isWorkerScheduling* variables. "
-                        + "Keep workerContext* only as transitional read-model assertions until retirement:\n"
+                        + "workerContext* rule variables are retired from the scheduling proof surface:\n"
                         + String.join("\n", violations));
     }
 
@@ -217,6 +217,78 @@ class EngineSchedulingCoreArchitectureGuardTest {
                         + "Legacy context identity may remain on WorkerSchedulingView, but the candidate "
                         + "must not carry a WorkerContext object:\n"
                         + String.join("\n", violations));
+    }
+
+    @Test
+    void workerSchedulingViewDoesNotFlattenWorkerContextSchedulingFacts() throws IOException {
+        Path viewPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/model/WorkerSchedulingView.java");
+        String source = Files.readString(viewPath, StandardCharsets.UTF_8);
+
+        Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
+                Map.entry("WorkerContextStatus", Pattern.compile("\\bWorkerContextStatus\\b")),
+                Map.entry("workerContextProject", Pattern.compile("\\bworkerContextProject\\b")),
+                Map.entry("workerContextRoutingTags", Pattern.compile("\\bworkerContextRoutingTags\\b")),
+                Map.entry("workerContextAttributes", Pattern.compile("\\bworkerContextAttributes\\b")),
+                Map.entry("workerContextAllocatable", Pattern.compile("\\bworkerContextAllocatable\\b")),
+                Map.entry("workerContextAvailable", Pattern.compile("\\bworkerContextAvailable\\b")),
+                Map.entry("workerContextUsable", Pattern.compile("\\bworkerContextUsable\\b")),
+                Map.entry("workerContextReserved", Pattern.compile("\\bworkerContextReserved\\b")),
+                Map.entry("workerContextOccupied", Pattern.compile("\\bworkerContextOccupied\\b"))
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Map.Entry<String, Pattern> forbiddenPattern : forbiddenPatterns.entrySet()) {
+            if (forbiddenPattern.getValue().matcher(source).find()) {
+                violations.add(viewPath + " flattens retired WorkerContext scheduling fact: "
+                        + forbiddenPattern.getKey());
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "WorkerSchedulingView may retain legacy workerContextId compatibility identity, "
+                        + "but scheduling facts must come from worker-level state and attributes:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void workerMatchContextDoesNotExposeWorkerContextRuleFields() throws IOException {
+        Path contextPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/model/WorkerMatchContext.java");
+        String source = Files.readString(contextPath, StandardCharsets.UTF_8);
+
+        Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
+                Map.entry("workerContext field",
+                        Pattern.compile("\\.put\\s*\\(\\s*\"workerContext[A-Za-z0-9_]*\"")),
+                Map.entry("isWorkerContext field",
+                        Pattern.compile("\\.put\\s*\\(\\s*\"isWorkerContext[A-Za-z0-9_]*\"")),
+                Map.entry("hasWorkerContext field",
+                        Pattern.compile("\\.put\\s*\\(\\s*\"hasWorkerContext\""))
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Map.Entry<String, Pattern> forbiddenPattern : forbiddenPatterns.entrySet()) {
+            if (forbiddenPattern.getValue().matcher(source).find()) {
+                violations.add(contextPath + " exposes retired rule context key: "
+                        + forbiddenPattern.getKey());
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "WorkerMatchContext rule fields must stay workerScheduling*/worker-level. "
+                        + "Legacy workerContext* variables are retired from the scheduling rule surface:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void workerSchedulingResourcePresenceDoesNotDependOnWorkerContextPresence() throws IOException {
+        Path contextPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/model/WorkerMatchContext.java");
+        String source = Files.readString(contextPath, StandardCharsets.UTF_8);
+
+        Pattern contextBackedSchedulingResourceFlag = Pattern.compile(
+                "\\.put\\s*\\(\\s*\"hasWorkerSchedulingResource\"\\s*,\\s*schedulingView\\.hasWorkerContext\\s*\\(");
+
+        assertTrue(!contextBackedSchedulingResourceFlag.matcher(source).find(),
+                "hasWorkerSchedulingResource must describe the worker-level scheduling resource, "
+                        + "not legacy WorkerContext presence.");
     }
 
     @Test

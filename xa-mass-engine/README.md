@@ -308,10 +308,11 @@ Matching boundaries:
 - dispatch eligibility must read transport reachability from
   `WorkerReachabilityView`, not local heartbeat-expiry heuristics
 - `workerSchedulingAttributes` is the preferred matching label map for new or
-  migrated rules; legacy `workerContextAttributes` remains available during the
-  current WorkerContext convergence path
+  migrated rules; legacy `workerContextAttributes` is retired from the engine
+  scheduling rule context
 - default rules must use `workerScheduling*` / `isWorkerScheduling*` variables;
-  legacy `workerContext*` variables are compatibility data only
+  legacy `workerContext*` variables are no longer part of the engine rule
+  surface
 - worker load variables such as `workerActiveLeaseCount`,
   `workerReservedCount`, and `workerEstimatedLoadRatio` are scheduling
   evidence; current capacity semantics are worker-declared process-local

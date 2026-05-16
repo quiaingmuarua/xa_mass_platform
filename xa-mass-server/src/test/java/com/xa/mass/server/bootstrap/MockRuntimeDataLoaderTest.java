@@ -2,6 +2,7 @@ package com.xa.mass.server.bootstrap;
 
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.sdk.MassRuntimeControl;
+import com.xa.mass.sdk.WorkerContextCompatibilityOperations;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
@@ -324,7 +325,7 @@ class MockRuntimeDataLoaderTest {
                 """;
     }
 
-    private static final class FakeRuntime implements MassRuntimeControl {
+    private static final class FakeRuntime implements MassRuntimeControl, WorkerContextCompatibilityOperations {
         private final List<WorkerSnapshot> workers = new ArrayList<>();
         private final List<WorkerContextSnapshot> workerContexts = new ArrayList<>();
         private final List<WorkerRegistration> registeredWorkers = new ArrayList<>();
@@ -388,6 +389,21 @@ class MockRuntimeDataLoaderTest {
                     null,
                     request.getAttributes()
             ));
+        }
+
+        @Override
+        public List<WorkerContextSnapshot> getAllWorkerContexts() {
+            return List.copyOf(workerContexts);
+        }
+
+        @Override
+        public List<WorkerContextSnapshot> getWorkerContexts(String workerId) {
+            return workerContextsFor(workerId);
+        }
+
+        @Override
+        public WorkerContextSnapshot getWorkerContextById(String workerContextId) {
+            return workerContextById(workerContextId);
         }
 
         @Override
