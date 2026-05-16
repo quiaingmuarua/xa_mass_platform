@@ -18,4 +18,6 @@ public interface RuntimeDiagnosticsOperations {
     Map<String, Object> getQueueDetail();
 
     Map<String, Object> getQueueMetrics();
+
+    boolean isWorkerLocked(String workerId);
 }

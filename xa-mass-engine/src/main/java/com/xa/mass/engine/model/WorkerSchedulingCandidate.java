@@ -1,28 +1,24 @@
 package com.xa.mass.engine.model;
 
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 
 import java.util.Objects;
 
 /**
  * Scheduling candidate chosen by the matching layer.
  *
- * <p>The worker context remains as the legacy runtime resource payload for
- * current binding, attempt, release, and trace behavior. Matching code should
- * read scheduling data from {@link WorkerSchedulingView}.</p>
+ * <p>The candidate handoff is worker-level. Legacy context identity can still
+ * appear on {@link WorkerSchedulingView} while compatibility evidence is being
+ * retired, but the handoff no longer carries a WorkerContext payload.</p>
  */
 public final class WorkerSchedulingCandidate {
 
     private final Worker worker;
-    private final WorkerContext workerContext;
     private final WorkerSchedulingView schedulingView;
 
     public WorkerSchedulingCandidate(Worker worker,
-                                     WorkerContext workerContext,
                                      WorkerSchedulingView schedulingView) {
         this.worker = Objects.requireNonNull(worker, "worker");
-        this.workerContext = workerContext;
         this.schedulingView = Objects.requireNonNull(schedulingView, "schedulingView");
     }
 
@@ -30,16 +26,12 @@ public final class WorkerSchedulingCandidate {
         return worker;
     }
 
-    public WorkerContext getWorkerContext() {
-        return workerContext;
-    }
-
     public String getWorkerId() {
         return worker.getWorkerId();
     }
 
     public String getWorkerContextId() {
-        return workerContext != null ? workerContext.getWorkerContextId() : null;
+        return schedulingView.workerContextId();
     }
 
     public WorkerSchedulingView getSchedulingView() {

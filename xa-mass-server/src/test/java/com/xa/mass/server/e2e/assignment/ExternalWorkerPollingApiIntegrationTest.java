@@ -111,7 +111,12 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", workerId,
                 "workerGroupId", "node-runtime",
-                "attributes", Map.of("lang", "node"),
+                "attributes", Map.of(
+                        "lang", "node",
+                        "routingTags", "web,us",
+                        "country", "us",
+                        "region", "us"
+                ),
                 "eventBindings", List.of(Map.of(
                         "eventCode", "crawler.fetch-page",
                         "projectCodes", List.of("crawlerApp")

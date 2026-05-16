@@ -3,6 +3,7 @@ package com.xa.mass.api.internal;
 import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
 import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.RuntimeDiagnosticsOperations;
+import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.transport.WorkerTransportHints;
 
 import java.util.ArrayList;
@@ -43,6 +44,26 @@ final class WorkerCapabilityViewSupport {
 
     static List<Map<String, Object>> deriveEventBindings(List<String> supportedEventCodes,
                                                          ControlPlaneCatalog catalog) {
+        return deriveEventBindings(null, supportedEventCodes, catalog);
+    }
+
+    static List<Map<String, Object>> deriveEventBindings(List<WorkerEventBinding> workerEventBindings,
+                                                         List<String> supportedEventCodes,
+                                                         ControlPlaneCatalog catalog) {
+        if (workerEventBindings != null && !workerEventBindings.isEmpty()) {
+            List<Map<String, Object>> bindings = new ArrayList<>(workerEventBindings.size());
+            for (WorkerEventBinding binding : workerEventBindings) {
+                if (binding == null || binding.getEventCode() == null || binding.getEventCode().isBlank()) {
+                    continue;
+                }
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("eventCode", binding.getEventCode());
+                item.put("projectCodes", normalizeStringList(binding.getProjectCodes()));
+                bindings.add(item);
+            }
+            return bindings.isEmpty() ? List.of() : List.copyOf(bindings);
+        }
+
         supportedEventCodes = normalizeStringList(supportedEventCodes);
         if (supportedEventCodes.isEmpty()) {
             return List.of();

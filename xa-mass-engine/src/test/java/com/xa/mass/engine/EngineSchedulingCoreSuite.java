@@ -17,7 +17,6 @@ import org.junit.platform.suite.api.Suite;
         TaskContractSchedulingBehaviorTest.class,
         TaskSchedulingContentionTest.class,
         TaskWorkerEligibilityTest.class,
-        TaskWorkerContextContentionTest.class,
         TaskRedispatchCompetitionTest.class,
         TaskSchedulingGateAndTargetingTest.class,
         TaskDelayedAvailabilitySchedulingTest.class,

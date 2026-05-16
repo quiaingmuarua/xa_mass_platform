@@ -3,7 +3,6 @@ package com.xa.mass.engine.model;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -18,7 +17,6 @@ import java.util.Objects;
  */
 public class WorkerMatchContext {
     private final Worker worker;
-    private final WorkerContext workerContext;
     private final Task task;
     private final WorkerSchedulingView schedulingView;
     private final Map<String, Object> context;
@@ -26,7 +24,6 @@ public class WorkerMatchContext {
     public WorkerMatchContext(WorkerSchedulingCandidate candidate, Task task) {
         Objects.requireNonNull(candidate, "candidate");
         this.worker = candidate.getWorker();
-        this.workerContext = candidate.getWorkerContext();
         this.task = task;
         this.schedulingView = candidate.getSchedulingView();
         this.context = buildContext(candidate, task);
@@ -89,10 +86,6 @@ public class WorkerMatchContext {
 
     public Worker getWorker() {
         return worker;
-    }
-
-    public WorkerContext getWorkerContext() {
-        return workerContext;
     }
 
     public Task getTask() {

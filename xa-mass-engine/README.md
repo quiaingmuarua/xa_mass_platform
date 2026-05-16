@@ -148,10 +148,11 @@ Keep these facts fixed unless the owning global baselines change:
   and consumes that decision instead of owning refill formulas
 - `WorkerDispatchResourcePolicy` owns dispatch resource usage semantics:
   whether a task/candidate uses the long-lived worker-level exclusive lock and
-  whether a dispatch attempt carries a legacy WorkerContext payload.
+  whether a dispatch attempt carries legacy `workerContextId` compatibility
+  identity from the scheduling view.
   Matching, assignment listener cleanup, binder compensation, and resource
   release consume this decision instead of each re-deriving foreground/context
-  behavior. Legacy WorkerContext-backed candidates and attempts keep the
+  behavior. Legacy WorkerContext-backed view evidence keeps the
   exclusive worker lock even when the task declares `foreground=false`; only
   stateless background candidates may share worker capacity without the
   long-lived lock.
@@ -285,13 +286,11 @@ Matching boundaries:
 
 - `WorkerSchedulingCandidate` is the engine-internal handoff between matching,
   allocation, listener orchestration, and dispatch binding
-- `WorkerSchedulingCandidateEnumerator` is the transitional owner for expanding
-  workers plus optional legacy WorkerContext resources into scheduling
-  candidates; `RuleBasedTaskWorkerMatchingStrategy` must not import
-  `WorkerContext` or read WorkerContext storage directly
+- `WorkerSchedulingCandidateEnumerator` creates one scheduling candidate per
+  worker from the worker read model; matching no longer expands legacy
+  `WorkerContext` storage into candidates
 - worker-level assignment diagnostics consume `WorkerSchedulingCandidate`;
-  matching strategy code must not unwrap the nullable legacy WorkerContext
-  payload directly
+  candidate handoff no longer carries a nullable `WorkerContext` payload
 - `WorkerMatchContext` owns the rule and diagnostic snapshot field map;
   `RuleBasedTaskWorkerMatchingStrategy` consumes that read model for prefilter
   records instead of maintaining a duplicate snapshot builder
@@ -321,9 +320,8 @@ Matching boundaries:
 - routing is a task-owned hint currently resolved from
   `Task.sharedConfig["routingCode"]`
 - once a task requires routing, the candidate must expose matching
-  `workerSchedulingRoutingTags`; during WorkerContext retirement those tags may
-  come from legacy `WorkerContext.routingTags` or from worker attributes such as
-  `routingTag` / `routingTags`
+  `workerSchedulingRoutingTags`; in the current scheduling hot path those tags
+  come from worker attributes such as `routingTag` / `routingTags`
 
 If matching semantics change, update `RuleConfig`, `WorkerMatchContext`, and the
 relevant routing/integration coverage together.
@@ -362,7 +360,6 @@ Useful starting tests:
 - `TaskContractSchedulingBehaviorTest`
 - `TaskSchedulingContentionTest`
 - `TaskWorkerEligibilityTest`
-- `TaskWorkerContextContentionTest`
 - `TaskRedispatchCompetitionTest`
 - `TaskSchedulingGateAndTargetingTest`
 - `TaskDelayedAvailabilitySchedulingTest`

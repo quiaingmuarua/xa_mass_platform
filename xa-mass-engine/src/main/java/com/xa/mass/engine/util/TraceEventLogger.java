@@ -274,7 +274,7 @@ public final class TraceEventLogger {
             return;
         }
         emitWorkerMatchEvent(ExecutionEventType.WORKER_MATCH_ACCEPTED, task, taskId,
-                candidate.getWorker(), candidate.getWorkerContext(), reason, "SUCCESS",
+                candidate.getWorker(), candidate.getWorkerContextId(), reason, "SUCCESS",
                 workerSchedulingRankAttrs(task, candidate.getSchedulingView(), workerLoadSnapshot, candidateRank, candidateScore));
     }
 
@@ -324,7 +324,7 @@ public final class TraceEventLogger {
             return;
         }
         emitWorkerMatchEvent(ExecutionEventType.WORKER_MATCH_REJECTED, task, taskId,
-                candidate.getWorker(), candidate.getWorkerContext(), reason, "REJECTED",
+                candidate.getWorker(), candidate.getWorkerContextId(), reason, "REJECTED",
                 workerSchedulingRankAttrs(task, candidate.getSchedulingView(), workerLoadSnapshot, candidateRank, candidateScore));
     }
 
@@ -333,6 +333,19 @@ public final class TraceEventLogger {
                                       String taskId,
                                       Worker worker,
                                       WorkerContext workerContext,
+                                      String reason,
+                                      String result,
+                                      Map<String, Object> extraAttrs) {
+        emitWorkerMatchEvent(eventType, task, taskId, worker,
+                workerContext != null ? workerContext.getWorkerContextId() : null,
+                reason, result, extraAttrs);
+    }
+
+    private void emitWorkerMatchEvent(ExecutionEventType eventType,
+                                      Task task,
+                                      String taskId,
+                                      Worker worker,
+                                      String workerContextId,
                                       String reason,
                                       String result,
                                       Map<String, Object> extraAttrs) {
@@ -352,7 +365,7 @@ public final class TraceEventLogger {
                 .identity(identity -> identity
                         .taskId(taskId)
                         .workerId(worker.getWorkerId())
-                        .workerContextId(workerContext != null ? workerContext.getWorkerContextId() : null))
+                        .workerContextId(workerContextId))
                 .outcome(eventType == ExecutionEventType.WORKER_MATCH_ACCEPTED, null, reason)
                 .attrs(values)
                 .build());

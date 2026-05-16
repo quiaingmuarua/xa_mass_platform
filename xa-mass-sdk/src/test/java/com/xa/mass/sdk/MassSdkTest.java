@@ -3130,7 +3130,7 @@ class MassSdkTest {
                 app::getAllWorkerContexts,
                 () -> app.getWorkerContexts("worker-1"),
                 () -> app.getWorkerContextById("context-1"),
-                () -> app.isWorkerLocked("worker-1"),
+                () -> runtimeDiagnostics(app).isWorkerLocked("worker-1"),
                 () -> app.isWorkerOnline("worker-1"),
                 () -> app.registerWorker(WorkerRegistration.builder().workerId("worker-1").build()),
                 () -> app.registerWorkerContext(WorkerContextRegistration.builder()

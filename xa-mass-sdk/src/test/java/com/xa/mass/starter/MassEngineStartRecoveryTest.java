@@ -52,7 +52,6 @@ class MassEngineStartRecoveryTest {
             }
             return List.of(new WorkerSchedulingCandidate(
                     workerManager.getWorker("worker-1"),
-                    workerManager.getWorkerContextById("wctx-1"),
                     WorkerSchedulingView.from(
                             workerManager.getWorker("worker-1"),
                             workerManager.getWorkerContextById("wctx-1"),
@@ -136,7 +135,6 @@ class MassEngineStartRecoveryTest {
                 }
                 return List.of(new WorkerSchedulingCandidate(
                         workerManager.getWorker("worker-1"),
-                        workerManager.getWorkerContextById("wctx-1"),
                         WorkerSchedulingView.from(
                                 workerManager.getWorker("worker-1"),
                                 workerManager.getWorkerContextById("wctx-1"),

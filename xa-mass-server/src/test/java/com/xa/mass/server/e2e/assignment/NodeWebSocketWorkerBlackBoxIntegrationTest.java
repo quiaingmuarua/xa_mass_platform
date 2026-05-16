@@ -72,7 +72,13 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest
                 "workerId", WORKER_ID,
                 "adapterId", "websocket",
                 "transportHint", "realtime",
-                "attributes", Map.of("lang", "node", "runtime", "node-websocket-worker"),
+                "attributes", Map.of(
+                        "lang", "node",
+                        "runtime", "node-websocket-worker",
+                        "routingTags", "web,us",
+                        "country", "us",
+                        "region", "us"
+                ),
                 "eventBindings", List.of(Map.of(
                         "eventCode", "crawler.fetch-page",
                         "projectCodes", List.of("crawlerApp")
@@ -150,7 +156,15 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest
                 "workerId", STOCK_WORKER_ID,
                 "adapterId", "websocket",
                 "transportHint", "realtime",
-                "attributes", Map.of("lang", "node", "runtime", "node-websocket-worker", "workerType", "stock-crawler"),
+                "attributes", Map.of(
+                        "lang", "node",
+                        "runtime", "node-websocket-worker",
+                        "workerType", "stock-crawler",
+                        "routingTags", "us,stock",
+                        "country", "us",
+                        "region", "us",
+                        "market", "NASDAQ"
+                ),
                 "eventBindings", List.of(Map.of(
                         "eventCode", "stock.quote.fetch",
                         "projectCodes", List.of("crawlerApp")

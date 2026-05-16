@@ -78,7 +78,6 @@ class DefaultWorkerDispatchResourcePolicyTest {
         }
         return new WorkerSchedulingCandidate(
                 worker,
-                workerContext,
                 WorkerSchedulingView.from(worker, workerContext, WorkerReachabilityState.ONLINE, true, false)
         );
     }

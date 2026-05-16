@@ -124,6 +124,7 @@ class TransportChannelWiringIntegrationTest extends AbstractSampleE2eTest {
         app.registerWorker(WorkerRegistration.builder()
                 .workerId(workerId)
                 .workerGroupId("us")
+                .attributes(Map.of("routingTag", "us", "routingTags", "us", "country", "us"))
                 .eventBindings(List.of(
                         WorkerEventBinding.builder()
                                 .eventCode("demo.dispatch")

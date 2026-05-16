@@ -86,8 +86,8 @@ Progress:
 - 2026-05-15: WorkerContext retirement WC-2 started. Legacy WorkerContext
   candidate expansion moved behind `WorkerSchedulingCandidateEnumerator`, and
   `RuleBasedTaskWorkerMatchingStrategy` now consumes scheduling candidates
-  without directly reading WorkerContext storage. Runtime binding still carries
-  nullable legacy WorkerContext until later retirement phases.
+  without directly reading WorkerContext storage. This transitional candidate
+  payload was removed later in WC-3D.
 - 2026-05-15: WorkerContext retirement WC-2B test proof convergence was
   implemented. Strategy-level matching, trace, and prefilter proof now uses
   stateless worker scheduling attributes by default; remaining context-backed
@@ -100,7 +100,7 @@ Progress:
 - 2026-05-15: WorkerContext retirement WC-2D diagnostic handoff convergence
   was implemented. Worker-level assignment diagnostics now consume
   `WorkerSchedulingCandidate`; matching strategy code no longer unwraps
-  `candidate.getWorkerContext()` and leaves legacy payload extraction inside
+  WorkerContext payloads and leaves legacy identity extraction inside
   trace/diagnostic owners.
 - 2026-05-15: WorkerContext retirement WC-2E rule snapshot owner convergence
   was implemented. `WorkerMatchContext` now owns the rule and diagnostic
@@ -171,6 +171,17 @@ Progress:
   `WorkerSchedulingView` evidence through `WorkerSchedulingSnapshot`; the
   engine-owned `WorkerContextSnapshot` diagnostic model was deleted, and
   `workerContextId` remains only as legacy payload identity.
+- 2026-05-16: WorkerContext retirement WC-3C matching context expansion removal
+  was implemented. `WorkerSchedulingCandidateEnumerator` now creates one
+  worker-level candidate per worker and no longer reads WorkerContext storage;
+  context-backed matching fixtures were removed from the strategy proof
+  surface and source guards now forbid WorkerContext storage/payload usage in
+  the matching strategy package.
+- 2026-05-16: WorkerContext retirement WC-3D candidate payload removal was
+  implemented. `WorkerSchedulingCandidate` now carries only `Worker` plus
+  `WorkerSchedulingView`; binder/resource/trace paths read legacy
+  `workerContextId` compatibility identity from the view instead of carrying a
+  nullable `WorkerContext` object through the scheduling handoff.
 
 This document records the intended path for a long-running engine scheduling
 upgrade. The work is deliberately split into small, independently verifiable
@@ -282,7 +293,7 @@ Default policy is acceptable. Hidden policy inside mechanism is not.
 | --- | --- | --- |
 | `TaskAssignWorker` | assignment signal queueing, lane workers, retry/defer, queue snapshots | runtime profile / dispatch priority |
 | `TaskWorkerAssignListener` | assignment orchestration, status transition, dispatch resource cleanup, assignment trace, task update, assignment event publication | `AssignmentAllocationPolicy`, matching strategy, `WorkerDispatchResourcePolicy`, `WorkerDispatchResourceReleaser` |
-| `WorkerSchedulingCandidateEnumerator` | transitional expansion from workers plus optional legacy WorkerContext resources into scheduling candidates | worker storage/read views |
+| `WorkerSchedulingCandidateEnumerator` | one worker read-model row to one scheduling candidate | worker storage/read views, reachability, load snapshots |
 | `RuleBasedTaskWorkerMatchingStrategy` | scheduling-candidate consumption, rule evaluation execution, lock/reservation attempt, match trace | matching rules, `WorkerCandidateRanker`, `WorkerDispatchResourcePolicy`, load/reachability views, candidate enumerator |
 | `SimpleTaskDispatchBinder` | runtime claim, attempt creation, dispatch binding, handoff compensation, binding trace | allocation/matching output, `WorkerDispatchResourcePolicy`, `WorkerDispatchResourceReleaser` |
 | `TaskResourceReleaseListener` | worker load finalization and worker lock release orchestration after attempt/terminal close | `AssignmentRefillPolicy`, `WorkerDispatchResourcePolicy`, `WorkerDispatchResourceReleaser` |
@@ -1047,13 +1058,14 @@ A step is not done until:
 
 Do not jump directly to public WorkerContext API/storage deletion.
 
-The runtime lifecycle and diagnostic snapshot slices have removed
-`LegacyWorkerContextResourceLifecycle` and `WorkerContextSnapshot` from the
-engine scheduling kernel. The next step should reduce the remaining matching
-dependency on WorkerContext payloads: remove or narrow context-backed scheduling
-fixtures, move remaining routing proof to worker attributes, and then delete
-context expansion from `WorkerSchedulingCandidateEnumerator`.
+Matching context expansion is now removed from the production strategy package.
+The candidate handoff no longer carries a nullable `WorkerContext` object. The
+next step should reduce the remaining read-model compatibility dependency:
+`WorkerSchedulingView` and `WorkerMatchContext` still expose `workerContext*`
+fields for transitional QLExpress and trace compatibility. Remove those fields
+only after rule fixtures, trace analyzers, and server proof use
+`workerScheduling*` and worker-level resource evidence end to end.
 
-Full WorkerContext model/API deletion should wait until matching, runtime
-binding payloads, trace analyzers, and server routing E2E no longer need
-context-specific fields as proof.
+Full WorkerContext model/API deletion should still wait until engine runtime
+payloads, trace analyzers, SDK/server calls, and storage tests no longer need
+context-specific fields.

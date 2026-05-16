@@ -52,7 +52,8 @@ import java.util.zip.GZIPOutputStream;
  * methods rather than exposing starter/runtime internals directly.
  */
 public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOperations, TaskResultQueryOperations, TaskAdminOperations,
-        WorkerQueryOperations, WorkerAdminOperations,
+        WorkerInspectionOperations, WorkerQueryOperations, WorkerRegistryOperations,
+        WorkerClientOperations, WorkerContextCompatibilityOperations, WorkerAdminOperations,
         ResourceOperations, AuthProvider, PrincipalDirectory,
         ExternalWorkerOperations, AuthorizationPolicy,
         RuleOperations {
@@ -426,28 +427,33 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return transportHint;
     }
 
+    @Override
     public WorkerSnapshot getWorker(String workerId) {
         return toWorkerSnapshot(loadWorker(workerId));
     }
 
+    @Override
     public List<WorkerSnapshot> getAllWorkers() {
         return requireStartedWorkerStorage().getAllWorkers().stream()
                 .map(this::toWorkerSnapshot)
                 .toList();
     }
 
+    @Override
     public List<WorkerContextSnapshot> getAllWorkerContexts() {
         return requireStartedWorkerStorage().getAllWorkerContexts().stream()
                 .map(this::toWorkerContextSnapshot)
                 .toList();
     }
 
+    @Override
     public List<WorkerContextSnapshot> getWorkerContexts(String workerId) {
         return requireStartedWorkerStorage().getWorkerContexts(workerId).stream()
                 .map(this::toWorkerContextSnapshot)
                 .toList();
     }
 
+    @Override
     public PullWorkerSession pullWorker(String workerId) {
         requireStartedEngine();
         return delegate.openPullWorkerSession(workerId);
@@ -499,6 +505,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         );
     }
 
+    @Override
     public WorkerContextSnapshot getWorkerContextById(String workerContextId) {
         WorkerContext workerContext = requireStartedWorkerStorage()
                 .getWorkerContextById(workerContextId)
@@ -506,10 +513,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return toWorkerContextSnapshot(workerContext);
     }
 
-    public boolean isWorkerLocked(String workerId) {
-        return requireStartedWorkerStorage().isLocked(workerId);
-    }
-
+    @Override
     public boolean isWorkerOnline(String workerId) {
         String normalizedWorkerId = requireWorkerId(workerId);
         if (delegate.getWorkerPresenceStore() != null) {
@@ -1475,6 +1479,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 worker.getLastHeartbeat(),
                 worker.getSupportedProjects(),
                 worker.getSupportedEventCodes(),
+                deriveWorkerEventBindings(worker),
                 worker.getWorkerGroupId(),
                 worker.getAdapterId(),
                 worker.getOnlineStrategy(),
@@ -1502,6 +1507,28 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 workerContext.getLastUsedTime(),
                 workerContext.getAttributes()
         );
+    }
+
+    private List<WorkerEventBinding> deriveWorkerEventBindings(Worker worker) {
+        if (worker == null) {
+            return List.of();
+        }
+        List<String> supportedEventCodes = worker.getSupportedEventCodes();
+        if (supportedEventCodes == null || supportedEventCodes.isEmpty()) {
+            return List.of();
+        }
+        List<WorkerEventBinding> bindings = new ArrayList<>(supportedEventCodes.size());
+        for (String eventCode : supportedEventCodes) {
+            if (eventCode == null || eventCode.isBlank()) {
+                continue;
+            }
+            EventDefinition definition = controlPlaneCatalogView.getEvent(eventCode);
+            bindings.add(WorkerEventBinding.builder()
+                    .eventCode(eventCode)
+                    .projectCodes(definition == null ? List.of() : definition.getProjectCodes())
+                    .build());
+        }
+        return bindings.isEmpty() ? List.of() : List.copyOf(bindings);
     }
 
     private TaskShellSnapshot toTaskShellSnapshot(Task task) {

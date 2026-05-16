@@ -76,7 +76,7 @@ class DefaultWorkerCandidateRankerTest {
                 false,
                 new WorkerLoadSnapshot(workerId, activeLeaseCount, 0, declaredCapacity)
         );
-        return new WorkerMatchContext(new WorkerSchedulingCandidate(worker, workerContext, view), task("task", null));
+        return new WorkerMatchContext(new WorkerSchedulingCandidate(worker, view), task("task", null));
     }
 
     private Task task(String taskId, String routingCode) {

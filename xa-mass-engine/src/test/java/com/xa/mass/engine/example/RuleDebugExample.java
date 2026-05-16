@@ -104,7 +104,7 @@ public class RuleDebugExample {
                 workerManager.isLocked(worker.getWorkerId())
         );
         WorkerMatchContext matchContext = new WorkerMatchContext(
-                new WorkerSchedulingCandidate(worker, workerContext, schedulingView),
+                new WorkerSchedulingCandidate(worker, schedulingView),
                 task
         );
 

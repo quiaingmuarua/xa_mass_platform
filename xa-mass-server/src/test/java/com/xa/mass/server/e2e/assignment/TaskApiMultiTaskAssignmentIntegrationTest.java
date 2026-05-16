@@ -21,6 +21,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 @SpringBootTest(
         classes = XaMassServerApplication.class,
@@ -109,7 +110,7 @@ class TaskApiMultiTaskAssignmentIntegrationTest extends AbstractSampleE2eTest {
         assertEquals(1, ((Number) snapshot.task().get("peakAssignedWorkerCount")).intValue());
         assertEquals(1, snapshot.activeLeases().size());
         assertNotNull(snapshot.activeLeases().getFirst().workerId());
-        assertNotNull(snapshot.activeLeases().getFirst().workerContextId());
+        assertNull(snapshot.activeLeases().getFirst().workerContextId());
         assertNotNull(snapshot.activeLeases().getFirst().batchId());
     }
 

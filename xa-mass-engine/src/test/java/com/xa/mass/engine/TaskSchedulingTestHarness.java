@@ -170,7 +170,7 @@ final class TaskSchedulingTestHarness {
                                 String routingCode,
                                 Map<String, String> attributes) {
         Worker worker = worker(workerId);
-        worker.setAttributes(attributes);
+        worker.setAttributes(workerAttributes(routingCode, attributes));
         workerManager.addWorker(worker);
         workerManager.addWorkerContext(workerContext(workerId, contextId, routingCode, WorkerContextStatus.IDLE));
         return worker;
@@ -181,6 +181,7 @@ final class TaskSchedulingTestHarness {
                                 String routingCode,
                                 WorkerContextStatus status) {
         Worker worker = worker(workerId);
+        worker.setAttributes(workerAttributes(routingCode, Map.of()));
         workerManager.addWorker(worker);
         WorkerContext context = workerContext(workerId, contextId, routingCode, status);
         if (status == WorkerContextStatus.OCCUPIED || status == WorkerContextStatus.RESERVED) {
@@ -267,6 +268,18 @@ final class TaskSchedulingTestHarness {
         context.setRoutingTags(Set.of("shared", routingCode));
         context.setAttributes(Map.of("country", routingCode));
         return context;
+    }
+
+    private Map<String, String> workerAttributes(String routingCode, Map<String, String> attributes) {
+        Map<String, String> merged = new java.util.LinkedHashMap<>();
+        if (routingCode != null && !routingCode.isBlank()) {
+            merged.put("routingTags", "shared," + routingCode);
+            merged.put("country", routingCode);
+        }
+        if (attributes != null) {
+            merged.putAll(attributes);
+        }
+        return Map.copyOf(merged);
     }
 
 }

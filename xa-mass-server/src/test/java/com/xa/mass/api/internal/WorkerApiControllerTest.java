@@ -1,6 +1,7 @@
 package com.xa.mass.api.internal;
 
 import com.xa.mass.sdk.RuntimeDiagnosticsOperations;
+import com.xa.mass.sdk.WorkerContextCompatibilityOperations;
 import com.xa.mass.sdk.WorkerQueryOperations;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
@@ -36,6 +37,9 @@ class WorkerApiControllerTest {
     @Mock
     private RuntimeDiagnosticsOperations runtimeDiagnostics;
 
+    @Mock
+    private WorkerContextCompatibilityOperations workerContextCompatibility;
+
     private MockMvc mockMvc;
     private ProjectEventCatalogRegistry metadataCatalog;
 
@@ -57,7 +61,7 @@ class WorkerApiControllerTest {
                 .eventCodes(List.of("demo.dispatch"))
                 .build());
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new WorkerApiController(workerQueries, metadataCatalog, runtimeDiagnostics))
+                .standaloneSetup(new WorkerApiController(workerQueries, workerContextCompatibility, metadataCatalog, runtimeDiagnostics))
                 .setControllerAdvice(new com.xa.mass.api.aop.GlobalExceptionHandler())
                 .build();
     }
@@ -71,6 +75,7 @@ class WorkerApiControllerTest {
                 LocalDateTime.of(2026, 4, 21, 10, 15),
                 List.of("demoApp"),
                 List.of("demo.dispatch"),
+                List.of(),
                 "group-a",
                 "websocket",
                 "realtime",
@@ -82,7 +87,7 @@ class WorkerApiControllerTest {
 
         when(workerQueries.getAllWorkers()).thenReturn(List.of(worker));
         when(workerQueries.isWorkerOnline("worker-001")).thenReturn(true);
-        when(workerQueries.isWorkerLocked("worker-001")).thenReturn(true);
+        when(runtimeDiagnostics.isWorkerLocked("worker-001")).thenReturn(true);
         when(runtimeDiagnostics.listSessions()).thenReturn(List.of(Map.of(
                 "workerId", "worker-001",
                 "connections", List.of(Map.of(
@@ -130,7 +135,7 @@ class WorkerApiControllerTest {
                 Map.of("account", "acc-01")
         );
 
-        when(workerQueries.getAllWorkerContexts()).thenReturn(List.of(workerContext));
+        when(workerContextCompatibility.getAllWorkerContexts()).thenReturn(List.of(workerContext));
 
         mockMvc.perform(get("/api/v1/runtime/worker-contexts"))
                 .andExpect(status().isOk())

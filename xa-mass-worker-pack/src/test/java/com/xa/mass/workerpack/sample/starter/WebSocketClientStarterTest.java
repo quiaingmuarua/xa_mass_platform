@@ -95,6 +95,7 @@ class WebSocketClientStarterTest {
                 null,
                 List.of(),
                 List.of(),
+                List.of(),
                 null,
                 adapterId,
                 onlineStrategy,

@@ -76,7 +76,12 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends ProjectionSampleE2
                                 .build()
                 ))
                 .transportHint(WorkerTransportHints.POLLING)
-                .attributes(Map.of("type", "crawler"))
+                .attributes(Map.of(
+                        "type", "crawler",
+                        "routingTags", "web,us",
+                        "country", "us",
+                        "region", "us"
+                ))
                 .build());
         app.registerWorkerContext(WorkerContextRegistration.builder()
                 .workerContextId("ctx-" + workerId)

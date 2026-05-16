@@ -148,6 +148,32 @@ class DevDemoBootstrapDataProviderTest {
         }
 
         @Override
+        public com.xa.mass.sdk.model.TaskCommandResult executeTaskCommand(
+                String taskId,
+                com.xa.mass.sdk.model.MassTaskCommandRequest request) {
+            String command = request == null || request.getCommand() == null
+                    ? null
+                    : request.getCommand().trim().toUpperCase(java.util.Locale.ROOT);
+            if ("APPROVE".equals(command)) {
+                approvedTaskIds.add(taskId);
+                return commandResult(taskId, command, true);
+            }
+            if ("REJECT".equals(command)) {
+                rejectedTaskIds.add(taskId);
+                return commandResult(taskId, command, true);
+            }
+            if ("PAUSE".equals(command)) {
+                pausedTaskIds.add(taskId);
+                return commandResult(taskId, command, true);
+            }
+            if ("SEAL".equals(command)) {
+                sealedTaskIds.add(taskId);
+                return commandResult(taskId, command, true);
+            }
+            return commandResult(taskId, command, false);
+        }
+
+        @Override
         public boolean sealTask(String taskId) {
             sealedTaskIds.add(taskId);
             return true;
@@ -166,6 +192,21 @@ class DevDemoBootstrapDataProviderTest {
         @Override
         public void replaceDefaultRules(Collection<RuleDefinition> rules) {
             throw new UnsupportedOperationException();
+        }
+
+        private com.xa.mass.sdk.model.TaskCommandResult commandResult(String taskId, String command, boolean accepted) {
+            return new com.xa.mass.sdk.model.TaskCommandResult(
+                    taskId,
+                    command,
+                    accepted,
+                    true,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null
+            );
         }
     }
 }

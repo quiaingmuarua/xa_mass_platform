@@ -100,7 +100,12 @@ class PostgresExternalWorkerPollingApiIntegrationTest extends ProjectionSampleE2
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", workerId,
                 "workerGroupId", "polling-postgres",
-                "attributes", Map.of("runtime", "postgres-e2e"),
+                "attributes", Map.of(
+                        "runtime", "postgres-e2e",
+                        "routingTags", "us",
+                        "country", "us",
+                        "region", "us"
+                ),
                 "eventBindings", List.of(Map.of(
                         "eventCode", "crawler.fetch-page",
                         "projectCodes", List.of("crawlerApp")

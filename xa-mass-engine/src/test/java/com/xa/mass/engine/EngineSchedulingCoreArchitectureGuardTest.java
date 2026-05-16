@@ -166,9 +166,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void strategyPackageWorkerContextImportStaysIsolatedToCandidateEnumerator() throws IOException {
+    void strategyPackageDoesNotUseWorkerContextStorageOrPayloads() throws IOException {
         Path strategyRoot = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/strategy");
-        Path allowedEnumerator = strategyRoot.resolve("WorkerSchedulingCandidateEnumerator.java");
         Pattern workerContextImport = Pattern.compile(
                 "\\bimport\\s+com\\.xa\\.mass\\.base\\.model\\.WorkerContext\\s*;");
         Pattern workerContextStorageRead = Pattern.compile("\\bgetWorkerContextsByWorkerIds\\s*\\(");
@@ -177,22 +176,46 @@ class EngineSchedulingCoreArchitectureGuardTest {
         List<String> violations = new ArrayList<>();
         for (Path path : javaSourceFiles(strategyRoot)) {
             String source = Files.readString(path, StandardCharsets.UTF_8);
-            boolean allowed = path.equals(allowedEnumerator);
-            if (!allowed && workerContextImport.matcher(source).find()) {
-                violations.add(path + " imports WorkerContext outside the transitional candidate enumerator");
+            if (workerContextImport.matcher(source).find()) {
+                violations.add(path + " imports WorkerContext");
             }
-            if (!allowed && workerContextStorageRead.matcher(source).find()) {
-                violations.add(path + " reads WorkerContext storage outside the transitional candidate enumerator");
+            if (workerContextStorageRead.matcher(source).find()) {
+                violations.add(path + " reads WorkerContext storage");
             }
-            if (!allowed && workerContextPayloadRead.matcher(source).find()) {
-                violations.add(path + " unwraps legacy WorkerContext payload outside the transitional candidate enumerator");
+            if (workerContextPayloadRead.matcher(source).find()) {
+                violations.add(path + " unwraps legacy WorkerContext payload");
             }
         }
 
         assertTrue(violations.isEmpty(),
                 "Matching strategy code must stay scheduling-candidate/view first. "
-                        + "The only allowed matching-side WorkerContext expansion point is "
-                        + "WorkerSchedulingCandidateEnumerator until legacy context-backed matching is retired:\n"
+                        + "WorkerContext storage expansion is retired from the matching package:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void workerSchedulingCandidateDoesNotCarryWorkerContextPayload() throws IOException {
+        Path candidatePath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/model/WorkerSchedulingCandidate.java");
+        String source = Files.readString(candidatePath, StandardCharsets.UTF_8);
+
+        List<String> violations = new ArrayList<>();
+        if (Pattern.compile("\\bimport\\s+com\\.xa\\.mass\\.base\\.model\\.WorkerContext\\s*;")
+                .matcher(source)
+                .find()) {
+            violations.add(candidatePath + " imports WorkerContext");
+        }
+        if (Pattern.compile("\\bWorkerContext\\s+workerContext\\b").matcher(source).find()) {
+            violations.add(candidatePath + " stores WorkerContext payload");
+        }
+        if (Pattern.compile("\\bgetWorkerContext\\s*\\(").matcher(source).find()) {
+            violations.add(candidatePath + " exposes WorkerContext payload accessor");
+        }
+
+        assertTrue(violations.isEmpty(),
+                "WorkerSchedulingCandidate is a worker-level scheduling handoff. "
+                        + "Legacy context identity may remain on WorkerSchedulingView, but the candidate "
+                        + "must not carry a WorkerContext object:\n"
                         + String.join("\n", violations));
     }
 
@@ -221,19 +244,18 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void ruleBasedMatchingStrategyContextFixturesStayExplicitlyLegacy() throws IOException {
+    void ruleBasedMatchingStrategyTestsDoNotRegisterWorkerContextFixtures() throws IOException {
         Path strategyTestPath = TEST_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/strategy/RuleBasedTaskWorkerMatchingStrategyTest.java");
         List<String> violations = testMethodsCalling(strategyTestPath, "addWorkerContext(").stream()
                 .distinct()
-                .filter(methodName -> !methodName.startsWith("legacyContext"))
-                .map(methodName -> strategyTestPath + " registers WorkerContext in non-legacy test: " + methodName)
+                .map(methodName -> strategyTestPath + " registers WorkerContext in strategy test: " + methodName)
                 .toList();
 
         assertTrue(violations.isEmpty(),
                 "RuleBasedTaskWorkerMatchingStrategyTest should prove normal matching with stateless "
-                        + "worker scheduling attributes. Context-backed fixtures must be explicitly named "
-                        + "legacyContext* until WorkerContext retirement removes them:\n"
+                        + "worker scheduling attributes. Context-backed matching fixtures are retired from "
+                        + "the strategy proof surface:\n"
                         + String.join("\n", violations));
     }
 

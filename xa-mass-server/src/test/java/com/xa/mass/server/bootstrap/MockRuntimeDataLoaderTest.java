@@ -361,6 +361,7 @@ class MockRuntimeDataLoaderTest {
                     null,
                     supportedProjects,
                     supportedEventCodes,
+                    request.getEventBindings(),
                     request.getWorkerGroupId(),
                     request.getAdapterId(),
                     request.getTransportHint(),
@@ -426,6 +427,24 @@ class MockRuntimeDataLoaderTest {
 
         @Override
         public int appendTaskItems(String taskId, MassTaskItemBatchAppendRequest request) { return 0; }
+
+        @Override
+        public com.xa.mass.sdk.model.TaskCommandResult executeTaskCommand(
+                String taskId,
+                com.xa.mass.sdk.model.MassTaskCommandRequest request) {
+            return new com.xa.mass.sdk.model.TaskCommandResult(
+                    taskId,
+                    request == null ? null : request.getCommand(),
+                    false,
+                    false,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null
+            );
+        }
 
         @Override
         public boolean sealTask(String taskId) { return false; }

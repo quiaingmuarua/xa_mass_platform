@@ -34,6 +34,7 @@ class TaskWorkerEligibilityTest {
         harness.addWorkerWithContext("worker-routing-mismatch", "ctx-routing-mismatch", "gb");
         harness.addWorkerWithContext("worker-eligible", "ctx-eligible", "us");
         assertTrue(harness.workerManager.tryLockWorker("worker-locked"));
+        assertTrue(harness.workerManager.tryLockWorker("worker-occupied"));
 
         Task task = harness.createReadyBatchTask("eligibility", List.of(harness.item("eligible")));
 
@@ -42,7 +43,7 @@ class TaskWorkerEligibilityTest {
         List<ActiveLeaseRecord> activeLeases = harness.activeLeases(task.getTid());
         assertEquals(1, activeLeases.size());
         assertEquals("worker-eligible", activeLeases.getFirst().workerId());
-        assertEquals("ctx-eligible", activeLeases.getFirst().workerContextId());
+        assertEquals(null, activeLeases.getFirst().workerContextId());
         assertEquals(1, harness.successfulMessageAssignments(task.getTid(), "worker-eligible"));
 
         assertRejected(harness, task.getTid(), "worker-unreachable",
@@ -50,7 +51,7 @@ class TaskWorkerEligibilityTest {
         assertRejected(harness, task.getTid(), "worker-locked",
                 AssignmentResult.CONFLICT, "worker locked");
         assertRejected(harness, task.getTid(), "worker-occupied",
-                AssignmentResult.RESOURCE_UNAVAILABLE, "workerContext not allocatable");
+                AssignmentResult.CONFLICT, "worker locked");
         assertRejected(harness, task.getTid(), "worker-routing-mismatch",
                 AssignmentResult.RULE_NOT_MATCH, "routing code mismatch");
         assertFalse(harness.record(task.getTid(), "worker-eligible").getRuleEvaluations().isEmpty());
@@ -78,7 +79,7 @@ class TaskWorkerEligibilityTest {
         List<ActiveLeaseRecord> secondLeases = harness.activeLeases(secondTask.getTid());
         assertEquals(1, secondLeases.size());
         assertEquals("worker-backup", secondLeases.getFirst().workerId());
-        assertEquals("ctx-backup", secondLeases.getFirst().workerContextId());
+        assertEquals(null, secondLeases.getFirst().workerContextId());
         assertEquals(1, harness.activeLeases(firstTask.getTid()).size());
         assertRejected(harness, secondTask.getTid(), "worker-primary",
                 AssignmentResult.RESOURCE_UNAVAILABLE, "worker transport unreachable");

@@ -178,7 +178,6 @@ class WorkerDispatchResourceReleaserTest {
         worker.setWorkerId(workerId);
         return new WorkerSchedulingCandidate(
                 worker,
-                null,
                 WorkerSchedulingView.from(worker, null, WorkerReachabilityState.ONLINE, true, false)
         );
     }
@@ -191,7 +190,6 @@ class WorkerDispatchResourceReleaserTest {
         workerContext.setWorkerContextId(workerContextId);
         return new WorkerSchedulingCandidate(
                 worker,
-                workerContext,
                 WorkerSchedulingView.from(worker, workerContext, WorkerReachabilityState.ONLINE, true, false)
         );
     }

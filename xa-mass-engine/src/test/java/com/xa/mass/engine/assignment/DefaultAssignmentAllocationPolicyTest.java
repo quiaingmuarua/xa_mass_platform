@@ -207,7 +207,6 @@ class DefaultAssignmentAllocationPolicyTest {
         context.setWorkerContextId("ctx-" + workerId);
         return new WorkerSchedulingCandidate(
                 worker,
-                context,
                 WorkerSchedulingView.from(worker, context, WorkerReachabilityState.ONLINE, true, false)
         );
     }

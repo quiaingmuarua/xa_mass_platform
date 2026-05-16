@@ -1,9 +1,7 @@
 package com.xa.mass.engine.strategy;
 
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
@@ -32,7 +30,6 @@ public class WorkerSchedulingCandidateEnumeratorTest {
         assertEquals(1, candidates.size());
         WorkerSchedulingCandidate candidate = candidates.getFirst();
         assertSame(worker, candidate.getWorker());
-        assertNull(candidate.getWorkerContext());
         assertNull(candidate.getWorkerContextId());
         assertEquals("worker-stateless", candidate.getSchedulingView().schedulingResourceId());
         assertEquals(Set.of("shared", "us"), candidate.getSchedulingView().schedulingRoutingTags());
@@ -40,12 +37,10 @@ public class WorkerSchedulingCandidateEnumeratorTest {
     }
 
     @Test
-    void expandsLegacyContextBackedCandidatesOnlyInsideEnumerator() {
+    void enumerationBuildsWorkerLevelCandidateFromWorkerAttributes() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
         Worker worker = worker("worker-context-backed", Map.of("country", "worker-level"));
-        WorkerContext context = workerContext("ctx-1", "worker-context-backed", "us", Map.of("country", "context-level"));
         workerManager.addWorker(worker);
-        workerManager.addWorkerContext(context);
 
         WorkerSchedulingCandidateEnumerator enumerator = new WorkerSchedulingCandidateEnumerator(workerManager);
 
@@ -54,11 +49,9 @@ public class WorkerSchedulingCandidateEnumeratorTest {
         assertEquals(1, candidates.size());
         WorkerSchedulingCandidate candidate = candidates.getFirst();
         assertSame(worker, candidate.getWorker());
-        assertSame(context, candidate.getWorkerContext());
-        assertEquals("ctx-1", candidate.getWorkerContextId());
-        assertEquals("ctx-1", candidate.getSchedulingView().schedulingResourceId());
-        assertEquals(Set.of("us"), candidate.getSchedulingView().schedulingRoutingTags());
-        assertEquals("context-level", candidate.getSchedulingView().schedulingAttributes().get("country"));
+        assertNull(candidate.getWorkerContextId());
+        assertEquals("worker-context-backed", candidate.getSchedulingView().schedulingResourceId());
+        assertEquals("worker-level", candidate.getSchedulingView().schedulingAttributes().get("country"));
     }
 
     private Worker worker(String workerId, Map<String, String> attributes) {
@@ -70,16 +63,4 @@ public class WorkerSchedulingCandidateEnumeratorTest {
         return worker;
     }
 
-    private WorkerContext workerContext(String workerContextId,
-                                        String workerId,
-                                        String routingTag,
-                                        Map<String, String> attributes) {
-        WorkerContext context = new WorkerContext();
-        context.setWorkerContextId(workerContextId);
-        context.setWorkerId(workerId);
-        context.setStatus(WorkerContextStatus.IDLE);
-        context.setRoutingTags(Set.of(routingTag));
-        context.setAttributes(attributes);
-        return context;
-    }
 }

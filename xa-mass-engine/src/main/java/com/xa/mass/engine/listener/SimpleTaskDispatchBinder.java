@@ -3,7 +3,6 @@ package com.xa.mass.engine.listener;
 import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
@@ -291,13 +290,8 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
             return candidate.getWorker();
         }
 
-        private WorkerContext workerContext() {
-            return resourceUsage.legacyWorkerContextResource() ? candidate.getWorkerContext() : null;
-        }
-
         private String workerContextId() {
-            WorkerContext context = workerContext();
-            return context != null ? context.getWorkerContextId() : null;
+            return resourceUsage.legacyWorkerContextResource() ? candidate.getWorkerContextId() : null;
         }
 
         private String batchId() {

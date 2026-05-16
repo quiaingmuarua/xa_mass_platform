@@ -14,6 +14,7 @@ public final class WorkerSnapshot {
     private final LocalDateTime lastHeartbeat;
     private final List<String> supportedProjects;
     private final List<String> supportedEventCodes;
+    private final List<WorkerEventBinding> eventBindings;
     private final String workerGroupId;
     private final String adapterId;
     private final String onlineStrategy;
@@ -28,6 +29,7 @@ public final class WorkerSnapshot {
                           LocalDateTime lastHeartbeat,
                           List<String> supportedProjects,
                           List<String> supportedEventCodes,
+                          List<WorkerEventBinding> eventBindings,
                           String workerGroupId,
                           String adapterId,
                           String onlineStrategy,
@@ -41,6 +43,7 @@ public final class WorkerSnapshot {
         this.lastHeartbeat = lastHeartbeat;
         this.supportedProjects = copyList(supportedProjects);
         this.supportedEventCodes = copyList(supportedEventCodes);
+        this.eventBindings = copyBindingList(eventBindings);
         this.workerGroupId = workerGroupId;
         this.adapterId = adapterId;
         this.onlineStrategy = onlineStrategy;
@@ -72,6 +75,10 @@ public final class WorkerSnapshot {
 
     public List<String> getSupportedEventCodes() {
         return supportedEventCodes;
+    }
+
+    public List<WorkerEventBinding> getEventBindings() {
+        return eventBindings;
     }
 
     public String getWorkerGroupId() {
@@ -114,5 +121,12 @@ public final class WorkerSnapshot {
             return Collections.emptyMap();
         }
         return Collections.unmodifiableMap(new LinkedHashMap<>(source));
+    }
+
+    private static List<WorkerEventBinding> copyBindingList(List<WorkerEventBinding> source) {
+        if (source == null || source.isEmpty()) {
+            return List.of();
+        }
+        return List.copyOf(source);
     }
 }

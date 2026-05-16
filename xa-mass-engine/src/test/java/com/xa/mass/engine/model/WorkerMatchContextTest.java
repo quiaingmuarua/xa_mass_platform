@@ -251,7 +251,7 @@ public class WorkerMatchContextTest {
                 new WorkerLoadSnapshot("worker-5", 3, 1, 2)
         );
         WorkerMatchContext context = new WorkerMatchContext(
-                new WorkerSchedulingCandidate(worker, null, schedulingView),
+                new WorkerSchedulingCandidate(worker, schedulingView),
                 task
         );
 
@@ -266,7 +266,6 @@ public class WorkerMatchContextTest {
     private WorkerSchedulingCandidate candidate(Worker worker, WorkerContext workerContext) {
         return new WorkerSchedulingCandidate(
                 worker,
-                workerContext,
                 WorkerSchedulingView.from(worker, workerContext, WorkerReachabilityState.ONLINE, true, false)
         );
     }

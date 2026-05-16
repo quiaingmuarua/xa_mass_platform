@@ -2,7 +2,6 @@ package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.ResultApplyOutcome;
@@ -38,8 +37,7 @@ class TaskRedispatchCompetitionTest {
         assertEquals(0, afterExpiryStats.inflightCount());
         assertEquals(0, afterExpiryStats.finalCount());
         assertTrue(harness.activeLeases(task.getTid()).isEmpty());
-        assertEquals(WorkerContextStatus.IDLE,
-                harness.workerManager.getWorkerContextById("ctx-retry").getStatus());
+        assertFalse(harness.workerManager.isLocked("worker-retry"));
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(task.getTid()).getStatus());
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
@@ -124,8 +122,7 @@ class TaskRedispatchCompetitionTest {
         ActiveLeaseRecord firstLease = harness.activeLeases(firstTask.getTid()).getFirst();
 
         assertTrue(harness.taskManager.expireLeasedWork(firstTask.getTid(), firstLease.messageId()));
-        assertEquals(WorkerContextStatus.IDLE,
-                harness.workerManager.getWorkerContextById("ctx-shared").getStatus());
+        assertFalse(harness.workerManager.isLocked("worker-shared"));
         assertEquals(1, harness.stats(firstTask.getTid()).readyCount());
         assertTrue(harness.activeLeases(firstTask.getTid()).isEmpty());
 
@@ -134,7 +131,7 @@ class TaskRedispatchCompetitionTest {
         List<ActiveLeaseRecord> secondTaskLeases = harness.activeLeases(secondTask.getTid());
         assertEquals(1, secondTaskLeases.size());
         assertEquals("worker-shared", secondTaskLeases.getFirst().workerId());
-        assertEquals("ctx-shared", secondTaskLeases.getFirst().workerContextId());
+        assertEquals(null, secondTaskLeases.getFirst().workerContextId());
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(secondTask.getTid()).getStatus());
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(firstTask.getTid()).getStatus());
         assertEquals(1, harness.stats(firstTask.getTid()).readyCount());
@@ -175,7 +172,7 @@ class TaskRedispatchCompetitionTest {
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(retryingTask.getTid()).getStatus());
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(competingTask.getTid()).getStatus());
         assertEquals("worker-shared", competingLease.workerId());
-        assertEquals("ctx-shared", competingLease.workerContextId());
+        assertEquals(null, competingLease.workerContextId());
 
         assertTrue(harness.taskManager.ingestTaskResult(
                 competingTask.getTid(),
@@ -187,15 +184,14 @@ class TaskRedispatchCompetitionTest {
         ));
 
         assertEquals(TaskStatus.TERMINAL, harness.taskManager.getTask(competingTask.getTid()).getStatus());
-        assertEquals(WorkerContextStatus.IDLE,
-                harness.workerManager.getWorkerContextById("ctx-shared").getStatus());
+        assertFalse(harness.workerManager.isLocked("worker-shared"));
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(retryingTask.getTid())));
 
         List<ActiveLeaseRecord> retryingLeases = harness.activeLeases(retryingTask.getTid());
         assertEquals(1, retryingLeases.size());
         assertEquals(firstLease.messageId(), retryingLeases.getFirst().messageId());
         assertEquals("worker-shared", retryingLeases.getFirst().workerId());
-        assertEquals("ctx-shared", retryingLeases.getFirst().workerContextId());
+        assertEquals(null, retryingLeases.getFirst().workerContextId());
         assertEquals(1, retryingLeases.getFirst().retryCount());
         assertEquals(0, harness.stats(retryingTask.getTid()).readyCount());
         assertEquals(1, harness.stats(retryingTask.getTid()).inflightCount());
@@ -233,15 +229,14 @@ class TaskRedispatchCompetitionTest {
         assertEquals(1, finalizedStats.expiredCount());
         assertEquals(1, finalizedStats.finalCount());
         assertTrue(harness.activeLeases(exhaustedTask.getTid()).isEmpty());
-        assertEquals(WorkerContextStatus.IDLE,
-                harness.workerManager.getWorkerContextById("ctx-shared").getStatus());
+        assertFalse(harness.workerManager.isLocked("worker-shared"));
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(waitingTask.getTid())));
 
         List<ActiveLeaseRecord> waitingLeases = harness.activeLeases(waitingTask.getTid());
         assertEquals(1, waitingLeases.size());
         assertEquals("worker-shared", waitingLeases.getFirst().workerId());
-        assertEquals("ctx-shared", waitingLeases.getFirst().workerContextId());
+        assertEquals(null, waitingLeases.getFirst().workerContextId());
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(waitingTask.getTid()).getStatus());
         assertEquals(0, harness.stats(waitingTask.getTid()).readyCount());
         assertEquals(1, harness.stats(waitingTask.getTid()).inflightCount());

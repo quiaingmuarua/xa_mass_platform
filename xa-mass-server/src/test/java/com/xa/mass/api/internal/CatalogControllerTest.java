@@ -60,10 +60,10 @@ class CatalogControllerTest {
         when(workerQueries.isWorkerOnline("crawler-worker-1")).thenReturn(true);
         when(workerQueries.isWorkerOnline("chat-worker-1")).thenReturn(false);
         when(workerQueries.isWorkerOnline("scope-only-worker")).thenReturn(false);
-        when(workerQueries.isWorkerLocked("crawler-worker-1")).thenReturn(false);
-        when(workerQueries.isWorkerLocked("chat-worker-1")).thenReturn(true);
-        when(workerQueries.isWorkerLocked("scope-only-worker")).thenReturn(false);
         runtimeDiagnostics = mock(RuntimeDiagnosticsOperations.class);
+        when(runtimeDiagnostics.isWorkerLocked("crawler-worker-1")).thenReturn(false);
+        when(runtimeDiagnostics.isWorkerLocked("chat-worker-1")).thenReturn(true);
+        when(runtimeDiagnostics.isWorkerLocked("scope-only-worker")).thenReturn(false);
         when(runtimeDiagnostics.listSessions()).thenReturn(List.of(
                 java.util.Map.of(
                         "workerId", "crawler-worker-1",
@@ -156,6 +156,7 @@ class CatalogControllerTest {
                 null,
                 supportedProjects,
                 supportedEventCodes,
+                List.of(),
                 null,
                 adapterId,
                 transportHint,

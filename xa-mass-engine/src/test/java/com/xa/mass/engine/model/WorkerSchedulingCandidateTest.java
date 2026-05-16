@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class WorkerSchedulingCandidateTest {
 
     @Test
-    void retainsWorkerLegacyContextAndSchedulingView() {
+    void retainsWorkerAndSchedulingViewWithLegacyContextEvidence() {
         Worker worker = worker("worker-1");
         WorkerContext workerContext = context("ctx-1", "worker-1");
         WorkerSchedulingView schedulingView = WorkerSchedulingView.from(
@@ -24,10 +24,9 @@ class WorkerSchedulingCandidateTest {
                 false
         );
 
-        WorkerSchedulingCandidate candidate = new WorkerSchedulingCandidate(worker, workerContext, schedulingView);
+        WorkerSchedulingCandidate candidate = new WorkerSchedulingCandidate(worker, schedulingView);
 
         assertSame(worker, candidate.getWorker());
-        assertSame(workerContext, candidate.getWorkerContext());
         assertSame(schedulingView, candidate.getSchedulingView());
         assertEquals("worker-1", candidate.getWorkerId());
         assertEquals("ctx-1", candidate.getWorkerContextId());
@@ -44,10 +43,9 @@ class WorkerSchedulingCandidateTest {
                 false
         );
 
-        WorkerSchedulingCandidate candidate = new WorkerSchedulingCandidate(worker, null, schedulingView);
+        WorkerSchedulingCandidate candidate = new WorkerSchedulingCandidate(worker, schedulingView);
 
         assertSame(worker, candidate.getWorker());
-        assertNull(candidate.getWorkerContext());
         assertEquals("worker-2", candidate.getWorkerId());
         assertNull(candidate.getWorkerContextId());
         assertSame(schedulingView, candidate.getSchedulingView());
@@ -64,8 +62,8 @@ class WorkerSchedulingCandidateTest {
                 false
         );
 
-        assertThrows(NullPointerException.class, () -> new WorkerSchedulingCandidate(null, null, schedulingView));
-        assertThrows(NullPointerException.class, () -> new WorkerSchedulingCandidate(worker, null, null));
+        assertThrows(NullPointerException.class, () -> new WorkerSchedulingCandidate(null, schedulingView));
+        assertThrows(NullPointerException.class, () -> new WorkerSchedulingCandidate(worker, null));
     }
 
     private Worker worker(String workerId) {

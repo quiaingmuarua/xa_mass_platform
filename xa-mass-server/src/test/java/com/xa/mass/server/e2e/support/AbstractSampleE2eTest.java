@@ -589,7 +589,13 @@ public abstract class AbstractSampleE2eTest {
     }
 
     protected void registerSdkWorkerWithContext(String workerId, String routingTag, String project) {
-        requireSdkApp().registerWorker(createWorkerRegistration(workerId, "us", project));
+        requireSdkApp().registerWorker(createWorkerRegistration(
+                workerId,
+                "us",
+                project,
+                1,
+                schedulingAttributes(routingTag, Map.of())
+        ));
         requireSdkApp().registerWorkerContext(createWorkerContextRegistration(workerId, routingTag));
     }
 
@@ -598,7 +604,13 @@ public abstract class AbstractSampleE2eTest {
                                                 String routingTag,
                                                 String project,
                                                 Map<String, Object> contextAttributes) {
-        requireSdkApp().registerWorker(createWorkerRegistration(workerId, workerGroupId, project));
+        requireSdkApp().registerWorker(createWorkerRegistration(
+                workerId,
+                workerGroupId,
+                project,
+                1,
+                schedulingAttributes(routingTag, contextAttributes)
+        ));
         requireSdkApp().registerWorkerContext(createWorkerContextRegistration(workerId, routingTag, contextAttributes));
     }
 
@@ -694,6 +706,23 @@ public abstract class AbstractSampleE2eTest {
                 .routingTags(java.util.Set.of(routingTag))
                 .attributes(normalizedAttributes)
                 .build();
+    }
+
+    private Map<String, String> schedulingAttributes(String routingTag, Map<String, Object> contextAttributes) {
+        java.util.LinkedHashMap<String, String> attributes = new java.util.LinkedHashMap<>();
+        if (routingTag != null && !routingTag.isBlank()) {
+            attributes.put("routingTag", routingTag);
+            attributes.put("routingTags", routingTag);
+            attributes.put("country", routingTag);
+        }
+        if (contextAttributes != null) {
+            contextAttributes.forEach((key, value) -> {
+                if (key != null && value != null) {
+                    attributes.put(key, String.valueOf(value));
+                }
+            });
+        }
+        return attributes;
     }
 
     private MassSdkApplication requireSdkApp() {

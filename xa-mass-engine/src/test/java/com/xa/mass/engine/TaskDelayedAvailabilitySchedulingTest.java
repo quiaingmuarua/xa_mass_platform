@@ -4,7 +4,6 @@ import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import org.junit.jupiter.api.Test;
@@ -34,14 +33,14 @@ class TaskDelayedAvailabilitySchedulingTest {
         List<ActiveLeaseRecord> activeLeases = harness.activeLeases(task.getTid());
         assertEquals(1, activeLeases.size());
         assertEquals("worker-delayed", activeLeases.getFirst().workerId());
-        assertEquals("ctx-delayed", activeLeases.getFirst().workerContextId());
+        assertEquals(null, activeLeases.getFirst().workerContextId());
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(task.getTid()).getStatus());
         assertEquals(0, harness.stats(task.getTid()).readyCount());
         assertEquals(1, harness.stats(task.getTid()).inflightCount());
     }
 
     @Test
-    void blockedWorkerContextCanBecomeEligibleAndDispatchWaitingReadyTask() {
+    void legacyBlockedWorkerContextDoesNotGateWorkerLevelScheduling() {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
         harness.addWorkerWithContext(
                 "worker-blocked-context",
@@ -51,26 +50,15 @@ class TaskDelayedAvailabilitySchedulingTest {
         );
         Task task = harness.createReadyBatchTask("delayed-context-unblock", List.of(harness.item("delayed")));
 
-        assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
-
-        assertEquals(TaskStatus.READY, harness.taskManager.getTask(task.getTid()).getStatus());
-        assertEquals(1, harness.stats(task.getTid()).readyCount());
-        assertTrue(harness.activeLeases(task.getTid()).isEmpty());
-        AssignmentRecord blockedRecord = harness.record(task.getTid(), "worker-blocked-context");
-        assertEquals(AssignmentResult.RESOURCE_UNAVAILABLE, blockedRecord.getResult());
-        assertEquals("workerContext not allocatable", blockedRecord.getReason());
-
-        WorkerContext workerContext = harness.workerManager.getWorkerContextById("ctx-blocked-context");
-        assertTrue(workerContext.unblock());
-        assertTrue(harness.workerManager.updateWorkerContextById("ctx-blocked-context", workerContext));
-
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
 
         List<ActiveLeaseRecord> activeLeases = harness.activeLeases(task.getTid());
         assertEquals(1, activeLeases.size());
         assertEquals("worker-blocked-context", activeLeases.getFirst().workerId());
-        assertEquals("ctx-blocked-context", activeLeases.getFirst().workerContextId());
+        assertEquals(null, activeLeases.getFirst().workerContextId());
         assertTrue(harness.workerManager.isLocked("worker-blocked-context"));
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(task.getTid()).getStatus());
+        AssignmentRecord record = harness.record(task.getTid(), "worker-blocked-context");
+        assertEquals(AssignmentResult.SUCCESS, record.getResult());
     }
 }

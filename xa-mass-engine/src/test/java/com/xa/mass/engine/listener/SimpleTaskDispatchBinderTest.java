@@ -615,7 +615,7 @@ public class SimpleTaskDispatchBinderTest {
         assertTrue(stored.stream().allMatch(msg -> msg.latestAttemptWorkerContextId() == null));
         assertTrue(stored.stream().allMatch(msg -> msg.latestAttemptBatchId() != null && !msg.latestAttemptBatchId().isBlank()));
         verify(recordService, times(2)).recordMessageAssignment(
-                any(), argThat(candidate -> candidate != null && candidate.getWorkerContext() == null),
+                any(), argThat(candidate -> candidate != null && candidate.getWorkerContextId() == null),
                 anyString(), anyString(), any(), anyString(), anyBoolean()
         );
         verify(workerManager, times(2)).isLocked("d1");
@@ -738,7 +738,6 @@ public class SimpleTaskDispatchBinderTest {
     private WorkerSchedulingCandidate matched(Worker worker, WorkerContext workerContext) {
         return new WorkerSchedulingCandidate(
                 worker,
-                workerContext,
                 WorkerSchedulingView.from(worker, workerContext, WorkerReachabilityState.ONLINE, true, false)
         );
     }

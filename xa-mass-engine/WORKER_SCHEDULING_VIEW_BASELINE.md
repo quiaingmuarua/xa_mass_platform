@@ -20,7 +20,9 @@ exclusive worker locks, and lock-release trace is owned by
 `WorkerDispatchResourceReleaser`, including release-listener
 attempt/terminal close lock-release paths and dispatch-submit failure retry
 compensation. These owner boundaries are now guarded by
-`EngineSchedulingCoreArchitectureGuardTest`.
+`EngineSchedulingCoreArchitectureGuardTest`. Matching candidate enumeration now
+creates one worker-level candidate per worker and no longer reads or expands
+WorkerContext storage.
 
 This document records the current engine scheduling read model after the first
 WorkerContext convergence slices. It is intentionally narrow: this path does
@@ -55,10 +57,9 @@ The immediate convergence target is:
 WorkerContext is still live in these engine paths:
 
 - `WorkerSchedulingCandidateEnumerator`
-  - is the only matching-side owner that still reads
-    `WorkerManager.getWorkerContextsByWorkerIds(...)`
-  - expands each worker plus optional legacy context into
-    `WorkerSchedulingCandidate`
+  - creates one worker-level `WorkerSchedulingCandidate` per worker
+  - no longer reads `WorkerManager.getWorkerContextsByWorkerIds(...)`
+  - no longer expands optional legacy contexts into scheduling candidates
   - builds `WorkerSchedulingView` for prefilter decisions, rule context, and
     diagnostic snapshots
 - `RuleBasedTaskWorkerMatchingStrategy`
@@ -66,8 +67,8 @@ WorkerContext is still live in these engine paths:
   - does not import `WorkerContext`; it reads scheduling facts from the
     candidate/view and no longer unwraps the candidate's nullable legacy
     payload directly
-  - prefilters context allocatability, project, and routing tags through the
-    scheduling view while preserving legacy reasons
+  - prefilters worker reachability, worker availability, target-worker
+    constraints, and worker-level routing through the scheduling view
   - emits match accepted/rejected trace with `workerContextId`
 - `AssignmentDiagnosticRecorder`
   - records worker-level matching diagnostics from
@@ -79,10 +80,10 @@ WorkerContext is still live in these engine paths:
 - `WorkerSchedulingCandidate`
   - is the internal handoff type between matching, allocation, listener
     orchestration, and dispatch binding
-  - carries `Worker`, nullable legacy `WorkerContext`, and
-    `WorkerSchedulingView`
-  - keeps `WorkerContext` as runtime binding payload only, not the matching
-    subject
+  - carries `Worker` and `WorkerSchedulingView`
+  - does not carry a nullable `WorkerContext` payload; legacy context identity,
+    when present, is read from the scheduling view only as compatibility
+    evidence
 - `WorkerMatchContext`
   - is constructed from `WorkerSchedulingCandidate`
   - owns the rule-evaluation and diagnostic snapshot field map consumed by
@@ -94,7 +95,7 @@ WorkerContext is still live in these engine paths:
 - `SimpleTaskDispatchBinder`
   - records `workerContextId` on runtime attempts and dispatch trace when
     `WorkerDispatchResourcePolicy` classifies the candidate as a legacy
-    WorkerContext payload
+    `workerContextId` compatibility resource
   - confirms worker reservations to active load when runtime claim succeeds
   - falls back to recording successful runtime claims when a custom strategy
     bypassed reservation
@@ -119,23 +120,25 @@ WorkerContext is still live in these engine paths:
     from returning to the engine mainline
   - prevents retired context-first matching handoff types from returning to
     engine source or scheduling tests
-  - keeps production strategy-package `WorkerContext` imports and direct
-    storage reads isolated to `WorkerSchedulingCandidateEnumerator`
-  - prevents production strategy code from unwrapping
-    `candidate.getWorkerContext()` directly
+  - forbids production strategy-package `WorkerContext` imports, direct storage
+    reads, and legacy payload unwrapping
   - prevents `RuleBasedTaskWorkerMatchingStrategy` from owning a duplicate
     rule/prefilter snapshot field builder
-  - keeps strategy-level WorkerContext registration fixtures explicitly named
-    as `legacyContext*` transitional coverage
+  - prevents strategy-level tests from registering WorkerContext fixtures
 
 WorkerContext is therefore still:
 
-- a matching-attribute source
-- a nullable legacy runtime payload carried into attempts and trace/runtime
-  compatibility fields
+- a legacy rule/read-model compatibility surface through `workerContext*`
+  variables
+- a legacy compatibility identity that can still appear in attempts and
+  trace/runtime compatibility fields
 
-The scheduling upgrade target is to retire the second meaning from engine
-matching first. Physical model/API deletion is a later phase.
+The production matching hot path no longer uses WorkerContext as a scheduling
+attribute source, and `WorkerSchedulingCandidate` no longer carries a
+`WorkerContext` object. The next target is to remove remaining `workerContext*`
+rule/read-model compatibility fields from `WorkerSchedulingView` and
+`WorkerMatchContext` after trace and server proof stay worker-level. Physical
+model/API deletion is a later phase.
 
 ## Transitional View
 
@@ -144,7 +147,6 @@ matching first. Physical model/API deletion is a later phase.
 It is built from:
 
 - `Worker`
-- optional `WorkerContext`
 - `WorkerReachabilityState`
 - dispatch-enabled flag
 - worker lock state
@@ -199,7 +201,7 @@ WorkerContext-backed resources are not shared by this slice; they still follow
 the worker-level exclusive lock even when the task declares `foreground=false`.
 `WorkerDispatchResourcePolicy` is the single engine-internal owner for this
 resource usage classification. It keeps worker-level lock requirements separate
-from legacy WorkerContext payload handling, which is necessary before
+from legacy `workerContextId` compatibility identity, which is necessary before
 WorkerContext can be retired without touching every scheduling mechanism again.
 `WorkerDispatchResourceReleaser` owns repeated dispatch cleanup for worker
 reservations and exclusive worker locks. Assignment orchestration and binder
@@ -231,9 +233,9 @@ workload-class caps and assignment summaries emit `workerBudget`,
 `currentTaskWorkerCount`, and `budgetLimited` as policy evidence. These caps are
 not a public scheduling configuration surface yet.
 The current guard for this transitional slice is intentionally source-level:
-future code may still enumerate legacy contexts to build
-`WorkerSchedulingCandidate`, but it must not reintroduce context-first handoff
-types, hidden WorkerContext state mutation, or listener-owned resource cleanup.
+future code must not reintroduce WorkerContext enumeration in the matching
+strategy package, context-first handoff types, hidden WorkerContext state
+mutation, or listener-owned resource cleanup.
 
 Legacy fields remain available:
 

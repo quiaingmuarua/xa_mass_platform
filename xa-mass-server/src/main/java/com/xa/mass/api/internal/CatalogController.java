@@ -127,14 +127,14 @@ public class CatalogController {
                     item.put("supportedEventCodes", normalizeProjectCodes(worker.getSupportedEventCodes()));
                     item.put("maxConcurrentWork", worker.getMaxConcurrentWork());
                     item.put("eventBindings", WorkerCapabilityViewSupport.deriveEventBindings(
-                            worker.getSupportedEventCodes(), catalog));
+                            worker.getEventBindings(), worker.getSupportedEventCodes(), catalog));
                     item.put("adapterId", WorkerCapabilityViewSupport.resolveAdapterId(worker.getAdapterId(), connections));
                     item.put("transportHint", WorkerCapabilityViewSupport.resolveTransportHint(worker.getOnlineStrategy()));
                     item.put("attributes", worker.getAttributes());
                     item.put("online", isTransportOnline(worker.getWorkerId()));
                     item.put("connections", connections);
                     item.put("hasActiveEndpoint", WorkerCapabilityViewSupport.hasActiveConnection(connections));
-                    item.put("locked", workerQueries.isWorkerLocked(worker.getWorkerId()));
+                    item.put("locked", runtimeDiagnostics != null && runtimeDiagnostics.isWorkerLocked(worker.getWorkerId()));
                     return item;
                 })
                 .toList();

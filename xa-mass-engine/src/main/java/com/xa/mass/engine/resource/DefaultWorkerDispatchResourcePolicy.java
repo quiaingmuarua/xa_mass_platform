@@ -20,7 +20,9 @@ public class DefaultWorkerDispatchResourcePolicy implements WorkerDispatchResour
 
     @Override
     public WorkerDispatchResourceUsage usageForCandidate(Task task, WorkerSchedulingCandidate candidate) {
-        boolean legacyWorkerContextResource = candidate != null && candidate.getWorkerContext() != null;
+        boolean legacyWorkerContextResource = candidate != null
+                && candidate.getSchedulingView() != null
+                && candidate.getSchedulingView().hasWorkerContext();
         return new WorkerDispatchResourceUsage(
                 requiresExclusiveWorkerLock(task) || legacyWorkerContextResource,
                 legacyWorkerContextResource

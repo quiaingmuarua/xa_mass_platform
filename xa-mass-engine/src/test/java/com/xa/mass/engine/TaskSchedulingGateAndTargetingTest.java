@@ -2,7 +2,6 @@ package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.engine.model.AssignmentRecord;
@@ -93,15 +92,14 @@ class TaskSchedulingGateAndTargetingTest {
         assertEquals(2, harness.stats(gatedTask.getTid()).readyCount());
         assertEquals(0, harness.stats(gatedTask.getTid()).inflightCount());
         assertTrue(harness.activeLeases(gatedTask.getTid()).isEmpty());
-        assertEquals(WorkerContextStatus.IDLE,
-                harness.workerManager.getWorkerContextById("ctx-us").getStatus());
+        assertFalse(harness.workerManager.isLocked("worker-us"));
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(competingTask.getTid())));
 
         List<ActiveLeaseRecord> competingLeases = harness.activeLeases(competingTask.getTid());
         assertEquals(1, competingLeases.size());
         assertEquals("worker-us", competingLeases.getFirst().workerId());
-        assertEquals("ctx-us", competingLeases.getFirst().workerContextId());
+        assertEquals(null, competingLeases.getFirst().workerContextId());
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(competingTask.getTid()).getStatus());
         assertEquals(0, harness.stats(competingTask.getTid()).readyCount());
         assertEquals(1, harness.stats(competingTask.getTid()).inflightCount());
@@ -150,7 +148,7 @@ class TaskSchedulingGateAndTargetingTest {
         List<ActiveLeaseRecord> activeLeases = harness.activeLeases(task.getTid());
         assertEquals(1, activeLeases.size());
         assertEquals("worker-gold", activeLeases.getFirst().workerId());
-        assertEquals("ctx-gold", activeLeases.getFirst().workerContextId());
+        assertEquals(null, activeLeases.getFirst().workerContextId());
 
         AssignmentRecord silverRecord = harness.record(task.getTid(), "worker-silver");
         assertEquals(AssignmentResult.RULE_NOT_MATCH, silverRecord.getResult());
@@ -186,7 +184,7 @@ class TaskSchedulingGateAndTargetingTest {
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(runningTask.getTid())));
         ActiveLeaseRecord runningLease = harness.activeLeases(runningTask.getTid()).getFirst();
         assertEquals("worker-target", runningLease.workerId());
-        assertEquals("ctx-target", runningLease.workerContextId());
+        assertEquals(null, runningLease.workerContextId());
 
         assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(waitingTask.getTid())));
         assertEquals(TaskStatus.READY, harness.taskManager.getTask(waitingTask.getTid()).getStatus());
@@ -212,10 +210,9 @@ class TaskSchedulingGateAndTargetingTest {
         List<ActiveLeaseRecord> waitingLeases = harness.activeLeases(waitingTask.getTid());
         assertEquals(1, waitingLeases.size());
         assertEquals("worker-target", waitingLeases.getFirst().workerId());
-        assertEquals("ctx-target", waitingLeases.getFirst().workerContextId());
+        assertEquals(null, waitingLeases.getFirst().workerContextId());
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(waitingTask.getTid()).getStatus());
         assertTrue(harness.workerManager.isLocked("worker-target"));
-        assertEquals(WorkerContextStatus.IDLE,
-                harness.workerManager.getWorkerContextById("ctx-backup").getStatus());
+        assertFalse(harness.workerManager.isLocked("worker-backup"));
     }
 }
