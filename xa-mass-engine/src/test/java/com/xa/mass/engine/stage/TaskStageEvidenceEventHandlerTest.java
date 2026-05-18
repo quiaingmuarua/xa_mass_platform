@@ -5,14 +5,11 @@ import com.xa.mass.command.event.CoreEventRequest;
 import com.xa.mass.command.event.CoreEventResponse;
 import com.xa.mass.command.event.InMemoryMassEventRuntime;
 import com.xa.mass.engine.event.KernelEventHandlerRegistry;
+import com.xa.mass.engine.testutil.RecordingEventSink;
 import com.xa.mass.engine.util.TraceEventLogger;
-import com.xa.mass.trace.sink.ExecutionEvent;
-import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.trace.sink.ExecutionEventType;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -24,12 +21,10 @@ public class TaskStageEvidenceEventHandlerTest {
     @Test
     void stageEvidenceEventUpdatesProjectionAndEmitsNonFinalTrace() {
         TaskStageEvidenceOwner owner = new TaskStageEvidenceOwner();
-        RecordingSink sink = new RecordingSink();
+        RecordingEventSink sink = new RecordingEventSink();
         InMemoryMassEventRuntime runtime = new InMemoryMassEventRuntime();
         TaskStageEvidenceEventHandler handler = new TaskStageEvidenceEventHandler(
-                owner,
-                new TraceEventLogger(sink)
-        );
+                new TaskStageEvidenceService(owner, new TraceEventLogger(sink)));
         handler.register(new KernelEventHandlerRegistry(runtime));
 
         CoreEventResponse response = runtime.dispatch(request(1, "fetch", "STARTED"),
@@ -39,7 +34,7 @@ public class TaskStageEvidenceEventHandlerTest {
         assertEquals("STARTED", owner.projection("task-1", "msg-1", "fetch")
                 .orElseThrow()
                 .stageStatus());
-        assertTrue(sink.events.stream()
+        assertTrue(sink.events().stream()
                 .anyMatch(event -> event.getEventType() == ExecutionEventType.TASK_STAGE_EVIDENCE_APPLIED
                         && "task-1".equals(event.getIdentity().taskId())
                         && "msg-1".equals(event.getIdentity().messageId())
@@ -52,9 +47,7 @@ public class TaskStageEvidenceEventHandlerTest {
     void staleStageEvidenceFailsWithoutChangingProjection() {
         TaskStageEvidenceOwner owner = new TaskStageEvidenceOwner();
         TaskStageEvidenceEventHandler handler = new TaskStageEvidenceEventHandler(
-                owner,
-                TraceEventLogger.noop()
-        );
+                new TaskStageEvidenceService(owner, TraceEventLogger.noop()));
 
         assertTrue(handler.handle(request(2, "fetch", "DONE"), new CoreEventPrincipal("worker-1", "worker"))
                 .isSuccess());
@@ -70,9 +63,7 @@ public class TaskStageEvidenceEventHandlerTest {
     void invalidStageEvidenceIsRejectedBeforeProjectionMutation() {
         TaskStageEvidenceOwner owner = new TaskStageEvidenceOwner();
         TaskStageEvidenceEventHandler handler = new TaskStageEvidenceEventHandler(
-                owner,
-                TraceEventLogger.noop()
-        );
+                new TaskStageEvidenceService(owner, TraceEventLogger.noop()));
 
         CoreEventResponse response = handler.handle(CoreEventRequest.builder()
                         .event(TaskStageEvidenceEventHandler.EVENT_CODE)
@@ -101,14 +92,5 @@ public class TaskStageEvidenceEventHandlerTest {
                         "attributes", Map.of("items", 10)
                 ))
                 .build();
-    }
-
-    private static final class RecordingSink implements ExecutionEventSink {
-        private final List<ExecutionEvent> events = new ArrayList<>();
-
-        @Override
-        public void emit(ExecutionEvent event) {
-            events.add(event);
-        }
     }
 }

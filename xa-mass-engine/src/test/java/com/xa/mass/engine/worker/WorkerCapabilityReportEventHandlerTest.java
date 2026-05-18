@@ -7,15 +7,14 @@ import com.xa.mass.command.event.CoreEventPrincipal;
 import com.xa.mass.command.event.CoreEventRequest;
 import com.xa.mass.command.event.CoreEventResponse;
 import com.xa.mass.command.event.InMemoryMassEventRuntime;
+import com.xa.mass.engine.command.WorkerCommandLifecycleOwner;
 import com.xa.mass.engine.event.KernelEventHandlerRegistry;
+import com.xa.mass.engine.testutil.RecordingEventSink;
 import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
-import com.xa.mass.trace.sink.ExecutionEvent;
-import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.trace.sink.ExecutionEventType;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -32,13 +31,11 @@ public class WorkerCapabilityReportEventHandlerTest {
         worker.setSupportedProjects(List.of("demoApp"));
         worker.setSupportedEventCodes(List.of("crawler.fetch", "crawler.parse"));
         workerManager.addWorker(worker);
-        RecordingSink sink = new RecordingSink();
+        RecordingEventSink sink = new RecordingEventSink();
 
         InMemoryMassEventRuntime runtime = new InMemoryMassEventRuntime();
         WorkerCapabilityReportEventHandler handler = new WorkerCapabilityReportEventHandler(
-                workerManager,
-                new TraceEventLogger(sink)
-        );
+                workerControlService(workerManager, new TraceEventLogger(sink)));
         handler.register(new KernelEventHandlerRegistry(runtime));
 
         CoreEventResponse response = runtime.dispatch(CoreEventRequest.builder()
@@ -65,7 +62,7 @@ public class WorkerCapabilityReportEventHandlerTest {
                 .orElseThrow()
                 .defaultAttributes()
                 .get("country"));
-        assertTrue(sink.events.stream()
+        assertTrue(sink.events().stream()
                 .anyMatch(event -> event.getEventType() == ExecutionEventType.WORKER_CAPABILITY_REPORT_APPLIED
                         && event.getIdentity().workerId().equals("worker-crawler")
                         && "ACCEPTED".equals(event.getAttrs().get("result"))));
@@ -79,9 +76,7 @@ public class WorkerCapabilityReportEventHandlerTest {
         worker.setSupportedEventCodes(List.of("crawler.fetch", "crawler.parse"));
         workerManager.addWorker(worker);
         WorkerCapabilityReportEventHandler handler = new WorkerCapabilityReportEventHandler(
-                workerManager,
-                TraceEventLogger.noop()
-        );
+                workerControlService(workerManager, TraceEventLogger.noop()));
 
         assertTrue(handler.handle(request(2, List.of("crawler.parse")), new CoreEventPrincipal("worker", "test"))
                 .isSuccess());
@@ -126,12 +121,12 @@ public class WorkerCapabilityReportEventHandlerTest {
         return worker;
     }
 
-    private static final class RecordingSink implements ExecutionEventSink {
-        private final List<ExecutionEvent> events = new ArrayList<>();
-
-        @Override
-        public void emit(ExecutionEvent event) {
-            events.add(event);
-        }
+    private static WorkerControlService workerControlService(WorkerManager workerManager,
+                                                             TraceEventLogger traceEventLogger) {
+        return new WorkerControlService(
+                workerManager,
+                new WorkerCommandLifecycleOwner(),
+                new WorkerStateProjectionOwner(),
+                traceEventLogger);
     }
 }

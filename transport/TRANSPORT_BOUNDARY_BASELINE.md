@@ -73,8 +73,9 @@ must not route command acknowledgements through task result ingest, treat state
 reports as reachability truth, or mutate worker capability truth directly from
 the system-event channel.
 
-The future worker-control direction is tracked in
-`../xa-mass-engine/doc/roadmap/EVENT_AND_WORKER_CONTROL_ROADMAP.md`.
+The completed worker-control owner-baseline roadmap is archived at
+`../doc/archive/xa-mass-engine/EVENT_AND_WORKER_CONTROL_ROADMAP.md`. Current
+owner truth is in `../xa-mass-engine/doc/baseline/EVENT_OWNER_BOUNDARY.md`.
 Transport may carry command delivery later, but it must not own command
 lifecycle state.
 

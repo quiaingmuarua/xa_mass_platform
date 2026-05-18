@@ -24,10 +24,10 @@ entry and place detailed current/future owner docs under this directory.
 ## Roadmaps
 
 - [TASK_RUNTIME_PROFILE_DESIGN.md](roadmap/TASK_RUNTIME_PROFILE_DESIGN.md)
-- [EVENT_AND_WORKER_CONTROL_ROADMAP.md](roadmap/EVENT_AND_WORKER_CONTROL_ROADMAP.md)
 
 ## Historical Archive
 
+- [EVENT_AND_WORKER_CONTROL_ROADMAP.md](../../doc/archive/xa-mass-engine/EVENT_AND_WORKER_CONTROL_ROADMAP.md)
 - [SCHEDULING_UPGRADE_ROADMAP.md](../../doc/archive/xa-mass-engine/SCHEDULING_UPGRADE_ROADMAP.md)
 - [WORKER_CONTEXT_RETIREMENT_PLAN.md](../../doc/archive/xa-mass-engine/WORKER_CONTEXT_RETIREMENT_PLAN.md)
 - [WORKER_GROUP_CAPABILITY_ROADMAP.md](../../doc/archive/xa-mass-engine/WORKER_GROUP_CAPABILITY_ROADMAP.md)

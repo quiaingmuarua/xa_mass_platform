@@ -37,6 +37,8 @@ Fast read order:
 - reconstruct task/work timelines without falling back to compatibility
   projection or ad hoc engine logs
 - validate trace artifacts against the canonical schema and event registry
+- keep scenario proof logic in reusable analyzers and sequence verifiers rather
+  than scattering event assertions across unrelated tests
 
 ## What It Does Not Own
 
@@ -50,6 +52,7 @@ Fast read order:
 
 Current commands:
 
+- `query`: bounded identity/event query across canonical trace events
 - `timeline`: task or task-work ordered event timeline
 - `assignment`: schedule and assignment decision timeline for a task
 - `stats`: grouped event counts with optional filters
@@ -62,7 +65,7 @@ Current backend:
 
 Current operator seam:
 
-- `TraceOperatorService` owns request/response-shaped timeline, stats,
+- `TraceOperatorService` owns request/response-shaped query, timeline, stats,
   validate, and scenario-analysis use cases
 - the CLI is a thin adapter over that service
 
@@ -95,6 +98,10 @@ Current built-in scenario analyzers:
 - `cross-task-worker-fairness`
 - `worker-resource-cleanup-without-context`
 
+Current proof helpers:
+
+- `TraceSequenceVerifier`: shared ordered-event proof for scenario analyzers
+
 ## Test Pairing Workflow
 
 For trace-observed integration or E2E verification:
@@ -102,8 +109,10 @@ For trace-observed integration or E2E verification:
 1. run the real scenario so canonical `.jsonl` trace files are produced
 2. run `validate` on the trace path first
 3. run `analyze` for the known scenario when a built-in analyzer exists
-4. run `timeline` for the target `taskId` when you need operator drill-down
-5. run `stats` when the scenario is about event presence, volume, or grouped
+4. run `query` when you need bounded identity drill-down by worker, command,
+   trace id, task, message, or event type
+5. run `timeline` for the target `taskId` when you need task-ordered drill-down
+6. run `stats` when the scenario is about event presence, volume, or grouped
    severity/event-type behavior
 
 This keeps the proof path aligned:
@@ -116,6 +125,10 @@ This keeps the proof path aligned:
 ## Command Examples
 
 Run through Maven from the repository root:
+
+```bash
+./mvnw -pl xa-mass-trace -am -Dexec.classpathScope=compile -Dmaven.test.skip=true compile org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.trace.cli.XaMassTraceCli -Dexec.args="query --path trace-events --worker-id worker-1 --json"
+```
 
 ```bash
 ./mvnw -pl xa-mass-trace -am -Dexec.classpathScope=compile -Dmaven.test.skip=true compile org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.trace.cli.XaMassTraceCli -Dexec.args="timeline --path trace-events --task-id task-123"

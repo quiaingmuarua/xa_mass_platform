@@ -3,7 +3,6 @@ package com.xa.mass.engine.worker;
 import com.xa.mass.command.event.CoreEventRequest;
 import com.xa.mass.command.event.CoreEventResponse;
 import com.xa.mass.engine.event.KernelEventHandlerRegistry;
-import com.xa.mass.engine.util.TraceEventLogger;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -21,13 +20,10 @@ public final class WorkerStateReportEventHandler {
 
     public static final String EVENT_CODE = "kernel.worker.state.report";
 
-    private final WorkerStateProjectionOwner projectionOwner;
-    private final TraceEventLogger traceEventLogger;
+    private final WorkerControlService workerControlService;
 
-    public WorkerStateReportEventHandler(WorkerStateProjectionOwner projectionOwner,
-                                         TraceEventLogger traceEventLogger) {
-        this.projectionOwner = Objects.requireNonNull(projectionOwner, "projectionOwner");
-        this.traceEventLogger = traceEventLogger != null ? traceEventLogger : TraceEventLogger.noop();
+    public WorkerStateReportEventHandler(WorkerControlService workerControlService) {
+        this.workerControlService = Objects.requireNonNull(workerControlService, "workerControlService");
     }
 
     public void register(KernelEventHandlerRegistry registry) {
@@ -36,8 +32,7 @@ public final class WorkerStateReportEventHandler {
 
     public CoreEventResponse handle(CoreEventRequest request, com.xa.mass.command.event.CoreEventPrincipal principal) {
         try {
-            WorkerStateProjectionResult result = projectionOwner.applyReport(reportFrom(request.getPayload()));
-            traceEventLogger.workerStateReportApplied(result);
+            WorkerStateProjectionResult result = workerControlService.applyWorkerStateReport(reportFrom(request.getPayload()));
             if (result.success()) {
                 return CoreEventResponse.success(responsePayload(result), request.getRequestId());
             }

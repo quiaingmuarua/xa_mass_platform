@@ -1,13 +1,10 @@
 package com.xa.mass.engine.command;
 
+import com.xa.mass.engine.testutil.RecordingEventSink;
 import com.xa.mass.engine.util.TraceEventLogger;
-import com.xa.mass.trace.sink.ExecutionEvent;
-import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.trace.sink.ExecutionEventType;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -21,7 +18,7 @@ public class WorkerCommandDeliveryCoordinatorTest {
     void acceptedDeliveryMovesCommandToDeliveryAcceptedAndEmitsTrace() {
         WorkerCommandLifecycleOwner owner = new WorkerCommandLifecycleOwner();
         owner.requestCommand(request("cmd-1", "worker-1", "DRAIN"));
-        RecordingSink sink = new RecordingSink();
+        RecordingEventSink sink = new RecordingEventSink();
         AtomicReference<WorkerCommandRecord> delivered = new AtomicReference<>();
         WorkerCommandDeliveryCoordinator coordinator = new WorkerCommandDeliveryCoordinator(
                 owner,
@@ -38,7 +35,7 @@ public class WorkerCommandDeliveryCoordinatorTest {
         assertEquals(WorkerCommandStatus.DELIVERY_ACCEPTED, result.currentStatus());
         assertEquals("cmd-1", delivered.get().commandId());
         assertEquals(WorkerCommandStatus.DELIVERY_ACCEPTED, owner.command("cmd-1").orElseThrow().status());
-        assertTrue(sink.events.stream().anyMatch(event ->
+        assertTrue(sink.events().stream().anyMatch(event ->
                 event.getEventType() == ExecutionEventType.WORKER_COMMAND_STATUS_TRANSITION
                         && "cmd-1".equals(event.getAttrs().get("commandId"))
                         && "DELIVERY_ACCEPTED".equals(event.getAttrs().get("commandStatus"))
@@ -132,14 +129,5 @@ public class WorkerCommandDeliveryCoordinatorTest {
                 .deadlineEpochMillis(1_779_000_000_000L)
                 .payload(Map.of("mode", "safe"))
                 .build();
-    }
-
-    private static final class RecordingSink implements ExecutionEventSink {
-        private final List<ExecutionEvent> events = new ArrayList<>();
-
-        @Override
-        public void emit(ExecutionEvent event) {
-            events.add(event);
-        }
     }
 }

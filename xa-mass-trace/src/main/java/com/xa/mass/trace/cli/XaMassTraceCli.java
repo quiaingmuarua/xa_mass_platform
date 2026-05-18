@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.xa.mass.trace.operator.TraceAnalyzeRequest;
 import com.xa.mass.trace.operator.TraceAssignmentRequest;
 import com.xa.mass.trace.operator.TraceOperatorService;
+import com.xa.mass.trace.operator.TraceQueryRequest;
 import com.xa.mass.trace.operator.TraceStatsRequest;
 import com.xa.mass.trace.operator.TraceTimelineRequest;
 import com.xa.mass.trace.operator.TraceValidateRequest;
@@ -52,6 +53,7 @@ public final class XaMassTraceCli {
         RootCommand root = new RootCommand(operatorService, objectMapper, out);
         CommandLine commandLine = new CommandLine(root);
         commandLine.addSubcommand("timeline", new TimelineCommand());
+        commandLine.addSubcommand("query", new QueryCommand());
         commandLine.addSubcommand("stats", new StatsCommand());
         commandLine.addSubcommand("assignment", new AssignmentCommand());
         commandLine.addSubcommand("validate", new ValidateCommand());
@@ -146,6 +148,71 @@ public final class XaMassTraceCli {
                         nullToDash(row.dst()),
                         nullToDash(row.reason()),
                         nullToDash(row.source()));
+            }
+            return EXIT_OK;
+        }
+    }
+
+    @Command(name = "query", description = "Read ordered trace events by bounded identity filters.")
+    static final class QueryCommand implements Callable<Integer> {
+
+        @ParentCommand
+        private RootCommand root;
+
+        @Option(names = "--path", required = true, description = "Trace file or directory path.")
+        private String path;
+
+        @Option(names = "--task-id", description = "Optional task id filter.")
+        private String taskId;
+
+        @Option(names = "--message-id", description = "Optional message id filter.")
+        private String messageId;
+
+        @Option(names = "--worker-id", description = "Optional worker id filter.")
+        private String workerId;
+
+        @Option(names = "--command-id", description = "Optional worker command id filter from attrs.commandId.")
+        private String commandId;
+
+        @Option(names = "--trace-id", description = "Optional trace id filter.")
+        private String traceId;
+
+        @Option(names = "--event-type", description = "Optional event type filter.")
+        private String eventType;
+
+        @Option(names = "--limit", description = "Maximum rows to return.")
+        private Integer limit;
+
+        @Option(names = "--json", description = "Emit JSON output.")
+        private boolean json;
+
+        @Override
+        public Integer call() throws Exception {
+            var response = root.operatorService.query(new TraceQueryRequest(
+                    path, taskId, messageId, workerId, commandId, traceId, eventType, limit));
+            if (json) {
+                return root.printJson(response);
+            }
+            root.out.printf("query source=%s taskId=%s messageId=%s workerId=%s commandId=%s traceId=%s eventType=%s count=%d%n",
+                    response.source(),
+                    response.taskId(),
+                    response.messageId(),
+                    response.workerId(),
+                    response.commandId(),
+                    response.traceId(),
+                    response.eventType(),
+                    response.count());
+            for (var row : response.events()) {
+                root.out.printf("%s %-34s task=%s msg=%s worker=%s command=%s trace=%s source=%s reason=%s%n",
+                        row.tsIso(),
+                        row.eventType(),
+                        nullToDash(row.taskId()),
+                        nullToDash(row.messageId()),
+                        nullToDash(row.workerId()),
+                        nullToDash(row.commandId()),
+                        nullToDash(row.traceId()),
+                        nullToDash(row.source()),
+                        nullToDash(row.reason()));
             }
             return EXIT_OK;
         }

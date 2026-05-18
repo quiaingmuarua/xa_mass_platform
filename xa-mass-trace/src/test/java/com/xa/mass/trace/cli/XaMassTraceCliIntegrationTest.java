@@ -43,6 +43,34 @@ class XaMassTraceCliIntegrationTest {
     }
 
     @Test
+    void queryJsonReadsWorkerCommandIdentityFilters() throws Exception {
+        writeIdentityQueryTrace(tempDir.resolve("identity-query.jsonl"));
+
+        CommandResult result = run("query",
+                "--path", tempDir.toString(),
+                "--command-id", "cmd-1",
+                "--json");
+
+        assertEquals(0, result.exitCode, "stderr=" + result.stderr + System.lineSeparator() + "stdout=" + result.stdout);
+        JsonNode root = objectMapper.readTree(result.stdout);
+        assertEquals("cmd-1", root.get("commandId").asText());
+        assertEquals(2, root.get("count").asInt());
+        assertEquals("evt-1", root.get("events").get(0).get("eventId").asText());
+        assertEquals("evt-2", root.get("events").get(1).get("eventId").asText());
+        assertTrue(result.stderr.isBlank());
+    }
+
+    @Test
+    void queryRejectsUnboundedScanWithoutFilter() throws Exception {
+        writeIdentityQueryTrace(tempDir.resolve("identity-query.jsonl"));
+
+        CommandResult result = run("query", "--path", tempDir.toString(), "--json");
+
+        assertEquals(2, result.exitCode);
+        assertTrue(result.stderr.contains("At least one query filter is required"));
+    }
+
+    @Test
     void statsAggregatesAcrossRotatedFilesProducedBySink() throws Exception {
         try (JsonlExecutionEventSink sink = new JsonlExecutionEventSink(tempDir.toString(), 128, 1)) {
             sink.emit(ExecutionEvent.builder()
@@ -500,6 +528,14 @@ class XaMassTraceCliIntegrationTest {
             }
         }
         throw new AssertionError("Missing eventType=" + eventType + " in " + root);
+    }
+
+    private void writeIdentityQueryTrace(Path path) throws Exception {
+        Files.writeString(path, """
+                {"schema":"xa.mass.execution-event.v1","eventId":"evt-2","eventType":"WORKER_STATE_REPORT_APPLIED","category":"WORKER","severity":"INFO","ts":100,"tsIso":"2026-05-18T00:00:00Z","traceId":"trace-operator","spanId":"span-2","parentSpanId":"span-1","identity":{"taskId":"task-query","workerId":"worker-1"},"transition":{},"outcome":{},"attrs":{"source":"WorkerStateReportEventHandler","reason":"state report accepted","commandId":"cmd-1"}}
+                {"schema":"xa.mass.execution-event.v1","eventId":"evt-1","eventType":"WORKER_COMMAND_STATUS_TRANSITION","category":"WORKER","severity":"INFO","ts":100,"tsIso":"2026-05-18T00:00:00Z","traceId":"trace-operator","spanId":"span-1","identity":{"taskId":"task-query","workerId":"worker-1"},"transition":{"src":"REQUESTED","dst":"DELIVERY_ACCEPTED","reason":"accepted"},"outcome":{"success":true},"attrs":{"source":"WorkerCommandDeliveryCoordinator","reason":"delivery accepted","commandId":"cmd-1"}}
+                {"schema":"xa.mass.execution-event.v1","eventId":"evt-3","eventType":"WORKER_COMMAND_STATUS_TRANSITION","category":"WORKER","severity":"INFO","ts":200,"tsIso":"2026-05-18T00:00:01Z","traceId":"trace-other","spanId":"span-3","identity":{"taskId":"task-query","workerId":"worker-2"},"transition":{"src":"REQUESTED","dst":"DELIVERY_REJECTED","reason":"busy"},"outcome":{"success":false,"errorCode":"BUSY"},"attrs":{"source":"WorkerCommandDeliveryCoordinator","reason":"busy","commandId":"cmd-2"}}
+                """);
     }
 
     private static Map<String, Object> attrs(Object... values) {

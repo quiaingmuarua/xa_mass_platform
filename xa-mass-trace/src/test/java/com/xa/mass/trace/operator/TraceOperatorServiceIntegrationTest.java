@@ -8,12 +8,14 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TraceOperatorServiceIntegrationTest {
@@ -36,6 +38,58 @@ class TraceOperatorServiceIntegrationTest {
         assertEquals(3, response.count());
         assertTrue(containsTimelineEvent(response, "TASK_STATUS_TRANSITION", "READY", "RUNNING"));
         assertTrue(containsTimelineEvent(response, "TASK_TERMINAL_CLOSED", "RUNNING", "TERMINAL"));
+    }
+
+    @Test
+    void queryReadsIdentityFilteredEventsInStableOrder() throws Exception {
+        writeIdentityQueryTrace(tempDir.resolve("identity-query.jsonl"));
+
+        TraceQueryResponse workerResponse = operatorService.query(
+                new TraceQueryRequest(tempDir.toString(), null, null, "worker-1", null, null, null, null));
+
+        assertEquals("worker-1", workerResponse.workerId());
+        assertEquals(2, workerResponse.count());
+        assertEquals("evt-1", workerResponse.events().get(0).eventId());
+        assertEquals("evt-2", workerResponse.events().get(1).eventId());
+
+        TraceQueryResponse commandResponse = operatorService.query(
+                new TraceQueryRequest(tempDir.toString(), null, null, null, "cmd-1", null, null, null));
+
+        assertEquals("cmd-1", commandResponse.commandId());
+        assertEquals(2, commandResponse.count());
+        assertTrue(commandResponse.events().stream()
+                .allMatch(row -> "cmd-1".equals(row.commandId())));
+
+        TraceQueryResponse traceResponse = operatorService.query(
+                new TraceQueryRequest(tempDir.toString(), null, null, null, null, "trace-operator", null, null));
+
+        assertEquals("trace-operator", traceResponse.traceId());
+        assertEquals(2, traceResponse.count());
+
+        TraceQueryResponse eventTypeResponse = operatorService.query(
+                new TraceQueryRequest(tempDir.toString(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        "WORKER_COMMAND_STATUS_TRANSITION",
+                        null));
+
+        assertEquals(2, eventTypeResponse.count());
+        assertTrue(eventTypeResponse.events().stream()
+                .allMatch(row -> "WORKER_COMMAND_STATUS_TRANSITION".equals(row.eventType())));
+    }
+
+    @Test
+    void queryRequiresAtLeastOneFilter() throws Exception {
+        writeIdentityQueryTrace(tempDir.resolve("identity-query.jsonl"));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> operatorService.query(new TraceQueryRequest(tempDir.toString(),
+                        null, null, null, null, null, null, null)));
+
+        assertTrue(error.getMessage().contains("At least one query filter is required"));
     }
 
     @Test
@@ -132,6 +186,19 @@ class TraceOperatorServiceIntegrationTest {
         assertEquals("duplicate-callback-replay", response.scenarioId());
         assertEquals("task-replay", response.taskId());
         assertEquals(1L, response.eventTypeCounts().get("CALLBACK_IGNORED_DUPLICATE"));
+    }
+
+    @Test
+    void singleMessageSuccessScenarioFailsWhenTerminalPrecedesCallback() throws Exception {
+        writeTerminalBeforeCallbackTrace(tempDir, "task-bad-sequence");
+        awaitJsonlFiles(tempDir, 1);
+
+        TraceAnalyzeResponse response = operatorService.analyze(
+                new TraceAnalyzeRequest(tempDir.toString(), "single-message-success", "task-bad-sequence"));
+
+        assertFalse(response.ok());
+        assertTrue(response.issues().stream()
+                .anyMatch(issue -> "SINGLE_MESSAGE_SUCCESS_SEQUENCE_MISMATCH".equals(issue.code())));
     }
 
     @Test
@@ -474,6 +541,38 @@ class TraceOperatorServiceIntegrationTest {
                     .identity(identity -> identity.taskId("task-replay").messageId("msg-1").attemptId("attempt-1"))
                     .outcome(true, null, "duplicate callback suppressed")
                     .attrs(Map.of("reason", "duplicate callback suppressed", "source", "TaskManager"))
+                    .build());
+        }
+    }
+
+    private void writeTerminalBeforeCallbackTrace(Path outputDir, String taskId) throws Exception {
+        try (JsonlExecutionEventSink sink = new JsonlExecutionEventSink(outputDir.toString(), 128, 10_000)) {
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.TASK_STATUS_TRANSITION)
+                    .timestamp(Instant.parse("2026-05-18T00:00:00Z"))
+                    .traceId("trace-bad-sequence")
+                    .identity(identity -> identity.taskId(taskId))
+                    .transition("READY", "RUNNING", "assignment-success")
+                    .attrs(Map.of("reason", "assignment-success", "source", "TaskManager"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.TASK_TERMINAL_CLOSED)
+                    .timestamp(Instant.parse("2026-05-18T00:00:01Z"))
+                    .traceId("trace-bad-sequence")
+                    .identity(identity -> identity.taskId(taskId))
+                    .transition("RUNNING", "TERMINAL", "ALL_MESSAGES_SUCCEEDED")
+                    .attrs(Map.of(
+                            "reason", "all work converged",
+                            "source", "TaskManager",
+                            "terminalReason", "ALL_MESSAGES_SUCCEEDED"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.CALLBACK_ACCEPTED)
+                    .timestamp(Instant.parse("2026-05-18T00:00:02Z"))
+                    .traceId("trace-bad-sequence")
+                    .identity(identity -> identity.taskId(taskId).messageId("msg-1").attemptId("attempt-1"))
+                    .outcome(true, null, "accepted")
+                    .attrs(Map.of("reason", "accepted", "source", "TaskResultService"))
                     .build());
         }
     }
@@ -1385,6 +1484,14 @@ class TraceOperatorServiceIntegrationTest {
                 eventType.equals(event.eventType())
                         && src.equals(event.src())
                         && dst.equals(event.dst()));
+    }
+
+    private void writeIdentityQueryTrace(Path path) throws Exception {
+        Files.writeString(path, """
+                {"schema":"xa.mass.execution-event.v1","eventId":"evt-2","eventType":"WORKER_STATE_REPORT_APPLIED","category":"WORKER","severity":"INFO","ts":100,"tsIso":"2026-05-18T00:00:00Z","traceId":"trace-operator","spanId":"span-2","parentSpanId":"span-1","identity":{"taskId":"task-query","workerId":"worker-1"},"transition":{},"outcome":{},"attrs":{"source":"WorkerStateReportEventHandler","reason":"state report accepted","commandId":"cmd-1"}}
+                {"schema":"xa.mass.execution-event.v1","eventId":"evt-1","eventType":"WORKER_COMMAND_STATUS_TRANSITION","category":"WORKER","severity":"INFO","ts":100,"tsIso":"2026-05-18T00:00:00Z","traceId":"trace-operator","spanId":"span-1","identity":{"taskId":"task-query","workerId":"worker-1"},"transition":{"src":"REQUESTED","dst":"DELIVERY_ACCEPTED","reason":"accepted"},"outcome":{"success":true},"attrs":{"source":"WorkerCommandDeliveryCoordinator","reason":"delivery accepted","commandId":"cmd-1"}}
+                {"schema":"xa.mass.execution-event.v1","eventId":"evt-3","eventType":"WORKER_COMMAND_STATUS_TRANSITION","category":"WORKER","severity":"INFO","ts":200,"tsIso":"2026-05-18T00:00:01Z","traceId":"trace-other","spanId":"span-3","identity":{"taskId":"task-query","workerId":"worker-2"},"transition":{"src":"REQUESTED","dst":"DELIVERY_REJECTED","reason":"busy"},"outcome":{"success":false,"errorCode":"BUSY"},"attrs":{"source":"WorkerCommandDeliveryCoordinator","reason":"busy","commandId":"cmd-2"}}
+                """);
     }
 
     private static Map<String, Object> attrs(Object... values) {

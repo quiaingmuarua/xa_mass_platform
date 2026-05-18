@@ -69,6 +69,20 @@ Runtime and result truth
   -> TaskResultRuntime
 ```
 
+Owner-backed worker-control and stage entry surfaces:
+
+- `WorkerControlService` is the engine caller surface for worker command
+  request/ack read views, worker capability self-report, and bounded worker
+  state projection. It emits canonical trace and delegates truth to
+  `WorkerCommandLifecycleOwner`, `WorkerCapabilityAuthority` via
+  `WorkerManager`, and `WorkerStateProjectionOwner`.
+- `TaskStageEvidenceService` is the engine caller surface for task item stage
+  evidence and bounded stage projection. It emits canonical trace and delegates
+  stage truth to `TaskStageEvidenceOwner`.
+- Event handlers parse kernel-targeted event payloads and call these services.
+  SDK/server integration should call the services through SDK-facing request
+  models, not reach into event handlers or mutate owner internals directly.
+
 The current `RuleBasedTaskWorkerMatchingStrategy` still combines rule-based
 eligibility, ranking, capacity reservation, and optional worker-lock acquisition.
 That is the current acquisition path, not a pure policy seam. Do not add more
@@ -552,11 +566,11 @@ Engine-local owner docs:
   directions. It uses the `AdapterNode -> WorkerGroup -> Worker` model and
   explicitly avoids module split, service extraction, worker
   command/state-report implementation, and unified event-envelope runtime work.
-- [`doc/roadmap/EVENT_AND_WORKER_CONTROL_ROADMAP.md`](./doc/roadmap/EVENT_AND_WORKER_CONTROL_ROADMAP.md):
-  active future path after event-metadata baseline closure: one event language
-  without assuming one event runtime, target-specific handlers, capability
-  authority-model convergence before self-report adoption, then additional
-  worker-control and stage owner lines.
+- [`../doc/archive/xa-mass-engine/EVENT_AND_WORKER_CONTROL_ROADMAP.md`](../doc/archive/xa-mass-engine/EVENT_AND_WORKER_CONTROL_ROADMAP.md):
+  completed owner-baseline roadmap for one event language, target-specific
+  handlers, capability self-report, worker command owner, worker state
+  projection, and task stage evidence. Current truth is
+  `doc/baseline/EVENT_OWNER_BOUNDARY.md`.
 
 Global baselines:
 

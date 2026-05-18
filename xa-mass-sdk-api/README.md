@@ -17,6 +17,8 @@ embedding callers without pulling in runtime composition internals.
 ## What Belongs Here
 
 - request/response and registration models intended for SDK callers
+- owner-backed worker-control and task-stage evidence request/snapshot models
+  intended for SDK callers
 - submitter/principal contract types and small in-memory SDK-local helpers
 - platform-level authorization request/policy contracts and minimal ownership contracts
 - catalog and event-definition contract types
@@ -50,6 +52,9 @@ Read-model rule:
   engine decision input
 - do not mirror every internal `Task` / `Worker` / runtime field into SDK
   snapshots unless it is needed as a stable external contract
+- worker-control and stage-evidence SDK models are adapters over engine
+  owner-backed services. They must not expose engine owner records directly and
+  must not redefine command, capability, state, or final-result semantics.
 
 ## Security Contract Surface
 

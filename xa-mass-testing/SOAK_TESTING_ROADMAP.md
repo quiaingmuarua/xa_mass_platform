@@ -55,6 +55,7 @@ Proof surface:
 - expected success/failed counts from `failureEveryNth`
 - expected task terminal reason distribution
 - transport delivery diagnostics
+- structured `runtimeInvariants` report
 - `JsonlExecutionEventSink` output
 - `TraceOperatorService.validate(...)`
 - `TraceOperatorService.stats(...)`
@@ -91,6 +92,7 @@ mass.soak.forceExit=true
 
 A successful polling soak requires:
 
+- `runtimeInvariants.ok == true`
 - `tasksSubmitted == tasksTerminal`
 - every task terminal reason matches the configured success/failure profile
 - `workItemsSubmitted == resultsVisible`
@@ -103,6 +105,12 @@ A successful polling soak requires:
 - `activeLeasesAtEnd == 0`
 - trace validation passes
 - trace dropped count is `0`
+
+`runtimeInvariants` is the structured pass/fail proof bundle for these checks.
+It must report stable issue codes instead of only throwing assertion text, so
+manual and scheduled soak runs can identify whether a failure came from runtime
+truth, result visibility, trace evidence, late-worker participation, or worker
+execution failures.
 
 ## Future Extensions
 

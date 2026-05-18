@@ -4,7 +4,7 @@ import com.xa.mass.command.event.CoreEventPrincipal;
 import com.xa.mass.command.event.CoreEventRequest;
 import com.xa.mass.command.event.CoreEventResponse;
 import com.xa.mass.engine.event.KernelEventHandlerRegistry;
-import com.xa.mass.engine.util.TraceEventLogger;
+import com.xa.mass.engine.worker.WorkerControlService;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -21,13 +21,10 @@ public final class WorkerCommandRequestEventHandler {
 
     public static final String EVENT_CODE = "kernel.worker.command.request";
 
-    private final WorkerCommandLifecycleOwner lifecycleOwner;
-    private final TraceEventLogger traceEventLogger;
+    private final WorkerControlService workerControlService;
 
-    public WorkerCommandRequestEventHandler(WorkerCommandLifecycleOwner lifecycleOwner,
-                                            TraceEventLogger traceEventLogger) {
-        this.lifecycleOwner = Objects.requireNonNull(lifecycleOwner, "lifecycleOwner");
-        this.traceEventLogger = traceEventLogger != null ? traceEventLogger : TraceEventLogger.noop();
+    public WorkerCommandRequestEventHandler(WorkerControlService workerControlService) {
+        this.workerControlService = Objects.requireNonNull(workerControlService, "workerControlService");
     }
 
     public void register(KernelEventHandlerRegistry registry) {
@@ -36,8 +33,7 @@ public final class WorkerCommandRequestEventHandler {
 
     public CoreEventResponse handle(CoreEventRequest request, CoreEventPrincipal principal) {
         try {
-            WorkerCommandLifecycleResult result = lifecycleOwner.requestCommand(commandRequestFrom(request));
-            traceEventLogger.workerCommandStatusTransition(result);
+            WorkerCommandLifecycleResult result = workerControlService.requestWorkerCommand(commandRequestFrom(request));
             if (result.success()) {
                 return CoreEventResponse.success(responsePayload(result), request.getRequestId());
             }

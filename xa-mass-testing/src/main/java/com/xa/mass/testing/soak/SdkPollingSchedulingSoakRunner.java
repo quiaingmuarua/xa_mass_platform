@@ -125,6 +125,8 @@ public final class SdkPollingSchedulingSoakRunner {
             FinalWorkStats workStats;
             ResultReadStats resultReadStats;
             Map<String, Object> deliveryDiagnostics;
+            WorkerLifecycleStats workerLifecycle;
+            SoakInvariantReport invariantReport;
 
             try {
                 app.start();
@@ -139,6 +141,7 @@ public final class SdkPollingSchedulingSoakRunner {
                 workStats = collectFinalWorkStats(runtime.taskWorkRuntime(), taskPlans);
                 resultReadStats = verifyResultReads(app, taskPlans);
                 deliveryDiagnostics = collectDeliveryDiagnostics(app);
+                workerLifecycle = workerLifecycleStats();
             } finally {
                 stopRequested.set(true);
                 closeWorkers(workers);
@@ -154,6 +157,15 @@ public final class SdkPollingSchedulingSoakRunner {
 
             long wallNanos = System.nanoTime() - startedNanos;
             TraceProof traceProof = verifyTrace(traceSink, traceDir);
+            SoakTraceProof traceProofSummary = traceProof.toSummary();
+            invariantReport = verifyInvariants(
+                    submittedTasks,
+                    taskStats,
+                    workStats,
+                    resultReadStats,
+                    traceProof,
+                    workerLifecycle
+            );
 
             Map<String, Object> reportBody = buildReport(
                     submittedTasks,
@@ -161,11 +173,13 @@ public final class SdkPollingSchedulingSoakRunner {
                     workStats,
                     resultReadStats,
                     deliveryDiagnostics,
-                    traceProof,
+                    traceProofSummary,
+                    workerLifecycle,
+                    invariantReport,
                     wallNanos
             );
             Path reportPath = SoakReportWriter.write(runId, reportBody);
-            assertSoakPassed(taskStats, workStats, resultReadStats, traceProof, submittedTasks);
+            assertSoakPassed(invariantReport);
 
             return new SoakReport(
                     runId,
@@ -529,8 +543,19 @@ public final class SdkPollingSchedulingSoakRunner {
                                                 FinalWorkStats workStats,
                                                 ResultReadStats resultReadStats,
                                                 Map<String, Object> deliveryDiagnostics,
-                                                TraceProof traceProof,
+                                                SoakTraceProof traceProof,
+                                                WorkerLifecycleStats workerLifecycle,
+                                                SoakInvariantReport invariantReport,
                                                 long wallNanos) {
+            SoakProofBundle proof = new SoakProofBundle(
+                    invariantReport,
+                    resultReadStats.toMap(),
+                    metrics.snapshot().toMap(),
+                    workerLifecycle.toMap(),
+                    deliveryDiagnostics,
+                    traceProof,
+                    List.copyOf(failures)
+            );
             Map<String, Object> report = new LinkedHashMap<>();
             report.put("runId", runId);
             report.put("config", config.toMap());
@@ -554,50 +579,40 @@ public final class SdkPollingSchedulingSoakRunner {
             ));
             report.put("runtimeWork", workStats.toMap());
             report.put("activeLeasesAtEnd", workStats.activeLeasesAtEnd());
-            report.put("workerMetrics", metrics.snapshot().toMap());
-            report.put("workerLifecycle", workerLifecycleStats().toMap());
-            report.put("resultSequentialRead", resultReadStats.toMap());
-            report.put("deliveryDiagnostics", deliveryDiagnostics);
-            report.put("tracePath", traceProof.path());
-            report.put("traceValidation", traceProof.validation());
-            report.put("traceStats", traceProof.stats());
-            report.put("traceDropped", traceProof.droppedCount());
-            report.put("failureSamples", List.copyOf(failures));
+            report.put("proof", proof.toMap());
             return report;
         }
 
-        private void assertSoakPassed(FinalTaskStats taskStats,
-                                      FinalWorkStats workStats,
-                                      ResultReadStats resultReadStats,
-                                      TraceProof traceProof,
-                                      long submittedTasks) {
+        private SoakInvariantReport verifyInvariants(long submittedTasks,
+                                                     FinalTaskStats taskStats,
+                                                     FinalWorkStats workStats,
+                                                     ResultReadStats resultReadStats,
+                                                     TraceProof traceProof,
+                                                     WorkerLifecycleStats workerLifecycle) {
             long expectedWorkItems = submittedTasks * config.messagesPerTask();
-            require(taskStats.terminalTasks() == submittedTasks,
-                    "tasksSubmitted must equal tasksTerminal");
-            require(workStats.totalWorkItems() == expectedWorkItems,
-                    "runtime total work must equal submitted items");
-            require(resultReadStats.totalResults() == expectedWorkItems,
-                    "visible results must equal submitted items");
-            require(workStats.successWorkItems() == taskStats.expectedSuccessWorkItems(),
-                    "runtime success count must match expected failure profile");
-            require(workStats.failedWorkItems() == taskStats.expectedFailedWorkItems(),
-                    "runtime failed count must match expected failure profile");
-            require(workStats.activeLeasesAtEnd() == 0,
-                    "active leases should drain to zero");
-            if (traceProof.enabled()) {
-                require(traceProof.validation() != null && traceProof.validation().valid(),
-                        "trace validation should pass");
-                require(traceProof.droppedCount() == 0,
-                        "trace sink should not drop events");
-            }
-            WorkerLifecycleStats workerLifecycle = workerLifecycleStats();
-            if (config.requireLateWorkerWork()) {
-                require(workerLifecycle.lateWorkerReceivedItems() > 0,
-                        "late workers should receive work when requireLateWorkerWork=true");
-                require(workerLifecycle.lateWorkerResultSubmissions() > 0,
-                        "late workers should submit results when requireLateWorkerWork=true");
-            }
-            require(failures.isEmpty(), "worker failures observed: " + failures);
+            return SoakRuntimeInvariantChecker.verify(new SoakRuntimeInvariantChecker.Snapshot(
+                    submittedTasks,
+                    taskStats.terminalTasks(),
+                    expectedWorkItems,
+                    workStats.totalWorkItems(),
+                    resultReadStats.totalResults(),
+                    taskStats.expectedSuccessWorkItems(),
+                    workStats.successWorkItems(),
+                    taskStats.expectedFailedWorkItems(),
+                    workStats.failedWorkItems(),
+                    workStats.activeLeasesAtEnd(),
+                    traceProof.enabled(),
+                    traceProof.validation() != null && traceProof.validation().valid(),
+                    traceProof.droppedCount(),
+                    config.requireLateWorkerWork(),
+                    workerLifecycle.lateWorkerReceivedItems(),
+                    workerLifecycle.lateWorkerResultSubmissions(),
+                    failures.size()
+            ));
+        }
+
+        private void assertSoakPassed(SoakInvariantReport invariantReport) {
+            require(invariantReport.ok(), "soak runtime invariants failed: " + invariantReport.failureMessage());
         }
 
         private WorkerLifecycleStats workerLifecycleStats() {
@@ -845,6 +860,9 @@ public final class SdkPollingSchedulingSoakRunner {
                               TraceValidateResponse validation,
                               TraceStatsResponse stats,
                               long droppedCount) {
+        private SoakTraceProof toSummary() {
+            return new SoakTraceProof(enabled, path, validation, stats, droppedCount);
+        }
     }
 
     private record WorkerLifecycleStats(int initialWorkerCount,
