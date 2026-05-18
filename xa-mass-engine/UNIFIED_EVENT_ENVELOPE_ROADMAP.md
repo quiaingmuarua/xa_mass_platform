@@ -1,77 +1,190 @@
 # Unified Event Envelope Roadmap
 
-Last updated: 2026-05-16
+Last updated: 2026-05-18
 
-Status: north-star roadmap only. This is not implemented baseline behavior.
+Status: proposed event-metadata and owner-boundary roadmap. This is not an
+implemented baseline. The first wave must not implement a unified event
+runtime, worker command lifecycle, worker state report projection, task item
+stage semantics, or queue-priority behavior.
 
 ## Summary
 
-The long-term event kernel should not be split first by `task event` versus
-`system event`. It should use one request/delivery envelope with policy
-metadata, then route to the correct owner.
+The long-term direction is still useful: task work, task results, worker
+commands, worker state reports, operator control, diagnostics, and future staged
+task work should be able to share event metadata language without sharing owner
+paths.
 
-The goal is to let task work, worker commands, worker state reports, operator
-control, and future task-item stage events share envelope shape and dispatch
-metadata without sharing lifecycle ownership.
+The next implementation wave is narrower:
 
-Current implementation note:
+```text
+event-like surface inventory
+  -> EventDefinition / CoreEventDescriptor metadata baseline
+  -> catalog/API/documentation visibility
+  -> owner guards
+```
 
-- task dispatch, result convergence, worker presence, and worker diagnostics
-  still use their existing owner paths
-- this roadmap does not grant permission to refactor those paths in one slice
-- WorkerGroup capability and candidate-index ownership should be stabilized
-  before behavior-changing event envelope work starts
+This roadmap does not create a new module, microservice, event bus, or
+`UnifiedEventService`. It does not replace task lifecycle, result convergence,
+transport delivery, worker capability, scheduling, or trace ownership.
+
+The near-term goal is to standardize event metadata and prevent future event
+features from creating unrelated protocol shapes or polluted owner paths.
 
 ## Core Rule
 
 ```text
-unified event envelope
-  -> common dispatch/request metadata
-  -> owner-specific handling
+event metadata
+  -> describes invocation, response expectation, target scope, and policy hints
+
+owner path
+  -> owns lifecycle truth, state mutation, repair, and side effects
 ```
 
-The envelope is not lifecycle truth. It does not own task status, worker
-availability, result finality, queue correctness, or trace schema.
+Event metadata is not lifecycle truth. It must not directly own:
+
+- task status
+- task result finality
+- worker reachability
+- worker dispatch availability
+- runtime queue correctness
+- trace schema
+- operator command lifecycle
 
 Owner truth remains:
 
 ```text
 task lifecycle
-  -> engine
+  -> engine task owner
 
 task final result
   -> TaskResultRuntime / TaskResultService
 
-worker capability and administrative state
-  -> worker-management
+worker capability and candidate source
+  -> WorkerGroup / WorkerCandidateIndex core line
 
-worker state report projection and derived scheduling facts
-  -> worker-management
-
-transport reachability
+transport delivery and reachability evidence
   -> transport plane
 
-trace / diagnostics
-  -> operator plane
+trace and diagnostics
+  -> operator/trace plane
 ```
 
-## Event Dimensions
+Future worker command and worker state-report owners may be added later, but
+they are not part of the core line of this roadmap.
 
-Event category may exist for docs, UI grouping, default permission hints, and
-operator filtering:
+## Execution Shape
+
+This roadmap has two layers:
+
+```text
+Core line
+  -> UE-0 through UE-3
+  -> inventory, metadata baseline, visibility, owner guards
+
+Future extensions
+  -> queue placement policy seam, worker command lifecycle, worker state report,
+     task item stage semantics, unified runtime envelope, richer priority
+```
+
+Only UE-0 through UE-3 are first-wave scope. Future extensions require separate
+approval and must not be bundled into the core line.
+
+Each phase must be independently shippable:
+
+- inventory phases must not change behavior
+- metadata phases must preserve current runtime behavior
+- API/documentation phases must not alter dispatch, scheduling, result, or
+  transport semantics
+- guard phases must prevent owner pollution without introducing new runtime
+  paths
+- no phase should require a later phase to restore correctness
+
+## Non-Goals
+
+This roadmap does not:
+
+- create a new Maven module
+- create an event microservice
+- introduce a `UnifiedEventService`
+- implement a runtime `UnifiedEventEnvelope` carrier in the core line
+- refactor task dispatch, result ingest, or transport frames in one pass
+- route task results, worker command acks, and worker state reports through one
+  owner
+- implement worker command lifecycle
+- implement worker state report projection
+- implement task item stage semantics
+- change queue placement behavior
+- implement fairness, aging, deadline, quota, or per-worker budget policy
+- make `EventCategory` drive kernel behavior
+
+## Current Surfaces To Respect
+
+The current codebase already has concrete event-like surfaces. UE-0 must map
+these before behavior changes:
+
+```text
+EventDefinition
+  -> SDK-visible event registration and catalog shape
+
+CoreEventDescriptor
+  -> core runtime/control-plane descriptor shape
+
+WorkerGroup EventBinding / EventKey
+  -> worker capability and Stage-1 candidate source
+
+Task dispatch handoff
+  -> transport delivery owner after assignment
+
+TaskResultReport
+  -> worker payload for engine result convergence
+
+TransportResultEnvelope
+  -> transport ingress metadata around task results
+
+Trace events
+  -> lifecycle and diagnostics evidence
+
+Transport queue diagnostics
+  -> transport queue/read diagnostics only
+```
+
+Do not infer from this roadmap that those paths are already unified or should be
+unified in one implementation slice.
+
+## Metadata Dimensions
+
+Core metadata may be added to `EventDefinition` and `CoreEventDescriptor`.
+These fields are descriptive and policy-input metadata only.
+
+### EventCategory
+
+Directional values:
 
 ```java
 enum EventCategory {
     TASK_WORK,
-    WORKER_COMMAND,
-    WORKER_STATE_REPORT,
+    DIAGNOSTIC,
     OPERATOR_CONTROL,
-    DIAGNOSTIC
+    WORKER_COMMAND,
+    WORKER_STATE_REPORT
 }
 ```
 
-Kernel behavior must not branch on category when a narrower policy dimension
-exists. The behavior-driving dimensions are:
+`EventCategory` is for docs, UI grouping, permission hints, and operator
+filtering. Kernel behavior must not branch on category when a narrower owner or
+policy dimension exists.
+
+Core-line default:
+
+```text
+existing task/catalog events -> TASK_WORK
+diagnostic-only events       -> DIAGNOSTIC when explicitly known
+otherwise                    -> TASK_WORK until a future owner is introduced
+```
+
+### PriorityClass
+
+Directional values:
 
 ```java
 enum PriorityClass {
@@ -80,40 +193,74 @@ enum PriorityClass {
     STANDARD,
     BULK
 }
+```
 
-enum ConvergenceMode {
-    NONE,
-    TASK_ITEM_STAGE,
-    TASK_ITEM_FINAL
-}
+Core-line rule:
 
+- store and expose metadata only
+- do not change runtime queue placement
+- default existing events to `STANDARD` unless a definition explicitly declares
+  another value
+
+Queue behavior belongs to a future queue placement policy seam.
+
+### ResponseMode
+
+Directional values:
+
+```java
 enum ResponseMode {
     NONE,
     ACK,
     FINAL_RESULT,
     STREAM
 }
+```
 
+Core-line rule:
+
+- use as caller expectation and documentation metadata
+- do not use it to create new ack/result/stream runtime paths
+- default existing task work that completes through task result convergence to
+  `FINAL_RESULT`
+
+### TargetScope
+
+Directional values:
+
+```java
 enum TargetScope {
     WORKER,
-    WORKER_MANAGER,
     TASK_ENGINE,
-    OPERATOR
+    OPERATOR,
+    WORKER_MANAGER
 }
 ```
 
-Additional stable dimensions:
+Core-line rule:
 
+- use as owner/routing hint metadata
+- do not let it bypass current owner paths
+- default current worker-dispatched task work to `WORKER`
+
+### Future Metadata
+
+These are useful but not first-wave implementation requirements:
+
+- `ConvergenceMode`
 - `authScope`
 - `idempotencyKey`
-- `trace category`
 - `deadline` / expiry
-- optional `correlationId` and `parentEventId`
+- `correlationId`
+- `parentEventId`
+- `stageId`
+
+`ConvergenceMode` in particular touches result finality and task stage
+semantics. Keep it out of UE-1 unless a separate result/stage plan is approved.
 
 ## Directional Envelope Shape
 
-This is a direction model only. Do not implement this record prematurely if the
-current owner paths do not need it.
+This record is future-only. Do not implement it in UE-0 through UE-3.
 
 ```java
 record UnifiedEventEnvelope(
@@ -127,374 +274,315 @@ record UnifiedEventEnvelope(
         String workerId,
         EventCategory category,
         PriorityClass priorityClass,
-        ConvergenceMode convergenceMode,
         ResponseMode responseMode,
         TargetScope targetScope,
-        String authScope,
-        String idempotencyKey,
         Map<String, Object> payload,
         Map<String, Object> headers
 ) {}
 ```
 
-The purpose is to keep future event additions from creating unrelated dispatch
-protocols. It is not a replacement for task lifecycle, worker-management, or
-transport ownership.
+The future purpose is to keep new event classes from creating unrelated
+dispatch metadata shapes. It is not a replacement for task lifecycle,
+`TaskResultRuntime`, WorkerGroup capability, transport delivery, or trace
+ownership.
 
-## Queue Placement Direction
+## Owner Separation Rules
 
-Priority is input to queue placement policy. The first implementation may be
-simple:
-
-```text
-CONTROL / INTERACTIVE
-  -> enqueue front
-
-STANDARD / BULK
-  -> enqueue back
-```
-
-This must remain a policy choice, not a hard-coded event kernel rule. Future
-policies may use aging, deadline, weighted fairness, per-worker budget, or
-per-task quota without changing the envelope shape.
-
-Do not add queue-priority behavior before there is a queue placement policy
-seam. Directly hard-coding category or event code inside runtime queue logic is
-not acceptable.
-
-## Task Item Stage Direction
-
-Task item execution may become multi-stage:
-
-```text
-logical messageId
-  -> stage event
-  -> stage event
-  -> final event
-```
-
-Only `ConvergenceMode.TASK_ITEM_FINAL` may commit a visible final result row in
-`TaskResultRuntime` and participate in task progress / terminal convergence.
-
-`ConvergenceMode.TASK_ITEM_STAGE` may:
-
-- emit trace/progress evidence
-- write bounded stage residue if a later owner introduces it
-- trigger a next event or task item
-
-It must not close the logical item or appear in public `/results` as a final
-result.
-
-## Worker Command Defaults
-
-`WorkerCommand` is a control or operations request sent to a worker. Examples:
-
-- drain new work
-- go offline or resume
-- refresh capability
-- reload configuration
-- collect diagnostics
-- rotate credentials
-- restart worker agent
-- ping / health probe
-
-This is not task dispatch and not task result. Worker-management owns command
-meaning and lifecycle. Transport owns delivery.
-
-Directional envelope defaults:
-
-```text
-category=WORKER_COMMAND
-targetScope=WORKER
-convergenceMode=NONE
-responseMode=ACK
-priorityClass=CONTROL
-```
-
-Minimum lifecycle vocabulary should be reserved from the beginning:
-
-```text
-REQUESTED
-DELIVERED
-ACKED
-RUNNING
-SUCCEEDED
-FAILED
-EXPIRED
-CANCELLED
-```
-
-The first implementation may use only a subset, but the contract must not be
-fire-and-forget. A command needs at least a stable command id, target worker,
-type, reason, requester, deadline or expiry, status, and result code/message.
-
-## Worker State Report Defaults
-
-`WorkerStateReport` is a worker/device-originated report about its environment,
-health, capability, or runtime condition. Examples:
-
-- network changed from WLAN to cellular
-- low battery
-- not charging
-- thermal pressure
-- memory pressure
-- proxy degradation
-- account health changed
-- capability version changed
-
-Worker-management owns report validation, ordering/idempotency, debounce, TTL,
-projection, and derived scheduling facts. State reports are not automatically
-durable audit events.
-
-Directional envelope defaults:
-
-```text
-category=WORKER_STATE_REPORT
-targetScope=WORKER_MANAGER
-convergenceMode=NONE
-responseMode=NONE or ACK
-priorityClass=STANDARD or CONTROL
-```
-
-The default storage model should be:
-
-```text
-current state projection
-  + bounded recent history
-  + important transition audit
-```
-
-Do not write every high-frequency raw state report into trace/audit by default.
-
-## Operator Control Defaults
-
-Operator control events may eventually use the same envelope shape, but they
-must not become task commands by default.
-
-Directional defaults:
-
-```text
-category=OPERATOR_CONTROL
-targetScope=OPERATOR or WORKER_MANAGER
-convergenceMode=NONE
-responseMode=ACK
-priorityClass=CONTROL
-```
-
-Operator control may mutate worker-management, diagnostics, or future operator
-planes according to explicit owner rules. It must not bypass task lifecycle,
-worker-management command lifecycle, or transport delivery ownership.
-
-## Worker State Model Split
-
-Do not overload `OFFLINE`.
-
-Worker-management should preserve three independent concepts:
-
-```text
-transportReachability
-  ONLINE / OFFLINE / DEGRADED
-
-dispatchAvailability
-  ENABLED / DRAINING / DISABLED
-
-administrativeState
-  ACTIVE / PAUSED / DISABLED
-```
-
-Examples:
-
-- network disconnected: `transportReachability=OFFLINE`
-- low battery but still connected: `dispatchAvailability=DRAINING` or
-  `DISABLED`, reason `LOW_BATTERY_NOT_CHARGING`
-- operator disabled worker: `administrativeState=DISABLED`
-
-Engine scheduling consumes the combined derived scheduling view. It must not
-collapse these states into `Worker.status`.
-
-## Derived Scheduling Facts
-
-Raw device facts must not become engine scheduling truth.
-
-Worker-management may receive:
-
-```text
-batteryLevel=12
-charging=false
-networkType=CELLULAR
-```
-
-It should derive facts such as:
-
-```text
-dispatchEnabled=false
-dispatchDisabledReason=LOW_BATTERY_NOT_CHARGING
-networkClass=METERED
-powerClass=LOW
-schedulingAttributes.powerMode=LOW_POWER
-```
-
-Engine scheduling may consume derived scheduling facts through
-`WorkerSchedulingView` / reachability views. It must not own the interpretation
-of raw battery, network, thermal, account, or device state.
-
-## Transport Boundary
-
-Transport owns delivery and presence facts:
-
-```text
-command delivery
-dispatch delivery
-result ingress transport normalization
-connection presence / reachability
-```
-
-Transport must not decide that low battery means a worker should drain, or that
-a failed diagnostic command means the worker is disabled. Those are
-worker-management decisions.
-
-## Owner Separation Rule
-
-Keep these owner paths separate:
+Keep these owner paths separate even if future payloads share metadata shape:
 
 ```text
 TaskResultReport
-  -> engine result convergence
-
-WorkerStateReport
-  -> worker-management state projection
+  -> TaskResultService / TaskResultRuntime
 
 WorkerCommandAck / WorkerCommandStatus
-  -> worker-management command lifecycle
+  -> future worker command lifecycle owner
+
+WorkerStateReport
+  -> future worker state projection owner
+
+Task item stage event
+  -> future stage/progress owner, not public final result
 ```
 
-They may originate from the same worker process, and they may eventually share
-an envelope shape, but they must not share the same owner path.
+Core-line guards must protect:
 
-The unification target is envelope shape and dispatch metadata, not owner
-meaning. In particular:
+- `TaskResultReport` remains engine result input
+- worker command ack must not be written to `TaskResultRuntime`
+- worker state report must not be treated as transport reachability truth
+- task stage event must not commit visible final result rows
+- event category must not directly mutate task status, worker state, or result
+  finality
+- priority metadata must not directly change queue order without a queue
+  placement policy seam
 
-- `WorkerCommandAck` must not be written to `TaskResultRuntime`
-- `WorkerStateReport` must not be treated as transport reachability truth
-- `TaskResultReport` must not become a worker-management state update
-- `TASK_ITEM_STAGE` must not be projected as a public final result
+## Core Phase Plan
 
-## Execution Gates
+### Phase UE-0: Event Surface Inventory And Owner Map
 
-Do not start implementation before:
+Goal: no behavior change. Map current event-like surfaces and owner truth before
+adding metadata fields.
 
-- worker-manager ownership boundary is stable
-- `TaskResultRuntime` finality and archive behavior are stable
-- transport reachability owner is stable
-- architecture guards prevent WorkerContext resurrection
-- server/SDK worker surfaces no longer depend on engine `WorkerManager`
+Scope:
 
-Behavior-changing slices must state:
+- inventory `EventDefinition` and `CoreEventDescriptor` fields and callers
+- inventory worker capability `EventBinding` / `EventKey` usage
+- inventory task dispatch handoff and transport delivery metadata
+- inventory `TaskResultReport` and `TransportResultEnvelope`
+- inventory trace events and transport queue diagnostics that mention
+  event/queue metadata
+- map each surface to its owner, payload shape, response expectation, and
+  lifecycle truth
 
-- selected phase
-- owner paths touched
-- forbidden cross-phase changes
-- trace proof when lifecycle, scheduling, or result routing changes
-- tests that prove no task-result or worker-management owner pollution occurred
+Out of scope:
 
-## Phased Plan
+- no new metadata fields
+- no runtime behavior change
+- no queue placement policy
+- no worker command/state report implementation
+- no unified envelope record
 
-```text
-WM-E0: document unified event-envelope direction
-  -> no code change
+Acceptance:
 
-WM-E1: expand EventDefinition metadata
-  -> priorityClass
-  -> convergenceMode
-  -> responseMode
-  -> targetScope
-  -> authScope / idempotency defaults
-  -> no queue behavior change
+- owner map lists each event-like surface and current owner
+- owner map marks which paths must never share lifecycle ownership
+- no code behavior changes
+- next phase can add metadata to descriptor models without guessing owners
 
-WM-E2: introduce queue placement policy seam
-  -> initial policy may map CONTROL/INTERACTIVE to FRONT
-  -> initial policy may map STANDARD/BULK to BACK
-  -> no fairness implementation required
+Suggested scan:
 
-WM-E3: add worker command lane
-  -> command uses envelope metadata
-  -> ack/status belongs to worker-management
-  -> no TaskResultRuntime write
-
-WM-E4: add worker state report lane
-  -> worker reports device/account/health facts
-  -> worker-management derives scheduling facts
-  -> engine consumes derived facts only
-
-WM-E5: add task item stage semantics
-  -> TASK_ITEM_STAGE can produce trace/progress/next-stage work
-  -> TASK_ITEM_FINAL remains the only public result/convergence commit
-
-WM-E6: expand placement policy
-  -> aging / deadline / weighted fairness / task quota / per-worker budget
-  -> no envelope shape change
+```powershell
+rg -n "EventDefinition|CoreEventDescriptor|EventBinding|EventKey|TaskResultReport|TransportResultEnvelope|eventCode|queue|priority" xa-mass-sdk-api xa-mass-base xa-mass-engine transport xa-mass-sdk xa-mass-server
 ```
 
-Do not start WM-E2 or later until current task-result convergence and
-WorkerGroup capability / candidate-index boundaries remain green under
-architecture guards.
+### Phase UE-1: EventDefinition Metadata Baseline
+
+Goal: add minimal event metadata to existing descriptor models without changing
+runtime behavior.
+
+Scope:
+
+- add metadata to `EventDefinition` and builder:
+  - `EventCategory`
+  - `PriorityClass`
+  - `ResponseMode`
+  - `TargetScope`
+- add equivalent metadata to `CoreEventDescriptor`
+- update conversions between `EventDefinition` and `CoreEventDescriptor`
+- provide conservative defaults for existing definitions
+- preserve current event registration and catalog behavior
+
+Out of scope:
+
+- no `UnifiedEventEnvelope`
+- no queue behavior change
+- no task item stage semantics
+- no worker command/state report runtime
+- no auth/idempotency/deadline implementation
+
+Acceptance:
+
+- existing event definitions continue to register
+- metadata defaults are deterministic
+- SDK and core descriptor conversions preserve metadata
+- no dispatch, scheduling, result, transport, or queue behavior changes
+- tests cover default metadata and explicit metadata round-trip
+
+### Phase UE-2: Metadata Visibility And Documentation
+
+Goal: expose metadata through existing catalog/API/doc surfaces so API consumers
+can understand event behavior without changing runtime paths.
+
+Scope:
+
+- update catalog list/detail surfaces that already return `EventDefinition`
+- update project event read surfaces if they expose event definitions
+- update Knife4j/OpenAPI descriptions for event metadata
+- update SDK/server README snippets if needed
+- document defaults and non-behavioral nature of metadata fields
+
+Out of scope:
+
+- no new event endpoint family
+- no worker command/state report endpoint
+- no transport protocol migration
+- no queue placement policy
+
+Acceptance:
+
+- API/catalog docs show metadata fields
+- existing catalog tests remain green or are updated for typed metadata
+- metadata visibility does not imply runtime behavior changes
+
+### Phase UE-3: Owner Guards And Trace-Proof Boundary
+
+Goal: add targeted guards that prevent event metadata from becoming lifecycle
+truth or a hidden router.
+
+Scope:
+
+- source guard: `EventCategory` must not directly drive task lifecycle, result
+  finality, or worker availability
+- source guard: `PriorityClass` must not directly change queue placement without
+  an explicit queue placement policy owner
+- source guard: `TaskResultRuntime` / `TaskResultService` must not accept worker
+  command ack or worker state report shapes
+- source guard: transport result ingress must keep `TaskResultReport` as result
+  payload owner
+- docs: event metadata is policy input / description, not owner truth
+
+Out of scope:
+
+- no behavior-changing queue policy
+- no unified runtime envelope
+- no new worker control-plane owner
+
+Acceptance:
+
+- architecture guards cover the owner pollution risks
+- no runtime behavior change
+- future behavior-changing roadmap phases have explicit guardrails
+
+## Future Extensions
+
+Future extensions require separate approval and must not be bundled into UE-0
+through UE-3.
+
+### Future UE-F1: Queue Placement Policy Seam
+
+Goal: introduce a policy seam before any priority-driven queue behavior.
+
+Possible scope:
+
+- add `QueuePlacementPolicy`
+- policy input may include `PriorityClass`
+- first default policy should preserve current behavior unless explicitly
+  approved otherwise
+
+Out of scope:
+
+- no fairness, aging, deadline, quota, or budget policy in the first seam
+- no category-driven queue behavior
+
+### Future UE-F2: Worker Command Lifecycle
+
+Goal: add worker command request/status ownership without routing acks through
+task result convergence.
+
+Possible scope:
+
+- command id, target worker, type, deadline, requester, reason
+- status vocabulary such as requested/delivered/acked/succeeded/failed/expired
+- delivery through transport owner
+
+Out of scope:
+
+- no `TaskResultRuntime` write for command ack/status
+- no task lifecycle mutation by worker command metadata
+
+### Future UE-F3: Worker State Report Projection
+
+Goal: accept worker/device health reports into a worker-state projection owner.
+
+Possible scope:
+
+- state report validation and idempotency
+- debounce / TTL / bounded recent history
+- derived scheduling facts
+
+Out of scope:
+
+- no raw device facts in engine scheduling
+- no full durable audit for every high-frequency report by default
+
+### Future UE-F4: Task Item Stage Semantics
+
+Goal: define multi-stage task item execution without polluting public final
+results.
+
+Rules:
+
+- stage evidence may produce trace/progress/next-stage work
+- only an approved final-result path may commit visible final result rows
+- public `/results` remains stable-final rows only
+
+### Future UE-F5: Unified Runtime Envelope
+
+Goal: introduce a shared runtime carrier only after metadata and owner guards
+are stable.
+
+Out of scope for first implementation:
+
+- replacing all transport frames
+- replacing `TaskResultReport`
+- replacing task dispatch handoff
+- replacing trace event schema
+
+### Future UE-F6: Richer Priority Strategy
+
+Goal: evolve queue placement policy after measured need.
+
+Possible policy dimensions:
+
+- deadline
+- aging
+- weighted fairness
+- task quota
+- per-worker budget
+
+These are strategy additions, not event metadata ownership changes.
 
 ## Risks
 
 ### Risk 1: Envelope Becomes Lifecycle Owner
 
-If envelope metadata starts directly mutating task status, worker availability,
-or result finality, the roadmap failed.
+If metadata starts directly mutating task status, worker availability, or result
+finality, the roadmap failed.
 
 Mitigation:
 
 - keep owner paths explicit
-- use envelope fields only as policy/routing metadata
-- require trace/test proof for lifecycle-affecting changes
+- use metadata as description / policy input only
+- require guards before behavior-changing phases
 
-### Risk 2: Event Category Drives Kernel Behavior
+### Risk 2: EventCategory Drives Kernel Behavior
 
-If runtime code branches on `TASK_WORK` versus `WORKER_COMMAND` rather than
-narrow policy dimensions, future categories will create policy drift.
+If runtime code branches on category instead of owner-specific policy seams,
+future categories will create policy drift.
 
 Mitigation:
 
-- category is descriptive only
-- priority, convergence, response, target, auth, and idempotency drive behavior
+- category is descriptive
+- policy seams consume narrower fields
+- owner paths remain explicit
 
 ### Risk 3: Worker Events Pollute Task Result Convergence
 
 Worker command acks, state reports, task stage events, and task final results
-may eventually share an envelope shape. If owner routing is inferred from
-category alone or everything is sent through result ingest, result convergence
-becomes an operations event router.
+may eventually share metadata shape. If everything is sent through result
+ingest, result convergence becomes an operations event router.
 
 Mitigation:
 
 - `TaskResultReport` remains engine result input
-- `WorkerStateReport` belongs to worker-management projection
-- `WorkerCommandAck` belongs to worker-management command lifecycle
-- `TASK_ITEM_STAGE` may produce trace/progress/next-stage work, but must not
-  commit visible final result rows
-- only `TASK_ITEM_FINAL` may write public result rows and drive task
-  convergence
-- transport may normalize multiple event classes at ingress, but it must route
-  them to distinct owners
+- worker command ack belongs to future worker command lifecycle
+- worker state report belongs to future state projection owner
+- task item stage must not commit public final result rows
 
 ### Risk 4: Queue Priority Becomes Hardcoded
 
-Directly pushing some event categories to the front of the queue may work early,
-but it makes later fairness, aging, deadline, or quota policies difficult.
+Directly pushing categories or event codes to the front of a queue may work
+early, but it makes later fairness, aging, deadline, or quota policies
+difficult.
 
 Mitigation:
 
 - add a queue placement policy seam before behavior changes
-- keep front/back as initial policy output only
-- test that priority behavior does not bypass resource ownership
+- default first seam should preserve current behavior
+- never hard-code category-to-front/back behavior in runtime queue code
 
 ## Related Roadmaps
 
 - [WORKER_GROUP_CAPABILITY_ROADMAP.md](./WORKER_GROUP_CAPABILITY_ROADMAP.md)
 - [SCHEDULING_KERNEL_GUARDRAILS.md](./SCHEDULING_KERNEL_GUARDRAILS.md)
-- [WORKER_CONTEXT_RETIREMENT_PLAN.md](./WORKER_CONTEXT_RETIREMENT_PLAN.md)
 - [../doc/RESULT_BOUNDARY_BASELINE.md](../doc/RESULT_BOUNDARY_BASELINE.md)
+- [../transport/TRANSPORT_BOUNDARY_BASELINE.md](../transport/TRANSPORT_BOUNDARY_BASELINE.md)

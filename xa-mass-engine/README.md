@@ -527,10 +527,11 @@ Engine-local owner docs:
   explicitly avoids module split, service extraction, worker
   command/state-report implementation, and unified event-envelope runtime work.
 - [`UNIFIED_EVENT_ENVELOPE_ROADMAP.md`](./UNIFIED_EVENT_ENVELOPE_ROADMAP.md):
-  separate north-star roadmap for future event envelope metadata, priority,
-  response, convergence, target-scope, queue-placement, and task-stage
-  direction. It is not implemented baseline behavior and must not preempt the
-  WorkerGroup capability/candidate-index roadmap.
+  proposed event-metadata and owner-boundary roadmap. The core line is
+  inventory, `EventDefinition` / `CoreEventDescriptor` metadata, catalog/API
+  visibility, and owner guards. It explicitly does not implement unified event
+  runtime, queue-priority behavior, worker command/state-report lifecycle, or
+  task-stage semantics in the first wave.
 
 Global baselines:
 
