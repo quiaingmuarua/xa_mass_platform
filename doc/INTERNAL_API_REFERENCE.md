@@ -211,9 +211,10 @@ Notes:
 
 - joins SDK worker capability declarations with current transport/session
   snapshots by `workerId`
-- `supportedEventCodes` remains the flat runtime capability list used by
-  matching
-- `eventBindings` is the richer capability view derived from event definitions
+- `eventBindings` is the capability truth exposed to operators
+- `supportedEventCodes` remains a flat compatibility/read convenience derived
+  from worker capability declarations; do not treat it as a separate matching
+  owner
 - `adapterId` is the concrete runtime adapter identity
 - `transportHint` is the coarse transport family
 - `online` follows transport presence truth, not the worker model status field
@@ -578,7 +579,37 @@ Behavior:
   not buffer the full archive in memory before sending it
 - controller must not read projection rows for public result responses
 
-### 4.12 Internal Review Preview
+### 4.12 Task Item Stage Evidence
+
+- Method: `POST`
+- Path: `/api/v1/tasks/{taskId}/items/{messageId}/stages/{stageName}/evidence`
+- Status: `Implemented`
+
+Behavior:
+
+- reports bounded task item stage evidence through the SDK
+  `TaskStageEvidenceOperations` owner-backed surface
+- writes stage evidence only; it does not enter `/results` and does not create
+  stable-final task result rows
+- path variables own `taskId`, `messageId`, and `stageName`
+- response `data` is the SDK `TaskStageEvidenceSnapshot`
+
+### 4.13 Task Item Stage Projection Reads
+
+- Method: `GET`
+- Paths:
+  - `/api/v1/tasks/{taskId}/items/{messageId}/stages`
+  - `/api/v1/tasks/{taskId}/items/{messageId}/stages/{stageName}`
+- Status: `Implemented`
+
+Behavior:
+
+- reads bounded stage projections through the SDK `TaskStageEvidenceOperations`
+  surface
+- list response uses `{items,total}` in the shared `ApiResponse` envelope
+- projection reads are stage evidence read models, not task result rows
+
+### 4.14 Internal Review Preview
 
 - Method: `GET`
 - Path: `/internal/v1/review/tasks/{taskId}`
@@ -589,19 +620,19 @@ Behavior:
 - returns bounded seed/result preview rows for console or debug review only
 - this is not part of the public task API contract
 
-### 4.13 Internal Review Seed Export
+### 4.15 Internal Review Seed Export
 
 - Method: `GET`
 - Path: `/internal/v1/review/tasks/{taskId}/seed-export`
 - Status: `Implemented`
 
-### 4.14 Internal Review Result Export
+### 4.16 Internal Review Result Export
 
 - Method: `GET`
 - Path: `/internal/v1/review/tasks/{taskId}/result-export`
 - Status: `Implemented`
 
-### 4.15 Removed Task Route Shapes
+### 4.17 Removed Task Route Shapes
 
 The following historical task route shapes are no longer part of the active
 public API:
@@ -691,7 +722,56 @@ Notes:
 - joins worker state with current connection snapshots
 - `eventBindings` remains the richer capability read model
 
-### 5.7 Worker Context Runtime View
+### 5.7 Worker Capability And State Reports
+
+- Methods:
+  - `POST /api/v1/runtime/workers/{workerId}/capability-reports`
+  - `POST /api/v1/runtime/workers/{workerId}/state-reports`
+- Status: `Implemented`
+
+Behavior:
+
+- reports owner-backed worker capability and state through the SDK
+  `WorkerControlOperations` surface
+- these endpoints are runtime/report ingress, not worker CRUD or device/account
+  management
+- path `workerId` is the identity truth; a body `workerId`, when supplied, must
+  match the path
+- capability reports update the worker capability authority through the SDK
+  owner-backed path
+- state reports update the bounded worker state projection owner
+
+### 5.8 Worker State Projection Reads
+
+- Methods:
+  - `GET /api/v1/runtime/workers/{workerId}/state`
+  - `GET /api/v1/runtime/workers/states`
+- Status: `Implemented`
+
+Behavior:
+
+- reads bounded worker state projections through SDK `WorkerControlOperations`
+- list response uses `{items}` in the shared `ApiResponse` envelope
+- this is a read model and not scheduling truth
+
+### 5.9 Worker Command Control And Reads
+
+- Methods:
+  - `POST /api/v1/runtime/workers/{workerId}/commands`
+  - `POST /api/v1/runtime/workers/{workerId}/commands/{commandId}/ack`
+  - `GET /api/v1/runtime/workers/{workerId}/commands`
+  - `GET /api/v1/runtime/workers/commands/{commandId}`
+- Status: `Implemented`
+
+Behavior:
+
+- submits and acknowledges worker commands through SDK
+  `WorkerControlOperations`
+- command status and acknowledgements do not enter task result runtime
+- list response uses `{items,total}` in the shared `ApiResponse` envelope
+- path `workerId` is the target identity for command submit/list
+
+### 5.10 Worker Context Runtime View
 
 - Path: `/api/v1/runtime/worker-contexts`
 - Status: `Removed`
@@ -704,13 +784,13 @@ Notes:
 - scheduling proof should use worker attributes, event bindings, transport
   presence, runtime load/resource traces, and canonical assignment trace rows
 
-### 5.8 List Rules
+### 5.11 List Rules
 
 - Method: `GET`
 - Path: `/api/v1/runtime/rules`
 - Status: `Implemented`
 
-### 5.9 Rule Catalog
+### 5.12 Rule Catalog
 
 - Method: `GET`
 - Path: `/api/v1/runtime/rules/meta`

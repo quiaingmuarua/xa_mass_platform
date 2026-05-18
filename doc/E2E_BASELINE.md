@@ -1,6 +1,6 @@
 # E2E Baseline
 
-Last updated: 2026-05-14
+Last updated: 2026-05-18
 
 Status: current global E2E baseline.
 
@@ -101,8 +101,9 @@ Worker scheduling and compatibility:
 - external polling worker API can register a worker, mark it online, poll `TaskDispatchItem`, submit `TaskResultReport`, and return offline
 - the runnable Node polling worker example can join through `/worker-api/v1/**`, surface capability in `/api/v1/catalog/*`, complete task work, and exit cleanly
 - targeted worker debug runs through normal `create -> approve -> assign -> dispatch -> result -> terminal`, with fixed-worker selection carried by `Task.sharedConfig.targetWorkerId`
-- legacy WorkerContext compatibility tests, where retained, must stay clearly
-  named and must not be used as mainline scheduling proof
+- new E2E scheduling proof must not reintroduce WorkerContext compatibility
+  setup or context-id assertions; use worker attributes, event bindings,
+  transport presence, runtime load, and canonical trace evidence instead
 - worker/resource capacity is reusable after normal terminal completion
 - worker/resource capacity is reusable after manual terminate
 

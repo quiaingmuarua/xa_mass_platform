@@ -23,6 +23,7 @@ entry and place detailed current/future owner docs under this directory.
 
 ## Roadmaps
 
+- [PRODUCTION_SCHEDULING_KERNEL_IMPROVEMENTS.md](roadmap/PRODUCTION_SCHEDULING_KERNEL_IMPROVEMENTS.md)
 - [TASK_RUNTIME_PROFILE_DESIGN.md](roadmap/TASK_RUNTIME_PROFILE_DESIGN.md)
 
 ## Historical Archive

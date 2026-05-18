@@ -25,7 +25,7 @@ class SoakReportWriterTest {
                         Map.of("receivedItems", 1),
                         Map.of("initialWorkerCount", 1),
                         Map.of("available", true),
-                        new SoakTraceProof(true, "trace-path", Map.of("valid", true), Map.of("count", 1), 0),
+                        new SoakTraceProof(true, "trace-path", Map.of("valid", true), Map.of("count", 1), 0, List.of()),
                         List.of()
                 ).toMap()
         ));

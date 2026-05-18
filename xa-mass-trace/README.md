@@ -97,6 +97,7 @@ Current built-in scenario analyzers:
 - `group-capability-routing`
 - `cross-task-worker-fairness`
 - `worker-resource-cleanup-without-context`
+- `late-worker-backfill`
 
 Current proof helpers:
 

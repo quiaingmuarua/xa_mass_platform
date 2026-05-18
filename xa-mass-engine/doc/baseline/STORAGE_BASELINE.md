@@ -26,8 +26,8 @@ Do not collapse them back into one "storage owns everything" model.
 
 What the engine assumes today:
 
-- `Task` shell truth, worker definitions, worker-context definitions, and rule
-  definitions come from storage
+- `Task` shell truth, worker definitions, and rule definitions come from
+  storage
 - ready backlog, delay queues, lease ownership, retry visibility, expiry
   indexes, and backpressure come from runtime
 - result/expiry recovery should prefer runtime work-envelope metadata

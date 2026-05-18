@@ -24,6 +24,9 @@ assets.
 - acts as a reference host and validation shell; server HTTP/auth/project/tenant/user surfaces may evolve for host needs, but they must not redefine engine-kernel semantics or replace SDK contracts as the stable integration boundary
 - acts as the HTTP/security host adapter: request headers and routes resolve to `PrincipalContext` plus `AuthorizationRequest`, while authorization truth lives in `xa-mass-sdk-api` / `xa-mass-sdk`
 - worker, task, and rule resources are created through the embedded SDK runtime
+- owner-backed worker control and task-stage evidence HTTP routes adapt to SDK
+  operation interfaces; controllers must not call engine handlers or concrete
+  owner internals directly
 
 Controller/console ownership now includes:
 

@@ -32,6 +32,7 @@ class SoakRuntimeInvariantCheckerTest {
                 true,
                 false,
                 3,
+                false,
                 true,
                 0,
                 0,
@@ -49,6 +50,7 @@ class SoakRuntimeInvariantCheckerTest {
         assertTrue(hasIssue(report, "ACTIVE_LEASES_NOT_DRAINED"));
         assertTrue(hasIssue(report, "TRACE_VALIDATION_FAILED"));
         assertTrue(hasIssue(report, "TRACE_EVENTS_DROPPED"));
+        assertTrue(hasIssue(report, "TRACE_ANALYSIS_FAILED"));
         assertTrue(hasIssue(report, "LATE_WORKER_RECEIVED_NO_WORK"));
         assertTrue(hasIssue(report, "LATE_WORKER_SUBMITTED_NO_RESULTS"));
         assertTrue(hasIssue(report, "WORKER_FAILURES_OBSERVED"));
@@ -78,6 +80,7 @@ class SoakRuntimeInvariantCheckerTest {
                 true,
                 true,
                 0,
+                true,
                 true,
                 4,
                 4,
