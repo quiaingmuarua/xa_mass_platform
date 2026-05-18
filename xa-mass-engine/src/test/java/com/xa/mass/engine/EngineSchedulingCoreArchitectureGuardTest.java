@@ -853,7 +853,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
                                         repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery")
                                 ),
                                 Pattern.compile("\\bPriorityClass\\b|\\.getPriorityClass\\s*\\("))),
-                Map.entry("ResponseMode -> result finality",
+                Map.entry("response/convergence metadata -> result finality",
                         new GuardedSourceArea(
                                 List.of(
                                         repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/TaskManager.java"),
@@ -862,7 +862,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
                                         repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RuntimeTaskResultIngestChannel.java"),
                                         repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RedisTaskResultIngestChannel.java")
                                 ),
-                                Pattern.compile("\\bResponseMode\\b|\\.getResponseMode\\s*\\("))),
+                                Pattern.compile("\\b(?:ResponseMode|DeliveryAcknowledgementMode|EventConvergenceMode)\\b|\\.get(?:ResponseMode|DeliveryAcknowledgementMode|ConvergenceMode)\\s*\\("))),
                 Map.entry("TargetScope -> new control-plane runtime path",
                         new GuardedSourceArea(
                                 List.of(

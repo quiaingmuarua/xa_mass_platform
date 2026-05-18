@@ -36,16 +36,23 @@ Metadata and system-event ingress are not runtime truth by themselves.
 
 ## Current Metadata Boundary
 
-First-wave metadata now exists on `EventDefinition` and `CoreEventDescriptor`:
+Descriptor metadata now exists on `EventDefinition` and `CoreEventDescriptor`:
 
 - `PriorityClass`
-- `ResponseMode`
+- `ResponseMode` as a compatibility response summary
+- `DeliveryAcknowledgementMode`
+- `EventConvergenceMode`
 - `TargetScope`
 
 Those fields are descriptive metadata and policy inputs only:
 
 - `PriorityClass` does not directly alter assignment or transport queue order.
-- `ResponseMode` does not choose result writes or task finality.
+- `ResponseMode` does not choose result writes or task finality; new owner
+  designs should prefer the split acknowledgement and convergence fields.
+- `DeliveryAcknowledgementMode` does not choose transport acknowledgement,
+  command acknowledgement ingress, or command status mutation.
+- `EventConvergenceMode` does not choose task-result writes, stage mutation,
+  command status, or task finality.
 - `TargetScope` does not open worker-command, worker-state, operator, or
   task-engine runtime paths.
 - `TargetScope` labels routing domains only. Values such as `WORKER_MANAGER`

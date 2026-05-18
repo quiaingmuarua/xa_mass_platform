@@ -1,5 +1,7 @@
 package com.xa.mass.sdk.event;
 
+import com.xa.mass.base.event.DeliveryAcknowledgementMode;
+import com.xa.mass.base.event.EventConvergenceMode;
 import com.xa.mass.base.event.PriorityClass;
 import com.xa.mass.base.event.ResponseMode;
 import com.xa.mass.base.event.TargetScope;
@@ -36,6 +38,8 @@ public final class EventDefinition {
     private final List<String> projectCodes;
     private final PriorityClass priorityClass;
     private final ResponseMode responseMode;
+    private final DeliveryAcknowledgementMode deliveryAcknowledgementMode;
+    private final EventConvergenceMode convergenceMode;
     private final TargetScope targetScope;
     private final EventHandler handler;
 
@@ -50,6 +54,12 @@ public final class EventDefinition {
         this.projectCodes = immutableProjectCodes(builder.projectCodes);
         this.priorityClass = builder.priorityClass != null ? builder.priorityClass : PriorityClass.STANDARD;
         this.responseMode = builder.responseMode != null ? builder.responseMode : ResponseMode.FINAL_RESULT;
+        this.deliveryAcknowledgementMode = builder.deliveryAcknowledgementMode != null
+                ? builder.deliveryAcknowledgementMode
+                : DeliveryAcknowledgementMode.fromResponseMode(this.responseMode);
+        this.convergenceMode = builder.convergenceMode != null
+                ? builder.convergenceMode
+                : EventConvergenceMode.fromResponseMode(this.responseMode);
         this.targetScope = builder.targetScope != null ? builder.targetScope : TargetScope.WORKER;
         this.handler = builder.handler;
     }
@@ -100,6 +110,14 @@ public final class EventDefinition {
 
     public ResponseMode getResponseMode() {
         return responseMode;
+    }
+
+    public DeliveryAcknowledgementMode getDeliveryAcknowledgementMode() {
+        return deliveryAcknowledgementMode;
+    }
+
+    public EventConvergenceMode getConvergenceMode() {
+        return convergenceMode;
     }
 
     public TargetScope getTargetScope() {
@@ -169,6 +187,8 @@ public final class EventDefinition {
         private List<String> projectCodes = Collections.emptyList();
         private PriorityClass priorityClass = PriorityClass.STANDARD;
         private ResponseMode responseMode = ResponseMode.FINAL_RESULT;
+        private DeliveryAcknowledgementMode deliveryAcknowledgementMode;
+        private EventConvergenceMode convergenceMode;
         private TargetScope targetScope = TargetScope.WORKER;
         private EventHandler handler;
 
@@ -222,6 +242,16 @@ public final class EventDefinition {
 
         public Builder responseMode(ResponseMode responseMode) {
             this.responseMode = responseMode != null ? responseMode : ResponseMode.FINAL_RESULT;
+            return this;
+        }
+
+        public Builder deliveryAcknowledgementMode(DeliveryAcknowledgementMode deliveryAcknowledgementMode) {
+            this.deliveryAcknowledgementMode = deliveryAcknowledgementMode;
+            return this;
+        }
+
+        public Builder convergenceMode(EventConvergenceMode convergenceMode) {
+            this.convergenceMode = convergenceMode;
             return this;
         }
 

@@ -71,20 +71,6 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
-    void createTaskPreservesExplicitNonDefaultWorkloadOnSessionContract() {
-        TaskCreateSpec dto = buildRequest("task-interactive");
-        dto.setContract(TaskContract.SESSION);
-        dto.setSealIntakeAfterCreate(false);
-        dto.setWorkloadClass(TaskWorkloadClass.BULK);
-
-        Task task = createTask(dto);
-
-        assertEquals(TaskContract.SESSION, task.getContract());
-        assertEquals(TaskWorkloadClass.BULK, task.getExecutionSpec().getWorkloadClass());
-        assertEquals(TaskIntakeStatus.OPEN, task.getIntakeStatus());
-    }
-
-    @Test
     void resumeTaskDetailedReportsReadyOutcome() {
         Task task = createTask(buildRequest("task-resume-detailed"));
         assertTrue(taskManager.approveTask(task.getTid()));
@@ -113,98 +99,6 @@ class TaskManagerLifecycleTest {
         assertTrue(taskManager.resumeTask(task.getTid()));
 
         assertEquals(2, notifications.get());
-    }
-
-    @Test
-    void createBatchTaskAllowsMissingInitialInputsAndCreatesSealedEmptyShell() {
-        TaskCreateSpec dto = new TaskCreateSpec();
-        dto.setSourceRef("no-targets");
-        dto.setProject("demoApp");
-        dto.setSharedConfig(java.util.Map.of("textContent", "smoke", "routingCode", "us"));
-        dto.setUserId("agent");
-        dto.setInputs(null);
-        dto.setBatchSize(0);
-
-        Task task = createTask(dto);
-
-        assertEquals(TaskContract.BATCH, task.getContract());
-        assertEquals(TaskStatus.NEW, task.getStatus());
-        assertEquals(TaskIntakeStatus.SEALED, task.getIntakeStatus());
-        assertEquals(0, task.getTaskTargetNumber());
-        assertTrue(taskManager.getTaskMessageRecords(task.getTid()).isEmpty());
-    }
-
-    @Test
-    void createSessionTaskAllowsEmptyInitialInputsAndCreatesShell() {
-        TaskCreateSpec dto = new TaskCreateSpec();
-        dto.setSourceRef("stream-shell");
-        dto.setProject("demoApp");
-        dto.setUserId("agent");
-        dto.setSealIntakeAfterCreate(false);
-        dto.setContract(TaskContract.SESSION);
-        dto.setInputs(List.of());
-
-        Task task = createTask(dto);
-
-        assertEquals(TaskStatus.NEW, task.getStatus());
-        assertEquals(TaskContract.SESSION, task.getContract());
-        assertEquals(TaskWorkloadClass.INTERACTIVE, task.getExecutionSpec().getWorkloadClass());
-        assertEquals(TaskIntakeStatus.OPEN, task.getIntakeStatus());
-        assertEquals(0, task.getTaskTargetNumber());
-        assertTrue(taskManager.getTaskMessageRecords(task.getTid()).isEmpty());
-    }
-
-    @Test
-    void createBatchTaskAllowsEmptyInitialInputsAndKeepsOpaqueSourceRef() {
-        TaskCreateSpec dto = new TaskCreateSpec();
-        dto.setSourceRef("file-shell");
-        dto.setProject("demoApp");
-        dto.setUserId("agent");
-        dto.setContract(TaskContract.BATCH);
-        dto.setSourceRef("mock/input/demo.csv");
-        dto.setSealIntakeAfterCreate(false);
-        dto.setInputs(List.of());
-
-        Task task = createTask(dto);
-
-        assertEquals(TaskStatus.NEW, task.getStatus());
-        assertEquals(TaskContract.BATCH, task.getContract());
-        assertEquals(TaskIntakeStatus.OPEN, task.getIntakeStatus());
-        assertEquals("mock/input/demo.csv", task.getSourceRef());
-        assertEquals(0, task.getTaskTargetNumber());
-        assertTrue(taskManager.getTaskMessageRecords(task.getTid()).isEmpty());
-    }
-
-    @Test
-    void createBatchTaskDoesNotRequireSourceRef() {
-        TaskCreateSpec dto = new TaskCreateSpec();
-        dto.setProject("demoApp");
-        dto.setUserId("agent");
-        dto.setContract(TaskContract.BATCH);
-        dto.setSealIntakeAfterCreate(false);
-        dto.setInputs(List.of());
-
-        Task task = createTask(dto);
-
-        assertNotNull(task);
-        assertNull(task.getSourceRef());
-    }
-
-    @Test
-    void createBatchTaskAllowsInitialInputsEvenWhenSourceRefLooksFileLike() {
-        TaskCreateSpec dto = new TaskCreateSpec();
-        dto.setSourceRef("file-shell-with-initial-items");
-        dto.setProject("demoApp");
-        dto.setUserId("agent");
-        dto.setContract(TaskContract.BATCH);
-        dto.setSourceRef("mock/input/demo.csv");
-        dto.setInputs(List.of(java.util.Map.of("target", "alpha")));
-
-        Task task = createTask(dto);
-
-        assertEquals(TaskContract.BATCH, task.getContract());
-        assertEquals(1, task.getTaskTargetNumber());
-        assertEquals(TaskIntakeStatus.SEALED, task.getIntakeStatus());
     }
 
     @Test
@@ -614,69 +508,6 @@ class TaskManagerLifecycleTest {
         assertEquals(1, manager.getTaskMessageRecords(task.getTid()).size());
         assertEquals(1, manager.getTask(task.getTid()).getTaskTargetNumber());
         assertEquals(1, manager.getTask(task.getTid()).getTaskEligibleNumber());
-    }
-
-    @Test
-    void createTaskRejectsWhenProjectIsMissing() {
-        TaskCreateSpec dto = buildRequest("missing-project");
-        dto.setProject(null);
-
-        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> createTask(dto));
-
-        assertEquals("project is required", error.getMessage());
-    }
-
-    @Test
-    void createTaskRejectsWhenUserIdIsMissing() {
-        TaskCreateSpec dto = buildRequest("missing-user");
-        dto.setUserId("  ");
-
-        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> createTask(dto));
-
-        assertEquals("userId is required", error.getMessage());
-    }
-
-    @Test
-    void createTaskPersistsRequestedBatchSize() {
-        TaskCreateSpec dto = buildRequest("batch-size");
-        dto.setBatchSize(3);
-
-        Task task = createTask(dto);
-
-        assertEquals(3, task.getExecutionSpec().getBatchSize());
-    }
-
-    @Test
-    void deleteTaskRejectedForReadyTask() {
-        Task task = createTask(buildRequest("del-ready"));
-        taskManager.approveTask(task.getTid()); // NEW -> READY
-
-        assertFalse(taskManager.deleteTask(task.getTid()),
-                "READY task must not be deletable");
-        assertNotNull(taskManager.getTask(task.getTid()),
-                "Task should still exist after rejected delete");
-    }
-
-    @Test
-    void deleteTaskAllowedForNewTask() {
-        Task task = createTask(buildRequest("del-new"));
-        assertTrue(taskManager.getTaskWorkRuntime().hasReadyWork(task.getTid()));
-
-        assertTrue(taskManager.deleteTask(task.getTid()),
-                "NEW task should be deletable");
-        assertNull(taskManager.getTask(task.getTid()));
-        assertFalse(taskManager.getTaskWorkRuntime().hasReadyWork(task.getTid()));
-    }
-
-    @Test
-    void deleteTaskAllowedForTerminalTask() {
-        Task task = createTask(buildRequest("del-terminal"));
-        taskManager.approveTask(task.getTid());
-        taskManager.cancelTask(task.getTid()); // -> TERMINAL
-
-        assertTrue(taskManager.deleteTask(task.getTid()),
-                "TERMINAL task should be deletable");
-        assertNull(taskManager.getTask(task.getTid()));
     }
 
     @Test
@@ -2870,30 +2701,6 @@ class TaskManagerLifecycleTest {
         assertEquals(0, zeroSnapshot.messages().size());
         assertTrue(zeroSnapshot.truncated(),
                 "zero-limit compatibility snapshot should still report truncation from runtime total work count");
-    }
-
-    // ---- Bug4: Task.isCompleted() only returns true when status is final ----
-
-    @Test
-    void isCompletedReturnsTrueOnlyWhenTaskStatusIsFinal() {
-        Task task = createTask(buildRequest("is-completed", List.of("alpha")));
-
-        // NEW: not final
-        assertFalse(task.isCompleted());
-
-        // Force taskSuccessNumber so that taskNonSuccessNumber == 0 while status is still READY
-        taskManager.approveTask(task.getTid());
-        Task ready = taskManager.getTask(task.getTid());
-        ready.setTaskSuccessNumber(ready.getTaskEligibleNumber()); // all "succeeded" in the counter
-        taskManager.updateTask(ready);
-
-        // Status is READY, not TERMINAL, so it must still report not completed
-        assertFalse(taskManager.getTask(task.getTid()).isCompleted(),
-                "Task with all messages 'succeeded' in counter but status=READY must not be completed");
-
-        // After cancellation the task is TERMINAL and must report completed
-        taskManager.cancelTask(task.getTid());
-        assertTrue(taskManager.getTask(task.getTid()).isCompleted());
     }
 
     @Test

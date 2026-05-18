@@ -112,7 +112,9 @@ Current descriptor metadata already includes:
 
 - `TargetScope`
 - `PriorityClass`
-- `ResponseMode`
+- `ResponseMode` as a compatibility response summary
+- `DeliveryAcknowledgementMode`
+- `EventConvergenceMode`
 
 Current first-wave rule still holds:
 
@@ -120,10 +122,10 @@ Current first-wave rule still holds:
 - metadata does not directly mutate runtime truth
 - descriptor metadata does not bypass owner-specific services
 
-### Future Semantic Questions
+### Implemented Semantic Split
 
-The next event-language convergence should separate two questions that the
-current `ResponseMode` compresses together:
+`EWC-1` separates two questions that `ResponseMode` previously compressed
+together:
 
 ```text
 delivery acknowledgement semantics
@@ -138,17 +140,15 @@ Rationale:
 - a final task-work event may require both delivery acknowledgement and final
   convergence
 
-The final field names and values are intentionally not fixed yet:
+Current implemented fields:
 
-- delivery acknowledgement may need to distinguish transport accepted, handler
-  accepted, and business completed rather than collapse them into one `ACK`
-  state
-- convergence may ultimately live as descriptor default plus invocation/stage
-  contract, rather than descriptor-only metadata
+- `DeliveryAcknowledgementMode`
+- `EventConvergenceMode`
 
-`ResponseMode` remains the current implemented metadata field. A future phase
-may keep it as a compatibility summary or replace it with a clearer split, but
-owner behavior must not be inferred from `ResponseMode` alone.
+`ResponseMode` remains catalog-visible as a compatibility response summary.
+Owner behavior must not be inferred from `ResponseMode` alone. Future owner
+phases may still add invocation- or stage-level contracts when descriptor
+metadata is not enough to express concrete lifecycle semantics.
 
 ### Policy Boundary
 
@@ -193,6 +193,8 @@ that a standalone worker-manager service already exists or is required.
 
 ### EWC-1: Event Semantic Model Convergence
 
+Status: completed baseline.
+
 Goal: freeze the event-language dimensions before adding more event families.
 
 Scope:
@@ -218,9 +220,9 @@ Out of scope:
 Acceptance:
 
 - one documented event-language model exists
-- acknowledgement and convergence are no longer conflated in future design
-- immature delivery/convergence choices remain explicit design questions rather
-  than accidental implementation commitments
+- acknowledgement and convergence are no longer conflated in the descriptor
+  model
+- `ResponseMode` remains a compatibility summary, not owner behavior input
 - no existing runtime owner behavior changes
 
 ### EWC-2: Kernel-Targeted Event Ingress

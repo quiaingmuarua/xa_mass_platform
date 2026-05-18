@@ -106,9 +106,13 @@ class ProjectApiControllerTest {
                 .andExpect(jsonPath("$.data[?(@.code=='chatbot.reply')]").exists())
                 .andExpect(jsonPath("$.data[?(@.code=='crawler.fetch-page' && @.priorityClass=='BULK')]").exists())
                 .andExpect(jsonPath("$.data[?(@.code=='crawler.fetch-page' && @.responseMode=='FINAL_RESULT')]").exists())
+                .andExpect(jsonPath("$.data[?(@.code=='crawler.fetch-page' && @.deliveryAcknowledgementMode=='NONE')]").exists())
+                .andExpect(jsonPath("$.data[?(@.code=='crawler.fetch-page' && @.convergenceMode=='FINAL_RESULT')]").exists())
                 .andExpect(jsonPath("$.data[?(@.code=='crawler.fetch-page' && @.targetScope=='WORKER')]").exists())
                 .andExpect(jsonPath("$.data[?(@.code=='chatbot.reply' && @.priorityClass=='INTERACTIVE')]").exists())
                 .andExpect(jsonPath("$.data[?(@.code=='chatbot.reply' && @.responseMode=='FINAL_RESULT')]").exists())
+                .andExpect(jsonPath("$.data[?(@.code=='chatbot.reply' && @.deliveryAcknowledgementMode=='NONE')]").exists())
+                .andExpect(jsonPath("$.data[?(@.code=='chatbot.reply' && @.convergenceMode=='FINAL_RESULT')]").exists())
                 .andExpect(jsonPath("$.data[?(@.code=='chatbot.reply' && @.targetScope=='WORKER')]").exists());
     }
 
