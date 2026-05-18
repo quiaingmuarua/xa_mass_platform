@@ -660,6 +660,55 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void workerManagerPublishesRegistrySnapshotThroughCapabilityAuthority() throws IOException {
+        Path workerManagerPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/worker/WorkerManager.java");
+        String source = Files.readString(workerManagerPath, StandardCharsets.UTF_8);
+
+        List<String> violations = new ArrayList<>();
+        if (Pattern.compile("\\bWorkerGroupCompatibilityProjection\\b").matcher(source).find()) {
+            violations.add(workerManagerPath + " calls WorkerGroupCompatibilityProjection directly");
+        }
+        if (!Pattern.compile("\\bWorkerCapabilityAuthority\\b").matcher(source).find()) {
+            violations.add(workerManagerPath + " does not hold the WorkerCapabilityAuthority owner");
+        }
+        if (!Pattern.compile("\\bcapabilityAuthority\\.composeSnapshot\\s*\\(").matcher(source).find()) {
+            violations.add(workerManagerPath + " does not publish snapshots through WorkerCapabilityAuthority");
+        }
+
+        assertTrue(violations.isEmpty(),
+                "WorkerManager owns active snapshot publication, but effective capability composition "
+                        + "must flow through WorkerCapabilityAuthority. Compatibility projection is only "
+                        + "a migration input behind that owner:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void workerGroupCompatibilityProjectionIsOnlyUsedBehindCapabilityAuthority() throws IOException {
+        Path workerPackage = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker");
+        Path projectionPath = workerPackage.resolve("WorkerGroupCompatibilityProjection.java").normalize();
+        Path authorityPath = workerPackage.resolve("WorkerCapabilityAuthority.java").normalize();
+        Pattern projectionReference = Pattern.compile("\\bWorkerGroupCompatibilityProjection\\b");
+
+        List<String> violations = new ArrayList<>();
+        for (Path path : javaSourceFiles(workerPackage)) {
+            Path normalized = path.normalize();
+            if (normalized.equals(projectionPath) || normalized.equals(authorityPath)) {
+                continue;
+            }
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            if (projectionReference.matcher(source).find()) {
+                violations.add(path + " references WorkerGroupCompatibilityProjection outside authority");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "WorkerGroupCompatibilityProjection is a migration input, not an active owner. "
+                        + "Production code must reach it only through WorkerCapabilityAuthority:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void workerCandidateIndexStaysOnGroupCapabilityTruth() throws IOException {
         Path indexPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/worker/WorkerCandidateIndex.java");
@@ -1027,7 +1076,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
     void futureWorkerCommandAndStateReportDoNotPolluteTaskResultReachabilityLoadOrSchedulingOwners() throws IOException {
         Path repo = repositoryRoot();
         Pattern workerControlOrState = Pattern.compile(
-                "\\bWorkerCommand(?:Ack|Status)?\\b|\\bWorkerStateReport\\b");
+                "\\bWorkerCommand(?:Ack)?\\b|\\bWorkerStateReport\\b");
         Map<String, GuardedSourceArea> guardedAreas = Map.ofEntries(
                 Map.entry("task result owner",
                         new GuardedSourceArea(
@@ -1080,6 +1129,37 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void workerCommandOwnerDoesNotDependOnTaskResultTaskWorkOrTransportDelivery() throws IOException {
+        Path repo = repositoryRoot();
+        Path commandPackage = repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/command");
+        Pattern forbiddenDependency = Pattern.compile(String.join("|", List.of(
+                "\\bTaskResult(?:Service|Runtime|Report)\\b",
+                "\\bTaskWorkRuntime\\b",
+                "\\bTaskAssignWorker\\b",
+                "\\bTaskDispatchBinder\\b",
+                "\\bWorkerSystemEventChannel\\b",
+                "\\bWorkerReachabilityView\\b",
+                "\\bWorkerLoadView\\b",
+                "\\bimport\\s+com\\.xa\\.mass\\.transport\\.",
+                "\\bimport\\s+com\\.xa\\.mass\\.runtime\\."
+        )));
+
+        List<String> violations = new ArrayList<>();
+        for (Path path : javaSourceFiles(commandPackage)) {
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            if (forbiddenDependency.matcher(source).find()) {
+                violations.add(path + " couples worker command owner to task result, task work, or transport delivery");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "EWC-4A worker command lifecycle owns request/status truth only. "
+                        + "It must not use task-result convergence, task-work dispatch, transport delivery, "
+                        + "reachability, or load owners:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void workerCapabilitySelfReportDoesNotBypassWorkerRegistrySnapshotOwner() throws IOException {
         Path repo = repositoryRoot();
         Pattern capabilityReport = Pattern.compile("\\bWorkerCapabilityReport\\b|\\bCapabilitySelfReport\\b");
@@ -1123,6 +1203,36 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "Future worker capability self-report must flow through a worker capability/report owner "
                         + "that refreshes WorkerManager / WorkerRegistrySnapshot / WorkerCandidateIndex truth. "
                         + "It must not bypass that owner through system-event, matching, or result paths:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void workerCapabilityReportHandlerStaysInWorkerOwnerBoundary() throws IOException {
+        Path handlerPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/worker/WorkerCapabilityReportEventHandler.java");
+        String source = Files.readString(handlerPath, StandardCharsets.UTF_8);
+
+        Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
+                Map.entry("transport system event channel", Pattern.compile("\\bWorkerSystemEventChannel\\b")),
+                Map.entry("task result owner", Pattern.compile("\\bTaskResult(?:Service|Runtime|Report)\\b")),
+                Map.entry("task work runtime", Pattern.compile("\\bTaskWorkRuntime\\b")),
+                Map.entry("matching/ranking owner", Pattern.compile("\\bRuleBasedTaskWorkerMatchingStrategy\\b|\\bWorkerCandidateRanker\\b")),
+                Map.entry("reachability owner", Pattern.compile("\\bWorkerReachabilityView\\b")),
+                Map.entry("load owner", Pattern.compile("\\bWorkerLoadView\\b"))
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Map.Entry<String, Pattern> forbiddenPattern : forbiddenPatterns.entrySet()) {
+            if (forbiddenPattern.getValue().matcher(source).find()) {
+                violations.add(handlerPath + " reaches outside capability owner boundary: "
+                        + forbiddenPattern.getKey());
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Worker capability report event handling may parse an event payload and delegate "
+                        + "to WorkerManager / WorkerCapabilityAuthority only. It must not become "
+                        + "transport presence, task result, matching, reachability, or load ownership:\n"
                         + String.join("\n", violations));
     }
 

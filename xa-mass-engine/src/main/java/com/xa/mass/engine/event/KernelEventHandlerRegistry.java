@@ -38,6 +38,20 @@ public final class KernelEventHandlerRegistry {
         eventRuntime.registerOrReplace(normalized, Objects.requireNonNull(handler, "handler"));
     }
 
+    public void registerWorkerManagerEvent(String event, MassEventHandler handler) {
+        register(CoreEventDescriptor.builder()
+                .event(event)
+                .targetScope(TargetScope.WORKER_MANAGER)
+                .build(), handler);
+    }
+
+    public void registerOrReplaceWorkerManagerEvent(String event, MassEventHandler handler) {
+        registerOrReplace(CoreEventDescriptor.builder()
+                .event(event)
+                .targetScope(TargetScope.WORKER_MANAGER)
+                .build(), handler);
+    }
+
     private static CoreEventDescriptor validateKernelTarget(CoreEventDescriptor descriptor) {
         CoreEventDescriptor normalized = Objects.requireNonNull(descriptor, "descriptor");
         TargetScope targetScope = normalized.getTargetScope();

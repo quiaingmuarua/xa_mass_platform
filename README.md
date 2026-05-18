@@ -6,7 +6,9 @@ Trust code and verified runtime behavior over historical documentation.
 
 ## Start Here
 
+- [architecture/README.md](./architecture/README.md) - human-facing architecture and onboarding guide
 - [README.zh-CN.md](./README.zh-CN.md) - Chinese project introduction for people
+- [architecture/README.zh-CN.md](./architecture/README.zh-CN.md) - Chinese architecture guide
 - [AGENTS.md](./AGENTS.md)
 - [doc/AGENT_BASELINE.md](./doc/AGENT_BASELINE.md)
 - [doc/README.md](./doc/README.md)
@@ -116,5 +118,6 @@ Module truth comes from the root `pom.xml`. Do not treat removed historical modu
 - transport ownership and verification: [transport/AGENTS.md](./transport/AGENTS.md)
 - SDK contract ownership: [xa-mass-sdk-api/README.md](./xa-mass-sdk-api/README.md)
 - SDK embedding/runtime composition: [xa-mass-sdk/README.md](./xa-mass-sdk/README.md)
+- human architecture guide: [architecture/README.md](./architecture/README.md)
 - external worker onboarding: [doc/EXTERNAL_WORKER_QUICKSTART.md](./doc/EXTERNAL_WORKER_QUICKSTART.md)
 - samples: [samples/](./samples/)

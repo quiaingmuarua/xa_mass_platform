@@ -32,6 +32,7 @@ public class WorkerManager implements WorkerLookupStore {
     private final WorkerStorage workerStorage;
     private final WorkerReachabilityView reachabilityView;
     private final WorkerLoadView workerLoadView;
+    private final WorkerCapabilityAuthority capabilityAuthority;
     private final Object workerRegistryLock = new Object();
     private final LinkedHashMap<String, Worker> workerRegistryRows = new LinkedHashMap<>();
     private volatile WorkerRegistrySnapshot workerRegistrySnapshot;
@@ -47,13 +48,21 @@ public class WorkerManager implements WorkerLookupStore {
     public WorkerManager(WorkerStorage workerStorage,
                          WorkerReachabilityView reachabilityView,
                          WorkerLoadView workerLoadView) {
+        this(workerStorage, reachabilityView, workerLoadView, new WorkerCapabilityAuthority());
+    }
+
+    WorkerManager(WorkerStorage workerStorage,
+                  WorkerReachabilityView reachabilityView,
+                  WorkerLoadView workerLoadView,
+                  WorkerCapabilityAuthority capabilityAuthority) {
         this.workerStorage = workerStorage;
         this.reachabilityView = reachabilityView != null ? reachabilityView : WorkerReachabilityView.permissive();
         this.workerLoadView = workerLoadView != null ? workerLoadView : new InMemoryWorkerLoadView();
+        this.capabilityAuthority = capabilityAuthority != null ? capabilityAuthority : new WorkerCapabilityAuthority();
         for (Worker worker : workerStorage.getAllWorkers()) {
             putRegistryRow(worker);
         }
-        this.workerRegistrySnapshot = WorkerGroupCompatibilityProjection.snapshotFromWorkers(workerRegistryRows.values());
+        this.workerRegistrySnapshot = composeWorkerRegistrySnapshot();
     }
 
     public void addWorker(Worker worker) {
@@ -148,6 +157,16 @@ public class WorkerManager implements WorkerLookupStore {
                 putRegistryRow(worker);
             }
             publishWorkerRegistrySnapshot();
+        }
+    }
+
+    public WorkerCapabilityReportResult applyWorkerCapabilityReport(WorkerCapabilityReport report) {
+        synchronized (workerRegistryLock) {
+            WorkerCapabilityReportResult result = capabilityAuthority.applyReport(report, workerRegistryRows.values());
+            if (result.snapshotChanged() && result.snapshot() != null) {
+                this.workerRegistrySnapshot = result.snapshot();
+            }
+            return result;
         }
     }
 
@@ -254,7 +273,11 @@ public class WorkerManager implements WorkerLookupStore {
     }
 
     private void publishWorkerRegistrySnapshot() {
-        this.workerRegistrySnapshot = WorkerGroupCompatibilityProjection.snapshotFromWorkers(workerRegistryRows.values());
+        this.workerRegistrySnapshot = composeWorkerRegistrySnapshot();
+    }
+
+    private WorkerRegistrySnapshot composeWorkerRegistrySnapshot() {
+        return capabilityAuthority.composeSnapshot(workerRegistryRows.values());
     }
 
     private static String normalizeNullable(String value) {
