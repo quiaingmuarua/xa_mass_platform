@@ -5,14 +5,11 @@ import com.xa.mass.command.event.CoreEventRequest;
 import com.xa.mass.command.event.CoreEventResponse;
 import com.xa.mass.command.event.InMemoryMassEventRuntime;
 import com.xa.mass.engine.event.KernelEventHandlerRegistry;
+import com.xa.mass.engine.testutil.RecordingEventSink;
 import com.xa.mass.engine.util.TraceEventLogger;
-import com.xa.mass.trace.sink.ExecutionEvent;
-import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.trace.sink.ExecutionEventType;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -24,7 +21,7 @@ public class WorkerCommandRequestEventHandlerTest {
     @Test
     void commandRequestEventRecordsLifecycleTruthAndTrace() {
         WorkerCommandLifecycleOwner owner = new WorkerCommandLifecycleOwner();
-        RecordingSink sink = new RecordingSink();
+        RecordingEventSink sink = new RecordingEventSink();
         InMemoryMassEventRuntime runtime = new InMemoryMassEventRuntime();
         WorkerCommandRequestEventHandler handler = new WorkerCommandRequestEventHandler(
                 owner,
@@ -38,7 +35,7 @@ public class WorkerCommandRequestEventHandlerTest {
         assertTrue(response.isSuccess());
         assertEquals(WorkerCommandStatus.REQUESTED, owner.command("cmd-1").orElseThrow().status());
         assertEquals("worker-a", owner.command("cmd-1").orElseThrow().workerId());
-        assertTrue(sink.events.stream().anyMatch(event ->
+        assertTrue(sink.events().stream().anyMatch(event ->
                 event.getEventType() == ExecutionEventType.WORKER_COMMAND_STATUS_TRANSITION
                         && "cmd-1".equals(event.getAttrs().get("commandId"))
                         && "REQUESTED".equals(event.getAttrs().get("commandStatus"))
@@ -99,14 +96,5 @@ public class WorkerCommandRequestEventHandlerTest {
                         "payload", Map.of("mode", "safe")
                 ))
                 .build();
-    }
-
-    private static final class RecordingSink implements ExecutionEventSink {
-        private final List<ExecutionEvent> events = new ArrayList<>();
-
-        @Override
-        public void emit(ExecutionEvent event) {
-            events.add(event);
-        }
     }
 }

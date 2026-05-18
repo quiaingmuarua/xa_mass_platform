@@ -5,14 +5,11 @@ import com.xa.mass.command.event.CoreEventRequest;
 import com.xa.mass.command.event.CoreEventResponse;
 import com.xa.mass.command.event.InMemoryMassEventRuntime;
 import com.xa.mass.engine.event.KernelEventHandlerRegistry;
+import com.xa.mass.engine.testutil.RecordingEventSink;
 import com.xa.mass.engine.util.TraceEventLogger;
-import com.xa.mass.trace.sink.ExecutionEvent;
-import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.trace.sink.ExecutionEventType;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -24,7 +21,7 @@ public class WorkerStateReportEventHandlerTest {
     @Test
     void stateReportEventUpdatesProjectionAndEmitsTrace() {
         WorkerStateProjectionOwner owner = new WorkerStateProjectionOwner();
-        RecordingSink sink = new RecordingSink();
+        RecordingEventSink sink = new RecordingEventSink();
         InMemoryMassEventRuntime runtime = new InMemoryMassEventRuntime();
         WorkerStateReportEventHandler handler = new WorkerStateReportEventHandler(
                 owner,
@@ -37,7 +34,7 @@ public class WorkerStateReportEventHandlerTest {
 
         assertTrue(response.isSuccess());
         assertEquals("READY", owner.projection("worker-1").orElseThrow().state());
-        assertTrue(sink.events.stream()
+        assertTrue(sink.events().stream()
                 .anyMatch(event -> event.getEventType() == ExecutionEventType.WORKER_STATE_REPORT_APPLIED
                         && event.getIdentity().workerId().equals("worker-1")
                         && "ACCEPTED".equals(event.getAttrs().get("result"))
@@ -95,14 +92,5 @@ public class WorkerStateReportEventHandlerTest {
                         "attributes", Map.of("temperature", "normal")
                 ))
                 .build();
-    }
-
-    private static final class RecordingSink implements ExecutionEventSink {
-        private final List<ExecutionEvent> events = new ArrayList<>();
-
-        @Override
-        public void emit(ExecutionEvent event) {
-            events.add(event);
-        }
     }
 }

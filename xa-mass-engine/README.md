@@ -552,11 +552,11 @@ Engine-local owner docs:
   directions. It uses the `AdapterNode -> WorkerGroup -> Worker` model and
   explicitly avoids module split, service extraction, worker
   command/state-report implementation, and unified event-envelope runtime work.
-- [`doc/roadmap/EVENT_AND_WORKER_CONTROL_ROADMAP.md`](./doc/roadmap/EVENT_AND_WORKER_CONTROL_ROADMAP.md):
-  active future path after event-metadata baseline closure: one event language
-  without assuming one event runtime, target-specific handlers, capability
-  authority-model convergence before self-report adoption, then additional
-  worker-control and stage owner lines.
+- [`../doc/archive/xa-mass-engine/EVENT_AND_WORKER_CONTROL_ROADMAP.md`](../doc/archive/xa-mass-engine/EVENT_AND_WORKER_CONTROL_ROADMAP.md):
+  completed owner-baseline roadmap for one event language, target-specific
+  handlers, capability self-report, worker command owner, worker state
+  projection, and task stage evidence. Current truth is
+  `doc/baseline/EVENT_OWNER_BOUNDARY.md`.
 
 Global baselines:
 
