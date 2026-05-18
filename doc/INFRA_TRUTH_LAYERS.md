@@ -71,7 +71,7 @@ design and must not be implied by result ingress or projection residue.
 | --- | --- | --- |
 | `platform_infra/mass-storage-jdbc` | persists task/worker/rule/principal truth | correct control-plane role |
 | JDBC-local message/attempt projections | process-local compatibility residue | not a storage expansion license |
-| JDBC-local worker-context/lock residue | process-local compatibility/runtime residue | not durable worker-runtime truth; WorkerContext residue must not become scheduling truth |
+| JDBC-local worker lock residue | process-local runtime residue | not durable worker-runtime truth; worker locks/capacity must not become control-plane storage truth |
 | `platform_infra/mass-storage-memory` | in-memory control-plane storage | current embedded/test implementation |
 | memory/JDBC detail residue internals | neutral projection-record storage with compatibility materialization at the boundary | do not let legacy message models become the internal owner shape again |
 | `mass-runtime-*` modules | queue/lease/counter semantics | canonical runtime-state home |

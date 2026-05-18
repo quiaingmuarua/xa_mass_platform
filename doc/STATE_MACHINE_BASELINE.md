@@ -1,6 +1,6 @@
 # State Machine Baseline
 
-Last updated: 2026-05-16 (runtime owns hot-path ready/claim/lease/expiry state; WorkerContext is legacy compatibility residue, not engine scheduling truth)
+Last updated: 2026-05-18 (runtime owns hot-path ready/claim/lease/expiry state; WorkerContext is retired historical vocabulary, not engine scheduling truth)
 
 Status: current global lifecycle baseline.
 

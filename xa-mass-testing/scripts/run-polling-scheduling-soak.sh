@@ -7,7 +7,7 @@ CLASSPATH_FILE="${REPO_ROOT}/xa-mass-testing/target/polling-scheduling-soak.clas
 
 cd "${REPO_ROOT}"
 
-./mvnw -q -pl xa-mass-testing -am -DskipTests compile
+./mvnw -q -pl xa-mass-testing -am -DskipTests install
 ./mvnw -q -pl xa-mass-testing \
   dependency:build-classpath \
   -Dmdep.outputFile="${CLASSPATH_FILE}" \

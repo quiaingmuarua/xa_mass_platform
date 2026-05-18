@@ -367,8 +367,6 @@ The canonical model must be able to represent these flows:
 - attempt projection: `CREATED -> LEASED -> DISPATCHED -> ... -> final`
 - retry reset without falsely claiming logical finality
 - worker lock, capacity reservation, and resource release transitions
-- legacy worker-context reservation / occupation / release transitions only
-  while compatibility traces still exist
 - worker lock acquire / release
 - worker match accept / reject
 - dispatch request / skip

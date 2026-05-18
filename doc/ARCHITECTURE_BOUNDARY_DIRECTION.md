@@ -1,6 +1,6 @@
 # Platform Architecture Boundary Direction
 
-Last updated: 2026-05-15
+Last updated: 2026-05-18
 
 Status: target project boundary direction, not a current implementation
 baseline.
@@ -232,13 +232,14 @@ is already cleanly isolated today.
 The main known in-progress convergence areas are:
 
 - Worker Management Plane is still partly represented through engine-facing
-  worker and worker-context shapes rather than a fully independent management
-  subsystem
+  worker capability compatibility fields rather than a fully independent
+  management subsystem
 - Result Read / Archive Plane is still being separated from result convergence
   and compatibility residue history
 - Operator Plane and Host / API Plane still share some server-hosted surfaces
-- some transitional WorkerContext/resource behavior still lives inside kernel
-  scheduling mechanisms while owner seams are being tightened
+- worker resource/capacity behavior is kernel-owned today; future
+  worker-management integration must feed scheduling views rather than
+  reintroducing context/resource ownership inside the kernel
 
 These are implementation convergence facts, not reasons to blur the target
 boundary.

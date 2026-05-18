@@ -549,28 +549,16 @@ Engine-local owner docs:
   current engine-facing storage/runtime boundary
 - [`doc/roadmap/TASK_RUNTIME_PROFILE_DESIGN.md`](./doc/roadmap/TASK_RUNTIME_PROFILE_DESIGN.md):
   design/refactor note for the remaining workload-profile evolution only
-- [`../doc/archive/xa-mass-engine/SCHEDULING_UPGRADE_ROADMAP.md`](../doc/archive/xa-mass-engine/SCHEDULING_UPGRADE_ROADMAP.md):
-  historical long-range scheduling upgrade roadmap plus remaining future
-  directions. Completed progress notes describe current baseline; future
-  sections remain planning material.
+- [`doc/roadmap/PRODUCTION_SCHEDULING_KERNEL_IMPROVEMENTS.md`](./doc/roadmap/PRODUCTION_SCHEDULING_KERNEL_IMPROVEMENTS.md):
+  future improvement notes for production-grade scheduling gaps. This is not
+  current behavior or an implementation plan.
 - [`doc/baseline/EVENT_OWNER_BOUNDARY.md`](./doc/baseline/EVENT_OWNER_BOUNDARY.md):
   current owner map for descriptor metadata, task-result input, worker
   presence ingress, and future command/state/capability owner slots
-- [`../doc/archive/xa-mass-engine/WORKER_CONTEXT_RETIREMENT_PLAN.md`](../doc/archive/xa-mass-engine/WORKER_CONTEXT_RETIREMENT_PLAN.md):
-  completed WorkerContext retirement baseline plus historical phased plan.
-  Current scheduling kernel code must not reintroduce WorkerContext identity,
-  storage, or rule fields.
-- [`../doc/archive/xa-mass-engine/WORKER_GROUP_CAPABILITY_ROADMAP.md`](../doc/archive/xa-mass-engine/WORKER_GROUP_CAPABILITY_ROADMAP.md):
-  completed WG-0 through WG-5 baseline for WorkerGroup capability ownership and
-  indexed scheduling candidate lookup, plus future WorkerGroup extension
-  directions. It uses the `AdapterNode -> WorkerGroup -> Worker` model and
-  explicitly avoids module split, service extraction, worker
-  command/state-report implementation, and unified event-envelope runtime work.
-- [`../doc/archive/xa-mass-engine/EVENT_AND_WORKER_CONTROL_ROADMAP.md`](../doc/archive/xa-mass-engine/EVENT_AND_WORKER_CONTROL_ROADMAP.md):
-  completed owner-baseline roadmap for one event language, target-specific
-  handlers, capability self-report, worker command owner, worker state
-  projection, and task stage evidence. Current truth is
-  `doc/baseline/EVENT_OWNER_BOUNDARY.md`.
+- [`doc/README.md`](./doc/README.md):
+  engine-local documentation index, including links to historical archive
+  documents. Archived roadmaps are changelog-style context only; do not use
+  them as proof of current code behavior.
 
 Global baselines:
 

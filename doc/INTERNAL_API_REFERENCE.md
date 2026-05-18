@@ -211,9 +211,10 @@ Notes:
 
 - joins SDK worker capability declarations with current transport/session
   snapshots by `workerId`
-- `supportedEventCodes` remains the flat runtime capability list used by
-  matching
-- `eventBindings` is the richer capability view derived from event definitions
+- `eventBindings` is the capability truth exposed to operators
+- `supportedEventCodes` remains a flat compatibility/read convenience derived
+  from worker capability declarations; do not treat it as a separate matching
+  owner
 - `adapterId` is the concrete runtime adapter identity
 - `transportHint` is the coarse transport family
 - `online` follows transport presence truth, not the worker model status field

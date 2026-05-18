@@ -1,6 +1,6 @@
 # XA Mass Platform Verified Runbook
 
-Last updated: 2026-05-12
+Last updated: 2026-05-18
 
 Status: current verified runtime runbook.
 
@@ -181,9 +181,9 @@ Worker scheduling truth:
 - worker capability truth comes from worker registration and event bindings.
   Routing uses worker scheduling attributes/tags and runtime reachability/load
   facts.
-- `WorkerContext` is legacy compatibility residue where still present. It is
-  not engine scheduling truth, and new verification should not depend on
-  context-specific routing.
+- `WorkerContext` model/storage/API surfaces are retired. It is not engine
+  scheduling truth, and new verification should not depend on context-specific
+  routing or context-id evidence.
 
 Open-ended and targeted worker debug:
 
@@ -293,13 +293,19 @@ Artifacts:
 
 ## 6. Focused Regression Gate
 
-Focused command used for current high-signal scheduling-side runtime coverage:
+Prefer suite-owned focused gates over hand-maintained class lists. The current
+high-signal scheduling-side runtime coverage is:
 
 ```bash
-mvn -pl xa-mass-server -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,TaskApiTargetedWorkerDebugIntegrationTest,ControlConsoleRoutingIntegrationTest,MockRuntimeDataLoaderTest -Dsurefire.failIfNoSpecifiedTests=false test
+./mvnw -pl xa-mass-engine -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=EngineSchedulingCoreSuite test
+./mvnw -pl xa-mass-server -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=ServerSchedulingE2eSuite test
 ```
 
 Coverage: worker scheduling/routing, delayed availability, targeted worker
-debug, control-console routing, matching-rule support checks, and retained
-legacy WorkerContext compatibility tests around the representative scheduling
-path.
+debug, control-console routing, matching-rule support checks, allocation,
+resource admission, refill, and representative Boot-shell wiring.
+
+When a change touches matching rules, trace evidence, or storage/evaluator
+plumbing, add the owning focused tests named by
+[TESTING_INDEX.md](./TESTING_INDEX.md) or the module README. Do not restore
+retired WorkerContext-focused tests as scheduling proof.

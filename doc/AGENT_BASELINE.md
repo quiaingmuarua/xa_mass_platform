@@ -64,10 +64,9 @@ Current owner vocabulary:
   intentionally not part of the active public/kernel vocabulary
 - `TaskMessageProjection` / `TaskMessageAttemptProjection` are the current
   storage-edge compatibility residue shapes
-- `WorkerContext` is legacy compatibility residue where it still appears in
-  SDK/server/storage/trace surfaces. It is not an engine scheduling truth and
-  must not be reintroduced as the worker capability or resource-lifecycle
-  owner.
+- `WorkerContext` is retired historical compatibility vocabulary, not active
+  SDK/server/storage/trace truth. It is not an engine scheduling truth and must
+  not be reintroduced as the worker capability or resource-lifecycle owner.
 
 Stable kernel slots:
 
