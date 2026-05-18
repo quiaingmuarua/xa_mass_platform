@@ -11,9 +11,9 @@ import java.util.stream.Collectors;
 /**
  * Default worker selector.
  *
- * <p>Selection priority stays worker-centric. It must not inject routing-country
- * assumptions from {@code worker.workerGroupId}; routing country belongs to rule/workerContext
- * matching instead.
+ * <p>Selection priority stays worker-centric. It must not inject routing
+ * assumptions from {@code worker.workerGroupId}; routing belongs to worker
+ * scheduling attributes and matching rules.
  *
  * <p>This selector reasons only over fields carried on {@link Worker}. Runtime
  * lock ownership is enforced by the active matching strategy rather than by

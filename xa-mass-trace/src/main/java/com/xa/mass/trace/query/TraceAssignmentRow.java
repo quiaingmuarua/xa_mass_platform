@@ -48,7 +48,6 @@ public record TraceAssignmentRow(
         Integer dispatchSlotCount,
         Integer unassignedMessageCount,
         Integer uniqueWorkerCount,
-        Integer uniqueWorkerContextCount,
         Integer perWorkerBatchLimit,
         Integer queueDepth,
         Integer trackedBatchPendingCount,

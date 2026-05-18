@@ -109,7 +109,6 @@ class TaskApiMultiTaskAssignmentIntegrationTest extends AbstractSampleE2eTest {
         assertEquals(1, ((Number) snapshot.task().get("peakAssignedWorkerCount")).intValue());
         assertEquals(1, snapshot.activeLeases().size());
         assertNotNull(snapshot.activeLeases().getFirst().workerId());
-        assertNull(snapshot.activeLeases().getFirst().workerContextId());
         assertNotNull(snapshot.activeLeases().getFirst().batchId());
     }
 

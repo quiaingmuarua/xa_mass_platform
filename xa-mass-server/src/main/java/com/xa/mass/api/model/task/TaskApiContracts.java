@@ -174,8 +174,6 @@ public final class TaskApiContracts {
             int maxRetryCount,
             @Schema(description = "Worker id that produced the latest attempt", example = "worker-001")
             String workerId,
-            @Schema(description = "Worker context id that produced the latest attempt", example = "context-001")
-            String workerContextId,
             @Schema(description = "Latest dispatch batch id", example = "batch-001")
             String batchId,
             @Schema(description = "Latest attempt id", example = "attempt-001")

@@ -19,28 +19,12 @@ class TaskResultCorrelationSupportTest {
                 "task-1",
                 "msg-1",
                 null,
-                lease(null)
+                lease()
         );
 
         assertTrue(correlation.activeLeasePresent());
         assertTrue(correlation.workerLevelLease());
         assertEquals("runtime-attempt-msg-1-1-worker-1-batch-1", correlation.projectedAttemptId());
-        assertNull(correlation.workerContextId());
-    }
-
-    @Test
-    void activeContextBackedLeaseBuildsLegacyCorrelation() {
-        TaskResultCorrelation correlation = TaskResultCorrelationSupport.fromRuntimeState(
-                "task-1",
-                "msg-1",
-                null,
-                lease("ctx-1")
-        );
-
-        assertTrue(correlation.activeLeasePresent());
-        assertFalse(correlation.workerLevelLease());
-        assertEquals("runtime-attempt-msg-1-1-worker-1-ctx-1-batch-1", correlation.projectedAttemptId());
-        assertEquals("ctx-1", correlation.workerContextId());
     }
 
     @Test
@@ -55,16 +39,14 @@ class TaskResultCorrelationSupportTest {
         assertFalse(correlation.activeLeasePresent());
         assertFalse(correlation.workerLevelLease());
         assertNull(correlation.workerId());
-        assertNull(correlation.workerContextId());
     }
 
-    private ActiveLeaseRecord lease(String workerContextId) {
+    private ActiveLeaseRecord lease() {
         return new ActiveLeaseRecord(
                 "task-1",
                 "msg-1",
                 "lease-1",
                 "worker-1",
-                workerContextId,
                 "batch-1",
                 null,
                 0,

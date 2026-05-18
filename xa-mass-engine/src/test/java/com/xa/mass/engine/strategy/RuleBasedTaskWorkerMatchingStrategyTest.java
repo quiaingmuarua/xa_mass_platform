@@ -58,7 +58,6 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
 
         assertEquals(1, matched.size());
         assertEquals("worker-us", matched.get(0).getWorkerId());
-        assertNull(matched.get(0).getWorkerContextId());
         AssignmentRecord record = recordService.getRecordsByTaskId("task-1").stream()
                 .filter(item -> "worker-us".equals(item.getWorkerId()))
                 .findFirst()
@@ -289,7 +288,6 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
 
         assertEquals(1, matched.size());
         assertEquals("worker-stateless", matched.get(0).getWorkerId());
-        assertEquals(null, matched.get(0).getWorkerContextId());
     }
 
     @Test

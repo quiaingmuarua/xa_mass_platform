@@ -15,9 +15,8 @@ import java.util.Set;
 /**
  * Transitional worker-level scheduling read view.
  *
- * <p>Scheduling evidence is worker-level. Lower-level runtime and trace rows
- * may still carry {@code workerContextId} while compatibility records are being
- * retired, but this view must not read the WorkerContext model.</p>
+ * <p>Scheduling evidence is worker-level. This view must not read or rebuild
+ * account-slot lifecycle state.</p>
  */
 public final class WorkerSchedulingView {
     private final String workerId;

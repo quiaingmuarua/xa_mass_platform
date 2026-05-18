@@ -91,13 +91,12 @@ public final class TraceEventLogger {
                                         String trigger,
                                         String source,
                                         String reason) {
-        taskWorkStatusTransition(workView, null, null, null, null, fromStatus, toStatus, trigger, source, reason);
+        taskWorkStatusTransition(workView, null, null, null, fromStatus, toStatus, trigger, source, reason);
     }
 
     public void taskWorkStatusTransition(TaskWorkTraceView workView,
                                         String attemptId,
                                         String workerId,
-                                        String workerContextId,
                                         String batchId,
                                         MessageStatus fromStatus,
                                         MessageStatus toStatus,
@@ -113,7 +112,6 @@ public final class TraceEventLogger {
                         .messageId(workView.messageId())
                         .attemptId(attemptId != null ? attemptId : workView.latestAttemptId())
                         .workerId(workerId != null ? workerId : workView.latestAttemptWorkerId())
-                        .workerContextId(workerContextId != null ? workerContextId : workView.latestAttemptWorkerContextId())
                         .leaseToken(null))
                 .transition(enumName(fromStatus), enumName(toStatus), reason)
                 .attrs(attrs(
@@ -132,7 +130,6 @@ public final class TraceEventLogger {
                                                String attemptId,
                                                Integer attemptNo,
                                                String workerId,
-                                               String workerContextId,
                                                String batchId,
                                                AttemptFinalReason finalReason,
                                                AttemptStatus fromStatus,
@@ -148,8 +145,7 @@ public final class TraceEventLogger {
                         .taskId(taskId)
                         .messageId(messageId)
                         .attemptId(attemptId)
-                        .workerId(workerId)
-                        .workerContextId(workerContextId))
+                        .workerId(workerId))
                 .transition(enumName(fromStatus), enumName(toStatus), reason)
                 .attrs(attrs(
                         "trigger", trigger,
@@ -168,13 +164,12 @@ public final class TraceEventLogger {
                                   String trigger,
                                   String source,
                                   String reason) {
-        taskWorkRetryReset(workView, null, null, null, null, workRetryDelayMillis, trigger, source, reason);
+        taskWorkRetryReset(workView, null, null, null, workRetryDelayMillis, trigger, source, reason);
     }
 
     public void taskWorkRetryReset(TaskWorkTraceView workView,
                                   String attemptId,
                                   String workerId,
-                                  String workerContextId,
                                   String batchId,
                                   Long workRetryDelayMillis,
                                   String trigger,
@@ -188,8 +183,7 @@ public final class TraceEventLogger {
                         .taskId(workView.taskId())
                         .messageId(workView.messageId())
                         .attemptId(attemptId != null ? attemptId : workView.latestAttemptId())
-                        .workerId(workerId != null ? workerId : workView.latestAttemptWorkerId())
-                        .workerContextId(workerContextId != null ? workerContextId : workView.latestAttemptWorkerContextId()))
+                        .workerId(workerId != null ? workerId : workView.latestAttemptWorkerId()))
                 .transition("FAILED_OR_EXPIRED", MessageStatus.INIT.name(), reason)
                 .attrs(attrs(
                         "trigger", trigger,
@@ -265,7 +259,7 @@ public final class TraceEventLogger {
             return;
         }
         emitWorkerMatchEvent(ExecutionEventType.WORKER_MATCH_ACCEPTED, task, taskId,
-                candidate.getWorker(), candidate.getWorkerContextId(), reason, "SUCCESS",
+                candidate.getWorker(), reason, "SUCCESS",
                 workerSchedulingRankAttrs(task, candidate.getSchedulingView(), workerLoadSnapshot, candidateRank, candidateScore));
     }
 
@@ -307,7 +301,7 @@ public final class TraceEventLogger {
             return;
         }
         emitWorkerMatchEvent(ExecutionEventType.WORKER_MATCH_REJECTED, task, taskId,
-                candidate.getWorker(), candidate.getWorkerContextId(), reason, "REJECTED",
+                candidate.getWorker(), reason, "REJECTED",
                 workerSchedulingRankAttrs(task, candidate.getSchedulingView(), workerLoadSnapshot, candidateRank, candidateScore));
     }
 
@@ -315,7 +309,6 @@ public final class TraceEventLogger {
                                       Task task,
                                       String taskId,
                                       Worker worker,
-                                      String workerContextId,
                                       String reason,
                                       String result,
                                       Map<String, Object> extraAttrs) {
@@ -334,8 +327,7 @@ public final class TraceEventLogger {
         emit(event(eventType)
                 .identity(identity -> identity
                         .taskId(taskId)
-                        .workerId(worker.getWorkerId())
-                        .workerContextId(workerContextId))
+                        .workerId(worker.getWorkerId()))
                 .outcome(eventType == ExecutionEventType.WORKER_MATCH_ACCEPTED, null, reason)
                 .attrs(values)
                 .build());
@@ -484,7 +476,6 @@ public final class TraceEventLogger {
                                          String attemptId,
                                          Integer attemptNo,
                                          String workerId,
-                                         String workerContextId,
                                          String batchId,
                                          AttemptStatus attemptStatus,
                                          AttemptFinalReason attemptFinalReason,
@@ -499,8 +490,7 @@ public final class TraceEventLogger {
                         .taskId(task.getTid())
                         .messageId(workView.messageId())
                         .attemptId(attemptId)
-                        .workerId(workerId)
-                        .workerContextId(workerContextId))
+                        .workerId(workerId))
                 .outcome(true, null, reason)
                 .attrs(attrs(
                         "trigger", trigger,
@@ -521,7 +511,6 @@ public final class TraceEventLogger {
                                           TaskWorkTraceView workView,
                                           String attemptId,
                                           String workerId,
-                                          String workerContextId,
                                           String batchId,
                                           String trigger,
                                           String source,
@@ -534,8 +523,7 @@ public final class TraceEventLogger {
                         .taskId(task.getTid())
                         .messageId(workView.messageId())
                         .attemptId(attemptId != null ? attemptId : workView.latestAttemptId())
-                        .workerId(workerId != null ? workerId : workView.latestAttemptWorkerId())
-                        .workerContextId(workerContextId != null ? workerContextId : workView.latestAttemptWorkerContextId()))
+                        .workerId(workerId != null ? workerId : workView.latestAttemptWorkerId()))
                 .outcome(true, workView.errorCode(), reason)
                 .attrs(attrs(
                         "trigger", trigger,
@@ -550,14 +538,12 @@ public final class TraceEventLogger {
                 .build());
     }
 
-    public void resourceReleased(String taskId, String workerId, String workerContextId, String reason) {
-        resourceReleased(taskId, workerId, workerContextId,
-                null, "TaskResourceReleaseListener", reason, null);
+    public void resourceReleased(String taskId, String workerId, String reason) {
+        resourceReleased(taskId, workerId, null, "TaskResourceReleaseListener", reason, null);
     }
 
     public void resourceReleased(String taskId,
                                  String workerId,
-                                 String workerContextId,
                                  String trigger,
                                  String source,
                                  String reason,
@@ -565,8 +551,7 @@ public final class TraceEventLogger {
         emit(event(ExecutionEventType.RESOURCE_RELEASED)
                 .identity(identity -> identity
                         .taskId(taskId)
-                        .workerId(workerId)
-                        .workerContextId(workerContextId))
+                        .workerId(workerId))
                 .outcome(true, null, reason)
                 .attrs(attrs(
                         "trigger", trigger,
@@ -578,12 +563,11 @@ public final class TraceEventLogger {
                 .build());
     }
 
-    public void resourceReleaseFailed(String taskId, String workerId, String workerContextId, String reason) {
+    public void resourceReleaseFailed(String taskId, String workerId, String reason) {
         emit(event(ExecutionEventType.RESOURCE_RELEASE_FAILED)
                 .identity(identity -> identity
                         .taskId(taskId)
-                        .workerId(workerId)
-                        .workerContextId(workerContextId))
+                        .workerId(workerId))
                 .outcome(false, null, reason)
                 .attrs(attrs(
                         "source", "TaskResourceReleaseListener",
@@ -596,7 +580,6 @@ public final class TraceEventLogger {
     public void leaseExpired(TaskWorkTraceView workView,
                              String attemptId,
                              String workerId,
-                             String workerContextId,
                              String batchId,
                              MessageStatus fromStatus,
                              MessageStatus toStatus,
@@ -612,8 +595,7 @@ public final class TraceEventLogger {
                         .taskId(workView.taskId())
                         .messageId(workView.messageId())
                         .attemptId(attemptId != null ? attemptId : workView.latestAttemptId())
-                        .workerId(workerId != null ? workerId : workView.latestAttemptWorkerId())
-                        .workerContextId(workerContextId != null ? workerContextId : workView.latestAttemptWorkerContextId()))
+                        .workerId(workerId != null ? workerId : workView.latestAttemptWorkerId()))
                 .transition(enumName(fromStatus), enumName(toStatus), reason)
                 .outcome(false, errorCode != null ? errorCode : workView.errorCode(), reason)
                 .attrs(attrs(
@@ -728,7 +710,6 @@ public final class TraceEventLogger {
                                        int dispatchSlotCount,
                                        int dispatchedMessageCount,
                                        int uniqueWorkerCount,
-                                       int uniqueWorkerContextCount,
                                        int perWorkerBatchLimit,
                                        String trigger,
                                        String source,
@@ -748,7 +729,6 @@ public final class TraceEventLogger {
                 "dispatchedMessageCount", dispatchedMessageCount,
                 "unassignedMessageCount", Math.max(pendingMessageCount - dispatchedMessageCount, 0),
                 "uniqueWorkerCount", uniqueWorkerCount,
-                "uniqueWorkerContextCount", uniqueWorkerContextCount,
                 "perWorkerBatchLimit", perWorkerBatchLimit
         );
         putTaskRuntimeProfile(attrs, task);
@@ -840,8 +820,7 @@ public final class TraceEventLogger {
                         .taskId(workView.taskId())
                         .messageId(workView.messageId())
                         .attemptId(workView.latestAttemptId())
-                        .workerId(workView.latestAttemptWorkerId())
-                        .workerContextId(workView.latestAttemptWorkerContextId()))
+                        .workerId(workView.latestAttemptWorkerId()))
                 .outcome(success, workView.errorCode(), reason)
                 .attrs(attrs(
                         "source", "TaskManager",
@@ -992,7 +971,6 @@ public final class TraceEventLogger {
             String messageId,
             String latestAttemptId,
             String latestAttemptWorkerId,
-            String latestAttemptWorkerContextId,
             String latestAttemptBatchId,
             MessageStatus status,
             MessageFinalReason finalReason,

@@ -12,13 +12,12 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
 public class WorkerSchedulingCandidateEnumeratorTest {
 
     @Test
-    void createsWorkerLevelCandidateWhenNoLegacyContextExists() {
+    void createsWorkerLevelCandidateFromRoutingAttributes() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
         Worker worker = worker("worker-stateless", Map.of("routingTags", "shared,us", "country", "us"));
         workerManager.addWorker(worker);
@@ -30,7 +29,6 @@ public class WorkerSchedulingCandidateEnumeratorTest {
         assertEquals(1, candidates.size());
         WorkerSchedulingCandidate candidate = candidates.getFirst();
         assertSame(worker, candidate.getWorker());
-        assertNull(candidate.getWorkerContextId());
         assertEquals("worker-stateless", candidate.getSchedulingView().schedulingResourceId());
         assertEquals(Set.of("shared", "us"), candidate.getSchedulingView().schedulingRoutingTags());
         assertEquals("us", candidate.getSchedulingView().schedulingAttributes().get("country"));
@@ -39,7 +37,7 @@ public class WorkerSchedulingCandidateEnumeratorTest {
     @Test
     void enumerationBuildsWorkerLevelCandidateFromWorkerAttributes() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
-        Worker worker = worker("worker-context-backed", Map.of("country", "worker-level"));
+        Worker worker = worker("worker-attribute-backed", Map.of("country", "worker-level"));
         workerManager.addWorker(worker);
 
         WorkerSchedulingCandidateEnumerator enumerator = new WorkerSchedulingCandidateEnumerator(workerManager);
@@ -49,8 +47,7 @@ public class WorkerSchedulingCandidateEnumeratorTest {
         assertEquals(1, candidates.size());
         WorkerSchedulingCandidate candidate = candidates.getFirst();
         assertSame(worker, candidate.getWorker());
-        assertNull(candidate.getWorkerContextId());
-        assertEquals("worker-context-backed", candidate.getSchedulingView().schedulingResourceId());
+        assertEquals("worker-attribute-backed", candidate.getSchedulingView().schedulingResourceId());
         assertEquals("worker-level", candidate.getSchedulingView().schedulingAttributes().get("country"));
     }
 

@@ -113,7 +113,7 @@ public class ProjectionAwareTaskManager extends TaskManager {
                 taskId,
                 limit,
                 (messageId, projectedTaskId, status, latestAttemptId, latestAttemptWorkerId,
-                 latestAttemptWorkerContextId, latestAttemptBatchId, retryCount, maxRetryCount,
+                 latestAttemptBatchId, retryCount, maxRetryCount,
                  errorMessage, errorCode, finalReason, payloadRef, input, output,
                  assignedTime, createTime, updateTime, startTime, completeTime) ->
                         messages.add(new TaskDetailStore.TaskMessageProjection(
@@ -139,7 +139,6 @@ public class ProjectionAwareTaskManager extends TaskManager {
                                 output,
                                 latestAttemptId,
                                 latestAttemptWorkerId,
-                                latestAttemptWorkerContextId,
                                 latestAttemptBatchId
                         ))
         );
@@ -175,7 +174,7 @@ public class ProjectionAwareTaskManager extends TaskManager {
         boolean found = compatibilityProjectionAccess.visitLatestActiveTaskMessageAttempt(
                 taskId,
                 messageId,
-                (attemptId, projectedTaskId, projectedMessageId, attemptNo, workerId, workerContextId,
+                (attemptId, projectedTaskId, projectedMessageId, attemptNo, workerId,
                  batchId, status, leaseExpireTime, dispatchTime, ackTime, startTime, finishTime,
                  finalReason, errorMessage, errorCode, output, createTime, updateTime) -> holder[0] =
                         new TaskDetailStore.TaskMessageAttemptProjection(
@@ -184,7 +183,6 @@ public class ProjectionAwareTaskManager extends TaskManager {
                                 projectedMessageId,
                                 attemptNo,
                                 workerId,
-                                workerContextId,
                                 batchId,
                                 status != null
                                         ? TaskMessageAttemptProjectionStatus.valueOf(status)
@@ -207,7 +205,7 @@ public class ProjectionAwareTaskManager extends TaskManager {
         compatibilityProjectionAccess.visitTaskMessageAttemptViews(
                 taskId,
                 messageId,
-                (attemptId, projectedTaskId, projectedMessageId, attemptNo, workerId, workerContextId,
+                (attemptId, projectedTaskId, projectedMessageId, attemptNo, workerId,
                  batchId, status, leaseExpireTime, dispatchTime, ackTime, startTime, finishTime,
                  finalReason, errorMessage, errorCode, output, createTime, updateTime) -> attempts.add(
                         new TaskDetailStore.TaskMessageAttemptProjection(
@@ -216,7 +214,6 @@ public class ProjectionAwareTaskManager extends TaskManager {
                                 projectedMessageId,
                                 attemptNo,
                                 workerId,
-                                workerContextId,
                                 batchId,
                                 status != null
                                         ? TaskMessageAttemptProjectionStatus.valueOf(status)

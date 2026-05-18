@@ -3,9 +3,10 @@
 Last updated: 2026-05-16
 
 Status: active phased plan. WorkerContext physical model, storage, SDK/server
-API, frontend/operator resource pages, and test-only worker-context fixture
-inputs have been removed. Remaining work is limited to runtime/transport/trace
-`workerContextId` string residue and historical trace compatibility.
+API, frontend/operator resource pages, test-only worker-context fixtures, and
+runtime/transport/projection payload use have been removed. Remaining
+`workerContextId` references are limited to the nullable canonical trace schema,
+trace logger schema population, source guards, and historical documentation.
 
 ## Position
 
@@ -43,22 +44,18 @@ Preferred rule:
 ## Current Dependency Surface
 
 `WorkerContext` physical model, storage CRUD, SDK registration/query surface,
-and server endpoints have been deleted. Remaining references are compatibility
-residue around string payloads, historical trace fields, and migration
-documentation:
+server endpoints, runtime lease payloads, transport payloads, compatibility
+projection rows, and public result rows have been deleted. Remaining references
+are trace-schema residue, source guards, and migration documentation:
 
 - legacy rule/read-model compatibility:
   - `workerContext*` variables have been retired from `WorkerMatchContext`
   - model tests verify worker-level scheduling fields and absence of legacy
     rule-context keys
-- runtime payload compatibility:
-  - `workerContextId` can still be carried on runtime attempts and dispatch
-    bindings when a legacy context-backed candidate is selected
 - trace and diagnostics:
-  - `workerContextId`
-  - `uniqueWorkerContextCount`
-  - `WORKER_CONTEXT_STATUS_TRANSITION`
-  - legacy context fields in historical trace/operator rows
+  - nullable canonical trace `identity.workerContextId`
+  - historical traces may still contain legacy context fields, but current
+    engine/runtime/transport payloads do not feed them
 - tests and fixtures:
   - trace/operator scenarios that reject context-backed proof
   - worker scheduling test fixtures declare routing and capability directly on
@@ -78,19 +75,18 @@ Current convergence work already reduced the blast radius:
 - attempt resource cleanup is task/worker based; `workerContextId` is no longer
   accepted as a `WorkerDispatchResourcePolicy` input
 - dispatch binding now creates runtime claim targets through
-  `WorkerClaimTarget.workerLevel(...)`; legacy constructors remain only for
-  lower-level runtime compatibility tests and decoded historical payloads
+  `WorkerClaimTarget.workerLevel(...)`; context identity constructors have been
+  removed
 - current dispatch binding generates attempt ids through the worker-level
-  attempt-id helper; legacy context-backed runtime leases keep their historical
-  context-inclusive attempt-id shape
-- result correlation now has explicit worker-level, no-active-lease, and
-  legacy-context-backed construction paths; current null-context leases produce
-  worker-level correlation snapshots
-- runtime work-contract and in-memory/Redis runtime tests now use worker-level
-  claim targets for normal claim/lease proof; context-backed claim targets are
-  retained only in explicitly named compatibility or historical trace cases
-- current worker-level dispatch omits `workerContextId` from transport payloads
-  when the runtime binding has no legacy context identity
+  attempt-id helper; context-inclusive attempt-id construction has been removed
+- result correlation and result runtime drafts no longer carry
+  `workerContextId`; `workerId` / `batchId` / `attemptId` are the execution
+  identity
+- runtime work-contract, in-memory runtime, Redis runtime, SDK result rows,
+  HTTP result rows, transport dispatch items, and compatibility projection rows
+  no longer expose `workerContextId`
+- dispatch bindings now use worker-level construction; context-backed dispatch
+  payload construction has been removed
 - architecture guards prevent context-first handoff types and scattered context
   state mutation from returning
 
@@ -118,24 +114,24 @@ repo-wide rename:
 
 | Owner surface | Current WorkerContext use | Retirement direction |
 | --- | --- | --- |
-| Engine matching | legacy rule fields remain; production candidate expansion is worker-level | keep `WorkerSchedulingCandidate` / `WorkerSchedulingView`; remove nullable context payload and then remove legacy rule fields |
-| Engine runtime resource lifecycle | runtime attempt records still expose nullable `workerContextId` as a legacy payload field | keep worker lock, capacity reservation, attempt close, load finalization, and resource release as runtime proof; do not feed `workerContextId` into release policy |
-| Engine diagnostics | assignment records snapshot `WorkerSchedulingView`; legacy context identity is payload-only | keep worker scheduling evidence as the diagnostic subject; do not reintroduce context lifecycle snapshots |
+| Engine matching | no WorkerContext rule fields or candidate expansion remain | keep `WorkerSchedulingCandidate` / `WorkerSchedulingView`; do not reintroduce context payloads or context rule variables |
+| Engine runtime resource lifecycle | no WorkerContext model or `workerContextId` runtime payload remains | keep worker lock, capacity reservation, attempt close, load finalization, and resource release as runtime proof; do not feed `workerContextId` into release policy |
+| Engine diagnostics | assignment records snapshot `WorkerSchedulingView`; no context identity is recorded | keep worker scheduling evidence as the diagnostic subject; do not reintroduce context lifecycle snapshots |
 | Storage | WorkerContext CRUD and lookup methods have been deleted | keep worker-only storage; do not recreate account/context CRUD in engine storage |
 | SDK | `WorkerContextRegistration` and context query operations have been deleted | declare scheduling capability with `WorkerRegistration.attributes` / event bindings or future system events |
 | Server/API | runtime worker-context endpoints and auth catalog entries have been deleted | do not replace with engine-owned account CRUD |
-| Trace/operator | `workerContextId`, `uniqueWorkerContextCount`, `WORKER_CONTEXT_STATUS_TRANSITION` | keep as legacy runtime payload evidence until analyzers use worker scheduling/load/resource proof exclusively |
-| Tests/fixtures | context-backed routing and recovery fixtures | keep only explicitly named legacy/resource tests; default scheduling proof must be stateless worker attributes |
+| Trace/operator | nullable canonical `identity.workerContextId` for historical schema compatibility | analyzers must use worker scheduling/load/resource proof; do not add new context-count evidence |
+| Tests/fixtures | source guards and trace fixtures reject context-backed proof | default scheduling proof must be stateless worker attributes |
 
-The runtime lifecycle, diagnostic snapshot, public API, SDK, and storage
-deletions are complete for WorkerContext as a model. Remaining cleanup should
-narrow runtime/transport/trace `workerContextId` payload residue without
-reintroducing account CRUD into the engine.
+The runtime lifecycle, diagnostic snapshot, public API, SDK, transport,
+projection, and storage deletions are complete for WorkerContext as a model and
+as a runtime payload. Remaining cleanup is trace-schema/documentation residue
+and must not reintroduce account CRUD into the engine.
 
 ## Proof Replacement Matrix
 
-Before runtime lifecycle or public API deletion, scheduling proof must move from
-WorkerContext identity to worker scheduling evidence.
+Scheduling proof has moved from WorkerContext identity to worker scheduling
+evidence. This matrix records the replacement surface that must be preserved.
 
 | Current proof habit | Replacement proof |
 | --- | --- |
@@ -151,8 +147,8 @@ proof that stateless worker attributes can satisfy routing without
 is the canonical proof that stateless worker cleanup can be shown through
 attempt close, worker lock release, and worker-level `RESOURCE_RELEASED` without
 `workerContextId` or `WORKER_CONTEXT_STATUS_TRANSITION`. Legacy context
-lifecycle tests may continue to assert `workerContextId`, but new scheduling
-proof should prefer the replacement evidence above.
+lifecycle fixtures may exist only as historical trace data. New scheduling
+proof must prefer the replacement evidence above.
 
 ## Retirement Target
 
@@ -310,9 +306,10 @@ Acceptance:
 
 ### Phase WC-1: Move Remaining Routing Fixtures To Worker Attributes
 
-Status: partially implemented. Representative engine and server routing proof
-now uses stateless worker attributes instead of WorkerContext registration
-attributes. Broader legacy fixture retirement remains future work.
+Status: complete. Representative engine and server routing proof now uses
+stateless worker attributes instead of WorkerContext registration attributes,
+and context-backed routing fixtures are no longer part of the normal scheduling
+proof surface.
 
 Goal: prove current routing behavior without `WorkerContext` as the source of
 matching attributes.
@@ -323,14 +320,11 @@ Scope:
   worker attributes instead of worker contexts
 - update server focused routing E2E fixtures from
   `WorkerContextRegistration` to `WorkerRegistration.attributes`
-- keep a small number of legacy context tests only to prove current deletion
-  target until the next phase removes them
 - keep canonical trace stable enough for existing schedule analyzers
 
 Out of scope:
 
-- no storage/API deletion
-- no removal of runtime context lifecycle yet
+- no account-switch protocol
 
 Verification:
 
@@ -349,7 +343,7 @@ Acceptance:
 
 ### Phase WC-2: Remove WorkerContext From Matching Handoff
 
-Status: started. `RuleBasedTaskWorkerMatchingStrategy` no longer imports
+Status: complete. `RuleBasedTaskWorkerMatchingStrategy` no longer imports
 `WorkerContext` or reads WorkerContext storage. `WorkerSchedulingCandidateEnumerator`
 now creates one worker-level candidate per worker and no longer expands legacy
 context-backed candidates. Representative strategy tests prove normal routing,
@@ -392,7 +386,6 @@ Scope:
 
 Out of scope:
 
-- no storage/API deletion yet
 - no account-switch protocol
 
 Verification:
@@ -421,7 +414,7 @@ Acceptance:
 
 ### Phase WC-3: Remove Legacy WorkerContext Runtime Lifecycle
 
-Status: WC-3A, WC-3B, WC-3D, WC-3E, and WC-3F implemented.
+Status: complete.
 `LegacyWorkerContextResourceLifecycle` has been deleted and engine
 binder/release paths no longer mutate `WorkerContextStatus`. Assignment
 diagnostics no longer snapshot `WorkerContext` lifecycle state.
@@ -446,9 +439,7 @@ Scope:
 - delete engine-owned `WorkerContextSnapshot` assignment diagnostics (done)
 - delete `WorkerDispatchResourceUsage.legacyWorkerContextResource` or collapse
   it to worker-level resource usage only (done)
-- remove context-specific attempt binding fields where they are no longer
-  needed by runtime contracts (partially done: default binder no longer writes
-  candidate `workerContextId` into runtime claim targets)
+- remove context-specific attempt binding fields from runtime contracts (done)
 
 Out of scope:
 
@@ -471,7 +462,7 @@ Acceptance:
 ### Phase WC-4: Remove WorkerContext Storage And Public API
 
 Goal: delete the remaining CRUD surface. Status: complete in the current
-mainline; only runtime/trace string residue remains.
+mainline; only nullable canonical trace schema residue remains.
 
 Scope:
 
@@ -514,18 +505,24 @@ Acceptance:
 
 ### Phase WC-5: Trace And Operator Contract Cleanup
 
+Status: mostly complete. Current schedule analyzers use worker scheduling,
+load, resource, and assignment evidence rather than WorkerContext identity.
+`uniqueWorkerContextCount` has been removed from assignment rows. The nullable
+canonical trace `identity.workerContextId` field remains for historical schema
+compatibility.
+
 Goal: align canonical trace with worker-level scheduling truth.
 
 Scope:
 
-- remove context-specific trace events from current scheduling scenarios
-- replace `workerContextId`-based evidence with worker scheduling resource
-  evidence where needed
+- keep context-specific trace events out of current scheduling scenarios
+- keep `workerContextId` out of scheduling success evidence
 - update `xa-mass-trace assignment` rows:
   - prefer `workerId`
   - prefer `workerSchedulingResourceId` only if a generic scheduling resource
     concept remains
-  - remove or null out `workerContextId` only after analyzers are updated
+  - keep `workerContextId` nullable and unused by analyzers until a dedicated
+    canonical schema cleanup removes it
 - update scenarios:
   - `assignment-success-binding`
   - `background-worker-sharing`

@@ -183,8 +183,8 @@ Progress:
   base, WorkerContext CRUD was removed from storage, SDK/server context
   registration/query endpoints were deleted, frontend/operator resource pages
   were removed, and test-only worker-context fixture inputs were retired in
-  favor of worker attributes. Runtime/transport/trace may still carry
-  `workerContextId` string residue until a dedicated payload cleanup phase.
+  favor of worker attributes. Runtime/transport payloads were later converged
+  to worker-level identity; nullable trace schema residue remains bounded.
 - 2026-05-16: WorkerContext retirement WC-3D candidate payload removal was
   implemented. `WorkerSchedulingCandidate` now carries only `Worker` plus
   `WorkerSchedulingView`; the handoff no longer carries a nullable
@@ -210,6 +210,22 @@ Progress:
   context-backed claim targets remain only in explicit compatibility or
   historical trace cases, and an architecture guard prevents scattered direct
   `TaskResultCorrelation` construction outside its named factories.
+- 2026-05-16: WorkerContext retirement SDK/API result proof convergence
+  completed. `TaskResultItemSnapshot` and HTTP result rows no longer expose
+  `workerContextId`; SDK polling result reads and API result rows use
+  worker-level attempt identity.
+- 2026-05-16: WorkerContext retirement result-runtime payload convergence
+  completed. `TaskResultCallbackDraft`, `TaskResultFinalDraft`,
+  `TaskResultService`, and runtime contract fixtures no longer carry
+  `workerContextId`.
+- 2026-05-16: WorkerContext retirement dispatch payload convergence
+  completed. `TaskDispatchBinding`, the dispatch binder, transport dispatch
+  items, and transport batch codecs no longer carry `workerContextId`.
+- 2026-05-16: WorkerContext retirement string-residue convergence completed
+  for runtime, transport, projection, SDK/API result rows, and server E2E
+  worker registration. Remaining `workerContextId` references are bounded to
+  nullable canonical trace schema population, architecture/source guards, and
+  historical documentation.
 
 This document records the intended path for a long-running engine scheduling
 upgrade. The work is deliberately split into small, independently verifiable
@@ -1095,17 +1111,16 @@ A step is not done until:
 
 ## 20. Current Recommended Next Step
 
-Do not jump directly to public WorkerContext API/storage deletion.
+WorkerContext model/API/runtime/transport/projection payload deletion is now
+complete for the scheduling kernel and public worker/result surfaces. Matching
+context expansion is removed from the production strategy package, the
+candidate handoff no longer carries a nullable `WorkerContext` object, and
+`WorkerSchedulingView` / `WorkerMatchContext` no longer expose
+`workerContext*` scheduling facts.
 
-Matching context expansion is now removed from the production strategy package.
-The candidate handoff no longer carries a nullable `WorkerContext` object. The
-rule/read-model compatibility surface has also been reduced: `WorkerSchedulingView`
-does not flatten WorkerContext scheduling facts and `WorkerMatchContext` does
-not expose `workerContext*` rule variables. The next step should target the
-remaining runtime/trace compatibility identity: `workerContextId` can still
-appear on attempts, dispatch bindings, assignment snapshots, and public/storage
-surfaces.
-
-Full WorkerContext model/API deletion should still wait until engine runtime
-payloads, trace analyzers, SDK/server calls, and storage tests no longer need
-context-specific fields.
+The next step should stay on the same kernel line: keep source guards tight,
+keep scheduling proof on worker scheduling/load/resource evidence, and decide
+in a dedicated trace-contract cleanup whether the nullable historical
+`identity.workerContextId` field should remain in canonical JSONL for old trace
+readability or be removed from the schema. Do not reintroduce account/context
+CRUD or context-slot lifecycle under a new name.

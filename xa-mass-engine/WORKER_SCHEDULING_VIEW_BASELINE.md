@@ -5,8 +5,11 @@ Last updated: 2026-05-16
 Status: current baseline for the WorkerContext convergence path,
 including scheduling-candidate handoff, default rule surface convergence,
 worker load view wiring, load-aware ranking, and default-capacity reservation.
-WorkerContext physical model/storage/API surfaces have been deleted; remaining
-`workerContextId` references are runtime/transport/trace payload residue.
+WorkerContext physical model/storage/API surfaces have been deleted. Runtime,
+transport, projection, SDK/API, and server E2E payloads are worker-level. The
+remaining `workerContextId` references are limited to the nullable canonical
+trace schema, trace flattening for historical events, and source guards that
+prevent regression.
 Worker-declared capacity is now present as a read-model input to reservation
 and trace. `ExecutionSpec.foreground` is now present as a task scheduling-mode
 declaration in model/API/trace surfaces and controls long-lived worker lock
@@ -25,13 +28,12 @@ compensation. These owner boundaries are now guarded by
 creates one worker-level candidate per worker and no longer reads or expands
 WorkerContext storage. `WorkerSchedulingView` and `WorkerMatchContext` no
 longer flatten context status/project/routing/attributes into scheduling facts.
-`WorkerSchedulingView` no longer accepts or exposes WorkerContext identity;
-`workerContextId` remains only on lower-level runtime/trace compatibility
-records while those contracts are still present.
+`WorkerSchedulingView` no longer accepts or exposes WorkerContext identity.
 
-This document records the current engine scheduling read model after the first
-WorkerContext convergence slices. It is intentionally narrow: this path does
-not delete WorkerContext or remove legacy trace fields.
+This document records the current engine scheduling read model after the
+WorkerContext convergence slices. It is intentionally narrow: this path records
+the scheduling kernel state and does not remove the nullable historical trace
+schema field.
 
 ## Fixed Mainline Relationship
 
@@ -77,12 +79,12 @@ The immediate convergence target is:
   snapshots for canonical schedule analysis
 - task assignment trace includes `foreground` so future behavior changes can be
   proved against the declared task scheduling mode
-- later phases can remove legacy `workerContextId` runtime/trace fields without
-  a single destructive rewrite
+- current runtime, transport, projection, SDK/API, and server proof surfaces
+  stay worker-level
 
 ## Current Hot-Path Inventory
 
-WorkerContext compatibility is still visible around these engine paths:
+WorkerContext has been retired from these engine hot-path surfaces:
 
 - `WorkerSchedulingCandidateEnumerator`
   - creates one worker-level `WorkerSchedulingCandidate` per worker
@@ -93,8 +95,7 @@ WorkerContext compatibility is still visible around these engine paths:
 - `RuleBasedTaskWorkerMatchingStrategy`
   - consumes already-enumerated `WorkerSchedulingCandidate` objects
   - does not import `WorkerContext`; it reads scheduling facts from the
-    candidate/view and no longer unwraps the candidate's nullable legacy
-    payload directly
+    candidate/view
   - prefilters worker reachability, worker availability, target-worker
     constraints, and worker-level routing through the scheduling view
   - currently ranks rule-passed candidates and attempts capacity reservation
@@ -106,14 +107,12 @@ WorkerContext compatibility is still visible around these engine paths:
     `WorkerSchedulingCandidate`
   - snapshots `WorkerSchedulingView` evidence through
     `WorkerSchedulingSnapshot`
-  - records no legacy context identity on worker scheduling snapshots while
-    runtime attempts still carry the lower-level field
+  - records no legacy context identity on worker scheduling snapshots
 - `WorkerSchedulingCandidate`
   - is the internal handoff type between matching, allocation, listener
     orchestration, and dispatch binding
   - carries `Worker` and `WorkerSchedulingView`
-  - does not carry a nullable `WorkerContext` payload; its temporary
-    `getWorkerContextId()` compatibility accessor always returns `null`
+  - does not carry a nullable `WorkerContext` payload or context-id accessor
 - `WorkerMatchContext`
   - is constructed from `WorkerSchedulingCandidate`
   - owns the rule-evaluation and diagnostic snapshot field map consumed by
@@ -122,14 +121,11 @@ WorkerContext compatibility is still visible around these engine paths:
   - exposes `isWorkerSchedulingResource*` aliases for resource state checks
   - exposes worker load and reservation fields from `WorkerLoadView`
 - `SimpleTaskDispatchBinder`
-  - does not pass legacy candidate `workerContextId` into runtime claim targets
-    on the default scheduling path
   - uses `WorkerClaimTarget.workerLevel(...)` when claiming runtime work for
     scheduling candidates
   - generates current attempt ids with worker-level identity rather than a
     legacy `workerContextId` placeholder
-  - produces worker-level dispatch bindings whose nullable `workerContextId`
-    stays absent from transport payload maps when no legacy identity exists
+  - produces worker-level dispatch bindings and transport payloads
   - confirms worker reservations to active load when runtime claim succeeds
   - falls back to recording successful runtime claims when a custom strategy
     bypassed reservation
@@ -144,22 +140,27 @@ WorkerContext compatibility is still visible around these engine paths:
   - does not preserve attempt `workerContextId` as release-policy input; the
     decision is task/worker resource usage
 - `TaskResultCorrelationSupport`
-  - creates worker-level result-correlation snapshots for current null-context
-    runtime leases
-  - keeps legacy context-backed correlation shape only when the runtime lease
-    explicitly carries a non-null `workerContextId`
-  - relies on named `TaskResultCorrelation` factories so worker-level,
-    no-active-lease, and legacy-context semantics stay visible at call sites
+  - creates worker-level result-correlation snapshots from runtime leases
+  - no longer carries WorkerContext identity; `workerId`, `batchId`, and
+    `attemptId` are the execution identity
+- result runtime drafts
+  - use worker-level result writes only
+  - no longer expose `workerContextId` as a result identity field
 - runtime contract tests
   - use `WorkerClaimTarget.workerLevel(...)` for normal claim/lease proof
-  - keep direct context-backed claim targets only for compatibility or
-    historical trace payload proof
+  - use worker-level result draft factories for normal visible result rows
+- SDK/API result rows
+  - no longer expose `workerContextId`
+  - prove worker-level result reads use `workerId`, `batchId`, and
+    worker-level attempt ids
+- dispatch bindings
+  - use worker-level binding output
+  - do not expose or decode `workerContextId`
 - `WorkerDispatchResourceReleaser`
   - owns assignment and binder compensation cleanup for worker reservations,
     conditional exclusive worker unlock, canonical lock-release trace, and
     release-listener attempt/terminal close lock-release paths
-  - keeps `workerContextId` out of attempt lock-release policy flow while the
-    lower-level runtime schemas still expose the nullable field
+  - keeps `workerContextId` out of attempt lock-release policy flow
   - releases foreground worker locks after dispatch-submit failure compensation
     because that pre-transport failure path does not publish attempt close
 - `EngineSchedulingCoreArchitectureGuardTest`
@@ -178,16 +179,12 @@ WorkerContext compatibility is still visible around these engine paths:
     lifecycle facts and prevents `WorkerMatchContext` from exposing
     `workerContext*` rule fields
 
-WorkerContext is therefore still:
-
-- a legacy compatibility identity that can still appear in trace/runtime
-  compatibility fields produced by historical or lower-level runtime paths
-
 The production matching hot path no longer uses WorkerContext as a scheduling
 attribute source, and `WorkerSchedulingCandidate` no longer carries a
 `WorkerContext` object. `WorkerSchedulingView` no longer imports or accepts the
 WorkerContext model, and `WorkerMatchContext` no longer exposes
-`workerContext*` rule variables. Physical model/API deletion is a later phase.
+`workerContext*` rule variables. Runtime, transport, projection, SDK/API, and
+server result surfaces no longer carry `workerContextId`.
 
 ## Transitional View
 
@@ -268,8 +265,8 @@ Worker-match trace also carries worker scheduling evidence:
 `workerSchedulingResourceId`, `workerSchedulingRoutingTags`,
 `workerSchedulingAttributes`, and `workerSchedulingMatchesRoutingCode`. New
 scheduling proof must prefer these fields over `workerContextId`;
-`workerContextId` remains legacy compatibility evidence while historical trace
-and runtime read models still carry that field.
+`workerContextId` remains only as a nullable historical trace-schema field and
+must not be used as scheduling proof.
 `WorkerLoadView` also exposes the current active worker count per task to
 allocation policy. `WorkerBudgetPolicy` applies conservative internal
 workload-class caps and assignment summaries emit `workerBudget`,
@@ -292,8 +289,8 @@ Legacy rule/read-model fields are retired:
 - `isWorkerContextReserved`
 - `isWorkerContextOccupied`
 
-`workerContextId` remains only as runtime/trace compatibility identity outside
-the rule context.
+`workerContextId` remains only as nullable canonical trace-schema history
+outside the rule context.
 
 ## Current Rule Guidance
 
@@ -318,15 +315,11 @@ owner.
 
 Assignment records now use `WorkerSchedulingSnapshot` as their diagnostic
 subject. The retired `WorkerContextSnapshot` shape must not be reintroduced in
-engine diagnostics; context identity can remain only as legacy payload evidence
-until the runtime contract stops carrying `workerContextId`.
+engine diagnostics.
 Representative engine and server routing proof now uses stateless worker
-registration attributes for the matched/mismatched routing candidates. Legacy
-WorkerContext-backed routing remains covered only as transitional lifecycle
-coverage until the retirement phases remove it.
-`RuleBasedTaskWorkerMatchingStrategyTest` now treats context-backed fixtures as
-explicit legacy coverage; normal matching, trace, prefilter, and routing proof
-uses stateless workers plus worker scheduling attributes.
+registration attributes for the matched/mismatched routing candidates. Normal
+matching, trace, prefilter, and routing proof uses stateless workers plus worker
+scheduling attributes.
 Do not add default rules or in-repo routing fixtures that depend on
 `workerContext*` variables. `RuleConfigTest` and
 `EngineSchedulingCoreArchitectureGuardTest` guard the default rule sets and
@@ -338,11 +331,8 @@ engine as system-event-updated worker scheduling attributes.
 
 ## Out Of Scope For This Step
 
-- no WorkerContext model deletion
-- no WorkerContext storage/API deletion
-- no shared WorkerContext-backed dispatch behavior
 - no account-switch dispatch protocol
-- no trace field removal
+- no canonical trace schema field removal
 - no public resource policy configuration
 
 ## Verification
@@ -384,8 +374,9 @@ Focused proof for this step:
 - `EngineSchedulingCoreArchitectureGuardTest`
   - protects the scheduling-owner boundaries described above
 
-Server and trace suites remain useful because no public runtime model or trace
-schema changed in this slice.
+Server and trace suites remain useful because scheduling proof still depends on
+real Boot/API/SDK/transport wiring plus canonical JSONL, not projection or MDC
+logs.
 
 ## Next Cut
 
@@ -416,5 +407,6 @@ Worker-level cleanup now emits `RESOURCE_RELEASED` alongside
 stateless worker cleanup without `workerContextId` or
 `WORKER_CONTEXT_STATUS_TRANSITION` as the success evidence.
 
-WorkerContext physical model/API deletion remains a later, larger phase after
-runtime binding and trace compatibility no longer need context-specific fields.
+WorkerContext physical model/API/runtime/transport/projection payload deletion
+is complete. The remaining cleanup is deciding whether and when to remove the
+nullable historical `identity.workerContextId` field from canonical trace.

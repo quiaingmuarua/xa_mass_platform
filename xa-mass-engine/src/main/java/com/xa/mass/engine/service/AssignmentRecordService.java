@@ -101,12 +101,6 @@ public class AssignmentRecordService implements AssignmentDiagnosticRecorder, As
         logMsg.append("Result=").append(record.getResult().name()).append(", ");
         logMsg.append("Reason=").append(record.getReason());
 
-        if (record.getWorkerSchedulingSnapshot() != null
-                && record.getWorkerSchedulingSnapshot().getLegacyWorkerContextId() != null) {
-            logMsg.append(", LegacyWorkerContext=")
-                    .append(record.getWorkerSchedulingSnapshot().getLegacyWorkerContextId());
-        }
-
         if (record.getRuleEvaluations() != null && !record.getRuleEvaluations().isEmpty()) {
             logMsg.append(", Rules=[");
             String ruleDetails = record.getRuleEvaluations().stream()
@@ -171,8 +165,6 @@ public class AssignmentRecordService implements AssignmentDiagnosticRecorder, As
         snapshot.setReservedCount(view.reservedCount());
         snapshot.setDeclaredCapacity(view.declaredCapacity());
         snapshot.setEstimatedLoadRatio(view.estimatedLoadRatio());
-        snapshot.setHasLegacyWorkerContext(false);
-        snapshot.setLegacyWorkerContextId(null);
         snapshot.setSchedulingResourceId(view.schedulingResourceId());
         snapshot.setSchedulingProject(view.schedulingProject());
         snapshot.setSchedulingRoutingTags(view.schedulingRoutingTags());

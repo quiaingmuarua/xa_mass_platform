@@ -350,7 +350,6 @@ class XaMassTraceCliIntegrationTest {
                             "dispatchedMessageCount", 2,
                             "unassignedMessageCount", 0,
                             "uniqueWorkerCount", 1,
-                            "uniqueWorkerContextCount", 1,
                             "perWorkerBatchLimit", 2))
                     .build());
             sink.emit(ExecutionEvent.builder()

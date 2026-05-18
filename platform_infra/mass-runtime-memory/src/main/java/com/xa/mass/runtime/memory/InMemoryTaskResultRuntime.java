@@ -413,7 +413,6 @@ public final class InMemoryTaskResultRuntime implements TaskResultRuntime {
                 Math.max(0, draft.retryCount()),
                 Math.max(0, draft.maxRetryCount()),
                 draft.workerId(),
-                draft.workerContextId(),
                 draft.batchId(),
                 draft.attemptId(),
                 draft.payloadRef(),

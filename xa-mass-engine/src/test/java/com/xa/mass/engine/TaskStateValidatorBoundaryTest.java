@@ -60,7 +60,6 @@ class TaskStateValidatorBoundaryTest {
                         null,
                         null,
                         null,
-                        null,
                         null
                 )
         );

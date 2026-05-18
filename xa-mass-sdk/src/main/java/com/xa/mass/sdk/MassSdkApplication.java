@@ -1570,7 +1570,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 row.retryCount(),
                 row.maxRetryCount(),
                 row.workerId(),
-                row.workerContextId(),
                 row.batchId(),
                 row.attemptId(),
                 row.payloadRef(),

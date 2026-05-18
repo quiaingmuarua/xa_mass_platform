@@ -7,9 +7,10 @@ import java.time.LocalDateTime;
 import java.util.*;
 
 /**
- * Worker 实体
- * 仅负责维护自身物理/网络/版本等属性
- * 是否可调度由 Task/WorkerContext 筛选决定
+ * Worker identity and scheduling capability declaration.
+ *
+ * <p>Dispatch eligibility is resolved by task requirements, worker attributes,
+ * reachability, load, and matching rules.</p>
  */
 public class Worker {
     private String workerId;

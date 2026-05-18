@@ -6,9 +6,8 @@ import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 /**
  * Default resource usage semantics.
  *
- * <p>Foreground tasks keep the historical worker-level exclusive lock. Background
- * tasks rely on capacity reservation. WorkerContext identity is no longer a
- * resource policy input.</p>
+ * <p>Foreground tasks keep the worker-level exclusive lock. Background tasks
+ * rely on capacity reservation. Resource policy is task/worker based.</p>
  */
 public class DefaultWorkerDispatchResourcePolicy implements WorkerDispatchResourcePolicy {
 

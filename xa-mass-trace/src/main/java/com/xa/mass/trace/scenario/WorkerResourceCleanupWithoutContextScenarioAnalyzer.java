@@ -35,10 +35,10 @@ final class WorkerResourceCleanupWithoutContextScenarioAnalyzer extends Abstract
                 && result(row, "SUCCESS")
                 && row.dispatchedMessageCount() != null
                 && row.dispatchedMessageCount() > 0
-                && row.uniqueWorkerContextCount() != null
-                && row.uniqueWorkerContextCount() == 0)) {
+                && row.uniqueWorkerCount() != null
+                && row.uniqueWorkerCount() > 0)) {
             issues.add(new TraceScenarioIssue("MISSING_STATELESS_SUCCESS_BINDING",
-                    "Expected successful DISPATCH_BINDING_SUMMARY with dispatched work and uniqueWorkerContextCount=0"));
+                    "Expected successful DISPATCH_BINDING_SUMMARY with dispatched work and worker-level binding evidence"));
         }
         if (!has(rows, row -> event(row, "TASK_WORK_ATTEMPT_CLOSED")
                 && result(row, "SUCCESS")

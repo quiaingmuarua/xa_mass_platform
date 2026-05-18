@@ -261,32 +261,11 @@ public abstract class TaskWorkRuntimeContractTest {
         assertThat(ctx.outcome().status()).isEqualTo(ResultApplyStatus.SUCCESS_APPLIED);
         assertThat(ctx.hasLeaseSnapshot()).isTrue();
         assertThat(ctx.workerId()).isEqualTo("w1");
-        assertThat(ctx.workerContextId()).isNull();
         assertThat(ctx.batchId()).isEqualTo("batch-1");
         assertThat(ctx.activeLeaseToken()).isEqualTo(work.leaseToken());
         assertThat(ctx.retryCount()).isEqualTo(0);
         assertThat(ctx.maxRetryCount()).isEqualTo(3);
         assertThat(ctx.leasedAt()).isNotNull();
-    }
-
-    @Test
-    void applyResultWithContext_success_preservesLegacyContextSnapshot() {
-        runtime.enqueue(item("t1", "m1"), WorkEnqueueOptions.DEFAULT);
-        ClaimedTaskWork work = runtime.claimReady(
-                "t1",
-                List.of(new WorkerClaimTarget("w1", "ctx-worker-1", "batch-1", 1)),
-                1,
-                30
-        ).get(0);
-
-        RuntimeResultApplyContext ctx = runtime.applyResultWithContext(
-                TaskWorkResult.success("t1", "m1", work.leaseToken(), "done", Map.of()));
-
-        assertThat(ctx.outcome().status()).isEqualTo(ResultApplyStatus.SUCCESS_APPLIED);
-        assertThat(ctx.hasLeaseSnapshot()).isTrue();
-        assertThat(ctx.workerId()).isEqualTo("w1");
-        assertThat(ctx.workerContextId()).isEqualTo("ctx-worker-1");
-        assertThat(ctx.batchId()).isEqualTo("batch-1");
     }
 
     @Test

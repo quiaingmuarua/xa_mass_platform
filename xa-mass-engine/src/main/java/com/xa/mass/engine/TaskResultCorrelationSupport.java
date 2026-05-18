@@ -23,23 +23,12 @@ final class TaskResultCorrelationSupport {
         String resolvedAttemptId = projectedAttemptId != null && !projectedAttemptId.isBlank()
                 ? projectedAttemptId
                 : runtimeAttemptId;
-        if (activeLease.workerContextId() == null || activeLease.workerContextId().isBlank()) {
-            return TaskResultCorrelation.workerLevel(
-                    taskId,
-                    messageId,
-                    resolvedAttemptId,
-                    activeLease.leaseToken(),
-                    activeLease.workerId(),
-                    activeLease.batchId()
-            );
-        }
-        return TaskResultCorrelation.legacyContextBacked(
+        return TaskResultCorrelation.workerLevel(
                 taskId,
                 messageId,
                 resolvedAttemptId,
                 activeLease.leaseToken(),
                 activeLease.workerId(),
-                activeLease.workerContextId(),
                 activeLease.batchId()
         );
     }

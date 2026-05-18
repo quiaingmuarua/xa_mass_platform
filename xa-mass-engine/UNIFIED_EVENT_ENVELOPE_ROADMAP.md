@@ -19,8 +19,8 @@ Current implementation note:
 - task dispatch, result convergence, worker presence, and worker diagnostics
   still use their existing owner paths
 - this roadmap does not grant permission to refactor those paths in one slice
-- worker-manager ownership should be stabilized before behavior-changing event
-  envelope work starts
+- WorkerGroup capability and candidate-index ownership should be stabilized
+  before behavior-changing event envelope work starts
 
 ## Core Rule
 
@@ -435,8 +435,9 @@ WM-E6: expand placement policy
   -> no envelope shape change
 ```
 
-Do not start WM-E2 or later until current task-result convergence and worker
-ownership boundaries remain green under architecture guards.
+Do not start WM-E2 or later until current task-result convergence and
+WorkerGroup capability / candidate-index boundaries remain green under
+architecture guards.
 
 ## Risks
 
@@ -493,7 +494,7 @@ Mitigation:
 
 ## Related Roadmaps
 
-- [WORKER_MANAGER_SPLIT_ROADMAP.md](./WORKER_MANAGER_SPLIT_ROADMAP.md)
+- [WORKER_GROUP_CAPABILITY_ROADMAP.md](./WORKER_GROUP_CAPABILITY_ROADMAP.md)
 - [SCHEDULING_KERNEL_GUARDRAILS.md](./SCHEDULING_KERNEL_GUARDRAILS.md)
 - [WORKER_CONTEXT_RETIREMENT_PLAN.md](./WORKER_CONTEXT_RETIREMENT_PLAN.md)
 - [../doc/RESULT_BOUNDARY_BASELINE.md](../doc/RESULT_BOUNDARY_BASELINE.md)

@@ -50,11 +50,11 @@ class JdbcStoragePostgresTest {
                     TaskMessageProjectionStatus.INIT,
                     null, null, null, null, null,
                     0, 0, null, null, null, null,
-                    null, null, null, null
+                    null, null, null
             ));
             storage.upsertTaskMessageAttemptProjection("task-1", "msg-1", new TaskDetailStore.TaskMessageAttemptProjection(
                     "attempt-1", "task-1", "msg-1", 1,
-                    null, null, null,
+                    null, null,
                     TaskMessageAttemptProjectionStatus.DISPATCHED,
                     null, null, null, null
             ));

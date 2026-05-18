@@ -112,7 +112,7 @@ public abstract class TaskResultRuntimeContractTest {
         output.put("workerId", "worker-1");
         output.put("title", null);
 
-        TaskResultCallbackDraft callbackDraft = new TaskResultCallbackDraft(
+        TaskResultCallbackDraft callbackDraft = TaskResultCallbackDraft.workerLevel(
                 TaskResultCallbackDraft.stageId("task-1", "msg-1", "digest-null-output"),
                 "task-1",
                 "msg-1",
@@ -128,7 +128,6 @@ public abstract class TaskResultRuntimeContractTest {
                 "worker-1",
                 "digest-null-output",
                 "worker-1",
-                "ctx-1",
                 "batch-1",
                 "payload-ref",
                 "demo.event",
@@ -140,7 +139,7 @@ public abstract class TaskResultRuntimeContractTest {
 
         assertThat(runtime.stageCallback(callbackDraft).status()).isEqualTo(StageResultStatus.STAGED);
 
-        TaskResultFinalDraft finalDraft = new TaskResultFinalDraft(
+        TaskResultFinalDraft finalDraft = TaskResultFinalDraft.workerLevel(
                 "task-1",
                 "msg-1",
                 "demo.event",
@@ -149,7 +148,6 @@ public abstract class TaskResultRuntimeContractTest {
                 0,
                 3,
                 "worker-1",
-                "ctx-1",
                 "batch-1",
                 "attempt-1",
                 "payload-ref",
@@ -338,7 +336,7 @@ public abstract class TaskResultRuntimeContractTest {
     }
 
     private TaskResultCallbackDraft draft(String taskId, String messageId, String digest) {
-        return new TaskResultCallbackDraft(
+        return TaskResultCallbackDraft.workerLevel(
                 TaskResultCallbackDraft.stageId(taskId, messageId, digest),
                 taskId,
                 messageId,
@@ -354,7 +352,6 @@ public abstract class TaskResultRuntimeContractTest {
                 "worker-1",
                 digest,
                 "worker-1",
-                "ctx-1",
                 "batch-1",
                 "payload-ref",
                 "demo.event",
@@ -366,7 +363,7 @@ public abstract class TaskResultRuntimeContractTest {
     }
 
     private TaskResultFinalDraft finalDraft(String taskId, String messageId, String status) {
-        return new TaskResultFinalDraft(
+        return TaskResultFinalDraft.workerLevel(
                 taskId,
                 messageId,
                 "demo.event",
@@ -375,7 +372,6 @@ public abstract class TaskResultRuntimeContractTest {
                 0,
                 3,
                 "worker-1",
-                "ctx-1",
                 "batch-1",
                 "attempt-1",
                 "payload-ref",

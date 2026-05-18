@@ -44,7 +44,6 @@ class TaskSchedulingContentionTest {
         assertEquals(0, secondStats.inflightCount());
         assertEquals(1, firstLeases.size());
         assertEquals("worker-single", firstLeases.getFirst().workerId());
-        assertEquals(null, firstLeases.getFirst().workerContextId());
 
         AssignmentRecord rejectedRecord = harness.record(secondTask.getTid(), "worker-single");
         assertEquals(AssignmentResult.CONFLICT, rejectedRecord.getResult());
@@ -78,8 +77,6 @@ class TaskSchedulingContentionTest {
         assertEquals(1, secondLeases.size());
         assertEquals("worker-background", firstLeases.getFirst().workerId());
         assertEquals("worker-background", secondLeases.getFirst().workerId());
-        assertEquals(null, firstLeases.getFirst().workerContextId());
-        assertEquals(null, secondLeases.getFirst().workerContextId());
 
         AssignmentRecord rejectedRecord = harness.record(thirdTask.getTid(), "worker-background");
         assertEquals(AssignmentResult.QUOTA_EXCEEDED, rejectedRecord.getResult());
@@ -140,7 +137,6 @@ class TaskSchedulingContentionTest {
         List<ActiveLeaseRecord> thirdLeases = harness.activeLeases(thirdTask.getTid());
         assertEquals(1, thirdLeases.size());
         assertEquals(firstLease.workerId(), thirdLeases.getFirst().workerId());
-        assertEquals(null, thirdLeases.getFirst().workerContextId());
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(thirdTask.getTid()).getStatus());
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(secondTask.getTid()).getStatus());
         assertEquals(0, harness.stats(thirdTask.getTid()).readyCount());
@@ -245,7 +241,6 @@ class TaskSchedulingContentionTest {
         List<ActiveLeaseRecord> waitingLeases = harness.activeLeases(waitingTask.getTid());
         assertEquals(1, waitingLeases.size());
         assertEquals("worker-shared", waitingLeases.getFirst().workerId());
-        assertEquals(null, waitingLeases.getFirst().workerContextId());
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(waitingTask.getTid()).getStatus());
     }
 
@@ -284,7 +279,6 @@ class TaskSchedulingContentionTest {
         List<ActiveLeaseRecord> nextReadyLeases = harness.activeLeases(nextReadyTask.getTid());
         assertEquals(1, nextReadyLeases.size());
         assertEquals("worker-shared", nextReadyLeases.getFirst().workerId());
-        assertEquals(null, nextReadyLeases.getFirst().workerContextId());
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(nextReadyTask.getTid()).getStatus());
         assertEquals(0, harness.stats(nextReadyTask.getTid()).readyCount());
         assertEquals(1, harness.stats(nextReadyTask.getTid()).inflightCount());

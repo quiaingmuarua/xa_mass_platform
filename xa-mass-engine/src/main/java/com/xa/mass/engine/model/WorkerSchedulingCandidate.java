@@ -7,10 +7,8 @@ import java.util.Objects;
 /**
  * Scheduling candidate chosen by the matching layer.
  *
- * <p>The candidate handoff is worker-level and does not carry WorkerContext
- * identity. The temporary {@link #getWorkerContextId()} accessor exists only
- * for lower-level runtime/trace call sites that still carry the field; it
- * always returns {@code null} for scheduling candidates.</p>
+ * <p>The candidate handoff is worker-level and carries no account-slot
+ * identity.</p>
  */
 public final class WorkerSchedulingCandidate {
 
@@ -29,10 +27,6 @@ public final class WorkerSchedulingCandidate {
 
     public String getWorkerId() {
         return worker.getWorkerId();
-    }
-
-    public String getWorkerContextId() {
-        return null;
     }
 
     public WorkerSchedulingView getSchedulingView() {

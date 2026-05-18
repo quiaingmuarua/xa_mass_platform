@@ -34,7 +34,7 @@ class DefaultWorkerDispatchResourcePolicyTest {
     }
 
     @Test
-    void attemptWorkerContextIdentityDoesNotChangeBackgroundWorkerLockPolicy() {
+    void attemptCleanupUsesTaskLevelBackgroundWorkerLockPolicy() {
         Task task = new Task();
         task.getExecutionSpec().setForeground(false);
 

@@ -16,7 +16,6 @@ public record TaskResultRuntimeRow(
         int retryCount,
         int maxRetryCount,
         String workerId,
-        String workerContextId,
         String batchId,
         String attemptId,
         String payloadRef,
@@ -45,21 +44,21 @@ public record TaskResultRuntimeRow(
 
     public TaskResultRuntimeRow withLogicalFinalPublished() {
         return new TaskResultRuntimeRow(taskId, messageId, seq, eventCode, status, finalReason,
-                retryCount, maxRetryCount, workerId, workerContextId, batchId, attemptId, payloadRef,
+                retryCount, maxRetryCount, workerId, batchId, attemptId, payloadRef,
                 createTime, assignedTime, startTime, completeTime, updateTime, errorCode, errorMessage,
                 output, attemptClosedPublished, true, progressApplied);
     }
 
     public TaskResultRuntimeRow withProgressApplied() {
         return new TaskResultRuntimeRow(taskId, messageId, seq, eventCode, status, finalReason,
-                retryCount, maxRetryCount, workerId, workerContextId, batchId, attemptId, payloadRef,
+                retryCount, maxRetryCount, workerId, batchId, attemptId, payloadRef,
                 createTime, assignedTime, startTime, completeTime, updateTime, errorCode, errorMessage,
                 output, attemptClosedPublished, logicalFinalPublished, true);
     }
 
     public TaskResultRuntimeRow withAttemptClosedPublished() {
         return new TaskResultRuntimeRow(taskId, messageId, seq, eventCode, status, finalReason,
-                retryCount, maxRetryCount, workerId, workerContextId, batchId, attemptId, payloadRef,
+                retryCount, maxRetryCount, workerId, batchId, attemptId, payloadRef,
                 createTime, assignedTime, startTime, completeTime, updateTime, errorCode, errorMessage,
                 output, true, logicalFinalPublished, progressApplied);
     }

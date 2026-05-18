@@ -111,7 +111,6 @@ class NodeTargetedTaskDispatchSubmitterTest {
                 1,
                 "lease-" + messageId,
                 workerId,
-                "ctx-1",
                 "batch-1"
         );
     }

@@ -125,9 +125,8 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
                         new ArrayList<>(), prefilterDecision.contextSnapshot(),
                         prefilterDecision.workerLocked()
                 );
-                log.debug("Worker candidate rejected before rule evaluation: {} context {} ({})",
+                log.debug("Worker candidate rejected before rule evaluation: {} ({})",
                         worker.getWorkerId(),
-                        candidate.getWorkerContextId() != null ? candidate.getWorkerContextId() : "null",
                         prefilterDecision.reason());
                 continue;
             }
@@ -135,13 +134,12 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
             WorkerMatchContext matchContext = new WorkerMatchContext(candidate, task);
 
             if (log.isDebugEnabled()) {
-                log.debug("[Debug] WorkerId={}, workerGroupId={}, status={}, locked={}, supportedProjects={}, legacyWorkerContextId={}",
+                log.debug("[Debug] WorkerId={}, workerGroupId={}, status={}, locked={}, supportedProjects={}",
                         worker.getWorkerId(),
                         worker.getWorkerGroupId(),
                         worker.getStatus(),
                         workerManager.isLocked(worker.getWorkerId()),
-                        String.join(", ", worker.getSupportedProjects()),
-                        candidate.getWorkerContextId() != null ? candidate.getWorkerContextId() : "null"
+                        String.join(", ", worker.getSupportedProjects())
                 );
                 log.debug("[Debug] WorkerMatchContext: {}", matchContext.getContext());
             }
@@ -150,9 +148,8 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
                 List<RuleEvaluationDetail> ruleEvaluations = evaluateRulesWithDetails(matchContext, rules);
                 long hitCount = ruleEvaluations.stream().filter(RuleEvaluationDetail::isPassed).count();
 
-                log.debug("[WorkerAssign] Worker {} context {} - Hit rules: {}/{}",
+                log.debug("[WorkerAssign] Worker {} - Hit rules: {}/{}",
                         worker.getWorkerId(),
-                        candidate.getWorkerContextId() != null ? candidate.getWorkerContextId() : "null",
                         hitCount,
                         rules.size());
 
@@ -174,9 +171,8 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
                         ruleEvaluations, matchContext.getContext(),
                         workerManager.isLocked(worker.getWorkerId())
                 );
-                log.debug("Rule not matched: {} context {} (failed rules: {})",
+                log.debug("Rule not matched: {} (failed rules: {})",
                         worker.getWorkerId(),
-                        candidate.getWorkerContextId() != null ? candidate.getWorkerContextId() : "null",
                         failedRules);
 
                 if (log.isDebugEnabled()) {
@@ -196,9 +192,8 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
                         new ArrayList<>(), matchContext.getContext(),
                         workerManager.isLocked(worker.getWorkerId())
                 );
-                log.error("Error evaluating rules for worker {} context {}: {}",
+                log.error("Error evaluating rules for worker {}: {}",
                         worker.getWorkerId(),
-                        candidate.getWorkerContextId() != null ? candidate.getWorkerContextId() : "null",
                         e.getMessage());
             }
         }
@@ -249,9 +244,8 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
                         passedCandidate.ruleEvaluations(), rankedContext.getContext(), false
                 );
                 matchedWorkers.add(candidate);
-                log.info("Worker matched without exclusive lock: {} with context {} for background task {} at rank {}",
+                log.info("Worker matched without exclusive lock: {} for background task {} at rank {}",
                         worker.getWorkerId(),
-                        candidate.getWorkerContextId() != null ? candidate.getWorkerContextId() : "null",
                         task.getTid(),
                         rank);
                 continue;
@@ -269,9 +263,8 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
                         passedCandidate.ruleEvaluations(), rankedContext.getContext(), true
                 );
                 matchedWorkers.add(candidate);
-                log.info("Worker matched: {} with context {} for task {} at rank {}",
+                log.info("Worker matched: {} for task {} at rank {}",
                         worker.getWorkerId(),
-                        candidate.getWorkerContextId() != null ? candidate.getWorkerContextId() : "null",
                         task.getTid(),
                         rank);
             } else {

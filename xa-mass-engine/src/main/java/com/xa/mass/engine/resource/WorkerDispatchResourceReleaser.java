@@ -106,7 +106,6 @@ public class WorkerDispatchResourceReleaser {
         traceEventLogger.resourceReleased(
                 task.getTid(),
                 workerId,
-                null,
                 trigger,
                 source,
                 reason,

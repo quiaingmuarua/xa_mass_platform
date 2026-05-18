@@ -176,15 +176,6 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest
         assertEquals("realtime", responseData(registerResponse).get("transportHint"));
         assertFalse(app.isWorkerOnline(STOCK_WORKER_ID), "control-plane registration must not create realtime transport presence");
 
-        Map<String, Object> contextResponse = exchange("/worker-api/v1/workers/" + STOCK_WORKER_ID + "/contexts", HttpMethod.POST, Map.of(
-                "workerContextId", "ctx-" + STOCK_WORKER_ID,
-                "workerId", STOCK_WORKER_ID,
-                "project", "crawlerApp",
-                "routingTags", List.of("us", "stock"),
-                "attributes", Map.of("market", "NASDAQ", "region", "us")
-        ), workerHeaders);
-        assertApiOk(contextResponse);
-
         String sourceUrl = "http://127.0.0.1:" + port + "/api/v1/catalog/events/stock.quote.fetch";
         String initialRequestId = "stockreq-init-0001";
         Map<String, Object> createBody = new LinkedHashMap<>();

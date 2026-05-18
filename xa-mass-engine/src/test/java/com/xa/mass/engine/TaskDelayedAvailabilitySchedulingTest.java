@@ -32,7 +32,6 @@ class TaskDelayedAvailabilitySchedulingTest {
         List<ActiveLeaseRecord> activeLeases = harness.activeLeases(task.getTid());
         assertEquals(1, activeLeases.size());
         assertEquals("worker-delayed", activeLeases.getFirst().workerId());
-        assertEquals(null, activeLeases.getFirst().workerContextId());
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(task.getTid()).getStatus());
         assertEquals(0, harness.stats(task.getTid()).readyCount());
         assertEquals(1, harness.stats(task.getTid()).inflightCount());
@@ -49,7 +48,6 @@ class TaskDelayedAvailabilitySchedulingTest {
         List<ActiveLeaseRecord> activeLeases = harness.activeLeases(task.getTid());
         assertEquals(1, activeLeases.size());
         assertEquals("worker-stateless", activeLeases.getFirst().workerId());
-        assertEquals(null, activeLeases.getFirst().workerContextId());
         assertTrue(harness.workerManager.isLocked("worker-stateless"));
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(task.getTid()).getStatus());
         AssignmentRecord record = harness.record(task.getTid(), "worker-stateless");

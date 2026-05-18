@@ -270,9 +270,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "WorkerSchedulingView is a worker-level scheduling read model. Runtime/trace "
-                        + "compatibility may still carry workerContextId, but the scheduling view "
-                        + "must not read WorkerContext identity or lifecycle state:\n"
+                "WorkerSchedulingView is a worker-level scheduling read model. It must not "
+                        + "read account-slot identity or lifecycle state:\n"
                         + String.join("\n", violations));
     }
 
@@ -351,8 +350,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "Dispatch resource policy is worker/load based. WorkerContext identity may remain in "
-                        + "runtime/trace compatibility records, but it must not define resource usage:\n"
+                "Dispatch resource policy is worker/load based. Account-slot identity must not "
+                        + "define resource usage:\n"
                         + String.join("\n", violations));
     }
 
@@ -382,8 +381,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "Attempt resource cleanup is worker/task based. Runtime attempts may still carry "
-                        + "workerContextId for compatibility, but release policy must not depend on it:\n"
+                "Attempt resource cleanup is worker/task based. Release policy must not depend "
+                        + "on account-slot identity:\n"
                         + String.join("\n", violations));
     }
 
@@ -414,7 +413,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 if (directConstructor.matcher(source).find()) {
                     violations.add(normalizedPath
                             + " directly constructs TaskResultCorrelation instead of using "
-                            + "workerLevel(...), legacyContextBacked(...), or noActiveLease(...)");
+                            + "workerLevel(...) or noActiveLease(...)");
                 }
             }
         }
@@ -422,6 +421,82 @@ class EngineSchedulingCoreArchitectureGuardTest {
         assertTrue(violations.isEmpty(),
                 "Result correlation must make worker-level vs legacy-context semantics explicit. "
                         + "Use named factories instead of direct record construction:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void resultRuntimeDraftConstructionUsesWorkerLevelFactories() throws IOException {
+        Path repoRoot = repositoryRoot();
+        List<Path> allowedFiles = List.of(
+                repoRoot.resolve("platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/api/TaskResultCallbackDraft.java")
+                        .normalize(),
+                repoRoot.resolve("platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/api/TaskResultFinalDraft.java")
+                        .normalize()
+        );
+        List<Path> roots = List.of(
+                repoRoot.resolve("platform_infra/mass-runtime-api/src/main/java"),
+                repoRoot.resolve("platform_infra/mass-runtime-api/src/test/java"),
+                repoRoot.resolve("platform_infra/mass-runtime-memory/src/main/java"),
+                repoRoot.resolve("platform_infra/mass-runtime-memory/src/test/java"),
+                repoRoot.resolve("platform_infra/mass-runtime-redis/src/main/java"),
+                repoRoot.resolve("platform_infra/mass-runtime-redis/src/test/java"),
+                repoRoot.resolve("xa-mass-engine/src/main/java"),
+                repoRoot.resolve("xa-mass-engine/src/test/java")
+        );
+        Pattern directConstructor = Pattern.compile("\\bnew\\s+TaskResult(?:Callback|Final)Draft\\s*\\(");
+
+        List<String> violations = new ArrayList<>();
+        for (Path root : roots) {
+            for (Path path : javaSourceFiles(root)) {
+                Path normalizedPath = path.toAbsolutePath().normalize();
+                if (allowedFiles.contains(normalizedPath)) {
+                    continue;
+                }
+                String source = Files.readString(path, StandardCharsets.UTF_8);
+                if (directConstructor.matcher(source).find()) {
+                    violations.add(normalizedPath
+                            + " directly constructs TaskResult*Draft instead of using "
+                            + "workerLevel(...)");
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Result runtime drafts must use worker-level payload semantics through named factories:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void dispatchBindingConstructionUsesWorkerLevelFactory() throws IOException {
+        Path repoRoot = repositoryRoot();
+        Path bindingPath = repoRoot.resolve(
+                "xa-mass-base/src/main/java/com/xa/mass/base/runtime/dispatch/TaskDispatchBinding.java")
+                .normalize();
+        List<Path> roots = List.of(
+                repoRoot.resolve("xa-mass-engine/src/main/java"),
+                repoRoot.resolve("transport/transport_runtime/src/main/java"),
+                repoRoot.resolve("transport/transport_api/src/main/java")
+        );
+        Pattern directConstructor = Pattern.compile("\\bnew\\s+TaskDispatchBinding\\s*\\(");
+
+        List<String> violations = new ArrayList<>();
+        for (Path root : roots) {
+            for (Path path : javaSourceFiles(root)) {
+                Path normalizedPath = path.toAbsolutePath().normalize();
+                if (normalizedPath.equals(bindingPath)) {
+                    continue;
+                }
+                String source = Files.readString(path, StandardCharsets.UTF_8);
+                if (directConstructor.matcher(source).find()) {
+                    violations.add(normalizedPath
+                            + " directly constructs TaskDispatchBinding instead of using "
+                            + "workerLevel(...)");
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Dispatch binding must use worker-level payload semantics through named factories:\n"
                         + String.join("\n", violations));
     }
 
@@ -444,8 +519,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
         assertTrue(violations.isEmpty(),
                 "Assignment diagnostics must snapshot WorkerSchedulingView evidence. "
-                        + "Legacy workerContextId may remain as payload identity, but WorkerContext lifecycle "
-                        + "snapshots must not return to engine diagnostics:\n"
+                        + "WorkerContext lifecycle snapshots must not return to engine diagnostics:\n"
                         + String.join("\n", violations));
     }
 

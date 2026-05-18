@@ -261,9 +261,7 @@ Stable assignment-oriented fields are:
   `budgetLimited`, `matchedWorkerCount`, `dispatchCandidateCount`,
   `dispatchedMessageCount`, `usedWorkerCount`, `peakAssignedWorkerCount`
 - dispatch binding counts: `pendingMessageCount`, `dispatchSlotCount`,
-  `unassignedMessageCount`, `uniqueWorkerCount`,
-  `uniqueWorkerContextCount` as a legacy compatibility count when present,
-  `perWorkerBatchLimit`
+  `unassignedMessageCount`, `uniqueWorkerCount`, `perWorkerBatchLimit`
 - worker scheduling evidence: `workerSchedulingResourceId`,
   `workerSchedulingRoutingTags`, `workerSchedulingAttributes`,
   `workerSchedulingMatchesRoutingCode`

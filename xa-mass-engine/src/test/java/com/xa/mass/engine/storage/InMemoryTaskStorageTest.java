@@ -64,7 +64,6 @@ class InMemoryTaskStorageTest {
                 runningAttempt.messageId(),
                 runningAttempt.attemptNo(),
                 runningAttempt.workerId(),
-                runningAttempt.workerContextId(),
                 runningAttempt.batchId(),
                 TaskMessageAttemptProjectionStatus.SUCCEEDED,
                 TaskMessageAttemptProjectionFinalReason.SUCCESS,
@@ -192,7 +191,6 @@ class InMemoryTaskStorageTest {
                 null,
                 assigned.latestAttemptId(),
                 assigned.latestAttemptWorkerId(),
-                assigned.latestAttemptWorkerContextId(),
                 assigned.latestAttemptBatchId()
         );
         assertTrue(storage.upsertTaskMessageProjection("task-1", assigned));
@@ -259,7 +257,6 @@ class InMemoryTaskStorageTest {
                 attemptNo,
                 null,
                 null,
-                null,
                 status,
                 null,
                 null,
@@ -291,7 +288,6 @@ class InMemoryTaskStorageTest {
                 null,
                 null,
                 finalReason,
-                null,
                 null,
                 null,
                 null,

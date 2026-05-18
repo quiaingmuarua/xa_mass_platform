@@ -6,19 +6,16 @@ import java.util.Set;
 /**
  * Runtime claim target.
  *
- * <p>Current scheduling claims should use {@link #workerLevel(String, String, int)}
- * or {@link #workerLevel(String, String, int, Set)}. The nullable
- * {@code workerContextId} field remains only for runtime compatibility with
- * historical context-backed leases.</p>
+ * <p>Claims are worker-level. Account/context identity is not part of the
+ * runtime claim contract.</p>
  */
 public record WorkerClaimTarget(String workerId,
-                                String workerContextId,
                                 String batchId,
                                 int capacity,
                                 Set<String> supportedEventCodes) {
 
-    public WorkerClaimTarget(String workerId, String workerContextId, String batchId, int capacity) {
-        this(workerId, workerContextId, batchId, capacity, Set.of());
+    public WorkerClaimTarget(String workerId, String batchId, int capacity) {
+        this(workerId, batchId, capacity, Set.of());
     }
 
     public static WorkerClaimTarget workerLevel(String workerId, String batchId, int capacity) {
@@ -29,7 +26,7 @@ public record WorkerClaimTarget(String workerId,
                                                 String batchId,
                                                 int capacity,
                                                 Set<String> supportedEventCodes) {
-        return new WorkerClaimTarget(workerId, null, batchId, capacity, supportedEventCodes);
+        return new WorkerClaimTarget(workerId, batchId, capacity, supportedEventCodes);
     }
 
     public WorkerClaimTarget {

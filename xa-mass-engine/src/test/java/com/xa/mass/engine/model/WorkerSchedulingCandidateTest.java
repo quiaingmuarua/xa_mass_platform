@@ -5,7 +5,6 @@ import com.xa.mass.engine.WorkerReachabilityState;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -24,11 +23,10 @@ class WorkerSchedulingCandidateTest {
         assertSame(worker, candidate.getWorker());
         assertSame(schedulingView, candidate.getSchedulingView());
         assertEquals("worker-1", candidate.getWorkerId());
-        assertNull(candidate.getWorkerContextId());
     }
 
     @Test
-    void supportsNullLegacyWorkerContext() {
+    void retainsWorkerLevelCandidateIdentity() {
         Worker worker = worker("worker-2");
         WorkerSchedulingView schedulingView = WorkerSchedulingView.from(worker, WorkerReachabilityState.ONLINE,
                 true,
@@ -39,7 +37,6 @@ class WorkerSchedulingCandidateTest {
 
         assertSame(worker, candidate.getWorker());
         assertEquals("worker-2", candidate.getWorkerId());
-        assertNull(candidate.getWorkerContextId());
         assertSame(schedulingView, candidate.getSchedulingView());
     }
 

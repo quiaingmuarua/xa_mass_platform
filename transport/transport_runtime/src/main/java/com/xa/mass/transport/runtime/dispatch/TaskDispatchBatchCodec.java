@@ -97,7 +97,6 @@ public final class TaskDispatchBatchCodec {
                                              int attemptNo,
                                              String leaseToken,
                                              String workerId,
-                                             String workerContextId,
                                              String batchId) {
 
         private static TaskDispatchBindingRecord from(TaskDispatchBinding binding) {
@@ -112,13 +111,12 @@ public final class TaskDispatchBatchCodec {
                     binding.attemptNo(),
                     binding.leaseToken(),
                     binding.workerId(),
-                    binding.workerContextId(),
                     binding.batchId()
             );
         }
 
         private TaskDispatchBinding toBinding() {
-            return new TaskDispatchBinding(
+            return TaskDispatchBinding.workerLevel(
                     taskId,
                     messageId,
                     eventCode,
@@ -129,7 +127,6 @@ public final class TaskDispatchBatchCodec {
                     attemptNo,
                     leaseToken,
                     workerId,
-                    workerContextId,
                     batchId
             );
         }

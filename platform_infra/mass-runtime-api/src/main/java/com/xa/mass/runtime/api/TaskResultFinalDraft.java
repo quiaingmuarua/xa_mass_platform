@@ -15,7 +15,6 @@ public record TaskResultFinalDraft(
         int retryCount,
         int maxRetryCount,
         String workerId,
-        String workerContextId,
         String batchId,
         String attemptId,
         String payloadRef,
@@ -38,6 +37,50 @@ public record TaskResultFinalDraft(
         updateTime = updateTime == null ? Instant.now() : updateTime;
         completeTime = completeTime == null ? updateTime : completeTime;
         createTime = createTime == null ? updateTime : createTime;
+    }
+
+    public static TaskResultFinalDraft workerLevel(String taskId,
+                                                   String messageId,
+                                                   String eventCode,
+                                                   String status,
+                                                   String finalReason,
+                                                   int retryCount,
+                                                   int maxRetryCount,
+                                                   String workerId,
+                                                   String batchId,
+                                                   String attemptId,
+                                                   String payloadRef,
+                                                   Instant createTime,
+                                                   Instant assignedTime,
+                                                   Instant startTime,
+                                                   Instant completeTime,
+                                                   Instant updateTime,
+                                                   String errorCode,
+                                                   String errorMessage,
+                                                   Map<String, Object> output,
+                                                   String stageId) {
+        return new TaskResultFinalDraft(
+                taskId,
+                messageId,
+                eventCode,
+                status,
+                finalReason,
+                retryCount,
+                maxRetryCount,
+                workerId,
+                batchId,
+                attemptId,
+                payloadRef,
+                createTime,
+                assignedTime,
+                startTime,
+                completeTime,
+                updateTime,
+                errorCode,
+                errorMessage,
+                output,
+                stageId
+        );
     }
 
     private static Map<String, Object> copyMap(Map<String, Object> source) {

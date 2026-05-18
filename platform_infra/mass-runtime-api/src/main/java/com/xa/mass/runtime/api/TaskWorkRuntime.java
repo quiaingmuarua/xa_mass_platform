@@ -55,7 +55,7 @@ public interface TaskWorkRuntime {
      * {@code getWork} round-trips on the hot callback path.
      *
      * <p>The default implementation is a non-atomic fallback that reads lease
-     * and work before applying — it is safe for correctness but not for
+     * and work before applying 鈥?it is safe for correctness but not for
      * million-scale throughput. {@code InMemoryTaskWorkRuntime} and
      * {@code RedisTaskWorkRuntime} both override this with a single atomic
      * operation (synchronized block / Lua script) so the three reads become
@@ -64,11 +64,11 @@ public interface TaskWorkRuntime {
      * <p>The returned context carries all fields needed by the engine callback
      * path without any additional runtime reads:</p>
      * <ul>
-     *   <li>{@code workerId}, {@code workerContextId}, {@code batchId} — for
+     *   <li>{@code workerId}, {@code batchId} 鈥?for
      *       routing and audit;</li>
-     *   <li>{@code activeLeaseToken}, {@code retryCount} — for stale-lease
+     *   <li>{@code activeLeaseToken}, {@code retryCount} 鈥?for stale-lease
      *       detection and retry accounting;</li>
-     *   <li>{@code payloadRef}, {@code maxRetryCount}, {@code leasedAt} — for
+     *   <li>{@code payloadRef}, {@code maxRetryCount}, {@code leasedAt} 鈥?for
      *       projection and trace population.</li>
      * </ul>
      */
@@ -85,7 +85,6 @@ public interface TaskWorkRuntime {
         return RuntimeResultApplyContext.withSnapshot(
                 outcome,
                 lease.workerId(),
-                lease.workerContextId(),
                 lease.batchId(),
                 lease.leaseToken(),
                 lease.payloadRef(),
@@ -147,4 +146,3 @@ public interface TaskWorkRuntime {
 
     void shutdown();
 }
-

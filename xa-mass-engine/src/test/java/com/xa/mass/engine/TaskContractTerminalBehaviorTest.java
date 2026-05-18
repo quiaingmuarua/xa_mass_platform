@@ -141,7 +141,7 @@ class TaskContractTerminalBehaviorTest {
     private ClaimedTaskWork claimSingle(String taskId, String workerId) {
         List<ClaimedTaskWork> claimed = taskManager.getTaskWorkRuntime().claimReady(
                 taskId,
-                List.of(new WorkerClaimTarget(workerId, "ctx-" + workerId, "batch-0", 1)),
+                List.of(WorkerClaimTarget.workerLevel(workerId, "batch-0", 1)),
                 1,
                 taskManager.getWorkLeaseSeconds()
         );

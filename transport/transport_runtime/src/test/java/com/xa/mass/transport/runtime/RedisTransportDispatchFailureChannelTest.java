@@ -104,7 +104,6 @@ class RedisTransportDispatchFailureChannelTest {
                 1,
                 "lease-" + messageId,
                 "worker-1",
-                "ctx-1",
                 "batch-1"
         );
     }

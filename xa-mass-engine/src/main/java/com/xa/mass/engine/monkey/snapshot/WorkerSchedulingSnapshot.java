@@ -7,9 +7,8 @@ import java.util.Set;
 /**
  * Worker scheduling read-model snapshot captured for assignment diagnostics.
  *
- * <p>Legacy WorkerContext identity can still appear as payload evidence while
- * the runtime contract carries workerContextId, but this snapshot is worker
- * scheduling view first and does not mirror WorkerContext lifecycle state.</p>
+ * <p>This snapshot is worker scheduling view first and does not mirror
+ * WorkerContext lifecycle state.</p>
  */
 public class WorkerSchedulingSnapshot {
     private String workerId;
@@ -26,8 +25,6 @@ public class WorkerSchedulingSnapshot {
     private int reservedCount;
     private int declaredCapacity;
     private double estimatedLoadRatio;
-    private boolean hasLegacyWorkerContext;
-    private String legacyWorkerContextId;
     private String schedulingResourceId;
     private String schedulingProject;
     private Set<String> schedulingRoutingTags;
@@ -149,22 +146,6 @@ public class WorkerSchedulingSnapshot {
 
     public void setEstimatedLoadRatio(double estimatedLoadRatio) {
         this.estimatedLoadRatio = estimatedLoadRatio;
-    }
-
-    public boolean isHasLegacyWorkerContext() {
-        return hasLegacyWorkerContext;
-    }
-
-    public void setHasLegacyWorkerContext(boolean hasLegacyWorkerContext) {
-        this.hasLegacyWorkerContext = hasLegacyWorkerContext;
-    }
-
-    public String getLegacyWorkerContextId() {
-        return legacyWorkerContextId;
-    }
-
-    public void setLegacyWorkerContextId(String legacyWorkerContextId) {
-        this.legacyWorkerContextId = legacyWorkerContextId;
     }
 
     public String getSchedulingResourceId() {

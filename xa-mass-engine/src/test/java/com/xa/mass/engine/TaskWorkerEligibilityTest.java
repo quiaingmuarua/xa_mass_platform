@@ -42,7 +42,6 @@ class TaskWorkerEligibilityTest {
         List<ActiveLeaseRecord> activeLeases = harness.activeLeases(task.getTid());
         assertEquals(1, activeLeases.size());
         assertEquals("worker-eligible", activeLeases.getFirst().workerId());
-        assertEquals(null, activeLeases.getFirst().workerContextId());
         assertEquals(1, harness.successfulMessageAssignments(task.getTid(), "worker-eligible"));
 
         assertRejected(harness, task.getTid(), "worker-unreachable",
@@ -78,7 +77,6 @@ class TaskWorkerEligibilityTest {
         List<ActiveLeaseRecord> secondLeases = harness.activeLeases(secondTask.getTid());
         assertEquals(1, secondLeases.size());
         assertEquals("worker-backup", secondLeases.getFirst().workerId());
-        assertEquals(null, secondLeases.getFirst().workerContextId());
         assertEquals(1, harness.activeLeases(firstTask.getTid()).size());
         assertRejected(harness, secondTask.getTid(), "worker-primary",
                 AssignmentResult.RESOURCE_UNAVAILABLE, "worker transport unreachable");

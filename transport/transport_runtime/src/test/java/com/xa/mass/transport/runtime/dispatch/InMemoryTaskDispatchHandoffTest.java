@@ -69,7 +69,6 @@ class InMemoryTaskDispatchHandoffTest {
                         1,
                         null,
                         "worker-" + messageId,
-                        null,
                         "batch-" + messageId
                 ))
         );

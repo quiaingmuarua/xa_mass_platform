@@ -548,7 +548,6 @@ class TraceOperatorServiceIntegrationTest {
                             "dispatchedMessageCount", 2,
                             "unassignedMessageCount", 0,
                             "uniqueWorkerCount", 1,
-                            "uniqueWorkerContextCount", 1,
                             "perWorkerBatchLimit", 2))
                     .build());
             sink.emit(ExecutionEvent.builder()
@@ -694,7 +693,6 @@ class TraceOperatorServiceIntegrationTest {
                             "dispatchedMessageCount", 1,
                             "unassignedMessageCount", 0,
                             "uniqueWorkerCount", 1,
-                            "uniqueWorkerContextCount", 0,
                             "perWorkerBatchLimit", 1))
                     .build());
             sink.emit(ExecutionEvent.builder()
@@ -810,7 +808,6 @@ class TraceOperatorServiceIntegrationTest {
                             "dispatchedMessageCount", 1,
                             "unassignedMessageCount", 0,
                             "uniqueWorkerCount", 1,
-                            "uniqueWorkerContextCount", contextBackedMatch ? 1 : 0,
                             "perWorkerBatchLimit", 1))
                     .build());
             sink.emit(ExecutionEvent.builder()
@@ -872,7 +869,6 @@ class TraceOperatorServiceIntegrationTest {
                             "dispatchedMessageCount", 1,
                             "unassignedMessageCount", 0,
                             "uniqueWorkerCount", 1,
-                            "uniqueWorkerContextCount", contextBackedRelease ? 1 : 0,
                             "perWorkerBatchLimit", 1))
                     .build());
             sink.emit(ExecutionEvent.builder()
@@ -974,7 +970,6 @@ class TraceOperatorServiceIntegrationTest {
                             "dispatchedMessageCount", 20,
                             "unassignedMessageCount", 80,
                             "uniqueWorkerCount", 2,
-                            "uniqueWorkerContextCount", 0,
                             "perWorkerBatchLimit", 10))
                     .build());
             sink.emit(ExecutionEvent.builder()
@@ -1037,7 +1032,6 @@ class TraceOperatorServiceIntegrationTest {
                             "dispatchedMessageCount", 1,
                             "unassignedMessageCount", 0,
                             "uniqueWorkerCount", 1,
-                            "uniqueWorkerContextCount", 0,
                             "perWorkerBatchLimit", 1))
                     .build());
             sink.emit(ExecutionEvent.builder()
@@ -1307,7 +1301,6 @@ class TraceOperatorServiceIntegrationTest {
                             "dispatchedMessageCount", 1,
                             "unassignedMessageCount", 0,
                             "uniqueWorkerCount", 1,
-                            "uniqueWorkerContextCount", 1,
                             "perWorkerBatchLimit", 1))
                     .build());
         }

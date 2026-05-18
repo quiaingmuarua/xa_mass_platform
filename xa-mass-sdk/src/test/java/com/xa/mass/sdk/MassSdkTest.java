@@ -61,6 +61,8 @@ import com.xa.mass.sdk.model.MassTaskUpdateRequest;
 import com.xa.mass.sdk.model.TaskWorkFinalNotification;
 import com.xa.mass.sdk.model.TaskDetailSnapshot;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
+import com.xa.mass.sdk.model.TaskResultItemSnapshot;
+import com.xa.mass.sdk.model.TaskResultWindowSnapshot;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.auth.PrincipalType;
@@ -2897,6 +2899,13 @@ class MassSdkTest {
 
             assertNotNull(terminalTask);
             Assertions.assertEquals("ALL_MESSAGES_SUCCEEDED", terminalTask.getTerminalReason());
+
+            TaskResultWindowSnapshot resultWindow = app.readTaskResults(task.getTaskId(), 0, 10);
+            Assertions.assertEquals(1, resultWindow.getItems().size());
+            TaskResultItemSnapshot resultRow = resultWindow.getItems().getFirst();
+            Assertions.assertEquals("polling-worker-1", resultRow.getWorkerId());
+            Assertions.assertFalse(resultRow.getAttemptId().contains("-na-"));
+            Assertions.assertEquals("SUCCESS", resultRow.getStatus());
         } finally {
             app.stop();
         }

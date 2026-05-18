@@ -155,7 +155,6 @@ class TaskResultService {
             traceEventLogger.taskWorkRetryReset(retrySummary.toTraceView(),
                     activeAttempt.attemptId(),
                     activeAttempt.workerId(),
-                    activeAttempt.workerContextId(),
                     activeAttempt.batchId(),
                     workRetryDelayMillis,
                     "EXPIRE_LEASED_WORK", "TaskManager", "lease expired but retry budget allows re-dispatch");
@@ -175,7 +174,6 @@ class TaskResultService {
                     logicallyFinalSummary.toTraceView(),
                     activeAttempt.attemptId(),
                     activeAttempt.workerId(),
-                    activeAttempt.workerContextId(),
                     activeAttempt.batchId(),
                     fromStatus,
                     logicallyFinalSummary.status(),
@@ -203,7 +201,6 @@ class TaskResultService {
                 workSummary.toTraceView(),
                 activeAttempt.attemptId(),
                 activeAttempt.workerId(),
-                activeAttempt.workerContextId(),
                 activeAttempt.batchId(),
                 fromStatus,
                 currentSummary.status(),
@@ -476,7 +473,7 @@ class TaskResultService {
         );
         return recovered != null
                 ? recovered.toTraceView()
-                : new TaskWorkTraceView(taskId, messageId, null, null, null, null, MessageStatus.INIT, null, 0, null);
+                : new TaskWorkTraceView(taskId, messageId, null, null, null, MessageStatus.INIT, null, 0, null);
     }
 
     private ActiveRuntimeProjection buildActiveRuntimeProjection(String taskId,
@@ -506,7 +503,6 @@ class TaskResultService {
                     activeView.toTraceView(),
                     activeAttempt.attemptId(),
                     activeAttempt.workerId(),
-                    activeAttempt.workerContextId(),
                     activeAttempt.batchId(),
                     originalStatus,
                     activeView.status(),
@@ -585,7 +581,6 @@ class TaskResultService {
                     runningView.toTraceView(),
                     activeAttempt.attemptId(),
                     activeAttempt.workerId(),
-                    activeAttempt.workerContextId(),
                     activeAttempt.batchId(),
                     beforeRunningStatus,
                     runningView.status(),
@@ -605,7 +600,6 @@ class TaskResultService {
                 successSummary.toTraceView(),
                 activeAttempt.attemptId(),
                 activeAttempt.workerId(),
-                activeAttempt.workerContextId(),
                 activeAttempt.batchId(),
                 beforeFinalStatus,
                 successSummary.status(),
@@ -694,7 +688,6 @@ class TaskResultService {
                 activeAttempt.attemptId(),
                 activeAttempt.attemptNo(),
                 activeAttempt.workerId(),
-                activeAttempt.workerContextId(),
                 activeAttempt.batchId(),
                 activeAttempt.finalReason(),
                 beforeRevokedStatus,
@@ -722,7 +715,6 @@ class TaskResultService {
                 failedView.toTraceView(),
                 activeAttempt.attemptId(),
                 activeAttempt.workerId(),
-                activeAttempt.workerContextId(),
                 activeAttempt.batchId(),
                 beforeRetryFailureStatus,
                 failedView.status(),
@@ -736,7 +728,6 @@ class TaskResultService {
         traceEventLogger.taskWorkRetryReset(retrySummary.toTraceView(),
                 activeAttempt.attemptId(),
                 activeAttempt.workerId(),
-                activeAttempt.workerContextId(),
                 activeAttempt.batchId(),
                 workRetryDelayMillis,
                 trigger,
@@ -788,7 +779,6 @@ class TaskResultService {
                 failureSummary.toTraceView(),
                 activeAttempt.attemptId(),
                 activeAttempt.workerId(),
-                activeAttempt.workerContextId(),
                 activeAttempt.batchId(),
                 beforeFinalStatus,
                 failureSummary.status(),
@@ -903,7 +893,6 @@ class TaskResultService {
                 workSummary.taskId(),
                 workSummary.latestAttemptId(),
                 workSummary.latestAttemptWorkerId(),
-                workSummary.latestAttemptWorkerContextId(),
                 workSummary.latestAttemptBatchId(),
                 workSummary.status(),
                 workSummary.assignedTime(),
@@ -931,7 +920,6 @@ class TaskResultService {
                 attempt.messageId(),
                 attempt.attemptNo(),
                 attempt.workerId(),
-                attempt.workerContextId(),
                 attempt.batchId(),
                 attempt.status(),
                 attempt.finalReason(),
@@ -993,7 +981,6 @@ class TaskResultService {
                 messageId,
                 ctx.activeLeaseToken(),
                 ctx.workerId(),
-                ctx.workerContextId(),
                 ctx.batchId(),
                 ctx.payloadRef(),
                 ctx.retryCount(),
@@ -1107,8 +1094,10 @@ class TaskResultService {
                 ? null
                 : TaskWorkAttemptIdSupport.runtimeAttemptId(messageId, Math.max(1, activeLease.retryCount() + 1), activeLease);
         String identityDigest = callbackIdentityDigest(taskId, messageId, success, detail, errorCode, output, activeLease);
-        return new TaskResultCallbackDraft(
-                TaskResultCallbackDraft.stageId(taskId, messageId, identityDigest),
+        String stageId = TaskResultCallbackDraft.stageId(taskId, messageId, identityDigest);
+        String workerId = activeLease != null ? activeLease.workerId() : null;
+        return TaskResultCallbackDraft.workerLevel(
+                stageId,
                 taskId,
                 messageId,
                 success,
@@ -1122,8 +1111,7 @@ class TaskResultService {
                 null,
                 null,
                 identityDigest,
-                activeLease != null ? activeLease.workerId() : null,
-                activeLease != null ? activeLease.workerContextId() : null,
+                workerId,
                 activeLease != null ? activeLease.batchId() : null,
                 activeLease != null ? activeLease.payloadRef() : runtimeWork != null ? runtimeWork.payloadRef() : null,
                 runtimeWork != null ? runtimeWork.eventCode() : task != null ? com.xa.mass.base.model.TaskSharedConfig.sdkEventCode(task) : null,
@@ -1164,7 +1152,8 @@ class TaskResultService {
         if (summary == null) {
             return CommitResult.rejected("summary must not be null");
         }
-        return taskResultRuntime.commitVisibleFinal(new TaskResultFinalDraft(
+        String workerId = attempt != null ? attempt.workerId() : summary.latestAttemptWorkerId();
+        return taskResultRuntime.commitVisibleFinal(TaskResultFinalDraft.workerLevel(
                 summary.taskId(),
                 summary.messageId(),
                 stagedDraft != null ? stagedDraft.eventCode() : null,
@@ -1172,8 +1161,7 @@ class TaskResultService {
                 summary.finalReason() != null ? summary.finalReason().name() : null,
                 summary.retryCount(),
                 summary.maxRetryCount(),
-                attempt != null ? attempt.workerId() : summary.latestAttemptWorkerId(),
-                attempt != null ? attempt.workerContextId() : summary.latestAttemptWorkerContextId(),
+                workerId,
                 attempt != null ? attempt.batchId() : summary.latestAttemptBatchId(),
                 attempt != null ? attempt.attemptId() : summary.latestAttemptId(),
                 summary.payloadRef(),
@@ -1448,7 +1436,6 @@ class TaskResultService {
                 draft.taskId(),
                 draft.attemptId(),
                 draft.workerId(),
-                draft.workerContextId(),
                 draft.batchId(),
                 receiptSummary.status(),
                 leasedAt,
@@ -1491,7 +1478,6 @@ class TaskResultService {
                 row.taskId(),
                 row.attemptId(),
                 row.workerId(),
-                row.workerContextId(),
                 row.batchId(),
                 receiptSummary.status(),
                 assignedTime,
@@ -1523,7 +1509,6 @@ class TaskResultService {
                 row.messageId(),
                 0,
                 row.workerId(),
-                row.workerContextId(),
                 row.batchId()
         );
         repairAttempt.status = attemptStatusForRepair(workSummary.status());
@@ -1575,7 +1560,6 @@ class TaskResultService {
                 attempt.attemptId(),
                 attempt.attemptNo(),
                 attempt.workerId(),
-                attempt.workerContextId(),
                 attempt.batchId(),
                 attempt.status(),
                 attempt.finalReason(),
@@ -1591,7 +1575,6 @@ class TaskResultService {
                         attempt.attemptId(),
                         attempt.attemptNo(),
                         attempt.workerId(),
-                        attempt.workerContextId(),
                         attempt.batchId(),
                         attempt.status(),
                         attempt.finalReason()
@@ -1609,7 +1592,6 @@ class TaskResultService {
                 workSummary.toTraceView(),
                 attempt != null ? attempt.attemptId() : null,
                 attempt != null ? attempt.workerId() : null,
-                attempt != null ? attempt.workerContextId() : null,
                 attempt != null ? attempt.batchId() : null,
                 trigger,
                 "TaskManager",
@@ -1768,7 +1750,6 @@ class TaskResultService {
         private final String messageId;
         private final int attemptNo;
         private final String workerId;
-        private final String workerContextId;
         private final String batchId;
         private AttemptStatus status;
         private AttemptFinalReason finalReason;
@@ -1781,14 +1762,12 @@ class TaskResultService {
                                       String messageId,
                                       int attemptNo,
                                       String workerId,
-                                      String workerContextId,
                                       String batchId) {
             this.attemptId = attemptId;
             this.taskId = taskId;
             this.messageId = messageId;
             this.attemptNo = attemptNo;
             this.workerId = workerId;
-            this.workerContextId = workerContextId;
             this.batchId = batchId;
             this.status = AttemptStatus.DISPATCHED;
         }
@@ -1807,7 +1786,6 @@ class TaskResultService {
                     messageId,
                     attemptNo,
                     activeLease.workerId(),
-                    activeLease.workerContextId(),
                     activeLease.batchId()
             );
             return attempt;
@@ -1831,10 +1809,6 @@ class TaskResultService {
 
         String workerId() {
             return workerId;
-        }
-
-        String workerContextId() {
-            return workerContextId;
         }
 
         String batchId() {
@@ -1917,7 +1891,6 @@ class TaskResultService {
                               String taskId,
                               String latestAttemptId,
                               String latestAttemptWorkerId,
-                              String latestAttemptWorkerContextId,
                               String latestAttemptBatchId,
                               MessageStatus status,
                               LocalDateTime assignedTime,
@@ -1938,7 +1911,6 @@ class TaskResultService {
             return new RuntimeWorkSummary(
                     messageId,
                     taskId,
-                    null,
                     null,
                     null,
                     null,
@@ -1968,7 +1940,6 @@ class TaskResultService {
             return new RuntimeWorkSummary(
                     runtimeWork.messageId(),
                     runtimeWork.taskId(),
-                    null,
                     null,
                     null,
                     null,
@@ -2016,7 +1987,6 @@ class TaskResultService {
                     null,
                     null,
                     null,
-                    null,
                     status,
                     null,
                     completedAt,
@@ -2051,7 +2021,6 @@ class TaskResultService {
                     taskId,
                     null,
                     activeLease.workerId(),
-                    activeLease.workerContextId(),
                     activeLease.batchId(),
                     MessageStatus.ASSIGNED,
                     assignedTime != null ? assignedTime : leasedAt != null ? leasedAt : now,
@@ -2076,7 +2045,6 @@ class TaskResultService {
             int runtimeRetryCount = Math.max(0, activeLease.retryCount());
             boolean needsAssignedStatus = status == null || status == MessageStatus.INIT;
             boolean attemptProjectionDiffers = !java.util.Objects.equals(latestAttemptWorkerId, activeLease.workerId())
-                    || !java.util.Objects.equals(latestAttemptWorkerContextId, activeLease.workerContextId())
                     || !java.util.Objects.equals(latestAttemptBatchId, activeLease.batchId());
             boolean needsRetryProjection = retryCount != runtimeRetryCount;
             boolean needsAssignedTime = assignedTime == null;
@@ -2097,7 +2065,6 @@ class TaskResultService {
                     taskId,
                     latestAttemptId,
                     activeLease.workerId(),
-                    activeLease.workerContextId(),
                     activeLease.batchId(),
                     nextStatus,
                     nextAssignedTime,
@@ -2126,7 +2093,6 @@ class TaskResultService {
                     taskId,
                     attempt.attemptId(),
                     attempt.workerId(),
-                    attempt.workerContextId(),
                     attempt.batchId(),
                     MessageStatus.ASSIGNED,
                     nextAssignedTime,
@@ -2150,7 +2116,6 @@ class TaskResultService {
             }
             boolean alreadyAttached = java.util.Objects.equals(latestAttemptId, attempt.attemptId())
                     && java.util.Objects.equals(latestAttemptWorkerId, attempt.workerId())
-                    && java.util.Objects.equals(latestAttemptWorkerContextId, attempt.workerContextId())
                     && java.util.Objects.equals(latestAttemptBatchId, attempt.batchId());
             MessageStatus nextStatus = status == null || status == MessageStatus.INIT
                     ? MessageStatus.ASSIGNED
@@ -2164,7 +2129,6 @@ class TaskResultService {
                     taskId,
                     attempt.attemptId(),
                     attempt.workerId(),
-                    attempt.workerContextId(),
                     attempt.batchId(),
                     nextStatus,
                     assignedTime != null ? assignedTime : now,
@@ -2192,7 +2156,6 @@ class TaskResultService {
                     taskId,
                     latestAttemptId,
                     latestAttemptWorkerId,
-                    latestAttemptWorkerContextId,
                     latestAttemptBatchId,
                     MessageStatus.RUNNING,
                     assignedTime,
@@ -2217,7 +2180,6 @@ class TaskResultService {
                     taskId,
                     latestAttemptId,
                     latestAttemptWorkerId,
-                    latestAttemptWorkerContextId,
                     latestAttemptBatchId,
                     MessageStatus.SUCCESS,
                     assignedTime,
@@ -2245,7 +2207,6 @@ class TaskResultService {
                     taskId,
                     latestAttemptId,
                     latestAttemptWorkerId,
-                    latestAttemptWorkerContextId,
                     latestAttemptBatchId,
                     MessageStatus.FAILED,
                     assignedTime,
@@ -2270,7 +2231,6 @@ class TaskResultService {
                     taskId,
                     latestAttemptId,
                     latestAttemptWorkerId,
-                    latestAttemptWorkerContextId,
                     latestAttemptBatchId,
                     MessageStatus.EXPIRED,
                     assignedTime,
@@ -2292,7 +2252,6 @@ class TaskResultService {
             return new RuntimeWorkSummary(
                     messageId,
                     taskId,
-                    null,
                     null,
                     null,
                     null,
@@ -2319,7 +2278,6 @@ class TaskResultService {
                     taskId,
                     latestAttemptId,
                     latestAttemptWorkerId,
-                    latestAttemptWorkerContextId,
                     latestAttemptBatchId,
                     status,
                     assignedTime,
@@ -2343,7 +2301,6 @@ class TaskResultService {
                     messageId,
                     latestAttemptId,
                     latestAttemptWorkerId,
-                    latestAttemptWorkerContextId,
                     latestAttemptBatchId,
                     status,
                     finalReason,

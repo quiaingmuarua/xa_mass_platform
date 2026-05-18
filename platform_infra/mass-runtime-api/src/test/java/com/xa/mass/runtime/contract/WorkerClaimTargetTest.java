@@ -10,7 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class WorkerClaimTargetTest {
 
     @Test
-    void workerLevelFactoryCreatesClaimTargetWithoutLegacyWorkerContextIdentity() {
+    void workerLevelFactoryCreatesClaimTarget() {
         WorkerClaimTarget target = WorkerClaimTarget.workerLevel(
                 "worker-1",
                 "batch-1",
@@ -19,17 +19,9 @@ class WorkerClaimTargetTest {
         );
 
         assertThat(target.workerId()).isEqualTo("worker-1");
-        assertThat(target.workerContextId()).isNull();
         assertThat(target.batchId()).isEqualTo("batch-1");
         assertThat(target.capacity()).isEqualTo(3);
         assertThat(target.supportsEvent("event.a")).isTrue();
         assertThat(target.supportsEvent("event.b")).isFalse();
-    }
-
-    @Test
-    void legacyConstructorStillCarriesWorkerContextIdentityForRuntimeCompatibility() {
-        WorkerClaimTarget target = new WorkerClaimTarget("worker-1", "ctx-1", "batch-1", 1);
-
-        assertThat(target.workerContextId()).isEqualTo("ctx-1");
     }
 }

@@ -64,7 +64,6 @@ class WebSocketTaskDispatchChannelTest {
         assertEquals("worker-1", message.get(TransportPacket.PAYLOAD_WORKER_ID).getAsString());
         assertEquals("task-1", message.get("taskId").getAsString());
         assertEquals("crawler.fetch-page", message.get("eventCode").getAsString());
-        assertEquals("worker-context-1", message.get(TransportPacket.PAYLOAD_WORKER_CONTEXT_ID).getAsString());
         assertEquals("batch-0", message.get(TransportPacket.PAYLOAD_BATCH_ID).getAsString());
         assertEquals(0, message.get(TransportPacket.PAYLOAD_RETRY_COUNT).getAsInt());
 
@@ -160,7 +159,6 @@ class WebSocketTaskDispatchChannelTest {
                 1,
                 null,
                 "worker-1",
-                "worker-context-1",
                 "batch-0"
         );
     }

@@ -124,10 +124,9 @@ Per-item records:
     - `createdAtMillis`
 - `...:task:{taskId}:lease:{messageId}`
   - `HASH`
-  - fields:
+    - fields:
     - `leaseToken`
     - `workerId`
-    - `workerContextId`
     - `batchId`
     - `retryCount`
     - `leaseExpireAtMillis`

@@ -92,7 +92,7 @@ public class SimpleTaskDispatchBinderTest {
         Task task = createTask(4);
         task.getExecutionSpec().setBatchSize(10);
 
-        listener.bindDispatches(task, List.of(matched("d1", null), matched("d2", null)));
+        listener.bindDispatches(task, List.of(matched("d1"), matched("d2")));
 
         List<TaskDetailStore.TaskMessageProjection> stored = storedMessages(task.getTid());
         List<TaskDetailStore.TaskMessageProjection> projected = projectedMessages(task.getTid());
@@ -139,7 +139,7 @@ public class SimpleTaskDispatchBinderTest {
         task.getExecutionSpec().setBatchSize(1);
 
         LocalDateTime beforeAssign = LocalDateTime.now();
-        listener.bindDispatches(task, List.of(matched("d1", null)));
+        listener.bindDispatches(task, List.of(matched("d1")));
         LocalDateTime afterAssign = LocalDateTime.now();
 
         TaskDetailStore.TaskMessageProjection message = storedMessages(task.getTid()).get(0);
@@ -163,7 +163,7 @@ public class SimpleTaskDispatchBinderTest {
 
         List<TaskDispatchBinding> dispatched = listener.bindDispatches(
                 task,
-                List.of(matched("d1", null), matched("d2", null))
+                List.of(matched("d1"), matched("d2"))
         );
 
         assertEquals(3, dispatched.size());
@@ -177,7 +177,7 @@ public class SimpleTaskDispatchBinderTest {
         task.getExecutionSpec().setBatchSize(2);
         when(workerManager.confirmWorkerReservation("d1", task.getTid())).thenReturn(true, false);
 
-        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched("d1", null)));
+        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched("d1")));
 
         assertEquals(2, dispatched.size());
         verify(workerManager, times(2)).confirmWorkerReservation("d1", task.getTid());
@@ -191,7 +191,7 @@ public class SimpleTaskDispatchBinderTest {
 
         List<TaskDispatchBinding> dispatched = listener.bindDispatches(
                 task,
-                List.of(matched("d1", null), matched("d2", null))
+                List.of(matched("d1"), matched("d2"))
         );
 
         assertEquals(1, dispatched.size());
@@ -213,7 +213,7 @@ public class SimpleTaskDispatchBinderTest {
                 }
         );
 
-        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched("d1", null)));
+        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched("d1")));
 
         assertTrue(dispatched.isEmpty());
         verify(workerManager, times(2)).recordWorkClaimed("d1", task.getTid());
@@ -235,7 +235,7 @@ public class SimpleTaskDispatchBinderTest {
                 }
         );
 
-        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched(worker("d1"), null)));
+        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched(worker("d1"))));
 
         assertTrue(dispatched.isEmpty());
         verify(workerManager).recordWorkClaimed("d1", task.getTid());
@@ -257,7 +257,7 @@ public class SimpleTaskDispatchBinderTest {
                 }
         );
 
-        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched("d1", null)));
+        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched("d1")));
 
         assertTrue(dispatched.isEmpty());
         verify(workerManager).recordWorkClaimed("d1", task.getTid());
@@ -271,7 +271,7 @@ public class SimpleTaskDispatchBinderTest {
         task.getExecutionSpec().setBatchSize(4);
         task.getExecutionSpec().setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
 
-        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched("d1", null), matched("d2", null)));
+        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched("d1"), matched("d2")));
 
         assertEquals(2, dispatched.size());
         List<TaskDetailStore.TaskMessageProjection> stored = projectedMessages(task.getTid());
@@ -294,7 +294,7 @@ public class SimpleTaskDispatchBinderTest {
         task.getExecutionSpec().setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
 
         LocalDateTime beforeAssign = LocalDateTime.now();
-        listener.bindDispatches(task, List.of(matched("d1", null)));
+        listener.bindDispatches(task, List.of(matched("d1")));
         LocalDateTime afterAssign = LocalDateTime.now();
 
         TaskDetailStore.TaskMessageProjection message = storedMessages(task.getTid()).get(0);
@@ -322,7 +322,7 @@ public class SimpleTaskDispatchBinderTest {
         Task task = createTask(3);
         task.getExecutionSpec().setBatchSize(2);
 
-        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched("d1", null), matched("d2", null)));
+        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched("d1"), matched("d2")));
 
         assertEquals(3, dispatched.size());
         assertEquals(0, trackingStorage.latestAttemptReadCount.get(),
@@ -348,7 +348,7 @@ public class SimpleTaskDispatchBinderTest {
                 (t, bindings) -> dispatched.set(bindings)
         );
 
-        listener.bindDispatches(task, List.of(matched("d1", null)));
+        listener.bindDispatches(task, List.of(matched("d1")));
 
         List<TaskDispatchBinding> bindings = dispatched.get();
         assertNotNull(bindings);
@@ -367,7 +367,7 @@ public class SimpleTaskDispatchBinderTest {
         Task task = createTask(3);
         task.getExecutionSpec().setBatchSize(3);
 
-        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched("d1", null)));
+        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched("d1")));
 
         assertEquals(3, dispatched.size());
         assertEquals(0, trackingStorage.taskMessageReadCount.get(),
@@ -386,7 +386,7 @@ public class SimpleTaskDispatchBinderTest {
         Task task = createTask(1);
         task.getExecutionSpec().setBatchSize(1);
 
-        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched("d1", null)));
+        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched("d1")));
 
         assertEquals(1, dispatched.size());
         TaskDetailStore.TaskMessageProjection stored = storedMessages(task.getTid()).get(0);
@@ -398,7 +398,7 @@ public class SimpleTaskDispatchBinderTest {
     }
 
     @Test
-    void dispatchSubmitFailureCompensatesRuntimeProjectionAndWorkerContextForRetry() {
+    void dispatchSubmitFailureCompensatesRuntimeProjectionAndWorkerLockForRetry() {
         Task task = createTask(2);
         task.getExecutionSpec().setBatchSize(2);
 
@@ -411,7 +411,7 @@ public class SimpleTaskDispatchBinderTest {
                 }
         );
 
-        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched("d1", null)));
+        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched("d1")));
 
         assertTrue(dispatched.isEmpty());
         List<TaskDetailStore.TaskMessageProjection> stored = storedMessages(task.getTid());
@@ -420,7 +420,6 @@ public class SimpleTaskDispatchBinderTest {
         assertTrue(stored.stream().allMatch(msg -> msg.retryCount() == 1));
         assertTrue(stored.stream().allMatch(msg -> msg.latestAttemptId() == null));
         assertTrue(stored.stream().allMatch(msg -> msg.latestAttemptWorkerId() == null));
-        assertTrue(stored.stream().allMatch(msg -> msg.latestAttemptWorkerContextId() == null));
         assertTrue(stored.stream().allMatch(msg -> msg.latestAttemptBatchId() == null));
 
         List<TaskDetailStore.TaskMessageAttemptProjection> attempts = stored.stream()
@@ -440,7 +439,7 @@ public class SimpleTaskDispatchBinderTest {
                 recordService,
                 (t, bindings) -> recoveredDispatch.set(bindings)
         );
-        listener.bindDispatches(task, List.of(matched("d1", null)));
+        listener.bindDispatches(task, List.of(matched("d1")));
 
         List<TaskDispatchBinding> retryDispatch = recoveredDispatch.get();
         assertNotNull(retryDispatch);
@@ -453,7 +452,7 @@ public class SimpleTaskDispatchBinderTest {
         task.getExecutionSpec().setBatchSize(1);
 
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
-            listener.bindDispatches(task, List.of(matched("d1", null)));
+            listener.bindDispatches(task, List.of(matched("d1")));
 
             capture.assertHasEvent("TASK_WORK_ATTEMPT_STATUS_TRANSITION", mdc ->
                     task.getTid().equals(mdc.get("taskId"))
@@ -476,7 +475,7 @@ public class SimpleTaskDispatchBinderTest {
         task.getExecutionSpec().setBatchSize(2);
 
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
-            List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched("d1", null), matched("d2", null)));
+            List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched("d1"), matched("d2")));
             assertEquals(3, dispatched.size());
             capture.assertHasEvent("DISPATCH_BINDING_SUMMARY", mdc ->
                     task.getTid().equals(mdc.get("taskId"))
@@ -485,7 +484,6 @@ public class SimpleTaskDispatchBinderTest {
                             && "2".equals(mdc.get("dispatchSlotCount"))
                             && "3".equals(mdc.get("dispatchedMessageCount"))
                             && "2".equals(mdc.get("uniqueWorkerCount"))
-                            && "0".equals(mdc.get("uniqueWorkerContextCount"))
                             && "2".equals(mdc.get("perWorkerBatchLimit"))
                             && "0".equals(mdc.get("unassignedMessageCount"))
                             && "SUCCESS".equals(mdc.get("result")));
@@ -497,7 +495,7 @@ public class SimpleTaskDispatchBinderTest {
         Task task = createTask(5);
         task.getExecutionSpec().setBatchSize(2);
 
-        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched("d1", null), matched("d2", null)));
+        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched("d1"), matched("d2")));
 
         assertEquals(4, dispatched.size());
         List<TaskDetailStore.TaskMessageProjection> stored = projectedMessages(task.getTid());
@@ -517,7 +515,7 @@ public class SimpleTaskDispatchBinderTest {
         Task task = createTask(4);
         task.getExecutionSpec().setBatchSize(2);
 
-        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched("d1", null)));
+        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched("d1")));
 
         assertEquals(2, dispatched.size());
         List<TaskDetailStore.TaskMessageProjection> stored = projectedMessages(task.getTid());
@@ -536,7 +534,7 @@ public class SimpleTaskDispatchBinderTest {
         Task task = createTask(3);
         task.getExecutionSpec().setBatchSize(2);
 
-        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched("d1", null), matched("d2", null)));
+        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched("d1"), matched("d2")));
 
         assertEquals(3, dispatched.size());
         List<TaskDetailStore.TaskMessageProjection> stored = projectedMessages(task.getTid());
@@ -550,30 +548,28 @@ public class SimpleTaskDispatchBinderTest {
     }
 
     @Test
-    void nullWorkerContextIsHandledGracefully() {
+    void workerLevelCandidateIsHandledGracefully() {
         Task task = createTask(2);
         task.getExecutionSpec().setBatchSize(10);
-        assertDoesNotThrow(() -> listener.bindDispatches(task, List.of(matched(worker("d1"), null))));
+        assertDoesNotThrow(() -> listener.bindDispatches(task, List.of(matched(worker("d1")))));
 
         List<TaskDetailStore.TaskMessageProjection> stored = projectedMessages(task.getTid());
-        assertTrue(stored.stream().allMatch(msg -> msg.latestAttemptWorkerContextId() == null));
         assertTrue(stored.stream().allMatch(msg -> msg.latestAttemptBatchId() != null && !msg.latestAttemptBatchId().isBlank()));
         verify(recordService, times(2)).recordMessageAssignment(
-                any(), argThat(candidate -> candidate != null && candidate.getWorkerContextId() == null),
+                any(), argThat(candidate -> candidate != null && candidate.getWorkerId() != null),
                 anyString(), anyString(), any(), anyString(), anyBoolean()
         );
         verify(workerManager, times(2)).isLocked("d1");
     }
 
     @Test
-    void binderDoesNotUseWorkerContextStatusOrIdAsDispatchGate() {
+    void binderUsesWorkerLevelAttemptIdentityAsDispatchGate() {
         Task task = createTask(1);
-        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched("d1", null)));
+        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched("d1")));
 
         List<TaskDetailStore.TaskMessageProjection> stored = storedMessages(task.getTid());
         assertEquals(1, dispatched.size());
         assertEquals(TaskMessageProjectionStatus.INIT, stored.get(0).status());
-        assertNull(dispatched.getFirst().workerContextId());
         assertFalse(dispatched.getFirst().attemptId().contains("-na-"));
         verify(workerManager, never()).releaseWorkerReservation("d1", task.getTid());
         verify(workerManager, never()).unlockWorker("d1");
@@ -591,10 +587,9 @@ public class SimpleTaskDispatchBinderTest {
                 new NonExclusiveResourcePolicy()
         );
 
-        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched("d1", null)));
+        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched("d1")));
 
         assertEquals(1, dispatched.size());
-        assertNull(dispatched.get(0).workerContextId());
         verify(workerManager, never()).unlockWorker("d1");
     }
 
@@ -663,12 +658,12 @@ public class SimpleTaskDispatchBinderTest {
         return w;
     }
 
-    private WorkerSchedulingCandidate matched(String workerId, String workerContextId) {
+    private WorkerSchedulingCandidate matched(String workerId) {
         return matched(worker(workerId));
     }
 
-    private WorkerSchedulingCandidate matched(Worker worker, Object ignoredLegacyResource) {
-        return matched(worker);
+    private WorkerSchedulingCandidate matched(String workerId, String ignored) {
+        return matched(worker(workerId));
     }
 
     private WorkerSchedulingCandidate matched(Worker worker) {
@@ -720,7 +715,6 @@ public class SimpleTaskDispatchBinderTest {
                             projection.output(),
                             projection.latestAttemptId(),
                             projection.latestAttemptWorkerId(),
-                            projection.latestAttemptWorkerContextId(),
                             projection.latestAttemptBatchId()
                     ));
         }

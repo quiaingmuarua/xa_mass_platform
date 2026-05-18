@@ -22,7 +22,6 @@ public record TaskResultCallbackDraft(
         String routeKey,
         String identityDigest,
         String workerId,
-        String workerContextId,
         String batchId,
         String payloadRef,
         String eventCode,
@@ -46,6 +45,54 @@ public record TaskResultCallbackDraft(
         requireNonBlank(messageId, "messageId");
         requireNonBlank(identityDigest, "identityDigest");
         return taskId + ":" + messageId + ":" + identityDigest;
+    }
+
+    public static TaskResultCallbackDraft workerLevel(String stageId,
+                                                      String taskId,
+                                                      String messageId,
+                                                      boolean success,
+                                                      String detail,
+                                                      String errorCode,
+                                                      Map<String, Object> output,
+                                                      Instant receivedAt,
+                                                      String attemptId,
+                                                      String leaseToken,
+                                                      String traceId,
+                                                      String adapterId,
+                                                      String routeKey,
+                                                      String identityDigest,
+                                                      String workerId,
+                                                      String batchId,
+                                                      String payloadRef,
+                                                      String eventCode,
+                                                      int retryCount,
+                                                      int maxRetryCount,
+                                                      Instant leasedAt,
+                                                      Instant createTime) {
+        return new TaskResultCallbackDraft(
+                stageId,
+                taskId,
+                messageId,
+                success,
+                detail,
+                errorCode,
+                output,
+                receivedAt,
+                attemptId,
+                leaseToken,
+                traceId,
+                adapterId,
+                routeKey,
+                identityDigest,
+                workerId,
+                batchId,
+                payloadRef,
+                eventCode,
+                retryCount,
+                maxRetryCount,
+                leasedAt,
+                createTime
+        );
     }
 
     private static Map<String, Object> copyMap(Map<String, Object> source) {

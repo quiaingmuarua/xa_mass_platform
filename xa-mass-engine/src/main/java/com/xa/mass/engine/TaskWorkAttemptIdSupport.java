@@ -17,19 +17,10 @@ public final class TaskWorkAttemptIdSupport {
         if (activeLease == null) {
             return "runtime-attempt-" + normalizedMessageId + "-" + attemptNo;
         }
-        if (activeLease.workerContextId() == null || activeLease.workerContextId().isBlank()) {
-            return workerLevelRuntimeAttemptId(
-                    messageId,
-                    attemptNo,
-                    activeLease.workerId(),
-                    activeLease.batchId()
-            );
-        }
-        return runtimeAttemptId(
+        return workerLevelRuntimeAttemptId(
                 messageId,
                 attemptNo,
                 activeLease.workerId(),
-                activeLease.workerContextId(),
                 activeLease.batchId()
         );
     }
@@ -43,20 +34,6 @@ public final class TaskWorkAttemptIdSupport {
                 + normalizedMessageId
                 + "-" + attemptNo
                 + "-" + normalizeAttemptIdToken(workerId)
-                + "-" + normalizeAttemptIdToken(batchId);
-    }
-
-    public static String runtimeAttemptId(String messageId,
-                                          int attemptNo,
-                                          String workerId,
-                                          String workerContextId,
-                                          String batchId) {
-        String normalizedMessageId = messageId == null || messageId.isBlank() ? "unknown-message" : messageId;
-        return "runtime-attempt-"
-                + normalizedMessageId
-                + "-" + attemptNo
-                + "-" + normalizeAttemptIdToken(workerId)
-                + "-" + normalizeAttemptIdToken(workerContextId)
                 + "-" + normalizeAttemptIdToken(batchId);
     }
 

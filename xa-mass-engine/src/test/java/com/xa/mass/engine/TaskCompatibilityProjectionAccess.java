@@ -160,7 +160,6 @@ final class TaskCompatibilityProjectionAccess {
                 enumName(projection.status()),
                 projection.latestAttemptId(),
                 projection.latestAttemptWorkerId(),
-                projection.latestAttemptWorkerContextId(),
                 projection.latestAttemptBatchId(),
                 projection.retryCount(),
                 projection.maxRetryCount(),
@@ -189,7 +188,6 @@ final class TaskCompatibilityProjectionAccess {
                 projection.messageId(),
                 projection.attemptNo(),
                 projection.workerId(),
-                projection.workerContextId(),
                 projection.batchId(),
                 enumName(projection.status()),
                 null,
@@ -231,7 +229,6 @@ final class TaskCompatibilityProjectionAccess {
                 messageId,
                 attemptNo,
                 activeLease.workerId(),
-                activeLease.workerContextId(),
                 activeLease.batchId(),
                 TaskMessageAttemptProjectionStatus.DISPATCHED.name(),
                 leaseExpireTime,
@@ -254,7 +251,6 @@ final class TaskCompatibilityProjectionAccess {
                 activeAttempt.messageId(),
                 activeAttempt.attemptNo(),
                 activeAttempt.workerId(),
-                activeAttempt.workerContextId(),
                 activeAttempt.batchId(),
                 activeAttempt.status(),
                 activeAttempt.leaseExpireTime(),
@@ -304,7 +300,6 @@ final class TaskCompatibilityProjectionAccess {
                                             String messageId,
                                             int attemptNo,
                                             String workerId,
-                                            String workerContextId,
                                             String batchId,
                                             String status,
                                             LocalDateTime leaseExpireTime,
@@ -323,7 +318,6 @@ final class TaskCompatibilityProjectionAccess {
                        String status,
                        String latestAttemptId,
                        String latestAttemptWorkerId,
-                       String latestAttemptWorkerContextId,
                        String latestAttemptBatchId,
                        int retryCount,
                        int maxRetryCount,
@@ -348,7 +342,6 @@ final class TaskCompatibilityProjectionAccess {
                        String messageId,
                        int attemptNo,
                        String workerId,
-                       String workerContextId,
                        String batchId,
                        String status,
                        LocalDateTime leaseExpireTime,
@@ -391,7 +384,6 @@ final class TaskCompatibilityProjectionAccess {
                              Map<String, Object> output,
                              String latestAttemptId,
                              String latestAttemptWorkerId,
-                             String latestAttemptWorkerContextId,
                              String latestAttemptBatchId) {
 
         MessageProjection {
@@ -424,7 +416,6 @@ final class TaskCompatibilityProjectionAccess {
                     projection.output(),
                     projection.latestAttemptId(),
                     projection.latestAttemptWorkerId(),
-                    projection.latestAttemptWorkerContextId(),
                     projection.latestAttemptBatchId()
             );
         }
@@ -455,7 +446,6 @@ final class TaskCompatibilityProjectionAccess {
                     null,
                     null,
                     null,
-                    null,
                     null
             );
         }
@@ -480,7 +470,6 @@ final class TaskCompatibilityProjectionAccess {
                     output,
                     latestAttemptId,
                     latestAttemptWorkerId,
-                    latestAttemptWorkerContextId,
                     latestAttemptBatchId
             );
         }
@@ -496,7 +485,6 @@ final class TaskCompatibilityProjectionAccess {
                              String messageId,
                              int attemptNo,
                              String workerId,
-                             String workerContextId,
                              String batchId,
                              TaskMessageAttemptProjectionStatus status,
                              TaskMessageAttemptProjectionFinalReason finalReason,
@@ -519,7 +507,6 @@ final class TaskCompatibilityProjectionAccess {
                     projection.messageId(),
                     projection.attemptNo(),
                     projection.workerId(),
-                    projection.workerContextId(),
                     projection.batchId(),
                     projection.status(),
                     projection.finalReason(),
@@ -574,7 +561,6 @@ final class TaskCompatibilityProjectionAccess {
                     null,
                     storedProjection.latestAttemptId(),
                     storedProjection.latestAttemptWorkerId(),
-                    storedProjection.latestAttemptWorkerContextId(),
                     storedProjection.latestAttemptBatchId()
             );
         }
@@ -622,7 +608,6 @@ final class TaskCompatibilityProjectionAccess {
                     null,
                     null,
                     null,
-                    null,
                     null
             );
             if (isCompleted(base)) {
@@ -636,7 +621,6 @@ final class TaskCompatibilityProjectionAccess {
             );
             boolean needsAttemptIdProjection = !java.util.Objects.equals(base.latestAttemptId(), runtimeAttemptId);
             boolean attemptProjectionDiffers = !java.util.Objects.equals(base.latestAttemptWorkerId(), activeLease.workerId())
-                    || !java.util.Objects.equals(base.latestAttemptWorkerContextId(), activeLease.workerContextId())
                     || !java.util.Objects.equals(base.latestAttemptBatchId(), activeLease.batchId());
             boolean needsAssignedStatus = base.status() == null || base.status() == TaskMessageProjectionStatus.INIT;
             boolean needsRetryProjection = base.retryCount() != Math.max(0, activeLease.retryCount());
@@ -675,7 +659,6 @@ final class TaskCompatibilityProjectionAccess {
                     base.output(),
                     runtimeAttemptId,
                     activeLease.workerId(),
-                    activeLease.workerContextId(),
                     activeLease.batchId()
             );
         }

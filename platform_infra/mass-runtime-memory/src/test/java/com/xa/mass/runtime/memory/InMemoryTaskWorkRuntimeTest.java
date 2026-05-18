@@ -41,7 +41,6 @@ class InMemoryTaskWorkRuntimeTest {
         ClaimedTaskWork work = claimed.get(0);
         assertEquals("msg-1", work.messageId());
         assertEquals("worker-1", work.workerId());
-        assertNull(work.workerContextId());
         assertNotNull(work.leaseToken());
         assertEquals(now.get().plusSeconds(30), work.leaseExpireAt());
         assertEquals(0, runtime.stats("task-1").readyCount());

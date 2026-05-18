@@ -104,7 +104,6 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                     0,
                     0,
                     0,
-                    0,
                     Math.max(task.getExecutionSpec().getBatchSize(), 1),
                     "ON_MSG_ASSIGN",
                     "SimpleTaskDispatchBinder",
@@ -122,7 +121,6 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                     task,
                     0,
                     matchedWorkers.size(),
-                    0,
                     0,
                     0,
                     0,
@@ -200,11 +198,6 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 .filter(workerId -> workerId != null && !workerId.isBlank())
                 .distinct()
                 .count();
-        int uniqueWorkerContextCount = (int) dispatchBindings.stream()
-                .map(TaskDispatchBinding::workerContextId)
-                .filter(workerContextId -> workerContextId != null && !workerContextId.isBlank())
-                .distinct()
-                .count();
         traceEventLogger.dispatchBindingSummary(
                 task,
                 readyWorkCount,
@@ -212,7 +205,6 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 dispatchSlots.size(),
                 dispatchBindings.size(),
                 uniqueWorkerCount,
-                uniqueWorkerContextCount,
                 perWorkerBatchLimit,
                 "ON_MSG_ASSIGN",
                 "SimpleTaskDispatchBinder",
@@ -248,7 +240,6 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                         readyWorkCount,
                         matchedWorkers.size(),
                         dispatchSlots.size(),
-                        0,
                         0,
                         0,
                         perWorkerBatchLimit,
@@ -321,7 +312,6 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 attemptId,
                 attemptNo,
                 work.workerId(),
-                work.workerContextId(),
                 work.batchId(),
                 null,
                 AttemptStatus.CREATED,
@@ -336,7 +326,6 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 attemptId,
                 attemptNo,
                 work.workerId(),
-                work.workerContextId(),
                 work.batchId(),
                 null,
                 AttemptStatus.LEASED,
@@ -345,7 +334,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 "SimpleTaskDispatchBinder",
                 "attempt dispatched"
         );
-        return new TaskDispatchBinding(
+        return TaskDispatchBinding.workerLevel(
                 task.getTid(),
                 work.messageId(),
                 work.eventCode(),
@@ -356,7 +345,6 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 attemptNo,
                 work.leaseToken(),
                 work.workerId(),
-                work.workerContextId(),
                 work.batchId()
         );
     }

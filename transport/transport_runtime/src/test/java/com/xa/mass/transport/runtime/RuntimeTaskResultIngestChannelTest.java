@@ -594,15 +594,14 @@ class RuntimeTaskResultIngestChannelTest {
         String messageId = taskMsg.messageId();
         taskWorkRuntime.claimReady(
                 task.getTid(),
-                List.of(new WorkerClaimTarget("worker-1", "worker-context-1", "batch-0", 1)),
+                List.of(WorkerClaimTarget.workerLevel("worker-1", "batch-0", 1)),
                 1,
                 assignmentRuntimePort.getWorkLeaseSeconds()
         );
-        String attemptId = TaskWorkAttemptIdSupport.runtimeAttemptId(
+        String attemptId = TaskWorkAttemptIdSupport.workerLevelRuntimeAttemptId(
                 taskMsg.messageId(),
                 1,
                 "worker-1",
-                "worker-context-1",
                 "batch-0"
         );
         TaskDetailStore.TaskMessageProjection assignedProjection = new TaskDetailStore.TaskMessageProjection(
@@ -624,7 +623,6 @@ class RuntimeTaskResultIngestChannelTest {
                 taskMsg.output(),
                 attemptId,
                 "worker-1",
-                "worker-context-1",
                 "batch-0"
         );
         taskStorage.upsertTaskMessageProjection(task.getTid(), assignedProjection);
@@ -639,7 +637,6 @@ class RuntimeTaskResultIngestChannelTest {
                 taskMsg.messageId(),
                 1,
                 "worker-1",
-                "worker-context-1",
                 "batch-0",
                 TaskMessageAttemptProjectionStatus.DISPATCHED,
                 null,
@@ -722,7 +719,6 @@ class RuntimeTaskResultIngestChannelTest {
                         taskMsg.output(),
                         taskMsg.latestAttemptId(),
                         taskMsg.latestAttemptWorkerId(),
-                        taskMsg.latestAttemptWorkerContextId(),
                         taskMsg.latestAttemptBatchId()
                 )
         );

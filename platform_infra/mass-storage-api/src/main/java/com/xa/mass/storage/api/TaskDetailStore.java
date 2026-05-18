@@ -111,7 +111,6 @@ public interface TaskDetailStore {
                                  Map<String, Object> output,
                                  String latestAttemptId,
                                  String latestAttemptWorkerId,
-                                 String latestAttemptWorkerContextId,
                                  String latestAttemptBatchId) {
 
         public TaskMessageProjection {
@@ -128,7 +127,6 @@ public interface TaskDetailStore {
                                         String messageId,
                                         int attemptNo,
                                         String workerId,
-                                        String workerContextId,
                                         String batchId,
                                         TaskMessageAttemptProjectionStatus status,
                                         TaskMessageAttemptProjectionFinalReason finalReason,

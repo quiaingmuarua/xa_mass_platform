@@ -10,7 +10,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -62,22 +61,22 @@ class TaskDispatchItemTest {
 
         assertEquals("attempt-1", item.attemptId());
         assertEquals("worker-1", item.getWorkerId());
-        assertEquals("ctx-1", item.getWorkerContextId());
         assertEquals("batch-1", item.getBatchId());
     }
 
     @Test
-    void workerLevelDispatchPayloadOmitsLegacyWorkerContextIdWhenNull() {
+    void dispatchPayloadUsesWorkerLevelIdentityOnly() {
         Task task = new Task();
         task.setTid("task-1");
 
         TaskDispatchItem item = TaskDispatchItem.from(
                 TaskDispatchContext.from(task),
-                binding(Map.of("target", "worker-a"), null)
+                binding(Map.of("target", "worker-a"))
         );
 
-        assertNull(item.getWorkerContextId());
-        assertFalse(item.transportPayloadView().containsKey(TransportPacket.PAYLOAD_WORKER_CONTEXT_ID));
+        assertEquals("worker-1", item.getWorkerId());
+        assertEquals("batch-1", item.getBatchId());
+        assertEquals(false, item.transportPayloadView().containsKey("workerContextId"));
     }
 
     @Test
@@ -95,7 +94,6 @@ class TaskDispatchItemTest {
         assertEquals("worker-1", item.getWorkerId());
         assertEquals("msg-1", item.getMessageId());
         assertEquals("task-1", item.getTaskId());
-        assertEquals("ctx-1", item.getWorkerContextId());
         assertEquals("batch-1", item.getBatchId());
         assertEquals("https://example.test/page-1", item.getInput().get("url"));
     }
@@ -144,7 +142,6 @@ class TaskDispatchItemTest {
                 "attempt-1",
                 "route-1",
                 "worker-1",
-                "ctx-1",
                 "batch-1",
                 input,
                 sharedConfig
@@ -167,7 +164,6 @@ class TaskDispatchItemTest {
                 "attempt-1",
                 "route-1",
                 "worker-1",
-                "ctx-1",
                 "batch-1",
                 Map.of("target", "worker-a"),
                 Map.of("mode", "fast")
@@ -198,7 +194,6 @@ class TaskDispatchItemTest {
                 "attempt-1",
                 "route-1",
                 "worker-1",
-                "ctx-1",
                 "batch-1",
                 input,
                 sharedConfig
@@ -226,7 +221,6 @@ class TaskDispatchItemTest {
                         "attempt-1",
                         "route-1",
                         "worker-1",
-                        "ctx-1",
                         "batch-1",
                         Map.of(),
                         Map.of()
@@ -247,7 +241,6 @@ class TaskDispatchItemTest {
                         "attempt-1",
                         "route-1",
                         "worker-1",
-                        "ctx-1",
                         "batch-1",
                         Map.of(),
                         Map.of()
@@ -266,7 +259,6 @@ class TaskDispatchItemTest {
                 "attempt-1",
                 "route-1",
                 "worker-1",
-                "ctx-1",
                 "batch-1",
                 Map.of(),
                 Map.of()
@@ -285,7 +277,6 @@ class TaskDispatchItemTest {
                 "agent",
                 0,
                 "worker-1",
-                "ctx-1",
                 "batch-1",
                 Map.of(),
                 Map.of()
@@ -307,7 +298,6 @@ class TaskDispatchItemTest {
                 "attempt-1",
                 "route-9",
                 "worker-1",
-                "ctx-1",
                 "batch-1",
                 Map.of("target", "worker-a"),
                 Map.of("mode", "fast")
@@ -317,11 +307,7 @@ class TaskDispatchItemTest {
     }
 
     private TaskDispatchBinding binding(Map<String, Object> payload) {
-        return binding(payload, "ctx-1");
-    }
-
-    private TaskDispatchBinding binding(Map<String, Object> payload, String workerContextId) {
-        return new TaskDispatchBinding(
+        return TaskDispatchBinding.workerLevel(
                 "task-1",
                 "msg-1",
                 "binding.event",
@@ -332,8 +318,8 @@ class TaskDispatchItemTest {
                 1,
                 null,
                 "worker-1",
-                workerContextId,
                 "batch-1"
         );
     }
+
 }

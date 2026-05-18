@@ -472,16 +472,17 @@ Engine-local owner docs:
 - [`WORKER_CONTEXT_RETIREMENT_PLAN.md`](./WORKER_CONTEXT_RETIREMENT_PLAN.md):
   proposed plan for retiring WorkerContext from the scheduling kernel; planning
   material only, not implemented baseline behavior
-- [`WORKER_MANAGER_SPLIT_ROADMAP.md`](./WORKER_MANAGER_SPLIT_ROADMAP.md):
-  proposed next roadmap for moving worker registration, capability, lifecycle
-  administration, and worker command/state-report ownership out of the engine
-  kernel while keeping the first split in-process through SDK/server wiring.
-  Direction material only.
+- [`WORKER_GROUP_CAPABILITY_ROADMAP.md`](./WORKER_GROUP_CAPABILITY_ROADMAP.md):
+  proposed next roadmap for converging worker capability ownership and indexed
+  scheduling candidate lookup inside the current engine boundary. It uses the
+  `AdapterNode -> WorkerGroup -> Worker` model and explicitly avoids module
+  split, service extraction, worker command/state-report implementation, and
+  unified event-envelope runtime work.
 - [`UNIFIED_EVENT_ENVELOPE_ROADMAP.md`](./UNIFIED_EVENT_ENVELOPE_ROADMAP.md):
   separate north-star roadmap for future event envelope metadata, priority,
   response, convergence, target-scope, queue-placement, and task-stage
   direction. It is not implemented baseline behavior and must not preempt the
-  worker-manager split.
+  WorkerGroup capability/candidate-index roadmap.
 
 Global baselines:
 

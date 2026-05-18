@@ -21,7 +21,6 @@ import org.springframework.test.context.DynamicPropertySource;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -124,14 +123,6 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         assertApiOk(registerResponse);
         assertEquals("polling", responseData(registerResponse).get("transportHint"));
 
-        Map<String, Object> contextResponse = exchange("/worker-api/v1/workers/" + workerId + "/contexts", HttpMethod.POST, Map.of(
-                "workerContextId", "ctx-" + workerId,
-                "workerId", workerId,
-                "project", "crawlerApp",
-                "routingTags", Set.of("web", "us"),
-                "attributes", Map.of("region", "us")
-        ), workerHeaders);
-        assertApiOk(contextResponse);
         assertFalse(app.isWorkerOnline(workerId), "registration must not create external worker transport presence");
 
         assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":online", HttpMethod.POST, Map.of(

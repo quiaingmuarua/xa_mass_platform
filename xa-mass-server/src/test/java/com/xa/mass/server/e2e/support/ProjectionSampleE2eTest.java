@@ -75,7 +75,6 @@ public abstract class ProjectionSampleE2eTest extends AbstractSampleE2eTest {
             attempt.put("messageId", projection.messageId());
             attempt.put("attemptNo", projection.attemptNo());
             attempt.put("workerId", projection.workerId());
-            attempt.put("workerContextId", projection.workerContextId());
             attempt.put("batchId", projection.batchId());
             attempt.put("status", projection.status() != null ? projection.status().name() : null);
             attempt.put("leaseExpireTime", null);
@@ -115,7 +114,6 @@ public abstract class ProjectionSampleE2eTest extends AbstractSampleE2eTest {
             message.put("taskId", projection.taskId());
             message.put("status", overlayStatus(taskView, projection, activeLease));
             message.put("latestAttemptWorkerId", activeLease != null ? activeLease.workerId() : projection.latestAttemptWorkerId());
-            message.put("latestAttemptWorkerContextId", activeLease != null ? activeLease.workerContextId() : projection.latestAttemptWorkerContextId());
             message.put("latestAttemptBatchId", activeLease != null ? activeLease.batchId() : projection.latestAttemptBatchId());
             message.put("retryCount", activeLease != null ? Math.max(0, activeLease.retryCount()) : projection.retryCount());
             message.put("maxRetryCount", projection.maxRetryCount());
@@ -148,7 +146,6 @@ public abstract class ProjectionSampleE2eTest extends AbstractSampleE2eTest {
             message.put("taskId", activeLease.taskId());
             message.put("status", "ASSIGNED");
             message.put("latestAttemptWorkerId", activeLease.workerId());
-            message.put("latestAttemptWorkerContextId", activeLease.workerContextId());
             message.put("latestAttemptBatchId", activeLease.batchId());
             message.put("retryCount", Math.max(0, activeLease.retryCount()));
             message.put("maxRetryCount", 0);

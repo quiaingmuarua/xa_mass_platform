@@ -131,7 +131,6 @@ class TaskRedispatchCompetitionTest {
         List<ActiveLeaseRecord> secondTaskLeases = harness.activeLeases(secondTask.getTid());
         assertEquals(1, secondTaskLeases.size());
         assertEquals("worker-shared", secondTaskLeases.getFirst().workerId());
-        assertEquals(null, secondTaskLeases.getFirst().workerContextId());
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(secondTask.getTid()).getStatus());
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(firstTask.getTid()).getStatus());
         assertEquals(1, harness.stats(firstTask.getTid()).readyCount());
@@ -172,7 +171,6 @@ class TaskRedispatchCompetitionTest {
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(retryingTask.getTid()).getStatus());
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(competingTask.getTid()).getStatus());
         assertEquals("worker-shared", competingLease.workerId());
-        assertEquals(null, competingLease.workerContextId());
 
         assertTrue(harness.taskManager.ingestTaskResult(
                 competingTask.getTid(),
@@ -191,7 +189,6 @@ class TaskRedispatchCompetitionTest {
         assertEquals(1, retryingLeases.size());
         assertEquals(firstLease.messageId(), retryingLeases.getFirst().messageId());
         assertEquals("worker-shared", retryingLeases.getFirst().workerId());
-        assertEquals(null, retryingLeases.getFirst().workerContextId());
         assertEquals(1, retryingLeases.getFirst().retryCount());
         assertEquals(0, harness.stats(retryingTask.getTid()).readyCount());
         assertEquals(1, harness.stats(retryingTask.getTid()).inflightCount());
@@ -236,7 +233,6 @@ class TaskRedispatchCompetitionTest {
         List<ActiveLeaseRecord> waitingLeases = harness.activeLeases(waitingTask.getTid());
         assertEquals(1, waitingLeases.size());
         assertEquals("worker-shared", waitingLeases.getFirst().workerId());
-        assertEquals(null, waitingLeases.getFirst().workerContextId());
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(waitingTask.getTid()).getStatus());
         assertEquals(0, harness.stats(waitingTask.getTid()).readyCount());
         assertEquals(1, harness.stats(waitingTask.getTid()).inflightCount());
