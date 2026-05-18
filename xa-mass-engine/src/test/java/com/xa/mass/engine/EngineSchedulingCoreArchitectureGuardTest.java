@@ -921,8 +921,12 @@ class EngineSchedulingCoreArchitectureGuardTest {
         );
 
         List<String> violations = new ArrayList<>();
+        Path kernelEventRoutePackage = repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/event").normalize();
         for (Path root : guardedRoots) {
             for (Path path : javaSourceFiles(root)) {
+                if (path.normalize().startsWith(kernelEventRoutePackage)) {
+                    continue;
+                }
                 String source = Files.readString(path, StandardCharsets.UTF_8);
                 if (descriptorMetadataImport.matcher(source).find()) {
                     violations.add(path + " imports descriptor metadata into a kernel/runtime/transport/trace owner");
@@ -933,6 +937,41 @@ class EngineSchedulingCoreArchitectureGuardTest {
         assertTrue(violations.isEmpty(),
                 "Event descriptor metadata belongs to descriptor/catalog/read surfaces in the first wave. "
                         + "Kernel, runtime, transport, and trace owner paths must not import it directly:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void kernelEventRegistrationPackageStaysRouteOnly() throws IOException {
+        Path repo = repositoryRoot();
+        Path eventPackage = repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/event");
+        Pattern lifecycleOwnerDependency = Pattern.compile(String.join("|", List.of(
+                "\\bTaskManager\\b",
+                "\\bTaskResultService\\b",
+                "\\bTaskResultRuntime\\b",
+                "\\bTaskWorkRuntime\\b",
+                "\\bWorkerManager\\b",
+                "\\bWorkerReachabilityView\\b",
+                "\\bWorkerLoadView\\b",
+                "\\bWorkerSystemEventChannel\\b",
+                "\\bWorkerCommand(?:Ack|Status)?\\b",
+                "\\bWorkerStateReport\\b",
+                "\\bWorkerCapabilityReport\\b",
+                "\\bimport\\s+com\\.xa\\.mass\\.transport\\.",
+                "\\bimport\\s+com\\.xa\\.mass\\.runtime\\."
+        )));
+
+        List<String> violations = new ArrayList<>();
+        for (Path path : javaSourceFiles(eventPackage)) {
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            if (lifecycleOwnerDependency.matcher(source).find()) {
+                violations.add(path + " turns kernel event routing into a lifecycle owner");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "The EWC-2 kernel event package is a route-only handler registration boundary. "
+                        + "It must not own task result, worker command/state/capability, presence, "
+                        + "or runtime lifecycle mutation:\n"
                         + String.join("\n", violations));
     }
 

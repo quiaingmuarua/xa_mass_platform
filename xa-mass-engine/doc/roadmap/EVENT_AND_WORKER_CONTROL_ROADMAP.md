@@ -227,6 +227,8 @@ Acceptance:
 
 ### EWC-2: Kernel-Targeted Event Ingress
 
+Status: completed route-only baseline.
+
 Goal: prove that kernel-targeted events can use the ordinary event language
 without creating a generic lifecycle owner or forcing every ingress path onto
 one runtime implementation.
@@ -255,6 +257,8 @@ Acceptance:
 - a kernel-targeted event reaches a kernel handler through the common event
   language
 - handler routing is separate from lifecycle owner mutation
+- `KernelEventHandlerRegistry` registers only `TASK_ENGINE` / `WORKER_MANAGER`
+  targets and rejects `WORKER` targets
 - the proof remains route-only and does not move current presence ownership
 - `WorkerSystemEventChannel` remains the current presence-only ingress seam
   until a later phase has a concrete owner reason to revisit it

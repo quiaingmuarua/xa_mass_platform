@@ -25,6 +25,7 @@ Metadata and system-event ingress are not runtime truth by themselves.
 | --- | --- | --- | --- |
 | `EventDefinition` | SDK/catalog metadata | registration and catalog shape | task lifecycle, dispatch, result finality |
 | `CoreEventDescriptor` | core descriptor layer | descriptor fields and handler metadata | queue placement, result convergence |
+| `KernelEventHandlerRegistry` | engine route registration | kernel-targeted handler registration for `TASK_ENGINE` / `WORKER_MANAGER` descriptors | task result, worker command, worker state, capability mutation, presence ownership |
 | `WorkerGroupRecord` / `EventBinding` / `EventKey` | worker capability line | capability truth and candidate-source inputs | response semantics, result finality |
 | task dispatch handoff | assignment/transport boundary | already-bound task work delivery view | worker matching, allocation, finality |
 | `TaskResultReport` | task result payload | worker task-result input | worker command ack, worker state report |
@@ -96,6 +97,17 @@ worker capability self-report
   -> WorkerManager / WorkerRegistrySnapshot refresh
 ```
 
+The current kernel-targeted event path is route-only:
+
+```text
+CoreEventDescriptor(target=TASK_ENGINE|WORKER_MANAGER)
+  -> KernelEventHandlerRegistry
+  -> MassEventRuntime handler dispatch
+```
+
+That route does not mutate presence, worker command, worker state, capability,
+task result, or scheduling lifecycle truth by itself.
+
 ## Hard Boundaries
 
 - Worker command ack/status must not enter `TaskResultRuntime`.
@@ -112,6 +124,7 @@ worker capability self-report
   duplicate carrier shape becomes a real problem.
 - Event routing must not become lifecycle ownership merely because a future
   kernel-targeted event uses the ordinary event language.
+- Kernel-targeted handler registration must reject `WORKER` event targets.
 
 ## Proof Surface
 

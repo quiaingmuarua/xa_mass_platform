@@ -5,6 +5,8 @@ import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.worker.WorkerStatus;
+import com.xa.mass.base.event.DeliveryAcknowledgementMode;
+import com.xa.mass.base.event.EventConvergenceMode;
 import com.xa.mass.base.event.PriorityClass;
 import com.xa.mass.base.event.ResponseMode;
 import com.xa.mass.base.event.TargetScope;
@@ -1829,11 +1831,15 @@ class MassSdkTest {
         assertEquals("bot", descriptor.getDefaultRoutingCode());
         assertEquals(PriorityClass.INTERACTIVE, descriptor.getPriorityClass());
         assertEquals(ResponseMode.STREAM, descriptor.getResponseMode());
+        assertEquals(DeliveryAcknowledgementMode.NONE, descriptor.getDeliveryAcknowledgementMode());
+        assertEquals(EventConvergenceMode.STREAM, descriptor.getConvergenceMode());
         assertEquals(TargetScope.WORKER, descriptor.getTargetScope());
         assertEquals(List.of("botApp"), app.getEvent("bot.command").getProjectCodes());
         assertEquals(descriptor.getDescription(), app.getEvent("bot.command").getDescription());
         assertEquals(PriorityClass.INTERACTIVE, app.getEvent("bot.command").getPriorityClass());
         assertEquals(ResponseMode.STREAM, app.getEvent("bot.command").getResponseMode());
+        assertEquals(DeliveryAcknowledgementMode.NONE, app.getEvent("bot.command").getDeliveryAcknowledgementMode());
+        assertEquals(EventConvergenceMode.STREAM, app.getEvent("bot.command").getConvergenceMode());
         assertEquals(TargetScope.WORKER, app.getEvent("bot.command").getTargetScope());
     }
 
@@ -1860,6 +1866,8 @@ class MassSdkTest {
                         .projectCodes(List.of("runtimeApp"))
                         .priorityClass(PriorityClass.BULK)
                         .responseMode(ResponseMode.FINAL_RESULT)
+                        .deliveryAcknowledgementMode(DeliveryAcknowledgementMode.DELIVERY_ACCEPTED)
+                        .convergenceMode(EventConvergenceMode.FINAL_RESULT)
                         .targetScope(TargetScope.TASK_ENGINE)
                         .enabled(true)
                         .build(),
@@ -1870,6 +1878,9 @@ class MassSdkTest {
         assertEquals("Runtime Only", app.getEvent("runtime.only").getName());
         assertEquals(PriorityClass.BULK, app.getEvent("runtime.only").getPriorityClass());
         assertEquals(ResponseMode.FINAL_RESULT, app.getEvent("runtime.only").getResponseMode());
+        assertEquals(DeliveryAcknowledgementMode.DELIVERY_ACCEPTED,
+                app.getEvent("runtime.only").getDeliveryAcknowledgementMode());
+        assertEquals(EventConvergenceMode.FINAL_RESULT, app.getEvent("runtime.only").getConvergenceMode());
         assertEquals(TargetScope.TASK_ENGINE, app.getEvent("runtime.only").getTargetScope());
         assertTrue(app.listEvents().stream().anyMatch(event -> "runtime.only".equals(event.getCode())));
         assertEquals(List.of("runtime.only"),
