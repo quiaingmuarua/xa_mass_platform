@@ -45,6 +45,13 @@ public final class KernelEventHandlerRegistry {
                 .build(), handler);
     }
 
+    public void registerTaskEngineEvent(String event, MassEventHandler handler) {
+        register(CoreEventDescriptor.builder()
+                .event(event)
+                .targetScope(TargetScope.TASK_ENGINE)
+                .build(), handler);
+    }
+
     public void registerOrReplaceWorkerManagerEvent(String event, MassEventHandler handler) {
         registerOrReplace(CoreEventDescriptor.builder()
                 .event(event)

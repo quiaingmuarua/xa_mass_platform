@@ -33,6 +33,8 @@ Metadata and system-event ingress are not runtime truth by themselves.
 | `WorkerCapabilityAuthority` | worker capability composition owner | report version/idempotency/conflict rules and effective capability composition into immutable `WorkerRegistrySnapshot` | event routing, matching/ranking decisions, transport presence |
 | `WorkerStateReportEventHandler` | worker state event handler | parse kernel-targeted state reports and delegate to `WorkerStateProjectionOwner` | state projection truth, reachability, load, matching, result convergence |
 | `WorkerStateProjectionOwner` | worker state projection owner | bounded per-worker state projection, version/idempotency/conflict rules, and recent diagnostic history | transport presence, worker capability truth, load, matching/ranking, task result |
+| `TaskStageEvidenceEventHandler` | task stage event handler | parse kernel-targeted task stage evidence and delegate to `TaskStageEvidenceOwner` | stage projection truth, public result rows, final convergence, task lifecycle |
+| `TaskStageEvidenceOwner` | task stage evidence owner | bounded per-task/message/stage projection, version/idempotency/conflict rules, and recent diagnostic history | public result rows, final convergence, task-work queues, scheduling, dispatch |
 | `WorkerGroupRecord` / `EventBinding` / `EventKey` | worker capability line | capability truth and candidate-source inputs | response semantics, result finality |
 | task dispatch handoff | assignment/transport boundary | already-bound task work delivery view | worker matching, allocation, finality |
 | `TaskResultReport` | task result payload | worker task-result input | worker command ack, worker state report |
@@ -102,6 +104,9 @@ worker state report
 worker capability self-report
   -> WorkerCapabilityAuthority
   -> WorkerManager / immutable WorkerRegistrySnapshot publication
+
+task item stage evidence
+  -> TaskStageEvidenceOwner
 ```
 
 The current kernel-targeted event path is route-only:
@@ -169,6 +174,26 @@ task result, or scheduling lifecycle truth by itself.
 - Worker state projection must not mutate `WorkerReachabilityView`,
   `WorkerLoadView`, `WorkerRegistrySnapshot`, `WorkerCandidateIndex`, matching,
   or task-result convergence.
+- Task item stage evidence must not become public final result truth.
+- Current task item stage evidence ingress is:
+
+  ```text
+  CoreEventRequest(event=kernel.task.stage.evidence)
+    -> KernelEventHandlerRegistry
+    -> TaskStageEvidenceEventHandler
+    -> TaskStageEvidenceOwner
+    -> bounded projection read view + TASK_STAGE_EVIDENCE_APPLIED trace
+  ```
+
+- Task stage projection is versioned by `taskId + messageId + stageName`.
+  Stale and conflicting evidence is rejected as a no-op, idempotent evidence is
+  accepted without projection change, and recent raw evidence is bounded per
+  stage key.
+- `TASK_STAGE_EVIDENCE_APPLIED` trace is evidence only and explicitly records
+  `stableFinalResult=false`.
+- Task stage evidence must not mutate public result rows, final result
+  convergence, task finality, task-work runtime queues, scheduling, dispatch
+  binding, reachability, or load.
 - Capability self-report must not bypass the capability authority owner,
   `WorkerManager`, `WorkerRegistrySnapshot`, or `WorkerCandidateIndex`.
 - Current effective capability composition flows through

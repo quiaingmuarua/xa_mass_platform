@@ -15,6 +15,7 @@ import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.engine.runtime.TaskRuntimeProfile;
 import com.xa.mass.engine.runtime.TaskRuntimeProfileResolver;
 import com.xa.mass.engine.command.WorkerCommandLifecycleResult;
+import com.xa.mass.engine.stage.TaskStageEvidenceResult;
 import com.xa.mass.engine.worker.WorkerCapabilityReportResult;
 import com.xa.mass.engine.worker.WorkerStateProjectionResult;
 import com.xa.mass.runtime.api.TaskWorkStats;
@@ -868,6 +869,30 @@ public final class TraceEventLogger {
                         "workerState", result.projection() != null ? result.projection().state() : null,
                         "observedAt", result.projection() != null ? result.projection().observedAt() : null,
                         "recentReportCount", result.projection() != null ? result.projection().recentReports().size() : null
+                ))
+                .build());
+    }
+
+    public void taskStageEvidenceApplied(TaskStageEvidenceResult result) {
+        if (result == null) {
+            return;
+        }
+        emit(event(ExecutionEventType.TASK_STAGE_EVIDENCE_APPLIED)
+                .identity(identity -> identity
+                        .taskId(result.taskId())
+                        .messageId(result.messageId()))
+                .outcome(result.success(), result.success() ? null : result.status().name(), result.reason())
+                .attrs(attrs(
+                        "source", "TaskStageEvidenceOwner",
+                        "reason", result.reason(),
+                        "result", result.status().name(),
+                        "stageName", result.stageName(),
+                        "stageVersion", result.stageVersion(),
+                        "stageStatus", result.projection() != null ? result.projection().stageStatus() : null,
+                        "projectionChanged", result.projectionChanged(),
+                        "observedAt", result.projection() != null ? result.projection().observedAt() : null,
+                        "recentEvidenceCount", result.projection() != null ? result.projection().recentEvidence().size() : null,
+                        "stableFinalResult", false
                 ))
                 .build());
     }

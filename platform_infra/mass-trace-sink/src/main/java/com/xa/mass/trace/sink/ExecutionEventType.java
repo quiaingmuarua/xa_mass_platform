@@ -34,6 +34,7 @@ public enum ExecutionEventType {
     WORKER_COMMAND_STATUS_TRANSITION(EventCategory.WORKER, EventSeverity.INFO),
     WORKER_CAPABILITY_REPORT_APPLIED(EventCategory.WORKER, EventSeverity.INFO),
     WORKER_STATE_REPORT_APPLIED(EventCategory.WORKER, EventSeverity.INFO),
+    TASK_STAGE_EVIDENCE_APPLIED(EventCategory.MSG, EventSeverity.INFO),
     WORKER_ONLINE(EventCategory.WORKER, EventSeverity.INFO),
     WORKER_OFFLINE(EventCategory.WORKER, EventSeverity.WARN);
 

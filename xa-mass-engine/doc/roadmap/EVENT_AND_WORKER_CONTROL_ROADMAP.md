@@ -2,12 +2,14 @@
 
 Last updated: 2026-05-18
 
-Status: active future roadmap after event-metadata baseline closure.
+Status: completed owner-baseline roadmap; deferred runtime/policy extensions
+remain future work only when concrete pressure appears.
 
-The first event-metadata wave is complete. The next direction is not to grow a
-special `system event` family beside ordinary events. It is to converge on one
-event language, reuse the existing event-runtime vocabulary where it fits, keep
-owner-specific handlers explicit, and only then add worker control behavior.
+The first event-metadata and owner-adoption waves are complete. The direction is
+not to grow a special `system event` family beside ordinary events. It is to
+converge on one event language, reuse the existing event-runtime vocabulary
+where it fits, keep owner-specific handlers explicit, and add worker control
+behavior only through concrete owners.
 
 This roadmap intentionally targets one event language, not one mandatory event
 runtime. Worker-originated ingress, direct control-plane invocation, and future
@@ -23,7 +25,7 @@ event-language convergence
 
 ## Completed Baseline
 
-Implemented first-wave baseline:
+Implemented baseline:
 
 - event owner inventory
 - `PriorityClass`, `ResponseMode`, and `TargetScope` metadata on descriptor
@@ -31,6 +33,15 @@ Implemented first-wave baseline:
 - catalog/API metadata visibility
 - guards that keep metadata out of runtime owner paths
 - current presence-only `WorkerSystemEventChannel` behavior
+- split `DeliveryAcknowledgementMode` and `EventConvergenceMode` descriptor
+  semantics
+- route-only `KernelEventHandlerRegistry` for `TASK_ENGINE` /
+  `WORKER_MANAGER` handlers
+- `WorkerCapabilityAuthority` and worker capability self-report
+- `WorkerCommandLifecycleOwner`, delivery handoff, and owner-decided
+  acknowledgement/status ingest
+- `WorkerStateProjectionOwner`
+- `TaskStageEvidenceOwner`
 
 Current truth is recorded in
 [`EVENT_OWNER_BOUNDARY.md`](../baseline/EVENT_OWNER_BOUNDARY.md).
@@ -98,7 +109,7 @@ worker capability self-report
   -> capability authority owner
 
 task item stage/progress
-  -> future stage owner, not public final result
+  -> TaskStageEvidenceOwner, not public final result
 ```
 
 ## Event Dimensions
@@ -665,24 +676,49 @@ Acceptance:
 
 ### EWC-6: Task Item Stage Semantics
 
+Status: completed first owner baseline.
+
 Goal: support multi-stage task work without polluting public final results.
 
-Rules:
+Implemented behavior:
 
-- stage evidence may drive progress or next-stage work
-- only approved final convergence semantics may enter public stable-final result
-  commit
+```text
+CoreEventRequest(event=kernel.task.stage.evidence)
+  -> KernelEventHandlerRegistry
+  -> TaskStageEvidenceEventHandler
+  -> TaskStageEvidenceOwner
+  -> bounded per-task/message/stage projection
+  -> TASK_STAGE_EVIDENCE_APPLIED trace evidence
+```
+
+Implemented owner rules:
+
+- stage evidence is keyed by `taskId + messageId + stageName`
+- `stageVersion` orders evidence for one stage key
+- same version + same payload is idempotent
+- same version + different payload is rejected as conflict
+- lower version is rejected as stale
+- higher version replaces the latest projected stage state
+- raw evidence stays in a bounded per-stage recent-history window
+- trace evidence includes `stableFinalResult=false`
+- stage evidence does not write public result rows, final convergence,
+  task finality, runtime work queues, scheduling, or dispatch state
 - `/results` remains stable-final rows only
 
 Out of scope:
 
 - no public result widening
 - no attempt to model every stage as a task-final result
+- no progress-driven next-stage enqueue in this first owner baseline
+- no task lifecycle mutation
+- no result-runtime or task-work-runtime write
 
 Acceptance:
 
 - stage and final paths are independently provable
 - public result semantics remain stable
+- `TaskStageEvidenceOwner` is independently testable and guarded from public
+  result convergence, work-runtime queues, scheduling, and dispatch owners
 
 ## Deferred Runtime And Policy Extensions
 
