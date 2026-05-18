@@ -908,8 +908,13 @@ class TaskManagerLifecycleTest {
                     null
             ));
 
-            assertTrue(dispatchLatch.await(2, TimeUnit.SECONDS));
-            Thread.sleep(250);
+            awaitCondition(
+                    () -> dispatchEvents.get() >= 1,
+                    "coalesced delayed retry wakeup should publish one task dispatch request",
+                    10,
+                    TimeUnit.SECONDS);
+            assertEquals(0, dispatchLatch.getCount());
+            waitForNoAdditionalDispatchEvents(dispatchEvents, 1, TimeUnit.SECONDS);
 
             assertEquals(1, dispatchEvents.get());
             TaskDetailStore.TaskMessageProjection first = awaitVisibleTaskMessageProjection(
@@ -2957,7 +2962,14 @@ class TaskManagerLifecycleTest {
     }
 
     private static void awaitCondition(BooleanSupplier condition, String failureMessage) {
-        long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        awaitCondition(condition, failureMessage, 2, TimeUnit.SECONDS);
+    }
+
+    private static void awaitCondition(BooleanSupplier condition,
+                                       String failureMessage,
+                                       long timeout,
+                                       TimeUnit unit) {
+        long deadlineNanos = System.nanoTime() + unit.toNanos(timeout);
         while (System.nanoTime() < deadlineNanos) {
             if (condition.getAsBoolean()) {
                 return;
@@ -2970,6 +2982,23 @@ class TaskManagerLifecycleTest {
             }
         }
         assertTrue(condition.getAsBoolean(), failureMessage);
+    }
+
+    private static void waitForNoAdditionalDispatchEvents(AtomicInteger dispatchEvents,
+                                                          long quietPeriod,
+                                                          TimeUnit unit) {
+        long deadlineNanos = System.nanoTime() + unit.toNanos(quietPeriod);
+        int lastSeen = dispatchEvents.get();
+        while (System.nanoTime() < deadlineNanos) {
+            try {
+                Thread.sleep(10L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+            int current = dispatchEvents.get();
+            assertEquals(lastSeen, current, "delayed retry wakeup should be coalesced per task");
+        }
     }
 
     private static final class PagingAwareTaskStorage extends InMemoryTaskStorage {
