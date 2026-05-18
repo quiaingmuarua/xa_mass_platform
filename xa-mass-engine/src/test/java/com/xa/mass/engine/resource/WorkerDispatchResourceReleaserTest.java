@@ -157,7 +157,7 @@ class WorkerDispatchResourceReleaserTest {
         );
     }
 
-    private static final class CandidateExclusiveResourcePolicy extends DefaultWorkerDispatchResourcePolicy {
+    private static final class CandidateExclusiveResourcePolicy implements WorkerDispatchResourcePolicy {
         @Override
         public WorkerDispatchResourceUsage usageForTask(Task task) {
             return new WorkerDispatchResourceUsage(false);
@@ -167,9 +167,24 @@ class WorkerDispatchResourceReleaserTest {
         public WorkerDispatchResourceUsage usageForCandidate(Task task, WorkerSchedulingCandidate candidate) {
             return new WorkerDispatchResourceUsage(true);
         }
+
+        @Override
+        public WorkerDispatchResourceUsage usageForAttempt(Task task) {
+            return usageForTask(task);
+        }
     }
 
-    private static final class AttemptNonExclusiveResourcePolicy extends DefaultWorkerDispatchResourcePolicy {
+    private static final class AttemptNonExclusiveResourcePolicy implements WorkerDispatchResourcePolicy {
+        @Override
+        public WorkerDispatchResourceUsage usageForTask(Task task) {
+            return new WorkerDispatchResourceUsage(true);
+        }
+
+        @Override
+        public WorkerDispatchResourceUsage usageForCandidate(Task task, WorkerSchedulingCandidate candidate) {
+            return usageForTask(task);
+        }
+
         @Override
         public WorkerDispatchResourceUsage usageForAttempt(Task task) {
             return new WorkerDispatchResourceUsage(false);

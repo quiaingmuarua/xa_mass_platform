@@ -796,6 +796,33 @@ Suggested inventory scan:
 rg "findWorkerCandidates|getAllWorkers|listWorkers|supportedEventCodes|supportedProjects|eventBindings|targetWorkerId" xa-mass-engine/src/main -n
 ```
 
+Current WG-0 inventory:
+
+| Surface | Current owner/path | Current behavior | WG replacement direction |
+|---|---|---|---|
+| assignment worker candidate count | `TaskWorkerAssignListener -> WorkerManager.findWorkerCandidates(task).size()` | allocation planning uses the same worker candidate source count that matching later consumes | WG-3 should get candidate count from indexed candidate source without duplicating lookup logic |
+| matching candidate source | `RuleBasedTaskWorkerMatchingStrategy -> WorkerManager.findWorkerCandidates(task)` | strategy receives worker rows, then `WorkerSchedulingCandidateEnumerator` materializes one worker-level scheduling candidate per worker | WG-3 should replace this source with `WorkerCandidateIndex` while keeping Stage 2 prefilter/rule/ranker/resource behavior |
+| target worker lookup | `WorkerManager.findWorkerCandidates(task)` | `targetWorkerId` is checked first and returns direct `getWorker(targetWorkerId)` singleton or empty list | WG-2/WG-3 keep direct lookup, then apply group capability gate before Stage 2 |
+| sdk event candidate narrowing | `WorkerManager.findWorkerCandidates(task)` | `sdkEventCode` uses `WorkerStorage.getWorkersBySupportedEventCode(eventCode)` | WG-3 replaces worker supported-event lookup with `(project,eventCode) -> groupIds -> workerIds` |
+| non-event project candidate narrowing | `WorkerManager.findWorkerCandidates(task)` | project-only tasks use `WorkerStorage.getWorkersBySupportedProject(project)` | WG-3 either uses group event/project capability or a deliberate project-level group binding path |
+| fallback candidate source | `WorkerManager.findWorkerCandidates(task)` | tasks without target, event code, or project fall back to `WorkerStorage.getAllWorkers()` | WG-3 must make any remaining full-scan fallback explicit and guarded |
+| worker scheduling view capability fields | `WorkerSchedulingView` | reads `Worker.supportedProjects` and `Worker.supportedEventCodes` into the Stage 2 read model | WG-4 removes or derives these from group bindings so they do not remain a second matching truth |
+| rule context capability fields | `WorkerMatchContext` | exposes `supportedProjects`, `supportedEventCodes`, `supportsProject`, and `supportsEvent` from `WorkerSchedulingView` | WG-4 updates rule context to read group-derived scheduling facts only |
+| dispatch runtime claim capability evidence | `SimpleTaskDispatchBinder.supportedEventCodes(...)` | passes worker supported event codes into runtime claim target metadata | WG-4 must either derive this from group binding or prove it is read-only claim metadata, not matching truth |
+| diagnostics capability snapshot | `AssignmentRecordService -> WorkerSchedulingSnapshot` | snapshots worker scheduling supported projects/event codes for diagnostics | WG-4 should update diagnostics to snapshot group-derived capability evidence |
+| worker read API / SDK projection | `WorkerSnapshot`, `WorkerRegistration`, server catalog/worker APIs | `eventBindings` exists, while supported project/event fields remain compatibility/read surfaces | WG-1/WG-4 decide strict mode versus generated-group migration and prevent these projections from driving matching |
+
+Public surface inventory:
+
+| Type | Current visibility | WG-0 decision |
+|---|---|---|
+| `WorkerSchedulingCandidate` | public | remains public inside engine module because assignment, binder, resource, trace, and diagnostics cross packages consume it |
+| `WorkerSchedulingView` | public | remains public inside engine module because rule context, trace, diagnostics, and tests consume it |
+| `WorkerMatchContext` | public | remains public for rule/ranker tests and current strategy package consumption |
+| `WorkerCandidateRanker` | public | remains public policy seam |
+| `WorkerSchedulingCandidateEnumerator` | package-private | strategy-package implementation detail; future WG-3 should replace its source path with `WorkerCandidateIndex` |
+| `WorkerSelector` / `DefaultWorkerSelector` | removed | unused parallel worker-level selection path; keeping it would confuse candidate-source ownership |
+
 ### Phase WG-1: Introduce WorkerGroup Model And Snapshot Index
 
 Goal: add thin WorkerGroup and indexes without wiring matching.

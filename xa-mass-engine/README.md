@@ -80,6 +80,20 @@ WorkerContext is not scheduling truth in the engine hot path. Runtime,
 transport, projection, SDK/API, server payloads, and canonical trace identity
 are worker-level.
 
+Current WorkerGroup roadmap baseline:
+
+- candidate source still enters through `WorkerManager.findWorkerCandidates(...)`
+  and is materialized by the strategy-package
+  `WorkerSchedulingCandidateEnumerator`
+- `targetWorkerId` already uses direct worker lookup before capability indexes
+- event-code and project candidate narrowing still read worker-level storage
+  indexes; `WorkerGroup.eventBindings` is the next roadmap's capability truth
+- `WorkerSchedulingCandidateEnumerator` is a strategy-package implementation
+  detail, not a public extension point
+- the old unused `WorkerSelector` / `DefaultWorkerSelector` path is removed so
+  worker selection has one active mainline: candidate source -> rule/rank ->
+  allocation/resource admission
+
 ## Scheduling Core Test Intent
 
 Read this before interpreting engine tests.

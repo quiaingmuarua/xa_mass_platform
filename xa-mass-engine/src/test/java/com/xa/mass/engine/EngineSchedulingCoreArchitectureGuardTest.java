@@ -570,6 +570,25 @@ class EngineSchedulingCoreArchitectureGuardTest {
                         + String.join("\n", violations));
     }
 
+    @Test
+    void retiredWorkerSelectorPathStaysRemoved() throws IOException {
+        Pattern workerSelector = Pattern.compile("\\b(?:Default)?WorkerSelector\\b");
+
+        List<String> violations = new ArrayList<>();
+        for (Path path : javaSourceFiles(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine"))) {
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            if (workerSelector.matcher(source).find()) {
+                violations.add(path + " references the retired parallel worker selector path");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Worker selection must stay on the active candidate-source -> rule/rank -> "
+                        + "allocation/resource-admission mainline. Do not reintroduce the unused "
+                        + "WorkerSelector path:\n"
+                        + String.join("\n", violations));
+    }
+
     private static List<Path> selectedSuiteSourceFiles() {
         SelectClasses selectedClasses = EngineSchedulingCoreSuite.class.getAnnotation(SelectClasses.class);
         assertNotNull(selectedClasses, "EngineSchedulingCoreSuite must declare @SelectClasses");

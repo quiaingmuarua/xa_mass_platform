@@ -15,7 +15,7 @@ import java.util.stream.Collectors;
 /**
  * Releases dispatch-time worker reservations and exclusive locks.
  */
-public class WorkerDispatchResourceReleaser {
+public final class WorkerDispatchResourceReleaser {
     private final WorkerManager workerManager;
     private final WorkerDispatchResourcePolicy resourcePolicy;
     private final TraceEventLogger traceEventLogger;

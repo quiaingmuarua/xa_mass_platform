@@ -9,7 +9,7 @@ import com.xa.mass.engine.model.WorkerSchedulingCandidate;
  * <p>Foreground tasks keep the worker-level exclusive lock. Background tasks
  * rely on capacity reservation. Resource policy is task/worker based.</p>
  */
-public class DefaultWorkerDispatchResourcePolicy implements WorkerDispatchResourcePolicy {
+public final class DefaultWorkerDispatchResourcePolicy implements WorkerDispatchResourcePolicy {
 
     @Override
     public WorkerDispatchResourceUsage usageForTask(Task task) {

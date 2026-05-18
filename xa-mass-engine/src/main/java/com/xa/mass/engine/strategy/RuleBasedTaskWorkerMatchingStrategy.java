@@ -25,7 +25,7 @@ import java.util.stream.Collectors;
 /**
  * Default matching strategy backed by the current rule engine.
  */
-public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingStrategy {
+public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingStrategy {
 
     private static final Logger log = LoggerFactory.getLogger(RuleBasedTaskWorkerMatchingStrategy.class);
 
@@ -37,9 +37,9 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
     private final WorkerDispatchResourcePolicy resourcePolicy;
     private final WorkerSchedulingCandidateEnumerator candidateEnumerator;
 
-    public RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
-                                               WorkerManager workerManager,
-                                               AssignmentDiagnosticRecorder recordService) {
+    RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
+                                        WorkerManager workerManager,
+                                        AssignmentDiagnosticRecorder recordService) {
         this(ruleManager, workerManager, recordService, TraceEventLogger.noop());
     }
 
@@ -50,21 +50,21 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
         this(ruleManager, workerManager, recordService, traceEventLogger, new DefaultWorkerCandidateRanker());
     }
 
-    public RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
-                                               WorkerManager workerManager,
-                                               AssignmentDiagnosticRecorder recordService,
-                                               TraceEventLogger traceEventLogger,
-                                               WorkerCandidateRanker candidateRanker) {
+    RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
+                                        WorkerManager workerManager,
+                                        AssignmentDiagnosticRecorder recordService,
+                                        TraceEventLogger traceEventLogger,
+                                        WorkerCandidateRanker candidateRanker) {
         this(ruleManager, workerManager, recordService, traceEventLogger, candidateRanker,
                 new DefaultWorkerDispatchResourcePolicy());
     }
 
-    public RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
-                                               WorkerManager workerManager,
-                                               AssignmentDiagnosticRecorder recordService,
-                                               TraceEventLogger traceEventLogger,
-                                               WorkerCandidateRanker candidateRanker,
-                                               WorkerDispatchResourcePolicy resourcePolicy) {
+    RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
+                                        WorkerManager workerManager,
+                                        AssignmentDiagnosticRecorder recordService,
+                                        TraceEventLogger traceEventLogger,
+                                        WorkerCandidateRanker candidateRanker,
+                                        WorkerDispatchResourcePolicy resourcePolicy) {
         this(ruleManager, workerManager, recordService, traceEventLogger, candidateRanker,
                 resourcePolicy, null);
     }

@@ -13,15 +13,15 @@ import java.util.Objects;
 /**
  * Owner for turning worker read-model rows into scheduling candidates.
  */
-public class WorkerSchedulingCandidateEnumerator {
+final class WorkerSchedulingCandidateEnumerator {
 
     private final WorkerManager workerManager;
 
-    public WorkerSchedulingCandidateEnumerator(WorkerManager workerManager) {
+    WorkerSchedulingCandidateEnumerator(WorkerManager workerManager) {
         this.workerManager = Objects.requireNonNull(workerManager, "workerManager");
     }
 
-    public List<WorkerSchedulingCandidate> enumerate(List<Worker> workers) {
+    List<WorkerSchedulingCandidate> enumerate(List<Worker> workers) {
         if (workers == null || workers.isEmpty()) {
             return List.of();
         }
