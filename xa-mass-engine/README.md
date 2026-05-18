@@ -466,6 +466,8 @@ Useful starting tests:
 
 - `EngineKernelConvergenceArchitectureGuardTest`
 - `TaskKernelLifecycleTest`
+- `TaskResultRuntimeConvergenceTest`
+- `TaskResultConcurrencyConvergenceTest`
 - `EngineSchedulingCoreArchitectureGuardTest`
 - `TaskContractTerminalBehaviorTest`
 - `TaskContractSchedulingBehaviorTest`
@@ -505,7 +507,6 @@ Explicit secondary residue/audit tests:
 
 - `EngineProjectionResidueSuite`
   - `TaskManagerLifecycleTest`
-  - `TaskConcurrencyAcceptanceTest`
   - `SimpleTaskDispatchBinderTest`
 - `EngineProjectionAuditSuite`
   - `TaskStateValidatorBoundaryTest`
@@ -552,9 +553,10 @@ Engine-local owner docs:
   explicitly avoids module split, service extraction, worker
   command/state-report implementation, and unified event-envelope runtime work.
 - [`doc/roadmap/EVENT_AND_WORKER_CONTROL_ROADMAP.md`](./doc/roadmap/EVENT_AND_WORKER_CONTROL_ROADMAP.md):
-  active future path after event-metadata baseline closure: queue placement,
-  worker command lifecycle, worker state projection, capability self-report,
-  stage semantics, and only then shared-envelope review.
+  active future path after event-metadata baseline closure: one event language
+  without assuming one event runtime, target-specific handlers, capability
+  authority-model convergence before self-report adoption, then additional
+  worker-control and stage owner lines.
 
 Global baselines:
 

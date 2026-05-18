@@ -9,6 +9,7 @@ import org.junit.platform.suite.api.Suite;
         TaskKernelLifecycleTest.class,
         TaskContractTerminalBehaviorTest.class,
         TaskResultRuntimeConvergenceTest.class,
+        TaskResultConcurrencyConvergenceTest.class,
         TaskRuntimeRecoveryPortTest.class
 })
 class EngineKernelConvergenceSuite {

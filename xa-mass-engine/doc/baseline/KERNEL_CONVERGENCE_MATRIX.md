@@ -54,16 +54,18 @@ Logical ownership is defined by this matrix and suite membership first.
 | Retry expiry re-enters work or finalizes according to retry policy without double finalization | work runtime + retry/finality policy | `TaskRedispatchCompetitionTest` | ready/inflight/final counters, terminal reason, active lease truth | Covered through scheduling lane |
 | Result finality releases worker resources and allows waiting work to continue | result convergence + release owner | `TaskRedispatchCompetitionTest`, `TaskResourceReleaseListenerTest` | terminal reason, worker unlock/load release, later dispatch | Covered through scheduling lane |
 | Stable-final runtime result commit, repair barriers, and duplicate result idempotency converge without projection fallback | result runtime + engine repair pump | `TaskResultRuntimeConvergenceTest` | `TaskResultRuntime` visible rows, repair candidates, task aggregate | Covered |
-| Callback / expiry races produce one logical final outcome and coalesced progress | result ingest + task concurrency owner | `TaskConcurrencyAcceptanceTest` | task aggregate, event counts, runtime finality | Covered behaviorally but still projection-heavy residue |
+| Callback / expiry races produce one logical final outcome and coalesced progress | result ingest + task concurrency owner | `TaskResultConcurrencyConvergenceTest` | task aggregate, event counts, runtime/result finality | Covered |
 | Kernel mainline suite must stay free of compatibility projection proof | suite guard | `EngineKernelConvergenceArchitectureGuardTest` | selected-suite source scan | Covered |
 
 ## Known Gaps
 
 These are testing-structure gaps, not known product-behavior gaps.
 
-- `TaskConcurrencyAcceptanceTest` still uses projection-aware setup while
-  proving important callback/expiry race behavior. Keep it secondary until the
-  race proof is rewritten around runtime/result/task aggregate truth only.
+- `TaskManagerLifecycleTest` is still a broad projection-aware residue holder:
+  lifecycle shell checks, payload-ref compatibility, retry/expiry residue, and
+  terminal overlay checks remain physically mixed there. Split it only through
+  small owner-specific passes; do not reopen the runtime-first kernel suite by
+  moving projection proof back into mainline.
 - Scheduling scenarios already prove some convergence invariants. Do not clone
   them into lifecycle-only tests unless the owner boundary changes or the
   scheduling scenario becomes too noisy to isolate the kernel fact.

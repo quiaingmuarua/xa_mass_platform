@@ -85,32 +85,6 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
-    void createTaskDoesNotInferContractFromInteractiveWorkload() {
-        TaskCreateSpec dto = buildRequest("task-workload-not-contract");
-        dto.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
-
-        Task task = createTask(dto);
-
-        assertEquals(TaskContract.BATCH, task.getContract());
-        assertEquals(TaskWorkloadClass.INTERACTIVE, task.getExecutionSpec().getWorkloadClass());
-        assertEquals(TaskIntakeStatus.SEALED, task.getIntakeStatus());
-    }
-
-    @Test
-    void taskCanMoveFromNewToReadyToPausedAndBackToReady() {
-        Task task = createTask(buildRequest("task-lifecycle"));
-
-        assertTrue(taskManager.approveTask(task.getTid()));
-        assertEquals(TaskStatus.READY, taskManager.getTask(task.getTid()).getStatus());
-
-        assertTrue(taskManager.pauseTask(task.getTid()));
-        assertEquals(TaskStatus.PAUSED, taskManager.getTask(task.getTid()).getStatus());
-
-        assertTrue(taskManager.resumeTask(task.getTid()));
-        assertEquals(TaskStatus.READY, taskManager.getTask(task.getTid()).getStatus());
-    }
-
-    @Test
     void resumeTaskDetailedReportsReadyOutcome() {
         Task task = createTask(buildRequest("task-resume-detailed"));
         assertTrue(taskManager.approveTask(task.getTid()));
@@ -122,19 +96,6 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskResumeResult.Outcome.RESUMED_TO_READY, result.getOutcome());
         assertEquals(TaskStatus.READY, result.getStatus());
         assertNull(result.getTerminalReason());
-    }
-
-    @Test
-    void blockedTaskCanBeApprovedBackToReady() {
-        Task task = createTask(buildRequest("task-blocked"));
-
-        assertTrue(taskManager.rejectTask(task.getTid()));
-        assertEquals(TaskStatus.BLOCKED, taskManager.getTask(task.getTid()).getStatus());
-        assertEquals(TaskHoldReason.REVIEW_REJECTED, taskManager.getTask(task.getTid()).getHoldReason());
-
-        assertTrue(taskManager.approveTask(task.getTid()));
-        assertEquals(TaskStatus.READY, taskManager.getTask(task.getTid()).getStatus());
-        assertNull(taskManager.getTask(task.getTid()).getHoldReason());
     }
 
     @Test
@@ -152,24 +113,6 @@ class TaskManagerLifecycleTest {
         assertTrue(taskManager.resumeTask(task.getTid()));
 
         assertEquals(2, notifications.get());
-    }
-
-    @Test
-    void invalidActionsAreRejectedOutsideExpectedStates() {
-        Task task = createTask(buildRequest("task-invalid"));
-
-        assertFalse(taskManager.pauseTask(task.getTid()));
-        assertFalse(taskManager.resumeTask(task.getTid()));
-
-        assertTrue(taskManager.approveTask(task.getTid()));
-        assertFalse(taskManager.rejectTask(task.getTid()));
-        assertFalse(taskManager.approveTask(task.getTid()));
-
-        assertTrue(taskManager.cancelTask(task.getTid()));
-        assertEquals(TaskStatus.TERMINAL, taskManager.getTask(task.getTid()).getStatus());
-        assertEquals(TaskTerminalReason.MANUAL_CANCELLED, taskManager.getTask(task.getTid()).getTerminalReason());
-        assertFalse(taskManager.getTaskWorkRuntime().hasReadyWork(task.getTid()));
-        assertFalse(taskManager.resumeTask(task.getTid()));
     }
 
     @Test
@@ -591,28 +534,6 @@ class TaskManagerLifecycleTest {
         assertEquals(2, updatedTask.getTaskTargetNumber());
         assertEquals(2, messages.size());
         assertEquals(0, dispatchRequests.get());
-    }
-
-    @Test
-    void appendTaskItemsRejectsOversizedIngestBatch() {
-        TaskCreateSpec dto = new TaskCreateSpec();
-        dto.setSourceRef("stream-shell-ingest-limit");
-        dto.setProject("demoApp");
-        dto.setUserId("agent");
-        dto.setSealIntakeAfterCreate(false);
-        dto.setContract(TaskContract.SESSION);
-        dto.setInputs(List.of());
-        Task task = createTask(dto);
-
-        List<java.util.Map<String, Object>> oversizedBatch = java.util.stream.IntStream
-                .rangeClosed(0, TaskManager.MAX_INGEST_BATCH_ITEMS)
-                .mapToObj(i -> java.util.Map.<String, Object>of("target", "t-" + i))
-                .toList();
-
-        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-                () -> taskManager.appendTaskItems(task.getTid(), oversizedBatch));
-
-        assertTrue(error.getMessage().contains("append items exceed ingest batch limit"));
     }
 
     @Test
@@ -1850,69 +1771,6 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
-    void sessionTaskSealClosesAppendWindowWithoutTerminalClosure() {
-        TaskCreateSpec request = buildRequest("task-open-ended", List.of("alpha"));
-        request.setContract(TaskContract.SESSION);
-        request.setSealIntakeAfterCreate(false);
-        Task task = createTask(request);
-
-        assertEquals(TaskIntakeStatus.OPEN, task.getIntakeStatus());
-
-        taskManager.approveTask(task.getTid());
-        task.setStatus(TaskStatus.RUNNING);
-        taskManager.updateTask(task);
-
-        TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
-        assignMessage(task, message);
-
-        assertTrue(taskManager.ingestTaskResult(task.getTid(), message.messageId(), true, "done"));
-
-        Task beforeSeal = taskManager.getTask(task.getTid());
-        assertEquals(TaskStatus.RUNNING, beforeSeal.getStatus());
-        assertNull(beforeSeal.getTerminalReason());
-        assertEquals(TaskIntakeStatus.OPEN, beforeSeal.getIntakeStatus());
-
-        assertTrue(taskManager.sealTask(task.getTid()));
-
-        IllegalStateException error = assertThrows(IllegalStateException.class, () ->
-                taskManager.appendTaskItems(task.getTid(), List.of(
-                        java.util.Map.<String, Object>of("target", "beta")
-                )));
-        assertTrue(error.getMessage().contains("sealed"));
-
-        Task current = taskManager.getTask(task.getTid());
-        TaskStateResolutionResult resolution = taskManager.resolveTaskState(task.getTid());
-
-        assertEquals(TaskStatus.RUNNING, current.getStatus());
-        assertNull(current.getTerminalReason());
-        assertEquals(TaskIntakeStatus.SEALED, current.getIntakeStatus());
-        assertEquals(1, current.getTaskTargetNumber());
-        assertEquals(TaskStateResolutionResult.Outcome.NOT_FINALIZED, resolution.getOutcome());
-        assertEquals(TaskStatus.RUNNING, resolution.getStatus());
-        assertNull(resolution.getTerminalReason());
-    }
-
-    @Test
-    void sessionTaskTerminalClosureClosesAppendWindow() {
-        TaskCreateSpec request = buildRequest("task-open-ended-terminal-close", List.of("alpha"));
-        request.setContract(TaskContract.SESSION);
-        request.setSealIntakeAfterCreate(false);
-        Task task = createTask(request);
-
-        assertTrue(taskManager.cancelTask(task.getTid()));
-
-        Task terminalTask = taskManager.getTask(task.getTid());
-        assertEquals(TaskStatus.TERMINAL, terminalTask.getStatus());
-        assertEquals(TaskIntakeStatus.SEALED, terminalTask.getIntakeStatus());
-
-        IllegalStateException error = assertThrows(IllegalStateException.class, () ->
-                taskManager.appendTaskItems(task.getTid(), List.of(
-                        java.util.Map.<String, Object>of("target", "beta")
-                )));
-        assertTrue(error.getMessage().contains("sealed"));
-    }
-
-    @Test
     void batchTaskDispatchRequestsDoNotEmitSessionDispatchSignals() {
         Task task = createTask(buildRequest("task-batch-runtime-dispatch", List.of("alpha")));
         taskManager.approveTask(task.getTid());
@@ -1923,47 +1781,6 @@ class TaskManagerLifecycleTest {
         taskManager.requestTaskDispatch(taskManager.getTask(task.getTid()));
 
         assertEquals(0, dispatchRequests.get());
-    }
-
-    @Test
-    void batchTaskStaysNonTerminalUntilIntakeSealed() {
-        TaskCreateSpec dto = new TaskCreateSpec();
-        dto.setSourceRef("file-task-open-ingest");
-        dto.setProject("demoApp");
-        dto.setUserId("agent");
-        dto.setContract(TaskContract.BATCH);
-        dto.setSourceRef("mock/input/demo.csv");
-        dto.setSealIntakeAfterCreate(false);
-        dto.setInputs(List.of());
-
-        Task task = createTask(dto);
-        assertEquals(TaskIntakeStatus.OPEN, task.getIntakeStatus());
-
-        assertEquals(1, taskManager.appendTaskItems(task.getTid(), List.of(
-                java.util.Map.<String, Object>of("target", "alpha")
-        )));
-
-        assertTrue(taskManager.approveTask(task.getTid()));
-        Task runningTask = taskManager.getTask(task.getTid());
-        runningTask.setStatus(TaskStatus.RUNNING);
-        taskManager.updateTask(runningTask);
-
-        TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
-        assignMessage(runningTask, message);
-
-        assertTrue(taskManager.ingestTaskResult(task.getTid(), message.messageId(), true, "done"));
-
-        Task beforeSeal = taskManager.getTask(task.getTid());
-        assertEquals(TaskStatus.RUNNING, beforeSeal.getStatus());
-        assertNull(beforeSeal.getTerminalReason());
-        assertEquals(TaskIntakeStatus.OPEN, beforeSeal.getIntakeStatus());
-
-        assertTrue(taskManager.sealTask(task.getTid()));
-
-        Task sealed = taskManager.getTask(task.getTid());
-        assertEquals(TaskIntakeStatus.SEALED, sealed.getIntakeStatus());
-        assertEquals(TaskStatus.TERMINAL, sealed.getStatus());
-        assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, sealed.getTerminalReason());
     }
 
     @Test

@@ -48,6 +48,9 @@ Those fields are descriptive metadata and policy inputs only:
 - `ResponseMode` does not choose result writes or task finality.
 - `TargetScope` does not open worker-command, worker-state, operator, or
   task-engine runtime paths.
+- `TargetScope` labels routing domains only. Values such as `WORKER_MANAGER`
+  must not be read as a promise that a standalone worker-manager service exists
+  or is required.
 - `EventCategory` remains deferred unless a later owner plan needs it.
 
 Visible catalog/API surfaces may expose metadata, but read visibility does not
@@ -63,6 +66,14 @@ authorize a new owner path.
 
 `TracingWorkerSystemEventChannel` may emit canonical presence evidence, but the
 channel itself is not a lifecycle owner.
+
+This is current implementation truth, not a claim that `system event` should
+remain a permanent second event family. The active future roadmap treats future
+worker-originated kernel events as ordinary events routed to kernel-side
+handlers, while keeping lifecycle ownership in concrete owners.
+
+That future direction does not imply one mandatory runtime implementation for
+all event ingress. Shared language and shared runtime are separate decisions.
 
 Future paths must have explicit owners before they mutate state:
 
@@ -92,6 +103,8 @@ worker capability self-report
   mutate engine lifecycle state.
 - A shared runtime envelope remains future-only until concrete owners exist and
   duplicate carrier shape becomes a real problem.
+- Event routing must not become lifecycle ownership merely because a future
+  kernel-targeted event uses the ordinary event language.
 
 ## Proof Surface
 
@@ -105,4 +118,3 @@ Current owner separation is proved by:
 
 Future behavior phases should add trace-observed scenarios only after they add a
 real owner. Trace remains evidence, not runtime truth.
-

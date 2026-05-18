@@ -7,7 +7,6 @@ import org.junit.platform.suite.api.Suite;
 @Suite
 @SelectClasses({
         TaskManagerLifecycleTest.class,
-        TaskConcurrencyAcceptanceTest.class,
         SimpleTaskDispatchBinderTest.class
 })
 class EngineProjectionResidueSuite {
