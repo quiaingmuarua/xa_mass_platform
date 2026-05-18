@@ -118,7 +118,7 @@ public final class SdkPollingSchedulingSoakRunner {
             EmbeddedRuntime runtime = buildRuntime(traceSink);
             MassSdkApplication app = runtime.app();
             List<SimulatedPollingWorker> workers = new ArrayList<>(config.workerCount());
-            List<String> taskIds = new ArrayList<>();
+            List<SoakTaskPlan> taskPlans = new ArrayList<>();
             long startedNanos = System.nanoTime();
             long submittedTasks;
             FinalTaskStats taskStats;
@@ -131,13 +131,13 @@ public final class SdkPollingSchedulingSoakRunner {
                 bootstrapCatalog(app);
                 registerWorkers(app);
                 workers = startWorkers(app);
-                submittedTasks = submitTasksForDuration(app, taskIds);
-                waitForTerminalTasks(app, taskIds);
+                submittedTasks = submitTasksForDuration(app, taskPlans);
+                waitForTerminalTasks(app, taskPlans);
                 stopRequested.set(true);
                 closeWorkers(workers);
-                taskStats = collectFinalTaskStats(app, taskIds);
-                workStats = collectFinalWorkStats(runtime.taskWorkRuntime(), taskIds);
-                resultReadStats = verifyResultReads(app, taskIds);
+                taskStats = collectFinalTaskStats(app, taskPlans);
+                workStats = collectFinalWorkStats(runtime.taskWorkRuntime(), taskPlans);
+                resultReadStats = verifyResultReads(app, taskPlans);
                 deliveryDiagnostics = collectDeliveryDiagnostics(app);
             } finally {
                 stopRequested.set(true);
@@ -289,7 +289,7 @@ public final class SdkPollingSchedulingSoakRunner {
             return workers;
         }
 
-        private long submitTasksForDuration(MassSdkApplication app, List<String> taskIds) throws Exception {
+        private long submitTasksForDuration(MassSdkApplication app, List<SoakTaskPlan> taskPlans) throws Exception {
             long endNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(config.durationSeconds());
             long intervalNanos = TimeUnit.SECONDS.toNanos(1) / config.submitRatePerSecond();
             long nextSubmitNanos = System.nanoTime();
@@ -301,8 +301,7 @@ public final class SdkPollingSchedulingSoakRunner {
                     continue;
                 }
                 String eventCode = eventCodes.get(taskIndex % eventCodes.size());
-                TaskShellSnapshot task = createTask(app, taskIndex, eventCode);
-                taskIds.add(task.getTaskId());
+                taskPlans.add(createTask(app, taskIndex, eventCode));
                 taskIndex++;
                 nextSubmitNanos += intervalNanos;
                 if (nextSubmitNanos < System.nanoTime() - intervalNanos) {
@@ -312,7 +311,7 @@ public final class SdkPollingSchedulingSoakRunner {
             return taskIndex;
         }
 
-        private TaskShellSnapshot createTask(MassSdkApplication app, int taskIndex, String eventCode) {
+        private SoakTaskPlan createTask(MassSdkApplication app, int taskIndex, String eventCode) {
             TaskExecutionOptions options = new TaskExecutionOptions();
             options.setWorkloadClass("BULK");
             options.setBatchSize(Math.max(1, Math.min(config.pollBatchSize(), config.messagesPerTask())));
@@ -336,13 +335,42 @@ public final class SdkPollingSchedulingSoakRunner {
                     .build());
             require(app.sealTask(task.getTaskId()), "task seal should succeed for " + task.getTaskId());
             require(app.approveTask(task.getTaskId()), "task approval should succeed for " + task.getTaskId());
-            return task;
+            return buildTaskPlan(task.getTaskId(), taskIndex, eventCode);
+        }
+
+        private SoakTaskPlan buildTaskPlan(String taskId, int taskIndex, String eventCode) {
+            int expectedSuccess = 0;
+            int expectedFailed = 0;
+            for (int messageIndex = 0; messageIndex < config.messagesPerTask(); messageIndex++) {
+                long globalSeq = globalSeq(taskIndex, messageIndex, config.messagesPerTask());
+                if (isExpectedSuccess(globalSeq, config.failureEveryNth())) {
+                    expectedSuccess++;
+                } else {
+                    expectedFailed++;
+                }
+            }
+            String expectedTerminalReason;
+            if (expectedFailed == 0) {
+                expectedTerminalReason = "ALL_MESSAGES_SUCCEEDED";
+            } else if (expectedSuccess == 0) {
+                expectedTerminalReason = "ALL_MESSAGES_FAILED";
+            } else {
+                expectedTerminalReason = "MIXED_MESSAGE_RESULTS";
+            }
+            return new SoakTaskPlan(
+                    taskId,
+                    taskIndex,
+                    eventCode,
+                    expectedSuccess,
+                    expectedFailed,
+                    expectedTerminalReason
+            );
         }
 
         private List<Object> buildItems(int taskIndex, String eventCode) {
             List<Object> items = new ArrayList<>(config.messagesPerTask());
             for (int messageIndex = 0; messageIndex < config.messagesPerTask(); messageIndex++) {
-                long globalSeq = (long) taskIndex * config.messagesPerTask() + messageIndex + 1L;
+                long globalSeq = globalSeq(taskIndex, messageIndex, config.messagesPerTask());
                 Map<String, Object> item = new LinkedHashMap<>();
                 item.put("runId", runId);
                 item.put("taskIndex", taskIndex);
@@ -355,9 +383,12 @@ public final class SdkPollingSchedulingSoakRunner {
             return items;
         }
 
-        private void waitForTerminalTasks(MassSdkApplication app, List<String> taskIds) throws Exception {
+        private void waitForTerminalTasks(MassSdkApplication app, List<SoakTaskPlan> taskPlans) throws Exception {
             long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(config.drainTimeoutSeconds());
-            Set<String> pending = new LinkedHashSet<>(taskIds);
+            Set<String> pending = new LinkedHashSet<>();
+            for (SoakTaskPlan plan : taskPlans) {
+                pending.add(plan.taskId());
+            }
             while (!pending.isEmpty()) {
                 require(System.nanoTime() < deadlineNanos,
                         "timed out before all soak tasks reached TERMINAL; pending=" + pending.size());
@@ -371,31 +402,58 @@ public final class SdkPollingSchedulingSoakRunner {
             }
         }
 
-        private FinalTaskStats collectFinalTaskStats(MassSdkApplication app, List<String> taskIds) {
+        private FinalTaskStats collectFinalTaskStats(MassSdkApplication app, List<SoakTaskPlan> taskPlans) {
             Map<String, Long> terminalReasons = new LinkedHashMap<>();
+            Map<String, Long> expectedTerminalReasons = new LinkedHashMap<>();
             long terminalTasks = 0;
-            for (String taskId : taskIds) {
+            long expectedSuccess = 0;
+            long expectedFailed = 0;
+            for (SoakTaskPlan plan : taskPlans) {
+                String taskId = plan.taskId();
                 TaskStateSnapshot task = app.getTaskState(taskId);
                 require(task != null, "task should exist: " + taskId);
                 require("TERMINAL".equals(task.getStatus()), "task should be terminal: " + taskId);
                 terminalTasks++;
-                terminalReasons.merge(task.getTerminalReason() == null ? "<null>" : task.getTerminalReason(), 1L, Long::sum);
+                String actualTerminalReason = task.getTerminalReason() == null ? "<null>" : task.getTerminalReason();
+                require(plan.expectedTerminalReason().equals(actualTerminalReason),
+                        "unexpected terminal reason for task=" + taskId
+                                + " expected=" + plan.expectedTerminalReason()
+                                + " actual=" + actualTerminalReason);
+                terminalReasons.merge(actualTerminalReason, 1L, Long::sum);
+                expectedTerminalReasons.merge(plan.expectedTerminalReason(), 1L, Long::sum);
+                expectedSuccess += plan.expectedSuccess();
+                expectedFailed += plan.expectedFailed();
             }
-            return new FinalTaskStats(terminalTasks, terminalReasons);
+            return new FinalTaskStats(
+                    terminalTasks,
+                    terminalReasons,
+                    expectedTerminalReasons,
+                    expectedSuccess,
+                    expectedFailed
+            );
         }
 
-        private FinalWorkStats collectFinalWorkStats(TaskWorkRuntime runtime, List<String> taskIds) {
+        private FinalWorkStats collectFinalWorkStats(TaskWorkRuntime runtime, List<SoakTaskPlan> taskPlans) {
             long total = 0;
             long success = 0;
             long failed = 0;
             long expired = 0;
             long activeLeases = 0;
-            for (String taskId : taskIds) {
+            for (SoakTaskPlan plan : taskPlans) {
+                String taskId = plan.taskId();
                 TaskWorkStats stats = runtime.stats(taskId);
                 require(stats.totalCount() == config.messagesPerTask(),
                         "unexpected runtime work count for task=" + taskId + " total=" + stats.totalCount());
                 require(stats.finalCount() == stats.totalCount(),
                         "runtime work should be final for task=" + taskId);
+                require(stats.successCount() == plan.expectedSuccess(),
+                        "unexpected runtime success count for task=" + taskId
+                                + " expected=" + plan.expectedSuccess()
+                                + " actual=" + stats.successCount());
+                require(stats.failedCount() == plan.expectedFailed(),
+                        "unexpected runtime failed count for task=" + taskId
+                                + " expected=" + plan.expectedFailed()
+                                + " actual=" + stats.failedCount());
                 total += stats.totalCount();
                 success += stats.successCount();
                 failed += stats.failedCount();
@@ -405,14 +463,14 @@ public final class SdkPollingSchedulingSoakRunner {
             return new FinalWorkStats(total, success, failed, expired, activeLeases);
         }
 
-        private ResultReadStats verifyResultReads(MassSdkApplication app, List<String> taskIds) {
+        private ResultReadStats verifyResultReads(MassSdkApplication app, List<SoakTaskPlan> taskPlans) {
             long totalResults = 0;
             long totalPages = 0;
             long maxLastSeq = 0;
-            for (String taskId : taskIds) {
+            for (SoakTaskPlan plan : taskPlans) {
                 ResultSequentialReadVerifier.ResultSequentialReadSummary summary =
                         ResultSequentialReadVerifier.verify(
-                                taskId,
+                                plan.taskId(),
                                 config.messagesPerTask(),
                                 config.resultWindowLimit(),
                                 app::readTaskResults
@@ -458,11 +516,16 @@ public final class SdkPollingSchedulingSoakRunner {
             report.put("tasksSubmitted", submittedTasks);
             report.put("tasksTerminal", taskStats.terminalTasks());
             report.put("terminalReasons", taskStats.terminalReasons());
+            report.put("expectedTerminalReasons", taskStats.expectedTerminalReasons());
             report.put("workItemsSubmitted", submittedTasks * config.messagesPerTask());
             report.put("resultsVisible", resultReadStats.totalResults());
             report.put("success", workStats.successWorkItems());
             report.put("failed", workStats.failedWorkItems());
             report.put("expired", workStats.expiredWorkItems());
+            report.put("expectedWork", Map.of(
+                    "success", taskStats.expectedSuccessWorkItems(),
+                    "failed", taskStats.expectedFailedWorkItems()
+            ));
             report.put("runtimeWork", workStats.toMap());
             report.put("activeLeasesAtEnd", workStats.activeLeasesAtEnd());
             report.put("workerMetrics", metrics.snapshot().toMap());
@@ -488,6 +551,10 @@ public final class SdkPollingSchedulingSoakRunner {
                     "runtime total work must equal submitted items");
             require(resultReadStats.totalResults() == expectedWorkItems,
                     "visible results must equal submitted items");
+            require(workStats.successWorkItems() == taskStats.expectedSuccessWorkItems(),
+                    "runtime success count must match expected failure profile");
+            require(workStats.failedWorkItems() == taskStats.expectedFailedWorkItems(),
+                    "runtime failed count must match expected failure profile");
             require(workStats.activeLeasesAtEnd() == 0,
                     "active leases should drain to zero");
             if (traceProof.enabled()) {
@@ -587,7 +654,7 @@ public final class SdkPollingSchedulingSoakRunner {
                     Thread.sleep(delay);
                 }
                 long globalSeq = globalSeq(item);
-                boolean success = config.failureEveryNth() <= 0 || globalSeq % config.failureEveryNth() != 0;
+                boolean success = isExpectedSuccess(globalSeq, config.failureEveryNth());
                 Map<String, Object> output = new LinkedHashMap<>();
                 output.put("workerId", workerId);
                 output.put("messageId", item.getMessageId());
@@ -656,6 +723,14 @@ public final class SdkPollingSchedulingSoakRunner {
         return "soak-group-" + index;
     }
 
+    private static long globalSeq(int taskIndex, int messageIndex, int messagesPerTask) {
+        return (long) taskIndex * messagesPerTask + messageIndex + 1L;
+    }
+
+    private static boolean isExpectedSuccess(long globalSeq, int failureEveryNth) {
+        return failureEveryNth <= 0 || globalSeq % failureEveryNth != 0;
+    }
+
     private static double nanosToMillis(long nanos) {
         return nanos / 1_000_000.0d;
     }
@@ -669,7 +744,19 @@ public final class SdkPollingSchedulingSoakRunner {
     private record EmbeddedRuntime(MassSdkApplication app, TaskWorkRuntime taskWorkRuntime) {
     }
 
-    private record FinalTaskStats(long terminalTasks, Map<String, Long> terminalReasons) {
+    private record SoakTaskPlan(String taskId,
+                                int taskIndex,
+                                String eventCode,
+                                int expectedSuccess,
+                                int expectedFailed,
+                                String expectedTerminalReason) {
+    }
+
+    private record FinalTaskStats(long terminalTasks,
+                                  Map<String, Long> terminalReasons,
+                                  Map<String, Long> expectedTerminalReasons,
+                                  long expectedSuccessWorkItems,
+                                  long expectedFailedWorkItems) {
     }
 
     private record FinalWorkStats(long totalWorkItems,

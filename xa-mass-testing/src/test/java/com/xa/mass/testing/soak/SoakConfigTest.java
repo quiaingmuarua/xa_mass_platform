@@ -34,6 +34,7 @@ class SoakConfigTest {
         properties.setProperty("mass.soak.eventCodeCount", "5");
         properties.setProperty("mass.soak.submitRatePerSecond", "7");
         properties.setProperty("mass.soak.messagesPerTask", "2");
+        properties.setProperty("mass.soak.failureEveryNth", "3");
         properties.setProperty("mass.soak.trace", "false");
         properties.setProperty("mass.soak.forceExit", "false");
 
@@ -45,6 +46,7 @@ class SoakConfigTest {
         assertEquals(5, config.eventCodeCount());
         assertEquals(7, config.submitRatePerSecond());
         assertEquals(2, config.messagesPerTask());
+        assertEquals(3, config.failureEveryNth());
         assertEquals(false, config.traceEnabled());
         assertEquals(false, config.forceExit());
     }

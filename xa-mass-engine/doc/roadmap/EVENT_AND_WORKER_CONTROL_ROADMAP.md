@@ -517,6 +517,8 @@ Acceptance:
 
 ### EWC-4B: Worker Command Delivery And Acknowledgement
 
+Status: completed first behavior baseline.
+
 Goal: extend the command owner with delivery handoff and owner-decided
 ack/status ingress without routing acknowledgements through task-result
 convergence.
@@ -525,25 +527,53 @@ Owner shape:
 
 ```text
 WorkerCommandLifecycleOwner
-  -> command delivery handoff
-  -> owner-decided ack/status ingest
+  -> WorkerCommandDeliveryCoordinator
+  -> WorkerCommandDeliveryPort
+  -> WorkerCommandAcknowledgement / owner status ingest
   -> command read view
   -> trace evidence
 ```
 
-Directional model:
+Implemented behavior:
 
-- `commandId`
-- `workerId`
-- `commandType`
-- requester/reason/deadline/idempotency key
-- smallest status set that proves request, delivery, terminal result, and expiry
+```text
+command request already recorded in WorkerCommandLifecycleOwner
+  -> WorkerCommandDeliveryCoordinator.deliver(commandId)
+  -> WorkerCommandDeliveryPort.deliver(record)
+  -> WorkerCommandLifecycleOwner.markDeliveryAccepted(...) on accepted handoff
+  -> WorkerCommandLifecycleOwner.markFailed(...) on rejected/unavailable/failed handoff
+  -> WORKER_COMMAND_STATUS_TRANSITION trace evidence
+```
+
+Owner-decided acknowledgement/status ingest is represented by
+`WorkerCommandAcknowledgement` and `WorkerCommandLifecycleOwner.applyAcknowledgement(...)`.
+The command owner, not task result convergence, decides whether an
+acknowledgement can advance:
+
+```text
+DELIVERY_ACCEPTED
+EXECUTION_ACCEPTED
+SUCCEEDED | FAILED | EXPIRED
+```
+
+First-slice delivery failure rule:
+
+- accepted handoff moves `REQUESTED -> DELIVERY_ACCEPTED`
+- rejected, unavailable, or failed handoff moves `REQUESTED -> FAILED`
+- retry and expiry scheduling are not implicit in the delivery port
+- a future retry owner must be added explicitly if command delivery retry is
+  needed
 
 Package direction:
 
 - shared value vocabulary in `xa-mass-base/com.xa.mass.command.core`
 - lifecycle owner/store in `xa-mass-engine/com.xa.mass.engine.command`
 - no owner/store implementation in the shared core package
+
+Current implementation keeps the first behavior slice in
+`com.xa.mass.engine.command`. The shared core package remains deferred until a
+cross-module caller or worker SDK shell needs the vocabulary as a real public
+boundary.
 
 Explicit rule:
 
@@ -556,11 +586,15 @@ Explicit rule:
 - it does not replace `WorkerCommandLifecycleOwner`
 - it does not replace the command state machine, repair path, or read model
 
-Out of scope for the first behavior slice:
+Out of scope for this completed first behavior slice:
 
 - no task-result writes
 - no task lifecycle mutation
 - no generic event owner
+- no transport adapter delivery implementation
+- no `WorkerSystemEventChannel` command delivery or ack path
+- no task-work dispatch reuse
+- no retry or expiry scheduler
 - no worker SDK shell until the owner exists
 
 Acceptance:
@@ -571,6 +605,8 @@ Acceptance:
   default to task-work delivery or task-result convergence merely because the
   request entered as an event
 - command ack/status never enters `TaskResultRuntime`
+- command-specific delivery and acknowledgement are independently testable
+  without transport or task-result dependencies
 
 ### EWC-5: Worker State Projection
 

@@ -1153,9 +1153,9 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "EWC-4A worker command lifecycle owns request/status truth only. "
-                        + "It must not use task-result convergence, task-work dispatch, transport delivery, "
-                        + "reachability, or load owners:\n"
+                "Worker command lifecycle owns request/status truth, command-specific delivery handoff, "
+                        + "and owner-decided acknowledgement/status ingest. It must not use task-result "
+                        + "convergence, task-work dispatch, transport delivery, reachability, or load owners:\n"
                         + String.join("\n", violations));
     }
 
