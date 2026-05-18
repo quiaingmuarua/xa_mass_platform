@@ -33,6 +33,7 @@ public enum ExecutionEventType {
     LEASE_EXPIRED(EventCategory.LEASE, EventSeverity.WARN),
     WORKER_COMMAND_STATUS_TRANSITION(EventCategory.WORKER, EventSeverity.INFO),
     WORKER_CAPABILITY_REPORT_APPLIED(EventCategory.WORKER, EventSeverity.INFO),
+    WORKER_STATE_REPORT_APPLIED(EventCategory.WORKER, EventSeverity.INFO),
     WORKER_ONLINE(EventCategory.WORKER, EventSeverity.INFO),
     WORKER_OFFLINE(EventCategory.WORKER, EventSeverity.WARN);
 

@@ -31,6 +31,8 @@ Metadata and system-event ingress are not runtime truth by themselves.
 | `WorkerCommandDeliveryCoordinator` / `WorkerCommandDeliveryPort` | worker command delivery handoff | command-specific delivery attempt coordination and handoff result mapping back into command lifecycle | task-work dispatch, task result convergence, transport lifecycle state |
 | `WorkerCapabilityReportEventHandler` | worker capability event handler | parse kernel-targeted capability reports and delegate to `WorkerManager` / `WorkerCapabilityAuthority` | capability composition, matching, result convergence, presence ownership |
 | `WorkerCapabilityAuthority` | worker capability composition owner | report version/idempotency/conflict rules and effective capability composition into immutable `WorkerRegistrySnapshot` | event routing, matching/ranking decisions, transport presence |
+| `WorkerStateReportEventHandler` | worker state event handler | parse kernel-targeted state reports and delegate to `WorkerStateProjectionOwner` | state projection truth, reachability, load, matching, result convergence |
+| `WorkerStateProjectionOwner` | worker state projection owner | bounded per-worker state projection, version/idempotency/conflict rules, and recent diagnostic history | transport presence, worker capability truth, load, matching/ranking, task result |
 | `WorkerGroupRecord` / `EventBinding` / `EventKey` | worker capability line | capability truth and candidate-source inputs | response semantics, result finality |
 | task dispatch handoff | assignment/transport boundary | already-bound task work delivery view | worker matching, allocation, finality |
 | `TaskResultReport` | task result payload | worker task-result input | worker command ack, worker state report |
@@ -151,6 +153,22 @@ task result, or scheduling lifecycle truth by itself.
 - Worker state reports must not become transport reachability truth.
 - Raw worker state must not enter matching/ranking directly; only bounded
   derived evidence from an approved owner may do so.
+- Current worker state report ingress is:
+
+  ```text
+  CoreEventRequest(event=kernel.worker.state.report)
+    -> KernelEventHandlerRegistry
+    -> WorkerStateReportEventHandler
+    -> WorkerStateProjectionOwner
+    -> bounded projection read view + WORKER_STATE_REPORT_APPLIED trace
+  ```
+
+- Worker state projection is versioned per worker. Stale and conflicting reports
+  are rejected as no-ops, idempotent reports are accepted without projection
+  change, and recent raw report evidence is bounded per worker.
+- Worker state projection must not mutate `WorkerReachabilityView`,
+  `WorkerLoadView`, `WorkerRegistrySnapshot`, `WorkerCandidateIndex`, matching,
+  or task-result convergence.
 - Capability self-report must not bypass the capability authority owner,
   `WorkerManager`, `WorkerRegistrySnapshot`, or `WorkerCandidateIndex`.
 - Current effective capability composition flows through

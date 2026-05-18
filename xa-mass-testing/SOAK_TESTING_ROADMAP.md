@@ -26,6 +26,7 @@ The goal is to catch long-running hidden drift:
 - duplicate result message ids
 - success/failed work counters drifting from the configured failure profile
 - task terminal reasons drifting under all-success, mixed-result, or all-failed profiles
+- late worker join not helping pending polling work converge
 - runtime counters and worker metrics diverging
 - trace sink drops or invalid canonical trace rows
 
@@ -50,6 +51,7 @@ Proof surface:
 - active lease drain
 - SDK `readTaskResults(...)` sequential windows
 - worker receive/result metrics
+- worker lifecycle profile, including initial workers and late-join workers
 - expected success/failed counts from `failureEveryNth`
 - expected task terminal reason distribution
 - transport delivery diagnostics
@@ -66,6 +68,9 @@ The default runner profile is intentionally small enough for local manual use:
 ```text
 mass.soak.durationSeconds=120
 mass.soak.workerCount=16
+mass.soak.initialWorkerCount=16
+mass.soak.lateWorkerStartAfterMillis=0
+mass.soak.requireLateWorkerWork=false
 mass.soak.groupCount=2
 mass.soak.eventCodeCount=2
 mass.soak.submitRatePerSecond=20
@@ -90,6 +95,7 @@ A successful polling soak requires:
 - every task terminal reason matches the configured success/failure profile
 - `workItemsSubmitted == resultsVisible`
 - runtime success/failed counts match the configured success/failure profile
+- if `requireLateWorkerWork=true`, late-join workers receive work and submit results
 - every terminal task has strictly increasing result `seq`
 - every result page has `nextAfterSeq == last item seq`
 - result windows have no duplicate `messageId`
@@ -104,6 +110,7 @@ Keep each extension as a separate lane/profile:
 
 - scheduled mixed-result profile with `mass.soak.failureEveryNth > 1`
 - scheduled all-failed profile with `mass.soak.failureEveryNth=1`
+- scheduled late-worker-join profile with `initialWorkerCount < workerCount`
 - Redis-backed runtime/result soak
 - WebSocket/socket transport soak
 - disconnect/reconnect churn during soak

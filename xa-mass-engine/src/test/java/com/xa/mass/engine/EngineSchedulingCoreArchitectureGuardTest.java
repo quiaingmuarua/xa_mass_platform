@@ -1160,6 +1160,42 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void workerStateProjectionOwnerDoesNotDependOnReachabilityLoadSchedulingResultOrTransport() throws IOException {
+        Path repo = repositoryRoot();
+        Path workerPackage = repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/worker");
+        Pattern stateProjectionSource = Pattern.compile("\\bWorkerState(?:Report|Projection)\\b");
+        Pattern forbiddenDependency = Pattern.compile(String.join("|", List.of(
+                "\\bTaskResult(?:Service|Runtime|Report)\\b",
+                "\\bTaskWorkRuntime\\b",
+                "\\bTaskAssignWorker\\b",
+                "\\bTaskDispatchBinder\\b",
+                "\\bRuleBasedTaskWorkerMatchingStrategy\\b",
+                "\\bWorkerReachabilityView\\b",
+                "\\bWorkerLoadView\\b",
+                "\\bimport\\s+com\\.xa\\.mass\\.engine\\.strategy\\.",
+                "\\bimport\\s+com\\.xa\\.mass\\.engine\\.load\\.",
+                "\\bimport\\s+com\\.xa\\.mass\\.transport\\.",
+                "\\bimport\\s+com\\.xa\\.mass\\.runtime\\."
+        )));
+
+        List<String> violations = new ArrayList<>();
+        for (Path path : javaSourceFiles(workerPackage)) {
+            if (!path.getFileName().toString().startsWith("WorkerState")) {
+                continue;
+            }
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            if (stateProjectionSource.matcher(source).find() && forbiddenDependency.matcher(source).find()) {
+                violations.add(path + " couples worker state projection to reachability/load/scheduling/result/transport");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Worker state projection owns bounded diagnostic state only. It must not write or depend on "
+                        + "reachability, load, scheduling, task-result, runtime, or transport owners:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void workerCapabilitySelfReportDoesNotBypassWorkerRegistrySnapshotOwner() throws IOException {
         Path repo = repositoryRoot();
         Pattern capabilityReport = Pattern.compile("\\bWorkerCapabilityReport\\b|\\bCapabilitySelfReport\\b");

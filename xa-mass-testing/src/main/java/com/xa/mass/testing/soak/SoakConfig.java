@@ -3,6 +3,7 @@ package com.xa.mass.testing.soak;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 
 final class SoakConfig {
 
@@ -10,6 +11,7 @@ final class SoakConfig {
     static final int DEFAULT_WORKER_COUNT = 16;
     static final int DEFAULT_GROUP_COUNT = 2;
     static final int DEFAULT_EVENT_CODE_COUNT = 2;
+    static final int DEFAULT_LATE_WORKER_START_AFTER_MILLIS = 0;
     static final int DEFAULT_SUBMIT_RATE_PER_SECOND = 20;
     static final int DEFAULT_MESSAGES_PER_TASK = 8;
     static final int DEFAULT_POLL_BATCH_SIZE = 4;
@@ -26,6 +28,9 @@ final class SoakConfig {
     private final int workerCount;
     private final int groupCount;
     private final int eventCodeCount;
+    private final int initialWorkerCount;
+    private final int lateWorkerStartAfterMillis;
+    private final boolean requireLateWorkerWork;
     private final int submitRatePerSecond;
     private final int messagesPerTask;
     private final int pollBatchSize;
@@ -44,6 +49,9 @@ final class SoakConfig {
                        int workerCount,
                        int groupCount,
                        int eventCodeCount,
+                       int initialWorkerCount,
+                       int lateWorkerStartAfterMillis,
+                       boolean requireLateWorkerWork,
                        int submitRatePerSecond,
                        int messagesPerTask,
                        int pollBatchSize,
@@ -61,6 +69,9 @@ final class SoakConfig {
         this.workerCount = workerCount;
         this.groupCount = groupCount;
         this.eventCodeCount = eventCodeCount;
+        this.initialWorkerCount = initialWorkerCount;
+        this.lateWorkerStartAfterMillis = lateWorkerStartAfterMillis;
+        this.requireLateWorkerWork = requireLateWorkerWork;
         this.submitRatePerSecond = submitRatePerSecond;
         this.messagesPerTask = messagesPerTask;
         this.pollBatchSize = pollBatchSize;
@@ -81,11 +92,15 @@ final class SoakConfig {
     }
 
     static SoakConfig from(Properties properties) {
+        int workerCount = intProperty(properties, "mass.soak.workerCount", DEFAULT_WORKER_COUNT);
         SoakConfig config = new SoakConfig(
                 intProperty(properties, "mass.soak.durationSeconds", DEFAULT_DURATION_SECONDS),
-                intProperty(properties, "mass.soak.workerCount", DEFAULT_WORKER_COUNT),
+                workerCount,
                 intProperty(properties, "mass.soak.groupCount", DEFAULT_GROUP_COUNT),
                 intProperty(properties, "mass.soak.eventCodeCount", DEFAULT_EVENT_CODE_COUNT),
+                intProperty(properties, "mass.soak.initialWorkerCount", workerCount),
+                intProperty(properties, "mass.soak.lateWorkerStartAfterMillis", DEFAULT_LATE_WORKER_START_AFTER_MILLIS),
+                booleanProperty(properties, "mass.soak.requireLateWorkerWork", false),
                 intProperty(properties, "mass.soak.submitRatePerSecond", DEFAULT_SUBMIT_RATE_PER_SECOND),
                 intProperty(properties, "mass.soak.messagesPerTask", DEFAULT_MESSAGES_PER_TASK),
                 intProperty(properties, "mass.soak.pollBatchSize", DEFAULT_POLL_BATCH_SIZE),
@@ -109,6 +124,14 @@ final class SoakConfig {
         require(workerCount > 0, "workerCount must be positive");
         require(groupCount > 0, "groupCount must be positive");
         require(eventCodeCount > 0, "eventCodeCount must be positive");
+        require(initialWorkerCount > 0, "initialWorkerCount must be positive");
+        require(initialWorkerCount <= workerCount, "initialWorkerCount must not exceed workerCount");
+        require(lateWorkerStartAfterMillis >= 0, "lateWorkerStartAfterMillis must not be negative");
+        require(!requireLateWorkerWork || initialWorkerCount < workerCount,
+                "requireLateWorkerWork requires initialWorkerCount to be smaller than workerCount");
+        require(initialWorkerCount == workerCount
+                        || lateWorkerStartAfterMillis < TimeUnit.SECONDS.toMillis(durationSeconds),
+                "lateWorkerStartAfterMillis must be smaller than durationSeconds when late workers are configured");
         require(submitRatePerSecond > 0, "submitRatePerSecond must be positive");
         require(messagesPerTask > 0, "messagesPerTask must be positive");
         require(pollBatchSize > 0, "pollBatchSize must be positive");
@@ -128,6 +151,9 @@ final class SoakConfig {
         values.put("workerCount", workerCount);
         values.put("groupCount", groupCount);
         values.put("eventCodeCount", eventCodeCount);
+        values.put("initialWorkerCount", initialWorkerCount);
+        values.put("lateWorkerStartAfterMillis", lateWorkerStartAfterMillis);
+        values.put("requireLateWorkerWork", requireLateWorkerWork);
         values.put("submitRatePerSecond", submitRatePerSecond);
         values.put("messagesPerTask", messagesPerTask);
         values.put("pollBatchSize", pollBatchSize);
@@ -148,6 +174,9 @@ final class SoakConfig {
     int workerCount() { return workerCount; }
     int groupCount() { return groupCount; }
     int eventCodeCount() { return eventCodeCount; }
+    int initialWorkerCount() { return initialWorkerCount; }
+    int lateWorkerStartAfterMillis() { return lateWorkerStartAfterMillis; }
+    boolean requireLateWorkerWork() { return requireLateWorkerWork; }
     int submitRatePerSecond() { return submitRatePerSecond; }
     int messagesPerTask() { return messagesPerTask; }
     int pollBatchSize() { return pollBatchSize; }
