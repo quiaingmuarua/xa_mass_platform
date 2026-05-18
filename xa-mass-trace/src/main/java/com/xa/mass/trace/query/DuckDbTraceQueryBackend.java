@@ -32,7 +32,6 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                     json_extract_string(%s, '$.messageId') AS messageId,
                     json_extract_string(%s, '$.attemptId') AS attemptId,
                     json_extract_string(%s, '$.workerId') AS workerId,
-                    json_extract_string(%s, '$.workerContextId') AS workerContextId,
                     json_extract_string(%s, '$.src') AS src,
                     json_extract_string(%s, '$.dst') AS dst,
                     json_extract_string(%s, '$.reason') AS transitionReason,
@@ -48,7 +47,6 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                 ORDER BY ts, eventId
                 LIMIT %d
                 """.formatted(
-                identityJson,
                 identityJson,
                 identityJson,
                 identityJson,
@@ -80,7 +78,6 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                         resultSet.getString("messageId"),
                         resultSet.getString("attemptId"),
                         resultSet.getString("workerId"),
-                        resultSet.getString("workerContextId"),
                         resultSet.getString("src"),
                         resultSet.getString("dst"),
                         resultSet.getString("transitionReason"),
@@ -177,7 +174,6 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                     json_extract_string(%s, '$.messageId') AS messageId,
                     json_extract_string(%s, '$.attemptId') AS attemptId,
                     json_extract_string(%s, '$.workerId') AS workerId,
-                    json_extract_string(%s, '$.workerContextId') AS workerContextId,
                     json_extract_string(%s, '$.workerSchedulingResourceId') AS workerSchedulingResourceId,
                     json_extract_string(%s, '$.workerSchedulingRoutingTags') AS workerSchedulingRoutingTags,
                     json_extract_string(%s, '$.workerSchedulingAttributes') AS workerSchedulingAttributes,
@@ -232,7 +228,7 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                 ORDER BY ts, eventId
                 LIMIT %d
                 """.formatted(
-                identityJson, identityJson, identityJson, identityJson, identityJson,
+                identityJson, identityJson, identityJson, identityJson,
                 attrsJson, attrsJson, attrsJson, attrsJson,
                 attrsJson, attrsJson, attrsJson, attrsJson, attrsJson, attrsJson,
                 attrsJson, attrsJson, attrsJson, attrsJson, attrsJson, attrsJson, attrsJson,
@@ -260,7 +256,6 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                         resultSet.getString("messageId"),
                         resultSet.getString("attemptId"),
                         resultSet.getString("workerId"),
-                        resultSet.getString("workerContextId"),
                         resultSet.getString("workerSchedulingResourceId"),
                         resultSet.getString("workerSchedulingRoutingTags"),
                         resultSet.getString("workerSchedulingAttributes"),

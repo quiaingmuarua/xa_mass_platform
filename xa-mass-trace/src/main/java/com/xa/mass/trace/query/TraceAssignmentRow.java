@@ -9,7 +9,6 @@ public record TraceAssignmentRow(
         String messageId,
         String attemptId,
         String workerId,
-        String workerContextId,
         String workerSchedulingResourceId,
         String workerSchedulingRoutingTags,
         String workerSchedulingAttributes,

@@ -29,7 +29,7 @@ final class WorkerResourceCleanupWithoutContextScenarioAnalyzer extends Abstract
 
         if (!has(rows, row -> event(row, "WORKER_MATCH_ACCEPTED") && statelessWorker(row))) {
             issues.add(new TraceScenarioIssue("MISSING_STATELESS_ACCEPTED_WORKER",
-                    "Expected WORKER_MATCH_ACCEPTED with workerId and without workerContextId"));
+                    "Expected WORKER_MATCH_ACCEPTED with workerId"));
         }
         if (!has(rows, row -> event(row, "DISPATCH_BINDING_SUMMARY")
                 && result(row, "SUCCESS")
@@ -44,19 +44,15 @@ final class WorkerResourceCleanupWithoutContextScenarioAnalyzer extends Abstract
                 && result(row, "SUCCESS")
                 && statelessWorker(row))) {
             issues.add(new TraceScenarioIssue("MISSING_SUCCESS_ATTEMPT_CLOSE",
-                    "Expected successful TASK_WORK_ATTEMPT_CLOSED with workerId and without workerContextId before cleanup"));
+                    "Expected successful TASK_WORK_ATTEMPT_CLOSED with workerId before cleanup"));
         }
         if (!has(rows, row -> event(row, "WORKER_LOCK_RELEASED") && statelessWorker(row))) {
             issues.add(new TraceScenarioIssue("MISSING_STATELESS_WORKER_LOCK_RELEASE",
-                    "Expected WORKER_LOCK_RELEASED with workerId and without workerContextId"));
+                    "Expected WORKER_LOCK_RELEASED with workerId"));
         }
         if (!has(rows, row -> event(row, "RESOURCE_RELEASED") && statelessWorker(row))) {
             issues.add(new TraceScenarioIssue("MISSING_STATELESS_RESOURCE_RELEASE",
-                    "Expected RESOURCE_RELEASED with workerId and without workerContextId"));
-        }
-        if (has(rows, row -> event(row, "RESOURCE_RELEASED") && present(row.workerContextId()))) {
-            issues.add(new TraceScenarioIssue("RESOURCE_RELEASE_DEPENDS_ON_WORKER_CONTEXT",
-                    "Worker cleanup proof must not depend on RESOURCE_RELEASED rows carrying workerContextId"));
+                    "Expected RESOURCE_RELEASED with workerId"));
         }
         if (counts.getOrDefault("WORKER_CONTEXT_STATUS_TRANSITION", 0L) > 0L) {
             issues.add(new TraceScenarioIssue("WORKER_CONTEXT_LIFECYCLE_OBSERVED",
@@ -65,7 +61,7 @@ final class WorkerResourceCleanupWithoutContextScenarioAnalyzer extends Abstract
     }
 
     private boolean statelessWorker(TraceAssignmentRow row) {
-        return row != null && present(row.workerId()) && !present(row.workerContextId());
+        return row != null && present(row.workerId());
     }
 
     private boolean present(String value) {

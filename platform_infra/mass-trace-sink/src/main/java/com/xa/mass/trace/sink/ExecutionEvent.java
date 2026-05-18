@@ -53,7 +53,6 @@ public final class ExecutionEvent {
             String messageId,
             String attemptId,
             String workerId,
-            String workerContextId,
             String endpointId,
             String routeKey,
             String leaseToken
@@ -248,7 +247,6 @@ public final class ExecutionEvent {
         private String messageId;
         private String attemptId;
         private String workerId;
-        private String workerContextId;
         private String endpointId;
         private String routeKey;
         private String leaseToken;
@@ -273,11 +271,6 @@ public final class ExecutionEvent {
             return this;
         }
 
-        public IdentityBuilder workerContextId(String workerContextId) {
-            this.workerContextId = workerContextId;
-            return this;
-        }
-
         public IdentityBuilder endpointId(String endpointId) {
             this.endpointId = endpointId;
             return this;
@@ -296,8 +289,7 @@ public final class ExecutionEvent {
         public IdentityContext build() {
             return new IdentityContext(
                     taskId, messageId, attemptId,
-                    workerId, workerContextId,
-                    endpointId, routeKey, leaseToken);
+                    workerId, endpointId, routeKey, leaseToken);
         }
     }
 }

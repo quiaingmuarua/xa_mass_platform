@@ -298,7 +298,7 @@ class XaMassTraceCliIntegrationTest {
         try (JsonlExecutionEventSink sink = new JsonlExecutionEventSink(outputDir.toString(), 128, 10_000)) {
             sink.emit(ExecutionEvent.builder()
                     .eventType(ExecutionEventType.WORKER_MATCH_ACCEPTED)
-                    .identity(identity -> identity.taskId(taskId).workerId("worker-1").workerContextId("ctx-1"))
+                    .identity(identity -> identity.taskId(taskId).workerId("worker-1"))
                     .outcome(true, null, "all rules matched")
                     .attrs(Map.of("source", "RuleBasedTaskWorkerMatchingStrategy", "reason", "all rules matched", "result", "SUCCESS"))
                     .build());
@@ -360,13 +360,13 @@ class XaMassTraceCliIntegrationTest {
                     .build());
             sink.emit(ExecutionEvent.builder()
                     .eventType(ExecutionEventType.TASK_WORK_ATTEMPT_STATUS_TRANSITION)
-                    .identity(identity -> identity.taskId(taskId).messageId("msg-1").attemptId("attempt-1").workerId("worker-1").workerContextId("ctx-1"))
+                    .identity(identity -> identity.taskId(taskId).messageId("msg-1").attemptId("attempt-1").workerId("worker-1"))
                     .transition("CREATED", "LEASED", "attempt leased for dispatch")
                     .attrs(Map.of("trigger", "BIND_TASK_MESSAGE", "source", "SimpleTaskDispatchBinder", "reason", "attempt leased for dispatch", "result", "SUCCESS", "attemptNo", 1))
                     .build());
             sink.emit(ExecutionEvent.builder()
                     .eventType(ExecutionEventType.TASK_WORK_ATTEMPT_STATUS_TRANSITION)
-                    .identity(identity -> identity.taskId(taskId).messageId("msg-1").attemptId("attempt-1").workerId("worker-1").workerContextId("ctx-1"))
+                    .identity(identity -> identity.taskId(taskId).messageId("msg-1").attemptId("attempt-1").workerId("worker-1"))
                     .transition("LEASED", "DISPATCHED", "attempt dispatched")
                     .attrs(Map.of("trigger", "BIND_TASK_MESSAGE", "source", "SimpleTaskDispatchBinder", "reason", "attempt dispatched", "result", "SUCCESS", "attemptNo", 1))
                     .build());

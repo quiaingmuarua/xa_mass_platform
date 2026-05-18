@@ -29,7 +29,7 @@ Use with:
 6. The logical work-projection status model is a bounded compatibility contract, not a complete transport-event history. Transport-specific delivery phases belong in trace/event data or a dedicated transport model.
 7. The current runtime concurrency model is owned by worker scheduling facts, runtime capacity/reservation state, active worker locks where applicable, and work-runtime leases. `WorkerContext` must not be used as the engine scheduling or resource-lifecycle truth.
 8. Policy changes must preserve ownership boundaries across matching, assignment, attempt, release, refill, intake, control, and terminal decisions.
-9. `TaskWorkRuntime` in `platform_infra/mass-runtime-api` is the current hot-path owner for ready work, active leases, retry scheduling, and lease expiry indexes. `TaskResultRuntime` is the runtime-owned public result read truth for stable-final result rows, repair staging, and result-side attempt-closed/event/progress barriers. `TaskMessageProjection` remains bounded compatibility/debug residue for logical work-item status and payload summary. `TaskMessageAttemptProjection` remains auditable execution-history residue for concrete dispatch attempts. `workerContextId` fields on these residues are compatibility payloads only.
+9. `TaskWorkRuntime` in `platform_infra/mass-runtime-api` is the current hot-path owner for ready work, active leases, retry scheduling, and lease expiry indexes. `TaskResultRuntime` is the runtime-owned public result read truth for stable-final result rows, repair staging, and result-side attempt-closed/event/progress barriers. `TaskMessageProjection` remains bounded compatibility/debug residue for logical work-item status and payload summary. `TaskMessageAttemptProjection` remains auditable execution-history residue for concrete dispatch attempts.
 10. `Task.workloadClass` is the explicit task-level runtime optimization field; current engine truth is `INTERACTIVE` or `BULK`, and assignment signal routing resolves from that field rather than free-form `sharedConfig` semantics.
 11. runtime retry budget is seeded at create/append time and consumed from `TaskWorkRuntime`; post-ingest mutation of persisted message-projection retry settings must not redefine retry scheduling or finalization.
 12. result callbacks follow the result-kernel mainline in `RESULT_BOUNDARY_BASELINE.md`: runtime apply truth comes from `TaskWorkRuntime.applyResultWithContext(...)`; stable-final public result rows are committed into `TaskResultRuntime`; projection writes are submitted best-effort after runtime acceptance and are not the result commit point or a public result read source.
@@ -122,7 +122,7 @@ Current entry points:
 
 Must hold:
 
-- `latestAttemptWorkerId`, `latestAttemptWorkerContextId`, and `latestAttemptBatchId` are projections of the latest attempt used for compatibility and UI; `latestAttemptWorkerContextId` is legacy compatibility payload, and these fields are null between retry reset and next assignment
+- `latestAttemptWorkerId` and `latestAttemptBatchId` are projections of the latest attempt used for compatibility and UI; these fields are null between retry reset and next assignment
 - duplicate final callbacks do not mutate final state
 - final message projection must carry a compatible `finalReason`
 - `taskWorkAttemptClosed` must fire whenever an execution attempt ends, including retryable failure
@@ -170,7 +170,7 @@ Must hold:
 
 - each dispatch round creates a new attempt with monotonically increasing `attemptNo`
 - retry never rewrites a final attempt back to active
-- active attempt truth outranks projected `latestAttemptWorkerId/latestAttemptWorkerContextId/latestAttemptBatchId` on the message projection; `latestAttemptWorkerContextId` is not resource ownership truth
+- active attempt truth outranks projected `latestAttemptWorkerId/latestAttemptBatchId` on the message projection
 - at most one active attempt may exist for a single `taskId + messageId`
 - a stable-final logical message must not have any active attempt
 - if a runtime lease exists but the compatibility attempt row is missing, the engine may recover an audit attempt projection so callback/expiry handling does not fall back to stale projection truth
@@ -178,10 +178,9 @@ Must hold:
 
 ## 6. Legacy WorkerContext Compatibility
 
-`WorkerContextStatus` and WorkerContext CRUD/API/storage surfaces have been
-removed. The string field `workerContextId` may still appear in runtime
-attempts, transport payloads, historical trace events, and bounded projection
-rows as compatibility residue. It is not active resource ownership truth.
+`WorkerContextStatus`, WorkerContext CRUD/API/storage surfaces, and context-id
+runtime/transport/projection/trace payloads have been removed. WorkerContext is
+not active resource ownership truth.
 
 Current engine scheduling and resource lifecycle truth comes from:
 
@@ -195,8 +194,6 @@ Must hold:
 
 - new scheduling behavior must not depend on WorkerContext status transitions
 - compatibility diagnostics must not recreate WorkerContext state
-- `workerContextId` on attempts, projections, or traces is optional legacy
-  payload and must not override active worker/lease/resource truth
 - deleting or retiring WorkerContext compatibility must not change task status,
   intake, retry, final-result, or terminal semantics
 
@@ -255,8 +252,7 @@ Must hold:
    routing tags, capability bindings, or reachability facts do not satisfy the
    task policy
 4. worker release does not happen while that worker still has a non-final latest attempt for the same task
-5. resource release must target the exact active worker/attempt/resource binding;
-   `workerContextId`, when present, is only compatibility payload
+5. resource release must target the exact active worker/attempt/resource binding
 6. message final reason must match message status
 7. active attempt and final logical message must not coexist
 

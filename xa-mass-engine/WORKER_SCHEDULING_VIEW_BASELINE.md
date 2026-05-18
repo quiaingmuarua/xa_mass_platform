@@ -7,8 +7,7 @@ including scheduling-candidate handoff, default rule surface convergence,
 worker load view wiring, load-aware ranking, and default-capacity reservation.
 WorkerContext physical model/storage/API surfaces have been deleted. Runtime,
 transport, projection, SDK/API, and server E2E payloads are worker-level. The
-remaining `workerContextId` references are limited to the nullable canonical
-trace schema, trace flattening for historical events, and source guards that
+remaining WorkerContext references are source guards and documentation that
 prevent regression.
 Worker-declared capacity is now present as a read-model input to reservation
 and trace. `ExecutionSpec.foreground` is now present as a task scheduling-mode
@@ -100,8 +99,7 @@ WorkerContext has been retired from these engine hot-path surfaces:
     constraints, and worker-level routing through the scheduling view
   - currently ranks rule-passed candidates and attempts capacity reservation
     plus optional exclusive worker-lock acquisition in ranked order
-  - emits match accepted/rejected trace with `workerContextId=null` on the
-    default scheduling path
+  - emits match accepted/rejected trace with worker-level identity
 - `AssignmentDiagnosticRecorder`
   - records worker-level matching diagnostics from
     `WorkerSchedulingCandidate`
@@ -123,8 +121,7 @@ WorkerContext has been retired from these engine hot-path surfaces:
 - `SimpleTaskDispatchBinder`
   - uses `WorkerClaimTarget.workerLevel(...)` when claiming runtime work for
     scheduling candidates
-  - generates current attempt ids with worker-level identity rather than a
-    legacy `workerContextId` placeholder
+  - generates current attempt ids with worker-level identity
   - produces worker-level dispatch bindings and transport payloads
   - confirms worker reservations to active load when runtime claim succeeds
   - falls back to recording successful runtime claims when a custom strategy
@@ -137,30 +134,29 @@ WorkerContext has been retired from these engine hot-path surfaces:
   - releases observed worker load on attempt-closed and terminal cleanup paths
   - asks `WorkerDispatchResourceReleaser` to release exclusive worker locks
     after attempt or terminal close
-  - does not preserve attempt `workerContextId` as release-policy input; the
-    decision is task/worker resource usage
+  - uses task/worker resource usage as release-policy input
 - `TaskResultCorrelationSupport`
   - creates worker-level result-correlation snapshots from runtime leases
   - no longer carries WorkerContext identity; `workerId`, `batchId`, and
     `attemptId` are the execution identity
 - result runtime drafts
   - use worker-level result writes only
-  - no longer expose `workerContextId` as a result identity field
+  - expose worker-level result identity
 - runtime contract tests
   - use `WorkerClaimTarget.workerLevel(...)` for normal claim/lease proof
   - use worker-level result draft factories for normal visible result rows
 - SDK/API result rows
-  - no longer expose `workerContextId`
+  - expose worker-level result identity
   - prove worker-level result reads use `workerId`, `batchId`, and
     worker-level attempt ids
 - dispatch bindings
   - use worker-level binding output
-  - do not expose or decode `workerContextId`
+  - expose and decode worker-level binding output
 - `WorkerDispatchResourceReleaser`
   - owns assignment and binder compensation cleanup for worker reservations,
     conditional exclusive worker unlock, canonical lock-release trace, and
     release-listener attempt/terminal close lock-release paths
-  - keeps `workerContextId` out of attempt lock-release policy flow
+  - keeps lock-release policy worker/task based
   - releases foreground worker locks after dispatch-submit failure compensation
     because that pre-transport failure path does not publish attempt close
 - `EngineSchedulingCoreArchitectureGuardTest`
@@ -184,7 +180,7 @@ attribute source, and `WorkerSchedulingCandidate` no longer carries a
 `WorkerContext` object. `WorkerSchedulingView` no longer imports or accepts the
 WorkerContext model, and `WorkerMatchContext` no longer exposes
 `workerContext*` rule variables. Runtime, transport, projection, SDK/API, and
-server result surfaces no longer carry `workerContextId`.
+server result surfaces use worker-level identity.
 
 ## Transitional View
 
@@ -241,7 +237,7 @@ the existing long-lived worker lock. `foreground=false` still reserves capacity
 but skips that long-lived lock, so multiple background tasks may share a
 worker until `active + reserved >= declaredCapacity`.
 `WorkerDispatchResourcePolicy` is the single engine-internal owner for this
-resource usage classification. It is now worker/load based: `workerContextId`
+resource usage classification. It is worker/load based; account-slot identity
 does not affect exclusive-lock decisions or runtime claim targets.
 `WorkerDispatchResourceReleaser` owns repeated dispatch cleanup for worker
 reservations and exclusive worker locks. Assignment orchestration and binder
@@ -263,10 +259,8 @@ at the reservation decision point, so `workerReservedCount` can prove pending
 reservation evidence in canonical JSONL.
 Worker-match trace also carries worker scheduling evidence:
 `workerSchedulingResourceId`, `workerSchedulingRoutingTags`,
-`workerSchedulingAttributes`, and `workerSchedulingMatchesRoutingCode`. New
-scheduling proof must prefer these fields over `workerContextId`;
-`workerContextId` remains only as a nullable historical trace-schema field and
-must not be used as scheduling proof.
+`workerSchedulingAttributes`, and `workerSchedulingMatchesRoutingCode`.
+Scheduling proof must use these fields rather than account-slot identity.
 `WorkerLoadView` also exposes the current active worker count per task to
 allocation policy. `WorkerBudgetPolicy` applies conservative internal
 workload-class caps and assignment summaries emit `workerBudget`,
@@ -289,8 +283,8 @@ Legacy rule/read-model fields are retired:
 - `isWorkerContextReserved`
 - `isWorkerContextOccupied`
 
-`workerContextId` remains only as nullable canonical trace-schema history
-outside the rule context.
+No context-id rule or trace-query field remains in the current scheduling proof
+surface.
 
 ## Current Rule Guidance
 
@@ -365,7 +359,7 @@ Focused proof for this step:
     analyzes canonical JSONL for the second task
 - `worker-attribute-routing-without-context`
   - proves worker-level scheduling attributes and routing tags can satisfy
-    routing without `workerContextId`
+    routing without account-slot evidence
   - is also covered by `TaskApiWorkerAttributeRoutingTraceObservedIntegrationTest`,
     which registers stateless workers through the real Boot/API/SDK/transport
     path and analyzes canonical JSONL for worker attribute routing
@@ -404,9 +398,8 @@ into the release listener.
 Worker-level cleanup now emits `RESOURCE_RELEASED` alongside
 `WORKER_LOCK_RELEASED` when an exclusive worker lock is released. The
 `worker-resource-cleanup-without-context` trace analyzer uses this to prove
-stateless worker cleanup without `workerContextId` or
+stateless worker cleanup without account-slot identity or
 `WORKER_CONTEXT_STATUS_TRANSITION` as the success evidence.
 
 WorkerContext physical model/API/runtime/transport/projection payload deletion
-is complete. The remaining cleanup is deciding whether and when to remove the
-nullable historical `identity.workerContextId` field from canonical trace.
+is complete, including canonical trace identity.

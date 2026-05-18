@@ -941,7 +941,6 @@ public final class TraceEventLogger {
             put(fields, "messageId", event.getIdentity().messageId());
             put(fields, "attemptId", event.getIdentity().attemptId());
             put(fields, "workerId", event.getIdentity().workerId());
-            put(fields, "workerContextId", event.getIdentity().workerContextId());
             put(fields, "leaseToken", event.getIdentity().leaseToken());
         }
         if (event.getTransition() != null) {

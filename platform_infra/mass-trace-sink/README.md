@@ -53,7 +53,6 @@ No compatibility layer is required for superseded trace names such as
     "messageId": null,
     "attemptId": null,
     "workerId": null,
-    "workerContextId": null,
     "endpointId": null,
     "routeKey": null,
     "leaseToken": null

@@ -144,7 +144,7 @@ Populate these when relevant:
 - task events: `identity.taskId`
 - task-message events: `identity.taskId + identity.messageId`
 - attempt events: `identity.taskId + identity.messageId + identity.attemptId`
-- worker-context compatibility events: `identity.workerId + identity.workerContextId`
+- worker events: `identity.workerId`
 - lease-specific events: `identity.leaseToken` when available
 
 ### Transition rules
@@ -301,14 +301,13 @@ single background task: accepted worker match evidence must show
 declared capacity, and no `WORKER_LOCK_ACQUIRED` / `WORKER_LOCK_RELEASED`
 evidence for that task.
 The `worker-attribute-routing-without-context` analyzer uses worker scheduling
-evidence instead of `workerContextId`: accepted worker matches must have no
-`workerContextId`, must carry worker-level scheduling attributes or routing
-tags, and must show `workerSchedulingMatchesRoutingCode=true`.
+evidence: accepted worker matches must carry worker-level scheduling attributes
+or routing tags, and must show `workerSchedulingMatchesRoutingCode=true`.
 The `worker-resource-cleanup-without-context` analyzer proves stateless worker
 cleanup without WorkerContext evidence: accepted match, binding, attempt close,
-worker lock release, and `RESOURCE_RELEASED` must all be visible without
-`workerContextId`, and the scenario rejects WorkerContext lifecycle cleanup as
-the success proof.
+worker lock release, and `RESOURCE_RELEASED` must all be visible through
+worker-level identity, and the scenario rejects WorkerContext lifecycle cleanup
+as the success proof.
 The `cross-task-worker-fairness` analyzer is intentionally a two-task scenario:
 its `taskId` argument is `<bulkTaskId>,<interactiveTaskId>`. It reads canonical
 assignment rows for both tasks and proves that a budget-limited BULK assignment
@@ -352,8 +351,7 @@ Given a `taskId`, operators must be able to reconstruct:
 
 1. when the task entered `READY`
 2. why it entered `RUNNING`
-3. which worker/resource/attempt each message used; `workerContextId` is
-   optional legacy compatibility payload when present
+3. which worker/resource/attempt each message used
 4. which attempt delivered each message and how that attempt finished
 5. whether retry happened
 6. why the task closed to `TERMINAL`

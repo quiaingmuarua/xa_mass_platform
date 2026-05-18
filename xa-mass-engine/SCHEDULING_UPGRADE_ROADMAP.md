@@ -110,7 +110,7 @@ Progress:
 - 2026-05-15: WorkerContext retirement WC-2F proof replacement baseline was
   implemented. Worker match trace now carries worker scheduling evidence, and
   `worker-attribute-routing-without-context` proves stateless worker attribute
-  routing through canonical JSONL without using `workerContextId` as the
+  routing through canonical JSONL without using context identity as the
   scheduling success proof.
 - 2026-05-15: Step 8E legacy WorkerContext lifecycle owner convergence was
   implemented. `LegacyWorkerContextResourceLifecycle` now owns the transitional
@@ -160,7 +160,7 @@ Progress:
   was implemented. `WorkerDispatchResourceReleaser` now emits worker-level
   `RESOURCE_RELEASED` evidence when an exclusive worker lock is released, and
   `xa-mass-trace` includes `worker-resource-cleanup-without-context` to prove
-  stateless worker cleanup without relying on `workerContextId` or
+  stateless worker cleanup without relying on context identity or
   `WORKER_CONTEXT_STATUS_TRANSITION`.
 - 2026-05-16: WorkerContext retirement WC-3A runtime lifecycle removal was
   implemented. `LegacyWorkerContextResourceLifecycle` was deleted, binder and
@@ -171,7 +171,7 @@ Progress:
   was implemented. Assignment diagnostics now snapshot
   `WorkerSchedulingView` evidence through `WorkerSchedulingSnapshot`; the
   engine-owned `WorkerContextSnapshot` diagnostic model was deleted, and
-  `workerContextId` remains only as legacy payload identity.
+
 - 2026-05-16: WorkerContext retirement WC-3C matching context expansion removal
   was implemented. `WorkerSchedulingCandidateEnumerator` now creates one
   worker-level candidate per worker and no longer reads WorkerContext storage;
@@ -198,7 +198,7 @@ Progress:
   identity narrowing was implemented. `WorkerDispatchResourceUsage` now models
   only worker-level exclusive lock usage, `WorkerDispatchResourcePolicy` no
   longer derives resource semantics from WorkerContext identity, and the default
-  dispatch binder no longer passes candidate `workerContextId` into runtime
+  dispatch binder no longer passes candidate context identity into runtime
   claim targets.
 - 2026-05-16: WorkerContext retirement WC-4A scheduling view/model dependency
   removal was implemented. `WorkerSchedulingView` no longer imports, accepts,
@@ -212,20 +212,20 @@ Progress:
   `TaskResultCorrelation` construction outside its named factories.
 - 2026-05-16: WorkerContext retirement SDK/API result proof convergence
   completed. `TaskResultItemSnapshot` and HTTP result rows no longer expose
-  `workerContextId`; SDK polling result reads and API result rows use
+  context identity; SDK polling result reads and API result rows use
   worker-level attempt identity.
 - 2026-05-16: WorkerContext retirement result-runtime payload convergence
   completed. `TaskResultCallbackDraft`, `TaskResultFinalDraft`,
   `TaskResultService`, and runtime contract fixtures no longer carry
-  `workerContextId`.
+  context identity.
 - 2026-05-16: WorkerContext retirement dispatch payload convergence
   completed. `TaskDispatchBinding`, the dispatch binder, transport dispatch
-  items, and transport batch codecs no longer carry `workerContextId`.
+  items, and transport batch codecs no longer carry context identity.
 - 2026-05-16: WorkerContext retirement string-residue convergence completed
   for runtime, transport, projection, SDK/API result rows, and server E2E
-  worker registration. Remaining `workerContextId` references are bounded to
-  nullable canonical trace schema population, architecture/source guards, and
-  historical documentation.
+  worker registration. WorkerContext identity residue was later removed from
+  canonical trace as well; remaining references are architecture/source guards
+  and historical documentation.
 
 This document records the intended path for a long-running engine scheduling
 upgrade. The work is deliberately split into small, independently verifiable
@@ -511,7 +511,7 @@ hands off `WorkerSchedulingCandidate`.
 - Add tests proving worker-level attributes can express current routing and
   attribute matching scenarios.
 - Replace the internal matching handoff with `WorkerSchedulingCandidate` while
-  preserving runtime binding behavior and trace `workerContextId`.
+  preserving runtime binding behavior and trace worker identity.
 - Migrate default and derived rule sets to worker scheduling variables.
 - Keep current behavior until the view is proven.
 
@@ -534,7 +534,7 @@ hands off `WorkerSchedulingCandidate`.
 
 ### Trace
 
-If existing canonical events rely on `workerContextId`, keep the field nullable
+If existing canonical events rely on context identity, keep the field nullable
 or transitional until downstream analyzers can validate worker-level events. Do
 not remove trace fields before analyzers are updated.
 
@@ -547,13 +547,13 @@ longer depends on them.
 
 Status: physical model, storage CRUD, SDK API, server endpoints,
 frontend/operator resource pages, and test-only context fixture inputs are
-removed. Remaining work is runtime/transport/trace `workerContextId` payload
+removed. Remaining work is runtime/transport/trace context-id payload
 residue. The current worker-level dispatch path no longer passes a context
 identity into runtime claim targets, creates runtime claim targets through
 `WorkerClaimTarget.workerLevel(...)`, generates worker-level attempt ids without
 a legacy context placeholder, builds worker-level result-correlation snapshots
 for null-context leases, omits the legacy payload field when null, and release
-policy no longer accepts `workerContextId` as an input.
+policy no longer accepts context identity as an input.
 
 ### Scope
 
@@ -1112,15 +1112,14 @@ A step is not done until:
 ## 20. Current Recommended Next Step
 
 WorkerContext model/API/runtime/transport/projection payload deletion is now
-complete for the scheduling kernel and public worker/result surfaces. Matching
-context expansion is removed from the production strategy package, the
-candidate handoff no longer carries a nullable `WorkerContext` object, and
-`WorkerSchedulingView` / `WorkerMatchContext` no longer expose
-`workerContext*` scheduling facts.
+complete for the scheduling kernel and public worker/result surfaces. Canonical
+trace identity is also worker-level. Matching context expansion is removed from
+the production strategy package, the candidate handoff no longer carries a
+nullable `WorkerContext` object, and `WorkerSchedulingView` / `WorkerMatchContext`
+no longer expose `workerContext*` scheduling facts.
 
 The next step should stay on the same kernel line: keep source guards tight,
-keep scheduling proof on worker scheduling/load/resource evidence, and decide
-in a dedicated trace-contract cleanup whether the nullable historical
-`identity.workerContextId` field should remain in canonical JSONL for old trace
-readability or be removed from the schema. Do not reintroduce account/context
-CRUD or context-slot lifecycle under a new name.
+keep scheduling proof on worker scheduling/load/resource evidence, and continue
+with worker-management/system-event boundaries or group/capability modeling
+without reintroducing account/context CRUD or context-slot lifecycle under a new
+name.

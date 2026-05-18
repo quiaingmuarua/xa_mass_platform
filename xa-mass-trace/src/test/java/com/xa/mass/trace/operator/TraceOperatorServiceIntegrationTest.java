@@ -212,7 +212,7 @@ class TraceOperatorServiceIntegrationTest {
 
     @Test
     void analyzeRunsWorkerAttributeRoutingWithoutContextScenarioAgainstCanonicalSinkOutput() throws Exception {
-        writeWorkerAttributeRoutingWithoutContextTrace(tempDir, "task-worker-attribute-routing", false);
+        writeWorkerAttributeRoutingWithoutContextTrace(tempDir, "task-worker-attribute-routing");
         awaitJsonlFiles(tempDir, 1);
 
         TraceAnalyzeResponse response = operatorService.analyze(
@@ -227,7 +227,7 @@ class TraceOperatorServiceIntegrationTest {
 
     @Test
     void analyzeRunsWorkerResourceCleanupWithoutContextScenarioAgainstCanonicalSinkOutput() throws Exception {
-        writeWorkerResourceCleanupWithoutContextTrace(tempDir, "task-worker-resource-cleanup", false);
+        writeWorkerResourceCleanupWithoutContextTrace(tempDir, "task-worker-resource-cleanup");
         awaitJsonlFiles(tempDir, 1);
 
         TraceAnalyzeResponse response = operatorService.analyze(
@@ -326,36 +326,6 @@ class TraceOperatorServiceIntegrationTest {
         assertFalse(response.ok());
         assertTrue(response.issues().stream()
                 .anyMatch(issue -> "BACKGROUND_WORKER_LOCK_ACQUIRED".equals(issue.code())));
-    }
-
-    @Test
-    void workerAttributeRoutingWithoutContextScenarioFailsWhenAcceptedMatchUsesWorkerContext() throws Exception {
-        writeWorkerAttributeRoutingWithoutContextTrace(tempDir, "task-context-backed-routing", true);
-        awaitJsonlFiles(tempDir, 1);
-
-        TraceAnalyzeResponse response = operatorService.analyze(
-                new TraceAnalyzeRequest(tempDir.toString(),
-                        "worker-attribute-routing-without-context",
-                        "task-context-backed-routing"));
-
-        assertFalse(response.ok());
-        assertTrue(response.issues().stream()
-                .anyMatch(issue -> "WORKER_CONTEXT_BACKED_MATCH_OBSERVED".equals(issue.code())));
-    }
-
-    @Test
-    void workerResourceCleanupWithoutContextScenarioFailsWhenReleaseUsesWorkerContext() throws Exception {
-        writeWorkerResourceCleanupWithoutContextTrace(tempDir, "task-context-backed-cleanup", true);
-        awaitJsonlFiles(tempDir, 1);
-
-        TraceAnalyzeResponse response = operatorService.analyze(
-                new TraceAnalyzeRequest(tempDir.toString(),
-                        "worker-resource-cleanup-without-context",
-                        "task-context-backed-cleanup"));
-
-        assertFalse(response.ok());
-        assertTrue(response.issues().stream()
-                .anyMatch(issue -> "RESOURCE_RELEASE_DEPENDS_ON_WORKER_CONTEXT".equals(issue.code())));
     }
 
     @Test
@@ -496,7 +466,7 @@ class TraceOperatorServiceIntegrationTest {
                     .build());
             sink.emit(ExecutionEvent.builder()
                     .eventType(ExecutionEventType.WORKER_MATCH_ACCEPTED)
-                    .identity(identity -> identity.taskId(taskId).workerId("worker-1").workerContextId("ctx-1"))
+                    .identity(identity -> identity.taskId(taskId).workerId("worker-1"))
                     .outcome(true, null, "all rules matched and worker lock acquired")
                     .attrs(Map.of("source", "RuleBasedTaskWorkerMatchingStrategy", "reason", "all rules matched", "result", "SUCCESS"))
                     .build());
@@ -558,13 +528,13 @@ class TraceOperatorServiceIntegrationTest {
                     .build());
             sink.emit(ExecutionEvent.builder()
                     .eventType(ExecutionEventType.TASK_WORK_ATTEMPT_STATUS_TRANSITION)
-                    .identity(identity -> identity.taskId(taskId).messageId("msg-1").attemptId("attempt-1").workerId("worker-1").workerContextId("ctx-1"))
+                    .identity(identity -> identity.taskId(taskId).messageId("msg-1").attemptId("attempt-1").workerId("worker-1"))
                     .transition("CREATED", "LEASED", "attempt leased for dispatch")
                     .attrs(Map.of("trigger", "BIND_TASK_MESSAGE", "source", "SimpleTaskDispatchBinder", "reason", "attempt leased for dispatch", "result", "SUCCESS", "attemptNo", 1))
                     .build());
             sink.emit(ExecutionEvent.builder()
                     .eventType(ExecutionEventType.TASK_WORK_ATTEMPT_STATUS_TRANSITION)
-                    .identity(identity -> identity.taskId(taskId).messageId("msg-1").attemptId("attempt-1").workerId("worker-1").workerContextId("ctx-1"))
+                    .identity(identity -> identity.taskId(taskId).messageId("msg-1").attemptId("attempt-1").workerId("worker-1"))
                     .transition("LEASED", "DISPATCHED", "attempt dispatched")
                     .attrs(Map.of("trigger", "BIND_TASK_MESSAGE", "source", "SimpleTaskDispatchBinder", "reason", "attempt dispatched", "result", "SUCCESS", "attemptNo", 1))
                     .build());
@@ -762,17 +732,11 @@ class TraceOperatorServiceIntegrationTest {
     }
 
     private void writeWorkerAttributeRoutingWithoutContextTrace(Path outputDir,
-                                                                String taskId,
-                                                                boolean contextBackedMatch) throws Exception {
+                                                                String taskId) throws Exception {
         try (JsonlExecutionEventSink sink = new JsonlExecutionEventSink(outputDir.toString(), 128, 10_000)) {
             sink.emit(ExecutionEvent.builder()
                     .eventType(ExecutionEventType.WORKER_MATCH_ACCEPTED)
-                    .identity(identity -> {
-                        identity.taskId(taskId).workerId("worker-attribute-us");
-                        if (contextBackedMatch) {
-                            identity.workerContextId("ctx-attribute-us");
-                        }
-                    })
+                    .identity(identity -> identity.taskId(taskId).workerId("worker-attribute-us"))
                     .outcome(true, null, "all rules matched and worker lock acquired after candidate ranking")
                     .attrs(attrs(
                             "source", "RuleBasedTaskWorkerMatchingStrategy",
@@ -780,7 +744,7 @@ class TraceOperatorServiceIntegrationTest {
                             "result", "SUCCESS",
                             "candidateRank", 1,
                             "candidateScore", "0.1",
-                            "workerSchedulingResourceId", contextBackedMatch ? "ctx-attribute-us" : "worker-attribute-us",
+                            "workerSchedulingResourceId", "worker-attribute-us",
                             "workerSchedulingRoutingTags", "shared,us",
                             "workerSchedulingAttributes", Map.of("routingTag", "us", "country", "us"),
                             "workerSchedulingMatchesRoutingCode", true))
@@ -839,8 +803,7 @@ class TraceOperatorServiceIntegrationTest {
     }
 
     private void writeWorkerResourceCleanupWithoutContextTrace(Path outputDir,
-                                                               String taskId,
-                                                               boolean contextBackedRelease) throws Exception {
+                                                               String taskId) throws Exception {
         try (JsonlExecutionEventSink sink = new JsonlExecutionEventSink(outputDir.toString(), 128, 10_000)) {
             sink.emit(ExecutionEvent.builder()
                     .eventType(ExecutionEventType.WORKER_MATCH_ACCEPTED)
@@ -873,15 +836,10 @@ class TraceOperatorServiceIntegrationTest {
                     .build());
             sink.emit(ExecutionEvent.builder()
                     .eventType(ExecutionEventType.TASK_WORK_ATTEMPT_CLOSED)
-                    .identity(identity -> {
-                        identity.taskId(taskId)
-                                .messageId("msg-cleanup")
-                                .attemptId("attempt-cleanup")
-                                .workerId("worker-cleanup");
-                        if (contextBackedRelease) {
-                            identity.workerContextId("ctx-cleanup");
-                        }
-                    })
+                    .identity(identity -> identity.taskId(taskId)
+                            .messageId("msg-cleanup")
+                            .attemptId("attempt-cleanup")
+                            .workerId("worker-cleanup"))
                     .outcome(true, null, "work attempt succeeded")
                     .attrs(attrs(
                             "trigger", "HANDLE_TASK_RESULT",
@@ -903,18 +861,13 @@ class TraceOperatorServiceIntegrationTest {
                     .build());
             sink.emit(ExecutionEvent.builder()
                     .eventType(ExecutionEventType.RESOURCE_RELEASED)
-                    .identity(identity -> {
-                        identity.taskId(taskId).workerId("worker-cleanup");
-                        if (contextBackedRelease) {
-                            identity.workerContextId("ctx-cleanup");
-                        }
-                    })
+                    .identity(identity -> identity.taskId(taskId).workerId("worker-cleanup"))
                     .outcome(true, null, "worker resource released")
                     .attrs(attrs(
                             "trigger", "ON_TASK_MESSAGE_ATTEMPT_CLOSED",
                             "source", "TaskResourceReleaseListener",
                             "reason", "worker resource released",
-                            "resourceKind", contextBackedRelease ? "WORKER_CONTEXT" : "WORKER_LOCK",
+                            "resourceKind", "WORKER_LOCK",
                             "result", "SUCCESS"))
                     .build());
         }

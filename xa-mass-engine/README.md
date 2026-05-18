@@ -76,9 +76,9 @@ mechanism work to it casually; if future distributed capacity or worker-manager
 separation requires a split, introduce a real acquisition owner rather than a
 pass-through wrapper.
 
-WorkerContext is not scheduling truth in the engine hot path. Remaining
-`workerContextId` fields are compatibility/runtime/trace residue until the
-lower-level contracts are retired.
+WorkerContext is not scheduling truth in the engine hot path. Runtime,
+transport, projection, SDK/API, server payloads, and canonical trace identity
+are worker-level.
 
 ## Scheduling Core Test Intent
 
@@ -344,8 +344,8 @@ Matching boundaries:
   `RuleBasedTaskWorkerMatchingStrategy` consumes that read model for prefilter
   records instead of maintaining a duplicate snapshot builder
 - assignment records snapshot `WorkerSchedulingView` evidence through
-  `WorkerSchedulingSnapshot`; `workerContextId` is legacy payload identity, not
-  the diagnostic subject
+  `WorkerSchedulingSnapshot`; account-slot identity is not the diagnostic
+  subject
 - `WorkerSchedulingView` is the scheduling read surface; new matching code
   should read the view rather than treating `WorkerContext` as the matching
   subject

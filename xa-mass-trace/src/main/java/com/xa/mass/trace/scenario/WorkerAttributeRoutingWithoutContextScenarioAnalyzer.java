@@ -24,11 +24,7 @@ final class WorkerAttributeRoutingWithoutContextScenarioAnalyzer extends Abstrac
                 .toList();
         if (accepted.stream().noneMatch(this::isStatelessAcceptedMatch)) {
             issues.add(new TraceScenarioIssue("MISSING_STATELESS_WORKER_MATCH",
-                    "Expected accepted worker match without workerContextId"));
-        }
-        if (accepted.stream().anyMatch(row -> present(row.workerContextId()))) {
-            issues.add(new TraceScenarioIssue("WORKER_CONTEXT_BACKED_MATCH_OBSERVED",
-                    "Accepted worker match must not depend on WorkerContext evidence"));
+                    "Expected accepted worker match with worker-level scheduling evidence"));
         }
         if (accepted.stream().noneMatch(row -> Boolean.TRUE.equals(row.workerSchedulingMatchesRoutingCode()))) {
             issues.add(new TraceScenarioIssue("MISSING_WORKER_SCHEDULING_ROUTING_EVIDENCE",
@@ -62,7 +58,7 @@ final class WorkerAttributeRoutingWithoutContextScenarioAnalyzer extends Abstrac
     }
 
     private boolean isStatelessAcceptedMatch(TraceAssignmentRow row) {
-        return row != null && !present(row.workerContextId());
+        return row != null && present(row.workerId());
     }
 
     private boolean hasWorkerSchedulingAttributesEvidence(TraceAssignmentRow row) {

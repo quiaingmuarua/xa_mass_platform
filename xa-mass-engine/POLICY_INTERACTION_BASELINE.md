@@ -77,9 +77,9 @@ Any change to this precedence must update state machine, trace contract, and E2E
   they are not engine-owned device/account lifecycle state
 - routing truth must come from explicit rules and worker scheduling attributes,
   not `workerGroupId`
-- WorkerContext is not scheduling truth in the engine hot path; remaining
-  `workerContextId` fields are compatibility/runtime/trace residue until those
-  contracts are retired
+- WorkerContext is not scheduling truth in the engine hot path; runtime,
+  transport, projection, SDK/API, server payloads, and canonical trace identity
+  are worker-level
 - resource release must target the exact worker bound by the active or closing
   attempt and must apply the current `WorkerDispatchResourcePolicy`
 

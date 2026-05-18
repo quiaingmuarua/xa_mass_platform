@@ -145,9 +145,9 @@ reverse-drive runtime or result ownership.
 
 Engine scheduling consumes worker scheduling views, reachability, load, and
 resource acquisition facts. It does not own device/account lifecycle management.
-`WorkerContext` is no longer a scheduling truth in the engine hot path; remaining
-`workerContextId` fields are compatibility/runtime/trace residue until those
-contracts are retired.
+`WorkerContext` is no longer a scheduling truth in the engine hot path. Runtime,
+transport, projection, SDK/API, server payloads, and canonical trace identity
+are worker-level.
 
 ## 3. Kernel Rule
 
