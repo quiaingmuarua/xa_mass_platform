@@ -18,7 +18,6 @@ import com.xa.mass.engine.command.WorkerCommandStatus;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
-import com.xa.mass.engine.stage.TaskStageEvidence;
 import com.xa.mass.engine.stage.TaskStageEvidenceResult;
 import com.xa.mass.engine.stage.TaskStageEvidenceService;
 import com.xa.mass.engine.stage.TaskStageProjection;
@@ -509,16 +508,15 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     public TaskStageEvidenceSnapshot reportTaskStageEvidence(TaskStageEvidenceRequest request) {
         Objects.requireNonNull(request, "request");
         TaskStageEvidenceResult result = requireStartedTaskStageEvidenceService()
-                .applyEvidence(TaskStageEvidence.builder(
-                                request.taskId(),
-                                request.messageId(),
-                                request.stageName(),
-                                request.stageVersion())
-                        .stageStatus(request.stageStatus())
-                        .detail(request.detail())
-                        .observedAt(request.observedAt())
-                        .attributes(request.attributes())
-                        .build());
+                .applyEvidence(
+                        request.taskId(),
+                        request.messageId(),
+                        request.stageName(),
+                        request.stageVersion(),
+                        request.stageStatus(),
+                        request.detail(),
+                        request.observedAt(),
+                        request.attributes());
         return new TaskStageEvidenceSnapshot(
                 result.status().name(),
                 result.taskId(),
