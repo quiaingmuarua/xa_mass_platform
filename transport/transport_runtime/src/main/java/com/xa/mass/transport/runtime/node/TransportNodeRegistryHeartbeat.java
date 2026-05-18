@@ -34,7 +34,7 @@ public final class TransportNodeRegistryHeartbeat implements AutoCloseable {
         this.transportNodeId = requireText(transportNodeId, "transportNodeId");
         this.adapterIds = adapterIds == null ? List.of() : List.copyOf(adapterIds);
         this.connectionCountSupplier = connectionCountSupplier != null ? connectionCountSupplier : () -> 0L;
-        this.intervalMillis = Math.max(1_000L, intervalMillis);
+        this.intervalMillis = Math.max(1L, intervalMillis);
     }
 
     public synchronized void start() {

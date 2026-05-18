@@ -138,8 +138,8 @@ class PullWorkerSessionTest {
                 "demoApp",
                 "agent",
                 0,
+                "attempt-" + messageId,
                 "worker-1",
-                null,
                 "batch-1",
                 Map.of("target", "target-1"),
                 Map.of()

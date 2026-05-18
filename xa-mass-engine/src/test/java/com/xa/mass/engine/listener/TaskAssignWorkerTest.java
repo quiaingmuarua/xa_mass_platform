@@ -6,8 +6,11 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.runtime.TaskRuntimeProfile;
 import com.xa.mass.engine.runtime.TaskRuntimeProfileResolver;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
+import com.xa.mass.engine.testutil.RecordingEventSink;
 import com.xa.mass.engine.util.TraceEventLogCapture;
 import com.xa.mass.engine.util.TraceEventLogger;
+import com.xa.mass.trace.sink.ExecutionEvent;
+import com.xa.mass.trace.sink.ExecutionEventType;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -103,26 +106,25 @@ public class TaskAssignWorkerTest {
             return false;
         }).when(retryingListener).onTaskAssign(any());
 
-        worker = new TaskAssignWorker(retryingListener, 50L);
+        RecordingEventSink sink = new RecordingEventSink();
+        worker = new TaskAssignWorker(retryingListener, 50L, new TraceEventLogger(sink));
         worker.start();
 
         Task task = readyTask("retry");
-        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
-            assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(task));
+        assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(task));
 
-            assertTrue(assignedLatch.await(3, TimeUnit.SECONDS), "READY task should be retried until assignment succeeds");
-            assertEquals(TaskStatus.RUNNING, task.getStatus());
-            assertEquals(2, attempts.get());
-            verify(retryingListener, atLeast(2)).onTaskAssign(same(task));
-            assertTrue(awaitCondition(() -> hasRetryDelayEvent(capture, "retry", "50")),
-                    "retry scheduling trace should be captured before assertions run");
-            assertTrue(awaitCondition(() -> hasQueueSnapshotEvent(capture, "retry", "RETRY_SCHEDULED",
-                    mdc -> "1".equals(mdc.get("scheduledRetryCount")))),
-                    "retry-scheduled queue snapshot should be captured before assertions run");
-            assertTrue(awaitCondition(() -> hasQueueSnapshotEvent(capture, "retry", "RETRY_ENQUEUED",
-                    mdc -> "TaskAssignWorker".equals(mdc.get("source")))),
-                    "retry-enqueued queue snapshot should be captured before assertions run");
-        }
+        assertTrue(assignedLatch.await(3, TimeUnit.SECONDS), "READY task should be retried until assignment succeeds");
+        assertEquals(TaskStatus.RUNNING, task.getStatus());
+        assertEquals(2, attempts.get());
+        verify(retryingListener, atLeast(2)).onTaskAssign(same(task));
+        assertTrue(awaitCondition(() -> hasRetryDelayEvent(sink, "retry", 50L)),
+                "retry scheduling trace should be captured before assertions run");
+        assertTrue(awaitCondition(() -> hasQueueSnapshotEvent(sink, "retry", "RETRY_SCHEDULED",
+                attrs -> Integer.valueOf(1).equals(attrs.get("scheduledRetryCount")))),
+                "retry-scheduled queue snapshot should be captured before assertions run");
+        assertTrue(awaitCondition(() -> hasQueueSnapshotEvent(sink, "retry", "RETRY_ENQUEUED",
+                attrs -> "TaskAssignWorker".equals(attrs.get("source")))),
+                "retry-enqueued queue snapshot should be captured before assertions run");
     }
 
     @Test
@@ -603,6 +605,14 @@ public class TaskAssignWorkerTest {
                         && "TaskAssignWorker".equals(mdc.get("source")));
     }
 
+    private boolean hasRetryDelayEvent(RecordingEventSink sink, String taskId, long retryDelayMillis) {
+        return sink.eventsOfType(ExecutionEventType.ASSIGNMENT_RETRY_SCHEDULED).stream()
+                .anyMatch(event -> event.getIdentity() != null
+                        && taskId.equals(event.getIdentity().taskId())
+                        && Long.valueOf(retryDelayMillis).equals(event.getAttrs().get("retryDelayMillis"))
+                        && "TaskAssignWorker".equals(event.getAttrs().get("source")));
+    }
+
     private boolean hasQueueSnapshotEvent(TraceEventLogCapture capture,
                                           String taskId,
                                           String queueAction,
@@ -612,5 +622,17 @@ public class TaskAssignWorkerTest {
                 .anyMatch(mdc -> taskId.equals(mdc.get("taskId"))
                         && queueAction.equals(mdc.get("queueAction"))
                         && extraMatch.test(mdc));
+    }
+
+    private boolean hasQueueSnapshotEvent(RecordingEventSink sink,
+                                          String taskId,
+                                          String queueAction,
+                                          Predicate<java.util.Map<String, Object>> extraMatch) {
+        return sink.eventsOfType(ExecutionEventType.ASSIGNMENT_QUEUE_SNAPSHOT).stream()
+                .filter(event -> event.getIdentity() != null)
+                .filter(event -> taskId.equals(event.getIdentity().taskId()))
+                .filter(event -> queueAction.equals(event.getAttrs().get("queueAction")))
+                .map(ExecutionEvent::getAttrs)
+                .anyMatch(extraMatch);
     }
 }
