@@ -27,7 +27,8 @@ Metadata and system-event ingress are not runtime truth by themselves.
 | `CoreEventDescriptor` | core descriptor layer | descriptor fields and handler metadata | queue placement, result convergence |
 | `KernelEventHandlerRegistry` | engine route registration | kernel-targeted handler registration for `TASK_ENGINE` / `WORKER_MANAGER` descriptors | task result, worker command, worker state, capability mutation, presence ownership |
 | `WorkerCommandRequestEventHandler` | worker command event handler | parse kernel-targeted command requests and delegate to `WorkerCommandLifecycleOwner` | command lifecycle truth, delivery, ack/status ingress, task result |
-| `WorkerCommandLifecycleOwner` | worker command lifecycle owner | command request/status truth and read view | task result convergence, task-work dispatch, transport delivery |
+| `WorkerCommandLifecycleOwner` | worker command lifecycle owner | command request/status truth, owner-decided acknowledgement/status ingest, and read view | task result convergence, task-work dispatch, transport lifecycle state |
+| `WorkerCommandDeliveryCoordinator` / `WorkerCommandDeliveryPort` | worker command delivery handoff | command-specific delivery attempt coordination and handoff result mapping back into command lifecycle | task-work dispatch, task result convergence, transport lifecycle state |
 | `WorkerCapabilityReportEventHandler` | worker capability event handler | parse kernel-targeted capability reports and delegate to `WorkerManager` / `WorkerCapabilityAuthority` | capability composition, matching, result convergence, presence ownership |
 | `WorkerCapabilityAuthority` | worker capability composition owner | report version/idempotency/conflict rules and effective capability composition into immutable `WorkerRegistrySnapshot` | event routing, matching/ranking decisions, transport presence |
 | `WorkerGroupRecord` / `EventBinding` / `EventKey` | worker capability line | capability truth and candidate-source inputs | response semantics, result finality |
@@ -128,6 +129,25 @@ task result, or scheduling lifecycle truth by itself.
 - EWC-4A records request/status truth only. It does not deliver commands to
   workers, does not decide acknowledgement ingress, and does not reuse task-work
   dispatch or task-result convergence.
+- Current worker command delivery baseline is command-owner local:
+
+  ```text
+  WorkerCommandLifecycleOwner
+    -> WorkerCommandDeliveryCoordinator
+    -> WorkerCommandDeliveryPort
+    -> WorkerCommandLifecycleOwner acknowledgement/status transition
+    -> command read view + WORKER_COMMAND_STATUS_TRANSITION trace
+  ```
+
+- The first delivery slice does not wire a transport adapter. It proves the
+  owner seam and status transitions only.
+- Command delivery success moves the command to `DELIVERY_ACCEPTED`.
+- Command delivery rejection, worker unavailability, or handoff failure closes
+  the command as `FAILED` in the current baseline because retry/expiry
+  scheduling is not implemented yet.
+- Worker command acknowledgement/status ingress is command-specific
+  `WorkerCommandAcknowledgement` input to `WorkerCommandLifecycleOwner`, not a
+  task result row.
 - Worker state reports must not become transport reachability truth.
 - Raw worker state must not enter matching/ranking directly; only bounded
   derived evidence from an approved owner may do so.

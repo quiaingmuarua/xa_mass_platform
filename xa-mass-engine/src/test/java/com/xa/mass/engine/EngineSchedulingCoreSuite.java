@@ -3,6 +3,7 @@ package com.xa.mass.engine;
 import com.xa.mass.engine.listener.TaskAssignWorkerTest;
 import com.xa.mass.engine.listener.TaskResourceReleaseListenerTest;
 import com.xa.mass.engine.listener.TaskWorkerAssignListenerTest;
+import com.xa.mass.engine.command.WorkerCommandDeliveryCoordinatorTest;
 import com.xa.mass.engine.command.WorkerCommandLifecycleOwnerTest;
 import com.xa.mass.engine.command.WorkerCommandRequestEventHandlerTest;
 import com.xa.mass.engine.model.WorkerMatchContextTest;
@@ -32,6 +33,7 @@ import org.junit.platform.suite.api.Suite;
         WorkerCandidateIndexTest.class,
         WorkerCapabilityAuthorityTest.class,
         WorkerCapabilityReportEventHandlerTest.class,
+        WorkerCommandDeliveryCoordinatorTest.class,
         WorkerCommandLifecycleOwnerTest.class,
         WorkerCommandRequestEventHandlerTest.class,
         WorkerRegistrySnapshotTest.class,

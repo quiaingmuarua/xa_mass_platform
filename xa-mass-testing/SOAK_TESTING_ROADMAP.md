@@ -24,6 +24,8 @@ The goal is to catch long-running hidden drift:
 - visible result rows missing
 - result `afterSeq` checkpoint regressions
 - duplicate result message ids
+- success/failed work counters drifting from the configured failure profile
+- task terminal reasons drifting under all-success, mixed-result, or all-failed profiles
 - runtime counters and worker metrics diverging
 - trace sink drops or invalid canonical trace rows
 
@@ -48,6 +50,8 @@ Proof surface:
 - active lease drain
 - SDK `readTaskResults(...)` sequential windows
 - worker receive/result metrics
+- expected success/failed counts from `failureEveryNth`
+- expected task terminal reason distribution
 - transport delivery diagnostics
 - `JsonlExecutionEventSink` output
 - `TraceOperatorService.validate(...)`
@@ -83,7 +87,9 @@ mass.soak.forceExit=true
 A successful polling soak requires:
 
 - `tasksSubmitted == tasksTerminal`
+- every task terminal reason matches the configured success/failure profile
 - `workItemsSubmitted == resultsVisible`
+- runtime success/failed counts match the configured success/failure profile
 - every terminal task has strictly increasing result `seq`
 - every result page has `nextAfterSeq == last item seq`
 - result windows have no duplicate `messageId`
@@ -96,6 +102,8 @@ A successful polling soak requires:
 
 Keep each extension as a separate lane/profile:
 
+- scheduled mixed-result profile with `mass.soak.failureEveryNth > 1`
+- scheduled all-failed profile with `mass.soak.failureEveryNth=1`
 - Redis-backed runtime/result soak
 - WebSocket/socket transport soak
 - disconnect/reconnect churn during soak

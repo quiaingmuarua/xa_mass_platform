@@ -11,8 +11,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * Owns worker command lifecycle truth.
  *
  * <p>This owner is deliberately independent from task result convergence and
- * task-work dispatch. EWC-4A records request/status truth only; future delivery
- * handoff and ack ingress must still enter through this owner.</p>
+ * task-work dispatch. Delivery handoff and acknowledgement/status ingress must
+ * enter through this owner.</p>
  */
 public final class WorkerCommandLifecycleOwner {
 
@@ -105,6 +105,33 @@ public final class WorkerCommandLifecycleOwner {
         }
         return result(WorkerCommandLifecycleResultCode.ACCEPTED, updated, current.status(),
                 targetStatus, "command status updated");
+    }
+
+    public WorkerCommandLifecycleResult applyAcknowledgement(WorkerCommandAcknowledgement acknowledgement) {
+        if (acknowledgement == null) {
+            throw new IllegalArgumentException("acknowledgement must not be null");
+        }
+        return transition(acknowledgement.commandId(), acknowledgement.targetStatus(), acknowledgement.reason());
+    }
+
+    public WorkerCommandLifecycleResult markDeliveryAccepted(String commandId, String reason) {
+        return applyAcknowledgement(WorkerCommandAcknowledgement.deliveryAccepted(commandId, reason));
+    }
+
+    public WorkerCommandLifecycleResult markExecutionAccepted(String commandId, String reason) {
+        return applyAcknowledgement(WorkerCommandAcknowledgement.executionAccepted(commandId, reason));
+    }
+
+    public WorkerCommandLifecycleResult markSucceeded(String commandId, String reason) {
+        return applyAcknowledgement(WorkerCommandAcknowledgement.succeeded(commandId, reason));
+    }
+
+    public WorkerCommandLifecycleResult markFailed(String commandId, String reason) {
+        return applyAcknowledgement(WorkerCommandAcknowledgement.failed(commandId, reason));
+    }
+
+    public WorkerCommandLifecycleResult markExpired(String commandId, String reason) {
+        return applyAcknowledgement(WorkerCommandAcknowledgement.expired(commandId, reason));
     }
 
     public Optional<WorkerCommandRecord> command(String commandId) {

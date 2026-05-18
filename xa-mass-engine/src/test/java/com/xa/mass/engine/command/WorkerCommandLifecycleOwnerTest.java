@@ -40,24 +40,16 @@ public class WorkerCommandLifecycleOwnerTest {
     }
 
     @Test
-    void ownsCommandStatusTransitionsWithoutTaskResultRuntime() {
+    void ownsCommandStatusTransitionsWithoutTaskResultConvergence() {
         WorkerCommandLifecycleOwner owner = new WorkerCommandLifecycleOwner();
         owner.requestCommand(request("cmd-1", "worker-1", "RESTART"));
 
-        WorkerCommandLifecycleResult delivered = owner.transition(
-                "cmd-1",
-                WorkerCommandStatus.DELIVERY_ACCEPTED,
-                "delivery accepted"
-        );
+        WorkerCommandLifecycleResult delivered = owner.markDeliveryAccepted("cmd-1", "delivery accepted");
         assertEquals(WorkerCommandLifecycleResultCode.ACCEPTED, delivered.code());
         assertEquals(WorkerCommandStatus.REQUESTED, delivered.previousStatus());
         assertEquals(WorkerCommandStatus.DELIVERY_ACCEPTED, delivered.currentStatus());
 
-        WorkerCommandLifecycleResult terminal = owner.transition(
-                "cmd-1",
-                WorkerCommandStatus.SUCCEEDED,
-                "worker command succeeded"
-        );
+        WorkerCommandLifecycleResult terminal = owner.markSucceeded("cmd-1", "worker command succeeded");
         assertEquals(WorkerCommandLifecycleResultCode.ACCEPTED, terminal.code());
         assertEquals(WorkerCommandStatus.SUCCEEDED, owner.command("cmd-1").orElseThrow().status());
 
@@ -71,14 +63,29 @@ public class WorkerCommandLifecycleOwnerTest {
     }
 
     @Test
+    void appliesOwnerLevelAcknowledgementsWithoutTaskResultRows() {
+        WorkerCommandLifecycleOwner owner = new WorkerCommandLifecycleOwner();
+        owner.requestCommand(request("cmd-1", "worker-1", "RESTART"));
+
+        WorkerCommandLifecycleResult delivered = owner.applyAcknowledgement(
+                WorkerCommandAcknowledgement.deliveryAccepted("cmd-1", "delivery ack"));
+        WorkerCommandLifecycleResult executionAccepted = owner.applyAcknowledgement(
+                WorkerCommandAcknowledgement.executionAccepted("cmd-1", "execution ack"));
+        WorkerCommandLifecycleResult failed = owner.applyAcknowledgement(
+                WorkerCommandAcknowledgement.failed("cmd-1", "worker rejected command"));
+
+        assertEquals(WorkerCommandLifecycleResultCode.ACCEPTED, delivered.code());
+        assertEquals(WorkerCommandLifecycleResultCode.ACCEPTED, executionAccepted.code());
+        assertEquals(WorkerCommandLifecycleResultCode.ACCEPTED, failed.code());
+        assertEquals(WorkerCommandStatus.FAILED, owner.command("cmd-1").orElseThrow().status());
+        assertEquals("worker rejected command", owner.command("cmd-1").orElseThrow().statusReason());
+    }
+
+    @Test
     void missingCommandTransitionIsNotFound() {
         WorkerCommandLifecycleOwner owner = new WorkerCommandLifecycleOwner();
 
-        WorkerCommandLifecycleResult result = owner.transition(
-                "missing",
-                WorkerCommandStatus.SUCCEEDED,
-                "missing"
-        );
+        WorkerCommandLifecycleResult result = owner.markSucceeded("missing", "missing");
 
         assertEquals(WorkerCommandLifecycleResultCode.NOT_FOUND, result.code());
         assertTrue(owner.command("missing").isEmpty());
