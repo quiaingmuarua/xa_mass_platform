@@ -18,7 +18,7 @@ class SoakProofBundleTest {
                 Map.of("receivedItems", 10),
                 Map.of("lateWorkerCount", 1),
                 Map.of("available", true),
-                new SoakTraceProof(true, "trace-dir", Map.of("valid", true), Map.of("count", 3), 0),
+                new SoakTraceProof(true, "trace-dir", Map.of("valid", true), Map.of("count", 3), 0, List.of()),
                 List.of()
         );
 
@@ -32,5 +32,6 @@ class SoakProofBundleTest {
         assertTrue(values.containsKey("trace"));
         assertTrue(values.containsKey("failureSamples"));
         assertEquals(0, ((List<?>) values.get("failureSamples")).size());
+        assertTrue(((Map<?, ?>) values.get("trace")).containsKey("analyses"));
     }
 }

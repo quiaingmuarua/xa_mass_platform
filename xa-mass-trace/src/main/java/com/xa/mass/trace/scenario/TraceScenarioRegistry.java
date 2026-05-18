@@ -21,7 +21,8 @@ public final class TraceScenarioRegistry {
                 new WorkerAttributeRoutingWithoutContextScenarioAnalyzer(),
                 new GroupCapabilityRoutingScenarioAnalyzer(),
                 new CrossTaskWorkerFairnessScenarioAnalyzer(),
-                new WorkerResourceCleanupWithoutContextScenarioAnalyzer()
+                new WorkerResourceCleanupWithoutContextScenarioAnalyzer(),
+                new LateWorkerBackfillScenarioAnalyzer()
         ));
     }
 

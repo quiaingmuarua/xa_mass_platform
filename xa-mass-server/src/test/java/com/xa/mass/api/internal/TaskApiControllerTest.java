@@ -6,6 +6,7 @@ import com.xa.mass.api.sync.TaskSyncRequestSupervisor;
 import com.xa.mass.sdk.TaskAdminOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
 import com.xa.mass.sdk.TaskResultQueryOperations;
+import com.xa.mass.sdk.TaskStageEvidenceOperations;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.auth.PrincipalType;
@@ -27,6 +28,9 @@ import com.xa.mass.sdk.model.TaskExecutionOptions;
 import com.xa.mass.sdk.model.TaskResultArchiveSnapshot;
 import com.xa.mass.sdk.model.TaskResultItemSnapshot;
 import com.xa.mass.sdk.model.TaskResultWindowSnapshot;
+import com.xa.mass.sdk.model.TaskStageEvidenceRequest;
+import com.xa.mass.sdk.model.TaskStageEvidenceSnapshot;
+import com.xa.mass.sdk.model.TaskStageProjectionSnapshot;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.TaskStateSnapshot;
 import com.xa.mass.sdk.model.TaskItemBatchAppendReceipt;
@@ -89,6 +93,9 @@ class TaskApiControllerTest {
     @Mock
     private SyncTaskResultBridge syncTaskResultBridge;
 
+    @Mock
+    private TaskStageEvidenceOperations taskStageEvidence;
+
     private TaskSyncRequestSupervisor taskSyncRequestSupervisor;
 
     private MockMvc mockMvc;
@@ -97,7 +104,8 @@ class TaskApiControllerTest {
     void setUp() {
         taskSyncRequestSupervisor = new TaskSyncRequestSupervisor(null, 500, 100, 20);
         mockMvc = MockMvcBuilders.standaloneSetup(
-                new TaskApiController(taskQueries, taskResultQueries, taskAdmin, createTaskCatalog(), taskDetailStore, authProvider, syncTaskResultBridge, taskSyncRequestSupervisor),
+                new TaskApiController(taskQueries, taskResultQueries, taskAdmin, createTaskCatalog(), taskDetailStore,
+                        authProvider, syncTaskResultBridge, taskSyncRequestSupervisor, taskStageEvidence),
                 new InternalTaskReviewController(taskQueries, taskDetailStore)
         ).build();
     }
@@ -220,6 +228,59 @@ class TaskApiControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.command").value("APPROVE"))
                 .andExpect(jsonPath("$.data.status").value("READY"));
+    }
+
+    @Test
+    void taskStageEvidenceEndpointsDelegateToSdkSurface() throws Exception {
+        TaskStageProjectionSnapshot projection = new TaskStageProjectionSnapshot(
+                TASK_ID,
+                "msg-001",
+                "FETCH",
+                2,
+                "DONE",
+                "page fetched",
+                Instant.parse("2026-05-18T10:10:00Z"),
+                Instant.parse("2026-05-18T10:10:01Z")
+        );
+        when(taskStageEvidence.reportTaskStageEvidence(any())).thenReturn(new TaskStageEvidenceSnapshot(
+                "ACCEPTED", TASK_ID, "msg-001", "FETCH", 2, true, true, "updated", projection
+        ));
+        when(taskStageEvidence.getTaskStageProjection(TASK_ID, "msg-001", "FETCH")).thenReturn(projection);
+        when(taskStageEvidence.listTaskStageProjections(TASK_ID, "msg-001")).thenReturn(List.of(projection));
+
+        mockMvc.perform(post("/api/v1/tasks/{taskId}/items/{messageId}/stages/{stageName}/evidence",
+                        TASK_ID, "msg-001", "FETCH")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "stageVersion":2,
+                                  "stageStatus":"DONE",
+                                  "detail":"page fetched",
+                                  "observedAt":"2026-05-18T10:10:00Z",
+                                  "attributes":{"url":"https://example.test"}
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.accepted").value(true))
+                .andExpect(jsonPath("$.data.projection.stageStatus").value("DONE"));
+
+        ArgumentCaptor<TaskStageEvidenceRequest> captor =
+                ArgumentCaptor.forClass(TaskStageEvidenceRequest.class);
+        verify(taskStageEvidence).reportTaskStageEvidence(captor.capture());
+        assertEquals(TASK_ID, captor.getValue().taskId());
+        assertEquals("msg-001", captor.getValue().messageId());
+        assertEquals("FETCH", captor.getValue().stageName());
+        assertEquals("https://example.test", captor.getValue().attributes().get("url"));
+
+        mockMvc.perform(get("/api/v1/tasks/{taskId}/items/{messageId}/stages/{stageName}",
+                        TASK_ID, "msg-001", "FETCH"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.stageStatus").value("DONE"));
+
+        mockMvc.perform(get("/api/v1/tasks/{taskId}/items/{messageId}/stages", TASK_ID, "msg-001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.items[0].stageName").value("FETCH"));
     }
 
     @Test

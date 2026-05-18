@@ -55,7 +55,7 @@ Proof surface:
 - expected success/failed counts from `failureEveryNth`
 - expected task terminal reason distribution
 - transport delivery diagnostics
-- structured `runtimeInvariants` report
+- structured `proof` bundle
 - `JsonlExecutionEventSink` output
 - `TraceOperatorService.validate(...)`
 - `TraceOperatorService.stats(...)`
@@ -92,7 +92,7 @@ mass.soak.forceExit=true
 
 A successful polling soak requires:
 
-- `runtimeInvariants.ok == true`
+- `proof.runtimeInvariants.ok == true`
 - `tasksSubmitted == tasksTerminal`
 - every task terminal reason matches the configured success/failure profile
 - `workItemsSubmitted == resultsVisible`
@@ -106,11 +106,29 @@ A successful polling soak requires:
 - trace validation passes
 - trace dropped count is `0`
 
-`runtimeInvariants` is the structured pass/fail proof bundle for these checks.
-It must report stable issue codes instead of only throwing assertion text, so
-manual and scheduled soak runs can identify whether a failure came from runtime
-truth, result visibility, trace evidence, late-worker participation, or worker
-execution failures.
+The report `proof` bundle is the stable diagnostic entry point. It contains:
+
+- `runtimeInvariants`
+- `resultSequentialRead`
+- `workerMetrics`
+- `workerLifecycle`
+- `deliveryDiagnostics`
+- `trace`
+- `failureSamples`
+
+`proof.runtimeInvariants` is the structured pass/fail proof for the acceptance
+checks. It must report stable issue codes instead of only throwing assertion
+text, so manual and scheduled soak runs can identify whether a failure came
+from runtime truth, result visibility, trace evidence, late-worker
+participation, or worker execution failures.
+
+When `mass.soak.requireLateWorkerWork=true` and trace is enabled, the runner
+records the first actual task seen by a late worker in
+`proof.workerLifecycle.lateWorkerProofTaskId` plus
+`proof.workerLifecycle.lateWorkerProofWorkerId`, then runs the
+`late-worker-backfill` trace analyzer and writes the result under
+`proof.trace.analyses`. Analyzer failure is reported through
+`TRACE_ANALYSIS_FAILED` in `proof.runtimeInvariants`.
 
 ## Future Extensions
 

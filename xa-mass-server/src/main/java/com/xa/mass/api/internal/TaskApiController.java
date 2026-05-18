@@ -20,6 +20,7 @@ import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskUpdateOutcome;
 import com.xa.mass.api.model.task.TaskCommandApiRequest;
 import com.xa.mass.api.model.task.TaskItemBatchIngestApiRequest;
 import com.xa.mass.api.model.task.TaskItemSyncIngestApiRequest;
+import com.xa.mass.api.model.task.TaskStageEvidenceApiRequest;
 import com.xa.mass.api.model.task.TaskShellCreateApiRequest;
 import com.xa.mass.api.model.task.TaskUpdateApiRequest;
 import com.xa.mass.api.sync.SyncTaskResultBridge;
@@ -27,6 +28,7 @@ import com.xa.mass.api.sync.TaskSyncRequestSupervisor;
 import com.xa.mass.sdk.TaskAdminOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
 import com.xa.mass.sdk.TaskResultQueryOperations;
+import com.xa.mass.sdk.TaskStageEvidenceOperations;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.authz.PlatformAction;
 import com.xa.mass.sdk.authz.PlatformResourceType;
@@ -41,6 +43,7 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -85,18 +88,19 @@ public class TaskApiController {
     private final TaskApiContractAssembler taskApiContractAssembler;
     private final SyncTaskResultBridge syncTaskResultBridge;
     private final TaskSyncRequestSupervisor taskSyncRequestSupervisor;
+    private final TaskStageEvidenceOperations taskStageEvidence;
 
     public TaskApiController(TaskQueryOperations taskQueries,
                              TaskAdminOperations taskAdmin) {
         this(taskQueries, taskAdmin, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(), null,
-                new ApiAuthService(), new ApiAuthorizationService(), new TaskSecurityViewSupport(), null, null);
+                new ApiAuthService(), new ApiAuthorizationService(), new TaskSecurityViewSupport(), null, null, null);
     }
 
     public TaskApiController(TaskQueryOperations taskQueries,
                              TaskAdminOperations taskAdmin,
                              ControlPlaneCatalog catalog) {
         this(taskQueries, taskAdmin, catalog, null, new ApiAuthService(), new ApiAuthorizationService(),
-                new TaskSecurityViewSupport(), null, null);
+                new TaskSecurityViewSupport(), null, null, null);
     }
 
     public TaskApiController(TaskQueryOperations taskQueries,
@@ -106,7 +110,7 @@ public class TaskApiController {
                              TaskDetailStore taskDetailStore,
                              com.xa.mass.sdk.auth.AuthProvider authProvider) {
         this(taskQueries, taskResultQueries, taskAdmin, catalog, taskDetailStore, new ApiAuthService(),
-                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), null, null);
+                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), null, null, null);
     }
 
     public TaskApiController(TaskQueryOperations taskQueries,
@@ -129,7 +133,21 @@ public class TaskApiController {
                              TaskSyncRequestSupervisor taskSyncRequestSupervisor) {
         this(taskQueries, taskResultQueries, taskAdmin, catalog, taskDetailStore, new ApiAuthService(),
                 new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), syncTaskResultBridge,
-                taskSyncRequestSupervisor);
+                taskSyncRequestSupervisor, null);
+    }
+
+    public TaskApiController(TaskQueryOperations taskQueries,
+                             TaskResultQueryOperations taskResultQueries,
+                             TaskAdminOperations taskAdmin,
+                             ControlPlaneCatalog catalog,
+                             TaskDetailStore taskDetailStore,
+                             com.xa.mass.sdk.auth.AuthProvider authProvider,
+                             SyncTaskResultBridge syncTaskResultBridge,
+                             TaskSyncRequestSupervisor taskSyncRequestSupervisor,
+                             TaskStageEvidenceOperations taskStageEvidence) {
+        this(taskQueries, taskResultQueries, taskAdmin, catalog, taskDetailStore, new ApiAuthService(),
+                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), syncTaskResultBridge,
+                taskSyncRequestSupervisor, taskStageEvidence);
     }
 
     public TaskApiController(TaskQueryOperations taskQueries,
@@ -138,7 +156,7 @@ public class TaskApiController {
                              TaskDetailStore taskDetailStore,
                              com.xa.mass.sdk.auth.AuthProvider authProvider) {
         this(taskQueries, taskAdmin, catalog, taskDetailStore, new ApiAuthService(),
-                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), null, null);
+                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), null, null, null);
     }
 
     public TaskApiController(TaskQueryOperations taskQueries,
@@ -146,7 +164,7 @@ public class TaskApiController {
                              ControlPlaneCatalog catalog,
                              com.xa.mass.sdk.auth.AuthProvider authProvider) {
         this(taskQueries, taskAdmin, catalog, null, new ApiAuthService(),
-                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), null, null);
+                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), null, null, null);
     }
 
     @Autowired
@@ -158,7 +176,8 @@ public class TaskApiController {
                              ApiAuthorizationService apiAuthorizationService,
                              TaskSecurityViewSupport taskSecurityViewSupport,
                              SyncTaskResultBridge syncTaskResultBridge,
-                             TaskSyncRequestSupervisor taskSyncRequestSupervisor) {
+                             TaskSyncRequestSupervisor taskSyncRequestSupervisor,
+                             ObjectProvider<TaskStageEvidenceOperations> taskStageEvidenceProvider) {
         this(taskQueries,
                 taskQueries instanceof TaskResultQueryOperations resultQueries ? resultQueries : null,
                 taskAdmin,
@@ -168,7 +187,8 @@ public class TaskApiController {
                 apiAuthorizationService,
                 taskSecurityViewSupport,
                 syncTaskResultBridge,
-                taskSyncRequestSupervisor);
+                taskSyncRequestSupervisor,
+                taskStageEvidenceProvider == null ? null : taskStageEvidenceProvider.getIfAvailable());
     }
 
     private TaskApiController(TaskQueryOperations taskQueries,
@@ -180,7 +200,8 @@ public class TaskApiController {
                               ApiAuthorizationService apiAuthorizationService,
                               TaskSecurityViewSupport taskSecurityViewSupport,
                               SyncTaskResultBridge syncTaskResultBridge,
-                              TaskSyncRequestSupervisor taskSyncRequestSupervisor) {
+                              TaskSyncRequestSupervisor taskSyncRequestSupervisor,
+                              TaskStageEvidenceOperations taskStageEvidence) {
         this.taskQueries = taskQueries;
         this.taskResultQueries = taskResultQueries != null
                 ? taskResultQueries
@@ -196,6 +217,7 @@ public class TaskApiController {
         this.taskSyncRequestSupervisor = taskSyncRequestSupervisor == null
                 ? new TaskSyncRequestSupervisor()
                 : taskSyncRequestSupervisor;
+        this.taskStageEvidence = taskStageEvidence;
     }
 
     @GetMapping("")
@@ -558,6 +580,56 @@ public class TaskApiController {
                     manifest.isReady() ? "/api/v1/tasks/" + taskId + "/results/archive/content" : ""
             ));
         });
+    }
+
+    @PostMapping("/{taskId}/items/{messageId}/stages/{stageName}/evidence")
+    @Operation(
+            summary = "Report task item stage evidence",
+            description = "Owner-backed task item stage evidence ingress. This path does not write task final results."
+    )
+    public ResponseEntity<ApiResponse<TaskStageEvidenceSnapshot>> reportTaskStageEvidence(
+            @PathVariable String taskId,
+            @PathVariable String messageId,
+            @PathVariable String stageName,
+            @RequestBody TaskStageEvidenceApiRequest requestBody) {
+        return executeApi("Task stage evidence report failed", () -> {
+            validateKnownFields(requestBody, "task stage evidence report");
+            return ok(requireTaskStageEvidence().reportTaskStageEvidence(
+                    new TaskStageEvidenceRequest(
+                            taskId,
+                            messageId,
+                            stageName,
+                            requestBody.getStageVersion(),
+                            requestBody.getStageStatus(),
+                            requestBody.getDetail(),
+                            requestBody.getObservedAt(),
+                            requestBody.getAttributes()
+                    )
+            ));
+        });
+    }
+
+    @GetMapping("/{taskId}/items/{messageId}/stages")
+    @Operation(summary = "List task item stage projections")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> listTaskStageProjections(@PathVariable String taskId,
+                                                                                     @PathVariable String messageId) {
+        return executeApi("Task stage projection list failed", () -> {
+            List<TaskStageProjectionSnapshot> items = requireTaskStageEvidence()
+                    .listTaskStageProjections(taskId, messageId);
+            return ok(Map.of(
+                    "items", items,
+                    "total", items.size()
+            ));
+        });
+    }
+
+    @GetMapping("/{taskId}/items/{messageId}/stages/{stageName}")
+    @Operation(summary = "Get task item stage projection")
+    public ResponseEntity<ApiResponse<TaskStageProjectionSnapshot>> getTaskStageProjection(@PathVariable String taskId,
+                                                                                          @PathVariable String messageId,
+                                                                                          @PathVariable String stageName) {
+        return executeApi("Task stage projection lookup failed", () -> ok(requireTaskStageEvidence()
+                .getTaskStageProjection(taskId, messageId, stageName)));
     }
 
     @GetMapping("/{taskId}/results/archive/content")
@@ -953,6 +1025,16 @@ public class TaskApiController {
         }
     }
 
+    private void validateKnownFields(TaskStageEvidenceApiRequest requestBody, String operationName) {
+        if (requestBody == null) {
+            throw new IllegalArgumentException("task request body is required");
+        }
+        if (requestBody.hasUnknownFields()) {
+            throw new IllegalArgumentException("Unsupported " + operationName + " fields: "
+                    + String.join(", ", requestBody.getUnknownFieldNames()));
+        }
+    }
+
     private List<String> resolveAppendEventCodes(TaskItemBatchIngestApiRequest requestBody,
                                                  List<Object> items) {
         return resolveAppendEventCodes(requestBody != null ? requestBody.getEventCode() : null, items);
@@ -1142,6 +1224,13 @@ public class TaskApiController {
             throw new IllegalStateException("Task result runtime query surface is unavailable");
         }
         return taskResultQueries;
+    }
+
+    private TaskStageEvidenceOperations requireTaskStageEvidence() {
+        if (taskStageEvidence == null) {
+            throw new IllegalStateException("Task stage evidence surface is unavailable");
+        }
+        return taskStageEvidence;
     }
 
     private SyncTaskResultBridge requireSyncTaskResultBridge() {

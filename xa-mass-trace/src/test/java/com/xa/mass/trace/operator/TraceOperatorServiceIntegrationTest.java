@@ -342,6 +342,21 @@ class TraceOperatorServiceIntegrationTest {
     }
 
     @Test
+    void analyzeRunsLateWorkerBackfillScenarioAgainstCanonicalSinkOutput() throws Exception {
+        writeLateWorkerBackfillTrace(tempDir, "task-late-backfill", "worker-late-01", true);
+        awaitJsonlFiles(tempDir, 1);
+
+        TraceAnalyzeResponse response = operatorService.analyze(
+                new TraceAnalyzeRequest(tempDir.toString(),
+                        "late-worker-backfill",
+                        "task-late-backfill,worker-late-01"));
+
+        assertTrue(response.ok(), response.issues().toString());
+        assertEquals("late-worker-backfill", response.scenarioId());
+        assertEquals(1L, response.eventTypeCounts().get("WORKER_MATCH_ACCEPTED"));
+    }
+
+    @Test
     void assignmentSuccessBindingScenarioFailsWhenBindingIsMissing() throws Exception {
         writeAssignmentMinGateTrace(tempDir, "task-broken-assignment");
         awaitJsonlFiles(tempDir, 1);
@@ -464,6 +479,36 @@ class TraceOperatorServiceIntegrationTest {
     }
 
     @Test
+    void lateWorkerBackfillScenarioFailsWithoutLateWorkerAcceptedMatch() throws Exception {
+        writeLateWorkerBackfillTrace(tempDir, "task-missing-late-worker", "worker-other-01", true);
+        awaitJsonlFiles(tempDir, 1);
+
+        TraceAnalyzeResponse response = operatorService.analyze(
+                new TraceAnalyzeRequest(tempDir.toString(),
+                        "late-worker-backfill",
+                        "task-missing-late-worker,worker-late-01"));
+
+        assertFalse(response.ok());
+        assertTrue(response.issues().stream()
+                .anyMatch(issue -> "MISSING_LATE_WORKER_ACCEPTED_MATCH".equals(issue.code())));
+    }
+
+    @Test
+    void lateWorkerBackfillScenarioFailsWithoutDispatchAfterLateWorkerMatch() throws Exception {
+        writeLateWorkerBackfillTrace(tempDir, "task-missing-backfill-dispatch", "worker-late-01", false);
+        awaitJsonlFiles(tempDir, 1);
+
+        TraceAnalyzeResponse response = operatorService.analyze(
+                new TraceAnalyzeRequest(tempDir.toString(),
+                        "late-worker-backfill",
+                        "task-missing-backfill-dispatch,worker-late-01"));
+
+        assertFalse(response.ok());
+        assertTrue(response.issues().stream()
+                .anyMatch(issue -> "MISSING_BACKFILL_DISPATCH_BINDING".equals(issue.code())));
+    }
+
+    @Test
     void scenarioRegistryStaysAvailableThroughOperatorService() {
         assertTrue(operatorService.scenarioIds().contains("single-message-success"));
         assertTrue(operatorService.scenarioIds().contains("duplicate-callback-replay"));
@@ -477,6 +522,7 @@ class TraceOperatorServiceIntegrationTest {
         assertTrue(operatorService.scenarioIds().contains("group-capability-routing"));
         assertTrue(operatorService.scenarioIds().contains("cross-task-worker-fairness"));
         assertTrue(operatorService.scenarioIds().contains("worker-resource-cleanup-without-context"));
+        assertTrue(operatorService.scenarioIds().contains("late-worker-backfill"));
     }
 
     private void writeCanonicalTrace(Path outputDir) throws Exception {
@@ -998,6 +1044,87 @@ class TraceOperatorServiceIntegrationTest {
                             "batchPolicy", "LARGE",
                             "leaseProfile", "NORMAL"))
                     .build());
+        }
+    }
+
+    private void writeLateWorkerBackfillTrace(Path outputDir,
+                                              String taskId,
+                                              String lateWorkerId,
+                                              boolean includeDispatchBinding) throws Exception {
+        try (JsonlExecutionEventSink sink = new JsonlExecutionEventSink(outputDir.toString(), 128, 10_000)) {
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.ASSIGNMENT_SUMMARY)
+                    .identity(identity -> identity.taskId(taskId))
+                    .attrs(attrs(
+                            "trigger", "ON_TASK_ASSIGN",
+                            "source", "TaskWorkerAssignListener",
+                            "reason", "matched workers below desired worker count",
+                            "result", "SKIPPED",
+                            "initialStatus", "READY",
+                            "currentStatus", "READY",
+                            "pendingDispatchCount", 4,
+                            "desiredDispatchWorkerCount", 2,
+                            "requiredStartWorkerCount", 1,
+                            "requestedMatchCount", 2,
+                            "matchedWorkerCount", 1,
+                            "dispatchCandidateCount", 1,
+                            "dispatchedMessageCount", 1,
+                            "usedWorkerCount", 1))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.WORKER_MATCH_ACCEPTED)
+                    .identity(identity -> identity.taskId(taskId).workerId(lateWorkerId))
+                    .outcome(true, null, "late worker matched and capacity reserved")
+                    .attrs(attrs(
+                            "source", "RuleBasedTaskWorkerMatchingStrategy",
+                            "reason", "late worker matched and capacity reserved",
+                            "result", "SUCCESS",
+                            "candidateRank", 1,
+                            "candidateScore", "0.1",
+                            "workerGroupId", "pool-late",
+                            "eventBindingKey", "soakProject:soak.dispatch.0",
+                            "workerCandidateSource", "GROUP_INDEX",
+                            "workerSchedulingResourceId", lateWorkerId,
+                            "workerReservedCount", 1,
+                            "workerDeclaredCapacity", 1))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.ASSIGNMENT_SUMMARY)
+                    .identity(identity -> identity.taskId(taskId))
+                    .attrs(attrs(
+                            "trigger", "ON_TASK_ASSIGN",
+                            "source", "TaskWorkerAssignListener",
+                            "reason", "late worker backfilled pending work",
+                            "result", "SUCCESS",
+                            "initialStatus", "READY",
+                            "currentStatus", "RUNNING",
+                            "pendingDispatchCount", 3,
+                            "desiredDispatchWorkerCount", 2,
+                            "requiredStartWorkerCount", 1,
+                            "requestedMatchCount", 1,
+                            "matchedWorkerCount", 1,
+                            "dispatchCandidateCount", 1,
+                            "dispatchedMessageCount", includeDispatchBinding ? 1 : 0,
+                            "usedWorkerCount", 1))
+                    .build());
+            if (includeDispatchBinding) {
+                sink.emit(ExecutionEvent.builder()
+                        .eventType(ExecutionEventType.DISPATCH_BINDING_SUMMARY)
+                        .identity(identity -> identity.taskId(taskId))
+                        .attrs(attrs(
+                                "trigger", "ON_MSG_ASSIGN",
+                                "source", "SimpleTaskDispatchBinder",
+                                "reason", "late worker dispatch slot bound",
+                                "result", "SUCCESS",
+                                "pendingMessageCount", 3,
+                                "matchedWorkerCount", 1,
+                                "dispatchSlotCount", 1,
+                                "dispatchedMessageCount", 1,
+                                "unassignedMessageCount", 2,
+                                "uniqueWorkerCount", 1,
+                                "perWorkerBatchLimit", 1))
+                        .build());
+            }
         }
     }
 

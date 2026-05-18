@@ -324,6 +324,12 @@ its `taskId` argument is `<bulkTaskId>,<interactiveTaskId>`. It reads canonical
 assignment rows for both tasks and proves that a budget-limited BULK assignment
 under backlog pressure still leaves distinct worker capacity for a successful
 INTERACTIVE assignment.
+The `late-worker-backfill` analyzer is intentionally a task-plus-worker
+scenario: its `taskId` argument is `<taskId>,<lateWorkerId>`. It proves that
+the specified late worker appears as an accepted worker match and that a
+successful assignment summary plus dispatch binding evidence exists at or after
+that match. It does not infer which worker joined late; the caller supplies the
+worker id from the scenario setup or soak worker lifecycle report.
 
 Trace operator queries must read rotated canonical JSONL files with a unioned
 schema. Schedule fields may first appear in later rotated files, so analyzer

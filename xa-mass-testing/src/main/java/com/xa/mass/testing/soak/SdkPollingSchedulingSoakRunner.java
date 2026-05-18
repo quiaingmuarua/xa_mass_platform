@@ -23,6 +23,8 @@ import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.testing.support.TestingPaths;
 import com.xa.mass.trace.operator.TraceStatsRequest;
 import com.xa.mass.trace.operator.TraceStatsResponse;
+import com.xa.mass.trace.operator.TraceAnalyzeRequest;
+import com.xa.mass.trace.operator.TraceAnalyzeResponse;
 import com.xa.mass.trace.operator.TraceValidateRequest;
 import com.xa.mass.trace.operator.TraceValidateResponse;
 import com.xa.mass.trace.operator.TraceOperatorService;
@@ -50,6 +52,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.LongAccumulator;
 import java.util.concurrent.atomic.LongAdder;
 
@@ -156,7 +159,7 @@ public final class SdkPollingSchedulingSoakRunner {
             }
 
             long wallNanos = System.nanoTime() - startedNanos;
-            TraceProof traceProof = verifyTrace(traceSink, traceDir);
+            TraceProof traceProof = verifyTrace(traceSink, traceDir, workerLifecycle);
             SoakTraceProof traceProofSummary = traceProof.toSummary();
             invariantReport = verifyInvariants(
                     submittedTasks,
@@ -527,15 +530,27 @@ public final class SdkPollingSchedulingSoakRunner {
             return diagnostics == null ? Map.of("available", false) : diagnostics.getQueueDetail();
         }
 
-        private TraceProof verifyTrace(JsonlExecutionEventSink traceSink, Path traceDir) throws Exception {
+        private TraceProof verifyTrace(JsonlExecutionEventSink traceSink,
+                                       Path traceDir,
+                                       WorkerLifecycleStats workerLifecycle) throws Exception {
             if (!config.traceEnabled()) {
-                return new TraceProof(false, null, null, null, 0L);
+                return new TraceProof(false, null, null, null, 0L, List.of());
             }
             long dropped = traceSink == null ? 0L : traceSink.getDroppedCount();
             TraceOperatorService traceOperator = new TraceOperatorService();
             TraceValidateResponse validate = traceOperator.validate(new TraceValidateRequest(traceDir.toString()));
             TraceStatsResponse stats = traceOperator.stats(new TraceStatsRequest(traceDir.toString(), null, null, null, 100));
-            return new TraceProof(true, traceDir.toString(), validate, stats, dropped);
+            List<TraceAnalyzeResponse> analyses = new ArrayList<>();
+            if (config.requireLateWorkerWork()
+                    && present(workerLifecycle.lateWorkerProofTaskId())
+                    && present(workerLifecycle.lateWorkerProofWorkerId())) {
+                analyses.add(traceOperator.analyze(new TraceAnalyzeRequest(
+                        traceDir.toString(),
+                        "late-worker-backfill",
+                        workerLifecycle.lateWorkerProofTaskId() + "," + workerLifecycle.lateWorkerProofWorkerId()
+                )));
+            }
+            return new TraceProof(true, traceDir.toString(), validate, stats, dropped, List.copyOf(analyses));
         }
 
         private Map<String, Object> buildReport(long submittedTasks,
@@ -604,6 +619,7 @@ public final class SdkPollingSchedulingSoakRunner {
                     traceProof.enabled(),
                     traceProof.validation() != null && traceProof.validation().valid(),
                     traceProof.droppedCount(),
+                    traceProof.analysesOk(),
                     config.requireLateWorkerWork(),
                     workerLifecycle.lateWorkerReceivedItems(),
                     workerLifecycle.lateWorkerResultSubmissions(),
@@ -619,20 +635,29 @@ public final class SdkPollingSchedulingSoakRunner {
             SoakMetricsSnapshot snapshot = metrics.snapshot();
             long lateWorkerReceivedItems = 0;
             long lateWorkerResultSubmissions = 0;
+            String lateWorkerProofTaskId = null;
+            String lateWorkerProofWorkerId = null;
             for (int i = config.initialWorkerCount(); i < config.workerCount(); i++) {
-                WorkerMetricsSnapshot worker = snapshot.byWorker().get(workerId(i));
+                String workerId = workerId(i);
+                WorkerMetricsSnapshot worker = snapshot.byWorker().get(workerId);
                 if (worker == null) {
                     continue;
                 }
                 lateWorkerReceivedItems += worker.receivedItems();
                 lateWorkerResultSubmissions += worker.resultSubmissions();
+                if (lateWorkerProofTaskId == null && present(worker.firstTaskId())) {
+                    lateWorkerProofTaskId = worker.firstTaskId();
+                    lateWorkerProofWorkerId = workerId;
+                }
             }
             return new WorkerLifecycleStats(
                     config.initialWorkerCount(),
                     config.workerCount() - config.initialWorkerCount(),
                     config.lateWorkerStartAfterMillis(),
                     lateWorkerReceivedItems,
-                    lateWorkerResultSubmissions
+                    lateWorkerResultSubmissions,
+                    lateWorkerProofTaskId,
+                    lateWorkerProofWorkerId
             );
         }
 
@@ -701,6 +726,7 @@ public final class SdkPollingSchedulingSoakRunner {
                         continue;
                     }
                     for (TaskDispatchItem item : items) {
+                        metrics.recordReceivedItem(workerId, item.getTaskId());
                         processingExecutor.submit(() -> process(item));
                     }
                 } catch (InterruptedException e) {
@@ -801,6 +827,10 @@ public final class SdkPollingSchedulingSoakRunner {
         return failureEveryNth <= 0 || globalSeq % failureEveryNth != 0;
     }
 
+    private static boolean present(String value) {
+        return value != null && !value.isBlank();
+    }
+
     private static double nanosToMillis(long nanos) {
         return nanos / 1_000_000.0d;
     }
@@ -859,9 +889,14 @@ public final class SdkPollingSchedulingSoakRunner {
                               String path,
                               TraceValidateResponse validation,
                               TraceStatsResponse stats,
-                              long droppedCount) {
+                              long droppedCount,
+                              List<TraceAnalyzeResponse> analyses) {
         private SoakTraceProof toSummary() {
-            return new SoakTraceProof(enabled, path, validation, stats, droppedCount);
+            return new SoakTraceProof(enabled, path, validation, stats, droppedCount, analyses);
+        }
+
+        private boolean analysesOk() {
+            return analyses == null || analyses.stream().allMatch(TraceAnalyzeResponse::ok);
         }
     }
 
@@ -869,15 +904,19 @@ public final class SdkPollingSchedulingSoakRunner {
                                         int lateWorkerCount,
                                         int lateWorkerStartAfterMillis,
                                         long lateWorkerReceivedItems,
-                                        long lateWorkerResultSubmissions) {
+                                        long lateWorkerResultSubmissions,
+                                        String lateWorkerProofTaskId,
+                                        String lateWorkerProofWorkerId) {
         private Map<String, Object> toMap() {
-            return Map.of(
-                    "initialWorkerCount", initialWorkerCount,
-                    "lateWorkerCount", lateWorkerCount,
-                    "lateWorkerStartAfterMillis", lateWorkerStartAfterMillis,
-                    "lateWorkerReceivedItems", lateWorkerReceivedItems,
-                    "lateWorkerResultSubmissions", lateWorkerResultSubmissions
-            );
+            Map<String, Object> values = new LinkedHashMap<>();
+            values.put("initialWorkerCount", initialWorkerCount);
+            values.put("lateWorkerCount", lateWorkerCount);
+            values.put("lateWorkerStartAfterMillis", lateWorkerStartAfterMillis);
+            values.put("lateWorkerReceivedItems", lateWorkerReceivedItems);
+            values.put("lateWorkerResultSubmissions", lateWorkerResultSubmissions);
+            values.put("lateWorkerProofTaskId", lateWorkerProofTaskId);
+            values.put("lateWorkerProofWorkerId", lateWorkerProofWorkerId);
+            return values;
         }
     }
 
@@ -902,6 +941,10 @@ public final class SdkPollingSchedulingSoakRunner {
             }
             receivedItems.add(batchSize);
             maxReceivedBatch.accumulate(batchSize);
+        }
+
+        private void recordReceivedItem(String workerId, String taskId) {
+            byWorker(workerId).recordReceivedItem(taskId);
         }
 
         private void beginProcessing() {
@@ -953,6 +996,7 @@ public final class SdkPollingSchedulingSoakRunner {
         private final LongAdder failedResults = new LongAdder();
         private final LongAdder totalProcessingNanos = new LongAdder();
         private final LongAccumulator maxReceivedBatch = new LongAccumulator(Long::max, 0);
+        private final AtomicReference<String> firstTaskId = new AtomicReference<>();
 
         private void recordPoll(int batchSize) {
             pollCycles.increment();
@@ -972,6 +1016,12 @@ public final class SdkPollingSchedulingSoakRunner {
             totalProcessingNanos.add(processingNanos);
         }
 
+        private void recordReceivedItem(String taskId) {
+            if (taskId != null && !taskId.isBlank()) {
+                firstTaskId.compareAndSet(null, taskId);
+            }
+        }
+
         private WorkerMetricsSnapshot snapshot() {
             return new WorkerMetricsSnapshot(
                     pollCycles.sum(),
@@ -980,7 +1030,8 @@ public final class SdkPollingSchedulingSoakRunner {
                     resultSubmissions.sum(),
                     failedResults.sum(),
                     maxReceivedBatch.get(),
-                    nanosToMillis(totalProcessingNanos.sum())
+                    nanosToMillis(totalProcessingNanos.sum()),
+                    firstTaskId.get()
             );
         }
     }
@@ -1015,7 +1066,8 @@ public final class SdkPollingSchedulingSoakRunner {
                                          long resultSubmissions,
                                          long failedResults,
                                          long maxReceivedBatch,
-                                         double totalProcessingMillis) {
+                                         double totalProcessingMillis,
+                                         String firstTaskId) {
     }
 
     private record SoakReport(String runId,

@@ -51,6 +51,11 @@ final class SoakRuntimeInvariantChecker {
                     "trace sink should not drop events",
                     0,
                     snapshot.traceDropped());
+            if (!snapshot.traceAnalysesOk()) {
+                issues.add(new SoakInvariantIssue(
+                        "TRACE_ANALYSIS_FAILED",
+                        "trace scenario analysis should pass"));
+            }
         }
         if (snapshot.requireLateWorkerWork()) {
             requirePositive(issues,
@@ -106,6 +111,7 @@ final class SoakRuntimeInvariantChecker {
                     boolean traceEnabled,
                     boolean traceValid,
                     long traceDropped,
+                    boolean traceAnalysesOk,
                     boolean requireLateWorkerWork,
                     long lateWorkerReceivedItems,
                     long lateWorkerResultSubmissions,
