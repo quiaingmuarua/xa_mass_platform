@@ -7,6 +7,7 @@ import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
+import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
@@ -105,6 +106,11 @@ class TaskContractTerminalBehaviorTest {
         assertNull(current.getTerminalReason());
         assertEquals(TaskIntakeStatus.SEALED, current.getIntakeStatus());
         assertEquals(1, current.getTaskTargetNumber());
+
+        TaskStateResolutionResult resolution = taskManager.resolveTaskState(task.getTid());
+        assertEquals(TaskStateResolutionResult.Outcome.NOT_FINALIZED, resolution.getOutcome());
+        assertEquals(TaskStatus.RUNNING, resolution.getStatus());
+        assertNull(resolution.getTerminalReason());
     }
 
     @Test

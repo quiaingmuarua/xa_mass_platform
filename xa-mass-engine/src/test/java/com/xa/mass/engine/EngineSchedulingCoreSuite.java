@@ -7,6 +7,7 @@ import com.xa.mass.engine.model.WorkerMatchContextTest;
 import com.xa.mass.engine.strategy.RuleBasedTaskWorkerMatchingStrategyTest;
 import com.xa.mass.engine.strategy.WorkerSchedulingCandidateEnumeratorTest;
 import com.xa.mass.engine.worker.WorkerCandidateIndexTest;
+import com.xa.mass.engine.worker.WorkerManagerTest;
 import com.xa.mass.engine.worker.WorkerRegistrySnapshotTest;
 import org.junit.platform.suite.api.SelectClasses;
 import org.junit.platform.suite.api.Suite;

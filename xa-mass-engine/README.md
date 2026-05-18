@@ -130,6 +130,9 @@ Current WorkerGroup roadmap baseline:
 Read this before interpreting engine tests.
 
 - `engine` is the primary proof surface for scheduling correctness
+- scheduling correctness is organized by invariant in
+  [`SCHEDULING_CORRECTNESS_MATRIX.md`](./doc/baseline/SCHEDULING_CORRECTNESS_MATRIX.md);
+  use that matrix before adding another scheduling test class
 - `TaskSchedulingTestHarness` is a test substrate for the scheduling matrix, not
   a second implementation world
 - keep these tests local when the real question is:
@@ -143,6 +146,18 @@ Read this before interpreting engine tests.
   - disconnect/reconnect/replay under real runtime edges
 - do not add new engine tests that use compatibility projection as immediate
   runtime truth
+
+## Kernel Convergence Test Intent
+
+- lifecycle/result convergence is organized by invariant in
+  [`KERNEL_CONVERGENCE_MATRIX.md`](./doc/baseline/KERNEL_CONVERGENCE_MATRIX.md)
+- `EngineKernelConvergenceSuite` is the runtime-first gate for deterministic
+  lifecycle and convergence facts that do not need projection residue
+- important current result-runtime and race coverage still exists inside
+  compatibility-heavy secondary classes; keep that gap explicit until those
+  cases are extracted into dedicated runtime-first tests
+- do not promote a projection-aware mixed class into the mainline suite merely
+  because it contains some important assertions
 
 ## Start Here
 
@@ -203,7 +218,7 @@ Keep these facts fixed unless the owning global baselines change:
 - worker matching is task-level orchestration; do not fall back to per-message
   matching on the hot path
 - fixed scheduling mainlines are documented in
-  `SCHEDULING_KERNEL_GUARDRAILS.md`; scheduling changes must preserve those
+  `doc/baseline/SCHEDULING_KERNEL_BASELINE.md`; scheduling changes must preserve those
   owner boundaries or update the owning baseline in the same change
 - `AssignmentAllocationPolicy` owns allocation shape for a task-level assignment
   attempt; `TaskWorkerAssignListener` keeps cross-aggregate orchestration and
@@ -449,7 +464,10 @@ What engine tests do not replace:
 
 Useful starting tests:
 
+- `EngineKernelConvergenceArchitectureGuardTest`
 - `TaskKernelLifecycleTest`
+- `TaskResultRuntimeConvergenceTest`
+- `TaskResultConcurrencyConvergenceTest`
 - `EngineSchedulingCoreArchitectureGuardTest`
 - `TaskContractTerminalBehaviorTest`
 - `TaskContractSchedulingBehaviorTest`
@@ -489,7 +507,6 @@ Explicit secondary residue/audit tests:
 
 - `EngineProjectionResidueSuite`
   - `TaskManagerLifecycleTest`
-  - `TaskConcurrencyAcceptanceTest`
   - `SimpleTaskDispatchBinderTest`
 - `EngineProjectionAuditSuite`
   - `TaskStateValidatorBoundaryTest`
@@ -498,45 +515,48 @@ Explicit secondary residue/audit tests:
 
 Engine-local owner docs:
 
-- [`SCHEDULING_KERNEL_GUARDRAILS.md`](./SCHEDULING_KERNEL_GUARDRAILS.md):
-  short kernel guardrails for policy-vs-mechanism separation and future
-  scheduling evolution
-- [`POLICY_INTERACTION_BASELINE.md`](./POLICY_INTERACTION_BASELINE.md):
-  current policy ownership and precedence
-- [`RUNTIME_BOUNDARY_BASELINE.md`](./RUNTIME_BOUNDARY_BASELINE.md):
+- [`doc/README.md`](./doc/README.md):
+  engine-local documentation index. Current truth lives in `doc/baseline/`,
+  future direction in `doc/roadmap/`, and completed historical plans in the
+  repo-level `../doc/archive/xa-mass-engine/`.
+
+- [`doc/baseline/SCHEDULING_CORRECTNESS_MATRIX.md`](./doc/baseline/SCHEDULING_CORRECTNESS_MATRIX.md):
+  current invariant-to-test map for scheduling correctness, proof surfaces, and
+  known deterministic coverage gaps
+- [`doc/baseline/KERNEL_CONVERGENCE_MATRIX.md`](./doc/baseline/KERNEL_CONVERGENCE_MATRIX.md):
+  current invariant-to-test map for lifecycle/result convergence, proof
+  surfaces, and the remaining extraction gap from mixed legacy tests
+- [`doc/baseline/SCHEDULING_KERNEL_BASELINE.md`](./doc/baseline/SCHEDULING_KERNEL_BASELINE.md):
+  current scheduling mainline, worker scheduling surface, policy ownership,
+  precedence, boundaries, and proof map
+- [`doc/baseline/RUNTIME_BOUNDARY_BASELINE.md`](./doc/baseline/RUNTIME_BOUNDARY_BASELINE.md):
   current runtime cutover, recovery, and truth-layer boundary
-- [`STORAGE_BASELINE.md`](./STORAGE_BASELINE.md):
+- [`doc/baseline/STORAGE_BASELINE.md`](./doc/baseline/STORAGE_BASELINE.md):
   current engine-facing storage/runtime boundary
-- [`TASK_RUNTIME_PROFILE_DESIGN.md`](./TASK_RUNTIME_PROFILE_DESIGN.md):
+- [`doc/roadmap/TASK_RUNTIME_PROFILE_DESIGN.md`](./doc/roadmap/TASK_RUNTIME_PROFILE_DESIGN.md):
   design/refactor note for the remaining workload-profile evolution only
-- [`SCHEDULING_UPGRADE_ROADMAP.md`](./SCHEDULING_UPGRADE_ROADMAP.md):
+- [`../doc/archive/xa-mass-engine/SCHEDULING_UPGRADE_ROADMAP.md`](../doc/archive/xa-mass-engine/SCHEDULING_UPGRADE_ROADMAP.md):
   historical long-range scheduling upgrade roadmap plus remaining future
   directions. Completed progress notes describe current baseline; future
   sections remain planning material.
-- [`WORKER_SCHEDULING_VIEW_BASELINE.md`](./WORKER_SCHEDULING_VIEW_BASELINE.md):
-  current worker scheduling read-model baseline after WorkerContext retirement
-  and WorkerGroup candidate-source convergence
-- [`WORKER_CONTEXT_RETIREMENT_PLAN.md`](./WORKER_CONTEXT_RETIREMENT_PLAN.md):
+- [`doc/baseline/EVENT_OWNER_BOUNDARY.md`](./doc/baseline/EVENT_OWNER_BOUNDARY.md):
+  current owner map for descriptor metadata, task-result input, worker
+  presence ingress, and future command/state/capability owner slots
+- [`../doc/archive/xa-mass-engine/WORKER_CONTEXT_RETIREMENT_PLAN.md`](../doc/archive/xa-mass-engine/WORKER_CONTEXT_RETIREMENT_PLAN.md):
   completed WorkerContext retirement baseline plus historical phased plan.
   Current scheduling kernel code must not reintroduce WorkerContext identity,
   storage, or rule fields.
-- [`WORKER_GROUP_CAPABILITY_ROADMAP.md`](./WORKER_GROUP_CAPABILITY_ROADMAP.md):
+- [`../doc/archive/xa-mass-engine/WORKER_GROUP_CAPABILITY_ROADMAP.md`](../doc/archive/xa-mass-engine/WORKER_GROUP_CAPABILITY_ROADMAP.md):
   completed WG-0 through WG-5 baseline for WorkerGroup capability ownership and
   indexed scheduling candidate lookup, plus future WorkerGroup extension
   directions. It uses the `AdapterNode -> WorkerGroup -> Worker` model and
   explicitly avoids module split, service extraction, worker
   command/state-report implementation, and unified event-envelope runtime work.
-- [`UNIFIED_EVENT_ENVELOPE_ROADMAP.md`](./UNIFIED_EVENT_ENVELOPE_ROADMAP.md):
-  first-wave baseline for event-metadata and owner-boundary convergence. The
-  core line is UE-0 through UE-3: owner inventory,
-  `EventDefinition` / `CoreEventDescriptor` metadata, catalog/API visibility,
-  and owner guards. UE-0 through UE-3 are implemented as metadata/read-surface
-  plus architecture-guard work; the roadmap explicitly does not implement unified event runtime,
-  queue-priority behavior, worker command/state-report lifecycle, or task-stage
-  semantics in the first wave.
-- [`EVENT_METADATA_OWNER_BOUNDARY.md`](./EVENT_METADATA_OWNER_BOUNDARY.md):
-  first-wave owner map for event-like surfaces, updated through UE-3 owner
-  guards. It records current lifecycle truth owners and the metadata boundary.
+- [`doc/roadmap/EVENT_AND_WORKER_CONTROL_ROADMAP.md`](./doc/roadmap/EVENT_AND_WORKER_CONTROL_ROADMAP.md):
+  active future path after event-metadata baseline closure: one event language
+  without assuming one event runtime, target-specific handlers, capability
+  authority-model convergence before self-report adoption, then additional
+  worker-control and stage owner lines.
 
 Global baselines:
 

@@ -8,7 +8,7 @@ Trust: code and verified behavior override this summary.
 
 - [../AGENTS.md](../AGENTS.md)
 - [./AGENT_BASELINE.md](./AGENT_BASELINE.md)
-- [../xa-mass-engine/TASK_RUNTIME_PROFILE_DESIGN.md](../xa-mass-engine/TASK_RUNTIME_PROFILE_DESIGN.md)
+- [../xa-mass-engine/doc/roadmap/TASK_RUNTIME_PROFILE_DESIGN.md](../xa-mass-engine/doc/roadmap/TASK_RUNTIME_PROFILE_DESIGN.md)
 - [../transport/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md](../transport/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md)
 - [./TESTING_BASELINE.md](./TESTING_BASELINE.md)
 

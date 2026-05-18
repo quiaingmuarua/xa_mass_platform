@@ -25,7 +25,7 @@ Transport owns delivery mechanics for workers:
 - adapter registration and adapter selection by `adapterId`
 - task dispatch delivery, queueing, draining, and dispatch outcomes
 - task result ingress wrapping with transport metadata
-- worker system-event ingress and egress
+- worker system-event ingress and egress for current worker presence signals
 
 Engine remains the owner of task lifecycle:
 
@@ -58,9 +58,25 @@ Transport should stay centered on these concepts only:
 - `WorkerDispatchRouteOwnerView`: narrow read-only route-owner view used by
   engine-side dispatch routing after worker matching has already selected a
   worker
+- `WorkerSystemEventChannel`: transport-neutral ingress seam for worker
+  online/offline/heartbeat presence signals. It is not a worker command,
+  worker state-report, or capability-report lifecycle owner.
 
 Avoid adding new transport model names unless they carry a distinct runtime
 behavior that cannot fit one of these concepts.
+
+Worker system events are intentionally narrow in the current baseline. Future
+worker command, worker state-report, or worker capability self-report flows may
+use transport ingress, but they must first define a separate owner that
+validates, stores, projects, repairs, and exposes the resulting state. Transport
+must not route command acknowledgements through task result ingest, treat state
+reports as reachability truth, or mutate worker capability truth directly from
+the system-event channel.
+
+The future worker-control direction is tracked in
+`../xa-mass-engine/doc/roadmap/EVENT_AND_WORKER_CONTROL_ROADMAP.md`.
+Transport may carry command delivery later, but it must not own command
+lifecycle state.
 
 ## Module Ownership
 

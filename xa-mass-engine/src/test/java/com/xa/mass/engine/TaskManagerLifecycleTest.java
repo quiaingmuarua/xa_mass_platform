@@ -18,19 +18,9 @@ import com.xa.mass.storage.api.projection.TaskMessageProjectionFinalReason;
 import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.engine.util.TraceEventLogCapture;
-import com.xa.mass.runtime.api.BarrierClaim;
-import com.xa.mass.runtime.api.BarrierMarkResult;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
-import com.xa.mass.runtime.api.CommitResult;
-import com.xa.mass.runtime.api.TaskResultCallbackDraft;
-import com.xa.mass.runtime.api.TaskResultFinalDraft;
-import com.xa.mass.runtime.api.TaskResultRepairKind;
-import com.xa.mass.runtime.api.TaskResultRepairCandidate;
-import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.api.TaskResultRuntimeRow;
-import com.xa.mass.runtime.api.TaskResultWindow;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
-import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -95,32 +85,6 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
-    void createTaskDoesNotInferContractFromInteractiveWorkload() {
-        TaskCreateSpec dto = buildRequest("task-workload-not-contract");
-        dto.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
-
-        Task task = createTask(dto);
-
-        assertEquals(TaskContract.BATCH, task.getContract());
-        assertEquals(TaskWorkloadClass.INTERACTIVE, task.getExecutionSpec().getWorkloadClass());
-        assertEquals(TaskIntakeStatus.SEALED, task.getIntakeStatus());
-    }
-
-    @Test
-    void taskCanMoveFromNewToReadyToPausedAndBackToReady() {
-        Task task = createTask(buildRequest("task-lifecycle"));
-
-        assertTrue(taskManager.approveTask(task.getTid()));
-        assertEquals(TaskStatus.READY, taskManager.getTask(task.getTid()).getStatus());
-
-        assertTrue(taskManager.pauseTask(task.getTid()));
-        assertEquals(TaskStatus.PAUSED, taskManager.getTask(task.getTid()).getStatus());
-
-        assertTrue(taskManager.resumeTask(task.getTid()));
-        assertEquals(TaskStatus.READY, taskManager.getTask(task.getTid()).getStatus());
-    }
-
-    @Test
     void resumeTaskDetailedReportsReadyOutcome() {
         Task task = createTask(buildRequest("task-resume-detailed"));
         assertTrue(taskManager.approveTask(task.getTid()));
@@ -132,19 +96,6 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskResumeResult.Outcome.RESUMED_TO_READY, result.getOutcome());
         assertEquals(TaskStatus.READY, result.getStatus());
         assertNull(result.getTerminalReason());
-    }
-
-    @Test
-    void blockedTaskCanBeApprovedBackToReady() {
-        Task task = createTask(buildRequest("task-blocked"));
-
-        assertTrue(taskManager.rejectTask(task.getTid()));
-        assertEquals(TaskStatus.BLOCKED, taskManager.getTask(task.getTid()).getStatus());
-        assertEquals(TaskHoldReason.REVIEW_REJECTED, taskManager.getTask(task.getTid()).getHoldReason());
-
-        assertTrue(taskManager.approveTask(task.getTid()));
-        assertEquals(TaskStatus.READY, taskManager.getTask(task.getTid()).getStatus());
-        assertNull(taskManager.getTask(task.getTid()).getHoldReason());
     }
 
     @Test
@@ -162,24 +113,6 @@ class TaskManagerLifecycleTest {
         assertTrue(taskManager.resumeTask(task.getTid()));
 
         assertEquals(2, notifications.get());
-    }
-
-    @Test
-    void invalidActionsAreRejectedOutsideExpectedStates() {
-        Task task = createTask(buildRequest("task-invalid"));
-
-        assertFalse(taskManager.pauseTask(task.getTid()));
-        assertFalse(taskManager.resumeTask(task.getTid()));
-
-        assertTrue(taskManager.approveTask(task.getTid()));
-        assertFalse(taskManager.rejectTask(task.getTid()));
-        assertFalse(taskManager.approveTask(task.getTid()));
-
-        assertTrue(taskManager.cancelTask(task.getTid()));
-        assertEquals(TaskStatus.TERMINAL, taskManager.getTask(task.getTid()).getStatus());
-        assertEquals(TaskTerminalReason.MANUAL_CANCELLED, taskManager.getTask(task.getTid()).getTerminalReason());
-        assertFalse(taskManager.getTaskWorkRuntime().hasReadyWork(task.getTid()));
-        assertFalse(taskManager.resumeTask(task.getTid()));
     }
 
     @Test
@@ -604,28 +537,6 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
-    void appendTaskItemsRejectsOversizedIngestBatch() {
-        TaskCreateSpec dto = new TaskCreateSpec();
-        dto.setSourceRef("stream-shell-ingest-limit");
-        dto.setProject("demoApp");
-        dto.setUserId("agent");
-        dto.setSealIntakeAfterCreate(false);
-        dto.setContract(TaskContract.SESSION);
-        dto.setInputs(List.of());
-        Task task = createTask(dto);
-
-        List<java.util.Map<String, Object>> oversizedBatch = java.util.stream.IntStream
-                .rangeClosed(0, TaskManager.MAX_INGEST_BATCH_ITEMS)
-                .mapToObj(i -> java.util.Map.<String, Object>of("target", "t-" + i))
-                .toList();
-
-        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-                () -> taskManager.appendTaskItems(task.getTid(), oversizedBatch));
-
-        assertTrue(error.getMessage().contains("append items exceed ingest batch limit"));
-    }
-
-    @Test
     void interactiveTaskAppendRespectsWorkloadAwareReadyBackpressureCap() {
         String previousInteractiveCap = System.getProperty("xa.mass.engine.interactiveMaxReadyItemsPerTask");
         String previousBulkCap = System.getProperty("xa.mass.engine.bulkMaxReadyItemsPerTask");
@@ -839,247 +750,6 @@ class TaskManagerLifecycleTest {
         );
         assertNotNull(latestAttempt);
         assertEquals(TaskMessageAttemptProjectionStatus.SUCCEEDED, latestAttempt.status());
-    }
-
-    @Test
-    void ingestTaskResultCommitsVisibleRuntimeResultRowAndDuplicateDoesNotAppend() {
-        Task task = createTask(buildRequest("task-result-runtime-visible", List.of("alpha"), 0));
-        taskManager.approveTask(task.getTid());
-        task.setStatus(TaskStatus.RUNNING);
-        taskManager.updateTask(task);
-
-        TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
-        assignMessage(task, message);
-
-        AtomicInteger logicalFinalEvents = new AtomicInteger();
-        taskManager.events().addTaskWorkLogicallyFinalListener((currentTask, event) ->
-                logicalFinalEvents.incrementAndGet());
-
-        assertTrue(taskManager.ingestTaskResult(
-                task.getTid(),
-                message.messageId(),
-                true,
-                "done",
-                null,
-                Map.of("value", "ok")));
-
-        TaskResultWindow window = taskManager.getTaskResultRuntime().readWindow(task.getTid(), 0, 10);
-        assertEquals(1, window.items().size());
-        TaskResultRuntimeRow row = window.items().get(0);
-        assertEquals(message.messageId(), row.messageId());
-        assertEquals(1L, row.seq());
-        assertEquals("SUCCESS", row.status());
-        assertEquals("BUSINESS_SUCCESS", row.finalReason());
-        assertEquals(Map.of("value", "ok"), row.output());
-        assertTrue(row.logicalFinalPublished());
-        assertTrue(row.progressApplied());
-        assertEquals(1, logicalFinalEvents.get());
-
-        assertTrue(taskManager.ingestTaskResult(task.getTid(), message.messageId(), false, "late-duplicate"));
-
-        TaskResultWindow afterDuplicate = taskManager.getTaskResultRuntime().readWindow(task.getTid(), 0, 10);
-        assertEquals(1, afterDuplicate.items().size());
-        assertEquals(1, logicalFinalEvents.get());
-    }
-
-    @Test
-    void retryableFailureDiscardsStageAndDoesNotCreateVisibleRuntimeResultRow() {
-        Task task = createTask(buildRequest("task-result-runtime-retry", List.of("alpha"), 1));
-        taskManager.approveTask(task.getTid());
-        task.setStatus(TaskStatus.RUNNING);
-        taskManager.updateTask(task);
-
-        TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
-        assignMessage(task, message);
-
-        assertTrue(taskManager.ingestTaskResult(task.getTid(), message.messageId(), false, "boom-once", "BOOM"));
-
-        assertEquals(0, taskManager.getTaskResultRuntime().countVisibleResults(task.getTid()));
-        assertTrue(taskManager.getTaskResultRuntime().scanRepairCandidates(10).isEmpty());
-    }
-
-    @Test
-    void visibleCommitFailureLeavesStagedDraftAndRepairPumpCompletesResultProgressOnce() {
-        String previousInterval = System.getProperty("xa.mass.engine.resultRepairPumpIntervalMillis");
-        FlakyCommitTaskResultRuntime resultRuntime = new FlakyCommitTaskResultRuntime();
-        ProjectionAwareTaskManager manager = null;
-        try {
-            System.setProperty("xa.mass.engine.resultRepairPumpIntervalMillis", "10");
-            resultRuntime.blockRepairPumpScans();
-            InMemoryTaskStorage repairStorage = new InMemoryTaskStorage();
-            manager = new ProjectionAwareTaskManager(
-                    repairStorage,
-                    repairStorage,
-                    new InMemoryTaskWorkRuntime(),
-                    resultRuntime
-            );
-
-            Task task = createTask(manager, buildRequest("task-result-runtime-repair", List.of("alpha"), 0));
-            manager.approveTask(task.getTid());
-            task.setStatus(TaskStatus.RUNNING);
-            manager.updateTask(task);
-
-            TaskDetailStore.TaskMessageProjection message = manager.getTaskMessageRecords(task.getTid()).get(0);
-            assignMessage(manager, task, message);
-
-            AtomicInteger logicalFinalEvents = new AtomicInteger();
-            AtomicInteger attemptClosedEvents = new AtomicInteger();
-            manager.events().addTaskWorkAttemptClosedListener((currentTask, attempt) ->
-                    attemptClosedEvents.incrementAndGet());
-            manager.events().addTaskWorkLogicallyFinalListener((currentTask, event) ->
-                    logicalFinalEvents.incrementAndGet());
-
-            resultRuntime.failNextVisibleCommit();
-            assertTrue(manager.ingestTaskResult(task.getTid(), message.messageId(), true, "done"));
-
-            assertEquals(0, manager.getTaskResultRuntime().countVisibleResults(task.getTid()));
-            assertEquals(TaskStatus.RUNNING, manager.getTask(task.getTid()).getStatus());
-            assertFalse(manager.getTaskResultRuntime().scanRepairCandidates(10).isEmpty());
-
-            resultRuntime.allowRepairPumpScans();
-            ProjectionAwareTaskManager capturedManager = manager;
-            awaitCondition(
-                    () -> capturedManager.getTaskResultRuntime().countVisibleResults(task.getTid()) == 1
-                            && capturedManager.getTask(task.getTid()).getStatus() == TaskStatus.TERMINAL,
-                    "repair pump should commit visible result and apply progress");
-
-            TaskResultRuntimeRow row = manager.getTaskResultRuntime()
-                    .getVisibleByMessageId(task.getTid(), message.messageId())
-                    .orElseThrow();
-            assertEquals("SUCCESS", row.status());
-            assertTrue(row.logicalFinalPublished());
-            assertTrue(row.progressApplied());
-            assertEquals(1, attemptClosedEvents.get());
-            assertEquals(1, logicalFinalEvents.get());
-            assertTrue(manager.getTaskResultRuntime().scanRepairCandidates(10).isEmpty());
-        } finally {
-            if (manager != null) {
-                manager.shutdown();
-            }
-            restoreProperty("xa.mass.engine.resultRepairPumpIntervalMillis", previousInterval);
-        }
-    }
-
-    @Test
-    void duplicateCallbackAfterVisibleCommitFailureKeepsRepairCandidateUntilVisibleFinalConverges() {
-        String previousInterval = System.getProperty("xa.mass.engine.resultRepairPumpIntervalMillis");
-        FlakyCommitTaskResultRuntime resultRuntime = new FlakyCommitTaskResultRuntime();
-        ProjectionAwareTaskManager manager = null;
-        try {
-            System.setProperty("xa.mass.engine.resultRepairPumpIntervalMillis", "10");
-            resultRuntime.blockRepairPumpScans();
-            InMemoryTaskStorage repairStorage = new InMemoryTaskStorage();
-            manager = new ProjectionAwareTaskManager(
-                    repairStorage,
-                    repairStorage,
-                    new InMemoryTaskWorkRuntime(),
-                    resultRuntime
-            );
-
-            Task task = createTask(manager, buildRequest("task-result-runtime-repair-duplicate", List.of("alpha"), 0));
-            manager.approveTask(task.getTid());
-            task.setStatus(TaskStatus.RUNNING);
-            manager.updateTask(task);
-
-            TaskDetailStore.TaskMessageProjection message = manager.getTaskMessageRecords(task.getTid()).get(0);
-            assignMessage(manager, task, message);
-
-            resultRuntime.failNextVisibleCommit();
-            assertTrue(manager.ingestTaskResult(task.getTid(), message.messageId(), true, "done-first"));
-
-            assertEquals(0, manager.getTaskResultRuntime().countVisibleResults(task.getTid()));
-            assertEquals(TaskStatus.RUNNING, manager.getTask(task.getTid()).getStatus());
-            assertFalse(manager.getTaskResultRuntime().scanRepairCandidates(10).isEmpty());
-
-            assertTrue(manager.ingestTaskResult(task.getTid(), message.messageId(), true, "done-duplicate"));
-            assertEquals(0, manager.getTaskResultRuntime().countVisibleResults(task.getTid()));
-            assertFalse(manager.getTaskResultRuntime().scanRepairCandidates(10).isEmpty(),
-                    "duplicate callback should not discard the only staged repair breadcrumb before visible final exists");
-
-            resultRuntime.allowRepairPumpScans();
-            ProjectionAwareTaskManager capturedManager = manager;
-            awaitCondition(
-                    () -> capturedManager.getTaskResultRuntime().countVisibleResults(task.getTid()) == 1
-                            && capturedManager.getTask(task.getTid()).getStatus() == TaskStatus.TERMINAL,
-                    "repair pump should still converge after duplicate callback follows a failed visible commit");
-
-            awaitCondition(
-                    () -> capturedManager.getTaskResultRuntime().scanRepairCandidates(10).isEmpty(),
-                    "repair candidate should drain once visible final, logical-final publish, and progress apply all converge");
-        } finally {
-            if (manager != null) {
-                manager.shutdown();
-            }
-            restoreProperty("xa.mass.engine.resultRepairPumpIntervalMillis", previousInterval);
-        }
-    }
-
-    @Test
-    void attemptClosedPublishFailureIsRepairedWithoutProjectionFallback() {
-        String previousInterval = System.getProperty("xa.mass.engine.resultRepairPumpIntervalMillis");
-        FlakyCommitTaskResultRuntime resultRuntime = new FlakyCommitTaskResultRuntime();
-        ProjectionAwareTaskManager manager = null;
-        try {
-            System.setProperty("xa.mass.engine.resultRepairPumpIntervalMillis", "10");
-            resultRuntime.blockRepairPumpScans();
-            InMemoryTaskStorage repairStorage = new InMemoryTaskStorage();
-            manager = new ProjectionAwareTaskManager(
-                    repairStorage,
-                    repairStorage,
-                    new InMemoryTaskWorkRuntime(),
-                    resultRuntime
-            );
-
-            Task task = createTask(manager, buildRequest("task-result-attempt-repair", List.of("alpha"), 0));
-            manager.approveTask(task.getTid());
-            task.setStatus(TaskStatus.RUNNING);
-            manager.updateTask(task);
-
-            TaskDetailStore.TaskMessageProjection message = manager.getTaskMessageRecords(task.getTid()).get(0);
-            assignMessage(manager, task, message);
-
-            AtomicInteger attemptClosedEvents = new AtomicInteger();
-            AtomicInteger logicalFinalEvents = new AtomicInteger();
-            manager.events().addTaskWorkAttemptClosedListener((currentTask, attempt) ->
-                    attemptClosedEvents.incrementAndGet());
-            manager.events().addTaskWorkLogicallyFinalListener((currentTask, event) ->
-                    logicalFinalEvents.incrementAndGet());
-
-            resultRuntime.failNextAttemptClosedClaim();
-            assertTrue(manager.ingestTaskResult(task.getTid(), message.messageId(), true, "done"));
-
-            TaskResultRuntimeRow row = manager.getTaskResultRuntime()
-                    .getVisibleByMessageId(task.getTid(), message.messageId())
-                    .orElseThrow();
-            assertFalse(row.attemptClosedPublished());
-            assertTrue(row.logicalFinalPublished());
-            assertTrue(row.progressApplied());
-            assertEquals(0, attemptClosedEvents.get());
-            assertEquals(1, logicalFinalEvents.get());
-            assertTrue(manager.getTaskResultRuntime().scanRepairCandidates(10).stream()
-                    .anyMatch(candidate -> candidate.kind() == TaskResultRepairKind.MISSING_ATTEMPT_CLOSED_PUBLISH));
-
-            resultRuntime.allowRepairPumpScans();
-            ProjectionAwareTaskManager capturedManager = manager;
-            awaitCondition(
-                    () -> capturedManager.getTaskResultRuntime()
-                            .getVisibleByMessageId(task.getTid(), message.messageId())
-                            .map(TaskResultRuntimeRow::attemptClosedPublished)
-                            .orElse(false)
-                            && attemptClosedEvents.get() == 1,
-                    "repair pump should publish the missing attempt-closed event once");
-
-            assertEquals(1, logicalFinalEvents.get());
-            awaitCondition(
-                    () -> capturedManager.getTaskResultRuntime().scanRepairCandidates(10).isEmpty(),
-                    "fully converged result repair should clean staged callbacks");
-            assertEquals(0, manager.getTaskResultRuntime().discardStagedCallbacksForMessage(task.getTid(), message.messageId()));
-        } finally {
-            if (manager != null) {
-                manager.shutdown();
-            }
-            restoreProperty("xa.mass.engine.resultRepairPumpIntervalMillis", previousInterval);
-        }
     }
 
     @Test
@@ -2101,69 +1771,6 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
-    void sessionTaskSealClosesAppendWindowWithoutTerminalClosure() {
-        TaskCreateSpec request = buildRequest("task-open-ended", List.of("alpha"));
-        request.setContract(TaskContract.SESSION);
-        request.setSealIntakeAfterCreate(false);
-        Task task = createTask(request);
-
-        assertEquals(TaskIntakeStatus.OPEN, task.getIntakeStatus());
-
-        taskManager.approveTask(task.getTid());
-        task.setStatus(TaskStatus.RUNNING);
-        taskManager.updateTask(task);
-
-        TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
-        assignMessage(task, message);
-
-        assertTrue(taskManager.ingestTaskResult(task.getTid(), message.messageId(), true, "done"));
-
-        Task beforeSeal = taskManager.getTask(task.getTid());
-        assertEquals(TaskStatus.RUNNING, beforeSeal.getStatus());
-        assertNull(beforeSeal.getTerminalReason());
-        assertEquals(TaskIntakeStatus.OPEN, beforeSeal.getIntakeStatus());
-
-        assertTrue(taskManager.sealTask(task.getTid()));
-
-        IllegalStateException error = assertThrows(IllegalStateException.class, () ->
-                taskManager.appendTaskItems(task.getTid(), List.of(
-                        java.util.Map.<String, Object>of("target", "beta")
-                )));
-        assertTrue(error.getMessage().contains("sealed"));
-
-        Task current = taskManager.getTask(task.getTid());
-        TaskStateResolutionResult resolution = taskManager.resolveTaskState(task.getTid());
-
-        assertEquals(TaskStatus.RUNNING, current.getStatus());
-        assertNull(current.getTerminalReason());
-        assertEquals(TaskIntakeStatus.SEALED, current.getIntakeStatus());
-        assertEquals(1, current.getTaskTargetNumber());
-        assertEquals(TaskStateResolutionResult.Outcome.NOT_FINALIZED, resolution.getOutcome());
-        assertEquals(TaskStatus.RUNNING, resolution.getStatus());
-        assertNull(resolution.getTerminalReason());
-    }
-
-    @Test
-    void sessionTaskTerminalClosureClosesAppendWindow() {
-        TaskCreateSpec request = buildRequest("task-open-ended-terminal-close", List.of("alpha"));
-        request.setContract(TaskContract.SESSION);
-        request.setSealIntakeAfterCreate(false);
-        Task task = createTask(request);
-
-        assertTrue(taskManager.cancelTask(task.getTid()));
-
-        Task terminalTask = taskManager.getTask(task.getTid());
-        assertEquals(TaskStatus.TERMINAL, terminalTask.getStatus());
-        assertEquals(TaskIntakeStatus.SEALED, terminalTask.getIntakeStatus());
-
-        IllegalStateException error = assertThrows(IllegalStateException.class, () ->
-                taskManager.appendTaskItems(task.getTid(), List.of(
-                        java.util.Map.<String, Object>of("target", "beta")
-                )));
-        assertTrue(error.getMessage().contains("sealed"));
-    }
-
-    @Test
     void batchTaskDispatchRequestsDoNotEmitSessionDispatchSignals() {
         Task task = createTask(buildRequest("task-batch-runtime-dispatch", List.of("alpha")));
         taskManager.approveTask(task.getTid());
@@ -2174,47 +1781,6 @@ class TaskManagerLifecycleTest {
         taskManager.requestTaskDispatch(taskManager.getTask(task.getTid()));
 
         assertEquals(0, dispatchRequests.get());
-    }
-
-    @Test
-    void batchTaskStaysNonTerminalUntilIntakeSealed() {
-        TaskCreateSpec dto = new TaskCreateSpec();
-        dto.setSourceRef("file-task-open-ingest");
-        dto.setProject("demoApp");
-        dto.setUserId("agent");
-        dto.setContract(TaskContract.BATCH);
-        dto.setSourceRef("mock/input/demo.csv");
-        dto.setSealIntakeAfterCreate(false);
-        dto.setInputs(List.of());
-
-        Task task = createTask(dto);
-        assertEquals(TaskIntakeStatus.OPEN, task.getIntakeStatus());
-
-        assertEquals(1, taskManager.appendTaskItems(task.getTid(), List.of(
-                java.util.Map.<String, Object>of("target", "alpha")
-        )));
-
-        assertTrue(taskManager.approveTask(task.getTid()));
-        Task runningTask = taskManager.getTask(task.getTid());
-        runningTask.setStatus(TaskStatus.RUNNING);
-        taskManager.updateTask(runningTask);
-
-        TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
-        assignMessage(runningTask, message);
-
-        assertTrue(taskManager.ingestTaskResult(task.getTid(), message.messageId(), true, "done"));
-
-        Task beforeSeal = taskManager.getTask(task.getTid());
-        assertEquals(TaskStatus.RUNNING, beforeSeal.getStatus());
-        assertNull(beforeSeal.getTerminalReason());
-        assertEquals(TaskIntakeStatus.OPEN, beforeSeal.getIntakeStatus());
-
-        assertTrue(taskManager.sealTask(task.getTid()));
-
-        Task sealed = taskManager.getTask(task.getTid());
-        assertEquals(TaskIntakeStatus.SEALED, sealed.getIntakeStatus());
-        assertEquals(TaskStatus.TERMINAL, sealed.getStatus());
-        assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, sealed.getTerminalReason());
     }
 
     @Test
@@ -3597,120 +3163,6 @@ class TaskManagerLifecycleTest {
             }
         }
         assertTrue(condition.getAsBoolean(), failureMessage);
-    }
-
-    private static final class FlakyCommitTaskResultRuntime implements TaskResultRuntime {
-        private final InMemoryTaskResultRuntime delegate = new InMemoryTaskResultRuntime();
-        private volatile boolean failNextVisibleCommit;
-        private volatile boolean failNextAttemptClosedClaim;
-        private volatile boolean blockRepairPumpScans;
-
-        private void failNextVisibleCommit() {
-            failNextVisibleCommit = true;
-        }
-
-        private void failNextAttemptClosedClaim() {
-            failNextAttemptClosedClaim = true;
-        }
-
-        private void blockRepairPumpScans() {
-            blockRepairPumpScans = true;
-        }
-
-        private void allowRepairPumpScans() {
-            blockRepairPumpScans = false;
-        }
-
-        @Override
-        public com.xa.mass.runtime.api.StageResult stageCallback(TaskResultCallbackDraft draft) {
-            return delegate.stageCallback(draft);
-        }
-
-        @Override
-        public boolean discardStagedCallback(String stageId) {
-            return delegate.discardStagedCallback(stageId);
-        }
-
-        @Override
-        public int discardStagedCallbacksForMessage(String taskId, String messageId) {
-            return delegate.discardStagedCallbacksForMessage(taskId, messageId);
-        }
-
-        @Override
-        public CommitResult commitVisibleFinal(TaskResultFinalDraft finalDraft) {
-            if (failNextVisibleCommit) {
-                failNextVisibleCommit = false;
-                return CommitResult.unavailable("simulated visible commit failure");
-            }
-            return delegate.commitVisibleFinal(finalDraft);
-        }
-
-        @Override
-        public List<TaskResultRepairCandidate> scanRepairCandidates(int limit) {
-            if (blockRepairPumpScans && Thread.currentThread().getName().startsWith("engine-result-repair-")) {
-                return List.of();
-            }
-            return delegate.scanRepairCandidates(limit);
-        }
-
-        @Override
-        public BarrierClaim claimAttemptClosedPublish(String taskId, String messageId, long finalSeq) {
-            if (failNextAttemptClosedClaim) {
-                failNextAttemptClosedClaim = false;
-                return BarrierClaim.unavailable();
-            }
-            return delegate.claimAttemptClosedPublish(taskId, messageId, finalSeq);
-        }
-
-        @Override
-        public BarrierMarkResult markAttemptClosedPublished(String taskId, String messageId, long finalSeq, String claimToken) {
-            return delegate.markAttemptClosedPublished(taskId, messageId, finalSeq, claimToken);
-        }
-
-        @Override
-        public BarrierClaim claimLogicalFinalPublish(String taskId, String messageId, long finalSeq) {
-            return delegate.claimLogicalFinalPublish(taskId, messageId, finalSeq);
-        }
-
-        @Override
-        public BarrierMarkResult markLogicalFinalPublished(String taskId, String messageId, long finalSeq, String claimToken) {
-            return delegate.markLogicalFinalPublished(taskId, messageId, finalSeq, claimToken);
-        }
-
-        @Override
-        public BarrierClaim claimProgressApply(String taskId, String messageId, long finalSeq) {
-            return delegate.claimProgressApply(taskId, messageId, finalSeq);
-        }
-
-        @Override
-        public BarrierMarkResult markProgressApplied(String taskId, String messageId, long finalSeq, String claimToken) {
-            return delegate.markProgressApplied(taskId, messageId, finalSeq, claimToken);
-        }
-
-        @Override
-        public TaskResultWindow readWindow(String taskId, long afterSeq, int limit) {
-            return delegate.readWindow(taskId, afterSeq, limit);
-        }
-
-        @Override
-        public long countVisibleResults(String taskId) {
-            return delegate.countVisibleResults(taskId);
-        }
-
-        @Override
-        public java.util.Optional<TaskResultRuntimeRow> getVisibleByMessageId(String taskId, String messageId) {
-            return delegate.getVisibleByMessageId(taskId, messageId);
-        }
-
-        @Override
-        public long discardTask(String taskId) {
-            return delegate.discardTask(taskId);
-        }
-
-        @Override
-        public void shutdown() {
-            delegate.shutdown();
-        }
     }
 
     private static final class PagingAwareTaskStorage extends InMemoryTaskStorage {

@@ -8,12 +8,12 @@ This file defines engine policy interaction guardrails only.
 
 Use with:
 
-- [README.md](./README.md)
+- [README.md](../../README.md)
 - [SCHEDULING_KERNEL_GUARDRAILS.md](./SCHEDULING_KERNEL_GUARDRAILS.md)
 - [WORKER_SCHEDULING_VIEW_BASELINE.md](./WORKER_SCHEDULING_VIEW_BASELINE.md)
-- [../doc/STATE_MACHINE_BASELINE.md](../doc/STATE_MACHINE_BASELINE.md)
-- [../doc/TRACE_CONTRACT.md](../doc/TRACE_CONTRACT.md)
-- [../doc/E2E_BASELINE.md](../doc/E2E_BASELINE.md)
+- [../../../doc/STATE_MACHINE_BASELINE.md](../../../doc/STATE_MACHINE_BASELINE.md)
+- [../../../doc/TRACE_CONTRACT.md](../../../doc/TRACE_CONTRACT.md)
+- [../../../doc/E2E_BASELINE.md](../../../doc/E2E_BASELINE.md)
 
 ## 1. Policy Layers
 

@@ -936,6 +936,157 @@ class EngineSchedulingCoreArchitectureGuardTest {
                         + String.join("\n", violations));
     }
 
+    @Test
+    void workerSystemEventChannelStaysTransportIngressNotLifecycleOwner() throws IOException {
+        Path repo = repositoryRoot();
+        Map<String, GuardedSourceArea> guardedAreas = Map.ofEntries(
+                Map.entry("system event channel -> engine dependency",
+                        new GuardedSourceArea(
+                                List.of(
+                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/WorkerSystemEventChannel.java"),
+                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/NoopWorkerSystemEventChannel.java"),
+                                        repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RuntimeEventBusWorkerSystemEventChannel.java"),
+                                        repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TracingWorkerSystemEventChannel.java")
+                                ),
+                                Pattern.compile("\\bimport\\s+com\\.xa\\.mass\\.engine\\."))),
+                Map.entry("system event channel -> task result payload",
+                        new GuardedSourceArea(
+                                List.of(
+                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/WorkerSystemEventChannel.java"),
+                                        repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RuntimeEventBusWorkerSystemEventChannel.java"),
+                                        repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TracingWorkerSystemEventChannel.java")
+                                ),
+                                Pattern.compile("\\bTaskResultReport\\b|\\bTaskResultRuntime\\b"))),
+                Map.entry("system event channel -> command/state owner",
+                        new GuardedSourceArea(
+                                List.of(
+                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/WorkerSystemEventChannel.java"),
+                                        repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RuntimeEventBusWorkerSystemEventChannel.java"),
+                                        repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TracingWorkerSystemEventChannel.java")
+                                ),
+                                Pattern.compile("\\bWorkerCommand(?:Ack|Status)?\\b|\\bWorkerStateReport\\b")))
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Map.Entry<String, GuardedSourceArea> guardedArea : guardedAreas.entrySet()) {
+            for (Path path : guardedArea.getValue().sourceFiles()) {
+                String source = Files.readString(path, StandardCharsets.UTF_8);
+                if (guardedArea.getValue().forbiddenPattern().matcher(source).find()) {
+                    violations.add(path + " leaks worker system event channel into owner path: "
+                            + guardedArea.getKey());
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "WorkerSystemEventChannel is a transport ingress seam for presence signals. "
+                        + "It must not become a lifecycle owner or import engine scheduling/result paths:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void futureWorkerCommandAndStateReportDoNotPolluteTaskResultReachabilityLoadOrSchedulingOwners() throws IOException {
+        Path repo = repositoryRoot();
+        Pattern workerControlOrState = Pattern.compile(
+                "\\bWorkerCommand(?:Ack|Status)?\\b|\\bWorkerStateReport\\b");
+        Map<String, GuardedSourceArea> guardedAreas = Map.ofEntries(
+                Map.entry("task result owner",
+                        new GuardedSourceArea(
+                                List.of(
+                                        repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/TaskResultService.java"),
+                                        repo.resolve("platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/api/TaskResultRuntime.java"),
+                                        repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RuntimeTaskResultIngestChannel.java"),
+                                        repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RedisTaskResultIngestChannel.java")
+                                ),
+                                workerControlOrState)),
+                Map.entry("reachability read model",
+                        new GuardedSourceArea(
+                                List.of(
+                                        repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/worker/WorkerReachabilityView.java")
+                                ),
+                                workerControlOrState)),
+                Map.entry("load read model",
+                        new GuardedSourceArea(
+                                List.of(
+                                        repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/load")
+                                ),
+                                workerControlOrState)),
+                Map.entry("scheduling hot path",
+                        new GuardedSourceArea(
+                                List.of(
+                                        repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/assignment"),
+                                        repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/listener"),
+                                        repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/policy"),
+                                        repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/resource"),
+                                        repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/strategy")
+                                ),
+                                workerControlOrState))
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Map.Entry<String, GuardedSourceArea> guardedArea : guardedAreas.entrySet()) {
+            for (Path path : guardedArea.getValue().sourceFiles()) {
+                String source = Files.readString(path, StandardCharsets.UTF_8);
+                if (guardedArea.getValue().forbiddenPattern().matcher(source).find()) {
+                    violations.add(path + " consumes future worker command/state shape in "
+                            + guardedArea.getKey());
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Worker command/status and worker state reports need dedicated future owners. "
+                        + "They must not enter task result, reachability, load, or scheduling owners directly:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void workerCapabilitySelfReportDoesNotBypassWorkerRegistrySnapshotOwner() throws IOException {
+        Path repo = repositoryRoot();
+        Pattern capabilityReport = Pattern.compile("\\bWorkerCapabilityReport\\b|\\bCapabilitySelfReport\\b");
+        Map<String, GuardedSourceArea> guardedAreas = Map.ofEntries(
+                Map.entry("system event channel",
+                        new GuardedSourceArea(
+                                List.of(
+                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/WorkerSystemEventChannel.java"),
+                                        repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RuntimeEventBusWorkerSystemEventChannel.java"),
+                                        repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TracingWorkerSystemEventChannel.java")
+                                ),
+                                capabilityReport)),
+                Map.entry("matching/acquisition path",
+                        new GuardedSourceArea(
+                                List.of(
+                                        repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/strategy"),
+                                        repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/model/WorkerSchedulingView.java")
+                                ),
+                                capabilityReport)),
+                Map.entry("runtime result owner",
+                        new GuardedSourceArea(
+                                List.of(
+                                        repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/TaskResultService.java"),
+                                        repo.resolve("platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/api/TaskResultRuntime.java")
+                                ),
+                                capabilityReport))
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Map.Entry<String, GuardedSourceArea> guardedArea : guardedAreas.entrySet()) {
+            for (Path path : guardedArea.getValue().sourceFiles()) {
+                String source = Files.readString(path, StandardCharsets.UTF_8);
+                if (guardedArea.getValue().forbiddenPattern().matcher(source).find()) {
+                    violations.add(path + " consumes capability self-report outside worker registry owner: "
+                            + guardedArea.getKey());
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Future worker capability self-report must flow through a worker capability/report owner "
+                        + "that refreshes WorkerManager / WorkerRegistrySnapshot / WorkerCandidateIndex truth. "
+                        + "It must not bypass that owner through system-event, matching, or result paths:\n"
+                        + String.join("\n", violations));
+    }
+
     private static List<Path> selectedSuiteSourceFiles() {
         SelectClasses selectedClasses = EngineSchedulingCoreSuite.class.getAnnotation(SelectClasses.class);
         assertNotNull(selectedClasses, "EngineSchedulingCoreSuite must declare @SelectClasses");

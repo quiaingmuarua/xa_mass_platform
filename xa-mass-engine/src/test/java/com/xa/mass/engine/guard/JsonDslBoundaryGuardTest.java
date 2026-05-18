@@ -1,4 +1,4 @@
-package com.xa.mass.engine;
+package com.xa.mass.engine.guard;
 
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;

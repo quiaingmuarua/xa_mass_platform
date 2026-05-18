@@ -1,6 +1,6 @@
 # Testing Index
 
-Last updated: 2026-05-14
+Last updated: 2026-05-18
 
 Status: current project-level testing index.
 
@@ -71,7 +71,11 @@ Current testing assumptions:
 Fast routing:
 
 - worker/task competition, eligibility, gating, redispatch:
-  start with `xa-mass-engine`
+  start with `xa-mass-engine` and its
+  [`SCHEDULING_CORRECTNESS_MATRIX.md`](../xa-mass-engine/doc/baseline/SCHEDULING_CORRECTNESS_MATRIX.md)
+- lifecycle, retry, expiry, finality, release, convergence:
+  start with `xa-mass-engine` and its
+  [`KERNEL_CONVERGENCE_MATRIX.md`](../xa-mass-engine/doc/baseline/KERNEL_CONVERGENCE_MATRIX.md)
 - real host/runtime wiring:
   start with `xa-mass-server` E2E
 - disconnect, replay, lease expiry, late result, runtime pressure:
