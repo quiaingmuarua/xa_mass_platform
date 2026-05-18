@@ -31,6 +31,8 @@ public enum ExecutionEventType {
     RESOURCE_RELEASED(EventCategory.RESOURCE, EventSeverity.INFO),
     RESOURCE_RELEASE_FAILED(EventCategory.RESOURCE, EventSeverity.WARN),
     LEASE_EXPIRED(EventCategory.LEASE, EventSeverity.WARN),
+    WORKER_COMMAND_STATUS_TRANSITION(EventCategory.WORKER, EventSeverity.INFO),
+    WORKER_CAPABILITY_REPORT_APPLIED(EventCategory.WORKER, EventSeverity.INFO),
     WORKER_ONLINE(EventCategory.WORKER, EventSeverity.INFO),
     WORKER_OFFLINE(EventCategory.WORKER, EventSeverity.WARN);
 

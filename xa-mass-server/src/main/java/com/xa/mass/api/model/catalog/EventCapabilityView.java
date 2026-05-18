@@ -22,11 +22,23 @@ public record EventCapabilityView(
         )
         String priorityClass,
         @Schema(
-                description = "Expected response style metadata. Not result-finality behavior.",
+                description = "Compatibility response summary metadata. Not result-finality behavior.",
                 allowableValues = {"NONE", "ACK", "FINAL_RESULT", "STREAM"},
                 example = "FINAL_RESULT"
         )
         String responseMode,
+        @Schema(
+                description = "Descriptive delivery acknowledgement expectation. Not command or task-result behavior.",
+                allowableValues = {"NONE", "HANDLER_ACCEPTED", "DELIVERY_ACCEPTED"},
+                example = "NONE"
+        )
+        String deliveryAcknowledgementMode,
+        @Schema(
+                description = "Descriptive convergence expectation. Not a lifecycle owner decision.",
+                allowableValues = {"NONE", "FINAL_RESULT", "STREAM"},
+                example = "FINAL_RESULT"
+        )
+        String convergenceMode,
         @Schema(
                 description = "Target owner hint metadata. Not a worker command or state-report route.",
                 allowableValues = {"WORKER", "TASK_ENGINE", "OPERATOR", "WORKER_MANAGER"},

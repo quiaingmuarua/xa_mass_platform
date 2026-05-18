@@ -1,9 +1,11 @@
 package com.xa.mass.base.event;
 
 /**
- * Descriptive caller expectation for event responses.
+ * Compatibility summary of caller expectations for event responses.
  *
- * <p>This metadata does not choose result-convergence or task-finality paths.
+ * <p>New owner designs should prefer {@link DeliveryAcknowledgementMode} and
+ * {@link EventConvergenceMode}. This metadata remains catalog-visible but does
+ * not choose result-convergence, command status, stage, or task-finality paths.</p>
  */
 public enum ResponseMode {
     NONE,

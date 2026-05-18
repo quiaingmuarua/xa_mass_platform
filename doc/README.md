@@ -9,6 +9,8 @@ only when you need the expanded reading map inside `doc/`.
 
 Most tasks only need one contract lane plus one owner README:
 
+- human onboarding / project architecture:
+  [../architecture/README.md](../architecture/README.md)
 - lifecycle / trace / E2E:
   [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md),
   [TRACE_CONTRACT.md](./TRACE_CONTRACT.md),
@@ -83,6 +85,7 @@ tests, owner READMEs, and baseline docs.
 
 Do not add a new `doc/*` file for:
 
+- human-facing architecture onboarding guides
 - module-local implementation notes
 - module-local test inventories or command lists
 - adapter-specific protocol behavior

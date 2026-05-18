@@ -1,5 +1,7 @@
 package com.xa.mass.sdk.event;
 
+import com.xa.mass.base.event.DeliveryAcknowledgementMode;
+import com.xa.mass.base.event.EventConvergenceMode;
 import com.xa.mass.base.event.PriorityClass;
 import com.xa.mass.base.event.ResponseMode;
 import com.xa.mass.base.event.TargetScope;
@@ -18,6 +20,8 @@ class EventDefinitionTest {
 
         assertEquals(PriorityClass.STANDARD, definition.getPriorityClass());
         assertEquals(ResponseMode.FINAL_RESULT, definition.getResponseMode());
+        assertEquals(DeliveryAcknowledgementMode.NONE, definition.getDeliveryAcknowledgementMode());
+        assertEquals(EventConvergenceMode.FINAL_RESULT, definition.getConvergenceMode());
         assertEquals(TargetScope.WORKER, definition.getTargetScope());
     }
 
@@ -33,6 +37,8 @@ class EventDefinitionTest {
 
         assertEquals(PriorityClass.CONTROL, definition.getPriorityClass());
         assertEquals(ResponseMode.ACK, definition.getResponseMode());
+        assertEquals(DeliveryAcknowledgementMode.HANDLER_ACCEPTED, definition.getDeliveryAcknowledgementMode());
+        assertEquals(EventConvergenceMode.NONE, definition.getConvergenceMode());
         assertEquals(TargetScope.OPERATOR, definition.getTargetScope());
     }
 
@@ -48,6 +54,23 @@ class EventDefinitionTest {
 
         assertEquals(PriorityClass.STANDARD, definition.getPriorityClass());
         assertEquals(ResponseMode.FINAL_RESULT, definition.getResponseMode());
+        assertEquals(DeliveryAcknowledgementMode.NONE, definition.getDeliveryAcknowledgementMode());
+        assertEquals(EventConvergenceMode.FINAL_RESULT, definition.getConvergenceMode());
         assertEquals(TargetScope.WORKER, definition.getTargetScope());
+    }
+
+    @Test
+    void splitResponseSemanticsCanBeSetWithoutChangingCompatibilitySummary() {
+        EventDefinition definition = EventDefinition.builder()
+                .code("stage.progress")
+                .name("Stage Progress")
+                .responseMode(ResponseMode.ACK)
+                .deliveryAcknowledgementMode(DeliveryAcknowledgementMode.DELIVERY_ACCEPTED)
+                .convergenceMode(EventConvergenceMode.STREAM)
+                .build();
+
+        assertEquals(ResponseMode.ACK, definition.getResponseMode());
+        assertEquals(DeliveryAcknowledgementMode.DELIVERY_ACCEPTED, definition.getDeliveryAcknowledgementMode());
+        assertEquals(EventConvergenceMode.STREAM, definition.getConvergenceMode());
     }
 }

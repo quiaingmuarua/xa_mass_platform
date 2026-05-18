@@ -19,6 +19,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -229,6 +230,35 @@ class TaskKernelLifecycleTest {
         assertTrue(error.getMessage().contains("engine work backlog is full"));
         assertEquals(1, backlogAwareManager.getTaskWorkRuntime().stats(task.getTid()).readyCount());
         assertEquals(1, backlogAwareManager.getTask(task.getTid()).getTaskTargetNumber());
+    }
+
+    @Test
+    void deleteTaskRejectedForReadyTask() {
+        Task task = createTask(buildRequest("del-ready", List.of("alpha"), 3));
+        assertTrue(taskManager.approveTask(task.getTid()));
+
+        assertFalse(taskManager.deleteTask(task.getTid()));
+        assertNotNull(taskManager.getTask(task.getTid()));
+    }
+
+    @Test
+    void deleteTaskAllowedForNewTask() {
+        Task task = createTask(buildRequest("del-new", List.of("alpha"), 3));
+        assertTrue(taskManager.getTaskWorkRuntime().hasReadyWork(task.getTid()));
+
+        assertTrue(taskManager.deleteTask(task.getTid()));
+        assertNull(taskManager.getTask(task.getTid()));
+        assertFalse(taskManager.getTaskWorkRuntime().hasReadyWork(task.getTid()));
+    }
+
+    @Test
+    void deleteTaskAllowedForTerminalTask() {
+        Task task = createTask(buildRequest("del-terminal", List.of("alpha"), 3));
+        assertTrue(taskManager.approveTask(task.getTid()));
+        assertTrue(taskManager.cancelTask(task.getTid()));
+
+        assertTrue(taskManager.deleteTask(task.getTid()));
+        assertNull(taskManager.getTask(task.getTid()));
     }
 
     private Task createTask(TaskCreateSpec request) {

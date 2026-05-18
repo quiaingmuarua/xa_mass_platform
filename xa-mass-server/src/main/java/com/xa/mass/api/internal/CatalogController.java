@@ -96,6 +96,8 @@ public class CatalogController {
                             event.isEnabled(),
                             event.getPriorityClass().name(),
                             event.getResponseMode().name(),
+                            event.getDeliveryAcknowledgementMode().name(),
+                            event.getConvergenceMode().name(),
                             event.getTargetScope().name(),
                             directRuntime ? "DIRECT_RUNTIME" : "TASK_BACKED",
                             normalizeProjectCodes(event.getProjectCodes()),

@@ -106,6 +106,8 @@ class CatalogControllerTest {
                 .andExpect(jsonPath("$.data[?(@.code=='sms.wait-code')]").exists())
                 .andExpect(jsonPath("$.data[?(@.code=='crawler.fetch-page' && @.priorityClass=='BULK')]").exists())
                 .andExpect(jsonPath("$.data[?(@.code=='crawler.fetch-page' && @.responseMode=='FINAL_RESULT')]").exists())
+                .andExpect(jsonPath("$.data[?(@.code=='crawler.fetch-page' && @.deliveryAcknowledgementMode=='NONE')]").exists())
+                .andExpect(jsonPath("$.data[?(@.code=='crawler.fetch-page' && @.convergenceMode=='FINAL_RESULT')]").exists())
                 .andExpect(jsonPath("$.data[?(@.code=='crawler.fetch-page' && @.targetScope=='WORKER')]").exists());
     }
 
@@ -117,6 +119,8 @@ class CatalogControllerTest {
                 .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.invocationModel=='TASK_BACKED')]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.priorityClass=='BULK')]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.responseMode=='FINAL_RESULT')]").exists())
+                .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.deliveryAcknowledgementMode=='NONE')]").exists())
+                .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.convergenceMode=='FINAL_RESULT')]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.targetScope=='WORKER')]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.projectCodes[0]=='crawlerApp' && @.projectCodes[1]=='demoApp')]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.workerIds[0]=='crawler-worker-1')]").exists())
@@ -124,6 +128,8 @@ class CatalogControllerTest {
                 .andExpect(jsonPath("$.data[?(@.eventCode=='sms.wait-code' && @.invocationModel=='DIRECT_RUNTIME')]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='sms.wait-code' && @.priorityClass=='CONTROL')]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='sms.wait-code' && @.responseMode=='ACK')]").exists())
+                .andExpect(jsonPath("$.data[?(@.eventCode=='sms.wait-code' && @.deliveryAcknowledgementMode=='HANDLER_ACCEPTED')]").exists())
+                .andExpect(jsonPath("$.data[?(@.eventCode=='sms.wait-code' && @.convergenceMode=='NONE')]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='sms.wait-code' && @.targetScope=='TASK_ENGINE')]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='sms.wait-code' && @.hasDirectRuntimeHandler==true)]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='chatbot.reply' && @.hasOnlineWorkerCoverage==false)]").exists())

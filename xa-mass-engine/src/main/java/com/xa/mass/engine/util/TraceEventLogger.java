@@ -14,6 +14,8 @@ import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.engine.runtime.TaskRuntimeProfile;
 import com.xa.mass.engine.runtime.TaskRuntimeProfileResolver;
+import com.xa.mass.engine.command.WorkerCommandLifecycleResult;
+import com.xa.mass.engine.worker.WorkerCapabilityReportResult;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.trace.sink.ExecutionEvent;
 import com.xa.mass.trace.sink.ExecutionEventSink;
@@ -807,6 +809,45 @@ public final class TraceEventLogger {
         emit(event(ExecutionEventType.ASSIGNMENT_QUEUE_SNAPSHOT)
                 .identity(identity -> identity.taskId(task != null ? task.getTid() : null))
                 .attrs(attrs)
+                .build());
+    }
+
+    public void workerCapabilityReportApplied(WorkerCapabilityReportResult result) {
+        if (result == null) {
+            return;
+        }
+        emit(event(ExecutionEventType.WORKER_CAPABILITY_REPORT_APPLIED)
+                .identity(identity -> identity.workerId(result.workerId()))
+                .outcome(result.success(), result.success() ? null : result.status().name(), result.reason())
+                .attrs(attrs(
+                        "source", "WorkerCapabilityAuthority",
+                        "reason", result.reason(),
+                        "result", result.status().name(),
+                        "capabilityVersion", result.capabilityVersion(),
+                        "snapshotChanged", result.snapshotChanged()
+                ))
+                .build());
+    }
+
+    public void workerCommandStatusTransition(WorkerCommandLifecycleResult result) {
+        if (result == null || result.record() == null) {
+            return;
+        }
+        emit(event(ExecutionEventType.WORKER_COMMAND_STATUS_TRANSITION)
+                .identity(identity -> identity.workerId(result.record().workerId()))
+                .transition(enumName(result.previousStatus()), enumName(result.currentStatus()), result.reason())
+                .outcome(result.success(), result.success() ? null : result.code().name(), result.reason())
+                .attrs(attrs(
+                        "source", "WorkerCommandLifecycleOwner",
+                        "reason", result.reason(),
+                        "result", result.code().name(),
+                        "commandId", result.record().commandId(),
+                        "commandType", result.record().commandType(),
+                        "commandStatus", enumName(result.record().status()),
+                        "requester", result.record().requester(),
+                        "idempotencyKey", result.record().idempotencyKey(),
+                        "deadlineEpochMillis", result.record().deadlineEpochMillis()
+                ))
                 .build());
     }
 

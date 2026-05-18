@@ -57,8 +57,8 @@ kernel-targeted worker heartbeat
 
 kernel-targeted worker capability report
   -> kernel handler
-  -> WorkerCapabilityReportOwner
-  -> WorkerManager / WorkerRegistrySnapshot refresh
+  -> capability authority owner
+  -> WorkerManager / immutable WorkerRegistrySnapshot publication
 
 kernel-targeted worker command request
   -> kernel handler
@@ -95,7 +95,7 @@ worker state report
   -> WorkerStateProjectionOwner
 
 worker capability self-report
-  -> WorkerCapabilityReportOwner
+  -> capability authority owner
 
 task item stage/progress
   -> future stage owner, not public final result
@@ -112,7 +112,9 @@ Current descriptor metadata already includes:
 
 - `TargetScope`
 - `PriorityClass`
-- `ResponseMode`
+- `ResponseMode` as a compatibility response summary
+- `DeliveryAcknowledgementMode`
+- `EventConvergenceMode`
 
 Current first-wave rule still holds:
 
@@ -120,10 +122,10 @@ Current first-wave rule still holds:
 - metadata does not directly mutate runtime truth
 - descriptor metadata does not bypass owner-specific services
 
-### Future Semantic Questions
+### Implemented Semantic Split
 
-The next event-language convergence should separate two questions that the
-current `ResponseMode` compresses together:
+`EWC-1` separates two questions that `ResponseMode` previously compressed
+together:
 
 ```text
 delivery acknowledgement semantics
@@ -138,17 +140,15 @@ Rationale:
 - a final task-work event may require both delivery acknowledgement and final
   convergence
 
-The final field names and values are intentionally not fixed yet:
+Current implemented fields:
 
-- delivery acknowledgement may need to distinguish transport accepted, handler
-  accepted, and business completed rather than collapse them into one `ACK`
-  state
-- convergence may ultimately live as descriptor default plus invocation/stage
-  contract, rather than descriptor-only metadata
+- `DeliveryAcknowledgementMode`
+- `EventConvergenceMode`
 
-`ResponseMode` remains the current implemented metadata field. A future phase
-may keep it as a compatibility summary or replace it with a clearer split, but
-owner behavior must not be inferred from `ResponseMode` alone.
+`ResponseMode` remains catalog-visible as a compatibility response summary.
+Owner behavior must not be inferred from `ResponseMode` alone. Future owner
+phases may still add invocation- or stage-level contracts when descriptor
+metadata is not enough to express concrete lifecycle semantics.
 
 ### Policy Boundary
 
@@ -193,6 +193,8 @@ that a standalone worker-manager service already exists or is required.
 
 ### EWC-1: Event Semantic Model Convergence
 
+Status: completed baseline.
+
 Goal: freeze the event-language dimensions before adding more event families.
 
 Scope:
@@ -218,12 +220,14 @@ Out of scope:
 Acceptance:
 
 - one documented event-language model exists
-- acknowledgement and convergence are no longer conflated in future design
-- immature delivery/convergence choices remain explicit design questions rather
-  than accidental implementation commitments
+- acknowledgement and convergence are no longer conflated in the descriptor
+  model
+- `ResponseMode` remains a compatibility summary, not owner behavior input
 - no existing runtime owner behavior changes
 
 ### EWC-2: Kernel-Targeted Event Ingress
+
+Status: completed route-only baseline.
 
 Goal: prove that kernel-targeted events can use the ordinary event language
 without creating a generic lifecycle owner or forcing every ingress path onto
@@ -253,20 +257,130 @@ Acceptance:
 - a kernel-targeted event reaches a kernel handler through the common event
   language
 - handler routing is separate from lifecycle owner mutation
+- `KernelEventHandlerRegistry` registers only `TASK_ENGINE` / `WORKER_MANAGER`
+  targets and rejects `WORKER` targets
 - the proof remains route-only and does not move current presence ownership
 - `WorkerSystemEventChannel` remains the current presence-only ingress seam
   until a later phase has a concrete owner reason to revisit it
 
-### EWC-3: Worker Capability Self-Report
+### EWC-3A: Capability Authority Model
+
+Status: completed baseline.
+
+Goal: define the single capability write authority before worker self-report
+events are allowed to mutate scheduling truth.
+
+Why this first:
+
+- current WorkerGroup candidate source reads an active
+  `WorkerRegistrySnapshot`, but that snapshot is still built from worker-level
+  compatibility fields through `WorkerGroupCompatibilityProjection`
+- direct self-report mutation would create multiple capability write truths:
+  registration fields, report payloads, and WorkerGroup snapshot state
+- the authority model must decide how registration truth and report truth are
+  composed before any durable report ingestion exists
+
+Required decisions:
+
+- select the single active capability write authority
+- define which fields are registration-owned, report-owned, and derived
+- define source-scoped replace semantics:
+  - a report replaces only the report-owned capability slice for that worker
+  - it must not silently delete administratively approved registration bounds
+  - owner-level composition produces the effective WorkerGroup capability view
+- decide whether first self-report behavior may create or remove event bindings;
+  if allowed, define which source owns those bindings
+- define version, idempotency, and stale rejection rules
+- define conflict handling for same worker/version with different payload
+- define how `WorkerGroupCompatibilityProjection` becomes migration input only
+- define snapshot publication:
+  - `WorkerRegistrySnapshot` remains immutable
+  - `WorkerManager` keeps publishing a volatile active snapshot reference
+  - matching and candidate indexing consume a point-in-time snapshot
+  - raw report storage never enters the matching hot path
+
+Suggested first-version rules:
+
+```text
+registration-owned slice:
+  worker identity, group identity, administrative project bounds,
+  approved event-binding ceilings, static transport/adapter facts
+
+report-owned slice:
+  currently advertised event availability within approved bounds,
+  runtime-advertised scheduling attributes, agent version,
+  dynamic capacity only if explicitly allowed by policy
+
+composition:
+  source-scoped replace for report-owned facts
+  authority-owner composition into effective WorkerGroupRecord values
+  atomic publish of a new immutable WorkerRegistrySnapshot
+```
+
+Implemented EWC-3A baseline:
+
+```text
+worker registration rows / compatibility fields
+  -> WorkerCapabilityAuthority
+  -> immutable WorkerRegistrySnapshot
+  -> WorkerManager volatile active snapshot publication
+  -> WorkerCandidateIndex
+```
+
+Current behavior is intentionally unchanged. `WorkerCapabilityAuthority` still
+uses `WorkerGroupCompatibilityProjection` as migration input, but
+`WorkerManager` no longer calls the projection directly. This establishes the
+single active composition and publication path that `EWC-3B` must reuse when
+worker-originated capability reports are introduced.
+
+Suggested report ordering:
+
+```text
+same workerId + same capabilityVersion + same payload:
+  idempotent accept/no-op
+
+same workerId + same capabilityVersion + different payload:
+  conflict reject/no-op
+
+lower capabilityVersion:
+  stale reject/no-op
+
+higher capabilityVersion:
+  accept, compose effective capability, publish new snapshot
+```
+
+Out of scope:
+
+- no worker-originated report ingress yet
+- no command lifecycle
+- no worker state projection
+- no matching path reading report payloads
+
+Acceptance:
+
+- one documented capability authority model exists
+- exactly one active path can publish effective capability truth into
+  `WorkerRegistrySnapshot`
+- `WorkerRegistrySnapshot` remains immutable and is swapped by reference, not
+  mutated in place
+- report-owned and registration-owned fields are separated
+- replace/merge behavior is no longer an implementation-time decision
+- version / idempotency / stale rejection / conflict behavior is explicit
+- raw report payloads are excluded from matching and candidate-index hot paths
+
+### EWC-3B: Worker Capability Self-Report Adoption
+
+Status: completed baseline.
 
 Goal: apply the event-language model to the first real kernel-side owner without
 widening scope to the whole worker-control family. This is the first phase where
-durable owner-state mutation is part of the acceptance target.
+worker-originated capability events mutate effective scheduling truth, and it
+must follow `EWC-3A`.
 
 Why this first:
 
 - it proves the whole useful path:
-  `event language -> concrete owner -> WorkerManager /
+  `event language -> capability authority owner -> WorkerManager /
   WorkerRegistrySnapshot / WorkerCandidateIndex`
 - it has less lifecycle ambiguity than command delivery / ack / expiry once the
   capability write-truth model is made explicit
@@ -276,18 +390,38 @@ Why this first:
 
 Scope:
 
-- define the capability authority model before adding self-report mutation:
-  - identify the single capability write truth
-  - decide whether reports replace or merge prior capability declarations
-  - decide whether reports may create or remove event bindings
-  - define version / idempotency / stale-report rejection rules
-  - decide whether mutation lands on `WorkerGroupRecord` truth or continues to
-    write worker-level compatibility fields during the transition
 - kernel-targeted capability report event
-- capability-report owner
+- capability authority owner implementation from `EWC-3A`
 - validation
 - refresh path into `WorkerManager` / `WorkerRegistrySnapshot`
 - trace proof
+
+Implemented behavior:
+
+```text
+CoreEventRequest(event=kernel.worker.capability.report)
+  -> KernelEventHandlerRegistry
+  -> WorkerCapabilityReportEventHandler
+  -> WorkerManager.applyWorkerCapabilityReport(...)
+  -> WorkerCapabilityAuthority
+  -> immutable WorkerRegistrySnapshot publication
+  -> WorkerCandidateIndex candidate-source refresh
+```
+
+Implemented report authority rules:
+
+- reports are scoped by `workerId`
+- `capabilityVersion` orders reports for one worker
+- same version + same payload is idempotent
+- same version + different payload is rejected as conflict
+- lower version is rejected as stale
+- unknown worker reports are rejected
+- reports replace only report-owned availability/attribute facts
+- event availability is intersected with registration-approved event codes
+- reports do not create worker identity, group identity, project bounds, or
+  event-binding ceilings
+- `WORKER_CAPABILITY_REPORT_APPLIED` trace evidence records accepted,
+  idempotent, stale, conflict, and unknown-worker outcomes
 
 Out of scope:
 
@@ -297,16 +431,13 @@ Out of scope:
 
 Acceptance:
 
-- the capability authority model is documented before report mutation enters
-  the kernel
-- exactly one capability write truth is selected for the active path
-- report application semantics for replace/merge, binding mutation, versioning,
-  idempotency, and stale rejection are explicit and covered
 - one concrete owner uses the common event language end to end
 - event routing and owner mutation remain separately testable
 - capability reports refresh registry truth through the approved owner path
 - candidate-source proof remains `WorkerManager` /
   `WorkerRegistrySnapshot` / `WorkerCandidateIndex`
+- report application follows the `EWC-3A` authority, versioning, idempotency,
+  stale rejection, and source-scoped replace rules
 - this slice proves enough value to justify broader owner adoption without
   requiring a shared runtime envelope first
 
@@ -316,7 +447,9 @@ These are not optional side quests. They are the next owner lines that may be
 added after the core ingress/routing model is proved. Each one must remain a
 real owner rather than dissolve into the router.
 
-### EWC-4: Worker Command Lifecycle
+### EWC-4A: Worker Command Lifecycle Owner Baseline
+
+Status: completed baseline.
 
 Goal: add worker command request/status ownership without routing
 acknowledgements through task-result convergence.
@@ -326,6 +459,72 @@ Owner shape:
 ```text
 kernel-targeted command request event
   -> WorkerCommandLifecycleOwner
+  -> command read view
+  -> trace evidence
+```
+
+Implemented behavior:
+
+```text
+CoreEventRequest(event=kernel.worker.command.request)
+  -> KernelEventHandlerRegistry
+  -> WorkerCommandRequestEventHandler
+  -> WorkerCommandLifecycleOwner
+  -> command read view
+  -> WORKER_COMMAND_STATUS_TRANSITION trace evidence
+```
+
+Implemented status model:
+
+```text
+REQUESTED
+  -> DELIVERY_ACCEPTED
+  -> EXECUTION_ACCEPTED
+  -> SUCCEEDED | FAILED | EXPIRED
+```
+
+`REQUESTED` may also move directly to `FAILED` or `EXPIRED`, and
+`DELIVERY_ACCEPTED` may move directly to `SUCCEEDED`, `FAILED`, or `EXPIRED`
+for future delivery implementations that do not split delivery and execution
+acknowledgement.
+
+Implemented request rules:
+
+- `commandId` is the command identity
+- duplicate same `commandId` and same payload is idempotent
+- duplicate same `commandId` with different payload is conflict/no-op
+- command request event payload is parsed by `WorkerCommandRequestEventHandler`
+- lifecycle truth is stored and queried from `WorkerCommandLifecycleOwner`
+- trace emits `WORKER_COMMAND_STATUS_TRANSITION`
+
+Out of scope for this completed baseline:
+
+- no worker delivery channel
+- no command acknowledgement ingress implementation
+- no retry or expiry scheduler
+- no SDK worker shell
+- no task result writes
+- no task lifecycle mutation
+- no generic event owner
+
+Acceptance:
+
+- command entry can use the event language
+- command lifecycle truth remains in the command owner
+- command request/status trace is visible without task-result rows
+- command owner does not depend on task-result convergence, task-work dispatch,
+  transport delivery, reachability, or load owners
+
+### EWC-4B: Worker Command Delivery And Acknowledgement
+
+Goal: extend the command owner with delivery handoff and owner-decided
+ack/status ingress without routing acknowledgements through task-result
+convergence.
+
+Owner shape:
+
+```text
+WorkerCommandLifecycleOwner
   -> command delivery handoff
   -> owner-decided ack/status ingest
   -> command read view
@@ -366,9 +565,9 @@ Out of scope for the first behavior slice:
 
 Acceptance:
 
-- command entry can use the event language
+- command delivery remains owned by the command lifecycle design
 - command lifecycle truth remains in the command owner
-- command delivery remains owned by the command lifecycle design; it must not
+- command delivery must not
   default to task-work delivery or task-result convergence merely because the
   request entered as an event
 - command ack/status never enters `TaskResultRuntime`

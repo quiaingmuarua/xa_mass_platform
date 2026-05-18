@@ -267,6 +267,35 @@ public class WorkerManagerTest {
     }
 
     @Test
+    void workerRegistrySnapshotPublicationSwapsPointInTimeSnapshotReference() {
+        WorkerRegistrySnapshot before = manager.getWorkerRegistrySnapshot();
+
+        Worker worker = worker("w-published-snapshot", "crawler");
+        worker.setSupportedProjects(List.of("demoApp"));
+        worker.setSupportedEventCodes(List.of("crawler.fetch"));
+        manager.addWorker(worker);
+        WorkerRegistrySnapshot afterAdd = manager.getWorkerRegistrySnapshot();
+
+        assertNotSame(before, afterAdd);
+        assertTrue(before.workers().isEmpty());
+        assertTrue(before.group("crawler").isEmpty());
+        assertEquals(List.of("w-published-snapshot"),
+                afterAdd.workers().stream().map(Worker::getWorkerId).toList());
+
+        Worker updated = worker("w-published-snapshot", "export");
+        updated.setSupportedProjects(List.of("testApp"));
+        updated.setSupportedEventCodes(List.of("report.export"));
+        assertTrue(manager.updateWorker(updated));
+        WorkerRegistrySnapshot afterUpdate = manager.getWorkerRegistrySnapshot();
+
+        assertNotSame(afterAdd, afterUpdate);
+        assertTrue(afterAdd.group("crawler").isPresent());
+        assertTrue(afterAdd.group("export").isEmpty());
+        assertTrue(afterUpdate.group("crawler").isEmpty());
+        assertTrue(afterUpdate.group("export").isPresent());
+    }
+
+    @Test
     void updateWorkerRefreshesWorkerRegistrySnapshotCapability() {
         Worker worker = worker("w-snapshot-update", "crawler");
         worker.setSupportedProjects(List.of("demoApp"));
@@ -285,6 +314,33 @@ public class WorkerManagerTest {
         assertEquals(List.of("w-snapshot-update"),
                 manager.getWorkerCandidateIndex()
                         .workersFor(task("testApp", Map.of(TaskSharedConfig.SDK_METADATA,
+                                Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.parse"))))
+                        .stream()
+                        .map(Worker::getWorkerId)
+                        .toList());
+    }
+
+    @Test
+    void workerCapabilityReportRefreshesCandidateIndexThroughPublishedSnapshot() {
+        Worker worker = worker("w-report-capability", "crawler");
+        worker.setSupportedProjects(List.of("demoApp"));
+        worker.setSupportedEventCodes(List.of("crawler.fetch", "crawler.parse"));
+        manager.addWorker(worker);
+
+        WorkerCapabilityReportResult result = manager.applyWorkerCapabilityReport(
+                WorkerCapabilityReport.builder("w-report-capability", 1)
+                        .availableEventCodes(List.of("crawler.parse"))
+                        .build()
+        );
+
+        assertEquals(WorkerCapabilityReportStatus.ACCEPTED, result.status());
+        assertTrue(manager.getWorkerCandidateIndex()
+                .workersFor(task("demoApp", Map.of(TaskSharedConfig.SDK_METADATA,
+                        Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch"))))
+                .isEmpty());
+        assertEquals(List.of("w-report-capability"),
+                manager.getWorkerCandidateIndex()
+                        .workersFor(task("demoApp", Map.of(TaskSharedConfig.SDK_METADATA,
                                 Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.parse"))))
                         .stream()
                         .map(Worker::getWorkerId)
