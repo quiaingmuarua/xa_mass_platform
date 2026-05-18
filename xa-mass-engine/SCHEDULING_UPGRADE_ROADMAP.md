@@ -1,10 +1,10 @@
 # Scheduling Upgrade Roadmap
 
-Last updated: 2026-05-16
+Last updated: 2026-05-18
 
-Status: proposed long-range roadmap. This is not a current engine baseline and
-must not be read as implemented behavior, except for progress notes explicitly
-marked as implemented.
+Status: historical long-range roadmap plus future directions. Completed
+progress notes describe current engine baseline. Future/proposed sections
+remain planning material and must not be read as implemented behavior.
 
 Progress:
 
@@ -226,6 +226,13 @@ Progress:
   worker registration. WorkerContext identity residue was later removed from
   canonical trace as well; remaining references are architecture/source guards
   and historical documentation.
+- 2026-05-18: WorkerGroup capability and candidate-index core line closed
+  through WG-5. `WorkerCandidateIndex` is the active Stage-1 source for target
+  worker, SDK event, and project-only tasks; Stage 2 materializes capability
+  fields from `WorkerGroupRecord`; canonical assignment trace carries
+  `workerGroupId`, `eventBindingKey`, and `workerCandidateSource`; and
+  `group-capability-routing` proves event-code group routing through real
+  Boot/API/SDK/transport wiring.
 
 This document records the intended path for a long-running engine scheduling
 upgrade. The work is deliberately split into small, independently verifiable
@@ -410,16 +417,16 @@ items can be reordered, but each step must preserve the owner boundaries above.
 
 | Step | Name | Behavioral risk | Primary owner touched | Status |
 | --- | --- | --- | --- | --- |
-| 0 | Roadmap and guardrails | None | Docs | Proposed |
+| 0 | Roadmap and guardrails | None | Docs | Implemented |
 | 1 | Retire inert `TaskScheduler` SPI | Low to medium | Engine/SDK wiring | Implemented 2026-05-15 |
-| 2 | Worker scheduling view convergence | Medium | Matching and worker read model | Implemented through default rule surface and candidate handoff; API cleanup proposed |
-| 3 | WorkerContext public/storage cleanup | High | Server/API/storage/tests | Proposed |
+| 2 | Worker scheduling view convergence | Medium | Matching and worker read model | Implemented; WorkerContext rule/read-model compatibility removed |
+| 3 | WorkerContext public/storage cleanup | High | Server/API/storage/tests | Implemented; model/API/runtime/transport/projection payload removed |
 | 4 | WorkerLoadView foundation | Medium | Runtime/attempt/load view | Implemented; extended by Step 7A reservation |
 | 5 | Dispatch priority within lanes | Medium | `TaskAssignWorker` | Implemented 2026-05-15 |
 | 6 | Worker candidate ranker | Medium | Matching strategy | Implemented 2026-05-15 |
-| 7 | Capacity reservation and foreground/background | High | Matching/runtime/allocation | Reservation foundation and trace analyzer implemented; foreground/background proposed |
+| 7 | Capacity reservation and foreground/background | High | Matching/runtime/allocation | Implemented for process-local worker capacity and stateless background sharing |
 | 8 | Cross-task worker budget, fairness, refill owner, and resource usage owner | High | Allocation/release/resource policy/load view | Bounded default budget, refill policy, dispatch resource usage policy, legacy WorkerContext lifecycle owner, dispatch cleanup owner, architecture guards, fairness analyzer, and server trace-observed proof implemented |
-| 9 | System-event worker management boundary | High | Worker management integration | Proposed |
+| 9 | System-event worker management boundary | High | Worker management integration | Future separate roadmap |
 
 ## 8. Step 1: Retire Inert TaskScheduler SPI
 
@@ -835,7 +842,7 @@ capacity, but it does not acquire the long-lived exclusive worker lock. This
 enables worker sharing up to `Worker.maxConcurrentWork`; WorkerContext identity
 is not part of the sharing decision.
 
-### Proposed semantics
+### Implemented semantics
 
 - Foreground task: reserves full worker capacity and may use an exclusive worker
   lock for compatibility with current behavior.
@@ -845,7 +852,7 @@ is not part of the sharing decision.
 - Runtime claim confirmation converts reserved capacity to active capacity.
 - Dispatch or claim failure releases the reservation.
 
-### Proposed WorkerLoadView additions
+### WorkerLoadView reservation API
 
 ```java
 boolean tryReserveCapacity(String workerId, String taskId);
@@ -853,11 +860,9 @@ boolean confirmReservation(String workerId, String taskId);
 void releaseReservation(String workerId, String taskId);
 ```
 
-The current implemented API is intentionally smaller than the eventual
-foreground/background shape. It reserves one capacity unit against the worker's
-declared capacity and lets `SimpleTaskDispatchBinder` fall back to
-`recordWorkClaimed(...)` when tests or custom matching strategies bypass
-reservation.
+The current API reserves capacity against the worker's declared capacity and
+lets `SimpleTaskDispatchBinder` fall back to `recordWorkClaimed(...)` when tests
+or custom matching strategies bypass reservation.
 
 Worker match accepted/rejected trace rows read the current load snapshot at the
 reservation decision point. This makes `workerReservedCount`,
@@ -1071,28 +1076,40 @@ WorkerContext retirement.
 Each analyzer must read canonical sink output through `xa-mass-trace`. It must
 not read MDC logs, compatibility projection, or the database.
 
-## 18. Open Questions Before Implementation
+## 18. Historical Questions
 
-These questions should be answered before their corresponding step starts.
+These questions were the implementation gates for the completed kernel
+convergence work. They are retained as review context, not as current blockers.
 
 1. Is the long-term product decision that account/device/context lifecycle is
-   outside engine and system-event-managed?
+   outside engine and system-event-managed? Current baseline: yes for the
+   engine scheduling kernel; concrete system-event/device-management work is a
+   separate future roadmap.
 2. Should `WorkerSchedulingView` be a concrete engine type or only an internal
-   concept implemented through existing worker lookup APIs first?
+   concept implemented through existing worker lookup APIs first? Current
+   baseline: concrete engine-internal read model.
 3. During WorkerContext retirement, do we physically delete context APIs in one
-   step or first stop using them in the engine hot path?
+   step or first stop using them in the engine hot path? Current baseline:
+   phased hot-path convergence followed by physical deletion.
 4. What exact runtime behavior should `foreground=false` enable once the
    current read surface is wired: shared worker dispatch only, or also a
-   different result/lease profile?
+   different result/lease profile? Current baseline: shared worker dispatch via
+   capacity reservation; result/lease protocol remains unchanged.
 5. What is the exact unit of worker capacity: worker, active lease, active
-   attempt, dispatched message, or assignment binding?
+   attempt, dispatched message, or assignment binding? Current baseline:
+   process-local active/reserved worker lease capacity.
 6. How should stateless workers, multi-account workers, and future device pools
-   express capability without engine-managed context slots?
+   express capability without engine-managed context slots? Current baseline:
+   WorkerGroup/event bindings and worker scheduling attributes; account/device
+   lifecycle is outside the engine kernel.
 7. Which trace attrs are stable enough to add to `TRACE_CONTRACT.md` at each
-   phase?
+   phase? Current baseline: assignment trace includes worker scheduling/load,
+   resource cleanup, budget/fairness, and WorkerGroup source evidence.
 8. Do server E2E fixtures need to generate canonical JSONL for every new trace
    scenario, or can some trace scenarios stay fixture-level inside
-   `xa-mass-trace` until server wiring changes?
+   `xa-mass-trace` until server wiring changes? Current baseline:
+   representative server trace-observed proof for behavior-changing wiring;
+   analyzer edge cases may stay fixture-level.
 
 ## 19. Acceptance Rule For Each Step
 
@@ -1118,8 +1135,16 @@ the production strategy package, the candidate handoff no longer carries a
 nullable `WorkerContext` object, and `WorkerSchedulingView` / `WorkerMatchContext`
 no longer expose `workerContext*` scheduling facts.
 
-The next step should stay on the same kernel line: keep source guards tight,
-keep scheduling proof on worker scheduling/load/resource evidence, and continue
-with worker-management/system-event boundaries or group/capability modeling
-without reintroducing account/context CRUD or context-slot lifecycle under a new
+The scheduling kernel mechanism line is now at a stable baseline. The next work
+should not be another broad kernel refactor. Keep source guards tight, keep
+scheduling proof on worker scheduling/load/resource evidence, and start any new
+capability as a separate focused roadmap:
+
+- worker-management/system-event boundaries
+- WorkerGroup capability self-report
+- AdapterNode lifecycle
+- routing-tag candidate indexes after measured need
+- policy quality improvements inside the existing policy owners
+
+Do not reintroduce account/context CRUD or context-slot lifecycle under a new
 name.

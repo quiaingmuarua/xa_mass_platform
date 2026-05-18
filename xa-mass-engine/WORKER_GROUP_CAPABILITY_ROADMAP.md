@@ -1383,7 +1383,12 @@ Mitigation:
 - plugin metadata is optional descriptive data
 - do not introduce global plugin/group templates until a concrete need appears
 
-## Recommended First Slice
+## Historical Core-Line Execution Slices
+
+The core line is complete through WG-5. The following slices are retained as
+execution history and review context, not as the current recommended next work.
+Future extension work should start from a new focused plan instead of continuing
+these slices as WG-6.
 
 Start with WG-0 only:
 

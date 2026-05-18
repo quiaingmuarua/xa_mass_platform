@@ -2,8 +2,9 @@
 
 Last updated: 2026-05-16
 
-Status: active phased plan. WorkerContext physical model, storage, SDK/server
-API, frontend/operator resource pages, test-only worker-context fixtures,
+Status: completed retirement baseline plus historical phased plan.
+WorkerContext physical model, storage, SDK/server API, frontend/operator
+resource pages, test-only worker-context fixtures,
 runtime/transport/projection payload use, and canonical trace identity have
 been removed. Remaining WorkerContext references are source guards and
 historical documentation.

@@ -510,19 +510,22 @@ Engine-local owner docs:
 - [`TASK_RUNTIME_PROFILE_DESIGN.md`](./TASK_RUNTIME_PROFILE_DESIGN.md):
   design/refactor note for the remaining workload-profile evolution only
 - [`SCHEDULING_UPGRADE_ROADMAP.md`](./SCHEDULING_UPGRADE_ROADMAP.md):
-  proposed long-range scheduling upgrade roadmap; planning material only, not
-  implemented baseline behavior
+  historical long-range scheduling upgrade roadmap plus remaining future
+  directions. Completed progress notes describe current baseline; future
+  sections remain planning material.
 - [`WORKER_SCHEDULING_VIEW_BASELINE.md`](./WORKER_SCHEDULING_VIEW_BASELINE.md):
-  current transitional baseline for WorkerContext hot-path convergence
+  current worker scheduling read-model baseline after WorkerContext retirement
+  and WorkerGroup candidate-source convergence
 - [`WORKER_CONTEXT_RETIREMENT_PLAN.md`](./WORKER_CONTEXT_RETIREMENT_PLAN.md):
-  proposed plan for retiring WorkerContext from the scheduling kernel; planning
-  material only, not implemented baseline behavior
+  completed WorkerContext retirement baseline plus historical phased plan.
+  Current scheduling kernel code must not reintroduce WorkerContext identity,
+  storage, or rule fields.
 - [`WORKER_GROUP_CAPABILITY_ROADMAP.md`](./WORKER_GROUP_CAPABILITY_ROADMAP.md):
-  proposed next roadmap for converging worker capability ownership and indexed
-  scheduling candidate lookup inside the current engine boundary. It uses the
-  `AdapterNode -> WorkerGroup -> Worker` model and explicitly avoids module
-  split, service extraction, worker command/state-report implementation, and
-  unified event-envelope runtime work.
+  completed WG-0 through WG-5 baseline for WorkerGroup capability ownership and
+  indexed scheduling candidate lookup, plus future WorkerGroup extension
+  directions. It uses the `AdapterNode -> WorkerGroup -> Worker` model and
+  explicitly avoids module split, service extraction, worker
+  command/state-report implementation, and unified event-envelope runtime work.
 - [`UNIFIED_EVENT_ENVELOPE_ROADMAP.md`](./UNIFIED_EVENT_ENVELOPE_ROADMAP.md):
   separate north-star roadmap for future event envelope metadata, priority,
   response, convergence, target-scope, queue-placement, and task-stage

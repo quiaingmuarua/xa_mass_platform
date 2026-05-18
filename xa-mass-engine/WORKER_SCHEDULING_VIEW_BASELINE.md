@@ -1,10 +1,11 @@
 # Worker Scheduling View Baseline
 
-Last updated: 2026-05-16
+Last updated: 2026-05-18
 
-Status: current baseline for the WorkerContext convergence path,
-including scheduling-candidate handoff, default rule surface convergence,
-worker load view wiring, load-aware ranking, and default-capacity reservation.
+Status: completed WorkerContext retirement baseline for the worker scheduling
+read model, including scheduling-candidate handoff, default rule surface
+convergence, worker load view wiring, load-aware ranking, default-capacity
+reservation, and WorkerGroup-backed candidate source materialization.
 WorkerContext physical model/storage/API surfaces have been deleted. Runtime,
 transport, projection, SDK/API, and server E2E payloads are worker-level. The
 remaining WorkerContext references are source guards and documentation that
@@ -30,9 +31,10 @@ longer flatten context status/project/routing/attributes into scheduling facts.
 `WorkerSchedulingView` no longer accepts or exposes WorkerContext identity.
 
 This document records the current engine scheduling read model after the
-WorkerContext convergence slices. It is intentionally narrow: this path records
-the scheduling kernel state and does not remove the nullable historical trace
-schema field.
+WorkerContext retirement and WorkerGroup candidate-source convergence slices.
+It is intentionally narrow: this path records the scheduling kernel state and
+does not claim that future worker-management or AdapterNode lifecycle work is
+implemented.
 
 ## Fixed Mainline Relationship
 
@@ -51,10 +53,9 @@ WorkerSchedulingCandidateEnumerator
 
 The last step is intentionally described as acquisition, not pure matching.
 Current code performs reservation and optional exclusive worker-lock acquisition
-inside `RuleBasedTaskWorkerMatchingStrategy`. This is an acceptable transitional
-shape while the engine is still converging WorkerContext and worker-management
-boundaries. It must not be used as permission to hide unrelated lifecycle
-mechanisms inside matching code.
+inside `RuleBasedTaskWorkerMatchingStrategy`. This is the current mechanism
+baseline for resource admission; it must not be used as permission to hide
+unrelated lifecycle mechanisms inside matching code.
 
 ## Goal
 
@@ -182,9 +183,9 @@ WorkerContext model, and `WorkerMatchContext` no longer exposes
 `workerContext*` rule variables. Runtime, transport, projection, SDK/API, and
 server result surfaces use worker-level identity.
 
-## Transitional View
+## Current View
 
-`WorkerSchedulingView` is the current transitional read model.
+`WorkerSchedulingView` is the current scheduling read model.
 
 It is built from:
 
@@ -266,10 +267,10 @@ allocation policy. `WorkerBudgetPolicy` applies conservative internal
 workload-class caps and assignment summaries emit `workerBudget`,
 `currentTaskWorkerCount`, and `budgetLimited` as policy evidence. These caps are
 not a public scheduling configuration surface yet.
-The current guard for this transitional slice is intentionally source-level:
-future code must not reintroduce WorkerContext enumeration in the matching
-strategy package, context-first handoff types, hidden WorkerContext state
-mutation, or listener-owned resource cleanup.
+The current guard for this baseline is intentionally source-level: future code
+must not reintroduce WorkerContext enumeration in the matching strategy package,
+context-first handoff types, hidden WorkerContext state mutation, or
+listener-owned resource cleanup.
 
 Legacy rule/read-model fields are retired:
 
