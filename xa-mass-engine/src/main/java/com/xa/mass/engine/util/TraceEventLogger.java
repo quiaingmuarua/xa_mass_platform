@@ -16,6 +16,7 @@ import com.xa.mass.engine.runtime.TaskRuntimeProfile;
 import com.xa.mass.engine.runtime.TaskRuntimeProfileResolver;
 import com.xa.mass.engine.command.WorkerCommandLifecycleResult;
 import com.xa.mass.engine.worker.WorkerCapabilityReportResult;
+import com.xa.mass.engine.worker.WorkerStateProjectionResult;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.trace.sink.ExecutionEvent;
 import com.xa.mass.trace.sink.ExecutionEventSink;
@@ -847,6 +848,26 @@ public final class TraceEventLogger {
                         "requester", result.record().requester(),
                         "idempotencyKey", result.record().idempotencyKey(),
                         "deadlineEpochMillis", result.record().deadlineEpochMillis()
+                ))
+                .build());
+    }
+
+    public void workerStateReportApplied(WorkerStateProjectionResult result) {
+        if (result == null) {
+            return;
+        }
+        emit(event(ExecutionEventType.WORKER_STATE_REPORT_APPLIED)
+                .identity(identity -> identity.workerId(result.workerId()))
+                .outcome(result.success(), result.success() ? null : result.status().name(), result.reason())
+                .attrs(attrs(
+                        "source", "WorkerStateProjectionOwner",
+                        "reason", result.reason(),
+                        "result", result.status().name(),
+                        "stateVersion", result.stateVersion(),
+                        "projectionChanged", result.projectionChanged(),
+                        "workerState", result.projection() != null ? result.projection().state() : null,
+                        "observedAt", result.projection() != null ? result.projection().observedAt() : null,
+                        "recentReportCount", result.projection() != null ? result.projection().recentReports().size() : null
                 ))
                 .build());
     }

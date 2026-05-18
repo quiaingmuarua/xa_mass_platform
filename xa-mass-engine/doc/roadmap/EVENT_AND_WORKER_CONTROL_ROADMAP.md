@@ -610,6 +610,8 @@ Acceptance:
 
 ### EWC-5: Worker State Projection
 
+Status: completed bounded projection baseline.
+
 Goal: accept worker/device state reports into a bounded owner projection.
 
 Scope:
@@ -618,17 +620,48 @@ Scope:
 - validation and idempotency
 - TTL/debounce
 - bounded recent history
-- approved derived scheduling evidence
+- approved derived scheduling evidence only when a later scheduling policy owner
+  explicitly adopts it
+
+Implemented behavior:
+
+```text
+CoreEventRequest(event=kernel.worker.state.report)
+  -> KernelEventHandlerRegistry
+  -> WorkerStateReportEventHandler
+  -> WorkerStateProjectionOwner
+  -> bounded per-worker projection/read view
+  -> WORKER_STATE_REPORT_APPLIED trace evidence
+```
+
+Implemented projection rules:
+
+- reports are scoped by `workerId`
+- `stateVersion` orders reports for one worker
+- same version + same payload is idempotent
+- same version + different payload is rejected as conflict
+- lower version is rejected as stale
+- higher version replaces the latest projected state
+- raw reports stay in a bounded per-worker recent-history window
+- state reports do not create worker identity, mutate reachability, mutate load,
+  or refresh matching/candidate-index truth
+- no scheduling policy consumes state projection in this baseline
 
 Out of scope:
 
 - no raw state facts in matching/ranking
 - no unbounded durable audit for every high-frequency report by default
+- no transport presence mutation
+- no worker capability mutation
+- no task-result writes
 
 Acceptance:
 
 - raw reports do not become hot-path matching input
-- only bounded derived evidence is exposed to scheduling
+- no state evidence is exposed to scheduling in this baseline; a later policy
+  owner may expose bounded derived evidence explicitly
+- state projection owner is independently testable and guarded from
+  reachability, load, scheduling, result, runtime, and transport owners
 
 ### EWC-6: Task Item Stage Semantics
 

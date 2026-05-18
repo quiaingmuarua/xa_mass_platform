@@ -14,6 +14,8 @@ import com.xa.mass.engine.worker.WorkerCapabilityAuthorityTest;
 import com.xa.mass.engine.worker.WorkerCapabilityReportEventHandlerTest;
 import com.xa.mass.engine.worker.WorkerManagerTest;
 import com.xa.mass.engine.worker.WorkerRegistrySnapshotTest;
+import com.xa.mass.engine.worker.WorkerStateProjectionOwnerTest;
+import com.xa.mass.engine.worker.WorkerStateReportEventHandlerTest;
 import org.junit.platform.suite.api.SelectClasses;
 import org.junit.platform.suite.api.Suite;
 
@@ -36,6 +38,8 @@ import org.junit.platform.suite.api.Suite;
         WorkerCommandDeliveryCoordinatorTest.class,
         WorkerCommandLifecycleOwnerTest.class,
         WorkerCommandRequestEventHandlerTest.class,
+        WorkerStateProjectionOwnerTest.class,
+        WorkerStateReportEventHandlerTest.class,
         WorkerRegistrySnapshotTest.class,
         TaskResourceReleaseListenerTest.class,
         TaskAssignWorkerTest.class,
