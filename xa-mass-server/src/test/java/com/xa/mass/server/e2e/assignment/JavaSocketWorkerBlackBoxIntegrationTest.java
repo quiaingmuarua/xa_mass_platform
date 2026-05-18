@@ -64,6 +64,7 @@ class JavaSocketWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest {
         HttpHeaders workerHeaders = credentialHeaders(SOCKET_WORKER_KEY);
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", SOCKET_WORKER_ID,
+                "workerGroupId", "java-socket-crawler",
                 "adapterId", "socket",
                 "transportHint", "realtime",
                 "attributes", Map.of("lang", "java", "runtime", "java-socket-worker"),
@@ -144,6 +145,7 @@ class JavaSocketWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest {
 
         assertApiOk(exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", WEBSOCKET_WORKER_ID,
+                "workerGroupId", "java-websocket-demo",
                 "adapterId", "websocket",
                 "transportHint", "realtime",
                 "attributes", Map.of("lang", "java", "runtime", "java-websocket-worker"),
@@ -155,6 +157,7 @@ class JavaSocketWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest {
 
         assertApiOk(exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", SOCKET_WORKER_ID,
+                "workerGroupId", "java-socket-crawler",
                 "adapterId", "socket",
                 "transportHint", "realtime",
                 "attributes", Map.of("lang", "java", "runtime", "java-socket-worker"),

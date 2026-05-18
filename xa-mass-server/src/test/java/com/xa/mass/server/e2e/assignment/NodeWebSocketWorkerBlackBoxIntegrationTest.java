@@ -69,6 +69,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest
         HttpHeaders workerHeaders = credentialHeaders(WORKER_KEY);
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", WORKER_ID,
+                "workerGroupId", "node-websocket-crawler",
                 "adapterId", "websocket",
                 "transportHint", "realtime",
                 "attributes", Map.of(
@@ -153,6 +154,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest
         HttpHeaders workerHeaders = credentialHeaders(STOCK_WORKER_KEY);
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", STOCK_WORKER_ID,
+                "workerGroupId", "node-websocket-stock",
                 "adapterId", "websocket",
                 "transportHint", "realtime",
                 "attributes", Map.of(

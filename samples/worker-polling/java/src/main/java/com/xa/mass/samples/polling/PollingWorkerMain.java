@@ -33,13 +33,11 @@ public final class PollingWorkerMain {
     private final String workerGroupId;
     private final String project;
     private final String eventCode;
-    private final String workerContextId;
     private final String region;
     private final String runtime;
     private final String[] routingTags;
     private final long pollIntervalMs;
     private final long heartbeatIntervalMs;
-    private final boolean registerContext;
     private final AtomicBoolean shuttingDown = new AtomicBoolean(false);
 
     private PollingWorkerMain() {
@@ -52,13 +50,11 @@ public final class PollingWorkerMain {
         this.workerGroupId = env("MASS_WORKER_GROUP_ID", "java-runtime");
         this.project = env("MASS_PROJECT", "crawlerApp");
         this.eventCode = env("MASS_EVENT_CODE", "crawler.fetch-page");
-        this.workerContextId = env("MASS_WORKER_CONTEXT_ID", "ctx-" + workerId);
         this.region = env("MASS_REGION", "us");
         this.runtime = "java-" + System.getProperty("java.version");
         this.routingTags = splitCsv(env("MASS_ROUTING_TAGS", "web," + region));
         this.pollIntervalMs = longEnv("MASS_POLL_INTERVAL_MS", 1000L);
         this.heartbeatIntervalMs = longEnv("MASS_HEARTBEAT_INTERVAL_MS", 10000L);
-        this.registerContext = booleanEnv("MASS_REGISTER_CONTEXT", true);
     }
 
     public static void main(String[] args) throws Exception {
@@ -71,9 +67,6 @@ public final class PollingWorkerMain {
                 "java-polling-worker-shutdown"));
 
         registerWorker();
-        if (registerContext) {
-            registerWorkerContext();
-        }
         post("/worker-api/v1/workers/" + encoded(workerId) + ":online",
                 jsonObject("reason", "java-worker-online"));
 
@@ -100,6 +93,8 @@ public final class PollingWorkerMain {
         attributes.addProperty("lang", "java");
         attributes.addProperty("runtime", runtime);
         attributes.addProperty("region", region);
+        attributes.addProperty("country", region);
+        attributes.addProperty("routingTags", String.join(",", routingTags));
         body.add("attributes", attributes);
 
         JsonArray eventBindings = new JsonArray();
@@ -113,25 +108,6 @@ public final class PollingWorkerMain {
 
         JsonObject response = post("/worker-api/v1/workers", body);
         log("registered worker: " + response.get("data"));
-    }
-
-    private void registerWorkerContext() throws Exception {
-        JsonObject body = new JsonObject();
-        body.addProperty("workerContextId", workerContextId);
-        body.addProperty("workerId", workerId);
-        body.addProperty("project", project);
-        JsonArray tags = new JsonArray();
-        for (String routingTag : routingTags) {
-            tags.add(routingTag);
-        }
-        body.add("routingTags", tags);
-        JsonObject attributes = new JsonObject();
-        attributes.addProperty("region", region);
-        attributes.addProperty("runtime", "java");
-        body.add("attributes", attributes);
-
-        JsonObject response = post("/worker-api/v1/workers/" + encoded(workerId) + "/contexts", body);
-        log("registered worker context: " + response.get("data"));
     }
 
     private void pollOnce() throws Exception {
@@ -402,14 +378,6 @@ public final class PollingWorkerMain {
             throw new IllegalArgumentException(name + " must be a positive integer");
         }
         return parsed;
-    }
-
-    private static boolean booleanEnv(String name, boolean fallback) {
-        String value = System.getenv(name);
-        if (value == null || value.isBlank()) {
-            return fallback;
-        }
-        return "1".equals(value) || Boolean.parseBoolean(value);
     }
 
     private static String[] splitCsv(String value) {

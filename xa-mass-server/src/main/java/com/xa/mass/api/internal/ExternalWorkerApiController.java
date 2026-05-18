@@ -70,6 +70,7 @@ public class ExternalWorkerApiController {
         workerRegistry.registerWorker(request);
         return ApiResponse.success(Map.of(
                 "workerId", request.getWorkerId(),
+                "workerGroupId", request.getWorkerGroupId(),
                 "adapterId", workerClient.getWorkerAdapterId(workerId),
                 "transportHint", transportHint,
                 "eventBindings", request.getEventBindings()
@@ -192,6 +193,7 @@ public class ExternalWorkerApiController {
         if (requestBody.getEventBindings() == null || requestBody.getEventBindings().isEmpty()) {
             throw new IllegalArgumentException("eventBindings is required");
         }
+        requireNonBlank(requestBody.getWorkerGroupId(), "workerGroupId");
         for (ExternalWorkerEventBindingApiRequest binding : requestBody.getEventBindings()) {
             if (binding == null) {
                 throw new IllegalArgumentException("eventBindings must not contain null items");

@@ -71,6 +71,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
 
         Map<String, Object> realtimeRegisterResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", "realtime-worker-001",
+                "workerGroupId", "realtime-crawler",
                 "transportHint", "realtime",
                 "eventBindings", List.of(Map.of(
                         "eventCode", "crawler.fetch-page",
@@ -83,6 +84,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
 
         Map<String, Object> aliasRegisterResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", "realtime-worker-002",
+                "workerGroupId", "realtime-crawler",
                 "transportHint", "websocket",
                 "eventBindings", List.of(Map.of(
                         "eventCode", "crawler.fetch-page",

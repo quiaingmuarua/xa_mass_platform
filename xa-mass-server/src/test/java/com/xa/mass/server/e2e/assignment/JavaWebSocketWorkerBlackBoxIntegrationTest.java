@@ -66,6 +66,7 @@ class JavaWebSocketWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest
         HttpHeaders workerHeaders = credentialHeaders(WORKER_KEY);
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", WORKER_ID,
+                "workerGroupId", "java-websocket-crawler",
                 "adapterId", "websocket",
                 "transportHint", "realtime",
                 "attributes", Map.of("lang", "java", "runtime", "java-websocket-worker"),

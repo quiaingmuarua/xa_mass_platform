@@ -63,6 +63,7 @@ class ExternalWorkerRealtimeRegistrationIntegrationTest extends AbstractSampleE2
 
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", WORKER_ID,
+                "workerGroupId", "realtime-crawler",
                 "transportHint", "realtime",
                 "eventBindings", List.of(Map.of(
                         "eventCode", "crawler.fetch-page",

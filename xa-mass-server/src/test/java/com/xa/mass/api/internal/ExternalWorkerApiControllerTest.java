@@ -91,12 +91,14 @@ class ExternalWorkerApiControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.workerId").value("node-worker-1"))
+                .andExpect(jsonPath("$.data.workerGroupId").value("node-runtime"))
                 .andExpect(jsonPath("$.data.adapterId").value(WorkerTransportHints.POLLING))
                 .andExpect(jsonPath("$.data.transportHint").value(WorkerTransportHints.POLLING))
                 .andExpect(jsonPath("$.data.eventBindings[0].eventCode").value("crawler.fetch-page"));
 
         verify(workerRegistry).registerWorker(argThat(request ->
                 "node-worker-1".equals(request.getWorkerId())
+                        && "node-runtime".equals(request.getWorkerGroupId())
                         && request.getAdapterId() == null
                         && WorkerTransportHints.POLLING.equals(request.getTransportHint())
                         && List.of(WorkerEventBinding.builder()
@@ -122,15 +124,37 @@ class ExternalWorkerApiControllerTest {
     }
 
     @Test
-    void registerWorkerRejectsTransportHintCompatibilityAlias() throws Exception {
+    void registerWorkerRejectsMissingWorkerGroupId() throws Exception {
         mockMvc.perform(post("/worker-api/v1/workers")
                         .contentType("application/json")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
                         .content("""
                                 {
                                   "workerId": "node-worker-1",
-                                  "transportHint": "pull",
                                   "eventBindings": [
+                                    {
+                                      "eventCode": "crawler.fetch-page",
+                                      "projectCodes": ["crawlerApp"]
+                                    }
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value("workerGroupId must not be blank"));
+    }
+
+    @Test
+    void registerWorkerRejectsTransportHintCompatibilityAlias() throws Exception {
+        mockMvc.perform(post("/worker-api/v1/workers")
+                        .contentType("application/json")
+                        .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
+                        .content("""
+                {
+                  "workerId": "node-worker-1",
+                  "workerGroupId": "node-runtime",
+                  "transportHint": "pull",
+                  "eventBindings": [
                                     {
                                       "eventCode": "crawler.fetch-page",
                                       "projectCodes": ["crawlerApp"]
@@ -178,9 +202,10 @@ class ExternalWorkerApiControllerTest {
                         .contentType("application/json")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
                         .content("""
-                                {
-                                  "workerId": "node-worker-1",
-                                  "eventBindings": [
+                {
+                  "workerId": "node-worker-1",
+                  "workerGroupId": "node-runtime",
+                  "eventBindings": [
                                     {
                                       "eventCode": "mock.reset"
                                     }
