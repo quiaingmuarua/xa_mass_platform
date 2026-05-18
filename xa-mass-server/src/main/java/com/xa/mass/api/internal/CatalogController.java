@@ -1,6 +1,7 @@
 package com.xa.mass.api.internal;
 
 import com.xa.mass.api.model.ApiResponse;
+import com.xa.mass.api.model.catalog.EventCapabilityView;
 import com.xa.mass.sdk.RuntimeDiagnosticsOperations;
 import com.xa.mass.sdk.WorkerQueryOperations;
 import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
@@ -65,9 +66,9 @@ public class CatalogController {
     }
 
     @GetMapping("/event-capabilities")
-    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> listEventCapabilities() {
+    public ResponseEntity<ApiResponse<List<EventCapabilityView>>> listEventCapabilities() {
         List<WorkerSnapshot> workers = workerQueries == null ? List.of() : workerQueries.getAllWorkers();
-        List<Map<String, Object>> items = catalog.listEvents().stream()
+        List<EventCapabilityView> items = catalog.listEvents().stream()
                 .sorted(Comparator.comparing(EventDefinition::getCode, String::compareToIgnoreCase))
                 .map(event -> {
                     boolean directRuntime = event.getTaskModes().isEmpty();
@@ -89,18 +90,21 @@ public class CatalogController {
                             .sorted(String::compareToIgnoreCase)
                             .toList();
 
-                    Map<String, Object> item = new LinkedHashMap<>();
-                    item.put("eventCode", event.getCode());
-                    item.put("eventName", event.getName());
-                    item.put("enabled", event.isEnabled());
-                    item.put("invocationModel", directRuntime ? "DIRECT_RUNTIME" : "TASK_BACKED");
-                    item.put("projectCodes", normalizeProjectCodes(event.getProjectCodes()));
-                    item.put("workerIds", workerIds);
-                    item.put("onlineWorkerIds", onlineWorkerIds);
-                    item.put("hasDirectRuntimeHandler", directRuntime);
-                    item.put("hasOnlineWorkerCoverage", !onlineWorkerIds.isEmpty());
-                    item.put("ready", directRuntime || !onlineWorkerIds.isEmpty());
-                    return item;
+                    return new EventCapabilityView(
+                            event.getCode(),
+                            event.getName(),
+                            event.isEnabled(),
+                            event.getPriorityClass().name(),
+                            event.getResponseMode().name(),
+                            event.getTargetScope().name(),
+                            directRuntime ? "DIRECT_RUNTIME" : "TASK_BACKED",
+                            normalizeProjectCodes(event.getProjectCodes()),
+                            workerIds,
+                            onlineWorkerIds,
+                            directRuntime,
+                            !onlineWorkerIds.isEmpty(),
+                            directRuntime || !onlineWorkerIds.isEmpty()
+                    );
                 })
                 .toList();
         return ResponseEntity.ok(ApiResponse.success(items));

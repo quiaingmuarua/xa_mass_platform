@@ -5,6 +5,9 @@ import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.worker.WorkerStatus;
+import com.xa.mass.base.event.PriorityClass;
+import com.xa.mass.base.event.ResponseMode;
+import com.xa.mass.base.event.TargetScope;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.base.model.Worker;
@@ -1803,6 +1806,9 @@ class MassSdkTest {
                 .payloadTypes(List.of(PayloadType.TEXT, PayloadType.JSON))
                 .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
                 .defaultRoutingCode("bot")
+                .priorityClass(PriorityClass.INTERACTIVE)
+                .responseMode(ResponseMode.STREAM)
+                .targetScope(TargetScope.WORKER)
                 .handler((request, principal) -> EventResponse.success(Map.of("accepted", true), request.getRequestId()))
                 .build());
         app.registerProject(ProjectDefinition.builder()
@@ -1821,8 +1827,14 @@ class MassSdkTest {
         assertEquals(List.of("TEXT", "JSON"), descriptor.getPayloadTypes());
         assertEquals(List.of("SINGLE_RUN", "STREAMING"), descriptor.getTaskModes());
         assertEquals("bot", descriptor.getDefaultRoutingCode());
+        assertEquals(PriorityClass.INTERACTIVE, descriptor.getPriorityClass());
+        assertEquals(ResponseMode.STREAM, descriptor.getResponseMode());
+        assertEquals(TargetScope.WORKER, descriptor.getTargetScope());
         assertEquals(List.of("botApp"), app.getEvent("bot.command").getProjectCodes());
         assertEquals(descriptor.getDescription(), app.getEvent("bot.command").getDescription());
+        assertEquals(PriorityClass.INTERACTIVE, app.getEvent("bot.command").getPriorityClass());
+        assertEquals(ResponseMode.STREAM, app.getEvent("bot.command").getResponseMode());
+        assertEquals(TargetScope.WORKER, app.getEvent("bot.command").getTargetScope());
     }
 
     @Test
@@ -1846,6 +1858,9 @@ class MassSdkTest {
                         .payloadTypes(List.of("JSON"))
                         .taskModes(List.of("SINGLE_RUN"))
                         .projectCodes(List.of("runtimeApp"))
+                        .priorityClass(PriorityClass.BULK)
+                        .responseMode(ResponseMode.FINAL_RESULT)
+                        .targetScope(TargetScope.TASK_ENGINE)
                         .enabled(true)
                         .build(),
                 (request, principal) -> CoreEventResponse.success(Map.of("ok", true), request.getRequestId())
@@ -1853,6 +1868,9 @@ class MassSdkTest {
 
         assertNotNull(app.getEvent("runtime.only"));
         assertEquals("Runtime Only", app.getEvent("runtime.only").getName());
+        assertEquals(PriorityClass.BULK, app.getEvent("runtime.only").getPriorityClass());
+        assertEquals(ResponseMode.FINAL_RESULT, app.getEvent("runtime.only").getResponseMode());
+        assertEquals(TargetScope.TASK_ENGINE, app.getEvent("runtime.only").getTargetScope());
         assertTrue(app.listEvents().stream().anyMatch(event -> "runtime.only".equals(event.getCode())));
         assertEquals(List.of("runtime.only"),
                 app.getEventsForProject("runtimeApp").stream().map(EventDefinition::getCode).toList());

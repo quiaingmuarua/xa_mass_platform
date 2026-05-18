@@ -1,5 +1,9 @@
 package com.xa.mass.command.event;
 
+import com.xa.mass.base.event.PriorityClass;
+import com.xa.mass.base.event.ResponseMode;
+import com.xa.mass.base.event.TargetScope;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
@@ -19,6 +23,9 @@ public final class CoreEventDescriptor {
     private final String defaultRoutingCode;
     private final List<String> projectCodes;
     private final boolean enabled;
+    private final PriorityClass priorityClass;
+    private final ResponseMode responseMode;
+    private final TargetScope targetScope;
 
     private CoreEventDescriptor(Builder builder) {
         this.event = requireNonBlank(builder.event, "event");
@@ -30,6 +37,9 @@ public final class CoreEventDescriptor {
         this.defaultRoutingCode = blankToNull(builder.defaultRoutingCode);
         this.projectCodes = immutableList(builder.projectCodes);
         this.enabled = builder.enabled;
+        this.priorityClass = builder.priorityClass != null ? builder.priorityClass : PriorityClass.STANDARD;
+        this.responseMode = builder.responseMode != null ? builder.responseMode : ResponseMode.FINAL_RESULT;
+        this.targetScope = builder.targetScope != null ? builder.targetScope : TargetScope.WORKER;
     }
 
     public static Builder builder() {
@@ -72,6 +82,18 @@ public final class CoreEventDescriptor {
         return enabled;
     }
 
+    public PriorityClass getPriorityClass() {
+        return priorityClass;
+    }
+
+    public ResponseMode getResponseMode() {
+        return responseMode;
+    }
+
+    public TargetScope getTargetScope() {
+        return targetScope;
+    }
+
     private static List<String> immutableList(Iterable<String> values) {
         LinkedHashSet<String> normalized = new LinkedHashSet<>();
         if (values != null) {
@@ -111,6 +133,9 @@ public final class CoreEventDescriptor {
         private String defaultRoutingCode;
         private List<String> projectCodes = Collections.emptyList();
         private boolean enabled = true;
+        private PriorityClass priorityClass = PriorityClass.STANDARD;
+        private ResponseMode responseMode = ResponseMode.FINAL_RESULT;
+        private TargetScope targetScope = TargetScope.WORKER;
 
         private Builder() {
         }
@@ -165,6 +190,21 @@ public final class CoreEventDescriptor {
 
         public Builder enabled(boolean enabled) {
             this.enabled = enabled;
+            return this;
+        }
+
+        public Builder priorityClass(PriorityClass priorityClass) {
+            this.priorityClass = priorityClass != null ? priorityClass : PriorityClass.STANDARD;
+            return this;
+        }
+
+        public Builder responseMode(ResponseMode responseMode) {
+            this.responseMode = responseMode != null ? responseMode : ResponseMode.FINAL_RESULT;
+            return this;
+        }
+
+        public Builder targetScope(TargetScope targetScope) {
+            this.targetScope = targetScope != null ? targetScope : TargetScope.WORKER;
             return this;
         }
 

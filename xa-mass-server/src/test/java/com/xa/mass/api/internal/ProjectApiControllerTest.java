@@ -1,6 +1,9 @@
 package com.xa.mass.api.internal;
 
 import com.xa.mass.api.auth.ApiAuthInterceptor;
+import com.xa.mass.base.event.PriorityClass;
+import com.xa.mass.base.event.ResponseMode;
+import com.xa.mass.base.event.TargetScope;
 import com.xa.mass.sdk.SubmitterOperations;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.auth.SubmitterProfile;
@@ -37,6 +40,9 @@ class ProjectApiControllerTest {
                 .payloadTypes(java.util.List.of(PayloadType.JSON))
                 .taskModes(java.util.List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
                 .projectCodes(java.util.List.of("crawlerApp", "demoApp", "demoApp"))
+                .priorityClass(PriorityClass.BULK)
+                .responseMode(ResponseMode.FINAL_RESULT)
+                .targetScope(TargetScope.WORKER)
                 .build());
         catalog.registerEventDefinition(EventDefinition.builder()
                 .code("chatbot.reply")
@@ -44,6 +50,7 @@ class ProjectApiControllerTest {
                 .description("Example chatbot reply task event.")
                 .payloadTypes(java.util.List.of(PayloadType.TEXT, PayloadType.JSON))
                 .taskModes(java.util.List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
+                .priorityClass(PriorityClass.INTERACTIVE)
                 .build());
         catalog.registerProject(ProjectDefinition.builder()
                 .code("demoApp")
@@ -96,7 +103,13 @@ class ProjectApiControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data[?(@.code=='crawler.fetch-page')]").exists())
-                .andExpect(jsonPath("$.data[?(@.code=='chatbot.reply')]").exists());
+                .andExpect(jsonPath("$.data[?(@.code=='chatbot.reply')]").exists())
+                .andExpect(jsonPath("$.data[?(@.code=='crawler.fetch-page' && @.priorityClass=='BULK')]").exists())
+                .andExpect(jsonPath("$.data[?(@.code=='crawler.fetch-page' && @.responseMode=='FINAL_RESULT')]").exists())
+                .andExpect(jsonPath("$.data[?(@.code=='crawler.fetch-page' && @.targetScope=='WORKER')]").exists())
+                .andExpect(jsonPath("$.data[?(@.code=='chatbot.reply' && @.priorityClass=='INTERACTIVE')]").exists())
+                .andExpect(jsonPath("$.data[?(@.code=='chatbot.reply' && @.responseMode=='FINAL_RESULT')]").exists())
+                .andExpect(jsonPath("$.data[?(@.code=='chatbot.reply' && @.targetScope=='WORKER')]").exists());
     }
 
     @Test

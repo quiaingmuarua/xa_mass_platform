@@ -527,11 +527,16 @@ Engine-local owner docs:
   explicitly avoids module split, service extraction, worker
   command/state-report implementation, and unified event-envelope runtime work.
 - [`UNIFIED_EVENT_ENVELOPE_ROADMAP.md`](./UNIFIED_EVENT_ENVELOPE_ROADMAP.md):
-  proposed event-metadata and owner-boundary roadmap. The core line is
-  inventory, `EventDefinition` / `CoreEventDescriptor` metadata, catalog/API
-  visibility, and owner guards. It explicitly does not implement unified event
-  runtime, queue-priority behavior, worker command/state-report lifecycle, or
-  task-stage semantics in the first wave.
+  first-wave baseline for event-metadata and owner-boundary convergence. The
+  core line is UE-0 through UE-3: owner inventory,
+  `EventDefinition` / `CoreEventDescriptor` metadata, catalog/API visibility,
+  and owner guards. UE-0 through UE-3 are implemented as metadata/read-surface
+  plus architecture-guard work; the roadmap explicitly does not implement unified event runtime,
+  queue-priority behavior, worker command/state-report lifecycle, or task-stage
+  semantics in the first wave.
+- [`EVENT_METADATA_OWNER_BOUNDARY.md`](./EVENT_METADATA_OWNER_BOUNDARY.md):
+  first-wave owner map for event-like surfaces, updated through UE-3 owner
+  guards. It records current lifecycle truth owners and the metadata boundary.
 
 Global baselines:
 

@@ -647,6 +647,9 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 .enabled(existing == null || existing.isEnabled())
                 .defaultRoutingCode(existing != null ? existing.getDefaultRoutingCode() : null)
                 .projectCodes(existing != null ? existing.getProjectCodes() : List.of())
+                .priorityClass(existing != null ? existing.getPriorityClass() : null)
+                .responseMode(existing != null ? existing.getResponseMode() : null)
+                .targetScope(existing != null ? existing.getTargetScope() : null)
                 .handler((request, principal) -> toSdkResponse(
                         handler.handle(toCoreRequest(request), toCorePrincipal(principal))
                 ))
@@ -717,6 +720,9 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 .enabled(normalized.isEnabled())
                 .defaultRoutingCode(normalized.getDefaultRoutingCode())
                 .projectCodes(mergeProjectCodes(resolveProjectCodesForEvent(normalized.getCode()), normalized.getProjectCodes()))
+                .priorityClass(normalized.getPriorityClass())
+                .responseMode(normalized.getResponseMode())
+                .targetScope(normalized.getTargetScope())
                 .handler(resolveDefinitionHandler(normalized))
                 .build();
         eventHandlerCache.put(merged.getCode(), merged.getHandler());
@@ -751,6 +757,9 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                             .enabled(existing.isEnabled())
                             .defaultRoutingCode(existing.getDefaultRoutingCode())
                             .projectCodes(mergeProjectCodes(existing.getProjectCodes(), List.of(projectDefinition.getCode())))
+                            .priorityClass(existing.getPriorityClass())
+                            .responseMode(existing.getResponseMode())
+                            .targetScope(existing.getTargetScope())
                             .handler(existingHandler)
                             .build()),
                     toCoreHandler(existingHandler)
@@ -1160,6 +1169,9 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 .taskModes(definition.getTaskModes().stream().map(Enum::name).toList())
                 .defaultRoutingCode(definition.getDefaultRoutingCode())
                 .projectCodes(definition.getProjectCodes())
+                .priorityClass(definition.getPriorityClass())
+                .responseMode(definition.getResponseMode())
+                .targetScope(definition.getTargetScope())
                 .enabled(definition.isEnabled())
                 .build();
     }
@@ -1195,6 +1207,9 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 .enabled(descriptor.isEnabled())
                 .defaultRoutingCode(descriptor.getDefaultRoutingCode())
                 .projectCodes(resolveProjectCodesForEvent(descriptor.getEvent(), descriptor.getProjectCodes()))
+                .priorityClass(descriptor.getPriorityClass())
+                .responseMode(descriptor.getResponseMode())
+                .targetScope(descriptor.getTargetScope())
                 .handler(eventHandlerCache.get(descriptor.getEvent()))
                 .build();
     }

@@ -68,6 +68,9 @@ describe('projects.real', () => {
                                 payloadTypes: ['JSON'],
                                 taskModes: ['SINGLE_RUN'],
                                 enabled: true,
+                                priorityClass: 'STANDARD',
+                                responseMode: 'FINAL_RESULT',
+                                targetScope: 'WORKER',
                             },
                         ],
                     }),
@@ -153,6 +156,7 @@ describe('projects.real', () => {
         expect(projects[0].code).toBe('demoApp')
         expect(project.code).toBe('demoApp')
         expect(events[0].code).toBe('demo.dispatch')
+        expect(events[0].targetScope).toBe('WORKER')
         expect(submitters[0].principalId).toBe('demo-app-submitter')
     })
 })

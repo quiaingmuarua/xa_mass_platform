@@ -187,6 +187,9 @@ import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.event.EventDefinition;
+import com.xa.mass.base.event.PriorityClass;
+import com.xa.mass.base.event.ResponseMode;
+import com.xa.mass.base.event.TargetScope;
 
 app.registerEventDefinition(EventDefinition.builder()
         .code("bot.command")
@@ -194,6 +197,9 @@ app.registerEventDefinition(EventDefinition.builder()
         .description("Handle a bot command")
         .payloadTypes(java.util.List.of(PayloadType.JSON))
         .taskModes(java.util.List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
+        .priorityClass(PriorityClass.STANDARD)
+        .responseMode(ResponseMode.FINAL_RESULT)
+        .targetScope(TargetScope.WORKER)
         .build());
 
 app.registerProject(ProjectDefinition.builder()
@@ -219,6 +225,12 @@ app.executeTaskCommand(botTask.getTid(), com.xa.mass.sdk.model.MassTaskCommandRe
         .command("SEAL")
         .build());
 ```
+
+`priorityClass`, `responseMode`, and `targetScope` are event catalog metadata.
+They are exposed through SDK/server catalog reads so operators can understand
+event behavior, but they do not directly change queue ordering, result
+convergence, transport delivery, or worker command routing. Omitted values
+default to `STANDARD`, `FINAL_RESULT`, and `WORKER`.
 
 Register a lightweight principal credential binding when an embedding app wants
 an API-key or service-account style identity:

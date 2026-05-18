@@ -813,6 +813,129 @@ class EngineSchedulingCoreArchitectureGuardTest {
                         + String.join("\n", violations));
     }
 
+    @Test
+    void eventMetadataFirstWaveDoesNotIntroduceUnifiedRuntimeOwner() throws IOException {
+        Pattern unifiedRuntimeOwner = Pattern.compile(
+                "\\b(?:class|interface|record)\\s+(?:UnifiedEventService|UnifiedEventEnvelope)\\b");
+
+        List<String> violations = new ArrayList<>();
+        for (Path root : repositoryProductionSourceRoots()) {
+            for (Path path : javaSourceFiles(root)) {
+                String source = Files.readString(path, StandardCharsets.UTF_8);
+                if (unifiedRuntimeOwner.matcher(source).find()) {
+                    violations.add(path + " declares a unified event runtime owner");
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "UE-0 through UE-3 are event-metadata and owner-boundary work only. "
+                        + "Do not introduce UnifiedEventService or a runtime UnifiedEventEnvelope carrier "
+                        + "in the first wave:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void eventMetadataDoesNotDriveSchedulingResultOrWorkerStateOwnersDirectly() throws IOException {
+        Path repo = repositoryRoot();
+        Map<String, GuardedSourceArea> guardedAreas = Map.ofEntries(
+                Map.entry("PriorityClass -> scheduling/resource/runtime queue",
+                        new GuardedSourceArea(
+                                List.of(
+                                        repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/assignment"),
+                                        repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/load"),
+                                        repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/listener"),
+                                        repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/policy"),
+                                        repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/resource"),
+                                        repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/runtime"),
+                                        repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/strategy"),
+                                        repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/worker"),
+                                        repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery")
+                                ),
+                                Pattern.compile("\\bPriorityClass\\b|\\.getPriorityClass\\s*\\("))),
+                Map.entry("ResponseMode -> result finality",
+                        new GuardedSourceArea(
+                                List.of(
+                                        repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/TaskManager.java"),
+                                        repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/TaskResultService.java"),
+                                        repo.resolve("platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/api/TaskResultRuntime.java"),
+                                        repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RuntimeTaskResultIngestChannel.java"),
+                                        repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RedisTaskResultIngestChannel.java")
+                                ),
+                                Pattern.compile("\\bResponseMode\\b|\\.getResponseMode\\s*\\("))),
+                Map.entry("TargetScope -> new control-plane runtime path",
+                        new GuardedSourceArea(
+                                List.of(
+                                        repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/worker"),
+                                        repo.resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/WorkerSystemEventChannel.java"),
+                                        repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RuntimeEventBusWorkerSystemEventChannel.java")
+                                ),
+                                Pattern.compile("\\bTargetScope\\b|\\.getTargetScope\\s*\\("))),
+                Map.entry("worker command/state report -> task result owner",
+                        new GuardedSourceArea(
+                                List.of(
+                                        repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/TaskResultService.java"),
+                                        repo.resolve("platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/api/TaskResultRuntime.java"),
+                                        repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RuntimeTaskResultIngestChannel.java"),
+                                        repo.resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RedisTaskResultIngestChannel.java")
+                                ),
+                                Pattern.compile("\\b(?:WorkerCommand(?:Ack|Status)?|WorkerStateReport)\\b"))),
+                Map.entry("worker state report -> reachability truth",
+                        new GuardedSourceArea(
+                                List.of(
+                                        repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/worker/WorkerReachabilityView.java"),
+                                        repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/worker/WorkerManager.java")
+                                ),
+                                Pattern.compile("\\bWorkerStateReport\\b")))
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Map.Entry<String, GuardedSourceArea> guardedArea : guardedAreas.entrySet()) {
+            for (Path path : guardedArea.getValue().sourceFiles()) {
+                String source = Files.readString(path, StandardCharsets.UTF_8);
+                if (guardedArea.getValue().forbiddenPattern().matcher(source).find()) {
+                    violations.add(path + " leaks event metadata into owner path: " + guardedArea.getKey());
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Event metadata is descriptive and policy-input data in UE-0 through UE-3. "
+                        + "It must not directly drive queue ordering, result finality, worker control paths, "
+                        + "or reachability truth:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void eventDescriptorMetadataImportsStayOutOfKernelRuntimeTransportAndTraceOwners() throws IOException {
+        Path repo = repositoryRoot();
+        Pattern descriptorMetadataImport = Pattern.compile(
+                "\\bimport\\s+com\\.xa\\.mass\\.base\\.event\\.[A-Za-z0-9_]+\\s*;");
+        List<Path> guardedRoots = List.of(
+                repo.resolve("xa-mass-engine/src/main/java"),
+                repo.resolve("platform_infra/mass-runtime-api/src/main/java"),
+                repo.resolve("transport/transport_api/src/main/java"),
+                repo.resolve("transport/transport_runtime/src/main/java"),
+                repo.resolve("platform_infra/mass-trace-sink/src/main/java"),
+                repo.resolve("xa-mass-trace/src/main/java")
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Path root : guardedRoots) {
+            for (Path path : javaSourceFiles(root)) {
+                String source = Files.readString(path, StandardCharsets.UTF_8);
+                if (descriptorMetadataImport.matcher(source).find()) {
+                    violations.add(path + " imports descriptor metadata into a kernel/runtime/transport/trace owner");
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Event descriptor metadata belongs to descriptor/catalog/read surfaces in the first wave. "
+                        + "Kernel, runtime, transport, and trace owner paths must not import it directly:\n"
+                        + String.join("\n", violations));
+    }
+
     private static List<Path> selectedSuiteSourceFiles() {
         SelectClasses selectedClasses = EngineSchedulingCoreSuite.class.getAnnotation(SelectClasses.class);
         assertNotNull(selectedClasses, "EngineSchedulingCoreSuite must declare @SelectClasses");
@@ -855,6 +978,24 @@ class EngineSchedulingCoreArchitectureGuardTest {
         return cwd;
     }
 
+    private static List<Path> repositoryProductionSourceRoots() {
+        Path repo = repositoryRoot();
+        return List.of(
+                repo.resolve("xa-mass-sdk-api/src/main/java"),
+                repo.resolve("xa-mass-base/src/main/java"),
+                repo.resolve("xa-mass-engine/src/main/java"),
+                repo.resolve("xa-mass-sdk/src/main/java"),
+                repo.resolve("xa-mass-server/src/main/java"),
+                repo.resolve("transport/transport_api/src/main/java"),
+                repo.resolve("transport/transport_runtime/src/main/java"),
+                repo.resolve("transport/polling-adapter/src/main/java"),
+                repo.resolve("transport/socket-adapter/src/main/java"),
+                repo.resolve("transport/websocket-adapter/src/main/java"),
+                repo.resolve("platform_infra/mass-runtime-api/src/main/java"),
+                repo.resolve("platform_infra/mass-trace-sink/src/main/java")
+        );
+    }
+
     private static List<String> testMethodsCalling(Path sourcePath, String token) throws IOException {
         List<String> methods = new ArrayList<>();
         String currentTestMethod = null;
@@ -880,6 +1021,20 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         return methods;
+    }
+
+    private record GuardedSourceArea(List<Path> roots, Pattern forbiddenPattern) {
+        private List<Path> sourceFiles() throws IOException {
+            List<Path> files = new ArrayList<>();
+            for (Path root : roots) {
+                if (Files.isRegularFile(root)) {
+                    files.add(root);
+                } else {
+                    files.addAll(javaSourceFiles(root));
+                }
+            }
+            return files;
+        }
     }
 
 }

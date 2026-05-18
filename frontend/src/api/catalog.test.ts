@@ -55,6 +55,9 @@ describe('catalog.real', () => {
                                 eventCode: 'demo.dispatch',
                                 eventName: 'Demo dispatch',
                                 enabled: true,
+                                priorityClass: 'STANDARD',
+                                responseMode: 'FINAL_RESULT',
+                                targetScope: 'WORKER',
                                 invocationModel: 'TASK_BACKED',
                                 projectCodes: ['demoApp'],
                                 workerIds: ['worker-1'],
@@ -80,6 +83,9 @@ describe('catalog.real', () => {
                                 payloadTypes: ['JSON'],
                                 taskModes: ['SINGLE_RUN'],
                                 enabled: true,
+                                priorityClass: 'STANDARD',
+                                responseMode: 'FINAL_RESULT',
+                                targetScope: 'WORKER',
                             },
                         ],
                     }),
@@ -106,6 +112,8 @@ describe('catalog.real', () => {
             expect.any(Object),
         )
         expect(events[0].code).toBe('demo.dispatch')
+        expect(events[0].priorityClass).toBe('STANDARD')
         expect(capabilities[0].eventCode).toBe('demo.dispatch')
+        expect(capabilities[0].responseMode).toBe('FINAL_RESULT')
     })
 })

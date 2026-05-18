@@ -1,0 +1,805 @@
+package com.xa.mass.testing.soak;
+
+import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
+import com.xa.mass.runtime.api.TaskWorkRuntime;
+import com.xa.mass.runtime.api.TaskWorkStats;
+import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
+import com.xa.mass.sdk.MassSdk;
+import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.sdk.RuntimeDiagnosticsOperations;
+import com.xa.mass.sdk.catalog.PayloadType;
+import com.xa.mass.sdk.catalog.ProjectDefinition;
+import com.xa.mass.sdk.catalog.TaskMode;
+import com.xa.mass.sdk.event.EventDefinition;
+import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
+import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
+import com.xa.mass.sdk.model.TaskExecutionOptions;
+import com.xa.mass.sdk.model.TaskShellSnapshot;
+import com.xa.mass.sdk.model.TaskStateSnapshot;
+import com.xa.mass.sdk.model.WorkerEventBinding;
+import com.xa.mass.sdk.model.WorkerRegistration;
+import com.xa.mass.sdk.worker.PullWorkerSession;
+import com.xa.mass.storage.memory.InMemoryTaskStorage;
+import com.xa.mass.testing.support.TestingPaths;
+import com.xa.mass.trace.operator.TraceStatsRequest;
+import com.xa.mass.trace.operator.TraceStatsResponse;
+import com.xa.mass.trace.operator.TraceValidateRequest;
+import com.xa.mass.trace.operator.TraceValidateResponse;
+import com.xa.mass.trace.operator.TraceOperatorService;
+import com.xa.mass.trace.sink.JsonlExecutionEventSink;
+import com.xa.mass.transport.WorkerTransportHints;
+import com.xa.mass.transport.model.TaskDispatchItem;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.LongAccumulator;
+import java.util.concurrent.atomic.LongAdder;
+
+/**
+ * Long-running SDK polling worker soak for engine scheduling pressure.
+ *
+ * <p>This runner is intentionally not a default Maven test. It is a manual or
+ * scheduled validation lane that proves the runtime mainline through SDK
+ * polling workers, runtime counters, result sequential reads, and canonical
+ * trace JSONL validation.</p>
+ */
+public final class SdkPollingSchedulingSoakRunner {
+
+    private static final String PROJECT_CODE = "soakProject";
+    private static final String USER_ID = "sdk-polling-soak";
+    private static final String ADAPTER_ID = "polling";
+    private static final DateTimeFormatter RUN_ID_TS =
+            DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC);
+
+    private SdkPollingSchedulingSoakRunner() {
+    }
+
+    public static void main(String[] args) throws Exception {
+        int exitCode = 0;
+        SoakConfig config = null;
+        try {
+            config = SoakConfig.fromSystemProperties();
+            SoakReport report = new ScenarioRunner(config).run();
+            System.out.println(report.toConsoleSummary());
+            System.out.println("SDK polling scheduling soak report written to: " + report.reportPath());
+        } catch (Throwable t) {
+            exitCode = 1;
+            throw t;
+        } finally {
+            if (config == null || config.forceExit()) {
+                System.exit(exitCode);
+            }
+        }
+    }
+
+    private static final class ScenarioRunner {
+        private final SoakConfig config;
+        private final SoakMetrics metrics = new SoakMetrics();
+        private final AtomicBoolean stopRequested = new AtomicBoolean(false);
+        private final List<String> failures = Collections.synchronizedList(new ArrayList<>());
+        private final List<String> eventCodes;
+        private final String runId;
+
+        private ScenarioRunner(SoakConfig config) {
+            this.config = config;
+            this.eventCodes = buildEventCodes(config.eventCodeCount());
+            this.runId = "polling-scheduling-soak-" + RUN_ID_TS.format(Instant.now());
+        }
+
+        private SoakReport run() throws Exception {
+            Path traceDir = TestingPaths.reportDir("soak-traces").resolve(runId);
+            JsonlExecutionEventSink traceSink = null;
+            if (config.traceEnabled()) {
+                Files.createDirectories(traceDir);
+                traceSink = new JsonlExecutionEventSink(
+                        traceDir.toString(),
+                        config.traceQueueCapacity(),
+                        config.traceRotateAfterLines()
+                );
+            }
+            EmbeddedRuntime runtime = buildRuntime(traceSink);
+            MassSdkApplication app = runtime.app();
+            List<SimulatedPollingWorker> workers = new ArrayList<>(config.workerCount());
+            List<String> taskIds = new ArrayList<>();
+            long startedNanos = System.nanoTime();
+            long submittedTasks;
+            FinalTaskStats taskStats;
+            FinalWorkStats workStats;
+            ResultReadStats resultReadStats;
+            Map<String, Object> deliveryDiagnostics;
+
+            try {
+                app.start();
+                bootstrapCatalog(app);
+                registerWorkers(app);
+                workers = startWorkers(app);
+                submittedTasks = submitTasksForDuration(app, taskIds);
+                waitForTerminalTasks(app, taskIds);
+                stopRequested.set(true);
+                closeWorkers(workers);
+                taskStats = collectFinalTaskStats(app, taskIds);
+                workStats = collectFinalWorkStats(runtime.taskWorkRuntime(), taskIds);
+                resultReadStats = verifyResultReads(app, taskIds);
+                deliveryDiagnostics = collectDeliveryDiagnostics(app);
+            } finally {
+                stopRequested.set(true);
+                closeWorkers(workers);
+                try {
+                    app.stop();
+                } catch (RuntimeException ignored) {
+                    // Best effort shutdown for CLI-style runner cleanup.
+                }
+                if (traceSink != null) {
+                    traceSink.close();
+                }
+            }
+
+            long wallNanos = System.nanoTime() - startedNanos;
+            TraceProof traceProof = verifyTrace(traceSink, traceDir);
+
+            Map<String, Object> reportBody = buildReport(
+                    submittedTasks,
+                    taskStats,
+                    workStats,
+                    resultReadStats,
+                    deliveryDiagnostics,
+                    traceProof,
+                    wallNanos
+            );
+            Path reportPath = SoakReportWriter.write(runId, reportBody);
+            assertSoakPassed(taskStats, workStats, resultReadStats, traceProof, submittedTasks);
+
+            return new SoakReport(
+                    runId,
+                    submittedTasks,
+                    taskStats.terminalTasks(),
+                    workStats.totalWorkItems(),
+                    resultReadStats.totalResults(),
+                    workStats.activeLeasesAtEnd(),
+                    traceProof.droppedCount(),
+                    reportPath
+            );
+        }
+
+        private EmbeddedRuntime buildRuntime(JsonlExecutionEventSink traceSink) {
+            InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
+            TaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
+            MassSdkApplication app = MassSdk.builder()
+                    .transport(transport -> transport
+                            .webSocketAdapter(webSocket -> webSocket
+                                    .server(0, "/soak")
+                                    .enabled(false)
+                                    .serverEnabled(false))
+                            .socketAdapter(socket -> socket
+                                    .server(0)
+                                    .enabled(false)
+                                    .serverEnabled(false))
+                            .inputQueue(new InMemoryMessageQueue<>("soak-input", String.class))
+                            .outputQueue(new InMemoryMessageQueue<>("soak-output",
+                                    com.xa.mass.transport.model.TransportOutboundMessage.class))
+                            .queueMode())
+                    .engine(engine -> {
+                        engine.enabled(true)
+                                .taskStorage(taskStorage)
+                                .taskDetailStore(taskStorage)
+                                .taskWorkRuntime(taskWorkRuntime);
+                        if (traceSink != null) {
+                            engine.executionEventSink(traceSink);
+                        }
+                    })
+                    .build();
+            return new EmbeddedRuntime(app, taskWorkRuntime);
+        }
+
+        private void bootstrapCatalog(MassSdkApplication app) {
+            for (String eventCode : eventCodes) {
+                if (app.getEvent(eventCode) == null) {
+                    app.registerEventDefinition(EventDefinition.builder()
+                            .code(eventCode)
+                            .name("Polling Soak " + eventCode)
+                            .description("Polling soak event " + eventCode)
+                            .payloadTypes(List.of(PayloadType.JSON))
+                            .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
+                            .projectCodes(List.of(PROJECT_CODE))
+                            .build());
+                }
+            }
+            if (app.getProject(PROJECT_CODE) == null) {
+                app.registerProject(ProjectDefinition.builder()
+                        .code(PROJECT_CODE)
+                        .name("Polling Soak Project")
+                        .description("SDK polling scheduling soak project.")
+                        .eventCodes(eventCodes)
+                        .build());
+            }
+        }
+
+        private void registerWorkers(MassSdkApplication app) {
+            for (int i = 0; i < config.workerCount(); i++) {
+                int groupIndex = i % config.groupCount();
+                String groupId = groupId(groupIndex);
+                String workerId = workerId(i);
+                app.registerWorker(WorkerRegistration.builder()
+                        .workerId(workerId)
+                        .workerGroupId(groupId)
+                        .eventBindings(eventBindingsForGroup(groupIndex))
+                        .transportHint(WorkerTransportHints.POLLING)
+                        .adapterId(ADAPTER_ID)
+                        .maxConcurrentWork(Math.max(1, config.pollBatchSize()))
+                        .attributes(Map.of(
+                                "soakRunId", runId,
+                                "workerGroupId", groupId
+                        ))
+                        .build());
+            }
+        }
+
+        private List<WorkerEventBinding> eventBindingsForGroup(int groupIndex) {
+            List<WorkerEventBinding> bindings = new ArrayList<>();
+            for (int eventIndex = 0; eventIndex < eventCodes.size(); eventIndex++) {
+                if (eventIndex % config.groupCount() == groupIndex) {
+                    bindings.add(WorkerEventBinding.builder()
+                            .eventCode(eventCodes.get(eventIndex))
+                            .projectCodes(List.of(PROJECT_CODE))
+                            .build());
+                }
+            }
+            if (bindings.isEmpty()) {
+                bindings.add(WorkerEventBinding.builder()
+                        .eventCode(eventCodes.get(groupIndex % eventCodes.size()))
+                        .projectCodes(List.of(PROJECT_CODE))
+                        .build());
+            }
+            return bindings;
+        }
+
+        private List<SimulatedPollingWorker> startWorkers(MassSdkApplication app) {
+            List<SimulatedPollingWorker> workers = new ArrayList<>(config.workerCount());
+            for (int i = 0; i < config.workerCount(); i++) {
+                String workerId = workerId(i);
+                SimulatedPollingWorker worker = new SimulatedPollingWorker(
+                        workerId,
+                        app.pullWorker(workerId),
+                        config,
+                        metrics,
+                        stopRequested,
+                        failures
+                );
+                worker.start();
+                workers.add(worker);
+            }
+            return workers;
+        }
+
+        private long submitTasksForDuration(MassSdkApplication app, List<String> taskIds) throws Exception {
+            long endNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(config.durationSeconds());
+            long intervalNanos = TimeUnit.SECONDS.toNanos(1) / config.submitRatePerSecond();
+            long nextSubmitNanos = System.nanoTime();
+            int taskIndex = 0;
+            while (System.nanoTime() < endNanos) {
+                long now = System.nanoTime();
+                if (now < nextSubmitNanos) {
+                    TimeUnit.NANOSECONDS.sleep(Math.min(TimeUnit.MILLISECONDS.toNanos(50), nextSubmitNanos - now));
+                    continue;
+                }
+                String eventCode = eventCodes.get(taskIndex % eventCodes.size());
+                TaskShellSnapshot task = createTask(app, taskIndex, eventCode);
+                taskIds.add(task.getTaskId());
+                taskIndex++;
+                nextSubmitNanos += intervalNanos;
+                if (nextSubmitNanos < System.nanoTime() - intervalNanos) {
+                    nextSubmitNanos = System.nanoTime();
+                }
+            }
+            return taskIndex;
+        }
+
+        private TaskShellSnapshot createTask(MassSdkApplication app, int taskIndex, String eventCode) {
+            TaskExecutionOptions options = new TaskExecutionOptions();
+            options.setWorkloadClass("BULK");
+            options.setBatchSize(Math.max(1, Math.min(config.pollBatchSize(), config.messagesPerTask())));
+            options.setDefaultMaxRetryCount(0);
+            options.setMaxRuntimeSeconds(Math.max(config.drainTimeoutSeconds(), config.durationSeconds()));
+            TaskShellSnapshot task = app.createTaskShell(MassTaskShellCreateRequest.builder()
+                    .userId(USER_ID)
+                    .project(PROJECT_CODE)
+                    .sourceRef(runId + "-task-" + taskIndex)
+                    .executionSpec(options)
+                    .sharedConfig(Map.of(
+                            "source", "SdkPollingSchedulingSoakRunner",
+                            "runId", runId,
+                            "taskIndex", taskIndex,
+                            "eventCode", eventCode
+                    ))
+                    .build());
+            app.appendTaskItems(task.getTaskId(), MassTaskItemBatchAppendRequest.builder()
+                    .eventCode(eventCode)
+                    .items(buildItems(taskIndex, eventCode))
+                    .build());
+            require(app.sealTask(task.getTaskId()), "task seal should succeed for " + task.getTaskId());
+            require(app.approveTask(task.getTaskId()), "task approval should succeed for " + task.getTaskId());
+            return task;
+        }
+
+        private List<Object> buildItems(int taskIndex, String eventCode) {
+            List<Object> items = new ArrayList<>(config.messagesPerTask());
+            for (int messageIndex = 0; messageIndex < config.messagesPerTask(); messageIndex++) {
+                long globalSeq = (long) taskIndex * config.messagesPerTask() + messageIndex + 1L;
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("runId", runId);
+                item.put("taskIndex", taskIndex);
+                item.put("messageIndex", messageIndex);
+                item.put("globalSeq", globalSeq);
+                item.put("eventCode", eventCode);
+                item.put("target", "soak-target-" + globalSeq);
+                items.add(item);
+            }
+            return items;
+        }
+
+        private void waitForTerminalTasks(MassSdkApplication app, List<String> taskIds) throws Exception {
+            long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(config.drainTimeoutSeconds());
+            Set<String> pending = new LinkedHashSet<>(taskIds);
+            while (!pending.isEmpty()) {
+                require(System.nanoTime() < deadlineNanos,
+                        "timed out before all soak tasks reached TERMINAL; pending=" + pending.size());
+                pending.removeIf(taskId -> {
+                    TaskStateSnapshot task = app.getTaskState(taskId);
+                    return task != null && "TERMINAL".equals(task.getStatus());
+                });
+                if (!pending.isEmpty()) {
+                    Thread.sleep(100L);
+                }
+            }
+        }
+
+        private FinalTaskStats collectFinalTaskStats(MassSdkApplication app, List<String> taskIds) {
+            Map<String, Long> terminalReasons = new LinkedHashMap<>();
+            long terminalTasks = 0;
+            for (String taskId : taskIds) {
+                TaskStateSnapshot task = app.getTaskState(taskId);
+                require(task != null, "task should exist: " + taskId);
+                require("TERMINAL".equals(task.getStatus()), "task should be terminal: " + taskId);
+                terminalTasks++;
+                terminalReasons.merge(task.getTerminalReason() == null ? "<null>" : task.getTerminalReason(), 1L, Long::sum);
+            }
+            return new FinalTaskStats(terminalTasks, terminalReasons);
+        }
+
+        private FinalWorkStats collectFinalWorkStats(TaskWorkRuntime runtime, List<String> taskIds) {
+            long total = 0;
+            long success = 0;
+            long failed = 0;
+            long expired = 0;
+            long activeLeases = 0;
+            for (String taskId : taskIds) {
+                TaskWorkStats stats = runtime.stats(taskId);
+                require(stats.totalCount() == config.messagesPerTask(),
+                        "unexpected runtime work count for task=" + taskId + " total=" + stats.totalCount());
+                require(stats.finalCount() == stats.totalCount(),
+                        "runtime work should be final for task=" + taskId);
+                total += stats.totalCount();
+                success += stats.successCount();
+                failed += stats.failedCount();
+                expired += stats.expiredCount();
+                activeLeases += runtime.activeLeases(taskId).size();
+            }
+            return new FinalWorkStats(total, success, failed, expired, activeLeases);
+        }
+
+        private ResultReadStats verifyResultReads(MassSdkApplication app, List<String> taskIds) {
+            long totalResults = 0;
+            long totalPages = 0;
+            long maxLastSeq = 0;
+            for (String taskId : taskIds) {
+                ResultSequentialReadVerifier.ResultSequentialReadSummary summary =
+                        ResultSequentialReadVerifier.verify(
+                                taskId,
+                                config.messagesPerTask(),
+                                config.resultWindowLimit(),
+                                app::readTaskResults
+                        );
+                totalResults += summary.itemCount();
+                totalPages += summary.pages();
+                maxLastSeq = Math.max(maxLastSeq, summary.lastSeq());
+            }
+            return new ResultReadStats(totalResults, totalPages, maxLastSeq);
+        }
+
+        private Map<String, Object> collectDeliveryDiagnostics(MassSdkApplication app) {
+            RuntimeDiagnosticsOperations diagnostics = app.runtimeDiagnostics();
+            return diagnostics == null ? Map.of("available", false) : diagnostics.getQueueDetail();
+        }
+
+        private TraceProof verifyTrace(JsonlExecutionEventSink traceSink, Path traceDir) throws Exception {
+            if (!config.traceEnabled()) {
+                return new TraceProof(false, null, null, null, 0L);
+            }
+            long dropped = traceSink == null ? 0L : traceSink.getDroppedCount();
+            TraceOperatorService traceOperator = new TraceOperatorService();
+            TraceValidateResponse validate = traceOperator.validate(new TraceValidateRequest(traceDir.toString()));
+            TraceStatsResponse stats = traceOperator.stats(new TraceStatsRequest(traceDir.toString(), null, null, null, 100));
+            return new TraceProof(true, traceDir.toString(), validate, stats, dropped);
+        }
+
+        private Map<String, Object> buildReport(long submittedTasks,
+                                                FinalTaskStats taskStats,
+                                                FinalWorkStats workStats,
+                                                ResultReadStats resultReadStats,
+                                                Map<String, Object> deliveryDiagnostics,
+                                                TraceProof traceProof,
+                                                long wallNanos) {
+            Map<String, Object> report = new LinkedHashMap<>();
+            report.put("runId", runId);
+            report.put("config", config.toMap());
+            report.put("duration", Map.of(
+                    "wallClockMillis", nanosToMillis(wallNanos),
+                    "startedAt", RUN_ID_TS.format(Instant.now().minusNanos(wallNanos)),
+                    "finishedAt", RUN_ID_TS.format(Instant.now())
+            ));
+            report.put("tasksSubmitted", submittedTasks);
+            report.put("tasksTerminal", taskStats.terminalTasks());
+            report.put("terminalReasons", taskStats.terminalReasons());
+            report.put("workItemsSubmitted", submittedTasks * config.messagesPerTask());
+            report.put("resultsVisible", resultReadStats.totalResults());
+            report.put("success", workStats.successWorkItems());
+            report.put("failed", workStats.failedWorkItems());
+            report.put("expired", workStats.expiredWorkItems());
+            report.put("runtimeWork", workStats.toMap());
+            report.put("activeLeasesAtEnd", workStats.activeLeasesAtEnd());
+            report.put("workerMetrics", metrics.snapshot().toMap());
+            report.put("resultSequentialRead", resultReadStats.toMap());
+            report.put("deliveryDiagnostics", deliveryDiagnostics);
+            report.put("tracePath", traceProof.path());
+            report.put("traceValidation", traceProof.validation());
+            report.put("traceStats", traceProof.stats());
+            report.put("traceDropped", traceProof.droppedCount());
+            report.put("failureSamples", List.copyOf(failures));
+            return report;
+        }
+
+        private void assertSoakPassed(FinalTaskStats taskStats,
+                                      FinalWorkStats workStats,
+                                      ResultReadStats resultReadStats,
+                                      TraceProof traceProof,
+                                      long submittedTasks) {
+            long expectedWorkItems = submittedTasks * config.messagesPerTask();
+            require(taskStats.terminalTasks() == submittedTasks,
+                    "tasksSubmitted must equal tasksTerminal");
+            require(workStats.totalWorkItems() == expectedWorkItems,
+                    "runtime total work must equal submitted items");
+            require(resultReadStats.totalResults() == expectedWorkItems,
+                    "visible results must equal submitted items");
+            require(workStats.activeLeasesAtEnd() == 0,
+                    "active leases should drain to zero");
+            if (traceProof.enabled()) {
+                require(traceProof.validation() != null && traceProof.validation().valid(),
+                        "trace validation should pass");
+                require(traceProof.droppedCount() == 0,
+                        "trace sink should not drop events");
+            }
+            require(failures.isEmpty(), "worker failures observed: " + failures);
+        }
+
+        private void closeWorkers(List<SimulatedPollingWorker> workers) {
+            for (SimulatedPollingWorker worker : workers) {
+                try {
+                    worker.close();
+                } catch (Exception e) {
+                    failures.add("failed to close worker " + worker.workerId() + ": " + e.getMessage());
+                }
+            }
+        }
+    }
+
+    private static final class SimulatedPollingWorker implements AutoCloseable {
+        private final String workerId;
+        private final PullWorkerSession session;
+        private final SoakConfig config;
+        private final SoakMetrics metrics;
+        private final AtomicBoolean stopRequested;
+        private final List<String> failures;
+        private final AtomicBoolean running = new AtomicBoolean(true);
+        private final ExecutorService processingExecutor;
+        private Thread pollThread;
+
+        private SimulatedPollingWorker(String workerId,
+                                       PullWorkerSession session,
+                                       SoakConfig config,
+                                       SoakMetrics metrics,
+                                       AtomicBoolean stopRequested,
+                                       List<String> failures) {
+            this.workerId = workerId;
+            this.session = session;
+            this.config = config;
+            this.metrics = metrics;
+            this.stopRequested = stopRequested;
+            this.failures = failures;
+            this.processingExecutor = Executors.newThreadPerTaskExecutor(
+                    Thread.ofVirtual().name("soak-process-" + workerId + "-", 0).factory()
+            );
+        }
+
+        private String workerId() {
+            return workerId;
+        }
+
+        private void start() {
+            session.connect("polling-soak-start");
+            pollThread = Thread.ofVirtual()
+                    .name("soak-poll-" + workerId)
+                    .start(this::runLoop);
+        }
+
+        private void runLoop() {
+            while (running.get()) {
+                try {
+                    List<TaskDispatchItem> items = session.poll(config.pollBatchSize());
+                    metrics.recordPoll(items == null ? 0 : items.size());
+                    if (items == null || items.isEmpty()) {
+                        if (stopRequested.get()) {
+                            return;
+                        }
+                        if (config.emptyPollBackoffMillis() > 0) {
+                            Thread.sleep(config.emptyPollBackoffMillis());
+                        }
+                        continue;
+                    }
+                    for (TaskDispatchItem item : items) {
+                        processingExecutor.submit(() -> process(item));
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                } catch (RuntimeException e) {
+                    failures.add("worker " + workerId + " poll failed: " + e.getMessage());
+                }
+            }
+        }
+
+        private void process(TaskDispatchItem item) {
+            long started = System.nanoTime();
+            metrics.beginProcessing();
+            try {
+                int delay = config.processingDelayMillis();
+                if (config.processingJitterMillis() > 0) {
+                    delay += ThreadLocalRandom.current().nextInt(config.processingJitterMillis() + 1);
+                }
+                if (delay > 0) {
+                    Thread.sleep(delay);
+                }
+                long globalSeq = globalSeq(item);
+                boolean success = config.failureEveryNth() <= 0 || globalSeq % config.failureEveryNth() != 0;
+                Map<String, Object> output = new LinkedHashMap<>();
+                output.put("workerId", workerId);
+                output.put("messageId", item.getMessageId());
+                output.put("globalSeq", globalSeq);
+                output.put("success", success);
+                boolean accepted = session.submitResult(
+                        item,
+                        success,
+                        success ? "polling-soak-success" : "polling-soak-failure",
+                        success ? null : "SOAK_SYNTHETIC_FAILURE",
+                        output
+                );
+                if (!accepted) {
+                    failures.add("result rejected worker=" + workerId
+                            + " taskId=" + item.getTaskId() + " messageId=" + item.getMessageId());
+                }
+                metrics.recordResult(success, System.nanoTime() - started);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } catch (RuntimeException e) {
+                failures.add("worker " + workerId + " process failed messageId="
+                        + item.getMessageId() + ": " + e.getMessage());
+            } finally {
+                metrics.endProcessing();
+            }
+        }
+
+        private long globalSeq(TaskDispatchItem item) {
+            Object value = item.getInput().get("globalSeq");
+            if (value instanceof Number number) {
+                return number.longValue();
+            }
+            return Math.abs((long) item.getMessageId().hashCode());
+        }
+
+        @Override
+        public void close() throws Exception {
+            if (!running.compareAndSet(true, false)) {
+                return;
+            }
+            if (pollThread != null) {
+                pollThread.interrupt();
+                pollThread.join(TimeUnit.SECONDS.toMillis(5));
+            }
+            processingExecutor.shutdown();
+            if (!processingExecutor.awaitTermination(30, TimeUnit.SECONDS)) {
+                processingExecutor.shutdownNow();
+            }
+            session.disconnect("polling-soak-stop");
+        }
+    }
+
+    private static List<String> buildEventCodes(int count) {
+        List<String> codes = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            codes.add("soak.dispatch." + i);
+        }
+        return List.copyOf(codes);
+    }
+
+    private static String workerId(int index) {
+        return "soak-worker-" + index;
+    }
+
+    private static String groupId(int index) {
+        return "soak-group-" + index;
+    }
+
+    private static double nanosToMillis(long nanos) {
+        return nanos / 1_000_000.0d;
+    }
+
+    private static void require(boolean condition, String message) {
+        if (!condition) {
+            throw new IllegalStateException(message);
+        }
+    }
+
+    private record EmbeddedRuntime(MassSdkApplication app, TaskWorkRuntime taskWorkRuntime) {
+    }
+
+    private record FinalTaskStats(long terminalTasks, Map<String, Long> terminalReasons) {
+    }
+
+    private record FinalWorkStats(long totalWorkItems,
+                                  long successWorkItems,
+                                  long failedWorkItems,
+                                  long expiredWorkItems,
+                                  long activeLeasesAtEnd) {
+        private Map<String, Object> toMap() {
+            return Map.of(
+                    "totalWorkItems", totalWorkItems,
+                    "successWorkItems", successWorkItems,
+                    "failedWorkItems", failedWorkItems,
+                    "expiredWorkItems", expiredWorkItems,
+                    "activeLeasesAtEnd", activeLeasesAtEnd
+            );
+        }
+    }
+
+    private record ResultReadStats(long totalResults, long totalPages, long maxLastSeq) {
+        private Map<String, Object> toMap() {
+            return Map.of(
+                    "totalResults", totalResults,
+                    "totalPages", totalPages,
+                    "maxLastSeq", maxLastSeq
+            );
+        }
+    }
+
+    private record TraceProof(boolean enabled,
+                              String path,
+                              TraceValidateResponse validation,
+                              TraceStatsResponse stats,
+                              long droppedCount) {
+    }
+
+    private static final class SoakMetrics {
+        private final LongAdder pollCycles = new LongAdder();
+        private final LongAdder emptyPollCycles = new LongAdder();
+        private final LongAdder receivedItems = new LongAdder();
+        private final LongAdder resultSubmissions = new LongAdder();
+        private final LongAdder failedResults = new LongAdder();
+        private final LongAdder totalProcessingNanos = new LongAdder();
+        private final AtomicInteger activeProcessing = new AtomicInteger();
+        private final LongAccumulator maxReceivedBatch = new LongAccumulator(Long::max, 0);
+        private final LongAccumulator maxConcurrentProcessing = new LongAccumulator(Long::max, 0);
+
+        private void recordPoll(int batchSize) {
+            pollCycles.increment();
+            if (batchSize <= 0) {
+                emptyPollCycles.increment();
+                return;
+            }
+            receivedItems.add(batchSize);
+            maxReceivedBatch.accumulate(batchSize);
+        }
+
+        private void beginProcessing() {
+            int active = activeProcessing.incrementAndGet();
+            maxConcurrentProcessing.accumulate(active);
+        }
+
+        private void endProcessing() {
+            activeProcessing.decrementAndGet();
+        }
+
+        private void recordResult(boolean success, long processingNanos) {
+            resultSubmissions.increment();
+            if (!success) {
+                failedResults.increment();
+            }
+            totalProcessingNanos.add(processingNanos);
+        }
+
+        private SoakMetricsSnapshot snapshot() {
+            return new SoakMetricsSnapshot(
+                    pollCycles.sum(),
+                    emptyPollCycles.sum(),
+                    receivedItems.sum(),
+                    resultSubmissions.sum(),
+                    failedResults.sum(),
+                    maxReceivedBatch.get(),
+                    maxConcurrentProcessing.get(),
+                    nanosToMillis(totalProcessingNanos.sum())
+            );
+        }
+    }
+
+    private record SoakMetricsSnapshot(long pollCycles,
+                                       long emptyPollCycles,
+                                       long receivedItems,
+                                       long resultSubmissions,
+                                       long failedResults,
+                                       long maxReceivedBatch,
+                                       long maxConcurrentProcessing,
+                                       double totalProcessingMillis) {
+        private Map<String, Object> toMap() {
+            Map<String, Object> values = new LinkedHashMap<>();
+            values.put("pollCycles", pollCycles);
+            values.put("emptyPollCycles", emptyPollCycles);
+            values.put("receivedItems", receivedItems);
+            values.put("resultSubmissions", resultSubmissions);
+            values.put("failedResults", failedResults);
+            values.put("maxReceivedBatch", maxReceivedBatch);
+            values.put("maxConcurrentProcessing", maxConcurrentProcessing);
+            values.put("totalProcessingMillis", totalProcessingMillis);
+            return values;
+        }
+    }
+
+    private record SoakReport(String runId,
+                              long tasksSubmitted,
+                              long tasksTerminal,
+                              long workItems,
+                              long visibleResults,
+                              long activeLeasesAtEnd,
+                              long traceDropped,
+                              Path reportPath) {
+        private String toConsoleSummary() {
+            return String.format(Locale.ROOT,
+                    "SdkPollingSchedulingSoak runId=%s tasks=%d terminal=%d workItems=%d visibleResults=%d "
+                            + "activeLeases=%d traceDropped=%d report=%s",
+                    runId,
+                    tasksSubmitted,
+                    tasksTerminal,
+                    workItems,
+                    visibleResults,
+                    activeLeasesAtEnd,
+                    traceDropped,
+                    reportPath
+            );
+        }
+    }
+}

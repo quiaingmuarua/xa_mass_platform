@@ -70,9 +70,15 @@ class CatalogApiIntegrationTest extends AbstractSampleE2eTest {
         assertEquals("crawler.fetch-page", event.get("code"));
         assertEquals(List.of("JSON"), event.get("payloadTypes"));
         assertEquals(List.of("SINGLE_RUN", "STREAMING"), event.get("taskModes"));
+        assertEquals("STANDARD", event.get("priorityClass"));
+        assertEquals("FINAL_RESULT", event.get("responseMode"));
+        assertEquals("WORKER", event.get("targetScope"));
         assertTrue(capabilities.stream().anyMatch(item ->
                 "crawler.fetch-page".equals(item.get("eventCode"))
-                        && "TASK_BACKED".equals(item.get("invocationModel"))));
+                        && "TASK_BACKED".equals(item.get("invocationModel"))
+                        && "STANDARD".equals(item.get("priorityClass"))
+                        && "FINAL_RESULT".equals(item.get("responseMode"))
+                        && "WORKER".equals(item.get("targetScope"))));
         assertTrue(capabilities.stream().anyMatch(item ->
                 "demo.dispatch".equals(item.get("eventCode"))
                         && List.of("demoApp", "otherApp", "testApp").equals(item.get("projectCodes"))));
@@ -100,6 +106,9 @@ class CatalogApiIntegrationTest extends AbstractSampleE2eTest {
         assertEquals("tool.country.capital.lookup", event.get("code"));
         assertEquals(List.of("JSON"), event.get("payloadTypes"));
         assertEquals(List.of(), event.get("taskModes"));
+        assertEquals("STANDARD", event.get("priorityClass"));
+        assertEquals("FINAL_RESULT", event.get("responseMode"));
+        assertEquals("WORKER", event.get("targetScope"));
     }
 
     @Test

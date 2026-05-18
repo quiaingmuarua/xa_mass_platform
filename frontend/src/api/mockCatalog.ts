@@ -125,6 +125,9 @@ export const mockEvents: EventDefinition[] = [
         payloadTypes: ['JSON', 'TEXT'],
         taskModes: ['SINGLE_RUN'],
         enabled: true,
+        priorityClass: 'STANDARD',
+        responseMode: 'FINAL_RESULT',
+        targetScope: 'WORKER',
     },
     {
         code: 'demo.dispatch.gb',
@@ -134,6 +137,9 @@ export const mockEvents: EventDefinition[] = [
         payloadTypes: ['JSON'],
         taskModes: ['SINGLE_RUN'],
         enabled: true,
+        priorityClass: 'STANDARD',
+        responseMode: 'FINAL_RESULT',
+        targetScope: 'WORKER',
     },
     {
         code: 'crawler.fetch-page',
@@ -143,6 +149,9 @@ export const mockEvents: EventDefinition[] = [
         payloadTypes: ['JSON'],
         taskModes: ['SINGLE_RUN'],
         enabled: true,
+        priorityClass: 'STANDARD',
+        responseMode: 'FINAL_RESULT',
+        targetScope: 'WORKER',
     },
     {
         code: 'crawler.parse-result',
@@ -152,6 +161,9 @@ export const mockEvents: EventDefinition[] = [
         payloadTypes: ['JSON'],
         taskModes: ['SINGLE_RUN'],
         enabled: true,
+        priorityClass: 'STANDARD',
+        responseMode: 'FINAL_RESULT',
+        targetScope: 'WORKER',
     },
     {
         code: 'test.smoke',
@@ -161,6 +173,9 @@ export const mockEvents: EventDefinition[] = [
         payloadTypes: ['JSON'],
         taskModes: ['SINGLE_RUN'],
         enabled: true,
+        priorityClass: 'STANDARD',
+        responseMode: 'FINAL_RESULT',
+        targetScope: 'WORKER',
     },
     {
         code: 'tool.country.capital.lookup',
@@ -170,6 +185,9 @@ export const mockEvents: EventDefinition[] = [
         payloadTypes: ['JSON'],
         taskModes: [],
         enabled: true,
+        priorityClass: 'STANDARD',
+        responseMode: 'FINAL_RESULT',
+        targetScope: 'WORKER',
     },
 ]
 
@@ -184,6 +202,9 @@ export function deriveMockEventCapabilities(): EventCapability[] {
             eventCode: event.code,
             eventName: event.name,
             enabled: event.enabled,
+            priorityClass: event.priorityClass,
+            responseMode: event.responseMode,
+            targetScope: event.targetScope,
             invocationModel: directRuntime ? 'DIRECT_RUNTIME' : 'TASK_BACKED',
             projectCodes,
             workerIds: directRuntime ? [] : ['mock-worker-1'],

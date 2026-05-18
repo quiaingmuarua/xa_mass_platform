@@ -260,8 +260,10 @@ This roadmap does not:
 - reintroduce WorkerContext under a new name
 - add pass-through bridge/facade layers that only rename current calls
 
-`UNIFIED_EVENT_ENVELOPE_ROADMAP.md` remains a separate future north-star. It is
-not a dependency for WG-0 through WG-5.
+`UNIFIED_EVENT_ENVELOPE_ROADMAP.md` remains a separate event-metadata and
+owner-boundary roadmap. It is not a dependency for WG-0 through WG-5 and must
+not be used to introduce unified runtime-envelope behavior into the WorkerGroup
+candidate-source line.
 
 ## Execution Shape
 

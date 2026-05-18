@@ -136,7 +136,10 @@ Returns HTTP `404` when `projectCode` does not exist.
 - Status: `Implemented`
 
 Returns the full `EventDefinition` list for the project's declared
-`eventCodes`.
+`eventCodes`. Event definitions include descriptive metadata fields:
+`priorityClass`, `responseMode`, and `targetScope`. These fields are catalog
+metadata and do not change task scheduling, result finality, or transport
+delivery behavior by themselves.
 
 ### 3.4 List Project Submitters
 
@@ -165,8 +168,12 @@ Base path: `/api/v1/catalog`
 Notes:
 
 - returns the registered `EventDefinition` list
+- each event includes `priorityClass`, `responseMode`, and `targetScope`
+  metadata with conservative defaults
 - `taskModes=[]` means the event is direct runtime discovery/dispatch, not a
   task-backed event
+- event metadata is descriptive only; it is not queue placement, result
+  convergence, or worker command routing truth
 
 ### 4.2 Get Event
 
@@ -185,6 +192,8 @@ Returns HTTP `404` when `eventCode` does not exist.
 Notes:
 
 - returns one row per registered global event
+- each row includes `priorityClass`, `responseMode`, and `targetScope` from the
+  registered event definition
 - `invocationModel=TASK_BACKED` means the event enters through the task shell
   create plus item ingest flow
 - `invocationModel=DIRECT_RUNTIME` means the event is handled directly by the

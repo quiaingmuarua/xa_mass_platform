@@ -1,11 +1,42 @@
-# Unified Event Envelope Roadmap
+# Event Metadata And Owner Boundary Roadmap
 
 Last updated: 2026-05-18
 
-Status: proposed event-metadata and owner-boundary roadmap. This is not an
-implemented baseline. The first wave must not implement a unified event
-runtime, worker command lifecycle, worker state report projection, task item
-stage semantics, or queue-priority behavior.
+Status: first-wave baseline closed for event-metadata and owner-boundary
+convergence. UE-0 through UE-3 are implemented as the current baseline. Guards
+may be tightened as new event surfaces appear. This roadmap still must not
+implement a unified event runtime, worker command lifecycle, worker state report
+projection, task item stage semantics, or queue-priority behavior.
+
+Progress:
+
+- 2026-05-18: UE-0 owner-boundary baseline started. The event-like surface owner
+  map is recorded in `EVENT_METADATA_OWNER_BOUNDARY.md`, and source guards
+  prevent first-wave work from introducing a unified event runtime owner or
+  letting event metadata drive queue, result-finality, worker-control, or
+  reachability owners directly.
+- 2026-05-18: UE-1 descriptor metadata baseline started. Shared
+  `PriorityClass`, `ResponseMode`, and `TargetScope` metadata are available on
+  `EventDefinition` and `CoreEventDescriptor` with conservative defaults and
+  SDK/core descriptor round-trip coverage. `EventCategory` remains deferred.
+  No dispatch, scheduling, result, transport, or queue behavior is changed.
+- 2026-05-18: UE-2 catalog/API visibility started. Existing catalog event,
+  project-event, and event-capability read surfaces expose `priorityClass`,
+  `responseMode`, and `targetScope`. Console/UI rendering is a convenience read
+  view, not the proof surface. The server event-capability response is typed as
+  `EventCapabilityView` for OpenAPI/Knife4j visibility while preserving the
+  JSON shape. No new endpoint family or runtime behavior was introduced.
+- 2026-05-18: UE-3 owner guards closed for the first wave. Architecture guards
+  prevent first-wave descriptor metadata imports and getter use from entering
+  engine scheduling/resource/runtime owners, runtime result finality, transport
+  delivery/result-ingest owners, trace category owners, or worker-control/state
+  paths. `UnifiedEventService` and runtime `UnifiedEventEnvelope` remain
+  forbidden in production source.
+
+File-name note: this document keeps the historical
+`UNIFIED_EVENT_ENVELOPE_ROADMAP.md` path so existing references stay stable.
+The current first-wave roadmap is event metadata and owner-boundary convergence,
+not unified runtime-envelope implementation.
 
 ## Summary
 
@@ -14,10 +45,12 @@ commands, worker state reports, operator control, diagnostics, and future staged
 task work should be able to share event metadata language without sharing owner
 paths.
 
-The next implementation wave is narrower:
+The next implementation wave is narrower and should be named by the metadata
+and owner-boundary work it actually performs, not by the future unified
+envelope direction:
 
 ```text
-event-like surface inventory
+UE-0 event descriptor owner map and surface inventory
   -> EventDefinition / CoreEventDescriptor metadata baseline
   -> catalog/API/documentation visibility
   -> owner guards
@@ -79,7 +112,7 @@ This roadmap has two layers:
 ```text
 Core line
   -> UE-0 through UE-3
-  -> inventory, metadata baseline, visibility, owner guards
+  -> code concentration, inventory, metadata baseline, visibility, owner guards
 
 Future extensions
   -> queue placement policy seam, worker command lifecycle, worker state report,
@@ -87,17 +120,55 @@ Future extensions
 ```
 
 Only UE-0 through UE-3 are first-wave scope. Future extensions require separate
-approval and must not be bundled into the core line.
+approval and must not be bundled into the core line. Do not rename the first
+wave to "UnifiedEventEnvelope"; that name belongs to the future runtime carrier
+direction, not the current owner-boundary work.
 
 Each phase must be independently shippable:
 
-- inventory phases must not change behavior
+- code-convergence and inventory phases must not change behavior
 - metadata phases must preserve current runtime behavior
 - API/documentation phases must not alter dispatch, scheduling, result, or
   transport semantics
 - guard phases must prevent owner pollution without introducing new runtime
   paths
 - no phase should require a later phase to restore correctness
+
+## First-Wave Contract
+
+UE-0 through UE-3 may add descriptor metadata and documentation visibility, but
+they must preserve the current owner paths:
+
+- `EventDefinition` remains SDK/catalog metadata.
+- `CoreEventDescriptor` remains the core event-runtime descriptor.
+- `WorkerGroup` / `EventBinding` / `EventKey` remain worker capability and
+  candidate-source truth.
+- task dispatch handoff remains dispatch/transport delivery input.
+- `TaskResultReport` remains the result-convergence payload.
+- `TransportResultEnvelope` remains transport ingress metadata around task
+  results.
+- trace events remain historical/audit evidence.
+
+The first wave must not introduce a shared runtime event owner. If a proposed
+change needs to mutate task state, write final results, drive queue order,
+deliver worker commands, or project worker state, it is outside UE-0 through
+UE-3 and needs a separate roadmap.
+
+## Value Loop
+
+The first wave must produce a concrete but low-risk value loop:
+
+```text
+event definitions
+  -> expose stable response / target / priority metadata
+  -> catalog and API docs can explain event behavior
+  -> owner guards prevent metadata from becoming runtime truth
+```
+
+This is intentionally smaller than queue priority, worker command, worker state
+report, or task-stage behavior. If the metadata is not visible through catalog
+or documentation and not protected by owner guards, the first wave is just field
+churn and should not be considered complete.
 
 ## Non-Goals
 
@@ -174,6 +245,16 @@ enum EventCategory {
 filtering. Kernel behavior must not branch on category when a narrower owner or
 policy dimension exists.
 
+Core-line status:
+
+- optional descriptive metadata
+- default first-wave recommendation: defer from UE-1
+- reason: category is easy to misuse as a runtime switch and there is already a
+  trace-sink `EventCategory` with a different owner meaning
+- if implemented in UE-1, owner guards against category-driven lifecycle,
+  result-finality, worker-state, or queue behavior must be added no later than
+  UE-3
+
 Core-line default:
 
 ```text
@@ -199,6 +280,8 @@ Core-line rule:
 
 - store and expose metadata only
 - do not change runtime queue placement
+- do not directly map `PriorityClass` to `TaskRuntimeProfile.DispatchPriority`
+  or `TaskAssignWorker` ordering
 - default existing events to `STANDARD` unless a definition explicitly declares
   another value
 
@@ -221,6 +304,7 @@ Core-line rule:
 
 - use as caller expectation and documentation metadata
 - do not use it to create new ack/result/stream runtime paths
+- do not let it decide `TaskResultRuntime` writes or task finality
 - default existing task work that completes through task result convergence to
   `FINAL_RESULT`
 
@@ -241,6 +325,8 @@ Core-line rule:
 
 - use as owner/routing hint metadata
 - do not let it bypass current owner paths
+- do not let `WORKER_MANAGER`, `OPERATOR`, or `TASK_ENGINE` scopes create
+  command/state/control-plane runtime behavior in UE-0 through UE-3
 - default current worker-dispatched task work to `WORKER`
 
 ### Future Metadata
@@ -317,13 +403,22 @@ Core-line guards must protect:
 
 ## Core Phase Plan
 
-### Phase UE-0: Event Surface Inventory And Owner Map
+### Phase UE-0: Descriptor Code Concentration, Visibility, And Owner Map
 
-Goal: no behavior change. Map current event-like surfaces and owner truth before
-adding metadata fields.
+Status: implemented.
+
+Goal: no behavior change. Concentrate descriptor/catalog/event-metadata related
+code within current modules, shorten accidental visibility where possible, and
+map current event-like surfaces and owner truth before adding metadata fields.
 
 Scope:
 
+- identify the current package/caller spread of `EventDefinition`,
+  `CoreEventDescriptor`, catalog projections, and descriptor conversions
+- concentrate descriptor conversion helpers in their owning module/package
+  where this can be done without public API churn
+- reduce accidental public visibility for same-package implementation helpers
+  when callers do not cross real owner boundaries
 - inventory `EventDefinition` and `CoreEventDescriptor` fields and callers
 - inventory worker capability `EventBinding` / `EventKey` usage
 - inventory task dispatch handoff and transport delivery metadata
@@ -332,6 +427,10 @@ Scope:
   event/queue metadata
 - map each surface to its owner, payload shape, response expectation, and
   lifecycle truth
+- record the owner map in the owning engine documentation before adding
+  metadata fields
+- identify the public surfaces that must remain cross-module API and the helper
+  surfaces that should stay package-local
 
 Out of scope:
 
@@ -340,11 +439,19 @@ Out of scope:
 - no queue placement policy
 - no worker command/state report implementation
 - no unified envelope record
+- no module split
+- no SDK/server/transport API behavior change
 
 Acceptance:
 
+- a documented owner map exists for event-like surfaces and explicitly states
+  what each surface must not own
+- descriptor/catalog helper code has a smaller and intentional package/caller
+  surface where safe to change without API churn
 - owner map lists each event-like surface and current owner
 - owner map marks which paths must never share lifecycle ownership
+- public descriptor/catalog surfaces that must remain cross-module are
+  identified explicitly
 - no code behavior changes
 - next phase can add metadata to descriptor models without guessing owners
 
@@ -356,16 +463,20 @@ rg -n "EventDefinition|CoreEventDescriptor|EventBinding|EventKey|TaskResultRepor
 
 ### Phase UE-1: EventDefinition Metadata Baseline
 
+Status: implemented.
+
 Goal: add minimal event metadata to existing descriptor models without changing
 runtime behavior.
 
 Scope:
 
 - add metadata to `EventDefinition` and builder:
-  - `EventCategory`
   - `PriorityClass`
   - `ResponseMode`
   - `TargetScope`
+- defer descriptive `EventCategory` by default; add it only if UE-1 can keep it
+  non-behavioral, avoid confusion with trace-sink category, and cover it with
+  owner guards
 - add equivalent metadata to `CoreEventDescriptor`
 - update conversions between `EventDefinition` and `CoreEventDescriptor`
 - provide conservative defaults for existing definitions
@@ -384,10 +495,20 @@ Acceptance:
 - existing event definitions continue to register
 - metadata defaults are deterministic
 - SDK and core descriptor conversions preserve metadata
+- `PriorityClass` is not used to change `TaskAssignWorker`, runtime queue, or
+  transport queue ordering
+- `ResponseMode` is not used to choose result-convergence or task-finality
+  behavior
+- `TargetScope` is not used to route through new worker-management,
+  operator-control, or task-engine owner paths
+- `EventCategory`, if added, is not used as a runtime behavior switch and is
+  clearly distinct from trace/audit category
 - no dispatch, scheduling, result, transport, or queue behavior changes
 - tests cover default metadata and explicit metadata round-trip
 
 ### Phase UE-2: Metadata Visibility And Documentation
+
+Status: implemented.
 
 Goal: expose metadata through existing catalog/API/doc surfaces so API consumers
 can understand event behavior without changing runtime paths.
@@ -415,6 +536,8 @@ Acceptance:
 
 ### Phase UE-3: Owner Guards And Trace-Proof Boundary
 
+Status: implemented for the first-wave guard baseline.
+
 Goal: add targeted guards that prevent event metadata from becoming lifecycle
 truth or a hidden router.
 
@@ -424,6 +547,12 @@ Scope:
   finality, or worker availability
 - source guard: `PriorityClass` must not directly change queue placement without
   an explicit queue placement policy owner
+- source guard: `PriorityClass` must not directly map into
+  `TaskRuntimeProfile.DispatchPriority` or lane ordering
+- source guard: `ResponseMode` must not choose `TaskResultRuntime` write paths
+  or visible final result behavior
+- source guard: `TargetScope` must not introduce worker-command,
+  worker-state-report, operator-control, or task-engine runtime paths
 - source guard: `TaskResultRuntime` / `TaskResultService` must not accept worker
   command ack or worker state report shapes
 - source guard: transport result ingress must keep `TaskResultReport` as result
@@ -441,6 +570,28 @@ Acceptance:
 - architecture guards cover the owner pollution risks
 - no runtime behavior change
 - future behavior-changing roadmap phases have explicit guardrails
+
+## Recommended First Slice
+
+Start with UE-0 only. Do not add metadata fields in the first slice.
+
+UE-0 deliverables:
+
+- owner map for event-like surfaces and their lifecycle truth, recorded in
+  [`EVENT_METADATA_OWNER_BOUNDARY.md`](./EVENT_METADATA_OWNER_BOUNDARY.md)
+- inventory of `EventDefinition`, `CoreEventDescriptor`, `EventBinding`,
+  `EventKey`, task dispatch handoff, `TaskResultReport`,
+  `TransportResultEnvelope`, trace events, and transport queue diagnostics
+- package/caller visibility cleanup only where it removes accidental exposure
+  without API churn
+- source guards against `UnifiedEventService` and runtime
+  `UnifiedEventEnvelope` introduction in the first wave
+- explicit list of public descriptor/catalog surfaces that must remain
+  cross-module API
+
+UE-0 success means UE-1 can add descriptor metadata without guessing owner
+boundaries. It is not a failure if UE-0 changes mostly documentation and guard
+tests; this phase is intentionally a convergence baseline before field churn.
 
 ## Future Extensions
 
