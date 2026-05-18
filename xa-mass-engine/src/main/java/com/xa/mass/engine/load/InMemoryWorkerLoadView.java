@@ -93,6 +93,7 @@ public final class InMemoryWorkerLoadView implements WorkerLoadView {
         }
         reserved.updateAndGet(value -> Math.max(0, value - 1));
         activeLeaseCounts.computeIfAbsent(workerId, ignored -> new AtomicInteger()).incrementAndGet();
+        incrementActiveWorkerForTask(workerId, taskId);
         return true;
     }
 
@@ -113,12 +114,7 @@ public final class InMemoryWorkerLoadView implements WorkerLoadView {
             return;
         }
         activeLeaseCounts.computeIfAbsent(workerId, ignored -> new AtomicInteger()).incrementAndGet();
-        if (taskId != null && !taskId.isBlank()) {
-            activeWorkerCountsByTask
-                    .computeIfAbsent(taskId, ignored -> new ConcurrentHashMap<>())
-                    .computeIfAbsent(workerId, ignored -> new AtomicInteger())
-                    .incrementAndGet();
-        }
+        incrementActiveWorkerForTask(workerId, taskId);
     }
 
     @Override
@@ -139,5 +135,15 @@ public final class InMemoryWorkerLoadView implements WorkerLoadView {
                 return workerCounts.isEmpty() ? null : workerCounts;
             });
         }
+    }
+
+    private void incrementActiveWorkerForTask(String workerId, String taskId) {
+        if (taskId == null || taskId.isBlank()) {
+            return;
+        }
+        activeWorkerCountsByTask
+                .computeIfAbsent(taskId, ignored -> new ConcurrentHashMap<>())
+                .computeIfAbsent(workerId, ignored -> new AtomicInteger())
+                .incrementAndGet();
     }
 }

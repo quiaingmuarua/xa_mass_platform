@@ -14,7 +14,6 @@ public record TransportDispatchRouteContext(String taskId,
                                             String eventCode,
                                             String attemptId,
                                             String workerId,
-                                            String workerContextId,
                                             String batchId) {
 
     public static TransportDispatchRouteContext from(TaskDispatchContext task,
@@ -27,7 +26,6 @@ public record TransportDispatchRouteContext(String taskId,
                 task.eventCode(),
                 dispatchBinding.attemptId(),
                 dispatchBinding.workerId(),
-                dispatchBinding.workerContextId(),
                 dispatchBinding.batchId()
         );
     }

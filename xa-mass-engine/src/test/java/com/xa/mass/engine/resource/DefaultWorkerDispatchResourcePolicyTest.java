@@ -2,8 +2,7 @@ package com.xa.mass.engine.resource;
 
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.engine.WorkerReachabilityState;
+import com.xa.mass.engine.worker.WorkerReachabilityState;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.model.WorkerSchedulingView;
 import org.junit.jupiter.api.Test;
@@ -22,7 +21,6 @@ class DefaultWorkerDispatchResourcePolicyTest {
         WorkerDispatchResourceUsage usage = policy.usageForTask(task);
 
         assertTrue(usage.exclusiveWorkerLock());
-        assertTrue(usage.statelessWorkerResource());
     }
 
     @Test
@@ -30,37 +28,19 @@ class DefaultWorkerDispatchResourcePolicyTest {
         Task task = new Task();
         task.getExecutionSpec().setForeground(false);
 
-        WorkerDispatchResourceUsage usage = policy.usageForCandidate(task, candidate(null));
+        WorkerDispatchResourceUsage usage = policy.usageForCandidate(task, candidate());
 
         assertFalse(usage.exclusiveWorkerLock());
-        assertFalse(usage.legacyWorkerContextResource());
-        assertTrue(usage.statelessWorkerResource());
     }
 
     @Test
-    void candidateWithWorkerContextKeepsLegacyResourceExclusiveEvenForBackgroundTask() {
-        Task task = new Task();
-        task.getExecutionSpec().setForeground(false);
-        WorkerContext workerContext = new WorkerContext();
-        workerContext.setWorkerId("worker-1");
-        workerContext.setWorkerContextId("ctx-1");
-
-        WorkerDispatchResourceUsage usage = policy.usageForCandidate(task, candidate(workerContext));
-
-        assertTrue(usage.exclusiveWorkerLock());
-        assertTrue(usage.legacyWorkerContextResource());
-        assertFalse(usage.statelessWorkerResource());
-    }
-
-    @Test
-    void attemptWithWorkerContextKeepsLegacyResourceExclusiveEvenForBackgroundTask() {
+    void attemptCleanupUsesTaskLevelBackgroundWorkerLockPolicy() {
         Task task = new Task();
         task.getExecutionSpec().setForeground(false);
 
-        WorkerDispatchResourceUsage usage = policy.usageForAttempt(task, "ctx-1");
+        WorkerDispatchResourceUsage usage = policy.usageForAttempt(task);
 
-        assertTrue(usage.exclusiveWorkerLock());
-        assertTrue(usage.legacyWorkerContextResource());
+        assertFalse(usage.exclusiveWorkerLock());
     }
 
     @Test
@@ -70,16 +50,12 @@ class DefaultWorkerDispatchResourcePolicyTest {
         assertTrue(usage.exclusiveWorkerLock());
     }
 
-    private WorkerSchedulingCandidate candidate(WorkerContext workerContext) {
+    private WorkerSchedulingCandidate candidate() {
         Worker worker = new Worker();
         worker.setWorkerId("worker-1");
-        if (workerContext != null) {
-            workerContext.setWorkerId(worker.getWorkerId());
-        }
         return new WorkerSchedulingCandidate(
                 worker,
-                workerContext,
-                WorkerSchedulingView.from(worker, workerContext, WorkerReachabilityState.ONLINE, true, false)
+                WorkerSchedulingView.from(worker, WorkerReachabilityState.ONLINE, true, false)
         );
     }
 }

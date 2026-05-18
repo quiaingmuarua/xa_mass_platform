@@ -33,8 +33,8 @@
           <div class="metric-value">{{ lockedWorkerCount }}</div>
         </div>
         <div class="metric-tile">
-          <div class="metric-label">Contexts</div>
-          <div class="metric-value">{{ workerContexts.length }}</div>
+          <div class="metric-label">Event bindings</div>
+          <div class="metric-value">{{ eventBindingCount }}</div>
         </div>
       </section>
 
@@ -99,11 +99,6 @@
             </span>
           </template>
         </el-table-column>
-        <el-table-column label="Contexts" min-width="120">
-          <template #default="{ row }">
-            {{ contextCountByWorkerId[row.workerId] ?? 0 }}
-          </template>
-        </el-table-column>
         <el-table-column label="Lock" min-width="110">
           <template #default="{ row }">
             <el-tag :type="row.locked ? 'warning' : 'info'">
@@ -140,18 +135,17 @@
 <script setup lang="ts">
 import {computed, onMounted, ref} from 'vue'
 import {useRouter} from 'vue-router'
-import {listWorkerContexts, listWorkers} from '@/api/workers'
+import {listWorkers} from '@/api/workers'
 import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
-import type {WorkerContextListItem, WorkerListItem} from '@/types/workers'
+import type {WorkerListItem} from '@/types/workers'
 import {toErrorMessage} from '@/utils/errors'
 
 const router = useRouter()
 
 const loading = ref(false)
 const workers = ref<WorkerListItem[]>([])
-const workerContexts = ref<WorkerContextListItem[]>([])
 const errorMessage = ref('')
 const onlineWorkerCount = computed(
   () => workers.value.filter((worker) => worker.status === 'ONLINE').length,
@@ -159,27 +153,25 @@ const onlineWorkerCount = computed(
 const lockedWorkerCount = computed(
   () => workers.value.filter((worker) => worker.locked).length,
 )
-const contextCountByWorkerId = computed<Record<string, number>>(() => {
-  return workerContexts.value.reduce<Record<string, number>>((acc, context) => {
-    acc[context.workerId] = (acc[context.workerId] ?? 0) + 1
-    return acc
-  }, {})
-})
+const eventBindingCount = computed(
+  () =>
+    workers.value.reduce(
+      (count, worker) =>
+        count +
+        (worker.eventBindings?.length ?? worker.supportedEventCodes.length),
+      0,
+    ),
+)
 
 async function loadWorkers(): Promise<void> {
   loading.value = true
   errorMessage.value = ''
 
   try {
-    const [workerResponse, contextResponse] = await Promise.all([
-      listWorkers(),
-      listWorkerContexts(),
-    ])
+    const workerResponse = await listWorkers()
     workers.value = workerResponse.items
-    workerContexts.value = contextResponse.items
   } catch (error) {
     workers.value = []
-    workerContexts.value = []
     errorMessage.value = toErrorMessage(error, 'Failed to load workers.')
   } finally {
     loading.value = false

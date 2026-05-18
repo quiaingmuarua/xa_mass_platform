@@ -10,7 +10,6 @@ import com.xa.mass.workerpack.sample.client.SampleWorkerClient;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.model.WorkerSnapshot;
-import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -589,8 +588,13 @@ public abstract class AbstractSampleE2eTest {
     }
 
     protected void registerSdkWorkerWithContext(String workerId, String routingTag, String project) {
-        requireSdkApp().registerWorker(createWorkerRegistration(workerId, "us", project));
-        requireSdkApp().registerWorkerContext(createWorkerContextRegistration(workerId, routingTag));
+        requireSdkApp().registerWorker(createWorkerRegistration(
+                workerId,
+                "us",
+                project,
+                1,
+                schedulingAttributes(routingTag, Map.of())
+        ));
     }
 
     protected void registerSdkWorkerWithContext(String workerId,
@@ -598,8 +602,13 @@ public abstract class AbstractSampleE2eTest {
                                                 String routingTag,
                                                 String project,
                                                 Map<String, Object> contextAttributes) {
-        requireSdkApp().registerWorker(createWorkerRegistration(workerId, workerGroupId, project));
-        requireSdkApp().registerWorkerContext(createWorkerContextRegistration(workerId, routingTag, contextAttributes));
+        requireSdkApp().registerWorker(createWorkerRegistration(
+                workerId,
+                workerGroupId,
+                project,
+                1,
+                schedulingAttributes(routingTag, contextAttributes)
+        ));
     }
 
     protected void registerSdkStatelessWorker(String workerId, String project) {
@@ -610,6 +619,13 @@ public abstract class AbstractSampleE2eTest {
         requireSdkApp().registerWorker(createWorkerRegistration(workerId, "us", project, maxConcurrentWork));
     }
 
+    protected void registerSdkStatelessWorkerWithAttributes(String workerId,
+                                                            String workerGroupId,
+                                                            String project,
+                                                            Map<String, String> attributes) {
+        requireSdkApp().registerWorker(createWorkerRegistration(workerId, workerGroupId, project, 1, attributes));
+    }
+
     private WorkerRegistration createWorkerRegistration(String workerId, String workerGroupId, String project) {
         return createWorkerRegistration(workerId, workerGroupId, project, 1);
     }
@@ -618,6 +634,14 @@ public abstract class AbstractSampleE2eTest {
                                                         String workerGroupId,
                                                         String project,
                                                         int maxConcurrentWork) {
+        return createWorkerRegistration(workerId, workerGroupId, project, maxConcurrentWork, Map.of());
+    }
+
+    private WorkerRegistration createWorkerRegistration(String workerId,
+                                                        String workerGroupId,
+                                                        String project,
+                                                        int maxConcurrentWork,
+                                                        Map<String, String> attributes) {
         return WorkerRegistration.builder()
                 .workerId(workerId)
                 .workerGroupId(workerGroupId)
@@ -625,6 +649,7 @@ public abstract class AbstractSampleE2eTest {
                 .adapterId("websocket")
                 .transportHint("realtime")
                 .maxConcurrentWork(maxConcurrentWork)
+                .attributes(attributes == null ? Map.of() : attributes)
                 .build();
     }
 
@@ -656,28 +681,21 @@ public abstract class AbstractSampleE2eTest {
         return resolved.isEmpty() ? List.of(available.getFirst()) : resolved;
     }
 
-    private WorkerContextRegistration createWorkerContextRegistration(String workerId, String routingTag) {
-        return createWorkerContextRegistration(workerId, routingTag, Map.of());
-    }
-
-    private WorkerContextRegistration createWorkerContextRegistration(String workerId,
-                                                                     String routingTag,
-                                                                     Map<String, Object> contextAttributes) {
-        Map<String, String> normalizedAttributes = contextAttributes == null || contextAttributes.isEmpty()
-                ? Map.of()
-                : contextAttributes.entrySet().stream()
-                .collect(java.util.stream.Collectors.toMap(
-                        Map.Entry::getKey,
-                        entry -> String.valueOf(entry.getValue()),
-                        (left, right) -> right,
-                        java.util.LinkedHashMap::new
-                ));
-        return WorkerContextRegistration.builder()
-                .workerContextId("worker-context-" + workerId)
-                .workerId(workerId)
-                .routingTags(java.util.Set.of(routingTag))
-                .attributes(normalizedAttributes)
-                .build();
+    private Map<String, String> schedulingAttributes(String routingTag, Map<String, Object> contextAttributes) {
+        java.util.LinkedHashMap<String, String> attributes = new java.util.LinkedHashMap<>();
+        if (routingTag != null && !routingTag.isBlank()) {
+            attributes.put("routingTag", routingTag);
+            attributes.put("routingTags", routingTag);
+            attributes.put("country", routingTag);
+        }
+        if (contextAttributes != null) {
+            contextAttributes.forEach((key, value) -> {
+                if (key != null && value != null) {
+                    attributes.put(key, String.valueOf(value));
+                }
+            });
+        }
+        return attributes;
     }
 
     private MassSdkApplication requireSdkApp() {

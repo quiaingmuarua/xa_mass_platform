@@ -60,8 +60,7 @@ calls such as `taskTerminalClosed` and `taskMsgStatusTransition` into
 structured `ExecutionEvent` objects with:
 
 - `eventType`: `ExecutionEventType` enum
-- `identity`: `taskId`, `messageId`, `attemptId`, `workerId`,
-  `workerContextId`, `leaseToken`
+- `identity`: `taskId`, `messageId`, `attemptId`, `workerId`, `leaseToken`
 - `transition`: `src`, `dst`, `reason`
 - `outcome`: `success`, `errorCode`, `detail`
 - `attrs`: free-form key/value data such as `terminalReason`, `trigger`, or

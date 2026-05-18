@@ -1,7 +1,6 @@
 package com.xa.mass.storage.jdbc;
 
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.storage.api.WorkerStorage;
 
 import javax.sql.DataSource;
@@ -17,7 +16,6 @@ public class JdbcWorkerStorage extends JdbcStorageSupport implements WorkerStora
     private final JdbcDialect dialect;
     private final JdbcWorkerCompatibilityProjection runtimeProjection = new JdbcWorkerCompatibilityProjection();
     private final Map<String, String> durableWorkerJsonById = new HashMap<>();
-    private final Map<String, String> durableWorkerContextJsonById = new HashMap<>();
     private boolean loadedFromDb;
 
     public JdbcWorkerStorage(DataSource dataSource, JdbcDialect dialect) {
@@ -58,19 +56,14 @@ public class JdbcWorkerStorage extends JdbcStorageSupport implements WorkerStora
     @Override
     public synchronized boolean deleteWorker(String workerId) {
         ensureLoaded();
-        List<String> ownedContextIds = runtimeProjection.getWorkerContexts(workerId).stream()
-                .map(WorkerContext::getWorkerContextId)
-                .toList();
         try (var conn = connection()) {
             conn.setAutoCommit(false);
             try {
-                update(conn, "DELETE FROM xa_worker_context WHERE worker_id = ?", workerId);
                 int deleted = update(conn, "DELETE FROM xa_worker WHERE worker_id = ?", workerId);
                 conn.commit();
                 if (deleted > 0) {
                     runtimeProjection.deleteWorker(workerId);
                     durableWorkerJsonById.remove(workerId);
-                    ownedContextIds.forEach(durableWorkerContextJsonById::remove);
                 }
                 return deleted > 0;
             } catch (Exception e) {
@@ -107,72 +100,6 @@ public class JdbcWorkerStorage extends JdbcStorageSupport implements WorkerStora
     }
 
     @Override
-    public synchronized void addWorkerContext(WorkerContext workerContext) {
-        if (workerContext == null || workerContext.getWorkerId() == null || workerContext.getWorkerContextId() == null) {
-            throw new IllegalArgumentException("workerContext, workerId, and workerContextId are required");
-        }
-        ensureLoaded();
-        runtimeProjection.addWorkerContext(workerContext);
-        persistWorkerContextDefinition(workerContext);
-    }
-
-    @Override
-    public List<WorkerContext> getWorkerContexts(String workerId) {
-        ensureLoaded();
-        return runtimeProjection.getWorkerContexts(workerId);
-    }
-
-    @Override
-    public Optional<WorkerContext> getWorkerContextById(String workerContextId) {
-        ensureLoaded();
-        return runtimeProjection.getWorkerContextById(workerContextId);
-    }
-
-    @Override
-    public synchronized boolean updateWorkerContextById(String workerContextId, WorkerContext workerContext) {
-        ensureLoaded();
-        if (workerContext == null || workerContext.getWorkerContextId() == null || workerContext.getWorkerId() == null) {
-            return false;
-        }
-        if (!workerContextId.equals(workerContext.getWorkerContextId())) {
-            return false;
-        }
-        boolean updated = runtimeProjection.updateWorkerContextById(workerContextId, workerContext);
-        if (!updated) {
-            return false;
-        }
-        persistWorkerContextDefinition(workerContext);
-        return true;
-    }
-
-    @Override
-    public synchronized boolean deleteWorkerContextById(String workerContextId) {
-        ensureLoaded();
-        try (var conn = connection()) {
-            boolean deleted = update(conn, "DELETE FROM xa_worker_context WHERE worker_context_id = ?", workerContextId) > 0;
-            if (deleted) {
-                runtimeProjection.deleteWorkerContextById(workerContextId);
-                durableWorkerContextJsonById.remove(workerContextId);
-            }
-            return deleted;
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to delete worker context " + workerContextId, e);
-        }
-    }
-
-    @Override
-    public List<WorkerContext> getAllWorkerContexts() {
-        ensureLoaded();
-        return runtimeProjection.getAllWorkerContexts();
-    }
-
-    @Override
-    public List<WorkerContext> getWorkerContextsByWorkerIds(List<String> workerIds) {
-        ensureLoaded();
-        return runtimeProjection.getWorkerContextsByWorkerIds(workerIds);
-    }
-
-    @Override
     public synchronized boolean tryLockWorker(String workerId) {
         ensureLoaded();
         return runtimeProjection.tryLockWorker(workerId);
@@ -200,10 +127,6 @@ public class JdbcWorkerStorage extends JdbcStorageSupport implements WorkerStora
         return queryJson(sql, Worker.class, args);
     }
 
-    private List<WorkerContext> queryWorkerContexts(String sql, String... args) {
-        return queryJson(sql, WorkerContext.class, args);
-    }
-
     private <T> List<T> queryJson(String sql, Class<T> type, String... args) {
         try (var conn = connection(); var ps = conn.prepareStatement(sql)) {
             bind(ps, args);
@@ -228,11 +151,6 @@ public class JdbcWorkerStorage extends JdbcStorageSupport implements WorkerStora
             runtimeProjection.addWorker(durableWorker);
             durableWorkerJsonById.put(durableWorker.getWorkerId(), json(durableWorker));
         }
-        for (WorkerContext workerContext : queryWorkerContexts("SELECT json FROM xa_worker_context")) {
-            WorkerContext durableContext = durableWorkerContext(workerContext);
-            runtimeProjection.addWorkerContext(durableContext);
-            durableWorkerContextJsonById.put(durableContext.getWorkerContextId(), json(durableContext));
-        }
         loadedFromDb = true;
     }
 
@@ -254,24 +172,6 @@ public class JdbcWorkerStorage extends JdbcStorageSupport implements WorkerStora
         }
     }
 
-    private void persistWorkerContextDefinition(WorkerContext workerContext) {
-        WorkerContext durableContext = durableWorkerContext(workerContext);
-        String workerContextId = durableContext.getWorkerContextId();
-        String durableJson = json(durableContext);
-        if (durableJson.equals(durableWorkerContextJsonById.get(workerContextId))) {
-            return;
-        }
-        try (var conn = connection(); var ps = conn.prepareStatement(dialect.workerContextUpsertSql())) {
-            ps.setString(1, workerContextId);
-            ps.setString(2, durableContext.getWorkerId());
-            ps.setString(3, durableJson);
-            ps.executeUpdate();
-            durableWorkerContextJsonById.put(workerContextId, durableJson);
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to save worker context " + workerContextId, e);
-        }
-    }
-
     private Worker durableWorker(Worker source) {
         Worker worker = new Worker();
         worker.setWorkerId(source.getWorkerId());
@@ -286,19 +186,6 @@ public class JdbcWorkerStorage extends JdbcStorageSupport implements WorkerStora
         worker.setCreateTime(source.getCreateTime());
         worker.setUpdateTime(source.getCreateTime());
         return worker;
-    }
-
-    private WorkerContext durableWorkerContext(WorkerContext source) {
-        WorkerContext workerContext = new WorkerContext();
-        workerContext.setWorkerContextId(source.getWorkerContextId());
-        workerContext.setWorkerId(source.getWorkerId());
-        workerContext.setProject(source.getProject());
-        workerContext.setRoutingTags(source.getRoutingTags());
-        workerContext.setAttributes(source.getAttributes());
-        workerContext.setExpireTime(source.getExpireTime());
-        workerContext.setCreateTime(source.getCreateTime());
-        workerContext.setUpdateTime(source.getCreateTime());
-        return workerContext;
     }
 
     private int update(java.sql.Connection conn, String sql, String arg) throws Exception {

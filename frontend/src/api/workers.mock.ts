@@ -1,7 +1,4 @@
-import type {
-    WorkerContextListResponse,
-    WorkerListResponse,
-} from '@/types/workers'
+import type {WorkerListResponse} from '@/types/workers'
 
 const mockWorkers: WorkerListResponse = {
     items: [
@@ -38,38 +35,6 @@ const mockWorkers: WorkerListResponse = {
     total: 2,
 }
 
-const mockWorkerContexts: WorkerContextListResponse = {
-    items: [
-        {
-            workerContextId: 'ctx-us-01',
-            workerId: 'worker-us-01',
-            project: 'demoApp',
-            status: 'OCCUPIED',
-            routingTags: ['us', 'primary'],
-            attributes: {
-                account: 'ops-us-a',
-            },
-            lastBindTaskId: 'task-001',
-            lastUsedTime: '2026-04-21 09:44:00',
-            updateTime: '2026-04-21 09:44:00',
-        },
-        {
-            workerContextId: 'ctx-sg-01',
-            workerId: 'worker-sg-01',
-            project: 'demoApp',
-            status: 'IDLE',
-            routingTags: ['sg'],
-            attributes: {
-                account: 'ops-sg-a',
-            },
-            lastBindTaskId: null,
-            lastUsedTime: '',
-            updateTime: '2026-04-21 08:00:00',
-        },
-    ],
-    total: 2,
-}
-
 function delay<T>(value: T): Promise<T> {
     return new Promise((resolve) => {
         window.setTimeout(() => resolve(value), 80)
@@ -78,8 +43,4 @@ function delay<T>(value: T): Promise<T> {
 
 export async function listWorkersMock(): Promise<WorkerListResponse> {
     return delay(mockWorkers)
-}
-
-export async function listWorkerContextsMock(): Promise<WorkerContextListResponse> {
-    return delay(mockWorkerContexts)
 }

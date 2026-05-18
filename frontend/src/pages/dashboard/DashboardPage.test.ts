@@ -22,9 +22,7 @@ describe('DashboardPage', () => {
         })
         setMockCurrentUser(mockAdminUser)
 
-        vi.stubGlobal(
-            'fetch',
-            vi.fn((input: string) => {
+        const fetchMock = vi.fn((input: string) => {
                 if (input.includes('/api/v1/tasks')) {
                     return Promise.resolve(
                         jsonResponse({
@@ -42,30 +40,6 @@ describe('DashboardPage', () => {
                                         eligibleCount: 10,
                                         batchSize: 2,
                                         updatedAt: '2026-04-21 09:30:00',
-                                    },
-                                ],
-                                total: 1,
-                            },
-                        }),
-                    )
-                }
-                if (input.includes('/api/v1/runtime/worker-contexts')) {
-                    return Promise.resolve(
-                        jsonResponse({
-                            code: 0,
-                            msg: 'ok',
-                            data: {
-                                items: [
-                                    {
-                                        workerContextId: 'ctx-us-01',
-                                        workerId: 'worker-us-01',
-                                        project: 'demoApp',
-                                        status: 'OCCUPIED',
-                                        routingTags: ['primary'],
-                                        attributes: {},
-                                        lastBindTaskId: 'task-001',
-                                        lastUsedTime: '2026-04-21 09:44:00',
-                                        updateTime: '2026-04-21 09:44:00',
                                     },
                                 ],
                                 total: 1,
@@ -119,8 +93,8 @@ describe('DashboardPage', () => {
                         },
                     }),
                 )
-            }),
-        )
+            })
+        vi.stubGlobal('fetch', fetchMock)
 
         const wrapper = mount(DashboardPage, {
             global: {
@@ -134,5 +108,11 @@ describe('DashboardPage', () => {
         expect(wrapper.text()).toContain('Warm worker pool')
         expect(wrapper.text()).toContain('Running tasks')
         expect(wrapper.text()).toContain('Online workers')
+        expect(wrapper.text()).toContain('Capabilities')
+        expect(
+            fetchMock.mock.calls.some(([input]) =>
+                String(input).includes('/api/v1/runtime/worker-contexts'),
+            ),
+        ).toBe(false)
     })
 })

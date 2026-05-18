@@ -33,7 +33,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "mass.mock.bootstrap.register-dev-submitters=false",
                 "mass.mock.bootstrap.load-rules=false",
                 "mass.mock.data.workers=mock/test_mock_workers_empty.json",
-                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts_empty.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
@@ -59,7 +58,12 @@ class DevSampleWorkerLauncherIntegrationTest extends ProjectionSampleE2eTest {
     void devAppLauncherAutoRegistersAndStartsSampleWorkers() throws Exception {
         waitForWorkerOnline(CRAWLER_WORKER_ID);
         waitForWorkerOnline(STOCK_WORKER_ID);
-        assertNotNull(app.getWorkerContextById("ctx-stock-ws-worker-001"));
+        WorkerSnapshot stockWorker = app.getAllWorkers().stream()
+                .filter(worker -> STOCK_WORKER_ID.equals(worker.getWorkerId()))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(stockWorker);
+        assertTrue(stockWorker.getAttributes().containsKey("routingTags"));
         assertTrue(app.getProject("crawlerApp") != null);
         assertTrue(app.getEvent("stock.quote.fetch") != null);
         assertEquals(5, app.listDefaultRules().size());

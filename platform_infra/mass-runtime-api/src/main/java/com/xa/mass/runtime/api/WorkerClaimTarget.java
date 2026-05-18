@@ -3,14 +3,30 @@ package com.xa.mass.runtime.api;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
+/**
+ * Runtime claim target.
+ *
+ * <p>Claims are worker-level. Account/context identity is not part of the
+ * runtime claim contract.</p>
+ */
 public record WorkerClaimTarget(String workerId,
-                                String workerContextId,
                                 String batchId,
                                 int capacity,
                                 Set<String> supportedEventCodes) {
 
-    public WorkerClaimTarget(String workerId, String workerContextId, String batchId, int capacity) {
-        this(workerId, workerContextId, batchId, capacity, Set.of());
+    public WorkerClaimTarget(String workerId, String batchId, int capacity) {
+        this(workerId, batchId, capacity, Set.of());
+    }
+
+    public static WorkerClaimTarget workerLevel(String workerId, String batchId, int capacity) {
+        return workerLevel(workerId, batchId, capacity, Set.of());
+    }
+
+    public static WorkerClaimTarget workerLevel(String workerId,
+                                                String batchId,
+                                                int capacity,
+                                                Set<String> supportedEventCodes) {
+        return new WorkerClaimTarget(workerId, batchId, capacity, supportedEventCodes);
     }
 
     public WorkerClaimTarget {

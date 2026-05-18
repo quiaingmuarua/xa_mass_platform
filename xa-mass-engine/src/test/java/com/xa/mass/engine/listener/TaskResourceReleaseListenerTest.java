@@ -5,12 +5,9 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.TaskWorkProjectionState.AttemptFinalReason;
 import com.xa.mass.engine.TaskWorkProjectionState.AttemptStatus;
 import com.xa.mass.engine.TaskWorkAttemptClosedEvent;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
-import com.xa.mass.engine.WorkerManager;
+import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.engine.assignment.AssignmentRefillDecision;
-import com.xa.mass.engine.assignment.DefaultAssignmentRefillPolicy;
-import com.xa.mass.engine.resource.LegacyWorkerContextResourceLifecycle;
 import com.xa.mass.engine.resource.DefaultWorkerDispatchResourcePolicy;
 import com.xa.mass.engine.resource.WorkerDispatchResourceReleaser;
 import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
@@ -46,22 +43,15 @@ public class TaskResourceReleaseListenerTest {
     }
 
     @Test
-    void terminalTaskReleasesWorkerContextAndUnlocksWorker() {
+    void terminalTaskReleasesWorkerLoadAndUnlocksWorker() {
         Task task = new Task();
         task.setTid("task-1");
 
-        WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", java.util.Set.of("us"));
-        wctx.bindToTask("task-1");
-        wctx.startOccupying();
-
-        when(maintenancePort.getActiveLeases("task-1")).thenReturn(activeLeases("task-1", "msg-1", "worker-1", "wctx-1"));
-        when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
-        when(workerManager.updateWorkerContextById("wctx-1", wctx)).thenReturn(true);
+        when(maintenancePort.getActiveLeases("task-1")).thenReturn(activeLeases("task-1", "msg-1", "worker-1"));
 
         listener.onTaskTerminal(task);
 
         verify(workerManager).recordWorkFinal("worker-1", "task-1");
-        verify(workerManager).updateWorkerContextById("wctx-1", wctx);
         verify(workerManager).unlockWorker("worker-1");
     }
 
@@ -71,7 +61,7 @@ public class TaskResourceReleaseListenerTest {
         task.setTid("task-1");
         task.getExecutionSpec().setForeground(false);
 
-        when(maintenancePort.getActiveLeases("task-1")).thenReturn(activeLeases("task-1", "msg-1", "worker-1", null));
+        when(maintenancePort.getActiveLeases("task-1")).thenReturn(activeLeases("task-1", "msg-1", "worker-1"));
 
         listener.onTaskTerminal(task);
 
@@ -80,24 +70,17 @@ public class TaskResourceReleaseListenerTest {
     }
 
     @Test
-    void terminalBackgroundTaskWithWorkerContextStillUnlocksWorker() {
+    void terminalBackgroundTaskDoesNotReleaseExclusiveWorkerLock() {
         Task task = new Task();
         task.setTid("task-1");
         task.getExecutionSpec().setForeground(false);
 
-        WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", java.util.Set.of("us"));
-        wctx.bindToTask("task-1");
-        wctx.startOccupying();
-
-        when(maintenancePort.getActiveLeases("task-1")).thenReturn(activeLeases("task-1", "msg-1", "worker-1", "wctx-1"));
-        when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
-        when(workerManager.updateWorkerContextById("wctx-1", wctx)).thenReturn(true);
+        when(maintenancePort.getActiveLeases("task-1")).thenReturn(activeLeases("task-1", "msg-1", "worker-1"));
 
         listener.onTaskTerminal(task);
 
         verify(workerManager).recordWorkFinal("worker-1", "task-1");
-        verify(workerManager).updateWorkerContextById("wctx-1", wctx);
-        verify(workerManager).unlockWorker("worker-1");
+        verify(workerManager, never()).unlockWorker("worker-1");
     }
 
     @Test
@@ -105,43 +88,27 @@ public class TaskResourceReleaseListenerTest {
         Task task = new Task();
         task.setTid("task-1");
 
-        WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", java.util.Set.of("us"));
-        wctx.bindToTask("task-1");
-        wctx.startOccupying();
-
-        when(maintenancePort.getActiveLeases("task-1")).thenReturn(activeLeases("task-1", "msg-1", "worker-1", "wctx-1"));
-        when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
-        when(workerManager.updateWorkerContextById("wctx-1", wctx)).thenReturn(true);
+        when(maintenancePort.getActiveLeases("task-1")).thenReturn(activeLeases("task-1", "msg-1", "worker-1"));
 
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
             listener.onTaskTerminal(task);
-            capture.assertHasEvent("WORKER_CONTEXT_STATUS_TRANSITION", mdc ->
-                    "task-1".equals(mdc.get("taskId"))
-                            && "wctx-1".equals(mdc.get("workerContextId"))
-                            && "OCCUPIED".equals(mdc.get("fromStatus"))
-                            && "IDLE".equals(mdc.get("toStatus")));
             capture.assertHasEvent("RESOURCE_RELEASED", mdc ->
                     "task-1".equals(mdc.get("taskId"))
                             && "worker-1".equals(mdc.get("workerId"))
-                            && "wctx-1".equals(mdc.get("workerContextId")));
+                            && !mdc.containsKey("workerContextId")
+                            && "WORKER_LOCK".equals(mdc.get("resourceKind")));
         }
     }
 
     @Test
-    void listenerDoesNotReleaseWorkerContextOwnedByAnotherTask() {
+    void listenerReleasesWorkerLevelLockOnTerminalTask() {
         Task task = new Task();
         task.setTid("task-1");
 
-        WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", java.util.Set.of("us"));
-        wctx.bindToTask("other-task");
-        wctx.startOccupying();
-
-        when(maintenancePort.getActiveLeases("task-1")).thenReturn(activeLeases("task-1", "msg-1", "worker-1", "wctx-1"));
-        when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
+        when(maintenancePort.getActiveLeases("task-1")).thenReturn(activeLeases("task-1", "msg-1", "worker-1"));
 
         listener.onTaskTerminal(task);
 
-        verify(workerManager, never()).updateWorkerContextById("wctx-1", wctx);
         verify(workerManager).unlockWorker("worker-1");
     }
 
@@ -152,21 +119,14 @@ public class TaskResourceReleaseListenerTest {
         task.setStatus(TaskStatus.RUNNING);
 
         TaskWorkAttemptClosedEvent closedAttempt =
-                closedAttempt("task-1", "msg-1", "attempt-1", "worker-1", "wctx-1");
-
-        WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", java.util.Set.of("us"));
-        wctx.bindToTask("task-1");
-        wctx.startOccupying();
+                closedAttempt("task-1", "msg-1", "attempt-1", "worker-1");
 
         when(maintenancePort.hasActiveWorkForWorker("task-1", "worker-1")).thenReturn(false);
         when(maintenancePort.hasDispatchReadyWork("task-1")).thenReturn(true);
-        when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
-        when(workerManager.updateWorkerContextById("wctx-1", wctx)).thenReturn(true);
 
         listener.onTaskWorkAttemptClosed(task, closedAttempt);
 
         verify(workerManager).recordWorkFinal("worker-1", "task-1");
-        verify(workerManager).updateWorkerContextById("wctx-1", wctx);
         verify(workerManager).unlockWorker("worker-1");
         verify(maintenancePort).requestTaskDispatch(same(task));
     }
@@ -178,20 +138,13 @@ public class TaskResourceReleaseListenerTest {
         task.setStatus(TaskStatus.RUNNING);
 
         TaskWorkAttemptClosedEvent closedAttempt =
-                closedAttempt("task-1", "msg-1", "attempt-1", "worker-1", "wctx-1");
-
-        WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", java.util.Set.of("us"));
-        wctx.bindToTask("task-1");
-        wctx.startOccupying();
+                closedAttempt("task-1", "msg-1", "attempt-1", "worker-1");
 
         when(maintenancePort.hasActiveWorkForWorker("task-1", "worker-1")).thenReturn(false);
         when(maintenancePort.hasDispatchReadyWork("task-1")).thenReturn(true);
-        when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
-        when(workerManager.updateWorkerContextById("wctx-1", wctx)).thenReturn(true);
 
         listener.onTaskWorkAttemptClosed(task, closedAttempt);
 
-        verify(workerManager).updateWorkerContextById("wctx-1", wctx);
         verify(workerManager).unlockWorker("worker-1");
         verify(maintenancePort).requestTaskDispatch(same(task));
     }
@@ -204,7 +157,7 @@ public class TaskResourceReleaseListenerTest {
         task.getExecutionSpec().setForeground(false);
 
         TaskWorkAttemptClosedEvent closedAttempt =
-                closedAttempt("task-1", "msg-1", "attempt-1", "worker-1", null);
+                closedAttempt("task-1", "msg-1", "attempt-1", "worker-1");
 
         when(maintenancePort.hasActiveWorkForWorker("task-1", "worker-1")).thenReturn(false);
         when(maintenancePort.hasDispatchReadyWork("task-1")).thenReturn(true);
@@ -223,11 +176,7 @@ public class TaskResourceReleaseListenerTest {
         task.setStatus(TaskStatus.RUNNING);
 
         TaskWorkAttemptClosedEvent closedAttempt =
-                closedAttempt("task-1", "msg-1", "attempt-1", "worker-1", "wctx-1");
-
-        WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", java.util.Set.of("us"));
-        wctx.bindToTask("task-1");
-        wctx.startOccupying();
+                closedAttempt("task-1", "msg-1", "attempt-1", "worker-1");
 
         listener = new TaskResourceReleaseListener(
                 maintenancePort,
@@ -237,13 +186,10 @@ public class TaskResourceReleaseListenerTest {
         );
 
         when(maintenancePort.hasActiveWorkForWorker("task-1", "worker-1")).thenReturn(false);
-        when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
-        when(workerManager.updateWorkerContextById("wctx-1", wctx)).thenReturn(true);
 
         listener.onTaskWorkAttemptClosed(task, closedAttempt);
 
         verify(workerManager).recordWorkFinal("worker-1", "task-1");
-        verify(workerManager).updateWorkerContextById("wctx-1", wctx);
         verify(workerManager).unlockWorker("worker-1");
         verify(maintenancePort, never()).hasDispatchReadyWork("task-1");
         verify(maintenancePort, never()).requestTaskDispatch(any());
@@ -256,11 +202,7 @@ public class TaskResourceReleaseListenerTest {
         task.setStatus(TaskStatus.RUNNING);
 
         TaskWorkAttemptClosedEvent closedAttempt =
-                closedAttempt("task-1", "msg-1", "attempt-1", "worker-1", "wctx-1");
-
-        WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", java.util.Set.of("us"));
-        wctx.bindToTask("task-1");
-        wctx.startOccupying();
+                closedAttempt("task-1", "msg-1", "attempt-1", "worker-1");
 
         listener = new TaskResourceReleaseListener(
                 maintenancePort,
@@ -271,48 +213,11 @@ public class TaskResourceReleaseListenerTest {
         );
 
         when(maintenancePort.hasActiveWorkForWorker("task-1", "worker-1")).thenReturn(false);
-        when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
-        when(workerManager.updateWorkerContextById("wctx-1", wctx)).thenReturn(true);
 
         listener.onTaskWorkAttemptClosed(task, closedAttempt);
 
         verify(workerManager).recordWorkFinal("worker-1", "task-1");
-        verify(workerManager).updateWorkerContextById("wctx-1", wctx);
         verify(workerManager, never()).unlockWorker("worker-1");
-    }
-
-    @Test
-    void injectedWorkerContextLifecycleOwnsAttemptContextRelease() {
-        Task task = new Task();
-        task.setTid("task-1");
-        task.setStatus(TaskStatus.RUNNING);
-        TaskWorkAttemptClosedEvent closedAttempt =
-                closedAttempt("task-1", "msg-1", "attempt-1", "worker-1", "wctx-1");
-        LegacyWorkerContextResourceLifecycle lifecycle = mock(LegacyWorkerContextResourceLifecycle.class);
-        listener = new TaskResourceReleaseListener(
-                maintenancePort,
-                workerManager,
-                TraceEventLogger.noop(),
-                new DefaultAssignmentRefillPolicy(),
-                new DefaultWorkerDispatchResourcePolicy(),
-                lifecycle
-        );
-
-        when(maintenancePort.hasActiveWorkForWorker("task-1", "worker-1")).thenReturn(false);
-        when(maintenancePort.hasDispatchReadyWork("task-1")).thenReturn(false);
-
-        listener.onTaskWorkAttemptClosed(task, closedAttempt);
-
-        verify(lifecycle).releaseIfOwnedByTask(
-                "task-1",
-                "worker-1",
-                "wctx-1",
-                "RELEASE_WORKER_CONTEXT",
-                "TaskResourceReleaseListener",
-                "workerContext released after task/message completion",
-                true
-        );
-        verify(workerManager, never()).getWorkerContextById("wctx-1");
     }
 
     @Test
@@ -321,8 +226,7 @@ public class TaskResourceReleaseListenerTest {
         task.setTid("task-1");
         task.setStatus(TaskStatus.RUNNING);
         TaskWorkAttemptClosedEvent closedAttempt =
-                closedAttempt("task-1", "msg-1", "attempt-1", "worker-1", "wctx-1");
-        LegacyWorkerContextResourceLifecycle lifecycle = mock(LegacyWorkerContextResourceLifecycle.class);
+                closedAttempt("task-1", "msg-1", "attempt-1", "worker-1");
         WorkerDispatchResourceReleaser resourceReleaser = mock(WorkerDispatchResourceReleaser.class);
         listener = new TaskResourceReleaseListener(
                 maintenancePort,
@@ -330,7 +234,6 @@ public class TaskResourceReleaseListenerTest {
                 TraceEventLogger.noop(),
                 request -> AssignmentRefillDecision.skip("refill suppressed by test policy"),
                 new DefaultWorkerDispatchResourcePolicy(),
-                lifecycle,
                 resourceReleaser
         );
 
@@ -341,7 +244,6 @@ public class TaskResourceReleaseListenerTest {
         verify(resourceReleaser).releaseAttemptLockIfExclusive(
                 task,
                 "worker-1",
-                "wctx-1",
                 "ON_TASK_MESSAGE_ATTEMPT_CLOSED",
                 "TaskResourceReleaseListener",
                 "worker has no in-flight messages"
@@ -356,19 +258,12 @@ public class TaskResourceReleaseListenerTest {
         task.setStatus(TaskStatus.TERMINAL);
 
         TaskWorkAttemptClosedEvent closedAttempt =
-                closedAttempt("task-1", "msg-1", "attempt-1", "worker-1", "wctx-1");
-
-        WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", java.util.Set.of("us"));
-        wctx.bindToTask("task-1");
-        wctx.startOccupying();
+                closedAttempt("task-1", "msg-1", "attempt-1", "worker-1");
 
         when(maintenancePort.hasActiveWorkForWorker("task-1", "worker-1")).thenReturn(false);
-        when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
-        when(workerManager.updateWorkerContextById("wctx-1", wctx)).thenReturn(true);
 
         listener.onTaskWorkAttemptClosed(task, closedAttempt);
 
-        verify(workerManager).updateWorkerContextById("wctx-1", wctx);
         verify(workerManager).unlockWorker("worker-1");
         verify(maintenancePort, never()).hasDispatchReadyWork("task-1");
         verify(maintenancePort, never()).requestTaskDispatch(any());
@@ -381,7 +276,7 @@ public class TaskResourceReleaseListenerTest {
         task.setStatus(TaskStatus.RUNNING);
 
         TaskWorkAttemptClosedEvent closedAttempt =
-                closedAttempt("task-1", "msg-1", "attempt-1", "worker-1", "wctx-1");
+                closedAttempt("task-1", "msg-1", "attempt-1", "worker-1");
 
         when(maintenancePort.hasActiveWorkForWorker("task-1", "worker-1")).thenReturn(true);
 
@@ -392,42 +287,34 @@ public class TaskResourceReleaseListenerTest {
     }
 
     @Test
-    void terminalTaskEmitsReleaseFailureTraceWhenWorkerContextCannotReturnToIdle() {
+    void terminalTaskWithExclusiveWorkerLockEmitsWorkerReleaseTrace() {
         Task task = new Task();
         task.setTid("task-1");
 
-        WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", java.util.Set.of("us"));
-        wctx.bindToTask("task-1");
-        wctx.startOccupying();
-        wctx.block();
-
-        when(maintenancePort.getActiveLeases("task-1")).thenReturn(activeLeases("task-1", "msg-1", "worker-1", "wctx-1"));
-        when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
+        when(maintenancePort.getActiveLeases("task-1")).thenReturn(activeLeases("task-1", "msg-1", "worker-1"));
 
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
             listener.onTaskTerminal(task);
-            capture.assertHasEvent("RESOURCE_RELEASE_FAILED", mdc ->
+            capture.assertHasEvent("RESOURCE_RELEASED", mdc ->
                     "task-1".equals(mdc.get("taskId"))
                             && "worker-1".equals(mdc.get("workerId"))
-                            && "wctx-1".equals(mdc.get("workerContextId")));
+                            && !mdc.containsKey("workerContextId")
+                            && "WORKER_LOCK".equals(mdc.get("resourceKind")));
         }
 
-        verify(workerManager, never()).updateWorkerContextById("wctx-1", wctx);
         verify(workerManager).unlockWorker("worker-1");
     }
 
     private TaskWorkAttemptClosedEvent closedAttempt(String taskId,
                                                         String messageId,
                                                         String attemptId,
-                                                        String workerId,
-                                                        String workerContextId) {
+                                                        String workerId) {
         return TaskWorkAttemptClosedEvent.from(
                 taskId,
                 messageId,
                 attemptId,
                 1,
                 workerId,
-                workerContextId,
                 null,
                 AttemptStatus.SUCCEEDED,
                 AttemptFinalReason.SUCCESS
@@ -436,36 +323,33 @@ public class TaskResourceReleaseListenerTest {
 
     private List<com.xa.mass.runtime.api.ActiveLeaseRecord> activeLeases(String taskId,
                                                                          String messageId,
-                                                                         String workerId,
-                                                                         String workerContextId) {
+                                                                         String workerId) {
         InMemoryTaskWorkRuntime runtime = new InMemoryTaskWorkRuntime();
         runtime.enqueue(new TaskWorkEnvelope(taskId, messageId, "demo.event",
                         Map.of("target", messageId), null, 0, 3, null, null, Instant.now()),
                 WorkEnqueueOptions.DEFAULT);
         runtime.claimReady(taskId,
-                List.of(new WorkerClaimTarget(workerId, workerContextId, "batch-1", 1)),
+                List.of(WorkerClaimTarget.workerLevel(workerId, "batch-1", 1)),
                 1,
                 30);
         return runtime.activeLeases(taskId);
     }
 
     private static final class NonExclusiveResourcePolicy implements WorkerDispatchResourcePolicy {
-        private final WorkerDispatchResourcePolicy delegate = new DefaultWorkerDispatchResourcePolicy();
-
         @Override
         public WorkerDispatchResourceUsage usageForTask(Task task) {
-            return new WorkerDispatchResourceUsage(false, delegate.usageForTask(task).legacyWorkerContextResource());
+            return new WorkerDispatchResourceUsage(false);
         }
 
         @Override
         public WorkerDispatchResourceUsage usageForCandidate(Task task,
                                                             com.xa.mass.engine.model.WorkerSchedulingCandidate candidate) {
-            return new WorkerDispatchResourceUsage(false, delegate.usageForCandidate(task, candidate).legacyWorkerContextResource());
+            return new WorkerDispatchResourceUsage(false);
         }
 
         @Override
-        public WorkerDispatchResourceUsage usageForAttempt(Task task, String workerContextId) {
-            return new WorkerDispatchResourceUsage(false, delegate.usageForAttempt(task, workerContextId).legacyWorkerContextResource());
+        public WorkerDispatchResourceUsage usageForAttempt(Task task) {
+            return new WorkerDispatchResourceUsage(false);
         }
     }
 }

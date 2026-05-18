@@ -5,6 +5,11 @@
     "agentVersion": "1.0.0",
     "adapterId": "websocket",
     "onlineStrategy": "realtime",
+    "attributes": {
+      "routingTag": "us",
+      "routingTags": "us",
+      "country": "us"
+    },
     "supportedProjects": ["demoApp"],
     "supportedEventCodes": [
       "demo.dispatch",
@@ -22,6 +27,11 @@
     "agentVersion": "1.0.0",
     "adapterId": "websocket",
     "onlineStrategy": "realtime",
+    "attributes": {
+      "routingTag": "us",
+      "routingTags": "us",
+      "country": "us"
+    },
     "supportedProjects": ["demoApp"],
     "supportedEventCodes": [
       "demo.dispatch",

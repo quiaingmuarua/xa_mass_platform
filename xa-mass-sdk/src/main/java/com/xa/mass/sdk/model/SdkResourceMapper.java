@@ -2,7 +2,6 @@ package com.xa.mass.sdk.model;
 
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.transport.WorkerTransportHints;
 
 import java.util.*;
@@ -36,20 +35,6 @@ public final class SdkResourceMapper {
         return worker;
     }
 
-    public static WorkerContext toWorkerContext(WorkerContextRegistration request) {
-        Objects.requireNonNull(request, "request");
-        WorkerContext workerContext = new WorkerContext();
-        workerContext.setWorkerContextId(requireNonBlank(request.getWorkerContextId(), "workerContextId"));
-        workerContext.setWorkerId(requireNonBlank(request.getWorkerId(), "workerId"));
-        String project = blankToNull(request.getProject());
-        if (project != null) {
-            workerContext.setProject(project);
-        }
-        workerContext.setRoutingTags(normalizedRoutingTags(request.getRoutingTags()));
-        workerContext.setAttributes(normalizedAttributes(request.getAttributes()));
-        return workerContext;
-    }
-
     private static String requireNonBlank(String value, String fieldName) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(fieldName + " must not be blank");
@@ -76,20 +61,6 @@ public final class SdkResourceMapper {
             }
         }
         return normalized.isEmpty() ? Collections.emptyList() : List.copyOf(normalized);
-    }
-
-    private static Set<String> normalizedRoutingTags(Set<String> values) {
-        if (values == null || values.isEmpty()) {
-            return Collections.emptySet();
-        }
-        LinkedHashSet<String> normalized = new LinkedHashSet<>();
-        for (String value : values) {
-            String normalizedValue = blankToNull(value);
-            if (normalizedValue != null) {
-                normalized.add(normalizedValue.toLowerCase(Locale.ROOT));
-            }
-        }
-        return normalized.isEmpty() ? Collections.emptySet() : Set.copyOf(normalized);
     }
 
     private static Map<String, String> normalizedAttributes(Map<String, String> attributes) {

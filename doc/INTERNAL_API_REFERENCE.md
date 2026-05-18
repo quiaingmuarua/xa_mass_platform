@@ -136,7 +136,10 @@ Returns HTTP `404` when `projectCode` does not exist.
 - Status: `Implemented`
 
 Returns the full `EventDefinition` list for the project's declared
-`eventCodes`.
+`eventCodes`. Event definitions include descriptive metadata fields:
+`priorityClass`, `responseMode`, and `targetScope`. These fields are catalog
+metadata and do not change task scheduling, result finality, or transport
+delivery behavior by themselves.
 
 ### 3.4 List Project Submitters
 
@@ -165,8 +168,12 @@ Base path: `/api/v1/catalog`
 Notes:
 
 - returns the registered `EventDefinition` list
+- each event includes `priorityClass`, `responseMode`, and `targetScope`
+  metadata with conservative defaults
 - `taskModes=[]` means the event is direct runtime discovery/dispatch, not a
   task-backed event
+- event metadata is descriptive only; it is not queue placement, result
+  convergence, or worker command routing truth
 
 ### 4.2 Get Event
 
@@ -185,6 +192,8 @@ Returns HTTP `404` when `eventCode` does not exist.
 Notes:
 
 - returns one row per registered global event
+- each row includes `priorityClass`, `responseMode`, and `targetScope` from the
+  registered event definition
 - `invocationModel=TASK_BACKED` means the event enters through the task shell
   create plus item ingest flow
 - `invocationModel=DIRECT_RUNTIME` means the event is handled directly by the
@@ -682,11 +691,18 @@ Notes:
 - joins worker state with current connection snapshots
 - `eventBindings` remains the richer capability read model
 
-### 5.7 List Worker Contexts
+### 5.7 Worker Context Runtime View
 
-- Method: `GET`
 - Path: `/api/v1/runtime/worker-contexts`
-- Status: `Implemented`
+- Status: `Removed`
+
+Notes:
+
+- `WorkerContext` is no longer a server/runtime CRUD or diagnostic resource
+- worker mainline visibility belongs to `/api/v1/runtime/workers` plus
+  transport/session diagnostics
+- scheduling proof should use worker attributes, event bindings, transport
+  presence, runtime load/resource traces, and canonical assignment trace rows
 
 ### 5.8 List Rules
 
@@ -726,14 +742,15 @@ Request notes:
 
 ### 6.2 Register Worker Context
 
-- Method: `POST`
 - Path: `/worker-api/v1/workers/{workerId}/contexts`
-- Status: `Implemented`
+- Status: `Removed`
 
-Request notes:
+Notes:
 
-- `workerContextId` is required
-- stateless workers may skip this API entirely
+- external workers declare capability through `/worker-api/v1/workers`
+  `eventBindings`, worker attributes, and transport presence
+- account/device inventory belongs to worker-management/system-event ownership,
+  not to engine/server WorkerContext CRUD
 
 ### 6.3 Worker Online
 
@@ -820,7 +837,6 @@ Contract rules:
   - `/`
   - `/tasks`
   - `/resources/workers`
-  - `/resources/worker-contexts`
   - `/resources/rules`
   - `/resources/configs`
   - `/runtime/diagnostics`
@@ -833,6 +849,8 @@ Behavior:
 
 - returns the SPA shell from the built `frontend/dist`
 - browser-side routing handles page view after shell load
+- WorkerContext console routes are removed; worker resource diagnostics live
+  under `/resources/workers` and runtime diagnostic views
 
 ## 9. Health and Docs
 

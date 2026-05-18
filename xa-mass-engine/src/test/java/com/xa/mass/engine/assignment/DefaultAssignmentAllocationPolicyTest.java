@@ -4,8 +4,7 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.engine.WorkerReachabilityState;
+import com.xa.mass.engine.worker.WorkerReachabilityState;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.model.WorkerSchedulingView;
 import org.junit.jupiter.api.Test;
@@ -202,13 +201,9 @@ class DefaultAssignmentAllocationPolicyTest {
     private WorkerSchedulingCandidate matched(String workerId) {
         Worker worker = new Worker();
         worker.setWorkerId(workerId);
-        WorkerContext context = new WorkerContext();
-        context.setWorkerId(workerId);
-        context.setWorkerContextId("ctx-" + workerId);
         return new WorkerSchedulingCandidate(
                 worker,
-                context,
-                WorkerSchedulingView.from(worker, context, WorkerReachabilityState.ONLINE, true, false)
+                WorkerSchedulingView.from(worker, WorkerReachabilityState.ONLINE, true, false)
         );
     }
 }

@@ -32,7 +32,6 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                     json_extract_string(%s, '$.messageId') AS messageId,
                     json_extract_string(%s, '$.attemptId') AS attemptId,
                     json_extract_string(%s, '$.workerId') AS workerId,
-                    json_extract_string(%s, '$.workerContextId') AS workerContextId,
                     json_extract_string(%s, '$.src') AS src,
                     json_extract_string(%s, '$.dst') AS dst,
                     json_extract_string(%s, '$.reason') AS transitionReason,
@@ -43,7 +42,7 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                     json_extract_string(to_json(attrs), '$.source') AS source,
                     json_extract_string(to_json(attrs), '$.reason') AS reason,
                     json_extract_string(to_json(attrs), '$.terminalReason') AS terminalReason
-                FROM read_ndjson('%s')
+                FROM %s
                 %s
                 ORDER BY ts, eventId
                 LIMIT %d
@@ -52,14 +51,13 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                 identityJson,
                 identityJson,
                 identityJson,
-                identityJson,
                 transitionJson,
                 transitionJson,
                 transitionJson,
                 outcomeJson,
                 outcomeJson,
                 outcomeJson,
-                sql(source.duckDbPattern()),
+                readNdjson(source),
                 where,
                 limit);
         try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
@@ -80,7 +78,6 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                         resultSet.getString("messageId"),
                         resultSet.getString("attemptId"),
                         resultSet.getString("workerId"),
-                        resultSet.getString("workerContextId"),
                         resultSet.getString("src"),
                         resultSet.getString("dst"),
                         resultSet.getString("transitionReason"),
@@ -117,12 +114,12 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
         }
         String query = """
                 SELECT eventType, severity, count(*) AS cnt
-                FROM read_ndjson('%s')
+                FROM %s
                 %s
                 GROUP BY eventType, severity
                 ORDER BY cnt DESC, eventType, severity
                 LIMIT %d
-                """.formatted(sql(source.duckDbPattern()), where, limit);
+                """.formatted(readNdjson(source), where, limit);
         try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
              Statement statement = connection.createStatement();
              ResultSet resultSet = statement.executeQuery(query)) {
@@ -160,6 +157,7 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                     'WORKER_LOCK_RELEASED',
                     'TASK_STATUS_TRANSITION',
                     'TASK_WORK_ATTEMPT_STATUS_TRANSITION',
+                    'TASK_WORK_ATTEMPT_CLOSED',
                     'WORKER_CONTEXT_STATUS_TRANSITION',
                     'RESOURCE_RELEASED',
                     'RESOURCE_RELEASE_FAILED',
@@ -176,7 +174,13 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                     json_extract_string(%s, '$.messageId') AS messageId,
                     json_extract_string(%s, '$.attemptId') AS attemptId,
                     json_extract_string(%s, '$.workerId') AS workerId,
-                    json_extract_string(%s, '$.workerContextId') AS workerContextId,
+                    json_extract_string(%s, '$.workerGroupId') AS workerGroupId,
+                    json_extract_string(%s, '$.eventBindingKey') AS eventBindingKey,
+                    json_extract_string(%s, '$.workerCandidateSource') AS workerCandidateSource,
+                    json_extract_string(%s, '$.workerSchedulingResourceId') AS workerSchedulingResourceId,
+                    json_extract_string(%s, '$.workerSchedulingRoutingTags') AS workerSchedulingRoutingTags,
+                    json_extract_string(%s, '$.workerSchedulingAttributes') AS workerSchedulingAttributes,
+                    try_cast(json_extract_string(%s, '$.workerSchedulingMatchesRoutingCode') AS BOOLEAN) AS workerSchedulingMatchesRoutingCode,
                     try_cast(json_extract_string(%s, '$.candidateRank') AS INTEGER) AS candidateRank,
                     try_cast(json_extract_string(%s, '$.candidateScore') AS DOUBLE) AS candidateScore,
                     try_cast(json_extract_string(%s, '$.workerActiveLeaseCount') AS INTEGER) AS workerActiveLeaseCount,
@@ -214,7 +218,6 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                     try_cast(json_extract_string(%s, '$.dispatchSlotCount') AS INTEGER) AS dispatchSlotCount,
                     try_cast(json_extract_string(%s, '$.unassignedMessageCount') AS INTEGER) AS unassignedMessageCount,
                     try_cast(json_extract_string(%s, '$.uniqueWorkerCount') AS INTEGER) AS uniqueWorkerCount,
-                    try_cast(json_extract_string(%s, '$.uniqueWorkerContextCount') AS INTEGER) AS uniqueWorkerContextCount,
                     try_cast(json_extract_string(%s, '$.perWorkerBatchLimit') AS INTEGER) AS perWorkerBatchLimit,
                     try_cast(json_extract_string(%s, '$.queueDepth') AS INTEGER) AS queueDepth,
                     try_cast(json_extract_string(%s, '$.trackedBatchPendingCount') AS INTEGER) AS trackedBatchPendingCount,
@@ -223,12 +226,14 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                     try_cast(json_extract_string(%s, '$.retryDelayMillis') AS BIGINT) AS retryDelayMillis,
                     json_extract_string(%s, '$.src') AS src,
                     json_extract_string(%s, '$.dst') AS dst
-                FROM read_ndjson('%s')
+                FROM %s
                 %s
                 ORDER BY ts, eventId
                 LIMIT %d
                 """.formatted(
-                identityJson, identityJson, identityJson, identityJson, identityJson,
+                identityJson, identityJson, identityJson, identityJson,
+                attrsJson, attrsJson, attrsJson,
+                attrsJson, attrsJson, attrsJson, attrsJson,
                 attrsJson, attrsJson, attrsJson, attrsJson, attrsJson, attrsJson,
                 attrsJson, attrsJson, attrsJson, attrsJson, attrsJson, attrsJson, attrsJson,
                 attrsJson, attrsJson, attrsJson, attrsJson, attrsJson, attrsJson,
@@ -236,9 +241,9 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                 attrsJson, attrsJson, attrsJson, attrsJson, attrsJson, attrsJson,
                 attrsJson, attrsJson, attrsJson, attrsJson, attrsJson, attrsJson,
                 attrsJson, attrsJson, attrsJson,
-                attrsJson, attrsJson, attrsJson, attrsJson, attrsJson, attrsJson,
+                attrsJson, attrsJson, attrsJson, attrsJson, attrsJson,
                 transitionJson, transitionJson,
-                sql(source.duckDbPattern()),
+                readNdjson(source),
                 where,
                 limit);
         try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
@@ -255,7 +260,13 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                         resultSet.getString("messageId"),
                         resultSet.getString("attemptId"),
                         resultSet.getString("workerId"),
-                        resultSet.getString("workerContextId"),
+                        resultSet.getString("workerGroupId"),
+                        resultSet.getString("eventBindingKey"),
+                        resultSet.getString("workerCandidateSource"),
+                        resultSet.getString("workerSchedulingResourceId"),
+                        resultSet.getString("workerSchedulingRoutingTags"),
+                        resultSet.getString("workerSchedulingAttributes"),
+                        booleanOrNull(resultSet, "workerSchedulingMatchesRoutingCode"),
                         integerOrNull(resultSet, "candidateRank"),
                         doubleOrNull(resultSet, "candidateScore"),
                         integerOrNull(resultSet, "workerActiveLeaseCount"),
@@ -290,7 +301,6 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                         integerOrNull(resultSet, "dispatchSlotCount"),
                         integerOrNull(resultSet, "unassignedMessageCount"),
                         integerOrNull(resultSet, "uniqueWorkerCount"),
-                        integerOrNull(resultSet, "uniqueWorkerContextCount"),
                         integerOrNull(resultSet, "perWorkerBatchLimit"),
                         integerOrNull(resultSet, "queueDepth"),
                         integerOrNull(resultSet, "trackedBatchPendingCount"),
@@ -307,7 +317,7 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
 
     @Override
     public long countRows(TraceSource source) throws Exception {
-        String query = "SELECT count(*) AS cnt FROM read_ndjson('%s')".formatted(sql(source.duckDbPattern()));
+        String query = "SELECT count(*) AS cnt FROM %s".formatted(readNdjson(source));
         try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
              Statement statement = connection.createStatement();
              ResultSet resultSet = statement.executeQuery(query)) {
@@ -320,6 +330,10 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
 
     private static String sql(String value) {
         return value.replace("'", "''");
+    }
+
+    private static String readNdjson(TraceSource source) {
+        return "read_ndjson('%s', union_by_name = true)".formatted(sql(source.duckDbPattern()));
     }
 
     private static Integer integerOrNull(ResultSet resultSet, String column) throws Exception {

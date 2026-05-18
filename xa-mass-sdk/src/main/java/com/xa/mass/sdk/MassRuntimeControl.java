@@ -4,10 +4,11 @@ import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
+import com.xa.mass.sdk.model.MassTaskCommandRequest;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
+import com.xa.mass.sdk.model.TaskCommandResult;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
-import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 
 import java.util.Collection;
@@ -18,7 +19,9 @@ import java.util.Collection;
  * <p>External bootstrap code, dev shells, fixture loaders, and custom
  * embedders should depend on this interface instead of reaching into
  * engine/starter internals. It covers the full supported mutation surface
- * for managing workers, contexts, rules, and task lifecycle after startup.
+ * for managing workers, rules, and task lifecycle after startup. Worker
+ * scheduling capabilities are declared through {@link WorkerRegistration}
+ * attributes and event bindings.
  */
 public interface MassRuntimeControl {
 
@@ -39,24 +42,31 @@ public interface MassRuntimeControl {
     /**
      * Approve a NEW task, moving it to READY for dispatch.
      */
+    @Deprecated(forRemoval = false)
     boolean approveTask(String taskId);
 
     /**
      * Reject a NEW task, moving it to BLOCKED.
      */
+    @Deprecated(forRemoval = false)
     boolean rejectTask(String taskId);
 
     /**
      * Block a READY or RUNNING task with a hold reason.
      */
+    @Deprecated(forRemoval = false)
     boolean blockTask(String taskId);
 
+    @Deprecated(forRemoval = false)
     boolean pauseTask(String taskId);
 
+    @Deprecated(forRemoval = false)
     boolean resumeTask(String taskId);
 
+    @Deprecated(forRemoval = false)
     boolean cancelTask(String taskId);
 
+    @Deprecated(forRemoval = false)
     boolean terminateTask(String taskId, String reason);
 
     /**
@@ -68,7 +78,13 @@ public interface MassRuntimeControl {
     /**
      * Seal an open-ended task so no more items can be appended.
      */
+    @Deprecated(forRemoval = false)
     boolean sealTask(String taskId);
+
+    /**
+     * Current task lifecycle/governance mainline command surface.
+     */
+    TaskCommandResult executeTaskCommand(String taskId, MassTaskCommandRequest request);
 
     // --- Worker management ---
 
@@ -77,11 +93,6 @@ public interface MassRuntimeControl {
      * until a transport connect/heartbeat event marks it online.
      */
     void registerWorker(WorkerRegistration request);
-
-    /**
-     * Register an allocatable worker context. The context starts IDLE.
-     */
-    void registerWorkerContext(WorkerContextRegistration request);
 
     // --- Rule management ---
 

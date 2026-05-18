@@ -20,9 +20,6 @@ public enum MassPlatformEventType {
     WORKER_ONLINE_BATCH("Batch worker online"),
     WORKER_HEARTBEAT("Worker heartbeat"),
 
-    WORKER_CONTEXT_INVALIDATION("WorkerContext invalidated"),
-    WORKER_CONTEXT_RETRY_LOOP("WorkerContext retry loop"),
-    WORKER_CONTEXT_BATCH_UNAVAILABLE("Batch WorkerContext unavailable"),
     MESSAGE_PROCESSING_ERROR("Message processing error"),
 
     TASK_ASSIGNMENT_CONFLICT("Task assignment conflict"),

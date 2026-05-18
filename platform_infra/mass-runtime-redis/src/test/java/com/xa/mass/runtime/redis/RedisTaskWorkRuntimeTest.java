@@ -113,7 +113,7 @@ class RedisTaskWorkRuntimeTest {
 
         ClaimedTaskWork claimed = runtime.claimReady(
                 "task-lease",
-                List.of(new WorkerClaimTarget("worker-1", "ctx-1", "batch-1", 1)),
+                List.of(WorkerClaimTarget.workerLevel("worker-1", "batch-1", 1)),
                 1,
                 45
         ).get(0);
@@ -143,7 +143,7 @@ class RedisTaskWorkRuntimeTest {
         runtime.enqueue(item("task-expiry", "msg-1"), WorkEnqueueOptions.DEFAULT);
         ClaimedTaskWork claimed = runtime.claimReady(
                 "task-expiry",
-                List.of(new WorkerClaimTarget("worker-1", "ctx-1", "batch-1", 1)),
+                List.of(WorkerClaimTarget.workerLevel("worker-1", "batch-1", 1)),
                 1,
                 10
         ).get(0);
@@ -194,7 +194,7 @@ class RedisTaskWorkRuntimeTest {
         runtime.enqueue(item("task-b", "msg-foreign"), WorkEnqueueOptions.DEFAULT);
         ClaimedTaskWork claimed = runtime.claimReady(
                 "task-a",
-                List.of(new WorkerClaimTarget("worker-1", "ctx-1", "batch-1", 1)),
+                List.of(WorkerClaimTarget.workerLevel("worker-1", "batch-1", 1)),
                 1,
                 45
         ).get(0);
@@ -284,7 +284,7 @@ class RedisTaskWorkRuntimeTest {
         assertEquals(WorkEnqueueStatus.STORE_UNAVAILABLE, enqueueOutcome.status());
         assertEquals(ResultApplyStatus.FAILED, resultOutcome.status());
         assertTrue(brokenRuntime.readyTaskIds(10).isEmpty());
-        assertTrue(brokenRuntime.claimReady("broken-task", List.of(new WorkerClaimTarget("worker-1", "ctx-1", "batch-1", 1)), 1, 30).isEmpty());
+        assertTrue(brokenRuntime.claimReady("broken-task", List.of(WorkerClaimTarget.workerLevel("worker-1", "batch-1", 1)), 1, 30).isEmpty());
         assertTrue(brokenRuntime.pollExpiredLeases(10, now.get()).isEmpty());
         assertEquals(0L, brokenRuntime.stats().readyItems());
         assertEquals(0L, brokenRuntime.stats("broken-task").totalCount());
@@ -312,7 +312,7 @@ class RedisTaskWorkRuntimeTest {
             assertTrue(start.await(5, TimeUnit.SECONDS));
             claimHolder.set(runtime.claimReady(
                     "task-race",
-                    List.of(new WorkerClaimTarget("worker-1", "ctx-1", "batch-1", 1)),
+                    List.of(WorkerClaimTarget.workerLevel("worker-1", "batch-1", 1)),
                     1,
                     30
             ));

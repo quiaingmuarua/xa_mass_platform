@@ -23,13 +23,107 @@ covers engine-owned assets and when to use them.
 Assignment allocation is engine-internal policy ownership:
 
 - `AssignmentAllocationPolicy` owns this round's allocation decision: requested
-  match count, minimum-worker start gate, and the matched worker-contexts that
+  match count, minimum-worker start gate, and the matched worker candidates that
   may enter dispatch.
 - `TaskWorkerAssignListener` owns orchestration around that decision: invoking
   matching, unlocking skipped/surplus workers, task status transition, assignment
   trace, task update, and assignment event publication.
 - `SimpleTaskDispatchBinder` owns runtime claim and dispatch binding only; it is
   not the assignment allocation policy owner.
+
+## Fixed Scheduling Mainlines
+
+These are the current engine scheduling mainlines. Treat them as owner
+boundaries, not as a promise that the current package layout is final.
+
+```text
+Assignment signal admission
+  -> TaskAssignWorker
+
+Task-level assignment orchestration
+  -> TaskWorkerAssignListener
+  -> AssignmentAllocationPolicy
+  -> matching/acquisition path
+  -> SimpleTaskDispatchBinder
+
+Worker scheduling read model
+  -> WorkerSchedulingCandidateEnumerator
+  -> WorkerSchedulingView
+  -> WorkerMatchContext
+
+Eligibility and preference
+  -> worker prefilter + QLExpress rules
+  -> WorkerCandidateRanker
+
+Allocation and budget
+  -> AssignmentAllocationPolicy
+  -> WorkerBudgetPolicy
+
+Resource usage and cleanup
+  -> WorkerDispatchResourcePolicy
+  -> WorkerDispatchResourceReleaser
+  -> AssignmentRefillPolicy
+
+Runtime and result truth
+  -> TaskWorkRuntime
+  -> TaskResultRuntime
+```
+
+The current `RuleBasedTaskWorkerMatchingStrategy` still combines rule-based
+eligibility, ranking, capacity reservation, and optional worker-lock acquisition.
+That is the current acquisition path, not a pure policy seam. Do not add more
+mechanism work to it casually; if future distributed capacity or worker-manager
+separation requires a split, introduce a real acquisition owner rather than a
+pass-through wrapper.
+
+WorkerContext is not scheduling truth in the engine hot path. Runtime,
+transport, projection, SDK/API, server payloads, and canonical trace identity
+are worker-level.
+
+Current WorkerGroup roadmap baseline:
+
+- WG-0 candidate-source convergence is closed; WorkerGroup and
+  WorkerGroup snapshot index are implemented; WG-2 `WorkerCandidateIndex` is
+  implemented as a Stage-1 worker-row index; WG-3/WG-4 wire it as the active
+  source for target-worker, SDK event, and project-only tasks
+- worker access/read-view types live in `com.xa.mass.engine.worker`
+- `EventKey`, `EventBinding`, `WorkerGroupRecord`, and
+  `WorkerRegistrySnapshot` are engine-internal worker package types
+- `WorkerCandidateIndex` consumes only `WorkerRegistrySnapshot` and narrows
+  `EventKey(projectCode,eventCode) -> groupIds -> workerIds`; it does not read
+  worker-level supported project/event compatibility fields and does not own
+  reachability, load, reservation, or resource policy
+- `WorkerManager` owns the active worker registry snapshot. SDK registration
+  enters through `WorkerManager.addWorker(...)`, and manager add/update/delete
+  refresh the active snapshot.
+- candidate source still enters through `WorkerManager.findWorkerCandidates(...)`
+  and is materialized by the strategy-package
+  `WorkerSchedulingCandidateEnumerator`
+- `targetWorkerId` uses direct indexed lookup plus group capability gate before
+  Stage 2 admission
+- event-code and project-only candidate narrowing read `WorkerCandidateIndex`;
+  the active scheduling candidate source does not call worker-level supported
+  project/event storage indexes
+- `WorkerRegistrySnapshot` already indexes WorkerGroup `EventBinding` truth for
+  the candidate source; `WorkerGroupCompatibilityProjection` is a migration
+  input from current worker-level compatibility fields, not long-term
+  capability truth
+- Stage 2 scheduling capability fields are materialized from
+  `WorkerGroupRecord`; legacy worker-level supported project/event fields are
+  migration inputs to `WorkerGroupCompatibilityProjection` and diagnostics, not
+  matching truth
+- `WorkerSchedulingCandidateEnumerator` is a strategy-package implementation
+  detail, not a public extension point
+- the old unused `WorkerSelector` / `DefaultWorkerSelector` path is removed so
+  worker selection has one active mainline: candidate source -> rule/rank ->
+  allocation/resource admission
+- `RuleBasedTaskWorkerMatchingStrategy` must consume the centralized candidate
+  source and must not reintroduce direct all-worker scans
+- canonical assignment trace includes `workerGroupId`, `eventBindingKey`, and
+  `workerCandidateSource` on worker match rows; the
+  `group-capability-routing` trace scenario is the representative proof that
+  SDK event routing uses the group-indexed candidate source through real server
+  wiring
 
 ## Scheduling Core Test Intent
 
@@ -39,7 +133,7 @@ Read this before interpreting engine tests.
 - `TaskSchedulingTestHarness` is a test substrate for the scheduling matrix, not
   a second implementation world
 - keep these tests local when the real question is:
-  - which worker/context is eligible
+  - which worker scheduling candidate is eligible
   - whether contention produces a conflict, retry, or redispatch
   - whether a task re-enters competition correctly after delay, retry, or lease expiry
   - whether contract-aware scheduling/finality rules stay correct
@@ -64,7 +158,7 @@ Start with these classes before changing behavior:
 - `src/test/java/com/xa/mass/engine/TaskCompatibilityProjectionAccess.java`
   only when you are intentionally working on test-only bounded projection
   overlays or residue audit helpers
-- `src/main/java/com/xa/mass/engine/WorkerManager.java`
+- `src/main/java/com/xa/mass/engine/worker/WorkerManager.java`
 - `src/main/java/com/xa/mass/engine/rules/RuleManager.java`
 
 Runtime-facing glue should prefer narrow engine ports and facades such as:
@@ -108,6 +202,9 @@ Keep these facts fixed unless the owning global baselines change:
   semantics must not drift back into free-form `sharedConfig`
 - worker matching is task-level orchestration; do not fall back to per-message
   matching on the hot path
+- fixed scheduling mainlines are documented in
+  `SCHEDULING_KERNEL_GUARDRAILS.md`; scheduling changes must preserve those
+  owner boundaries or update the owning baseline in the same change
 - `AssignmentAllocationPolicy` owns allocation shape for a task-level assignment
   attempt; `TaskWorkerAssignListener` keeps cross-aggregate orchestration and
   trace ownership around that policy decision
@@ -147,18 +244,12 @@ Keep these facts fixed unless the owning global baselines change:
   another assignment attempt; `TaskResourceReleaseListener` releases resources
   and consumes that decision instead of owning refill formulas
 - `WorkerDispatchResourcePolicy` owns dispatch resource usage semantics:
-  whether a task/candidate uses the long-lived worker-level exclusive lock and
-  whether a dispatch attempt carries the legacy WorkerContext lifecycle payload.
+  whether a task/candidate uses the long-lived worker-level exclusive lock.
   Matching, assignment listener cleanup, binder compensation, and resource
-  release consume this decision instead of each re-deriving foreground/context
-  behavior. Legacy WorkerContext-backed candidates and attempts keep the
-  exclusive worker lock even when the task declares `foreground=false`; only
-  stateless background candidates may share worker capacity without the
-  long-lived lock.
-- `LegacyWorkerContextResourceLifecycle` owns transitional WorkerContext state
-  mutation and trace while WorkerContext remains a runtime binding payload:
-  dispatch binding asks it to prepare a context for dispatch, and release paths
-  ask it to release a context owned by the task.
+  release consume this decision instead of each re-deriving foreground
+  behavior. WorkerContext identity is no longer a resource policy input; only
+  `foreground=true` keeps the long-lived lock, while `foreground=false` relies
+  on capacity reservation.
 - `WorkerDispatchResourceReleaser` owns the repeated dispatch cleanup mechanism:
   releasing worker reservations, conditionally unlocking exclusive worker
   locks, and emitting `WORKER_LOCK_RELEASED` trace for assignment cleanup and
@@ -169,10 +260,9 @@ Keep these facts fixed unless the owning global baselines change:
 - `EngineSchedulingCoreArchitectureGuardTest` is an executable owner-boundary
   guard for the scheduling kernel. It keeps scheduling-core tests off
   compatibility projection proof helpers, prevents listener/binder
-  orchestration from calling dispatch cleanup primitives directly, keeps
-  transitional WorkerContext state mutation behind
-  `LegacyWorkerContextResourceLifecycle`, and prevents the retired
-  context-first matching handoff types from returning.
+  orchestration from calling dispatch cleanup primitives directly, prevents
+  WorkerContext runtime state mutation from returning to the engine mainline,
+  and prevents the retired context-first matching handoff types from returning.
 - `ExecutionSpec.foreground` is currently a scheduling-mode declaration carried
   through task model/API/trace surfaces; `foreground=true` is the default
   exclusive worker-lock path, while `foreground=false` skips the long-lived
@@ -274,6 +364,7 @@ Current owner types:
 - `src/main/java/com/xa/mass/engine/model/WorkerSchedulingCandidate.java`
 - `src/main/java/com/xa/mass/engine/model/WorkerSchedulingView.java`
 - `src/main/java/com/xa/mass/engine/model/WorkerMatchContext.java`
+- `src/main/java/com/xa/mass/engine/strategy/WorkerSchedulingCandidateEnumerator.java`
 - `src/main/java/com/xa/mass/engine/load/WorkerLoadView.java`
 - `src/main/java/com/xa/mass/engine/rules/RuleConfig.java`
 
@@ -289,6 +380,17 @@ Matching boundaries:
 
 - `WorkerSchedulingCandidate` is the engine-internal handoff between matching,
   allocation, listener orchestration, and dispatch binding
+- `WorkerSchedulingCandidateEnumerator` creates one scheduling candidate per
+  worker from the worker read model; matching no longer expands legacy
+  `WorkerContext` storage into candidates
+- worker-level assignment diagnostics consume `WorkerSchedulingCandidate`;
+  candidate handoff no longer carries a nullable `WorkerContext` payload
+- `WorkerMatchContext` owns the rule and diagnostic snapshot field map;
+  `RuleBasedTaskWorkerMatchingStrategy` consumes that read model for prefilter
+  records instead of maintaining a duplicate snapshot builder
+- assignment records snapshot `WorkerSchedulingView` evidence through
+  `WorkerSchedulingSnapshot`; account-slot identity is not the diagnostic
+  subject
 - `WorkerSchedulingView` is the scheduling read surface; new matching code
   should read the view rather than treating `WorkerContext` as the matching
   subject
@@ -300,10 +402,11 @@ Matching boundaries:
 - dispatch eligibility must read transport reachability from
   `WorkerReachabilityView`, not local heartbeat-expiry heuristics
 - `workerSchedulingAttributes` is the preferred matching label map for new or
-  migrated rules; legacy `workerContextAttributes` remains available during the
-  current WorkerContext convergence path
+  migrated rules; legacy `workerContextAttributes` is retired from the engine
+  scheduling rule context
 - default rules must use `workerScheduling*` / `isWorkerScheduling*` variables;
-  legacy `workerContext*` variables are compatibility data only
+  legacy `workerContext*` variables are no longer part of the engine rule
+  surface
 - worker load variables such as `workerActiveLeaseCount`,
   `workerReservedCount`, and `workerEstimatedLoadRatio` are scheduling
   evidence; current capacity semantics are worker-declared process-local
@@ -311,8 +414,9 @@ Matching boundaries:
   correctness or shared background execution
 - routing is a task-owned hint currently resolved from
   `Task.sharedConfig["routingCode"]`
-- once a task requires routing, a missing `WorkerContext` must not satisfy that
-  rule by accident
+- once a task requires routing, the candidate must expose matching
+  `workerSchedulingRoutingTags`; in the current scheduling hot path those tags
+  come from worker attributes such as `routingTag` / `routingTags`
 
 If matching semantics change, update `RuleConfig`, `WorkerMatchContext`, and the
 relevant routing/integration coverage together.
@@ -351,7 +455,6 @@ Useful starting tests:
 - `TaskContractSchedulingBehaviorTest`
 - `TaskSchedulingContentionTest`
 - `TaskWorkerEligibilityTest`
-- `TaskWorkerContextContentionTest`
 - `TaskRedispatchCompetitionTest`
 - `TaskSchedulingGateAndTargetingTest`
 - `TaskDelayedAvailabilitySchedulingTest`
@@ -365,13 +468,14 @@ Useful starting tests:
 
 Current scheduling-matrix scenarios include:
 
-- multi-task contention on a single context and across a worker pool
-- worker/context eligibility rejection for unreachable, locked, occupied, routing-mismatch, and target-attribute mismatch candidates
+- multi-task contention on worker resources and across a worker pool
+- worker eligibility rejection for unreachable, locked, capacity-exhausted,
+  routing-mismatch, and target-attribute mismatch candidates
 - active contention after transport reachability drops, with backup-worker dispatch
 - reachability-aware minimum-worker gates that avoid half-dispatch when an eligible worker drops
 - retry expiry re-entering the competition pool when retry budget remains
 - retry-exhausted batch finality releasing resources for waiting work
-- delayed worker/context availability moving READY work into dispatch
+- delayed worker availability moving READY work into dispatch
 - paused waiting tasks staying out of competition until explicit resume
 - `BATCH` drain-to-terminal and `SESSION` queue-drain without auto-terminal
 - minimum-worker gate, target worker id, and targeted worker attributes under contention
@@ -406,13 +510,33 @@ Engine-local owner docs:
 - [`TASK_RUNTIME_PROFILE_DESIGN.md`](./TASK_RUNTIME_PROFILE_DESIGN.md):
   design/refactor note for the remaining workload-profile evolution only
 - [`SCHEDULING_UPGRADE_ROADMAP.md`](./SCHEDULING_UPGRADE_ROADMAP.md):
-  proposed long-range scheduling upgrade roadmap; planning material only, not
-  implemented baseline behavior
+  historical long-range scheduling upgrade roadmap plus remaining future
+  directions. Completed progress notes describe current baseline; future
+  sections remain planning material.
 - [`WORKER_SCHEDULING_VIEW_BASELINE.md`](./WORKER_SCHEDULING_VIEW_BASELINE.md):
-  current transitional baseline for WorkerContext hot-path convergence
+  current worker scheduling read-model baseline after WorkerContext retirement
+  and WorkerGroup candidate-source convergence
 - [`WORKER_CONTEXT_RETIREMENT_PLAN.md`](./WORKER_CONTEXT_RETIREMENT_PLAN.md):
-  proposed plan for retiring WorkerContext from the scheduling kernel; planning
-  material only, not implemented baseline behavior
+  completed WorkerContext retirement baseline plus historical phased plan.
+  Current scheduling kernel code must not reintroduce WorkerContext identity,
+  storage, or rule fields.
+- [`WORKER_GROUP_CAPABILITY_ROADMAP.md`](./WORKER_GROUP_CAPABILITY_ROADMAP.md):
+  completed WG-0 through WG-5 baseline for WorkerGroup capability ownership and
+  indexed scheduling candidate lookup, plus future WorkerGroup extension
+  directions. It uses the `AdapterNode -> WorkerGroup -> Worker` model and
+  explicitly avoids module split, service extraction, worker
+  command/state-report implementation, and unified event-envelope runtime work.
+- [`UNIFIED_EVENT_ENVELOPE_ROADMAP.md`](./UNIFIED_EVENT_ENVELOPE_ROADMAP.md):
+  first-wave baseline for event-metadata and owner-boundary convergence. The
+  core line is UE-0 through UE-3: owner inventory,
+  `EventDefinition` / `CoreEventDescriptor` metadata, catalog/API visibility,
+  and owner guards. UE-0 through UE-3 are implemented as metadata/read-surface
+  plus architecture-guard work; the roadmap explicitly does not implement unified event runtime,
+  queue-priority behavior, worker command/state-report lifecycle, or task-stage
+  semantics in the first wave.
+- [`EVENT_METADATA_OWNER_BOUNDARY.md`](./EVENT_METADATA_OWNER_BOUNDARY.md):
+  first-wave owner map for event-like surfaces, updated through UE-3 owner
+  guards. It records current lifecycle truth owners and the metadata boundary.
 
 Global baselines:
 

@@ -49,7 +49,6 @@ final class TaskCompatibilityProjectionStore {
                 null,
                 null,
                 null,
-                null,
                 null
         );
         try {
@@ -138,7 +137,6 @@ final class TaskCompatibilityProjectionStore {
                 workSummary.output() == null ? null : new java.util.LinkedHashMap<>(workSummary.output()),
                 workSummary.latestAttemptId(),
                 workSummary.latestAttemptWorkerId(),
-                workSummary.latestAttemptWorkerContextId(),
                 workSummary.latestAttemptBatchId()
         );
     }
@@ -150,7 +148,6 @@ final class TaskCompatibilityProjectionStore {
                 attempt.messageId(),
                 attempt.attemptNo(),
                 attempt.workerId(),
-                attempt.workerContextId(),
                 attempt.batchId(),
                 attempt.status().toProjection(),
                 attempt.finalReason() != null ? attempt.finalReason().toProjection() : null,
@@ -184,7 +181,6 @@ final class TaskCompatibilityProjectionStore {
                               String taskId,
                               String latestAttemptId,
                               String latestAttemptWorkerId,
-                              String latestAttemptWorkerContextId,
                               String latestAttemptBatchId,
                               TaskWorkProjectionState.MessageStatus status,
                               java.time.LocalDateTime assignedTime,
@@ -206,7 +202,6 @@ final class TaskCompatibilityProjectionStore {
                               String messageId,
                               int attemptNo,
                               String workerId,
-                              String workerContextId,
                               String batchId,
                               TaskWorkProjectionState.AttemptStatus status,
                               TaskWorkProjectionState.AttemptFinalReason finalReason,

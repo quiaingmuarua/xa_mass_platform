@@ -1,5 +1,8 @@
 package com.xa.mass.api.internal;
 
+import com.xa.mass.base.event.PriorityClass;
+import com.xa.mass.base.event.ResponseMode;
+import com.xa.mass.base.event.TargetScope;
 import com.xa.mass.sdk.WorkerQueryOperations;
 import com.xa.mass.sdk.RuntimeDiagnosticsOperations;
 import com.xa.mass.sdk.catalog.*;
@@ -33,6 +36,9 @@ class CatalogControllerTest {
                 .payloadTypes(java.util.List.of(PayloadType.JSON))
                 .taskModes(java.util.List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
                 .projectCodes(java.util.List.of("crawlerApp", "demoApp", "demoApp"))
+                .priorityClass(PriorityClass.BULK)
+                .responseMode(ResponseMode.FINAL_RESULT)
+                .targetScope(TargetScope.WORKER)
                 .build());
         catalog.registerEventDefinition(EventDefinition.builder()
                 .code("chatbot.reply")
@@ -47,6 +53,9 @@ class CatalogControllerTest {
                 .description("Example sms wait-code task event.")
                 .payloadTypes(java.util.List.of(PayloadType.JSON))
                 .taskModes(java.util.List.of())
+                .priorityClass(PriorityClass.CONTROL)
+                .responseMode(ResponseMode.ACK)
+                .targetScope(TargetScope.TASK_ENGINE)
                 .handler((request, principal) -> EventResponse.success(java.util.Map.of(), request.getRequestId()))
                 .build());
         WorkerSnapshot crawlerWorker = worker("crawler-worker-1", "ONLINE",
@@ -60,10 +69,10 @@ class CatalogControllerTest {
         when(workerQueries.isWorkerOnline("crawler-worker-1")).thenReturn(true);
         when(workerQueries.isWorkerOnline("chat-worker-1")).thenReturn(false);
         when(workerQueries.isWorkerOnline("scope-only-worker")).thenReturn(false);
-        when(workerQueries.isWorkerLocked("crawler-worker-1")).thenReturn(false);
-        when(workerQueries.isWorkerLocked("chat-worker-1")).thenReturn(true);
-        when(workerQueries.isWorkerLocked("scope-only-worker")).thenReturn(false);
         runtimeDiagnostics = mock(RuntimeDiagnosticsOperations.class);
+        when(runtimeDiagnostics.isWorkerLocked("crawler-worker-1")).thenReturn(false);
+        when(runtimeDiagnostics.isWorkerLocked("chat-worker-1")).thenReturn(true);
+        when(runtimeDiagnostics.isWorkerLocked("scope-only-worker")).thenReturn(false);
         when(runtimeDiagnostics.listSessions()).thenReturn(List.of(
                 java.util.Map.of(
                         "workerId", "crawler-worker-1",
@@ -94,7 +103,10 @@ class CatalogControllerTest {
         mockMvc.perform(get("/api/v1/catalog/events"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data[?(@.code=='sms.wait-code')]").exists());
+                .andExpect(jsonPath("$.data[?(@.code=='sms.wait-code')]").exists())
+                .andExpect(jsonPath("$.data[?(@.code=='crawler.fetch-page' && @.priorityClass=='BULK')]").exists())
+                .andExpect(jsonPath("$.data[?(@.code=='crawler.fetch-page' && @.responseMode=='FINAL_RESULT')]").exists())
+                .andExpect(jsonPath("$.data[?(@.code=='crawler.fetch-page' && @.targetScope=='WORKER')]").exists());
     }
 
     @Test
@@ -103,10 +115,16 @@ class CatalogControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.invocationModel=='TASK_BACKED')]").exists())
+                .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.priorityClass=='BULK')]").exists())
+                .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.responseMode=='FINAL_RESULT')]").exists())
+                .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.targetScope=='WORKER')]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.projectCodes[0]=='crawlerApp' && @.projectCodes[1]=='demoApp')]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.workerIds[0]=='crawler-worker-1')]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.onlineWorkerIds[0]=='crawler-worker-1')]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='sms.wait-code' && @.invocationModel=='DIRECT_RUNTIME')]").exists())
+                .andExpect(jsonPath("$.data[?(@.eventCode=='sms.wait-code' && @.priorityClass=='CONTROL')]").exists())
+                .andExpect(jsonPath("$.data[?(@.eventCode=='sms.wait-code' && @.responseMode=='ACK')]").exists())
+                .andExpect(jsonPath("$.data[?(@.eventCode=='sms.wait-code' && @.targetScope=='TASK_ENGINE')]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='sms.wait-code' && @.hasDirectRuntimeHandler==true)]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='chatbot.reply' && @.hasOnlineWorkerCoverage==false)]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.workerIds.length()==1)]").exists());
@@ -156,6 +174,7 @@ class CatalogControllerTest {
                 null,
                 supportedProjects,
                 supportedEventCodes,
+                List.of(),
                 null,
                 adapterId,
                 transportHint,

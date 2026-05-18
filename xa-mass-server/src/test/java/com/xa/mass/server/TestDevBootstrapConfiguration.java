@@ -44,17 +44,11 @@ public class TestDevBootstrapConfiguration {
     @Value("${mass.mock.data.tasks:mock/mock_tasks.json}")
     private String tasksConfigPath;
 
-    @Value("${mass.mock.data.worker-contexts:mock/mock_worker_contexts.json}")
-    private String workerContextsConfigPath;
-
     @Value("${mass.mock.data.rules:mock/mock_rules.json}")
     private String rulesConfigPath;
 
     @Value("${mass.mock.bootstrap.load-workers:true}")
     private boolean loadBootstrapWorkers;
-
-    @Value("${mass.mock.bootstrap.load-worker-contexts:true}")
-    private boolean loadBootstrapWorkerContexts;
 
     @Value("${mass.mock.bootstrap.load-tasks:true}")
     private boolean loadBootstrapTasks;
@@ -67,11 +61,9 @@ public class TestDevBootstrapConfiguration {
     public MassBootstrapDataProvider mockRuntimeDataLoader() {
         return new MockRuntimeDataLoader(
                 workersConfigPath,
-                workerContextsConfigPath,
                 tasksConfigPath,
                 rulesConfigPath,
                 loadBootstrapWorkers,
-                loadBootstrapWorkerContexts,
                 loadBootstrapTasks,
                 loadBootstrapRules
         );

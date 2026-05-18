@@ -42,7 +42,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "sample.client.auto-start=false",
                 "sample.worker.auto-start=false",
                 "mass.mock.data.workers=mock/test_mock_workers_empty.json",
-                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts_empty.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
@@ -72,7 +71,13 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest
                 "workerId", WORKER_ID,
                 "adapterId", "websocket",
                 "transportHint", "realtime",
-                "attributes", Map.of("lang", "node", "runtime", "node-websocket-worker"),
+                "attributes", Map.of(
+                        "lang", "node",
+                        "runtime", "node-websocket-worker",
+                        "routingTags", "web,us",
+                        "country", "us",
+                        "region", "us"
+                ),
                 "eventBindings", List.of(Map.of(
                         "eventCode", "crawler.fetch-page",
                         "projectCodes", List.of("crawlerApp")
@@ -150,7 +155,15 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest
                 "workerId", STOCK_WORKER_ID,
                 "adapterId", "websocket",
                 "transportHint", "realtime",
-                "attributes", Map.of("lang", "node", "runtime", "node-websocket-worker", "workerType", "stock-crawler"),
+                "attributes", Map.of(
+                        "lang", "node",
+                        "runtime", "node-websocket-worker",
+                        "workerType", "stock-crawler",
+                        "routingTags", "us,stock",
+                        "country", "us",
+                        "region", "us",
+                        "market", "NASDAQ"
+                ),
                 "eventBindings", List.of(Map.of(
                         "eventCode", "stock.quote.fetch",
                         "projectCodes", List.of("crawlerApp")
@@ -162,15 +175,6 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest
         assertEquals("websocket", responseData(registerResponse).get("adapterId"));
         assertEquals("realtime", responseData(registerResponse).get("transportHint"));
         assertFalse(app.isWorkerOnline(STOCK_WORKER_ID), "control-plane registration must not create realtime transport presence");
-
-        Map<String, Object> contextResponse = exchange("/worker-api/v1/workers/" + STOCK_WORKER_ID + "/contexts", HttpMethod.POST, Map.of(
-                "workerContextId", "ctx-" + STOCK_WORKER_ID,
-                "workerId", STOCK_WORKER_ID,
-                "project", "crawlerApp",
-                "routingTags", List.of("us", "stock"),
-                "attributes", Map.of("market", "NASDAQ", "region", "us")
-        ), workerHeaders);
-        assertApiOk(contextResponse);
 
         String sourceUrl = "http://127.0.0.1:" + port + "/api/v1/catalog/events/stock.quote.fetch";
         String initialRequestId = "stockreq-init-0001";

@@ -7,7 +7,8 @@ import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.engine.worker.WorkerManager;
+import com.xa.mass.engine.worker.WorkerReachabilityState;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -137,7 +138,7 @@ class WorkerManagerTest {
     @Test
     void findWorkerCandidatesUsesEventIndexForSdkEventTasks() {
         Worker eventWorker = worker("w-event", "pool-a");
-        eventWorker.setSupportedProjects(List.of());
+        eventWorker.setSupportedProjects(List.of("demoApp"));
         eventWorker.setSupportedEventCodes(List.of("demo.dispatch"));
         Worker projectOnlyWorker = worker("w-project", "pool-b");
         projectOnlyWorker.setSupportedProjects(List.of("demoApp"));
@@ -153,7 +154,7 @@ class WorkerManagerTest {
     }
 
     @Test
-    void findWorkerCandidatesUsesTargetWorkerBeforeCapabilityIndexes() {
+    void findWorkerCandidatesUsesTargetWorkerWithGroupCapabilityGate() {
         Worker targetWorker = worker("w-target", "pool-a");
         targetWorker.setSupportedProjects(List.of("testApp"));
         targetWorker.setSupportedEventCodes(List.of("other.event"));
@@ -168,7 +169,40 @@ class WorkerManagerTest {
                 TaskSharedConfig.SDK_METADATA, Map.of(TaskSharedConfig.SDK_EVENT_CODE, "demo.dispatch")
         ));
 
+        assertTrue(manager.findWorkerCandidates(task).isEmpty());
+
+        Task supportedTargetTask = task("testApp", Map.of(
+                TaskSharedConfig.TARGET_WORKER_ID, "w-target",
+                TaskSharedConfig.SDK_METADATA, Map.of(TaskSharedConfig.SDK_EVENT_CODE, "other.event")
+        ));
+
         assertEquals(List.of("w-target"),
+                manager.findWorkerCandidates(supportedTargetTask).stream().map(Worker::getWorkerId).toList());
+    }
+
+    @Test
+    void findWorkerCandidatesDoesNotFallbackWhenTargetWorkerIsMissing() {
+        Worker indexedWorker = worker("w-indexed", "pool-b");
+        indexedWorker.setSupportedProjects(List.of("demoApp"));
+        indexedWorker.setSupportedEventCodes(List.of("demo.dispatch"));
+        manager.addWorker(indexedWorker);
+
+        Task task = task("demoApp", Map.of(
+                TaskSharedConfig.TARGET_WORKER_ID, "missing-worker",
+                TaskSharedConfig.SDK_METADATA, Map.of(TaskSharedConfig.SDK_EVENT_CODE, "demo.dispatch")
+        ));
+
+        assertTrue(manager.findWorkerCandidates(task).isEmpty());
+    }
+
+    @Test
+    void findWorkerCandidatesFallsBackToAllWorkersOnlyWithoutTargetEventOrProject() {
+        manager.addWorker(worker("w-a", "pool-a"));
+        manager.addWorker(worker("w-b", "pool-b"));
+
+        Task task = task(null, Map.of());
+
+        assertEquals(List.of("w-a", "w-b"),
                 manager.findWorkerCandidates(task).stream().map(Worker::getWorkerId).toList());
     }
 
@@ -208,6 +242,93 @@ class WorkerManagerTest {
                 Map.of(TaskSharedConfig.SDK_EVENT_CODE, "demo.dispatch")))).isEmpty());
         assertEquals(List.of("w-mutable-reindex"),
                 manager.findWorkerCandidates(task("testApp", Map.of())).stream()
+                        .map(Worker::getWorkerId)
+                .toList());
+    }
+
+    @Test
+    void addWorkerRefreshesWorkerRegistrySnapshotFromCompatibilityFields() {
+        Worker worker = worker("w-indexed-group", "crawler");
+        worker.setAdapterId("adapter-a");
+        worker.setMaxConcurrentWork(3);
+        worker.setSupportedProjects(List.of("demoApp"));
+        worker.setSupportedEventCodes(List.of("crawler.fetch"));
+        manager.addWorker(worker);
+
+        assertEquals(List.of("w-indexed-group"),
+                manager.getWorkerCandidateIndex()
+                        .workersFor(task("demoApp", Map.of(TaskSharedConfig.SDK_METADATA,
+                                Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch"))))
+                        .stream()
+                        .map(Worker::getWorkerId)
+                        .toList());
+        assertEquals("adapter-a",
+                manager.getWorkerRegistrySnapshot().group("crawler").orElseThrow().adapterNodeId());
+        assertEquals(3,
+                manager.getWorkerRegistrySnapshot().group("crawler").orElseThrow().defaultMaxConcurrentWork());
+    }
+
+    @Test
+    void updateWorkerRefreshesWorkerRegistrySnapshotCapability() {
+        Worker worker = worker("w-snapshot-update", "crawler");
+        worker.setSupportedProjects(List.of("demoApp"));
+        worker.setSupportedEventCodes(List.of("crawler.fetch"));
+        manager.addWorker(worker);
+
+        Worker updated = worker("w-snapshot-update", "crawler");
+        updated.setSupportedProjects(List.of("testApp"));
+        updated.setSupportedEventCodes(List.of("crawler.parse"));
+        assertTrue(manager.updateWorker(updated));
+
+        assertTrue(manager.getWorkerCandidateIndex()
+                .workersFor(task("demoApp", Map.of(TaskSharedConfig.SDK_METADATA,
+                        Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch"))))
+                .isEmpty());
+        assertEquals(List.of("w-snapshot-update"),
+                manager.getWorkerCandidateIndex()
+                        .workersFor(task("testApp", Map.of(TaskSharedConfig.SDK_METADATA,
+                                Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.parse"))))
+                        .stream()
+                        .map(Worker::getWorkerId)
+                        .toList());
+    }
+
+    @Test
+    void deleteWorkerRefreshesWorkerRegistrySnapshot() {
+        Worker worker = worker("w-snapshot-delete", "crawler");
+        worker.setSupportedProjects(List.of("demoApp"));
+        worker.setSupportedEventCodes(List.of("crawler.fetch"));
+        manager.addWorker(worker);
+
+        assertTrue(manager.deleteWorker("w-snapshot-delete"));
+
+        assertTrue(manager.getWorkerCandidateIndex()
+                .workersFor(task("demoApp", Map.of(TaskSharedConfig.SDK_METADATA,
+                        Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch"))))
+                .isEmpty());
+    }
+
+    @Test
+    void workerRegistrySnapshotCanBeRefreshedAfterDirectStorageMutation() {
+        InMemoryWorkerStorage storage = new InMemoryWorkerStorage();
+        WorkerManager storageBackedManager = new WorkerManager(storage);
+        Worker worker = worker("w-storage-direct-snapshot", "crawler");
+        worker.setSupportedProjects(List.of("demoApp"));
+        worker.setSupportedEventCodes(List.of("crawler.fetch"));
+        storage.addWorker(worker);
+
+        assertTrue(storageBackedManager.getWorkerCandidateIndex()
+                .workersFor(task("demoApp", Map.of(TaskSharedConfig.SDK_METADATA,
+                        Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch"))))
+                .isEmpty());
+
+        storageBackedManager.refreshWorkerRegistrySnapshot();
+
+        assertEquals(List.of("w-storage-direct-snapshot"),
+                storageBackedManager.getWorkerCandidateIndex()
+                        .workersFor(task("demoApp", Map.of(TaskSharedConfig.SDK_METADATA,
+                                Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch"))))
+                        .stream()
                         .map(Worker::getWorkerId)
                         .toList());
     }
@@ -260,100 +381,6 @@ class WorkerManagerTest {
     @Test
     void deleteNonexistentWorkerReturnsFalse() {
         assertFalse(manager.deleteWorker("ghost"));
-    }
-
-    // ---- workerContext ----
-
-    @Test
-    void addAndRetrieveWorkerContext() {
-        manager.addWorker(worker("w4", "us"));
-        WorkerContext workerContext = new WorkerContext();
-        workerContext.setWorkerContextId("ctx-1");
-        workerContext.setWorkerId("w4");
-        manager.addWorkerContext(workerContext);
-
-        assertEquals(List.of(workerContext), manager.getWorkerContexts("w4"));
-        assertEquals("ctx-1", manager.getWorkerContextById("ctx-1").getWorkerContextId());
-    }
-
-    @Test
-    void deleteWorkerContextByIdRemovesIt() {
-        manager.addWorker(worker("w5", "us"));
-        WorkerContext workerContext = new WorkerContext();
-        workerContext.setWorkerContextId("ctx-2");
-        workerContext.setWorkerId("w5");
-        manager.addWorkerContext(workerContext);
-        assertTrue(manager.deleteWorkerContextById("ctx-2"));
-        assertTrue(manager.getWorkerContexts("w5").isEmpty());
-        assertNull(manager.getWorkerContextById("ctx-2"));
-    }
-
-    @Test
-    void sameWorkerCanOwnMultipleContextsWithoutOverwrite() {
-        manager.addWorker(worker("w10", "us"));
-        WorkerContext first = new WorkerContext();
-        first.setWorkerContextId("ctx-10-a");
-        first.setWorkerId("w10");
-        WorkerContext second = new WorkerContext();
-        second.setWorkerContextId("ctx-10-b");
-        second.setWorkerId("w10");
-
-        manager.addWorkerContext(first);
-        manager.addWorkerContext(second);
-
-        assertEquals(2, manager.getWorkerContexts("w10").size());
-        assertNotNull(manager.getWorkerContextById("ctx-10-a"));
-        assertNotNull(manager.getWorkerContextById("ctx-10-b"));
-    }
-
-    @Test
-    void getWorkerContextsReturnsAllOwnedContexts() {
-        manager.addWorker(worker("w11", "us"));
-        WorkerContext blocked = new WorkerContext();
-        blocked.setWorkerContextId("ctx-11-blocked");
-        blocked.setWorkerId("w11");
-        blocked.block();
-        WorkerContext idle = new WorkerContext();
-        idle.setWorkerContextId("ctx-11-idle");
-        idle.setWorkerId("w11");
-
-        manager.addWorkerContext(blocked);
-        manager.addWorkerContext(idle);
-
-        assertEquals(
-                List.of("ctx-11-blocked", "ctx-11-idle"),
-                manager.getWorkerContexts("w11").stream().map(WorkerContext::getWorkerContextId).toList()
-        );
-    }
-
-    @Test
-    void addWorkerContextRejectsMissingOwnerWorkerId() {
-        WorkerContext workerContext = new WorkerContext();
-        workerContext.setWorkerContextId("ctx-missing-owner");
-
-        IllegalArgumentException error = assertThrows(
-                IllegalArgumentException.class,
-                () -> manager.addWorkerContext(workerContext)
-        );
-        assertEquals("workerId is required on workerContext", error.getMessage());
-    }
-
-    @Test
-    void updateWorkerContextByIdRejectsChangingOwnerWorkerId() {
-        manager.addWorker(worker("w12", "us"));
-        manager.addWorker(worker("w13", "gb"));
-
-        WorkerContext workerContext = new WorkerContext();
-        workerContext.setWorkerContextId("ctx-12");
-        workerContext.setWorkerId("w12");
-        manager.addWorkerContext(workerContext);
-
-        WorkerContext moved = new WorkerContext();
-        moved.setWorkerContextId("ctx-12");
-        moved.setWorkerId("w13");
-
-        assertFalse(manager.updateWorkerContextById("ctx-12", moved));
-        assertEquals("w12", manager.getWorkerContextById("ctx-12").getWorkerId());
     }
 
     // ---- lock ----

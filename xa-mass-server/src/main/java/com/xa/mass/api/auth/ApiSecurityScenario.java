@@ -35,13 +35,6 @@ public enum ApiSecurityScenario {
             PrincipalContext.EXTERNAL_WORKER_PERMISSION,
             CredentialAudience.EXTERNAL_WORKER
     ),
-    WORKER_CONTEXT_REGISTER(
-            "worker-context-register",
-            PlatformResourceType.WORKER_CONTEXT,
-            PlatformAction.REGISTER,
-            PrincipalContext.EXTERNAL_WORKER_PERMISSION,
-            CredentialAudience.EXTERNAL_WORKER
-    ),
     WORKER_ONLINE(
             "worker-online",
             PlatformResourceType.WORKER,

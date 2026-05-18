@@ -34,7 +34,6 @@ public final class DefaultAuthorizationPolicy implements AuthorizationPolicy {
         return switch (request.getResourceType()) {
             case TASK -> authorizeTask(request, principal);
             case WORKER -> authorizeWorker(request, principal);
-            case WORKER_CONTEXT -> authorizeWorkerContext(request, principal);
             case RULE, SUBMITTER -> AuthorizationDecision.allow();
         };
     }
@@ -88,18 +87,6 @@ public final class DefaultAuthorizationPolicy implements AuthorizationPolicy {
                     }
                 }
             }
-        }
-        return AuthorizationDecision.allow();
-    }
-
-    private AuthorizationDecision authorizeWorkerContext(AuthorizationRequest request, PrincipalContext principal) {
-        AuthorizationDecision workerBindingDecision = authorizeWorkerBinding(request, principal);
-        if (!workerBindingDecision.isAllowed()) {
-            return workerBindingDecision;
-        }
-        if (request.getProject() != null && !principal.allowsProject(request.getProject())) {
-            return AuthorizationDecision.deny(AuthorizationReasonCode.PROJECT_SCOPE_DENIED,
-                    "project scope denied: " + request.getProject());
         }
         return AuthorizationDecision.allow();
     }

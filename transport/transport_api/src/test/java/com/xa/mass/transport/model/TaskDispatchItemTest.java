@@ -3,6 +3,7 @@ package com.xa.mass.transport.model;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
+import com.xa.mass.transport.packet.TransportPacket;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
@@ -60,8 +61,22 @@ class TaskDispatchItemTest {
 
         assertEquals("attempt-1", item.attemptId());
         assertEquals("worker-1", item.getWorkerId());
-        assertEquals("ctx-1", item.getWorkerContextId());
         assertEquals("batch-1", item.getBatchId());
+    }
+
+    @Test
+    void dispatchPayloadUsesWorkerLevelIdentityOnly() {
+        Task task = new Task();
+        task.setTid("task-1");
+
+        TaskDispatchItem item = TaskDispatchItem.from(
+                TaskDispatchContext.from(task),
+                binding(Map.of("target", "worker-a"))
+        );
+
+        assertEquals("worker-1", item.getWorkerId());
+        assertEquals("batch-1", item.getBatchId());
+        assertEquals(false, item.transportPayloadView().containsKey("workerContextId"));
     }
 
     @Test
@@ -79,7 +94,6 @@ class TaskDispatchItemTest {
         assertEquals("worker-1", item.getWorkerId());
         assertEquals("msg-1", item.getMessageId());
         assertEquals("task-1", item.getTaskId());
-        assertEquals("ctx-1", item.getWorkerContextId());
         assertEquals("batch-1", item.getBatchId());
         assertEquals("https://example.test/page-1", item.getInput().get("url"));
     }
@@ -128,7 +142,6 @@ class TaskDispatchItemTest {
                 "attempt-1",
                 "route-1",
                 "worker-1",
-                "ctx-1",
                 "batch-1",
                 input,
                 sharedConfig
@@ -151,7 +164,6 @@ class TaskDispatchItemTest {
                 "attempt-1",
                 "route-1",
                 "worker-1",
-                "ctx-1",
                 "batch-1",
                 Map.of("target", "worker-a"),
                 Map.of("mode", "fast")
@@ -182,7 +194,6 @@ class TaskDispatchItemTest {
                 "attempt-1",
                 "route-1",
                 "worker-1",
-                "ctx-1",
                 "batch-1",
                 input,
                 sharedConfig
@@ -210,7 +221,6 @@ class TaskDispatchItemTest {
                         "attempt-1",
                         "route-1",
                         "worker-1",
-                        "ctx-1",
                         "batch-1",
                         Map.of(),
                         Map.of()
@@ -231,7 +241,6 @@ class TaskDispatchItemTest {
                         "attempt-1",
                         "route-1",
                         "worker-1",
-                        "ctx-1",
                         "batch-1",
                         Map.of(),
                         Map.of()
@@ -250,7 +259,6 @@ class TaskDispatchItemTest {
                 "attempt-1",
                 "route-1",
                 "worker-1",
-                "ctx-1",
                 "batch-1",
                 Map.of(),
                 Map.of()
@@ -269,7 +277,6 @@ class TaskDispatchItemTest {
                 "agent",
                 0,
                 "worker-1",
-                "ctx-1",
                 "batch-1",
                 Map.of(),
                 Map.of()
@@ -291,7 +298,6 @@ class TaskDispatchItemTest {
                 "attempt-1",
                 "route-9",
                 "worker-1",
-                "ctx-1",
                 "batch-1",
                 Map.of("target", "worker-a"),
                 Map.of("mode", "fast")
@@ -301,7 +307,7 @@ class TaskDispatchItemTest {
     }
 
     private TaskDispatchBinding binding(Map<String, Object> payload) {
-        return new TaskDispatchBinding(
+        return TaskDispatchBinding.workerLevel(
                 "task-1",
                 "msg-1",
                 "binding.event",
@@ -312,8 +318,8 @@ class TaskDispatchItemTest {
                 1,
                 null,
                 "worker-1",
-                "ctx-1",
                 "batch-1"
         );
     }
+
 }

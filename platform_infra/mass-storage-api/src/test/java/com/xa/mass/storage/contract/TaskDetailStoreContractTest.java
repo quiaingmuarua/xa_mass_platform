@@ -220,7 +220,6 @@ public abstract class TaskDetailStoreContractTest {
                 null,
                 null,
                 null,
-                null,
                 null
         );
     }
@@ -231,7 +230,6 @@ public abstract class TaskDetailStoreContractTest {
                 taskId,
                 messageId,
                 1,
-                null,
                 null,
                 null,
                 TaskMessageAttemptProjectionStatus.DISPATCHED,
@@ -265,7 +263,6 @@ public abstract class TaskDetailStoreContractTest {
                 output,
                 null,
                 null,
-                null,
                 null
         );
     }
@@ -279,7 +276,6 @@ public abstract class TaskDetailStoreContractTest {
                 taskId,
                 messageId,
                 1,
-                null,
                 null,
                 null,
                 TaskMessageAttemptProjectionStatus.SUCCEEDED,
@@ -311,7 +307,6 @@ public abstract class TaskDetailStoreContractTest {
                 projection.output(),
                 projection.latestAttemptId(),
                 projection.latestAttemptWorkerId(),
-                projection.latestAttemptWorkerContextId(),
                 projection.latestAttemptBatchId()
         );
     }
@@ -324,7 +319,6 @@ public abstract class TaskDetailStoreContractTest {
                 projection.messageId(),
                 projection.attemptNo(),
                 projection.workerId(),
-                projection.workerContextId(),
                 projection.batchId(),
                 status,
                 projection.finalReason(),

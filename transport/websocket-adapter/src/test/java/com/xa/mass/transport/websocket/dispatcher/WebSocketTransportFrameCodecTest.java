@@ -46,7 +46,6 @@ class WebSocketTransportFrameCodecTest {
                         TransportPacket.PAYLOAD_USER_ID, "user-a",
                         TransportPacket.PAYLOAD_RETRY_COUNT, 2,
                         TransportPacket.PAYLOAD_WORKER_ID, "worker-1",
-                        TransportPacket.PAYLOAD_WORKER_CONTEXT_ID, "worker-context-1",
                         TransportPacket.PAYLOAD_BATCH_ID, "batch-1",
                         TransportPacket.PAYLOAD_INPUT, Map.of("target", "https://example.test"),
                         TransportPacket.PAYLOAD_SHARED_CONFIG, Map.of("textContent", "hello")

@@ -92,7 +92,6 @@ class PullWorkerSessionTest {
                 "attempt-1",
                 "route-9",
                 "worker-1",
-                null,
                 "batch-1",
                 Map.of("target", "target-1"),
                 Map.of()

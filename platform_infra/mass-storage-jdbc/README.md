@@ -8,7 +8,7 @@ root [AGENTS.md](../../AGENTS.md) and [../README.md](../README.md) first.
 ## Role
 
 - owns JDBC task truth persistence
-- owns JDBC worker and worker-context registration persistence
+- owns JDBC worker registration persistence
 - owns JDBC rule-definition persistence
 - owns H2/PostgreSQL dialect wiring, migrations, and startup residue recovery
 
@@ -26,8 +26,8 @@ Current implementation facts:
 
 - `JdbcTaskStorage` persists durable task truth but keeps `TaskMsg` and
   `TaskMsgAttempt` compatibility reads in-process
-- `JdbcWorkerStorage` persists durable worker/worker-context registration truth
-  but keeps online/offline churn, worker locks, and context occupancy residue
+- `JdbcWorkerStorage` persists durable worker registration truth
+  but keeps online/offline churn and worker locks
   in-process
 - `JdbcStorageRuntime` is currently more than a storage factory: it wires
   datasource, Flyway, adapter construction, and residue recovery, and it is the
@@ -42,7 +42,7 @@ Current implementation drift to keep explicit:
   projection instead of reusing the full in-memory task-storage backend, but
   that residue is still in-process and restart-volatile
 - `JdbcWorkerStorage` now owns a JDBC-local process-local compatibility
-  projection for worker/context/lock residue, but that residue is still
+  projection for worker/lock residue, but that residue is still
   in-process and restart-volatile
 - some of that residue remains because JDBC is not the owner for high-volume
   message history or execution timelines; treat it as bounded compatibility

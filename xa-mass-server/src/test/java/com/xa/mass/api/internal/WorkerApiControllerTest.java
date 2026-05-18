@@ -8,7 +8,6 @@ import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
 import com.xa.mass.sdk.event.EventDefinition;
-import com.xa.mass.sdk.model.WorkerContextSnapshot;
 import com.xa.mass.sdk.model.WorkerSnapshot;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -71,6 +70,7 @@ class WorkerApiControllerTest {
                 LocalDateTime.of(2026, 4, 21, 10, 15),
                 List.of("demoApp"),
                 List.of("demo.dispatch"),
+                List.of(),
                 "group-a",
                 "websocket",
                 "realtime",
@@ -82,7 +82,7 @@ class WorkerApiControllerTest {
 
         when(workerQueries.getAllWorkers()).thenReturn(List.of(worker));
         when(workerQueries.isWorkerOnline("worker-001")).thenReturn(true);
-        when(workerQueries.isWorkerLocked("worker-001")).thenReturn(true);
+        when(runtimeDiagnostics.isWorkerLocked("worker-001")).thenReturn(true);
         when(runtimeDiagnostics.listSessions()).thenReturn(List.of(Map.of(
                 "workerId", "worker-001",
                 "connections", List.of(Map.of(
@@ -114,31 +114,4 @@ class WorkerApiControllerTest {
                 .andExpect(jsonPath("$.data.items[0].lastHeartbeat").value("2026-04-21 10:15:00"));
     }
 
-    @Test
-    void listWorkerContextsReturnsReadModel() throws Exception {
-        WorkerContextSnapshot workerContext = new WorkerContextSnapshot(
-                "ctx-001",
-                "worker-001",
-                "demoApp",
-                "OCCUPIED",
-                java.util.Set.of("telegram", "sms"),
-                "task-123",
-                null,
-                null,
-                LocalDateTime.of(2026, 4, 21, 9, 55),
-                LocalDateTime.of(2026, 4, 21, 9, 50),
-                Map.of("account", "acc-01")
-        );
-
-        when(workerQueries.getAllWorkerContexts()).thenReturn(List.of(workerContext));
-
-        mockMvc.perform(get("/api/v1/runtime/worker-contexts"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.total").value(1))
-                .andExpect(jsonPath("$.data.items[0].workerContextId").value("ctx-001"))
-                .andExpect(jsonPath("$.data.items[0].project").value("demoApp"))
-                .andExpect(jsonPath("$.data.items[0].status").value("OCCUPIED"))
-                .andExpect(jsonPath("$.data.items[0].lastBindTaskId").value("task-123"));
-    }
 }

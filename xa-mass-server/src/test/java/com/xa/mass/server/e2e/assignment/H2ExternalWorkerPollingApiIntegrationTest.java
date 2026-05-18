@@ -22,7 +22,6 @@ import org.springframework.test.context.DynamicPropertySource;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.BooleanSupplier;
 import java.sql.DriverManager;
 
@@ -36,7 +35,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         properties = {
                 "sample.client.auto-start=false",
                 "mass.mock.data.workers=mock/test_mock_workers_empty.json",
-                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts_empty.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
@@ -89,7 +87,12 @@ class H2ExternalWorkerPollingApiIntegrationTest extends ProjectionSampleE2eTest 
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", workerId,
                 "workerGroupId", "polling-jdbc",
-                "attributes", Map.of("runtime", "jdbc-e2e"),
+                "attributes", Map.of(
+                        "runtime", "jdbc-e2e",
+                        "routingTags", "us",
+                        "country", "us",
+                        "region", "us"
+                ),
                 "eventBindings", List.of(Map.of(
                         "eventCode", "crawler.fetch-page",
                         "projectCodes", List.of("crawlerApp")
@@ -97,15 +100,6 @@ class H2ExternalWorkerPollingApiIntegrationTest extends ProjectionSampleE2eTest 
         ), workerHeaders);
         assertApiOk(registerResponse);
         assertEquals("polling", responseData(registerResponse).get("transportHint"));
-
-        Map<String, Object> contextResponse = exchange("/worker-api/v1/workers/" + workerId + "/contexts", HttpMethod.POST, Map.of(
-                "workerContextId", "ctx-" + workerId,
-                "workerId", workerId,
-                "project", "crawlerApp",
-                "routingTags", Set.of("us"),
-                "attributes", Map.of("region", "us")
-        ), workerHeaders);
-        assertApiOk(contextResponse);
 
         assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":online", HttpMethod.POST, Map.of(
                 "reason", "jdbc-storage-online"
@@ -256,19 +250,6 @@ class H2ExternalWorkerPollingApiIntegrationTest extends ProjectionSampleE2eTest 
                     assertTrue(rs.next(), "worker row should exist");
                     assertJsonContains(rs.getString("json"), "\"status\":\"OFFLINE\"");
                     assertFalse(rs.next(), "worker_id should remain unique");
-                }
-            }
-
-            try (var ps = conn.prepareStatement("""
-                    SELECT json
-                    FROM xa_worker_context
-                    WHERE worker_context_id = ?
-                    """)) {
-                ps.setString(1, "ctx-" + workerId);
-                try (var rs = ps.executeQuery()) {
-                    assertTrue(rs.next(), "worker context row should exist");
-                    assertJsonContains(rs.getString("json"), "\"status\":\"IDLE\"");
-                    assertFalse(rs.next(), "worker_context_id should remain unique");
                 }
             }
 

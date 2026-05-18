@@ -298,7 +298,7 @@ class TaskManagerLifecycleTest {
         assertEquals(1, taskManager.getTaskWorkRuntime().stats(task.getTid()).readyCount());
         ClaimedTaskWork claimed = taskManager.getTaskWorkRuntime().claimReady(
                 task.getTid(),
-                List.of(new WorkerClaimTarget("worker-payload-ref", "worker-context-payload-ref", "batch-0", 1)),
+                List.of(WorkerClaimTarget.workerLevel("worker-payload-ref", "batch-0", 1)),
                 1,
                 taskManager.getWorkLeaseSeconds()
         ).get(0);
@@ -339,7 +339,7 @@ class TaskManagerLifecycleTest {
 
         ClaimedTaskWork claimed = manager.getTaskWorkRuntime().claimReady(
                 task.getTid(),
-                List.of(new WorkerClaimTarget("worker-best-effort", "worker-context-best-effort", "batch-best-effort", 1)),
+                List.of(WorkerClaimTarget.workerLevel("worker-best-effort", "batch-best-effort", 1)),
                 1,
                 manager.getWorkLeaseSeconds()
         ).get(0);
@@ -391,7 +391,7 @@ class TaskManagerLifecycleTest {
 
         ClaimedTaskWork claimed = manager.getTaskWorkRuntime().claimReady(
                 task.getTid(),
-                List.of(new WorkerClaimTarget("worker-legacy-create", "worker-context-legacy-create", "batch-legacy-create", 1)),
+                List.of(WorkerClaimTarget.workerLevel("worker-legacy-create", "batch-legacy-create", 1)),
                 1,
                 manager.getWorkLeaseSeconds()
         ).get(0);
@@ -451,7 +451,7 @@ class TaskManagerLifecycleTest {
 
         ClaimedTaskWork claimed = manager.getTaskWorkRuntime().claimReady(
                 task.getTid(),
-                List.of(new WorkerClaimTarget("worker-expiry-best-effort", "worker-context-expiry-best-effort", "batch-expiry-best-effort", 1)),
+                List.of(WorkerClaimTarget.workerLevel("worker-expiry-best-effort", "batch-expiry-best-effort", 1)),
                 1,
                 manager.getWorkLeaseSeconds()
         ).get(0);
@@ -513,7 +513,7 @@ class TaskManagerLifecycleTest {
 
         ClaimedTaskWork claimed = manager.getTaskWorkRuntime().claimReady(
                 task.getTid(),
-                List.of(new WorkerClaimTarget("worker-overlay-best-effort", "worker-context-overlay-best-effort", "batch-overlay-best-effort", 1)),
+                List.of(WorkerClaimTarget.workerLevel("worker-overlay-best-effort", "batch-overlay-best-effort", 1)),
                 1,
                 manager.getWorkLeaseSeconds()
         ).get(0);
@@ -817,7 +817,7 @@ class TaskManagerLifecycleTest {
         manager.updateTask(task);
 
         TaskDetailStore.TaskMessageProjection message = manager.getTaskMessageRecords(task.getTid()).get(0);
-        assignMessage(manager, task, message, "worker-best-effort-success", "worker-context-best-effort-success", "batch-best-effort-success");
+        assignMessage(manager, task, message, "worker-best-effort-success", "batch-best-effort-success");
 
         failingStorage.failNextTaskMessageProjectionUpsert();
 
@@ -1167,7 +1167,7 @@ class TaskManagerLifecycleTest {
 
         TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
         String messageId = message.messageId();
-        assignMessage(task, message, "worker-1", "worker-context-1", "batch-0");
+        assignMessage(task, message, "worker-1", "batch-0");
 
         assertTrue(taskManager.ingestTaskResult(task.getTid(), messageId, false, "boom-once"));
 
@@ -1182,14 +1182,12 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskMessageProjectionStatus.INIT, retriedMessage.status());
         assertEquals(1, retriedMessage.retryCount());
         assertNull(retriedMessage.finalReason());
-        assertNull(retriedMessage.latestAttemptWorkerId());
-        assertNull(retriedMessage.latestAttemptWorkerContextId());
-        assertNull(retriedMessage.latestAttemptBatchId());
+        assertNull(retriedMessage.latestAttemptWorkerId());        assertNull(retriedMessage.latestAttemptBatchId());
         assertNull(retriedMessage.errorMessage());
         assertEquals(TaskStatus.RUNNING, taskManager.getTask(task.getTid()).getStatus());
         assertEquals(0, taskManager.getTask(task.getTid()).getTaskSuccessNumber());
 
-        assignMessage(task, retriedMessage, "worker-2", "worker-context-2", "batch-1");
+        assignMessage(task, retriedMessage, "worker-2", "batch-1");
         assertTrue(taskManager.ingestTaskResult(task.getTid(), messageId, true, "done-after-retry"));
 
         TaskDetailStore.TaskMessageProjection finalMessage = awaitVisibleTaskMessageProjection(
@@ -1224,7 +1222,7 @@ class TaskManagerLifecycleTest {
         manager.updateTask(task);
 
         TaskDetailStore.TaskMessageProjection message = manager.getTaskMessageRecords(task.getTid()).get(0);
-        assignMessage(manager, task, message, "worker-best-effort-retry-1", "worker-context-best-effort-retry-1", "batch-best-effort-retry-1");
+        assignMessage(manager, task, message, "worker-best-effort-retry-1", "batch-best-effort-retry-1");
 
         failingStorage.failNextTaskMessageProjectionUpsert();
 
@@ -1235,7 +1233,7 @@ class TaskManagerLifecycleTest {
 
         List<ClaimedTaskWork> retried = manager.getTaskWorkRuntime().claimReady(
                 task.getTid(),
-                List.of(new WorkerClaimTarget("worker-best-effort-retry-2", "worker-context-best-effort-retry-2", "batch-best-effort-retry-2", 1)),
+                List.of(WorkerClaimTarget.workerLevel("worker-best-effort-retry-2", "batch-best-effort-retry-2", 1)),
                 1,
                 manager.getWorkLeaseSeconds()
         );
@@ -1252,7 +1250,7 @@ class TaskManagerLifecycleTest {
         taskManager.updateTask(task);
 
         TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
-        assignMessage(task, message, "worker-1", "worker-context-1", "batch-0");
+        assignMessage(task, message, "worker-1", "batch-0");
 
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
             assertTrue(taskManager.ingestTaskResult(task.getTid(), message.messageId(), false, "boom-once"));
@@ -1285,7 +1283,7 @@ class TaskManagerLifecycleTest {
             manager.updateTask(task);
 
             TaskDetailStore.TaskMessageProjection message = manager.getTaskMessageRecords(task.getTid()).get(0);
-            assignMessage(manager, task, message, "worker-1", "worker-context-1", "batch-0");
+            assignMessage(manager, task, message, "worker-1", "batch-0");
 
             AtomicInteger dispatchEvents = new AtomicInteger();
             CountDownLatch dispatchLatch = new CountDownLatch(1);
@@ -1332,7 +1330,7 @@ class TaskManagerLifecycleTest {
             manager.updateTask(task);
 
             TaskDetailStore.TaskMessageProjection message = manager.getTaskMessageRecords(task.getTid()).get(0);
-            assignMessage(manager, task, message, "worker-batch-1", "worker-context-batch-1", "batch-0");
+            assignMessage(manager, task, message, "worker-batch-1", "batch-0");
 
             AtomicInteger dispatchEvents = new AtomicInteger();
             CountDownLatch dispatchLatch = new CountDownLatch(1);
@@ -1446,7 +1444,6 @@ class TaskManagerLifecycleTest {
                 message,
                 null,
                 null,
-                null,
                 null
         );
         assertTrue(taskManager.upsertTaskMessageProjectionRecord(
@@ -1481,7 +1478,6 @@ class TaskManagerLifecycleTest {
                 message.messageId(),
                 1,
                 "worker-init",
-                "worker-context-init",
                 "batch-init",
                 TaskMessageAttemptProjectionStatus.DISPATCHED
         );
@@ -1556,7 +1552,7 @@ class TaskManagerLifecycleTest {
         taskManager.updateTask(task);
 
         TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
-        assignMessage(task, message, "worker-repair", "worker-context-repair", "batch-repair");
+        assignMessage(task, message, "worker-repair", "batch-repair");
         TaskDetailStore.TaskMessageProjection compatibilityMessage = ProjectionTestSupport.resetToInit(
                 taskManager.getStoredTaskMessageRecord(task.getTid(), message.messageId())
         );
@@ -1581,9 +1577,7 @@ class TaskManagerLifecycleTest {
         );
         assertEquals(TaskMessageProjectionStatus.SUCCESS, updatedMessage.status());
         assertEquals(TaskMessageProjectionFinalReason.BUSINESS_SUCCESS, updatedMessage.finalReason());
-        assertEquals("worker-repair", updatedMessage.latestAttemptWorkerId());
-        assertEquals("worker-context-repair", updatedMessage.latestAttemptWorkerContextId());
-        assertEquals("batch-repair", updatedMessage.latestAttemptBatchId());
+        assertEquals("worker-repair", updatedMessage.latestAttemptWorkerId());        assertEquals("batch-repair", updatedMessage.latestAttemptBatchId());
         assertNotNull(latestAttempt);
         assertEquals(TaskMessageAttemptProjectionStatus.SUCCEEDED, latestAttempt.status());
     }
@@ -1598,22 +1592,20 @@ class TaskManagerLifecycleTest {
         TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
         List<ClaimedTaskWork> claimed = taskManager.getTaskWorkRuntime().claimReady(
                 task.getTid(),
-                List.of(new WorkerClaimTarget("worker-recover", "worker-context-recover", "batch-recover", 1)),
+                List.of(WorkerClaimTarget.workerLevel("worker-recover", "batch-recover", 1)),
                 1,
                 taskManager.getWorkLeaseSeconds()
         );
         assertEquals(1, claimed.size());
         TaskDetailStore.TaskMessageProjection compatibilityMessage = ProjectionTestSupport.markAssigned(
                 message,
-                TaskWorkAttemptIdSupport.runtimeAttemptId(
+                TaskWorkAttemptIdSupport.workerLevelRuntimeAttemptId(
                         message.messageId(),
                         Math.max(1, message.retryCount() + 1),
                         "worker-recover",
-                        "worker-context-recover",
                         "batch-recover"
                 ),
                 "worker-recover",
-                "worker-context-recover",
                 "batch-recover"
         );
         assertTrue(taskManager.upsertTaskMessageProjectionRecord(
@@ -1632,9 +1624,7 @@ class TaskManagerLifecycleTest {
                 );
         assertNotNull(recoveredAttempt);
         assertEquals(TaskMessageAttemptProjectionStatus.SUCCEEDED, recoveredAttempt.status());
-        assertEquals("worker-recover", recoveredAttempt.workerId());
-        assertEquals("worker-context-recover", recoveredAttempt.workerContextId());
-        assertEquals("batch-recover", recoveredAttempt.batchId());
+        assertEquals("worker-recover", recoveredAttempt.workerId());        assertEquals("batch-recover", recoveredAttempt.batchId());
     }
 
     @Test
@@ -1651,7 +1641,7 @@ class TaskManagerLifecycleTest {
         TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
         List<ClaimedTaskWork> claimed = taskManager.getTaskWorkRuntime().claimReady(
                 task.getTid(),
-                List.of(new WorkerClaimTarget("worker-no-read", "worker-context-no-read", "batch-no-read", 1)),
+                List.of(WorkerClaimTarget.workerLevel("worker-no-read", "batch-no-read", 1)),
                 1,
                 taskManager.getWorkLeaseSeconds()
         );
@@ -1686,7 +1676,7 @@ class TaskManagerLifecycleTest {
         TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
         List<ClaimedTaskWork> claimed = taskManager.getTaskWorkRuntime().claimReady(
                 task.getTid(),
-                List.of(new WorkerClaimTarget("worker-no-msg-read", "worker-context-no-msg-read", "batch-no-msg-read", 1)),
+                List.of(WorkerClaimTarget.workerLevel("worker-no-msg-read", "batch-no-msg-read", 1)),
                 1,
                 taskManager.getWorkLeaseSeconds()
         );
@@ -1721,7 +1711,7 @@ class TaskManagerLifecycleTest {
         TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
         List<ClaimedTaskWork> claimed = taskManager.getTaskWorkRuntime().claimReady(
                 task.getTid(),
-                List.of(new WorkerClaimTarget("worker-active-view", "worker-context-active-view", "batch-active-view", 1)),
+                List.of(WorkerClaimTarget.workerLevel("worker-active-view", "batch-active-view", 1)),
                 1,
                 taskManager.getWorkLeaseSeconds()
         );
@@ -1734,9 +1724,7 @@ class TaskManagerLifecycleTest {
                 "active attempt compatibility view should synthesize from runtime lease without reading latest attempt audit rows");
         assertNotNull(activeAttempt);
         assertEquals(TaskMessageAttemptProjectionStatus.DISPATCHED, activeAttempt.status());
-        assertEquals("worker-active-view", activeAttempt.workerId());
-        assertEquals("worker-context-active-view", activeAttempt.workerContextId());
-        assertEquals("batch-active-view", activeAttempt.batchId());
+        assertEquals("worker-active-view", activeAttempt.workerId());        assertEquals("batch-active-view", activeAttempt.batchId());
     }
 
     @Test
@@ -1753,7 +1741,7 @@ class TaskManagerLifecycleTest {
         TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
         List<ClaimedTaskWork> claimed = taskManager.getTaskWorkRuntime().claimReady(
                 task.getTid(),
-                List.of(new WorkerClaimTarget("worker-active-no-msg", "worker-context-active-no-msg", "batch-active-no-msg", 1)),
+                List.of(WorkerClaimTarget.workerLevel("worker-active-no-msg", "batch-active-no-msg", 1)),
                 1,
                 taskManager.getWorkLeaseSeconds()
         );
@@ -1782,7 +1770,7 @@ class TaskManagerLifecycleTest {
         TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
         List<ClaimedTaskWork> claimed = taskManager.getTaskWorkRuntime().claimReady(
                 task.getTid(),
-                List.of(new WorkerClaimTarget("worker-audit-view", "worker-context-audit-view", "batch-audit-view", 1)),
+                List.of(WorkerClaimTarget.workerLevel("worker-audit-view", "batch-audit-view", 1)),
                 1,
                 taskManager.getWorkLeaseSeconds()
         );
@@ -1794,17 +1782,14 @@ class TaskManagerLifecycleTest {
 
         assertEquals(1, visibleAttempts.size());
         TaskDetailStore.TaskMessageAttemptProjection activeAttempt = visibleAttempts.getFirst();
-        assertEquals(TaskWorkAttemptIdSupport.runtimeAttemptId(
+        assertEquals(TaskWorkAttemptIdSupport.workerLevelRuntimeAttemptId(
                 message.messageId(),
                 1,
                 "worker-audit-view",
-                "worker-context-audit-view",
                 "batch-audit-view"
         ), activeAttempt.attemptId());
         assertEquals(TaskMessageAttemptProjectionStatus.DISPATCHED, activeAttempt.status());
-        assertEquals("worker-audit-view", activeAttempt.workerId());
-        assertEquals("worker-context-audit-view", activeAttempt.workerContextId());
-        assertEquals("batch-audit-view", activeAttempt.batchId());
+        assertEquals("worker-audit-view", activeAttempt.workerId());        assertEquals("batch-audit-view", activeAttempt.batchId());
     }
 
     @Test
@@ -1821,7 +1806,7 @@ class TaskManagerLifecycleTest {
         TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
         List<ClaimedTaskWork> claimed = taskManager.getTaskWorkRuntime().claimReady(
                 task.getTid(),
-                List.of(new WorkerClaimTarget("worker-audit-no-msg", "worker-context-audit-no-msg", "batch-audit-no-msg", 1)),
+                List.of(WorkerClaimTarget.workerLevel("worker-audit-no-msg", "batch-audit-no-msg", 1)),
                 1,
                 taskManager.getWorkLeaseSeconds()
         );
@@ -1852,7 +1837,7 @@ class TaskManagerLifecycleTest {
         TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
         List<ClaimedTaskWork> claimed = taskManager.getTaskWorkRuntime().claimReady(
                 task.getTid(),
-                List.of(new WorkerClaimTarget("worker-expiry-no-msg-read", "worker-context-expiry-no-msg-read", "batch-expiry-no-msg-read", 1)),
+                List.of(WorkerClaimTarget.workerLevel("worker-expiry-no-msg-read", "batch-expiry-no-msg-read", 1)),
                 1,
                 taskManager.getWorkLeaseSeconds()
         );
@@ -1881,7 +1866,7 @@ class TaskManagerLifecycleTest {
         taskManager.updateTask(task);
 
         TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
-        assignMessage(task, message, "worker-final-residue", "worker-context-final-residue", "batch-final-residue");
+        assignMessage(task, message, "worker-final-residue", "batch-final-residue");
         TaskDetailStore.TaskMessageProjection compatibilityMessage = ProjectionTestSupport.forceFinal(
                 taskManager.getStoredTaskMessageRecord(task.getTid(), message.messageId()),
                 TaskMessageProjectionStatus.FAILED,
@@ -1947,7 +1932,7 @@ class TaskManagerLifecycleTest {
             taskManager.updateTask(task);
 
             TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
-            assignMessage(task, message, "worker-1", "worker-context-1", "batch-0");
+            assignMessage(task, message, "worker-1", "batch-0");
 
             List<String> events = new java.util.ArrayList<>();
             taskManager.events().addTaskWorkAttemptClosedListener((currentTask, attempt) ->
@@ -2502,7 +2487,7 @@ class TaskManagerLifecycleTest {
         TaskDetailStore.TaskMessageProjection storedMessage = taskManager.getTaskMessageRecords(task.getTid()).get(0);
         TaskDetailStore.TaskMessageProjection message = ProjectionTestSupport.markSuccess(
                 ProjectionTestSupport.markRunning(
-                        ProjectionTestSupport.markAssigned(storedMessage, null, null, null, null)
+                        ProjectionTestSupport.markAssigned(storedMessage, null, null, null)
                 ),
                 java.util.Map.of("result", "done"),
                 TaskMessageProjectionFinalReason.BUSINESS_SUCCESS
@@ -2528,7 +2513,6 @@ class TaskManagerLifecycleTest {
                         message.output(),
                         message.latestAttemptId(),
                         message.latestAttemptWorkerId(),
-                        message.latestAttemptWorkerContextId(),
                         message.latestAttemptBatchId()
                 )
         );
@@ -2547,7 +2531,7 @@ class TaskManagerLifecycleTest {
         TaskDetailStore.TaskMessageProjection storedMessage = taskManager.getTaskMessageRecords(task.getTid()).get(0);
         TaskDetailStore.TaskMessageProjection message = ProjectionTestSupport.markSuccess(
                 ProjectionTestSupport.markRunning(
-                        ProjectionTestSupport.markAssigned(storedMessage, null, null, null, null)
+                        ProjectionTestSupport.markAssigned(storedMessage, null, null, null)
                 ),
                 java.util.Map.of("result", "done"),
                 TaskMessageProjectionFinalReason.BUSINESS_SUCCESS
@@ -2563,7 +2547,6 @@ class TaskManagerLifecycleTest {
                 message.messageId(),
                 1,
                 "worker-1",
-                null,
                 null,
                 TaskMessageAttemptProjectionStatus.LEASED
         );
@@ -2585,7 +2568,7 @@ class TaskManagerLifecycleTest {
     void auditTaskProjectionStateFlagsMultipleActiveAttemptsForMessage() {
         Task task = createTask(buildRequest("task-validate-multiple-active-attempts", List.of("alpha")));
         TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
-        assignMessage(task, message, "worker-1", "worker-context-1", "batch-0");
+        assignMessage(task, message, "worker-1", "batch-0");
 
         TaskDetailStore.TaskMessageAttemptProjection secondActiveAttempt = ProjectionTestSupport.attempt(
                 "attempt-2",
@@ -2593,7 +2576,6 @@ class TaskManagerLifecycleTest {
                 message.messageId(),
                 2,
                 "worker-2",
-                "worker-context-2",
                 "batch-1",
                 TaskMessageAttemptProjectionStatus.LEASED
         );
@@ -2995,7 +2977,6 @@ class TaskManagerLifecycleTest {
                 task,
                 initialMessage,
                 "worker-expire-repair",
-                "worker-context-expire-repair",
                 "batch-expire-repair"
         );
         TaskDetailStore.TaskMessageProjection repairedProjection = ProjectionTestSupport.resetToInit(assigned);
@@ -3044,7 +3025,7 @@ class TaskManagerLifecycleTest {
             taskManager.updateTask(task);
 
             TaskDetailStore.TaskMessageProjection message = taskManager.getTaskMessageRecords(task.getTid()).get(0);
-            assignMessage(task, message, "worker-expire-1", "worker-context-expire-1", "batch-expire-0");
+            assignMessage(task, message, "worker-expire-1", "batch-expire-0");
 
             List<String> events = new java.util.ArrayList<>();
             taskManager.events().addTaskWorkAttemptClosedListener((currentTask, attempt) ->
@@ -3070,9 +3051,7 @@ class TaskManagerLifecycleTest {
             assertEquals(TaskMessageProjectionStatus.INIT, retriedMessage.status());
             assertEquals(1, retriedMessage.retryCount());
             assertNull(retriedMessage.finalReason());
-            assertNull(retriedMessage.latestAttemptWorkerId());
-            assertNull(retriedMessage.latestAttemptWorkerContextId());
-            assertNull(retriedMessage.latestAttemptBatchId());
+            assertNull(retriedMessage.latestAttemptWorkerId());            assertNull(retriedMessage.latestAttemptBatchId());
             assertNull(taskManager.getLatestActiveAttemptProjectionRecord(task.getTid(), message.messageId()));
 
             List<TaskDetailStore.TaskMessageAttemptProjection> attemptProjections = awaitAttemptProjectionHistory(
@@ -3167,7 +3146,6 @@ class TaskManagerLifecycleTest {
                 storedMessage,
                 null,
                 null,
-                null,
                 null
         );
         assertTrue(taskManager.upsertTaskMessageProjectionRecord(
@@ -3198,7 +3176,7 @@ class TaskManagerLifecycleTest {
         TaskDetailStore.TaskMessageProjection storedMessage = taskManager.getTaskMessageRecords(task.getTid()).get(0);
         List<ClaimedTaskWork> claimed = taskManager.getTaskWorkRuntime().claimReady(
                 task.getTid(),
-                List.of(new WorkerClaimTarget("worker-cancel-runtime-only", "worker-context-cancel-runtime-only", "batch-cancel-runtime-only", 1)),
+                List.of(WorkerClaimTarget.workerLevel("worker-cancel-runtime-only", "batch-cancel-runtime-only", 1)),
                 1,
                 taskManager.getWorkLeaseSeconds()
         );
@@ -3272,7 +3250,7 @@ class TaskManagerLifecycleTest {
 
         List<ClaimedTaskWork> claimed = manager.getTaskWorkRuntime().claimReady(
                 task.getTid(),
-                List.of(new WorkerClaimTarget("worker-snapshot-bound", "worker-context-snapshot-bound", "batch-snapshot-bound", 2)),
+                List.of(WorkerClaimTarget.workerLevel("worker-snapshot-bound", "batch-snapshot-bound", 2)),
                 2,
                 manager.getWorkLeaseSeconds()
         );
@@ -3483,9 +3461,8 @@ class TaskManagerLifecycleTest {
     private TaskDetailStore.TaskMessageProjection assignMessage(Task task,
                                                                 TaskDetailStore.TaskMessageProjection message,
                                                                 String workerId,
-                                                                String workerContextId,
                                                                 String batchId) {
-        return assignMessage(taskManager, task, message, workerId, workerContextId, batchId);
+        return assignMessage(taskManager, task, message, workerId, batchId);
     }
 
     private TaskDetailStore.TaskMessageProjection assignMessage(ProjectionAwareTaskManager manager,
@@ -3494,7 +3471,6 @@ class TaskManagerLifecycleTest {
         String suffix = message.messageId() != null ? message.messageId() : "msg";
         return assignMessage(manager, task, message,
                 "worker-" + suffix,
-                "worker-context-" + suffix,
                 "batch-" + message.retryCount());
     }
 
@@ -3502,12 +3478,11 @@ class TaskManagerLifecycleTest {
                                                                 Task task,
                                                                 TaskDetailStore.TaskMessageProjection message,
                                                                 String workerId,
-                                                                String workerContextId,
                                                                 String batchId) {
         if (manager.getTaskWorkRuntime().getActiveLease(task.getTid(), message.messageId()).isEmpty()) {
             List<ClaimedTaskWork> claimed = manager.getTaskWorkRuntime().claimReady(
                     task.getTid(),
-                    List.of(new WorkerClaimTarget(workerId, workerContextId, batchId, 1)),
+                    List.of(WorkerClaimTarget.workerLevel(workerId, batchId, 1)),
                     1,
                     manager.getWorkLeaseSeconds()
             );
@@ -3518,33 +3493,29 @@ class TaskManagerLifecycleTest {
         }
         TaskDetailStore.TaskMessageProjection assignedProjection = ProjectionTestSupport.markAssigned(
                 message,
-                TaskWorkAttemptIdSupport.runtimeAttemptId(
+                TaskWorkAttemptIdSupport.workerLevelRuntimeAttemptId(
                         message.messageId(),
                         message.retryCount() + 1,
                         workerId,
-                        workerContextId,
                         batchId
                 ),
                 workerId,
-                workerContextId,
                 batchId
         );
         assertTrue(manager.upsertTaskMessageProjectionRecord(task.getTid(), assignedProjection));
 
         int attemptNo = message.retryCount() + 1;
         TaskDetailStore.TaskMessageAttemptProjection attempt = ProjectionTestSupport.attempt(
-                TaskWorkAttemptIdSupport.runtimeAttemptId(
+                TaskWorkAttemptIdSupport.workerLevelRuntimeAttemptId(
                         message.messageId(),
                         attemptNo,
                         workerId,
-                        workerContextId,
                         batchId
                 ),
                 task.getTid(),
                 message.messageId(),
                 attemptNo,
                 workerId,
-                workerContextId,
                 batchId,
                 TaskMessageAttemptProjectionStatus.DISPATCHED
         );

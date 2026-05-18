@@ -2,10 +2,10 @@ package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.engine.model.AssignmentRecord;
+import com.xa.mass.engine.worker.WorkerReachabilityState;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import org.junit.jupiter.api.Test;
@@ -28,12 +28,13 @@ class TaskWorkerEligibilityTest {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness(
                 workerId -> reachability.getOrDefault(workerId, WorkerReachabilityState.ONLINE)
         );
-        harness.addWorkerWithContext("worker-unreachable", "ctx-unreachable", "us");
-        harness.addWorkerWithContext("worker-locked", "ctx-locked", "us");
-        harness.addWorkerWithContext("worker-occupied", "ctx-occupied", "us", WorkerContextStatus.OCCUPIED);
-        harness.addWorkerWithContext("worker-routing-mismatch", "ctx-routing-mismatch", "gb");
-        harness.addWorkerWithContext("worker-eligible", "ctx-eligible", "us");
+        harness.addWorker("worker-unreachable", "us");
+        harness.addWorker("worker-locked", "us");
+        harness.addWorker("worker-occupied", "us");
+        harness.addWorker("worker-routing-mismatch", "gb");
+        harness.addWorker("worker-eligible", "us");
         assertTrue(harness.workerManager.tryLockWorker("worker-locked"));
+        assertTrue(harness.workerManager.tryLockWorker("worker-occupied"));
 
         Task task = harness.createReadyBatchTask("eligibility", List.of(harness.item("eligible")));
 
@@ -42,7 +43,6 @@ class TaskWorkerEligibilityTest {
         List<ActiveLeaseRecord> activeLeases = harness.activeLeases(task.getTid());
         assertEquals(1, activeLeases.size());
         assertEquals("worker-eligible", activeLeases.getFirst().workerId());
-        assertEquals("ctx-eligible", activeLeases.getFirst().workerContextId());
         assertEquals(1, harness.successfulMessageAssignments(task.getTid(), "worker-eligible"));
 
         assertRejected(harness, task.getTid(), "worker-unreachable",
@@ -50,7 +50,7 @@ class TaskWorkerEligibilityTest {
         assertRejected(harness, task.getTid(), "worker-locked",
                 AssignmentResult.CONFLICT, "worker locked");
         assertRejected(harness, task.getTid(), "worker-occupied",
-                AssignmentResult.RESOURCE_UNAVAILABLE, "workerContext not allocatable");
+                AssignmentResult.CONFLICT, "worker locked");
         assertRejected(harness, task.getTid(), "worker-routing-mismatch",
                 AssignmentResult.RULE_NOT_MATCH, "routing code mismatch");
         assertFalse(harness.record(task.getTid(), "worker-eligible").getRuleEvaluations().isEmpty());
@@ -62,8 +62,8 @@ class TaskWorkerEligibilityTest {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness(
                 workerId -> reachability.getOrDefault(workerId, WorkerReachabilityState.ONLINE)
         );
-        harness.addWorkerWithContext("worker-primary", "ctx-primary", "us");
-        harness.addWorkerWithContext("worker-backup", "ctx-backup", "us");
+        harness.addWorker("worker-primary", "us");
+        harness.addWorker("worker-backup", "us");
         Task firstTask = harness.createReadyBatchTask("reachability-first", List.of(harness.item("first")));
         Task secondTask = harness.createReadyBatchTask("reachability-second", List.of(harness.item("second")));
 
@@ -78,7 +78,6 @@ class TaskWorkerEligibilityTest {
         List<ActiveLeaseRecord> secondLeases = harness.activeLeases(secondTask.getTid());
         assertEquals(1, secondLeases.size());
         assertEquals("worker-backup", secondLeases.getFirst().workerId());
-        assertEquals("ctx-backup", secondLeases.getFirst().workerContextId());
         assertEquals(1, harness.activeLeases(firstTask.getTid()).size());
         assertRejected(harness, secondTask.getTid(), "worker-primary",
                 AssignmentResult.RESOURCE_UNAVAILABLE, "worker transport unreachable");
@@ -90,8 +89,8 @@ class TaskWorkerEligibilityTest {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness(
                 workerId -> reachability.getOrDefault(workerId, WorkerReachabilityState.ONLINE)
         );
-        harness.addWorkerWithContext("worker-stable", "ctx-stable", "us");
-        harness.addWorkerWithContext("worker-dropped", "ctx-dropped", "us");
+        harness.addWorker("worker-stable", "us");
+        harness.addWorker("worker-dropped", "us");
         Task task = harness.createBatchTask(
                 "minimum-worker-reachability-drop",
                 List.of(harness.item("alpha"), harness.item("beta")),
@@ -112,10 +111,8 @@ class TaskWorkerEligibilityTest {
         assertEquals(2, stats.readyCount());
         assertEquals(0, stats.inflightCount());
         assertTrue(harness.activeLeases(task.getTid()).isEmpty());
-        assertEquals(WorkerContextStatus.IDLE,
-                harness.workerManager.getWorkerContextById("ctx-stable").getStatus());
-        assertEquals(WorkerContextStatus.IDLE,
-                harness.workerManager.getWorkerContextById("ctx-dropped").getStatus());
+        assertFalse(harness.workerManager.isLocked("worker-stable"));
+        assertFalse(harness.workerManager.isLocked("worker-dropped"));
         assertRejected(harness, task.getTid(), "worker-dropped",
                 AssignmentResult.RESOURCE_UNAVAILABLE, "worker transport unreachable");
 

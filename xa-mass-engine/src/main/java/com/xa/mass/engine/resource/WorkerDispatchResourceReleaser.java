@@ -1,7 +1,7 @@
 package com.xa.mass.engine.resource;
 
 import com.xa.mass.base.model.Task;
-import com.xa.mass.engine.WorkerManager;
+import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.util.TraceEventLogger;
 
@@ -15,7 +15,7 @@ import java.util.stream.Collectors;
 /**
  * Releases dispatch-time worker reservations and exclusive locks.
  */
-public class WorkerDispatchResourceReleaser {
+public final class WorkerDispatchResourceReleaser {
     private final WorkerManager workerManager;
     private final WorkerDispatchResourcePolicy resourcePolicy;
     private final TraceEventLogger traceEventLogger;
@@ -103,18 +103,25 @@ public class WorkerDispatchResourceReleaser {
                               String reason) {
         workerManager.unlockWorker(workerId);
         traceEventLogger.workerLockReleased(task.getTid(), workerId, trigger, source, reason);
+        traceEventLogger.resourceReleased(
+                task.getTid(),
+                workerId,
+                trigger,
+                source,
+                reason,
+                "WORKER_LOCK"
+        );
     }
 
     public void releaseAttemptLockIfExclusive(Task task,
                                               String workerId,
-                                              String workerContextId,
                                               String trigger,
                                               String source,
                                               String reason) {
         if (task == null || workerId == null || workerId.isBlank()) {
             return;
         }
-        if (!resourcePolicy.usageForAttempt(task, workerContextId).exclusiveWorkerLock()) {
+        if (!resourcePolicy.usageForAttempt(task).exclusiveWorkerLock()) {
             return;
         }
         unlockWorker(task, workerId, trigger, source, reason);

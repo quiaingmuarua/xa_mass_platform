@@ -1,6 +1,6 @@
 # Trace Contract
 
-Last updated: 2026-05-15
+Last updated: 2026-05-18
 
 Status: current global trace contract.
 
@@ -83,6 +83,11 @@ Current stable event types:
 - `WORKER_ONLINE`
 - `WORKER_OFFLINE`
 
+`WORKER_CONTEXT_STATUS_TRANSITION` remains a legacy compatibility event for
+older diagnostics and migration verification. It is not scheduling proof for
+new engine behavior; current scheduling analysis must prefer worker match,
+worker lock/resource, runtime lease, and worker scheduling evidence.
+
 Do not introduce synonym drift such as `*_CHANGED` beside `*_TRANSITION`, or
 parallel "summary" and "snapshot" names for the same semantic event.
 
@@ -139,7 +144,7 @@ Populate these when relevant:
 - task events: `identity.taskId`
 - task-message events: `identity.taskId + identity.messageId`
 - attempt events: `identity.taskId + identity.messageId + identity.attemptId`
-- worker-context events: `identity.workerId + identity.workerContextId`
+- worker events: `identity.workerId`
 - lease-specific events: `identity.leaseToken` when available
 
 ### Transition rules
@@ -152,7 +157,7 @@ policy transition outcome:
 - `TASK_WORK_STATUS_TRANSITION`
 - `TASK_WORK_ATTEMPT_STATUS_TRANSITION`
 - `TASK_WORK_RETRY_RESET`
-- `WORKER_CONTEXT_STATUS_TRANSITION`
+- `WORKER_CONTEXT_STATUS_TRANSITION` for legacy compatibility traces only
 - `LEASE_EXPIRED`
 
 Use:
@@ -232,10 +237,14 @@ Schedule analysis currently reads these event types from canonical sink output:
 - `WORKER_LOCK_RELEASED`
 - `TASK_STATUS_TRANSITION`
 - `TASK_WORK_ATTEMPT_STATUS_TRANSITION`
-- `WORKER_CONTEXT_STATUS_TRANSITION`
+- `TASK_WORK_ATTEMPT_CLOSED`
 - `RESOURCE_RELEASED`
 - `RESOURCE_RELEASE_FAILED`
 - `LEASE_EXPIRED`
+
+Legacy traces may also contain `WORKER_CONTEXT_STATUS_TRANSITION`. Operators may
+use it to diagnose compatibility paths, but analyzers must not require it as
+proof of current scheduling, assignment, or release correctness.
 
 Stable assignment-oriented fields are:
 
@@ -243,6 +252,8 @@ Stable assignment-oriented fields are:
 - ranked worker candidate fields: `candidateRank`, `candidateScore`,
   `workerActiveLeaseCount`, `workerReservedCount`, `workerDeclaredCapacity`,
   `workerEstimatedLoadRatio`
+- group candidate-source evidence: `workerGroupId`, `eventBindingKey`,
+  `workerCandidateSource`
 - scheduling profile fields: `initialStatus`, `currentStatus`,
   `dispatchLane`, `dispatchPriority`, `workloadClass`, `foreground`,
   `batchPolicy`, `leaseProfile`
@@ -252,8 +263,10 @@ Stable assignment-oriented fields are:
   `budgetLimited`, `matchedWorkerCount`, `dispatchCandidateCount`,
   `dispatchedMessageCount`, `usedWorkerCount`, `peakAssignedWorkerCount`
 - dispatch binding counts: `pendingMessageCount`, `dispatchSlotCount`,
-  `unassignedMessageCount`, `uniqueWorkerCount`,
-  `uniqueWorkerContextCount`, `perWorkerBatchLimit`
+  `unassignedMessageCount`, `uniqueWorkerCount`, `perWorkerBatchLimit`
+- worker scheduling evidence: `workerSchedulingResourceId`,
+  `workerSchedulingRoutingTags`, `workerSchedulingAttributes`,
+  `workerSchedulingMatchesRoutingCode`
 - queue fields: `queueDepth`, `trackedBatchPendingCount`,
   `scheduledRetryCount`, `queueAction`, `retryDelayMillis`
 
@@ -271,8 +284,8 @@ default is `1`.
 `foreground` is the canonical read-side declaration of the task's current
 scheduling mode. It defaults to `true`. When `false`, current engine behavior
 skips the long-lived worker lock and relies on process-local capacity
-reservation for stateless worker sharing; WorkerContext-backed resources still
-follow their legacy context lifecycle and are not shared by this field alone.
+reservation for worker sharing. `WorkerContext` is not consulted as the active
+resource-sharing truth.
 `workerBudget`, `currentTaskWorkerCount`, and `budgetLimited` are the
 assignment policy budget evidence fields. A missing `workerBudget` means no
 allocation plan reached budget policy for that event, for example an early
@@ -289,6 +302,30 @@ single background task: accepted worker match evidence must show
 `foreground=false`, existing active worker load, a new reservation within
 declared capacity, and no `WORKER_LOCK_ACQUIRED` / `WORKER_LOCK_RELEASED`
 evidence for that task.
+The `worker-attribute-routing-without-context` analyzer uses worker scheduling
+evidence: accepted worker matches must carry worker-level scheduling attributes
+or routing tags, and must show `workerSchedulingMatchesRoutingCode=true`.
+The `worker-resource-cleanup-without-context` analyzer proves stateless worker
+cleanup without WorkerContext evidence: accepted match, binding, attempt close,
+worker lock release, and `RESOURCE_RELEASED` must all be visible through
+worker-level identity, and the scenario rejects WorkerContext lifecycle cleanup
+as the success proof.
+The `group-capability-routing` analyzer proves WorkerGroup candidate-index
+routing for SDK event tasks. It requires a worker match accepted row with
+`workerCandidateSource=GROUP_INDEX`, non-empty `workerGroupId`, non-empty
+`eventBindingKey` in `project:eventCode` form, worker scheduling evidence, a
+successful assignment summary, and a successful dispatch binding summary. The
+scenario is representative group-index proof, not a general Stage-1 statistics
+or scan-count proof.
+The `cross-task-worker-fairness` analyzer is intentionally a two-task scenario:
+its `taskId` argument is `<bulkTaskId>,<interactiveTaskId>`. It reads canonical
+assignment rows for both tasks and proves that a budget-limited BULK assignment
+under backlog pressure still leaves distinct worker capacity for a successful
+INTERACTIVE assignment.
+
+Trace operator queries must read rotated canonical JSONL files with a unioned
+schema. Schedule fields may first appear in later rotated files, so analyzer
+proof must not depend on a single-file or first-file JSON schema inference.
 
 ## 5. Minimum Required Paths
 
@@ -302,7 +339,9 @@ The canonical model must be able to represent these flows:
     attempt trace but converges the logical message through retry reset or `FAILED + RETRY_EXHAUSTED`
 - attempt projection: `CREATED -> LEASED -> DISPATCHED -> ... -> final`
 - retry reset without falsely claiming logical finality
-- worker-context reservation / occupation / release transitions
+- worker lock, capacity reservation, and resource release transitions
+- legacy worker-context reservation / occupation / release transitions only
+  while compatibility traces still exist
 - worker lock acquire / release
 - worker match accept / reject
 - dispatch request / skip
@@ -321,7 +360,7 @@ Given a `taskId`, operators must be able to reconstruct:
 
 1. when the task entered `READY`
 2. why it entered `RUNNING`
-3. which worker/context each message used
+3. which worker/resource/attempt each message used
 4. which attempt delivered each message and how that attempt finished
 5. whether retry happened
 6. why the task closed to `TERMINAL`

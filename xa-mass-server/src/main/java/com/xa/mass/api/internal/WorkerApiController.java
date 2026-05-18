@@ -4,8 +4,8 @@ import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.sdk.RuntimeDiagnosticsOperations;
 import com.xa.mass.sdk.WorkerQueryOperations;
 import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
-import com.xa.mass.sdk.model.WorkerContextSnapshot;
 import com.xa.mass.sdk.model.WorkerSnapshot;
+import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.web.bind.annotation.RestController;
@@ -27,7 +27,11 @@ public class WorkerApiController {
     private final RuntimeDiagnosticsOperations runtimeDiagnostics;
 
     public WorkerApiController(WorkerQueryOperations workerQueries) {
-        this(workerQueries, (ControlPlaneCatalog) null, (RuntimeDiagnosticsOperations) null);
+        this(
+                workerQueries,
+                (ControlPlaneCatalog) null,
+                (RuntimeDiagnosticsOperations) null
+        );
     }
 
     public WorkerApiController(WorkerQueryOperations workerQueries,
@@ -70,39 +74,15 @@ public class WorkerApiController {
                     item.put("supportedEventCodes", worker.getSupportedEventCodes());
                     item.put("maxConcurrentWork", worker.getMaxConcurrentWork());
                     item.put("eventBindings", WorkerCapabilityViewSupport.deriveEventBindings(
-                            worker.getSupportedEventCodes(), catalog));
+                            worker.getEventBindings(), worker.getSupportedEventCodes(), catalog));
                     item.put("adapterId", WorkerCapabilityViewSupport.resolveAdapterId(worker.getAdapterId(), connections));
                     item.put("transportHint", WorkerCapabilityViewSupport.resolveTransportHint(worker.getOnlineStrategy()));
                     item.put("attributes", worker.getAttributes());
                     item.put("lastHeartbeat", formatDateTime(worker.getLastHeartbeat()));
-                    item.put("locked", workerQueries.isWorkerLocked(worker.getWorkerId()));
+                    item.put("locked", runtimeDiagnostics != null && runtimeDiagnostics.isWorkerLocked(worker.getWorkerId()));
                     item.put("connections", connections);
                     item.put("hasActiveEndpoint", WorkerCapabilityViewSupport.hasActiveConnection(connections));
                     item.put("updateTime", formatDateTime(worker.getUpdateTime()));
-                    return item;
-                })
-                .toList();
-        return ApiResponse.success(Map.of(
-                "items", items,
-                "total", items.size()
-        ));
-    }
-
-    @GetMapping("/worker-contexts")
-    public ApiResponse<Map<String, Object>> listWorkerContexts() {
-        List<Map<String, Object>> items = workerQueries.getAllWorkerContexts().stream()
-                .sorted(Comparator.comparing(WorkerContextSnapshot::getWorkerContextId, Comparator.nullsLast(String::compareTo)))
-                .map(workerContext -> {
-                    Map<String, Object> item = new LinkedHashMap<>();
-                    item.put("workerContextId", workerContext.getWorkerContextId());
-                    item.put("workerId", workerContext.getWorkerId());
-                    item.put("project", workerContext.getProject());
-                    item.put("status", workerContext.getStatus());
-                    item.put("routingTags", workerContext.getRoutingTags());
-                    item.put("attributes", workerContext.getAttributes());
-                    item.put("lastBindTaskId", workerContext.getLastBindTaskId());
-                    item.put("lastUsedTime", formatDateTime(workerContext.getLastUsedTime()));
-                    item.put("updateTime", formatDateTime(workerContext.getUpdateTime()));
                     return item;
                 })
                 .toList();

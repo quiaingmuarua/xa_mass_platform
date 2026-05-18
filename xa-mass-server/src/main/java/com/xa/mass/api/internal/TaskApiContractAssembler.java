@@ -321,7 +321,6 @@ final class TaskApiContractAssembler {
                 row.getRetryCount(),
                 row.getMaxRetryCount(),
                 row.getWorkerId(),
-                row.getWorkerContextId(),
                 row.getBatchId(),
                 row.getAttemptId(),
                 row.getPayloadRef(),

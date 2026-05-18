@@ -10,10 +10,7 @@ import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
-import com.xa.mass.sdk.model.WorkerContextSnapshot;
-import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerEventBinding;
-import com.xa.mass.sdk.model.WorkerSnapshot;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.transport.WorkerTransportHints;
 import org.slf4j.Logger;
@@ -27,6 +24,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -40,36 +38,29 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
             .registerModule(new JavaTimeModule());
 
     private final String workerConfigPath;
-    private final String workerContextConfigPath;
     private final String taskConfigPath;
     private final String ruleConfigPath;
     private final boolean loadWorkers;
-    private final boolean loadWorkerContexts;
     private final boolean loadTasks;
     private final boolean loadRules;
 
     public MockRuntimeDataLoader(String workerConfigPath,
-                                 String workerContextConfigPath,
                                  String taskConfigPath,
                                  String ruleConfigPath) {
-        this(workerConfigPath, workerContextConfigPath, taskConfigPath, ruleConfigPath,
-                true, true, true, true);
+        this(workerConfigPath, taskConfigPath, ruleConfigPath,
+                true, true, true);
     }
 
     public MockRuntimeDataLoader(String workerConfigPath,
-                                 String workerContextConfigPath,
                                  String taskConfigPath,
                                  String ruleConfigPath,
                                  boolean loadWorkers,
-                                 boolean loadWorkerContexts,
                                  boolean loadTasks,
                                  boolean loadRules) {
         this.workerConfigPath = workerConfigPath;
-        this.workerContextConfigPath = workerContextConfigPath;
         this.taskConfigPath = taskConfigPath;
         this.ruleConfigPath = ruleConfigPath;
         this.loadWorkers = loadWorkers;
-        this.loadWorkerContexts = loadWorkerContexts;
         this.loadTasks = loadTasks;
         this.loadRules = loadRules;
     }
@@ -77,17 +68,12 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
     @Override
     public void loadInto(MassRuntimeControl runtime) {
         Objects.requireNonNull(runtime, "runtime");
-        logger.info("Loading bootstrap data [workers={}, contexts={}, rules={}, tasks={}]",
-                workerConfigPath, workerContextConfigPath, ruleConfigPath, taskConfigPath);
+        logger.info("Loading bootstrap data [workers={}, rules={}, tasks={}]",
+                workerConfigPath, ruleConfigPath, taskConfigPath);
         if (loadWorkers) {
             loadWorkers(runtime);
         } else {
             logger.info("Worker bootstrap load disabled [path={}]", workerConfigPath);
-        }
-        if (loadWorkerContexts) {
-            loadWorkerContexts(runtime);
-        } else {
-            logger.info("Worker context bootstrap load disabled [path={}]", workerContextConfigPath);
         }
         if (loadRules) {
             loadRules(runtime);
@@ -120,26 +106,6 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
             accepted++;
         }
         logger.info("Loaded {} workers via SDK registration [path={}]", accepted, workerConfigPath);
-    }
-
-    private void loadWorkerContexts(MassRuntimeControl runtime) {
-        WorkerContextFixture[] contexts = readConfig(workerContextConfigPath, WorkerContextFixture[].class);
-        if (contexts == null) return;
-        if (contexts.length == 0) {
-            logger.info("Worker context config is empty, workers will run stateless [path={}]", workerContextConfigPath);
-            return;
-        }
-        int accepted = 0;
-        for (WorkerContextFixture ctx : contexts) {
-            normalizeWorkerContext(ctx);
-            if (ctx.getWorkerId() == null || ctx.getWorkerId().isBlank()) {
-                logger.warn("Skipping worker context {} - workerId missing", ctx.getWorkerContextId());
-                continue;
-            }
-            runtime.registerWorkerContext(toRegistration(ctx));
-            accepted++;
-        }
-        logger.info("Loaded {} worker contexts via SDK registration [path={}]", accepted, workerContextConfigPath);
     }
 
     private void loadRules(MassRuntimeControl runtime) {
@@ -230,20 +196,6 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
         }
     }
 
-    private void normalizeWorkerContext(WorkerContextFixture workerContext) {
-        if (workerContext == null) {
-            return;
-        }
-        if (workerContext.getRoutingTags() != null && !workerContext.getRoutingTags().isEmpty()) {
-            workerContext.setRoutingTags(
-                    workerContext.getRoutingTags().stream()
-                            .filter(Objects::nonNull)
-                            .map(String::toLowerCase)
-                            .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new))
-            );
-        }
-    }
-
     private WorkerRegistration toRegistration(WorkerFixture worker) {
         WorkerRegistration.Builder builder = WorkerRegistration.builder()
                 .workerId(worker.getWorkerId())
@@ -275,18 +227,6 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
                     .build());
         }
         return bindings.isEmpty() ? List.of() : List.copyOf(bindings);
-    }
-
-    private WorkerContextRegistration toRegistration(WorkerContextFixture workerContext) {
-        WorkerContextRegistration.Builder builder = WorkerContextRegistration.builder()
-                .workerContextId(workerContext.getWorkerContextId())
-                .workerId(workerContext.getWorkerId())
-                .routingTags(workerContext.getRoutingTags())
-                .attributes(workerContext.getAttributes());
-        if (workerContext.getProject() != null && !workerContext.getProject().isBlank()) {
-            builder.project(workerContext.getProject());
-        }
-        return builder.build();
     }
 
     private String readConfigFile(String configPath) throws IOException {
@@ -392,54 +332,6 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
 
         public void setSupportedEventCodes(List<String> supportedEventCodes) {
             this.supportedEventCodes = supportedEventCodes;
-        }
-
-        public java.util.Map<String, String> getAttributes() {
-            return attributes;
-        }
-
-        public void setAttributes(java.util.Map<String, String> attributes) {
-            this.attributes = attributes;
-        }
-    }
-
-    private static final class WorkerContextFixture {
-        private String workerContextId;
-        private String workerId;
-        private String project;
-        private java.util.Set<String> routingTags;
-        private java.util.Map<String, String> attributes;
-
-        public String getWorkerContextId() {
-            return workerContextId;
-        }
-
-        public void setWorkerContextId(String workerContextId) {
-            this.workerContextId = workerContextId;
-        }
-
-        public String getWorkerId() {
-            return workerId;
-        }
-
-        public void setWorkerId(String workerId) {
-            this.workerId = workerId;
-        }
-
-        public String getProject() {
-            return project;
-        }
-
-        public void setProject(String project) {
-            this.project = project;
-        }
-
-        public java.util.Set<String> getRoutingTags() {
-            return routingTags;
-        }
-
-        public void setRoutingTags(java.util.Set<String> routingTags) {
-            this.routingTags = routingTags;
         }
 
         public java.util.Map<String, String> getAttributes() {

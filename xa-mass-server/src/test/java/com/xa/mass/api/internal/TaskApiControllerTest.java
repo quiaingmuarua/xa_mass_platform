@@ -49,6 +49,7 @@ import java.util.Optional;
 import java.time.Instant;
 import java.util.concurrent.CompletableFuture;
 
+import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
@@ -285,7 +286,6 @@ class TaskApiControllerTest {
                         Map.of("html", "<ok>"),
                         "attempt-001",
                         "worker-001",
-                        "context-001",
                         "batch-001"
                 )
         ));
@@ -322,7 +322,6 @@ class TaskApiControllerTest {
                         Map.of(),
                         "attempt-001",
                         "worker-001",
-                        "context-001",
                         "batch-001"
                 )
         ));
@@ -358,6 +357,7 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.data.archiveReady").value(false))
                 .andExpect(jsonPath("$.data.items[0].seq").value(2))
                 .andExpect(jsonPath("$.data.items[0].messageId").value("msg-002"))
+                .andExpect(jsonPath("$.data.items[0].workerId").value("worker-002"))
                 .andExpect(jsonPath("$.data.items[1].seq").value(3))
                 .andExpect(jsonPath("$.data.nextAfterSeq").value(3))
                 .andExpect(jsonPath("$.data.hasMore").value(false));
@@ -673,7 +673,6 @@ class TaskApiControllerTest {
                 output,
                 "attempt-" + messageId,
                 workerId,
-                "context-" + workerId,
                 "batch-" + messageId
         );
     }
@@ -688,7 +687,6 @@ class TaskApiControllerTest {
                 0,
                 3,
                 workerId,
-                "context-001",
                 "batch-001",
                 "attempt-001",
                 "payload-ref",

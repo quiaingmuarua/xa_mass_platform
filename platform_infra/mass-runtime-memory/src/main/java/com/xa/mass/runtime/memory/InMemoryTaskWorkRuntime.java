@@ -267,7 +267,6 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
                     item.messageId(),
                     leaseToken,
                     capacity.target.workerId(),
-                    capacity.target.workerContextId(),
                     capacity.target.batchId(),
                     item.payloadRef(),
                     item.retryCount(),
@@ -284,7 +283,6 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
                     item.messageId(),
                     leaseToken,
                     lease.workerId(),
-                    lease.workerContextId(),
                     lease.batchId(),
                     item.eventCode(),
                     item.payload(),
@@ -348,7 +346,6 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
         return RuntimeResultApplyContext.withSnapshot(
                 outcome,
                 lease.workerId(),
-                lease.workerContextId(),
                 lease.batchId(),
                 lease.leaseToken(),
                 lease.payloadRef(),
@@ -804,4 +801,3 @@ public final class InMemoryTaskWorkRuntime implements TaskWorkRuntime {
         }
     }
 }
-

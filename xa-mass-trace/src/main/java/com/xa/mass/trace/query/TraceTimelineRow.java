@@ -10,7 +10,6 @@ public record TraceTimelineRow(
         String messageId,
         String attemptId,
         String workerId,
-        String workerContextId,
         String src,
         String dst,
         String transitionReason,

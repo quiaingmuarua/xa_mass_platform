@@ -1,10 +1,10 @@
 # Scheduling Upgrade Roadmap
 
-Last updated: 2026-05-15
+Last updated: 2026-05-18
 
-Status: proposed long-range roadmap. This is not a current engine baseline and
-must not be read as implemented behavior, except for progress notes explicitly
-marked as implemented.
+Status: historical long-range roadmap plus future directions. Completed
+progress notes describe current engine baseline. Future/proposed sections
+remain planning material and must not be read as implemented behavior.
 
 Progress:
 
@@ -16,7 +16,7 @@ Progress:
   beside legacy `workerContext*` rule variables.
 - 2026-05-15: Step 2 continued. Default routing rules and representative
   routing tests now read `workerScheduling*` fields while legacy
-  `workerContext*` variables remain available.
+  `workerContext*` variables remained available until WC-3E.
 - 2026-05-15: Step 2 continued. Matching prefilter decisions and diagnostic
   snapshots now consume `WorkerSchedulingView` for context allocatability,
   project, and routing checks while preserving legacy trace/record fields.
@@ -25,8 +25,8 @@ Progress:
   `WorkerSchedulingCandidate` instead of a context-first matched resource type.
 - 2026-05-15: Step 2 rule surface convergence was implemented. Default and
   derived rule sets now use `workerScheduling*` / `isWorkerScheduling*`
-  variables, while legacy `workerContext*` variables remain available for
-  transition compatibility.
+  variables. Legacy `workerContext*` transition variables were removed from
+  `WorkerMatchContext` later in WC-3E.
 - 2026-05-15: Step 4 observational foundation was implemented early. A
   process-local `WorkerLoadView` now tracks runtime claim/final callbacks and
   exposes load fields through `WorkerSchedulingView` / `WorkerMatchContext`.
@@ -52,8 +52,8 @@ Progress:
 - 2026-05-15: Step 7E foreground/background lock behavior was implemented for
   the current stateless-worker path. `foreground=true` keeps the existing
   exclusive worker lock; `foreground=false` skips the long-lived worker lock and
-  relies on `WorkerLoadView` capacity reservation. Legacy WorkerContext-backed
-  resources remain context-exclusive until WorkerContext retirement.
+  relies on `WorkerLoadView` capacity reservation. WC-3F later collapsed
+  WorkerContext identity out of this resource policy.
 - 2026-05-15: Step 7F server trace-observed wiring proof was implemented.
   `TaskApiBackgroundWorkerSharingTraceObservedIntegrationTest` creates
   `foreground=false` tasks through the real Boot/API/SDK/transport path, keeps
@@ -78,10 +78,45 @@ Progress:
   `WorkerDispatchResourcePolicy` now owns worker-level exclusive lock semantics
   and legacy WorkerContext lifecycle classification across matching, assignment
   cleanup, dispatch binding, and resource release.
+- 2026-05-15: WorkerContext retirement WC-1 started. Representative engine and
+  server routing proof now uses stateless worker attributes (`routingTag` /
+  `routingTags`, `country`) instead of `WorkerContextRegistration` attributes.
+  `WorkerContext` storage/API/runtime lifecycle remains in place for later
+  retirement phases.
+- 2026-05-15: WorkerContext retirement WC-2 started. Legacy WorkerContext
+  candidate expansion moved behind `WorkerSchedulingCandidateEnumerator`, and
+  `RuleBasedTaskWorkerMatchingStrategy` now consumes scheduling candidates
+  without directly reading WorkerContext storage. This transitional candidate
+  payload was removed later in WC-3D.
+- 2026-05-15: WorkerContext retirement WC-2B test proof convergence was
+  implemented. Strategy-level matching, trace, and prefilter proof now uses
+  stateless worker scheduling attributes by default; remaining context-backed
+  strategy fixtures are explicitly named `legacyContext*` and guarded as
+  transitional coverage.
+- 2026-05-15: WorkerContext retirement WC-2C strategy import convergence was
+  implemented. `RuleBasedTaskWorkerMatchingStrategy` no longer imports
+  `WorkerContext`; the production strategy package's only direct WorkerContext
+  import/storage read is the transitional `WorkerSchedulingCandidateEnumerator`.
+- 2026-05-15: WorkerContext retirement WC-2D diagnostic handoff convergence
+  was implemented. Worker-level assignment diagnostics now consume
+  `WorkerSchedulingCandidate`; matching strategy code no longer unwraps
+  WorkerContext payloads and leaves legacy identity extraction inside
+  trace/diagnostic owners.
+- 2026-05-15: WorkerContext retirement WC-2E rule snapshot owner convergence
+  was implemented. `WorkerMatchContext` now owns the rule and diagnostic
+  snapshot field map, and `RuleBasedTaskWorkerMatchingStrategy` consumes that
+  read model for prefilter records instead of maintaining a duplicate
+  `workerScheduling*` / `workerContext*` snapshot builder.
+- 2026-05-15: WorkerContext retirement WC-2F proof replacement baseline was
+  implemented. Worker match trace now carries worker scheduling evidence, and
+  `worker-attribute-routing-without-context` proves stateless worker attribute
+  routing through canonical JSONL without using context identity as the
+  scheduling success proof.
 - 2026-05-15: Step 8E legacy WorkerContext lifecycle owner convergence was
   implemented. `LegacyWorkerContextResourceLifecycle` now owns the transitional
   `IDLE -> RESERVED -> OCCUPIED -> IDLE` WorkerContext mutation and trace path
-  consumed by dispatch binding and resource release mechanisms.
+  consumed by dispatch binding and resource release mechanisms. This was later
+  retired by WC-3A.
 - 2026-05-15: Step 8F dispatch resource cleanup owner convergence was
   implemented. `WorkerDispatchResourceReleaser` now owns the repeated
   reservation release plus conditional exclusive worker unlock mechanism and
@@ -90,16 +125,114 @@ Progress:
   release-listener attempt/terminal close paths.
 - 2026-05-15: Step 8G scheduling owner architecture guards were implemented.
   `EngineSchedulingCoreArchitectureGuardTest` now prevents listener/binder
-  orchestration from calling dispatch cleanup primitives directly, keeps
-  transitional WorkerContext state mutation behind
-  `LegacyWorkerContextResourceLifecycle`, and keeps retired context-first
-  matching handoff types removed from engine source and scheduling tests.
+  orchestration from calling dispatch cleanup primitives directly, initially
+  kept transitional WorkerContext state mutation isolated, and keeps retired
+  context-first matching handoff types removed from engine source and
+  scheduling tests. WC-3A later changed this guard to forbid WorkerContext
+  runtime state mutation in the engine mainline.
 - 2026-05-15: Step 8H dispatch resource policy consistency was implemented.
   Legacy WorkerContext-backed candidates and attempts now keep the exclusive
   worker lock even for `foreground=false` tasks, so only stateless background
   candidates can share worker capacity. Candidate cleanup uses
   `usageForCandidate(...)`, and attempt/terminal cleanup uses
   `usageForAttempt(...)`, matching the acquisition path's policy granularity.
+  This transitional context-exclusive behavior was removed by WC-3F.
+- 2026-05-15: Step 8I cross-task fairness trace proof was implemented.
+  `xa-mass-trace` now includes the `cross-task-worker-fairness` analyzer. The
+  scenario reads canonical assignment rows for `<bulkTaskId>,<interactiveTaskId>`
+  and proves that budget-limited BULK backlog pressure still leaves distinct
+  worker capacity for successful INTERACTIVE dispatch.
+- 2026-05-15: Step 8I server trace-observed wiring proof was implemented.
+  `TaskApiCrossTaskWorkerFairnessTraceObservedIntegrationTest` creates real
+  Boot/API/SDK/WebSocket work for concurrent BULK and INTERACTIVE tasks,
+  verifies the BULK task remains capped by the default worker budget with ready
+  backlog, verifies the INTERACTIVE task dispatches to a distinct worker, and
+  then proves the behavior through canonical JSONL using
+  `cross-task-worker-fairness`. `WorkerLoadView` reservation confirmation now
+  also contributes to per-task active worker count so budget decisions see
+  confirmed runtime claims.
+- 2026-05-15: WorkerContext retirement WC-2G boundary inventory was recorded.
+  The plan now separates kernel-facing worker scheduling views, reachability,
+  load/reservation, dispatch events, result convergence, and trace evidence
+  from worker-management/system-event ownership for device/account CRUD,
+  account switching, capability refresh, and operator administration.
+- 2026-05-16: WorkerContext retirement WC-2H worker cleanup proof replacement
+  was implemented. `WorkerDispatchResourceReleaser` now emits worker-level
+  `RESOURCE_RELEASED` evidence when an exclusive worker lock is released, and
+  `xa-mass-trace` includes `worker-resource-cleanup-without-context` to prove
+  stateless worker cleanup without relying on context identity or
+  `WORKER_CONTEXT_STATUS_TRANSITION`.
+- 2026-05-16: WorkerContext retirement WC-3A runtime lifecycle removal was
+  implemented. `LegacyWorkerContextResourceLifecycle` was deleted, binder and
+  release-listener paths no longer mutate `WorkerContextStatus`, and engine
+  scheduling tests now prove context-backed resource occupancy with active
+  runtime leases plus worker locks rather than `OCCUPIED` context state.
+- 2026-05-16: WorkerContext retirement WC-3B diagnostic snapshot convergence
+  was implemented. Assignment diagnostics now snapshot
+  `WorkerSchedulingView` evidence through `WorkerSchedulingSnapshot`; the
+  engine-owned `WorkerContextSnapshot` diagnostic model was deleted, and
+
+- 2026-05-16: WorkerContext retirement WC-3C matching context expansion removal
+  was implemented. `WorkerSchedulingCandidateEnumerator` now creates one
+  worker-level candidate per worker and no longer reads WorkerContext storage;
+  context-backed matching fixtures were removed from the strategy proof
+  surface and source guards now forbid WorkerContext storage/payload usage in
+  the matching strategy package.
+- 2026-05-16: WorkerContext retirement WC-4B physical model/API deletion was
+  implemented. `WorkerContext` and `WorkerContextStatus` were deleted from
+  base, WorkerContext CRUD was removed from storage, SDK/server context
+  registration/query endpoints were deleted, frontend/operator resource pages
+  were removed, and test-only worker-context fixture inputs were retired in
+  favor of worker attributes. Runtime/transport payloads were later converged
+  to worker-level identity; nullable trace schema residue remains bounded.
+- 2026-05-16: WorkerContext retirement WC-3D candidate payload removal was
+  implemented. `WorkerSchedulingCandidate` now carries only `Worker` plus
+  `WorkerSchedulingView`; the handoff no longer carries a nullable
+  `WorkerContext` object.
+- 2026-05-16: WorkerContext retirement WC-3E rule/read-model compatibility
+  shrink was implemented. `WorkerSchedulingView` no longer flattens
+  WorkerContext status/project/routing/attributes into scheduling facts,
+  `WorkerMatchContext` no longer exposes `workerContext*` rule variables, and
+  matching prefilter now uses only worker-level scheduling evidence.
+- 2026-05-16: WorkerContext retirement WC-3F runtime/resource compatibility
+  identity narrowing was implemented. `WorkerDispatchResourceUsage` now models
+  only worker-level exclusive lock usage, `WorkerDispatchResourcePolicy` no
+  longer derives resource semantics from WorkerContext identity, and the default
+  dispatch binder no longer passes candidate context identity into runtime
+  claim targets.
+- 2026-05-16: WorkerContext retirement WC-4A scheduling view/model dependency
+  removal was implemented. `WorkerSchedulingView` no longer imports, accepts,
+  or exposes `WorkerContext`; scheduling-core harness workers are registered
+  through worker attributes instead of WorkerContext fixtures.
+- 2026-05-16: WorkerContext retirement runtime proof convergence continued.
+  Runtime work-contract, in-memory runtime, and Redis runtime tests now use
+  `WorkerClaimTarget.workerLevel(...)` for normal claim/lease proof. Direct
+  context-backed claim targets remain only in explicit compatibility or
+  historical trace cases, and an architecture guard prevents scattered direct
+  `TaskResultCorrelation` construction outside its named factories.
+- 2026-05-16: WorkerContext retirement SDK/API result proof convergence
+  completed. `TaskResultItemSnapshot` and HTTP result rows no longer expose
+  context identity; SDK polling result reads and API result rows use
+  worker-level attempt identity.
+- 2026-05-16: WorkerContext retirement result-runtime payload convergence
+  completed. `TaskResultCallbackDraft`, `TaskResultFinalDraft`,
+  `TaskResultService`, and runtime contract fixtures no longer carry
+  context identity.
+- 2026-05-16: WorkerContext retirement dispatch payload convergence
+  completed. `TaskDispatchBinding`, the dispatch binder, transport dispatch
+  items, and transport batch codecs no longer carry context identity.
+- 2026-05-16: WorkerContext retirement string-residue convergence completed
+  for runtime, transport, projection, SDK/API result rows, and server E2E
+  worker registration. WorkerContext identity residue was later removed from
+  canonical trace as well; remaining references are architecture/source guards
+  and historical documentation.
+- 2026-05-18: WorkerGroup capability and candidate-index core line closed
+  through WG-5. `WorkerCandidateIndex` is the active Stage-1 source for target
+  worker, SDK event, and project-only tasks; Stage 2 materializes capability
+  fields from `WorkerGroupRecord`; canonical assignment trace carries
+  `workerGroupId`, `eventBindingKey`, and `workerCandidateSource`; and
+  `group-capability-routing` proves event-code group routing through real
+  Boot/API/SDK/transport wiring.
 
 This document records the intended path for a long-running engine scheduling
 upgrade. The work is deliberately split into small, independently verifiable
@@ -211,10 +344,10 @@ Default policy is acceptable. Hidden policy inside mechanism is not.
 | --- | --- | --- |
 | `TaskAssignWorker` | assignment signal queueing, lane workers, retry/defer, queue snapshots | runtime profile / dispatch priority |
 | `TaskWorkerAssignListener` | assignment orchestration, status transition, dispatch resource cleanup, assignment trace, task update, assignment event publication | `AssignmentAllocationPolicy`, matching strategy, `WorkerDispatchResourcePolicy`, `WorkerDispatchResourceReleaser` |
-| `RuleBasedTaskWorkerMatchingStrategy` | candidate enumeration, context construction, rule evaluation execution, lock/reservation attempt, match trace | matching rules, `WorkerCandidateRanker`, `WorkerDispatchResourcePolicy`, load/reachability views |
+| `WorkerSchedulingCandidateEnumerator` | one worker read-model row to one scheduling candidate | worker storage/read views, reachability, load snapshots |
+| `RuleBasedTaskWorkerMatchingStrategy` | scheduling-candidate consumption, rule evaluation execution, lock/reservation attempt, match trace | matching rules, `WorkerCandidateRanker`, `WorkerDispatchResourcePolicy`, load/reachability views, candidate enumerator |
 | `SimpleTaskDispatchBinder` | runtime claim, attempt creation, dispatch binding, handoff compensation, binding trace | allocation/matching output, `WorkerDispatchResourcePolicy`, `WorkerDispatchResourceReleaser` |
-| `TaskResourceReleaseListener` | worker load finalization, WorkerContext release orchestration, worker lock release orchestration after attempt/terminal close | `AssignmentRefillPolicy`, `WorkerDispatchResourcePolicy`, `WorkerDispatchResourceReleaser` |
-| `LegacyWorkerContextResourceLifecycle` | transitional WorkerContext prepare/release state mutation and trace while WorkerContext remains a runtime payload | dispatch/release mechanisms |
+| `TaskResourceReleaseListener` | worker load finalization and worker lock release orchestration after attempt/terminal close | `AssignmentRefillPolicy`, `WorkerDispatchResourcePolicy`, `WorkerDispatchResourceReleaser` |
 | `WorkerDispatchResourceReleaser` | release worker reservations, conditionally unlock exclusive worker locks, emit lock-release trace for assignment cleanup, binder compensation, dispatch-submit failure compensation, and attempt/terminal close paths | `WorkerDispatchResourcePolicy` |
 | `WorkerLoadView` | push-updated load snapshot and process-local reservation accounting | runtime/attempt lifecycle events, matching reservation handoff |
 | `WorkerReachabilityView` | push-updated transport reachability snapshot | transport presence events |
@@ -284,16 +417,16 @@ items can be reordered, but each step must preserve the owner boundaries above.
 
 | Step | Name | Behavioral risk | Primary owner touched | Status |
 | --- | --- | --- | --- | --- |
-| 0 | Roadmap and guardrails | None | Docs | Proposed |
+| 0 | Roadmap and guardrails | None | Docs | Implemented |
 | 1 | Retire inert `TaskScheduler` SPI | Low to medium | Engine/SDK wiring | Implemented 2026-05-15 |
-| 2 | Worker scheduling view convergence | Medium | Matching and worker read model | Implemented through default rule surface and candidate handoff; API cleanup proposed |
-| 3 | WorkerContext public/storage cleanup | High | Server/API/storage/tests | Proposed |
+| 2 | Worker scheduling view convergence | Medium | Matching and worker read model | Implemented; WorkerContext rule/read-model compatibility removed |
+| 3 | WorkerContext public/storage cleanup | High | Server/API/storage/tests | Implemented; model/API/runtime/transport/projection payload removed |
 | 4 | WorkerLoadView foundation | Medium | Runtime/attempt/load view | Implemented; extended by Step 7A reservation |
 | 5 | Dispatch priority within lanes | Medium | `TaskAssignWorker` | Implemented 2026-05-15 |
 | 6 | Worker candidate ranker | Medium | Matching strategy | Implemented 2026-05-15 |
-| 7 | Capacity reservation and foreground/background | High | Matching/runtime/allocation | Reservation foundation and trace analyzer implemented; foreground/background proposed |
-| 8 | Cross-task worker budget, fairness, refill owner, and resource usage owner | High | Allocation/release/resource policy/load view | Bounded default budget, refill policy, dispatch resource usage policy, legacy WorkerContext lifecycle owner, dispatch cleanup owner, and architecture guards implemented; fairness scenario proposed |
-| 9 | System-event worker management boundary | High | Worker management integration | Proposed |
+| 7 | Capacity reservation and foreground/background | High | Matching/runtime/allocation | Implemented for process-local worker capacity and stateless background sharing |
+| 8 | Cross-task worker budget, fairness, refill owner, and resource usage owner | High | Allocation/release/resource policy/load view | Bounded default budget, refill policy, dispatch resource usage policy, legacy WorkerContext lifecycle owner, dispatch cleanup owner, architecture guards, fairness analyzer, and server trace-observed proof implemented |
+| 9 | System-event worker management boundary | High | Worker management integration | Future separate roadmap |
 
 ## 8. Step 1: Retire Inert TaskScheduler SPI
 
@@ -385,7 +518,7 @@ hands off `WorkerSchedulingCandidate`.
 - Add tests proving worker-level attributes can express current routing and
   attribute matching scenarios.
 - Replace the internal matching handoff with `WorkerSchedulingCandidate` while
-  preserving runtime binding behavior and trace `workerContextId`.
+  preserving runtime binding behavior and trace worker identity.
 - Migrate default and derived rule sets to worker scheduling variables.
 - Keep current behavior until the view is proven.
 
@@ -402,12 +535,13 @@ hands off `WorkerSchedulingCandidate`.
 - Focused `WorkerSchedulingCandidate` tests.
 - Focused `RuleConfig` tests guarding default rule surface.
 - `RuleBasedTaskWorkerMatchingStrategyTest`.
-- Existing routing E2E tests.
+- Existing routing E2E tests, with representative routing proof using worker
+  registration attributes rather than WorkerContext registration attributes.
 - `assignment-success-binding` trace scenario remains valid.
 
 ### Trace
 
-If existing canonical events rely on `workerContextId`, keep the field nullable
+If existing canonical events rely on context identity, keep the field nullable
 or transitional until downstream analyzers can validate worker-level events. Do
 not remove trace fields before analyzers are updated.
 
@@ -418,17 +552,29 @@ not remove trace fields before analyzers are updated.
 Physically retire `WorkerContext` artifacts after engine hot-path matching no
 longer depends on them.
 
+Status: physical model, storage CRUD, SDK API, server endpoints,
+frontend/operator resource pages, and test-only context fixture inputs are
+removed. Remaining work is runtime/transport/trace context-id payload
+residue. The current worker-level dispatch path no longer passes a context
+identity into runtime claim targets, creates runtime claim targets through
+`WorkerClaimTarget.workerLevel(...)`, generates worker-level attempt ids without
+a legacy context placeholder, builds worker-level result-correlation snapshots
+for null-context leases, omits the legacy payload field when null, and release
+policy no longer accepts context identity as an input.
+
 ### Scope
 
-Candidate removals after Step 2 is proven:
+Completed removals:
 
 - `WorkerContext` model.
 - `WorkerContextStatus`.
 - context storage APIs.
 - worker context registration request/response DTOs.
 - context CRUD endpoints.
-- context fixtures and snapshots.
-- context-specific QLExpress variables.
+- SDK context registration/snapshot contracts.
+
+Remaining follow-up candidates:
+
 - context-specific assignment trace requirements.
 
 ### Out of scope
@@ -662,8 +808,8 @@ implemented on 2026-05-15.
 `WorkerLoadView`, and `ExecutionSpec.foreground` controls whether matching
 requires the long-lived worker lock. `foreground=true` remains the compatible
 exclusive default. `foreground=false` can share stateless workers up to declared
-capacity; WorkerContext-backed resources remain context-exclusive until the
-WorkerContext retirement path removes that legacy runtime slot.
+capacity. As of WC-3F, WorkerContext identity no longer changes resource policy
+or runtime claim targets.
 
 ### Goal
 
@@ -693,11 +839,10 @@ long-lived worker lock still prevents shared foreground dispatch.
 options, server task execution read models, and canonical assignment trace. A
 `false` value now changes worker-lock behavior: matching still reserves worker
 capacity, but it does not acquire the long-lived exclusive worker lock. This
-enables stateless worker sharing up to `Worker.maxConcurrentWork`. It does not
-make legacy WorkerContext-backed resources shared; those resources still follow
-their existing context reservation/occupation lifecycle.
+enables worker sharing up to `Worker.maxConcurrentWork`; WorkerContext identity
+is not part of the sharing decision.
 
-### Proposed semantics
+### Implemented semantics
 
 - Foreground task: reserves full worker capacity and may use an exclusive worker
   lock for compatibility with current behavior.
@@ -707,7 +852,7 @@ their existing context reservation/occupation lifecycle.
 - Runtime claim confirmation converts reserved capacity to active capacity.
 - Dispatch or claim failure releases the reservation.
 
-### Proposed WorkerLoadView additions
+### WorkerLoadView reservation API
 
 ```java
 boolean tryReserveCapacity(String workerId, String taskId);
@@ -715,11 +860,9 @@ boolean confirmReservation(String workerId, String taskId);
 void releaseReservation(String workerId, String taskId);
 ```
 
-The current implemented API is intentionally smaller than the eventual
-foreground/background shape. It reserves one capacity unit against the worker's
-declared capacity and lets `SimpleTaskDispatchBinder` fall back to
-`recordWorkClaimed(...)` when tests or custom matching strategies bypass
-reservation.
+The current API reserves capacity against the worker's declared capacity and
+lets `SimpleTaskDispatchBinder` fall back to `recordWorkClaimed(...)` when tests
+or custom matching strategies bypass reservation.
 
 Worker match accepted/rejected trace rows read the current load snapshot at the
 reservation decision point. This makes `workerReservedCount`,
@@ -861,7 +1004,8 @@ Implemented assignment summary attrs:
 - Source guard: listener/binder orchestration cannot bypass dispatch cleanup
   owners, and WorkerContext state mutation cannot leak outside the transitional
   lifecycle owner.
-- Proposed next: trace scenario `cross-task-worker-fairness`.
+- Trace: `cross-task-worker-fairness` proves the mixed workload budget behavior
+  from canonical assignment rows.
 
 ## 16. Step 9: Worker Management/System Event Boundary
 
@@ -925,34 +1069,47 @@ WorkerContext retirement.
 | `load-aware-worker-selection` | Step 6 | Lower-load equivalent worker is selected first |
 | `capacity-reservation-under-concurrency` | Step 7 | Process-local capacity reservation is visible and accepted matches are not over committed |
 | `background-worker-sharing` | Step 7 | A background task reserves shared stateless worker capacity without long-lived worker lock evidence |
+| `worker-attribute-routing-without-context` | WorkerContext retirement WC-2F | Worker-level scheduling attributes route work without WorkerContext evidence |
 | `cross-task-worker-fairness` | Step 8 | Large BULK work does not starve concurrent INTERACTIVE work |
 | `account-switch-failure` | Step 9 | Account execution failure converges through result handling and trace |
 
 Each analyzer must read canonical sink output through `xa-mass-trace`. It must
 not read MDC logs, compatibility projection, or the database.
 
-## 18. Open Questions Before Implementation
+## 18. Historical Questions
 
-These questions should be answered before their corresponding step starts.
+These questions were the implementation gates for the completed kernel
+convergence work. They are retained as review context, not as current blockers.
 
 1. Is the long-term product decision that account/device/context lifecycle is
-   outside engine and system-event-managed?
+   outside engine and system-event-managed? Current baseline: yes for the
+   engine scheduling kernel; concrete system-event/device-management work is a
+   separate future roadmap.
 2. Should `WorkerSchedulingView` be a concrete engine type or only an internal
-   concept implemented through existing worker lookup APIs first?
+   concept implemented through existing worker lookup APIs first? Current
+   baseline: concrete engine-internal read model.
 3. During WorkerContext retirement, do we physically delete context APIs in one
-   step or first stop using them in the engine hot path?
+   step or first stop using them in the engine hot path? Current baseline:
+   phased hot-path convergence followed by physical deletion.
 4. What exact runtime behavior should `foreground=false` enable once the
    current read surface is wired: shared worker dispatch only, or also a
-   different result/lease profile?
+   different result/lease profile? Current baseline: shared worker dispatch via
+   capacity reservation; result/lease protocol remains unchanged.
 5. What is the exact unit of worker capacity: worker, active lease, active
-   attempt, dispatched message, or assignment binding?
+   attempt, dispatched message, or assignment binding? Current baseline:
+   process-local active/reserved worker lease capacity.
 6. How should stateless workers, multi-account workers, and future device pools
-   express capability without engine-managed context slots?
+   express capability without engine-managed context slots? Current baseline:
+   WorkerGroup/event bindings and worker scheduling attributes; account/device
+   lifecycle is outside the engine kernel.
 7. Which trace attrs are stable enough to add to `TRACE_CONTRACT.md` at each
-   phase?
+   phase? Current baseline: assignment trace includes worker scheduling/load,
+   resource cleanup, budget/fairness, and WorkerGroup source evidence.
 8. Do server E2E fixtures need to generate canonical JSONL for every new trace
    scenario, or can some trace scenarios stay fixture-level inside
-   `xa-mass-trace` until server wiring changes?
+   `xa-mass-trace` until server wiring changes? Current baseline:
+   representative server trace-observed proof for behavior-changing wiring;
+   analyzer edge cases may stay fixture-level.
 
 ## 19. Acceptance Rule For Each Step
 
@@ -971,18 +1128,23 @@ A step is not done until:
 
 ## 20. Current Recommended Next Step
 
-Do not start with full WorkerContext deletion.
+WorkerContext model/API/runtime/transport/projection payload deletion is now
+complete for the scheduling kernel and public worker/result surfaces. Canonical
+trace identity is also worker-level. Matching context expansion is removed from
+the production strategy package, the candidate handoff no longer carries a
+nullable `WorkerContext` object, and `WorkerSchedulingView` / `WorkerMatchContext`
+no longer expose `workerContext*` scheduling facts.
 
-The resource binding owner convergence is now implemented and guarded. The next
-recommended implementation step is a proof-oriented slice rather than another
-mechanism split: add the `cross-task-worker-fairness` trace scenario or a small
-trace-observed mixed-workload acceptance that proves bounded BULK allocation
-does not starve a concurrent INTERACTIVE task through canonical JSONL.
+The scheduling kernel mechanism line is now at a stable baseline. The next work
+should not be another broad kernel refactor. Keep source guards tight, keep
+scheduling proof on worker scheduling/load/resource evidence, and start any new
+capability as a separate focused roadmap:
 
-If the next discussion turns back to WorkerContext retirement, start with a
-worker-management/system-event boundary inventory and proof plan. Avoid broad
-WorkerContext deletion until trace analyzers and server routing E2E no longer
-need context-specific fields as proof.
+- worker-management/system-event boundaries
+- WorkerGroup capability self-report
+- AdapterNode lifecycle
+- routing-tag candidate indexes after measured need
+- policy quality improvements inside the existing policy owners
 
-Full WorkerContext deletion should wait until runtime binding, trace analyzers,
-and server routing E2E no longer need context-specific fields as proof.
+Do not reintroduce account/context CRUD or context-slot lifecycle under a new
+name.

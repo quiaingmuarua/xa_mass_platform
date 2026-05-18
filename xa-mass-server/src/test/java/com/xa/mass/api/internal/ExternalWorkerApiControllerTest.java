@@ -1,8 +1,10 @@
 package com.xa.mass.api.internal;
 
+import com.xa.mass.api.auth.ApiAuthorizationService;
+import com.xa.mass.sdk.WorkerClientOperations;
+import com.xa.mass.sdk.WorkerRegistryOperations;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.PrincipalContext;
-import com.xa.mass.sdk.ExternalWorkerOperations;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.TaskDispatchItem;
@@ -30,7 +32,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ExternalWorkerApiControllerTest {
 
     @Mock
-    private ExternalWorkerOperations externalWorkerOperations;
+    private WorkerRegistryOperations workerRegistry;
+
+    @Mock
+    private WorkerClientOperations workerClient;
 
     @Mock
     private AuthProvider authProvider;
@@ -50,12 +55,15 @@ class ExternalWorkerApiControllerTest {
                 Map.of("workerId", "node-worker-1")
         );
         lenient().when(authProvider.authenticate("node-worker-key")).thenReturn(workerSubmitter);
-        lenient().when(externalWorkerOperations.getWorkerAdapterId("node-worker-1"))
+        lenient().when(workerClient.getWorkerAdapterId("node-worker-1"))
                 .thenReturn(WorkerTransportHints.POLLING);
-        lenient().when(externalWorkerOperations.getWorkerTransportHint("node-worker-1"))
+        lenient().when(workerClient.getWorkerTransportHint("node-worker-1"))
                 .thenReturn(WorkerTransportHints.POLLING);
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new ExternalWorkerApiController(externalWorkerOperations, authProvider))
+                .standaloneSetup(new ExternalWorkerApiController(
+                        workerRegistry,
+                        workerClient,
+                        new ApiAuthorizationService(authProvider, null)))
                 .setControllerAdvice(new com.xa.mass.api.aop.GlobalExceptionHandler())
                 .build();
     }
@@ -87,7 +95,7 @@ class ExternalWorkerApiControllerTest {
                 .andExpect(jsonPath("$.data.transportHint").value(WorkerTransportHints.POLLING))
                 .andExpect(jsonPath("$.data.eventBindings[0].eventCode").value("crawler.fetch-page"));
 
-        verify(externalWorkerOperations).registerWorker(argThat(request ->
+        verify(workerRegistry).registerWorker(argThat(request ->
                 "node-worker-1".equals(request.getWorkerId())
                         && request.getAdapterId() == null
                         && WorkerTransportHints.POLLING.equals(request.getTransportHint())
@@ -211,7 +219,7 @@ class ExternalWorkerApiControllerTest {
 
     @Test
     void pollTasksReturnsTransportNeutralItems() throws Exception {
-        when(externalWorkerOperations.pollTasks("node-worker-1", 2, 250L)).thenReturn(List.of(
+        when(workerClient.pollTasks("node-worker-1", 2, 250L)).thenReturn(List.of(
                 new TaskDispatchItem(
                         "task-1",
                         "msg-1",
@@ -278,7 +286,7 @@ class ExternalWorkerApiControllerTest {
 
     @Test
     void submitResultMapsRequestToTransportReport() throws Exception {
-        when(externalWorkerOperations.submitResult(eq("node-worker-1"), argThat(report ->
+        when(workerClient.submitResult(eq("node-worker-1"), argThat(report ->
                 "task-1".equals(report.getTaskId())
                         && "msg-1".equals(report.getMessageId())
                         && report.isSuccess()
@@ -305,7 +313,7 @@ class ExternalWorkerApiControllerTest {
                 .andExpect(jsonPath("$.data.workerId").value("node-worker-1"))
                 .andExpect(jsonPath("$.data.submitted").value(true));
 
-        verify(externalWorkerOperations).submitResult(eq("node-worker-1"), argThat(report ->
+        verify(workerClient).submitResult(eq("node-worker-1"), argThat(report ->
                 "task-1".equals(report.getTaskId())
                         && "msg-1".equals(report.getMessageId())
                         && report.isSuccess()
@@ -316,7 +324,7 @@ class ExternalWorkerApiControllerTest {
 
     @Test
     void pollEndpointsRejectRealtimeWorkers() throws Exception {
-        when(externalWorkerOperations.getWorkerTransportHint("node-worker-1"))
+        when(workerClient.getWorkerTransportHint("node-worker-1"))
                 .thenReturn(WorkerTransportHints.REALTIME);
 
         mockMvc.perform(post("/worker-api/v1/workers/{workerId}:poll", "node-worker-1")

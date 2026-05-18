@@ -2,7 +2,6 @@ package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.engine.assignment.DefaultWorkerBudgetPolicy;
@@ -24,7 +23,7 @@ class TaskSchedulingContentionTest {
     @Test
     void multipleReadyBatchTasksCompeteForSingleContextWithoutDoubleAssignment() {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
-        harness.addWorkerWithContext("worker-single", "ctx-single", "us");
+        harness.addWorker("worker-single", "us");
         Task firstTask = harness.createReadyBatchTask("contention-first", List.of(harness.item("first")));
         Task secondTask = harness.createReadyBatchTask("contention-second", List.of(harness.item("second")));
 
@@ -45,15 +44,13 @@ class TaskSchedulingContentionTest {
         assertEquals(0, secondStats.inflightCount());
         assertEquals(1, firstLeases.size());
         assertEquals("worker-single", firstLeases.getFirst().workerId());
-        assertEquals("ctx-single", firstLeases.getFirst().workerContextId());
 
         AssignmentRecord rejectedRecord = harness.record(secondTask.getTid(), "worker-single");
         assertEquals(AssignmentResult.CONFLICT, rejectedRecord.getResult());
         assertEquals("worker locked", rejectedRecord.getReason());
         assertEquals(1, harness.successfulMessageAssignments(firstTask.getTid(), "worker-single"));
         assertEquals(0, harness.successfulMessageAssignments(secondTask.getTid(), "worker-single"));
-        assertEquals(WorkerContextStatus.OCCUPIED,
-                harness.workerManager.getWorkerContextById("ctx-single").getStatus());
+        assertTrue(harness.workerManager.isLocked("worker-single"));
     }
 
     @Test
@@ -80,8 +77,6 @@ class TaskSchedulingContentionTest {
         assertEquals(1, secondLeases.size());
         assertEquals("worker-background", firstLeases.getFirst().workerId());
         assertEquals("worker-background", secondLeases.getFirst().workerId());
-        assertEquals(null, firstLeases.getFirst().workerContextId());
-        assertEquals(null, secondLeases.getFirst().workerContextId());
 
         AssignmentRecord rejectedRecord = harness.record(thirdTask.getTid(), "worker-background");
         assertEquals(AssignmentResult.QUOTA_EXCEEDED, rejectedRecord.getResult());
@@ -91,8 +86,8 @@ class TaskSchedulingContentionTest {
     @Test
     void multipleReadyBatchTasksCompeteForWorkerPoolWithoutDuplicateLeaseOrLostReadyWork() {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
-        harness.addWorkerWithContext("worker-a", "ctx-a", "us");
-        harness.addWorkerWithContext("worker-b", "ctx-b", "us");
+        harness.addWorker("worker-a", "us");
+        harness.addWorker("worker-b", "us");
         Task firstTask = harness.createReadyBatchTask("pool-first", List.of(harness.item("first")));
         Task secondTask = harness.createReadyBatchTask("pool-second", List.of(harness.item("second")));
         Task thirdTask = harness.createReadyBatchTask("pool-third", List.of(harness.item("third")));
@@ -135,15 +130,13 @@ class TaskSchedulingContentionTest {
         ));
 
         assertEquals(TaskStatus.TERMINAL, harness.taskManager.getTask(firstTask.getTid()).getStatus());
-        assertEquals(WorkerContextStatus.IDLE,
-                harness.workerManager.getWorkerContextById(firstLease.workerContextId()).getStatus());
+        assertFalse(harness.workerManager.isLocked(firstLease.workerId()));
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(thirdTask.getTid())));
 
         List<ActiveLeaseRecord> thirdLeases = harness.activeLeases(thirdTask.getTid());
         assertEquals(1, thirdLeases.size());
         assertEquals(firstLease.workerId(), thirdLeases.getFirst().workerId());
-        assertEquals(firstLease.workerContextId(), thirdLeases.getFirst().workerContextId());
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(thirdTask.getTid()).getStatus());
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(secondTask.getTid()).getStatus());
         assertEquals(0, harness.stats(thirdTask.getTid()).readyCount());
@@ -154,7 +147,7 @@ class TaskSchedulingContentionTest {
     void largeBulkTaskIsCappedAndLeavesWorkersForInteractiveTask() {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
         for (int i = 0; i < 25; i++) {
-            harness.addWorkerWithContext("worker-budget-" + i, "ctx-budget-" + i, "us");
+            harness.addWorker("worker-budget-" + i, "us");
         }
         List<java.util.Map<String, Object>> bulkItems = new java.util.ArrayList<>();
         for (int i = 0; i < 100; i++) {
@@ -190,7 +183,7 @@ class TaskSchedulingContentionTest {
     @Test
     void pausedBlockedAndTerminatedTasksDoNotDispatchEvenWhenReadyWorkExists() {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
-        harness.addWorkerWithContext("worker-gate", "ctx-gate", "us");
+        harness.addWorker("worker-gate", "us");
         Task pausedTask = harness.createReadyBatchTask("paused-gate", List.of(harness.item("paused")));
         Task blockedTask = harness.createReadyBatchTask("blocked-gate", List.of(harness.item("blocked")));
         Task terminalTask = harness.createReadyBatchTask("terminal-gate", List.of(harness.item("terminal")));
@@ -217,7 +210,7 @@ class TaskSchedulingContentionTest {
     @Test
     void pausedWaitingTaskDoesNotAcquireReleasedResourceUntilResumed() {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
-        harness.addWorkerWithContext("worker-shared", "ctx-shared", "us");
+        harness.addWorker("worker-shared", "us");
         Task runningTask = harness.createReadyBatchTask("pause-wait-running", List.of(harness.item("running")));
         Task waitingTask = harness.createReadyBatchTask("pause-wait-waiting", List.of(harness.item("waiting")));
 
@@ -236,8 +229,7 @@ class TaskSchedulingContentionTest {
         ));
 
         assertEquals(TaskStatus.TERMINAL, harness.taskManager.getTask(runningTask.getTid()).getStatus());
-        assertEquals(WorkerContextStatus.IDLE,
-                harness.workerManager.getWorkerContextById("ctx-shared").getStatus());
+        assertFalse(harness.workerManager.isLocked("worker-shared"));
         assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(waitingTask.getTid())));
         assertEquals(TaskStatus.PAUSED, harness.taskManager.getTask(waitingTask.getTid()).getStatus());
         assertEquals(1, harness.stats(waitingTask.getTid()).readyCount());
@@ -249,14 +241,13 @@ class TaskSchedulingContentionTest {
         List<ActiveLeaseRecord> waitingLeases = harness.activeLeases(waitingTask.getTid());
         assertEquals(1, waitingLeases.size());
         assertEquals("worker-shared", waitingLeases.getFirst().workerId());
-        assertEquals("ctx-shared", waitingLeases.getFirst().workerContextId());
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(waitingTask.getTid()).getStatus());
     }
 
     @Test
     void blockedWaitingTaskDoesNotAcquireReleasedResourceAndNextReadyTaskCanCompete() {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
-        harness.addWorkerWithContext("worker-shared", "ctx-shared", "us");
+        harness.addWorker("worker-shared", "us");
         Task runningTask = harness.createReadyBatchTask("block-wait-running", List.of(harness.item("running")));
         Task blockedTask = harness.createReadyBatchTask("block-wait-blocked", List.of(harness.item("blocked")));
         Task nextReadyTask = harness.createReadyBatchTask("block-wait-next-ready", List.of(harness.item("next")));
@@ -277,8 +268,7 @@ class TaskSchedulingContentionTest {
         ));
 
         assertEquals(TaskStatus.TERMINAL, harness.taskManager.getTask(runningTask.getTid()).getStatus());
-        assertEquals(WorkerContextStatus.IDLE,
-                harness.workerManager.getWorkerContextById("ctx-shared").getStatus());
+        assertFalse(harness.workerManager.isLocked("worker-shared"));
         assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(blockedTask.getTid())));
         assertEquals(TaskStatus.BLOCKED, harness.taskManager.getTask(blockedTask.getTid()).getStatus());
         assertEquals(1, harness.stats(blockedTask.getTid()).readyCount());
@@ -289,12 +279,10 @@ class TaskSchedulingContentionTest {
         List<ActiveLeaseRecord> nextReadyLeases = harness.activeLeases(nextReadyTask.getTid());
         assertEquals(1, nextReadyLeases.size());
         assertEquals("worker-shared", nextReadyLeases.getFirst().workerId());
-        assertEquals("ctx-shared", nextReadyLeases.getFirst().workerContextId());
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(nextReadyTask.getTid()).getStatus());
         assertEquals(0, harness.stats(nextReadyTask.getTid()).readyCount());
         assertEquals(1, harness.stats(nextReadyTask.getTid()).inflightCount());
-        assertEquals(WorkerContextStatus.OCCUPIED,
-                harness.workerManager.getWorkerContextById("ctx-shared").getStatus());
+        assertTrue(harness.workerManager.isLocked("worker-shared"));
     }
 
     private Task createReadyBackgroundTask(TaskSchedulingTestHarness harness, String sourceRef, String target) {

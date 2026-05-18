@@ -176,7 +176,6 @@ public class InternalTaskReviewController {
         item.put("retryCount", projection.retryCount());
         item.put("maxRetryCount", projection.maxRetryCount());
         item.put("workerId", projection.latestAttemptWorkerId());
-        item.put("workerContextId", projection.latestAttemptWorkerContextId());
         item.put("batchId", projection.latestAttemptBatchId());
         item.put("attemptId", projection.latestAttemptId());
         item.put("startTime", formatDateTime(projection.startTime()));

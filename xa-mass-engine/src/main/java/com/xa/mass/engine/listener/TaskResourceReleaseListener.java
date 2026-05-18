@@ -3,22 +3,21 @@ package com.xa.mass.engine.listener;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.TaskWorkAttemptClosedEvent;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
-import com.xa.mass.engine.WorkerManager;
+import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.engine.assignment.AssignmentRefillDecision;
 import com.xa.mass.engine.assignment.AssignmentRefillPolicy;
 import com.xa.mass.engine.assignment.AssignmentRefillRequest;
 import com.xa.mass.engine.assignment.DefaultAssignmentRefillPolicy;
 import com.xa.mass.engine.resource.DefaultWorkerDispatchResourcePolicy;
-import com.xa.mass.engine.resource.LegacyWorkerContextResourceLifecycle;
 import com.xa.mass.engine.resource.WorkerDispatchResourceReleaser;
 import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
 import com.xa.mass.engine.resource.WorkerDispatchResourceUsage;
 import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 
-import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
 
 /**
  * Releases runtime-only resource occupancy when a task reaches TERMINAL.
@@ -30,7 +29,6 @@ public class TaskResourceReleaseListener {
     private final TraceEventLogger traceEventLogger;
     private final AssignmentRefillPolicy refillPolicy;
     private final WorkerDispatchResourcePolicy resourcePolicy;
-    private final LegacyWorkerContextResourceLifecycle workerContextLifecycle;
     private final WorkerDispatchResourceReleaser resourceReleaser;
 
     public TaskResourceReleaseListener(TaskRuntimeMaintenancePort maintenancePort,
@@ -64,25 +62,12 @@ public class TaskResourceReleaseListener {
                                 TraceEventLogger traceEventLogger,
                                 AssignmentRefillPolicy refillPolicy,
                                 WorkerDispatchResourcePolicy resourcePolicy,
-                                LegacyWorkerContextResourceLifecycle workerContextLifecycle) {
-        this(maintenancePort, workerManager, traceEventLogger, refillPolicy, resourcePolicy, workerContextLifecycle, null);
-    }
-
-    TaskResourceReleaseListener(TaskRuntimeMaintenancePort maintenancePort,
-                                WorkerManager workerManager,
-                                TraceEventLogger traceEventLogger,
-                                AssignmentRefillPolicy refillPolicy,
-                                WorkerDispatchResourcePolicy resourcePolicy,
-                                LegacyWorkerContextResourceLifecycle workerContextLifecycle,
                                 WorkerDispatchResourceReleaser resourceReleaser) {
         this.maintenancePort = maintenancePort;
         this.workerManager = workerManager;
         this.traceEventLogger = traceEventLogger;
         this.refillPolicy = refillPolicy == null ? new DefaultAssignmentRefillPolicy() : refillPolicy;
         this.resourcePolicy = resourcePolicy == null ? new DefaultWorkerDispatchResourcePolicy() : resourcePolicy;
-        this.workerContextLifecycle = workerContextLifecycle == null
-                ? new LegacyWorkerContextResourceLifecycle(workerManager, traceEventLogger)
-                : workerContextLifecycle;
         this.resourceReleaser = resourceReleaser == null
                 ? new WorkerDispatchResourceReleaser(workerManager, this.resourcePolicy, traceEventLogger)
                 : resourceReleaser;
@@ -94,32 +79,21 @@ public class TaskResourceReleaseListener {
         }
 
         List<ActiveLeaseRecord> leases = maintenancePort.getActiveLeases(task.getTid());
-        Map<String, String> exclusiveAttemptContextByWorkerId = new LinkedHashMap<>();
+        Set<String> exclusiveWorkerIds = new LinkedHashSet<>();
 
         for (ActiveLeaseRecord lease : leases) {
             if (lease == null || lease.workerId() == null || lease.workerId().isBlank()) {
                 continue;
             }
             workerManager.recordWorkFinal(lease.workerId(), task.getTid());
-            WorkerDispatchResourceUsage usage = resourcePolicy.usageForAttempt(task, lease.workerContextId());
+            WorkerDispatchResourceUsage usage = resourcePolicy.usageForAttempt(task);
             if (usage.exclusiveWorkerLock()) {
-                exclusiveAttemptContextByWorkerId.putIfAbsent(lease.workerId(), lease.workerContextId());
-            }
-            if (usage.legacyWorkerContextResource()) {
-                workerContextLifecycle.releaseIfOwnedByTask(
-                        task.getTid(),
-                        lease.workerId(),
-                        lease.workerContextId(),
-                        "RELEASE_WORKER_CONTEXT",
-                        "TaskResourceReleaseListener",
-                        "workerContext released after task/message completion",
-                        true
-                );
+                exclusiveWorkerIds.add(lease.workerId());
             }
         }
 
-        for (Map.Entry<String, String> workerLock : exclusiveAttemptContextByWorkerId.entrySet()) {
-            resourceReleaser.releaseAttemptLockIfExclusive(task, workerLock.getKey(), workerLock.getValue(),
+        for (String workerId : exclusiveWorkerIds) {
+            resourceReleaser.releaseAttemptLockIfExclusive(task, workerId,
                     "ON_TASK_TERMINAL", "TaskResourceReleaseListener", "task reached terminal");
         }
     }
@@ -137,19 +111,7 @@ public class TaskResourceReleaseListener {
             return;
         }
 
-        WorkerDispatchResourceUsage usage = resourcePolicy.usageForAttempt(task, event.workerContextId());
-        if (usage.legacyWorkerContextResource()) {
-            workerContextLifecycle.releaseIfOwnedByTask(
-                    task.getTid(),
-                    workerId,
-                    event.workerContextId(),
-                    "RELEASE_WORKER_CONTEXT",
-                    "TaskResourceReleaseListener",
-                    "workerContext released after task/message completion",
-                    true
-            );
-        }
-        resourceReleaser.releaseAttemptLockIfExclusive(task, workerId, event.workerContextId(),
+        resourceReleaser.releaseAttemptLockIfExclusive(task, workerId,
                 "ON_TASK_MESSAGE_ATTEMPT_CLOSED", "TaskResourceReleaseListener", "worker has no in-flight messages");
 
         AssignmentRefillDecision refillDecision = refillPolicy.decide(new AssignmentRefillRequest(

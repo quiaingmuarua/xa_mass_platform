@@ -43,7 +43,6 @@ import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.WorkerEventBinding;
-import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 
 MassSdkApplication app = MassSdk.builder()
@@ -79,13 +78,6 @@ app.registerWorker(WorkerRegistration.builder()
         .transportHint("polling")
         .attributes(java.util.Map.of("type", "crawler"))
         .build());
-app.registerWorkerContext(WorkerContextRegistration.builder()
-        .workerContextId("ctx-crawler-worker-1")
-        .workerId("crawler-worker-1")
-        .project("demoApp")
-        .routingTags(java.util.Set.of("us"))
-        .attributes(java.util.Map.of("region", "us"))
-        .build());
 
 var task = app.createTaskShell(MassTaskShellCreateRequest.builder()
         .userId("agent")
@@ -108,6 +100,11 @@ app.pullWorker("crawler-worker-1").connect();
 ```
 
 `supportedProjects` is only a coarse worker grouping/filter hint. New worker capability registration should declare `eventBindings`; when `eventBindings` is present it becomes the worker capability truth and SDK registration derives `supportedEventCodes` / `supportedProjects` from it.
+
+`WorkerContext` is still available through an explicit compatibility surface for
+legacy callers, but it is no longer part of the recommended SDK worker
+mainline. New SDK integration should start from `WorkerRegistration`,
+`eventBindings`, transport identity, and external worker client flows.
 
 `transportHint` is required for worker registration, and `adapterId` is the concrete runtime identity. Registration resolution now comes from transport runtime metadata rather than SDK-side `realtime -> websocket` guessing. Realtime workers must always register with explicit `adapterId + transportHint`; only polling keeps the implicit family default to `polling`. `pullWorker(...)` also resolves strictly from the worker's declared transport identity and fails fast on transport mismatch instead of falling back to another pull-capable adapter. Adapter-id aliases such as `ws`, `pull`, `queue`, or `tcp-socket` are not accepted as runtime identities; use canonical adapter ids such as `websocket`, `polling`, or `socket`. `transportHint` aliases such as `websocket`, `ws`, `push`, `pull`, or `queue` are also not accepted; use canonical coarse families such as `realtime` or `polling`. Adapter implementation labels such as `WorkerAdapter.protocol()` are no longer treated as runtime transport truth; selection keys off canonical registration identity instead.
 
@@ -190,6 +187,9 @@ import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.event.EventDefinition;
+import com.xa.mass.base.event.PriorityClass;
+import com.xa.mass.base.event.ResponseMode;
+import com.xa.mass.base.event.TargetScope;
 
 app.registerEventDefinition(EventDefinition.builder()
         .code("bot.command")
@@ -197,6 +197,9 @@ app.registerEventDefinition(EventDefinition.builder()
         .description("Handle a bot command")
         .payloadTypes(java.util.List.of(PayloadType.JSON))
         .taskModes(java.util.List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
+        .priorityClass(PriorityClass.STANDARD)
+        .responseMode(ResponseMode.FINAL_RESULT)
+        .targetScope(TargetScope.WORKER)
         .build());
 
 app.registerProject(ProjectDefinition.builder()
@@ -222,6 +225,12 @@ app.executeTaskCommand(botTask.getTid(), com.xa.mass.sdk.model.MassTaskCommandRe
         .command("SEAL")
         .build());
 ```
+
+`priorityClass`, `responseMode`, and `targetScope` are event catalog metadata.
+They are exposed through SDK/server catalog reads so operators can understand
+event behavior, but they do not directly change queue ordering, result
+convergence, transport delivery, or worker command routing. Omitted values
+default to `STANDARD`, `FINAL_RESULT`, and `WORKER`.
 
 Register a lightweight principal credential binding when an embedding app wants
 an API-key or service-account style identity:
@@ -255,10 +264,10 @@ The returned `MassSdkApplication` exposes:
 - diagnostic-only task state helpers require the explicit `app.taskDiagnostics()` surface; they are not part of the recommended task shell / ingest mainline
 - operator/runtime read diagnostics require the explicit `app.runtimeDiagnostics()` surface; they are not part of the task/worker mainline
 - raw transport side-channel access remains internal/operator-only below the stable SDK surface; product or server code should not depend on `sdk.internal`
-- common worker operations after `start()`: `registerWorker(...)`, `registerWorkerContext(...)`, `getWorker(...)`, `getAllWorkers()`, `getAllWorkerContexts()`, `getWorkerContexts(...)`, `getWorkerContextById(...)`, `isWorkerLocked(...)`, `isWorkerOnline(...)`
+- worker mainline after `start()`: `registerWorker(...)`, `getWorker(...)`, `getAllWorkers()`, `isWorkerOnline(...)`
+- worker client/mainline after `start()`: `pullWorker(...)`, `workerOnline(...)`, `workerHeartbeat(...)`, `workerOffline(...)`, `pollTasks(...)`, `submitResult(...)`
 - resource/control-plane operations through `ResourceOperations`: `registerProject(...)`, `registerEventDefinition(...)`, `registerSubmitter(...)`, `listProjects()`, `getProject(...)`, `listEvents()`, `getEvent(...)`, `getEventsForProject(...)`, `listSubmitters()`, `getSubmitter(...)`, `authenticateSubmitter(...)`, `hasProject(...)`, `hasEvent(...)`, `hasSubmitter(...)`, `projectSupportsEvent(...)`; submitter list/get return `SubmitterProfile` without credentials
-- pull-style worker entry after `start()`: `pullWorker(...)`
-- stable runtime bootstrap surface after `start()`: open registration methods such as `registerWorker(...)`, `registerWorkerContext(...)`, `createTaskShell(...)`, `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)`, `executeTaskCommand(taskId, MassTaskCommandRequest)`, `replaceDefaultRules(...)`
+- stable runtime bootstrap surface after `start()`: open mainline registration/mutation methods such as `registerWorker(...)`, `createTaskShell(...)`, `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)`, `executeTaskCommand(taskId, MassTaskCommandRequest)`, `replaceDefaultRules(...)`; WorkerContext registration is no longer an SDK surface
 - new bootstrap integration seam: `EngineOptions.bootstrapDataProvider(...)` accepts a pluggable `MassBootstrapDataProvider`
 
 Current SDK contracts:
@@ -266,8 +275,8 @@ Current SDK contracts:
 | Area | Contract |
 | --- | --- |
 | task create | mainline SDK flow is `MassTaskShellCreateRequest` plus explicit `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)` and `executeTaskCommand(taskId, MassTaskCommandRequest)` for lifecycle/governance; `taskName` is server-derived, and capability `eventCode` belongs on append batches or per-item ingress rather than task shell truth |
-| worker resources | `WorkerRegistration` / `WorkerContextRegistration` declare identity/capability only; workers start `OFFLINE`, contexts `IDLE`; transport liveness owns online state, and `isWorkerOnline(...)` reads transport presence when available (`STALE`/`OFFLINE` both surface as not online) |
-| resources | `ResourceOperations` owns project/event/submitter resources; project is a first-class control-plane binding and enabled projects also bind into engine task creation and worker-context project checks |
+| worker resources | `WorkerRegistration` declares worker identity/capability mainline; transport liveness owns online state, and `isWorkerOnline(...)` reads transport presence when available (`STALE`/`OFFLINE` both surface as not online). WorkerContext registration/snapshot contracts have been removed from the SDK |
+| resources | `ResourceOperations` owns project/event/submitter resources; project is a first-class control-plane binding and enabled projects also bind into engine task creation and worker capability checks |
 | business events | default catalog ships no business task events; embedding apps or dev fixtures register event codes explicitly |
 | submitters | in-memory principal/API-key binding only, not a full user subsystem; queries return `SubmitterProfile`, not credentials |
 | diagnostics/detail | bounded runtime validation/resolution stays behind `app.taskDiagnostics()` instead of the default `MassSdkApplication` task mainline. SDK mainline no longer exposes task-item or attempt detail query APIs; production detail belongs in logs, trace, audit sinks, or async persistence |

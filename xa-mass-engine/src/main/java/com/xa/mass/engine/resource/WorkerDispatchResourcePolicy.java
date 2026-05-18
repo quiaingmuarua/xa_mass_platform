@@ -12,5 +12,5 @@ public interface WorkerDispatchResourcePolicy {
 
     WorkerDispatchResourceUsage usageForCandidate(Task task, WorkerSchedulingCandidate candidate);
 
-    WorkerDispatchResourceUsage usageForAttempt(Task task, String workerContextId);
+    WorkerDispatchResourceUsage usageForAttempt(Task task);
 }

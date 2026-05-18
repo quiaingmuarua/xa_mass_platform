@@ -5,12 +5,11 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskQueryService;
-import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.WorkerReachabilityState;
+import com.xa.mass.engine.worker.WorkerManager;
+import com.xa.mass.engine.worker.WorkerReachabilityState;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
@@ -19,7 +18,6 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -43,19 +41,14 @@ class MassEngineStartRecoveryTest {
         worker.updateHeartbeat();
         workerManager.addWorker(worker);
 
-        WorkerContext workerContext = new WorkerContext("wctx-1", "worker-1", Set.of("default"));
-        workerManager.addWorkerContext(workerContext);
-
         config.setMatchingStrategy((task, maxWorkerCount) -> {
             if (!workerManager.tryLockWorker("worker-1")) {
                 return List.of();
             }
             return List.of(new WorkerSchedulingCandidate(
                     workerManager.getWorker("worker-1"),
-                    workerManager.getWorkerContextById("wctx-1"),
                     WorkerSchedulingView.from(
                             workerManager.getWorker("worker-1"),
-                            workerManager.getWorkerContextById("wctx-1"),
                             WorkerReachabilityState.ONLINE,
                             true,
                             true
@@ -127,19 +120,14 @@ class MassEngineStartRecoveryTest {
             worker.updateHeartbeat();
             workerManager.addWorker(worker);
 
-            WorkerContext workerContext = new WorkerContext("wctx-1", "worker-1", Set.of("default"));
-            workerManager.addWorkerContext(workerContext);
-
             config.setMatchingStrategy((task, maxWorkerCount) -> {
                 if (!workerManager.tryLockWorker("worker-1")) {
                     return List.of();
                 }
                 return List.of(new WorkerSchedulingCandidate(
                         workerManager.getWorker("worker-1"),
-                        workerManager.getWorkerContextById("wctx-1"),
                         WorkerSchedulingView.from(
                                 workerManager.getWorker("worker-1"),
-                                workerManager.getWorkerContextById("wctx-1"),
                                 WorkerReachabilityState.ONLINE,
                                 true,
                                 true

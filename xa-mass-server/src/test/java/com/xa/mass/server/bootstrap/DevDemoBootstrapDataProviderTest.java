@@ -8,7 +8,6 @@ import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
-import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.storage.rule.RuleDefinition;
 import org.junit.jupiter.api.Test;
@@ -41,7 +40,6 @@ class DevDemoBootstrapDataProviderTest {
         provider.loadInto(runtime);
 
         assertEquals(4, runtime.workers.size());
-        assertEquals(4, runtime.workerContexts.size());
         assertEquals(12, runtime.createdTasks.size());
         assertEquals(12, runtime.appendRequests.size());
         assertEquals(12, runtime.sealedTaskIds.size());
@@ -74,15 +72,13 @@ class DevDemoBootstrapDataProviderTest {
         WorkerRegistration firstWorker = runtime.workers.get(0);
         assertTrue(firstWorker.getEventBindings().stream()
                 .allMatch(binding -> binding.getProjectCodes().containsAll(List.of("demoApp", "demoOps"))));
-
-        WorkerContextRegistration firstContext = runtime.workerContexts.get(0);
-        assertEquals(Set.of("us"), firstContext.getRoutingTags());
+        assertEquals("us", firstWorker.getAttributes().get("country"));
+        assertTrue(firstWorker.getAttributes().get("routingTags").contains("us"));
     }
 
     private static final class RecordingRuntime implements MassRuntimeControl {
 
         private final List<WorkerRegistration> workers = new ArrayList<>();
-        private final List<WorkerContextRegistration> workerContexts = new ArrayList<>();
         private final List<MassTaskShellCreateRequest> createdTasks = new ArrayList<>();
         private final List<MassTaskItemBatchAppendRequest> appendRequests = new ArrayList<>();
         private final List<String> approvedTaskIds = new ArrayList<>();
@@ -148,6 +144,32 @@ class DevDemoBootstrapDataProviderTest {
         }
 
         @Override
+        public com.xa.mass.sdk.model.TaskCommandResult executeTaskCommand(
+                String taskId,
+                com.xa.mass.sdk.model.MassTaskCommandRequest request) {
+            String command = request == null || request.getCommand() == null
+                    ? null
+                    : request.getCommand().trim().toUpperCase(java.util.Locale.ROOT);
+            if ("APPROVE".equals(command)) {
+                approvedTaskIds.add(taskId);
+                return commandResult(taskId, command, true);
+            }
+            if ("REJECT".equals(command)) {
+                rejectedTaskIds.add(taskId);
+                return commandResult(taskId, command, true);
+            }
+            if ("PAUSE".equals(command)) {
+                pausedTaskIds.add(taskId);
+                return commandResult(taskId, command, true);
+            }
+            if ("SEAL".equals(command)) {
+                sealedTaskIds.add(taskId);
+                return commandResult(taskId, command, true);
+            }
+            return commandResult(taskId, command, false);
+        }
+
+        @Override
         public boolean sealTask(String taskId) {
             sealedTaskIds.add(taskId);
             return true;
@@ -159,13 +181,23 @@ class DevDemoBootstrapDataProviderTest {
         }
 
         @Override
-        public void registerWorkerContext(WorkerContextRegistration request) {
-            workerContexts.add(request);
-        }
-
-        @Override
         public void replaceDefaultRules(Collection<RuleDefinition> rules) {
             throw new UnsupportedOperationException();
+        }
+
+        private com.xa.mass.sdk.model.TaskCommandResult commandResult(String taskId, String command, boolean accepted) {
+            return new com.xa.mass.sdk.model.TaskCommandResult(
+                    taskId,
+                    command,
+                    accepted,
+                    true,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null
+            );
         }
     }
 }

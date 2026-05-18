@@ -63,7 +63,6 @@ Current host security matrix:
 | `SUBMITTER_TASK_VIEW` | submitter credential | `TASK / VIEW` | ownership match against the internal task ownership stamp |
 | `SUBMITTER_TASK_APPEND` | submitter credential | `TASK / EDIT` | ownership match + `task:create` + project/event scope |
 | `WORKER_REGISTER` | external worker credential | `WORKER / REGISTER` | `worker:poll` + worker binding + event/project scope |
-| `WORKER_CONTEXT_REGISTER` | external worker credential | `WORKER_CONTEXT / REGISTER` | `worker:poll` + worker binding + project scope |
 | `WORKER_ONLINE` / `WORKER_HEARTBEAT` / `WORKER_OFFLINE` / `WORKER_POLL` | external worker credential | `WORKER / POLL` | `worker:poll` + worker binding |
 | `WORKER_SUBMIT_RESULT` | external worker credential | `WORKER / REPORT_RESULT` | `worker:poll` + worker binding |
 
@@ -126,7 +125,7 @@ When `spring.profiles.active=dev` and `mass.demo.bootstrap.enabled=true`, the se
 
 The demo bootstrap intentionally stays inside server-owned dev wiring:
 
-- demo projects, events, submitters, workers, contexts, and seeded task shells
+- demo projects, events, submitters, workers, and seeded task shells
   are registered strictly through SDK-native APIs
 - the default dev path can auto-start embedded sample adapter clients so the
   seeded demo workers go `ONLINE` and process demo tasks
@@ -156,12 +155,15 @@ Startup behavior:
 
 ### Worker Resource Fixtures
 
-`MockRuntimeDataLoader` is now test-only fixture support for local/E2E startup data. JSON is only a fixture input format; resource creation still goes through `MassSdkApplication.registerWorker(...)` and `registerWorkerContext(...)`.
+`MockRuntimeDataLoader` is now test-only fixture support for local/E2E startup
+data. JSON is only a fixture input format; worker resource creation still goes
+through `MassSdkApplication.registerWorker(...)`. Worker scheduling attributes
+must be declared directly on worker fixture JSON; the separate WorkerContext
+fixture input path has been removed.
 
 Current fixture behavior:
 
 - worker JSON entries are mapped to `WorkerRegistration`
-- worker-context JSON entries are mapped to `WorkerContextRegistration`
 - runtime state fields in JSON such as `Worker.status=ONLINE` are ignored; online state comes from transport liveness
 - task JSON fixture bootstrap remains a test-only aggregate fixture input
 - rule JSON continues to replace default rules when non-empty
@@ -172,7 +174,6 @@ Default worker fixtures now carry a small executor profile:
 - `adapterId=websocket` for WebSocket-backed dev workers
 - `onlineStrategy=realtime` for WebSocket-backed dev workers
 - worker attributes such as `runtime`, `workerType`, `region`, and `lane`
-- worker-context attributes such as `country` and `network`
 
 These labels are dev/E2E routing and observability signals. Production-style
 resources should still be created through the SDK resource APIs.
@@ -298,12 +299,12 @@ JDBC storage scope:
   runnable server profile, for example `-Dspring.profiles.active=dev,postgres`
 - integration tests should keep using isolated in-memory H2 JDBC URLs so DB
   assertions are repeatable and do not depend on a developer's persisted data
-- JDBC storage persists task truth, worker/context registration truth, and rule
+- JDBC storage persists task truth, worker registration truth, and rule
   definitions
 - JDBC storage also persists low-frequency principal credential truth used by
   submitter and external worker API-key authentication
-- `TaskMsg`, `TaskMsgAttempt`, worker locks, heartbeat churn, and context
-  occupancy churn stay process-local runtime projection state
+- `TaskMsg`, `TaskMsgAttempt`, worker locks, and heartbeat churn stay
+  process-local runtime projection state
 - do not use JDBC storage as a cross-task message-status analytics surface;
   large-scale message history, attempt history, heartbeat streams, and failure
   analysis should flow through queues, trace, audit sinks, or downstream
@@ -312,7 +313,6 @@ JDBC storage scope:
 Mock-data loading order:
 
 - workers
-- explicit worker contexts
 - rules: non-empty config replaces the current default rules; empty config is treated as no override
 - tasks
 
@@ -413,7 +413,7 @@ High-signal classes:
   - `TaskApiMultiTaskAssignmentIntegrationTest`
   - `TaskApiDelayedWorkerAvailabilityIntegrationTest`
   - `TaskApiMinimumWorkerGateIntegrationTest`
-  - `TaskApiWorkerContextAttributeRoutingIntegrationTest`
+  - `TaskApiWorkerAttributeRoutingIntegrationTest`
   - `TaskApiWorkerWithoutContextIntegrationTest`
   - `TaskApiSingleWorkerReuseIntegrationTest`
   - `TransportChannelWiringIntegrationTest`
@@ -443,8 +443,8 @@ High-signal classes:
 
 Fixture rules:
 
-- prefer `registerWorker(...)`, `registerWorkerContext(...)`, `replaceDefaultRules(...)`, `createTaskShell(...)`, `appendTaskItems(...)`, and `executeTaskCommand(..., "SEAL")`
-- worker JSON and worker-context JSON are fixture inputs, not runtime truth
+- prefer `registerWorker(...)`, `replaceDefaultRules(...)`, `createTaskShell(...)`, `appendTaskItems(...)`, and `executeTaskCommand(..., "SEAL")`
+- worker JSON is a fixture input, not runtime truth
 - direct `WorkerManager` and `RuleManager` setup writes are not mainline E2E setup
 - direct `TaskManager`, `TaskStorage`, or runtime writes stay limited to
   focused white-box assertions, audit-only verification, or deterministic fault

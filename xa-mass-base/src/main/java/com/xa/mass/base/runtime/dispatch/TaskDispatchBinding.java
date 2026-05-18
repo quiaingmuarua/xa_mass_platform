@@ -24,7 +24,6 @@ public final class TaskDispatchBinding {
     private final int attemptNo;
     private final String leaseToken;
     private final String workerId;
-    private final String workerContextId;
     private final String batchId;
 
     public TaskDispatchBinding(String taskId,
@@ -37,7 +36,6 @@ public final class TaskDispatchBinding {
                                int attemptNo,
                                String leaseToken,
                                String workerId,
-                               String workerContextId,
                                String batchId) {
         this.taskId = requireText(taskId, "taskId");
         this.messageId = requireText(messageId, "messageId");
@@ -49,8 +47,33 @@ public final class TaskDispatchBinding {
         this.attemptNo = Math.max(1, attemptNo);
         this.leaseToken = leaseToken;
         this.workerId = workerId;
-        this.workerContextId = workerContextId;
         this.batchId = batchId;
+    }
+
+    public static TaskDispatchBinding workerLevel(String taskId,
+                                                  String messageId,
+                                                  String eventCode,
+                                                  Map<String, Object> payload,
+                                                  String payloadRef,
+                                                  int retryCount,
+                                                  String attemptId,
+                                                  int attemptNo,
+                                                  String leaseToken,
+                                                  String workerId,
+                                                  String batchId) {
+        return new TaskDispatchBinding(
+                taskId,
+                messageId,
+                eventCode,
+                payload,
+                payloadRef,
+                retryCount,
+                attemptId,
+                attemptNo,
+                leaseToken,
+                workerId,
+                batchId
+        );
     }
 
     public String taskId() {
@@ -91,10 +114,6 @@ public final class TaskDispatchBinding {
 
     public String workerId() {
         return workerId;
-    }
-
-    public String workerContextId() {
-        return workerContextId;
     }
 
     public String batchId() {

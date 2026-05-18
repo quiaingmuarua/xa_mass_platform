@@ -97,6 +97,17 @@ public class DefaultRuntimeDiagnosticsOperations implements RuntimeDiagnosticsOp
         );
     }
 
+    @Override
+    public boolean isWorkerLocked(String workerId) {
+        if (workerId == null || workerId.isBlank()) {
+            throw new IllegalArgumentException("workerId must not be blank");
+        }
+        if (delegate.getEngine() == null || !delegate.getEngine().isRunning() || delegate.getEngine().getConfig() == null) {
+            throw new IllegalStateException("MassEngine is not started");
+        }
+        return delegate.getEngine().getConfig().getWorkerStorage().isLocked(workerId.trim());
+    }
+
     protected final MassApplication runtimeApplication() {
         return delegate;
     }

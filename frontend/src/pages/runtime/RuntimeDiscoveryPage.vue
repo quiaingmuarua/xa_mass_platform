@@ -248,6 +248,15 @@
                   <el-descriptions-item label="Payload types">
                     {{ selectedEventRow.payloadTypes.join(', ') || '-' }}
                   </el-descriptions-item>
+                  <el-descriptions-item label="Priority class">
+                    {{ selectedEventRow.priorityClass }}
+                  </el-descriptions-item>
+                  <el-descriptions-item label="Response mode">
+                    {{ selectedEventRow.responseMode }}
+                  </el-descriptions-item>
+                  <el-descriptions-item label="Target scope">
+                    {{ selectedEventRow.targetScope }}
+                  </el-descriptions-item>
                   <el-descriptions-item label="Projects">
                     {{ selectedEventRow.projectCodes.join(', ') || '-' }}
                   </el-descriptions-item>
@@ -492,6 +501,15 @@
                 <el-tag :type="row.ready ? 'success' : 'info'" round>
                   {{ invocationModelLabel(row.invocationModel) }}
                 </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="Metadata" min-width="260">
+              <template #default="{ row }">
+                <div class="tag-row">
+                  <el-tag type="info" round>{{ row.priorityClass }}</el-tag>
+                  <el-tag type="info" round>{{ row.responseMode }}</el-tag>
+                  <el-tag type="info" round>{{ row.targetScope }}</el-tag>
+                </div>
               </template>
             </el-table-column>
             <el-table-column label="Projects" min-width="180">

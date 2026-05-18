@@ -47,6 +47,17 @@ class ServerMainSourceArchitectureGuardTest {
                 "TaskApiController must not read TaskDetailStore projection rows for public results");
     }
 
+    @Test
+    void externalWorkerControllerDoesNotReintroduceWorkerContextCompatibilitySurface() throws IOException {
+        Path controller = SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/api/internal/ExternalWorkerApiController.java");
+        String source = Files.readString(controller, StandardCharsets.UTF_8);
+
+        assertTrue(!source.contains("ExternalWorkerOperations"),
+                "ExternalWorkerApiController must inject worker registry/client surfaces directly");
+        assertTrue(!source.contains("WorkerContextCompatibilityOperations"),
+                "ExternalWorkerApiController must not reintroduce WorkerContext compatibility routes");
+    }
+
     private static void collectViolations(Path path, List<String> violations) {
         String source;
         try {

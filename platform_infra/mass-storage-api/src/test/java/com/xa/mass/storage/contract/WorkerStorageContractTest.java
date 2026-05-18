@@ -1,32 +1,20 @@
 package com.xa.mass.storage.contract;
 
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.storage.api.WorkerStorage;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Behavioural contract that every {@link WorkerStorage} implementation must
- * satisfy. Subclass this and implement {@link #createStorage()} to bind a
- * concrete implementation.
- *
- * <p>These assertions pin the invariants that are easy to diverge between
- * JVM-local, JDBC, and distributed implementations:
- * <ul>
- *   <li>Missing-key queries return empty, never null or an exception</li>
- *   <li>Lock acquisition is exclusive (CAS semantics)</li>
- *   <li>Filters are exact-match, not prefix or fuzzy</li>
- *   <li>getAllWorkerContexts spans all workers, not just one</li>
- * </ul>
+ * satisfy. Worker storage is worker-level only; WorkerContext CRUD was retired
+ * from the control-plane storage contract.
  */
 public abstract class WorkerStorageContractTest {
 
@@ -47,40 +35,15 @@ public abstract class WorkerStorageContractTest {
         destroyStorage(storage);
     }
 
-    // ── missing-key safety ────────────────────────────────────────────────────
-
     @Test
     void getWorker_returnsEmpty_whenNotPresent() {
         assertThat(storage.getWorker("no-such-worker")).isEmpty();
     }
 
     @Test
-    void getWorkerContexts_returnsEmptyList_whenWorkerHasNoContexts() {
-        storage.addWorker(worker("w1", "grp"));
-        assertThat(storage.getWorkerContexts("w1")).isNotNull().isEmpty();
-    }
-
-    @Test
-    void getWorkerContexts_returnsEmptyList_whenWorkerDoesNotExist() {
-        assertThat(storage.getWorkerContexts("ghost")).isNotNull().isEmpty();
-    }
-
-    @Test
-    void getWorkerContextById_returnsEmpty_whenNotPresent() {
-        assertThat(storage.getWorkerContextById("ghost-ctx")).isEmpty();
-    }
-
-    @Test
     void deleteWorker_returnsFalse_whenNotPresent() {
         assertThat(storage.deleteWorker("ghost")).isFalse();
     }
-
-    @Test
-    void deleteWorkerContextById_returnsFalse_whenNotPresent() {
-        assertThat(storage.deleteWorkerContextById("ghost-ctx")).isFalse();
-    }
-
-    // ── worker CRUD ───────────────────────────────────────────────────────────
 
     @Test
     void addAndGetWorker_persists() {
@@ -113,8 +76,6 @@ public abstract class WorkerStorageContractTest {
         assertThat(storage.getAllWorkers()).extracting(Worker::getWorkerId)
                 .containsExactlyInAnyOrder("wa", "wb");
     }
-
-    // ── worker filters ────────────────────────────────────────────────────────
 
     @Test
     void getWorkersByGroupId_returnsOnlyMatchingGroup() {
@@ -160,87 +121,6 @@ public abstract class WorkerStorageContractTest {
                 .extracting(Worker::getWorkerId).containsExactly("w-evt");
     }
 
-    // ── context CRUD ──────────────────────────────────────────────────────────
-
-    @Test
-    void addWorkerContext_andGetByWorkerId() {
-        storage.addWorker(worker("w1", "grp"));
-        storage.addWorkerContext(context("ctx-1", "w1"));
-        assertThat(storage.getWorkerContexts("w1"))
-                .extracting(WorkerContext::getWorkerContextId).containsExactly("ctx-1");
-    }
-
-    @Test
-    void getWorkerContextById_returnsContext() {
-        storage.addWorker(worker("w1", "grp"));
-        storage.addWorkerContext(context("ctx-1", "w1"));
-        assertThat(storage.getWorkerContextById("ctx-1")).isPresent()
-                .get().extracting(WorkerContext::getWorkerId).isEqualTo("w1");
-    }
-
-    @Test
-    void updateWorkerContextById_persistsChanges() {
-        storage.addWorker(worker("w1", "grp"));
-        storage.addWorkerContext(context("ctx-1", "w1"));
-        WorkerContext updated = storage.getWorkerContextById("ctx-1").orElseThrow();
-        updated.setStatus(WorkerContextStatus.OCCUPIED);
-        storage.updateWorkerContextById("ctx-1", updated);
-        assertThat(storage.getWorkerContextById("ctx-1")).get()
-                .extracting(WorkerContext::getStatus).isEqualTo(WorkerContextStatus.OCCUPIED);
-    }
-
-    @Test
-    void deleteWorkerContextById_removesContext() {
-        storage.addWorker(worker("w1", "grp"));
-        storage.addWorkerContext(context("ctx-1", "w1"));
-        assertThat(storage.deleteWorkerContextById("ctx-1")).isTrue();
-        assertThat(storage.getWorkerContextById("ctx-1")).isEmpty();
-        assertThat(storage.getWorkerContexts("w1")).isEmpty();
-    }
-
-    @Test
-    void getAllWorkerContexts_includesContextsAcrossAllWorkers() {
-        storage.addWorker(worker("w1", "grp"));
-        storage.addWorker(worker("w2", "grp"));
-        storage.addWorkerContext(context("ctx-1", "w1"));
-        storage.addWorkerContext(context("ctx-2", "w2"));
-        assertThat(storage.getAllWorkerContexts())
-                .extracting(WorkerContext::getWorkerContextId)
-                .containsExactlyInAnyOrder("ctx-1", "ctx-2");
-    }
-
-    @Test
-    void getWorkerContextsByWorkerIds_returnsOnlyRequestedWorkers() {
-        storage.addWorker(worker("w1", "grp"));
-        storage.addWorker(worker("w2", "grp"));
-        storage.addWorker(worker("w3", "grp"));
-        storage.addWorkerContext(context("ctx-1", "w1"));
-        storage.addWorkerContext(context("ctx-2", "w2"));
-        storage.addWorkerContext(context("ctx-3", "w3"));
-
-        assertThat(storage.getWorkerContextsByWorkerIds(List.of("w1", "w3")))
-                .extracting(WorkerContext::getWorkerContextId)
-                .containsExactlyInAnyOrder("ctx-1", "ctx-3");
-    }
-
-    @Test
-    void getWorkerContextsByWorkerIds_returnsEmpty_whenListIsEmpty() {
-        storage.addWorker(worker("w1", "grp"));
-        storage.addWorkerContext(context("ctx-1", "w1"));
-        assertThat(storage.getWorkerContextsByWorkerIds(List.of())).isEmpty();
-    }
-
-    @Test
-    void getWorkerContextsByWorkerIds_excludesUnknownWorkers() {
-        storage.addWorker(worker("w1", "grp"));
-        storage.addWorkerContext(context("ctx-1", "w1"));
-        assertThat(storage.getWorkerContextsByWorkerIds(List.of("w1", "ghost")))
-                .extracting(WorkerContext::getWorkerContextId)
-                .containsExactly("ctx-1");
-    }
-
-    // ── locking — most critical cross-impl contract ───────────────────────────
-
     @Test
     void tryLockWorker_returnsTrueOnFirstCall() {
         storage.addWorker(worker("w1", "grp"));
@@ -283,18 +163,10 @@ public abstract class WorkerStorageContractTest {
         assertThat(storage.getLockedWorkers()).containsExactly("w2");
     }
 
-    // ── helpers ───────────────────────────────────────────────────────────────
-
     protected Worker worker(String workerId, String groupId) {
-        Worker w = new Worker(workerId, "1.0", List.of());
-        w.setWorkerGroupId(groupId);
-        w.setStatus(WorkerStatus.ONLINE);
-        return w;
-    }
-
-    protected WorkerContext context(String contextId, String workerId) {
-        WorkerContext ctx = new WorkerContext(contextId, workerId, Set.of("tag-a"));
-        ctx.setStatus(WorkerContextStatus.IDLE);
-        return ctx;
+        Worker worker = new Worker(workerId, "1.0", List.of());
+        worker.setWorkerGroupId(groupId);
+        worker.setStatus(WorkerStatus.ONLINE);
+        return worker;
     }
 }

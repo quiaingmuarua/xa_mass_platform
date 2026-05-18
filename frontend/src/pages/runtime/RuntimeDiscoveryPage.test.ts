@@ -37,6 +37,9 @@ function discoveryFetch(submitterResponse: Response): (input: string) => Promise
                             eventCode: 'demo.dispatch',
                             eventName: 'Demo dispatch',
                             enabled: true,
+                            priorityClass: 'STANDARD',
+                            responseMode: 'FINAL_RESULT',
+                            targetScope: 'WORKER',
                             invocationModel: 'TASK_BACKED',
                             projectCodes: ['demoApp'],
                             workerIds: ['worker-us-01', 'worker-event-only'],
@@ -49,6 +52,9 @@ function discoveryFetch(submitterResponse: Response): (input: string) => Promise
                             eventCode: 'crawler.fetch-page',
                             eventName: 'Fetch crawler page',
                             enabled: true,
+                            priorityClass: 'STANDARD',
+                            responseMode: 'FINAL_RESULT',
+                            targetScope: 'WORKER',
                             invocationModel: 'TASK_BACKED',
                             projectCodes: ['crawlerApp'],
                             workerIds: ['worker-sg-01'],
@@ -61,6 +67,9 @@ function discoveryFetch(submitterResponse: Response): (input: string) => Promise
                             eventCode: 'tool.country.capital.lookup',
                             eventName: 'Tool Country Capital Lookup',
                             enabled: true,
+                            priorityClass: 'STANDARD',
+                            responseMode: 'FINAL_RESULT',
+                            targetScope: 'WORKER',
                             invocationModel: 'DIRECT_RUNTIME',
                             projectCodes: [],
                             workerIds: [],
@@ -110,6 +119,9 @@ function discoveryFetch(submitterResponse: Response): (input: string) => Promise
                             payloadTypes: ['JSON'],
                             taskModes: ['SINGLE_RUN'],
                             enabled: true,
+                            priorityClass: 'STANDARD',
+                            responseMode: 'FINAL_RESULT',
+                            targetScope: 'WORKER',
                         },
                         {
                             code: 'crawler.fetch-page',
@@ -118,6 +130,9 @@ function discoveryFetch(submitterResponse: Response): (input: string) => Promise
                             payloadTypes: ['JSON'],
                             taskModes: ['SINGLE_RUN'],
                             enabled: true,
+                            priorityClass: 'STANDARD',
+                            responseMode: 'FINAL_RESULT',
+                            targetScope: 'WORKER',
                         },
                         {
                             code: 'tool.country.capital.lookup',
@@ -126,6 +141,9 @@ function discoveryFetch(submitterResponse: Response): (input: string) => Promise
                             payloadTypes: ['JSON'],
                             taskModes: [],
                             enabled: true,
+                            priorityClass: 'STANDARD',
+                            responseMode: 'FINAL_RESULT',
+                            targetScope: 'WORKER',
                         },
                     ],
                 }),
@@ -254,6 +272,9 @@ describe('RuntimeDiscoveryPage', () => {
         expect(wrapper.text()).toContain('worker-us-01')
         expect(wrapper.text()).toContain('worker-event-only')
         expect(wrapper.text()).toContain('demo.dispatch')
+        expect(wrapper.text()).toContain('STANDARD')
+        expect(wrapper.text()).toContain('FINAL_RESULT')
+        expect(wrapper.text()).toContain('WORKER')
         expect(wrapper.text()).toContain('1 / 2')
         expect(wrapper.text()).not.toContain('worker-sg-01')
         expect(wrapper.text()).toContain('Start event draft')
@@ -377,6 +398,9 @@ describe('RuntimeDiscoveryPage', () => {
                                     eventCode: 'tool.phone.country.detect',
                                     eventName: 'Tool Phone Country Detect',
                                     enabled: true,
+                                    priorityClass: 'STANDARD',
+                                    responseMode: 'FINAL_RESULT',
+                                    targetScope: 'WORKER',
                                     invocationModel: 'DIRECT_RUNTIME',
                                     projectCodes: [],
                                     workerIds: [],
@@ -402,6 +426,9 @@ describe('RuntimeDiscoveryPage', () => {
                                     payloadTypes: ['JSON'],
                                     taskModes: [],
                                     enabled: true,
+                                    priorityClass: 'STANDARD',
+                                    responseMode: 'FINAL_RESULT',
+                                    targetScope: 'WORKER',
                                 },
                             ],
                         }),

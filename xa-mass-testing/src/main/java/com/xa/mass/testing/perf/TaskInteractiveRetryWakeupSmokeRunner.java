@@ -6,7 +6,6 @@ import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
@@ -17,8 +16,8 @@ import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
-import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.WorkerReachabilityState;
+import com.xa.mass.engine.worker.WorkerManager;
+import com.xa.mass.engine.worker.WorkerReachabilityState;
 import com.xa.mass.engine.listener.SimpleTaskDispatchBinder;
 import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
@@ -45,8 +44,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -369,13 +366,6 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                 worker.setStatus(WorkerStatus.ONLINE);
                 worker.setLastHeartbeat(LocalDateTime.now());
                 workerManager.addWorker(worker);
-
-                WorkerContext workerContext = new WorkerContext();
-                workerContext.setWorkerContextId("retry-wakeup-context-" + i);
-                workerContext.setWorkerId(worker.getWorkerId());
-                workerContext.setProject("demoApp");
-                workerContext.setRoutingTags(Set.of("default"));
-                workerManager.addWorkerContext(workerContext);
             }
         }
 
@@ -419,23 +409,9 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                 if (!workerManager.tryLockWorker(worker.getWorkerId())) {
                     continue;
                 }
-                WorkerContext selectedContext = null;
-                for (WorkerContext workerContext : workerManager.getWorkerContexts(worker.getWorkerId())) {
-                    if (workerContext != null
-                            && workerContext.isAllocatable()
-                            && Objects.equals(task.getProject(), workerContext.getProject())) {
-                        selectedContext = workerContext;
-                        break;
-                    }
-                }
-                if (selectedContext == null) {
-                    workerManager.unlockWorker(worker.getWorkerId());
-                    continue;
-                }
                 matched.add(new WorkerSchedulingCandidate(
                         worker,
-                        selectedContext,
-                        WorkerSchedulingView.from(worker, selectedContext, WorkerReachabilityState.ONLINE, true, true)
+                        WorkerSchedulingView.from(worker, WorkerReachabilityState.ONLINE, true, true)
                 ));
             }
             return matched;

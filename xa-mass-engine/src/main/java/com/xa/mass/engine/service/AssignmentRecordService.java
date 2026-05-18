@@ -5,11 +5,12 @@ import com.xa.mass.base.enums.assignment.AssignmentType;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.engine.model.RuleEvaluationDetail;
+import com.xa.mass.engine.model.WorkerSchedulingCandidate;
+import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.engine.monkey.snapshot.TaskSnapshot;
-import com.xa.mass.engine.monkey.snapshot.WorkerContextSnapshot;
+import com.xa.mass.engine.monkey.snapshot.WorkerSchedulingSnapshot;
 import com.xa.mass.engine.monkey.snapshot.WorkerSnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,11 +32,12 @@ public class AssignmentRecordService implements AssignmentDiagnosticRecorder, As
      * Records a worker-level assignment attempt.
      */
     @Override
-    public AssignmentRecord recordWorkerAssignment(Task task, Worker worker, WorkerContext workerContext,
+    public AssignmentRecord recordWorkerAssignment(Task task, WorkerSchedulingCandidate candidate,
                                                    AssignmentResult result, String reason,
                                                    List<RuleEvaluationDetail> ruleEvaluations,
                                                    Map<String, Object> contextSnapshot,
                                                    boolean workerLocked) {
+        Worker worker = candidate.getWorker();
         AssignmentRecord record = new AssignmentRecord();
         record.setRecordId(UUID.randomUUID().toString());
         record.setType(AssignmentType.WORKER_ASSIGN);
@@ -49,9 +51,7 @@ public class AssignmentRecordService implements AssignmentDiagnosticRecorder, As
 
         record.setTaskSnapshot(createTaskSnapshot(task));
         record.setWorkerSnapshot(createWorkerSnapshot(worker, workerLocked));
-        if (workerContext != null) {
-            record.setWorkerContextSnapshot(createWorkerContextSnapshot(workerContext));
-        }
+        record.setWorkerSchedulingSnapshot(createWorkerSchedulingSnapshot(candidate.getSchedulingView()));
 
         records.put(record.getRecordId(), record);
         logAssignmentRecord(record);
@@ -62,10 +62,11 @@ public class AssignmentRecordService implements AssignmentDiagnosticRecorder, As
      * Records a message-level assignment attempt.
      */
     @Override
-    public AssignmentRecord recordMessageAssignment(Task task, Worker worker, WorkerContext workerContext,
+    public AssignmentRecord recordMessageAssignment(Task task, WorkerSchedulingCandidate candidate,
                                                     String messageId, String batchId,
                                                     AssignmentResult result, String reason,
                                                     boolean workerLocked) {
+        Worker worker = candidate.getWorker();
         AssignmentRecord record = new AssignmentRecord();
         record.setRecordId(UUID.randomUUID().toString());
         record.setType(AssignmentType.MSG_ASSIGN);
@@ -78,9 +79,7 @@ public class AssignmentRecordService implements AssignmentDiagnosticRecorder, As
 
         record.setTaskSnapshot(createTaskSnapshot(task));
         record.setWorkerSnapshot(createWorkerSnapshot(worker, workerLocked));
-        if (workerContext != null) {
-            record.setWorkerContextSnapshot(createWorkerContextSnapshot(workerContext));
-        }
+        record.setWorkerSchedulingSnapshot(createWorkerSchedulingSnapshot(candidate.getSchedulingView()));
 
         records.put(record.getRecordId(), record);
         logAssignmentRecord(record);
@@ -101,11 +100,6 @@ public class AssignmentRecordService implements AssignmentDiagnosticRecorder, As
         logMsg.append("Batch=").append(record.getBatchId()).append(", ");
         logMsg.append("Result=").append(record.getResult().name()).append(", ");
         logMsg.append("Reason=").append(record.getReason());
-
-        if (record.getWorkerContextSnapshot() != null) {
-            logMsg.append(", WorkerContext=")
-                    .append(record.getWorkerContextSnapshot().getWorkerContextId());
-        }
 
         if (record.getRuleEvaluations() != null && !record.getRuleEvaluations().isEmpty()) {
             logMsg.append(", Rules=[");
@@ -155,23 +149,29 @@ public class AssignmentRecordService implements AssignmentDiagnosticRecorder, As
         return snapshot;
     }
 
-    private WorkerContextSnapshot createWorkerContextSnapshot(WorkerContext workerContext) {
-        WorkerContextSnapshot snapshot = new WorkerContextSnapshot();
-        snapshot.setWorkerContextId(workerContext.getWorkerContextId());
-        snapshot.setWorkerId(workerContext.getWorkerId());
-        snapshot.setWorkerContextStatus(workerContext.getStatus().name());
-        snapshot.setRoutingTags(workerContext.getRoutingTags());
-        snapshot.setAttributes(workerContext.getAttributes());
-        snapshot.setLastBindTaskId(workerContext.getLastBindTaskId());
-        snapshot.setExpireTime(workerContext.getExpireTime());
-        snapshot.setCreateTime(workerContext.getCreateTime());
-        snapshot.setUpdateTime(workerContext.getUpdateTime());
-        snapshot.setLastUsedTime(workerContext.getLastUsedTime());
-        snapshot.setWorkerContextAllocatable(workerContext.isAllocatable());
-        snapshot.setWorkerContextAvailable(workerContext.isAvailable());
-        snapshot.setWorkerContextUsable(workerContext.isUsable());
-        snapshot.setWorkerContextReserved(workerContext.isReserved());
-        snapshot.setWorkerContextOccupied(workerContext.isOccupied());
+    private WorkerSchedulingSnapshot createWorkerSchedulingSnapshot(WorkerSchedulingView view) {
+        WorkerSchedulingSnapshot snapshot = new WorkerSchedulingSnapshot();
+        snapshot.setWorkerId(view.workerId());
+        snapshot.setWorkerStatus(view.workerStatusName());
+        snapshot.setWorkerGroupId(view.workerGroupId());
+        snapshot.setAgentVersion(view.agentVersion());
+        snapshot.setSupportedProjects(view.supportedProjects());
+        snapshot.setSupportedEventCodes(view.supportedEventCodes());
+        snapshot.setWorkerAttributes(view.workerAttributes());
+        snapshot.setReachability(view.reachability().name());
+        snapshot.setDispatchEnabled(view.dispatchEnabled());
+        snapshot.setWorkerLocked(view.workerLocked());
+        snapshot.setActiveLeaseCount(view.activeLeaseCount());
+        snapshot.setReservedCount(view.reservedCount());
+        snapshot.setDeclaredCapacity(view.declaredCapacity());
+        snapshot.setEstimatedLoadRatio(view.estimatedLoadRatio());
+        snapshot.setSchedulingResourceId(view.schedulingResourceId());
+        snapshot.setSchedulingProject(view.schedulingProject());
+        snapshot.setSchedulingRoutingTags(view.schedulingRoutingTags());
+        snapshot.setSchedulingAttributes(view.schedulingAttributes());
+        snapshot.setSchedulingResourceAllocatable(view.schedulingResourceAllocatable());
+        snapshot.setSchedulingResourceAvailable(view.schedulingResourceAvailable());
+        snapshot.setSchedulingResourceUsable(view.schedulingResourceUsable());
         return snapshot;
     }
 

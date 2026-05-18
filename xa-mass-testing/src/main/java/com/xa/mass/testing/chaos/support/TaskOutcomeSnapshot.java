@@ -79,7 +79,6 @@ public record TaskOutcomeSnapshot(String taskId,
 
     public record ActiveLeaseOutcomeSnapshot(String messageId,
                                              String workerId,
-                                             String workerContextId,
                                              String batchId,
                                              int retryCount,
                                              String leaseExpireAt) {
@@ -87,7 +86,6 @@ public record TaskOutcomeSnapshot(String taskId,
             return new ActiveLeaseOutcomeSnapshot(
                     lease.messageId(),
                     lease.workerId(),
-                    lease.workerContextId(),
                     lease.batchId(),
                     lease.retryCount(),
                     lease.leaseExpireAt() != null ? String.valueOf(lease.leaseExpireAt()) : null
@@ -98,7 +96,6 @@ public record TaskOutcomeSnapshot(String taskId,
             Map<String, Object> map = new LinkedHashMap<>();
             map.put("messageId", messageId);
             map.put("workerId", workerId);
-            map.put("workerContextId", workerContextId);
             map.put("batchId", batchId);
             map.put("retryCount", retryCount);
             map.put("leaseExpireAt", leaseExpireAt);
@@ -127,7 +124,6 @@ public record TaskOutcomeSnapshot(String taskId,
     public record AttemptOutcomeSnapshot(int attemptNo,
                                          String attemptId,
                                          String workerId,
-                                         String workerContextId,
                                          String batchId,
                                          String status,
                                          String finalReason,
@@ -137,7 +133,6 @@ public record TaskOutcomeSnapshot(String taskId,
                     attempt.attemptNo(),
                     attempt.attemptId(),
                     attempt.workerId(),
-                    attempt.workerContextId(),
                     attempt.batchId(),
                     attempt.status(),
                     attempt.finalReason(),
@@ -150,7 +145,6 @@ public record TaskOutcomeSnapshot(String taskId,
             map.put("attemptNo", attemptNo);
             map.put("attemptId", attemptId);
             map.put("workerId", workerId);
-            map.put("workerContextId", workerContextId);
             map.put("batchId", batchId);
             map.put("status", status);
             map.put("finalReason", finalReason);

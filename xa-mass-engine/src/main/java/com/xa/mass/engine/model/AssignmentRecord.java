@@ -3,7 +3,7 @@ package com.xa.mass.engine.model;
 import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.enums.assignment.AssignmentType;
 import com.xa.mass.engine.monkey.snapshot.TaskSnapshot;
-import com.xa.mass.engine.monkey.snapshot.WorkerContextSnapshot;
+import com.xa.mass.engine.monkey.snapshot.WorkerSchedulingSnapshot;
 import com.xa.mass.engine.monkey.snapshot.WorkerSnapshot;
 
 import java.time.LocalDateTime;
@@ -31,7 +31,7 @@ public class AssignmentRecord {
     private Integer priority;
     private TaskSnapshot taskSnapshot;
     private WorkerSnapshot workerSnapshot;
-    private WorkerContextSnapshot workerContextSnapshot;
+    private WorkerSchedulingSnapshot workerSchedulingSnapshot;
 
     public AssignmentRecord() {
         this.assignTime = LocalDateTime.now();
@@ -82,8 +82,10 @@ public class AssignmentRecord {
     public WorkerSnapshot getWorkerSnapshot() { return workerSnapshot; }
     public void setWorkerSnapshot(WorkerSnapshot workerSnapshot) { this.workerSnapshot = workerSnapshot; }
 
-    public WorkerContextSnapshot getWorkerContextSnapshot() { return workerContextSnapshot; }
-    public void setWorkerContextSnapshot(WorkerContextSnapshot workerContextSnapshot) { this.workerContextSnapshot = workerContextSnapshot; }
+    public WorkerSchedulingSnapshot getWorkerSchedulingSnapshot() { return workerSchedulingSnapshot; }
+    public void setWorkerSchedulingSnapshot(WorkerSchedulingSnapshot workerSchedulingSnapshot) {
+        this.workerSchedulingSnapshot = workerSchedulingSnapshot;
+    }
 
     @Override
     public String toString() {

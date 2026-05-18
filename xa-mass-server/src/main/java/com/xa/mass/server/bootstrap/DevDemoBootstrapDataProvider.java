@@ -8,7 +8,6 @@ import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
-import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import org.slf4j.Logger;
@@ -99,16 +98,10 @@ public final class DevDemoBootstrapDataProvider implements MassBootstrapDataProv
                     .attributes(Map.of(
                             "tier", "demo",
                             "lane", lane,
-                            "capacity", "standard"
-                    ))
-                    .build());
-            runtime.registerWorkerContext(WorkerContextRegistration.builder()
-                    .workerContextId("ctx-" + workerId)
-                    .workerId(workerId)
-                    .routingTags(Set.of(lane))
-                    .attributes(Map.of(
                             "country", lane,
-                            "pool", "demo-" + lane
+                            "pool", "demo-" + lane,
+                            "routingTags", lane,
+                            "capacity", "standard"
                     ))
                     .build());
         }

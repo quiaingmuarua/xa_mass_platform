@@ -6,7 +6,7 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchBatch;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
-import com.xa.mass.engine.WorkerReachabilityState;
+import com.xa.mass.engine.worker.WorkerReachabilityState;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.config.TransportRuntimeRole;
@@ -175,7 +175,6 @@ class MassApplicationDistributedTransportTest {
                 1,
                 "lease-" + messageId,
                 workerId,
-                "ctx-1",
                 "batch-1"
         );
     }

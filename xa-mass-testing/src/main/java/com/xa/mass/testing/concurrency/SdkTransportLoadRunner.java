@@ -17,7 +17,6 @@ import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.TaskStateSnapshot;
-import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
@@ -265,12 +264,7 @@ public final class SdkTransportLoadRunner {
                         ))
                         .transportHint(transportHint)
                         .adapterId(transportMode.adapterId())
-                        .build());
-                app.registerWorkerContext(WorkerContextRegistration.builder()
-                        .workerContextId("sdk-load-context-" + i)
-                        .workerId(workerId)
-                        .project("demoApp")
-                        .routingTags(Set.of("us"))
+                        .attributes(Map.of("routingTags", "us", "country", "us"))
                         .build());
             }
         }

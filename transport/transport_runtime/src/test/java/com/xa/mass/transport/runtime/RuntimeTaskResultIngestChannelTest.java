@@ -261,14 +261,12 @@ class RuntimeTaskResultIngestChannelTest {
 
     @Test
     void mismatchedEnvelopeAttemptIdentityAcceptedNoopDoesNotCallEngineApply() {
-        RecordingResultIngestFacade facade = new RecordingResultIngestFacade(new TaskResultCorrelation(
+        RecordingResultIngestFacade facade = new RecordingResultIngestFacade(TaskResultCorrelation.workerLevel(
                 "task-1",
                 "msg-1",
-                true,
                 "expected-attempt",
                 "lease-1",
                 "worker-1",
-                "worker-context-1",
                 "batch-1"
         ));
         RuntimeTaskResultIngestChannel channel = new RuntimeTaskResultIngestChannel(facade);
@@ -289,14 +287,12 @@ class RuntimeTaskResultIngestChannelTest {
 
     @Test
     void mismatchedEnvelopeLeaseIdentityAcceptedNoopDoesNotCallEngineApply() {
-        RecordingResultIngestFacade facade = new RecordingResultIngestFacade(new TaskResultCorrelation(
+        RecordingResultIngestFacade facade = new RecordingResultIngestFacade(TaskResultCorrelation.workerLevel(
                 "task-1",
                 "msg-1",
-                true,
                 "attempt-1",
                 "expected-lease",
                 "worker-1",
-                "worker-context-1",
                 "batch-1"
         ));
         RuntimeTaskResultIngestChannel channel = new RuntimeTaskResultIngestChannel(facade);
@@ -317,16 +313,9 @@ class RuntimeTaskResultIngestChannelTest {
 
     @Test
     void envelopeWithoutActiveCorrelationAcceptedNoopDoesNotCallEngineApply() {
-        RecordingResultIngestFacade facade = new RecordingResultIngestFacade(new TaskResultCorrelation(
-                "task-1",
-                "msg-1",
-                false,
-                null,
-                null,
-                null,
-                null,
-                null
-        ));
+        RecordingResultIngestFacade facade = new RecordingResultIngestFacade(
+                TaskResultCorrelation.noActiveLease("task-1", "msg-1")
+        );
         RuntimeTaskResultIngestChannel channel = new RuntimeTaskResultIngestChannel(facade);
 
         boolean handled = channel.ingest(new TransportResultEnvelope(
@@ -345,14 +334,12 @@ class RuntimeTaskResultIngestChannelTest {
 
     @Test
     void validEnvelopeIdentityCallsEngineApply() {
-        RecordingResultIngestFacade facade = new RecordingResultIngestFacade(new TaskResultCorrelation(
+        RecordingResultIngestFacade facade = new RecordingResultIngestFacade(TaskResultCorrelation.workerLevel(
                 "task-1",
                 "msg-1",
-                true,
                 "attempt-1",
                 "lease-1",
                 "worker-1",
-                "worker-context-1",
                 "batch-1"
         ));
         RuntimeTaskResultIngestChannel channel = new RuntimeTaskResultIngestChannel(facade);
@@ -607,15 +594,14 @@ class RuntimeTaskResultIngestChannelTest {
         String messageId = taskMsg.messageId();
         taskWorkRuntime.claimReady(
                 task.getTid(),
-                List.of(new WorkerClaimTarget("worker-1", "worker-context-1", "batch-0", 1)),
+                List.of(WorkerClaimTarget.workerLevel("worker-1", "batch-0", 1)),
                 1,
                 assignmentRuntimePort.getWorkLeaseSeconds()
         );
-        String attemptId = TaskWorkAttemptIdSupport.runtimeAttemptId(
+        String attemptId = TaskWorkAttemptIdSupport.workerLevelRuntimeAttemptId(
                 taskMsg.messageId(),
                 1,
                 "worker-1",
-                "worker-context-1",
                 "batch-0"
         );
         TaskDetailStore.TaskMessageProjection assignedProjection = new TaskDetailStore.TaskMessageProjection(
@@ -637,7 +623,6 @@ class RuntimeTaskResultIngestChannelTest {
                 taskMsg.output(),
                 attemptId,
                 "worker-1",
-                "worker-context-1",
                 "batch-0"
         );
         taskStorage.upsertTaskMessageProjection(task.getTid(), assignedProjection);
@@ -652,7 +637,6 @@ class RuntimeTaskResultIngestChannelTest {
                 taskMsg.messageId(),
                 1,
                 "worker-1",
-                "worker-context-1",
                 "batch-0",
                 TaskMessageAttemptProjectionStatus.DISPATCHED,
                 null,
@@ -735,7 +719,6 @@ class RuntimeTaskResultIngestChannelTest {
                         taskMsg.output(),
                         taskMsg.latestAttemptId(),
                         taskMsg.latestAttemptWorkerId(),
-                        taskMsg.latestAttemptWorkerContextId(),
                         taskMsg.latestAttemptBatchId()
                 )
         );

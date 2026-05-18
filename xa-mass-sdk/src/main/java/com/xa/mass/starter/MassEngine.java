@@ -11,7 +11,7 @@ import com.xa.mass.engine.TaskEventListenerRegistrar;
 import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
-import com.xa.mass.engine.WorkerManager;
+import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.engine.listener.SimpleTaskDispatchBinder;
 import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;

@@ -21,7 +21,6 @@ public record RuntimeResultApplyContext(
         ResultApplyOutcome outcome,
         /** Worker id from the active lease snapshot captured before apply. */
         String workerId,
-        String workerContextId,
         String batchId,
         /** The active lease token captured before apply. */
         String activeLeaseToken,
@@ -43,7 +42,7 @@ public record RuntimeResultApplyContext(
     /** Factory for the no-active-lease outcome (duplicate / late callback). */
     public static RuntimeResultApplyContext noLease(ResultApplyOutcome outcome) {
         return new RuntimeResultApplyContext(
-                outcome, null, null, null, null, null, 0, 0, null);
+                outcome, null, null, null, null, 0, 0, null);
     }
 
     /**
@@ -52,7 +51,6 @@ public record RuntimeResultApplyContext(
      */
     public static RuntimeResultApplyContext withSnapshot(ResultApplyOutcome outcome,
                                                          String workerId,
-                                                         String workerContextId,
                                                          String batchId,
                                                          String activeLeaseToken,
                                                          String payloadRef,
@@ -60,7 +58,7 @@ public record RuntimeResultApplyContext(
                                                          int maxRetryCount,
                                                          Instant leasedAt) {
         return new RuntimeResultApplyContext(
-                outcome, workerId, workerContextId, batchId,
+                outcome, workerId, batchId,
                 activeLeaseToken, payloadRef, retryCount, maxRetryCount, leasedAt);
     }
 }

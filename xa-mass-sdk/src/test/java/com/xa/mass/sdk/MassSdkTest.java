@@ -4,19 +4,20 @@ import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.worker.WorkerStatus;
+import com.xa.mass.base.event.PriorityClass;
+import com.xa.mass.base.event.ResponseMode;
+import com.xa.mass.base.event.TargetScope;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
 import com.xa.mass.command.event.CoreEventDescriptor;
 import com.xa.mass.command.event.CoreEventResponse;
 import com.xa.mass.command.event.InMemoryMassEventRuntime;
 import com.xa.mass.engine.TaskManager;
-import com.xa.mass.engine.WorkerManager;
+import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;
@@ -63,8 +64,9 @@ import com.xa.mass.sdk.model.MassTaskUpdateRequest;
 import com.xa.mass.sdk.model.TaskWorkFinalNotification;
 import com.xa.mass.sdk.model.TaskDetailSnapshot;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
+import com.xa.mass.sdk.model.TaskResultItemSnapshot;
+import com.xa.mass.sdk.model.TaskResultWindowSnapshot;
 import com.xa.mass.sdk.model.WorkerEventBinding;
-import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.auth.PrincipalType;
 import com.xa.mass.sdk.authz.TaskOwnershipSupport;
@@ -1465,36 +1467,6 @@ class MassSdkTest {
     }
 
     @Test
-    void registerWorkerContextUsesSdkContractAndStartsIdle() {
-        MassApplication delegate = mock(MassApplication.class);
-        MassEngine engine = mock(MassEngine.class);
-        EngineConfig config = new EngineConfig();
-        WorkerStorage workerStorage = spy(config.getWorkerStorage());
-        config.setWorkerStorage(workerStorage);
-
-        when(delegate.getEngine()).thenReturn(engine);
-        when(engine.isRunning()).thenReturn(true);
-        when(engine.getConfig()).thenReturn(config);
-
-        MassSdkApplication app = new MassSdkApplication(delegate);
-        app.registerWorkerContext(WorkerContextRegistration.builder()
-                .workerContextId("ctx-crawler-worker-001")
-                .workerId("crawler-worker-001")
-                .routingTags(Set.of("web", "us"))
-                .attributes(Map.of("region", "us"))
-                .build());
-
-        var captor = org.mockito.ArgumentCaptor.forClass(WorkerContext.class);
-        verify(workerStorage).addWorkerContext(captor.capture());
-        WorkerContext workerContext = captor.getValue();
-        Assertions.assertEquals("ctx-crawler-worker-001", workerContext.getWorkerContextId());
-        Assertions.assertEquals("crawler-worker-001", workerContext.getWorkerId());
-        Assertions.assertEquals(Set.of("web", "us"), workerContext.getRoutingTags());
-        Assertions.assertEquals(Map.of("region", "us"), workerContext.getAttributes());
-        Assertions.assertEquals(WorkerContextStatus.IDLE, workerContext.getStatus());
-    }
-
-    @Test
     void taskAdminCommandsUseSdkResumeAndUpdateSurface() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
@@ -1665,6 +1637,7 @@ class MassSdkTest {
     void engineConfigDerivesWorkerManagerFromCurrentWorkerStorage() {
         EngineConfig config = new EngineConfig();
         WorkerManager initial = config.getWorkerManager();
+        assertSame(initial, config.getWorkerManager());
         WorkerStorage replacement = spy(new com.xa.mass.storage.memory.InMemoryWorkerStorage());
         Worker worker = new Worker();
         worker.setWorkerId("worker-rebound");
@@ -1673,6 +1646,7 @@ class MassSdkTest {
 
         WorkerManager rebound = config.getWorkerManager();
         assertNotSame(initial, rebound);
+        assertSame(rebound, config.getWorkerManager());
         rebound.addWorker(worker);
 
         verify(replacement).addWorker(worker);
@@ -1832,6 +1806,9 @@ class MassSdkTest {
                 .payloadTypes(List.of(PayloadType.TEXT, PayloadType.JSON))
                 .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
                 .defaultRoutingCode("bot")
+                .priorityClass(PriorityClass.INTERACTIVE)
+                .responseMode(ResponseMode.STREAM)
+                .targetScope(TargetScope.WORKER)
                 .handler((request, principal) -> EventResponse.success(Map.of("accepted", true), request.getRequestId()))
                 .build());
         app.registerProject(ProjectDefinition.builder()
@@ -1850,8 +1827,14 @@ class MassSdkTest {
         assertEquals(List.of("TEXT", "JSON"), descriptor.getPayloadTypes());
         assertEquals(List.of("SINGLE_RUN", "STREAMING"), descriptor.getTaskModes());
         assertEquals("bot", descriptor.getDefaultRoutingCode());
+        assertEquals(PriorityClass.INTERACTIVE, descriptor.getPriorityClass());
+        assertEquals(ResponseMode.STREAM, descriptor.getResponseMode());
+        assertEquals(TargetScope.WORKER, descriptor.getTargetScope());
         assertEquals(List.of("botApp"), app.getEvent("bot.command").getProjectCodes());
         assertEquals(descriptor.getDescription(), app.getEvent("bot.command").getDescription());
+        assertEquals(PriorityClass.INTERACTIVE, app.getEvent("bot.command").getPriorityClass());
+        assertEquals(ResponseMode.STREAM, app.getEvent("bot.command").getResponseMode());
+        assertEquals(TargetScope.WORKER, app.getEvent("bot.command").getTargetScope());
     }
 
     @Test
@@ -1875,6 +1858,9 @@ class MassSdkTest {
                         .payloadTypes(List.of("JSON"))
                         .taskModes(List.of("SINGLE_RUN"))
                         .projectCodes(List.of("runtimeApp"))
+                        .priorityClass(PriorityClass.BULK)
+                        .responseMode(ResponseMode.FINAL_RESULT)
+                        .targetScope(TargetScope.TASK_ENGINE)
                         .enabled(true)
                         .build(),
                 (request, principal) -> CoreEventResponse.success(Map.of("ok", true), request.getRequestId())
@@ -1882,6 +1868,9 @@ class MassSdkTest {
 
         assertNotNull(app.getEvent("runtime.only"));
         assertEquals("Runtime Only", app.getEvent("runtime.only").getName());
+        assertEquals(PriorityClass.BULK, app.getEvent("runtime.only").getPriorityClass());
+        assertEquals(ResponseMode.FINAL_RESULT, app.getEvent("runtime.only").getResponseMode());
+        assertEquals(TargetScope.TASK_ENGINE, app.getEvent("runtime.only").getTargetScope());
         assertTrue(app.listEvents().stream().anyMatch(event -> "runtime.only".equals(event.getCode())));
         assertEquals(List.of("runtime.only"),
                 app.getEventsForProject("runtimeApp").stream().map(EventDefinition::getCode).toList());
@@ -2315,17 +2304,6 @@ class MassSdkTest {
                 .attributes(workerAttributes)
                 .build());
 
-        Map<String, String> contextAttributes = new LinkedHashMap<>();
-        contextAttributes.put(" region ", "us");
-        contextAttributes.put("", "ignored");
-        LinkedHashSet<String> routingTags = new LinkedHashSet<>(Arrays.asList(" ROUTE-US ", "route-us", " "));
-        app.registerWorkerContext(WorkerContextRegistration.builder()
-                .workerContextId(" ctx-crawler-worker-001 ")
-                .workerId(" crawler-worker-001 ")
-                .routingTags(routingTags)
-                .attributes(contextAttributes)
-                .build());
-
         var workerCaptor = org.mockito.ArgumentCaptor.forClass(Worker.class);
         verify(workerStorage).addWorker(workerCaptor.capture());
         Worker worker = workerCaptor.getValue();
@@ -2335,14 +2313,6 @@ class MassSdkTest {
         Assertions.assertEquals(List.of("crawler.fetch-page"), worker.getSupportedEventCodes());
         Assertions.assertEquals("polling", worker.getOnlineStrategy());
         Assertions.assertEquals(Map.of("type", "crawler"), worker.getAttributes());
-
-        var contextCaptor = org.mockito.ArgumentCaptor.forClass(WorkerContext.class);
-        verify(workerStorage).addWorkerContext(contextCaptor.capture());
-        WorkerContext workerContext = contextCaptor.getValue();
-        Assertions.assertEquals("ctx-crawler-worker-001", workerContext.getWorkerContextId());
-        Assertions.assertEquals("crawler-worker-001", workerContext.getWorkerId());
-        Assertions.assertEquals(Set.of("route-us"), workerContext.getRoutingTags());
-        Assertions.assertEquals(Map.of("region", "us"), workerContext.getAttributes());
     }
 
     @Test
@@ -2949,6 +2919,13 @@ class MassSdkTest {
 
             assertNotNull(terminalTask);
             Assertions.assertEquals("ALL_MESSAGES_SUCCEEDED", terminalTask.getTerminalReason());
+
+            TaskResultWindowSnapshot resultWindow = app.readTaskResults(task.getTaskId(), 0, 10);
+            Assertions.assertEquals(1, resultWindow.getItems().size());
+            TaskResultItemSnapshot resultRow = resultWindow.getItems().getFirst();
+            Assertions.assertEquals("polling-worker-1", resultRow.getWorkerId());
+            Assertions.assertFalse(resultRow.getAttemptId().contains("-na-"));
+            Assertions.assertEquals("SUCCESS", resultRow.getStatus());
         } finally {
             app.stop();
         }
@@ -3011,7 +2988,14 @@ class MassSdkTest {
         assertMissingMethod(MassSdk.TransportOptions.class, "unwrap");
         assertMissingMethod(MassSdk.EngineOptions.class, "unwrap");
         assertMissingMethod(MassEngine.class, "addWorker", Worker.class);
-        assertMissingMethod(MassEngine.class, "addWorkerContext", WorkerContext.class);
+        Assertions.assertThrows(ClassNotFoundException.class,
+                () -> Class.forName("com.xa.mass.sdk.model.WorkerContextRegistration"));
+        Assertions.assertThrows(ClassNotFoundException.class,
+                () -> Class.forName("com.xa.mass.sdk.model.WorkerContextSnapshot"));
+        Assertions.assertThrows(ClassNotFoundException.class,
+                () -> Class.forName("com.xa.mass.base.model.WorkerContext"));
+        Assertions.assertThrows(ClassNotFoundException.class,
+                () -> Class.forName("com.xa.mass.base.enums.worker.WorkerContextStatus"));
         assertMissingMethod(MassEngine.class, "getTaskManager");
         assertMissingMethod(MassEngine.class, "getWorkerManager");
         assertMissingMethod(MassEngine.class, "publishTaskEvents");
@@ -3127,16 +3111,9 @@ class MassSdkTest {
                 () -> app.taskDiagnostics().validateTaskState("task-1"),
                 () -> app.getWorker("worker-1"),
                 app::getAllWorkers,
-                app::getAllWorkerContexts,
-                () -> app.getWorkerContexts("worker-1"),
-                () -> app.getWorkerContextById("context-1"),
-                () -> app.isWorkerLocked("worker-1"),
+                () -> runtimeDiagnostics(app).isWorkerLocked("worker-1"),
                 () -> app.isWorkerOnline("worker-1"),
                 () -> app.registerWorker(WorkerRegistration.builder().workerId("worker-1").build()),
-                () -> app.registerWorkerContext(WorkerContextRegistration.builder()
-                        .workerContextId("context-1")
-                        .workerId("worker-1")
-                        .build()),
                 () -> app.pullWorker("worker-1"),
                 () -> app.replaceDefaultRules(List.of())
         );

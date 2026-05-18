@@ -4,7 +4,6 @@ import com.xa.mass.base.jsondsl.JsonDslEngine;
 import com.xa.mass.base.jsondsl.generate.TypeRegistry;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.storage.rule.RuleDefinition;
 
 import java.util.List;
@@ -22,17 +21,12 @@ public class MonkeyGenerator {
 
     static {
         TypeRegistry.register("Worker", Worker.class);
-        TypeRegistry.register("WorkerContext", WorkerContext.class);
         TypeRegistry.register("RuleDefinition", RuleDefinition.class);
         TypeRegistry.register("TaskFixture", TaskFixture.class);
     }
 
     public static List<Worker> generateWorkers(String jsonDsl) {
         return JsonDslEngine.generateList(jsonDsl, Worker.class);
-    }
-
-    public static List<WorkerContext> generateWorkerContexts(String jsonDsl) {
-        return JsonDslEngine.generateList(jsonDsl, WorkerContext.class);
     }
 
     public static List<TaskFixture> generateTasks(String jsonDsl) {

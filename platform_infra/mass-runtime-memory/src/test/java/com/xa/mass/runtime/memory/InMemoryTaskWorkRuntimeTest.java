@@ -35,7 +35,7 @@ class InMemoryTaskWorkRuntimeTest {
         assertEquals(1, runtime.stats("task-1").totalCount());
 
         List<ClaimedTaskWork> claimed = runtime.claimReady("task-1",
-                List.of(new WorkerClaimTarget("worker-1", "ctx-1", "batch-1", 1)), 1, 30);
+                List.of(WorkerClaimTarget.workerLevel("worker-1", "batch-1", 1)), 1, 30);
 
         assertEquals(1, claimed.size());
         ClaimedTaskWork work = claimed.get(0);
@@ -67,7 +67,7 @@ class InMemoryTaskWorkRuntimeTest {
         InMemoryTaskWorkRuntime runtime = new InMemoryTaskWorkRuntime();
         runtime.enqueue(item("task-1", "msg-1"), WorkEnqueueOptions.DEFAULT);
         ClaimedTaskWork work = runtime.claimReady("task-1",
-                List.of(new WorkerClaimTarget("worker-1", "ctx-1", "batch-1", 1)), 1, 30).get(0);
+                List.of(WorkerClaimTarget.workerLevel("worker-1", "batch-1", 1)), 1, 30).get(0);
 
         ResultApplyOutcome applied = runtime.applyResult(TaskWorkResult.success(
                 "task-1", "msg-1", work.leaseToken(), "done", Map.of("ok", true)));
@@ -89,7 +89,7 @@ class InMemoryTaskWorkRuntimeTest {
         InMemoryTaskWorkRuntime runtime = new InMemoryTaskWorkRuntime();
         runtime.enqueue(item("task-1", "msg-1"), WorkEnqueueOptions.DEFAULT);
         runtime.claimReady("task-1",
-                List.of(new WorkerClaimTarget("worker-1", "ctx-1", "batch-1", 1)), 1, 30);
+                List.of(WorkerClaimTarget.workerLevel("worker-1", "batch-1", 1)), 1, 30);
 
         ResultApplyOutcome outcome = runtime.applyResult(TaskWorkResult.success(
                 "task-1", "msg-1", "stale-token", "done", Map.of()));
@@ -104,7 +104,7 @@ class InMemoryTaskWorkRuntimeTest {
         InMemoryTaskWorkRuntime runtime = new InMemoryTaskWorkRuntime();
         runtime.enqueue(item("task-1", "msg-1"), WorkEnqueueOptions.DEFAULT);
         ClaimedTaskWork work = runtime.claimReady("task-1",
-                List.of(new WorkerClaimTarget("worker-1", "ctx-1", "batch-1", 1)), 1, 30).get(0);
+                List.of(WorkerClaimTarget.workerLevel("worker-1", "batch-1", 1)), 1, 30).get(0);
 
         ResultApplyOutcome outcome = runtime.applyResult(TaskWorkResult.failure(
                 "task-1", "msg-1", work.leaseToken(), "BOOM", "boom", Map.of(), true));
@@ -115,7 +115,7 @@ class InMemoryTaskWorkRuntimeTest {
         assertEquals(0, runtime.stats("task-1").inflightCount());
 
         ClaimedTaskWork retry = runtime.claimReady("task-1",
-                List.of(new WorkerClaimTarget("worker-2", "ctx-2", "batch-2", 1)), 1, 30).get(0);
+                List.of(WorkerClaimTarget.workerLevel("worker-2", "batch-2", 1)), 1, 30).get(0);
         assertEquals(1, retry.retryCount());
     }
 
@@ -125,7 +125,7 @@ class InMemoryTaskWorkRuntimeTest {
         InMemoryTaskWorkRuntime runtime = new InMemoryTaskWorkRuntime(10, now::get);
         runtime.enqueue(item("task-1", "msg-1"), WorkEnqueueOptions.DEFAULT);
         ClaimedTaskWork work = runtime.claimReady("task-1",
-                List.of(new WorkerClaimTarget("worker-1", "ctx-1", "batch-1", 1)), 1, 30).get(0);
+                List.of(WorkerClaimTarget.workerLevel("worker-1", "batch-1", 1)), 1, 30).get(0);
 
         ResultApplyOutcome outcome = runtime.applyResult(TaskWorkResult.failure(
                 "task-1", "msg-1", work.leaseToken(), "BOOM", "boom", Map.of(), true)
@@ -148,7 +148,7 @@ class InMemoryTaskWorkRuntimeTest {
         InMemoryTaskWorkRuntime runtime = new InMemoryTaskWorkRuntime(10, now::get);
         runtime.enqueue(item("task-1", "msg-1"), WorkEnqueueOptions.DEFAULT);
         ClaimedTaskWork work = runtime.claimReady("task-1",
-                List.of(new WorkerClaimTarget("worker-1", "ctx-1", "batch-1", 1)), 1, 10).get(0);
+                List.of(WorkerClaimTarget.workerLevel("worker-1", "batch-1", 1)), 1, 10).get(0);
 
         assertTrue(runtime.pollExpiredLeases(10, now.get().plusSeconds(9)).isEmpty());
         List<ActiveLeaseRecord> expired = runtime.pollExpiredLeases(10, now.get().plusSeconds(11));
@@ -162,7 +162,7 @@ class InMemoryTaskWorkRuntimeTest {
         InMemoryTaskWorkRuntime runtime = new InMemoryTaskWorkRuntime();
         runtime.enqueue(item("task-1", "msg-1"), WorkEnqueueOptions.DEFAULT);
         ClaimedTaskWork work = runtime.claimReady("task-1",
-                List.of(new WorkerClaimTarget("worker-1", "ctx-1", "batch-1", 1)), 1, 30).get(0);
+                List.of(WorkerClaimTarget.workerLevel("worker-1", "batch-1", 1)), 1, 30).get(0);
 
         ResultApplyOutcome outcome = runtime.applyResult(TaskWorkResult.expired(
                 "task-1", "msg-1", work.leaseToken(), "lease expired", false));
@@ -185,7 +185,7 @@ class InMemoryTaskWorkRuntimeTest {
                         now.get().plusSeconds(60), now.get()),
                 WorkEnqueueOptions.DEFAULT);
         runtime.claimReady("task-1",
-                List.of(new WorkerClaimTarget("worker-1", "ctx-1", "batch-1", 1)), 1, 30);
+                List.of(WorkerClaimTarget.workerLevel("worker-1", "batch-1", 1)), 1, 30);
 
         List<ActiveLeaseRecord> activeLeases = runtime.activeLeases("task-1");
         assertEquals(1, activeLeases.size());
@@ -214,7 +214,7 @@ class InMemoryTaskWorkRuntimeTest {
                         now.get().plusSeconds(60), now.get()),
                 WorkEnqueueOptions.DEFAULT);
         ClaimedTaskWork keptActive = runtime.claimReady("kept-task",
-                List.of(new WorkerClaimTarget("worker-keep", "ctx-1", "batch-1", 1)), 1, 30).get(0);
+                List.of(WorkerClaimTarget.workerLevel("worker-keep", "batch-1", 1)), 1, 30).get(0);
 
         assertEquals(1L, runtime.discardTask("discarded-task"));
 

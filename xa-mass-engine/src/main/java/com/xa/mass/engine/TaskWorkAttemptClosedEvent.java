@@ -9,7 +9,6 @@ public record TaskWorkAttemptClosedEvent(
         String attemptId,
         int attemptNo,
         String workerId,
-        String workerContextId,
         String batchId,
         TaskWorkProjectionState.AttemptStatus status,
         TaskWorkProjectionState.AttemptFinalReason finalReason
@@ -20,7 +19,6 @@ public record TaskWorkAttemptClosedEvent(
                                                      String attemptId,
                                                      int attemptNo,
                                                      String workerId,
-                                                     String workerContextId,
                                                      String batchId,
                                                      TaskWorkProjectionState.AttemptStatus status,
                                                      TaskWorkProjectionState.AttemptFinalReason finalReason) {
@@ -30,7 +28,6 @@ public record TaskWorkAttemptClosedEvent(
                 attemptId,
                 attemptNo,
                 workerId,
-                workerContextId,
                 batchId,
                 status,
                 finalReason

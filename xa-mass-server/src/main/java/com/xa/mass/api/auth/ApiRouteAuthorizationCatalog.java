@@ -104,9 +104,6 @@ public class ApiRouteAuthorizationCatalog {
         if (uri.equals("/api/v1/runtime/workers") && "GET".equals(method)) {
             return route(PlatformResourceType.WORKER, PlatformAction.VIEW, ApiPermissionNames.WORKER_VIEW);
         }
-        if (uri.equals("/api/v1/runtime/worker-contexts") && "GET".equals(method)) {
-            return route(PlatformResourceType.WORKER_CONTEXT, PlatformAction.VIEW, ApiPermissionNames.WORKER_VIEW);
-        }
         if (uri.equals("/api/v1/runtime/rules") && "GET".equals(method)) {
             return route(PlatformResourceType.RULE, PlatformAction.VIEW, ApiPermissionNames.RULE_VIEW);
         }

@@ -272,14 +272,13 @@ class RedisRuntimeTraceIntegrationTest {
                 message.output(),
                 message.latestAttemptId(),
                 message.latestAttemptWorkerId(),
-                message.latestAttemptWorkerContextId(),
                 message.latestAttemptBatchId()
         ));
         message = taskStorage.getTaskMessageProjections(task.getTid(), 1).get(0);
 
         ClaimedTaskWork claimed = runtime.claimReady(
                 task.getTid(),
-                List.of(new WorkerClaimTarget("worker-1", "worker-context-1", "batch-0", 1)),
+                List.of(WorkerClaimTarget.workerLevel("worker-1", "batch-0", 1)),
                 1,
                 300
         ).get(0);
@@ -303,7 +302,6 @@ class RedisRuntimeTraceIntegrationTest {
                 message.output(),
                 attemptId,
                 claimed.workerId(),
-                claimed.workerContextId(),
                 claimed.batchId()
         );
         taskStorage.upsertTaskMessageProjection(task.getTid(), message);
@@ -314,7 +312,6 @@ class RedisRuntimeTraceIntegrationTest {
                 message.messageId(),
                 1,
                 claimed.workerId(),
-                claimed.workerContextId(),
                 claimed.batchId(),
                 TaskMessageAttemptProjectionStatus.DISPATCHED,
                 null,

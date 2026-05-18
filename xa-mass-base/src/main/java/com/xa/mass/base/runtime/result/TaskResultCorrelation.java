@@ -14,6 +14,30 @@ public record TaskResultCorrelation(String taskId,
                                     String projectedAttemptId,
                                     String leaseToken,
                                     String workerId,
-                                    String workerContextId,
                                     String batchId) {
+
+    public static TaskResultCorrelation noActiveLease(String taskId, String messageId) {
+        return new TaskResultCorrelation(taskId, messageId, false, null, null, null, null);
+    }
+
+    public static TaskResultCorrelation workerLevel(String taskId,
+                                                    String messageId,
+                                                    String projectedAttemptId,
+                                                    String leaseToken,
+                                                    String workerId,
+                                                    String batchId) {
+        return new TaskResultCorrelation(
+                taskId,
+                messageId,
+                true,
+                projectedAttemptId,
+                leaseToken,
+                workerId,
+                batchId
+        );
+    }
+
+    public boolean workerLevelLease() {
+        return activeLeasePresent;
+    }
 }

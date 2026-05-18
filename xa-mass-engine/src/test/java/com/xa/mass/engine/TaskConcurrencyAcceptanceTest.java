@@ -239,9 +239,7 @@ class TaskConcurrencyAcceptanceTest {
             assertEquals(1, currentMessage.retryCount());
             assertNull(currentMessage.finalReason());
             assertNull(currentMessage.errorMessage());
-            assertNull(currentMessage.latestAttemptWorkerId());
-            assertNull(currentMessage.latestAttemptWorkerContextId());
-            assertNull(currentMessage.latestAttemptBatchId());
+            assertNull(currentMessage.latestAttemptWorkerId());            assertNull(currentMessage.latestAttemptBatchId());
             assertEquals(TaskStatus.RUNNING, currentTask.getStatus());
             assertEquals(0, currentTask.getTaskSuccessNumber());
             assertEquals(0, logicallyFinalCount.get());
@@ -567,9 +565,8 @@ class TaskConcurrencyAcceptanceTest {
         if (manager.getTaskWorkRuntime().getActiveLease(task.getTid(), message.messageId()).isEmpty()) {
             manager.getTaskWorkRuntime().claimReady(
                     task.getTid(),
-                    List.of(new WorkerClaimTarget(
+                    List.of(WorkerClaimTarget.workerLevel(
                             "worker-" + suffix,
-                            "worker-context-" + suffix,
                             "batch-" + message.retryCount(),
                             1
                     )),
@@ -578,18 +575,16 @@ class TaskConcurrencyAcceptanceTest {
             );
         }
         int attemptNo = Math.max(1, message.retryCount() + 1);
-        String attemptId = TaskWorkAttemptIdSupport.runtimeAttemptId(
+        String attemptId = TaskWorkAttemptIdSupport.workerLevelRuntimeAttemptId(
                 message.messageId(),
                 attemptNo,
                 "worker-" + suffix,
-                "worker-context-" + suffix,
                 "batch-" + message.retryCount()
         );
         TaskDetailStore.TaskMessageProjection assignedProjection = ProjectionTestSupport.markAssigned(
                 message,
                 attemptId,
                 "worker-" + suffix,
-                "worker-context-" + suffix,
                 "batch-" + message.retryCount()
         );
         assertTrue(manager.upsertTaskMessageProjectionRecord(task.getTid(), assignedProjection));
@@ -600,7 +595,6 @@ class TaskConcurrencyAcceptanceTest {
                 assignedProjection.messageId(),
                 attemptNo,
                 assignedProjection.latestAttemptWorkerId(),
-                assignedProjection.latestAttemptWorkerContextId(),
                 assignedProjection.latestAttemptBatchId(),
                 TaskMessageAttemptProjectionStatus.DISPATCHED
         );

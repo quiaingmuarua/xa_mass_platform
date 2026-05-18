@@ -112,6 +112,15 @@
                 {{ row.payloadTypes.join(', ') || '-' }}
               </template>
             </el-table-column>
+            <el-table-column label="Metadata" min-width="260">
+              <template #default="{ row }">
+                <div class="tag-row">
+                  <el-tag type="info" round>{{ row.priorityClass }}</el-tag>
+                  <el-tag type="info" round>{{ row.responseMode }}</el-tag>
+                  <el-tag type="info" round>{{ row.targetScope }}</el-tag>
+                </div>
+              </template>
+            </el-table-column>
             <el-table-column label="Online workers" min-width="120">
               <template #default="{ row }">
                 {{ onlineWorkersForEvent(row.code) }}
@@ -403,5 +412,12 @@ watch(
 
 .scope-list li + li {
   margin-top: 8px;
+}
+
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
 }
 </style>

@@ -1,12 +1,12 @@
 package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.channel.eventbus.core.EventBusFacade;
-import com.xa.mass.engine.WorkerManager;
+import com.xa.mass.engine.worker.WorkerManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 事件监听注册中心，只注册Worker上下线事件
+ * 浜嬩欢鐩戝惉娉ㄥ唽涓績锛屽彧娉ㄥ唽Worker涓婁笅绾夸簨浠?
  */
 public class EventListenerRegistry {
     private static final Logger log = LoggerFactory.getLogger(EventListenerRegistry.class);

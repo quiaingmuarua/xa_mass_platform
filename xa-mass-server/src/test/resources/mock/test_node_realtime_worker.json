@@ -10,7 +10,10 @@
     "attributes": {
       "runtime": "node-websocket-worker",
       "workerType": "external",
-      "lane": "realtime"
+      "lane": "realtime",
+      "routingTag": "us",
+      "routingTags": "us",
+      "country": "us"
     }
   }
 ]

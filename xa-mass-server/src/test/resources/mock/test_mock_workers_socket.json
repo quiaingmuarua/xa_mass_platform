@@ -6,7 +6,10 @@
     "adapterId": "socket",
     "onlineStrategy": "realtime",
     "attributes": {
-      "runtime": "mock-socket-client"
+      "runtime": "mock-socket-client",
+      "routingTag": "us",
+      "routingTags": "us",
+      "country": "us"
     },
     "supportedProjects": ["demoApp"],
     "supportedEventCodes": [
@@ -26,7 +29,10 @@
     "adapterId": "socket",
     "onlineStrategy": "realtime",
     "attributes": {
-      "runtime": "mock-socket-client"
+      "runtime": "mock-socket-client",
+      "routingTag": "us",
+      "routingTags": "us",
+      "country": "us"
     },
     "supportedProjects": ["demoApp"],
     "supportedEventCodes": [

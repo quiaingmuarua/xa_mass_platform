@@ -43,7 +43,6 @@ final class ProjectionTestSupport {
                 null,
                 null,
                 null,
-                null,
                 null
         );
     }
@@ -51,7 +50,6 @@ final class ProjectionTestSupport {
     static TaskDetailStore.TaskMessageProjection markAssigned(TaskDetailStore.TaskMessageProjection projection,
                                                               String attemptId,
                                                               String workerId,
-                                                              String workerContextId,
                                                               String batchId) {
         LocalDateTime now = LocalDateTime.now();
         return new TaskDetailStore.TaskMessageProjection(
@@ -73,7 +71,6 @@ final class ProjectionTestSupport {
                 projection.output(),
                 attemptId,
                 workerId,
-                workerContextId,
                 batchId
         );
     }
@@ -99,7 +96,6 @@ final class ProjectionTestSupport {
                 projection.output(),
                 projection.latestAttemptId(),
                 projection.latestAttemptWorkerId(),
-                projection.latestAttemptWorkerContextId(),
                 projection.latestAttemptBatchId()
         );
     }
@@ -127,7 +123,6 @@ final class ProjectionTestSupport {
                 output,
                 projection.latestAttemptId(),
                 projection.latestAttemptWorkerId(),
-                projection.latestAttemptWorkerContextId(),
                 projection.latestAttemptBatchId()
         );
     }
@@ -155,7 +150,6 @@ final class ProjectionTestSupport {
                 null,
                 projection.latestAttemptId(),
                 projection.latestAttemptWorkerId(),
-                projection.latestAttemptWorkerContextId(),
                 projection.latestAttemptBatchId()
         );
     }
@@ -186,7 +180,6 @@ final class ProjectionTestSupport {
                 output,
                 projection.latestAttemptId(),
                 projection.latestAttemptWorkerId(),
-                projection.latestAttemptWorkerContextId(),
                 projection.latestAttemptBatchId()
         );
     }
@@ -212,7 +205,6 @@ final class ProjectionTestSupport {
                 projection.output(),
                 projection.latestAttemptId(),
                 projection.latestAttemptWorkerId(),
-                projection.latestAttemptWorkerContextId(),
                 projection.latestAttemptBatchId()
         );
     }
@@ -222,7 +214,6 @@ final class ProjectionTestSupport {
                                                                 String messageId,
                                                                 int attemptNo,
                                                                 String workerId,
-                                                                String workerContextId,
                                                                 String batchId,
                                                                 TaskMessageAttemptProjectionStatus status) {
         return new TaskDetailStore.TaskMessageAttemptProjection(
@@ -231,7 +222,6 @@ final class ProjectionTestSupport {
                 messageId,
                 attemptNo,
                 workerId,
-                workerContextId,
                 batchId,
                 status,
                 null,
@@ -253,7 +243,6 @@ final class ProjectionTestSupport {
                 projection.messageId(),
                 projection.attemptNo(),
                 projection.workerId(),
-                projection.workerContextId(),
                 projection.batchId(),
                 status,
                 finalReason,

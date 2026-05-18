@@ -3,12 +3,10 @@ package com.xa.mass.storage.jdbc;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
 import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
@@ -26,7 +24,6 @@ import java.sql.DriverManager;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -53,11 +50,11 @@ class JdbcStoragePostgresTest {
                     TaskMessageProjectionStatus.INIT,
                     null, null, null, null, null,
                     0, 0, null, null, null, null,
-                    null, null, null, null
+                    null, null, null
             ));
             storage.upsertTaskMessageAttemptProjection("task-1", "msg-1", new TaskDetailStore.TaskMessageAttemptProjection(
                     "attempt-1", "task-1", "msg-1", 1,
-                    null, null, null,
+                    null, null,
                     TaskMessageAttemptProjectionStatus.DISPATCHED,
                     null, null, null, null
             ));
@@ -84,7 +81,7 @@ class JdbcStoragePostgresTest {
     }
 
     @Test
-    void workerStoragePersistsWorkersContextsAndLocks() {
+    void workerStoragePersistsWorkersAndLocks() {
         try (StorageFixture fixture = postgresFixture("worker_storage")) {
             JdbcWorkerStorage storage = new JdbcWorkerStorage(fixture.dataSource(), new PostgresJdbcDialect());
             Worker worker = new Worker("worker-1", "1.0", List.of("demoApp"));
@@ -93,17 +90,10 @@ class JdbcStoragePostgresTest {
             worker.setStatus(WorkerStatus.ONLINE);
             storage.addWorker(worker);
 
-            WorkerContext context = new WorkerContext("ctx-1", "worker-1", Set.of("tag-a"));
-            context.setProject("demoApp");
-            context.setStatus(WorkerContextStatus.IDLE);
-            storage.addWorkerContext(context);
-
             assertThat(storage.getWorker("worker-1")).isPresent();
             assertThat(storage.getWorkersByGroupId("group-a")).hasSize(1);
             assertThat(storage.getWorkersBySupportedProject("demoApp")).hasSize(1);
             assertThat(storage.getWorkersBySupportedEventCode("event.demo")).hasSize(1);
-            assertThat(storage.getWorkerContexts("worker-1")).hasSize(1);
-            assertThat(storage.getWorkerContextById("ctx-1")).isPresent();
             assertThat(storage.tryLockWorker("worker-1")).isTrue();
             assertThat(storage.tryLockWorker("worker-1")).isFalse();
             assertThat(storage.isLocked("worker-1")).isTrue();

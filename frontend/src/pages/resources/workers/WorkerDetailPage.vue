@@ -39,16 +39,18 @@
           <div class="metric-value metric-text">{{ worker.status }}</div>
         </div>
         <div class="metric-tile">
-          <div class="metric-label">Contexts</div>
-          <div class="metric-value">{{ workerContextCount }}</div>
-        </div>
-        <div class="metric-tile">
           <div class="metric-label">Projects</div>
           <div class="metric-value">{{ worker.supportedProjects.length }}</div>
         </div>
         <div class="metric-tile">
           <div class="metric-label">Events</div>
           <div class="metric-value">{{ worker.supportedEventCodes.length }}</div>
+        </div>
+        <div class="metric-tile">
+          <div class="metric-label">Transport</div>
+          <div class="metric-value metric-text">
+            {{ worker.hasActiveEndpoint ? 'Active' : 'Idle' }}
+          </div>
         </div>
       </section>
 
@@ -137,54 +139,6 @@
 
       <el-card class="page-card">
         <template #header>
-          <strong>Worker contexts</strong>
-        </template>
-        <PageEmptyState
-          v-if="relatedWorkerContexts.length === 0"
-          description="No worker contexts are currently associated with this worker."
-        />
-        <el-table
-          v-else
-          :data="relatedWorkerContexts"
-          row-key="workerContextId"
-        >
-          <el-table-column
-            prop="workerContextId"
-            label="Context"
-            min-width="200"
-          />
-          <el-table-column prop="status" label="Status" min-width="120" />
-          <el-table-column prop="project" label="Project" min-width="140" />
-          <el-table-column label="Routing tags" min-width="220">
-            <template #default="{ row }">
-              <el-tag
-                v-for="tag in row.routingTags"
-                :key="tag"
-                class="project-tag"
-                round
-              >
-                {{ tag }}
-              </el-tag>
-              <span v-if="row.routingTags.length === 0" class="row-secondary">
-                none
-              </span>
-            </template>
-          </el-table-column>
-          <el-table-column label="Last bind task" min-width="180">
-            <template #default="{ row }">
-              <span class="mono">{{ row.lastBindTaskId || '-' }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column
-            prop="lastUsedTime"
-            label="Last used"
-            min-width="180"
-          />
-        </el-table>
-      </el-card>
-
-      <el-card class="page-card">
-        <template #header>
           <strong>Targeted debug task</strong>
         </template>
         <WorkerDebugPanel :worker="worker" :project-options="projectOptions" />
@@ -194,15 +148,15 @@
 </template>
 
 <script setup lang="ts">
-import {computed, onMounted, ref, watch} from 'vue'
+import {onMounted, ref, watch} from 'vue'
 import {useRoute, useRouter} from 'vue-router'
 import {listProjectCodes} from '@/api/configs'
-import {listWorkerContexts, listWorkers} from '@/api/workers'
+import {listWorkers} from '@/api/workers'
 import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
 import WorkerDebugPanel from '@/components/WorkerDebugPanel.vue'
-import type {WorkerContextListItem, WorkerListItem} from '@/types/workers'
+import type {WorkerListItem} from '@/types/workers'
 import {toErrorMessage} from '@/utils/errors'
 
 const route = useRoute()
@@ -211,35 +165,24 @@ const router = useRouter()
 const loading = ref(false)
 const errorMessage = ref('')
 const worker = ref<WorkerListItem | null>(null)
-const workerContexts = ref<WorkerContextListItem[]>([])
 const projectOptions = ref<string[]>([])
-
-const relatedWorkerContexts = computed(() =>
-  workerContexts.value.filter(
-    (context) => context.workerId === route.params.workerId,
-  ),
-)
-const workerContextCount = computed(() => relatedWorkerContexts.value.length)
 
 async function loadWorkerDetail(): Promise<void> {
   loading.value = true
   errorMessage.value = ''
 
   try {
-    const [workersResponse, contextsResponse, projects] = await Promise.all([
+    const [workersResponse, projects] = await Promise.all([
       listWorkers(),
-      listWorkerContexts(),
       loadProjectOptionsSafe(),
     ])
     worker.value =
       workersResponse.items.find(
         (item) => item.workerId === String(route.params.workerId),
       ) ?? null
-    workerContexts.value = contextsResponse.items
     projectOptions.value = projects
   } catch (error) {
     worker.value = null
-    workerContexts.value = []
     projectOptions.value = []
     errorMessage.value = toErrorMessage(error, 'Failed to load worker detail.')
   } finally {

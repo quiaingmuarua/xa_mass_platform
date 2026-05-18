@@ -97,7 +97,7 @@ Engine hot paths must treat these runtime semantics as authoritative:
 `TaskStorage` owns control-plane shell truth only:
 
 - `Task` shell state
-- worker / worker-context registration truth
+- worker registration truth
 - rule definition truth
 
 `TaskDetailStore` remains bounded compatibility residue only. It may support:
