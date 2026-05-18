@@ -101,4 +101,23 @@ class KernelEventHandlerRegistryTest {
                         new CoreEventPrincipal("worker", "test"))
                         .getData());
     }
+
+    @Test
+    void registersTaskEngineEventWithoutExposingTargetScopeToConcreteOwner() {
+        InMemoryMassEventRuntime runtime = new InMemoryMassEventRuntime();
+        KernelEventHandlerRegistry registry = new KernelEventHandlerRegistry(runtime);
+
+        registry.registerTaskEngineEvent("kernel.task.engine.probe",
+                (request, principal) -> CoreEventResponse.success(request.getEvent(), request.getRequestId()));
+
+        assertEquals(TargetScope.TASK_ENGINE,
+                runtime.getDescriptor("kernel.task.engine.probe").getTargetScope());
+        assertEquals("kernel.task.engine.probe",
+                runtime.dispatch(CoreEventRequest.builder()
+                                .event("kernel.task.engine.probe")
+                                .requestId("probe")
+                                .build(),
+                        new CoreEventPrincipal("task", "test"))
+                        .getData());
+    }
 }

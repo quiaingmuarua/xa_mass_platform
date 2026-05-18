@@ -3,6 +3,8 @@ package com.xa.mass.engine;
 import com.xa.mass.engine.listener.TaskAssignWorkerTest;
 import com.xa.mass.engine.listener.TaskResourceReleaseListenerTest;
 import com.xa.mass.engine.listener.TaskWorkerAssignListenerTest;
+import com.xa.mass.engine.stage.TaskStageEvidenceEventHandlerTest;
+import com.xa.mass.engine.stage.TaskStageEvidenceOwnerTest;
 import com.xa.mass.engine.command.WorkerCommandDeliveryCoordinatorTest;
 import com.xa.mass.engine.command.WorkerCommandLifecycleOwnerTest;
 import com.xa.mass.engine.command.WorkerCommandRequestEventHandlerTest;
@@ -31,6 +33,8 @@ import org.junit.platform.suite.api.Suite;
         TaskSchedulingGateAndTargetingTest.class,
         TaskDelayedAvailabilitySchedulingTest.class,
         TaskRuntimeRecoveryPortTest.class,
+        TaskStageEvidenceOwnerTest.class,
+        TaskStageEvidenceEventHandlerTest.class,
         WorkerManagerTest.class,
         WorkerCandidateIndexTest.class,
         WorkerCapabilityAuthorityTest.class,

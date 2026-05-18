@@ -1196,6 +1196,67 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void taskStageEvidenceOwnerDoesNotDependOnResultRuntimeTaskWorkRuntimeOrScheduling() throws IOException {
+        Path repo = repositoryRoot();
+        Path stagePackage = repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/stage");
+        Pattern forbiddenDependency = Pattern.compile(String.join("|", List.of(
+                "\\bTaskResult(?:Service|Runtime|Report|RuntimeRow|CallbackDraft|FinalDraft)\\b",
+                "\\bTaskWorkRuntime\\b",
+                "\\bTaskWorkResult\\b",
+                "\\bTaskManager\\b",
+                "\\bTaskAssignWorker\\b",
+                "\\bTaskDispatchBinder\\b",
+                "\\bRuleBasedTaskWorkerMatchingStrategy\\b",
+                "\\bWorkerLoadView\\b",
+                "\\bWorkerReachabilityView\\b",
+                "\\bimport\\s+com\\.xa\\.mass\\.runtime\\.",
+                "\\bimport\\s+com\\.xa\\.mass\\.transport\\.",
+                "\\bimport\\s+com\\.xa\\.mass\\.engine\\.strategy\\.",
+                "\\bimport\\s+com\\.xa\\.mass\\.engine\\.load\\."
+        )));
+
+        List<String> violations = new ArrayList<>();
+        for (Path path : javaSourceFiles(stagePackage)) {
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            if (forbiddenDependency.matcher(source).find()) {
+                violations.add(path + " couples stage evidence to final result/runtime/scheduling owner");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Task stage evidence owns bounded intermediate evidence only. It must not commit stable-final "
+                        + "results, mutate task-work runtime, or depend on scheduling/transport owners:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void taskStageEvidenceDoesNotEnterPublicResultRuntimeRows() throws IOException {
+        Path repo = repositoryRoot();
+        Pattern stageEvidence = Pattern.compile("\\bTaskStageEvidence\\b|\\bTASK_STAGE_EVIDENCE_APPLIED\\b");
+        List<Path> publicResultOwners = List.of(
+                repo.resolve("platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/api/TaskResultRuntime.java"),
+                repo.resolve("platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/api/TaskResultRuntimeRow.java"),
+                repo.resolve("platform_infra/mass-runtime-memory/src/main/java/com/xa/mass/runtime/memory/InMemoryTaskResultRuntime.java"),
+                repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/TaskResultService.java"),
+                repo.resolve("xa-mass-sdk/src/main/java/com/xa/mass/sdk/MassSdkApplication.java"),
+                repo.resolve("xa-mass-server/src/main/java/com/xa/mass/api/internal/TaskApiController.java")
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Path path : publicResultOwners) {
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            if (stageEvidence.matcher(source).find()) {
+                violations.add(path + " exposes stage evidence through stable-final result rows or public result reads");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "EWC-6 stage evidence must stay separate from public stable-final result rows. "
+                        + "/results and TaskResultRuntimeRow must remain final-result surfaces:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void workerCapabilitySelfReportDoesNotBypassWorkerRegistrySnapshotOwner() throws IOException {
         Path repo = repositoryRoot();
         Pattern capabilityReport = Pattern.compile("\\bWorkerCapabilityReport\\b|\\bCapabilitySelfReport\\b");
