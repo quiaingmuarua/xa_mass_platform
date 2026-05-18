@@ -10,53 +10,88 @@ import java.util.List;
 public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
 
     @Override
+    public List<TraceTimelineRow> query(TraceSource source,
+                                        TraceQueryFilter filter,
+                                        int limit) throws Exception {
+        String rowJson = "to_json(t)";
+        StringBuilder where = new StringBuilder("WHERE 1=1");
+        appendEquals(where, "json_extract_string(%s, '$.identity.taskId')".formatted(rowJson), filter.taskId());
+        appendEquals(where, "json_extract_string(%s, '$.identity.messageId')".formatted(rowJson), filter.messageId());
+        appendEquals(where, "json_extract_string(%s, '$.identity.workerId')".formatted(rowJson), filter.workerId());
+        appendEquals(where, "json_extract_string(%s, '$.attrs.commandId')".formatted(rowJson), filter.commandId());
+        appendEquals(where, "json_extract_string(%s, '$.traceId')".formatted(rowJson), filter.traceId());
+        appendEquals(where, "json_extract_string(%s, '$.eventType')".formatted(rowJson), filter.eventType());
+        return selectTimelineRows(source, where.toString(), limit);
+    }
+
+    @Override
     public List<TraceTimelineRow> timeline(TraceSource source,
                                            String taskId,
                                            String messageId,
                                            int limit) throws Exception {
-        String identityJson = "to_json(identity)";
-        String transitionJson = "to_json(transition)";
-        String outcomeJson = "to_json(outcome)";
-        String where = "WHERE json_extract_string(%s, '$.taskId') = '%s'".formatted(identityJson, sql(taskId));
+        String rowJson = "to_json(t)";
+        String where = "WHERE json_extract_string(%s, '$.identity.taskId') = '%s'".formatted(rowJson, sql(taskId));
         if (messageId != null && !messageId.isBlank()) {
-            where += " AND json_extract_string(%s, '$.messageId') = '%s'".formatted(identityJson, sql(messageId));
+            where += " AND json_extract_string(%s, '$.identity.messageId') = '%s'".formatted(rowJson, sql(messageId));
         }
+        return selectTimelineRows(source, where, limit);
+    }
+
+    private List<TraceTimelineRow> selectTimelineRows(TraceSource source,
+                                                      String where,
+                                                      int limit) throws Exception {
+        String rowJson = "to_json(t)";
         String query = """
                 SELECT
                     ts,
                     tsIso,
-                    eventType,
-                    severity,
-                    traceId,
-                    json_extract_string(%s, '$.taskId') AS taskId,
-                    json_extract_string(%s, '$.messageId') AS messageId,
-                    json_extract_string(%s, '$.attemptId') AS attemptId,
-                    json_extract_string(%s, '$.workerId') AS workerId,
-                    json_extract_string(%s, '$.src') AS src,
-                    json_extract_string(%s, '$.dst') AS dst,
-                    json_extract_string(%s, '$.reason') AS transitionReason,
-                    try_cast(json_extract(%s, '$.success') AS BOOLEAN) AS outcomeSuccess,
-                    json_extract_string(%s, '$.errorCode') AS outcomeErrorCode,
-                    json_extract_string(%s, '$.detail') AS outcomeDetail,
-                    json_extract_string(to_json(attrs), '$.trigger') AS trigger,
-                    json_extract_string(to_json(attrs), '$.source') AS source,
-                    json_extract_string(to_json(attrs), '$.reason') AS reason,
-                    json_extract_string(to_json(attrs), '$.terminalReason') AS terminalReason
-                FROM %s
+                    json_extract_string(%s, '$.eventId') AS eventId,
+                    json_extract_string(%s, '$.eventType') AS eventType,
+                    json_extract_string(%s, '$.severity') AS severity,
+                    json_extract_string(%s, '$.traceId') AS traceId,
+                    json_extract_string(%s, '$.spanId') AS spanId,
+                    json_extract_string(%s, '$.parentSpanId') AS parentSpanId,
+                    json_extract_string(%s, '$.identity.taskId') AS taskId,
+                    json_extract_string(%s, '$.identity.messageId') AS messageId,
+                    json_extract_string(%s, '$.identity.attemptId') AS attemptId,
+                    json_extract_string(%s, '$.identity.workerId') AS workerId,
+                    json_extract_string(%s, '$.attrs.commandId') AS commandId,
+                    json_extract_string(%s, '$.transition.src') AS src,
+                    json_extract_string(%s, '$.transition.dst') AS dst,
+                    json_extract_string(%s, '$.transition.reason') AS transitionReason,
+                    try_cast(json_extract(%s, '$.outcome.success') AS BOOLEAN) AS outcomeSuccess,
+                    json_extract_string(%s, '$.outcome.errorCode') AS outcomeErrorCode,
+                    json_extract_string(%s, '$.outcome.detail') AS outcomeDetail,
+                    json_extract_string(%s, '$.attrs.trigger') AS trigger,
+                    json_extract_string(%s, '$.attrs.source') AS source,
+                    json_extract_string(%s, '$.attrs.reason') AS reason,
+                    json_extract_string(%s, '$.attrs.terminalReason') AS terminalReason
+                FROM %s AS t
                 %s
                 ORDER BY ts, eventId
                 LIMIT %d
                 """.formatted(
-                identityJson,
-                identityJson,
-                identityJson,
-                identityJson,
-                transitionJson,
-                transitionJson,
-                transitionJson,
-                outcomeJson,
-                outcomeJson,
-                outcomeJson,
+                rowJson,
+                rowJson,
+                rowJson,
+                rowJson,
+                rowJson,
+                rowJson,
+                rowJson,
+                rowJson,
+                rowJson,
+                rowJson,
+                rowJson,
+                rowJson,
+                rowJson,
+                rowJson,
+                rowJson,
+                rowJson,
+                rowJson,
+                rowJson,
+                rowJson,
+                rowJson,
+                rowJson,
                 readNdjson(source),
                 where,
                 limit);
@@ -71,13 +106,17 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                 rows.add(new TraceTimelineRow(
                         resultSet.getLong("ts"),
                         resultSet.getString("tsIso"),
+                        resultSet.getString("eventId"),
                         resultSet.getString("eventType"),
                         resultSet.getString("severity"),
                         resultSet.getString("traceId"),
+                        resultSet.getString("spanId"),
+                        resultSet.getString("parentSpanId"),
                         resultSet.getString("taskId"),
                         resultSet.getString("messageId"),
                         resultSet.getString("attemptId"),
                         resultSet.getString("workerId"),
+                        resultSet.getString("commandId"),
                         resultSet.getString("src"),
                         resultSet.getString("dst"),
                         resultSet.getString("transitionReason"),
@@ -330,6 +369,17 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
 
     private static String sql(String value) {
         return value.replace("'", "''");
+    }
+
+    private static void appendEquals(StringBuilder where, String expression, String value) {
+        if (value == null || value.isBlank()) {
+            return;
+        }
+        where.append(" AND ")
+                .append(expression)
+                .append(" = '")
+                .append(sql(value))
+                .append("'");
     }
 
     private static String readNdjson(TraceSource source) {

@@ -10,8 +10,11 @@ import com.xa.mass.engine.command.WorkerCommandStatus;
 import com.xa.mass.engine.event.KernelEventHandlerRegistry;
 import com.xa.mass.engine.testutil.RecordingEventSink;
 import com.xa.mass.engine.util.TraceEventLogger;
+import com.xa.mass.engine.worker.WorkerControlService;
+import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.engine.worker.WorkerStateProjectionOwner;
 import com.xa.mass.engine.worker.WorkerStateReportEventHandler;
+import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.trace.sink.ExecutionEventType;
 import org.junit.jupiter.api.Test;
 
@@ -29,11 +32,16 @@ public class WorkerControlOwnerSliceTest {
         WorkerStateProjectionOwner stateOwner = new WorkerStateProjectionOwner();
         RecordingEventSink sink = new RecordingEventSink();
         TraceEventLogger trace = new TraceEventLogger(sink);
+        WorkerControlService workerControlService = new WorkerControlService(
+                new WorkerManager(new InMemoryWorkerStorage()),
+                commandOwner,
+                stateOwner,
+                trace);
         InMemoryMassEventRuntime runtime = new InMemoryMassEventRuntime();
         KernelEventHandlerRegistry registry = new KernelEventHandlerRegistry(runtime);
 
-        new WorkerCommandRequestEventHandler(commandOwner, trace).register(registry);
-        new WorkerStateReportEventHandler(stateOwner, trace).register(registry);
+        new WorkerCommandRequestEventHandler(workerControlService).register(registry);
+        new WorkerStateReportEventHandler(workerControlService).register(registry);
 
         CoreEventResponse commandResponse = runtime.dispatch(commandRequest("cmd-1", "worker-1"),
                 new CoreEventPrincipal("operator-1", "operator"));

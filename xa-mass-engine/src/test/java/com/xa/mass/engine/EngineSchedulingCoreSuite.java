@@ -6,6 +6,7 @@ import com.xa.mass.engine.listener.TaskWorkerAssignListenerTest;
 import com.xa.mass.engine.slice.WorkerControlOwnerSliceTest;
 import com.xa.mass.engine.stage.TaskStageEvidenceEventHandlerTest;
 import com.xa.mass.engine.stage.TaskStageEvidenceOwnerTest;
+import com.xa.mass.engine.stage.TaskStageEvidenceServiceTest;
 import com.xa.mass.engine.command.WorkerCommandDeliveryCoordinatorTest;
 import com.xa.mass.engine.command.WorkerCommandLifecycleOwnerTest;
 import com.xa.mass.engine.command.WorkerCommandRequestEventHandlerTest;
@@ -15,6 +16,7 @@ import com.xa.mass.engine.strategy.WorkerSchedulingCandidateEnumeratorTest;
 import com.xa.mass.engine.worker.WorkerCandidateIndexTest;
 import com.xa.mass.engine.worker.WorkerCapabilityAuthorityTest;
 import com.xa.mass.engine.worker.WorkerCapabilityReportEventHandlerTest;
+import com.xa.mass.engine.worker.WorkerControlServiceTest;
 import com.xa.mass.engine.worker.WorkerManagerTest;
 import com.xa.mass.engine.worker.WorkerRegistrySnapshotTest;
 import com.xa.mass.engine.worker.WorkerStateProjectionOwnerTest;
@@ -35,10 +37,12 @@ import org.junit.platform.suite.api.Suite;
         TaskDelayedAvailabilitySchedulingTest.class,
         TaskRuntimeRecoveryPortTest.class,
         TaskStageEvidenceOwnerTest.class,
+        TaskStageEvidenceServiceTest.class,
         TaskStageEvidenceEventHandlerTest.class,
         WorkerManagerTest.class,
         WorkerCandidateIndexTest.class,
         WorkerCapabilityAuthorityTest.class,
+        WorkerControlServiceTest.class,
         WorkerCapabilityReportEventHandlerTest.class,
         WorkerCommandDeliveryCoordinatorTest.class,
         WorkerCommandLifecycleOwnerTest.class,

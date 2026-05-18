@@ -23,6 +23,15 @@ final class SingleMessageSuccessScenarioAnalyzer extends AbstractTimelineScenari
         requireEvent(counts, issues, "TASK_TERMINAL_CLOSED",
                 "single-message-success requires terminal convergence");
         requireTerminalReason(rows, issues, "ALL_MESSAGES_SUCCEEDED");
+        TraceSequenceVerifier.requireOrdered(
+                rows,
+                issues,
+                "SINGLE_MESSAGE_SUCCESS_SEQUENCE_MISMATCH",
+                "single-message-success requires assignment, callback ingest, and terminal convergence in order",
+                TraceSequenceExpectation.event("TASK_STATUS_TRANSITION"),
+                TraceSequenceExpectation.event("CALLBACK_ACCEPTED"),
+                TraceSequenceExpectation.event("TASK_TERMINAL_CLOSED")
+                        .terminalReason("ALL_MESSAGES_SUCCEEDED"));
 
         rejectEvent(counts, issues, "CALLBACK_IGNORED_DUPLICATE",
                 "single-message-success should not rely on duplicate callback suppression");

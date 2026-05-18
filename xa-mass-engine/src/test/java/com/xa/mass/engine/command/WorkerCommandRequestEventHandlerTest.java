@@ -7,6 +7,10 @@ import com.xa.mass.command.event.InMemoryMassEventRuntime;
 import com.xa.mass.engine.event.KernelEventHandlerRegistry;
 import com.xa.mass.engine.testutil.RecordingEventSink;
 import com.xa.mass.engine.util.TraceEventLogger;
+import com.xa.mass.engine.worker.WorkerControlService;
+import com.xa.mass.engine.worker.WorkerManager;
+import com.xa.mass.engine.worker.WorkerStateProjectionOwner;
+import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.trace.sink.ExecutionEventType;
 import org.junit.jupiter.api.Test;
 
@@ -24,9 +28,7 @@ public class WorkerCommandRequestEventHandlerTest {
         RecordingEventSink sink = new RecordingEventSink();
         InMemoryMassEventRuntime runtime = new InMemoryMassEventRuntime();
         WorkerCommandRequestEventHandler handler = new WorkerCommandRequestEventHandler(
-                owner,
-                new TraceEventLogger(sink)
-        );
+                workerControlService(owner, new TraceEventLogger(sink)));
         handler.register(new KernelEventHandlerRegistry(runtime));
 
         CoreEventResponse response = runtime.dispatch(request("cmd-1", "worker-a", "RESTART"),
@@ -46,9 +48,7 @@ public class WorkerCommandRequestEventHandlerTest {
     void duplicateDifferentCommandPayloadFailsWithoutChangingLifecycleTruth() {
         WorkerCommandLifecycleOwner owner = new WorkerCommandLifecycleOwner();
         WorkerCommandRequestEventHandler handler = new WorkerCommandRequestEventHandler(
-                owner,
-                TraceEventLogger.noop()
-        );
+                workerControlService(owner, TraceEventLogger.noop()));
 
         assertTrue(handler.handle(request("cmd-1", "worker-a", "RESTART"),
                 new CoreEventPrincipal("operator-a", "operator")).isSuccess());
@@ -65,9 +65,7 @@ public class WorkerCommandRequestEventHandlerTest {
     void invalidCommandRequestIsRejectedBeforeOwnerMutation() {
         WorkerCommandLifecycleOwner owner = new WorkerCommandLifecycleOwner();
         WorkerCommandRequestEventHandler handler = new WorkerCommandRequestEventHandler(
-                owner,
-                TraceEventLogger.noop()
-        );
+                workerControlService(owner, TraceEventLogger.noop()));
 
         CoreEventResponse response = handler.handle(CoreEventRequest.builder()
                         .event(WorkerCommandRequestEventHandler.EVENT_CODE)
@@ -96,5 +94,14 @@ public class WorkerCommandRequestEventHandlerTest {
                         "payload", Map.of("mode", "safe")
                 ))
                 .build();
+    }
+
+    private static WorkerControlService workerControlService(WorkerCommandLifecycleOwner owner,
+                                                             TraceEventLogger traceEventLogger) {
+        return new WorkerControlService(
+                new WorkerManager(new InMemoryWorkerStorage()),
+                owner,
+                new WorkerStateProjectionOwner(),
+                traceEventLogger);
     }
 }

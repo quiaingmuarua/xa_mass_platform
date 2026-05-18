@@ -1,0 +1,78 @@
+package com.xa.mass.engine.worker;
+
+import com.xa.mass.engine.command.WorkerCommandAcknowledgement;
+import com.xa.mass.engine.command.WorkerCommandLifecycleOwner;
+import com.xa.mass.engine.command.WorkerCommandLifecycleResult;
+import com.xa.mass.engine.command.WorkerCommandRecord;
+import com.xa.mass.engine.command.WorkerCommandRequest;
+import com.xa.mass.engine.util.TraceEventLogger;
+
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+
+/**
+ * Owner-backed worker-control entry and read surface for engine callers.
+ *
+ * <p>This service is the direct caller surface for SDK/server/runtime shells.
+ * It delegates lifecycle truth to concrete owners and owns only the stable
+ * entry/read handoff plus canonical trace emission. Event handlers should parse
+ * event payloads and call this service instead of owning mutation themselves.</p>
+ */
+public final class WorkerControlService {
+
+    private final WorkerManager workerManager;
+    private final WorkerCommandLifecycleOwner commandLifecycleOwner;
+    private final WorkerStateProjectionOwner stateProjectionOwner;
+    private final TraceEventLogger traceEventLogger;
+
+    public WorkerControlService(WorkerManager workerManager,
+                                WorkerCommandLifecycleOwner commandLifecycleOwner,
+                                WorkerStateProjectionOwner stateProjectionOwner,
+                                TraceEventLogger traceEventLogger) {
+        this.workerManager = Objects.requireNonNull(workerManager, "workerManager");
+        this.commandLifecycleOwner = Objects.requireNonNull(commandLifecycleOwner, "commandLifecycleOwner");
+        this.stateProjectionOwner = Objects.requireNonNull(stateProjectionOwner, "stateProjectionOwner");
+        this.traceEventLogger = traceEventLogger != null ? traceEventLogger : TraceEventLogger.noop();
+    }
+
+    public WorkerCapabilityReportResult applyWorkerCapabilityReport(WorkerCapabilityReport report) {
+        WorkerCapabilityReportResult result = workerManager.applyWorkerCapabilityReport(report);
+        traceEventLogger.workerCapabilityReportApplied(result);
+        return result;
+    }
+
+    public WorkerStateProjectionResult applyWorkerStateReport(WorkerStateReport report) {
+        WorkerStateProjectionResult result = stateProjectionOwner.applyReport(report);
+        traceEventLogger.workerStateReportApplied(result);
+        return result;
+    }
+
+    public WorkerCommandLifecycleResult requestWorkerCommand(WorkerCommandRequest request) {
+        WorkerCommandLifecycleResult result = commandLifecycleOwner.requestCommand(request);
+        traceEventLogger.workerCommandStatusTransition(result);
+        return result;
+    }
+
+    public WorkerCommandLifecycleResult applyWorkerCommandAcknowledgement(WorkerCommandAcknowledgement acknowledgement) {
+        WorkerCommandLifecycleResult result = commandLifecycleOwner.applyAcknowledgement(acknowledgement);
+        traceEventLogger.workerCommandStatusTransition(result);
+        return result;
+    }
+
+    public Optional<WorkerCommandRecord> workerCommand(String commandId) {
+        return commandLifecycleOwner.command(commandId);
+    }
+
+    public List<WorkerCommandRecord> workerCommandsForWorker(String workerId) {
+        return commandLifecycleOwner.commandsForWorker(workerId);
+    }
+
+    public Optional<WorkerStateProjection> workerStateProjection(String workerId) {
+        return stateProjectionOwner.projection(workerId);
+    }
+
+    public List<WorkerStateProjection> workerStateProjections() {
+        return stateProjectionOwner.projections();
+    }
+}

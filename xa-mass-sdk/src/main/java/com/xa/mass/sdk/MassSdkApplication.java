@@ -10,9 +10,24 @@ import com.xa.mass.command.event.*;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;
+import com.xa.mass.engine.command.WorkerCommandAcknowledgement;
+import com.xa.mass.engine.command.WorkerCommandLifecycleResult;
+import com.xa.mass.engine.command.WorkerCommandRecord;
+import com.xa.mass.engine.command.WorkerCommandRequest;
+import com.xa.mass.engine.command.WorkerCommandStatus;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
+import com.xa.mass.engine.stage.TaskStageEvidence;
+import com.xa.mass.engine.stage.TaskStageEvidenceResult;
+import com.xa.mass.engine.stage.TaskStageEvidenceService;
+import com.xa.mass.engine.stage.TaskStageProjection;
+import com.xa.mass.engine.worker.WorkerCapabilityReport;
+import com.xa.mass.engine.worker.WorkerCapabilityReportResult;
+import com.xa.mass.engine.worker.WorkerControlService;
+import com.xa.mass.engine.worker.WorkerStateProjection;
+import com.xa.mass.engine.worker.WorkerStateProjectionResult;
+import com.xa.mass.engine.worker.WorkerStateReport;
 import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.api.TaskResultRuntimeRow;
 import com.xa.mass.runtime.api.TaskResultWindow;
@@ -53,6 +68,7 @@ import java.util.zip.GZIPOutputStream;
 public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOperations, TaskResultQueryOperations, TaskAdminOperations,
         WorkerInspectionOperations, WorkerQueryOperations, WorkerRegistryOperations,
         WorkerClientOperations, WorkerAdminOperations,
+        WorkerControlOperations, TaskStageEvidenceOperations,
         ResourceOperations, AuthProvider, PrincipalDirectory,
         ExternalWorkerOperations, AuthorizationPolicy,
         RuleOperations {
@@ -384,6 +400,152 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         requireStartedEngine();
         WorkerRegistration registration = normalizeWorkerRegistration(request);
         requireStartedEngine().getConfig().getWorkerManager().addWorker(SdkResourceMapper.toWorker(registration));
+    }
+
+    @Override
+    public WorkerCapabilityReportSnapshot reportWorkerCapability(WorkerCapabilityReportRequest request) {
+        Objects.requireNonNull(request, "request");
+        WorkerCapabilityReportResult result = requireStartedWorkerControlService()
+                .applyWorkerCapabilityReport(WorkerCapabilityReport.builder(
+                                request.workerId(),
+                                request.capabilityVersion())
+                        .availableEventCodes(request.availableEventCodes())
+                        .schedulingAttributes(request.schedulingAttributes())
+                        .agentVersion(request.agentVersion())
+                        .build());
+        return new WorkerCapabilityReportSnapshot(
+                result.status().name(),
+                result.workerId(),
+                result.capabilityVersion(),
+                result.success(),
+                result.snapshotChanged(),
+                result.reason()
+        );
+    }
+
+    @Override
+    public WorkerStateReportSnapshot reportWorkerState(WorkerStateReportRequest request) {
+        Objects.requireNonNull(request, "request");
+        WorkerStateProjectionResult result = requireStartedWorkerControlService()
+                .applyWorkerStateReport(WorkerStateReport.builder(
+                                request.workerId(),
+                                request.stateVersion(),
+                                request.state())
+                        .reason(request.reason())
+                        .observedAt(request.observedAt())
+                        .attributes(request.attributes())
+                        .build());
+        return new WorkerStateReportSnapshot(
+                result.status().name(),
+                result.workerId(),
+                result.stateVersion(),
+                result.success(),
+                result.projectionChanged(),
+                result.reason(),
+                toWorkerStateProjectionSnapshot(result.projection())
+        );
+    }
+
+    @Override
+    public WorkerStateProjectionSnapshot getWorkerStateProjection(String workerId) {
+        return toWorkerStateProjectionSnapshot(requireStartedWorkerControlService()
+                .workerStateProjection(requireWorkerId(workerId))
+                .orElse(null));
+    }
+
+    @Override
+    public List<WorkerStateProjectionSnapshot> listWorkerStateProjections() {
+        return requireStartedWorkerControlService().workerStateProjections().stream()
+                .map(this::toWorkerStateProjectionSnapshot)
+                .toList();
+    }
+
+    @Override
+    public WorkerCommandResultSnapshot requestWorkerCommand(WorkerCommandSubmitRequest request) {
+        Objects.requireNonNull(request, "request");
+        WorkerCommandLifecycleResult result = requireStartedWorkerControlService()
+                .requestWorkerCommand(WorkerCommandRequest.builder(
+                                request.commandId(),
+                                request.workerId(),
+                                request.commandType())
+                        .requester(request.requester())
+                        .reason(request.reason())
+                        .idempotencyKey(request.idempotencyKey())
+                        .deadlineEpochMillis(request.deadlineEpochMillis())
+                        .payload(request.payload())
+                        .build());
+        return toWorkerCommandResultSnapshot(result);
+    }
+
+    @Override
+    public WorkerCommandResultSnapshot acknowledgeWorkerCommand(WorkerCommandAcknowledgementRequest request) {
+        Objects.requireNonNull(request, "request");
+        WorkerCommandLifecycleResult result = requireStartedWorkerControlService()
+                .applyWorkerCommandAcknowledgement(new WorkerCommandAcknowledgement(
+                        request.commandId(),
+                        parseWorkerCommandStatus(request.status()),
+                        request.reason()
+                ));
+        return toWorkerCommandResultSnapshot(result);
+    }
+
+    @Override
+    public WorkerCommandSnapshot getWorkerCommand(String commandId) {
+        return toWorkerCommandSnapshot(requireStartedWorkerControlService()
+                .workerCommand(requireCommandId(commandId))
+                .orElse(null));
+    }
+
+    @Override
+    public List<WorkerCommandSnapshot> listWorkerCommandsForWorker(String workerId) {
+        return requireStartedWorkerControlService()
+                .workerCommandsForWorker(requireWorkerId(workerId))
+                .stream()
+                .map(this::toWorkerCommandSnapshot)
+                .toList();
+    }
+
+    @Override
+    public TaskStageEvidenceSnapshot reportTaskStageEvidence(TaskStageEvidenceRequest request) {
+        Objects.requireNonNull(request, "request");
+        TaskStageEvidenceResult result = requireStartedTaskStageEvidenceService()
+                .applyEvidence(TaskStageEvidence.builder(
+                                request.taskId(),
+                                request.messageId(),
+                                request.stageName(),
+                                request.stageVersion())
+                        .stageStatus(request.stageStatus())
+                        .detail(request.detail())
+                        .observedAt(request.observedAt())
+                        .attributes(request.attributes())
+                        .build());
+        return new TaskStageEvidenceSnapshot(
+                result.status().name(),
+                result.taskId(),
+                result.messageId(),
+                result.stageName(),
+                result.stageVersion(),
+                result.success(),
+                result.projectionChanged(),
+                result.reason(),
+                toTaskStageProjectionSnapshot(result.projection())
+        );
+    }
+
+    @Override
+    public TaskStageProjectionSnapshot getTaskStageProjection(String taskId, String messageId, String stageName) {
+        return toTaskStageProjectionSnapshot(requireStartedTaskStageEvidenceService()
+                .projection(requireTaskId(taskId), requireMessageId(messageId), requireStageName(stageName))
+                .orElse(null));
+    }
+
+    @Override
+    public List<TaskStageProjectionSnapshot> listTaskStageProjections(String taskId, String messageId) {
+        return requireStartedTaskStageEvidenceService()
+                .projectionsForMessage(requireTaskId(taskId), requireMessageId(messageId))
+                .stream()
+                .map(this::toTaskStageProjectionSnapshot)
+                .toList();
     }
 
     @Override
@@ -1045,6 +1207,20 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return messageId.trim();
     }
 
+    private String requireCommandId(String commandId) {
+        if (commandId == null || commandId.isBlank()) {
+            throw new IllegalArgumentException("commandId must not be blank");
+        }
+        return commandId.trim();
+    }
+
+    private String requireStageName(String stageName) {
+        if (stageName == null || stageName.isBlank()) {
+            throw new IllegalArgumentException("stageName must not be blank");
+        }
+        return stageName.trim();
+    }
+
     private PullWorkerSession externalPullWorkerSession(String workerId) {
         return pullWorker(requireWorkerId(workerId));
     }
@@ -1379,6 +1555,22 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return ruleStorage;
     }
 
+    private WorkerControlService requireStartedWorkerControlService() {
+        WorkerControlService service = requireStartedEngine().getConfig().getWorkerControlService();
+        if (service == null) {
+            throw new IllegalStateException("Worker control service is unavailable for this SDK application");
+        }
+        return service;
+    }
+
+    private TaskStageEvidenceService requireStartedTaskStageEvidenceService() {
+        TaskStageEvidenceService service = requireStartedEngine().getConfig().getTaskStageEvidenceService();
+        if (service == null) {
+            throw new IllegalStateException("Task stage evidence service is unavailable for this SDK application");
+        }
+        return service;
+    }
+
     private Map<String, Object> copyMap(Map<String, Object> source) {
         if (source == null) {
             return null;
@@ -1439,6 +1631,77 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
             throw new IllegalArgumentException("command is required");
         }
         return command.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private WorkerCommandStatus parseWorkerCommandStatus(String status) {
+        if (status == null || status.isBlank()) {
+            throw new IllegalArgumentException("worker command status is required");
+        }
+        return WorkerCommandStatus.valueOf(status.trim().toUpperCase(Locale.ROOT));
+    }
+
+    private WorkerCommandResultSnapshot toWorkerCommandResultSnapshot(WorkerCommandLifecycleResult result) {
+        if (result == null) {
+            return null;
+        }
+        return new WorkerCommandResultSnapshot(
+                result.code().name(),
+                result.success(),
+                result.previousStatus() == null ? null : result.previousStatus().name(),
+                result.currentStatus() == null ? null : result.currentStatus().name(),
+                result.reason(),
+                toWorkerCommandSnapshot(result.record())
+        );
+    }
+
+    private WorkerCommandSnapshot toWorkerCommandSnapshot(WorkerCommandRecord record) {
+        if (record == null) {
+            return null;
+        }
+        return new WorkerCommandSnapshot(
+                record.commandId(),
+                record.workerId(),
+                record.commandType(),
+                record.status() == null ? null : record.status().name(),
+                record.requester(),
+                record.reason(),
+                record.idempotencyKey(),
+                record.deadlineEpochMillis(),
+                record.payload(),
+                record.statusReason(),
+                record.createdAt(),
+                record.updatedAt()
+        );
+    }
+
+    private WorkerStateProjectionSnapshot toWorkerStateProjectionSnapshot(WorkerStateProjection projection) {
+        if (projection == null) {
+            return null;
+        }
+        return new WorkerStateProjectionSnapshot(
+                projection.workerId(),
+                projection.stateVersion(),
+                projection.state(),
+                projection.reason(),
+                projection.observedAt(),
+                projection.acceptedAt()
+        );
+    }
+
+    private TaskStageProjectionSnapshot toTaskStageProjectionSnapshot(TaskStageProjection projection) {
+        if (projection == null) {
+            return null;
+        }
+        return new TaskStageProjectionSnapshot(
+                projection.taskId(),
+                projection.messageId(),
+                projection.stageName(),
+                projection.stageVersion(),
+                projection.stageStatus(),
+                projection.detail(),
+                projection.observedAt(),
+                projection.acceptedAt()
+        );
     }
 
     private WorkerSnapshot toWorkerSnapshot(Worker worker) {

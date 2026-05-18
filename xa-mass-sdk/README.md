@@ -123,6 +123,18 @@ committed stable-final rows from `TaskResultRuntime`; they do not read
 local/dev truth, while Redis result runtime is the cross-process result read
 truth.
 
+Owner-backed worker-control and stage-evidence APIs are exposed through SDK
+contracts instead of engine internals:
+
+- `WorkerControlOperations` reports worker capability and bounded worker state,
+  requests/acknowledges worker commands, and reads command/state snapshots.
+- `TaskStageEvidenceOperations` reports task item stage evidence and reads
+  bounded stage projections.
+
+These APIs call `WorkerControlService` / `TaskStageEvidenceService` inside the
+engine. They do not write public task results, do not treat worker state as
+reachability truth, and do not expose engine owner records directly.
+
 Distributed transport v1 splits one engine producer JVM from one or more
 transport consumer JVMs without adding server-owned transport endpoints. Use
 Redis-backed runtime channels for dispatch handoff, result ingest, and

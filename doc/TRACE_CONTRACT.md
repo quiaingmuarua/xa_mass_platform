@@ -208,6 +208,8 @@ Standardized `attrs` fields currently include:
 - `batchPolicy`
 - `leaseProfile`
 - `backpressureClass`
+- `commandId` for worker command lifecycle evidence until command identity is
+  promoted into a fixed schema field
 - task progress counters and funnel fields
 - assignment summary counts
 - queue snapshot counts
@@ -326,6 +328,25 @@ INTERACTIVE assignment.
 Trace operator queries must read rotated canonical JSONL files with a unioned
 schema. Schedule fields may first appear in later rotated files, so analyzer
 proof must not depend on a single-file or first-file JSON schema inference.
+
+### Operator identity query
+
+`xa-mass-trace` owns the operator-facing read path over canonical JSONL trace
+artifacts. The generic query surface is bounded by at least one explicit
+filter and currently supports:
+
+- `identity.taskId`
+- `identity.messageId`
+- `identity.workerId`
+- `attrs.commandId`
+- top-level `traceId`
+- top-level `eventType`
+
+The query result is an ordered event stream sorted by `ts, eventId`. It is a
+diagnostic and test-proof surface only; it does not create a runtime truth
+store, replay log, or control-plane index. For command lifecycle traces,
+`attrs.commandId` is the standardized query key until command identity becomes
+a recurring cross-event schema concern.
 
 ## 5. Minimum Required Paths
 

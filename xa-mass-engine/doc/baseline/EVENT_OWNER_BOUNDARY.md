@@ -26,14 +26,16 @@ Metadata and system-event ingress are not runtime truth by themselves.
 | `EventDefinition` | SDK/catalog metadata | registration and catalog shape | task lifecycle, dispatch, result finality |
 | `CoreEventDescriptor` | core descriptor layer | descriptor fields and handler metadata | queue placement, result convergence |
 | `KernelEventHandlerRegistry` | engine route registration | kernel-targeted handler registration for `TASK_ENGINE` / `WORKER_MANAGER` descriptors | task result, worker command, worker state, capability mutation, presence ownership |
-| `WorkerCommandRequestEventHandler` | worker command event handler | parse kernel-targeted command requests and delegate to `WorkerCommandLifecycleOwner` | command lifecycle truth, delivery, ack/status ingress, task result |
+| `WorkerControlService` | owner-backed worker-control service surface | direct entry/read handoff for worker command, capability report, and worker state projection plus canonical trace emission | command/state/capability lifecycle truth, event payload parsing, transport delivery |
+| `WorkerCommandRequestEventHandler` | worker command event handler | parse kernel-targeted command requests and delegate to `WorkerControlService` | command lifecycle truth, delivery, ack/status ingress, task result |
 | `WorkerCommandLifecycleOwner` | worker command lifecycle owner | command request/status truth, owner-decided acknowledgement/status ingest, and read view | task result convergence, task-work dispatch, transport lifecycle state |
 | `WorkerCommandDeliveryCoordinator` / `WorkerCommandDeliveryPort` | worker command delivery handoff | command-specific delivery attempt coordination and handoff result mapping back into command lifecycle | task-work dispatch, task result convergence, transport lifecycle state |
-| `WorkerCapabilityReportEventHandler` | worker capability event handler | parse kernel-targeted capability reports and delegate to `WorkerManager` / `WorkerCapabilityAuthority` | capability composition, matching, result convergence, presence ownership |
+| `WorkerCapabilityReportEventHandler` | worker capability event handler | parse kernel-targeted capability reports and delegate to `WorkerControlService` | capability composition, matching, result convergence, presence ownership |
 | `WorkerCapabilityAuthority` | worker capability composition owner | report version/idempotency/conflict rules and effective capability composition into immutable `WorkerRegistrySnapshot` | event routing, matching/ranking decisions, transport presence |
-| `WorkerStateReportEventHandler` | worker state event handler | parse kernel-targeted state reports and delegate to `WorkerStateProjectionOwner` | state projection truth, reachability, load, matching, result convergence |
+| `WorkerStateReportEventHandler` | worker state event handler | parse kernel-targeted state reports and delegate to `WorkerControlService` | state projection truth, reachability, load, matching, result convergence |
 | `WorkerStateProjectionOwner` | worker state projection owner | bounded per-worker state projection, version/idempotency/conflict rules, and recent diagnostic history | transport presence, worker capability truth, load, matching/ranking, task result |
-| `TaskStageEvidenceEventHandler` | task stage event handler | parse kernel-targeted task stage evidence and delegate to `TaskStageEvidenceOwner` | stage projection truth, public result rows, final convergence, task lifecycle |
+| `TaskStageEvidenceService` | owner-backed task stage evidence service surface | direct entry/read handoff for task stage evidence plus canonical trace emission | stage projection truth, public result rows, final convergence, task lifecycle |
+| `TaskStageEvidenceEventHandler` | task stage event handler | parse kernel-targeted task stage evidence and delegate to `TaskStageEvidenceService` | stage projection truth, public result rows, final convergence, task lifecycle |
 | `TaskStageEvidenceOwner` | task stage evidence owner | bounded per-task/message/stage projection, version/idempotency/conflict rules, and recent diagnostic history | public result rows, final convergence, task-work queues, scheduling, dispatch |
 | `WorkerGroupRecord` / `EventBinding` / `EventKey` | worker capability line | capability truth and candidate-source inputs | response semantics, result finality |
 | task dispatch handoff | assignment/transport boundary | already-bound task work delivery view | worker matching, allocation, finality |
@@ -129,6 +131,7 @@ task result, or scheduling lifecycle truth by itself.
   CoreEventRequest(event=kernel.worker.command.request)
     -> KernelEventHandlerRegistry
     -> WorkerCommandRequestEventHandler
+    -> WorkerControlService
     -> WorkerCommandLifecycleOwner
     -> command read view + WORKER_COMMAND_STATUS_TRANSITION trace
   ```
@@ -164,6 +167,7 @@ task result, or scheduling lifecycle truth by itself.
   CoreEventRequest(event=kernel.worker.state.report)
     -> KernelEventHandlerRegistry
     -> WorkerStateReportEventHandler
+    -> WorkerControlService
     -> WorkerStateProjectionOwner
     -> bounded projection read view + WORKER_STATE_REPORT_APPLIED trace
   ```
@@ -181,6 +185,7 @@ task result, or scheduling lifecycle truth by itself.
   CoreEventRequest(event=kernel.task.stage.evidence)
     -> KernelEventHandlerRegistry
     -> TaskStageEvidenceEventHandler
+    -> TaskStageEvidenceService
     -> TaskStageEvidenceOwner
     -> bounded projection read view + TASK_STAGE_EVIDENCE_APPLIED trace
   ```
@@ -213,6 +218,7 @@ task result, or scheduling lifecycle truth by itself.
   CoreEventRequest(event=kernel.worker.capability.report)
     -> KernelEventHandlerRegistry
     -> WorkerCapabilityReportEventHandler
+    -> WorkerControlService
     -> WorkerManager.applyWorkerCapabilityReport(...)
     -> WorkerCapabilityAuthority
     -> immutable WorkerRegistrySnapshot publication

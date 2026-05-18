@@ -24,9 +24,7 @@ public class TaskStageEvidenceEventHandlerTest {
         RecordingEventSink sink = new RecordingEventSink();
         InMemoryMassEventRuntime runtime = new InMemoryMassEventRuntime();
         TaskStageEvidenceEventHandler handler = new TaskStageEvidenceEventHandler(
-                owner,
-                new TraceEventLogger(sink)
-        );
+                new TaskStageEvidenceService(owner, new TraceEventLogger(sink)));
         handler.register(new KernelEventHandlerRegistry(runtime));
 
         CoreEventResponse response = runtime.dispatch(request(1, "fetch", "STARTED"),
@@ -49,9 +47,7 @@ public class TaskStageEvidenceEventHandlerTest {
     void staleStageEvidenceFailsWithoutChangingProjection() {
         TaskStageEvidenceOwner owner = new TaskStageEvidenceOwner();
         TaskStageEvidenceEventHandler handler = new TaskStageEvidenceEventHandler(
-                owner,
-                TraceEventLogger.noop()
-        );
+                new TaskStageEvidenceService(owner, TraceEventLogger.noop()));
 
         assertTrue(handler.handle(request(2, "fetch", "DONE"), new CoreEventPrincipal("worker-1", "worker"))
                 .isSuccess());
@@ -67,9 +63,7 @@ public class TaskStageEvidenceEventHandlerTest {
     void invalidStageEvidenceIsRejectedBeforeProjectionMutation() {
         TaskStageEvidenceOwner owner = new TaskStageEvidenceOwner();
         TaskStageEvidenceEventHandler handler = new TaskStageEvidenceEventHandler(
-                owner,
-                TraceEventLogger.noop()
-        );
+                new TaskStageEvidenceService(owner, TraceEventLogger.noop()));
 
         CoreEventResponse response = handler.handle(CoreEventRequest.builder()
                         .event(TaskStageEvidenceEventHandler.EVENT_CODE)

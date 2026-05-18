@@ -4,7 +4,6 @@ import com.xa.mass.command.event.CoreEventPrincipal;
 import com.xa.mass.command.event.CoreEventRequest;
 import com.xa.mass.command.event.CoreEventResponse;
 import com.xa.mass.engine.event.KernelEventHandlerRegistry;
-import com.xa.mass.engine.util.TraceEventLogger;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -22,13 +21,10 @@ public final class TaskStageEvidenceEventHandler {
 
     public static final String EVENT_CODE = "kernel.task.stage.evidence";
 
-    private final TaskStageEvidenceOwner stageEvidenceOwner;
-    private final TraceEventLogger traceEventLogger;
+    private final TaskStageEvidenceService stageEvidenceService;
 
-    public TaskStageEvidenceEventHandler(TaskStageEvidenceOwner stageEvidenceOwner,
-                                         TraceEventLogger traceEventLogger) {
-        this.stageEvidenceOwner = Objects.requireNonNull(stageEvidenceOwner, "stageEvidenceOwner");
-        this.traceEventLogger = traceEventLogger != null ? traceEventLogger : TraceEventLogger.noop();
+    public TaskStageEvidenceEventHandler(TaskStageEvidenceService stageEvidenceService) {
+        this.stageEvidenceService = Objects.requireNonNull(stageEvidenceService, "stageEvidenceService");
     }
 
     public void register(KernelEventHandlerRegistry registry) {
@@ -37,8 +33,7 @@ public final class TaskStageEvidenceEventHandler {
 
     public CoreEventResponse handle(CoreEventRequest request, CoreEventPrincipal principal) {
         try {
-            TaskStageEvidenceResult result = stageEvidenceOwner.applyEvidence(evidenceFrom(request.getPayload()));
-            traceEventLogger.taskStageEvidenceApplied(result);
+            TaskStageEvidenceResult result = stageEvidenceService.applyEvidence(evidenceFrom(request.getPayload()));
             if (result.success()) {
                 return CoreEventResponse.success(responsePayload(result), request.getRequestId());
             }

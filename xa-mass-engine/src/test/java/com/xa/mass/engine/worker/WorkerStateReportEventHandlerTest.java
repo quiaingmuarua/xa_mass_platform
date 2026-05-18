@@ -4,9 +4,11 @@ import com.xa.mass.command.event.CoreEventPrincipal;
 import com.xa.mass.command.event.CoreEventRequest;
 import com.xa.mass.command.event.CoreEventResponse;
 import com.xa.mass.command.event.InMemoryMassEventRuntime;
+import com.xa.mass.engine.command.WorkerCommandLifecycleOwner;
 import com.xa.mass.engine.event.KernelEventHandlerRegistry;
 import com.xa.mass.engine.testutil.RecordingEventSink;
 import com.xa.mass.engine.util.TraceEventLogger;
+import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.trace.sink.ExecutionEventType;
 import org.junit.jupiter.api.Test;
 
@@ -24,9 +26,7 @@ public class WorkerStateReportEventHandlerTest {
         RecordingEventSink sink = new RecordingEventSink();
         InMemoryMassEventRuntime runtime = new InMemoryMassEventRuntime();
         WorkerStateReportEventHandler handler = new WorkerStateReportEventHandler(
-                owner,
-                new TraceEventLogger(sink)
-        );
+                workerControlService(owner, new TraceEventLogger(sink)));
         handler.register(new KernelEventHandlerRegistry(runtime));
 
         CoreEventResponse response = runtime.dispatch(request(1, "READY"),
@@ -45,9 +45,7 @@ public class WorkerStateReportEventHandlerTest {
     void staleStateReportFailsWithoutChangingProjection() {
         WorkerStateProjectionOwner owner = new WorkerStateProjectionOwner();
         WorkerStateReportEventHandler handler = new WorkerStateReportEventHandler(
-                owner,
-                TraceEventLogger.noop()
-        );
+                workerControlService(owner, TraceEventLogger.noop()));
 
         assertTrue(handler.handle(request(2, "READY"), new CoreEventPrincipal("worker-1", "worker"))
                 .isSuccess());
@@ -63,9 +61,7 @@ public class WorkerStateReportEventHandlerTest {
     void invalidStateReportIsRejectedBeforeProjectionMutation() {
         WorkerStateProjectionOwner owner = new WorkerStateProjectionOwner();
         WorkerStateReportEventHandler handler = new WorkerStateReportEventHandler(
-                owner,
-                TraceEventLogger.noop()
-        );
+                workerControlService(owner, TraceEventLogger.noop()));
 
         CoreEventResponse response = handler.handle(CoreEventRequest.builder()
                         .event(WorkerStateReportEventHandler.EVENT_CODE)
@@ -92,5 +88,14 @@ public class WorkerStateReportEventHandlerTest {
                         "attributes", Map.of("temperature", "normal")
                 ))
                 .build();
+    }
+
+    private static WorkerControlService workerControlService(WorkerStateProjectionOwner owner,
+                                                             TraceEventLogger traceEventLogger) {
+        return new WorkerControlService(
+                new WorkerManager(new InMemoryWorkerStorage()),
+                new WorkerCommandLifecycleOwner(),
+                owner,
+                traceEventLogger);
     }
 }

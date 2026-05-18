@@ -11,6 +11,11 @@ import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.engine.worker.WorkerReachabilityView;
+import com.xa.mass.engine.worker.WorkerControlService;
+import com.xa.mass.engine.worker.WorkerStateProjectionOwner;
+import com.xa.mass.engine.command.WorkerCommandLifecycleOwner;
+import com.xa.mass.engine.stage.TaskStageEvidenceOwner;
+import com.xa.mass.engine.stage.TaskStageEvidenceService;
 import com.xa.mass.engine.load.InMemoryWorkerLoadView;
 import com.xa.mass.engine.load.WorkerLoadView;
 import com.xa.mass.engine.rules.RuleManager;
@@ -68,6 +73,11 @@ public class EngineConfig {
     private WorkerLoadView workerLoadView = new InMemoryWorkerLoadView();
     private WorkerStorage workerStorage = new InMemoryWorkerStorage();
     private WorkerManager workerManager;
+    private WorkerCommandLifecycleOwner workerCommandLifecycleOwner = new WorkerCommandLifecycleOwner();
+    private WorkerStateProjectionOwner workerStateProjectionOwner = new WorkerStateProjectionOwner();
+    private WorkerControlService workerControlService;
+    private TaskStageEvidenceOwner taskStageEvidenceOwner = new TaskStageEvidenceOwner();
+    private TaskStageEvidenceService taskStageEvidenceService;
     private AssignmentDiagnosticRecorder recordService = new AssignmentRecordService();
     private RuleStorage ruleStorage = new InMemoryRuleStorage();
     private ExecutionEventSink executionEventSink = new NoopExecutionEventSink();
@@ -105,6 +115,11 @@ public class EngineConfig {
         this.workerLoadView = source.workerLoadView;
         this.workerStorage = source.workerStorage;
         this.workerManager = null;
+        this.workerCommandLifecycleOwner = source.workerCommandLifecycleOwner;
+        this.workerStateProjectionOwner = source.workerStateProjectionOwner;
+        this.workerControlService = null;
+        this.taskStageEvidenceOwner = source.taskStageEvidenceOwner;
+        this.taskStageEvidenceService = null;
         this.recordService = source.recordService;
         this.ruleStorage = source.ruleStorage;
         this.executionEventSink = source.executionEventSink;
@@ -267,6 +282,28 @@ public class EngineConfig {
         return workerManager;
     }
 
+    public WorkerControlService getWorkerControlService() {
+        if (workerControlService == null) {
+            workerControlService = new WorkerControlService(
+                    getWorkerManager(),
+                    workerCommandLifecycleOwner,
+                    workerStateProjectionOwner,
+                    getTraceEventLogger()
+            );
+        }
+        return workerControlService;
+    }
+
+    public TaskStageEvidenceService getTaskStageEvidenceService() {
+        if (taskStageEvidenceService == null) {
+            taskStageEvidenceService = new TaskStageEvidenceService(
+                    taskStageEvidenceOwner,
+                    getTraceEventLogger()
+            );
+        }
+        return taskStageEvidenceService;
+    }
+
     public WorkerReachabilityView getWorkerReachabilityView() {
         return workerReachabilityView;
     }
@@ -276,6 +313,7 @@ public class EngineConfig {
                 ? workerReachabilityView
                 : WorkerReachabilityView.permissive();
         this.workerManager = null;
+        this.workerControlService = null;
     }
 
     public WorkerLoadView getWorkerLoadView() {
@@ -288,6 +326,7 @@ public class EngineConfig {
         }
         this.workerLoadView = workerLoadView;
         this.workerManager = null;
+        this.workerControlService = null;
     }
 
     public WorkerStorage getWorkerStorage() {
@@ -300,6 +339,7 @@ public class EngineConfig {
         }
         this.workerStorage = workerStorage;
         this.workerManager = null;
+        this.workerControlService = null;
     }
 
     public AssignmentDiagnosticRecorder getRecordService() {
@@ -340,6 +380,8 @@ public class EngineConfig {
         }
         this.executionEventSink = executionEventSink;
         this.traceEventLogger = null;
+        this.workerControlService = null;
+        this.taskStageEvidenceService = null;
     }
 
     public EngineRuntimeBridge getRuntimeBridge() {

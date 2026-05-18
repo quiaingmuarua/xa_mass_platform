@@ -3,8 +3,6 @@ package com.xa.mass.engine.worker;
 import com.xa.mass.command.event.CoreEventRequest;
 import com.xa.mass.command.event.CoreEventResponse;
 import com.xa.mass.engine.event.KernelEventHandlerRegistry;
-import com.xa.mass.engine.util.TraceEventLogger;
-
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -22,12 +20,10 @@ public final class WorkerCapabilityReportEventHandler {
 
     public static final String EVENT_CODE = "kernel.worker.capability.report";
 
-    private final WorkerManager workerManager;
-    private final TraceEventLogger traceEventLogger;
+    private final WorkerControlService workerControlService;
 
-    public WorkerCapabilityReportEventHandler(WorkerManager workerManager, TraceEventLogger traceEventLogger) {
-        this.workerManager = Objects.requireNonNull(workerManager, "workerManager");
-        this.traceEventLogger = traceEventLogger != null ? traceEventLogger : TraceEventLogger.noop();
+    public WorkerCapabilityReportEventHandler(WorkerControlService workerControlService) {
+        this.workerControlService = Objects.requireNonNull(workerControlService, "workerControlService");
     }
 
     public void register(KernelEventHandlerRegistry registry) {
@@ -37,8 +33,7 @@ public final class WorkerCapabilityReportEventHandler {
     public CoreEventResponse handle(CoreEventRequest request, com.xa.mass.command.event.CoreEventPrincipal principal) {
         try {
             WorkerCapabilityReport report = reportFrom(request.getPayload());
-            WorkerCapabilityReportResult result = workerManager.applyWorkerCapabilityReport(report);
-            traceEventLogger.workerCapabilityReportApplied(result);
+            WorkerCapabilityReportResult result = workerControlService.applyWorkerCapabilityReport(report);
             if (result.success()) {
                 return CoreEventResponse.success(responsePayload(result), request.getRequestId());
             }

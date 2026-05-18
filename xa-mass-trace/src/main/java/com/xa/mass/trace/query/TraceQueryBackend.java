@@ -4,6 +4,10 @@ import java.util.List;
 
 public interface TraceQueryBackend {
 
+    List<TraceTimelineRow> query(TraceSource source,
+                                 TraceQueryFilter filter,
+                                 int limit) throws Exception;
+
     List<TraceTimelineRow> timeline(TraceSource source,
                                     String taskId,
                                     String messageId,

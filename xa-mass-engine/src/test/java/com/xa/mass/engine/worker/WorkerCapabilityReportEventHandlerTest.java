@@ -7,6 +7,7 @@ import com.xa.mass.command.event.CoreEventPrincipal;
 import com.xa.mass.command.event.CoreEventRequest;
 import com.xa.mass.command.event.CoreEventResponse;
 import com.xa.mass.command.event.InMemoryMassEventRuntime;
+import com.xa.mass.engine.command.WorkerCommandLifecycleOwner;
 import com.xa.mass.engine.event.KernelEventHandlerRegistry;
 import com.xa.mass.engine.testutil.RecordingEventSink;
 import com.xa.mass.engine.util.TraceEventLogger;
@@ -34,9 +35,7 @@ public class WorkerCapabilityReportEventHandlerTest {
 
         InMemoryMassEventRuntime runtime = new InMemoryMassEventRuntime();
         WorkerCapabilityReportEventHandler handler = new WorkerCapabilityReportEventHandler(
-                workerManager,
-                new TraceEventLogger(sink)
-        );
+                workerControlService(workerManager, new TraceEventLogger(sink)));
         handler.register(new KernelEventHandlerRegistry(runtime));
 
         CoreEventResponse response = runtime.dispatch(CoreEventRequest.builder()
@@ -77,9 +76,7 @@ public class WorkerCapabilityReportEventHandlerTest {
         worker.setSupportedEventCodes(List.of("crawler.fetch", "crawler.parse"));
         workerManager.addWorker(worker);
         WorkerCapabilityReportEventHandler handler = new WorkerCapabilityReportEventHandler(
-                workerManager,
-                TraceEventLogger.noop()
-        );
+                workerControlService(workerManager, TraceEventLogger.noop()));
 
         assertTrue(handler.handle(request(2, List.of("crawler.parse")), new CoreEventPrincipal("worker", "test"))
                 .isSuccess());
@@ -122,5 +119,14 @@ public class WorkerCapabilityReportEventHandlerTest {
         worker.setWorkerId(workerId);
         worker.setWorkerGroupId(workerGroupId);
         return worker;
+    }
+
+    private static WorkerControlService workerControlService(WorkerManager workerManager,
+                                                             TraceEventLogger traceEventLogger) {
+        return new WorkerControlService(
+                workerManager,
+                new WorkerCommandLifecycleOwner(),
+                new WorkerStateProjectionOwner(),
+                traceEventLogger);
     }
 }

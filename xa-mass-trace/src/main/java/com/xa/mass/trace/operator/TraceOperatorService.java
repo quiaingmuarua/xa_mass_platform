@@ -2,6 +2,7 @@ package com.xa.mass.trace.operator;
 
 import com.xa.mass.trace.query.DuckDbTraceQueryBackend;
 import com.xa.mass.trace.query.TraceQueryBackend;
+import com.xa.mass.trace.query.TraceQueryFilter;
 import com.xa.mass.trace.query.TraceSource;
 import com.xa.mass.trace.query.TraceSourceResolver;
 import com.xa.mass.trace.query.TraceValidationReport;
@@ -34,6 +35,35 @@ public final class TraceOperatorService {
         this.queryBackend = queryBackend;
         this.validationService = validationService;
         this.scenarioRegistry = scenarioRegistry;
+    }
+
+    public TraceQueryResponse query(TraceQueryRequest request) throws Exception {
+        TraceSource source = TraceSourceResolver.resolve(request.path());
+        int limit = positiveOrDefault(request.limit(), DEFAULT_TIMELINE_LIMIT, "limit");
+        TraceQueryFilter filter = new TraceQueryFilter(
+                blankToNull(request.taskId()),
+                blankToNull(request.messageId()),
+                blankToNull(request.workerId()),
+                blankToNull(request.commandId()),
+                blankToNull(request.traceId()),
+                blankToNull(request.eventType())
+        );
+        if (!filter.hasAnyFilter()) {
+            throw new IllegalArgumentException(
+                    "At least one query filter is required: taskId, messageId, workerId, commandId, traceId, or eventType");
+        }
+        var rows = queryBackend.query(source, filter, limit);
+        return new TraceQueryResponse(
+                source.inputPath().toString(),
+                filter.taskId(),
+                filter.messageId(),
+                filter.workerId(),
+                filter.commandId(),
+                filter.traceId(),
+                filter.eventType(),
+                rows.size(),
+                List.copyOf(rows)
+        );
     }
 
     public TraceTimelineResponse timeline(TraceTimelineRequest request) throws Exception {
