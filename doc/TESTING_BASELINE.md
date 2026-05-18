@@ -39,12 +39,18 @@ Use with:
   truth belongs to [TESTING_INDEX.md](./TESTING_INDEX.md)
 - projection-first proof style is downgraded; compatibility projection is bounded residue, not the primary execution proof surface
 - engine PR mainline suites are now runtime-first:
-  `EngineSchedulingCoreSuite` no longer carries projection-heavy residue classes directly; compatibility residue and audit live in explicit secondary suites
+  `EngineSchedulingCoreSuite` and `EngineKernelConvergenceSuite` no longer
+  carry projection-heavy residue classes directly; compatibility residue and
+  audit live in explicit secondary suites
 - `EngineSchedulingCoreArchitectureGuardTest` derives its scan list from
   `EngineSchedulingCoreSuite` `@SelectClasses`, so newly added scheduling-core
   tests are covered automatically and projection-first helpers stay out of the
   mainline test set; it also rejects implicit `var` declarations in the core
   scheduling proof surface so assertion ownership stays grep-friendly
+- `EngineKernelConvergenceArchitectureGuardTest` derives its scan list from
+  `EngineKernelConvergenceSuite` `@SelectClasses`, so newly added lifecycle /
+  convergence mainline tests stay runtime/task-aggregate first instead of
+  silently drifting back to projection-first proof
 
 ## 2. Lane Map
 

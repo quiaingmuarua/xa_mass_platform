@@ -1,4 +1,4 @@
-package com.xa.mass.engine;
+package com.xa.mass.engine.worker;
 
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerHeartbeatEvent;
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerOfflineEvent;
@@ -7,8 +7,6 @@ import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.engine.worker.WorkerManager;
-import com.xa.mass.engine.worker.WorkerReachabilityState;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,7 +16,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class WorkerManagerTest {
+public class WorkerManagerTest {
 
     private WorkerManager manager;
 

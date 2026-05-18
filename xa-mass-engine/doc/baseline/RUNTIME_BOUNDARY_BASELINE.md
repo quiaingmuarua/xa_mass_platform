@@ -8,10 +8,10 @@ assembly into a second runtime truth.
 
 Use with:
 
-- [README.md](./README.md)
+- [README.md](../../README.md)
 - [STORAGE_BASELINE.md](./STORAGE_BASELINE.md)
-- [../doc/INFRA_TRUTH_LAYERS.md](../doc/INFRA_TRUTH_LAYERS.md)
-- [../platform_infra/README.md](../platform_infra/README.md)
+- [../../../doc/INFRA_TRUTH_LAYERS.md](../../../doc/INFRA_TRUTH_LAYERS.md)
+- [../../../platform_infra/README.md](../../../platform_infra/README.md)
 
 ## Scope
 

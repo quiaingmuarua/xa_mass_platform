@@ -619,6 +619,9 @@ Out of scope:
 Goal: add worker command request/status ownership without routing acks through
 task result convergence.
 
+Current direction is tracked in
+[`WORKER_COMMAND_LIFECYCLE_ROADMAP.md`](./WORKER_COMMAND_LIFECYCLE_ROADMAP.md).
+
 Possible scope:
 
 - command id, target worker, type, deadline, requester, reason
@@ -733,7 +736,9 @@ Mitigation:
 
 ## Related Roadmaps
 
-- [WORKER_GROUP_CAPABILITY_ROADMAP.md](./WORKER_GROUP_CAPABILITY_ROADMAP.md)
+- [WORKER_GROUP_CAPABILITY_ROADMAP.md](../../../doc/archive/xa-mass-engine/WORKER_GROUP_CAPABILITY_ROADMAP.md)
 - [SCHEDULING_KERNEL_GUARDRAILS.md](./SCHEDULING_KERNEL_GUARDRAILS.md)
-- [../doc/RESULT_BOUNDARY_BASELINE.md](../doc/RESULT_BOUNDARY_BASELINE.md)
-- [../transport/TRANSPORT_BOUNDARY_BASELINE.md](../transport/TRANSPORT_BOUNDARY_BASELINE.md)
+- [SYSTEM_EVENT_OWNER_BASELINE.md](./SYSTEM_EVENT_OWNER_BASELINE.md)
+- [WORKER_COMMAND_LIFECYCLE_ROADMAP.md](./WORKER_COMMAND_LIFECYCLE_ROADMAP.md)
+- [../../../doc/RESULT_BOUNDARY_BASELINE.md](../../../doc/RESULT_BOUNDARY_BASELINE.md)
+- [../../../transport/TRANSPORT_BOUNDARY_BASELINE.md](../../../transport/TRANSPORT_BOUNDARY_BASELINE.md)

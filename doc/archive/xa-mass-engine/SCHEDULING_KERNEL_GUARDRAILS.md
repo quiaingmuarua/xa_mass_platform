@@ -10,11 +10,11 @@ keep the scheduling kernel stable while policy quality evolves.
 
 Use with:
 
-- [README.md](./README.md)
+- [README.md](../../README.md)
 - [POLICY_INTERACTION_BASELINE.md](./POLICY_INTERACTION_BASELINE.md)
 - [WORKER_SCHEDULING_VIEW_BASELINE.md](./WORKER_SCHEDULING_VIEW_BASELINE.md)
-- [SCHEDULING_UPGRADE_ROADMAP.md](./SCHEDULING_UPGRADE_ROADMAP.md)
-- [../doc/HIGH_VOLUME_MODEL_BASELINE.md](../doc/HIGH_VOLUME_MODEL_BASELINE.md)
+- [SCHEDULING_UPGRADE_ROADMAP.md](../../../doc/archive/xa-mass-engine/SCHEDULING_UPGRADE_ROADMAP.md)
+- [../../../doc/HIGH_VOLUME_MODEL_BASELINE.md](../../../doc/HIGH_VOLUME_MODEL_BASELINE.md)
 
 ## 1. Purpose
 

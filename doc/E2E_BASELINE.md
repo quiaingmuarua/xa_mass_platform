@@ -134,7 +134,7 @@ then acceptance requires:
 2. representative E2E coverage for the changed host/runtime path
 3. trace coverage for the critical transition
 
-For policy interaction changes, also cover the touched pairwise interaction from [../xa-mass-engine/POLICY_INTERACTION_BASELINE.md](../xa-mass-engine/POLICY_INTERACTION_BASELINE.md).
+For scheduling-policy changes, also cover the touched risky interaction pair from [../xa-mass-engine/doc/baseline/SCHEDULING_KERNEL_BASELINE.md](../xa-mass-engine/doc/baseline/SCHEDULING_KERNEL_BASELINE.md).
 
 Trace coverage note:
 

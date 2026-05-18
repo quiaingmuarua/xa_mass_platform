@@ -13,7 +13,7 @@ Use with:
 - [./TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
 - [./E2E_BASELINE.md](./E2E_BASELINE.md)
 - [./RESULT_BOUNDARY_BASELINE.md](./RESULT_BOUNDARY_BASELINE.md)
-- [../xa-mass-engine/POLICY_INTERACTION_BASELINE.md](../xa-mass-engine/POLICY_INTERACTION_BASELINE.md)
+- [../xa-mass-engine/doc/baseline/SCHEDULING_KERNEL_BASELINE.md](../xa-mass-engine/doc/baseline/SCHEDULING_KERNEL_BASELINE.md)
 
 ## 1. Global Rules
 

@@ -29,6 +29,9 @@ entry for `transport/`.
   Presence ownership is connection-aware: reconnect may replace the current
   owner, while heartbeat/offline only apply when the caller still holds the
   stored `connectionId`.
+- `WorkerSystemEventChannel` is current worker presence ingress only. It is not
+  the lifecycle owner for future worker command, worker state-report, or
+  capability self-report flows.
 - `TransportPacket` is the internal flat transport envelope. Dispatch now
   creates packet-backed envelopes before adapter delivery, but worker-facing
   websocket/socket/polling JSON remains unchanged in this phase.
