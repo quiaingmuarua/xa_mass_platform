@@ -1,4 +1,4 @@
-package com.xa.mass.engine;
+package com.xa.mass.engine.worker;
 
 /**
  * Cross-module read seam for transport-owned worker reachability.

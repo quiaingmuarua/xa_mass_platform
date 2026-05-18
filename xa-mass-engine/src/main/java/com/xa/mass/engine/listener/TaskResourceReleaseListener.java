@@ -3,7 +3,7 @@ package com.xa.mass.engine.listener;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.TaskWorkAttemptClosedEvent;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
-import com.xa.mass.engine.WorkerManager;
+import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.engine.assignment.AssignmentRefillDecision;
 import com.xa.mass.engine.assignment.AssignmentRefillPolicy;
 import com.xa.mass.engine.assignment.AssignmentRefillRequest;

@@ -1,6 +1,7 @@
 package com.xa.mass.server.e2e.assignment;
 
 import com.google.gson.JsonObject;
+import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import com.xa.mass.server.testutil.WsFrameTestSupport;
@@ -92,7 +93,7 @@ class TaskApiWorkerAttributeRoutingTraceObservedIntegrationTest extends Abstract
             assertClientConnects(matchedClient, "matched worker client failed to connect");
             assertClientConnects(otherClient, "other worker client failed to connect");
 
-            String taskId = createTaskId(
+            String taskId = createSdkEventTaskId(
                     "worker-attribute-routing-trace",
                     "attribute routing trace observed",
                     "target-a"
@@ -114,6 +115,15 @@ class TaskApiWorkerAttributeRoutingTraceObservedIntegrationTest extends Abstract
             assertTrue(trace.ok(), trace.issues().toString());
             assertEquals("worker-attribute-routing-without-context", trace.scenarioId());
             assertEquals(1L, trace.eventTypeCounts().get("WORKER_MATCH_ACCEPTED"));
+
+            TraceAnalyzeResponse groupTrace = awaitTraceScenarioOk(
+                    traceOperator,
+                    "group-capability-routing",
+                    taskId
+            );
+            assertTrue(groupTrace.ok(), groupTrace.issues().toString());
+            assertEquals("group-capability-routing", groupTrace.scenarioId());
+            assertEquals(1L, groupTrace.eventTypeCounts().get("WORKER_MATCH_ACCEPTED"));
 
             matchedClient.sendSuccess(matchedDispatch, "attribute-routing-trace-ok");
             assertEquals("ALL_MESSAGES_SUCCEEDED", waitForTerminalRuntimeTask(taskId).task().get("terminalReason"));
@@ -167,6 +177,28 @@ class TaskApiWorkerAttributeRoutingTraceObservedIntegrationTest extends Abstract
         rule.setType(RuleType.QL_EXPRESS);
         rule.setContent(content);
         return rule;
+    }
+
+    private String createSdkEventTaskId(String sourceRef, String textContent, String target) {
+        Map<String, Object> sharedConfig = new java.util.LinkedHashMap<>();
+        sharedConfig.put("textContent", textContent);
+        sharedConfig.put(TaskSharedConfig.ROUTING_CODE, "us");
+        sharedConfig.put(TaskSharedConfig.SDK_METADATA, Map.of(TaskSharedConfig.SDK_EVENT_CODE, "demo.dispatch"));
+
+        Map<String, Object> createBody = new java.util.LinkedHashMap<>();
+        createBody.put("project", "demoApp");
+        createBody.put("sharedConfig", sharedConfig);
+        createBody.put("userId", "itest");
+        createBody.put("sourceRef", sourceRef);
+        createBody.put("executionSpec", Map.of("batchSize", 1));
+
+        Map<String, Object> createResponse = createTaskShell(createBody);
+        assertApiOk(createResponse);
+        String taskId = String.valueOf(responseData(createResponse).get("taskId"));
+        assertFalse(taskId.isBlank());
+        assertApiOk(appendTaskItems(taskId, "demo.dispatch", List.of(Map.of("target", target))));
+        assertApiOk(sealTask(taskId));
+        return taskId;
     }
 
     private static final class ManualAckWebSocketClient extends SampleWorkerWebSocketClient {

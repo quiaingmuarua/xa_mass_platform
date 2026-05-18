@@ -589,6 +589,230 @@ class EngineSchedulingCoreArchitectureGuardTest {
                         + String.join("\n", violations));
     }
 
+    @Test
+    void workerAccessTypesStayInWorkerPackage() throws IOException {
+        Map<Path, String> retiredRootTypes = Map.ofEntries(
+                Map.entry(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/WorkerManager.java"), "WorkerManager"),
+                Map.entry(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/WorkerReachabilityState.java"),
+                        "WorkerReachabilityState"),
+                Map.entry(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/WorkerReachabilityView.java"),
+                        "WorkerReachabilityView")
+        );
+        Map<String, Pattern> retiredImports = Map.ofEntries(
+                Map.entry("WorkerManager",
+                        Pattern.compile("\\bimport\\s+com\\.xa\\.mass\\.engine\\.WorkerManager\\s*;")),
+                Map.entry("WorkerReachabilityState",
+                        Pattern.compile("\\bimport\\s+com\\.xa\\.mass\\.engine\\.WorkerReachabilityState\\s*;")),
+                Map.entry("WorkerReachabilityView",
+                        Pattern.compile("\\bimport\\s+com\\.xa\\.mass\\.engine\\.WorkerReachabilityView\\s*;"))
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Map.Entry<Path, String> retiredRootType : retiredRootTypes.entrySet()) {
+            if (Files.exists(retiredRootType.getKey())) {
+                violations.add(retiredRootType.getKey() + " keeps worker access type in root engine package: "
+                        + retiredRootType.getValue());
+            }
+        }
+
+        for (Path root : List.of(MAIN_SOURCE_ROOT, TEST_SOURCE_ROOT)) {
+            for (Path path : javaSourceFiles(root)) {
+                String source = Files.readString(path, StandardCharsets.UTF_8);
+                for (Map.Entry<String, Pattern> retiredImport : retiredImports.entrySet()) {
+                    if (retiredImport.getValue().matcher(source).find()) {
+                        violations.add(path + " imports retired root-package worker access type: "
+                                + retiredImport.getKey());
+                    }
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Worker access/read-view types belong in com.xa.mass.engine.worker. "
+                        + "Do not move WorkerManager or reachability types back into the root engine package:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void workerGroupSnapshotDoesNotReadWorkerLevelCapabilityTruth() throws IOException {
+        Path snapshotPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/worker/WorkerRegistrySnapshot.java");
+        String source = Files.readString(snapshotPath, StandardCharsets.UTF_8);
+
+        Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
+                Map.entry("supportedProjects", Pattern.compile("\\.getSupportedProjects\\s*\\(")),
+                Map.entry("supportedEventCodes", Pattern.compile("\\.getSupportedEventCodes\\s*\\("))
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Map.Entry<String, Pattern> forbiddenPattern : forbiddenPatterns.entrySet()) {
+            if (forbiddenPattern.getValue().matcher(source).find()) {
+                violations.add(snapshotPath + " reads worker-level capability truth: "
+                        + forbiddenPattern.getKey());
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "WorkerRegistrySnapshot indexes WorkerGroup EventBinding/EventKey truth only. "
+                        + "Worker-level supportedProjects/supportedEventCodes remain compatibility/read "
+                        + "surfaces and must not drive WG candidate-source indexes:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void workerCandidateIndexStaysOnGroupCapabilityTruth() throws IOException {
+        Path indexPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/worker/WorkerCandidateIndex.java");
+        String source = Files.readString(indexPath, StandardCharsets.UTF_8);
+
+        Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
+                Map.entry("supportedProjects", Pattern.compile("\\.getSupportedProjects\\s*\\(")),
+                Map.entry("supportedEventCodes", Pattern.compile("\\.getSupportedEventCodes\\s*\\(")),
+                Map.entry("WorkerManager", Pattern.compile("\\bWorkerManager\\b")),
+                Map.entry("WorkerStorage", Pattern.compile("\\bWorkerStorage\\b")),
+                Map.entry("all-workers scan", Pattern.compile("\\.getAllWorkers\\s*\\("))
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Map.Entry<String, Pattern> forbiddenPattern : forbiddenPatterns.entrySet()) {
+            if (forbiddenPattern.getValue().matcher(source).find()) {
+                violations.add(indexPath + " leaks non-index candidate-source dependency: "
+                        + forbiddenPattern.getKey());
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "WorkerCandidateIndex is Stage-1 group-capability narrowing only. "
+                        + "It must not read worker-level compatibility capability, WorkerManager, "
+                        + "storage, full scans, or Stage-2 runtime admission state:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void matchingMainlineDoesNotOwnWorkerGroupIndexLookup() throws IOException {
+        Path strategyRoot = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/strategy");
+        Pattern workerRegistrySnapshot = Pattern.compile("\\bWorkerRegistrySnapshot\\b");
+        Pattern workerCandidateIndex = Pattern.compile("\\bWorkerCandidateIndex\\b");
+
+        List<String> violations = new ArrayList<>();
+        for (Path path : javaSourceFiles(strategyRoot)) {
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            if (workerRegistrySnapshot.matcher(source).find()
+                    || workerCandidateIndex.matcher(source).find()) {
+                violations.add(path + " owns WorkerGroup snapshot/index lookup");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Strategy code may materialize WorkerGroup capability already selected by WorkerManager, "
+                        + "but WorkerManager/WorkerCandidateIndex must own Stage-1 snapshot/index lookup:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void workerSchedulingCandidateEnumeratorStaysPackagePrivateImplementationDetail() throws IOException {
+        Path enumeratorPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/strategy/WorkerSchedulingCandidateEnumerator.java");
+        String source = Files.readString(enumeratorPath, StandardCharsets.UTF_8);
+
+        Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
+                Map.entry("public class",
+                        Pattern.compile("\\bpublic\\s+(?:final\\s+)?class\\s+WorkerSchedulingCandidateEnumerator\\b")),
+                Map.entry("public constructor",
+                        Pattern.compile("\\bpublic\\s+WorkerSchedulingCandidateEnumerator\\s*\\(")),
+                Map.entry("public enumerate",
+                        Pattern.compile("\\bpublic\\s+List\\s*<\\s*WorkerSchedulingCandidate\\s*>\\s+enumerate\\s*\\("))
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Map.Entry<String, Pattern> forbiddenPattern : forbiddenPatterns.entrySet()) {
+            if (forbiddenPattern.getValue().matcher(source).find()) {
+                violations.add(enumeratorPath + " exposes " + forbiddenPattern.getKey());
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "WorkerSchedulingCandidateEnumerator must stay a strategy-package implementation detail. "
+                        + "WG-3 should replace the candidate source with WorkerCandidateIndex rather than "
+                        + "stabilizing this enumerator as a public extension point:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void ruleBasedMatchingStrategyDoesNotScanAllWorkersDirectly() throws IOException {
+        Path strategyPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/strategy/RuleBasedTaskWorkerMatchingStrategy.java");
+        String source = Files.readString(strategyPath, StandardCharsets.UTF_8);
+
+        List<String> violations = new ArrayList<>();
+        if (Pattern.compile("\\.getAllWorkers\\s*\\(").matcher(source).find()) {
+            violations.add(strategyPath + " calls getAllWorkers() directly");
+        }
+        if (!Pattern.compile("\\.findWorkerCandidates\\s*\\(").matcher(source).find()) {
+            violations.add(strategyPath + " does not consume WorkerManager.findWorkerCandidates(...)");
+        }
+
+        assertTrue(violations.isEmpty(),
+                "RuleBasedTaskWorkerMatchingStrategy must consume the centralized candidate source. "
+                        + "Do not reintroduce direct worker-pool scans in the rule/rank/resource path:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void workerManagerDoesNotUseWorkerLevelEventStorageIndexForEventCandidateSource() throws IOException {
+        Path workerManagerPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/worker/WorkerManager.java");
+        String source = Files.readString(workerManagerPath, StandardCharsets.UTF_8);
+
+        List<String> violations = new ArrayList<>();
+        if (Pattern.compile("\\.getWorkersBySupportedEventCode\\s*\\(").matcher(source).find()) {
+            violations.add(workerManagerPath + " calls worker-level supported-event storage index");
+        }
+        if (Pattern.compile("\\.getWorkersBySupportedProject\\s*\\(").matcher(source).find()) {
+            violations.add(workerManagerPath + " calls worker-level supported-project storage index");
+        }
+        if (!Pattern.compile("\\bgetWorkerCandidateIndex\\s*\\(\\)\\.workersFor\\s*\\(").matcher(source).find()) {
+            violations.add(workerManagerPath + " does not use WorkerCandidateIndex for indexed candidate lookup");
+        }
+
+        assertTrue(violations.isEmpty(),
+                "WG candidate source must flow through WorkerCandidateIndex for target, event, and project "
+                        + "lookup. Do not reintroduce worker-level supportedProject/supportedEvent storage "
+                        + "indexes as active scheduling candidate sources:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void schedulingKernelDoesNotReadWorkerLevelCapabilityAsDecisionTruth() throws IOException {
+        Map<Path, List<Pattern>> guardedFiles = Map.ofEntries(
+                Map.entry(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/model/WorkerSchedulingView.java"),
+                        List.of(Pattern.compile("\\.getSupportedProjects\\s*\\("),
+                                Pattern.compile("\\.getSupportedEventCodes\\s*\\("))),
+                Map.entry(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/strategy/RuleBasedTaskWorkerMatchingStrategy.java"),
+                        List.of(Pattern.compile("\\.getSupportedProjects\\s*\\("),
+                                Pattern.compile("\\.getSupportedEventCodes\\s*\\("))),
+                Map.entry(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/listener/SimpleTaskDispatchBinder.java"),
+                        List.of(Pattern.compile("\\.getSupportedEventCodes\\s*\\(")))
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Map.Entry<Path, List<Pattern>> guardedFile : guardedFiles.entrySet()) {
+            String source = Files.readString(guardedFile.getKey(), StandardCharsets.UTF_8);
+            for (Pattern pattern : guardedFile.getValue()) {
+                if (pattern.matcher(source).find()) {
+                    violations.add(guardedFile.getKey()
+                            + " reads Worker.supportedProjects/supportedEventCodes in scheduling decision path");
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "WG-4 capability truth must be materialized from WorkerGroup snapshot/index truth. "
+                        + "Worker-level supportedProjects/supportedEventCodes may remain migration inputs "
+                        + "or legacy diagnostics, but not scheduling decision truth:\n"
+                        + String.join("\n", violations));
+    }
+
     private static List<Path> selectedSuiteSourceFiles() {
         SelectClasses selectedClasses = EngineSchedulingCoreSuite.class.getAnnotation(SelectClasses.class);
         assertNotNull(selectedClasses, "EngineSchedulingCoreSuite must declare @SelectClasses");

@@ -82,17 +82,48 @@ are worker-level.
 
 Current WorkerGroup roadmap baseline:
 
+- WG-0 candidate-source convergence is closed; WorkerGroup and
+  WorkerGroup snapshot index are implemented; WG-2 `WorkerCandidateIndex` is
+  implemented as a Stage-1 worker-row index; WG-3/WG-4 wire it as the active
+  source for target-worker, SDK event, and project-only tasks
+- worker access/read-view types live in `com.xa.mass.engine.worker`
+- `EventKey`, `EventBinding`, `WorkerGroupRecord`, and
+  `WorkerRegistrySnapshot` are engine-internal worker package types
+- `WorkerCandidateIndex` consumes only `WorkerRegistrySnapshot` and narrows
+  `EventKey(projectCode,eventCode) -> groupIds -> workerIds`; it does not read
+  worker-level supported project/event compatibility fields and does not own
+  reachability, load, reservation, or resource policy
+- `WorkerManager` owns the active worker registry snapshot. SDK registration
+  enters through `WorkerManager.addWorker(...)`, and manager add/update/delete
+  refresh the active snapshot.
 - candidate source still enters through `WorkerManager.findWorkerCandidates(...)`
   and is materialized by the strategy-package
   `WorkerSchedulingCandidateEnumerator`
-- `targetWorkerId` already uses direct worker lookup before capability indexes
-- event-code and project candidate narrowing still read worker-level storage
-  indexes; `WorkerGroup.eventBindings` is the next roadmap's capability truth
+- `targetWorkerId` uses direct indexed lookup plus group capability gate before
+  Stage 2 admission
+- event-code and project-only candidate narrowing read `WorkerCandidateIndex`;
+  the active scheduling candidate source does not call worker-level supported
+  project/event storage indexes
+- `WorkerRegistrySnapshot` already indexes WorkerGroup `EventBinding` truth for
+  the candidate source; `WorkerGroupCompatibilityProjection` is a migration
+  input from current worker-level compatibility fields, not long-term
+  capability truth
+- Stage 2 scheduling capability fields are materialized from
+  `WorkerGroupRecord`; legacy worker-level supported project/event fields are
+  migration inputs to `WorkerGroupCompatibilityProjection` and diagnostics, not
+  matching truth
 - `WorkerSchedulingCandidateEnumerator` is a strategy-package implementation
   detail, not a public extension point
 - the old unused `WorkerSelector` / `DefaultWorkerSelector` path is removed so
   worker selection has one active mainline: candidate source -> rule/rank ->
   allocation/resource admission
+- `RuleBasedTaskWorkerMatchingStrategy` must consume the centralized candidate
+  source and must not reintroduce direct all-worker scans
+- canonical assignment trace includes `workerGroupId`, `eventBindingKey`, and
+  `workerCandidateSource` on worker match rows; the
+  `group-capability-routing` trace scenario is the representative proof that
+  SDK event routing uses the group-indexed candidate source through real server
+  wiring
 
 ## Scheduling Core Test Intent
 
@@ -127,7 +158,7 @@ Start with these classes before changing behavior:
 - `src/test/java/com/xa/mass/engine/TaskCompatibilityProjectionAccess.java`
   only when you are intentionally working on test-only bounded projection
   overlays or residue audit helpers
-- `src/main/java/com/xa/mass/engine/WorkerManager.java`
+- `src/main/java/com/xa/mass/engine/worker/WorkerManager.java`
 - `src/main/java/com/xa/mass/engine/rules/RuleManager.java`
 
 Runtime-facing glue should prefer narrow engine ports and facades such as:

@@ -174,6 +174,9 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                     json_extract_string(%s, '$.messageId') AS messageId,
                     json_extract_string(%s, '$.attemptId') AS attemptId,
                     json_extract_string(%s, '$.workerId') AS workerId,
+                    json_extract_string(%s, '$.workerGroupId') AS workerGroupId,
+                    json_extract_string(%s, '$.eventBindingKey') AS eventBindingKey,
+                    json_extract_string(%s, '$.workerCandidateSource') AS workerCandidateSource,
                     json_extract_string(%s, '$.workerSchedulingResourceId') AS workerSchedulingResourceId,
                     json_extract_string(%s, '$.workerSchedulingRoutingTags') AS workerSchedulingRoutingTags,
                     json_extract_string(%s, '$.workerSchedulingAttributes') AS workerSchedulingAttributes,
@@ -229,6 +232,7 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                 LIMIT %d
                 """.formatted(
                 identityJson, identityJson, identityJson, identityJson,
+                attrsJson, attrsJson, attrsJson,
                 attrsJson, attrsJson, attrsJson, attrsJson,
                 attrsJson, attrsJson, attrsJson, attrsJson, attrsJson, attrsJson,
                 attrsJson, attrsJson, attrsJson, attrsJson, attrsJson, attrsJson, attrsJson,
@@ -256,6 +260,9 @@ public final class DuckDbTraceQueryBackend implements TraceQueryBackend {
                         resultSet.getString("messageId"),
                         resultSet.getString("attemptId"),
                         resultSet.getString("workerId"),
+                        resultSet.getString("workerGroupId"),
+                        resultSet.getString("eventBindingKey"),
+                        resultSet.getString("workerCandidateSource"),
                         resultSet.getString("workerSchedulingResourceId"),
                         resultSet.getString("workerSchedulingRoutingTags"),
                         resultSet.getString("workerSchedulingAttributes"),

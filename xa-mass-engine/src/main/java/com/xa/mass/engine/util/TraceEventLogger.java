@@ -888,11 +888,18 @@ public final class TraceEventLogger {
         );
         if (view != null) {
             String routingCode = TaskSharedConfig.routingCode(task);
+            String taskEventCode = TaskSharedConfig.sdkEventCode(task);
             values.put("workerSchedulingResourceId", view.schedulingResourceId());
             values.put("workerSchedulingRoutingTags", view.schedulingRoutingTags());
             values.put("workerSchedulingAttributes", view.schedulingAttributes());
             values.put("workerSchedulingMatchesRoutingCode",
                     routingCode != null && view.schedulingRoutingTagsContain(routingCode));
+            values.put("workerGroupId", view.workerGroupId());
+            values.put("workerCandidateSource", workerCandidateSource(task));
+            if (task != null && taskEventCode != null && !taskEventCode.isBlank()
+                    && task.getProject() != null && !task.getProject().isBlank()) {
+                values.put("eventBindingKey", task.getProject().trim() + ":" + taskEventCode.trim());
+            }
         }
         if (workerLoadSnapshot != null) {
             values.put("workerActiveLeaseCount", workerLoadSnapshot.activeLeaseCount());
@@ -910,6 +917,24 @@ public final class TraceEventLogger {
 
     private static String enumName(Enum<?> value) {
         return value != null ? value.name() : null;
+    }
+
+    private static String workerCandidateSource(Task task) {
+        if (task == null) {
+            return null;
+        }
+        String targetWorkerId = TaskSharedConfig.targetWorkerId(task);
+        if (targetWorkerId != null && !targetWorkerId.isBlank()) {
+            return "TARGET_WORKER";
+        }
+        String taskEventCode = TaskSharedConfig.sdkEventCode(task);
+        if (taskEventCode != null && !taskEventCode.isBlank()) {
+            return "GROUP_INDEX";
+        }
+        if (task.getProject() != null && !task.getProject().isBlank()) {
+            return "GROUP_PROJECT_INDEX";
+        }
+        return "ALL_WORKERS_FALLBACK";
     }
 
     private static String formatDouble(double value) {

@@ -9,7 +9,7 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskWorkProjectionState.AttemptStatus;
 import com.xa.mass.engine.TaskWorkAttemptIdSupport;
-import com.xa.mass.engine.WorkerManager;
+import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.resource.DefaultWorkerDispatchResourcePolicy;
 import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
@@ -156,7 +156,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                         slot.worker().getWorkerId(),
                         slot.batchId(),
                         perWorkerBatchLimit,
-                        supportedEventCodes(slot.worker())
+                        supportedEventCodes(slot.candidate)
                 ))
                 .collect(Collectors.toList());
         claimOptions = TASK_RUNTIME_CLAIM_OPTIONS_RESOLVER.resolve(
@@ -363,11 +363,11 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
         );
     }
 
-    private java.util.Set<String> supportedEventCodes(Worker worker) {
-        if (worker == null || worker.getSupportedEventCodes() == null || worker.getSupportedEventCodes().isEmpty()) {
+    private java.util.Set<String> supportedEventCodes(WorkerSchedulingCandidate candidate) {
+        if (candidate == null || candidate.getSchedulingView().supportedEventCodes().isEmpty()) {
             return java.util.Set.of();
         }
-        return new java.util.LinkedHashSet<>(worker.getSupportedEventCodes());
+        return new java.util.LinkedHashSet<>(candidate.getSchedulingView().supportedEventCodes());
     }
 }
 

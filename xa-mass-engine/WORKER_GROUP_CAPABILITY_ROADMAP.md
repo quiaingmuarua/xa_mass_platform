@@ -2,8 +2,10 @@
 
 Last updated: 2026-05-18
 
-Status: proposed engine-internal convergence roadmap. This is a direction
-document, not implemented baseline behavior.
+Status: engine-internal convergence roadmap. WG-0 candidate-source convergence,
+WG-1 WorkerGroup snapshot index, WG-2 WorkerCandidateIndex, WG-3 indexed
+candidate source, WG-4 capability-truth cleanup, and WG-5 trace proof are the
+implemented baseline; later phases remain direction, not implemented behavior.
 
 This roadmap starts after WorkerContext retirement and Scheduling Kernel
 Baseline v1. It does not complete WorkerContext removal; that milestone is
@@ -75,14 +77,20 @@ Closed:
   -> Scheduling Kernel Baseline v1
 
 Current:
-  -> worker-level scheduling kernel
+  -> group-capability scheduling kernel
   -> load/rank/budget/refill/resource owners in mainline
-  -> candidate source still starts from worker enumeration
+  -> WorkerCandidateIndex is the active Stage-1 source for target-worker,
+     SDK event, and project-only tasks
+  -> Stage 2 WorkerSchedulingView materializes supported project/event rule
+     fields from WorkerGroup capability truth
+
+Closed proof:
+  -> group-indexed scheduling is proven through canonical trace and
+     representative server wiring
 
 Next:
-  -> WorkerGroup capability truth
-  -> WorkerCandidateIndex
-  -> matching candidate source no longer scans all workers for event-code tasks
+  -> future WorkerGroup extensions are strategy/control-plane additions, not
+     required scheduling-kernel mechanism changes
 ```
 
 ## Goals
@@ -744,6 +752,8 @@ Runtime/resource owners decide who can be admitted now.
 
 ### Phase WG-0: Package Concentration, Visibility, And Inventory
 
+Status: closed as the candidate-source convergence baseline.
+
 Goal: no behavior change. Concentrate worker-related scheduling code inside the
 engine package structure, shorten visibility, and make the current worker
 lookup path explicit.
@@ -804,11 +814,11 @@ Current WG-0 inventory:
 | matching candidate source | `RuleBasedTaskWorkerMatchingStrategy -> WorkerManager.findWorkerCandidates(task)` | strategy receives worker rows, then `WorkerSchedulingCandidateEnumerator` materializes one worker-level scheduling candidate per worker | WG-3 should replace this source with `WorkerCandidateIndex` while keeping Stage 2 prefilter/rule/ranker/resource behavior |
 | target worker lookup | `WorkerManager.findWorkerCandidates(task)` | `targetWorkerId` is checked first and returns direct `getWorker(targetWorkerId)` singleton or empty list | WG-2/WG-3 keep direct lookup, then apply group capability gate before Stage 2 |
 | sdk event candidate narrowing | `WorkerManager.findWorkerCandidates(task)` | `sdkEventCode` uses `WorkerStorage.getWorkersBySupportedEventCode(eventCode)` | WG-3 replaces worker supported-event lookup with `(project,eventCode) -> groupIds -> workerIds` |
-| non-event project candidate narrowing | `WorkerManager.findWorkerCandidates(task)` | project-only tasks use `WorkerStorage.getWorkersBySupportedProject(project)` | WG-3 either uses group event/project capability or a deliberate project-level group binding path |
+| non-event project candidate narrowing | `WorkerManager.findWorkerCandidates(task)` | project-only tasks use `WorkerCandidateIndex` project-code group index | WG-4 moved project-only narrowing off worker-level storage indexes |
 | fallback candidate source | `WorkerManager.findWorkerCandidates(task)` | tasks without target, event code, or project fall back to `WorkerStorage.getAllWorkers()` | WG-3 must make any remaining full-scan fallback explicit and guarded |
-| worker scheduling view capability fields | `WorkerSchedulingView` | reads `Worker.supportedProjects` and `Worker.supportedEventCodes` into the Stage 2 read model | WG-4 removes or derives these from group bindings so they do not remain a second matching truth |
-| rule context capability fields | `WorkerMatchContext` | exposes `supportedProjects`, `supportedEventCodes`, `supportsProject`, and `supportsEvent` from `WorkerSchedulingView` | WG-4 updates rule context to read group-derived scheduling facts only |
-| dispatch runtime claim capability evidence | `SimpleTaskDispatchBinder.supportedEventCodes(...)` | passes worker supported event codes into runtime claim target metadata | WG-4 must either derive this from group binding or prove it is read-only claim metadata, not matching truth |
+| worker scheduling view capability fields | `WorkerSchedulingView` | materializes supported project/event compatibility fields from `WorkerGroupRecord` | worker-level fields remain migration inputs to `WorkerGroupCompatibilityProjection`, not Stage 2 truth |
+| rule context capability fields | `WorkerMatchContext` | exposes `supportedProjects`, `supportedEventCodes`, `supportsProject`, and `supportsEvent` from group-derived `WorkerSchedulingView` | rule variable names remain compatible while capability truth is group-backed |
+| dispatch runtime claim capability evidence | `SimpleTaskDispatchBinder.supportedEventCodes(...)` | passes group-derived scheduling view event codes into runtime claim target metadata | binder no longer reads worker-level supported event fields |
 | diagnostics capability snapshot | `AssignmentRecordService -> WorkerSchedulingSnapshot` | snapshots worker scheduling supported projects/event codes for diagnostics | WG-4 should update diagnostics to snapshot group-derived capability evidence |
 | worker read API / SDK projection | `WorkerSnapshot`, `WorkerRegistration`, server catalog/worker APIs | `eventBindings` exists, while supported project/event fields remain compatibility/read surfaces | WG-1/WG-4 decide strict mode versus generated-group migration and prevent these projections from driving matching |
 
@@ -823,7 +833,27 @@ Public surface inventory:
 | `WorkerSchedulingCandidateEnumerator` | package-private | strategy-package implementation detail; future WG-3 should replace its source path with `WorkerCandidateIndex` |
 | `WorkerSelector` / `DefaultWorkerSelector` | removed | unused parallel worker-level selection path; keeping it would confuse candidate-source ownership |
 
+WG-0 closeout:
+
+- worker selection has one active mainline:
+  `WorkerManager.findWorkerCandidates(...) -> WorkerSchedulingCandidateEnumerator -> rule/rank/resource admission`
+- worker access and reachability read-view types live in
+  `com.xa.mass.engine.worker`, outside the root engine package
+- `WorkerSelector` / `DefaultWorkerSelector` are removed and guarded from
+  returning
+- `WorkerSchedulingCandidateEnumerator` is a package-private materialization
+  detail, not a public extension point
+- `RuleBasedTaskWorkerMatchingStrategy` consumes the centralized candidate
+  source and must not directly scan all workers
+- `targetWorkerId` uses direct lookup and returns singleton or empty result
+  before event/project capability narrowing
+- no WorkerGroup model or WorkerCandidateIndex existed at WG-0 closeout; WG-1
+  introduced the group model, WG-2 introduced the independent index, and WG-3
+  replaces this candidate source with indexed lookup
+
 ### Phase WG-1: Introduce WorkerGroup Model And Snapshot Index
+
+Status: closed as the WorkerGroup model and snapshot-index baseline.
 
 Goal: add thin WorkerGroup and indexes without wiring matching.
 
@@ -870,7 +900,24 @@ Acceptance:
 - snapshot update/delete/re-register does not leak old indexes
 - read path remains snapshot-based
 
+WG-1 closeout:
+
+- `EventKey(projectCode,eventCode)` is the concrete capability index key
+- `EventBinding` requires concrete project bindings; SDK registration may still
+  normalize broader declarations before they reach engine-internal group truth
+- `WorkerGroupRecord` carries group id, opaque adapter node id, event bindings,
+  default attributes, and default capacity
+- `WorkerRegistrySnapshot` builds immutable indexes:
+  `eventKey -> groupIds`, `groupId -> workerIds`, `workerId -> groupId`,
+  and `adapterNodeId -> groupIds`
+- snapshot indexes do not read `Worker.supportedProjects` or
+  `Worker.supportedEventCodes`
+- matching remains on the current `WorkerManager.findWorkerCandidates(...)`
+  path until WG-3
+
 ### Phase WG-2: Introduce WorkerCandidateIndex Without Rewiring Matching
+
+Status: closed as the independent Stage-1 candidate-index baseline.
 
 Goal: prove indexed candidate lookup independently.
 
@@ -879,8 +926,7 @@ Scope:
 - add `WorkerCandidateIndex`
 - implement normal `EventKey(project,eventCode)` lookup
 - implement `targetWorkerId` direct lookup
-- materialize Stage-1 `WorkerSchedulingCandidate` from declared worker/group
-  facts
+- return deterministic Stage-1 worker rows from declared worker/group facts
 - leave reachability, load/capacity, reservation, and resource policy to Stage 2
 - test capability mismatch and adapter-node multi-group behavior
 
@@ -900,7 +946,28 @@ Acceptance:
 - `targetWorkerId` direct lookup succeeds without full enumeration
 - target worker capability mismatch is rejected
 
+WG-2 closeout:
+
+- `WorkerCandidateIndex` lives in `com.xa.mass.engine.worker` and consumes only
+  `WorkerRegistrySnapshot`
+- event tasks resolve `EventKey(projectCode,eventCode) -> groupIds -> workerIds`
+  and return worker rows in snapshot order
+- targeted tasks resolve `targetWorkerId -> worker -> group` and reject missing
+  workers, missing groups, and group capability mismatches
+- index does not read worker-level `supportedProjects` or
+  `supportedEventCodes`
+- index does not consume `WorkerManager`, `WorkerStorage`, `WorkerLoadView`, or
+  resource policy
+- matching remains on `WorkerManager.findWorkerCandidates(...)` until WG-3
+- WG-2 intentionally does not construct `WorkerSchedulingCandidate`; current
+  `WorkerSchedulingCandidate` requires `WorkerSchedulingView`, which carries
+  Stage-2 runtime facts such as reachability, lock, and load. WG-3 should wire
+  indexed worker rows into the existing scheduling-view materialization path
+  instead of inventing a neutral runtime view.
+
 ### Phase WG-3: Switch Matching To Indexed Candidate Source
+
+Status: closed as the event-task and target-worker indexed source baseline.
 
 Goal: matching no longer scans all workers for event-code tasks.
 
@@ -926,7 +993,30 @@ Acceptance:
 - target worker path still checks declared capability before Stage 2 admission
 - existing scheduling matrix remains green
 
+WG-3 closeout:
+
+- `WorkerManager` owns the active `WorkerRegistrySnapshot` and exposes
+  `WorkerCandidateIndex` as the Stage-1 candidate source
+- `WorkerManager.addWorker(...)`, `updateWorker(...)`, and `deleteWorker(...)`
+  refresh the active snapshot
+- SDK worker registration enters through `WorkerManager.addWorker(...)`, not
+  raw `WorkerStorage.addWorker(...)`, so the active snapshot stays in sync for
+  the main registration path
+- `WorkerManager.findWorkerCandidates(task)` uses `WorkerCandidateIndex` for
+  SDK event tasks and target-worker tasks
+- project-only tasks still use the current worker-level project storage index
+  until WG-4 clarifies or removes that compatibility path
+- full-worker fallback remains only for tasks without target worker, event
+  code, or project
+- `WorkerGroupCompatibilityProjection` is an explicit migration input from
+  current worker-level compatibility fields into `WorkerGroupRecord`; it is not
+  long-term capability truth
+- Stage 2 prefilter, QLExpress rules, ranking, resource reservation, lock
+  acquisition, dispatch binding, and result behavior remain unchanged
+
 ### Phase WG-4: Capability Truth Cleanup
+
+Status: closed as the group-derived scheduling capability baseline.
 
 Goal: remove or strictly derive any remaining worker-level event capability
 truth after matching reads the group index.
@@ -958,7 +1048,31 @@ Acceptance:
 - tests cover projection consistency if projections remain
 - source guards prevent dual capability truth from returning
 
+WG-4 closeout:
+
+- `WorkerGroupRecord` now carries group-level project capability as the
+  project-only counterpart to event bindings.
+- `WorkerRegistrySnapshot` indexes `projectCode -> groupIds` in addition to
+  `(projectCode,eventCode) -> groupIds`.
+- `WorkerCandidateIndex` is the active Stage-1 source for target-worker, SDK
+  event, and project-only tasks.
+- `WorkerManager` maintains an ordered active registry input so matching order
+  does not depend on storage map iteration order.
+- `WorkerSchedulingView` materializes `supportedProjects`,
+  `supportedEventCodes`, `supportsProject`, and `supportsEvent` from
+  `WorkerGroupRecord`, preserving rule-field compatibility without keeping
+  worker-level capability as Stage 2 truth.
+- `SimpleTaskDispatchBinder` derives runtime claim event-code metadata from
+  the scheduling view rather than `Worker.getSupportedEventCodes()`.
+- worker-level supported project/event fields remain only as migration inputs
+  to `WorkerGroupCompatibilityProjection` and as legacy diagnostics.
+- architecture guards prevent `WorkerManager` from using worker-level
+  supported project/event storage indexes and prevent the core scheduling
+  decision path from reading worker-level supported project/event fields.
+
 ### Phase WG-5: Trace And E2E Proof
+
+Status: closed as the canonical group-capability scheduling proof baseline.
 
 Goal: prove group-indexed scheduling through the canonical trace and a small
 server wiring test without expanding server into the scheduling matrix owner.
@@ -979,11 +1093,30 @@ Out of scope:
 Acceptance:
 
 - canonical trace proves event-code routing through worker group capability
-- target worker with mismatched group capability is rejected or skipped with a
-  clear trace reason
+- target worker with mismatched group capability is rejected at Stage 1 by
+  `WorkerCandidateIndex` / `WorkerManager` focused tests
 - mismatched group workers never appear as accepted matches for that task
 - server proof uses real wiring but does not duplicate the engine scheduling
   matrix
+
+WG-5 closeout:
+
+- canonical assignment trace now carries `workerGroupId`,
+  `eventBindingKey`, and `workerCandidateSource` on worker match rows.
+- `group-capability-routing` is a trace scenario that requires a
+  `WORKER_MATCH_ACCEPTED` row with `workerCandidateSource=GROUP_INDEX`, a
+  non-empty `workerGroupId`, a non-empty `project:eventCode`
+  `eventBindingKey`, worker scheduling evidence, successful
+  `ASSIGNMENT_SUMMARY`, and successful `DISPATCH_BINDING_SUMMARY`.
+- trace/operator fixtures cover success and missing group-index evidence
+  failure.
+- `TaskApiWorkerAttributeRoutingTraceObservedIntegrationTest` proves the
+  scenario through real Boot/API/SDK/transport wiring with stateless worker
+  attribute routing.
+- target-worker direct lookup and group capability mismatch remain proven by
+  focused engine tests (`WorkerCandidateIndexTest`, `WorkerManagerTest`);
+  trace proves representative event-code group routing rather than the full
+  scheduling matrix.
 
 ## Future Extensions
 
@@ -1105,17 +1238,23 @@ Acceptance direction:
 
 ## Trace And Test Plan
 
-Trace fields to add when WG-3 changes matching behavior:
+Current group-candidate trace fields:
 
 ```text
 workerGroupId
 eventBindingKey = project:eventCode
-workerCandidateSource = GROUP_INDEX | TARGET_WORKER
-candidateLookupResult
+workerCandidateSource = GROUP_INDEX | GROUP_PROJECT_INDEX | TARGET_WORKER | ALL_WORKERS_FALLBACK
 ```
 
 `adapterNodeId` can be added when AdapterNode becomes a first-class lifecycle
 model. In the core line it may remain an opaque field for diagnostics only.
+
+Do not add Stage-1 lookup counters or broad candidate-index statistics to the
+engine hot path just to make trace assertions easier. Trace rows should carry
+bounded evidence from real worker match and assignment events; focused engine
+tests remain the proof surface for direct lookup and capability-gate behavior
+that is better proven by code-visible source boundaries than by absence from
+trace.
 
 Core scenario tests:
 

@@ -9,8 +9,8 @@ import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.TaskManagerResultIngestFacade;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
-import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.WorkerReachabilityView;
+import com.xa.mass.engine.worker.WorkerManager;
+import com.xa.mass.engine.worker.WorkerReachabilityView;
 import com.xa.mass.engine.load.InMemoryWorkerLoadView;
 import com.xa.mass.engine.load.WorkerLoadView;
 import com.xa.mass.engine.rules.RuleManager;
@@ -67,6 +67,7 @@ public class EngineConfig {
     private WorkerReachabilityView workerReachabilityView = WorkerReachabilityView.permissive();
     private WorkerLoadView workerLoadView = new InMemoryWorkerLoadView();
     private WorkerStorage workerStorage = new InMemoryWorkerStorage();
+    private WorkerManager workerManager;
     private AssignmentDiagnosticRecorder recordService = new AssignmentRecordService();
     private RuleStorage ruleStorage = new InMemoryRuleStorage();
     private ExecutionEventSink executionEventSink = new NoopExecutionEventSink();
@@ -103,6 +104,7 @@ public class EngineConfig {
         this.workerReachabilityView = source.workerReachabilityView;
         this.workerLoadView = source.workerLoadView;
         this.workerStorage = source.workerStorage;
+        this.workerManager = null;
         this.recordService = source.recordService;
         this.ruleStorage = source.ruleStorage;
         this.executionEventSink = source.executionEventSink;
@@ -259,7 +261,10 @@ public class EngineConfig {
     }
 
     public WorkerManager getWorkerManager() {
-        return new WorkerManager(getWorkerStorage(), workerReachabilityView, workerLoadView);
+        if (workerManager == null) {
+            workerManager = new WorkerManager(getWorkerStorage(), workerReachabilityView, workerLoadView);
+        }
+        return workerManager;
     }
 
     public WorkerReachabilityView getWorkerReachabilityView() {
@@ -270,6 +275,7 @@ public class EngineConfig {
         this.workerReachabilityView = workerReachabilityView != null
                 ? workerReachabilityView
                 : WorkerReachabilityView.permissive();
+        this.workerManager = null;
     }
 
     public WorkerLoadView getWorkerLoadView() {
@@ -281,6 +287,7 @@ public class EngineConfig {
             throw new IllegalArgumentException("workerLoadView must not be null");
         }
         this.workerLoadView = workerLoadView;
+        this.workerManager = null;
     }
 
     public WorkerStorage getWorkerStorage() {
@@ -292,6 +299,7 @@ public class EngineConfig {
             throw new IllegalArgumentException("workerStorage must not be null");
         }
         this.workerStorage = workerStorage;
+        this.workerManager = null;
     }
 
     public AssignmentDiagnosticRecorder getRecordService() {

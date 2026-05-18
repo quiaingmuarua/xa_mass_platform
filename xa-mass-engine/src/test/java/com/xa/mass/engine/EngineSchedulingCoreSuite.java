@@ -6,6 +6,8 @@ import com.xa.mass.engine.listener.TaskWorkerAssignListenerTest;
 import com.xa.mass.engine.model.WorkerMatchContextTest;
 import com.xa.mass.engine.strategy.RuleBasedTaskWorkerMatchingStrategyTest;
 import com.xa.mass.engine.strategy.WorkerSchedulingCandidateEnumeratorTest;
+import com.xa.mass.engine.worker.WorkerCandidateIndexTest;
+import com.xa.mass.engine.worker.WorkerRegistrySnapshotTest;
 import org.junit.platform.suite.api.SelectClasses;
 import org.junit.platform.suite.api.Suite;
 
@@ -22,6 +24,8 @@ import org.junit.platform.suite.api.Suite;
         TaskDelayedAvailabilitySchedulingTest.class,
         TaskRuntimeRecoveryPortTest.class,
         WorkerManagerTest.class,
+        WorkerCandidateIndexTest.class,
+        WorkerRegistrySnapshotTest.class,
         TaskResourceReleaseListenerTest.class,
         TaskAssignWorkerTest.class,
         TaskWorkerAssignListenerTest.class,

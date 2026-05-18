@@ -226,6 +226,21 @@ class TraceOperatorServiceIntegrationTest {
     }
 
     @Test
+    void analyzeRunsGroupCapabilityRoutingScenarioAgainstCanonicalSinkOutput() throws Exception {
+        writeGroupCapabilityRoutingTrace(tempDir, "task-group-capability-routing", true);
+        awaitJsonlFiles(tempDir, 1);
+
+        TraceAnalyzeResponse response = operatorService.analyze(
+                new TraceAnalyzeRequest(tempDir.toString(),
+                        "group-capability-routing",
+                        "task-group-capability-routing"));
+
+        assertTrue(response.ok(), response.issues().toString());
+        assertEquals("group-capability-routing", response.scenarioId());
+        assertEquals(1L, response.eventTypeCounts().get("WORKER_MATCH_ACCEPTED"));
+    }
+
+    @Test
     void analyzeRunsWorkerResourceCleanupWithoutContextScenarioAgainstCanonicalSinkOutput() throws Exception {
         writeWorkerResourceCleanupWithoutContextTrace(tempDir, "task-worker-resource-cleanup");
         awaitJsonlFiles(tempDir, 1);
@@ -329,6 +344,21 @@ class TraceOperatorServiceIntegrationTest {
     }
 
     @Test
+    void groupCapabilityRoutingScenarioFailsWithoutGroupIndexEvidence() throws Exception {
+        writeGroupCapabilityRoutingTrace(tempDir, "task-missing-group-index-evidence", false);
+        awaitJsonlFiles(tempDir, 1);
+
+        TraceAnalyzeResponse response = operatorService.analyze(
+                new TraceAnalyzeRequest(tempDir.toString(),
+                        "group-capability-routing",
+                        "task-missing-group-index-evidence"));
+
+        assertFalse(response.ok());
+        assertTrue(response.issues().stream()
+                .anyMatch(issue -> "MISSING_GROUP_INDEX_ACCEPTED_MATCH".equals(issue.code())));
+    }
+
+    @Test
     void crossTaskWorkerFairnessScenarioFailsWhenBulkIsNotBudgetLimited() throws Exception {
         writeCrossTaskWorkerFairnessTrace(tempDir,
                 "task-bulk-unbounded",
@@ -377,6 +407,7 @@ class TraceOperatorServiceIntegrationTest {
         assertTrue(operatorService.scenarioIds().contains("capacity-reservation-under-concurrency"));
         assertTrue(operatorService.scenarioIds().contains("background-worker-sharing"));
         assertTrue(operatorService.scenarioIds().contains("worker-attribute-routing-without-context"));
+        assertTrue(operatorService.scenarioIds().contains("group-capability-routing"));
         assertTrue(operatorService.scenarioIds().contains("cross-task-worker-fairness"));
         assertTrue(operatorService.scenarioIds().contains("worker-resource-cleanup-without-context"));
     }
@@ -757,6 +788,75 @@ class TraceOperatorServiceIntegrationTest {
                             "source", "RuleBasedTaskWorkerMatchingStrategy",
                             "reason", "all rules matched after candidate ranking",
                             "result", "SUCCESS"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.DISPATCH_BINDING_SUMMARY)
+                    .identity(identity -> identity.taskId(taskId))
+                    .attrs(attrs(
+                            "trigger", "ON_MSG_ASSIGN",
+                            "source", "SimpleTaskDispatchBinder",
+                            "reason", "runtime work bound to dispatch slots",
+                            "result", "SUCCESS",
+                            "pendingMessageCount", 1,
+                            "matchedWorkerCount", 1,
+                            "dispatchSlotCount", 1,
+                            "dispatchedMessageCount", 1,
+                            "unassignedMessageCount", 0,
+                            "uniqueWorkerCount", 1,
+                            "perWorkerBatchLimit", 1))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.ASSIGNMENT_SUMMARY)
+                    .identity(identity -> identity.taskId(taskId))
+                    .attrs(attrs(
+                            "trigger", "ON_TASK_ASSIGN",
+                            "source", "TaskWorkerAssignListener",
+                            "reason", "matched workers dispatched",
+                            "result", "SUCCESS",
+                            "initialStatus", "READY",
+                            "currentStatus", "RUNNING",
+                            "pendingDispatchCount", 1,
+                            "desiredDispatchWorkerCount", 1,
+                            "requiredStartWorkerCount", 1,
+                            "requestedMatchCount", 1,
+                            "matchedWorkerCount", 1,
+                            "dispatchCandidateCount", 1,
+                            "dispatchedMessageCount", 1,
+                            "usedWorkerCount", 1,
+                            "peakAssignedWorkerCount", 1,
+                            "workloadClass", "BULK",
+                            "dispatchLane", "BULK",
+                            "dispatchPriority", "NORMAL",
+                            "batchPolicy", "LARGE",
+                            "leaseProfile", "NORMAL"))
+                    .build());
+        }
+    }
+
+    private void writeGroupCapabilityRoutingTrace(Path outputDir,
+                                                  String taskId,
+                                                  boolean includeGroupIndexEvidence) throws Exception {
+        try (JsonlExecutionEventSink sink = new JsonlExecutionEventSink(outputDir.toString(), 128, 10_000)) {
+            Map<String, Object> matchAttrs = attrs(
+                    "source", "RuleBasedTaskWorkerMatchingStrategy",
+                    "reason", "all rules matched and worker capacity reserved after candidate ranking",
+                    "result", "SUCCESS",
+                    "candidateRank", 1,
+                    "candidateScore", "0.1",
+                    "workerSchedulingResourceId", "worker-group-east-01",
+                    "workerSchedulingRoutingTags", "shared,us",
+                    "workerSchedulingAttributes", Map.of("routingTag", "us", "country", "us"),
+                    "workerSchedulingMatchesRoutingCode", true);
+            if (includeGroupIndexEvidence) {
+                matchAttrs.put("workerGroupId", "pool-east");
+                matchAttrs.put("eventBindingKey", "demoApp:demo.dispatch");
+                matchAttrs.put("workerCandidateSource", "GROUP_INDEX");
+            }
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.WORKER_MATCH_ACCEPTED)
+                    .identity(identity -> identity.taskId(taskId).workerId("worker-group-east-01"))
+                    .outcome(true, null, "all rules matched and worker capacity reserved after candidate ranking")
+                    .attrs(matchAttrs)
                     .build());
             sink.emit(ExecutionEvent.builder()
                     .eventType(ExecutionEventType.DISPATCH_BINDING_SUMMARY)

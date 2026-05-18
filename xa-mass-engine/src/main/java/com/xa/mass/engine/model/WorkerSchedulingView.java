@@ -2,8 +2,9 @@ package com.xa.mass.engine.model;
 
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.engine.WorkerReachabilityState;
+import com.xa.mass.engine.worker.WorkerReachabilityState;
 import com.xa.mass.engine.load.WorkerLoadSnapshot;
+import com.xa.mass.engine.worker.WorkerGroupRecord;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -13,10 +14,11 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Transitional worker-level scheduling read view.
+ * Worker-level scheduling read view.
  *
- * <p>Scheduling evidence is worker-level. This view must not read or rebuild
- * account-slot lifecycle state.</p>
+ * <p>Worker identity and runtime state are worker-level. Capability evidence
+ * is materialized from WorkerGroup truth when available; legacy worker-level
+ * capability fields are not part of the scheduling read path.</p>
  */
 public final class WorkerSchedulingView {
     private final String workerId;
@@ -37,6 +39,7 @@ public final class WorkerSchedulingView {
     private final Map<String, String> schedulingAttributes;
 
     private WorkerSchedulingView(Worker worker,
+                                 WorkerGroupRecord workerGroup,
                                  WorkerReachabilityState reachability,
                                  boolean dispatchEnabled,
                                  boolean workerLocked,
@@ -45,12 +48,12 @@ public final class WorkerSchedulingView {
         this.workerStatus = worker.getStatus();
         this.workerGroupId = worker.getWorkerGroupId();
         this.agentVersion = worker.getAgentVersion();
-        this.supportedProjects = worker.getSupportedProjects() == null
+        this.supportedProjects = workerGroup == null
                 ? List.of()
-                : List.copyOf(worker.getSupportedProjects());
-        this.supportedEventCodes = worker.getSupportedEventCodes() == null
+                : List.copyOf(workerGroup.projectCodes());
+        this.supportedEventCodes = workerGroup == null
                 ? List.of()
-                : List.copyOf(worker.getSupportedEventCodes());
+                : List.copyOf(workerGroup.eventCodes());
         this.workerAttributes = copyMap(worker.getAttributes());
         this.reachability = reachability == null ? WorkerReachabilityState.UNKNOWN : reachability;
         this.dispatchEnabled = dispatchEnabled;
@@ -70,7 +73,7 @@ public final class WorkerSchedulingView {
         if (worker == null) {
             throw new IllegalArgumentException("worker must not be null");
         }
-        return new WorkerSchedulingView(worker, reachability, dispatchEnabled, workerLocked,
+        return new WorkerSchedulingView(worker, null, reachability, dispatchEnabled, workerLocked,
                 WorkerLoadSnapshot.empty(worker.getWorkerId()));
     }
 
@@ -82,7 +85,19 @@ public final class WorkerSchedulingView {
         if (worker == null) {
             throw new IllegalArgumentException("worker must not be null");
         }
-        return new WorkerSchedulingView(worker, reachability, dispatchEnabled, workerLocked, workerLoad);
+        return new WorkerSchedulingView(worker, null, reachability, dispatchEnabled, workerLocked, workerLoad);
+    }
+
+    public static WorkerSchedulingView from(Worker worker,
+                                            WorkerGroupRecord workerGroup,
+                                            WorkerReachabilityState reachability,
+                                            boolean dispatchEnabled,
+                                            boolean workerLocked,
+                                            WorkerLoadSnapshot workerLoad) {
+        if (worker == null) {
+            throw new IllegalArgumentException("worker must not be null");
+        }
+        return new WorkerSchedulingView(worker, workerGroup, reachability, dispatchEnabled, workerLocked, workerLoad);
     }
 
     public String workerId() {

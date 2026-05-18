@@ -1,4 +1,4 @@
-package com.xa.mass.engine;
+package com.xa.mass.engine.worker;
 
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerHeartbeatEvent;
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerOfflineEvent;
@@ -16,6 +16,7 @@ import com.xa.mass.storage.api.WorkerStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 
 /**
@@ -31,6 +32,9 @@ public class WorkerManager implements WorkerLookupStore {
     private final WorkerStorage workerStorage;
     private final WorkerReachabilityView reachabilityView;
     private final WorkerLoadView workerLoadView;
+    private final Object workerRegistryLock = new Object();
+    private final LinkedHashMap<String, Worker> workerRegistryRows = new LinkedHashMap<>();
+    private volatile WorkerRegistrySnapshot workerRegistrySnapshot;
 
     public WorkerManager(WorkerStorage workerStorage) {
         this(workerStorage, WorkerReachabilityView.permissive(), new InMemoryWorkerLoadView());
@@ -46,11 +50,19 @@ public class WorkerManager implements WorkerLookupStore {
         this.workerStorage = workerStorage;
         this.reachabilityView = reachabilityView != null ? reachabilityView : WorkerReachabilityView.permissive();
         this.workerLoadView = workerLoadView != null ? workerLoadView : new InMemoryWorkerLoadView();
+        for (Worker worker : workerStorage.getAllWorkers()) {
+            putRegistryRow(worker);
+        }
+        this.workerRegistrySnapshot = WorkerGroupCompatibilityProjection.snapshotFromWorkers(workerRegistryRows.values());
     }
 
     public void addWorker(Worker worker) {
         workerStorage.addWorker(worker);
         syncWorkerCapacity(worker);
+        synchronized (workerRegistryLock) {
+            putRegistryRow(worker);
+            publishWorkerRegistrySnapshot();
+        }
     }
 
     public Worker getWorker(String workerId) {
@@ -66,12 +78,23 @@ public class WorkerManager implements WorkerLookupStore {
         boolean updated = workerStorage.updateWorker(worker);
         if (updated) {
             syncWorkerCapacity(worker);
+            synchronized (workerRegistryLock) {
+                putRegistryRow(worker);
+                publishWorkerRegistrySnapshot();
+            }
         }
         return updated;
     }
 
     public boolean deleteWorker(String workerId) {
-        return workerStorage.deleteWorker(workerId);
+        boolean deleted = workerStorage.deleteWorker(workerId);
+        if (deleted) {
+            synchronized (workerRegistryLock) {
+                workerRegistryRows.remove(normalizeNullable(workerId));
+                publishWorkerRegistrySnapshot();
+            }
+        }
+        return deleted;
     }
 
     public List<Worker> getWorkersByGroupId(String workerGroupId) {
@@ -99,16 +122,33 @@ public class WorkerManager implements WorkerLookupStore {
         String targetWorkerId = TaskSharedConfig.targetWorkerId(task);
         String project = task != null ? task.getProject() : null;
         if (targetWorkerId != null && !targetWorkerId.isBlank()) {
-            Worker targetWorker = getWorker(targetWorkerId.trim());
-            return targetWorker == null ? List.of() : List.of(targetWorker);
+            return getWorkerCandidateIndex().workersFor(task);
         }
         if (eventCode != null && !eventCode.isBlank()) {
-            return workerStorage.getWorkersBySupportedEventCode(eventCode);
+            return getWorkerCandidateIndex().workersFor(task);
         }
         if (project != null && !project.isBlank()) {
-            return workerStorage.getWorkersBySupportedProject(project);
+            return getWorkerCandidateIndex().workersFor(task);
         }
         return workerStorage.getAllWorkers();
+    }
+
+    public WorkerRegistrySnapshot getWorkerRegistrySnapshot() {
+        return workerRegistrySnapshot;
+    }
+
+    public WorkerCandidateIndex getWorkerCandidateIndex() {
+        return new WorkerCandidateIndex(workerRegistrySnapshot);
+    }
+
+    public void refreshWorkerRegistrySnapshot() {
+        synchronized (workerRegistryLock) {
+            workerRegistryRows.clear();
+            for (Worker worker : workerStorage.getAllWorkers()) {
+                putRegistryRow(worker);
+            }
+            publishWorkerRegistrySnapshot();
+        }
     }
 
     public List<String> getLockedWorkers() {
@@ -204,6 +244,21 @@ public class WorkerManager implements WorkerLookupStore {
             return;
         }
         workerLoadView.recordDeclaredCapacity(worker.getWorkerId(), worker.getMaxConcurrentWork());
+    }
+
+    private void putRegistryRow(Worker worker) {
+        String workerId = worker == null ? null : normalizeNullable(worker.getWorkerId());
+        if (workerId != null) {
+            workerRegistryRows.put(workerId, worker);
+        }
+    }
+
+    private void publishWorkerRegistrySnapshot() {
+        this.workerRegistrySnapshot = WorkerGroupCompatibilityProjection.snapshotFromWorkers(workerRegistryRows.values());
+    }
+
+    private static String normalizeNullable(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     /**

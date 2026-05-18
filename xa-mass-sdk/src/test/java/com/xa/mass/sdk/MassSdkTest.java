@@ -14,7 +14,7 @@ import com.xa.mass.command.event.CoreEventDescriptor;
 import com.xa.mass.command.event.CoreEventResponse;
 import com.xa.mass.command.event.InMemoryMassEventRuntime;
 import com.xa.mass.engine.TaskManager;
-import com.xa.mass.engine.WorkerManager;
+import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;
@@ -1634,6 +1634,7 @@ class MassSdkTest {
     void engineConfigDerivesWorkerManagerFromCurrentWorkerStorage() {
         EngineConfig config = new EngineConfig();
         WorkerManager initial = config.getWorkerManager();
+        assertSame(initial, config.getWorkerManager());
         WorkerStorage replacement = spy(new com.xa.mass.storage.memory.InMemoryWorkerStorage());
         Worker worker = new Worker();
         worker.setWorkerId("worker-rebound");
@@ -1642,6 +1643,7 @@ class MassSdkTest {
 
         WorkerManager rebound = config.getWorkerManager();
         assertNotSame(initial, rebound);
+        assertSame(rebound, config.getWorkerManager());
         rebound.addWorker(worker);
 
         verify(replacement).addWorker(worker);

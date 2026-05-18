@@ -1,8 +1,9 @@
 package com.xa.mass.engine.strategy;
 
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.WorkerReachabilityState;
+import com.xa.mass.engine.worker.WorkerManager;
+import com.xa.mass.engine.worker.WorkerReachabilityState;
+import com.xa.mass.engine.worker.WorkerGroupRecord;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.model.WorkerSchedulingView;
 
@@ -36,10 +37,15 @@ final class WorkerSchedulingCandidateEnumerator {
         WorkerReachabilityState reachability = workerManager.getWorkerReachability(worker.getWorkerId());
         boolean dispatchEnabled = workerManager.isWorkerDispatchEnabled(worker);
         boolean workerLocked = workerManager.isLocked(worker.getWorkerId());
+        String workerGroupId = worker.getWorkerGroupId();
+        WorkerGroupRecord workerGroup = workerGroupId == null || workerGroupId.isBlank()
+                ? null
+                : workerManager.getWorkerRegistrySnapshot().group(workerGroupId).orElse(null);
         return new WorkerSchedulingCandidate(
                 worker,
                 WorkerSchedulingView.from(
                         worker,
+                        workerGroup,
                         reachability,
                         dispatchEnabled,
                         workerLocked,

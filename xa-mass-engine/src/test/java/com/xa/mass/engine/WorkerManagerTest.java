@@ -7,6 +7,8 @@ import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
+import com.xa.mass.engine.worker.WorkerManager;
+import com.xa.mass.engine.worker.WorkerReachabilityState;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -136,7 +138,7 @@ class WorkerManagerTest {
     @Test
     void findWorkerCandidatesUsesEventIndexForSdkEventTasks() {
         Worker eventWorker = worker("w-event", "pool-a");
-        eventWorker.setSupportedProjects(List.of());
+        eventWorker.setSupportedProjects(List.of("demoApp"));
         eventWorker.setSupportedEventCodes(List.of("demo.dispatch"));
         Worker projectOnlyWorker = worker("w-project", "pool-b");
         projectOnlyWorker.setSupportedProjects(List.of("demoApp"));
@@ -152,7 +154,7 @@ class WorkerManagerTest {
     }
 
     @Test
-    void findWorkerCandidatesUsesTargetWorkerBeforeCapabilityIndexes() {
+    void findWorkerCandidatesUsesTargetWorkerWithGroupCapabilityGate() {
         Worker targetWorker = worker("w-target", "pool-a");
         targetWorker.setSupportedProjects(List.of("testApp"));
         targetWorker.setSupportedEventCodes(List.of("other.event"));
@@ -167,7 +169,40 @@ class WorkerManagerTest {
                 TaskSharedConfig.SDK_METADATA, Map.of(TaskSharedConfig.SDK_EVENT_CODE, "demo.dispatch")
         ));
 
+        assertTrue(manager.findWorkerCandidates(task).isEmpty());
+
+        Task supportedTargetTask = task("testApp", Map.of(
+                TaskSharedConfig.TARGET_WORKER_ID, "w-target",
+                TaskSharedConfig.SDK_METADATA, Map.of(TaskSharedConfig.SDK_EVENT_CODE, "other.event")
+        ));
+
         assertEquals(List.of("w-target"),
+                manager.findWorkerCandidates(supportedTargetTask).stream().map(Worker::getWorkerId).toList());
+    }
+
+    @Test
+    void findWorkerCandidatesDoesNotFallbackWhenTargetWorkerIsMissing() {
+        Worker indexedWorker = worker("w-indexed", "pool-b");
+        indexedWorker.setSupportedProjects(List.of("demoApp"));
+        indexedWorker.setSupportedEventCodes(List.of("demo.dispatch"));
+        manager.addWorker(indexedWorker);
+
+        Task task = task("demoApp", Map.of(
+                TaskSharedConfig.TARGET_WORKER_ID, "missing-worker",
+                TaskSharedConfig.SDK_METADATA, Map.of(TaskSharedConfig.SDK_EVENT_CODE, "demo.dispatch")
+        ));
+
+        assertTrue(manager.findWorkerCandidates(task).isEmpty());
+    }
+
+    @Test
+    void findWorkerCandidatesFallsBackToAllWorkersOnlyWithoutTargetEventOrProject() {
+        manager.addWorker(worker("w-a", "pool-a"));
+        manager.addWorker(worker("w-b", "pool-b"));
+
+        Task task = task(null, Map.of());
+
+        assertEquals(List.of("w-a", "w-b"),
                 manager.findWorkerCandidates(task).stream().map(Worker::getWorkerId).toList());
     }
 
@@ -207,6 +242,93 @@ class WorkerManagerTest {
                 Map.of(TaskSharedConfig.SDK_EVENT_CODE, "demo.dispatch")))).isEmpty());
         assertEquals(List.of("w-mutable-reindex"),
                 manager.findWorkerCandidates(task("testApp", Map.of())).stream()
+                        .map(Worker::getWorkerId)
+                .toList());
+    }
+
+    @Test
+    void addWorkerRefreshesWorkerRegistrySnapshotFromCompatibilityFields() {
+        Worker worker = worker("w-indexed-group", "crawler");
+        worker.setAdapterId("adapter-a");
+        worker.setMaxConcurrentWork(3);
+        worker.setSupportedProjects(List.of("demoApp"));
+        worker.setSupportedEventCodes(List.of("crawler.fetch"));
+        manager.addWorker(worker);
+
+        assertEquals(List.of("w-indexed-group"),
+                manager.getWorkerCandidateIndex()
+                        .workersFor(task("demoApp", Map.of(TaskSharedConfig.SDK_METADATA,
+                                Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch"))))
+                        .stream()
+                        .map(Worker::getWorkerId)
+                        .toList());
+        assertEquals("adapter-a",
+                manager.getWorkerRegistrySnapshot().group("crawler").orElseThrow().adapterNodeId());
+        assertEquals(3,
+                manager.getWorkerRegistrySnapshot().group("crawler").orElseThrow().defaultMaxConcurrentWork());
+    }
+
+    @Test
+    void updateWorkerRefreshesWorkerRegistrySnapshotCapability() {
+        Worker worker = worker("w-snapshot-update", "crawler");
+        worker.setSupportedProjects(List.of("demoApp"));
+        worker.setSupportedEventCodes(List.of("crawler.fetch"));
+        manager.addWorker(worker);
+
+        Worker updated = worker("w-snapshot-update", "crawler");
+        updated.setSupportedProjects(List.of("testApp"));
+        updated.setSupportedEventCodes(List.of("crawler.parse"));
+        assertTrue(manager.updateWorker(updated));
+
+        assertTrue(manager.getWorkerCandidateIndex()
+                .workersFor(task("demoApp", Map.of(TaskSharedConfig.SDK_METADATA,
+                        Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch"))))
+                .isEmpty());
+        assertEquals(List.of("w-snapshot-update"),
+                manager.getWorkerCandidateIndex()
+                        .workersFor(task("testApp", Map.of(TaskSharedConfig.SDK_METADATA,
+                                Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.parse"))))
+                        .stream()
+                        .map(Worker::getWorkerId)
+                        .toList());
+    }
+
+    @Test
+    void deleteWorkerRefreshesWorkerRegistrySnapshot() {
+        Worker worker = worker("w-snapshot-delete", "crawler");
+        worker.setSupportedProjects(List.of("demoApp"));
+        worker.setSupportedEventCodes(List.of("crawler.fetch"));
+        manager.addWorker(worker);
+
+        assertTrue(manager.deleteWorker("w-snapshot-delete"));
+
+        assertTrue(manager.getWorkerCandidateIndex()
+                .workersFor(task("demoApp", Map.of(TaskSharedConfig.SDK_METADATA,
+                        Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch"))))
+                .isEmpty());
+    }
+
+    @Test
+    void workerRegistrySnapshotCanBeRefreshedAfterDirectStorageMutation() {
+        InMemoryWorkerStorage storage = new InMemoryWorkerStorage();
+        WorkerManager storageBackedManager = new WorkerManager(storage);
+        Worker worker = worker("w-storage-direct-snapshot", "crawler");
+        worker.setSupportedProjects(List.of("demoApp"));
+        worker.setSupportedEventCodes(List.of("crawler.fetch"));
+        storage.addWorker(worker);
+
+        assertTrue(storageBackedManager.getWorkerCandidateIndex()
+                .workersFor(task("demoApp", Map.of(TaskSharedConfig.SDK_METADATA,
+                        Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch"))))
+                .isEmpty());
+
+        storageBackedManager.refreshWorkerRegistrySnapshot();
+
+        assertEquals(List.of("w-storage-direct-snapshot"),
+                storageBackedManager.getWorkerCandidateIndex()
+                        .workersFor(task("demoApp", Map.of(TaskSharedConfig.SDK_METADATA,
+                                Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch"))))
+                        .stream()
                         .map(Worker::getWorkerId)
                         .toList());
     }

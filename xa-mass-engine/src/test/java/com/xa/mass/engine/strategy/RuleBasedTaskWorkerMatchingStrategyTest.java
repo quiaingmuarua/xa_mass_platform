@@ -6,8 +6,8 @@ import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.WorkerReachabilityState;
+import com.xa.mass.engine.worker.WorkerManager;
+import com.xa.mass.engine.worker.WorkerReachabilityState;
 import com.xa.mass.engine.load.InMemoryWorkerLoadView;
 import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
@@ -324,7 +324,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
     }
 
     @Test
-    void sdkEventTaskMatchesWorkerByExplicitEventCapabilityWithoutProjectHint() {
+    void sdkEventTaskMatchesWorkerByIndexedGroupEventCapability() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
         RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
         AssignmentRecordService recordService = new AssignmentRecordService();
@@ -345,7 +345,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         task.setStatus(TaskStatus.READY);
 
         Worker eventCapableWorker = worker("worker-event-capable", "pool-east");
-        eventCapableWorker.setSupportedProjects(List.of());
+        eventCapableWorker.setSupportedProjects(List.of("demoApp"));
         eventCapableWorker.setSupportedEventCodes(List.of("demo.dispatch"));
         workerManager.addWorker(eventCapableWorker);
 

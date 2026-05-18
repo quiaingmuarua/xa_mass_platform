@@ -4,8 +4,8 @@ import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.WorkerReachabilityState;
+import com.xa.mass.engine.worker.WorkerManager;
+import com.xa.mass.engine.worker.WorkerReachabilityState;
 import com.xa.mass.engine.model.RuleEvaluationDetail;
 import com.xa.mass.engine.model.WorkerMatchContext;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
@@ -139,7 +139,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                         worker.getWorkerGroupId(),
                         worker.getStatus(),
                         workerManager.isLocked(worker.getWorkerId()),
-                        String.join(", ", worker.getSupportedProjects())
+                        String.join(", ", candidate.getSchedulingView().supportedProjects())
                 );
                 log.debug("[Debug] WorkerMatchContext: {}", matchContext.getContext());
             }
