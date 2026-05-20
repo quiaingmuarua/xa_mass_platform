@@ -189,6 +189,20 @@ class TraceOperatorServiceIntegrationTest {
     }
 
     @Test
+    void analyzeRunsAllFailedTerminalConvergenceScenarioAgainstCanonicalSinkOutput() throws Exception {
+        writeAllFailedTerminalTrace(tempDir, "task-all-failed");
+        awaitJsonlFiles(tempDir, 1);
+
+        TraceAnalyzeResponse response = operatorService.analyze(
+                new TraceAnalyzeRequest(tempDir.toString(), "all-failed-terminal-convergence", "task-all-failed"));
+
+        assertTrue(response.ok(), response.issues().toString());
+        assertEquals("all-failed-terminal-convergence", response.scenarioId());
+        assertEquals("task-all-failed", response.taskId());
+        assertEquals(1L, response.eventTypeCounts().get("TASK_TERMINAL_CLOSED"));
+    }
+
+    @Test
     void singleMessageSuccessScenarioFailsWhenTerminalPrecedesCallback() throws Exception {
         writeTerminalBeforeCallbackTrace(tempDir, "task-bad-sequence");
         awaitJsonlFiles(tempDir, 1);
@@ -511,6 +525,7 @@ class TraceOperatorServiceIntegrationTest {
     @Test
     void scenarioRegistryStaysAvailableThroughOperatorService() {
         assertTrue(operatorService.scenarioIds().contains("single-message-success"));
+        assertTrue(operatorService.scenarioIds().contains("all-failed-terminal-convergence"));
         assertTrue(operatorService.scenarioIds().contains("duplicate-callback-replay"));
         assertTrue(operatorService.scenarioIds().contains("assignment-success-binding"));
         assertTrue(operatorService.scenarioIds().contains("assignment-min-worker-gate"));
@@ -1600,9 +1615,60 @@ class TraceOperatorServiceIntegrationTest {
         }
         try (var files = Files.list(outputDir)) {
             long count = files
-                    .filter(path -> path.getFileName().toString().endsWith(".jsonl"))
-                    .count();
+                .filter(path -> path.getFileName().toString().endsWith(".jsonl"))
+                .count();
             assertTrue(count >= minFiles, "Expected at least " + minFiles + " trace jsonl files but found " + count);
+        }
+    }
+
+    private void writeAllFailedTerminalTrace(Path outputDir, String taskId) throws Exception {
+        try (JsonlExecutionEventSink sink = new JsonlExecutionEventSink(outputDir.toString(), 128, 10_000)) {
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.CALLBACK_ACCEPTED)
+                    .identity(identity -> identity.taskId(taskId).messageId("msg-a"))
+                    .attrs(attrs(
+                            "trigger", "HANDLE_TASK_RESULT",
+                            "source", "TaskManager",
+                            "reason", "callback accepted",
+                            "result", "SUCCESS"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.TASK_WORK_LOGICALLY_FINAL)
+                    .identity(identity -> identity.taskId(taskId).messageId("msg-a"))
+                    .attrs(attrs(
+                            "trigger", "HANDLE_TASK_RESULT",
+                            "source", "TaskManager",
+                            "reason", "work item reached stable failure",
+                            "result", "SUCCESS"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.CALLBACK_ACCEPTED)
+                    .identity(identity -> identity.taskId(taskId).messageId("msg-b"))
+                    .attrs(attrs(
+                            "trigger", "HANDLE_TASK_RESULT",
+                            "source", "TaskManager",
+                            "reason", "callback accepted",
+                            "result", "SUCCESS"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.TASK_WORK_LOGICALLY_FINAL)
+                    .identity(identity -> identity.taskId(taskId).messageId("msg-b"))
+                    .attrs(attrs(
+                            "trigger", "HANDLE_TASK_RESULT",
+                            "source", "TaskManager",
+                            "reason", "work item reached stable failure",
+                            "result", "SUCCESS"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.TASK_TERMINAL_CLOSED)
+                    .identity(identity -> identity.taskId(taskId))
+                    .transition("RUNNING", "TERMINAL", "all work items finalized")
+                    .attrs(attrs(
+                            "trigger", "RESOLVE_TASK_STATE",
+                            "source", "TaskManager",
+                            "reason", "all work items finalized",
+                            "terminalReason", "ALL_MESSAGES_FAILED"))
+                    .build());
         }
     }
 

@@ -10,8 +10,13 @@ Use [TESTING_INDEX.md](./TESTING_INDEX.md) as the default entry for current CI
 truth, current asset map, and change-type minimum verification. This file keeps
 only the cross-module lane model and placement rules.
 
+Use [PROOF_REGISTRY.md](./PROOF_REGISTRY.md) when the question is not only
+"which lane?" but "which class or analyzer is the current authoritative proof
+for this invariant?"
+
 Use with:
 
+- [./PROOF_REGISTRY.md](./PROOF_REGISTRY.md)
 - [./TESTING_INDEX.md](./TESTING_INDEX.md)
 - [./VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
 - [./E2E_BASELINE.md](./E2E_BASELINE.md)
@@ -67,6 +72,8 @@ Use with:
 
 ## 3. Command Ownership
 
+- proof ownership, authoritative-vs-representative pairing, and current known
+  gaps: [PROOF_REGISTRY.md](./PROOF_REGISTRY.md)
 - current minimum verification and CI truth: [TESTING_INDEX.md](./TESTING_INDEX.md)
 - startup, smoke, and focused regression commands: [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
 - engine race/refill/release coverage: [../xa-mass-engine/README.md](../xa-mass-engine/README.md)

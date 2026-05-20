@@ -2,7 +2,7 @@ package com.xa.mass.server.e2e.assignment;
 
 import com.google.gson.JsonObject;
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
+import com.xa.mass.server.e2e.support.AbstractTraceObservedE2eTest;
 import com.xa.mass.server.testutil.WsFrameTestSupport;
 import com.xa.mass.trace.operator.TraceAnalyzeRequest;
 import com.xa.mass.trace.operator.TraceAnalyzeResponse;
@@ -20,7 +20,6 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -47,19 +46,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class TaskApiBackgroundWorkerSharingTraceObservedIntegrationTest extends AbstractSampleE2eTest {
+class TaskApiBackgroundWorkerSharingTraceObservedIntegrationTest extends AbstractTraceObservedE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
-    private static final Path TRACE_OUTPUT_DIR = Path.of(
-            "target",
-            "background-worker-sharing-trace-observed",
-            UUID.randomUUID().toString()
-    ).toAbsolutePath().normalize();
+    private static final Path TRACE_OUTPUT_DIR = traceOutputDir("background-worker-sharing-trace-observed");
 
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {
         registerWebSocketProperties(registry, WEBSOCKET_PORT);
-        registry.add("mass.trace.sink.output-dir", () -> TRACE_OUTPUT_DIR.toString());
+        registerTraceOutputDir(registry, TRACE_OUTPUT_DIR);
     }
 
     @Test
@@ -131,28 +126,7 @@ class TaskApiBackgroundWorkerSharingTraceObservedIntegrationTest extends Abstrac
 
     private TraceAnalyzeResponse awaitTraceScenarioOk(TraceOperatorService traceOperator, String taskId)
             throws InterruptedException {
-        TraceAnalyzeResponse latestResponse = null;
-        Exception latestException = null;
-        for (int attempt = 0; attempt < 30; attempt++) {
-            try {
-                latestResponse = traceOperator.analyze(new TraceAnalyzeRequest(
-                        TRACE_OUTPUT_DIR.toString(),
-                        "background-worker-sharing",
-                        taskId
-                ));
-                if (latestResponse.ok()) {
-                    return latestResponse;
-                }
-            } catch (Exception e) {
-                latestException = e;
-            }
-            TimeUnit.MILLISECONDS.sleep(200L);
-        }
-        if (latestException != null) {
-            throw new AssertionError("trace scenario analysis failed before canonical JSONL became readable",
-                    latestException);
-        }
-        throw new AssertionError("trace scenario analysis did not pass. Last response=" + latestResponse);
+        return awaitTraceScenarioOk(TRACE_OUTPUT_DIR, "background-worker-sharing", taskId);
     }
 
     private static final class ManualAckWebSocketClient extends SampleWorkerWebSocketClient {

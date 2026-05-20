@@ -18,6 +18,7 @@ Most tasks only need one contract lane plus one owner README:
 - trace operator / trace-observed verification:
   [../xa-mass-trace/README.md](../xa-mass-trace/README.md),
   [TRACE_CONTRACT.md](./TRACE_CONTRACT.md),
+  [PROOF_REGISTRY.md](./PROOF_REGISTRY.md),
   [OBSERVABILITY_AND_TEST_PROOF_ROADMAP.md](./OBSERVABILITY_AND_TEST_PROOF_ROADMAP.md),
   [TESTING_INDEX.md](./TESTING_INDEX.md)
 - result owner split / runtime result truth:
@@ -27,6 +28,7 @@ Most tasks only need one contract lane plus one owner README:
   [DB_STORAGE_PRINCIPLES.md](./DB_STORAGE_PRINCIPLES.md),
   [../platform_infra/README.md](../platform_infra/README.md)
 - testing / acceptance:
+  [PROOF_REGISTRY.md](./PROOF_REGISTRY.md),
   [TESTING_INDEX.md](./TESTING_INDEX.md),
   [TESTING_BASELINE.md](./TESTING_BASELINE.md),
   [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
@@ -41,6 +43,7 @@ Most tasks only need one contract lane plus one owner README:
 | [AGENT_BASELINE.md](./AGENT_BASELINE.md) | global platform baseline and hard guardrails |
 | [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md) | lifecycle vocabulary and invariants |
 | [TRACE_CONTRACT.md](./TRACE_CONTRACT.md) | required trace surface |
+| [PROOF_REGISTRY.md](./PROOF_REGISTRY.md) | authoritative proof ownership, representative trace pairing, and explicit known gaps |
 | [RESULT_BOUNDARY_BASELINE.md](./RESULT_BOUNDARY_BASELINE.md) | runtime result owner split, public result boundary, and compatibility residue rules |
 | [INFRA_TRUTH_LAYERS.md](./INFRA_TRUTH_LAYERS.md) | control-plane/runtime/trace placement matrix |
 | [DB_STORAGE_PRINCIPLES.md](./DB_STORAGE_PRINCIPLES.md) | DB boundary and hot-write guardrail |

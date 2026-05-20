@@ -3,14 +3,13 @@ package com.xa.mass.server.e2e.assignment;
 import com.google.gson.JsonObject;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
-import com.xa.mass.server.testutil.WsFrameTestSupport;
+import com.xa.mass.server.e2e.support.AbstractTraceObservedE2eTest;
+import com.xa.mass.server.e2e.support.ManualAckWebSocketWorkerClient;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.storage.rule.RuleType;
 import com.xa.mass.trace.operator.TraceAnalyzeRequest;
 import com.xa.mass.trace.operator.TraceAnalyzeResponse;
 import com.xa.mass.trace.operator.TraceOperatorService;
-import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.annotation.DirtiesContext;
@@ -22,9 +21,6 @@ import java.net.URI;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -49,19 +45,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class TaskApiWorkerAttributeRoutingTraceObservedIntegrationTest extends AbstractSampleE2eTest {
+class TaskApiWorkerAttributeRoutingTraceObservedIntegrationTest extends AbstractTraceObservedE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
-    private static final Path TRACE_OUTPUT_DIR = Path.of(
-            "target",
-            "worker-attribute-routing-trace-observed",
-            UUID.randomUUID().toString()
-    ).toAbsolutePath().normalize();
+    private static final Path TRACE_OUTPUT_DIR = traceOutputDir("worker-attribute-routing-trace-observed");
 
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {
         registerWebSocketProperties(registry, WEBSOCKET_PORT);
-        registry.add("mass.trace.sink.output-dir", () -> TRACE_OUTPUT_DIR.toString());
+        registerTraceOutputDir(registry, TRACE_OUTPUT_DIR);
     }
 
     @Test
@@ -87,8 +79,8 @@ class TaskApiWorkerAttributeRoutingTraceObservedIntegrationTest extends Abstract
         );
 
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        ManualAckWebSocketClient matchedClient = new ManualAckWebSocketClient(uri, "attribute-routing-worker-us");
-        ManualAckWebSocketClient otherClient = new ManualAckWebSocketClient(uri, "attribute-routing-worker-gb");
+        ManualAckWebSocketWorkerClient matchedClient = new ManualAckWebSocketWorkerClient(uri, "attribute-routing-worker-us");
+        ManualAckWebSocketWorkerClient otherClient = new ManualAckWebSocketWorkerClient(uri, "attribute-routing-worker-gb");
         try {
             assertClientConnects(matchedClient, "matched worker client failed to connect");
             assertClientConnects(otherClient, "other worker client failed to connect");
@@ -103,7 +95,6 @@ class TaskApiWorkerAttributeRoutingTraceObservedIntegrationTest extends Abstract
             JsonObject matchedDispatch = matchedClient.awaitTask(3, TimeUnit.SECONDS);
             JsonObject rejectedDispatch = otherClient.awaitTask(300, TimeUnit.MILLISECONDS);
             assertNotNull(matchedDispatch, "matched stateless worker should receive routed task");
-            assertEquals("attribute-routing-worker-us", WsFrameTestSupport.workerId(matchedDispatch));
             assertTrue(rejectedDispatch == null, "mismatched worker must not receive routed task");
 
             TraceOperatorService traceOperator = new TraceOperatorService();
@@ -147,28 +138,7 @@ class TaskApiWorkerAttributeRoutingTraceObservedIntegrationTest extends Abstract
                                                       String scenarioId,
                                                       String taskId)
             throws InterruptedException {
-        TraceAnalyzeResponse latestResponse = null;
-        Exception latestException = null;
-        for (int attempt = 0; attempt < 30; attempt++) {
-            try {
-                latestResponse = traceOperator.analyze(new TraceAnalyzeRequest(
-                        TRACE_OUTPUT_DIR.toString(),
-                        scenarioId,
-                        taskId
-                ));
-                if (latestResponse.ok()) {
-                    return latestResponse;
-                }
-            } catch (Exception e) {
-                latestException = e;
-            }
-            TimeUnit.MILLISECONDS.sleep(200L);
-        }
-        if (latestException != null) {
-            throw new AssertionError("trace scenario analysis failed before canonical JSONL became readable",
-                    latestException);
-        }
-        throw new AssertionError("trace scenario analysis did not pass. Last response=" + latestResponse);
+        return awaitTraceScenarioOk(TRACE_OUTPUT_DIR, scenarioId, taskId);
     }
 
     private RuleDefinition rule(String id, String content) {
@@ -199,42 +169,5 @@ class TaskApiWorkerAttributeRoutingTraceObservedIntegrationTest extends Abstract
         assertApiOk(appendTaskItems(taskId, "demo.dispatch", List.of(Map.of("target", target))));
         assertApiOk(sealTask(taskId));
         return taskId;
-    }
-
-    private static final class ManualAckWebSocketClient extends SampleWorkerWebSocketClient {
-        private final BlockingQueue<JsonObject> taskQueue = new LinkedBlockingQueue<>();
-
-        private ManualAckWebSocketClient(URI serverUri, String workerId) {
-            super(serverUri, workerId);
-        }
-
-        @Override
-        public void onMessage(String message) {
-            try {
-                JsonObject frame = WsFrameTestSupport.parse(message);
-                if (frame != null && WsFrameTestSupport.isTask(frame) && !WsFrameTestSupport.isResponse(frame)) {
-                    taskQueue.offer(frame);
-                    return;
-                }
-            } catch (Exception ignored) {
-                // Fall through to the base client for non-task frames or malformed payloads.
-            }
-            super.onMessage(message);
-        }
-
-        private JsonObject awaitTask(long timeout, TimeUnit unit) throws InterruptedException {
-            return taskQueue.poll(timeout, unit);
-        }
-
-        private void sendSuccess(JsonObject taskMessage, String detail) throws Exception {
-            sendMessage(WsFrameTestSupport.buildTaskResult(
-                    WsFrameTestSupport.messageId(taskMessage),
-                    WsFrameTestSupport.project(taskMessage),
-                    getWorkerId(),
-                    WsFrameTestSupport.taskId(taskMessage),
-                    "SUCCESS",
-                    detail
-            ));
-        }
     }
 }

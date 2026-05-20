@@ -41,8 +41,13 @@ Use this file to answer four questions quickly:
 3. which tests are the minimum verification for a given change
 4. which test shapes are encouraged, downgraded, or being phased out
 
+If the question is "what is the authoritative proof for this invariant?" or
+"where should the next proof go?", read
+[PROOF_REGISTRY.md](./PROOF_REGISTRY.md) before scanning owner matrices.
+
 Use with:
 
+- [PROOF_REGISTRY.md](./PROOF_REGISTRY.md)
 - [TESTING_BASELINE.md](./TESTING_BASELINE.md)
 - [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
 - [E2E_BASELINE.md](./E2E_BASELINE.md)
@@ -70,6 +75,8 @@ Current testing assumptions:
 
 Fast routing:
 
+- authoritative proof owner, representative proof, trace pairing, or known gap:
+  start with [PROOF_REGISTRY.md](./PROOF_REGISTRY.md)
 - worker/task competition, eligibility, gating, redispatch:
   start with `xa-mass-engine` and its
   [`SCHEDULING_CORRECTNESS_MATRIX.md`](../xa-mass-engine/doc/baseline/SCHEDULING_CORRECTNESS_MATRIX.md)

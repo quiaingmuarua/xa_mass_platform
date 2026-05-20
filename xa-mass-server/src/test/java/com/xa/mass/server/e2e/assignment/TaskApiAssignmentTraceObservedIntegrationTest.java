@@ -1,7 +1,7 @@
 package com.xa.mass.server.e2e.assignment;
 
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
+import com.xa.mass.server.e2e.support.AbstractTraceObservedE2eTest;
 import com.xa.mass.trace.operator.TraceAnalyzeRequest;
 import com.xa.mass.trace.operator.TraceAnalyzeResponse;
 import com.xa.mass.trace.operator.TraceAssignmentRequest;
@@ -17,8 +17,6 @@ import org.springframework.test.context.DynamicPropertySource;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -40,19 +38,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class TaskApiAssignmentTraceObservedIntegrationTest extends AbstractSampleE2eTest {
+class TaskApiAssignmentTraceObservedIntegrationTest extends AbstractTraceObservedE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
-    private static final Path TRACE_OUTPUT_DIR = Path.of(
-            "target",
-            "assignment-trace-observed",
-            UUID.randomUUID().toString()
-    ).toAbsolutePath().normalize();
+    private static final Path TRACE_OUTPUT_DIR = traceOutputDir("assignment-trace-observed");
 
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {
         registerWebSocketProperties(registry, WEBSOCKET_PORT);
-        registry.add("mass.trace.sink.output-dir", () -> TRACE_OUTPUT_DIR.toString());
+        registerTraceOutputDir(registry, TRACE_OUTPUT_DIR);
     }
 
     @Test
@@ -93,27 +87,6 @@ class TaskApiAssignmentTraceObservedIntegrationTest extends AbstractSampleE2eTes
 
     private TraceAnalyzeResponse awaitTraceScenarioOk(TraceOperatorService traceOperator, String taskId)
             throws InterruptedException {
-        TraceAnalyzeResponse latestResponse = null;
-        Exception latestException = null;
-        for (int attempt = 0; attempt < 30; attempt++) {
-            try {
-                latestResponse = traceOperator.analyze(new TraceAnalyzeRequest(
-                        TRACE_OUTPUT_DIR.toString(),
-                        "assignment-success-binding",
-                        taskId
-                ));
-                if (latestResponse.ok()) {
-                    return latestResponse;
-                }
-            } catch (Exception e) {
-                latestException = e;
-            }
-            TimeUnit.MILLISECONDS.sleep(200L);
-        }
-        if (latestException != null) {
-            throw new AssertionError("trace scenario analysis failed before canonical JSONL became readable",
-                    latestException);
-        }
-        throw new AssertionError("trace scenario analysis did not pass. Last response=" + latestResponse);
+        return awaitTraceScenarioOk(TRACE_OUTPUT_DIR, "assignment-success-binding", taskId);
     }
 }

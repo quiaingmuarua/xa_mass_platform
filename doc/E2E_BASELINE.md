@@ -7,6 +7,8 @@ Status: current global E2E baseline.
 This is the short release-gate baseline for active-mainline E2E coverage.
 Detailed suite inventory stays in [../xa-mass-server/README.md](../xa-mass-server/README.md).
 Overall testing-system placement stays in [./TESTING_BASELINE.md](./TESTING_BASELINE.md).
+Authoritative-vs-representative proof ownership stays in
+[./PROOF_REGISTRY.md](./PROOF_REGISTRY.md).
 
 ## 0. Fast Intent
 
@@ -134,6 +136,10 @@ then acceptance requires:
 1. engine scheduling/kernel coverage for the changed path
 2. representative E2E coverage for the changed host/runtime path
 3. trace coverage for the critical transition
+
+Use [PROOF_REGISTRY.md](./PROOF_REGISTRY.md) first when you need to know which
+engine class, representative E2E scenario, and trace analyzer currently form
+the intended dual-proof chain.
 
 For scheduling-policy changes, also cover the touched risky interaction pair from [../xa-mass-engine/doc/baseline/SCHEDULING_KERNEL_BASELINE.md](../xa-mass-engine/doc/baseline/SCHEDULING_KERNEL_BASELINE.md).
 

@@ -150,6 +150,10 @@ Read this before interpreting engine tests.
 - scheduling correctness is organized by invariant in
   [`SCHEDULING_CORRECTNESS_MATRIX.md`](./doc/baseline/SCHEDULING_CORRECTNESS_MATRIX.md);
   use that matrix before adding another scheduling test class
+- project-level authoritative-vs-representative proof ownership lives in
+  [../doc/PROOF_REGISTRY.md](../doc/PROOF_REGISTRY.md); use it when the
+  question is which engine proof class is primary and which integrated trace
+  scenario is only representative
 - `TaskSchedulingTestHarness` is a test substrate for the scheduling matrix, not
   a second implementation world
 - keep these tests local when the real question is:
@@ -168,6 +172,8 @@ Read this before interpreting engine tests.
 
 - lifecycle/result convergence is organized by invariant in
   [`KERNEL_CONVERGENCE_MATRIX.md`](./doc/baseline/KERNEL_CONVERGENCE_MATRIX.md)
+- project-level proof pairing lives in
+  [../doc/PROOF_REGISTRY.md](../doc/PROOF_REGISTRY.md)
 - `EngineKernelConvergenceSuite` is the runtime-first gate for deterministic
   lifecycle and convergence facts that do not need projection residue
 - important current result-runtime and race coverage still exists inside

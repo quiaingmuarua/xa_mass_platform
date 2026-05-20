@@ -15,6 +15,7 @@ term trace vocabulary.
 
 Use with:
 
+- [PROOF_REGISTRY.md](./PROOF_REGISTRY.md)
 - [INFRA_TRUTH_LAYERS.md](./INFRA_TRUTH_LAYERS.md)
 - [DB_STORAGE_PRINCIPLES.md](./DB_STORAGE_PRINCIPLES.md)
 - [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md)
@@ -244,6 +245,15 @@ Schedule analysis currently reads these event types from canonical sink output:
 - `RESOURCE_RELEASE_FAILED`
 - `LEASE_EXPIRED`
 
+Proof pairing rule:
+
+- trace is the canonical observational proof surface for representative
+  integrated scenarios
+- it does not replace deterministic engine proof
+- when a critical invariant claims trace pairing, use
+  [PROOF_REGISTRY.md](./PROOF_REGISTRY.md) to find the authoritative engine or
+  server proof that the trace scenario must pair with
+
 Legacy traces may also contain `WORKER_CONTEXT_STATUS_TRANSITION`. Operators may
 use it to diagnose compatibility paths, but analyzers must not require it as
 proof of current scheduling, assignment, or release correctness.
@@ -432,4 +442,3 @@ Trace-observed integration rule:
   rows as a substitute for canonical trace observation
 - schedule/assignment analyzer tests must assert canonical JSONL query output,
   not logger MDC capture or projection residue
-

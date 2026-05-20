@@ -339,6 +339,9 @@ Mainline stance:
 - Boot-shell E2E is the representative proof surface for host-side mainline
   behavior, including `project`, `submitter`, `worker`, task shell, dispatch
   wiring, and result convergence
+- project-level authoritative-vs-representative proof ownership lives in
+  [../doc/PROOF_REGISTRY.md](../doc/PROOF_REGISTRY.md); use it before adding
+  another server E2E class for a scheduling or lifecycle invariant
 - the full scheduling-correctness matrix belongs engine-first; server E2E keeps
   representative assignment, polling, routing, and reuse scenarios
 - `ServerSchedulingE2eSuite` is runtime-first and representative; projection-heavy
@@ -425,8 +428,12 @@ High-signal classes:
   - `TaskApiTerminateRunningIntegrationTest`
 - assignment, routing, and capacity:
   - `TaskApiMultiTaskAssignmentIntegrationTest`
+  - `TaskApiMinimumWorkerGateTraceObservedIntegrationTest`
+  - `TaskApiDelayedWorkerAvailabilityTraceObservedIntegrationTest`
+  - `TaskApiRetryRedispatchTraceObservedIntegrationTest`
   - `TaskApiDelayedWorkerAvailabilityIntegrationTest`
   - `TaskApiMinimumWorkerGateIntegrationTest`
+  - `TaskApiSingleWorkerReuseTraceObservedIntegrationTest`
   - `TaskApiWorkerAttributeRoutingIntegrationTest`
   - `TaskApiWorkerWithoutContextIntegrationTest`
   - `TaskApiSingleWorkerReuseIntegrationTest`
@@ -434,7 +441,10 @@ High-signal classes:
   - `PollingWorkerTaskFlowIntegrationTest`
   - `CrawlerPullWorkerSdkRegistrationIntegrationTest`
 - results and idempotence:
+  - `TaskApiAllMessagesFailedTraceObservedIntegrationTest`
+  - `TaskApiCallbackReplayTraceObservedIntegrationTest`
   - `TaskApiFailureResultIntegrationTest`
+  - `TaskApiMixedResultsTraceObservedIntegrationTest`
   - `TaskApiMixedResultsIntegrationTest`
   - `TaskApiAllMessagesFailedIntegrationTest`
 - external worker black-box:
@@ -472,3 +482,5 @@ Scheduling-proof note:
   re-selected, strengthen engine acceptance coverage first
 - add server E2E when the real risk is that HTTP/SDK/transport wiring changes
   the scheduling outcome
+- if the scenario also claims canonical trace visibility, pair it with the
+  invariant or scenario entry in [../doc/PROOF_REGISTRY.md](../doc/PROOF_REGISTRY.md)
