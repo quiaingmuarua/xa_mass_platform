@@ -913,6 +913,9 @@ Request notes:
 - worker state projection remains separate from transport presence truth
 - current scheduling integration recognizes `DRAINING` as a dispatch gate:
   future assignments stop, while already in-flight work continues normally
+- dispatch re-enable stays explicit in current mainline: failed or expired
+  `DRAIN` command outcomes do not reopen dispatch; a later
+  `report-state(AVAILABLE)` is required
 
 ### 6.10 Acknowledge Worker Command
 
@@ -929,6 +932,9 @@ Request notes:
 - in current mainline, acknowledging a `DRAIN` command to an accepted delivery or
   execution state disables future dispatches to that worker without interrupting
   already in-flight work
+- later `FAILED` or `EXPIRED` command outcomes do not re-enable dispatch on
+  their own; recovery remains an explicit worker state report via
+  `report-state(AVAILABLE)`
 
 ## 7. Internal Debug API
 

@@ -18,9 +18,11 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -282,6 +284,75 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
                 8,
                 200L
         );
+
+        Map<String, Object> failedAckResponse = exchange(
+                "/worker-api/v1/workers/" + workerId + "/commands/cmd-node-worker-ack-001:ack",
+                HttpMethod.POST,
+                Map.of(
+                        "status", "FAILED",
+                        "reason", "worker failed to finish drain flow"
+                ),
+                workerHeaders
+        );
+        assertApiOk(failedAckResponse);
+        assertEquals("FAILED", responseData(failedAckResponse).get("currentStatus"));
+
+        String stillDrainedTaskId = createReadyCrawlerTask(submitterHeaders);
+        for (int attempt = 0; attempt < 4; attempt++) {
+            Map<String, Object> pollResponse = exchange("/worker-api/v1/workers/" + workerId + ":poll", HttpMethod.POST, Map.of(
+                    "maxMessages", 10,
+                    "timeoutMs", 250
+            ), workerHeaders);
+            assertApiOk(pollResponse);
+            assertTrue(pollItems(pollResponse).isEmpty(), "failed drain command must not re-enable dispatch without AVAILABLE");
+            Thread.sleep(150L);
+        }
+        waitForRuntimeTaskSnapshot(
+                stillDrainedTaskId,
+                snapshot -> "READY".equals(snapshot.task().get("status")) || "RUNNING".equals(snapshot.task().get("status")),
+                "READY or RUNNING while failed drain command keeps dispatch disabled",
+                8,
+                200L
+        );
+
+        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":report-state", HttpMethod.POST, Map.of(
+                "state", "AVAILABLE",
+                "reason", "manual resume"
+        ), workerHeaders));
+
+        Map<String, Object> resumedPoll = null;
+        List<Map<String, Object>> resumedItems = List.of();
+        for (int attempt = 0; attempt < 8 && resumedItems.isEmpty(); attempt++) {
+            resumedPoll = exchange("/worker-api/v1/workers/" + workerId + ":poll", HttpMethod.POST, Map.of(
+                    "maxMessages", 10,
+                    "timeoutMs", 500
+            ), workerHeaders);
+            assertApiOk(resumedPoll);
+            resumedItems = pollItems(resumedPoll);
+        }
+        assertFalse(resumedItems.isEmpty(), "worker should receive new work after explicit AVAILABLE state");
+        Set<String> remainingTaskIds = new HashSet<>(Set.of(taskId, stillDrainedTaskId));
+        for (Map<String, Object> item : resumedItems) {
+            submitSuccessfulWorkerResult(workerId, workerHeaders, item, "resumed-after-failed-drain-command");
+            remainingTaskIds.remove(item.get("taskId"));
+        }
+        for (int attempt = 0; attempt < 8 && !remainingTaskIds.isEmpty(); attempt++) {
+            Map<String, Object> backlogPoll = exchange("/worker-api/v1/workers/" + workerId + ":poll", HttpMethod.POST, Map.of(
+                    "maxMessages", 10,
+                    "timeoutMs", 500
+            ), workerHeaders);
+            assertApiOk(backlogPoll);
+            for (Map<String, Object> item : pollItems(backlogPoll)) {
+                submitSuccessfulWorkerResult(workerId, workerHeaders, item, "resumed-after-failed-drain-command");
+                remainingTaskIds.remove(item.get("taskId"));
+            }
+        }
+        assertTrue(remainingTaskIds.isEmpty(), "explicit AVAILABLE should let drained backlog resume");
+
+        RuntimeTaskSnapshot firstResumedTerminal = waitForTerminalRuntimeTask(taskId);
+        assertEquals("TERMINAL", firstResumedTerminal.task().get("status"));
+        RuntimeTaskSnapshot secondResumedTerminal = waitForTerminalRuntimeTask(stillDrainedTaskId);
+        assertEquals("TERMINAL", secondResumedTerminal.task().get("status"));
     }
 
     @Test
@@ -409,6 +480,19 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         assertApiOk(executeTaskCommand(taskId, "SEAL", null, submitterHeaders));
         assertApiOk(approveTask(taskId));
         return taskId;
+    }
+
+    private void submitSuccessfulWorkerResult(String workerId,
+                                              HttpHeaders workerHeaders,
+                                              Map<String, Object> item,
+                                              String detail) {
+        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":submit-result", HttpMethod.POST, Map.of(
+                "taskId", item.get("taskId"),
+                "messageId", item.get("messageId"),
+                "success", true,
+                "detail", detail,
+                "output", Map.of("workerId", workerId)
+        ), workerHeaders));
     }
 
     private void waitUntil(BooleanSupplier condition, String failureMessage) throws InterruptedException {

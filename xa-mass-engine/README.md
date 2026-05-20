@@ -75,7 +75,10 @@ Owner-backed worker-control and stage entry surfaces:
   request/ack read views, worker capability self-report, and bounded worker
   state projection. It emits canonical trace and delegates truth to
   `WorkerCommandLifecycleOwner`, `WorkerCapabilityAuthority` via
-  `WorkerManager`, and `WorkerStateProjectionOwner`.
+  `WorkerManager`, and `WorkerStateProjectionOwner`. Any translation from
+  worker-control truth into scheduling dispatch gate truth belongs to the
+  pluggable `WorkerDispatchAvailabilityPolicy`, not to transport shells or
+  matching mainline code.
 - `TaskStageEvidenceService` is the engine caller surface for task item stage
   evidence and bounded stage projection. It emits canonical trace and delegates
   stage truth to `TaskStageEvidenceOwner`.

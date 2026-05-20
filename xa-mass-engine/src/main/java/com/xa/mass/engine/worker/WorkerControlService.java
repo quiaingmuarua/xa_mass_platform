@@ -25,18 +25,36 @@ public final class WorkerControlService {
     private final WorkerCommandLifecycleOwner commandLifecycleOwner;
     private final WorkerStateProjectionOwner stateProjectionOwner;
     private final WorkerDispatchAvailabilityOwner dispatchAvailabilityOwner;
+    private final WorkerDispatchAvailabilityPolicy dispatchAvailabilityPolicy;
     private final TraceEventLogger traceEventLogger;
 
     public WorkerControlService(WorkerManager workerManager,
                                 WorkerCommandLifecycleOwner commandLifecycleOwner,
                                 WorkerStateProjectionOwner stateProjectionOwner,
                                 WorkerDispatchAvailabilityOwner dispatchAvailabilityOwner,
+                                WorkerDispatchAvailabilityPolicy dispatchAvailabilityPolicy,
                                 TraceEventLogger traceEventLogger) {
         this.workerManager = Objects.requireNonNull(workerManager, "workerManager");
         this.commandLifecycleOwner = Objects.requireNonNull(commandLifecycleOwner, "commandLifecycleOwner");
         this.stateProjectionOwner = Objects.requireNonNull(stateProjectionOwner, "stateProjectionOwner");
         this.dispatchAvailabilityOwner = Objects.requireNonNull(dispatchAvailabilityOwner, "dispatchAvailabilityOwner");
+        this.dispatchAvailabilityPolicy = dispatchAvailabilityPolicy != null
+                ? dispatchAvailabilityPolicy
+                : new DefaultWorkerDispatchAvailabilityPolicy();
         this.traceEventLogger = traceEventLogger != null ? traceEventLogger : TraceEventLogger.noop();
+    }
+
+    public WorkerControlService(WorkerManager workerManager,
+                                WorkerCommandLifecycleOwner commandLifecycleOwner,
+                                WorkerStateProjectionOwner stateProjectionOwner,
+                                WorkerDispatchAvailabilityOwner dispatchAvailabilityOwner,
+                                TraceEventLogger traceEventLogger) {
+        this(workerManager,
+                commandLifecycleOwner,
+                stateProjectionOwner,
+                dispatchAvailabilityOwner,
+                new DefaultWorkerDispatchAvailabilityPolicy(),
+                traceEventLogger);
     }
 
     public WorkerControlService(WorkerManager workerManager,
@@ -49,6 +67,7 @@ public final class WorkerControlService {
                 workerManager != null
                         ? workerManager.getDispatchAvailabilityOwner()
                         : new WorkerDispatchAvailabilityOwner(),
+                new DefaultWorkerDispatchAvailabilityPolicy(),
                 traceEventLogger);
     }
 
@@ -61,7 +80,7 @@ public final class WorkerControlService {
     public WorkerStateProjectionResult applyWorkerStateReport(WorkerStateReport report) {
         WorkerStateProjectionResult result = stateProjectionOwner.applyReport(report);
         if (result.success()) {
-            applyDispatchAvailability(result.projection());
+            dispatchAvailabilityPolicy.applyWorkerStateProjection(result.projection(), dispatchAvailabilityOwner);
         }
         traceEventLogger.workerStateReportApplied(result);
         return result;
@@ -76,7 +95,7 @@ public final class WorkerControlService {
     public WorkerCommandLifecycleResult applyWorkerCommandAcknowledgement(WorkerCommandAcknowledgement acknowledgement) {
         WorkerCommandLifecycleResult result = commandLifecycleOwner.applyAcknowledgement(acknowledgement);
         if (result.success()) {
-            applyCommandDispatchAvailability(result);
+            dispatchAvailabilityPolicy.applyWorkerCommandLifecycleResult(result, dispatchAvailabilityOwner);
         }
         traceEventLogger.workerCommandStatusTransition(result);
         return result;
@@ -96,43 +115,5 @@ public final class WorkerControlService {
 
     public List<WorkerStateProjection> workerStateProjections() {
         return stateProjectionOwner.projections();
-    }
-
-    private void applyDispatchAvailability(WorkerStateProjection projection) {
-        if (projection == null) {
-            return;
-        }
-        String state = projection.state();
-        if (state == null || state.isBlank()) {
-            return;
-        }
-        String normalizedState = state.trim().toUpperCase(java.util.Locale.ROOT);
-        if ("DRAINING".equals(normalizedState)) {
-            dispatchAvailabilityOwner.disableForDraining(projection.workerId(), projection.reason());
-            return;
-        }
-        if ("AVAILABLE".equals(normalizedState)) {
-            dispatchAvailabilityOwner.enable(projection.workerId(), projection.reason());
-        }
-    }
-
-    private void applyCommandDispatchAvailability(WorkerCommandLifecycleResult result) {
-        WorkerCommandRecord record = result != null ? result.record() : null;
-        if (record == null) {
-            return;
-        }
-        String commandType = record.commandType();
-        if (commandType == null || !"DRAIN".equalsIgnoreCase(commandType.trim())) {
-            return;
-        }
-        if (result.currentStatus() == null) {
-            return;
-        }
-        switch (result.currentStatus()) {
-            case DELIVERY_ACCEPTED, EXECUTION_ACCEPTED, SUCCEEDED ->
-                    dispatchAvailabilityOwner.disableForDraining(record.workerId(), record.statusReason());
-            default -> {
-            }
-        }
     }
 }

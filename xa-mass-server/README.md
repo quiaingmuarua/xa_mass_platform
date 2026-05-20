@@ -76,6 +76,9 @@ Current worker-state contract note:
   mainline, but it does not revoke or interrupt already in-flight work
 - acknowledging a `DRAIN` worker command to an accepted state converges to the
   same dispatch gate truth
+- current re-enable rule is explicit: dispatch stays disabled across failed or
+  expired `DRAIN` command outcomes and resumes only after a later
+  `report-state(AVAILABLE)`
 
 ## Port Model
 

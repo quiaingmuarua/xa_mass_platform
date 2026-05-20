@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -80,5 +81,89 @@ public class WorkerControlServiceTest {
                 .anyMatch(event -> "worker-1".equals(event.getIdentity().workerId())));
         assertTrue(sink.eventsOfType(ExecutionEventType.WORKER_STATE_REPORT_APPLIED).stream()
                 .anyMatch(event -> "worker-1".equals(event.getIdentity().workerId())));
+    }
+
+    @Test
+    void drainCommandFailureDoesNotReenableDispatchWithoutExplicitAvailableState() {
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        Worker worker = new Worker();
+        worker.setWorkerId("worker-2");
+        worker.setWorkerGroupId("group-2");
+        workerManager.addWorker(worker);
+        WorkerControlService service = new WorkerControlService(
+                workerManager,
+                new WorkerCommandLifecycleOwner(),
+                new WorkerStateProjectionOwner(),
+                TraceEventLogger.noop());
+
+        assertTrue(service.requestWorkerCommand(WorkerCommandRequest.builder(
+                        "cmd-2", "worker-2", "DRAIN")
+                .requester("operator")
+                .build()).success());
+        assertTrue(service.applyWorkerCommandAcknowledgement(
+                WorkerCommandAcknowledgement.deliveryAccepted("cmd-2", "accepted")).success());
+        assertFalse(workerManager.isWorkerDispatchEnabled(worker));
+
+        assertTrue(service.applyWorkerCommandAcknowledgement(
+                WorkerCommandAcknowledgement.failed("cmd-2", "worker-side failure")).success());
+        assertFalse(workerManager.isWorkerDispatchEnabled(worker));
+
+        assertTrue(service.applyWorkerStateReport(WorkerStateReport.builder("worker-2", 1, "DEGRADED")
+                .reason("still draining")
+                .build()).success());
+        assertFalse(workerManager.isWorkerDispatchEnabled(worker));
+
+        assertTrue(service.applyWorkerStateReport(WorkerStateReport.builder("worker-2", 2, "AVAILABLE")
+                .reason("resume")
+                .build()).success());
+        assertTrue(workerManager.isWorkerDispatchEnabled(worker));
+    }
+
+    @Test
+    void dispatchAvailabilityPolicyIsPluggable() {
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        Worker worker = new Worker();
+        worker.setWorkerId("worker-3");
+        worker.setWorkerGroupId("group-3");
+        workerManager.addWorker(worker);
+        AtomicInteger stateApplications = new AtomicInteger();
+        AtomicInteger commandApplications = new AtomicInteger();
+        WorkerDispatchAvailabilityPolicy policy = new WorkerDispatchAvailabilityPolicy() {
+            @Override
+            public void applyWorkerStateProjection(WorkerStateProjection projection,
+                                                   WorkerDispatchAvailabilityOwner dispatchAvailabilityOwner) {
+                stateApplications.incrementAndGet();
+                dispatchAvailabilityOwner.disableForDraining(projection.workerId(), projection.reason());
+            }
+
+            @Override
+            public void applyWorkerCommandLifecycleResult(com.xa.mass.engine.command.WorkerCommandLifecycleResult result,
+                                                          WorkerDispatchAvailabilityOwner dispatchAvailabilityOwner) {
+                commandApplications.incrementAndGet();
+                dispatchAvailabilityOwner.enable(result.record().workerId(), result.record().statusReason());
+            }
+        };
+        WorkerControlService service = new WorkerControlService(
+                workerManager,
+                new WorkerCommandLifecycleOwner(),
+                new WorkerStateProjectionOwner(),
+                workerManager.getDispatchAvailabilityOwner(),
+                policy,
+                TraceEventLogger.noop());
+
+        assertTrue(service.applyWorkerStateReport(WorkerStateReport.builder("worker-3", 1, "AVAILABLE")
+                .reason("custom-policy-disable")
+                .build()).success());
+        assertEquals(1, stateApplications.get());
+        assertFalse(workerManager.isWorkerDispatchEnabled(worker));
+
+        assertTrue(service.requestWorkerCommand(WorkerCommandRequest.builder(
+                        "cmd-3", "worker-3", "DRAIN")
+                .requester("operator")
+                .build()).success());
+        assertTrue(service.applyWorkerCommandAcknowledgement(
+                WorkerCommandAcknowledgement.deliveryAccepted("cmd-3", "custom-policy-enable")).success());
+        assertEquals(1, commandApplications.get());
+        assertTrue(workerManager.isWorkerDispatchEnabled(worker));
     }
 }
