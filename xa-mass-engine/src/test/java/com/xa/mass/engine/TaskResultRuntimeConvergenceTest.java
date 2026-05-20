@@ -121,10 +121,12 @@ class TaskResultRuntimeConvergenceTest {
 
             assertEquals(0, manager.getTaskResultRuntime().countVisibleResults(task.getTid()));
             assertEquals(TaskStatus.RUNNING, manager.getTask(task.getTid()).getStatus());
-            assertFalse(manager.getTaskResultRuntime().scanRepairCandidates(10).isEmpty());
+            TaskManager capturedManager = manager;
+            awaitCondition(
+                    () -> !capturedManager.getTaskResultRuntime().scanRepairCandidates(10).isEmpty(),
+                    "failed visible commit should leave a repair candidate before repair pump resumes");
 
             resultRuntime.allowRepairPumpScans();
-            TaskManager capturedManager = manager;
             awaitCondition(
                     () -> capturedManager.getTaskResultRuntime().countVisibleResults(task.getTid()) == 1
                             && capturedManager.getTask(task.getTid()).getStatus() == TaskStatus.TERMINAL,
@@ -165,15 +167,18 @@ class TaskResultRuntimeConvergenceTest {
 
             assertEquals(0, manager.getTaskResultRuntime().countVisibleResults(task.getTid()));
             assertEquals(TaskStatus.RUNNING, manager.getTask(task.getTid()).getStatus());
-            assertFalse(manager.getTaskResultRuntime().scanRepairCandidates(10).isEmpty());
+            TaskManager capturedManager = manager;
+            awaitCondition(
+                    () -> !capturedManager.getTaskResultRuntime().scanRepairCandidates(10).isEmpty(),
+                    "failed visible commit should leave a repair candidate before duplicate callback replay");
 
             assertTrue(manager.ingestTaskResult(task.getTid(), claimed.messageId(), true, "done-duplicate"));
             assertEquals(0, manager.getTaskResultRuntime().countVisibleResults(task.getTid()));
-            assertFalse(manager.getTaskResultRuntime().scanRepairCandidates(10).isEmpty(),
+            awaitCondition(
+                    () -> !capturedManager.getTaskResultRuntime().scanRepairCandidates(10).isEmpty(),
                     "duplicate callback should not discard the staged repair breadcrumb before visible final exists");
 
             resultRuntime.allowRepairPumpScans();
-            TaskManager capturedManager = manager;
             awaitCondition(
                     () -> capturedManager.getTaskResultRuntime().countVisibleResults(task.getTid()) == 1
                             && capturedManager.getTask(task.getTid()).getStatus() == TaskStatus.TERMINAL,
