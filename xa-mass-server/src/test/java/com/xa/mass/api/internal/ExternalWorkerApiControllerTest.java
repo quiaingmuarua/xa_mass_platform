@@ -1,25 +1,37 @@
 package com.xa.mass.api.internal;
 
 import com.xa.mass.api.auth.ApiAuthorizationService;
+import com.xa.mass.sdk.WorkerControlOperations;
 import com.xa.mass.sdk.WorkerClientOperations;
 import com.xa.mass.sdk.WorkerRegistryOperations;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.PrincipalContext;
+import com.xa.mass.sdk.model.WorkerCapabilityReportRequest;
+import com.xa.mass.sdk.model.WorkerCapabilityReportSnapshot;
+import com.xa.mass.sdk.model.WorkerCommandAcknowledgementRequest;
+import com.xa.mass.sdk.model.WorkerCommandResultSnapshot;
+import com.xa.mass.sdk.model.WorkerCommandSnapshot;
 import com.xa.mass.sdk.model.WorkerEventBinding;
+import com.xa.mass.sdk.model.WorkerStateProjectionSnapshot;
+import com.xa.mass.sdk.model.WorkerStateReportRequest;
+import com.xa.mass.sdk.model.WorkerStateReportSnapshot;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
@@ -36,6 +48,9 @@ class ExternalWorkerApiControllerTest {
 
     @Mock
     private WorkerClientOperations workerClient;
+
+    @Mock
+    private WorkerControlOperations workerControl;
 
     @Mock
     private AuthProvider authProvider;
@@ -63,6 +78,7 @@ class ExternalWorkerApiControllerTest {
                 .standaloneSetup(new ExternalWorkerApiController(
                         workerRegistry,
                         workerClient,
+                        workerControl,
                         new ApiAuthorizationService(authProvider, null)))
                 .setControllerAdvice(new com.xa.mass.api.aop.GlobalExceptionHandler())
                 .build();
@@ -364,5 +380,190 @@ class ExternalWorkerApiControllerTest {
                 .andExpect(jsonPath("$.code").value(409))
                 .andExpect(jsonPath("$.msg").value(
                         "External worker API poll only supports polling workers; worker node-worker-1 uses transport 'realtime'"));
+    }
+
+    @Test
+    void reportCapabilityDefaultsVersionAndDelegatesToWorkerControl() throws Exception {
+        when(workerControl.reportWorkerCapability(any())).thenReturn(new WorkerCapabilityReportSnapshot(
+                "ACCEPTED", "node-worker-1", 1L, true, true, "updated"
+        ));
+
+        mockMvc.perform(post("/worker-api/v1/workers/{workerId}:report-capability", "node-worker-1")
+                        .contentType("application/json")
+                        .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
+                        .content("""
+                                {
+                                  "availableEventCodes":["crawler.fetch-page"],
+                                  "schedulingAttributes":{"country":"us"},
+                                  "agentVersion":"1.2.3"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.workerId").value("node-worker-1"))
+                .andExpect(jsonPath("$.data.accepted").value(true));
+
+        ArgumentCaptor<WorkerCapabilityReportRequest> captor =
+                ArgumentCaptor.forClass(WorkerCapabilityReportRequest.class);
+        verify(workerControl).reportWorkerCapability(captor.capture());
+        WorkerCapabilityReportRequest request = captor.getValue();
+        org.junit.jupiter.api.Assertions.assertEquals("node-worker-1", request.workerId());
+        org.junit.jupiter.api.Assertions.assertEquals(List.of("crawler.fetch-page"), request.availableEventCodes());
+        org.junit.jupiter.api.Assertions.assertTrue(request.capabilityVersion() > 0L);
+    }
+
+    @Test
+    void reportCapabilityRejectsNonPositiveVersion() throws Exception {
+        mockMvc.perform(post("/worker-api/v1/workers/{workerId}:report-capability", "node-worker-1")
+                        .contentType("application/json")
+                        .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
+                        .content("""
+                                {
+                                  "capabilityVersion":0,
+                                  "availableEventCodes":["crawler.fetch-page"]
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value("capabilityVersion must be greater than 0"));
+    }
+
+    @Test
+    void reportCapabilityRejectsEventScopeMismatch() throws Exception {
+        mockMvc.perform(post("/worker-api/v1/workers/{workerId}:report-capability", "node-worker-1")
+                        .contentType("application/json")
+                        .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
+                        .content("""
+                                {
+                                  "availableEventCodes":["mock.reset"]
+                                }
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(403))
+                .andExpect(jsonPath("$.msg").value("Worker credential event scope denied: mock.reset"));
+    }
+
+    @Test
+    void reportStateDefaultsVersionAndConstrainsStateEnum() throws Exception {
+        when(workerControl.reportWorkerState(any())).thenReturn(new WorkerStateReportSnapshot(
+                "ACCEPTED",
+                "node-worker-1",
+                1L,
+                true,
+                true,
+                "updated",
+                new WorkerStateProjectionSnapshot(
+                        "node-worker-1",
+                        1L,
+                        "DRAINING",
+                        "maintenance",
+                        Instant.parse("2026-05-20T10:00:00Z"),
+                        Instant.parse("2026-05-20T10:00:01Z")
+                )
+        ));
+
+        mockMvc.perform(post("/worker-api/v1/workers/{workerId}:report-state", "node-worker-1")
+                        .contentType("application/json")
+                        .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
+                        .content("""
+                                {
+                                  "state":"DRAINING",
+                                  "reason":"maintenance",
+                                  "attributes":{"source":"worker"}
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.projection.state").value("DRAINING"));
+
+        ArgumentCaptor<WorkerStateReportRequest> captor =
+                ArgumentCaptor.forClass(WorkerStateReportRequest.class);
+        verify(workerControl).reportWorkerState(captor.capture());
+        WorkerStateReportRequest request = captor.getValue();
+        org.junit.jupiter.api.Assertions.assertEquals("node-worker-1", request.workerId());
+        org.junit.jupiter.api.Assertions.assertEquals("DRAINING", request.state());
+        org.junit.jupiter.api.Assertions.assertTrue(request.stateVersion() > 0L);
+    }
+
+    @Test
+    void reportStateRejectsUnknownState() throws Exception {
+        mockMvc.perform(post("/worker-api/v1/workers/{workerId}:report-state", "node-worker-1")
+                        .contentType("application/json")
+                        .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
+                        .content("""
+                                {
+                                  "state":"BUSY"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value("state must be one of AVAILABLE, DEGRADED, DRAINING, OFFLINE"));
+    }
+
+    @Test
+    void acknowledgeCommandRequiresBoundCommandOwnership() throws Exception {
+        WorkerCommandSnapshot command = new WorkerCommandSnapshot(
+                "cmd-001",
+                "node-worker-1",
+                "DRAIN",
+                "REQUESTED",
+                "operator",
+                "maintenance",
+                "idem-1",
+                1770000000000L,
+                Map.of("mode", "soft"),
+                null,
+                Instant.parse("2026-05-20T10:00:00Z"),
+                Instant.parse("2026-05-20T10:00:00Z")
+        );
+        when(workerControl.getWorkerCommand("cmd-001")).thenReturn(command);
+        when(workerControl.acknowledgeWorkerCommand(any())).thenReturn(new WorkerCommandResultSnapshot(
+                "ACCEPTED", true, "REQUESTED", "DELIVERY_ACCEPTED", "accepted", command
+        ));
+
+        mockMvc.perform(post("/worker-api/v1/workers/{workerId}/commands/{commandId}:ack", "node-worker-1", "cmd-001")
+                        .contentType("application/json")
+                        .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
+                        .content("""
+                                {
+                                  "status":"DELIVERY_ACCEPTED",
+                                  "reason":"accepted"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.currentStatus").value("DELIVERY_ACCEPTED"));
+
+        verify(workerControl).acknowledgeWorkerCommand(eq(new WorkerCommandAcknowledgementRequest(
+                "cmd-001", "DELIVERY_ACCEPTED", "accepted"
+        )));
+    }
+
+    @Test
+    void acknowledgeCommandRejectsOtherWorkersCommand() throws Exception {
+        when(workerControl.getWorkerCommand("cmd-001")).thenReturn(new WorkerCommandSnapshot(
+                "cmd-001",
+                "other-worker",
+                "DRAIN",
+                "REQUESTED",
+                "operator",
+                "maintenance",
+                "idem-1",
+                1770000000000L,
+                Map.of(),
+                null,
+                Instant.parse("2026-05-20T10:00:00Z"),
+                Instant.parse("2026-05-20T10:00:00Z")
+        ));
+
+        mockMvc.perform(post("/worker-api/v1/workers/{workerId}/commands/{commandId}:ack", "node-worker-1", "cmd-001")
+                        .contentType("application/json")
+                        .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
+                        .content("""
+                                {
+                                  "status":"DELIVERY_ACCEPTED"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value("worker command does not belong to worker node-worker-1"));
     }
 }

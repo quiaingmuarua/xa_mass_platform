@@ -97,6 +97,22 @@ public class WorkerManagerTest {
     }
 
     @Test
+    void dispatchAvailabilityOwnerCanDisableAndReenableNewAssignments() {
+        Worker worker = worker("worker-draining", "us");
+        manager.addWorker(worker);
+
+        assertTrue(manager.isWorkerDispatchEnabled(worker));
+
+        assertTrue(manager.getDispatchAvailabilityOwner()
+                .disableForDraining("worker-draining", "maintenance"));
+        assertFalse(manager.isWorkerDispatchEnabled(worker));
+
+        assertTrue(manager.getDispatchAvailabilityOwner()
+                .enable("worker-draining", "ready"));
+        assertTrue(manager.isWorkerDispatchEnabled(worker));
+    }
+
+    @Test
     void loadReadSynchronizesCapacityFromStorageRegisteredWorker() {
         InMemoryWorkerStorage storage = new InMemoryWorkerStorage();
         Worker worker = worker("worker-storage-direct", "us");

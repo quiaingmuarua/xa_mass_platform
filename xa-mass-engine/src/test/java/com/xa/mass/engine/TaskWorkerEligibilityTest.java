@@ -84,6 +84,34 @@ class TaskWorkerEligibilityTest {
     }
 
     @Test
+    void drainingWorkerIsExcludedFromNewAssignmentsUntilAvailableAgain() {
+        TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
+        harness.addWorker("worker-draining", "us");
+        harness.addWorker("worker-backup", "us");
+        Task firstTask = harness.createReadyBatchTask("draining-first", List.of(harness.item("first")));
+
+        harness.workerManager.getDispatchAvailabilityOwner()
+                .disableForDraining("worker-draining", "maintenance");
+
+        assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(firstTask.getTid())));
+
+        List<ActiveLeaseRecord> firstLeases = harness.activeLeases(firstTask.getTid());
+        assertEquals(1, firstLeases.size());
+        assertEquals("worker-backup", firstLeases.getFirst().workerId());
+        assertRejected(harness, firstTask.getTid(), "worker-draining",
+                AssignmentResult.RESOURCE_UNAVAILABLE, "worker unavailable");
+
+        harness.workerManager.getDispatchAvailabilityOwner()
+                .enable("worker-draining", "ready");
+
+        Task secondTask = harness.createReadyBatchTask("draining-second", List.of(harness.item("second")));
+        assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(secondTask.getTid())));
+        List<ActiveLeaseRecord> secondLeases = harness.activeLeases(secondTask.getTid());
+        assertEquals(1, secondLeases.size());
+        assertEquals("worker-draining", secondLeases.getFirst().workerId());
+    }
+
+    @Test
     void minimumWorkerGateUsesReachableEligibilityAndDoesNotHalfDispatchWhenWorkerDrops() {
         Map<String, WorkerReachabilityState> reachability = new HashMap<>();
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness(

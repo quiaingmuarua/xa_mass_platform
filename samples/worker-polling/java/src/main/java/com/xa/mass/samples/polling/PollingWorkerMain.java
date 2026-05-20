@@ -38,6 +38,8 @@ public final class PollingWorkerMain {
     private final String[] routingTags;
     private final long pollIntervalMs;
     private final long heartbeatIntervalMs;
+    private final String initialWorkerState;
+    private final String initialWorkerStateReason;
     private final AtomicBoolean shuttingDown = new AtomicBoolean(false);
 
     private PollingWorkerMain() {
@@ -55,6 +57,8 @@ public final class PollingWorkerMain {
         this.routingTags = splitCsv(env("MASS_ROUTING_TAGS", "web," + region));
         this.pollIntervalMs = longEnv("MASS_POLL_INTERVAL_MS", 1000L);
         this.heartbeatIntervalMs = longEnv("MASS_HEARTBEAT_INTERVAL_MS", 10000L);
+        this.initialWorkerState = optionalEnv("MASS_INITIAL_WORKER_STATE", "AVAILABLE");
+        this.initialWorkerStateReason = env("MASS_INITIAL_WORKER_STATE_REASON", "worker-ready");
     }
 
     public static void main(String[] args) throws Exception {
@@ -69,6 +73,7 @@ public final class PollingWorkerMain {
         registerWorker();
         post("/worker-api/v1/workers/" + encoded(workerId) + ":online",
                 jsonObject("reason", "java-worker-online"));
+        reportInitialWorkerState();
 
         long lastHeartbeatAt = 0L;
         while (!shuttingDown.get()) {
@@ -108,6 +113,21 @@ public final class PollingWorkerMain {
 
         JsonObject response = post("/worker-api/v1/workers", body);
         log("registered worker: " + response.get("data"));
+    }
+
+    private void reportInitialWorkerState() throws Exception {
+        if (initialWorkerState == null || initialWorkerState.isBlank()) {
+            return;
+        }
+        JsonObject body = new JsonObject();
+        body.addProperty("state", initialWorkerState);
+        body.addProperty("reason", initialWorkerStateReason);
+        JsonObject attributes = new JsonObject();
+        attributes.addProperty("source", "java-polling-worker");
+        attributes.addProperty("region", region);
+        body.add("attributes", attributes);
+        JsonObject response = post("/worker-api/v1/workers/" + encoded(workerId) + ":report-state", body);
+        log("reported worker state: " + response.get("data"));
     }
 
     private void pollOnce() throws Exception {
@@ -358,6 +378,15 @@ public final class PollingWorkerMain {
     private static String env(String name, String fallback) {
         String value = System.getenv(name);
         return value == null || value.isBlank() ? fallback : value.trim();
+    }
+
+    private static String optionalEnv(String name, String fallback) {
+        String value = System.getenv(name);
+        if (value == null) {
+            return fallback;
+        }
+        String normalized = value.trim();
+        return normalized.isEmpty() ? null : normalized;
     }
 
     private static String requiredEnv(String name, String fallback) {

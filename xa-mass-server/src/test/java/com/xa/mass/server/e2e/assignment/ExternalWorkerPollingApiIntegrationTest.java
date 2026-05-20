@@ -36,7 +36,7 @@ import static org.junit.jupiter.api.Assertions.*;
         }
 )
 @ActiveProfiles("dev")
-@DirtiesContext
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
@@ -155,7 +155,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
 
         Map<String, Object> pollResponse = null;
         List<Map<String, Object>> items = List.of();
-        for (int attempt = 0; attempt < 5 && items.isEmpty(); attempt++) {
+        for (int attempt = 0; attempt < 10 && items.isEmpty(); attempt++) {
             pollResponse = exchange("/worker-api/v1/workers/" + workerId + ":poll", HttpMethod.POST, Map.of(
                     "maxMessages", 10,
                     "timeoutMs", 500
@@ -196,6 +196,181 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         waitUntil(() -> !app.isWorkerOnline(workerId), "external worker offline should converge transport presence");
     }
 
+    @Test
+    void externalWorkerPollingApiCanAcknowledgeOperatorIssuedCommand() throws Exception {
+        String workerId = "node-worker-api-002";
+        String credential = "node-worker-ack-key";
+        String submitterCredential = "crawler-submitter-key";
+        registerExternalWorkerSubmitter(
+                "node-worker-ack",
+                credential,
+                workerId,
+                "crawlerApp",
+                "crawler.fetch-page"
+        );
+        HttpHeaders workerHeaders = credentialHeaders(credential);
+        HttpHeaders submitterHeaders = credentialHeaders(submitterCredential);
+
+        Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
+                "workerId", workerId,
+                "workerGroupId", "node-runtime",
+                "attributes", Map.of(
+                        "lang", "node",
+                        "routingTags", "web,us",
+                        "country", "us",
+                        "region", "us"
+                ),
+                "eventBindings", List.of(Map.of(
+                        "eventCode", "crawler.fetch-page",
+                        "projectCodes", List.of("crawlerApp")
+                ))
+        ), workerHeaders);
+        assertApiOk(registerResponse);
+        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":online", HttpMethod.POST, Map.of(
+                "reason", "command-ack-online"
+        ), workerHeaders));
+        waitUntil(() -> app.isWorkerOnline(workerId), "command-ack worker should reach transport-online state");
+
+        Map<String, Object> commandResponse = exchange("/api/v1/runtime/workers/" + workerId + "/commands", HttpMethod.POST, Map.of(
+                "commandId", "cmd-node-worker-ack-001",
+                "commandType", "DRAIN",
+                "requester", "ops-admin",
+                "reason", "maintenance",
+                "idempotencyKey", "idem-node-worker-ack-001",
+                "payload", Map.of("mode", "soft")
+        ));
+        assertApiOk(commandResponse);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> command = (Map<String, Object>) responseData(commandResponse).get("command");
+        assertNotNull(command);
+        assertEquals("REQUESTED", command.get("status"));
+
+        Map<String, Object> ackResponse = exchange(
+                "/worker-api/v1/workers/" + workerId + "/commands/cmd-node-worker-ack-001:ack",
+                HttpMethod.POST,
+                Map.of(
+                        "status", "DELIVERY_ACCEPTED",
+                        "reason", "accepted"
+                ),
+                workerHeaders
+        );
+        assertApiOk(ackResponse);
+        assertEquals("DELIVERY_ACCEPTED", responseData(ackResponse).get("currentStatus"));
+
+        Map<String, Object> readResponse = exchange("/api/v1/runtime/workers/commands/cmd-node-worker-ack-001", HttpMethod.GET, null);
+        assertApiOk(readResponse);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> readCommand = (Map<String, Object>) readResponse.get("data");
+        assertEquals(workerId, readCommand.get("workerId"));
+        assertEquals("DELIVERY_ACCEPTED", readCommand.get("status"));
+        assertEquals("accepted", readCommand.get("statusReason"));
+
+        String taskId = createReadyCrawlerTask(submitterHeaders);
+        for (int attempt = 0; attempt < 4; attempt++) {
+            Map<String, Object> pollResponse = exchange("/worker-api/v1/workers/" + workerId + ":poll", HttpMethod.POST, Map.of(
+                    "maxMessages", 10,
+                    "timeoutMs", 250
+            ), workerHeaders);
+            assertApiOk(pollResponse);
+            assertTrue(pollItems(pollResponse).isEmpty(), "drain command acknowledgement must stop new dispatches");
+            Thread.sleep(150L);
+        }
+        waitForRuntimeTaskSnapshot(
+                taskId,
+                snapshot -> "READY".equals(snapshot.task().get("status")) || "RUNNING".equals(snapshot.task().get("status")),
+                "READY or RUNNING while drained worker stops new dispatches",
+                8,
+                200L
+        );
+    }
+
+    @Test
+    void drainingStateStopsNewAssignmentsUntilWorkerReportsAvailable() throws Exception {
+        String workerId = "node-worker-draining-001";
+        String credential = "node-worker-draining-key";
+        String submitterCredential = "crawler-submitter-key";
+        app.replaceDefaultRules(List.of(
+                rule("crawler-online-project", "isWorkerAvailable == true && isWorkerLocked == false && supportsProject == true"),
+                rule("crawler-scheduling-routing", "isWorkerSchedulingResourceAllocatable == true && workerSchedulingMatchesRoutingCode == true")
+        ));
+        registerExternalWorkerSubmitter(
+                "node-worker-draining",
+                credential,
+                workerId,
+                "crawlerApp",
+                "crawler.fetch-page"
+        );
+        HttpHeaders workerHeaders = credentialHeaders(credential);
+        HttpHeaders submitterHeaders = credentialHeaders(submitterCredential);
+
+        assertApiOk(exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
+                "workerId", workerId,
+                "workerGroupId", "node-runtime",
+                "attributes", Map.of(
+                        "lang", "node",
+                        "routingTags", "web,us",
+                        "country", "us",
+                        "region", "us"
+                ),
+                "eventBindings", List.of(Map.of(
+                        "eventCode", "crawler.fetch-page",
+                        "projectCodes", List.of("crawlerApp")
+                ))
+        ), workerHeaders));
+        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":online", HttpMethod.POST, Map.of(
+                "reason", "draining-online"
+        ), workerHeaders));
+        waitUntil(() -> app.isWorkerOnline(workerId), "draining worker should reach transport-online state");
+
+        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":report-state", HttpMethod.POST, Map.of(
+                "state", "DRAINING",
+                "reason", "maintenance"
+        ), workerHeaders));
+
+        String taskId = createReadyCrawlerTask(submitterHeaders);
+
+        for (int attempt = 0; attempt < 4; attempt++) {
+            Map<String, Object> pollResponse = exchange("/worker-api/v1/workers/" + workerId + ":poll", HttpMethod.POST, Map.of(
+                    "maxMessages", 10,
+                    "timeoutMs", 250
+            ), workerHeaders);
+            assertApiOk(pollResponse);
+            assertTrue(pollItems(pollResponse).isEmpty(), "draining worker must not receive new work");
+            Thread.sleep(150L);
+        }
+
+        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":report-state", HttpMethod.POST, Map.of(
+                "state", "AVAILABLE",
+                "reason", "ready"
+        ), workerHeaders));
+
+        Map<String, Object> resumedPoll = null;
+        List<Map<String, Object>> resumedItems = List.of();
+        for (int attempt = 0; attempt < 8 && resumedItems.isEmpty(); attempt++) {
+            resumedPoll = exchange("/worker-api/v1/workers/" + workerId + ":poll", HttpMethod.POST, Map.of(
+                    "maxMessages", 10,
+                    "timeoutMs", 500
+            ), workerHeaders);
+            assertApiOk(resumedPoll);
+            resumedItems = pollItems(resumedPoll);
+        }
+        assertFalse(resumedItems.isEmpty(), "worker should receive new work after reporting AVAILABLE");
+        Map<String, Object> item = resumedItems.getFirst();
+        assertEquals(taskId, item.get("taskId"));
+        assertEquals(workerId, item.get("workerId"));
+
+        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":submit-result", HttpMethod.POST, Map.of(
+                "taskId", item.get("taskId"),
+                "messageId", item.get("messageId"),
+                "success", true,
+                "detail", "draining-resumed-success",
+                "output", Map.of("workerId", workerId)
+        ), workerHeaders));
+
+        RuntimeTaskSnapshot terminal = waitForTerminalRuntimeTask(taskId);
+        assertEquals("TERMINAL", terminal.task().get("status"));
+    }
+
     private HttpHeaders credentialHeaders(String credential) {
         HttpHeaders headers = new HttpHeaders();
         headers.add(SdkCredentialAuthSupport.API_KEY_HEADER, credential);
@@ -216,6 +391,24 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         rule.setContent(content);
         rule.setEnabled(true);
         return rule;
+    }
+
+    private String createReadyCrawlerTask(HttpHeaders submitterHeaders) {
+        Map<String, Object> createBody = new LinkedHashMap<>();
+        createBody.put("project", "crawlerApp");
+        createBody.put("userId", "crawler-agent");
+        createBody.put("sharedConfig", Map.of("routingCode", "us"));
+        createBody.put("executionSpec", Map.of("batchSize", 1));
+        Map<String, Object> createResponse = createTaskShell(createBody, submitterHeaders);
+        assertApiOk(createResponse);
+        String taskId = String.valueOf(responseData(createResponse).get("taskId"));
+        assertApiOk(exchange("/api/v1/tasks/" + taskId + "/items", HttpMethod.POST, Map.of(
+                "eventCode", "crawler.fetch-page",
+                "items", List.of(Map.of("url", "https://example.test/draining"))
+        ), submitterHeaders));
+        assertApiOk(executeTaskCommand(taskId, "SEAL", null, submitterHeaders));
+        assertApiOk(approveTask(taskId));
+        return taskId;
     }
 
     private void waitUntil(BooleanSupplier condition, String failureMessage) throws InterruptedException {

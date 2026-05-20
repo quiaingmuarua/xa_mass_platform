@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class WorkerControlServiceTest {
@@ -41,20 +42,33 @@ public class WorkerControlServiceTest {
                         "cmd-1", "worker-1", "DRAIN")
                 .requester("operator")
                 .build()).success());
+        assertTrue(workerManager.isWorkerDispatchEnabled(worker));
         assertTrue(service.applyWorkerCommandAcknowledgement(
                 WorkerCommandAcknowledgement.deliveryAccepted("cmd-1", "handoff accepted")).success());
+        assertFalse(workerManager.isWorkerDispatchEnabled(worker));
         assertTrue(service.applyWorkerCapabilityReport(WorkerCapabilityReport.builder("worker-1", 1)
                 .availableEventCodes(List.of("crawler.fetch", "not.approved"))
                 .schedulingAttributes(Map.of("country", "us"))
                 .build()).success());
-        assertTrue(service.applyWorkerStateReport(WorkerStateReport.builder("worker-1", 1, "READY")
-                .reason("test")
+        assertTrue(service.applyWorkerStateReport(WorkerStateReport.builder("worker-1", 1, "DRAINING")
+                .reason("maintenance")
                 .build()).success());
+        assertFalse(workerManager.isWorkerDispatchEnabled(worker));
+
+        assertTrue(service.applyWorkerStateReport(WorkerStateReport.builder("worker-1", 2, "AVAILABLE")
+                .reason("resumed")
+                .build()).success());
+        assertTrue(workerManager.isWorkerDispatchEnabled(worker));
+
+        assertTrue(service.applyWorkerStateReport(WorkerStateReport.builder("worker-1", 3, "DEGRADED")
+                .reason("slow")
+                .build()).success());
+        assertTrue(workerManager.isWorkerDispatchEnabled(worker));
 
         assertEquals(WorkerCommandStatus.DELIVERY_ACCEPTED,
                 service.workerCommand("cmd-1").orElseThrow().status());
         assertEquals(1, service.workerCommandsForWorker("worker-1").size());
-        assertEquals("READY", service.workerStateProjection("worker-1").orElseThrow().state());
+        assertEquals("DEGRADED", service.workerStateProjection("worker-1").orElseThrow().state());
         assertEquals(1, service.workerStateProjections().size());
         assertEquals("us", workerManager.getWorkerRegistrySnapshot()
                 .group("group-1")

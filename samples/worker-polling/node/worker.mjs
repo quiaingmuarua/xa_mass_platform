@@ -10,6 +10,8 @@ const region = process.env.MASS_REGION ?? "us";
 const routingTags = splitCsv(process.env.MASS_ROUTING_TAGS ?? `web,${region}`);
 const pollIntervalMs = intEnv("MASS_POLL_INTERVAL_MS", 1000);
 const heartbeatIntervalMs = intEnv("MASS_HEARTBEAT_INTERVAL_MS", 10000);
+const initialWorkerState = optionalEnv("MASS_INITIAL_WORKER_STATE") ?? "AVAILABLE";
+const initialWorkerStateReason = process.env.MASS_INITIAL_WORKER_STATE_REASON ?? "worker-ready";
 
 let heartbeatTimer = null;
 let pollTimer = null;
@@ -28,6 +30,7 @@ async function main() {
   await post(`/worker-api/v1/workers/${encodeURIComponent(workerId)}:online`, {
     reason: "node-worker-online",
   });
+  await reportInitialWorkerState();
 
   heartbeatTimer = setInterval(() => {
     post(`/worker-api/v1/workers/${encodeURIComponent(workerId)}:heartbeat`, {
@@ -69,6 +72,21 @@ async function registerWorker() {
     ],
   });
   console.log("[worker] registered worker:", response.data);
+}
+
+async function reportInitialWorkerState() {
+  if (!initialWorkerState) {
+    return;
+  }
+  const response = await post(`/worker-api/v1/workers/${encodeURIComponent(workerId)}:report-state`, {
+    state: initialWorkerState,
+    reason: initialWorkerStateReason,
+    attributes: {
+      source: "node-polling-worker",
+      region,
+    },
+  });
+  console.log("[worker] reported worker state:", response.data);
 }
 
 async function pollOnce() {
@@ -206,6 +224,15 @@ function requiredEnv(name, fallback) {
     throw new Error(`${name} is required`);
   }
   return String(value).trim();
+}
+
+function optionalEnv(name) {
+  const value = process.env[name];
+  if (value == null) {
+    return null;
+  }
+  const normalized = String(value).trim();
+  return normalized.length === 0 ? null : normalized;
 }
 
 function intEnv(name, fallback) {

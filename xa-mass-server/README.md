@@ -68,6 +68,14 @@ Current host security matrix:
 | `WORKER_REGISTER` | external worker credential | `WORKER / REGISTER` | `worker:poll` + worker binding + event/project scope |
 | `WORKER_ONLINE` / `WORKER_HEARTBEAT` / `WORKER_OFFLINE` / `WORKER_POLL` | external worker credential | `WORKER / POLL` | `worker:poll` + worker binding |
 | `WORKER_SUBMIT_RESULT` | external worker credential | `WORKER / REPORT_RESULT` | `worker:poll` + worker binding |
+| `WORKER_REPORT_CAPABILITY` / `WORKER_REPORT_STATE` / `WORKER_ACK_COMMAND` | external worker credential | `WORKER / POLL` | `worker:poll` + worker binding, plus capability event scope on capability reports |
+
+Current worker-state contract note:
+
+- `report-state(DRAINING)` disables future dispatches to that worker in current
+  mainline, but it does not revoke or interrupt already in-flight work
+- acknowledging a `DRAIN` worker command to an accepted state converges to the
+  same dispatch gate truth
 
 ## Port Model
 
