@@ -22,9 +22,11 @@ import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.TaskResultRuntimeRow;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -40,11 +42,21 @@ class TaskManagerLifecycleTest {
 
     private InMemoryTaskStorage taskStorage;
     private ProjectionAwareTaskManager taskManager;
+    private List<ProjectionAwareTaskManager> managedTaskManagers;
 
     @BeforeEach
     void setUp() {
+        managedTaskManagers = new ArrayList<>();
         taskStorage = new InMemoryTaskStorage();
         taskManager = new ProjectionAwareTaskManager(taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
+        managedTaskManagers.add(taskManager);
+    }
+
+    @AfterEach
+    void tearDown() {
+        for (ProjectionAwareTaskManager manager : managedTaskManagers) {
+            manager.shutdown();
+        }
     }
 
     @Test
@@ -2744,6 +2756,9 @@ class TaskManagerLifecycleTest {
     private Task createTask(ProjectionAwareTaskManager manager, TaskCreateSpec request) {
         if (request == null) {
             throw new IllegalArgumentException("task request body is required");
+        }
+        if (!managedTaskManagers.contains(manager)) {
+            managedTaskManagers.add(manager);
         }
         TaskContract contract = request.getContract() != null ? request.getContract() : TaskContract.BATCH;
         Task task = manager.createTaskShell(request.toShellRequest(contract));
