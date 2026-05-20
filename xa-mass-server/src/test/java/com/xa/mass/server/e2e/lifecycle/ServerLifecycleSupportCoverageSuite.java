@@ -11,6 +11,7 @@ import org.junit.platform.suite.api.Suite;
  */
 @Suite
 @SelectClasses({
+        SdkTaskApiIntegrationTest.class,
         TaskApiIntegrationTest.class
 })
 class ServerLifecycleSupportCoverageSuite {

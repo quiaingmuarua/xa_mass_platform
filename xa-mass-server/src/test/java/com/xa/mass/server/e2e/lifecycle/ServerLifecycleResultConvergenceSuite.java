@@ -1,6 +1,7 @@
 package com.xa.mass.server.e2e.lifecycle;
 
 import com.xa.mass.server.e2e.support.ServerMainlineE2eArchitectureGuardTest;
+import com.xa.mass.server.e2e.support.ServerProofOwnershipGuardTest;
 import com.xa.mass.server.e2e.results.TaskApiAllMessagesFailedIntegrationTest;
 import com.xa.mass.server.e2e.results.TaskApiAllMessagesFailedTraceObservedIntegrationTest;
 import com.xa.mass.server.e2e.results.TaskApiCallbackReplayTraceObservedIntegrationTest;
@@ -13,6 +14,7 @@ import org.junit.platform.suite.api.Suite;
 @Suite
 @SelectClasses({
         ServerMainlineE2eArchitectureGuardTest.class,
+        ServerProofOwnershipGuardTest.class,
         TaskApiCallbackReplayTraceObservedIntegrationTest.class,
         TaskApiFailureResultIntegrationTest.class,
         TaskApiLifecycleGuardsIntegrationTest.class,

@@ -358,6 +358,9 @@ Mainline stance:
 - `ServerMainlineE2eArchitectureGuardTest` is included in the mainline
   scheduling and lifecycle suites to reject projection-first helpers and
   implicit `var` declarations
+- `ServerProofOwnershipGuardTest` keeps mainline suite membership registry-backed
+  and blocks `secondary-proof` or support-suite coverage from drifting back
+  into scheduling, lifecycle, or parity proof suites
 - server tests must not treat `com.xa.mass.base.model.*` as a stable host-shell
   API contract
 - integration suites are grouped by domain under `src/test/java/com/xa/mass/server/e2e`
@@ -403,7 +406,9 @@ Cross-language sample black-box regression:
 The script runs `ExternalWorkerParitySuite`, which covers Java and Node workers
 across polling, WebSocket, and socket adapters. The suite asserts task
 aggregate state, runtime stats, active-lease release, and terminal reason first;
-worker output/read-model assertions only support payload parity checks.
+worker output/read-model assertions only support payload parity checks. The
+script also verifies that the suite produced real surefire testcase execution,
+so suite-wrapper `tests=0` XML cannot silently pass as the black-box gate.
 
 Covered areas:
 
@@ -462,6 +467,7 @@ High-signal classes:
   - `JavaWebSocketWorkerBlackBoxIntegrationTest`
   - `JavaSocketWorkerBlackBoxIntegrationTest`
 - secondary/support only:
+  - `SdkTaskApiIntegrationTest`
   - `TaskApiIntegrationTest`
   - `TaskApiTargetedWorkerDebugIntegrationTest`
   - `DevSampleWorkerLauncherIntegrationTest`
@@ -469,6 +475,11 @@ High-signal classes:
   - `H2ExternalWorkerPollingApiIntegrationTest`
   - `PostgresExternalWorkerPollingApiIntegrationTest`
   - `CatalogApiIntegrationTest`
+  - `SdkTaskApiIntegrationTest` is retained only for support-level unified
+    task API and submitter-credential shell coverage; it is not a lifecycle or
+    scheduling mainline proof class
+  - `TaskApiIntegrationTest` is retained only for support-level workload-class
+    shell coverage; it is not a lifecycle/result mainline proof class
 - console and audit:
   - `ControlConsoleRoutingIntegrationTest`
 - explicit projection residue/audit:

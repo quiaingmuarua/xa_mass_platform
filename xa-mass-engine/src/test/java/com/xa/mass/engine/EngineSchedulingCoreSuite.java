@@ -28,6 +28,7 @@ import org.junit.platform.suite.api.Suite;
 @Suite
 @SelectClasses({
         EngineSchedulingCoreArchitectureGuardTest.class,
+        EngineProofOwnershipGuardTest.class,
         TaskKernelLifecycleTest.class,
         TaskContractTerminalBehaviorTest.class,
         TaskContractSchedulingBehaviorTest.class,

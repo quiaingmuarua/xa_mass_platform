@@ -55,8 +55,19 @@ Agent rule:
 - when looking for downgraded server E2E examples, use the explicit support
   suites such as `ServerSupportCoverageSuite` and
   `ServerLifecycleSupportCoverageSuite` instead of scanning mainline suites
+- if a server E2E class is tagged `secondary-proof`, it must belong to one of
+  those explicit support or compatibility suites; do not leave downgraded tests
+  orphaned outside a suite
 - storage-specific shells and adapter-ambiguity guards belong with support or
   compatibility coverage unless the registry explicitly promotes them
+- server mainline suites are mechanically guarded: registry-backed mainline
+  classes may stay in `ServerSchedulingE2eSuite`,
+  `ServerLifecycleResultConvergenceSuite`, and `ExternalWorkerParitySuite`, but
+  `secondary-proof` or support-suite coverage must not leak back in
+- engine mainline suites are mechanically guarded against projection/support
+  leakage as well: `EngineProjectionResidueSuite` and
+  `EngineProjectionAuditSuite` are support lanes only and must stay tagged
+  `secondary-proof`
 
 Use with:
 

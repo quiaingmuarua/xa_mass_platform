@@ -533,6 +533,10 @@ Explicit secondary residue/audit tests:
   - `SimpleTaskDispatchBinderTest`
 - `EngineProjectionAuditSuite`
   - `TaskStateValidatorBoundaryTest`
+- these projection/support suites are mechanically downgraded:
+  `EngineProofOwnershipGuardTest` requires their classes to stay tagged
+  `secondary-proof`, and blocks them from leaking back into
+  `EngineSchedulingCoreSuite` or `EngineKernelConvergenceSuite`
 
 ## Read Map
 

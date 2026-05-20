@@ -36,7 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @ActiveProfiles("dev")
 @DirtiesContext
 @Tag("secondary-proof")
-class CatalogApiIntegrationTest extends AbstractSampleE2eTest {
+public class CatalogApiIntegrationTest extends AbstractSampleE2eTest {
 
     /**
      * Support-only catalog/read-surface coverage.

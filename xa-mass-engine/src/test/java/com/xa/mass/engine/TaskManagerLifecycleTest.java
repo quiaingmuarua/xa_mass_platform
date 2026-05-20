@@ -24,6 +24,7 @@ import com.xa.mass.runtime.api.WorkerClaimTarget;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -38,6 +39,7 @@ import static com.xa.mass.engine.CompatibilityProjectionAwait.awaitVisibleTaskMe
 import static com.xa.mass.engine.CompatibilityProjectionAwait.awaitVisibleTaskMessageProjection;
 import static org.junit.jupiter.api.Assertions.*;
 
+@Tag("secondary-proof")
 class TaskManagerLifecycleTest {
 
     private InMemoryTaskStorage taskStorage;

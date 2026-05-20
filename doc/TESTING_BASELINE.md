@@ -52,6 +52,13 @@ Use with:
   `ServerLifecycleSupportCoverageSuite`, and storage-specific shells should live
   under compatibility suites such as `ServerStorageCompatibilitySuite`, not
   inside mainline scheduling, lifecycle, or parity suites
+- server-side `secondary-proof` identity is mechanically guarded in both
+  directions: support/compat suites may only contain downgraded classes, and
+  downgraded classes may not remain orphaned outside those suites
+- server mainline proof ownership is now mechanically guarded:
+  `ServerSchedulingE2eSuite`, `ServerLifecycleResultConvergenceSuite`, and
+  `ExternalWorkerParitySuite` may select only registry-backed classes and must
+  not re-import support or `secondary-proof` coverage
 - engine PR mainline suites are now runtime-first:
   `EngineSchedulingCoreSuite` and `EngineKernelConvergenceSuite` no longer
   carry projection-heavy residue classes directly; compatibility residue and
@@ -65,6 +72,11 @@ Use with:
   `EngineKernelConvergenceSuite` `@SelectClasses`, so newly added lifecycle /
   convergence mainline tests stay runtime/task-aggregate first instead of
   silently drifting back to projection-first proof
+- engine proof ownership is now mechanically split: mainline suites must not
+  pull classes back out of `EngineProjectionResidueSuite` or
+  `EngineProjectionAuditSuite`, and those support suites must contain only
+  explicit `secondary-proof` coverage; downgraded engine tests may not remain
+  orphaned outside those suites
 
 ## 2. Lane Map
 

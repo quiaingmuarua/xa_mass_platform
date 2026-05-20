@@ -6,6 +6,7 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
@@ -38,6 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 )
 @ActiveProfiles("dev")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
+@Tag("secondary-proof")
 public class TaskApiStateValidationIntegrationTest extends AbstractSampleE2eTest {
 
     @DynamicPropertySource

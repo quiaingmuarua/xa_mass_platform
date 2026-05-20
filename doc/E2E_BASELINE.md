@@ -49,6 +49,11 @@ Current mainline note:
   `ServerSupportCoverageSuite` and `ServerLifecycleSupportCoverageSuite`; do
   not promote them back into mainline scheduling or lifecycle suites without a
   registry change
+- `SdkTaskApiIntegrationTest` remains support-only unified task API and
+  submitter-credential shell coverage; it is intentionally outside
+  lifecycle/result proof ownership
+- `TaskApiIntegrationTest` remains support-only workload-class shell coverage;
+  it is intentionally outside lifecycle/result proof ownership
 
 Fixture note:
 
