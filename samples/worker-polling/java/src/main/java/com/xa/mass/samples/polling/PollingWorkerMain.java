@@ -73,6 +73,7 @@ public final class PollingWorkerMain {
         registerWorker();
         post("/worker-api/v1/workers/" + encoded(workerId) + ":online",
                 jsonObject("reason", "java-worker-online"));
+        reportWorkerCapability();
         reportInitialWorkerState();
 
         long lastHeartbeatAt = 0L;
@@ -113,6 +114,20 @@ public final class PollingWorkerMain {
 
         JsonObject response = post("/worker-api/v1/workers", body);
         log("registered worker: " + response.get("data"));
+    }
+
+    private void reportWorkerCapability() throws Exception {
+        JsonObject body = new JsonObject();
+        body.addProperty("agentVersion", runtime);
+        JsonArray availableEventCodes = new JsonArray();
+        availableEventCodes.add(eventCode);
+        body.add("availableEventCodes", availableEventCodes);
+        JsonObject schedulingAttributes = new JsonObject();
+        schedulingAttributes.addProperty("region", region);
+        schedulingAttributes.addProperty("routingTags", String.join(",", routingTags));
+        body.add("schedulingAttributes", schedulingAttributes);
+        JsonObject response = post("/worker-api/v1/workers/" + encoded(workerId) + ":report-capability", body);
+        log("reported worker capability: " + response.get("data"));
     }
 
     private void reportInitialWorkerState() throws Exception {

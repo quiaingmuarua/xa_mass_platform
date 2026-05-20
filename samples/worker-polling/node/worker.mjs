@@ -30,6 +30,7 @@ async function main() {
   await post(`/worker-api/v1/workers/${encodeURIComponent(workerId)}:online`, {
     reason: "node-worker-online",
   });
+  await reportWorkerCapability();
   await reportInitialWorkerState();
 
   heartbeatTimer = setInterval(() => {
@@ -72,6 +73,18 @@ async function registerWorker() {
     ],
   });
   console.log("[worker] registered worker:", response.data);
+}
+
+async function reportWorkerCapability() {
+  const response = await post(`/worker-api/v1/workers/${encodeURIComponent(workerId)}:report-capability`, {
+    availableEventCodes: [eventCode],
+    agentVersion: `node-${process.version}`,
+    schedulingAttributes: {
+      region,
+      routingTags: routingTags.join(","),
+    },
+  });
+  console.log("[worker] reported worker capability:", response.data);
 }
 
 async function reportInitialWorkerState() {
