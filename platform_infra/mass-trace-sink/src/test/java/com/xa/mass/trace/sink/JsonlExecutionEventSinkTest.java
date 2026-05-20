@@ -10,6 +10,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -179,6 +180,25 @@ class JsonlExecutionEventSinkTest {
     }
 
     @Test
+    void attrsSupportInstantValues() throws Exception {
+        Instant observedAt = Instant.parse("2026-05-20T00:00:00Z");
+        sink.emit(ExecutionEvent.builder()
+                .eventType(ExecutionEventType.WORKER_STATE_REPORT_APPLIED)
+                .identity(b -> b.workerId("w-1"))
+                .attrs(Map.of(
+                        "observedAt", observedAt,
+                        "workerState", "AVAILABLE"
+                ))
+                .build());
+
+        JsonNode n = firstLine();
+        JsonNode attrs = n.get("attrs");
+        assertNotNull(attrs, "attrs must be present");
+        assertEquals("2026-05-20T00:00:00Z", attrs.get("observedAt").asText());
+        assertEquals("AVAILABLE", attrs.get("workerState").asText());
+    }
+
+    @Test
     void nullFieldsIncludedInJson() throws Exception {
         sink.emit(ExecutionEvent.builder()
                 .eventType(ExecutionEventType.WORKER_ONLINE)
@@ -315,4 +335,3 @@ class JsonlExecutionEventSinkTest {
                 "emit() after close must not write any additional events");
     }
 }
-

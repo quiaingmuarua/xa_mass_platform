@@ -14,6 +14,7 @@ public final class TraceScenarioRegistry {
                 new AllFailedTerminalConvergenceScenarioAnalyzer(),
                 new MixedResultTerminalConvergenceScenarioAnalyzer(),
                 new DuplicateCallbackReplayScenarioAnalyzer(),
+                new ExternalWorkerPublicContractSuccessScenarioAnalyzer(),
                 new AssignmentSuccessBindingScenarioAnalyzer(),
                 new AssignmentMinWorkerGateScenarioAnalyzer(),
                 new AssignmentRetryRedispatchScenarioAnalyzer(),

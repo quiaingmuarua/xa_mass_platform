@@ -7,6 +7,7 @@ import org.junit.platform.suite.api.Suite;
 @Suite
 @ExcludeTags("projection-residue")
 @SelectClasses({
+        ExternalWorkerPublicContractTraceObservedIntegrationTest.class,
         NodePollingWorkerBlackBoxIntegrationTest.class,
         JavaPollingWorkerBlackBoxIntegrationTest.class,
         NodeWebSocketWorkerBlackBoxIntegrationTest.class,

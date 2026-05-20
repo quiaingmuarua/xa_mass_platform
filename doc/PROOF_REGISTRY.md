@@ -81,19 +81,17 @@ When a representative E2E or black-box flow fails:
 | `kernel.duplicate-callback-idempotence` | duplicate callback replay is accepted idempotently and does not reopen or corrupt terminal work | `EngineKernelConvergenceSuite`: `TaskManagerLifecycleTest` | `ServerLifecycleResultConvergenceSuite`: `TaskApiCallbackReplayTraceObservedIntegrationTest` | `TaskApiCallbackReplayTraceObservedIntegrationTest` + analyzer `duplicate-callback-replay` | add chaos only if the duplicate path includes reconnect, replay, or stale late result races | `covered` | do not add another projection replay test before checking the runtime-first lifecycle/trace pair |
 | `kernel.result-terminal-convergence` | final result closes aggregate and runtime truth consistently for success, all-failed, and mixed-result paths | `EngineKernelConvergenceSuite`: `TaskManagerLifecycleTest` and result/lifecycle deterministic coverage | `ServerLifecycleResultConvergenceSuite`: `TaskApiFailureResultIntegrationTest`, `TaskApiMixedResultsIntegrationTest`, `TaskApiAllMessagesFailedIntegrationTest` | `TaskApiAllMessagesFailedTraceObservedIntegrationTest` + analyzer `all-failed-terminal-convergence`; `TaskApiMixedResultsTraceObservedIntegrationTest` + analyzer `mixed-result-terminal-convergence`; single-success remains covered by analyzer `single-message-success` | `xa-mass-testing` all-failed and mixed-result chaos smokes | `covered` | do not add another result-topic variant before checking this engine/lifecycle/trace chain |
 | `kernel.resource-release-reuse` | normal terminal closure or retry-exhausted closure releases worker/resource ownership so later ready work can acquire it | `EngineKernelConvergenceSuite`: release and cleanup deterministic coverage | `ServerSchedulingE2eSuite`: `TaskApiSingleWorkerReuseIntegrationTest` and `TaskApiTerminateReuseIntegrationTest` | `TaskApiSingleWorkerReuseTraceObservedIntegrationTest` + analyzer `worker-resource-cleanup-without-context` | chaos only when disconnect or expiry interferes with cleanup | `covered` | do not add another reuse assertion that only reads projection or piggybacks on unrelated routing proof |
-| `ext.worker-parity-public-contract` | Java and Node external workers stay behaviorally aligned across polling, websocket, and socket adapters | primary integrated proof is `ExternalWorkerParitySuite` | `ExternalWorkerParitySuite` plus focused public-contract API tests such as `ExternalWorkerPollingApiIntegrationTest` | no single trace analyzer pairing is the authoritative proof yet | transport/disconnect edges live in websocket/socket chaos and black-box runners | `partial` | next proof belongs in a parity-oriented trace scenario or analyzer map, not in per-adapter duplicate black-box classes |
+| `ext.worker-parity-public-contract` | Java and Node external workers stay behaviorally aligned across polling, websocket, and socket adapters | `ExternalWorkerParitySuite` with dedicated external-worker parity classes as the primary integrated proof surface | `ExternalWorkerPublicContractTraceObservedIntegrationTest` plus focused worker-control/public-contract API tests such as `ExternalWorkerPollingApiIntegrationTest` | `ExternalWorkerPublicContractTraceObservedIntegrationTest` + analyzer `external-worker-public-contract-success` | transport/disconnect edges live in websocket/socket chaos and black-box runners | `covered` | do not add per-adapter duplicate parity happy-path tests before checking this unified parity suite and trace proof |
 
 ## 3. Known Gaps
 
 Visible gaps should stay explicit so new agents add proof in the right lane.
 
-### 3.1 External Worker Parity Gaps
+### 3.1 Current Explicit Gaps
 
-- `ext.worker-parity-public-contract` is strongly covered by black-box and API
-  tests, but it does not yet have one canonical trace scenario or analyzer map
-  that new agents can treat as the representative observational proof.
-  Preferred next lane: `xa-mass-trace` analyzer naming plus one
-  trace-observed parity scenario.
+- there is no current top-priority gap in external worker public-contract proof
+  ownership; parity now has a canonical trace-observed scenario and analyzer
+  chain
 
 ## 4. Naming Rule
 

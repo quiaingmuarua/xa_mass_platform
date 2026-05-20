@@ -91,6 +91,7 @@ Current operator/testing rule:
 Current built-in scenario analyzers:
 
 - `single-message-success`
+- `external-worker-public-contract-success`
 - `all-failed-terminal-convergence`
 - `mixed-result-terminal-convergence`
 - `duplicate-callback-replay`

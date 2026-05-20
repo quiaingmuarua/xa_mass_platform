@@ -449,6 +449,7 @@ High-signal classes:
   - `TaskApiAllMessagesFailedIntegrationTest`
 - external worker black-box:
   - `ExternalWorkerParitySuite`
+  - `ExternalWorkerPublicContractTraceObservedIntegrationTest`
   - `NodePollingWorkerBlackBoxIntegrationTest`
   - `NodeWebSocketWorkerBlackBoxIntegrationTest`
   - `NodeSocketWorkerBlackBoxIntegrationTest`
