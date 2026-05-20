@@ -75,7 +75,10 @@ Owner-backed worker-control and stage entry surfaces:
   request/ack read views, worker capability self-report, and bounded worker
   state projection. It emits canonical trace and delegates truth to
   `WorkerCommandLifecycleOwner`, `WorkerCapabilityAuthority` via
-  `WorkerManager`, and `WorkerStateProjectionOwner`.
+  `WorkerManager`, and `WorkerStateProjectionOwner`. Any translation from
+  worker-control truth into scheduling dispatch gate truth belongs to the
+  pluggable `WorkerDispatchAvailabilityPolicy`, not to transport shells or
+  matching mainline code.
 - `TaskStageEvidenceService` is the engine caller surface for task item stage
   evidence and bounded stage projection. It emits canonical trace and delegates
   stage truth to `TaskStageEvidenceOwner`.
@@ -147,6 +150,10 @@ Read this before interpreting engine tests.
 - scheduling correctness is organized by invariant in
   [`SCHEDULING_CORRECTNESS_MATRIX.md`](./doc/baseline/SCHEDULING_CORRECTNESS_MATRIX.md);
   use that matrix before adding another scheduling test class
+- project-level authoritative-vs-representative proof ownership lives in
+  [../doc/PROOF_REGISTRY.md](../doc/PROOF_REGISTRY.md); use it when the
+  question is which engine proof class is primary and which integrated trace
+  scenario is only representative
 - `TaskSchedulingTestHarness` is a test substrate for the scheduling matrix, not
   a second implementation world
 - keep these tests local when the real question is:
@@ -165,6 +172,8 @@ Read this before interpreting engine tests.
 
 - lifecycle/result convergence is organized by invariant in
   [`KERNEL_CONVERGENCE_MATRIX.md`](./doc/baseline/KERNEL_CONVERGENCE_MATRIX.md)
+- project-level proof pairing lives in
+  [../doc/PROOF_REGISTRY.md](../doc/PROOF_REGISTRY.md)
 - `EngineKernelConvergenceSuite` is the runtime-first gate for deterministic
   lifecycle and convergence facts that do not need projection residue
 - important current result-runtime and race coverage still exists inside
@@ -524,6 +533,10 @@ Explicit secondary residue/audit tests:
   - `SimpleTaskDispatchBinderTest`
 - `EngineProjectionAuditSuite`
   - `TaskStateValidatorBoundaryTest`
+- these projection/support suites are mechanically downgraded:
+  `EngineProofOwnershipGuardTest` requires their classes to stay tagged
+  `secondary-proof`, and blocks them from leaking back into
+  `EngineSchedulingCoreSuite` or `EngineKernelConvergenceSuite`
 
 ## Read Map
 

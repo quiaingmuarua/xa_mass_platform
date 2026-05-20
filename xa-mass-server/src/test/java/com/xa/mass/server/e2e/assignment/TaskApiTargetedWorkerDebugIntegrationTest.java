@@ -2,6 +2,7 @@ package com.xa.mass.server.e2e.assignment;
 
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.ProjectionSampleE2eTest;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
@@ -34,7 +35,16 @@ import static org.junit.jupiter.api.Assertions.*;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
+@Tag("secondary-proof")
 class TaskApiTargetedWorkerDebugIntegrationTest extends ProjectionSampleE2eTest {
+
+    /**
+     * Support-only debug-task coverage.
+     *
+     * <p>This class validates targeted debug/event harness behavior, not a
+     * registry-backed scheduling or lifecycle invariant. Keep it out of new
+     * mainline proof chains.
+     */
 
     private static final int WEBSOCKET_PORT = findFreePort();
     private static final String STATE_WORKER_ID = "it-worker-0";

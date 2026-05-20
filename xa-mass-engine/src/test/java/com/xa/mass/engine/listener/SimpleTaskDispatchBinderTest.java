@@ -24,6 +24,7 @@ import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -31,6 +32,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
@@ -40,6 +42,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+@Tag("secondary-proof")
 public class SimpleTaskDispatchBinderTest {
 
     private WorkerManager workerManager;
@@ -414,7 +417,7 @@ public class SimpleTaskDispatchBinderTest {
         List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched("d1")));
 
         assertTrue(dispatched.isEmpty());
-        List<TaskDetailStore.TaskMessageProjection> stored = storedMessages(task.getTid());
+        List<TaskDetailStore.TaskMessageProjection> stored = projectedMessages(task.getTid());
         assertEquals(List.of(TaskMessageProjectionStatus.INIT, TaskMessageProjectionStatus.INIT),
                 stored.stream().map(TaskDetailStore.TaskMessageProjection::status).collect(Collectors.toList()));
         assertTrue(stored.stream().allMatch(msg -> msg.retryCount() == 1));
@@ -423,7 +426,8 @@ public class SimpleTaskDispatchBinderTest {
         assertTrue(stored.stream().allMatch(msg -> msg.latestAttemptBatchId() == null));
 
         List<TaskDetailStore.TaskMessageAttemptProjection> attempts = stored.stream()
-                .map(msg -> taskStorage.getLatestTaskMessageAttemptProjection(task.getTid(), msg.messageId()).orElseThrow())
+                .map(msg -> awaitLatestAttemptProjection(task.getTid(), msg.messageId(),
+                        TaskMessageAttemptProjectionStatus.REVOKED))
                 .collect(Collectors.toList());
         assertTrue(attempts.stream().allMatch(attempt -> attempt.status() == TaskMessageAttemptProjectionStatus.REVOKED));
         assertTrue(attempts.stream().allMatch(attempt -> attempt.finalReason()
@@ -644,6 +648,29 @@ public class SimpleTaskDispatchBinderTest {
         return taskManager.getVisibleTaskMessageProjection(taskId, messageId);
     }
 
+    private TaskDetailStore.TaskMessageAttemptProjection awaitLatestAttemptProjection(String taskId,
+                                                                                      String messageId,
+                                                                                      TaskMessageAttemptProjectionStatus expectedStatus) {
+        long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        TaskDetailStore.TaskMessageAttemptProjection lastSeen = null;
+        while (System.nanoTime() < deadlineNanos) {
+            lastSeen = taskStorage.getLatestTaskMessageAttemptProjection(taskId, messageId).orElse(null);
+            if (lastSeen != null && lastSeen.status() == expectedStatus) {
+                return lastSeen;
+            }
+            sleepBriefly();
+        }
+        return lastSeen;
+    }
+
+    private static void sleepBriefly() {
+        try {
+            Thread.sleep(10L);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     private TaskDetailStore.TaskMessageAttemptProjection latestActiveAttemptProjection(String taskId, String messageId) {
         return taskManager.getLatestActiveAttemptProjectionRecord(taskId, messageId);
     }
@@ -756,7 +783,6 @@ public class SimpleTaskDispatchBinderTest {
         }
     }
 }
-
 
 
 

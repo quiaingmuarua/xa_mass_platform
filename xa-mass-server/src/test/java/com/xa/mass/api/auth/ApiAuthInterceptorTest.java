@@ -189,6 +189,107 @@ class ApiAuthInterceptorTest {
     }
 
     @Test
+    void sdkCredentialAttemptCanReachTaskStageEvidenceRoutesWithoutOperatorPermission() throws Exception {
+        mockMvc.perform(post("/api/v1/tasks/task-001/items/msg-001/stages/FETCH/evidence")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(ApiAuthService.USER_MODE_HEADER, "anonymous")
+                        .header("X-Mass-Api-Key", "sdk-key")
+                        .content("""
+                                {
+                                  "stageVersion":2,
+                                  "stageStatus":"DONE"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true));
+
+        mockMvc.perform(get("/api/v1/tasks/task-001/items/msg-001/stages")
+                        .header(ApiAuthService.USER_MODE_HEADER, "anonymous")
+                        .header("X-Mass-Api-Key", "sdk-key"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true));
+
+        mockMvc.perform(get("/api/v1/tasks/task-001/items/msg-001/stages/FETCH")
+                        .header(ApiAuthService.USER_MODE_HEADER, "anonymous")
+                        .header("X-Mass-Api-Key", "sdk-key"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true));
+    }
+
+    @Test
+    void viewerCanReachWorkerControlReadRoutesAndEditorCanReachWriteRoutes() throws Exception {
+        mockMvc.perform(get("/api/v1/runtime/workers/worker-001/state")
+                        .header(ApiAuthService.USER_MODE_HEADER, "viewer"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true));
+
+        mockMvc.perform(get("/api/v1/runtime/workers/states")
+                        .header(ApiAuthService.USER_MODE_HEADER, "viewer"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true));
+
+        mockMvc.perform(get("/api/v1/runtime/workers/worker-001/commands")
+                        .header(ApiAuthService.USER_MODE_HEADER, "viewer"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true));
+
+        mockMvc.perform(get("/api/v1/runtime/workers/commands/cmd-001")
+                        .header(ApiAuthService.USER_MODE_HEADER, "viewer"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true));
+
+        mockMvc.perform(post("/api/v1/runtime/workers/worker-001/capability-reports")
+                        .header(ApiAuthService.USER_MODE_HEADER, "custom")
+                        .header(ApiAuthService.USER_ID_HEADER, "worker-editor")
+                        .header(ApiAuthService.USER_NAME_HEADER, "Worker Editor")
+                        .header(ApiAuthService.USER_PERMISSIONS_HEADER, ApiPermissionNames.WORKER_EDIT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"capabilityVersion\":1}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true));
+
+        mockMvc.perform(post("/api/v1/runtime/workers/worker-001/state-reports")
+                        .header(ApiAuthService.USER_MODE_HEADER, "custom")
+                        .header(ApiAuthService.USER_ID_HEADER, "worker-editor")
+                        .header(ApiAuthService.USER_NAME_HEADER, "Worker Editor")
+                        .header(ApiAuthService.USER_PERMISSIONS_HEADER, ApiPermissionNames.WORKER_EDIT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"stateVersion\":1,\"state\":\"READY\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true));
+
+        mockMvc.perform(post("/api/v1/runtime/workers/worker-001/commands")
+                        .header(ApiAuthService.USER_MODE_HEADER, "custom")
+                        .header(ApiAuthService.USER_ID_HEADER, "worker-editor")
+                        .header(ApiAuthService.USER_NAME_HEADER, "Worker Editor")
+                        .header(ApiAuthService.USER_PERMISSIONS_HEADER, ApiPermissionNames.WORKER_EDIT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"commandType\":\"DRAIN\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true));
+
+        mockMvc.perform(post("/api/v1/runtime/workers/worker-001/commands/cmd-001/ack")
+                        .header(ApiAuthService.USER_MODE_HEADER, "custom")
+                        .header(ApiAuthService.USER_ID_HEADER, "worker-editor")
+                        .header(ApiAuthService.USER_NAME_HEADER, "Worker Editor")
+                        .header(ApiAuthService.USER_PERMISSIONS_HEADER, ApiPermissionNames.WORKER_EDIT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"ACKED\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true));
+    }
+
+    @Test
+    void viewerCannotReachWorkerControlWriteRoutes() throws Exception {
+        mockMvc.perform(post("/api/v1/runtime/workers/worker-001/capability-reports")
+                        .header(ApiAuthService.USER_MODE_HEADER, "viewer")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"capabilityVersion\":1}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(403));
+    }
+
+    @Test
     void validSdkCredentialCanReachProjectRoutesWithoutOperatorHeaders() throws Exception {
         mockMvc.perform(get("/api/v1/projects")
                         .header(ApiAuthService.USER_MODE_HEADER, "anonymous")
@@ -272,6 +373,83 @@ class ApiAuthInterceptorTest {
         @ResponseBody
         public Map<String, Object> projects() {
             return Map.of("ok", true);
+        }
+
+        @PostMapping("/api/v1/tasks/{taskId}/items/{messageId}/stages/{stageName}/evidence")
+        @ResponseBody
+        public Map<String, Object> reportTaskStageEvidence(@PathVariable String taskId,
+                                                           @PathVariable String messageId,
+                                                           @PathVariable String stageName,
+                                                           @RequestBody Map<String, Object> body) {
+            return Map.of("ok", true, "taskId", taskId, "messageId", messageId, "stageName", stageName, "body", body);
+        }
+
+        @GetMapping("/api/v1/tasks/{taskId}/items/{messageId}/stages")
+        @ResponseBody
+        public Map<String, Object> listTaskStages(@PathVariable String taskId,
+                                                  @PathVariable String messageId) {
+            return Map.of("ok", true, "taskId", taskId, "messageId", messageId);
+        }
+
+        @GetMapping("/api/v1/tasks/{taskId}/items/{messageId}/stages/{stageName}")
+        @ResponseBody
+        public Map<String, Object> getTaskStage(@PathVariable String taskId,
+                                                @PathVariable String messageId,
+                                                @PathVariable String stageName) {
+            return Map.of("ok", true, "taskId", taskId, "messageId", messageId, "stageName", stageName);
+        }
+
+        @GetMapping("/api/v1/runtime/workers/{workerId}/state")
+        @ResponseBody
+        public Map<String, Object> workerState(@PathVariable String workerId) {
+            return Map.of("ok", true, "workerId", workerId);
+        }
+
+        @GetMapping("/api/v1/runtime/workers/states")
+        @ResponseBody
+        public Map<String, Object> workerStates() {
+            return Map.of("ok", true);
+        }
+
+        @PostMapping("/api/v1/runtime/workers/{workerId}/capability-reports")
+        @ResponseBody
+        public Map<String, Object> capabilityReport(@PathVariable String workerId,
+                                                    @RequestBody Map<String, Object> body) {
+            return Map.of("ok", true, "workerId", workerId, "body", body);
+        }
+
+        @PostMapping("/api/v1/runtime/workers/{workerId}/state-reports")
+        @ResponseBody
+        public Map<String, Object> stateReport(@PathVariable String workerId,
+                                               @RequestBody Map<String, Object> body) {
+            return Map.of("ok", true, "workerId", workerId, "body", body);
+        }
+
+        @PostMapping("/api/v1/runtime/workers/{workerId}/commands")
+        @ResponseBody
+        public Map<String, Object> requestWorkerCommand(@PathVariable String workerId,
+                                                        @RequestBody Map<String, Object> body) {
+            return Map.of("ok", true, "workerId", workerId, "body", body);
+        }
+
+        @PostMapping("/api/v1/runtime/workers/{workerId}/commands/{commandId}/ack")
+        @ResponseBody
+        public Map<String, Object> acknowledgeWorkerCommand(@PathVariable String workerId,
+                                                            @PathVariable String commandId,
+                                                            @RequestBody Map<String, Object> body) {
+            return Map.of("ok", true, "workerId", workerId, "commandId", commandId, "body", body);
+        }
+
+        @GetMapping("/api/v1/runtime/workers/{workerId}/commands")
+        @ResponseBody
+        public Map<String, Object> listWorkerCommands(@PathVariable String workerId) {
+            return Map.of("ok", true, "workerId", workerId);
+        }
+
+        @GetMapping("/api/v1/runtime/workers/commands/{commandId}")
+        @ResponseBody
+        public Map<String, Object> getWorkerCommand(@PathVariable String commandId) {
+            return Map.of("ok", true, "commandId", commandId);
         }
 
         @PostMapping("/api/internal/legacy-probe")

@@ -69,6 +69,27 @@ public enum ApiSecurityScenario {
             PlatformAction.REPORT_RESULT,
             PrincipalContext.EXTERNAL_WORKER_PERMISSION,
             CredentialAudience.EXTERNAL_WORKER
+    ),
+    WORKER_REPORT_CAPABILITY(
+            "worker-report-capability",
+            PlatformResourceType.WORKER,
+            PlatformAction.POLL,
+            PrincipalContext.EXTERNAL_WORKER_PERMISSION,
+            CredentialAudience.EXTERNAL_WORKER
+    ),
+    WORKER_REPORT_STATE(
+            "worker-report-state",
+            PlatformResourceType.WORKER,
+            PlatformAction.POLL,
+            PrincipalContext.EXTERNAL_WORKER_PERMISSION,
+            CredentialAudience.EXTERNAL_WORKER
+    ),
+    WORKER_ACK_COMMAND(
+            "worker-ack-command",
+            PlatformResourceType.WORKER,
+            PlatformAction.POLL,
+            PrincipalContext.EXTERNAL_WORKER_PERMISSION,
+            CredentialAudience.EXTERNAL_WORKER
     );
 
     private final String surface;

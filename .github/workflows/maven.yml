@@ -75,19 +75,41 @@ jobs:
           java-version: "21"
           distribution: "temurin"
           cache: maven
-      - name: Run engine scheduling and kernel convergence gate
+      - name: Reset engine surefire reports before scheduling core suite
+        run: rm -rf xa-mass-engine/target/surefire-reports
+      - name: Run engine scheduling core suite
         run: >-
           ./mvnw -q -pl xa-mass-engine -am
           -Dtest=EngineSchedulingCoreSuite
           -Dsurefire.failIfNoSpecifiedTests=false
           test
+      - name: Verify scheduling-core suite executed real testcases
+        run: .github/scripts/assert-surefire-executed-tests.sh xa-mass-engine/target/surefire-reports
+      - name: Preserve scheduling-core suite reports
+        run: |
+          rm -rf xa-mass-engine/target/surefire-reports-scheduling-core
+          cp -R xa-mass-engine/target/surefire-reports xa-mass-engine/target/surefire-reports-scheduling-core
+      - name: Reset engine surefire reports before kernel convergence suite
+        run: rm -rf xa-mass-engine/target/surefire-reports
+      - name: Run engine kernel convergence suite
+        run: >-
+          ./mvnw -q -pl xa-mass-engine -am
+          -Dtest=EngineKernelConvergenceSuite
+          -Dsurefire.failIfNoSpecifiedTests=false
+          test
+      - name: Verify kernel-convergence suite executed real testcases
+        run: .github/scripts/assert-surefire-executed-tests.sh xa-mass-engine/target/surefire-reports
+      - name: Preserve kernel-convergence suite reports
+        run: |
+          rm -rf xa-mass-engine/target/surefire-reports-kernel-convergence
+          cp -R xa-mass-engine/target/surefire-reports xa-mass-engine/target/surefire-reports-kernel-convergence
       - name: Upload Maven test reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: maven-scheduling-core-reports
           path: |
-            **/target/surefire-reports/**
+            **/target/surefire-reports*/**
             **/target/failsafe-reports/**
             logs/**
           if-no-files-found: warn
@@ -125,6 +147,8 @@ jobs:
           -Dtest=ServerSchedulingE2eSuite
           -Dsurefire.failIfNoSpecifiedTests=false
           test
+      - name: Verify server scheduling suite executed real testcases
+        run: .github/scripts/assert-surefire-executed-tests.sh xa-mass-server/target/surefire-reports
       - name: Upload Maven test reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -165,6 +189,8 @@ jobs:
           -Dtest=ServerLifecycleResultConvergenceSuite
           -Dsurefire.failIfNoSpecifiedTests=false
           test
+      - name: Verify lifecycle suite executed real testcases
+        run: .github/scripts/assert-surefire-executed-tests.sh xa-mass-server/target/surefire-reports
       - name: Upload Maven test reports
         if: always()
         uses: actions/upload-artifact@v4

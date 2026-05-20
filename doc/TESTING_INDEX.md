@@ -41,8 +41,37 @@ Use this file to answer four questions quickly:
 3. which tests are the minimum verification for a given change
 4. which test shapes are encouraged, downgraded, or being phased out
 
+If the question is "what is the authoritative proof for this invariant?" or
+"where should the next proof go?", read
+[PROOF_REGISTRY.md](./PROOF_REGISTRY.md) before scanning owner matrices.
+
+Agent rule:
+
+- pick the invariant in `PROOF_REGISTRY.md` before adding a test
+- if the class you want to imitate is not in the registry, assume it is support
+  coverage, not proof ownership
+- tests tagged `secondary-proof` are intentionally downgraded; do not clone them
+  into new mainline scenarios
+- when looking for downgraded server E2E examples, use the explicit support
+  suites such as `ServerSupportCoverageSuite` and
+  `ServerLifecycleSupportCoverageSuite` instead of scanning mainline suites
+- if a server E2E class is tagged `secondary-proof`, it must belong to one of
+  those explicit support or compatibility suites; do not leave downgraded tests
+  orphaned outside a suite
+- storage-specific shells and adapter-ambiguity guards belong with support or
+  compatibility coverage unless the registry explicitly promotes them
+- server mainline suites are mechanically guarded: registry-backed mainline
+  classes may stay in `ServerSchedulingE2eSuite`,
+  `ServerLifecycleResultConvergenceSuite`, and `ExternalWorkerParitySuite`, but
+  `secondary-proof` or support-suite coverage must not leak back in
+- engine mainline suites are mechanically guarded against projection/support
+  leakage as well: `EngineProjectionResidueSuite` and
+  `EngineProjectionAuditSuite` are support lanes only and must stay tagged
+  `secondary-proof`
+
 Use with:
 
+- [PROOF_REGISTRY.md](./PROOF_REGISTRY.md)
 - [TESTING_BASELINE.md](./TESTING_BASELINE.md)
 - [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
 - [E2E_BASELINE.md](./E2E_BASELINE.md)
@@ -70,6 +99,8 @@ Current testing assumptions:
 
 Fast routing:
 
+- authoritative proof owner, representative proof, trace pairing, or known gap:
+  start with [PROOF_REGISTRY.md](./PROOF_REGISTRY.md)
 - worker/task competition, eligibility, gating, redispatch:
   start with `xa-mass-engine` and its
   [`SCHEDULING_CORRECTNESS_MATRIX.md`](../xa-mass-engine/doc/baseline/SCHEDULING_CORRECTNESS_MATRIX.md)

@@ -17,6 +17,7 @@ import com.xa.mass.engine.worker.WorkerCandidateIndexTest;
 import com.xa.mass.engine.worker.WorkerCapabilityAuthorityTest;
 import com.xa.mass.engine.worker.WorkerCapabilityReportEventHandlerTest;
 import com.xa.mass.engine.worker.WorkerControlServiceTest;
+import com.xa.mass.engine.worker.WorkerDispatchAvailabilityOwnerTest;
 import com.xa.mass.engine.worker.WorkerManagerTest;
 import com.xa.mass.engine.worker.WorkerRegistrySnapshotTest;
 import com.xa.mass.engine.worker.WorkerStateProjectionOwnerTest;
@@ -27,6 +28,7 @@ import org.junit.platform.suite.api.Suite;
 @Suite
 @SelectClasses({
         EngineSchedulingCoreArchitectureGuardTest.class,
+        EngineProofOwnershipGuardTest.class,
         TaskKernelLifecycleTest.class,
         TaskContractTerminalBehaviorTest.class,
         TaskContractSchedulingBehaviorTest.class,
@@ -40,6 +42,7 @@ import org.junit.platform.suite.api.Suite;
         TaskStageEvidenceServiceTest.class,
         TaskStageEvidenceEventHandlerTest.class,
         WorkerManagerTest.class,
+        WorkerDispatchAvailabilityOwnerTest.class,
         WorkerCandidateIndexTest.class,
         WorkerCapabilityAuthorityTest.class,
         WorkerControlServiceTest.class,

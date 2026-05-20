@@ -5,12 +5,13 @@ import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.TaskStateSnapshot;
 import com.xa.mass.runtime.api.RecentFinalWorkReceipt;
 import com.xa.mass.runtime.api.TaskWorkStats;
-import com.xa.mass.testing.chaos.support.CapturingExecutionEventSink;
+import com.xa.mass.testing.chaos.support.ChaosTraceArtifacts;
 import com.xa.mass.testing.chaos.support.ChaosReportWriter;
 import com.xa.mass.testing.chaos.support.ChaosRuntimeHarness;
 import com.xa.mass.testing.chaos.support.ChaosSupport;
 import com.xa.mass.testing.chaos.support.TaskOutcomeSnapshot;
 import com.xa.mass.testing.chaos.support.TraceEventAssertions;
+import com.xa.mass.trace.operator.TraceAnalyzeResponse;
 import com.xa.mass.trace.sink.ExecutionEventType;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
@@ -18,6 +19,7 @@ import org.java_websocket.handshake.ServerHandshake;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.Executors;
@@ -64,7 +66,8 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
         }
 
         private ChaosReport run() throws Exception {
-            CapturingExecutionEventSink traceSink = new CapturingExecutionEventSink();
+            ChaosTraceArtifacts traceArtifacts = ChaosTraceArtifacts.create(
+                    "sdk-websocket-late-result-after-lease-expiry-chaos");
             ChaosRuntimeHarness runtime = ChaosRuntimeHarness.createWebSocket(
                     new ChaosRuntimeHarness.WebSocketRuntimeConfig(
                             ENDPOINT_PATH,
@@ -74,7 +77,7 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
                             config.leaseWatchdogIntervalSeconds(),
                             config.taskMessageLeaseSeconds()
                     ),
-                    traceSink
+                    traceArtifacts
             );
             LateResultWorkerDriver chaosWorker = null;
             LateResultWorkerDriver steadyWorker = null;
@@ -210,7 +213,7 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
                         "late stale result must not reopen the task");
                 ChaosSupport.require("ALL_MESSAGES_SUCCEEDED".equals(afterReplayOutcome.terminalReason()),
                         "late stale result must not change task terminal reason");
-                TraceEventAssertions.of(traceSink)
+                TraceEventAssertions.of(traceArtifacts.captureSink())
                         .forTask(task.getTaskId())
                         .requireMinTotalEvents(5)
                         .requireEventType(ExecutionEventType.LEASE_EXPIRED)
@@ -222,6 +225,13 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
                         )
                         .requireEventType(ExecutionEventType.TASK_TERMINAL_CLOSED)
                         .requireTerminalReason("ALL_MESSAGES_SUCCEEDED");
+                traceArtifacts.close();
+                List<TraceAnalyzeResponse> analyses = ChaosTraceAnalysisPlanner.analyze(
+                        traceArtifacts.outputDir(),
+                        ChaosTraceAnalysisPlanner.ChaosProofProfile.LATE_STALE_RESULT_REPLAY,
+                        task.getTaskId()
+                );
+                ChaosTraceAnalysisPlanner.requireAllOk(analyses);
 
                 Path reportPath = ChaosReportWriter.write("sdk-websocket-late-result-after-lease-expiry-chaos", Map.of(
                         "config", config.toMap(),
@@ -235,7 +245,14 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
                                 "taskMessageLeaseSeconds", config.taskMessageLeaseSeconds(),
                                 "finalReceiptRetryCount", finalReceipt.retryCount()
                         ),
-                        "trace", TraceEventAssertions.of(traceSink).summaryMap(task.getTaskId()),
+                        "trace", Map.of(
+                                "summary", TraceEventAssertions.of(traceArtifacts.captureSink()).summaryMap(task.getTaskId()),
+                                "jsonlPath", traceArtifacts.outputDir().toString(),
+                                "droppedCount", traceArtifacts.droppedCount(),
+                                "analyses", analyses.stream()
+                                        .map(SdkWebSocketLateResultAfterLeaseExpiryChaosRunner::analysisMap)
+                                        .toList()
+                        ),
                         "beforeReplay", terminalOutcome.toMap(),
                         "afterReplay", afterReplayOutcome.toMap(),
                         "workers", Map.of(
@@ -258,6 +275,7 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
                         reportPath
                 );
             } finally {
+                closeQuietly(traceArtifacts);
                 closeQuietly(chaosWorker);
                 closeQuietly(steadyWorker);
                 runtime.close();
@@ -560,5 +578,17 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
             // Best-effort shutdown only.
         }
     }
-}
 
+    private static Map<String, Object> analysisMap(TraceAnalyzeResponse response) {
+        return Map.of(
+                "scenarioId", response.scenarioId(),
+                "sourceId", response.taskId(),
+                "ok", response.ok(),
+                "eventCount", response.eventCount(),
+                "eventTypeCounts", response.eventTypeCounts(),
+                "issues", response.issues().stream()
+                        .map(issue -> Map.of("code", issue.code(), "message", issue.message()))
+                        .toList()
+        );
+    }
+}

@@ -2,7 +2,9 @@ package com.xa.mass.engine.stage;
 
 import com.xa.mass.engine.util.TraceEventLogger;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -28,6 +30,22 @@ public final class TaskStageEvidenceService {
         TaskStageEvidenceResult result = stageEvidenceOwner.applyEvidence(evidence);
         traceEventLogger.taskStageEvidenceApplied(result);
         return result;
+    }
+
+    public TaskStageEvidenceResult applyEvidence(String taskId,
+                                                 String messageId,
+                                                 String stageName,
+                                                 long stageVersion,
+                                                 String stageStatus,
+                                                 String detail,
+                                                 Instant observedAt,
+                                                 Map<String, Object> attributes) {
+        return applyEvidence(TaskStageEvidence.builder(taskId, messageId, stageName, stageVersion)
+                .stageStatus(stageStatus)
+                .detail(detail)
+                .observedAt(observedAt)
+                .attributes(attributes)
+                .build());
     }
 
     public Optional<TaskStageProjection> projection(String taskId, String messageId, String stageName) {

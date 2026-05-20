@@ -9,6 +9,7 @@ import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.engine.model.TaskStateValidationResult;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -41,7 +42,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
+@Tag("secondary-proof")
 class H2ExternalWorkerPollingApiIntegrationTest extends ProjectionSampleE2eTest {
+
+    /**
+     * Support-only storage compatibility coverage.
+     *
+     * <p>This validates external-worker polling against a JDBC/H2 backend. Keep
+     * it out of mainline parity or scheduling proof chains.
+     */
 
     private static final int WEBSOCKET_PORT = findFreePort();
     private static final String JDBC_URL = isolatedH2JdbcUrl("external_polling");

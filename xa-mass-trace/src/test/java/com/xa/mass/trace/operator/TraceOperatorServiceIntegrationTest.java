@@ -189,6 +189,34 @@ class TraceOperatorServiceIntegrationTest {
     }
 
     @Test
+    void analyzeRunsLateStaleResultReplayScenarioAgainstCanonicalSinkOutput() throws Exception {
+        writeLateStaleResultReplayTrace(tempDir, "task-late-stale-replay", true);
+        awaitJsonlFiles(tempDir, 1);
+
+        TraceAnalyzeResponse response = operatorService.analyze(
+                new TraceAnalyzeRequest(tempDir.toString(), "late-stale-result-replay", "task-late-stale-replay"));
+
+        assertTrue(response.ok(), response.issues().toString());
+        assertEquals("late-stale-result-replay", response.scenarioId());
+        assertEquals("task-late-stale-replay", response.taskId());
+        assertEquals(1L, response.eventTypeCounts().get("CALLBACK_IGNORED_LATE"));
+    }
+
+    @Test
+    void analyzeRunsAllFailedTerminalConvergenceScenarioAgainstCanonicalSinkOutput() throws Exception {
+        writeAllFailedTerminalTrace(tempDir, "task-all-failed");
+        awaitJsonlFiles(tempDir, 1);
+
+        TraceAnalyzeResponse response = operatorService.analyze(
+                new TraceAnalyzeRequest(tempDir.toString(), "all-failed-terminal-convergence", "task-all-failed"));
+
+        assertTrue(response.ok(), response.issues().toString());
+        assertEquals("all-failed-terminal-convergence", response.scenarioId());
+        assertEquals("task-all-failed", response.taskId());
+        assertEquals(1L, response.eventTypeCounts().get("TASK_TERMINAL_CLOSED"));
+    }
+
+    @Test
     void singleMessageSuccessScenarioFailsWhenTerminalPrecedesCallback() throws Exception {
         writeTerminalBeforeCallbackTrace(tempDir, "task-bad-sequence");
         awaitJsonlFiles(tempDir, 1);
@@ -236,6 +264,19 @@ class TraceOperatorServiceIntegrationTest {
 
         assertTrue(response.ok(), response.issues().toString());
         assertEquals("assignment-retry-redispatch", response.scenarioId());
+    }
+
+    @Test
+    void analyzeRunsLeaseExpiryRedispatchScenarioAgainstCanonicalSinkOutput() throws Exception {
+        writeLeaseExpiryRedispatchTrace(tempDir, "task-lease-expiry-redispatch");
+        awaitJsonlFiles(tempDir, 1);
+
+        TraceAnalyzeResponse response = operatorService.analyze(
+                new TraceAnalyzeRequest(tempDir.toString(), "lease-expiry-redispatch", "task-lease-expiry-redispatch"));
+
+        assertTrue(response.ok(), response.issues().toString());
+        assertEquals("lease-expiry-redispatch", response.scenarioId());
+        assertEquals(1L, response.eventTypeCounts().get("LEASE_EXPIRED"));
     }
 
     @Test
@@ -398,6 +439,22 @@ class TraceOperatorServiceIntegrationTest {
     }
 
     @Test
+    void leaseExpiryRedispatchScenarioFailsWhenTakeoverNeverBindsAfterExpiry() throws Exception {
+        writeLeaseExpiryRedispatchTrace(tempDir, "task-bad-lease-expiry-redispatch", false);
+        awaitJsonlFiles(tempDir, 1);
+
+        TraceAnalyzeResponse response = operatorService.analyze(
+                new TraceAnalyzeRequest(tempDir.toString(),
+                        "lease-expiry-redispatch",
+                        "task-bad-lease-expiry-redispatch"));
+
+        assertFalse(response.ok());
+        assertTrue(response.issues().stream()
+                .anyMatch(issue -> "MISSING_BINDING_AROUND_EXPIRY".equals(issue.code())
+                        || "MISSING_INITIAL_AND_REDISPATCH_BINDINGS".equals(issue.code())));
+    }
+
+    @Test
     void capacityReservationScenarioFailsWithoutCapacityRejection() throws Exception {
         writeLoadAwareWorkerSelectionTrace(tempDir, "task-missing-capacity-rejection");
         awaitJsonlFiles(tempDir, 1);
@@ -509,12 +566,30 @@ class TraceOperatorServiceIntegrationTest {
     }
 
     @Test
+    void lateStaleResultReplayScenarioFailsWhenReplayIsRejectedAsMissingLease() throws Exception {
+        writeLateStaleResultReplayTrace(tempDir, "task-bad-late-stale-replay", false);
+        awaitJsonlFiles(tempDir, 1);
+
+        TraceAnalyzeResponse response = operatorService.analyze(
+                new TraceAnalyzeRequest(tempDir.toString(), "late-stale-result-replay", "task-bad-late-stale-replay"));
+
+        assertFalse(response.ok());
+        assertTrue(response.issues().stream()
+                .anyMatch(issue -> "MISSING_LATE_OR_DUPLICATE_REPLAY_SUPPRESSION".equals(issue.code())));
+        assertTrue(response.issues().stream()
+                .anyMatch(issue -> "UNEXPECTED_CALLBACK_REJECTED_NO_ACTIVE_LEASE".equals(issue.code())));
+    }
+
+    @Test
     void scenarioRegistryStaysAvailableThroughOperatorService() {
         assertTrue(operatorService.scenarioIds().contains("single-message-success"));
+        assertTrue(operatorService.scenarioIds().contains("all-failed-terminal-convergence"));
         assertTrue(operatorService.scenarioIds().contains("duplicate-callback-replay"));
+        assertTrue(operatorService.scenarioIds().contains("late-stale-result-replay"));
         assertTrue(operatorService.scenarioIds().contains("assignment-success-binding"));
         assertTrue(operatorService.scenarioIds().contains("assignment-min-worker-gate"));
         assertTrue(operatorService.scenarioIds().contains("assignment-retry-redispatch"));
+        assertTrue(operatorService.scenarioIds().contains("lease-expiry-redispatch"));
         assertTrue(operatorService.scenarioIds().contains("load-aware-worker-selection"));
         assertTrue(operatorService.scenarioIds().contains("capacity-reservation-under-concurrency"));
         assertTrue(operatorService.scenarioIds().contains("background-worker-sharing"));
@@ -588,6 +663,129 @@ class TraceOperatorServiceIntegrationTest {
                     .outcome(true, null, "duplicate callback suppressed")
                     .attrs(Map.of("reason", "duplicate callback suppressed", "source", "TaskManager"))
                     .build());
+        }
+    }
+
+    private void writeLateStaleResultReplayTrace(Path outputDir,
+                                                 String taskId,
+                                                 boolean suppressAsLate) throws Exception {
+        try (JsonlExecutionEventSink sink = new JsonlExecutionEventSink(outputDir.toString(), 128, 10_000)) {
+            sink.emit(ExecutionEvent.builder()
+                    .timestamp(Instant.parse("2026-05-20T00:00:00Z"))
+                    .eventType(ExecutionEventType.TASK_STATUS_TRANSITION)
+                    .traceId("trace-late-stale")
+                    .identity(identity -> identity.taskId(taskId))
+                    .transition("READY", "RUNNING", "assignment-success")
+                    .attrs(Map.of("reason", "assignment-success", "source", "TaskManager"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .timestamp(Instant.parse("2026-05-20T00:00:01Z"))
+                    .eventType(ExecutionEventType.LEASE_EXPIRED)
+                    .traceId("trace-late-stale")
+                    .identity(identity -> identity.taskId(taskId).messageId("msg-1").attemptId("attempt-1").workerId("worker-chaos"))
+                    .attrs(Map.of("reason", "lease-expired", "source", "LeaseExpireWatchdog"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .timestamp(Instant.parse("2026-05-20T00:00:02Z"))
+                    .eventType(ExecutionEventType.TASK_WORK_RETRY_RESET)
+                    .traceId("trace-late-stale")
+                    .identity(identity -> identity.taskId(taskId).messageId("msg-1").attemptId("attempt-1"))
+                    .transition("EXPIRED", "INIT", "retry reset after expiry")
+                    .attrs(Map.of("reason", "retry reset after expiry", "source", "TaskResultService"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .timestamp(Instant.parse("2026-05-20T00:00:03Z"))
+                    .eventType(ExecutionEventType.CALLBACK_ACCEPTED)
+                    .traceId("trace-late-stale")
+                    .identity(identity -> identity.taskId(taskId).messageId("msg-1").attemptId("attempt-2").workerId("worker-steady"))
+                    .outcome(true, null, "accepted takeover result")
+                    .attrs(Map.of("reason", "accepted takeover result", "source", "TaskResultService"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .timestamp(Instant.parse("2026-05-20T00:00:04Z"))
+                    .eventType(ExecutionEventType.TASK_TERMINAL_CLOSED)
+                    .traceId("trace-late-stale")
+                    .identity(identity -> identity.taskId(taskId))
+                    .transition("RUNNING", "TERMINAL", "ALL_MESSAGES_SUCCEEDED")
+                    .attrs(Map.of("reason", "all work converged", "source", "TaskManager", "terminalReason", "ALL_MESSAGES_SUCCEEDED"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .timestamp(Instant.parse("2026-05-20T00:00:05Z"))
+                    .eventType(suppressAsLate
+                            ? ExecutionEventType.CALLBACK_IGNORED_LATE
+                            : ExecutionEventType.CALLBACK_REJECTED_NO_ACTIVE_LEASE)
+                    .traceId("trace-late-stale")
+                    .identity(identity -> identity.taskId(taskId).messageId("msg-1").attemptId("attempt-1").workerId("worker-chaos"))
+                    .outcome(true, null, suppressAsLate
+                            ? "late stale callback suppressed"
+                            : "stale callback rejected as missing lease")
+                    .attrs(Map.of(
+                            "reason", suppressAsLate
+                                    ? "late stale callback suppressed"
+                                    : "stale callback rejected as missing lease",
+                            "source", "TaskResultService"))
+                    .build());
+        }
+    }
+
+    private void writeLeaseExpiryRedispatchTrace(Path outputDir, String taskId) throws Exception {
+        writeLeaseExpiryRedispatchTrace(outputDir, taskId, true);
+    }
+
+    private void writeLeaseExpiryRedispatchTrace(Path outputDir,
+                                                 String taskId,
+                                                 boolean includeTakeoverBinding) throws Exception {
+        try (JsonlExecutionEventSink sink = new JsonlExecutionEventSink(outputDir.toString(), 128, 10_000)) {
+            sink.emit(ExecutionEvent.builder()
+                    .timestamp(Instant.parse("2026-05-20T00:10:00Z"))
+                    .eventType(ExecutionEventType.DISPATCH_BINDING_SUMMARY)
+                    .traceId("trace-lease-expiry-redispatch")
+                    .identity(identity -> identity.taskId(taskId).workerId("worker-chaos").messageId("msg-1").attemptId("attempt-1"))
+                    .outcome(true, null, "initial assignment bound")
+                    .attrs(Map.of("reason", "initial assignment bound", "source", "SimpleTaskDispatchBinder", "result", "SUCCESS"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .timestamp(Instant.parse("2026-05-20T00:10:01Z"))
+                    .eventType(ExecutionEventType.ASSIGNMENT_SUMMARY)
+                    .traceId("trace-lease-expiry-redispatch")
+                    .identity(identity -> identity.taskId(taskId).workerId("worker-chaos"))
+                    .outcome(true, null, "initial assignment succeeded")
+                    .attrs(Map.of("reason", "initial assignment succeeded", "source", "TaskWorkerAssignListener", "result", "SUCCESS"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .timestamp(Instant.parse("2026-05-20T00:10:02Z"))
+                    .eventType(ExecutionEventType.LEASE_EXPIRED)
+                    .traceId("trace-lease-expiry-redispatch")
+                    .identity(identity -> identity.taskId(taskId).workerId("worker-chaos").messageId("msg-1").attemptId("attempt-1"))
+                    .outcome(false, null, "leased work expired")
+                    .attrs(Map.of("reason", "leased work expired", "source", "LeaseExpireWatchdog", "result", "INIT"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .timestamp(Instant.parse("2026-05-20T00:10:03Z"))
+                    .eventType(ExecutionEventType.TASK_WORK_ATTEMPT_CLOSED)
+                    .traceId("trace-lease-expiry-redispatch")
+                    .identity(identity -> identity.taskId(taskId).workerId("worker-chaos").messageId("msg-1").attemptId("attempt-1"))
+                    .outcome(true, null, "lease expiry closed the first attempt")
+                    .attrs(Map.of("reason", "lease expiry closed the first attempt", "source", "TaskManager", "result", "SUCCESS"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .timestamp(Instant.parse("2026-05-20T00:10:04Z"))
+                    .eventType(ExecutionEventType.ASSIGNMENT_SUMMARY)
+                    .traceId("trace-lease-expiry-redispatch")
+                    .identity(identity -> identity.taskId(taskId).workerId("worker-steady"))
+                    .outcome(true, null, "redispatch assignment succeeded")
+                    .attrs(Map.of("reason", "redispatch assignment succeeded", "source", "TaskWorkerAssignListener", "result", "SUCCESS"))
+                    .build());
+            if (includeTakeoverBinding) {
+                sink.emit(ExecutionEvent.builder()
+                        .timestamp(Instant.parse("2026-05-20T00:10:05Z"))
+                        .eventType(ExecutionEventType.DISPATCH_BINDING_SUMMARY)
+                        .traceId("trace-lease-expiry-redispatch")
+                        .identity(identity -> identity.taskId(taskId).workerId("worker-steady").messageId("msg-1").attemptId("attempt-2"))
+                        .outcome(true, null, "redispatch takeover bound")
+                        .attrs(Map.of("reason", "redispatch takeover bound", "source", "SimpleTaskDispatchBinder", "result", "SUCCESS"))
+                        .build());
+            }
         }
     }
 
@@ -1600,9 +1798,60 @@ class TraceOperatorServiceIntegrationTest {
         }
         try (var files = Files.list(outputDir)) {
             long count = files
-                    .filter(path -> path.getFileName().toString().endsWith(".jsonl"))
-                    .count();
+                .filter(path -> path.getFileName().toString().endsWith(".jsonl"))
+                .count();
             assertTrue(count >= minFiles, "Expected at least " + minFiles + " trace jsonl files but found " + count);
+        }
+    }
+
+    private void writeAllFailedTerminalTrace(Path outputDir, String taskId) throws Exception {
+        try (JsonlExecutionEventSink sink = new JsonlExecutionEventSink(outputDir.toString(), 128, 10_000)) {
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.CALLBACK_ACCEPTED)
+                    .identity(identity -> identity.taskId(taskId).messageId("msg-a"))
+                    .attrs(attrs(
+                            "trigger", "HANDLE_TASK_RESULT",
+                            "source", "TaskManager",
+                            "reason", "callback accepted",
+                            "result", "SUCCESS"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.TASK_WORK_LOGICALLY_FINAL)
+                    .identity(identity -> identity.taskId(taskId).messageId("msg-a"))
+                    .attrs(attrs(
+                            "trigger", "HANDLE_TASK_RESULT",
+                            "source", "TaskManager",
+                            "reason", "work item reached stable failure",
+                            "result", "SUCCESS"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.CALLBACK_ACCEPTED)
+                    .identity(identity -> identity.taskId(taskId).messageId("msg-b"))
+                    .attrs(attrs(
+                            "trigger", "HANDLE_TASK_RESULT",
+                            "source", "TaskManager",
+                            "reason", "callback accepted",
+                            "result", "SUCCESS"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.TASK_WORK_LOGICALLY_FINAL)
+                    .identity(identity -> identity.taskId(taskId).messageId("msg-b"))
+                    .attrs(attrs(
+                            "trigger", "HANDLE_TASK_RESULT",
+                            "source", "TaskManager",
+                            "reason", "work item reached stable failure",
+                            "result", "SUCCESS"))
+                    .build());
+            sink.emit(ExecutionEvent.builder()
+                    .eventType(ExecutionEventType.TASK_TERMINAL_CLOSED)
+                    .identity(identity -> identity.taskId(taskId))
+                    .transition("RUNNING", "TERMINAL", "all work items finalized")
+                    .attrs(attrs(
+                            "trigger", "RESOLVE_TASK_STATE",
+                            "source", "TaskManager",
+                            "reason", "all work items finalized",
+                            "terminalReason", "ALL_MESSAGES_FAILED"))
+                    .build());
         }
     }
 

@@ -1,14 +1,11 @@
 package com.xa.mass.server.e2e.results;
 
-import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
-import com.xa.mass.server.testutil.WsFrameTestSupport;
+import com.xa.mass.server.e2e.support.ManualAckWebSocketWorkerClient;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.http.HttpMethod;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -17,8 +14,6 @@ import org.springframework.test.context.DynamicPropertySource;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -46,7 +41,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 public class TaskApiMixedResultsIntegrationTest extends AbstractSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
-    private static final Gson GSON = new Gson();
 
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {
@@ -56,12 +50,12 @@ public class TaskApiMixedResultsIntegrationTest extends AbstractSampleE2eTest {
     @Test
     void taskWithOneSuccessAndOneFailureClosesToTerminalWithMixedReason() throws Exception {
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        ManualAckWebSocketClient firstClient = connectClientWithRetries(
-                () -> new ManualAckWebSocketClient(wsUri, "it-worker-0"),
+        ManualAckWebSocketWorkerClient firstClient = connectClientWithRetries(
+                () -> new ManualAckWebSocketWorkerClient(wsUri, "it-worker-0"),
                 "First sample worker failed to connect"
         );
-        ManualAckWebSocketClient secondClient = connectClientWithRetries(
-                () -> new ManualAckWebSocketClient(wsUri, "it-worker-1"),
+        ManualAckWebSocketWorkerClient secondClient = connectClientWithRetries(
+                () -> new ManualAckWebSocketWorkerClient(wsUri, "it-worker-1"),
                 "Second sample worker failed to connect"
         );
         try {
@@ -92,9 +86,8 @@ public class TaskApiMixedResultsIntegrationTest extends AbstractSampleE2eTest {
             assertNotNull(firstDispatch);
             assertNotNull(secondDispatch);
 
-            firstClient.sendResult(firstDispatch, "SUCCESS", "mixed-ok");
-
-            secondClient.sendResult(secondDispatch, "FAILED", "mixed-fail");
+            firstClient.sendSuccess(firstDispatch, "mixed-ok");
+            secondClient.sendFailure(secondDispatch, "mixed-fail");
 
             RuntimeTaskSnapshot terminalSnapshot = waitForRuntimeTaskSnapshot(taskId, "TERMINAL", 20, 250L);
             assertEquals("TERMINAL", terminalSnapshot.task().get("status"));
@@ -110,43 +103,5 @@ public class TaskApiMixedResultsIntegrationTest extends AbstractSampleE2eTest {
             secondClient.disconnect();
         }
     }
-
-    private static final class ManualAckWebSocketClient extends SampleWorkerWebSocketClient {
-        private final BlockingQueue<JsonObject> taskQueue = new LinkedBlockingQueue<>();
-
-        ManualAckWebSocketClient(URI uri, String workerId) {
-            super(uri, workerId);
-        }
-
-        @Override
-        public void onMessage(String message) {
-            try {
-                JsonObject frame = WsFrameTestSupport.parse(message);
-                if (frame != null && WsFrameTestSupport.isTask(frame) && !WsFrameTestSupport.isResponse(frame)) {
-                    taskQueue.offer(frame);
-                    return;
-                }
-            } catch (Exception ignored) {
-                // Keep waiting.
-            }
-            super.onMessage(message);
-        }
-
-        JsonObject awaitTask(long timeout, TimeUnit unit) throws InterruptedException {
-            return taskQueue.poll(timeout, unit);
-        }
-
-        void sendResult(JsonObject taskFrame, String status, String detail) throws Exception {
-            sendMessage(WsFrameTestSupport.buildTaskResult(
-                    WsFrameTestSupport.messageId(taskFrame),
-                    WsFrameTestSupport.project(taskFrame),
-                    getWorkerId(),
-                    WsFrameTestSupport.taskId(taskFrame),
-                    status,
-                    detail
-            ));
-        }
-    }
 }
-
 

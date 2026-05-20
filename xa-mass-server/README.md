@@ -68,6 +68,17 @@ Current host security matrix:
 | `WORKER_REGISTER` | external worker credential | `WORKER / REGISTER` | `worker:poll` + worker binding + event/project scope |
 | `WORKER_ONLINE` / `WORKER_HEARTBEAT` / `WORKER_OFFLINE` / `WORKER_POLL` | external worker credential | `WORKER / POLL` | `worker:poll` + worker binding |
 | `WORKER_SUBMIT_RESULT` | external worker credential | `WORKER / REPORT_RESULT` | `worker:poll` + worker binding |
+| `WORKER_REPORT_CAPABILITY` / `WORKER_REPORT_STATE` / `WORKER_ACK_COMMAND` | external worker credential | `WORKER / POLL` | `worker:poll` + worker binding, plus capability event scope on capability reports |
+
+Current worker-state contract note:
+
+- `report-state(DRAINING)` disables future dispatches to that worker in current
+  mainline, but it does not revoke or interrupt already in-flight work
+- acknowledging a `DRAIN` worker command to an accepted state converges to the
+  same dispatch gate truth
+- current re-enable rule is explicit: dispatch stays disabled across failed or
+  expired `DRAIN` command outcomes and resumes only after a later
+  `report-state(AVAILABLE)`
 
 ## Port Model
 
@@ -328,16 +339,28 @@ Mainline stance:
 - Boot-shell E2E is the representative proof surface for host-side mainline
   behavior, including `project`, `submitter`, `worker`, task shell, dispatch
   wiring, and result convergence
+- project-level authoritative-vs-representative proof ownership lives in
+  [../doc/PROOF_REGISTRY.md](../doc/PROOF_REGISTRY.md); use it before adding
+  another server E2E class for a scheduling or lifecycle invariant
 - the full scheduling-correctness matrix belongs engine-first; server E2E keeps
   representative assignment, polling, routing, and reuse scenarios
 - `ServerSchedulingE2eSuite` is runtime-first and representative; projection-heavy
-  scenarios live in `ServerProjectionResidueSuite`
+  scenarios live in `ServerProjectionResidueSuite`, and generic smoke/support
+  cases tagged `secondary-proof` stay out of the mainline suite
 - `ServerLifecycleResultConvergenceSuite` asserts task aggregate plus
   `TaskWorkRuntime` stats/lease truth; diagnostic projection/audit cases live in
-  `ServerProjectionAuditSuite`
+  `ServerProjectionAuditSuite`, while low-standard lifecycle smoke stays tagged
+  `secondary-proof`
+- `ServerSupportCoverageSuite`, `ServerLifecycleSupportCoverageSuite`, and
+  `ServerStorageCompatibilitySuite` are the explicit homes for downgraded
+  smoke/support coverage; if a server E2E class lives there, treat it as shell
+  confidence or compatibility coverage, not proof ownership
 - `ServerMainlineE2eArchitectureGuardTest` is included in the mainline
   scheduling and lifecycle suites to reject projection-first helpers and
   implicit `var` declarations
+- `ServerProofOwnershipGuardTest` keeps mainline suite membership registry-backed
+  and blocks `secondary-proof` or support-suite coverage from drifting back
+  into scheduling, lifecycle, or parity proof suites
 - server tests must not treat `com.xa.mass.base.model.*` as a stable host-shell
   API contract
 - integration suites are grouped by domain under `src/test/java/com/xa/mass/server/e2e`
@@ -371,7 +394,7 @@ mvn --% -pl xa-mass-server -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegra
 Transport-focused regression command:
 
 ```bash
-mvn --% -pl xa-mass-server -am -Dtest=SampleWorkerSocketClientTest,SocketClientStarterTest,WebSocketClientStarterTest,TransportChannelWiringIntegrationTest,NodeWebSocketWorkerBlackBoxIntegrationTest,NodeSocketWorkerBlackBoxIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn --% -pl xa-mass-server -am -Dtest=SampleWorkerSocketClientTest,SocketClientStarterTest,WebSocketClientStarterTest,ExternalWorkerPublicContractTraceObservedIntegrationTest,NodeWebSocketWorkerBlackBoxIntegrationTest,NodeSocketWorkerBlackBoxIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Cross-language sample black-box regression:
@@ -383,7 +406,9 @@ Cross-language sample black-box regression:
 The script runs `ExternalWorkerParitySuite`, which covers Java and Node workers
 across polling, WebSocket, and socket adapters. The suite asserts task
 aggregate state, runtime stats, active-lease release, and terminal reason first;
-worker output/read-model assertions only support payload parity checks.
+worker output/read-model assertions only support payload parity checks. The
+script also verifies that the suite produced real surefire testcase execution,
+so suite-wrapper `tests=0` XML cannot silently pass as the black-box gate.
 
 Covered areas:
 
@@ -392,7 +417,8 @@ Covered areas:
 - `e2e/assignment`: delayed worker availability and multi-task assignment behavior
 - `CrawlerPullWorkerSdkRegistrationIntegrationTest`: SDK-created crawler worker resource, pull connect/poll/result, and terminal read-model verification without sample worker JSON
 - `e2e/audit`: diagnostic task-state validation and terminal metadata consistency through the real runtime path
-- `e2e/assignment`: targeted worker debug task behavior and disconnect-after-result behavior
+- `e2e/assignment`: targeted worker debug, adapter-ambiguity, and storage-compat
+  support coverage
 - `WebSocketClientStarterTest`: auto-start and idempotent startup behavior
 - `SocketClientStarterTest`: adapter-aware socket starter wiring and bound-port resolution
 - `SampleWorkerSocketClientTest`: canonical socket dispatch handling, task-result write-back, and disconnect-after-result behavior
@@ -407,33 +433,53 @@ High-signal classes:
 - guardrail:
   - `ServerMainlineE2eArchitectureGuardTest`
 - lifecycle:
-  - `TaskApiIntegrationTest`
   - `TaskApiLifecycleGuardsIntegrationTest`
   - `TaskApiPauseCompletionIntegrationTest`
   - `TaskApiResumeAndCompleteIntegrationTest`
   - `TaskApiTerminateRunningIntegrationTest`
 - assignment, routing, and capacity:
   - `TaskApiMultiTaskAssignmentIntegrationTest`
+  - `TaskApiMinimumWorkerGateTraceObservedIntegrationTest`
+  - `TaskApiDelayedWorkerAvailabilityTraceObservedIntegrationTest`
+  - `TaskApiRetryRedispatchTraceObservedIntegrationTest`
   - `TaskApiDelayedWorkerAvailabilityIntegrationTest`
   - `TaskApiMinimumWorkerGateIntegrationTest`
+  - `TaskApiSingleWorkerReuseTraceObservedIntegrationTest`
   - `TaskApiWorkerAttributeRoutingIntegrationTest`
   - `TaskApiWorkerWithoutContextIntegrationTest`
   - `TaskApiSingleWorkerReuseIntegrationTest`
-  - `TransportChannelWiringIntegrationTest`
-  - `PollingWorkerTaskFlowIntegrationTest`
   - `CrawlerPullWorkerSdkRegistrationIntegrationTest`
 - results and idempotence:
+  - `TaskApiAllMessagesFailedTraceObservedIntegrationTest`
+  - `TaskApiCallbackReplayTraceObservedIntegrationTest`
   - `TaskApiFailureResultIntegrationTest`
+  - `TaskApiMixedResultsTraceObservedIntegrationTest`
   - `TaskApiMixedResultsIntegrationTest`
   - `TaskApiAllMessagesFailedIntegrationTest`
 - external worker black-box:
   - `ExternalWorkerParitySuite`
+  - `ExternalWorkerPublicContractTraceObservedIntegrationTest`
+  - `ExternalWorkerPollingApiIntegrationTest`
   - `NodePollingWorkerBlackBoxIntegrationTest`
   - `NodeWebSocketWorkerBlackBoxIntegrationTest`
   - `NodeSocketWorkerBlackBoxIntegrationTest`
   - `JavaPollingWorkerBlackBoxIntegrationTest`
   - `JavaWebSocketWorkerBlackBoxIntegrationTest`
   - `JavaSocketWorkerBlackBoxIntegrationTest`
+- secondary/support only:
+  - `SdkTaskApiIntegrationTest`
+  - `TaskApiIntegrationTest`
+  - `TaskApiTargetedWorkerDebugIntegrationTest`
+  - `DevSampleWorkerLauncherIntegrationTest`
+  - `ExternalWorkerRealtimeRegistrationIntegrationTest`
+  - `H2ExternalWorkerPollingApiIntegrationTest`
+  - `PostgresExternalWorkerPollingApiIntegrationTest`
+  - `CatalogApiIntegrationTest`
+  - `SdkTaskApiIntegrationTest` is retained only for support-level unified
+    task API and submitter-credential shell coverage; it is not a lifecycle or
+    scheduling mainline proof class
+  - `TaskApiIntegrationTest` is retained only for support-level workload-class
+    shell coverage; it is not a lifecycle/result mainline proof class
 - console and audit:
   - `ControlConsoleRoutingIntegrationTest`
 - explicit projection residue/audit:
@@ -441,8 +487,6 @@ High-signal classes:
   - `TaskApiTerminateReuseIntegrationTest`
   - `TaskApiCallbackReplayIntegrationTest`
   - `TaskApiStateValidationIntegrationTest`
-- targeted worker debug:
-  - `TaskApiTargetedWorkerDebugIntegrationTest`
 
 Fixture rules:
 
@@ -461,3 +505,5 @@ Scheduling-proof note:
   re-selected, strengthen engine acceptance coverage first
 - add server E2E when the real risk is that HTTP/SDK/transport wiring changes
   the scheduling outcome
+- if the scenario also claims canonical trace visibility, pair it with the
+  invariant or scenario entry in [../doc/PROOF_REGISTRY.md](../doc/PROOF_REGISTRY.md)

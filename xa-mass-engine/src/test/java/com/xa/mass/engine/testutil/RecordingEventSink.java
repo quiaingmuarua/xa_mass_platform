@@ -4,15 +4,15 @@ import com.xa.mass.trace.sink.ExecutionEvent;
 import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.trace.sink.ExecutionEventType;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public final class RecordingEventSink implements ExecutionEventSink {
 
-    private final List<ExecutionEvent> events = new ArrayList<>();
+    private final List<ExecutionEvent> events = new CopyOnWriteArrayList<>();
 
     @Override
     public void emit(ExecutionEvent event) {

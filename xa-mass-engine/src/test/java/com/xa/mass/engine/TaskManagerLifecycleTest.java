@@ -22,9 +22,12 @@ import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.TaskResultRuntimeRow;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -36,15 +39,26 @@ import static com.xa.mass.engine.CompatibilityProjectionAwait.awaitVisibleTaskMe
 import static com.xa.mass.engine.CompatibilityProjectionAwait.awaitVisibleTaskMessageProjection;
 import static org.junit.jupiter.api.Assertions.*;
 
+@Tag("secondary-proof")
 class TaskManagerLifecycleTest {
 
     private InMemoryTaskStorage taskStorage;
     private ProjectionAwareTaskManager taskManager;
+    private List<ProjectionAwareTaskManager> managedTaskManagers;
 
     @BeforeEach
     void setUp() {
+        managedTaskManagers = new ArrayList<>();
         taskStorage = new InMemoryTaskStorage();
         taskManager = new ProjectionAwareTaskManager(taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
+        managedTaskManagers.add(taskManager);
+    }
+
+    @AfterEach
+    void tearDown() {
+        for (ProjectionAwareTaskManager manager : managedTaskManagers) {
+            manager.shutdown();
+        }
     }
 
     @Test
@@ -908,8 +922,13 @@ class TaskManagerLifecycleTest {
                     null
             ));
 
-            assertTrue(dispatchLatch.await(2, TimeUnit.SECONDS));
-            Thread.sleep(250);
+            awaitCondition(
+                    () -> dispatchEvents.get() >= 1,
+                    "coalesced delayed retry wakeup should publish one task dispatch request",
+                    10,
+                    TimeUnit.SECONDS);
+            assertEquals(0, dispatchLatch.getCount());
+            waitForNoAdditionalDispatchEvents(dispatchEvents, 1, TimeUnit.SECONDS);
 
             assertEquals(1, dispatchEvents.get());
             TaskDetailStore.TaskMessageProjection first = awaitVisibleTaskMessageProjection(
@@ -2358,8 +2377,13 @@ class TaskManagerLifecycleTest {
         assignRunningMessage(task, message);
 
         assertTrue(taskManager.expireLeasedWork(task.getTid(), message.messageId()));
-        assertEquals(TaskMessageProjectionStatus.EXPIRED,
-                taskManager.getVisibleTaskMessageProjection(task.getTid(), message.messageId()).status());
+        TaskDetailStore.TaskMessageProjection updated = awaitVisibleTaskMessageProjection(
+                taskManager,
+                task.getTid(),
+                message.messageId(),
+                TaskMessageProjectionStatus.EXPIRED
+        );
+        assertEquals(TaskMessageProjectionStatus.EXPIRED, updated.status());
     }
 
     @Test
@@ -2740,6 +2764,9 @@ class TaskManagerLifecycleTest {
         if (request == null) {
             throw new IllegalArgumentException("task request body is required");
         }
+        if (!managedTaskManagers.contains(manager)) {
+            managedTaskManagers.add(manager);
+        }
         TaskContract contract = request.getContract() != null ? request.getContract() : TaskContract.BATCH;
         Task task = manager.createTaskShell(request.toShellRequest(contract));
         if (request.getInputs() != null && !request.getInputs().isEmpty()) {
@@ -2957,7 +2984,14 @@ class TaskManagerLifecycleTest {
     }
 
     private static void awaitCondition(BooleanSupplier condition, String failureMessage) {
-        long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        awaitCondition(condition, failureMessage, 2, TimeUnit.SECONDS);
+    }
+
+    private static void awaitCondition(BooleanSupplier condition,
+                                       String failureMessage,
+                                       long timeout,
+                                       TimeUnit unit) {
+        long deadlineNanos = System.nanoTime() + unit.toNanos(timeout);
         while (System.nanoTime() < deadlineNanos) {
             if (condition.getAsBoolean()) {
                 return;
@@ -2970,6 +3004,23 @@ class TaskManagerLifecycleTest {
             }
         }
         assertTrue(condition.getAsBoolean(), failureMessage);
+    }
+
+    private static void waitForNoAdditionalDispatchEvents(AtomicInteger dispatchEvents,
+                                                          long quietPeriod,
+                                                          TimeUnit unit) {
+        long deadlineNanos = System.nanoTime() + unit.toNanos(quietPeriod);
+        int lastSeen = dispatchEvents.get();
+        while (System.nanoTime() < deadlineNanos) {
+            try {
+                Thread.sleep(10L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+            int current = dispatchEvents.get();
+            assertEquals(lastSeen, current, "delayed retry wakeup should be coalesced per task");
+        }
     }
 
     private static final class PagingAwareTaskStorage extends InMemoryTaskStorage {

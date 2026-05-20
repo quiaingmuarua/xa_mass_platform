@@ -159,7 +159,7 @@ public final class SdkPollingSchedulingSoakRunner {
             }
 
             long wallNanos = System.nanoTime() - startedNanos;
-            TraceProof traceProof = verifyTrace(traceSink, traceDir, workerLifecycle);
+            TraceProof traceProof = verifyTrace(traceSink, traceDir, taskPlans, workerLifecycle);
             SoakTraceProof traceProofSummary = traceProof.toSummary();
             invariantReport = verifyInvariants(
                     submittedTasks,
@@ -532,6 +532,7 @@ public final class SdkPollingSchedulingSoakRunner {
 
         private TraceProof verifyTrace(JsonlExecutionEventSink traceSink,
                                        Path traceDir,
+                                       List<SoakTaskPlan> taskPlans,
                                        WorkerLifecycleStats workerLifecycle) throws Exception {
             if (!config.traceEnabled()) {
                 return new TraceProof(false, null, null, null, 0L, List.of());
@@ -541,13 +542,19 @@ public final class SdkPollingSchedulingSoakRunner {
             TraceValidateResponse validate = traceOperator.validate(new TraceValidateRequest(traceDir.toString()));
             TraceStatsResponse stats = traceOperator.stats(new TraceStatsRequest(traceDir.toString(), null, null, null, 100));
             List<TraceAnalyzeResponse> analyses = new ArrayList<>();
-            if (config.requireLateWorkerWork()
-                    && present(workerLifecycle.lateWorkerProofTaskId())
-                    && present(workerLifecycle.lateWorkerProofWorkerId())) {
+            for (SoakTraceAnalysisPlanner.TraceAnalysisPlan plan : SoakTraceAnalysisPlanner.plan(
+                    taskPlans.stream()
+                            .map(taskPlan -> new SoakTraceAnalysisPlanner.SoakTaskPlanRef(
+                                    taskPlan.taskId(),
+                                    taskPlan.expectedTerminalReason()))
+                            .toList(),
+                    config.requireLateWorkerWork(),
+                    workerLifecycle.lateWorkerProofTaskId(),
+                    workerLifecycle.lateWorkerProofWorkerId())) {
                 analyses.add(traceOperator.analyze(new TraceAnalyzeRequest(
                         traceDir.toString(),
-                        "late-worker-backfill",
-                        workerLifecycle.lateWorkerProofTaskId() + "," + workerLifecycle.lateWorkerProofWorkerId()
+                        plan.scenarioId(),
+                        plan.sourceId()
                 )));
             }
             return new TraceProof(true, traceDir.toString(), validate, stats, dropped, List.copyOf(analyses));

@@ -12,6 +12,9 @@ import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.engine.worker.WorkerReachabilityView;
 import com.xa.mass.engine.worker.WorkerControlService;
+import com.xa.mass.engine.worker.WorkerDispatchAvailabilityOwner;
+import com.xa.mass.engine.worker.WorkerDispatchAvailabilityPolicy;
+import com.xa.mass.engine.worker.DefaultWorkerDispatchAvailabilityPolicy;
 import com.xa.mass.engine.worker.WorkerStateProjectionOwner;
 import com.xa.mass.engine.command.WorkerCommandLifecycleOwner;
 import com.xa.mass.engine.stage.TaskStageEvidenceOwner;
@@ -74,6 +77,9 @@ public class EngineConfig {
     private WorkerStorage workerStorage = new InMemoryWorkerStorage();
     private WorkerManager workerManager;
     private WorkerCommandLifecycleOwner workerCommandLifecycleOwner = new WorkerCommandLifecycleOwner();
+    private WorkerDispatchAvailabilityOwner workerDispatchAvailabilityOwner = new WorkerDispatchAvailabilityOwner();
+    private WorkerDispatchAvailabilityPolicy workerDispatchAvailabilityPolicy =
+            new DefaultWorkerDispatchAvailabilityPolicy();
     private WorkerStateProjectionOwner workerStateProjectionOwner = new WorkerStateProjectionOwner();
     private WorkerControlService workerControlService;
     private TaskStageEvidenceOwner taskStageEvidenceOwner = new TaskStageEvidenceOwner();
@@ -116,6 +122,8 @@ public class EngineConfig {
         this.workerStorage = source.workerStorage;
         this.workerManager = null;
         this.workerCommandLifecycleOwner = source.workerCommandLifecycleOwner;
+        this.workerDispatchAvailabilityOwner = source.workerDispatchAvailabilityOwner;
+        this.workerDispatchAvailabilityPolicy = source.workerDispatchAvailabilityPolicy;
         this.workerStateProjectionOwner = source.workerStateProjectionOwner;
         this.workerControlService = null;
         this.taskStageEvidenceOwner = source.taskStageEvidenceOwner;
@@ -277,7 +285,12 @@ public class EngineConfig {
 
     public WorkerManager getWorkerManager() {
         if (workerManager == null) {
-            workerManager = new WorkerManager(getWorkerStorage(), workerReachabilityView, workerLoadView);
+            workerManager = new WorkerManager(
+                    getWorkerStorage(),
+                    workerReachabilityView,
+                    workerLoadView,
+                    workerDispatchAvailabilityOwner
+            );
         }
         return workerManager;
     }
@@ -288,6 +301,8 @@ public class EngineConfig {
                     getWorkerManager(),
                     workerCommandLifecycleOwner,
                     workerStateProjectionOwner,
+                    workerDispatchAvailabilityOwner,
+                    workerDispatchAvailabilityPolicy,
                     getTraceEventLogger()
             );
         }
@@ -326,6 +341,29 @@ public class EngineConfig {
         }
         this.workerLoadView = workerLoadView;
         this.workerManager = null;
+        this.workerControlService = null;
+    }
+
+    public WorkerDispatchAvailabilityOwner getWorkerDispatchAvailabilityOwner() {
+        return workerDispatchAvailabilityOwner;
+    }
+
+    public void setWorkerDispatchAvailabilityOwner(WorkerDispatchAvailabilityOwner workerDispatchAvailabilityOwner) {
+        this.workerDispatchAvailabilityOwner = workerDispatchAvailabilityOwner != null
+                ? workerDispatchAvailabilityOwner
+                : new WorkerDispatchAvailabilityOwner();
+        this.workerManager = null;
+        this.workerControlService = null;
+    }
+
+    public WorkerDispatchAvailabilityPolicy getWorkerDispatchAvailabilityPolicy() {
+        return workerDispatchAvailabilityPolicy;
+    }
+
+    public void setWorkerDispatchAvailabilityPolicy(WorkerDispatchAvailabilityPolicy workerDispatchAvailabilityPolicy) {
+        this.workerDispatchAvailabilityPolicy = workerDispatchAvailabilityPolicy != null
+                ? workerDispatchAvailabilityPolicy
+                : new DefaultWorkerDispatchAvailabilityPolicy();
         this.workerControlService = null;
     }
 

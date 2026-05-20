@@ -22,12 +22,14 @@ Read this module first when you need one of these:
 Fast read order:
 
 1. [../doc/TRACE_CONTRACT.md](../doc/TRACE_CONTRACT.md)
-2. `src/main/java/com/xa/mass/trace/operator/TraceOperatorService.java`
-3. `src/main/java/com/xa/mass/trace/cli/XaMassTraceCli.java`
-4. `src/main/java/com/xa/mass/trace/query/TraceQueryBackend.java`
-5. `src/main/java/com/xa/mass/trace/query/DuckDbTraceQueryBackend.java`
-6. `src/test/java/com/xa/mass/trace/operator/TraceOperatorServiceIntegrationTest.java`
-7. `src/test/java/com/xa/mass/trace/cli/XaMassTraceCliIntegrationTest.java`
+2. [../doc/PROOF_REGISTRY.md](../doc/PROOF_REGISTRY.md) when the question is
+   which invariant or representative scenario a trace analyzer is proving
+3. `src/main/java/com/xa/mass/trace/operator/TraceOperatorService.java`
+4. `src/main/java/com/xa/mass/trace/cli/XaMassTraceCli.java`
+5. `src/main/java/com/xa/mass/trace/query/TraceQueryBackend.java`
+6. `src/main/java/com/xa/mass/trace/query/DuckDbTraceQueryBackend.java`
+7. `src/test/java/com/xa/mass/trace/operator/TraceOperatorServiceIntegrationTest.java`
+8. `src/test/java/com/xa/mass/trace/cli/XaMassTraceCliIntegrationTest.java`
 
 ## Role
 
@@ -82,14 +84,22 @@ Current operator/testing rule:
   trace proof surface
 - scenario diagnosis should live here, not as scattered hand-written event
   expectations across unrelated tests
+- analyzer ids should stay aligned with the representative scenario or
+  invariant names listed in [../doc/PROOF_REGISTRY.md](../doc/PROOF_REGISTRY.md)
+  so new agents can find the proof chain without rebuilding it from scratch
 
 Current built-in scenario analyzers:
 
 - `single-message-success`
+- `external-worker-public-contract-success`
+- `all-failed-terminal-convergence`
+- `mixed-result-terminal-convergence`
 - `duplicate-callback-replay`
+- `late-stale-result-replay`
 - `assignment-success-binding`
 - `assignment-min-worker-gate`
 - `assignment-retry-redispatch`
+- `lease-expiry-redispatch`
 - `load-aware-worker-selection`
 - `capacity-reservation-under-concurrency`
 - `background-worker-sharing`

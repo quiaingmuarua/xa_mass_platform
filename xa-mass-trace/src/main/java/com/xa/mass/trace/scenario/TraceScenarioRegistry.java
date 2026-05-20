@@ -11,10 +11,15 @@ public final class TraceScenarioRegistry {
     public TraceScenarioRegistry() {
         this(List.of(
                 new SingleMessageSuccessScenarioAnalyzer(),
+                new AllFailedTerminalConvergenceScenarioAnalyzer(),
+                new MixedResultTerminalConvergenceScenarioAnalyzer(),
                 new DuplicateCallbackReplayScenarioAnalyzer(),
+                new LateStaleResultReplayScenarioAnalyzer(),
+                new ExternalWorkerPublicContractSuccessScenarioAnalyzer(),
                 new AssignmentSuccessBindingScenarioAnalyzer(),
                 new AssignmentMinWorkerGateScenarioAnalyzer(),
                 new AssignmentRetryRedispatchScenarioAnalyzer(),
+                new LeaseExpiryRedispatchScenarioAnalyzer(),
                 new LoadAwareWorkerSelectionScenarioAnalyzer(),
                 new CapacityReservationUnderConcurrencyScenarioAnalyzer(),
                 new BackgroundWorkerSharingScenarioAnalyzer(),

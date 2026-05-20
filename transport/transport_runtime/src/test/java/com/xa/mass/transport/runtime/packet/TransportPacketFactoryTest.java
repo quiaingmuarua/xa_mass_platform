@@ -25,8 +25,8 @@ class TransportPacketFactoryTest {
                 "user-a",
                 2,
                 "attempt-1",
+                null,
                 "worker-1",
-                "ctx-1",
                 "batch-1",
                 Map.of("target", "https://example.test"),
                 Map.of("textContent", "hello")

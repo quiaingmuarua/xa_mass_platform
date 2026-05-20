@@ -496,11 +496,13 @@ export async function terminateTaskMock(
     return updateTaskStatusMock(taskId, 'TERMINAL', 'Task terminated')
 }
 
-export function downloadTaskSeedExportMock(_taskId: string): void {
+export function downloadTaskSeedExportMock(taskId: string): void {
+    void taskId
     // Mock export is intentionally a no-op. The page still exposes the action.
 }
 
-export function downloadTaskResultExportMock(_taskId: string): void {
+export function downloadTaskResultExportMock(taskId: string): void {
+    void taskId
     // Mock export is intentionally a no-op. The page still exposes the action.
 }
 

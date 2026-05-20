@@ -10,8 +10,13 @@ Use [TESTING_INDEX.md](./TESTING_INDEX.md) as the default entry for current CI
 truth, current asset map, and change-type minimum verification. This file keeps
 only the cross-module lane model and placement rules.
 
+Use [PROOF_REGISTRY.md](./PROOF_REGISTRY.md) when the question is not only
+"which lane?" but "which class or analyzer is the current authoritative proof
+for this invariant?"
+
 Use with:
 
+- [./PROOF_REGISTRY.md](./PROOF_REGISTRY.md)
 - [./TESTING_INDEX.md](./TESTING_INDEX.md)
 - [./VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
 - [./E2E_BASELINE.md](./E2E_BASELINE.md)
@@ -38,6 +43,22 @@ Use with:
 - perf and chaos are part of the project-level test estate, but current CI gate
   truth belongs to [TESTING_INDEX.md](./TESTING_INDEX.md)
 - projection-first proof style is downgraded; compatibility projection is bounded residue, not the primary execution proof surface
+- generic smoke or support E2E may still exist, but if it is not named in
+  [PROOF_REGISTRY.md](./PROOF_REGISTRY.md) it is not mainline proof ownership
+- tests tagged `secondary-proof` are explicit support coverage and should not be
+  copied when adding new lifecycle or scheduling proof
+- server-side `secondary-proof` shell coverage should live under explicit
+  support suites such as `ServerSupportCoverageSuite` or
+  `ServerLifecycleSupportCoverageSuite`, and storage-specific shells should live
+  under compatibility suites such as `ServerStorageCompatibilitySuite`, not
+  inside mainline scheduling, lifecycle, or parity suites
+- server-side `secondary-proof` identity is mechanically guarded in both
+  directions: support/compat suites may only contain downgraded classes, and
+  downgraded classes may not remain orphaned outside those suites
+- server mainline proof ownership is now mechanically guarded:
+  `ServerSchedulingE2eSuite`, `ServerLifecycleResultConvergenceSuite`, and
+  `ExternalWorkerParitySuite` may select only registry-backed classes and must
+  not re-import support or `secondary-proof` coverage
 - engine PR mainline suites are now runtime-first:
   `EngineSchedulingCoreSuite` and `EngineKernelConvergenceSuite` no longer
   carry projection-heavy residue classes directly; compatibility residue and
@@ -51,6 +72,11 @@ Use with:
   `EngineKernelConvergenceSuite` `@SelectClasses`, so newly added lifecycle /
   convergence mainline tests stay runtime/task-aggregate first instead of
   silently drifting back to projection-first proof
+- engine proof ownership is now mechanically split: mainline suites must not
+  pull classes back out of `EngineProjectionResidueSuite` or
+  `EngineProjectionAuditSuite`, and those support suites must contain only
+  explicit `secondary-proof` coverage; downgraded engine tests may not remain
+  orphaned outside those suites
 
 ## 2. Lane Map
 
@@ -67,6 +93,8 @@ Use with:
 
 ## 3. Command Ownership
 
+- proof ownership, authoritative-vs-representative pairing, and current known
+  gaps: [PROOF_REGISTRY.md](./PROOF_REGISTRY.md)
 - current minimum verification and CI truth: [TESTING_INDEX.md](./TESTING_INDEX.md)
 - startup, smoke, and focused regression commands: [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
 - engine race/refill/release coverage: [../xa-mass-engine/README.md](../xa-mass-engine/README.md)
@@ -119,7 +147,15 @@ Use with:
   redispatch, websocket disconnect/reconnect, websocket lease-expiry redispatch,
   and websocket stale late-result runners assert `TaskWorkRuntime` counters,
   active lease drain, final receipts, task terminal reason, and `ExecutionEvent`
-  transitions before any compatibility report payload
+  transitions before any compatibility report payload; the polling all-failed
+  and mixed-result runners now bind canonical trace JSONL into
+  `all-failed-terminal-convergence` and
+  `mixed-result-terminal-convergence`; the lease-expiry redispatch runners bind
+  canonical trace JSONL into `lease-expiry-redispatch`, and the websocket
+  stale late-result runner binds canonical trace JSONL into
+  `late-stale-result-replay`. `retry-exhausted` and websocket disconnect remain
+  representative chaos probes until they can be mapped to one crisp
+  mechanism-level named proof without mixing ownership.
 
 For change-type specific minimum verification, use
 [TESTING_INDEX.md](./TESTING_INDEX.md).

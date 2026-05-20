@@ -43,6 +43,8 @@ Every sample should remain provable through an external-process black-box test:
 
 - control-plane registration alone does not mark a realtime worker online
 - worker becomes `ONLINE` only after transport presence is established
+- polling samples may proactively report bounded worker state through the
+  public `/worker-api/v1` contract
 - engine scheduling still gates task dispatch; samples do not bypass task mainline
 - task result reaches `TERMINAL` through normal result ingest
 - output identifies the executing sample through `integrationProbe` and/or `workerProfile`

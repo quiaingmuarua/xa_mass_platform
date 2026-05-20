@@ -92,7 +92,10 @@ Start here based on the change:
   [transport/AGENTS.md](transport/AGENTS.md)
 - understanding the current testing system or deciding where a new test belongs:
   read [doc/TESTING_INDEX.md](doc/TESTING_INDEX.md) first, especially
-  `0. Fast Intent`, then jump to the owning lane README or suite
+  `0. Fast Intent`; if the question is "what is the authoritative proof for
+  this invariant?" or "where is the current proof gap?", read
+  [doc/PROOF_REGISTRY.md](doc/PROOF_REGISTRY.md) next before jumping to the
+  owning lane README or suite
 - lifecycle/trace/E2E contracts:
   [doc/STATE_MACHINE_BASELINE.md](doc/STATE_MACHINE_BASELINE.md),
   [doc/TRACE_CONTRACT.md](doc/TRACE_CONTRACT.md),

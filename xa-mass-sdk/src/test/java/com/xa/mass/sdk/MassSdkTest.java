@@ -2873,6 +2873,7 @@ class MassSdkTest {
                 .build();
 
         try {
+            registerExampleTaskCatalog(app);
             app.start();
 
             RuleDefinition rule = new RuleDefinition();
@@ -2884,7 +2885,13 @@ class MassSdkTest {
 
             app.registerWorker(WorkerRegistration.builder()
                     .workerId("polling-worker-1")
-                    .supportedProjects(List.of("demoApp"))
+                    .workerGroupId("polling-crawler")
+                    .eventBindings(List.of(
+                            WorkerEventBinding.builder()
+                                    .eventCode("crawler.fetch-page")
+                                    .projectCodes(List.of("demoApp"))
+                                    .build()
+                    ))
                     .transportHint("polling")
                     .build());
 
@@ -2897,7 +2904,7 @@ class MassSdkTest {
                     .sourceRef("fetch-page")
                     .sharedConfig(Map.of("mode", "pull"))
                     .executionSpec(taskExecutionOptions(null, 1, 0, 0))
-                    .build(), "demo.dispatch", List.of(Map.of("url", "https://example.test/page-1")), false);
+                    .build(), "crawler.fetch-page", List.of(Map.of("url", "https://example.test/page-1")), false);
 
             assertTrue(app.approveTask(task.getTaskId()));
 

@@ -35,15 +35,21 @@ Keep these rules:
 The stable third-party worker protocol today is the polling surface:
 
 - `POST /worker-api/v1/workers`
-- optional `POST /worker-api/v1/workers/{workerId}/contexts`
 - `POST /worker-api/v1/workers/{workerId}:online`
 - `POST /worker-api/v1/workers/{workerId}:heartbeat`
 - `POST /worker-api/v1/workers/{workerId}:poll`
 - `POST /worker-api/v1/workers/{workerId}:submit-result`
+- `POST /worker-api/v1/workers/{workerId}:report-capability`
+- `POST /worker-api/v1/workers/{workerId}:report-state`
+- `POST /worker-api/v1/workers/{workerId}/commands/{commandId}:ack`
 - `POST /worker-api/v1/workers/{workerId}:offline`
 
 Polling workers receive `TaskDispatchItem`, execute by `eventCode`, and submit
-`TaskResultReport`.
+`TaskResultReport`. They may also proactively report bounded worker capability
+and state snapshots, and acknowledge owner-issued worker commands. In current
+mainline, `report-state(DRAINING)` stops new dispatches to that worker but does
+not revoke or interrupt already in-flight work. Acknowledging a `DRAIN` command
+to an accepted state converges to the same dispatch-gate behavior.
 
 Example dispatch payload:
 

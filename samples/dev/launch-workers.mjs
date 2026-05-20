@@ -35,9 +35,6 @@ async function main() {
   console.log(`[sample-launcher] registering and starting ${workerSpecs.length} sample workers`);
   for (const spec of workerSpecs) {
     await registerWorker(spec);
-    if (spec.context) {
-      await registerWorkerContext(spec);
-    }
     startWorker(spec);
   }
   for (const spec of workerSpecs) {
@@ -96,17 +93,6 @@ async function registerWorker(spec) {
     eventBindings: spec.eventBindings,
   });
   console.log(`[sample-launcher] registered worker ${spec.workerId}: ${JSON.stringify(response.data)}`);
-}
-
-async function registerWorkerContext(spec) {
-  const response = await post(`/worker-api/v1/workers/${encodeURIComponent(spec.workerId)}/contexts`, spec.workerKey, {
-    workerContextId: spec.context.workerContextId,
-    workerId: spec.workerId,
-    project: spec.context.project,
-    routingTags: spec.context.routingTags,
-    attributes: spec.context.attributes,
-  });
-  console.log(`[sample-launcher] registered worker context ${spec.context.workerContextId}: ${JSON.stringify(response.data)}`);
 }
 
 async function seedTasks(taskSpecs) {

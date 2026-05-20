@@ -69,6 +69,7 @@ class NodePollingWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest {
                     () -> workerProcess.assertAlive("External Node polling worker exited before reaching transport-online state"),
                     workerProcess::capturedOutput
             );
+            assertWorkerStateProjection(WORKER_ID, "AVAILABLE");
             assertCatalogCapabilityProjection(WORKER_ID);
 
             Map<String, Object> createBody = new LinkedHashMap<>();
@@ -138,6 +139,23 @@ class NodePollingWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest {
         ));
     }
 
+    @SuppressWarnings("unchecked")
+    private void assertWorkerStateProjection(String workerId, String expectedState) throws InterruptedException {
+        for (int attempt = 0; attempt < 20; attempt++) {
+            Map<String, Object> response = exchange("/api/v1/runtime/workers/" + workerId + "/state", HttpMethod.GET, null);
+            assertApiOk(response);
+            Object data = response.get("data");
+            if (data instanceof Map<?, ?> map && expectedState.equals(map.get("state"))) {
+                return;
+            }
+            Thread.sleep(100L);
+        }
+        Map<String, Object> response = exchange("/api/v1/runtime/workers/" + workerId + "/state", HttpMethod.GET, null);
+        assertApiOk(response);
+        Map<String, Object> projection = (Map<String, Object>) response.get("data");
+        assertEquals(expectedState, projection.get("state"));
+    }
+
     private HttpHeaders submitterCredentialHeaders(String credential) {
         HttpHeaders headers = new HttpHeaders();
         headers.add(SdkCredentialAuthSupport.API_KEY_HEADER, credential);
@@ -154,4 +172,3 @@ class NodePollingWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest {
         return rule;
     }
 }
-

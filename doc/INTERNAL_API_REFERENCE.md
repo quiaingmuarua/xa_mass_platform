@@ -880,6 +880,62 @@ Request notes:
 - `taskId` and `messageId` are required
 - `output` is the canonical logical callback payload
 
+### 6.8 Report Worker Capability
+
+- Method: `POST`
+- Path: `/worker-api/v1/workers/{workerId}:report-capability`
+- Status: `Implemented`
+
+Request notes:
+
+- caller must authenticate with a worker credential that includes `worker:poll`
+  and binds the same `workerId`
+- `capabilityVersion` is optional; when omitted the server synthesizes one from
+  current wall-clock time
+- `availableEventCodes` must stay within the worker credential event scope
+- the report is a bounded capability snapshot, not an incremental patch
+
+### 6.9 Report Worker State
+
+- Method: `POST`
+- Path: `/worker-api/v1/workers/{workerId}:report-state`
+- Status: `Implemented`
+
+Request notes:
+
+- caller must authenticate with a worker credential that includes `worker:poll`
+  and binds the same `workerId`
+- `stateVersion` is optional; when omitted the server synthesizes one from
+  current wall-clock time
+- external worker public contract currently accepts only:
+  `AVAILABLE`, `DEGRADED`, `DRAINING`, `OFFLINE`
+- the report is a bounded state snapshot, not an incremental patch
+- worker state projection remains separate from transport presence truth
+- current scheduling integration recognizes `DRAINING` as a dispatch gate:
+  future assignments stop, while already in-flight work continues normally
+- dispatch re-enable stays explicit in current mainline: failed or expired
+  `DRAIN` command outcomes do not reopen dispatch; a later
+  `report-state(AVAILABLE)` is required
+
+### 6.10 Acknowledge Worker Command
+
+- Method: `POST`
+- Path: `/worker-api/v1/workers/{workerId}/commands/{commandId}:ack`
+- Status: `Implemented`
+
+Request notes:
+
+- caller must authenticate with a worker credential that includes `worker:poll`
+  and binds the same `workerId`
+- the command referenced by `commandId` must belong to the same `workerId`
+- request maps onto the owner-backed worker command acknowledgement surface
+- in current mainline, acknowledging a `DRAIN` command to an accepted delivery or
+  execution state disables future dispatches to that worker without interrupting
+  already in-flight work
+- later `FAILED` or `EXPIRED` command outcomes do not re-enable dispatch on
+  their own; recovery remains an explicit worker state report via
+  `report-state(AVAILABLE)`
+
 ## 7. Internal Debug API
 
 Base path: `/internal/v1/debug`
