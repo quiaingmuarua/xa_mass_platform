@@ -95,9 +95,11 @@ Current built-in scenario analyzers:
 - `all-failed-terminal-convergence`
 - `mixed-result-terminal-convergence`
 - `duplicate-callback-replay`
+- `late-stale-result-replay`
 - `assignment-success-binding`
 - `assignment-min-worker-gate`
 - `assignment-retry-redispatch`
+- `lease-expiry-redispatch`
 - `load-aware-worker-selection`
 - `capacity-reservation-under-concurrency`
 - `background-worker-sharing`

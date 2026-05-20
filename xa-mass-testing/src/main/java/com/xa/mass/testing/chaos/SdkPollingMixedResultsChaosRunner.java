@@ -2,13 +2,14 @@ package com.xa.mass.testing.chaos;
 
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.runtime.api.TaskWorkStats;
-import com.xa.mass.testing.chaos.support.CapturingExecutionEventSink;
+import com.xa.mass.testing.chaos.support.ChaosTraceArtifacts;
 import com.xa.mass.testing.chaos.support.ChaosReportWriter;
 import com.xa.mass.testing.chaos.support.ChaosRuntimeHarness;
 import com.xa.mass.testing.chaos.support.ChaosSupport;
 import com.xa.mass.testing.chaos.support.TaskOutcomeSnapshot;
 import com.xa.mass.testing.chaos.support.TraceEventAssertions;
 import com.xa.mass.sdk.worker.PullWorkerSession;
+import com.xa.mass.trace.operator.TraceAnalyzeResponse;
 import com.xa.mass.trace.sink.ExecutionEventType;
 import com.xa.mass.transport.model.TaskDispatchItem;
 
@@ -82,7 +83,8 @@ public final class SdkPollingMixedResultsChaosRunner {
         }
 
         private ChaosReport run() throws Exception {
-            CapturingExecutionEventSink traceSink = new CapturingExecutionEventSink();
+            ChaosTraceArtifacts traceArtifacts = ChaosTraceArtifacts.create(
+                    "sdk-polling-mixed-results-chaos");
             ChaosRuntimeHarness runtime = ChaosRuntimeHarness.createPolling(
                     new ChaosRuntimeHarness.PollingRuntimeConfig(
                             "sdk-mixed-results-chaos",
@@ -91,7 +93,7 @@ public final class SdkPollingMixedResultsChaosRunner {
                             config.leaseWatchdogIntervalSeconds(),
                             config.taskMessageLeaseSeconds()
                     ),
-                    traceSink
+                    traceArtifacts
             );
             MixedResultWorkerDriver worker = null;
             long wallStartNanos = System.nanoTime();
@@ -158,8 +160,7 @@ public final class SdkPollingMixedResultsChaosRunner {
                 ChaosSupport.require("MIXED_MESSAGE_RESULTS".equals(outcome.terminalReason()),
                         "task terminalReason should be MIXED_MESSAGE_RESULTS, got " + outcome.terminalReason());
 
-                // Trace contract assertions - verify canonical ExecutionEvent stream
-                TraceEventAssertions.of(traceSink)
+                TraceEventAssertions.of(traceArtifacts.captureSink())
                         .forTask(task.getTaskId())
                         .requireMinTotalEvents(5)
                         .requireEventType(ExecutionEventType.TASK_STATUS_TRANSITION)
@@ -169,6 +170,13 @@ public final class SdkPollingMixedResultsChaosRunner {
                         .requireMessageStatusTransitions("SUCCESS", SUCCESS_COUNT)
                         .requireMessageStatusTransitions("FAILED", FAIL_COUNT)
                         .requireEventType(ExecutionEventType.CALLBACK_ACCEPTED);
+                traceArtifacts.close();
+                List<TraceAnalyzeResponse> analyses = ChaosTraceAnalysisPlanner.analyze(
+                        traceArtifacts.outputDir(),
+                        ChaosTraceAnalysisPlanner.ChaosProofProfile.MIXED_RESULT_TERMINAL_CONVERGENCE,
+                        task.getTaskId()
+                );
+                ChaosTraceAnalysisPlanner.requireAllOk(analyses);
 
                 Path reportPath = ChaosReportWriter.write("sdk-polling-mixed-results-chaos", Map.of(
                         "config", config.toMap(),
@@ -180,7 +188,14 @@ public final class SdkPollingMixedResultsChaosRunner {
                                 "failCount", finalStats.failedCount(),
                                 "messageCount", MESSAGE_COUNT
                         ),
-                        "trace", TraceEventAssertions.of(traceSink).summaryMap(task.getTaskId()),
+                        "trace", Map.of(
+                                "summary", TraceEventAssertions.of(traceArtifacts.captureSink()).summaryMap(task.getTaskId()),
+                                "jsonlPath", traceArtifacts.outputDir().toString(),
+                                "droppedCount", traceArtifacts.droppedCount(),
+                                "analyses", analyses.stream()
+                                        .map(SdkPollingMixedResultsChaosRunner::analysisMap)
+                                        .toList()
+                        ),
                         "task", outcome.toMap(),
                         "workers", Map.of("worker", worker.snapshot().toMap())
                 ));
@@ -195,10 +210,26 @@ public final class SdkPollingMixedResultsChaosRunner {
                         reportPath
                 );
             } finally {
+                closeQuietly(traceArtifacts);
                 closeQuietly(worker);
                 runtime.close();
             }
         }
+    }
+
+    private static Map<String, Object> analysisMap(TraceAnalyzeResponse response) {
+        return Map.of(
+                "scenarioId", response.scenarioId(),
+                "source", response.source(),
+                "ok", response.ok(),
+                "eventCount", response.eventCount(),
+                "issues", response.issues().stream()
+                        .map(issue -> Map.<String, Object>of(
+                                "code", issue.code(),
+                                "message", issue.message()
+                        ))
+                        .toList()
+        );
     }
 
     private static List<Boolean> buildFailFlags() {
@@ -402,4 +433,3 @@ public final class SdkPollingMixedResultsChaosRunner {
         }
     }
 }
-

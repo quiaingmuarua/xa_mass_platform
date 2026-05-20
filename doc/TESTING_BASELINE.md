@@ -126,7 +126,15 @@ Use with:
   redispatch, websocket disconnect/reconnect, websocket lease-expiry redispatch,
   and websocket stale late-result runners assert `TaskWorkRuntime` counters,
   active lease drain, final receipts, task terminal reason, and `ExecutionEvent`
-  transitions before any compatibility report payload
+  transitions before any compatibility report payload; the polling all-failed
+  and mixed-result runners now bind canonical trace JSONL into
+  `all-failed-terminal-convergence` and
+  `mixed-result-terminal-convergence`; the lease-expiry redispatch runners bind
+  canonical trace JSONL into `lease-expiry-redispatch`, and the websocket
+  stale late-result runner binds canonical trace JSONL into
+  `late-stale-result-replay`. `retry-exhausted` and websocket disconnect remain
+  representative chaos probes until they can be mapped to one crisp
+  mechanism-level named proof without mixing ownership.
 
 For change-type specific minimum verification, use
 [TESTING_INDEX.md](./TESTING_INDEX.md).

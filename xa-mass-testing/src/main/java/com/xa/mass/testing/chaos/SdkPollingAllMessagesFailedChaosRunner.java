@@ -2,13 +2,14 @@ package com.xa.mass.testing.chaos;
 
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.runtime.api.TaskWorkStats;
-import com.xa.mass.testing.chaos.support.CapturingExecutionEventSink;
+import com.xa.mass.testing.chaos.support.ChaosTraceArtifacts;
 import com.xa.mass.testing.chaos.support.ChaosReportWriter;
 import com.xa.mass.testing.chaos.support.ChaosRuntimeHarness;
 import com.xa.mass.testing.chaos.support.ChaosSupport;
 import com.xa.mass.testing.chaos.support.TaskOutcomeSnapshot;
 import com.xa.mass.testing.chaos.support.TraceEventAssertions;
 import com.xa.mass.sdk.worker.PullWorkerSession;
+import com.xa.mass.trace.operator.TraceAnalyzeResponse;
 import com.xa.mass.trace.sink.ExecutionEventType;
 import com.xa.mass.transport.model.TaskDispatchItem;
 
@@ -70,7 +71,8 @@ public final class SdkPollingAllMessagesFailedChaosRunner {
         }
 
         private ChaosReport run() throws Exception {
-            CapturingExecutionEventSink traceSink = new CapturingExecutionEventSink();
+            ChaosTraceArtifacts traceArtifacts = ChaosTraceArtifacts.create(
+                    "sdk-polling-all-messages-failed-chaos");
             ChaosRuntimeHarness runtime = ChaosRuntimeHarness.createPolling(
                     new ChaosRuntimeHarness.PollingRuntimeConfig(
                             "sdk-all-failed-chaos",
@@ -79,7 +81,7 @@ public final class SdkPollingAllMessagesFailedChaosRunner {
                             config.leaseWatchdogIntervalSeconds(),
                             config.taskMessageLeaseSeconds()
                     ),
-                    traceSink
+                    traceArtifacts
             );
             AlwaysFailWorkerDriver worker = null;
             long wallStartNanos = System.nanoTime();
@@ -141,8 +143,7 @@ public final class SdkPollingAllMessagesFailedChaosRunner {
                 ChaosSupport.require("ALL_MESSAGES_FAILED".equals(outcome.terminalReason()),
                         "task terminalReason should be ALL_MESSAGES_FAILED, got " + outcome.terminalReason());
 
-                // Trace contract assertions - verify canonical ExecutionEvent stream
-                TraceEventAssertions.of(traceSink)
+                TraceEventAssertions.of(traceArtifacts.captureSink())
                         .forTask(task.getTaskId())
                         .requireMinTotalEvents(5)
                         .requireEventType(ExecutionEventType.TASK_STATUS_TRANSITION)
@@ -151,13 +152,27 @@ public final class SdkPollingAllMessagesFailedChaosRunner {
                         .requireEventType(ExecutionEventType.TASK_WORK_STATUS_TRANSITION)
                         .requireMessageStatusTransitions("FAILED", MESSAGE_COUNT)
                         .requireEventType(ExecutionEventType.CALLBACK_ACCEPTED);
+                traceArtifacts.close();
+                List<TraceAnalyzeResponse> analyses = ChaosTraceAnalysisPlanner.analyze(
+                        traceArtifacts.outputDir(),
+                        ChaosTraceAnalysisPlanner.ChaosProofProfile.ALL_FAILED_TERMINAL_CONVERGENCE,
+                        task.getTaskId()
+                );
+                ChaosTraceAnalysisPlanner.requireAllOk(analyses);
 
                 Path reportPath = ChaosReportWriter.write("sdk-polling-all-messages-failed-chaos", Map.of(
                         "config", config.toMap(),
                         "runtime", Map.of("transport", "polling", "adapterId", "polling"),
                         "wallClock", Map.of("totalMillis",
                                 ChaosSupport.nanosToMillis(System.nanoTime() - wallStartNanos)),
-                        "trace", TraceEventAssertions.of(traceSink).summaryMap(task.getTaskId()),
+                        "trace", Map.of(
+                                "summary", TraceEventAssertions.of(traceArtifacts.captureSink()).summaryMap(task.getTaskId()),
+                                "jsonlPath", traceArtifacts.outputDir().toString(),
+                                "droppedCount", traceArtifacts.droppedCount(),
+                                "analyses", analyses.stream()
+                                        .map(SdkPollingAllMessagesFailedChaosRunner::analysisMap)
+                                        .toList()
+                        ),
                         "task", outcome.toMap(),
                         "workers", Map.of("worker", worker.snapshot().toMap())
                 ));
@@ -171,10 +186,26 @@ public final class SdkPollingAllMessagesFailedChaosRunner {
                         reportPath
                 );
             } finally {
+                closeQuietly(traceArtifacts);
                 closeQuietly(worker);
                 runtime.close();
             }
         }
+    }
+
+    private static Map<String, Object> analysisMap(TraceAnalyzeResponse response) {
+        return Map.of(
+                "scenarioId", response.scenarioId(),
+                "source", response.source(),
+                "ok", response.ok(),
+                "eventCount", response.eventCount(),
+                "issues", response.issues().stream()
+                        .map(issue -> Map.<String, Object>of(
+                                "code", issue.code(),
+                                "message", issue.message()
+                        ))
+                        .toList()
+        );
     }
 
     private static final class AlwaysFailWorkerDriver implements AutoCloseable {
@@ -335,4 +366,3 @@ public final class SdkPollingAllMessagesFailedChaosRunner {
         }
     }
 }
-
