@@ -2375,8 +2375,13 @@ class TaskManagerLifecycleTest {
         assignRunningMessage(task, message);
 
         assertTrue(taskManager.expireLeasedWork(task.getTid(), message.messageId()));
-        assertEquals(TaskMessageProjectionStatus.EXPIRED,
-                taskManager.getVisibleTaskMessageProjection(task.getTid(), message.messageId()).status());
+        TaskDetailStore.TaskMessageProjection updated = awaitVisibleTaskMessageProjection(
+                taskManager,
+                task.getTid(),
+                message.messageId(),
+                TaskMessageProjectionStatus.EXPIRED
+        );
+        assertEquals(TaskMessageProjectionStatus.EXPIRED, updated.status());
     }
 
     @Test
