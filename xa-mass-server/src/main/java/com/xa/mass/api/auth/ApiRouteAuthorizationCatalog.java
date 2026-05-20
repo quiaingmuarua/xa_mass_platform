@@ -49,6 +49,30 @@ public class ApiRouteAuthorizationCatalog {
                 default -> null;
             };
         }
+        if (uri.matches("^/api/v1/tasks/[^/:]+/items/[^/:]+/stages$")) {
+            return switch (method) {
+                case "GET" -> sdkCredentialAttempt
+                        ? route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
+                        : route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
+                default -> null;
+            };
+        }
+        if (uri.matches("^/api/v1/tasks/[^/:]+/items/[^/:]+/stages/[^/:]+$")) {
+            return switch (method) {
+                case "GET" -> sdkCredentialAttempt
+                        ? route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
+                        : route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
+                default -> null;
+            };
+        }
+        if (uri.matches("^/api/v1/tasks/[^/:]+/items/[^/:]+/stages/[^/:]+/evidence$")) {
+            return switch (method) {
+                case "POST" -> sdkCredentialAttempt
+                        ? route(PlatformResourceType.TASK, PlatformAction.EDIT, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
+                        : route(PlatformResourceType.TASK, PlatformAction.EDIT, ApiPermissionNames.TASK_EDIT);
+                default -> null;
+            };
+        }
         if (uri.matches("^/api/v1/tasks/[^/:]+/commands$") && "POST".equals(method)) {
             return route(PlatformResourceType.TASK, PlatformAction.EDIT, ApiAuthInterceptor.OPERATOR_AUTH_ONLY);
         }
@@ -103,6 +127,31 @@ public class ApiRouteAuthorizationCatalog {
         }
         if (uri.equals("/api/v1/runtime/workers") && "GET".equals(method)) {
             return route(PlatformResourceType.WORKER, PlatformAction.VIEW, ApiPermissionNames.WORKER_VIEW);
+        }
+        if (uri.matches("^/api/v1/runtime/workers/[^/]+/capability-reports$") && "POST".equals(method)) {
+            return route(PlatformResourceType.WORKER, PlatformAction.EDIT, ApiPermissionNames.WORKER_EDIT);
+        }
+        if (uri.matches("^/api/v1/runtime/workers/[^/]+/state-reports$") && "POST".equals(method)) {
+            return route(PlatformResourceType.WORKER, PlatformAction.EDIT, ApiPermissionNames.WORKER_EDIT);
+        }
+        if (uri.matches("^/api/v1/runtime/workers/[^/]+/state$") && "GET".equals(method)) {
+            return route(PlatformResourceType.WORKER, PlatformAction.VIEW, ApiPermissionNames.WORKER_VIEW);
+        }
+        if (uri.equals("/api/v1/runtime/workers/states") && "GET".equals(method)) {
+            return route(PlatformResourceType.WORKER, PlatformAction.VIEW, ApiPermissionNames.WORKER_VIEW);
+        }
+        if (uri.matches("^/api/v1/runtime/workers/[^/]+/commands$")) {
+            return switch (method) {
+                case "GET" -> route(PlatformResourceType.WORKER, PlatformAction.VIEW, ApiPermissionNames.WORKER_VIEW);
+                case "POST" -> route(PlatformResourceType.WORKER, PlatformAction.EDIT, ApiPermissionNames.WORKER_EDIT);
+                default -> null;
+            };
+        }
+        if (uri.matches("^/api/v1/runtime/workers/commands/[^/]+$") && "GET".equals(method)) {
+            return route(PlatformResourceType.WORKER, PlatformAction.VIEW, ApiPermissionNames.WORKER_VIEW);
+        }
+        if (uri.matches("^/api/v1/runtime/workers/[^/]+/commands/[^/]+/ack$") && "POST".equals(method)) {
+            return route(PlatformResourceType.WORKER, PlatformAction.EDIT, ApiPermissionNames.WORKER_EDIT);
         }
         if (uri.equals("/api/v1/runtime/rules") && "GET".equals(method)) {
             return route(PlatformResourceType.RULE, PlatformAction.VIEW, ApiPermissionNames.RULE_VIEW);

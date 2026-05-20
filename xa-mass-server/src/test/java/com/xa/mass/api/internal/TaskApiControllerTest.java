@@ -232,6 +232,7 @@ class TaskApiControllerTest {
 
     @Test
     void taskStageEvidenceEndpointsDelegateToSdkSurface() throws Exception {
+        when(taskQueries.getTaskDetail(TASK_ID)).thenReturn(taskDetail("RUNNING", "detail-task", "demoApp"));
         TaskStageProjectionSnapshot projection = new TaskStageProjectionSnapshot(
                 TASK_ID,
                 "msg-001",

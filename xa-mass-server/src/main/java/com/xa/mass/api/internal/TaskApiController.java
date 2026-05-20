@@ -588,12 +588,15 @@ public class TaskApiController {
             description = "Owner-backed task item stage evidence ingress. This path does not write task final results."
     )
     public ResponseEntity<ApiResponse<TaskStageEvidenceSnapshot>> reportTaskStageEvidence(
+            @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
             @PathVariable String taskId,
             @PathVariable String messageId,
             @PathVariable String stageName,
             @RequestBody TaskStageEvidenceApiRequest requestBody) {
         return executeApi("Task stage evidence report failed", () -> {
             validateKnownFields(requestBody, "task stage evidence report");
+            requireAuthorizedTaskAppenderTarget(apiKeyHeader, authorizationHeader, taskId);
             return ok(requireTaskStageEvidence().reportTaskStageEvidence(
                     new TaskStageEvidenceRequest(
                             taskId,
@@ -611,9 +614,13 @@ public class TaskApiController {
 
     @GetMapping("/{taskId}/items/{messageId}/stages")
     @Operation(summary = "List task item stage projections")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> listTaskStageProjections(@PathVariable String taskId,
+    public ResponseEntity<ApiResponse<Map<String, Object>>> listTaskStageProjections(
+                                                                                     @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
+                                                                                     @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+                                                                                     @PathVariable String taskId,
                                                                                      @PathVariable String messageId) {
         return executeApi("Task stage projection list failed", () -> {
+            requireAuthorizedTaskDetail(apiKeyHeader, authorizationHeader, taskId);
             List<TaskStageProjectionSnapshot> items = requireTaskStageEvidence()
                     .listTaskStageProjections(taskId, messageId);
             return ok(Map.of(
@@ -625,11 +632,16 @@ public class TaskApiController {
 
     @GetMapping("/{taskId}/items/{messageId}/stages/{stageName}")
     @Operation(summary = "Get task item stage projection")
-    public ResponseEntity<ApiResponse<TaskStageProjectionSnapshot>> getTaskStageProjection(@PathVariable String taskId,
+    public ResponseEntity<ApiResponse<TaskStageProjectionSnapshot>> getTaskStageProjection(
+                                                                                          @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
+                                                                                          @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+                                                                                          @PathVariable String taskId,
                                                                                           @PathVariable String messageId,
                                                                                           @PathVariable String stageName) {
-        return executeApi("Task stage projection lookup failed", () -> ok(requireTaskStageEvidence()
-                .getTaskStageProjection(taskId, messageId, stageName)));
+        return executeApi("Task stage projection lookup failed", () -> {
+            requireAuthorizedTaskDetail(apiKeyHeader, authorizationHeader, taskId);
+            return ok(requireTaskStageEvidence().getTaskStageProjection(taskId, messageId, stageName));
+        });
     }
 
     @GetMapping("/{taskId}/results/archive/content")
@@ -1186,6 +1198,21 @@ public class TaskApiController {
                                                            String taskId) {
         TaskDetailSnapshot task = requireTaskDetail(taskId);
         resolveTaskViewer(apiKeyHeader, authorizationHeader, task.getTaskId(), task.getProject(), task.getSharedConfig());
+        return task;
+    }
+
+    private TaskDetailSnapshot requireAuthorizedTaskAppenderTarget(String apiKeyHeader,
+                                                                  String authorizationHeader,
+                                                                  String taskId) {
+        TaskDetailSnapshot task = requireTaskDetail(taskId);
+        resolveTaskAppender(
+                apiKeyHeader,
+                authorizationHeader,
+                task.getTaskId(),
+                task.getProject(),
+                task.getSharedConfig(),
+                List.of()
+        );
         return task;
     }
 

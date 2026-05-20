@@ -125,13 +125,13 @@
             {{ detail.task.peakAssignedWorkerCount }}
           </div>
         </div>
-        <div class="metric-tile" v-if="review">
+        <div v-if="review" class="metric-tile">
           <div class="metric-label">Processing / failed</div>
           <div class="metric-value">
             {{ review.summary.processingItems }} / {{ review.summary.failedItems }}
           </div>
         </div>
-        <div class="metric-tile" v-if="review">
+        <div v-if="review" class="metric-tile">
           <div class="metric-label">Preview rows</div>
           <div class="metric-value">
             {{ review.summary.previewCount }}
