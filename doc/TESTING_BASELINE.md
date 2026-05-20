@@ -43,6 +43,15 @@ Use with:
 - perf and chaos are part of the project-level test estate, but current CI gate
   truth belongs to [TESTING_INDEX.md](./TESTING_INDEX.md)
 - projection-first proof style is downgraded; compatibility projection is bounded residue, not the primary execution proof surface
+- generic smoke or support E2E may still exist, but if it is not named in
+  [PROOF_REGISTRY.md](./PROOF_REGISTRY.md) it is not mainline proof ownership
+- tests tagged `secondary-proof` are explicit support coverage and should not be
+  copied when adding new lifecycle or scheduling proof
+- server-side `secondary-proof` shell coverage should live under explicit
+  support suites such as `ServerSupportCoverageSuite` or
+  `ServerLifecycleSupportCoverageSuite`, and storage-specific shells should live
+  under compatibility suites such as `ServerStorageCompatibilitySuite`, not
+  inside mainline scheduling, lifecycle, or parity suites
 - engine PR mainline suites are now runtime-first:
   `EngineSchedulingCoreSuite` and `EngineKernelConvergenceSuite` no longer
   carry projection-heavy residue classes directly; compatibility residue and

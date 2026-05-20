@@ -13,7 +13,6 @@ import org.junit.platform.suite.api.Suite;
 @Suite
 @SelectClasses({
         ServerMainlineE2eArchitectureGuardTest.class,
-        TaskApiIntegrationTest.class,
         TaskApiCallbackReplayTraceObservedIntegrationTest.class,
         TaskApiFailureResultIntegrationTest.class,
         TaskApiLifecycleGuardsIntegrationTest.class,

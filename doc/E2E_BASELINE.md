@@ -43,8 +43,12 @@ White-box fixtures are allowed for setup and fault injection, but not as a repla
 Current mainline note:
 
 - today the Boot-shell E2E path validates the stable polling external-worker path plus the current websocket/socket realtime adapter paths
-- pull-style shell coverage is currently represented by `PollingWorkerTaskFlowIntegrationTest`, `CrawlerPullWorkerSdkRegistrationIntegrationTest`, `ExternalWorkerPollingApiIntegrationTest`, and `TransportChannelWiringIntegrationTest`
+- pull-style shell coverage is currently represented by `CrawlerPullWorkerSdkRegistrationIntegrationTest` plus focused parity/API coverage such as `ExternalWorkerPollingApiIntegrationTest`; earlier generic polling/transport smoke helpers have been retired instead of kept as parallel proof-like noise
 - cross-language / cross-adapter worker parity is represented by `ExternalWorkerParitySuite`, covering Java and Node workers across polling, WebSocket, and socket adapters
+- downgraded shell-smoke tests now belong in explicit support suites such as
+  `ServerSupportCoverageSuite` and `ServerLifecycleSupportCoverageSuite`; do
+  not promote them back into mainline scheduling or lifecycle suites without a
+  registry change
 
 Fixture note:
 
@@ -108,6 +112,9 @@ Worker scheduling and compatibility:
   transport presence, runtime load, and canonical trace evidence instead
 - worker/resource capacity is reusable after normal terminal completion
 - worker/resource capacity is reusable after manual terminate
+- targeted-worker debug, dev launcher/bootstrap, catalog read-surface, realtime
+  adapter ambiguity, and storage-specific polling shells are support-only
+  coverage unless promoted into `PROOF_REGISTRY.md`
 
 Control console:
 

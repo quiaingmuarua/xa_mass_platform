@@ -2,6 +2,7 @@ package com.xa.mass.server.e2e.lifecycle;
 
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
@@ -32,40 +33,23 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
+@Tag("secondary-proof")
 class TaskApiIntegrationTest extends AbstractSampleE2eTest {
+
+    /**
+     * Support-only workload-class coverage.
+     *
+     * <p>The mainline lifecycle/result proof chain now lives in
+     * {@code ServerLifecycleResultConvergenceSuite} and the registry-backed
+     * trace scenarios. Keep this class only for workload-class shell assertions
+     * that are not yet promoted into a stronger proof line.
+     */
 
     private static final int WEBSOCKET_PORT = findFreePort();
 
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {
         registerWebSocketPropertiesWithClientUri(registry, WEBSOCKET_PORT);
-    }
-
-    @Test
-    void createApproveAndCompleteTaskOverRealMockRuntime() throws Exception {
-        assertMinOnlineWorkers(2);
-        String taskId = createTaskId("integration-task", "integration smoke", List.of("target-a", "target-b"), 1);
-
-        Map<String, Object> beforeAudit = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
-        assertApiOk(beforeAudit);
-        Map<String, Object> createdTask = task(beforeAudit);
-        assertEquals("NEW", createdTask.get("status"));
-        assertEquals("SEALED", createdTask.get("intakeStatus"));
-        assertEquals(false, createdTask.containsKey("openEnded"));
-
-        Map<String, Object> auditResponse = approveTask(taskId);
-        assertApiOk(auditResponse);
-
-        RuntimeTaskSnapshot snapshot = waitForTerminalRuntimeTask(taskId);
-
-        assertEquals("TERMINAL", snapshot.task().get("status"));
-        assertEquals("ALL_MESSAGES_SUCCEEDED", snapshot.task().get("terminalReason"));
-        assertEquals(2, ((Number) snapshot.task().get("peakAssignedWorkerCount")).intValue());
-        assertEquals(2, ((Number) snapshot.task().get("taskSuccessNumber")).intValue());
-        assertEquals(2, snapshot.stats().totalCount());
-        assertEquals(2, snapshot.stats().successCount());
-        assertEquals(0, snapshot.stats().failedCount());
-        assertEquals(0, snapshot.stats().expiredCount());
     }
 
     @Test

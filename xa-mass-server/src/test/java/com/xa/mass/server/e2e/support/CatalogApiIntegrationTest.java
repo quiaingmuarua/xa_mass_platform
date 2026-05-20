@@ -5,6 +5,7 @@ import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
@@ -34,7 +35,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
+@Tag("secondary-proof")
 class CatalogApiIntegrationTest extends AbstractSampleE2eTest {
+
+    /**
+     * Support-only catalog/read-surface coverage.
+     *
+     * <p>This class protects metadata/read exposure, not scheduling or lifecycle
+     * proof ownership.
+     */
 
     private static final int WEBSOCKET_PORT = findFreePort();
 

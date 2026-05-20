@@ -8,7 +8,6 @@ import org.junit.platform.suite.api.Suite;
 @SelectClasses({
         ServerMainlineE2eArchitectureGuardTest.class,
         TaskApiMultiTaskAssignmentIntegrationTest.class,
-        TaskApiAssignmentTraceObservedIntegrationTest.class,
         TaskApiBackgroundWorkerSharingTraceObservedIntegrationTest.class,
         TaskApiWorkerAttributeRoutingTraceObservedIntegrationTest.class,
         TaskApiCrossTaskWorkerFairnessTraceObservedIntegrationTest.class,
@@ -21,9 +20,6 @@ import org.junit.platform.suite.api.Suite;
         TaskApiSingleWorkerReuseIntegrationTest.class,
         TaskApiWorkerAttributeRoutingIntegrationTest.class,
         TaskApiWorkerWithoutContextIntegrationTest.class,
-        PollingWorkerTaskFlowIntegrationTest.class,
-        ExternalWorkerPollingApiIntegrationTest.class,
-        TransportChannelWiringIntegrationTest.class
 })
 class ServerSchedulingE2eSuite {
 }

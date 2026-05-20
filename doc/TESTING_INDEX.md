@@ -45,6 +45,19 @@ If the question is "what is the authoritative proof for this invariant?" or
 "where should the next proof go?", read
 [PROOF_REGISTRY.md](./PROOF_REGISTRY.md) before scanning owner matrices.
 
+Agent rule:
+
+- pick the invariant in `PROOF_REGISTRY.md` before adding a test
+- if the class you want to imitate is not in the registry, assume it is support
+  coverage, not proof ownership
+- tests tagged `secondary-proof` are intentionally downgraded; do not clone them
+  into new mainline scenarios
+- when looking for downgraded server E2E examples, use the explicit support
+  suites such as `ServerSupportCoverageSuite` and
+  `ServerLifecycleSupportCoverageSuite` instead of scanning mainline suites
+- storage-specific shells and adapter-ambiguity guards belong with support or
+  compatibility coverage unless the registry explicitly promotes them
+
 Use with:
 
 - [PROOF_REGISTRY.md](./PROOF_REGISTRY.md)

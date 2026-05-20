@@ -345,10 +345,16 @@ Mainline stance:
 - the full scheduling-correctness matrix belongs engine-first; server E2E keeps
   representative assignment, polling, routing, and reuse scenarios
 - `ServerSchedulingE2eSuite` is runtime-first and representative; projection-heavy
-  scenarios live in `ServerProjectionResidueSuite`
+  scenarios live in `ServerProjectionResidueSuite`, and generic smoke/support
+  cases tagged `secondary-proof` stay out of the mainline suite
 - `ServerLifecycleResultConvergenceSuite` asserts task aggregate plus
   `TaskWorkRuntime` stats/lease truth; diagnostic projection/audit cases live in
-  `ServerProjectionAuditSuite`
+  `ServerProjectionAuditSuite`, while low-standard lifecycle smoke stays tagged
+  `secondary-proof`
+- `ServerSupportCoverageSuite`, `ServerLifecycleSupportCoverageSuite`, and
+  `ServerStorageCompatibilitySuite` are the explicit homes for downgraded
+  smoke/support coverage; if a server E2E class lives there, treat it as shell
+  confidence or compatibility coverage, not proof ownership
 - `ServerMainlineE2eArchitectureGuardTest` is included in the mainline
   scheduling and lifecycle suites to reject projection-first helpers and
   implicit `var` declarations
@@ -385,7 +391,7 @@ mvn --% -pl xa-mass-server -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegra
 Transport-focused regression command:
 
 ```bash
-mvn --% -pl xa-mass-server -am -Dtest=SampleWorkerSocketClientTest,SocketClientStarterTest,WebSocketClientStarterTest,TransportChannelWiringIntegrationTest,NodeWebSocketWorkerBlackBoxIntegrationTest,NodeSocketWorkerBlackBoxIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn --% -pl xa-mass-server -am -Dtest=SampleWorkerSocketClientTest,SocketClientStarterTest,WebSocketClientStarterTest,ExternalWorkerPublicContractTraceObservedIntegrationTest,NodeWebSocketWorkerBlackBoxIntegrationTest,NodeSocketWorkerBlackBoxIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Cross-language sample black-box regression:
@@ -406,7 +412,8 @@ Covered areas:
 - `e2e/assignment`: delayed worker availability and multi-task assignment behavior
 - `CrawlerPullWorkerSdkRegistrationIntegrationTest`: SDK-created crawler worker resource, pull connect/poll/result, and terminal read-model verification without sample worker JSON
 - `e2e/audit`: diagnostic task-state validation and terminal metadata consistency through the real runtime path
-- `e2e/assignment`: targeted worker debug task behavior and disconnect-after-result behavior
+- `e2e/assignment`: targeted worker debug, adapter-ambiguity, and storage-compat
+  support coverage
 - `WebSocketClientStarterTest`: auto-start and idempotent startup behavior
 - `SocketClientStarterTest`: adapter-aware socket starter wiring and bound-port resolution
 - `SampleWorkerSocketClientTest`: canonical socket dispatch handling, task-result write-back, and disconnect-after-result behavior
@@ -421,7 +428,6 @@ High-signal classes:
 - guardrail:
   - `ServerMainlineE2eArchitectureGuardTest`
 - lifecycle:
-  - `TaskApiIntegrationTest`
   - `TaskApiLifecycleGuardsIntegrationTest`
   - `TaskApiPauseCompletionIntegrationTest`
   - `TaskApiResumeAndCompleteIntegrationTest`
@@ -437,8 +443,6 @@ High-signal classes:
   - `TaskApiWorkerAttributeRoutingIntegrationTest`
   - `TaskApiWorkerWithoutContextIntegrationTest`
   - `TaskApiSingleWorkerReuseIntegrationTest`
-  - `TransportChannelWiringIntegrationTest`
-  - `PollingWorkerTaskFlowIntegrationTest`
   - `CrawlerPullWorkerSdkRegistrationIntegrationTest`
 - results and idempotence:
   - `TaskApiAllMessagesFailedTraceObservedIntegrationTest`
@@ -450,12 +454,21 @@ High-signal classes:
 - external worker black-box:
   - `ExternalWorkerParitySuite`
   - `ExternalWorkerPublicContractTraceObservedIntegrationTest`
+  - `ExternalWorkerPollingApiIntegrationTest`
   - `NodePollingWorkerBlackBoxIntegrationTest`
   - `NodeWebSocketWorkerBlackBoxIntegrationTest`
   - `NodeSocketWorkerBlackBoxIntegrationTest`
   - `JavaPollingWorkerBlackBoxIntegrationTest`
   - `JavaWebSocketWorkerBlackBoxIntegrationTest`
   - `JavaSocketWorkerBlackBoxIntegrationTest`
+- secondary/support only:
+  - `TaskApiIntegrationTest`
+  - `TaskApiTargetedWorkerDebugIntegrationTest`
+  - `DevSampleWorkerLauncherIntegrationTest`
+  - `ExternalWorkerRealtimeRegistrationIntegrationTest`
+  - `H2ExternalWorkerPollingApiIntegrationTest`
+  - `PostgresExternalWorkerPollingApiIntegrationTest`
+  - `CatalogApiIntegrationTest`
 - console and audit:
   - `ControlConsoleRoutingIntegrationTest`
 - explicit projection residue/audit:
@@ -463,8 +476,6 @@ High-signal classes:
   - `TaskApiTerminateReuseIntegrationTest`
   - `TaskApiCallbackReplayIntegrationTest`
   - `TaskApiStateValidationIntegrationTest`
-- targeted worker debug:
-  - `TaskApiTargetedWorkerDebugIntegrationTest`
 
 Fixture rules:
 

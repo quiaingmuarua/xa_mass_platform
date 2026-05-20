@@ -4,6 +4,7 @@ import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.ProjectionSampleE2eTest;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.WorkerSnapshot;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -39,7 +40,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
+@Tag("secondary-proof")
 class DevSampleWorkerLauncherIntegrationTest extends ProjectionSampleE2eTest {
+
+    /**
+     * Support-only dev launcher coverage.
+     *
+     * <p>This validates sample bootstrap wiring and seeded demo flows. It is
+     * useful for local confidence, but it is not proof ownership for scheduling,
+     * lifecycle, or external-worker parity.
+     */
 
     private static final int WAIT_ATTEMPTS = 80;
     private static final int WEBSOCKET_PORT = findFreePort();
@@ -150,4 +160,3 @@ class DevSampleWorkerLauncherIntegrationTest extends ProjectionSampleE2eTest {
                 + ", lastTask=" + matched);
     }
 }
-

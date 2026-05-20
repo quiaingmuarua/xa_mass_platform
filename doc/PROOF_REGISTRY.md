@@ -62,6 +62,14 @@ When a new change needs proof:
 4. do not add a new test in another lane when an authoritative proof class
    already exists for that invariant
 
+Mainline rule:
+
+- if a class is not named here, it is not mainline proof by default
+- support or smoke coverage may still exist outside this ledger, but it must not
+  be treated as the reason to add another duplicate test in a mainline suite
+- tests tagged `secondary-proof` are explicitly downgraded support coverage
+  unless they are promoted into this ledger in a later change
+
 When a representative E2E or black-box flow fails:
 
 1. use the trace analyzer or trace-observed scenario listed here

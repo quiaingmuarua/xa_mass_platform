@@ -6,6 +6,7 @@ import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.auth.PrincipalContext;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -35,7 +36,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
+@Tag("secondary-proof")
 class ExternalWorkerRealtimeRegistrationIntegrationTest extends AbstractSampleE2eTest {
+
+    /**
+     * Support-only adapter-ambiguity guard coverage.
+     *
+     * <p>This protects a public-route validation edge, but it is not a mainline
+     * parity or scheduling proof.
+     */
 
     private static final int WEBSOCKET_PORT = findFreePort();
     private static final String WORKER_ID = "realtime-worker-missing-adapter";
