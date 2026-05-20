@@ -2,13 +2,14 @@
   {
     "workerId": "node-worker-realtime-001",
     "workerKey": "node-worker-realtime-key",
-    "workerGroupId": "sample-websocket",
+    "workerGroupId": "sample-websocket-crawler",
     "adapterId": "websocket",
     "transportHint": "realtime",
     "attributes": {
       "lang": "node",
       "runtime": "node-websocket-worker",
-      "workerType": "crawler"
+      "workerType": "crawler",
+      "routingTags": "web,us"
     },
     "eventBindings": [
       {
@@ -21,13 +22,14 @@
   {
     "workerId": "stock-ws-worker-001",
     "workerKey": "stock-ws-worker-key",
-    "workerGroupId": "sample-websocket",
+    "workerGroupId": "sample-websocket-stock",
     "adapterId": "websocket",
     "transportHint": "realtime",
     "attributes": {
       "lang": "node",
       "runtime": "node-websocket-worker",
-      "workerType": "stock-crawler"
+      "workerType": "stock-crawler",
+      "routingTags": "web,us"
     },
     "eventBindings": [
       {

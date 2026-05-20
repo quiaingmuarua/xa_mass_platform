@@ -25,7 +25,6 @@ public class WorkerCapabilityAuthorityTest {
         WorkerRegistrySnapshot snapshot = authority.composeSnapshot(List.of(worker));
 
         WorkerGroupRecord group = snapshot.group("crawler").orElseThrow();
-        assertEquals("adapter-a", group.adapterNodeId());
         assertEquals(3, group.defaultMaxConcurrentWork());
         assertEquals(Map.of("country", "us"), group.defaultAttributes());
         assertTrue(group.projectCodes().contains("demoApp"));

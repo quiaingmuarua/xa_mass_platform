@@ -2,9 +2,10 @@
 
 Last updated: 2026-05-20
 
-Status: transport/engine boundary convergence roadmap. This is planning
-material, not implemented behavior. Use code and verified runtime behavior as
-truth for current implementation claims.
+Status: implemented convergence baseline for AN-0 through AN-6. The deferred
+owner-outcome listener remains a future extension, not part of this baseline.
+Use code and verified runtime behavior as truth for current implementation
+claims.
 
 ## Summary
 
@@ -38,10 +39,9 @@ Worker
   -> platform dispatchable execution identity
 ```
 
-This roadmap is intentionally convergence-first. The first implementation
-steps should reduce current truth ambiguity before expanding behavior. The
-project should not add listener, callback, drain, SDK, or public API breadth
-until the existing node/group relation has a single owner.
+This roadmap was implemented convergence-first: relation ownership was added
+before worker registration changed, and the old group-owned node relation was
+removed only after worker membership by adapter node was canonical.
 
 ## Current Truth
 
@@ -81,18 +81,24 @@ Task(project,eventCode)
 composes an immutable `WorkerRegistrySnapshot` from worker registration rows
 plus accepted capability reports.
 
-### Current conflict to resolve
+### Resolved relation conflict
 
-The current mainline already contains node/group relation truth inside the
-capability line:
+The old mainline contained node/group relation truth inside the capability
+line:
 
 - `WorkerGroupRecord.adapterNodeId`
 - `WorkerRegistrySnapshot.groupIdsByAdapterNodeId(...)`
+- `WorkerGroupCompatibilityProjection` projecting adapter identity into group
+  snapshot truth.
 
-That means `AdapterNode + NodeGroupBinding` cannot be added as a pure new
-layer. Once `NodeGroupBinding` exists, `WorkerGroupRecord.adapterNodeId` must
-be treated as a migration input or removed from mainline truth. Otherwise the
-system would have two node/group relation owners.
+Current code removes that node relation from `WorkerGroup` and
+`WorkerRegistrySnapshot`. `NodeGroupBinding` now owns node/group relation
+truth. `WorkerGroupCompatibilityProjection` may still project legacy worker
+capability fields into group capability truth, but it no longer owns adapter
+node relation truth.
+
+`WorkerRegistrySnapshot.groupIdsByAdapterNodeId(...)` was removed instead of
+replaced because it had no production caller.
 
 ## Core Principles
 
@@ -201,9 +207,7 @@ record WorkerGroupRecord(
 ) {}
 ```
 
-Current code still has `adapterNodeId` on `WorkerGroupRecord`. This roadmap
-requires that field to become migration-only and then be removed from mainline
-truth.
+Current code does not carry `adapterNodeId` on `WorkerGroupRecord`.
 
 ### NodeGroupBindingRecord
 
@@ -254,6 +258,7 @@ Target shape:
 record WorkerRecord(
     String workerId,
     String adapterNodeId,
+    String adapterId,
     String groupId,
     Map<String, String> attributes,
     int maxConcurrentWork,
@@ -267,27 +272,37 @@ Owns:
 
 - worker execution identity
 - adapter node membership
+- adapter/protocol runtime identity
 - group membership
 - worker-level attributes
 - declared max concurrent work
 - worker-level enabled flag
 
+`adapterNodeId` and `adapterId` are not interchangeable. `adapterNodeId`
+identifies the registration endpoint / logical adapter deployment node.
+`adapterId` remains the concrete adapter or protocol runtime identity such as
+polling, WebSocket, or socket adapter.
+
 ## Indexes
 
-First target index set:
+Target index set, with phase ownership:
 
 ```text
 adapterNodeId -> AdapterNodeRecord
 groupId -> WorkerGroupRecord
 workerId -> WorkerRecord
-adapterNodeId -> groupIds
-groupId -> adapterNodeIds
-groupId -> workerIds
-adapterNodeId -> workerIds
-(adapterNodeId, groupId) -> workerIds
+adapterNodeId -> groupIds                 // AN-2 binding index
+groupId -> adapterNodeIds                 // AN-2 binding index
+groupId -> workerIds                      // existing / AN-3 canonicalized
+adapterNodeId -> workerIds                // AN-3 populated worker membership
+(adapterNodeId, groupId) -> workerIds     // AN-3 populated worker membership
 (projectCode,eventCode) -> groupIds
 projectCode -> groupIds
 ```
+
+AN-2 did not expose canonical worker-membership indexes. After AN-3,
+`adapterNodeId -> workerIds` and `(adapterNodeId, groupId) -> workerIds` are
+populated from worker registration truth.
 
 Scheduling must remain group-first:
 
@@ -410,8 +425,9 @@ Scope:
 - inventory `adapterId` usage
 - inventory `transportHint` / `onlineStrategy` usage
 - inventory `workerGroupId` usage
-- inventory `WorkerGroupRecord.adapterNodeId`
-- inventory `WorkerRegistrySnapshot.groupIdsByAdapterNodeId(...)`
+- inventory removed `WorkerGroupRecord.adapterNodeId`
+- inventory removed `WorkerRegistrySnapshot.groupIdsByAdapterNodeId(...)`
+- inventory `WorkerGroupCompatibilityProjection`
 - inventory worker registration through SDK/server
 - inventory `WorkerCapabilityAuthority` registration-row dependencies
 - inventory `WorkerCandidateIndex` group-first candidate path
@@ -420,6 +436,7 @@ Acceptance:
 
 - current worker registration path is documented
 - current node/group relation conflict is documented
+- current compatibility projection seam is documented
 - current capability authority inputs are documented
 - no behavior changes
 
@@ -454,9 +471,8 @@ Scope:
   - `adapterNodeId -> groupIds`
   - `groupId -> adapterNodeIds`
 - forbid `eventBindings` on the binding
-- mark `WorkerGroupRecord.adapterNodeId` as migration-only
-- prevent new mainline reads of `WorkerGroupRecord.adapterNodeId` outside
-  migration code
+- mark `WorkerGroupCompatibilityProjection` as capability-compatibility only
+- prevent reintroducing group-owned node relation truth
 
 Acceptance:
 
@@ -464,11 +480,23 @@ Acceptance:
 - one group can bind multiple adapter nodes
 - binding does not change `WorkerGroup` capability truth
 - guard proves `NodeGroupBinding` does not own event bindings
-- guard prevents new canonical reads of `WorkerGroupRecord.adapterNodeId`
+- guard prevents AdapterNode/NodeGroupBinding from becoming capability truth
 
 ### AN-3: Worker registration requires adapterNodeId + groupId
 
 Goal: move worker registration to explicit node/group membership.
+
+Compatibility decision:
+
+- AN-3 uses a bounded migration path, not an immediate hard break and not an
+  open-ended fallback.
+- New registration callers must send `adapterNodeId` and `groupId`.
+- Existing callers that only send `adapterId` and `workerGroupId` may register
+  only when a configured bootstrap/default `AdapterNode` and exactly one
+  matching `NodeGroupBinding` can be resolved.
+- Ambiguous, missing, or unbound compatibility resolution fails registration.
+- Compatibility registrations must emit trace/diagnostic evidence and must be
+  removed after the migration window.
 
 Scope:
 
@@ -484,14 +512,16 @@ This is a registry-truth change, not a light request-field addition, because
 
 Acceptance:
 
-- missing adapter node or group registration fails, or enters a explicitly
-  bounded compatibility path
+- missing adapter node or group registration follows the bounded compatibility
+  rule above or fails
 - unknown adapter node fails
 - unknown group fails
 - unbound node/group pair fails
 - task candidate source still follows `EventKey -> groupIds -> workerIds`
 - trace and diagnostics include `adapterNodeId`, `workerGroupId`, and
   event-binding evidence
+- `adapterNodeId -> workerIds` and `(adapterNodeId, groupId) -> workerIds` are
+  populated from worker registration truth
 
 ### AN-4: Retire WorkerGroup.adapterNodeId from mainline truth
 
@@ -499,9 +529,10 @@ Goal: remove the current node relation from capability truth.
 
 Scope:
 
-- replace `WorkerRegistrySnapshot.groupIdsByAdapterNodeId(...)` inputs with
-  `NodeGroupBinding` truth
+- remove `WorkerRegistrySnapshot.groupIdsByAdapterNodeId(...)` unless a
+  temporary migration read is explicitly needed
 - remove or demote `WorkerGroupRecord.adapterNodeId`
+- remove adapter relation projection from `WorkerGroupCompatibilityProjection`
 - update tests to prove group capability and node relation are separate
 - update docs to describe the new canonical relation owner
 
@@ -509,18 +540,25 @@ Acceptance:
 
 - mainline code no longer treats `WorkerGroupRecord.adapterNodeId` as canonical
 - node/group relation queries come from `NodeGroupBinding`
+- no production code depends on `WorkerRegistrySnapshot.groupIdsByAdapterNodeId(...)`
 - capability truth remains only on `WorkerGroup`
 
 ### AN-5: Node-local drain and availability
 
 Goal: let node-local drain affect only future dispatch.
 
+Prerequisite: AN-3 must be complete enough that worker membership by
+`adapterNodeId + groupId` is canonical. Without worker-level `adapterNodeId`,
+node-local drain can only be approximated through the old group relation and
+must not be implemented.
+
 Scope:
 
 - `NodeGroupBinding.draining=true` disables new dispatch for workers in that
   adapter-node/group pair
 - other nodes hosting the same group remain eligible
-- convert binding availability through dispatch availability policy/read model
+- convert binding availability through the existing dispatch availability
+  policy/read-model path
 - do not let matching read raw binding state directly
 
 Acceptance:
@@ -545,7 +583,6 @@ Recommended attributes:
 - `region`
 - `country`
 - `routingTags`
-- `adapterNodeId`
 - `agentVersion`
 
 Acceptance:
@@ -590,8 +627,9 @@ Add targeted guards as phases land:
 7. transport adapters must not mutate `WorkerRegistrySnapshot`
 8. listeners, when added, must not mutate `TaskWorkRuntime`,
    `TaskResultRuntime`, or `WorkerLoadView`
-9. after AN-2, new canonical reads of `WorkerGroupRecord.adapterNodeId` are
-   forbidden outside explicit migration code
+9. `WorkerGroupRecord.adapterNodeId` and
+   `WorkerRegistrySnapshot.groupIdsByAdapterNodeId(...)` must not be
+   reintroduced
 
 ## Proof Plan
 
@@ -654,13 +692,13 @@ Mitigation:
 - forbid `eventBindings` on the binding
 - candidate source remains group-first
 
-### WorkerGroup.adapterNodeId survives as parallel truth
+### Group-owned node relation reappears as parallel truth
 
 Mitigation:
 
-- AN-2 starts the migration
-- AN-4 removes mainline reads
-- architecture guard prevents new canonical reads
+- `WorkerGroupRecord` has no `adapterNodeId`
+- `WorkerRegistrySnapshot` has no group-by-adapter-node index
+- node/group relation queries come from `WorkerManager` binding indexes
 
 ### AdapterNode is confused with transportNodeId
 
@@ -684,9 +722,9 @@ Mitigation:
 - when added, make it after-owner-apply and non-rollback
 - source guard blocks core owner mutation from listener code
 
-## Recommended First Slice
+## Implemented Slice Order
 
-First slice:
+First slice, completed:
 
 ```text
 AN-0 + AN-1 + AN-2
@@ -694,23 +732,23 @@ AN-0 + AN-1 + AN-2
 
 That means:
 
-1. inventory current truth
+1. inventory starting truth
 2. add `AdapterNodeRecord`
 3. add `NodeGroupBindingRecord`
-4. add basic indexes
-5. start migration framing for `WorkerGroupRecord.adapterNodeId`
+4. add binding indexes only
+5. start migration framing for group-owned node relation
 6. no scheduling behavior change
 
-Second slice:
+Second slice, completed:
 
 ```text
 AN-3 + AN-4
 ```
 
 Move worker registration to `adapterNodeId + groupId` and retire
-`WorkerGroupRecord.adapterNodeId` as mainline truth.
+group-owned node relation as mainline truth.
 
-Third slice:
+Third slice, completed:
 
 ```text
 AN-5
@@ -718,7 +756,7 @@ AN-5
 
 Implement node-local drain through dispatch availability.
 
-Fourth slice:
+Fourth slice, completed:
 
 ```text
 AN-6

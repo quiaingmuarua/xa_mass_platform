@@ -21,8 +21,9 @@ public final class WorkerRegistrySnapshot {
     private final Map<EventKey, Set<String>> groupIdsByEventKey;
     private final Map<String, Set<String>> groupIdsByProjectCode;
     private final Map<String, Set<String>> workerIdsByGroupId;
+    private final Map<String, Set<String>> workerIdsByAdapterNodeId;
+    private final Map<AdapterNodeGroupKey, Set<String>> workerIdsByAdapterNodeGroup;
     private final Map<String, String> groupIdByWorkerId;
-    private final Map<String, Set<String>> groupIdsByAdapterNodeId;
 
     private WorkerRegistrySnapshot(Map<String, WorkerGroupRecord> groupsById, Map<String, Worker> workersById) {
         this.groupsById = immutableMap(groupsById);
@@ -30,8 +31,9 @@ public final class WorkerRegistrySnapshot {
         this.groupIdsByEventKey = indexGroupsByEventKey(groupsById.values());
         this.groupIdsByProjectCode = indexGroupsByProjectCode(groupsById.values());
         this.workerIdsByGroupId = indexWorkersByGroupId(workersById.values());
+        this.workerIdsByAdapterNodeId = indexWorkersByAdapterNodeId(workersById.values());
+        this.workerIdsByAdapterNodeGroup = indexWorkersByAdapterNodeGroup(workersById.values());
         this.groupIdByWorkerId = indexGroupIdByWorkerId(workersById.values());
-        this.groupIdsByAdapterNodeId = indexGroupsByAdapterNodeId(groupsById.values());
     }
 
     public static WorkerRegistrySnapshot empty() {
@@ -92,14 +94,19 @@ public final class WorkerRegistrySnapshot {
         return normalized == null ? Set.of() : workerIdsByGroupId.getOrDefault(normalized, Set.of());
     }
 
+    public Set<String> workerIdsByAdapterNodeId(String adapterNodeId) {
+        String normalized = normalizeNullable(adapterNodeId);
+        return normalized == null ? Set.of() : workerIdsByAdapterNodeId.getOrDefault(normalized, Set.of());
+    }
+
+    public Set<String> workerIdsByAdapterNodeGroup(String adapterNodeId, String groupId) {
+        AdapterNodeGroupKey key = AdapterNodeGroupKey.fromNullable(adapterNodeId, groupId);
+        return key == null ? Set.of() : workerIdsByAdapterNodeGroup.getOrDefault(key, Set.of());
+    }
+
     public Optional<String> groupIdByWorkerId(String workerId) {
         String normalized = normalizeNullable(workerId);
         return normalized == null ? Optional.empty() : Optional.ofNullable(groupIdByWorkerId.get(normalized));
-    }
-
-    public Set<String> groupIdsByAdapterNodeId(String adapterNodeId) {
-        String normalized = normalizeNullable(adapterNodeId);
-        return normalized == null ? Set.of() : groupIdsByAdapterNodeId.getOrDefault(normalized, Set.of());
     }
 
     public List<WorkerGroupRecord> groups() {
@@ -169,6 +176,33 @@ public final class WorkerRegistrySnapshot {
         return immutableSetMap(mutableIndex);
     }
 
+    private static Map<String, Set<String>> indexWorkersByAdapterNodeId(Collection<Worker> workers) {
+        LinkedHashMap<String, LinkedHashSet<String>> mutableIndex = new LinkedHashMap<>();
+        for (Worker worker : workers) {
+            String workerId = normalizeNullable(worker.getWorkerId());
+            String adapterNodeId = normalizeNullable(worker.getAdapterNodeId());
+            if (workerId != null && adapterNodeId != null) {
+                mutableIndex.computeIfAbsent(adapterNodeId, ignored -> new LinkedHashSet<>()).add(workerId);
+            }
+        }
+        return immutableSetMap(mutableIndex);
+    }
+
+    private static Map<AdapterNodeGroupKey, Set<String>> indexWorkersByAdapterNodeGroup(Collection<Worker> workers) {
+        LinkedHashMap<AdapterNodeGroupKey, LinkedHashSet<String>> mutableIndex = new LinkedHashMap<>();
+        for (Worker worker : workers) {
+            String workerId = normalizeNullable(worker.getWorkerId());
+            AdapterNodeGroupKey key = AdapterNodeGroupKey.fromNullable(
+                    worker.getAdapterNodeId(),
+                    worker.getWorkerGroupId()
+            );
+            if (workerId != null && key != null) {
+                mutableIndex.computeIfAbsent(key, ignored -> new LinkedHashSet<>()).add(workerId);
+            }
+        }
+        return immutableSetMap(mutableIndex);
+    }
+
     private static Map<String, String> indexGroupIdByWorkerId(Collection<Worker> workers) {
         LinkedHashMap<String, String> index = new LinkedHashMap<>();
         for (Worker worker : workers) {
@@ -179,17 +213,6 @@ public final class WorkerRegistrySnapshot {
             }
         }
         return immutableMap(index);
-    }
-
-    private static Map<String, Set<String>> indexGroupsByAdapterNodeId(Collection<WorkerGroupRecord> groups) {
-        LinkedHashMap<String, LinkedHashSet<String>> mutableIndex = new LinkedHashMap<>();
-        for (WorkerGroupRecord group : groups) {
-            String adapterNodeId = normalizeNullable(group.adapterNodeId());
-            if (adapterNodeId != null) {
-                mutableIndex.computeIfAbsent(adapterNodeId, ignored -> new LinkedHashSet<>()).add(group.groupId());
-            }
-        }
-        return immutableSetMap(mutableIndex);
     }
 
     private static <K> Map<K, Set<String>> immutableSetMap(Map<K, LinkedHashSet<String>> mutableIndex) {
@@ -212,5 +235,17 @@ public final class WorkerRegistrySnapshot {
 
     private static String normalizeNullable(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private record AdapterNodeGroupKey(String adapterNodeId, String groupId) {
+
+        private static AdapterNodeGroupKey fromNullable(String adapterNodeId, String groupId) {
+            String normalizedAdapterNodeId = normalizeNullable(adapterNodeId);
+            String normalizedGroupId = normalizeNullable(groupId);
+            if (normalizedAdapterNodeId == null || normalizedGroupId == null) {
+                return null;
+            }
+            return new AdapterNodeGroupKey(normalizedAdapterNodeId, normalizedGroupId);
+        }
     }
 }

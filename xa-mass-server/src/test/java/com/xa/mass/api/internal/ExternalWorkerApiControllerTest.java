@@ -107,6 +107,7 @@ class ExternalWorkerApiControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.workerId").value("node-worker-1"))
+                .andExpect(jsonPath("$.data.adapterNodeId").value(WorkerTransportHints.POLLING))
                 .andExpect(jsonPath("$.data.workerGroupId").value("node-runtime"))
                 .andExpect(jsonPath("$.data.adapterId").value(WorkerTransportHints.POLLING))
                 .andExpect(jsonPath("$.data.transportHint").value(WorkerTransportHints.POLLING))

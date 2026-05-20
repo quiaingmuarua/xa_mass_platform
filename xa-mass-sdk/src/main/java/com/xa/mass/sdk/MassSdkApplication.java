@@ -1008,6 +1008,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         Map<String, Object> payload = request.getPayload();
         return normalizeWorkerRegistration(WorkerRegistration.builder()
                 .workerId(readRequiredString(payload, "workerId"))
+                .adapterNodeId(readString(payload, "adapterNodeId", null))
                 .workerGroupId(readString(payload, "workerGroupId", null))
                 .supportedProjects(readStringList(payload.get("supportedProjects")))
                 .supportedEventCodes(readStringList(payload.get("supportedEventCodes")))
@@ -1244,6 +1245,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
         return WorkerRegistration.builder()
                 .workerId(registration.getWorkerId())
+                .adapterNodeId(registration.getAdapterNodeId())
                 .workerGroupId(registration.getWorkerGroupId())
                 .supportedProjects(List.copyOf(supportedProjects))
                 .supportedEventCodes(List.copyOf(supportedEventCodes))

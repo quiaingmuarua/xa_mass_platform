@@ -39,6 +39,8 @@ public final class TaskApiContracts {
             String holdReason,
             @Schema(description = "External source reference for the task shell", example = "import://demo/seed.ndjson")
             String sourceRef,
+            @Schema(description = "Public task shared config with framework-owned security metadata stripped")
+            Map<String, Object> sharedConfig,
             @Schema(description = "Canonical execution policy view")
             ApiTaskExecution execution,
             @Schema(description = "Compatibility alias for execution")

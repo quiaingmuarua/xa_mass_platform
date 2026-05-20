@@ -20,6 +20,7 @@ public class Worker {
     private List<String> supportedProjects;
     private List<String> supportedEventCodes;
     private String workerGroupId;
+    private String adapterNodeId;
     private String adapterId;
     private String onlineStrategy;
     private int maxConcurrentWork = 1;
@@ -115,6 +116,14 @@ public class Worker {
 
     public void setWorkerGroupId(String workerGroupId) {
         this.workerGroupId = workerGroupId;
+    }
+
+    public String getAdapterNodeId() {
+        return adapterNodeId;
+    }
+
+    public void setAdapterNodeId(String adapterNodeId) {
+        this.adapterNodeId = adapterNodeId;
     }
 
     public String getOnlineStrategy() {
@@ -228,6 +237,7 @@ public class Worker {
                 ", supportedProjects=" + supportedProjects +
                 ", supportedEventCodes=" + supportedEventCodes +
                 ", workerGroupId='" + workerGroupId + '\'' +
+                ", adapterNodeId='" + adapterNodeId + '\'' +
                 ", adapterId='" + adapterId + '\'' +
                 ", onlineStrategy='" + onlineStrategy + '\'' +
                 ", maxConcurrentWork=" + getMaxConcurrentWork() +

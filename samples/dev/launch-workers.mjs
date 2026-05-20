@@ -127,15 +127,19 @@ async function seedTasks(taskSpecs) {
       });
     }
     if (!requestBody.keepIntakeOpen) {
-      await post(`/api/v1/tasks/${encodeURIComponent(taskId)}:seal`, taskSubmitterKey, null);
+      await executeTaskCommand(taskId, "SEAL");
     }
     if (taskSpec.approve && taskId) {
-      await post(`/api/v1/tasks/${encodeURIComponent(taskId)}:approve?comment=sample-launcher`, taskSubmitterKey, null);
+      await executeTaskCommand(taskId, "APPROVE");
       console.log(
         `[sample-launcher] approved seed task project=${requestBody.project} event=${requestBody.eventCode ?? ""}: ${taskId}`,
       );
     }
   }
+}
+
+async function executeTaskCommand(taskId, command) {
+  await post(`/api/v1/tasks/${encodeURIComponent(taskId)}/commands`, taskSubmitterKey, { command });
 }
 
 async function post(path, apiKey, body, headerName = "X-Mass-Api-Key") {

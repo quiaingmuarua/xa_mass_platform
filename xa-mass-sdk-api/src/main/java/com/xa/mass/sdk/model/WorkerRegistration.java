@@ -11,6 +11,7 @@ import java.util.*;
 public final class WorkerRegistration {
 
     private final String workerId;
+    private final String adapterNodeId;
     private final String workerGroupId;
     @Deprecated(forRemoval = false)
     private final List<String> supportedProjects;
@@ -24,6 +25,7 @@ public final class WorkerRegistration {
 
     private WorkerRegistration(Builder builder) {
         this.workerId = builder.workerId;
+        this.adapterNodeId = builder.adapterNodeId;
         this.workerGroupId = builder.workerGroupId;
         this.supportedProjects = immutableListCopy(builder.supportedProjects);
         this.supportedEventCodes = immutableListCopy(builder.supportedEventCodes);
@@ -40,6 +42,10 @@ public final class WorkerRegistration {
 
     public String getWorkerId() {
         return workerId;
+    }
+
+    public String getAdapterNodeId() {
+        return adapterNodeId;
     }
 
     public String getWorkerGroupId() {
@@ -89,6 +95,7 @@ public final class WorkerRegistration {
         if (this == o) return true;
         if (!(o instanceof WorkerRegistration that)) return false;
         return Objects.equals(workerId, that.workerId)
+                && Objects.equals(adapterNodeId, that.adapterNodeId)
                 && Objects.equals(workerGroupId, that.workerGroupId)
                 && Objects.equals(supportedProjects, that.supportedProjects)
                 && Objects.equals(supportedEventCodes, that.supportedEventCodes)
@@ -103,6 +110,7 @@ public final class WorkerRegistration {
     public int hashCode() {
         return Objects.hash(
                 workerId,
+                adapterNodeId,
                 workerGroupId,
                 supportedProjects,
                 supportedEventCodes,
@@ -118,6 +126,7 @@ public final class WorkerRegistration {
     public String toString() {
         return "WorkerRegistration{" +
                 "workerId='" + workerId + '\'' +
+                ", adapterNodeId='" + adapterNodeId + '\'' +
                 ", workerGroupId='" + workerGroupId + '\'' +
                 ", supportedProjects=" + supportedProjects +
                 ", supportedEventCodes=" + supportedEventCodes +
@@ -152,6 +161,7 @@ public final class WorkerRegistration {
 
     public static final class Builder {
         private String workerId;
+        private String adapterNodeId;
         private String workerGroupId;
         private List<String> supportedProjects = Collections.emptyList();
         private List<String> supportedEventCodes = Collections.emptyList();
@@ -166,6 +176,11 @@ public final class WorkerRegistration {
 
         public Builder workerId(String workerId) {
             this.workerId = workerId;
+            return this;
+        }
+
+        public Builder adapterNodeId(String adapterNodeId) {
+            this.adapterNodeId = adapterNodeId;
             return this;
         }
 

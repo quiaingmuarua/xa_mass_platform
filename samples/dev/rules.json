@@ -12,18 +12,18 @@
     {
       "id": "worker_context_status_check",
       "name": "Worker context status check",
-      "description": "Worker without context is allowed; otherwise worker context must be allocatable",
+      "description": "Worker without a scheduling resource is allowed; otherwise the resource must be allocatable",
       "type": "QL_EXPRESS",
-      "content": "hasWorkerContext == false || isWorkerContextAllocatable == true",
+      "content": "hasWorkerSchedulingResource == false || isWorkerSchedulingResourceAllocatable == true",
       "priority": 2,
       "enabled": true
     },
     {
       "id": "routing_country_match",
       "name": "Routing country match",
-      "description": "Routing country, when required, must come from worker context",
+      "description": "Routing country, when required, must match worker scheduling routing tags",
       "type": "QL_EXPRESS",
-      "content": "taskHasRoutingRequirement == false || workerContextMatchesRoutingCode == true",
+      "content": "taskHasRoutingRequirement == false || workerSchedulingMatchesRoutingCode == true",
       "priority": 3,
       "enabled": true
     },
