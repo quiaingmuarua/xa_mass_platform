@@ -3,6 +3,7 @@ package com.xa.mass.trace.scenario;
 import com.xa.mass.trace.query.TraceQueryBackend;
 import com.xa.mass.trace.query.TraceQueryFilter;
 import com.xa.mass.trace.query.TraceSource;
+import com.xa.mass.trace.query.TraceAssignmentRow;
 import com.xa.mass.trace.query.TraceTimelineRow;
 
 import java.util.ArrayList;
@@ -41,6 +42,7 @@ final class ExternalWorkerPublicContractSuccessScenarioAnalyzer implements Trace
         } else {
             analyzeTaskRows(taskRows, target, issues);
         }
+        analyzeAssignmentRows(queryBackend.assignment(source, target.taskId(), 2_000), target, issues);
         analyzeWorkerRows(workerRows, target, issues);
         return report(source, taskId, taskRows, workerRows, issues);
     }
@@ -90,6 +92,31 @@ final class ExternalWorkerPublicContractSuccessScenarioAnalyzer implements Trace
                 "external-worker-public-contract-success should not rely on late callback suppression");
         rejectEvent(rows, issues, "CALLBACK_REJECTED_INVALID_STATE",
                 "external-worker-public-contract-success should not reject the callback state");
+    }
+
+    private void analyzeAssignmentRows(List<TraceAssignmentRow> rows,
+                                       Target target,
+                                       List<TraceScenarioIssue> issues) {
+        boolean hasGroupFirstEvidence = rows.stream()
+                .filter(row -> "WORKER_MATCH_ACCEPTED".equals(row.eventType()))
+                .filter(row -> target.workerId().equals(row.workerId()))
+                .anyMatch(row -> present(row.workerGroupId())
+                        && present(row.adapterNodeId())
+                        && present(row.workerCandidateSource())
+                        && !"ALL_WORKERS_FALLBACK".equals(row.workerCandidateSource()));
+        boolean hasDispatchEventBindingEvidence = rows.stream()
+                .filter(row -> "TASK_WORK_ATTEMPT_STATUS_TRANSITION".equals(row.eventType()))
+                .filter(row -> target.workerId().equals(row.workerId()))
+                .anyMatch(row -> present(row.workerGroupId())
+                        && present(row.adapterNodeId())
+                        && present(row.eventBindingKey())
+                        && present(row.workerCandidateSource())
+                        && !"ALL_WORKERS_FALLBACK".equals(row.workerCandidateSource()));
+        if (!hasGroupFirstEvidence || !hasDispatchEventBindingEvidence) {
+            issues.add(new TraceScenarioIssue(
+                    "MISSING_GROUP_FIRST_DISPATCH_EVIDENCE",
+                    "Expected accepted worker match evidence plus dispatched attempt eventBindingKey evidence"));
+        }
     }
 
     private void analyzeWorkerRows(List<TraceTimelineRow> rows,
@@ -144,6 +171,10 @@ final class ExternalWorkerPublicContractSuccessScenarioAnalyzer implements Trace
                     "TERMINAL_REASON_MISMATCH",
                     "Expected TASK_TERMINAL_CLOSED terminalReason=" + expected));
         }
+    }
+
+    private static boolean present(String value) {
+        return value != null && !value.isBlank();
     }
 
     private TraceScenarioReport report(TraceSource source,

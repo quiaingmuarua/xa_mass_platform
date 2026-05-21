@@ -65,15 +65,31 @@ with an explicit `adapterId`.
 
 app.start();
 
-app.registerWorker(WorkerRegistration.builder()
-        .workerId("crawler-worker-1")
-        .workerGroupId("crawler")
+app.declareWorkerGroup(WorkerGroupDeclaration.builder()
+        .groupId("crawler")
         .eventBindings(java.util.List.of(
                 WorkerEventBinding.builder()
                         .eventCode("demo.dispatch")
                         .projectCodes(java.util.List.of("demoApp"))
                         .build()
         ))
+        .build());
+
+app.registerAdapterNode(AdapterNodeRegistration.builder()
+        .adapterNodeId("crawler-polling-node")
+        .adapterType("polling")
+        .endpointId("crawler-polling-node")
+        .build());
+
+app.bindNodeGroup(NodeGroupBindingRegistration.builder()
+        .adapterNodeId("crawler-polling-node")
+        .workerGroupId("crawler")
+        .build());
+
+app.registerWorker(WorkerRegistration.builder()
+        .workerId("crawler-worker-1")
+        .adapterNodeId("crawler-polling-node")
+        .workerGroupId("crawler")
         .transportHint("polling")
         .attributes(java.util.Map.of("type", "crawler"))
         .build());
@@ -98,15 +114,15 @@ app.executeTaskCommand(task.getTid(), com.xa.mass.sdk.model.MassTaskCommandReque
 app.pullWorker("crawler-worker-1").connect();
 ```
 
-New worker capability registration should declare `eventBindings`. Coarse
-`supportedProjects` / `supportedEventCodes` fields remain compatibility
-read/input residue only and must not be used as the mainline capability
-contract in new code.
+New worker capability registration should declare `WorkerGroupDeclaration`
+with `eventBindings`, then register worker execution identities against the
+group. `WorkerRegistration` does not accept worker-level capability fields;
+use worker attributes only for routing labels and diagnostics.
 
 `WorkerContext` registration, query, and runtime payload surfaces have been
 removed from the SDK mainline. New SDK integration should start from
-`WorkerRegistration`, `eventBindings`, transport identity, and external worker
-client flows.
+`WorkerGroupDeclaration`, `WorkerRegistration`, transport identity, and
+external worker client flows.
 
 `transportHint` is required for worker registration, and `adapterId` is the concrete runtime identity. Registration resolution now comes from transport runtime metadata rather than SDK-side `realtime -> websocket` guessing. Realtime workers must always register with explicit `adapterId + transportHint`; only polling keeps the implicit family default to `polling`. `pullWorker(...)` also resolves strictly from the worker's declared transport identity and fails fast on transport mismatch instead of falling back to another pull-capable adapter. Adapter-id aliases such as `ws`, `pull`, `queue`, or `tcp-socket` are not accepted as runtime identities; use canonical adapter ids such as `websocket`, `polling`, or `socket`. `transportHint` aliases such as `websocket`, `ws`, `push`, `pull`, or `queue` are also not accepted; use canonical coarse families such as `realtime` or `polling`. Adapter implementation labels such as `WorkerAdapter.protocol()` are no longer treated as runtime transport truth; selection keys off canonical registration identity instead.
 

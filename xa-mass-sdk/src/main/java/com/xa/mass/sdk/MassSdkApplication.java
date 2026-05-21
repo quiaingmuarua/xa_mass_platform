@@ -21,9 +21,13 @@ import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.stage.TaskStageEvidenceResult;
 import com.xa.mass.engine.stage.TaskStageEvidenceService;
 import com.xa.mass.engine.stage.TaskStageProjection;
+import com.xa.mass.engine.worker.EventBinding;
 import com.xa.mass.engine.worker.WorkerCapabilityReport;
 import com.xa.mass.engine.worker.WorkerCapabilityReportResult;
 import com.xa.mass.engine.worker.WorkerControlService;
+import com.xa.mass.engine.worker.WorkerGroupRecord;
+import com.xa.mass.engine.worker.AdapterNodeRecord;
+import com.xa.mass.engine.worker.NodeGroupBindingRecord;
 import com.xa.mass.engine.worker.WorkerStateProjection;
 import com.xa.mass.engine.worker.WorkerStateProjectionResult;
 import com.xa.mass.engine.worker.WorkerStateReport;
@@ -392,6 +396,48 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 after != null ? after : before,
                 "Task command is not allowed in the current state",
                 "COMMAND_NOT_ALLOWED");
+    }
+
+    @Override
+    public void registerAdapterNode(AdapterNodeRegistration request) {
+        MassEngine engine = requireStartedEngine();
+        Objects.requireNonNull(request, "request");
+        engine.getConfig().getWorkerManager().registerAdapterNode(new AdapterNodeRecord(
+                request.getAdapterNodeId(),
+                request.getAdapterType(),
+                request.getAdapterVersion(),
+                request.getEndpointId(),
+                request.isEnabled(),
+                request.isOnline(),
+                null,
+                null,
+                request.getAttributes()
+        ));
+    }
+
+    @Override
+    public void bindNodeGroup(NodeGroupBindingRegistration request) {
+        MassEngine engine = requireStartedEngine();
+        Objects.requireNonNull(request, "request");
+        engine.getConfig().getWorkerManager().bindNodeGroup(new NodeGroupBindingRecord(
+                request.getAdapterNodeId(),
+                request.getWorkerGroupId(),
+                request.getPluginVersion(),
+                request.getDeploymentVersion(),
+                request.isEnabled(),
+                request.isDraining(),
+                null,
+                null,
+                request.getAttributes()
+        ));
+    }
+
+    @Override
+    public void declareWorkerGroup(WorkerGroupDeclaration request) {
+        MassEngine engine = requireStartedEngine();
+        engine.getConfig().getWorkerManager().upsertWorkerGroup(toWorkerGroupRecord(
+                Objects.requireNonNull(request, "request")
+        ));
     }
 
     @Override
@@ -1010,9 +1056,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 .workerId(readRequiredString(payload, "workerId"))
                 .adapterNodeId(readString(payload, "adapterNodeId", null))
                 .workerGroupId(readString(payload, "workerGroupId", null))
-                .supportedProjects(readStringList(payload.get("supportedProjects")))
-                .supportedEventCodes(readStringList(payload.get("supportedEventCodes")))
-                .eventBindings(readWorkerEventBindings(payload.get("eventBindings")))
                 .adapterId(readString(payload, "adapterId", null))
                 .transportHint(readString(payload, "transportHint", null))
                 .maxConcurrentWork(readInt(readString(payload, "maxConcurrentWork", null), 1))
@@ -1185,6 +1228,10 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return value.trim();
     }
 
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
     private String requireWorkerId(String workerId) {
         if (workerId == null || workerId.isBlank()) {
             throw new IllegalArgumentException("workerId must not be blank");
@@ -1224,57 +1271,43 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return pullWorker(requireWorkerId(workerId));
     }
 
+    private WorkerGroupRecord toWorkerGroupRecord(WorkerGroupDeclaration declaration) {
+        List<WorkerEventBinding> declaredBindings = declaration.getEventBindings();
+        if (declaredBindings.isEmpty()) {
+            throw new IllegalArgumentException("eventBindings is required");
+        }
+        List<EventBinding> eventBindings = new ArrayList<>(declaredBindings.size());
+        for (WorkerEventBinding binding : declaredBindings) {
+            EventDefinition definition = requireEnabledEventDefinition(binding.getEventCode());
+            eventBindings.add(EventBinding.of(definition.getCode(), resolveWorkerBindingProjects(definition, binding)));
+        }
+        return WorkerGroupRecord.builder(declaration.getGroupId())
+                .eventBindings(eventBindings)
+                .defaultAttributes(declaration.getDefaultAttributes())
+                .defaultMaxConcurrentWork(declaration.getDefaultMaxConcurrentWork())
+                .build();
+    }
+
     private WorkerRegistration normalizeWorkerRegistration(WorkerRegistration registration) {
         Objects.requireNonNull(registration, "registration");
-        List<WorkerEventBinding> bindings = normalizedWorkerBindings(registration);
-        LinkedHashSet<String> supportedEventCodes = new LinkedHashSet<>();
-        LinkedHashSet<String> supportedProjects = new LinkedHashSet<>();
-        if (bindings != null && !bindings.isEmpty()) {
-            for (WorkerEventBinding binding : bindings) {
-                EventDefinition definition = requireEnabledEventDefinition(binding.getEventCode());
-                supportedEventCodes.add(definition.getCode());
-                supportedProjects.addAll(resolveWorkerBindingProjects(definition, binding));
-            }
-        } else {
-            supportedEventCodes.addAll(normalizedStringList(registration.getSupportedEventCodes()));
-            supportedProjects.addAll(normalizedStringList(registration.getSupportedProjects()));
-        }
         String normalizedTransportHint =
                 WorkerTransportHints.normalize(requireNonBlank(registration.getTransportHint(), "transportHint"));
         String resolvedAdapterId = resolveRegistrationAdapterId(registration.getAdapterId(), normalizedTransportHint);
+        String workerGroupId = blankToNull(registration.getWorkerGroupId());
+        String adapterNodeId = blankToNull(registration.getAdapterNodeId());
+        if (workerGroupId != null && adapterNodeId == null) {
+            throw new IllegalArgumentException("adapterNodeId must not be blank when workerGroupId is provided");
+        }
 
         return WorkerRegistration.builder()
                 .workerId(registration.getWorkerId())
-                .adapterNodeId(registration.getAdapterNodeId())
-                .workerGroupId(registration.getWorkerGroupId())
-                .supportedProjects(List.copyOf(supportedProjects))
-                .supportedEventCodes(List.copyOf(supportedEventCodes))
-                .eventBindings(bindings)
+                .adapterNodeId(adapterNodeId)
+                .workerGroupId(workerGroupId)
                 .adapterId(resolvedAdapterId)
                 .transportHint(normalizedTransportHint)
                 .maxConcurrentWork(registration.getMaxConcurrentWork())
                 .attributes(registration.getAttributes())
                 .build();
-    }
-
-    private List<WorkerEventBinding> normalizedWorkerBindings(WorkerRegistration registration) {
-        List<WorkerEventBinding> explicitBindings = registration.getEventBindings();
-        if (explicitBindings != null && !explicitBindings.isEmpty()) {
-            return List.copyOf(explicitBindings);
-        }
-        List<String> legacyEventCodes = normalizedStringList(registration.getSupportedEventCodes());
-        if (legacyEventCodes.isEmpty()) {
-            return List.of();
-        }
-        List<String> legacyProjectCodes = normalizedStringList(registration.getSupportedProjects());
-        List<WorkerEventBinding> derivedBindings = new ArrayList<>(legacyEventCodes.size());
-        for (String eventCode : legacyEventCodes) {
-            derivedBindings.add(WorkerEventBinding.builder()
-                    .eventCode(eventCode)
-                    .projectCodes(legacyProjectCodes)
-                    .build());
-        }
-        return List.copyOf(derivedBindings);
     }
 
     private String resolveRegistrationAdapterId(String requestedAdapterId, String transportHint) {
@@ -1708,14 +1741,24 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         if (worker == null) {
             return null;
         }
+        WorkerGroupRecord group = resolveWorkerGroup(worker.getWorkerGroupId());
+        List<String> supportedProjects = group != null
+                ? List.copyOf(group.projectCodes())
+                : worker.getSupportedProjects();
+        List<String> supportedEventCodes = group != null
+                ? List.copyOf(group.eventCodes())
+                : worker.getSupportedEventCodes();
+        List<WorkerEventBinding> eventBindings = group != null
+                ? toWorkerEventBindings(group)
+                : deriveWorkerEventBindings(worker);
         return new WorkerSnapshot(
                 worker.getWorkerId(),
                 enumName(worker.getStatus()),
                 worker.getAgentVersion(),
                 worker.getLastHeartbeat(),
-                worker.getSupportedProjects(),
-                worker.getSupportedEventCodes(),
-                deriveWorkerEventBindings(worker),
+                supportedProjects,
+                supportedEventCodes,
+                eventBindings,
                 worker.getWorkerGroupId(),
                 worker.getAdapterId(),
                 worker.getOnlineStrategy(),
@@ -1724,6 +1767,31 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 worker.getCreateTime(),
                 worker.getUpdateTime()
         );
+    }
+
+    private WorkerGroupRecord resolveWorkerGroup(String workerGroupId) {
+        if (workerGroupId == null || workerGroupId.isBlank()) {
+            return null;
+        }
+        return requireStartedEngine()
+                .getConfig()
+                .getWorkerManager()
+                .workerGroup(workerGroupId)
+                .orElse(null);
+    }
+
+    private List<WorkerEventBinding> toWorkerEventBindings(WorkerGroupRecord group) {
+        if (group == null || group.eventBindings().isEmpty()) {
+            return List.of();
+        }
+        List<WorkerEventBinding> bindings = new ArrayList<>(group.eventBindings().size());
+        for (EventBinding binding : group.eventBindings()) {
+            bindings.add(WorkerEventBinding.builder()
+                    .eventCode(binding.eventCode())
+                    .projectCodes(binding.projectCodes())
+                    .build());
+        }
+        return List.copyOf(bindings);
     }
 
     private List<WorkerEventBinding> deriveWorkerEventBindings(Worker worker) {

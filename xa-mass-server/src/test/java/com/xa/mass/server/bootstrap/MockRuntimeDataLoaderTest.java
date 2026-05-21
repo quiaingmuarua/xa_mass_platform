@@ -5,9 +5,12 @@ import com.xa.mass.sdk.MassRuntimeControl;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
+import com.xa.mass.sdk.model.AdapterNodeRegistration;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
+import com.xa.mass.sdk.model.NodeGroupBindingRegistration;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
+import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.model.WorkerSnapshot;
 import org.junit.jupiter.api.Test;
@@ -40,6 +43,7 @@ class MockRuntimeDataLoaderTest {
 
         assertEquals(2, runtime.workers.size());
         assertEquals(2, runtime.registeredWorkers.size());
+        assertEquals(2, runtime.workerGroups.size());
         assertEquals(1, runtime.createdTasks.size());
         assertEquals(2, runtime.rules.size());
         assertTrue(runtime.workers.stream().allMatch(worker -> "OFFLINE".equals(worker.getStatus())));
@@ -83,8 +87,12 @@ class MockRuntimeDataLoaderTest {
         loader.loadInto(runtime);
 
         assertEquals(1, runtime.registeredWorkers.size());
+        assertEquals(1, runtime.workerGroups.size());
+        assertEquals(1, runtime.adapterNodes.size());
+        assertEquals(1, runtime.nodeGroupBindings.size());
         assertEquals("OFFLINE", runtime.workers.get(0).getStatus());
         assertEquals("polling", runtime.registeredWorkers.get(0).getTransportHint());
+        assertNotNull(runtime.registeredWorkers.get(0).getAdapterNodeId());
         assertEquals("route-us", runtime.registeredWorkers.get(0).getAttributes().get("routingTags"));
         assertEquals("us", runtime.registeredWorkers.get(0).getAttributes().get("region"));
     }
@@ -259,6 +267,9 @@ class MockRuntimeDataLoaderTest {
     private static final class FakeRuntime implements MassRuntimeControl {
         private final List<WorkerSnapshot> workers = new ArrayList<>();
         private final List<WorkerRegistration> registeredWorkers = new ArrayList<>();
+        private final List<AdapterNodeRegistration> adapterNodes = new ArrayList<>();
+        private final List<NodeGroupBindingRegistration> nodeGroupBindings = new ArrayList<>();
+        private final Map<String, WorkerGroupDeclaration> workerGroups = new java.util.LinkedHashMap<>();
         private final List<MassTaskShellCreateRequest> createdTasks = new ArrayList<>();
         private final List<RuleDefinition> rules = new ArrayList<>();
 
@@ -268,18 +279,34 @@ class MockRuntimeDataLoaderTest {
         }
 
         @Override
+        public void registerAdapterNode(AdapterNodeRegistration request) {
+            adapterNodes.add(request);
+        }
+
+        @Override
+        public void bindNodeGroup(NodeGroupBindingRegistration request) {
+            nodeGroupBindings.add(request);
+        }
+
+        @Override
+        public void declareWorkerGroup(WorkerGroupDeclaration request) {
+            workerGroups.put(request.getGroupId(), request);
+        }
+
+        @Override
         public void registerWorker(WorkerRegistration request) {
             registeredWorkers.add(request);
-            List<String> supportedProjects = request.getSupportedProjects();
-            if ((supportedProjects == null || supportedProjects.isEmpty()) && !request.getEventBindings().isEmpty()) {
-                supportedProjects = request.getEventBindings().stream()
+            WorkerGroupDeclaration group = workerGroups.get(request.getWorkerGroupId());
+            List<String> supportedProjects = List.of();
+            if (group != null) {
+                supportedProjects = group.getEventBindings().stream()
                         .flatMap(binding -> binding.getProjectCodes().stream())
                         .distinct()
                         .toList();
             }
-            List<String> supportedEventCodes = request.getSupportedEventCodes();
-            if ((supportedEventCodes == null || supportedEventCodes.isEmpty()) && !request.getEventBindings().isEmpty()) {
-                supportedEventCodes = request.getEventBindings().stream()
+            List<String> supportedEventCodes = List.of();
+            if (group != null) {
+                supportedEventCodes = group.getEventBindings().stream()
                         .map(com.xa.mass.sdk.model.WorkerEventBinding::getEventCode)
                         .distinct()
                         .toList();
@@ -291,7 +318,7 @@ class MockRuntimeDataLoaderTest {
                     null,
                     supportedProjects,
                     supportedEventCodes,
-                    request.getEventBindings(),
+                    List.of(),
                     request.getWorkerGroupId(),
                     request.getAdapterId(),
                     request.getTransportHint(),

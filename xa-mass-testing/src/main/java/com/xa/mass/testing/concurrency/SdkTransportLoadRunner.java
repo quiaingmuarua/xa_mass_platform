@@ -12,12 +12,15 @@ import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.event.EventDefinition;
+import com.xa.mass.sdk.model.AdapterNodeRegistration;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
+import com.xa.mass.sdk.model.NodeGroupBindingRegistration;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.TaskStateSnapshot;
 import com.xa.mass.sdk.model.WorkerEventBinding;
+import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
@@ -244,24 +247,35 @@ public final class SdkTransportLoadRunner {
                         .eventCodes(List.of(TASK_EVENT_CODE))
                         .build());
             }
+            app.declareWorkerGroup(WorkerGroupDeclaration.builder()
+                    .groupId("sdk-load")
+                    .eventBindings(List.of(WorkerEventBinding.builder()
+                            .eventCode(TASK_EVENT_CODE)
+                            .projectCodes(List.of("demoApp"))
+                            .build()))
+                    .build());
         }
 
         private void registerWorkers(MassSdkApplication app,
                                      int workerCount,
                                      WorkerTransportMode transportMode) {
             String transportHint = transportMode.transportHint();
+            String adapterNodeId = transportMode.adapterId() + "-load-node";
+            app.registerAdapterNode(AdapterNodeRegistration.builder()
+                    .adapterNodeId(adapterNodeId)
+                    .adapterType(transportHint)
+                    .endpointId(adapterNodeId)
+                    .build());
+            app.bindNodeGroup(NodeGroupBindingRegistration.builder()
+                    .adapterNodeId(adapterNodeId)
+                    .workerGroupId("sdk-load")
+                    .build());
             for (int i = 0; i < workerCount; i++) {
                 String workerId = "sdk-load-worker-" + i;
                 app.registerWorker(WorkerRegistration.builder()
                         .workerId(workerId)
+                        .adapterNodeId(adapterNodeId)
                         .workerGroupId("sdk-load")
-                        .supportedProjects(List.of("demoApp"))
-                        .eventBindings(List.of(
-                                WorkerEventBinding.builder()
-                                        .eventCode(TASK_EVENT_CODE)
-                                        .projectCodes(List.of("demoApp"))
-                                        .build()
-                        ))
                         .transportHint(transportHint)
                         .adapterId(transportMode.adapterId())
                         .attributes(Map.of("routingTags", "us", "country", "us"))
@@ -1483,4 +1497,3 @@ public final class SdkTransportLoadRunner {
         }
     }
 }
-

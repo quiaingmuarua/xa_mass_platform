@@ -24,6 +24,7 @@ public final class WorkerSchedulingView {
     private final String workerId;
     private final WorkerStatus workerStatus;
     private final String workerGroupId;
+    private final String adapterNodeId;
     private final String agentVersion;
     private final List<String> supportedProjects;
     private final List<String> supportedEventCodes;
@@ -47,6 +48,7 @@ public final class WorkerSchedulingView {
         this.workerId = worker.getWorkerId();
         this.workerStatus = worker.getStatus();
         this.workerGroupId = worker.getWorkerGroupId();
+        this.adapterNodeId = worker.getAdapterNodeId();
         this.agentVersion = worker.getAgentVersion();
         this.supportedProjects = workerGroup == null
                 ? List.of()
@@ -114,6 +116,10 @@ public final class WorkerSchedulingView {
 
     public String workerGroupId() {
         return workerGroupId;
+    }
+
+    public String adapterNodeId() {
+        return adapterNodeId;
     }
 
     public String agentVersion() {

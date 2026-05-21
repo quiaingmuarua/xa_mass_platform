@@ -25,6 +25,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
+import static com.xa.mass.engine.worker.WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.NODE_GROUP_BINDING;
+
 /**
  * Worker access facade for the active engine runtime.
  *
@@ -34,6 +36,7 @@ import java.util.Set;
 public class WorkerManager implements WorkerLookupStore {
 
     private static final Logger log = LoggerFactory.getLogger(WorkerManager.class);
+    static final int DEFAULT_STAGE_ONE_CANDIDATE_LIMIT = 512;
 
     private final WorkerStorage workerStorage;
     private final WorkerReachabilityView reachabilityView;
@@ -42,6 +45,7 @@ public class WorkerManager implements WorkerLookupStore {
     private final WorkerCapabilityAuthority capabilityAuthority;
     private final Object workerRegistryLock = new Object();
     private final LinkedHashMap<String, Worker> workerRegistryRows = new LinkedHashMap<>();
+    private final LinkedHashMap<String, WorkerGroupRecord> workerGroupsById = new LinkedHashMap<>();
     private final Object adapterNodeRegistryLock = new Object();
     private final LinkedHashMap<String, AdapterNodeRecord> adapterNodesById = new LinkedHashMap<>();
     private final LinkedHashMap<NodeGroupBindingKey, NodeGroupBindingRecord> nodeGroupBindingsByKey =
@@ -49,6 +53,9 @@ public class WorkerManager implements WorkerLookupStore {
     private final LinkedHashMap<String, LinkedHashSet<String>> groupIdsByAdapterNodeId = new LinkedHashMap<>();
     private final LinkedHashMap<String, LinkedHashSet<String>> adapterNodeIdsByGroupId = new LinkedHashMap<>();
     private volatile WorkerRegistrySnapshot workerRegistrySnapshot;
+    private volatile WorkerRouteBucketOwner workerRouteBucketOwner;
+    private volatile Runnable dispatchWakeupCallback = () -> {
+    };
 
     public WorkerManager(WorkerStorage workerStorage) {
         this(workerStorage, WorkerReachabilityView.permissive(), new InMemoryWorkerLoadView());
@@ -95,7 +102,7 @@ public class WorkerManager implements WorkerLookupStore {
         for (Worker worker : workerStorage.getAllWorkers()) {
             putRegistryRow(worker);
         }
-        this.workerRegistrySnapshot = composeWorkerRegistrySnapshot();
+        publishWorkerRegistrySnapshot(composeWorkerRegistrySnapshot());
     }
 
     public void addWorker(Worker worker) {
@@ -107,6 +114,7 @@ public class WorkerManager implements WorkerLookupStore {
             publishWorkerRegistrySnapshot();
         }
         applyNodeGroupBindingDispatchGate(registrationRow);
+        notifyDispatchWakeup("worker registered");
     }
 
     public Worker getWorker(String workerId) {
@@ -143,6 +151,49 @@ public class WorkerManager implements WorkerLookupStore {
         return deleted;
     }
 
+    public WorkerGroupRecord upsertWorkerGroup(WorkerGroupRecord group) {
+        if (group == null) {
+            throw new IllegalArgumentException("worker group must not be null");
+        }
+        synchronized (workerRegistryLock) {
+            workerGroupsById.put(group.groupId(), group);
+            publishWorkerRegistrySnapshot();
+        }
+        notifyDispatchWakeup("worker group declared");
+        return group;
+    }
+
+    public Optional<WorkerGroupRecord> workerGroup(String groupId) {
+        String normalizedGroupId = normalizeNullable(groupId);
+        if (normalizedGroupId == null) {
+            return Optional.empty();
+        }
+        synchronized (workerRegistryLock) {
+            return Optional.ofNullable(workerGroupsById.get(normalizedGroupId));
+        }
+    }
+
+    public List<WorkerGroupRecord> workerGroups() {
+        synchronized (workerRegistryLock) {
+            return List.copyOf(workerGroupsById.values());
+        }
+    }
+
+    public boolean deleteWorkerGroup(String groupId) {
+        String normalizedGroupId = normalizeNullable(groupId);
+        if (normalizedGroupId == null) {
+            return false;
+        }
+        synchronized (workerRegistryLock) {
+            WorkerGroupRecord removed = workerGroupsById.remove(normalizedGroupId);
+            if (removed != null) {
+                publishWorkerRegistrySnapshot();
+                return true;
+            }
+            return false;
+        }
+    }
+
     public List<Worker> getWorkersByGroupId(String workerGroupId) {
         return workerStorage.getWorkersByGroupId(workerGroupId);
     }
@@ -165,15 +216,19 @@ public class WorkerManager implements WorkerLookupStore {
 
     public AdapterNodeRecord registerAdapterNode(AdapterNodeRecord adapterNode) {
         AdapterNodeRecord record = requireAdapterNode(adapterNode);
+        AdapterNodeRecord normalized;
         synchronized (adapterNodeRegistryLock) {
             AdapterNodeRecord current = adapterNodesById.get(record.adapterNodeId());
-            AdapterNodeRecord normalized = record.withLifecycleTimestamps(
+            normalized = record.withLifecycleTimestamps(
                     resolveRegisteredAt(record.registeredAt(), current == null ? null : current.registeredAt()),
                     resolveUpdatedAt(record.lastSeenAt())
             );
             adapterNodesById.put(normalized.adapterNodeId(), normalized);
-            return normalized;
         }
+        if (isAdapterNodeAvailable(normalized)) {
+            notifyDispatchWakeup("adapter node available");
+        }
+        return normalized;
     }
 
     public Optional<AdapterNodeRecord> adapterNode(String adapterNodeId) {
@@ -214,13 +269,16 @@ public class WorkerManager implements WorkerLookupStore {
 
     public NodeGroupBindingRecord bindNodeGroup(NodeGroupBindingRecord binding) {
         NodeGroupBindingRecord record = requireNodeGroupBinding(binding);
+        NodeGroupBindingRecord normalized;
+        validateAdapterNodeRegistered(record.adapterNodeId());
+        requireDeclaredWorkerGroup(record.groupId());
         synchronized (adapterNodeRegistryLock) {
             if (!adapterNodesById.containsKey(record.adapterNodeId())) {
                 throw new IllegalArgumentException("adapterNodeId is not registered: " + record.adapterNodeId());
             }
             NodeGroupBindingKey key = NodeGroupBindingKey.from(record.adapterNodeId(), record.groupId());
             NodeGroupBindingRecord current = nodeGroupBindingsByKey.get(key);
-            NodeGroupBindingRecord normalized = record.withLifecycleTimestamps(
+            normalized = record.withLifecycleTimestamps(
                     resolveRegisteredAt(record.registeredAt(), current == null ? null : current.registeredAt()),
                     resolveUpdatedAt(record.updatedAt())
             );
@@ -229,8 +287,12 @@ public class WorkerManager implements WorkerLookupStore {
             }
             nodeGroupBindingsByKey.put(key, normalized);
             addBindingIndex(normalized);
-            return normalized;
+            applyNodeGroupBindingDispatchGate(normalized);
         }
+        if (isNodeGroupBindingAvailable(normalized)) {
+            notifyDispatchWakeup("node group binding available");
+        }
+        return normalized;
     }
 
     public Optional<NodeGroupBindingRecord> nodeGroupBinding(String adapterNodeId, String groupId) {
@@ -282,25 +344,37 @@ public class WorkerManager implements WorkerLookupStore {
     public NodeGroupBindingRecord setNodeGroupBindingEnabled(String adapterNodeId,
                                                              String groupId,
                                                              boolean enabled) {
+        NodeGroupBindingRecord updated;
+        boolean becameAvailable;
         synchronized (adapterNodeRegistryLock) {
             NodeGroupBindingRecord current = requireExistingBinding(adapterNodeId, groupId);
-            NodeGroupBindingRecord updated = current.withEnabled(enabled, Instant.now());
+            updated = current.withEnabled(enabled, Instant.now());
             nodeGroupBindingsByKey.put(NodeGroupBindingKey.from(updated.adapterNodeId(), updated.groupId()), updated);
             applyNodeGroupBindingDispatchGate(updated);
-            return updated;
+            becameAvailable = !isNodeGroupBindingAvailable(current) && isNodeGroupBindingAvailable(updated);
         }
+        if (becameAvailable) {
+            notifyDispatchWakeup("node group binding enabled");
+        }
+        return updated;
     }
 
     public NodeGroupBindingRecord setNodeGroupBindingDraining(String adapterNodeId,
                                                               String groupId,
                                                               boolean draining) {
+        NodeGroupBindingRecord updated;
+        boolean becameAvailable;
         synchronized (adapterNodeRegistryLock) {
             NodeGroupBindingRecord current = requireExistingBinding(adapterNodeId, groupId);
-            NodeGroupBindingRecord updated = current.withDraining(draining, Instant.now());
+            updated = current.withDraining(draining, Instant.now());
             nodeGroupBindingsByKey.put(NodeGroupBindingKey.from(updated.adapterNodeId(), updated.groupId()), updated);
             applyNodeGroupBindingDispatchGate(updated);
-            return updated;
+            becameAvailable = !isNodeGroupBindingAvailable(current) && isNodeGroupBindingAvailable(updated);
         }
+        if (becameAvailable) {
+            notifyDispatchWakeup("node group binding drain cleared");
+        }
+        return updated;
     }
 
     public List<Worker> findWorkerCandidates(Task task) {
@@ -308,13 +382,13 @@ public class WorkerManager implements WorkerLookupStore {
         String targetWorkerId = TaskSharedConfig.targetWorkerId(task);
         String project = task != null ? task.getProject() : null;
         if (targetWorkerId != null && !targetWorkerId.isBlank()) {
-            return getWorkerCandidateIndex().workersFor(task);
+            return getWorkerCandidateIndex().workersFor(task, 1);
         }
         if (eventCode != null && !eventCode.isBlank()) {
-            return getWorkerCandidateIndex().workersFor(task);
+            return getWorkerCandidateIndex().workersFor(task, DEFAULT_STAGE_ONE_CANDIDATE_LIMIT);
         }
         if (project != null && !project.isBlank()) {
-            return getWorkerCandidateIndex().workersFor(task);
+            return getWorkerCandidateIndex().workersFor(task, DEFAULT_STAGE_ONE_CANDIDATE_LIMIT);
         }
         return workerStorage.getAllWorkers();
     }
@@ -324,7 +398,7 @@ public class WorkerManager implements WorkerLookupStore {
     }
 
     public WorkerCandidateIndex getWorkerCandidateIndex() {
-        return new WorkerCandidateIndex(workerRegistrySnapshot);
+        return new WorkerCandidateIndex(workerRegistrySnapshot, workerRouteBucketOwner);
     }
 
     public void refreshWorkerRegistrySnapshot() {
@@ -339,9 +413,13 @@ public class WorkerManager implements WorkerLookupStore {
 
     public WorkerCapabilityReportResult applyWorkerCapabilityReport(WorkerCapabilityReport report) {
         synchronized (workerRegistryLock) {
-            WorkerCapabilityReportResult result = capabilityAuthority.applyReport(report, workerRegistryRows.values());
+            WorkerCapabilityReportResult result = capabilityAuthority.applyReport(
+                    report,
+                    workerRegistryRows.values(),
+                    workerGroupsById.values()
+            );
             if (result.snapshotChanged() && result.snapshot() != null) {
-                this.workerRegistrySnapshot = result.snapshot();
+                publishWorkerRegistrySnapshot(result.snapshot());
             }
             return result;
         }
@@ -403,6 +481,11 @@ public class WorkerManager implements WorkerLookupStore {
         return dispatchAvailabilityOwner;
     }
 
+    public void setDispatchWakeupCallback(Runnable dispatchWakeupCallback) {
+        this.dispatchWakeupCallback = dispatchWakeupCallback != null ? dispatchWakeupCallback : () -> {
+        };
+    }
+
     public WorkerLoadSnapshot getWorkerLoad(String workerId) {
         syncWorkerCapacity(workerId);
         return workerLoadView.snapshot(workerId);
@@ -455,11 +538,17 @@ public class WorkerManager implements WorkerLookupStore {
     }
 
     private void publishWorkerRegistrySnapshot() {
-        this.workerRegistrySnapshot = composeWorkerRegistrySnapshot();
+        publishWorkerRegistrySnapshot(composeWorkerRegistrySnapshot());
+    }
+
+    private void publishWorkerRegistrySnapshot(WorkerRegistrySnapshot snapshot) {
+        WorkerRegistrySnapshot normalizedSnapshot = snapshot != null ? snapshot : WorkerRegistrySnapshot.empty();
+        this.workerRegistrySnapshot = normalizedSnapshot;
+        this.workerRouteBucketOwner = WorkerRouteBucketOwner.fromSnapshot(normalizedSnapshot);
     }
 
     private WorkerRegistrySnapshot composeWorkerRegistrySnapshot() {
-        return capabilityAuthority.composeSnapshot(workerRegistryRows.values());
+        return capabilityAuthority.composeSnapshot(workerRegistryRows.values(), workerGroupsById.values());
     }
 
     private Worker normalizeWorkerRegistrationRow(Worker worker) {
@@ -479,11 +568,6 @@ public class WorkerManager implements WorkerLookupStore {
         if (adapterNodeId != null) {
             validateExplicitWorkerNodeGroupMembership(adapterNodeId, groupId);
             worker.setAdapterNodeId(adapterNodeId);
-            return worker;
-        }
-        String compatibilityAdapterNodeId = resolveCompatibilityAdapterNodeId(worker, groupId);
-        if (compatibilityAdapterNodeId != null) {
-            worker.setAdapterNodeId(compatibilityAdapterNodeId);
         }
         return worker;
     }
@@ -502,52 +586,22 @@ public class WorkerManager implements WorkerLookupStore {
                         + adapterNodeId + "/" + groupId);
             }
         }
+        requireDeclaredWorkerGroup(groupId);
     }
 
-    private String resolveCompatibilityAdapterNodeId(Worker worker, String groupId) {
-        if (groupId == null) {
-            return null;
-        }
-        String adapterId = normalizeNullable(worker.getAdapterId());
-        if (adapterId == null) {
-            return null;
-        }
+    private void validateAdapterNodeRegistered(String adapterNodeId) {
         synchronized (adapterNodeRegistryLock) {
-            NodeGroupBindingKey key = NodeGroupBindingKey.from(adapterId, groupId);
-            if (nodeGroupBindingsByKey.containsKey(key)) {
-                return adapterId;
+            if (!adapterNodesById.containsKey(adapterNodeId)) {
+                throw new IllegalArgumentException("adapterNodeId is not registered: " + adapterNodeId);
             }
-            AdapterNodeRecord compatibilityNode = adapterNodesById.get(adapterId);
-            if (compatibilityNode == null) {
-                compatibilityNode = new AdapterNodeRecord(
-                        adapterId,
-                        adapterId,
-                        null,
-                        adapterId,
-                        true,
-                        true,
-                        Instant.now(),
-                        Instant.now(),
-                        Map.of("compatibilitySource", "workerRegistration")
-                );
-                adapterNodesById.put(adapterId, compatibilityNode);
+        }
+    }
+
+    private void requireDeclaredWorkerGroup(String groupId) {
+        synchronized (workerRegistryLock) {
+            if (!workerGroupsById.containsKey(groupId)) {
+                throw new IllegalArgumentException("workerGroupId is not declared: " + groupId);
             }
-            NodeGroupBindingRecord compatibilityBinding = new NodeGroupBindingRecord(
-                    adapterId,
-                    groupId,
-                    null,
-                    null,
-                    true,
-                    false,
-                    Instant.now(),
-                    Instant.now(),
-                    Map.of("compatibilitySource", "workerRegistration")
-            );
-            nodeGroupBindingsByKey.put(key, compatibilityBinding);
-            addBindingIndex(compatibilityBinding);
-            log.debug("Resolved legacy worker registration {} to compatibility adapterNodeId {} and group {}",
-                    worker.getWorkerId(), adapterId, groupId);
-            return adapterId;
         }
     }
 
@@ -560,7 +614,17 @@ public class WorkerManager implements WorkerLookupStore {
         synchronized (adapterNodeRegistryLock) {
             NodeGroupBindingRecord binding = nodeGroupBindingsByKey.get(NodeGroupBindingKey.from(adapterNodeId, groupId));
             if (binding != null && (!binding.enabled() || binding.draining())) {
-                dispatchAvailabilityOwner.disableForDraining(worker.getWorkerId(), "node group binding unavailable");
+                dispatchAvailabilityOwner.disableForDraining(
+                        worker.getWorkerId(),
+                        NODE_GROUP_BINDING,
+                        "node group binding unavailable"
+                );
+            } else if (binding != null) {
+                dispatchAvailabilityOwner.clearSource(
+                        worker.getWorkerId(),
+                        NODE_GROUP_BINDING,
+                        "node group binding available"
+                );
             }
         }
     }
@@ -572,15 +636,49 @@ public class WorkerManager implements WorkerLookupStore {
         );
         for (String workerId : workerIds) {
             if (!binding.enabled() || binding.draining()) {
-                dispatchAvailabilityOwner.disableForDraining(workerId, "node group binding unavailable");
+                dispatchAvailabilityOwner.disableForDraining(
+                        workerId,
+                        NODE_GROUP_BINDING,
+                        "node group binding unavailable"
+                );
             } else {
-                dispatchAvailabilityOwner.enable(workerId, "node group binding available");
+                dispatchAvailabilityOwner.clearSource(workerId, NODE_GROUP_BINDING, "node group binding available");
             }
+        }
+    }
+
+    private void applyNodeGroupBindingUnavailable(NodeGroupBindingRecord binding) {
+        Set<String> workerIds = workerRegistrySnapshot.workerIdsByAdapterNodeGroup(
+                binding.adapterNodeId(),
+                binding.groupId()
+        );
+        for (String workerId : workerIds) {
+            dispatchAvailabilityOwner.disableForDraining(
+                    workerId,
+                    NODE_GROUP_BINDING,
+                    "node group binding unavailable"
+            );
         }
     }
 
     private static String normalizeNullable(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private static boolean isAdapterNodeAvailable(AdapterNodeRecord record) {
+        return record != null && record.enabled() && record.online();
+    }
+
+    private static boolean isNodeGroupBindingAvailable(NodeGroupBindingRecord binding) {
+        return binding != null && binding.enabled() && !binding.draining();
+    }
+
+    private void notifyDispatchWakeup(String reason) {
+        try {
+            dispatchWakeupCallback.run();
+        } catch (RuntimeException e) {
+            log.warn("Worker relationship dispatch wakeup callback failed: {}", reason, e);
+        }
     }
 
     private static AdapterNodeRecord requireAdapterNode(AdapterNodeRecord adapterNode) {
@@ -631,6 +729,7 @@ public class WorkerManager implements WorkerLookupStore {
     private NodeGroupBindingRecord removeBinding(NodeGroupBindingKey key) {
         NodeGroupBindingRecord removed = nodeGroupBindingsByKey.remove(key);
         if (removed != null) {
+            applyNodeGroupBindingUnavailable(removed);
             removeBindingIndex(removed);
         }
         return removed;

@@ -95,6 +95,53 @@ public class WorkerCandidateIndexTest {
         assertEquals(List.of("worker-1"), workerIds(index.workersFor(task)));
     }
 
+    @Test
+    void nonTargetedEventLookupUsesBoundedRouteBucketAcquisition() {
+        WorkerCandidateIndex index = new WorkerCandidateIndex(WorkerRegistrySnapshot.from(List.of(
+                group("crawler", "node-a", EventBinding.of("crawler.fetch", List.of("demoApp")))
+        ), List.of(
+                worker("worker-1", "crawler"),
+                worker("worker-2", "crawler"),
+                worker("worker-3", "crawler")
+        )));
+
+        assertEquals(List.of("worker-1", "worker-2"),
+                workerIds(index.workersFor(task("demoApp", "crawler.fetch", null), 2)));
+    }
+
+    @Test
+    void targetWorkerLookupBypassesRouteBucketLimitButStillChecksGroupCapability() {
+        WorkerCandidateIndex index = new WorkerCandidateIndex(WorkerRegistrySnapshot.from(List.of(
+                group("crawler", "node-a", EventBinding.of("crawler.fetch", List.of("demoApp"))),
+                group("export", "node-a", EventBinding.of("report.export", List.of("demoApp")))
+        ), List.of(
+                worker("worker-1", "crawler"),
+                worker("worker-2", "crawler"),
+                worker("worker-3", "crawler"),
+                worker("worker-export", "export")
+        )));
+
+        assertEquals(List.of("worker-3"),
+                workerIds(index.workersFor(task("demoApp", "crawler.fetch", "worker-3"), 1)));
+        assertTrue(index.workersFor(task("demoApp", "crawler.fetch", "worker-export"), 1).isEmpty());
+    }
+
+    @Test
+    void routeAttributesNarrowNonTargetedEventLookupThroughApprovedBucket() {
+        WorkerCandidateIndex index = new WorkerCandidateIndex(WorkerRegistrySnapshot.from(List.of(
+                group("crawler", "node-a", EventBinding.of("crawler.fetch", List.of("demoApp")))
+        ), List.of(
+                worker("worker-us", "crawler", Map.of("region", "us")),
+                worker("worker-eu", "crawler", Map.of("region", "eu"))
+        )));
+
+        Task task = task("demoApp", "crawler.fetch", null);
+        task.setSharedConfig(new java.util.LinkedHashMap<>(task.getSharedConfig()));
+        task.getSharedConfig().put(TaskSharedConfig.ROUTE_ATTRIBUTES, Map.of("region", "us"));
+
+        assertEquals(List.of("worker-us"), workerIds(index.workersFor(task, 10)));
+    }
+
     private static List<String> workerIds(List<Worker> workers) {
         return workers.stream().map(Worker::getWorkerId).toList();
     }
@@ -120,9 +167,14 @@ public class WorkerCandidateIndexTest {
     }
 
     private static Worker worker(String workerId, String groupId) {
+        return worker(workerId, groupId, Map.of());
+    }
+
+    private static Worker worker(String workerId, String groupId, Map<String, String> attributes) {
         Worker worker = new Worker();
         worker.setWorkerId(workerId);
         worker.setWorkerGroupId(groupId);
+        worker.setAttributes(attributes);
         return worker;
     }
 }

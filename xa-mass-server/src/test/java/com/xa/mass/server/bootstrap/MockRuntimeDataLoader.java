@@ -6,11 +6,14 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassRuntimeControl;
+import com.xa.mass.sdk.model.AdapterNodeRegistration;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
+import com.xa.mass.sdk.model.NodeGroupBindingRegistration;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.WorkerEventBinding;
+import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.transport.WorkerTransportHints;
 import org.slf4j.Logger;
@@ -22,6 +25,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -95,17 +99,68 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
             logger.warn("Worker config loaded but produced 0 entries [path={}]", workerConfigPath);
             return;
         }
-        int accepted = 0;
+        List<WorkerFixture> normalizedWorkers = new ArrayList<>();
         for (WorkerFixture worker : workers) {
             if (worker == null || worker.getWorkerId() == null || worker.getWorkerId().isBlank()) {
                 logger.warn("Skipping worker fixture because workerId is missing");
                 continue;
             }
             normalizeWorker(worker);
+            normalizedWorkers.add(worker);
+        }
+        declareWorkerGroups(runtime, normalizedWorkers);
+        bindWorkerGroups(runtime, normalizedWorkers);
+        int accepted = 0;
+        for (WorkerFixture worker : normalizedWorkers) {
             runtime.registerWorker(toRegistration(worker));
             accepted++;
         }
         logger.info("Loaded {} workers via SDK registration [path={}]", accepted, workerConfigPath);
+    }
+
+    private void declareWorkerGroups(MassRuntimeControl runtime, List<WorkerFixture> workers) {
+        Map<String, List<WorkerEventBinding>> bindingsByGroupId = new LinkedHashMap<>();
+        for (WorkerFixture worker : workers) {
+            String groupId = worker.getWorkerGroupId();
+            if (groupId == null || groupId.isBlank()) {
+                continue;
+            }
+            List<WorkerEventBinding> eventBindings = toEventBindings(worker);
+            if (!eventBindings.isEmpty()) {
+                bindingsByGroupId.computeIfAbsent(groupId, ignored -> new ArrayList<>()).addAll(eventBindings);
+            }
+        }
+        for (Map.Entry<String, List<WorkerEventBinding>> entry : bindingsByGroupId.entrySet()) {
+            runtime.declareWorkerGroup(WorkerGroupDeclaration.builder()
+                    .groupId(entry.getKey())
+                    .eventBindings(distinctBindings(entry.getValue()))
+                    .build());
+        }
+    }
+
+    private void bindWorkerGroups(MassRuntimeControl runtime, List<WorkerFixture> workers) {
+        Map<String, List<String>> groupsByAdapterNode = new LinkedHashMap<>();
+        for (WorkerFixture worker : workers) {
+            if (worker.getWorkerGroupId() == null || worker.getWorkerGroupId().isBlank()) {
+                continue;
+            }
+            groupsByAdapterNode.computeIfAbsent(worker.getAdapterId(), ignored -> new ArrayList<>())
+                    .add(worker.getWorkerGroupId());
+        }
+        for (Map.Entry<String, List<String>> entry : groupsByAdapterNode.entrySet()) {
+            String adapterNodeId = entry.getKey();
+            runtime.registerAdapterNode(AdapterNodeRegistration.builder()
+                    .adapterNodeId(adapterNodeId)
+                    .adapterType(adapterNodeId)
+                    .endpointId(adapterNodeId)
+                    .build());
+            for (String groupId : entry.getValue().stream().distinct().toList()) {
+                runtime.bindNodeGroup(NodeGroupBindingRegistration.builder()
+                        .adapterNodeId(adapterNodeId)
+                        .workerGroupId(groupId)
+                        .build());
+            }
+        }
     }
 
     private void loadRules(MassRuntimeControl runtime) {
@@ -199,15 +254,20 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
     private WorkerRegistration toRegistration(WorkerFixture worker) {
         WorkerRegistration.Builder builder = WorkerRegistration.builder()
                 .workerId(worker.getWorkerId())
+                .adapterNodeId(worker.getAdapterId())
                 .workerGroupId(worker.getWorkerGroupId())
-                .eventBindings(toEventBindings(worker))
                 .adapterId(worker.getAdapterId())
                 .transportHint(worker.getOnlineStrategy())
                 .attributes(worker.getAttributes());
-        if (worker.getSupportedEventCodes() == null || worker.getSupportedEventCodes().isEmpty()) {
-            builder.supportedProjects(worker.getSupportedProjects());
-        }
         return builder.build();
+    }
+
+    private List<WorkerEventBinding> distinctBindings(List<WorkerEventBinding> bindings) {
+        if (bindings == null || bindings.isEmpty()) {
+            return List.of();
+        }
+        List<WorkerEventBinding> distinct = bindings.stream().distinct().toList();
+        return distinct.isEmpty() ? List.of() : List.copyOf(distinct);
     }
 
     private List<WorkerEventBinding> toEventBindings(WorkerFixture worker) {
@@ -427,4 +487,3 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
         }
     }
 }
-

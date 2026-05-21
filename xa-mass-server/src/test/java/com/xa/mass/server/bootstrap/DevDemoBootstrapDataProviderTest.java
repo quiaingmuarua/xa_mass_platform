@@ -5,9 +5,12 @@ import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.authz.TaskOwnershipStamp;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
+import com.xa.mass.sdk.model.AdapterNodeRegistration;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
+import com.xa.mass.sdk.model.NodeGroupBindingRegistration;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
+import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.storage.rule.RuleDefinition;
 import org.junit.jupiter.api.Test;
@@ -69,9 +72,13 @@ class DevDemoBootstrapDataProviderTest {
         assertEquals("demo-ops-submitter",
                 TaskOwnershipStamp.fromSharedConfig(secondSharedConfig).getCreatedByPrincipalId());
 
-        WorkerRegistration firstWorker = runtime.workers.get(0);
-        assertTrue(firstWorker.getEventBindings().stream()
+        assertEquals(2, runtime.workerGroups.size());
+        assertTrue(runtime.workerGroups.stream()
+                .flatMap(group -> group.getEventBindings().stream())
                 .allMatch(binding -> binding.getProjectCodes().containsAll(List.of("demoApp", "demoOps"))));
+        WorkerRegistration firstWorker = runtime.workers.get(0);
+        assertTrue(firstWorker.getAdapterNodeId() != null && !firstWorker.getAdapterNodeId().isBlank());
+        assertTrue(firstWorker.getWorkerGroupId() != null && !firstWorker.getWorkerGroupId().isBlank());
         assertEquals("us", firstWorker.getAttributes().get("country"));
         assertTrue(firstWorker.getAttributes().get("routingTags").contains("us"));
     }
@@ -79,6 +86,7 @@ class DevDemoBootstrapDataProviderTest {
     private static final class RecordingRuntime implements MassRuntimeControl {
 
         private final List<WorkerRegistration> workers = new ArrayList<>();
+        private final List<WorkerGroupDeclaration> workerGroups = new ArrayList<>();
         private final List<MassTaskShellCreateRequest> createdTasks = new ArrayList<>();
         private final List<MassTaskItemBatchAppendRequest> appendRequests = new ArrayList<>();
         private final List<String> approvedTaskIds = new ArrayList<>();
@@ -173,6 +181,19 @@ class DevDemoBootstrapDataProviderTest {
         public boolean sealTask(String taskId) {
             sealedTaskIds.add(taskId);
             return true;
+        }
+
+        @Override
+        public void registerAdapterNode(AdapterNodeRegistration request) {
+        }
+
+        @Override
+        public void bindNodeGroup(NodeGroupBindingRegistration request) {
+        }
+
+        @Override
+        public void declareWorkerGroup(WorkerGroupDeclaration request) {
+            workerGroups.add(request);
         }
 
         @Override

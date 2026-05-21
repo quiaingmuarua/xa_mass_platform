@@ -1,12 +1,12 @@
 package com.xa.mass.server.e2e.assignment;
 
 import com.google.gson.JsonObject;
+import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.storage.rule.RuleType;
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
-import com.xa.mass.server.testutil.WsFrameTestSupport;
+import com.xa.mass.server.e2e.support.ManualAckWebSocketWorkerClient;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
@@ -18,11 +18,10 @@ import org.springframework.test.context.DynamicPropertySource;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
@@ -60,8 +59,8 @@ class TaskApiWorkerAttributeRoutingIntegrationTest extends AbstractSampleE2eTest
         addCandidate("other-worker", "pool-west", "us", "gb");
 
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        ManualAckWebSocketClient matchedClient = new ManualAckWebSocketClient(uri, "matched-worker");
-        ManualAckWebSocketClient otherClient = new ManualAckWebSocketClient(uri, "other-worker");
+        ManualAckWebSocketWorkerClient matchedClient = new ManualAckWebSocketWorkerClient(uri, "matched-worker");
+        ManualAckWebSocketWorkerClient otherClient = new ManualAckWebSocketWorkerClient(uri, "other-worker");
         try {
             assertClientConnects(matchedClient, "matched worker client failed to connect");
             assertClientConnects(otherClient, "other worker client failed to connect");
@@ -86,6 +85,53 @@ class TaskApiWorkerAttributeRoutingIntegrationTest extends AbstractSampleE2eTest
         }
     }
 
+    @Test
+    void routeAttributesNarrowStageOneCandidatesBeforeRuleAdmission() throws Exception {
+        app.replaceDefaultRules(List.of(
+                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
+                rule("worker_scheduling_resource_check", "isWorkerSchedulingResourceAllocatable == true"),
+                rule("app_support_check", "supportsProject == true")
+        ));
+
+        registerSdkStatelessWorkerWithAttributes(
+                "route-bucket-worker-eu",
+                "route-bucket-group",
+                "demoApp",
+                Map.of("region", "eu")
+        );
+        registerSdkStatelessWorkerWithAttributes(
+                "route-bucket-worker-us",
+                "route-bucket-group",
+                "demoApp",
+                Map.of("region", "us")
+        );
+
+        URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
+        ManualAckWebSocketWorkerClient otherClient = new ManualAckWebSocketWorkerClient(uri, "route-bucket-worker-eu");
+        ManualAckWebSocketWorkerClient matchedClient = new ManualAckWebSocketWorkerClient(uri, "route-bucket-worker-us");
+        try {
+            assertClientConnects(otherClient, "other worker client failed to connect");
+            assertClientConnects(matchedClient, "matched worker client failed to connect");
+
+            String taskId = createRouteAttributeTaskId("worker-route-attribute-bucket", "route bucket routing", "target-a");
+            assertApiOk(approveTask(taskId));
+
+            JsonObject matchedDispatch = matchedClient.awaitTask(3, TimeUnit.SECONDS);
+            JsonObject rejectedDispatch = otherClient.awaitTask(300, TimeUnit.MILLISECONDS);
+            assertNotNull(matchedDispatch, "approved route attribute bucket should dispatch to matching worker");
+            assertNull(rejectedDispatch, "worker outside the approved route attribute bucket must not receive the task");
+
+            matchedClient.sendSuccess(matchedDispatch, "route-attribute-bucket-ok");
+            RuntimeTaskSnapshot terminalSnapshot = waitForRuntimeTaskSnapshot(taskId, "TERMINAL", 20, 500L);
+            assertEquals("ALL_MESSAGES_SUCCEEDED", terminalSnapshot.task().get("terminalReason"));
+            assertEquals(1, ((Number) terminalSnapshot.task().get("peakAssignedWorkerCount")).intValue());
+            assertEquals(1, terminalSnapshot.stats().successCount());
+        } finally {
+            matchedClient.disconnect();
+            otherClient.disconnect();
+        }
+    }
+
     private RuleDefinition rule(String id, String content) {
         RuleDefinition rule = new RuleDefinition();
         rule.setId(id);
@@ -103,41 +149,25 @@ class TaskApiWorkerAttributeRoutingIntegrationTest extends AbstractSampleE2eTest
         );
     }
 
-    private static final class ManualAckWebSocketClient extends SampleWorkerWebSocketClient {
-        private final BlockingQueue<JsonObject> taskQueue = new LinkedBlockingQueue<>();
+    private String createRouteAttributeTaskId(String sourceRef, String textContent, String target) {
+        Map<String, Object> sharedConfig = new java.util.LinkedHashMap<>();
+        sharedConfig.put("textContent", textContent);
+        sharedConfig.put(TaskSharedConfig.ROUTE_ATTRIBUTES, Map.of("region", "us"));
+        sharedConfig.put(TaskSharedConfig.SDK_METADATA, Map.of(TaskSharedConfig.SDK_EVENT_CODE, "demo.dispatch"));
 
-        private ManualAckWebSocketClient(URI serverUri, String workerId) {
-            super(serverUri, workerId);
-        }
+        Map<String, Object> createBody = new java.util.LinkedHashMap<>();
+        createBody.put("project", "demoApp");
+        createBody.put("sharedConfig", sharedConfig);
+        createBody.put("userId", "itest");
+        createBody.put("sourceRef", sourceRef);
+        createBody.put("executionSpec", Map.of("batchSize", 1));
 
-        @Override
-        public void onMessage(String message) {
-            try {
-                JsonObject frame = WsFrameTestSupport.parse(message);
-                if (frame != null && WsFrameTestSupport.isTask(frame) && !WsFrameTestSupport.isResponse(frame)) {
-                    taskQueue.offer(frame);
-                    return;
-                }
-            } catch (Exception ignored) {
-                // Fall through to the base client for non-task frames or malformed payloads.
-            }
-            super.onMessage(message);
-        }
-
-        private JsonObject awaitTask(long timeout, TimeUnit unit) throws InterruptedException {
-            return taskQueue.poll(timeout, unit);
-        }
-
-        private void sendSuccess(JsonObject taskMessage, String detail) throws Exception {
-            sendMessage(WsFrameTestSupport.buildTaskResult(
-                    WsFrameTestSupport.messageId(taskMessage),
-                    WsFrameTestSupport.project(taskMessage),
-                    getWorkerId(),
-                    WsFrameTestSupport.taskId(taskMessage),
-                    "SUCCESS",
-                    detail
-            ));
-        }
+        Map<String, Object> createResponse = createTaskShell(createBody);
+        assertApiOk(createResponse);
+        String taskId = String.valueOf(responseData(createResponse).get("taskId"));
+        assertFalse(taskId.isBlank());
+        assertApiOk(appendTaskItems(taskId, "demo.dispatch", List.of(Map.of("target", target))));
+        assertApiOk(sealTask(taskId));
+        return taskId;
     }
 }
-

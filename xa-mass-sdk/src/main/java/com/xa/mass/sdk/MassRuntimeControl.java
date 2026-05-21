@@ -7,8 +7,11 @@ import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.model.MassTaskCommandRequest;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
+import com.xa.mass.sdk.model.AdapterNodeRegistration;
+import com.xa.mass.sdk.model.NodeGroupBindingRegistration;
 import com.xa.mass.sdk.model.TaskCommandResult;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
+import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 
 import java.util.Collection;
@@ -19,9 +22,7 @@ import java.util.Collection;
  * <p>External bootstrap code, dev shells, fixture loaders, and custom
  * embedders should depend on this interface instead of reaching into
  * engine/starter internals. It covers the full supported mutation surface
- * for managing workers, rules, and task lifecycle after startup. Worker
- * scheduling capabilities are declared through {@link WorkerRegistration}
- * attributes and event bindings.
+ * for managing worker groups, workers, rules, and task lifecycle after startup.
  */
 public interface MassRuntimeControl {
 
@@ -89,7 +90,22 @@ public interface MassRuntimeControl {
     // --- Worker management ---
 
     /**
-     * Register worker identity and capabilities. The worker remains OFFLINE
+     * Register AdapterNode endpoint identity before binding it to worker groups.
+     */
+    void registerAdapterNode(AdapterNodeRegistration request);
+
+    /**
+     * Declare that an AdapterNode hosts a WorkerGroup before workers join.
+     */
+    void bindNodeGroup(NodeGroupBindingRegistration request);
+
+    /**
+     * Declare WorkerGroup capability truth before workers in that group join.
+     */
+    void declareWorkerGroup(WorkerGroupDeclaration request);
+
+    /**
+     * Register worker identity. The worker remains OFFLINE
      * until a transport connect/heartbeat event marks it online.
      */
     void registerWorker(WorkerRegistration request);

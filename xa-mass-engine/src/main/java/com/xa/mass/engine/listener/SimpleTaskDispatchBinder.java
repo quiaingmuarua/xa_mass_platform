@@ -2,6 +2,7 @@ package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
@@ -9,14 +10,15 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskWorkProjectionState.AttemptStatus;
 import com.xa.mass.engine.TaskWorkAttemptIdSupport;
-import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
+import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.engine.resource.DefaultWorkerDispatchResourcePolicy;
 import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
 import com.xa.mass.engine.resource.WorkerDispatchResourceReleaser;
 import com.xa.mass.engine.runtime.TaskRuntimeClaimOptionsResolver;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
 import com.xa.mass.engine.util.TraceEventLogger;
+import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.TaskWorkClaimOptions;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
@@ -24,7 +26,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -172,7 +176,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 log.warn("[MsgAssign] Skip claimed work {} because dispatch slot was not found", work.messageId());
                 continue;
             }
-            TaskDispatchBinding dispatchBinding = bindClaimedTaskWork(task, work);
+            TaskDispatchBinding dispatchBinding = bindClaimedTaskWork(task, work, slot);
             dispatchBindings.add(dispatchBinding);
             if (!workerManager.confirmWorkerReservation(work.workerId(), task.getTid())) {
                 workerManager.recordWorkClaimed(work.workerId(), task.getTid());
@@ -298,7 +302,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
         return null;
     }
 
-    private TaskDispatchBinding bindClaimedTaskWork(Task task, ClaimedTaskWork work) {
+    private TaskDispatchBinding bindClaimedTaskWork(Task task, ClaimedTaskWork work, DispatchSlot slot) {
         int attemptNo = Math.max(0, work.retryCount()) + 1;
         String attemptId = TaskWorkAttemptIdSupport.workerLevelRuntimeAttemptId(
                 work.messageId(),
@@ -306,6 +310,10 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 work.workerId(),
                 work.batchId()
         );
+        WorkerSchedulingView schedulingView = slot.candidate.getSchedulingView();
+        String eventBindingKey = eventBindingKey(task, work.eventCode());
+        String workerCandidateSource = workerCandidateSource(task);
+        Map<String, Object> dispatchEvidence = dispatchEvidence(schedulingView, eventBindingKey, workerCandidateSource);
         traceEventLogger.taskWorkAttemptStatusTransition(
                 task.getTid(),
                 work.messageId(),
@@ -318,7 +326,8 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 AttemptStatus.LEASED,
                 "BIND_TASK_MESSAGE",
                 "SimpleTaskDispatchBinder",
-                "attempt leased for dispatch"
+                "attempt leased for dispatch",
+                dispatchEvidence
         );
         traceEventLogger.taskWorkAttemptStatusTransition(
                 task.getTid(),
@@ -332,9 +341,10 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 AttemptStatus.DISPATCHED,
                 "BIND_TASK_MESSAGE",
                 "SimpleTaskDispatchBinder",
-                "attempt dispatched"
+                "attempt dispatched",
+                dispatchEvidence
         );
-        return TaskDispatchBinding.workerLevel(
+        return TaskDispatchBinding.workerLevelWithEvidence(
                 task.getTid(),
                 work.messageId(),
                 work.eventCode(),
@@ -345,8 +355,51 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 attemptNo,
                 work.leaseToken(),
                 work.workerId(),
-                work.batchId()
+                work.batchId(),
+                schedulingView.workerGroupId(),
+                schedulingView.adapterNodeId(),
+                eventBindingKey,
+                workerCandidateSource
         );
+    }
+
+    private static Map<String, Object> dispatchEvidence(WorkerSchedulingView schedulingView,
+                                                        String eventBindingKey,
+                                                        String workerCandidateSource) {
+        Map<String, Object> evidence = new LinkedHashMap<>();
+        if (schedulingView != null) {
+            evidence.put("workerGroupId", schedulingView.workerGroupId());
+            evidence.put("adapterNodeId", schedulingView.adapterNodeId());
+        }
+        evidence.put("eventBindingKey", eventBindingKey);
+        evidence.put("workerCandidateSource", workerCandidateSource);
+        return evidence;
+    }
+
+    private static String eventBindingKey(Task task, String eventCode) {
+        if (task == null || task.getProject() == null || task.getProject().isBlank()
+                || eventCode == null || eventCode.isBlank()) {
+            return null;
+        }
+        return task.getProject().trim() + ":" + eventCode.trim();
+    }
+
+    private static String workerCandidateSource(Task task) {
+        if (task == null) {
+            return null;
+        }
+        String targetWorkerId = TaskSharedConfig.targetWorkerId(task);
+        if (targetWorkerId != null && !targetWorkerId.isBlank()) {
+            return "TARGET_WORKER";
+        }
+        String taskEventCode = TaskSharedConfig.sdkEventCode(task);
+        if (taskEventCode != null && !taskEventCode.isBlank()) {
+            return "GROUP_INDEX";
+        }
+        if (task.getProject() != null && !task.getProject().isBlank()) {
+            return "GROUP_PROJECT_INDEX";
+        }
+        return "ALL_WORKERS_FALLBACK";
     }
 
     private void releaseAssignedWorkerLocks(Task task, List<DispatchSlot> dispatchSlots, String reason) {
@@ -370,5 +423,3 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
         return new java.util.LinkedHashSet<>(candidate.getSchedulingView().supportedEventCodes());
     }
 }
-
-

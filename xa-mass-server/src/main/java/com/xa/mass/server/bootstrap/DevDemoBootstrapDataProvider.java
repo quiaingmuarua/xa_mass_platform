@@ -6,9 +6,12 @@ import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.authz.TaskOwnershipSupport;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
+import com.xa.mass.sdk.model.AdapterNodeRegistration;
+import com.xa.mass.sdk.model.NodeGroupBindingRegistration;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.WorkerEventBinding;
+import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -86,13 +89,37 @@ public final class DevDemoBootstrapDataProvider implements MassBootstrapDataProv
     }
 
     private void registerWorkers(MassRuntimeControl runtime) {
+        String adapterNodeId = "dev-demo-websocket";
+        runtime.registerAdapterNode(AdapterNodeRegistration.builder()
+                .adapterNodeId(adapterNodeId)
+                .adapterType("websocket")
+                .endpointId("dev-demo")
+                .attributes(Map.of("tier", "demo"))
+                .build());
+        for (String lane : routingLanes) {
+            runtime.declareWorkerGroup(WorkerGroupDeclaration.builder()
+                    .groupId(lane)
+                    .eventBindings(eventBindingsForLane(lane))
+                    .defaultAttributes(Map.of(
+                            "tier", "demo",
+                            "lane", lane,
+                            "country", lane,
+                            "pool", "demo-" + lane
+                    ))
+                    .build());
+            runtime.bindNodeGroup(NodeGroupBindingRegistration.builder()
+                    .adapterNodeId(adapterNodeId)
+                    .workerGroupId(lane)
+                    .attributes(Map.of("tier", "demo", "lane", lane))
+                    .build());
+        }
         for (int i = 0; i < workerCount; i++) {
             String lane = routingLanes.get(i % routingLanes.size());
             String workerId = String.format(Locale.ROOT, "demo-worker-%s-%02d", lane, i + 1);
             runtime.registerWorker(WorkerRegistration.builder()
                     .workerId(workerId)
+                    .adapterNodeId(adapterNodeId)
                     .workerGroupId(lane)
-                    .eventBindings(eventBindingsForLane(lane))
                     .adapterId("websocket")
                     .transportHint("realtime")
                     .attributes(Map.of(

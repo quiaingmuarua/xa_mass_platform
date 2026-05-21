@@ -31,6 +31,7 @@ public final class PollingWorkerMain {
     private final String workerId;
     private final String workerKey;
     private final String workerGroupId;
+    private final String adapterNodeId;
     private final String project;
     private final String eventCode;
     private final String region;
@@ -50,6 +51,7 @@ public final class PollingWorkerMain {
         this.workerId = requiredEnv("MASS_WORKER_ID", "java-worker-api-001");
         this.workerKey = requiredEnv("MASS_WORKER_KEY", "java-worker-key");
         this.workerGroupId = env("MASS_WORKER_GROUP_ID", "java-runtime");
+        this.adapterNodeId = env("MASS_ADAPTER_NODE_ID", this.workerGroupId + "-node");
         this.project = env("MASS_PROJECT", "crawlerApp");
         this.eventCode = env("MASS_EVENT_CODE", "crawler.fetch-page");
         this.region = env("MASS_REGION", "us");
@@ -90,8 +92,42 @@ public final class PollingWorkerMain {
     }
 
     private void registerWorker() throws Exception {
+        JsonObject groupBody = new JsonObject();
+        groupBody.addProperty("groupId", workerGroupId);
+        JsonArray eventBindings = new JsonArray();
+        JsonObject binding = new JsonObject();
+        binding.addProperty("eventCode", eventCode);
+        JsonArray projectCodes = new JsonArray();
+        projectCodes.add(project);
+        binding.add("projectCodes", projectCodes);
+        eventBindings.add(binding);
+        groupBody.add("eventBindings", eventBindings);
+        JsonObject groupResponse = post("/worker-api/v1/worker-groups", groupBody);
+        log("declared worker group: " + groupResponse.get("data"));
+
+        JsonObject adapterNodeBody = new JsonObject();
+        adapterNodeBody.addProperty("adapterNodeId", adapterNodeId);
+        adapterNodeBody.addProperty("adapterType", "polling");
+        adapterNodeBody.addProperty("endpointId", adapterNodeId);
+        JsonObject adapterNodeAttributes = new JsonObject();
+        adapterNodeAttributes.addProperty("lang", "java");
+        adapterNodeAttributes.addProperty("region", region);
+        adapterNodeBody.add("attributes", adapterNodeAttributes);
+        JsonObject adapterNodeResponse = post("/worker-api/v1/adapter-nodes", adapterNodeBody);
+        log("registered adapter node: " + adapterNodeResponse.get("data"));
+
+        JsonObject bindingBody = new JsonObject();
+        bindingBody.addProperty("adapterNodeId", adapterNodeId);
+        bindingBody.addProperty("workerGroupId", workerGroupId);
+        JsonObject bindingAttributes = new JsonObject();
+        bindingAttributes.addProperty("region", region);
+        bindingBody.add("attributes", bindingAttributes);
+        JsonObject bindingResponse = post("/worker-api/v1/node-group-bindings", bindingBody);
+        log("bound adapter node to group: " + bindingResponse.get("data"));
+
         JsonObject body = new JsonObject();
         body.addProperty("workerId", workerId);
+        body.addProperty("adapterNodeId", adapterNodeId);
         body.addProperty("workerGroupId", workerGroupId);
         body.addProperty("transportHint", "polling");
 
@@ -102,15 +138,6 @@ public final class PollingWorkerMain {
         attributes.addProperty("country", region);
         attributes.addProperty("routingTags", String.join(",", routingTags));
         body.add("attributes", attributes);
-
-        JsonArray eventBindings = new JsonArray();
-        JsonObject binding = new JsonObject();
-        binding.addProperty("eventCode", eventCode);
-        JsonArray projectCodes = new JsonArray();
-        projectCodes.add(project);
-        binding.add("projectCodes", projectCodes);
-        eventBindings.add(binding);
-        body.add("eventBindings", eventBindings);
 
         JsonObject response = post("/worker-api/v1/workers", body);
         log("registered worker: " + response.get("data"));

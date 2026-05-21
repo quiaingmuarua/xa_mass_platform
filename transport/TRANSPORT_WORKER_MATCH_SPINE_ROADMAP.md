@@ -53,37 +53,34 @@ scheduling truth.
 
 Current code already has several pieces:
 
-- external worker registration accepts `adapterNodeId` and requires
-  `workerGroupId`
+- external worker registration accepts `adapterNodeId`, requires
+  `workerGroupId`, and rejects worker-level capability fields
+- external/control-plane code can declare WorkerGroup capability through the
+  worker-group declaration surface before worker registration
 - `WorkerRegistrySnapshot` indexes `groupId -> workerIds`,
   `adapterNodeId -> workerIds`, and `(adapterNodeId, groupId) -> workerIds`
 - `WorkerCandidateIndex` is the candidate-source path for event/group matching
 - `WorkerControlService` can wake runtime-ready polling on accepted capability
   report and `AVAILABLE` state report
+- `WorkerManager` relationship mutations can wake runtime-ready polling after
+  owner apply
+- `WorkerDispatchAvailabilityOwner` uses source-scoped gates for worker state,
+  worker command, and node-group binding availability
+- external/SDK registration has explicit AdapterNode and NodeGroupBinding
+  registration surfaces, and worker registration requires `adapterNodeId` when
+  joining a WorkerGroup
+- worker registration no longer auto-creates compatibility AdapterNode /
+  NodeGroupBinding records from `adapterId`
 - transport runtime owns adapter routing, delivery stores, result ingest, and
   presence stores
 
 The spine is still not fully closed:
 
-- external-worker registration still requires worker-level `eventBindings` and
-  derives WorkerGroup capability through compatibility projection
-- worker-level `supportedProjects` and `supportedEventCodes` still exist as
-  compatibility inputs; they must not remain mainline capability fields
-- there is no first-class external/control surface for declaring WorkerGroup
-  capability before worker registration
-- `WorkerCapabilityAuthority.copyWorker()` does not currently preserve
-  `adapterNodeId`, so accepted capability reports can drop adapter-node/group
-  evidence from the effective snapshot
-- `WorkerDispatchAvailabilityOwner` is a single worker-level gate; node-group
-  drain clear can accidentally clear worker-state or command-driven drain
-- candidate acquisition is still described mostly as group membership lookup;
-  million-worker deployments need bounded route buckets instead of full group
-  materialization
-- `TaskDispatchBinding` does not carry `workerGroupId`, `adapterNodeId`,
-  `eventBindingKey`, or `workerCandidateSource`
-- relationship changes such as worker registered, binding enabled, drain
-  cleared, or adapter node online do not yet have one explicit scheduling
-  wakeup seam
+- the base Worker read model still carries legacy supported project/event
+  projections for diagnostics; registration no longer accepts them as
+  capability input
+- bounded route-bucket acquisition is in the in-memory candidate-source path;
+  Redis backing and bounded stale cleanup are still later slices
 
 Do not treat this document as proof those gaps are already closed.
 
@@ -220,6 +217,17 @@ Inputs:
 - approved `NodeGroupBinding` routing attributes
 - approved worker routing attributes
 
+Approved routing attributes:
+
+- first slice approval is an explicit allow-list owned by
+  `WorkerRoutingPolicy`
+- default first-slice allow-list is empty, so all workers route to `default`
+- later slices may add allow-listed keys such as `business`, `tenant`,
+  `region`, or `pool`
+- `WorkerRoutingPolicy` must not read arbitrary worker or binding attributes
+  as routing inputs
+- adding an approved key must update tests and diagnostics in the same change
+
 Rules:
 
 - one worker may belong to zero, one, or many `routeBucketKey` values
@@ -231,6 +239,44 @@ Rules:
   mutate `WorkerGroup` capability
 - transport `routeKey` continues to be resolved later from selected worker and
   adapter evidence
+
+### WorkerRouteBucketOwner Boundary
+
+`WorkerRouteBucketOwner` owns route bucket state. It is not a listener bus.
+
+Owns:
+
+- `availableWorkersByGroupRouteBucket`
+- `workerRouteBucketKeysById`
+- bounded candidate acquisition
+- stale candidate marking and bounded lazy cleanup
+
+Callers:
+
+- `WorkerManager` calls it after owner mutations such as worker add/update,
+  node-group binding enable/disable/drain, adapter-node availability changes,
+  and capability snapshot changes
+- dispatch/admission calls it to acquire a bounded candidate batch and to mark
+  stale candidates after admission rejection
+
+Must not own:
+
+- WorkerGroup event capability
+- worker registration validation
+- reachability truth
+- dispatch gate truth
+- load/admission truth
+
+First slice wiring:
+
+- `WorkerManager` remains the orchestrator that observes relation mutations and
+  invokes `WorkerRouteBucketOwner`
+- `WorkerRouteBucketOwner` holds the in-memory bucket indexes independently
+  from `WorkerManager`
+- `WorkerRoutingPolicy` is called by `WorkerRouteBucketOwner` when bucket
+  membership is recomputed, and by candidate acquisition when resolving task
+  route buckets
+- no broad event bus is introduced
 
 ## Runtime Metadata And Index Shape
 
@@ -385,6 +431,8 @@ Rules:
 
 ### TW-0A: Preserve adapter-node evidence through capability composition
 
+Status: implemented.
+
 Goal: capability reports must not break adapter-node/group indexes.
 
 Scope:
@@ -408,6 +456,8 @@ Acceptance:
   approved capability
 
 ### TW-0B: Source-scoped dispatch availability gates
+
+Status: implemented.
 
 Goal: worker state, worker command, and node-group draining must not overwrite
 each other.
@@ -439,6 +489,8 @@ Acceptance:
 
 ### TW-1A: WorkerGroup declaration surface
 
+Status: implemented.
+
 Goal: external/control-plane code can declare capability before worker
 registration.
 
@@ -464,6 +516,13 @@ Acceptance:
 
 ### TW-1B: External worker registration becomes identity-first
 
+Status: implemented. Group-first capability is the mainline, the worker-level
+capability projection into WorkerGroup truth is retired, and worker registration
+no longer auto-creates AdapterNode / NodeGroupBinding from legacy `adapterId`.
+NodeGroupBinding registration now requires both a registered AdapterNode and a
+declared WorkerGroup, and adapter-node scoped worker registration is rejected
+unless the explicit node/group binding exists.
+
 Goal: worker register should bind execution identity to an existing
 AdapterNode/WorkerGroup relation, not declare capability truth.
 
@@ -475,22 +534,21 @@ Scope:
   - adapter node exists
   - worker group exists
   - node-group binding exists
-- stop requiring worker-level `eventBindings` on the mainline registration
-  path after TW-1A exists
 - keep worker capability report as a report-owned slice bounded by approved
   group capability
-- retire `WorkerGroupCompatibilityProjection` from mainline capability
-  composition after WorkerGroup declaration owns event bindings; until then it
-  remains an explicitly named migration seam only
-- remove worker-level `supportedProjects` and `supportedEventCodes` from the
-  mainline registration shape after TW-1A owns group capability
-- remove or explicitly demote compatibility auto-creation of
-  AdapterNode/NodeGroupBinding from worker registration when the explicit path
-  is covered by tests
+- keep `WorkerCapabilityAuthority` composing candidate-source capability only
+  from declared WorkerGroups
+- keep worker registration capability-free: no `eventBindings`,
+  `supportedProjects`, or `supportedEventCodes` on the registration contract
+- remove compatibility auto-creation of AdapterNode/NodeGroupBinding from
+  worker registration when the explicit path is covered by tests
 
 Acceptance:
 
 - missing node, group, or binding fails worker registration
+- SDK/API registration requires explicit `adapterNodeId + workerGroupId` for
+  group workers
+- worker registration rejects or cannot express worker-level capability fields
 - worker registration does not create new capability truth
 - task eventCode still reaches workers through `WorkerCandidateIndex`
 - legacy worker-level supported event fields are not used as mainline truth
@@ -498,6 +556,12 @@ Acceptance:
   project/event capability from `WorkerGroupRecord`
 
 ### TW-1C: Bounded route bucket acquisition
+
+Status: first in-memory slice implemented. The current implementation provides
+an engine-owned route bucket owner, bounded candidate acquisition shape, and
+fixed approved route attributes (`business`, `tenant`, `region`, `pool`).
+Redis-backed buckets, advanced scoring, and background reconciliation remain
+later slices.
 
 Goal: million-worker deployments acquire candidates from route buckets instead
 of materializing all workers in a group.
@@ -516,6 +580,8 @@ Scope:
   route partition without per-worker fan-out
 - introduce `WorkerRouteBucketOwner` as the owner of bounded bucket mutation,
   acquisition, stale candidate marking, and lazy cleanup
+- wire first-slice bucket updates through explicit `WorkerManager` calls after
+  owner mutations, not through a generic event bus
 
 Acceptance:
 
@@ -534,24 +600,38 @@ Acceptance:
 First slice:
 
 - implement one in-memory `WorkerRouteBucketOwner`
-- use a default `WorkerRoutingPolicy` that resolves every non-targeted task to
-  one `routeBucketKey`: `default`
-- allow a worker to belong to multiple route buckets in the index model, but
-  only populate `default` in the first slice
+- use a default `WorkerRoutingPolicy` that resolves tasks without approved
+  route attributes to one `routeBucketKey`: `default`
+- allow a worker to belong to multiple route buckets in the index model, while
+  the default runtime policy indexes `default` plus approved worker attribute
+  buckets
 - keep Redis `ZSET` backing, advanced scoring, and periodic full reconciliation
   out of scope for the first slice
 - keep `WorkerRegistrySnapshot` for capability lookup; only replace the
   post-group worker enumeration with bounded bucket acquisition
 
+Implemented route-attribute slice:
+
+- read task route input from `Task.sharedConfig.routeAttributes`
+- only approved fields `business`, `tenant`, `region`, and `pool` may become
+  route bucket keys
+- unapproved task or worker attributes do not affect bucket membership
+- `TaskApiWorkerAttributeRoutingIntegrationTest` proves the approved route
+  attribute bucket on the real server + websocket dispatch/result path without
+  relying on a routing rule to reject the non-matching worker
+
 Later slices:
 
-- add approved route fields such as business, tenant, region, and pool
 - add Redis-backed bounded bucket operations
 - add optional `WorkerRouteBucketReconciler` watchdog for bounded background
   cleanup when lazy eviction is insufficient
 - add multi-bucket worker membership tests
 
 ### TW-2: Dispatch evidence spine
+
+Status: implemented for internal binding, worker-match trace evidence, and
+dispatched-attempt event-key evidence; worker-facing dispatch payload remains
+unchanged.
 
 Goal: dispatch/trace/diagnostics can prove the selected path without making
 transport a scheduler.
@@ -578,6 +658,8 @@ Acceptance:
   engine-selected dispatch binding
 
 ### TW-3: Relationship-change scheduling wakeup
+
+Status: implemented as a narrow `WorkerManager` callback wired by SDK assembly.
 
 Goal: newly eligible resources wake runtime-ready polling fallback without
 transport directly controlling the pump.
@@ -610,6 +692,10 @@ Acceptance:
 
 ### TW-4: Transport black-box proof
 
+Status: implemented for the group-first public contract and shared
+polling/websocket/socket black-box registration shape. TW-1C remains the later
+bounded-acquisition scaling slice, not a prerequisite for this proof.
+
 Goal: prove the complete group-first external worker spine through public
 surfaces.
 
@@ -625,7 +711,11 @@ Acceptance:
 - proof creates AdapterNode, WorkerGroup, NodeGroupBinding, Worker
 - submitted task proves `eventCode -> group -> worker -> adapter node -> result`
 - analyzer asserts no all-worker fallback
-- analyzer asserts group/node evidence appears in trace/diagnostics
+- analyzer asserts accepted match evidence includes `workerGroupId`,
+  `adapterNodeId`, and non-fallback `workerCandidateSource`
+- analyzer asserts dispatched attempt evidence includes `workerGroupId`,
+  `adapterNodeId`, `eventBindingKey`, and non-fallback
+  `workerCandidateSource`
 - result convergence remains through TaskResultRuntime
 
 ## Testing Strategy
@@ -653,7 +743,8 @@ SDK/server tests:
 
 Transport/proof tests:
 
-- dispatch evidence is present in trace/diagnostics
+- dispatch evidence includes `workerGroupId`, `adapterNodeId`,
+  `eventBindingKey`, and `workerCandidateSource` in trace/diagnostics
 - transport route still uses selected worker/adapter route evidence
 - multi-business proof covers at least two route bucket keys for the same
   WorkerGroup capability and proves no cross-route dispatch

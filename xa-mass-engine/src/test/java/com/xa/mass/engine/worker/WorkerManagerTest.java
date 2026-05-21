@@ -40,6 +40,66 @@ public class WorkerManagerTest {
     }
 
     @Test
+    void declaredWorkerGroupCanIndexCapabilityBeforeWorkerRegistration() {
+        WorkerGroupRecord group = WorkerGroupRecord.builder("crawler")
+                .eventBindings(List.of(EventBinding.of("crawler.fetch", List.of("demoApp"))))
+                .defaultAttributes(Map.of("source", "declared"))
+                .defaultMaxConcurrentWork(3)
+                .build();
+
+        manager.upsertWorkerGroup(group);
+
+        assertEquals(group, manager.workerGroup("crawler").orElseThrow());
+        assertEquals(List.of(group), manager.workerGroups());
+        assertEquals(Set.of("crawler"), manager.getWorkerRegistrySnapshot()
+                .groupIdsByEventKey(new EventKey("demoApp", "crawler.fetch")));
+        assertTrue(manager.getWorkerRegistrySnapshot().workerIdsByGroupId("crawler").isEmpty());
+    }
+
+    @Test
+    void declaredWorkerGroupOverridesWorkerLevelCompatibilityFields() {
+        Worker worker = worker("w-crawler", "crawler");
+        worker.setSupportedProjects(List.of("legacyApp"));
+        worker.setSupportedEventCodes(List.of("legacy.fetch"));
+        manager.addWorker(worker);
+
+        manager.upsertWorkerGroup(WorkerGroupRecord.builder("crawler")
+                .eventBindings(List.of(EventBinding.of("crawler.fetch", List.of("demoApp"))))
+                .build());
+
+        assertEquals(Set.of("crawler"), manager.getWorkerRegistrySnapshot()
+                .groupIdsByEventKey(new EventKey("demoApp", "crawler.fetch")));
+        assertTrue(manager.getWorkerRegistrySnapshot()
+                .groupIdsByEventKey(new EventKey("legacyApp", "legacy.fetch"))
+                .isEmpty());
+        assertEquals(Set.of("w-crawler"), manager.getWorkerRegistrySnapshot().workerIdsByGroupId("crawler"));
+    }
+
+    @Test
+    void capabilityReportKeepsDeclaredWorkerGroupTruth() {
+        Worker worker = worker("w-crawler", "crawler");
+        worker.setSupportedProjects(List.of("legacyApp"));
+        worker.setSupportedEventCodes(List.of("legacy.fetch", "crawler.fetch"));
+        manager.addWorker(worker);
+        manager.upsertWorkerGroup(WorkerGroupRecord.builder("crawler")
+                .eventBindings(List.of(EventBinding.of("crawler.fetch", List.of("demoApp"))))
+                .build());
+
+        WorkerCapabilityReportResult result = manager.applyWorkerCapabilityReport(
+                WorkerCapabilityReport.builder("w-crawler", 1)
+                        .availableEventCodes(List.of("legacy.fetch"))
+                        .build()
+        );
+
+        assertEquals(WorkerCapabilityReportStatus.ACCEPTED, result.status());
+        assertEquals(Set.of("crawler"), result.snapshot()
+                .groupIdsByEventKey(new EventKey("demoApp", "crawler.fetch")));
+        assertTrue(result.snapshot()
+                .groupIdsByEventKey(new EventKey("legacyApp", "legacy.fetch"))
+                .isEmpty());
+    }
+
+    @Test
     void getWorkerReturnsNullWhenNotFound() {
         assertNull(manager.getWorker("nonexistent"));
     }
@@ -178,13 +238,34 @@ public class WorkerManagerTest {
     }
 
     @Test
-    void nodeGroupBindingStateChangesDoNotAffectWorkerCandidates() {
+    void relationshipChangesWakeDispatchPumpWhenTheyCanMakeWorkEligible() {
+        AtomicInteger wakeups = new AtomicInteger();
+        manager.setDispatchWakeupCallback(wakeups::incrementAndGet);
+
+        manager.upsertWorkerGroup(WorkerGroupRecord.builder("crawler")
+                .eventBindings(List.of(EventBinding.of("crawler.fetch", List.of("demoApp"))))
+                .build());
         manager.registerAdapterNode(adapterNode("node-a"));
         manager.bindNodeGroup(binding("node-a", "crawler"));
         Worker worker = worker("w-binding", "crawler");
         worker.setAdapterNodeId("node-a");
-        worker.setSupportedProjects(List.of("demoApp"));
-        worker.setSupportedEventCodes(List.of("crawler.fetch"));
+        manager.addWorker(worker);
+        manager.setNodeGroupBindingDraining("node-a", "crawler", true);
+
+        int beforeDrainClear = wakeups.get();
+        manager.setNodeGroupBindingDraining("node-a", "crawler", false);
+
+        assertTrue(beforeDrainClear >= 4);
+        assertEquals(beforeDrainClear + 1, wakeups.get());
+    }
+
+    @Test
+    void nodeGroupBindingStateChangesDoNotAffectWorkerCandidates() {
+        declareEventGroup("crawler", "demoApp", "crawler.fetch");
+        manager.registerAdapterNode(adapterNode("node-a"));
+        manager.bindNodeGroup(binding("node-a", "crawler"));
+        Worker worker = worker("w-binding", "crawler");
+        worker.setAdapterNodeId("node-a");
         manager.addWorker(worker);
 
         NodeGroupBindingRecord disabled = manager.setNodeGroupBindingEnabled("node-a", "crawler", false);
@@ -222,17 +303,18 @@ public class WorkerManagerTest {
     }
 
     @Test
-    void legacyWorkerRegistrationCreatesBoundedCompatibilityNodeGroupBinding() {
+    void workerRegistrationDoesNotCreateCompatibilityNodeGroupBindingFromAdapterId() {
         Worker worker = worker("w-legacy", "crawler");
         worker.setAdapterId("polling");
 
         manager.addWorker(worker);
 
-        assertEquals("polling", manager.getWorker("w-legacy").getAdapterNodeId());
-        assertTrue(manager.adapterNode("polling").isPresent());
-        assertTrue(manager.nodeGroupBinding("polling", "crawler").isPresent());
-        assertEquals(Set.of("w-legacy"),
-                manager.getWorkerRegistrySnapshot().workerIdsByAdapterNodeGroup("polling", "crawler"));
+        assertNull(manager.getWorker("w-legacy").getAdapterNodeId());
+        assertTrue(manager.adapterNode("polling").isEmpty());
+        assertTrue(manager.nodeGroupBinding("polling", "crawler").isEmpty());
+        assertTrue(manager.getWorkerRegistrySnapshot()
+                .workerIdsByAdapterNodeGroup("polling", "crawler")
+                .isEmpty());
     }
 
     @Test
@@ -260,11 +342,86 @@ public class WorkerManagerTest {
     }
 
     @Test
+    void nodeGroupDrainClearDoesNotClearWorkerStateDrain() {
+        manager.registerAdapterNode(adapterNode("node-a"));
+        manager.bindNodeGroup(binding("node-a", "crawler"));
+        Worker worker = worker("w-node-a", "crawler");
+        worker.setAdapterNodeId("node-a");
+        manager.addWorker(worker);
+
+        manager.getDispatchAvailabilityOwner().disableForDraining(
+                "w-node-a",
+                WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.WORKER_STATE,
+                "state draining"
+        );
+        manager.setNodeGroupBindingDraining("node-a", "crawler", true);
+        assertFalse(manager.isWorkerDispatchEnabled(worker));
+
+        manager.setNodeGroupBindingDraining("node-a", "crawler", false);
+
+        assertFalse(manager.isWorkerDispatchEnabled(worker));
+        manager.getDispatchAvailabilityOwner().clearSource(
+                "w-node-a",
+                WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.WORKER_STATE,
+                "state available"
+        );
+        assertTrue(manager.isWorkerDispatchEnabled(worker));
+    }
+
+    @Test
+    void rebindingNodeGroupUpdatesDispatchGateForExistingWorkers() {
+        manager.registerAdapterNode(adapterNode("node-a"));
+        manager.bindNodeGroup(binding("node-a", "crawler"));
+        Worker worker = worker("w-node-a", "crawler");
+        worker.setAdapterNodeId("node-a");
+        manager.addWorker(worker);
+        assertTrue(manager.isWorkerDispatchEnabled(worker));
+
+        manager.bindNodeGroup(new NodeGroupBindingRecord(
+                "node-a",
+                "crawler",
+                null,
+                null,
+                false,
+                false,
+                null,
+                null,
+                Map.of()
+        ));
+
+        assertFalse(manager.isWorkerDispatchEnabled(worker));
+    }
+
+    @Test
+    void unbindingNodeGroupDisablesDispatchForExistingWorkers() {
+        manager.registerAdapterNode(adapterNode("node-a"));
+        manager.bindNodeGroup(binding("node-a", "crawler"));
+        Worker worker = worker("w-node-a", "crawler");
+        worker.setAdapterNodeId("node-a");
+        manager.addWorker(worker);
+        assertTrue(manager.isWorkerDispatchEnabled(worker));
+
+        assertTrue(manager.unbindNodeGroup("node-a", "crawler"));
+
+        assertFalse(manager.isWorkerDispatchEnabled(worker));
+    }
+
+    @Test
     void nodeGroupBindingRequiresRegisteredAdapterNode() {
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
                 () -> manager.bindNodeGroup(binding("missing-node", "crawler")));
 
         assertTrue(error.getMessage().contains("adapterNodeId is not registered"));
+    }
+
+    @Test
+    void nodeGroupBindingRequiresDeclaredWorkerGroup() {
+        manager.registerAdapterNode(adapterNode("node-a"));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> manager.bindNodeGroup(rawBinding("node-a", "missing-group")));
+
+        assertTrue(error.getMessage().contains("workerGroupId is not declared"));
     }
 
     @Test
@@ -309,10 +466,10 @@ public class WorkerManagerTest {
 
     @Test
     void findWorkerCandidatesUsesProjectIndexForNonEventTasks() {
+        declareProjectGroup("pool-a", "demoApp");
+        declareProjectGroup("pool-b", "testApp");
         Worker demoWorker = worker("w-demo", "pool-a");
-        demoWorker.setSupportedProjects(List.of("demoApp"));
         Worker otherWorker = worker("w-other", "pool-b");
-        otherWorker.setSupportedProjects(List.of("testApp"));
         manager.addWorker(demoWorker);
         manager.addWorker(otherWorker);
 
@@ -324,12 +481,10 @@ public class WorkerManagerTest {
 
     @Test
     void findWorkerCandidatesUsesEventIndexForSdkEventTasks() {
+        declareEventGroup("pool-a", "demoApp", "demo.dispatch");
+        declareEventGroup("pool-b", "demoApp", "other.event");
         Worker eventWorker = worker("w-event", "pool-a");
-        eventWorker.setSupportedProjects(List.of("demoApp"));
-        eventWorker.setSupportedEventCodes(List.of("demo.dispatch"));
         Worker projectOnlyWorker = worker("w-project", "pool-b");
-        projectOnlyWorker.setSupportedProjects(List.of("demoApp"));
-        projectOnlyWorker.setSupportedEventCodes(List.of("other.event"));
         manager.addWorker(eventWorker);
         manager.addWorker(projectOnlyWorker);
 
@@ -342,12 +497,10 @@ public class WorkerManagerTest {
 
     @Test
     void findWorkerCandidatesUsesTargetWorkerWithGroupCapabilityGate() {
+        declareEventGroup("pool-a", "testApp", "other.event");
+        declareEventGroup("pool-b", "demoApp", "demo.dispatch");
         Worker targetWorker = worker("w-target", "pool-a");
-        targetWorker.setSupportedProjects(List.of("testApp"));
-        targetWorker.setSupportedEventCodes(List.of("other.event"));
         Worker indexedWorker = worker("w-indexed", "pool-b");
-        indexedWorker.setSupportedProjects(List.of("demoApp"));
-        indexedWorker.setSupportedEventCodes(List.of("demo.dispatch"));
         manager.addWorker(targetWorker);
         manager.addWorker(indexedWorker);
 
@@ -369,9 +522,8 @@ public class WorkerManagerTest {
 
     @Test
     void findWorkerCandidatesDoesNotFallbackWhenTargetWorkerIsMissing() {
+        declareEventGroup("pool-b", "demoApp", "demo.dispatch");
         Worker indexedWorker = worker("w-indexed", "pool-b");
-        indexedWorker.setSupportedProjects(List.of("demoApp"));
-        indexedWorker.setSupportedEventCodes(List.of("demo.dispatch"));
         manager.addWorker(indexedWorker);
 
         Task task = task("demoApp", Map.of(
@@ -395,14 +547,12 @@ public class WorkerManagerTest {
 
     @Test
     void updateWorkerRefreshesCandidateIndexes() {
+        declareProjectGroup("pool-a", "demoApp");
+        declareProjectGroup("pool-b", "testApp");
         Worker worker = worker("w-reindex", "pool-a");
-        worker.setSupportedProjects(List.of("demoApp"));
-        worker.setSupportedEventCodes(List.of("demo.dispatch"));
         manager.addWorker(worker);
 
-        Worker updated = worker("w-reindex", "pool-a");
-        updated.setSupportedProjects(List.of("testApp"));
-        updated.setSupportedEventCodes(List.of("other.event"));
+        Worker updated = worker("w-reindex", "pool-b");
         assertTrue(manager.updateWorker(updated));
 
         assertTrue(manager.findWorkerCandidates(task("demoApp", Map.of())).isEmpty());
@@ -414,14 +564,13 @@ public class WorkerManagerTest {
 
     @Test
     void updateWorkerRefreshesCandidateIndexesAfterInPlaceMutation() {
+        declareEventGroup("pool-a", "demoApp", "demo.dispatch");
+        declareProjectGroup("pool-b", "testApp");
         Worker worker = worker("w-mutable-reindex", "pool-a");
-        worker.setSupportedProjects(List.of("demoApp"));
-        worker.setSupportedEventCodes(List.of("demo.dispatch"));
         manager.addWorker(worker);
 
         Worker stored = manager.getWorker("w-mutable-reindex");
-        stored.setSupportedProjects(List.of("testApp"));
-        stored.setSupportedEventCodes(List.of("test.dispatch"));
+        stored.setWorkerGroupId("pool-b");
         assertTrue(manager.updateWorker(stored));
 
         assertTrue(manager.findWorkerCandidates(task("demoApp", Map.of())).isEmpty());
@@ -434,12 +583,14 @@ public class WorkerManagerTest {
     }
 
     @Test
-    void addWorkerRefreshesWorkerRegistrySnapshotFromCompatibilityFields() {
+    void addWorkerRefreshesWorkerRegistrySnapshotFromDeclaredGroup() {
+        manager.upsertWorkerGroup(WorkerGroupRecord.builder("crawler")
+                .eventBindings(List.of(EventBinding.of("crawler.fetch", List.of("demoApp"))))
+                .defaultMaxConcurrentWork(3)
+                .build());
         Worker worker = worker("w-indexed-group", "crawler");
         worker.setAdapterId("adapter-a");
         worker.setMaxConcurrentWork(3);
-        worker.setSupportedProjects(List.of("demoApp"));
-        worker.setSupportedEventCodes(List.of("crawler.fetch"));
         manager.addWorker(worker);
 
         assertEquals(List.of("w-indexed-group"),
@@ -456,10 +607,10 @@ public class WorkerManagerTest {
     @Test
     void workerRegistrySnapshotPublicationSwapsPointInTimeSnapshotReference() {
         WorkerRegistrySnapshot before = manager.getWorkerRegistrySnapshot();
+        declareEventGroup("crawler", "demoApp", "crawler.fetch");
+        declareEventGroup("export", "testApp", "report.export");
 
         Worker worker = worker("w-published-snapshot", "crawler");
-        worker.setSupportedProjects(List.of("demoApp"));
-        worker.setSupportedEventCodes(List.of("crawler.fetch"));
         manager.addWorker(worker);
         WorkerRegistrySnapshot afterAdd = manager.getWorkerRegistrySnapshot();
 
@@ -470,28 +621,28 @@ public class WorkerManagerTest {
                 afterAdd.workers().stream().map(Worker::getWorkerId).toList());
 
         Worker updated = worker("w-published-snapshot", "export");
-        updated.setSupportedProjects(List.of("testApp"));
-        updated.setSupportedEventCodes(List.of("report.export"));
         assertTrue(manager.updateWorker(updated));
         WorkerRegistrySnapshot afterUpdate = manager.getWorkerRegistrySnapshot();
 
         assertNotSame(afterAdd, afterUpdate);
         assertTrue(afterAdd.group("crawler").isPresent());
-        assertTrue(afterAdd.group("export").isEmpty());
-        assertTrue(afterUpdate.group("crawler").isEmpty());
+        assertTrue(afterAdd.group("export").isPresent());
+        assertEquals(List.of("w-published-snapshot"), List.copyOf(afterAdd.workerIdsByGroupId("crawler")));
+        assertTrue(afterAdd.workerIdsByGroupId("export").isEmpty());
+        assertTrue(afterUpdate.group("crawler").isPresent());
         assertTrue(afterUpdate.group("export").isPresent());
+        assertTrue(afterUpdate.workerIdsByGroupId("crawler").isEmpty());
+        assertEquals(List.of("w-published-snapshot"), List.copyOf(afterUpdate.workerIdsByGroupId("export")));
     }
 
     @Test
     void updateWorkerRefreshesWorkerRegistrySnapshotCapability() {
+        declareEventGroup("crawler", "demoApp", "crawler.fetch");
+        declareEventGroup("parser", "testApp", "crawler.parse");
         Worker worker = worker("w-snapshot-update", "crawler");
-        worker.setSupportedProjects(List.of("demoApp"));
-        worker.setSupportedEventCodes(List.of("crawler.fetch"));
         manager.addWorker(worker);
 
-        Worker updated = worker("w-snapshot-update", "crawler");
-        updated.setSupportedProjects(List.of("testApp"));
-        updated.setSupportedEventCodes(List.of("crawler.parse"));
+        Worker updated = worker("w-snapshot-update", "parser");
         assertTrue(manager.updateWorker(updated));
 
         assertTrue(manager.getWorkerCandidateIndex()
@@ -509,9 +660,8 @@ public class WorkerManagerTest {
 
     @Test
     void workerCapabilityReportRefreshesCandidateIndexThroughPublishedSnapshot() {
+        declareEventGroup("crawler", "demoApp", "crawler.fetch");
         Worker worker = worker("w-report-capability", "crawler");
-        worker.setSupportedProjects(List.of("demoApp"));
-        worker.setSupportedEventCodes(List.of("crawler.fetch", "crawler.parse"));
         manager.addWorker(worker);
 
         WorkerCapabilityReportResult result = manager.applyWorkerCapabilityReport(
@@ -521,24 +671,23 @@ public class WorkerManagerTest {
         );
 
         assertEquals(WorkerCapabilityReportStatus.ACCEPTED, result.status());
-        assertTrue(manager.getWorkerCandidateIndex()
-                .workersFor(task("demoApp", Map.of(TaskSharedConfig.SDK_METADATA,
-                        Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch"))))
-                .isEmpty());
         assertEquals(List.of("w-report-capability"),
                 manager.getWorkerCandidateIndex()
                         .workersFor(task("demoApp", Map.of(TaskSharedConfig.SDK_METADATA,
-                                Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.parse"))))
+                                Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch"))))
                         .stream()
                         .map(Worker::getWorkerId)
                         .toList());
+        assertTrue(manager.getWorkerCandidateIndex()
+                .workersFor(task("demoApp", Map.of(TaskSharedConfig.SDK_METADATA,
+                        Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.parse"))))
+                .isEmpty());
     }
 
     @Test
     void deleteWorkerRefreshesWorkerRegistrySnapshot() {
+        declareEventGroup("crawler", "demoApp", "crawler.fetch");
         Worker worker = worker("w-snapshot-delete", "crawler");
-        worker.setSupportedProjects(List.of("demoApp"));
-        worker.setSupportedEventCodes(List.of("crawler.fetch"));
         manager.addWorker(worker);
 
         assertTrue(manager.deleteWorker("w-snapshot-delete"));
@@ -553,9 +702,10 @@ public class WorkerManagerTest {
     void workerRegistrySnapshotCanBeRefreshedAfterDirectStorageMutation() {
         InMemoryWorkerStorage storage = new InMemoryWorkerStorage();
         WorkerManager storageBackedManager = new WorkerManager(storage);
+        storageBackedManager.upsertWorkerGroup(WorkerGroupRecord.builder("crawler")
+                .eventBindings(List.of(EventBinding.of("crawler.fetch", List.of("demoApp"))))
+                .build());
         Worker worker = worker("w-storage-direct-snapshot", "crawler");
-        worker.setSupportedProjects(List.of("demoApp"));
-        worker.setSupportedEventCodes(List.of("crawler.fetch"));
         storage.addWorker(worker);
 
         assertTrue(storageBackedManager.getWorkerCandidateIndex()
@@ -577,9 +727,8 @@ public class WorkerManagerTest {
 
     @Test
     void deleteWorkerRemovesCandidateIndexes() {
+        declareEventGroup("pool-a", "demoApp", "demo.dispatch");
         Worker worker = worker("w-delete-index", "pool-a");
-        worker.setSupportedProjects(List.of("demoApp"));
-        worker.setSupportedEventCodes(List.of("demo.dispatch"));
         manager.addWorker(worker);
 
         assertTrue(manager.deleteWorker("w-delete-index"));
@@ -745,6 +894,13 @@ public class WorkerManagerTest {
     }
 
     private NodeGroupBindingRecord binding(String adapterNodeId, String groupId) {
+        if (manager.workerGroup(groupId).isEmpty()) {
+            manager.upsertWorkerGroup(WorkerGroupRecord.builder(groupId).build());
+        }
+        return rawBinding(adapterNodeId, groupId);
+    }
+
+    private NodeGroupBindingRecord rawBinding(String adapterNodeId, String groupId) {
         return new NodeGroupBindingRecord(
                 adapterNodeId,
                 groupId,
@@ -756,6 +912,22 @@ public class WorkerManagerTest {
                 null,
                 Map.of()
         );
+    }
+
+    private WorkerGroupRecord declareProjectGroup(String groupId, String projectCode) {
+        WorkerGroupRecord group = WorkerGroupRecord.builder(groupId)
+                .projectCodes(List.of(projectCode))
+                .build();
+        manager.upsertWorkerGroup(group);
+        return group;
+    }
+
+    private WorkerGroupRecord declareEventGroup(String groupId, String projectCode, String eventCode) {
+        WorkerGroupRecord group = WorkerGroupRecord.builder(groupId)
+                .eventBindings(List.of(EventBinding.of(eventCode, List.of(projectCode))))
+                .build();
+        manager.upsertWorkerGroup(group);
+        return group;
     }
 
     private Worker worker(String id, String workerGroupId) {

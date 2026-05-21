@@ -7,10 +7,11 @@ import java.time.LocalDateTime;
 import java.util.*;
 
 /**
- * Worker identity and scheduling capability declaration.
+ * Worker execution identity and worker-local runtime metadata.
  *
- * <p>Dispatch eligibility is resolved by task requirements, worker attributes,
- * reachability, load, and matching rules.</p>
+ * <p>WorkerGroup owns scheduling capability truth. Worker-level supported
+ * project/event fields are compatibility read hints only and must not become a
+ * second capability source.</p>
  */
 public class Worker {
     private String workerId;
@@ -82,10 +83,7 @@ public class Worker {
     }
 
     /**
-     * Coarse worker grouping/filter hint only.
-     *
-     * <p>Capability truth for task-backed and direct-runtime events now lives
-     * on {@link #getSupportedEventCodes()}.
+     * Compatibility read hint only. Capability truth lives on WorkerGroup.
      */
     public void setSupportedProjects(List<String> supportedProjects) {
         if (supportedProjects == null || supportedProjects.isEmpty()) {
@@ -100,7 +98,7 @@ public class Worker {
     }
 
     /**
-     * Canonical runtime capability declarations keyed by global event code.
+     * Compatibility read hint only. Capability truth lives on WorkerGroup.
      */
     public void setSupportedEventCodes(List<String> supportedEventCodes) {
         if (supportedEventCodes == null || supportedEventCodes.isEmpty()) {

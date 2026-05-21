@@ -92,6 +92,7 @@ class H2ExternalWorkerPollingApiIntegrationTest extends ProjectionSampleE2eTest 
 
         HttpHeaders workerHeaders = credentialHeaders(workerCredential);
         HttpHeaders submitterHeaders = credentialHeaders(submitterCredential);
+        declareExternalWorkerGroup("polling-jdbc", "crawlerApp", "crawler.fetch-page", workerHeaders);
 
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", workerId,
@@ -101,11 +102,7 @@ class H2ExternalWorkerPollingApiIntegrationTest extends ProjectionSampleE2eTest 
                         "routingTags", "us",
                         "country", "us",
                         "region", "us"
-                ),
-                "eventBindings", List.of(Map.of(
-                        "eventCode", "crawler.fetch-page",
-                        "projectCodes", List.of("crawlerApp")
-                ))
+                )
         ), workerHeaders);
         assertApiOk(registerResponse);
         assertEquals("polling", responseData(registerResponse).get("transportHint"));

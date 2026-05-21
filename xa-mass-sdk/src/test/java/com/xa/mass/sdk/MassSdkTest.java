@@ -34,6 +34,7 @@ import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.model.TaskAppendReceipt;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
+import com.xa.mass.engine.worker.EventKey;
 import com.xa.mass.engine.watchdog.PollingIdleBackoffPolicy;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.WorkerLookupStore;
@@ -61,15 +62,18 @@ import com.xa.mass.sdk.event.PlatformEventCodes;
 import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.internal.DefaultTransportDebugOperations;
 import com.xa.mass.sdk.internal.TransportDebugOperations;
+import com.xa.mass.sdk.model.AdapterNodeRegistration;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.MassTaskUpdateRequest;
+import com.xa.mass.sdk.model.NodeGroupBindingRegistration;
 import com.xa.mass.sdk.model.TaskWorkFinalNotification;
 import com.xa.mass.sdk.model.TaskDetailSnapshot;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
 import com.xa.mass.sdk.model.TaskResultItemSnapshot;
 import com.xa.mass.sdk.model.TaskResultWindowSnapshot;
 import com.xa.mass.sdk.model.WorkerEventBinding;
+import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.auth.PrincipalType;
 import com.xa.mass.sdk.authz.TaskOwnershipSupport;
@@ -1447,15 +1451,15 @@ class MassSdkTest {
 
         MassSdkApplication app = new MassSdkApplication(delegate);
         registerExampleTaskCatalog(app);
+        declareSdkTestGroup(app, "crawler", List.of(WorkerEventBinding.builder()
+                .eventCode("crawler.fetch-page")
+                .projectCodes(List.of("crawlerApp"))
+                .build()));
+        bindSdkTestNode(app, "crawler");
         app.registerWorker(WorkerRegistration.builder()
                 .workerId("crawler-worker-001")
+                .adapterNodeId("sdk-test-node")
                 .workerGroupId("crawler")
-                .eventBindings(List.of(
-                        WorkerEventBinding.builder()
-                                .eventCode("crawler.fetch-page")
-                                .projectCodes(List.of("crawlerApp"))
-                                .build()
-                ))
                 .transportHint("polling")
                 .maxConcurrentWork(4)
                 .attributes(Map.of("type", "crawler"))
@@ -1466,8 +1470,8 @@ class MassSdkTest {
         Worker worker = captor.getValue();
         Assertions.assertEquals("crawler-worker-001", worker.getWorkerId());
         Assertions.assertEquals("crawler", worker.getWorkerGroupId());
-        Assertions.assertEquals(List.of("crawlerApp"), worker.getSupportedProjects());
-        Assertions.assertEquals(List.of("crawler.fetch-page"), worker.getSupportedEventCodes());
+        Assertions.assertTrue(worker.getSupportedProjects().isEmpty());
+        Assertions.assertTrue(worker.getSupportedEventCodes().isEmpty());
         Assertions.assertEquals("polling", worker.getOnlineStrategy());
         Assertions.assertEquals(4, worker.getMaxConcurrentWork());
         Assertions.assertEquals(Map.of("type", "crawler"), worker.getAttributes());
@@ -2308,15 +2312,15 @@ class MassSdkTest {
         workerAttributes.put(" type ", "crawler");
         workerAttributes.put(" ", "ignored");
         workerAttributes.put("null-value", null);
+        declareSdkTestGroup(app, "crawler", List.of(WorkerEventBinding.builder()
+                .eventCode("crawler.fetch-page")
+                .projectCodes(List.of("crawlerApp"))
+                .build()));
+        bindSdkTestNode(app, "crawler");
         app.registerWorker(WorkerRegistration.builder()
                 .workerId(" crawler-worker-001 ")
+                .adapterNodeId(" sdk-test-node ")
                 .workerGroupId(" crawler ")
-                .eventBindings(List.of(
-                        WorkerEventBinding.builder()
-                                .eventCode(" crawler.fetch-page ")
-                                .projectCodes(Arrays.asList(" crawlerApp ", "crawlerApp", " "))
-                                .build()
-                ))
                 .transportHint(" POLLING ")
                 .attributes(workerAttributes)
                 .build());
@@ -2326,19 +2330,17 @@ class MassSdkTest {
         Worker worker = workerCaptor.getValue();
         Assertions.assertEquals("crawler-worker-001", worker.getWorkerId());
         Assertions.assertEquals("crawler", worker.getWorkerGroupId());
-        Assertions.assertEquals(List.of("crawlerApp"), worker.getSupportedProjects());
-        Assertions.assertEquals(List.of("crawler.fetch-page"), worker.getSupportedEventCodes());
+        Assertions.assertTrue(worker.getSupportedProjects().isEmpty());
+        Assertions.assertTrue(worker.getSupportedEventCodes().isEmpty());
         Assertions.assertEquals("polling", worker.getOnlineStrategy());
         Assertions.assertEquals(Map.of("type", "crawler"), worker.getAttributes());
     }
 
     @Test
-    void eventBindingsBecomeWorkerCapabilityTruth() {
+    void declareWorkerGroupCreatesGroupCapabilityBeforeWorkerRegistration() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
         EngineConfig config = new EngineConfig();
-        WorkerStorage workerStorage = spy(config.getWorkerStorage());
-        config.setWorkerStorage(workerStorage);
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
@@ -2348,49 +2350,55 @@ class MassSdkTest {
         MassSdkApplication app = new MassSdkApplication(delegate);
         registerExampleTaskCatalog(app);
 
+        app.declareWorkerGroup(WorkerGroupDeclaration.builder()
+                .groupId("crawler")
+                .eventBindings(List.of(WorkerEventBinding.builder()
+                        .eventCode("crawler.fetch-page")
+                        .projectCodes(List.of("crawlerApp"))
+                        .build()))
+                .defaultAttributes(Map.of("source", "declared"))
+                .defaultMaxConcurrentWork(3)
+                .build());
+
+        WorkerManager workerManager = config.getWorkerManager();
+        Assertions.assertEquals(Set.of("crawler"), workerManager.getWorkerRegistrySnapshot()
+                .groupIdsByEventKey(new EventKey("crawlerApp", "crawler.fetch-page")));
+        Assertions.assertTrue(workerManager.getWorkerRegistrySnapshot().workerIdsByGroupId("crawler").isEmpty());
+        var group = workerManager.workerGroup("crawler").orElseThrow();
+        Assertions.assertEquals(Map.of("source", "declared"), group.defaultAttributes());
+        Assertions.assertEquals(3, group.defaultMaxConcurrentWork());
+
+        bindSdkTestNode(app, "crawler");
         app.registerWorker(WorkerRegistration.builder()
-                .workerId("binding-worker-1")
-                .supportedProjects(List.of("legacy-project"))
-                .supportedEventCodes(List.of("legacy.event"))
-                .eventBindings(List.of(
-                        WorkerEventBinding.builder()
-                                .eventCode("crawler.fetch-page")
-                                .projectCodes(List.of("demoApp"))
-                                .build(),
-                        WorkerEventBinding.builder()
-                                .eventCode("chatbot.reply")
-                                .build()
-                ))
+                .workerId("crawler-worker-001")
+                .adapterNodeId("sdk-test-node")
+                .workerGroupId("crawler")
                 .transportHint("polling")
                 .build());
 
-        var workerCaptor = org.mockito.ArgumentCaptor.forClass(Worker.class);
-        verify(workerStorage).addWorker(workerCaptor.capture());
-        Worker worker = workerCaptor.getValue();
-        Assertions.assertEquals(List.of("demoApp", "telegramApp", "rcsApp"), worker.getSupportedProjects());
-        Assertions.assertEquals(List.of("crawler.fetch-page", "chatbot.reply"), worker.getSupportedEventCodes());
+        Assertions.assertEquals(Set.of("crawler-worker-001"),
+                workerManager.getWorkerRegistrySnapshot().workerIdsByGroupId("crawler"));
     }
 
     @Test
-    void eventBindingsRejectUnknownEvent() {
+    void declareWorkerGroupRejectsUnknownEvent() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
-        stubDefaultTransportRegistrationResolution(delegate);
+        when(engine.getConfig()).thenReturn(new EngineConfig());
 
         MassSdkApplication app = new MassSdkApplication(delegate);
         registerExampleTaskCatalog(app);
 
         IllegalArgumentException error = assertThrows(
                 IllegalArgumentException.class,
-                () -> app.registerWorker(WorkerRegistration.builder()
-                        .workerId("binding-worker-unknown")
-                        .eventBindings(List.of(
-                                WorkerEventBinding.builder().eventCode("missing.event").build()
-                        ))
-                        .transportHint("polling")
+                () -> app.declareWorkerGroup(WorkerGroupDeclaration.builder()
+                        .groupId("unknown")
+                        .eventBindings(List.of(WorkerEventBinding.builder()
+                                .eventCode("missing.event")
+                                .build()))
                         .build())
         );
 
@@ -2398,28 +2406,25 @@ class MassSdkTest {
     }
 
     @Test
-    void eventBindingsRejectProjectOutsideEventScope() {
+    void declareWorkerGroupRejectsProjectOutsideEventScope() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
-        stubDefaultTransportRegistrationResolution(delegate);
+        when(engine.getConfig()).thenReturn(new EngineConfig());
 
         MassSdkApplication app = new MassSdkApplication(delegate);
         registerExampleTaskCatalog(app);
 
         IllegalArgumentException error = assertThrows(
                 IllegalArgumentException.class,
-                () -> app.registerWorker(WorkerRegistration.builder()
-                        .workerId("binding-worker-scope")
-                        .eventBindings(List.of(
-                                WorkerEventBinding.builder()
-                                        .eventCode("crawler.fetch-page")
-                                        .projectCodes(List.of("telegramApp"))
-                                        .build()
-                        ))
-                        .transportHint("polling")
+                () -> app.declareWorkerGroup(WorkerGroupDeclaration.builder()
+                        .groupId("crawler")
+                        .eventBindings(List.of(WorkerEventBinding.builder()
+                                .eventCode("crawler.fetch-page")
+                                .projectCodes(List.of("telegramApp"))
+                                .build()))
                         .build())
         );
 
@@ -2427,28 +2432,25 @@ class MassSdkTest {
     }
 
     @Test
-    void legacyCapabilityListsRejectProjectOutsideEventScope() {
+    void declareWorkerGroupRequiresEventBindings() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
-        stubDefaultTransportRegistrationResolution(delegate);
+        when(engine.getConfig()).thenReturn(new EngineConfig());
 
         MassSdkApplication app = new MassSdkApplication(delegate);
         registerExampleTaskCatalog(app);
 
         IllegalArgumentException error = assertThrows(
                 IllegalArgumentException.class,
-                () -> app.registerWorker(WorkerRegistration.builder()
-                        .workerId("legacy-worker-scope")
-                        .supportedProjects(List.of("telegramApp"))
-                        .supportedEventCodes(List.of("crawler.fetch-page"))
-                        .transportHint("polling")
+                () -> app.declareWorkerGroup(WorkerGroupDeclaration.builder()
+                        .groupId("empty")
                         .build())
         );
 
-        Assertions.assertTrue(error.getMessage().contains("outside event scope"));
+        Assertions.assertEquals("eventBindings is required", error.getMessage());
     }
 
     @Test
@@ -2889,15 +2891,18 @@ class MassSdkTest {
             rule.setContent("isWorkerAvailable && supportsProject");
             app.replaceDefaultRules(List.of(rule));
 
+            app.declareWorkerGroup(WorkerGroupDeclaration.builder()
+                    .groupId("polling-crawler")
+                    .eventBindings(List.of(WorkerEventBinding.builder()
+                            .eventCode("crawler.fetch-page")
+                            .projectCodes(List.of("demoApp"))
+                            .build()))
+                    .build());
+            bindSdkTestNode(app, "polling-crawler");
             app.registerWorker(WorkerRegistration.builder()
                     .workerId("polling-worker-1")
+                    .adapterNodeId("sdk-test-node")
                     .workerGroupId("polling-crawler")
-                    .eventBindings(List.of(
-                            WorkerEventBinding.builder()
-                                    .eventCode("crawler.fetch-page")
-                                    .projectCodes(List.of("demoApp"))
-                                    .build()
-                    ))
                     .transportHint("polling")
                     .build());
 
@@ -3137,6 +3142,7 @@ class MassSdkTest {
                 app::getAllWorkers,
                 () -> runtimeDiagnostics(app).isWorkerLocked("worker-1"),
                 () -> app.isWorkerOnline("worker-1"),
+                () -> app.declareWorkerGroup(WorkerGroupDeclaration.builder().groupId("group-1").build()),
                 () -> app.registerWorker(WorkerRegistration.builder().workerId("worker-1").build()),
                 () -> app.pullWorker("worker-1"),
                 () -> app.replaceDefaultRules(List.of())
@@ -3281,6 +3287,27 @@ class MassSdkTest {
                         invocation.getArgument(0, String.class),
                         invocation.getArgument(1, String.class)
                 ));
+    }
+
+    private static void bindSdkTestNode(MassSdkApplication app, String workerGroupId) {
+        app.registerAdapterNode(AdapterNodeRegistration.builder()
+                .adapterNodeId("sdk-test-node")
+                .adapterType(WorkerTransportHints.POLLING)
+                .endpointId("sdk-test")
+                .build());
+        app.bindNodeGroup(NodeGroupBindingRegistration.builder()
+                .adapterNodeId("sdk-test-node")
+                .workerGroupId(workerGroupId)
+                .build());
+    }
+
+    private static void declareSdkTestGroup(MassSdkApplication app,
+                                            String workerGroupId,
+                                            List<WorkerEventBinding> eventBindings) {
+        app.declareWorkerGroup(WorkerGroupDeclaration.builder()
+                .groupId(workerGroupId)
+                .eventBindings(eventBindings)
+                .build());
     }
 
     private static TaskDetailSnapshot createShellWithOptionalItems(MassSdkApplication app,

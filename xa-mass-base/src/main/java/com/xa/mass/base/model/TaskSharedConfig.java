@@ -12,6 +12,7 @@ import java.util.Map;
 public final class TaskSharedConfig {
 
     public static final String ROUTING_CODE = "routingCode";
+    public static final String ROUTE_ATTRIBUTES = "routeAttributes";
     public static final String TARGET_WORKER_ID = "targetWorkerId";
     public static final String TARGET_WORKER_ATTRIBUTES = "targetWorkerAttributes";
     public static final String SDK_METADATA = "_sdk";
@@ -46,6 +47,13 @@ public final class TaskSharedConfig {
             return Map.of();
         }
         return stringMapValue(task.getSharedConfig(), TARGET_WORKER_ATTRIBUTES);
+    }
+
+    public static Map<String, String> routeAttributes(Task task) {
+        if (task == null) {
+            return Map.of();
+        }
+        return stringMapValue(task.getSharedConfig(), ROUTE_ATTRIBUTES);
     }
 
     public static String stringValue(Map<String, Object> sharedConfig, String key) {

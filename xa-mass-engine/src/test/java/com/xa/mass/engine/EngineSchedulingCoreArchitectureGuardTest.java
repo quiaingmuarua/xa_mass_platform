@@ -666,9 +666,6 @@ class EngineSchedulingCoreArchitectureGuardTest {
         String source = Files.readString(workerManagerPath, StandardCharsets.UTF_8);
 
         List<String> violations = new ArrayList<>();
-        if (Pattern.compile("\\bWorkerGroupCompatibilityProjection\\b").matcher(source).find()) {
-            violations.add(workerManagerPath + " calls WorkerGroupCompatibilityProjection directly");
-        }
         if (!Pattern.compile("\\bWorkerCapabilityAuthority\\b").matcher(source).find()) {
             violations.add(workerManagerPath + " does not hold the WorkerCapabilityAuthority owner");
         }
@@ -678,33 +675,26 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
         assertTrue(violations.isEmpty(),
                 "WorkerManager owns active snapshot publication, but effective capability composition "
-                        + "must flow through WorkerCapabilityAuthority. Compatibility projection is only "
-                        + "a migration input behind that owner:\n"
+                        + "must flow through WorkerCapabilityAuthority:\n"
                         + String.join("\n", violations));
     }
 
     @Test
-    void workerGroupCompatibilityProjectionIsOnlyUsedBehindCapabilityAuthority() throws IOException {
+    void workerGroupCompatibilityProjectionIsRetired() throws IOException {
         Path workerPackage = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker");
-        Path projectionPath = workerPackage.resolve("WorkerGroupCompatibilityProjection.java").normalize();
-        Path authorityPath = workerPackage.resolve("WorkerCapabilityAuthority.java").normalize();
         Pattern projectionReference = Pattern.compile("\\bWorkerGroupCompatibilityProjection\\b");
 
         List<String> violations = new ArrayList<>();
         for (Path path : javaSourceFiles(workerPackage)) {
-            Path normalized = path.normalize();
-            if (normalized.equals(projectionPath) || normalized.equals(authorityPath)) {
-                continue;
-            }
             String source = Files.readString(path, StandardCharsets.UTF_8);
             if (projectionReference.matcher(source).find()) {
-                violations.add(path + " references WorkerGroupCompatibilityProjection outside authority");
+                violations.add(path + " references retired WorkerGroupCompatibilityProjection");
             }
         }
 
         assertTrue(violations.isEmpty(),
-                "WorkerGroupCompatibilityProjection is a migration input, not an active owner. "
-                        + "Production code must reach it only through WorkerCapabilityAuthority:\n"
+                "WorkerGroupCompatibilityProjection is retired. WorkerGroup declarations are "
+                        + "the only capability truth for candidate-source indexes:\n"
                         + String.join("\n", violations));
     }
 
@@ -776,6 +766,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 Map.entry("NodeGroupBinding", Pattern.compile("\\bNodeGroupBinding")),
                 Map.entry("WorkerManager", Pattern.compile("\\bWorkerManager\\b")),
                 Map.entry("WorkerStorage", Pattern.compile("\\bWorkerStorage\\b")),
+                Map.entry("unbounded group worker enumeration",
+                        Pattern.compile("\\.workerIdsByGroupId\\s*\\(")),
                 Map.entry("all-workers scan", Pattern.compile("\\.getAllWorkers\\s*\\("))
         );
 
@@ -786,12 +778,16 @@ class EngineSchedulingCoreArchitectureGuardTest {
                         + forbiddenPattern.getKey());
             }
         }
+        if (!Pattern.compile("\\bWorkerRouteBucketOwner\\b").matcher(source).find()) {
+            violations.add(indexPath + " does not use WorkerRouteBucketOwner for bounded acquisition");
+        }
 
         assertTrue(violations.isEmpty(),
                 "WorkerCandidateIndex is Stage-1 group-capability narrowing only. "
-                        + "It must not read worker-level compatibility capability, WorkerManager, "
-                        + "storage, full scans, or Stage-2 runtime admission state:\n"
-                        + String.join("\n", violations));
+                + "It must not read worker-level compatibility capability, WorkerManager, "
+                + "storage, unbounded group worker enumeration, full scans, "
+                + "or Stage-2 runtime admission state:\n"
+                + String.join("\n", violations));
     }
 
     @Test

@@ -1,6 +1,6 @@
 # Deprecation Ledger
 
-Last updated: 2026-05-18
+Last updated: 2026-05-22
 
 Status: current repo-level deprecation and compatibility index.
 
@@ -22,11 +22,8 @@ Rules:
 
 | Symbol or seam | Current location | Mainline replacement / source of truth | Constraint | Removal condition |
 | --- | --- | --- | --- | --- |
-| `WorkerRegistration.supportedProjects` / `supportedEventCodes` fields and builder methods | `xa-mass-sdk-api/src/main/java/com/xa/mass/sdk/model/WorkerRegistration.java` | `WorkerRegistration.eventBindings` plus worker attributes for scheduling labels | Compatibility read/input surface only. Do not extend matching, indexing, or new SDK examples around these fields. | In-repo registration callers and server read models no longer need the coarse compatibility fields. |
 | `WorkerAdminOperations.updateWorkerSupportedProjects(...)` | `xa-mass-sdk/src/main/java/com/xa/mass/sdk/WorkerAdminOperations.java` | worker capability update through owner-backed capability report / event-binding registration flow | Do not add sibling coarse mutation methods such as `updateSupportedEventCodes`. | Capability self-report / registration update flow covers current callers. |
 | `MassRuntimeControl` task shortcut methods (`approveTask`, `rejectTask`, `blockTask`, `pauseTask`, `resumeTask`, `cancelTask`, `terminateTask`, `sealTask`) | `xa-mass-sdk/src/main/java/com/xa/mass/sdk/MassRuntimeControl.java` | `executeTaskCommand(taskId, MassTaskCommandRequest)` | Keep for transitional bootstrap/dev code only. Do not add new lifecycle shortcut methods. | Bootstrap/dev callers migrate to `executeTaskCommand(...)`. |
 | `DefaultProjectEventCatalogFactory.createDefaultCatalog()` | `xa-mass-sdk-api/src/main/java/com/xa/mass/sdk/catalog/DefaultProjectEventCatalogFactory.java` | `createDefaultProjectRegistry()` | Naming compatibility only. Do not use in new code. | Existing callers migrate to the registry-named factory. |
 
-Current tracked compatibility residue:
-
-- engine compatibility projection callbacks are temporary migration residue and must not grow into a richer public query model
+Current tracked compatibility residue: none beyond the table above.

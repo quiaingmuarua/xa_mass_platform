@@ -66,6 +66,20 @@ TARGET="external-proof-target-${RUN_ID}"
 log "health check ${BASE_URL}"
 curl -fsS "${BASE_URL}/actuator/health" >/dev/null
 
+log "declare worker group ${WORKER_GROUP_ID}"
+api POST "/worker-api/v1/worker-groups" "$WORKER_KEY" "$(cat <<JSON
+{
+  "groupId": $(json_escape "$WORKER_GROUP_ID"),
+  "eventBindings": [
+    {
+      "eventCode": $(json_escape "$EVENT_CODE"),
+      "projectCodes": [$(json_escape "$PROJECT")]
+    }
+  ]
+}
+JSON
+)" >/dev/null
+
 log "register worker ${WORKER_ID}"
 api POST "/worker-api/v1/workers" "$WORKER_KEY" "$(cat <<JSON
 {
@@ -77,13 +91,7 @@ api POST "/worker-api/v1/workers" "$WORKER_KEY" "$(cat <<JSON
     "proofLane": "external-worker-http-contract",
     "routingTags": "proof",
     "country": "proof"
-  },
-  "eventBindings": [
-    {
-      "eventCode": $(json_escape "$EVENT_CODE"),
-      "projectCodes": [$(json_escape "$PROJECT")]
-    }
-  ]
+  }
 }
 JSON
 )" >/dev/null

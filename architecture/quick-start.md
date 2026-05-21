@@ -43,8 +43,8 @@ app.registerEventDefinition(EventDefinition.builder()
         .build());
 ```
 
-`eventCode` is the capability identity. A worker will later declare that it can
-handle this event.
+`eventCode` is the capability identity. A WorkerGroup will later declare that
+it can handle this event.
 
 ## 3. Register A Project
 
@@ -61,29 +61,48 @@ app.registerProject(ProjectDefinition.builder()
 
 A project binds a business domain to the events it can use.
 
-## 4. Register A Worker
+## 4. Declare WorkerGroup And Register A Worker
 
 ```java
+import com.xa.mass.sdk.model.AdapterNodeRegistration;
+import com.xa.mass.sdk.model.NodeGroupBindingRegistration;
 import com.xa.mass.sdk.model.WorkerEventBinding;
+import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 
-app.registerWorker(WorkerRegistration.builder()
-        .workerId("crawler-worker-1")
-        .workerGroupId("crawler")
+app.declareWorkerGroup(WorkerGroupDeclaration.builder()
+        .groupId("crawler")
         .eventBindings(java.util.List.of(
                 WorkerEventBinding.builder()
                         .eventCode("crawler.fetch-page")
                         .projectCodes(java.util.List.of("crawlerApp"))
                         .build()
         ))
+        .build());
+
+app.registerAdapterNode(AdapterNodeRegistration.builder()
+        .adapterNodeId("crawler-polling-node")
+        .adapterType("polling")
+        .endpointId("crawler-polling-node")
+        .build());
+
+app.bindNodeGroup(NodeGroupBindingRegistration.builder()
+        .adapterNodeId("crawler-polling-node")
+        .workerGroupId("crawler")
+        .build());
+
+app.registerWorker(WorkerRegistration.builder()
+        .workerId("crawler-worker-1")
+        .adapterNodeId("crawler-polling-node")
+        .workerGroupId("crawler")
         .transportHint("polling")
         .attributes(java.util.Map.of("routingTag", "us"))
         .build());
 ```
 
-Capability should be declared through `eventBindings`. Older flat
-`supportedProjects` / `supportedEventCodes` fields are compatibility
-projections and should not be the design center for new integration.
+Capability is declared on `WorkerGroupDeclaration.eventBindings`. Worker
+registration only declares execution identity, adapter-node/group membership,
+transport, and worker attributes.
 
 ## 5. Create A Task And Append Items
 

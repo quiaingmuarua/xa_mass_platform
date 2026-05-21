@@ -14,7 +14,10 @@ import com.xa.mass.sdk.model.WorkerCapabilityReportSnapshot;
 import com.xa.mass.sdk.model.WorkerCommandAcknowledgementRequest;
 import com.xa.mass.sdk.model.WorkerCommandResultSnapshot;
 import com.xa.mass.sdk.model.WorkerCommandSnapshot;
+import com.xa.mass.sdk.model.AdapterNodeRegistration;
+import com.xa.mass.sdk.model.NodeGroupBindingRegistration;
 import com.xa.mass.sdk.model.WorkerEventBinding;
+import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.model.WorkerStateReportRequest;
 import com.xa.mass.sdk.model.WorkerStateReportSnapshot;
@@ -82,21 +85,128 @@ public class ExternalWorkerApiController {
         );
     }
 
+    @PostMapping("/adapter-nodes")
+    @Operation(summary = "Register external adapter node", description = "Registers AdapterNode endpoint identity before node/group binding and worker registration.")
+    public ApiResponse<Map<String, Object>> registerAdapterNode(
+            @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+            @RequestBody ExternalAdapterNodeRegisterApiRequest requestBody) {
+        validateAdapterNodeRegisterRequest(requestBody);
+        requireAuthorizedWorkerSubmitter(
+                apiKeyHeader,
+                authorizationHeader,
+                ApiSecurityScenario.WORKER_REGISTER,
+                null,
+                null,
+                null
+        );
+        AdapterNodeRegistration request = AdapterNodeRegistration.builder()
+                .adapterNodeId(requestBody.getAdapterNodeId())
+                .adapterType(requestBody.getAdapterType())
+                .adapterVersion(requestBody.getAdapterVersion())
+                .endpointId(requestBody.getEndpointId())
+                .enabled(requestBody.getEnabled() == null || requestBody.getEnabled())
+                .online(requestBody.getOnline() == null || requestBody.getOnline())
+                .attributes(requestBody.getAttributes())
+                .build();
+        workerRegistry.registerAdapterNode(request);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("adapterNodeId", request.getAdapterNodeId());
+        response.put("adapterType", request.getAdapterType());
+        response.put("adapterVersion", request.getAdapterVersion());
+        response.put("endpointId", request.getEndpointId());
+        response.put("enabled", request.isEnabled());
+        response.put("online", request.isOnline());
+        response.put("attributes", request.getAttributes());
+        return ApiResponse.success(response);
+    }
+
+    @PostMapping("/worker-groups")
+    @Operation(summary = "Declare external worker group", description = "Declares WorkerGroup capability truth before individual workers register.")
+    public ApiResponse<Map<String, Object>> declareWorkerGroup(
+            @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+            @RequestBody ExternalWorkerGroupDeclareApiRequest requestBody) {
+        validateWorkerGroupDeclareRequest(requestBody);
+        List<WorkerEventBinding> eventBindings = toEventBindings(requestBody.getEventBindings());
+        requireAuthorizedWorkerSubmitter(
+                apiKeyHeader,
+                authorizationHeader,
+                ApiSecurityScenario.WORKER_REGISTER,
+                null,
+                null,
+                eventBindings
+        );
+        WorkerGroupDeclaration.Builder builder = WorkerGroupDeclaration.builder()
+                .groupId(requestBody.getGroupId())
+                .eventBindings(eventBindings)
+                .defaultAttributes(requestBody.getDefaultAttributes());
+        if (requestBody.getDefaultMaxConcurrentWork() != null) {
+            builder.defaultMaxConcurrentWork(requestBody.getDefaultMaxConcurrentWork());
+        }
+        WorkerGroupDeclaration request = builder.build();
+        workerRegistry.declareWorkerGroup(request);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("groupId", request.getGroupId());
+        response.put("eventBindings", request.getEventBindings());
+        response.put("defaultAttributes", request.getDefaultAttributes());
+        response.put("defaultMaxConcurrentWork", request.getDefaultMaxConcurrentWork());
+        return ApiResponse.success(response);
+    }
+
+    @PostMapping("/node-group-bindings")
+    @Operation(summary = "Bind adapter node to worker group", description = "Declares that an AdapterNode currently hosts a WorkerGroup.")
+    public ApiResponse<Map<String, Object>> bindNodeGroup(
+            @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+            @RequestBody ExternalNodeGroupBindingApiRequest requestBody) {
+        validateNodeGroupBindingRequest(requestBody);
+        requireAuthorizedWorkerSubmitter(
+                apiKeyHeader,
+                authorizationHeader,
+                ApiSecurityScenario.WORKER_REGISTER,
+                null,
+                null,
+                null
+        );
+        NodeGroupBindingRegistration request = NodeGroupBindingRegistration.builder()
+                .adapterNodeId(requestBody.getAdapterNodeId())
+                .workerGroupId(requestBody.getWorkerGroupId())
+                .pluginVersion(requestBody.getPluginVersion())
+                .deploymentVersion(requestBody.getDeploymentVersion())
+                .enabled(requestBody.getEnabled() == null || requestBody.getEnabled())
+                .draining(requestBody.getDraining() != null && requestBody.getDraining())
+                .attributes(requestBody.getAttributes())
+                .build();
+        workerRegistry.bindNodeGroup(request);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("adapterNodeId", request.getAdapterNodeId());
+        response.put("workerGroupId", request.getWorkerGroupId());
+        response.put("pluginVersion", request.getPluginVersion());
+        response.put("deploymentVersion", request.getDeploymentVersion());
+        response.put("enabled", request.isEnabled());
+        response.put("draining", request.isDraining());
+        response.put("attributes", request.getAttributes());
+        return ApiResponse.success(response);
+    }
+
     @PostMapping("/workers")
-    @Operation(summary = "Register external worker", description = "Registers worker identity and eventBindings capability for external worker runtimes.")
+    @Operation(summary = "Register external worker", description = "Registers worker execution identity for external worker runtimes.")
     public ApiResponse<Map<String, Object>> registerWorker(
             @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
             @RequestBody ExternalWorkerRegisterApiRequest requestBody) {
         validateRegisterRequest(requestBody);
-        List<WorkerEventBinding> eventBindings = toEventBindings(requestBody.getEventBindings());
         PrincipalContext submitter = requireAuthorizedWorkerSubmitter(
                 apiKeyHeader,
                 authorizationHeader,
                 ApiSecurityScenario.WORKER_REGISTER,
                 requestBody.getWorkerId(),
                 null,
-                eventBindings
+                null
         );
         String workerId = requireBoundWorkerId(submitter, requestBody.getWorkerId());
         String transportHint = resolveSupportedTransportHint(requestBody.getTransportHint());
@@ -107,27 +217,16 @@ public class ExternalWorkerApiController {
                 .adapterId(blankToNull(requestBody.getAdapterId()))
                 .transportHint(transportHint)
                 .attributes(requestBody.getAttributes())
-                .eventBindings(eventBindings)
                 .build();
         workerRegistry.registerWorker(request);
         String effectiveAdapterId = workerClient.getWorkerAdapterId(workerId);
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("workerId", request.getWorkerId());
-        response.put("adapterNodeId", effectiveAdapterNodeId(request, effectiveAdapterId));
+        response.put("adapterNodeId", request.getAdapterNodeId());
         response.put("workerGroupId", request.getWorkerGroupId());
         response.put("adapterId", effectiveAdapterId);
         response.put("transportHint", transportHint);
-        response.put("eventBindings", request.getEventBindings());
         return ApiResponse.success(response);
-    }
-
-    private String effectiveAdapterNodeId(WorkerRegistration request, String effectiveAdapterId) {
-        String explicitAdapterNodeId = blankToNull(request.getAdapterNodeId());
-        if (explicitAdapterNodeId != null) {
-            return explicitAdapterNodeId;
-        }
-        String requestedAdapterId = blankToNull(request.getAdapterId());
-        return requestedAdapterId != null ? requestedAdapterId : blankToNull(effectiveAdapterId);
     }
 
     @PostMapping("/workers/{workerId}:online")
@@ -317,10 +416,48 @@ public class ExternalWorkerApiController {
             throw new IllegalArgumentException("Unsupported worker register fields: "
                     + String.join(", ", requestBody.getUnknownFieldNames()));
         }
+        requireNonBlank(requestBody.getWorkerGroupId(), "workerGroupId");
+        requireNonBlank(requestBody.getAdapterNodeId(), "adapterNodeId");
+    }
+
+    private void validateAdapterNodeRegisterRequest(ExternalAdapterNodeRegisterApiRequest requestBody) {
+        if (requestBody == null) {
+            throw new IllegalArgumentException("adapter node register request body is required");
+        }
+        if (requestBody.hasUnknownFields()) {
+            throw new IllegalArgumentException("Unsupported adapter node register fields: "
+                    + String.join(", ", requestBody.getUnknownFieldNames()));
+        }
+        requireNonBlank(requestBody.getAdapterNodeId(), "adapterNodeId");
+    }
+
+    private void validateNodeGroupBindingRequest(ExternalNodeGroupBindingApiRequest requestBody) {
+        if (requestBody == null) {
+            throw new IllegalArgumentException("node group binding request body is required");
+        }
+        if (requestBody.hasUnknownFields()) {
+            throw new IllegalArgumentException("Unsupported node group binding fields: "
+                    + String.join(", ", requestBody.getUnknownFieldNames()));
+        }
+        requireNonBlank(requestBody.getAdapterNodeId(), "adapterNodeId");
+        requireNonBlank(requestBody.getWorkerGroupId(), "workerGroupId");
+    }
+
+    private void validateWorkerGroupDeclareRequest(ExternalWorkerGroupDeclareApiRequest requestBody) {
+        if (requestBody == null) {
+            throw new IllegalArgumentException("worker group declare request body is required");
+        }
+        if (requestBody.hasUnknownFields()) {
+            throw new IllegalArgumentException("Unsupported worker group declare fields: "
+                    + String.join(", ", requestBody.getUnknownFieldNames()));
+        }
+        requireNonBlank(requestBody.getGroupId(), "groupId");
         if (requestBody.getEventBindings() == null || requestBody.getEventBindings().isEmpty()) {
             throw new IllegalArgumentException("eventBindings is required");
         }
-        requireNonBlank(requestBody.getWorkerGroupId(), "workerGroupId");
+        if (requestBody.getDefaultMaxConcurrentWork() != null && requestBody.getDefaultMaxConcurrentWork() <= 0) {
+            throw new IllegalArgumentException("defaultMaxConcurrentWork must be greater than 0");
+        }
         for (ExternalWorkerEventBindingApiRequest binding : requestBody.getEventBindings()) {
             if (binding == null) {
                 throw new IllegalArgumentException("eventBindings must not contain null items");
@@ -421,6 +558,9 @@ public class ExternalWorkerApiController {
     }
 
     private List<WorkerEventBinding> toEventBindings(List<ExternalWorkerEventBindingApiRequest> requests) {
+        if (requests == null || requests.isEmpty()) {
+            return List.of();
+        }
         return requests.stream()
                 .map(request -> WorkerEventBinding.builder()
                         .eventCode(requireNonBlank(request.getEventCode(), "eventCode"))

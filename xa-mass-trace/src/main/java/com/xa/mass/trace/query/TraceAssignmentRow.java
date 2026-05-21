@@ -10,6 +10,7 @@ public record TraceAssignmentRow(
         String attemptId,
         String workerId,
         String workerGroupId,
+        String adapterNodeId,
         String eventBindingKey,
         String workerCandidateSource,
         String workerSchedulingResourceId,

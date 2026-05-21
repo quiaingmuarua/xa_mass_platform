@@ -198,9 +198,10 @@ Lifecycle and trace detail live in:
 - `Task.sharedConfig` plus runtime item payload / `payloadRef` are the main
   payload boundaries
 - `Task.project` and `Task.user` are first-class task truth; do not push them back into bags or free-form attributes
-- worker capability truth is `Worker` registration plus `eventBindings`; worker
-  scheduling decisions consume worker scheduling facts and runtime load/capacity
-  facts, not `WorkerContext`
+- worker capability truth is moving to `WorkerGroup.eventBindings`; worker
+  registration still carries compatibility event bindings during convergence,
+  but scheduling decisions must consume group capability, worker scheduling
+  facts, and runtime load/capacity facts, not `WorkerContext`
 - `WorkerMatchContext` plus rule evaluation is current matching input, but it
   must stay a scheduling-context object and must not become a replacement
   worker-resource owner

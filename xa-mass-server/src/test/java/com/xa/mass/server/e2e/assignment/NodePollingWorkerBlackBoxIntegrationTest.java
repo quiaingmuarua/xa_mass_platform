@@ -128,6 +128,7 @@ class NodePollingWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest {
         assertTrue(workerCapabilities.stream().anyMatch(item ->
                 workerId.equals(item.get("workerId"))
                         && List.of("crawler.fetch-page").equals(item.get("supportedEventCodes"))
+                        && hasEventBinding(item, "crawler.fetch-page", "crawlerApp")
                         && "polling".equals(item.get("transportHint"))
                         && Boolean.TRUE.equals(item.get("online"))
         ));
@@ -137,6 +138,23 @@ class NodePollingWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest {
                         && item.get("onlineWorkerIds") instanceof List<?>
                         && ((List<?>) item.get("onlineWorkerIds")).contains(workerId)
         ));
+    }
+
+    @SuppressWarnings("unchecked")
+    private boolean hasEventBinding(Map<String, Object> item, String eventCode, String projectCode) {
+        Object rawBindings = item.get("eventBindings");
+        if (!(rawBindings instanceof List<?> bindings)) {
+            return false;
+        }
+        return bindings.stream().anyMatch(binding -> {
+            if (!(binding instanceof Map<?, ?> map)) {
+                return false;
+            }
+            Object projectCodes = map.get("projectCodes");
+            return eventCode.equals(map.get("eventCode"))
+                    && projectCodes instanceof List<?>
+                    && ((List<Object>) projectCodes).contains(projectCode);
+        });
     }
 
     @SuppressWarnings("unchecked")

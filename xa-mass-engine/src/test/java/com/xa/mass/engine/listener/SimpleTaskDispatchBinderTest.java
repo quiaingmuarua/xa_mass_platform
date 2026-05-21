@@ -495,6 +495,22 @@ public class SimpleTaskDispatchBinderTest {
     }
 
     @Test
+    void dispatchBindingCarriesInternalGroupAndNodeEvidence() {
+        Task task = createTask(1);
+
+        List<TaskDispatchBinding> dispatched = listener.bindDispatches(
+                task,
+                List.of(matched(worker("d1", "node-a", "group-a")))
+        );
+
+        assertEquals(1, dispatched.size());
+        TaskDispatchBinding binding = dispatched.getFirst();
+        assertEquals("group-a", binding.workerGroupId());
+        assertEquals("node-a", binding.adapterNodeId());
+        assertEquals("GROUP_PROJECT_INDEX", binding.workerCandidateSource());
+    }
+
+    @Test
     void assignmentRespectsPerWorkerBatchSizeAndLeavesRemainingMessagesPending() {
         Task task = createTask(5);
         task.getExecutionSpec().setBatchSize(2);
@@ -685,6 +701,13 @@ public class SimpleTaskDispatchBinderTest {
         return w;
     }
 
+    private Worker worker(String id, String adapterNodeId, String workerGroupId) {
+        Worker worker = worker(id);
+        worker.setAdapterNodeId(adapterNodeId);
+        worker.setWorkerGroupId(workerGroupId);
+        return worker;
+    }
+
     private WorkerSchedulingCandidate matched(String workerId) {
         return matched(worker(workerId));
     }
@@ -783,7 +806,6 @@ public class SimpleTaskDispatchBinderTest {
         }
     }
 }
-
 
 
 

@@ -55,18 +55,34 @@ app.registerProject(ProjectDefinition.builder()
 The project is the business container. Task creation and worker capability both
 use project membership when deciding eligibility.
 
-## 3. Register The Worker Capability
+## 3. Declare Capability And Register The Worker
 
 ```java
-app.registerWorker(WorkerRegistration.builder()
-        .workerId("image-worker-1")
-        .workerGroupId("image-workers")
+app.declareWorkerGroup(WorkerGroupDeclaration.builder()
+        .groupId("image-workers")
         .eventBindings(java.util.List.of(
                 WorkerEventBinding.builder()
                         .eventCode("image.resize")
                         .projectCodes(java.util.List.of("mediaApp"))
                         .build()
         ))
+        .build());
+
+app.registerAdapterNode(AdapterNodeRegistration.builder()
+        .adapterNodeId("media-polling-node")
+        .adapterType("polling")
+        .endpointId("media-polling-node")
+        .build());
+
+app.bindNodeGroup(NodeGroupBindingRegistration.builder()
+        .adapterNodeId("media-polling-node")
+        .workerGroupId("image-workers")
+        .build());
+
+app.registerWorker(WorkerRegistration.builder()
+        .workerId("image-worker-1")
+        .adapterNodeId("media-polling-node")
+        .workerGroupId("image-workers")
         .transportHint("polling")
         .attributes(java.util.Map.of(
                 "routingTag", "media",
@@ -76,7 +92,8 @@ app.registerWorker(WorkerRegistration.builder()
 
 Important distinction:
 
-- worker registration declares capability and identity
+- WorkerGroup declaration owns capability
+- worker registration declares execution identity and node/group membership
 - transport presence declares reachability
 - scheduling still checks runtime state, reachability, rules, capacity, and
   resource policy before dispatch

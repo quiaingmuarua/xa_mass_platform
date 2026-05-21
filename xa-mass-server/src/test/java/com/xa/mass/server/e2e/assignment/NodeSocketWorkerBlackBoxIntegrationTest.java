@@ -66,16 +66,13 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest {
         registerExternalWorkerSubmitter(SOCKET_WORKER_ID, SOCKET_WORKER_KEY, List.of("crawler.fetch-page"));
 
         HttpHeaders workerHeaders = credentialHeaders(SOCKET_WORKER_KEY);
+        declareExternalWorkerGroup("node-socket-crawler", "crawlerApp", "crawler.fetch-page", workerHeaders);
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", SOCKET_WORKER_ID,
                 "workerGroupId", "node-socket-crawler",
                 "adapterId", "socket",
                 "transportHint", "realtime",
-                "attributes", Map.of("lang", "node", "runtime", "node-socket-worker"),
-                "eventBindings", List.of(Map.of(
-                        "eventCode", "crawler.fetch-page",
-                        "projectCodes", List.of("crawlerApp")
-                ))
+                "attributes", Map.of("lang", "node", "runtime", "node-socket-worker")
         ), workerHeaders);
         assertApiOk(registerResponse);
         assertEquals("socket", responseData(registerResponse).get("adapterId"));
@@ -146,30 +143,26 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest {
     void websocketAndSocketAdaptersCanCoexistWithoutCrossRouting() throws Exception {
         registerExternalWorkerSubmitter(WEBSOCKET_WORKER_ID, WEBSOCKET_WORKER_KEY, List.of("demo.dispatch"));
         registerExternalWorkerSubmitter(SOCKET_WORKER_ID, SOCKET_WORKER_KEY, List.of("crawler.fetch-page"));
+        HttpHeaders websocketHeaders = credentialHeaders(WEBSOCKET_WORKER_KEY);
+        HttpHeaders socketHeaders = credentialHeaders(SOCKET_WORKER_KEY);
+        declareExternalWorkerGroup("node-websocket-demo", "demoApp", "demo.dispatch", websocketHeaders);
+        declareExternalWorkerGroup("node-socket-crawler", "crawlerApp", "crawler.fetch-page", socketHeaders);
 
         assertApiOk(exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", WEBSOCKET_WORKER_ID,
                 "workerGroupId", "node-websocket-demo",
                 "adapterId", "websocket",
                 "transportHint", "realtime",
-                "attributes", Map.of("lang", "node", "runtime", "node-websocket-worker"),
-                "eventBindings", List.of(Map.of(
-                        "eventCode", "demo.dispatch",
-                        "projectCodes", List.of("demoApp")
-                ))
-        ), credentialHeaders(WEBSOCKET_WORKER_KEY)));
+                "attributes", Map.of("lang", "node", "runtime", "node-websocket-worker")
+        ), websocketHeaders));
 
         assertApiOk(exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", SOCKET_WORKER_ID,
                 "workerGroupId", "node-socket-crawler",
                 "adapterId", "socket",
                 "transportHint", "realtime",
-                "attributes", Map.of("lang", "node", "runtime", "node-socket-worker"),
-                "eventBindings", List.of(Map.of(
-                        "eventCode", "crawler.fetch-page",
-                        "projectCodes", List.of("crawlerApp")
-                ))
-        ), credentialHeaders(SOCKET_WORKER_KEY)));
+                "attributes", Map.of("lang", "node", "runtime", "node-socket-worker")
+        ), socketHeaders));
 
         try (ExternalNodeWorkerProcess websocketWorker = ExternalNodeWorkerProcess.startWebSocketSample(
                 WEBSOCKET_WORKER_ID,

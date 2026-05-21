@@ -8,7 +8,9 @@ Keep per-language startup and env details in `samples/*/README.md`.
 ## 1. Current Contract Split
 
 - Public repo-external worker data-plane contract: versioned HTTP under `/worker-api/v1/**`.
-- Shared repo-external control-plane registration: `POST /worker-api/v1/workers`.
+- Shared repo-external control-plane registration: declare WorkerGroup through
+  `POST /worker-api/v1/worker-groups`, then register Worker identity through
+  `POST /worker-api/v1/workers`.
 - Realtime adapters (`websocket`, `socket`) are active cross-language validation paths, but their wire shapes are adapter-local compatibility seams, not the stable public worker protocol commitment.
 - `adapterId` is concrete routing truth. `transportHint` is only the coarse family hint.
 - `eventCode` is the global capability identity.
@@ -18,9 +20,10 @@ Keep per-language startup and env details in `samples/*/README.md`.
 
 Every external worker path must preserve the same kernel behavior:
 
-1. register capability through `eventBindings`
-2. establish online presence through the concrete transport path
-3. receive task work, execute locally by `eventCode`, and submit result
+1. declare WorkerGroup capability through `eventBindings`
+2. register Worker identity with `workerGroupId`
+3. establish online presence through the concrete transport path
+4. receive task work, execute locally by `eventCode`, and submit result
 
 Keep these rules:
 
@@ -34,6 +37,7 @@ Keep these rules:
 
 The stable third-party worker protocol today is the polling surface:
 
+- `POST /worker-api/v1/worker-groups`
 - `POST /worker-api/v1/workers`
 - `POST /worker-api/v1/workers/{workerId}:online`
 - `POST /worker-api/v1/workers/{workerId}:heartbeat`
@@ -63,7 +67,10 @@ Example dispatch payload:
     "url": "https://example.com"
   },
   "sharedConfig": {
-    "routingCode": "us"
+    "routingCode": "us",
+    "routeAttributes": {
+      "region": "us"
+    }
   }
 }
 ```
@@ -81,7 +88,8 @@ today and Boot-shell E2E proves them:
 
 For realtime paths:
 
-- use `/worker-api/v1/workers` for worker capability registration
+- use `/worker-api/v1/worker-groups` for group capability declaration, then
+  `/worker-api/v1/workers` for worker identity registration
 - online presence comes from the transport connection, not the register call
 - keep local handler resolution keyed by `eventCode`
 - do not treat adapter frame fields as a second business capability model

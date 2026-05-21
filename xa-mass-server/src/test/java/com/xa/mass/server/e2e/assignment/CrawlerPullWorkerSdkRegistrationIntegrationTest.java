@@ -7,9 +7,12 @@ import com.xa.mass.server.e2e.support.ProjectionSampleE2eTest;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
+import com.xa.mass.sdk.model.AdapterNodeRegistration;
+import com.xa.mass.sdk.model.NodeGroupBindingRegistration;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.WorkerEventBinding;
+import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.transport.WorkerTransportHints;
@@ -63,15 +66,28 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends ProjectionSampleE2
                 rule("crawler-online-project", "isWorkerAvailable == true && isWorkerLocked == false && supportsProject == true"),
                 rule("crawler-scheduling-routing", "isWorkerSchedulingResourceAllocatable == true && workerSchedulingMatchesRoutingCode == true")
         ));
-        app.registerWorker(WorkerRegistration.builder()
-                .workerId(workerId)
-                .workerGroupId("crawler")
+        app.declareWorkerGroup(WorkerGroupDeclaration.builder()
+                .groupId("crawler")
                 .eventBindings(List.of(
                         WorkerEventBinding.builder()
                                 .eventCode("crawler.fetch-page")
                                 .projectCodes(List.of("crawlerApp"))
                                 .build()
                 ))
+                .build());
+        app.registerAdapterNode(AdapterNodeRegistration.builder()
+                .adapterNodeId("crawler-polling-node")
+                .adapterType(WorkerTransportHints.POLLING)
+                .endpointId("crawler-polling")
+                .build());
+        app.bindNodeGroup(NodeGroupBindingRegistration.builder()
+                .adapterNodeId("crawler-polling-node")
+                .workerGroupId("crawler")
+                .build());
+        app.registerWorker(WorkerRegistration.builder()
+                .workerId(workerId)
+                .adapterNodeId("crawler-polling-node")
+                .workerGroupId("crawler")
                 .transportHint(WorkerTransportHints.POLLING)
                 .attributes(Map.of(
                         "type", "crawler",

@@ -306,6 +306,8 @@ Contract rules:
 - omitted `executionSpec` resolves to default task execution policy
 - public create creates only the task shell and opens normal intake for later
   append/seal flow
+- optional `sharedConfig.routeAttributes` may carry route-bucket hints; only
+  engine-approved keys are used for Stage-1 candidate narrowing
 
 Example request:
 
@@ -314,7 +316,10 @@ Example request:
   "userId": "agent",
   "project": "demoApp",
   "sharedConfig": {
-    "site": "example"
+    "site": "example",
+    "routeAttributes": {
+      "region": "us"
+    }
   },
   "executionSpec": {
     "profile": "STANDARD",
@@ -805,7 +810,22 @@ non-Java runtimes. Realtime adapter validation may still reuse portions of the
 same registration model, but polling remains the primary public data-plane
 contract.
 
-### 6.1 Register Worker
+### 6.1 Declare Worker Group
+
+- Method: `POST`
+- Path: `/worker-api/v1/worker-groups`
+- Status: `Implemented`
+
+Request notes:
+
+- `groupId` is required
+- `eventBindings` is required and becomes WorkerGroup capability truth
+- `defaultAttributes` and `defaultMaxConcurrentWork` are optional group
+  defaults
+- caller must authenticate with a worker credential that includes `worker:poll`
+  and is allowed for every declared event/project binding
+
+### 6.2 Register Worker
 
 - Method: `POST`
 - Path: `/worker-api/v1/workers`
@@ -814,43 +834,47 @@ contract.
 Request notes:
 
 - `workerId` is required
-- `eventBindings` is required and is the canonical capability declaration
+- `workerGroupId` is required
+- `eventBindings` is optional compatibility input; WorkerGroup declaration is
+  the capability owner
 - `transportHint` defaults to `polling`
 - `adapterId` is optional for polling and required for realtime
 - caller must authenticate with a worker credential that includes `worker:poll`
   and binds the same `workerId`
 
-### 6.2 Register Worker Context
+### 6.3 Register Worker Context
 
 - Path: `/worker-api/v1/workers/{workerId}/contexts`
 - Status: `Removed`
 
 Notes:
 
-- external workers declare capability through `/worker-api/v1/workers`
-  `eventBindings`, worker attributes, and transport presence
+- external workers declare group capability through
+  `/worker-api/v1/worker-groups`
+- worker registration binds execution identity to a `workerGroupId` plus worker
+  attributes and transport presence
 - account/device inventory belongs to worker-management/system-event ownership,
   not to engine/server WorkerContext CRUD
 
-### 6.3 Worker Online
+### 6.4 Worker Online
 
 - Method: `POST`
 - Path: `/worker-api/v1/workers/{workerId}:online`
 - Status: `Implemented`
 
-### 6.4 Worker Heartbeat
+### 6.5 Worker Heartbeat
 
 - Method: `POST`
 - Path: `/worker-api/v1/workers/{workerId}:heartbeat`
 - Status: `Implemented`
 
-### 6.5 Worker Offline
+### 6.6 Worker Offline
 
 - Method: `POST`
 - Path: `/worker-api/v1/workers/{workerId}:offline`
 - Status: `Implemented`
 
-### 6.6 Poll Tasks
+### 6.7 Poll Tasks
 
 - Method: `POST`
 - Path: `/worker-api/v1/workers/{workerId}:poll`
@@ -868,7 +892,7 @@ Response notes:
 - `input` is the per-item logical payload
 - `sharedConfig` is the task-level shared payload
 
-### 6.7 Submit Task Result
+### 6.8 Submit Task Result
 
 - Method: `POST`
 - Path: `/worker-api/v1/workers/{workerId}:submit-result`
@@ -880,7 +904,7 @@ Request notes:
 - `taskId` and `messageId` are required
 - `output` is the canonical logical callback payload
 
-### 6.8 Report Worker Capability
+### 6.9 Report Worker Capability
 
 - Method: `POST`
 - Path: `/worker-api/v1/workers/{workerId}:report-capability`
@@ -895,7 +919,7 @@ Request notes:
 - `availableEventCodes` must stay within the worker credential event scope
 - the report is a bounded capability snapshot, not an incremental patch
 
-### 6.9 Report Worker State
+### 6.10 Report Worker State
 
 - Method: `POST`
 - Path: `/worker-api/v1/workers/{workerId}:report-state`
@@ -917,7 +941,7 @@ Request notes:
   `DRAIN` command outcomes do not reopen dispatch; a later
   `report-state(AVAILABLE)` is required
 
-### 6.10 Acknowledge Worker Command
+### 6.11 Acknowledge Worker Command
 
 - Method: `POST`
 - Path: `/worker-api/v1/workers/{workerId}/commands/{commandId}:ack`
