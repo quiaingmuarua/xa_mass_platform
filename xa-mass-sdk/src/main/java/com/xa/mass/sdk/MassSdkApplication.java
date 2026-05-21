@@ -21,9 +21,11 @@ import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.stage.TaskStageEvidenceResult;
 import com.xa.mass.engine.stage.TaskStageEvidenceService;
 import com.xa.mass.engine.stage.TaskStageProjection;
+import com.xa.mass.engine.worker.EventBinding;
 import com.xa.mass.engine.worker.WorkerCapabilityReport;
 import com.xa.mass.engine.worker.WorkerCapabilityReportResult;
 import com.xa.mass.engine.worker.WorkerControlService;
+import com.xa.mass.engine.worker.WorkerGroupRecord;
 import com.xa.mass.engine.worker.WorkerStateProjection;
 import com.xa.mass.engine.worker.WorkerStateProjectionResult;
 import com.xa.mass.engine.worker.WorkerStateReport;
@@ -392,6 +394,14 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 after != null ? after : before,
                 "Task command is not allowed in the current state",
                 "COMMAND_NOT_ALLOWED");
+    }
+
+    @Override
+    public void declareWorkerGroup(WorkerGroupDeclaration request) {
+        MassEngine engine = requireStartedEngine();
+        engine.getConfig().getWorkerManager().upsertWorkerGroup(toWorkerGroupRecord(
+                Objects.requireNonNull(request, "request")
+        ));
     }
 
     @Override
@@ -1224,6 +1234,23 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return pullWorker(requireWorkerId(workerId));
     }
 
+    private WorkerGroupRecord toWorkerGroupRecord(WorkerGroupDeclaration declaration) {
+        List<WorkerEventBinding> declaredBindings = declaration.getEventBindings();
+        if (declaredBindings.isEmpty()) {
+            throw new IllegalArgumentException("eventBindings is required");
+        }
+        List<EventBinding> eventBindings = new ArrayList<>(declaredBindings.size());
+        for (WorkerEventBinding binding : declaredBindings) {
+            EventDefinition definition = requireEnabledEventDefinition(binding.getEventCode());
+            eventBindings.add(EventBinding.of(definition.getCode(), resolveWorkerBindingProjects(definition, binding)));
+        }
+        return WorkerGroupRecord.builder(declaration.getGroupId())
+                .eventBindings(eventBindings)
+                .defaultAttributes(declaration.getDefaultAttributes())
+                .defaultMaxConcurrentWork(declaration.getDefaultMaxConcurrentWork())
+                .build();
+    }
+
     private WorkerRegistration normalizeWorkerRegistration(WorkerRegistration registration) {
         Objects.requireNonNull(registration, "registration");
         List<WorkerEventBinding> bindings = normalizedWorkerBindings(registration);
@@ -1708,14 +1735,24 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         if (worker == null) {
             return null;
         }
+        WorkerGroupRecord group = resolveWorkerGroup(worker.getWorkerGroupId());
+        List<String> supportedProjects = group != null
+                ? List.copyOf(group.projectCodes())
+                : worker.getSupportedProjects();
+        List<String> supportedEventCodes = group != null
+                ? List.copyOf(group.eventCodes())
+                : worker.getSupportedEventCodes();
+        List<WorkerEventBinding> eventBindings = group != null
+                ? toWorkerEventBindings(group)
+                : deriveWorkerEventBindings(worker);
         return new WorkerSnapshot(
                 worker.getWorkerId(),
                 enumName(worker.getStatus()),
                 worker.getAgentVersion(),
                 worker.getLastHeartbeat(),
-                worker.getSupportedProjects(),
-                worker.getSupportedEventCodes(),
-                deriveWorkerEventBindings(worker),
+                supportedProjects,
+                supportedEventCodes,
+                eventBindings,
                 worker.getWorkerGroupId(),
                 worker.getAdapterId(),
                 worker.getOnlineStrategy(),
@@ -1724,6 +1761,31 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 worker.getCreateTime(),
                 worker.getUpdateTime()
         );
+    }
+
+    private WorkerGroupRecord resolveWorkerGroup(String workerGroupId) {
+        if (workerGroupId == null || workerGroupId.isBlank()) {
+            return null;
+        }
+        return requireStartedEngine()
+                .getConfig()
+                .getWorkerManager()
+                .workerGroup(workerGroupId)
+                .orElse(null);
+    }
+
+    private List<WorkerEventBinding> toWorkerEventBindings(WorkerGroupRecord group) {
+        if (group == null || group.eventBindings().isEmpty()) {
+            return List.of();
+        }
+        List<WorkerEventBinding> bindings = new ArrayList<>(group.eventBindings().size());
+        for (EventBinding binding : group.eventBindings()) {
+            bindings.add(WorkerEventBinding.builder()
+                    .eventCode(binding.eventCode())
+                    .projectCodes(binding.projectCodes())
+                    .build());
+        }
+        return List.copyOf(bindings);
     }
 
     private List<WorkerEventBinding> deriveWorkerEventBindings(Worker worker) {

@@ -103,6 +103,7 @@ class PostgresExternalWorkerPollingApiIntegrationTest extends ProjectionSampleE2
 
         HttpHeaders workerHeaders = credentialHeaders(workerCredential);
         HttpHeaders submitterHeaders = credentialHeaders(submitterCredential);
+        declareExternalWorkerGroup("polling-postgres", "crawlerApp", "crawler.fetch-page", workerHeaders);
 
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", workerId,
@@ -112,11 +113,7 @@ class PostgresExternalWorkerPollingApiIntegrationTest extends ProjectionSampleE2
                         "routingTags", "us",
                         "country", "us",
                         "region", "us"
-                ),
-                "eventBindings", List.of(Map.of(
-                        "eventCode", "crawler.fetch-page",
-                        "projectCodes", List.of("crawlerApp")
-                ))
+                )
         ), workerHeaders);
         assertApiOk(registerResponse);
         assertEquals("polling", responseData(registerResponse).get("transportHint"));

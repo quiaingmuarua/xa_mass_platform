@@ -11,6 +11,7 @@ import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.model.WorkerSnapshot;
 import com.xa.mass.sdk.model.WorkerEventBinding;
+import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
@@ -124,6 +125,19 @@ public abstract class AbstractSampleE2eTest {
         String url = "http://127.0.0.1:" + port + path;
         ResponseEntity<Map> response = restTemplate.exchange(url, method, new HttpEntity<>(body, headers), Map.class);
         return response.getBody();
+    }
+
+    protected void declareExternalWorkerGroup(String groupId,
+                                              String projectCode,
+                                              String eventCode,
+                                              HttpHeaders headers) {
+        assertApiOk(exchange("/worker-api/v1/worker-groups", HttpMethod.POST, Map.of(
+                "groupId", groupId,
+                "eventBindings", List.of(Map.of(
+                        "eventCode", eventCode,
+                        "projectCodes", List.of(projectCode)
+                ))
+        ), headers));
     }
 
     @SuppressWarnings("unchecked")
@@ -642,10 +656,13 @@ public abstract class AbstractSampleE2eTest {
                                                         String project,
                                                         int maxConcurrentWork,
                                                         Map<String, String> attributes) {
+        requireSdkApp().declareWorkerGroup(WorkerGroupDeclaration.builder()
+                .groupId(workerGroupId)
+                .eventBindings(defaultEventBindings(project))
+                .build());
         return WorkerRegistration.builder()
                 .workerId(workerId)
                 .workerGroupId(workerGroupId)
-                .eventBindings(defaultEventBindings(project))
                 .adapterId("websocket")
                 .transportHint("realtime")
                 .maxConcurrentWork(maxConcurrentWork)

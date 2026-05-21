@@ -141,8 +141,37 @@ public final class TraceEventLogger {
                                                String trigger,
                                                String source,
                                                String reason) {
+        taskWorkAttemptStatusTransition(taskId, messageId, attemptId, attemptNo, workerId, batchId,
+                finalReason, fromStatus, toStatus, trigger, source, reason, null);
+    }
+
+    public void taskWorkAttemptStatusTransition(String taskId,
+                                               String messageId,
+                                               String attemptId,
+                                               Integer attemptNo,
+                                               String workerId,
+                                               String batchId,
+                                               AttemptFinalReason finalReason,
+                                               AttemptStatus fromStatus,
+                                               AttemptStatus toStatus,
+                                               String trigger,
+                                               String source,
+                                               String reason,
+                                               Map<String, Object> extraAttrs) {
         if (attemptId == null || attemptId.isBlank()) {
             return;
+        }
+        Map<String, Object> values = attrs(
+                "trigger", trigger,
+                "source", source,
+                "reason", reason,
+                "result", "SUCCESS",
+                "attemptNo", attemptNo,
+                "finalReason", enumName(finalReason),
+                "batchId", batchId
+        );
+        if (extraAttrs != null && !extraAttrs.isEmpty()) {
+            values.putAll(extraAttrs);
         }
         emit(event(ExecutionEventType.TASK_WORK_ATTEMPT_STATUS_TRANSITION)
                 .identity(identity -> identity
@@ -151,15 +180,7 @@ public final class TraceEventLogger {
                         .attemptId(attemptId)
                         .workerId(workerId))
                 .transition(enumName(fromStatus), enumName(toStatus), reason)
-                .attrs(attrs(
-                        "trigger", trigger,
-                        "source", source,
-                        "reason", reason,
-                        "result", "SUCCESS",
-                        "attemptNo", attemptNo,
-                        "finalReason", enumName(finalReason),
-                        "batchId", batchId
-                ))
+                .attrs(values)
                 .build());
     }
 
@@ -982,6 +1003,7 @@ public final class TraceEventLogger {
             values.put("workerSchedulingMatchesRoutingCode",
                     routingCode != null && view.schedulingRoutingTagsContain(routingCode));
             values.put("workerGroupId", view.workerGroupId());
+            values.put("adapterNodeId", view.adapterNodeId());
             values.put("workerCandidateSource", workerCandidateSource(task));
             if (task != null && taskEventCode != null && !taskEventCode.isBlank()
                     && task.getProject() != null && !task.getProject().isBlank()) {
@@ -1090,4 +1112,3 @@ public final class TraceEventLogger {
     ) {
     }
 }
-

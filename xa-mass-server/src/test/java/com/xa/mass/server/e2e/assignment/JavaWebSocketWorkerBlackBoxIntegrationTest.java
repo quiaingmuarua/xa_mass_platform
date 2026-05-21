@@ -64,16 +64,13 @@ class JavaWebSocketWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest
                 .build());
 
         HttpHeaders workerHeaders = credentialHeaders(WORKER_KEY);
+        declareExternalWorkerGroup("java-websocket-crawler", "crawlerApp", "crawler.fetch-page", workerHeaders);
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", WORKER_ID,
                 "workerGroupId", "java-websocket-crawler",
                 "adapterId", "websocket",
                 "transportHint", "realtime",
-                "attributes", Map.of("lang", "java", "runtime", "java-websocket-worker"),
-                "eventBindings", List.of(Map.of(
-                        "eventCode", "crawler.fetch-page",
-                        "projectCodes", List.of("crawlerApp")
-                ))
+                "attributes", Map.of("lang", "java", "runtime", "java-websocket-worker")
         ), workerHeaders);
         assertApiOk(registerResponse);
         assertEquals("websocket", responseData(registerResponse).get("adapterId"));

@@ -18,11 +18,9 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -70,15 +68,13 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
 
         HttpHeaders realtimeHeaders = credentialHeaders("realtime-worker-key");
         HttpHeaders aliasHeaders = credentialHeaders("alias-worker-key");
+        declareCrawlerWorkerGroup("realtime-crawler", realtimeHeaders);
+        declareCrawlerWorkerGroup("realtime-crawler", aliasHeaders);
 
         Map<String, Object> realtimeRegisterResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", "realtime-worker-001",
                 "workerGroupId", "realtime-crawler",
-                "transportHint", "realtime",
-                "eventBindings", List.of(Map.of(
-                        "eventCode", "crawler.fetch-page",
-                        "projectCodes", List.of("crawlerApp")
-                ))
+                "transportHint", "realtime"
         ), realtimeHeaders);
         assertApiError(realtimeRegisterResponse, 400);
         assertTrue(apiMsg(realtimeRegisterResponse).contains(
@@ -87,11 +83,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         Map<String, Object> aliasRegisterResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", "realtime-worker-002",
                 "workerGroupId", "realtime-crawler",
-                "transportHint", "websocket",
-                "eventBindings", List.of(Map.of(
-                        "eventCode", "crawler.fetch-page",
-                        "projectCodes", List.of("crawlerApp")
-                ))
+                "transportHint", "websocket"
         ), aliasHeaders);
         assertApiError(aliasRegisterResponse, 400);
         assertTrue(apiMsg(aliasRegisterResponse).contains(
@@ -109,6 +101,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         ));
         HttpHeaders workerHeaders = credentialHeaders(credential);
         HttpHeaders submitterHeaders = credentialHeaders(submitterCredential);
+        declareCrawlerWorkerGroup("node-runtime", workerHeaders);
 
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", workerId,
@@ -118,11 +111,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
                         "routingTags", "web,us",
                         "country", "us",
                         "region", "us"
-                ),
-                "eventBindings", List.of(Map.of(
-                        "eventCode", "crawler.fetch-page",
-                        "projectCodes", List.of("crawlerApp")
-                ))
+                )
         ), workerHeaders);
         assertApiOk(registerResponse);
         assertEquals("polling", responseData(registerResponse).get("transportHint"));
@@ -212,6 +201,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         );
         HttpHeaders workerHeaders = credentialHeaders(credential);
         HttpHeaders submitterHeaders = credentialHeaders(submitterCredential);
+        declareCrawlerWorkerGroup("node-runtime", workerHeaders);
 
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", workerId,
@@ -221,11 +211,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
                         "routingTags", "web,us",
                         "country", "us",
                         "region", "us"
-                ),
-                "eventBindings", List.of(Map.of(
-                        "eventCode", "crawler.fetch-page",
-                        "projectCodes", List.of("crawlerApp")
-                ))
+                )
         ), workerHeaders);
         assertApiOk(registerResponse);
         assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":online", HttpMethod.POST, Map.of(
@@ -320,39 +306,23 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
                 "reason", "manual resume"
         ), workerHeaders));
 
-        Map<String, Object> resumedPoll = null;
-        List<Map<String, Object>> resumedItems = List.of();
-        for (int attempt = 0; attempt < 8 && resumedItems.isEmpty(); attempt++) {
-            resumedPoll = exchange("/worker-api/v1/workers/" + workerId + ":poll", HttpMethod.POST, Map.of(
+        for (int attempt = 0; attempt < 4; attempt++) {
+            Map<String, Object> resumedPoll = exchange("/worker-api/v1/workers/" + workerId + ":poll", HttpMethod.POST, Map.of(
                     "maxMessages", 10,
-                    "timeoutMs", 500
+                    "timeoutMs", 250
             ), workerHeaders);
             assertApiOk(resumedPoll);
-            resumedItems = pollItems(resumedPoll);
+            assertTrue(pollItems(resumedPoll).isEmpty(),
+                    "AVAILABLE state must not clear WORKER_COMMAND drain source");
+            Thread.sleep(150L);
         }
-        assertFalse(resumedItems.isEmpty(), "worker should receive new work after explicit AVAILABLE state");
-        Set<String> remainingTaskIds = new HashSet<>(Set.of(taskId, stillDrainedTaskId));
-        for (Map<String, Object> item : resumedItems) {
-            submitSuccessfulWorkerResult(workerId, workerHeaders, item, "resumed-after-failed-drain-command");
-            remainingTaskIds.remove(item.get("taskId"));
-        }
-        for (int attempt = 0; attempt < 8 && !remainingTaskIds.isEmpty(); attempt++) {
-            Map<String, Object> backlogPoll = exchange("/worker-api/v1/workers/" + workerId + ":poll", HttpMethod.POST, Map.of(
-                    "maxMessages", 10,
-                    "timeoutMs", 500
-            ), workerHeaders);
-            assertApiOk(backlogPoll);
-            for (Map<String, Object> item : pollItems(backlogPoll)) {
-                submitSuccessfulWorkerResult(workerId, workerHeaders, item, "resumed-after-failed-drain-command");
-                remainingTaskIds.remove(item.get("taskId"));
-            }
-        }
-        assertTrue(remainingTaskIds.isEmpty(), "explicit AVAILABLE should let drained backlog resume");
-
-        RuntimeTaskSnapshot firstResumedTerminal = waitForTerminalRuntimeTask(taskId);
-        assertEquals("TERMINAL", firstResumedTerminal.task().get("status"));
-        RuntimeTaskSnapshot secondResumedTerminal = waitForTerminalRuntimeTask(stillDrainedTaskId);
-        assertEquals("TERMINAL", secondResumedTerminal.task().get("status"));
+        waitForRuntimeTaskSnapshot(
+                stillDrainedTaskId,
+                snapshot -> "READY".equals(snapshot.task().get("status")) || "RUNNING".equals(snapshot.task().get("status")),
+                "READY or RUNNING while command drain source remains active",
+                8,
+                200L
+        );
     }
 
     @Test
@@ -373,6 +343,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         );
         HttpHeaders workerHeaders = credentialHeaders(credential);
         HttpHeaders submitterHeaders = credentialHeaders(submitterCredential);
+        declareCrawlerWorkerGroup("node-runtime", workerHeaders);
 
         assertApiOk(exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", workerId,
@@ -382,11 +353,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
                         "routingTags", "web,us",
                         "country", "us",
                         "region", "us"
-                ),
-                "eventBindings", List.of(Map.of(
-                        "eventCode", "crawler.fetch-page",
-                        "projectCodes", List.of("crawlerApp")
-                ))
+                )
         ), workerHeaders));
         assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":online", HttpMethod.POST, Map.of(
                 "reason", "draining-online"
@@ -462,6 +429,16 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         rule.setContent(content);
         rule.setEnabled(true);
         return rule;
+    }
+
+    private void declareCrawlerWorkerGroup(String groupId, HttpHeaders workerHeaders) {
+        assertApiOk(exchange("/worker-api/v1/worker-groups", HttpMethod.POST, Map.of(
+                "groupId", groupId,
+                "eventBindings", List.of(Map.of(
+                        "eventCode", "crawler.fetch-page",
+                        "projectCodes", List.of("crawlerApp")
+                ))
+        ), workerHeaders));
     }
 
     private String createReadyCrawlerTask(HttpHeaders submitterHeaders) {

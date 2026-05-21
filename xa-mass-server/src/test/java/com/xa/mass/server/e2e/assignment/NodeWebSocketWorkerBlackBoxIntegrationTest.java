@@ -67,6 +67,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest
     @Test
     void externalNodeWorkerCompletesTaskThroughRealtimeRegistrationAndEventCodeRuntime() throws Exception {
         HttpHeaders workerHeaders = credentialHeaders(WORKER_KEY);
+        declareExternalWorkerGroup("node-websocket-crawler", "crawlerApp", "crawler.fetch-page", workerHeaders);
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", WORKER_ID,
                 "workerGroupId", "node-websocket-crawler",
@@ -78,11 +79,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest
                         "routingTags", "web,us",
                         "country", "us",
                         "region", "us"
-                ),
-                "eventBindings", List.of(Map.of(
-                        "eventCode", "crawler.fetch-page",
-                        "projectCodes", List.of("crawlerApp")
-                ))
+                )
         ), workerHeaders);
         assertApiOk(registerResponse);
         WorkerSnapshot registeredWorker = app.getWorker(WORKER_ID);
@@ -152,6 +149,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest
     @Tag("projection-residue")
     void externalNodeWebSocketStockWorkerHandlesAsyncRpcRequestIdsThroughStreamTask() throws Exception {
         HttpHeaders workerHeaders = credentialHeaders(STOCK_WORKER_KEY);
+        declareExternalWorkerGroup("node-websocket-stock", "crawlerApp", "stock.quote.fetch", workerHeaders);
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", STOCK_WORKER_ID,
                 "workerGroupId", "node-websocket-stock",
@@ -165,11 +163,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest
                         "country", "us",
                         "region", "us",
                         "market", "NASDAQ"
-                ),
-                "eventBindings", List.of(Map.of(
-                        "eventCode", "stock.quote.fetch",
-                        "projectCodes", List.of("crawlerApp")
-                ))
+                )
         ), workerHeaders);
         assertApiOk(registerResponse);
         WorkerSnapshot registeredWorker = app.getWorker(STOCK_WORKER_ID);
@@ -295,4 +289,3 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest
         return null;
     }
 }
-

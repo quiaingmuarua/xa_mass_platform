@@ -84,13 +84,18 @@ function startWorker(spec) {
 }
 
 async function registerWorker(spec) {
+  const groupResponse = await post("/worker-api/v1/worker-groups", spec.workerKey, {
+    groupId: spec.workerGroupId,
+    eventBindings: spec.eventBindings,
+  });
+  console.log(`[sample-launcher] declared worker group ${spec.workerGroupId}: ${JSON.stringify(groupResponse.data)}`);
+
   const response = await post("/worker-api/v1/workers", spec.workerKey, {
     workerId: spec.workerId,
     workerGroupId: spec.workerGroupId,
     adapterId: spec.adapterId ?? "websocket",
     transportHint: spec.transportHint ?? "realtime",
     attributes: spec.attributes,
-    eventBindings: spec.eventBindings,
   });
   console.log(`[sample-launcher] registered worker ${spec.workerId}: ${JSON.stringify(response.data)}`);
 }

@@ -15,6 +15,7 @@ import com.xa.mass.sdk.model.WorkerCommandAcknowledgementRequest;
 import com.xa.mass.sdk.model.WorkerCommandResultSnapshot;
 import com.xa.mass.sdk.model.WorkerCommandSnapshot;
 import com.xa.mass.sdk.model.WorkerEventBinding;
+import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.model.WorkerStateReportRequest;
 import com.xa.mass.sdk.model.WorkerStateReportSnapshot;
@@ -82,8 +83,42 @@ public class ExternalWorkerApiController {
         );
     }
 
+    @PostMapping("/worker-groups")
+    @Operation(summary = "Declare external worker group", description = "Declares WorkerGroup capability truth before individual workers register.")
+    public ApiResponse<Map<String, Object>> declareWorkerGroup(
+            @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+            @RequestBody ExternalWorkerGroupDeclareApiRequest requestBody) {
+        validateWorkerGroupDeclareRequest(requestBody);
+        List<WorkerEventBinding> eventBindings = toEventBindings(requestBody.getEventBindings());
+        requireAuthorizedWorkerSubmitter(
+                apiKeyHeader,
+                authorizationHeader,
+                ApiSecurityScenario.WORKER_REGISTER,
+                null,
+                null,
+                eventBindings
+        );
+        WorkerGroupDeclaration.Builder builder = WorkerGroupDeclaration.builder()
+                .groupId(requestBody.getGroupId())
+                .eventBindings(eventBindings)
+                .defaultAttributes(requestBody.getDefaultAttributes());
+        if (requestBody.getDefaultMaxConcurrentWork() != null) {
+            builder.defaultMaxConcurrentWork(requestBody.getDefaultMaxConcurrentWork());
+        }
+        WorkerGroupDeclaration request = builder.build();
+        workerRegistry.declareWorkerGroup(request);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("groupId", request.getGroupId());
+        response.put("eventBindings", request.getEventBindings());
+        response.put("defaultAttributes", request.getDefaultAttributes());
+        response.put("defaultMaxConcurrentWork", request.getDefaultMaxConcurrentWork());
+        return ApiResponse.success(response);
+    }
+
     @PostMapping("/workers")
-    @Operation(summary = "Register external worker", description = "Registers worker identity and eventBindings capability for external worker runtimes.")
+    @Operation(summary = "Register external worker", description = "Registers worker execution identity for external worker runtimes.")
     public ApiResponse<Map<String, Object>> registerWorker(
             @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
@@ -317,10 +352,36 @@ public class ExternalWorkerApiController {
             throw new IllegalArgumentException("Unsupported worker register fields: "
                     + String.join(", ", requestBody.getUnknownFieldNames()));
         }
+        requireNonBlank(requestBody.getWorkerGroupId(), "workerGroupId");
+        if (requestBody.getEventBindings() == null) {
+            return;
+        }
+        for (ExternalWorkerEventBindingApiRequest binding : requestBody.getEventBindings()) {
+            if (binding == null) {
+                throw new IllegalArgumentException("eventBindings must not contain null items");
+            }
+            if (binding.hasUnknownFields()) {
+                throw new IllegalArgumentException("Unsupported worker event binding fields: "
+                        + String.join(", ", binding.getUnknownFieldNames()));
+            }
+        }
+    }
+
+    private void validateWorkerGroupDeclareRequest(ExternalWorkerGroupDeclareApiRequest requestBody) {
+        if (requestBody == null) {
+            throw new IllegalArgumentException("worker group declare request body is required");
+        }
+        if (requestBody.hasUnknownFields()) {
+            throw new IllegalArgumentException("Unsupported worker group declare fields: "
+                    + String.join(", ", requestBody.getUnknownFieldNames()));
+        }
+        requireNonBlank(requestBody.getGroupId(), "groupId");
         if (requestBody.getEventBindings() == null || requestBody.getEventBindings().isEmpty()) {
             throw new IllegalArgumentException("eventBindings is required");
         }
-        requireNonBlank(requestBody.getWorkerGroupId(), "workerGroupId");
+        if (requestBody.getDefaultMaxConcurrentWork() != null && requestBody.getDefaultMaxConcurrentWork() <= 0) {
+            throw new IllegalArgumentException("defaultMaxConcurrentWork must be greater than 0");
+        }
         for (ExternalWorkerEventBindingApiRequest binding : requestBody.getEventBindings()) {
             if (binding == null) {
                 throw new IllegalArgumentException("eventBindings must not contain null items");
@@ -421,6 +482,9 @@ public class ExternalWorkerApiController {
     }
 
     private List<WorkerEventBinding> toEventBindings(List<ExternalWorkerEventBindingApiRequest> requests) {
+        if (requests == null || requests.isEmpty()) {
+            return List.of();
+        }
         return requests.stream()
                 .map(request -> WorkerEventBinding.builder()
                         .eventCode(requireNonBlank(request.getEventCode(), "eventCode"))

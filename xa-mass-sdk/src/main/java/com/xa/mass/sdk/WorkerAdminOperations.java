@@ -9,7 +9,7 @@ import java.util.List;
 public interface WorkerAdminOperations extends WorkerRegistryOperations {
 
     /**
-     * @deprecated Capability truth is {@code WorkerRegistration.eventBindings}.
+     * @deprecated Capability truth belongs to {@code WorkerGroupDeclaration}.
      * Do not extend this coarse compatibility mutation surface.
      */
     @Deprecated(forRemoval = false)

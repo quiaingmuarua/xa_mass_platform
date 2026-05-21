@@ -5,8 +5,9 @@ import java.util.*;
 /**
  * SDK-native worker registration contract.
  *
- * <p>Registration declares worker identity and capabilities only. Runtime
- * online state is produced by worker transport connect/heartbeat events.
+ * <p>Registration declares worker execution identity and its adapter-node /
+ * group relation. WorkerGroupDeclaration owns capability truth. Runtime online
+ * state is produced by worker transport connect/heartbeat events.
  */
 public final class WorkerRegistration {
 
@@ -53,8 +54,8 @@ public final class WorkerRegistration {
     }
 
     /**
-     * @deprecated Capability truth is {@link #getEventBindings()}. This coarse
-     * grouping view remains only as a compatibility read model.
+     * @deprecated Capability truth is {@link WorkerGroupDeclaration}. This
+     * coarse grouping view remains only as a compatibility read model.
      */
     @Deprecated(forRemoval = false)
     public List<String> getSupportedProjects() {
@@ -62,8 +63,8 @@ public final class WorkerRegistration {
     }
 
     /**
-     * @deprecated Capability truth is {@link #getEventBindings()}. This derived
-     * flat event list remains only as a compatibility read model.
+     * @deprecated Capability truth is {@link WorkerGroupDeclaration}. This
+     * derived flat event list remains only as a compatibility read model.
      */
     @Deprecated(forRemoval = false)
     public List<String> getSupportedEventCodes() {
@@ -190,8 +191,7 @@ public final class WorkerRegistration {
         }
 
         /**
-         * @deprecated Prefer {@link #eventBindings(List)} so worker capability
-         * stays aligned with event definition scope.
+         * @deprecated Prefer WorkerGroup declaration for capability truth.
          */
         @Deprecated(forRemoval = false)
         public Builder supportedProjects(List<String> supportedProjects) {
@@ -200,8 +200,7 @@ public final class WorkerRegistration {
         }
 
         /**
-         * @deprecated Prefer {@link #eventBindings(List)} so worker capability
-         * stays aligned with event definition scope.
+         * @deprecated Prefer WorkerGroup declaration for capability truth.
          */
         @Deprecated(forRemoval = false)
         public Builder supportedEventCodes(List<String> supportedEventCodes) {

@@ -85,7 +85,80 @@ class ExternalWorkerApiControllerTest {
     }
 
     @Test
-    void registerWorkerDefaultsToPollingAndUsesEventBindings() throws Exception {
+    void declareWorkerGroupUsesEventBindingsAsGroupCapabilityTruth() throws Exception {
+        mockMvc.perform(post("/worker-api/v1/worker-groups")
+                        .contentType("application/json")
+                        .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
+                        .content("""
+                                {
+                                  "groupId": "node-runtime",
+                                  "defaultMaxConcurrentWork": 3,
+                                  "defaultAttributes": {
+                                    "runtime": "node"
+                                  },
+                                  "eventBindings": [
+                                    {
+                                      "eventCode": "crawler.fetch-page",
+                                      "projectCodes": ["crawlerApp"]
+                                    }
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.groupId").value("node-runtime"))
+                .andExpect(jsonPath("$.data.defaultMaxConcurrentWork").value(3))
+                .andExpect(jsonPath("$.data.defaultAttributes.runtime").value("node"))
+                .andExpect(jsonPath("$.data.eventBindings[0].eventCode").value("crawler.fetch-page"));
+
+        verify(workerRegistry).declareWorkerGroup(argThat(request ->
+                "node-runtime".equals(request.getGroupId())
+                        && request.getDefaultMaxConcurrentWork() == 3
+                        && Map.of("runtime", "node").equals(request.getDefaultAttributes())
+                        && List.of(WorkerEventBinding.builder()
+                        .eventCode("crawler.fetch-page")
+                        .projectCodes(List.of("crawlerApp"))
+                        .build()).equals(request.getEventBindings())
+        ));
+    }
+
+    @Test
+    void declareWorkerGroupRejectsMissingEventBindings() throws Exception {
+        mockMvc.perform(post("/worker-api/v1/worker-groups")
+                        .contentType("application/json")
+                        .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
+                        .content("""
+                                {
+                                  "groupId": "node-runtime"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value("eventBindings is required"));
+    }
+
+    @Test
+    void declareWorkerGroupRejectsEventScopeMismatch() throws Exception {
+        mockMvc.perform(post("/worker-api/v1/worker-groups")
+                        .contentType("application/json")
+                        .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
+                        .content("""
+                                {
+                                  "groupId": "node-runtime",
+                                  "eventBindings": [
+                                    {
+                                      "eventCode": "mock.reset"
+                                    }
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(403))
+                .andExpect(jsonPath("$.msg").value("Worker credential event scope denied: mock.reset"));
+    }
+
+    @Test
+    void registerWorkerDefaultsToPollingAndAcceptsCompatibilityEventBindings() throws Exception {
         mockMvc.perform(post("/worker-api/v1/workers")
                         .contentType("application/json")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
@@ -126,18 +199,28 @@ class ExternalWorkerApiControllerTest {
     }
 
     @Test
-    void registerWorkerRejectsMissingEventBindings() throws Exception {
+    void registerWorkerAcceptsGroupFirstRegistrationWithoutEventBindings() throws Exception {
         mockMvc.perform(post("/worker-api/v1/workers")
                         .contentType("application/json")
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
                         .content("""
                                 {
-                                  "workerId": "node-worker-1"
+                                  "workerId": "node-worker-1",
+                                  "workerGroupId": "node-runtime"
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value(400))
-                .andExpect(jsonPath("$.msg").value("eventBindings is required"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.workerId").value("node-worker-1"))
+                .andExpect(jsonPath("$.data.workerGroupId").value("node-runtime"))
+                .andExpect(jsonPath("$.data.eventBindings").isArray())
+                .andExpect(jsonPath("$.data.eventBindings.length()").value(0));
+
+        verify(workerRegistry).registerWorker(argThat(request ->
+                "node-worker-1".equals(request.getWorkerId())
+                        && "node-runtime".equals(request.getWorkerGroupId())
+                        && request.getEventBindings().isEmpty()
+        ));
     }
 
     @Test

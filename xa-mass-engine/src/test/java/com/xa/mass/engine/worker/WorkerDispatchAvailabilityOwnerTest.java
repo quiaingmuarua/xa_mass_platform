@@ -30,4 +30,38 @@ public class WorkerDispatchAvailabilityOwnerTest {
 
         assertFalse(owner.enable("worker-1", "duplicate"));
     }
+
+    @Test
+    void sourceScopedGateClearDoesNotEnableWorkerBlockedByAnotherSource() {
+        WorkerDispatchAvailabilityOwner owner = new WorkerDispatchAvailabilityOwner();
+
+        assertTrue(owner.disableForDraining(
+                "worker-1",
+                WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.WORKER_STATE,
+                "state draining"
+        ));
+        assertTrue(owner.disableForDraining(
+                "worker-1",
+                WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.NODE_GROUP_BINDING,
+                "node draining"
+        ));
+        assertFalse(owner.isDispatchEnabled("worker-1"));
+
+        assertTrue(owner.clearSource(
+                "worker-1",
+                WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.NODE_GROUP_BINDING,
+                "node available"
+        ));
+
+        assertFalse(owner.isDispatchEnabled("worker-1"));
+        assertEquals(WorkerDispatchAvailabilityOwner.DispatchAvailability.DRAINING_DISABLED,
+                owner.availabilityOf("worker-1"));
+
+        assertTrue(owner.clearSource(
+                "worker-1",
+                WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.WORKER_STATE,
+                "worker available"
+        ));
+        assertTrue(owner.isDispatchEnabled("worker-1"));
+    }
 }

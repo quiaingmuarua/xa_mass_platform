@@ -12,10 +12,9 @@ import java.util.List;
  * Owns effective worker capability composition for the scheduling candidate
  * source.
  *
- * <p>EWC-3A keeps current behavior: worker registration rows and worker-level
- * compatibility fields remain the only input. Future worker capability reports
- * must enter through this owner before a new immutable
- * {@link WorkerRegistrySnapshot} is published.</p>
+ * <p>Declared WorkerGroups override worker-level compatibility projections.
+ * Worker capability reports still enter through this owner before a new
+ * immutable {@link WorkerRegistrySnapshot} is published.</p>
  */
 public final class WorkerCapabilityAuthority {
 
@@ -25,8 +24,33 @@ public final class WorkerCapabilityAuthority {
         return WorkerGroupCompatibilityProjection.snapshotFromWorkers(effectiveWorkers(registrationRows));
     }
 
+    public synchronized WorkerRegistrySnapshot composeSnapshot(Collection<Worker> registrationRows,
+                                                               Collection<WorkerGroupRecord> declaredGroups) {
+        List<Worker> effectiveWorkers = effectiveWorkers(registrationRows);
+        WorkerRegistrySnapshot compatibilitySnapshot =
+                WorkerGroupCompatibilityProjection.snapshotFromWorkers(effectiveWorkers);
+        LinkedHashMap<String, WorkerGroupRecord> groupsById = new LinkedHashMap<>();
+        for (WorkerGroupRecord group : compatibilitySnapshot.groups()) {
+            groupsById.put(group.groupId(), group);
+        }
+        if (declaredGroups != null) {
+            for (WorkerGroupRecord group : declaredGroups) {
+                if (group != null) {
+                    groupsById.put(group.groupId(), group);
+                }
+            }
+        }
+        return WorkerRegistrySnapshot.from(groupsById.values(), effectiveWorkers);
+    }
+
     public synchronized WorkerCapabilityReportResult applyReport(WorkerCapabilityReport report,
                                                                  Collection<Worker> registrationRows) {
+        return applyReport(report, registrationRows, List.of());
+    }
+
+    public synchronized WorkerCapabilityReportResult applyReport(WorkerCapabilityReport report,
+                                                                 Collection<Worker> registrationRows,
+                                                                 Collection<WorkerGroupRecord> declaredGroups) {
         if (report == null) {
             throw new IllegalArgumentException("report must not be null");
         }
@@ -54,7 +78,7 @@ public final class WorkerCapabilityAuthority {
         }
 
         reportsByWorkerId.put(report.workerId(), report);
-        return result(WorkerCapabilityReportStatus.ACCEPTED, report, true, composeSnapshot(registrationRows),
+        return result(WorkerCapabilityReportStatus.ACCEPTED, report, true, composeSnapshot(registrationRows, declaredGroups),
                 "capability report accepted");
     }
 
@@ -149,6 +173,7 @@ public final class WorkerCapabilityAuthority {
         copy.setSupportedProjects(source.getSupportedProjects());
         copy.setSupportedEventCodes(source.getSupportedEventCodes());
         copy.setWorkerGroupId(source.getWorkerGroupId());
+        copy.setAdapterNodeId(source.getAdapterNodeId());
         copy.setAdapterId(source.getAdapterId());
         copy.setOnlineStrategy(source.getOnlineStrategy());
         copy.setMaxConcurrentWork(source.getMaxConcurrentWork());

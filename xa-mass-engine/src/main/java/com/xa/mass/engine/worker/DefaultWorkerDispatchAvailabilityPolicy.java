@@ -5,6 +5,9 @@ import com.xa.mass.engine.command.WorkerCommandRecord;
 
 import java.util.Locale;
 
+import static com.xa.mass.engine.worker.WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.WORKER_COMMAND;
+import static com.xa.mass.engine.worker.WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.WORKER_STATE;
+
 /**
  * Current default policy that translates bounded worker control state into the
  * worker dispatch gate truth consumed by scheduling.
@@ -23,11 +26,11 @@ public final class DefaultWorkerDispatchAvailabilityPolicy implements WorkerDisp
         }
         String normalizedState = state.trim().toUpperCase(Locale.ROOT);
         if ("DRAINING".equals(normalizedState)) {
-            dispatchAvailabilityOwner.disableForDraining(projection.workerId(), projection.reason());
+            dispatchAvailabilityOwner.disableForDraining(projection.workerId(), WORKER_STATE, projection.reason());
             return;
         }
         if ("AVAILABLE".equals(normalizedState)) {
-            dispatchAvailabilityOwner.enable(projection.workerId(), projection.reason());
+            dispatchAvailabilityOwner.clearSource(projection.workerId(), WORKER_STATE, projection.reason());
         }
     }
 
@@ -47,7 +50,7 @@ public final class DefaultWorkerDispatchAvailabilityPolicy implements WorkerDisp
         }
         switch (result.currentStatus()) {
             case DELIVERY_ACCEPTED, EXECUTION_ACCEPTED, SUCCEEDED ->
-                    dispatchAvailabilityOwner.disableForDraining(record.workerId(), record.statusReason());
+                    dispatchAvailabilityOwner.disableForDraining(record.workerId(), WORKER_COMMAND, record.statusReason());
             default -> {
             }
         }

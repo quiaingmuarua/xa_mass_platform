@@ -122,6 +122,7 @@ public class MassEngine {
             );
             Runnable dispatchWakeupCallback = runtimeReadyDispatchPump::wakeIdleAdmissions;
             config.getWorkerControlService().setDispatchWakeupCallback(dispatchWakeupCallback);
+            workerManager.setDispatchWakeupCallback(dispatchWakeupCallback);
             runtimeReadyDispatchPump.start();
 
             resourceReleaseListener = new TaskResourceReleaseListener(runtimeMaintenancePort, workerManager, traceEventLogger);

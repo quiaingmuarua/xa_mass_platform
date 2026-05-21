@@ -59,12 +59,12 @@ public class WorkerControlServiceTest {
         assertTrue(service.applyWorkerStateReport(WorkerStateReport.builder("worker-1", 2, "AVAILABLE")
                 .reason("resumed")
                 .build()).success());
-        assertTrue(workerManager.isWorkerDispatchEnabled(worker));
+        assertFalse(workerManager.isWorkerDispatchEnabled(worker));
 
         assertTrue(service.applyWorkerStateReport(WorkerStateReport.builder("worker-1", 3, "DEGRADED")
                 .reason("slow")
                 .build()).success());
-        assertTrue(workerManager.isWorkerDispatchEnabled(worker));
+        assertFalse(workerManager.isWorkerDispatchEnabled(worker));
 
         assertEquals(WorkerCommandStatus.DELIVERY_ACCEPTED,
                 service.workerCommand("cmd-1").orElseThrow().status());
@@ -116,6 +116,13 @@ public class WorkerControlServiceTest {
         assertTrue(service.applyWorkerStateReport(WorkerStateReport.builder("worker-2", 2, "AVAILABLE")
                 .reason("resume")
                 .build()).success());
+        assertFalse(workerManager.isWorkerDispatchEnabled(worker));
+
+        assertTrue(workerManager.getDispatchAvailabilityOwner().clearSource(
+                "worker-2",
+                WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.WORKER_COMMAND,
+                "command cleared"
+        ));
         assertTrue(workerManager.isWorkerDispatchEnabled(worker));
     }
 

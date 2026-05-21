@@ -35,6 +35,25 @@ public class WorkerCapabilityAuthorityTest {
     }
 
     @Test
+    void declaredWorkerGroupOverridesWorkerLevelCompatibilityCapability() {
+        Worker worker = worker("worker-crawler", "crawler");
+        worker.setSupportedProjects(List.of("legacyApp"));
+        worker.setSupportedEventCodes(List.of("legacy.fetch"));
+        WorkerGroupRecord declaredGroup = WorkerGroupRecord.builder("crawler")
+                .eventBindings(List.of(EventBinding.of("crawler.fetch", List.of("demoApp"))))
+                .defaultAttributes(Map.of("source", "declared"))
+                .build();
+
+        WorkerRegistrySnapshot snapshot = authority.composeSnapshot(List.of(worker), List.of(declaredGroup));
+
+        assertEquals(List.of("crawler"), List.copyOf(snapshot.groupIdsByEventKey(
+                new EventKey("demoApp", "crawler.fetch"))));
+        assertTrue(snapshot.groupIdsByEventKey(new EventKey("legacyApp", "legacy.fetch")).isEmpty());
+        assertEquals(Map.of("source", "declared"), snapshot.group("crawler").orElseThrow().defaultAttributes());
+        assertEquals(List.of("worker-crawler"), List.copyOf(snapshot.workerIdsByGroupId("crawler")));
+    }
+
+    @Test
     void keepsWorkersWithoutGroupAsRowsButNotGroupIndexCandidates() {
         Worker worker = worker("worker-stateless", null);
         worker.setSupportedProjects(List.of("demoApp"));
@@ -72,6 +91,7 @@ public class WorkerCapabilityAuthorityTest {
     @Test
     void reportReplacesOnlyReportOwnedAvailabilityWithinRegistrationCeiling() {
         Worker worker = worker("worker-crawler", "crawler");
+        worker.setAdapterNodeId("node-a");
         worker.setSupportedProjects(List.of("demoApp"));
         worker.setSupportedEventCodes(List.of("crawler.fetch", "crawler.parse"));
         worker.setAttributes(Map.of("region", "us"));
@@ -93,7 +113,12 @@ public class WorkerCapabilityAuthorityTest {
         assertTrue(snapshot.groupIdsByEventKey(new EventKey("demoApp", "admin.not-approved")).isEmpty());
         assertEquals(Map.of("region", "us", "loadClass", "warm"),
                 snapshot.group("crawler").orElseThrow().defaultAttributes());
-        assertEquals("agent-2", snapshot.worker("worker-crawler").orElseThrow().getAgentVersion());
+        Worker effectiveWorker = snapshot.worker("worker-crawler").orElseThrow();
+        assertEquals("agent-2", effectiveWorker.getAgentVersion());
+        assertEquals("node-a", effectiveWorker.getAdapterNodeId());
+        assertEquals(List.of("worker-crawler"), List.copyOf(snapshot.workerIdsByAdapterNodeId("node-a")));
+        assertEquals(List.of("worker-crawler"),
+                List.copyOf(snapshot.workerIdsByAdapterNodeGroup("node-a", "crawler")));
     }
 
     @Test

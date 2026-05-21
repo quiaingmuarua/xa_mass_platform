@@ -98,15 +98,16 @@ app.executeTaskCommand(task.getTid(), com.xa.mass.sdk.model.MassTaskCommandReque
 app.pullWorker("crawler-worker-1").connect();
 ```
 
-New worker capability registration should declare `eventBindings`. Coarse
-`supportedProjects` / `supportedEventCodes` fields remain compatibility
-read/input residue only and must not be used as the mainline capability
-contract in new code.
+New worker capability registration should declare `WorkerGroupDeclaration`
+with `eventBindings`, then register worker execution identities against the
+group. Coarse `supportedProjects` / `supportedEventCodes` fields remain
+compatibility read/input residue only and must not be used as the mainline
+capability contract in new code.
 
 `WorkerContext` registration, query, and runtime payload surfaces have been
 removed from the SDK mainline. New SDK integration should start from
-`WorkerRegistration`, `eventBindings`, transport identity, and external worker
-client flows.
+`WorkerGroupDeclaration`, `WorkerRegistration`, transport identity, and
+external worker client flows.
 
 `transportHint` is required for worker registration, and `adapterId` is the concrete runtime identity. Registration resolution now comes from transport runtime metadata rather than SDK-side `realtime -> websocket` guessing. Realtime workers must always register with explicit `adapterId + transportHint`; only polling keeps the implicit family default to `polling`. `pullWorker(...)` also resolves strictly from the worker's declared transport identity and fails fast on transport mismatch instead of falling back to another pull-capable adapter. Adapter-id aliases such as `ws`, `pull`, `queue`, or `tcp-socket` are not accepted as runtime identities; use canonical adapter ids such as `websocket`, `polling`, or `socket`. `transportHint` aliases such as `websocket`, `ws`, `push`, `pull`, or `queue` are also not accepted; use canonical coarse families such as `realtime` or `polling`. Adapter implementation labels such as `WorkerAdapter.protocol()` are no longer treated as runtime transport truth; selection keys off canonical registration identity instead.
 

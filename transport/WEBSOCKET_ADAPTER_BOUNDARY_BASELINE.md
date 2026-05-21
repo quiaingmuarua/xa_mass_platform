@@ -49,8 +49,9 @@ Current code centers on:
 Hard rules:
 
 - `eventCode` is capability identity
-- `supportedEventCodes` is worker capability truth
-- `supportedProjects` is only a coarse filter hint
+- `WorkerGroup.eventBindings` is capability truth
+- worker-level `supportedEventCodes` and `supportedProjects` are
+  compatibility/read residue only
 - transport reachability is not execution eligibility
 
 ## Boundary Rules

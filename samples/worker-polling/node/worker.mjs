@@ -53,6 +53,17 @@ async function main() {
 }
 
 async function registerWorker() {
+  const workerGroup = await post("/worker-api/v1/worker-groups", {
+    groupId: workerGroupId,
+    eventBindings: [
+      {
+        eventCode,
+        projectCodes: [project],
+      },
+    ],
+  });
+  console.log("[worker] declared worker group:", workerGroup.data);
+
   const response = await post("/worker-api/v1/workers", {
     workerId,
     workerGroupId,
@@ -64,12 +75,6 @@ async function registerWorker() {
       country: region,
       routingTags: routingTags.join(","),
     },
-    eventBindings: [
-      {
-        eventCode,
-        projectCodes: [project],
-      },
-    ],
   });
   console.log("[worker] registered worker:", response.data);
 }

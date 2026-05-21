@@ -6,6 +6,8 @@ import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
+import com.xa.mass.engine.worker.EventBinding;
+import com.xa.mass.engine.worker.WorkerGroupRecord;
 import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.engine.worker.WorkerReachabilityState;
 import com.xa.mass.engine.load.InMemoryWorkerLoadView;
@@ -360,6 +362,46 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         assertEquals("worker-event-capable", matched.get(0).getWorkerId());
 
         assertNull(findRecordOrNull(recordService, "task-sdk-event", "worker-project-only"));
+    }
+
+    @Test
+    void sdkEventTaskMatchesWorkerByDeclaredGroupWithoutWorkerLevelCapability() {
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        AssignmentRecordService recordService = new AssignmentRecordService();
+        RuleBasedTaskWorkerMatchingStrategy strategy =
+                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+
+        ruleManager.addDefaultRules(List.of(
+                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
+                rule("worker_capability_check",
+                        "((taskEventCode == null || taskEventCode == '') && supportsProject == true) "
+                                + "|| ((taskEventCode != null && taskEventCode != '') && supportsEvent == true)")
+        ));
+        workerManager.upsertWorkerGroup(WorkerGroupRecord.builder("group-first")
+                .eventBindings(List.of(EventBinding.of("demo.dispatch", List.of("demoApp"))))
+                .build());
+
+        Task task = new Task();
+        task.setTid("task-group-first-event");
+        task.setProject("demoApp");
+        task.setSharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
+                Map.of(TaskSharedConfig.SDK_EVENT_CODE, "demo.dispatch")));
+        task.setStatus(TaskStatus.READY);
+
+        Worker worker = new Worker();
+        worker.setWorkerId("worker-group-first");
+        worker.setWorkerGroupId("group-first");
+        worker.setStatus(WorkerStatus.ONLINE);
+        workerManager.addWorker(worker);
+
+        List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(task, 1);
+
+        assertEquals(1, matched.size());
+        assertEquals("worker-group-first", matched.get(0).getWorkerId());
+        AssignmentRecord record = findRecord(recordService, "task-group-first-event", "worker-group-first");
+        assertEquals(List.of("demoApp"), record.getWorkerSchedulingSnapshot().getSupportedProjects());
+        assertEquals(List.of("demo.dispatch"), record.getWorkerSchedulingSnapshot().getSupportedEventCodes());
     }
 
     @Test

@@ -69,16 +69,14 @@ class ExternalWorkerRealtimeRegistrationIntegrationTest extends AbstractSampleE2
                 .eventScopes(List.of("crawler.fetch-page"))
                 .attributes(Map.of("workerId", WORKER_ID))
                 .build());
+        HttpHeaders workerHeaders = credentialHeaders(WORKER_KEY);
+        declareExternalWorkerGroup("realtime-crawler", "crawlerApp", "crawler.fetch-page", workerHeaders);
 
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", WORKER_ID,
                 "workerGroupId", "realtime-crawler",
-                "transportHint", "realtime",
-                "eventBindings", List.of(Map.of(
-                        "eventCode", "crawler.fetch-page",
-                        "projectCodes", List.of("crawlerApp")
-                ))
-        ), credentialHeaders(WORKER_KEY));
+                "transportHint", "realtime"
+        ), workerHeaders);
 
         assertApiError(registerResponse, 400);
         assertTrue(apiMsg(registerResponse).contains(

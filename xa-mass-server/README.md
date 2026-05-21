@@ -65,7 +65,7 @@ Current host security matrix:
 | `SUBMITTER_TASK_CREATE` | submitter credential | `TASK / CREATE` | `task:create` + project/user scope |
 | `SUBMITTER_TASK_VIEW` | submitter credential | `TASK / VIEW` | ownership match against the internal task ownership stamp |
 | `SUBMITTER_TASK_APPEND` | submitter credential | `TASK / EDIT` | ownership match + `task:create` + project/event scope |
-| `WORKER_REGISTER` | external worker credential | `WORKER / REGISTER` | `worker:poll` + worker binding + event/project scope |
+| `WORKER_REGISTER` | external worker credential | `WORKER / REGISTER` | `worker:poll` + worker binding for worker registration; event/project scope for worker group declaration and compatibility worker event bindings |
 | `WORKER_ONLINE` / `WORKER_HEARTBEAT` / `WORKER_OFFLINE` / `WORKER_POLL` | external worker credential | `WORKER / POLL` | `worker:poll` + worker binding |
 | `WORKER_SUBMIT_RESULT` | external worker credential | `WORKER / REPORT_RESULT` | `worker:poll` + worker binding |
 | `WORKER_REPORT_CAPABILITY` / `WORKER_REPORT_STATE` / `WORKER_ACK_COMMAND` | external worker credential | `WORKER / POLL` | `worker:poll` + worker binding, plus capability event scope on capability reports |

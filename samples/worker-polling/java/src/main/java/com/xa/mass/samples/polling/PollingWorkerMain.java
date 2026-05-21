@@ -89,6 +89,19 @@ public final class PollingWorkerMain {
     }
 
     private void registerWorker() throws Exception {
+        JsonObject groupBody = new JsonObject();
+        groupBody.addProperty("groupId", workerGroupId);
+        JsonArray eventBindings = new JsonArray();
+        JsonObject binding = new JsonObject();
+        binding.addProperty("eventCode", eventCode);
+        JsonArray projectCodes = new JsonArray();
+        projectCodes.add(project);
+        binding.add("projectCodes", projectCodes);
+        eventBindings.add(binding);
+        groupBody.add("eventBindings", eventBindings);
+        JsonObject groupResponse = post("/worker-api/v1/worker-groups", groupBody);
+        log("declared worker group: " + groupResponse.get("data"));
+
         JsonObject body = new JsonObject();
         body.addProperty("workerId", workerId);
         body.addProperty("workerGroupId", workerGroupId);
@@ -101,15 +114,6 @@ public final class PollingWorkerMain {
         attributes.addProperty("country", region);
         attributes.addProperty("routingTags", String.join(",", routingTags));
         body.add("attributes", attributes);
-
-        JsonArray eventBindings = new JsonArray();
-        JsonObject binding = new JsonObject();
-        binding.addProperty("eventCode", eventCode);
-        JsonArray projectCodes = new JsonArray();
-        projectCodes.add(project);
-        binding.add("projectCodes", projectCodes);
-        eventBindings.add(binding);
-        body.add("eventBindings", eventBindings);
 
         JsonObject response = post("/worker-api/v1/workers", body);
         log("registered worker: " + response.get("data"));
