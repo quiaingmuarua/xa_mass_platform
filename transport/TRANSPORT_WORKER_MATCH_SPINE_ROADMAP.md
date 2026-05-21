@@ -73,13 +73,10 @@ The spine is still not fully closed:
 
 - worker-level `supportedProjects` and `supportedEventCodes` still exist as
   compatibility inputs; they must not remain mainline capability fields
-- `WorkerGroupCompatibilityProjection` still exists as the explicitly bounded
-  migration seam for older worker-level capability inputs
-- candidate acquisition is still described mostly as group membership lookup;
-  million-worker deployments need bounded route buckets instead of full group
-  materialization
-- `TaskDispatchBinding` now carries group/node/source evidence, but bounded
-  route-bucket acquisition is not yet the candidate source
+- worker registration can still auto-create compatibility AdapterNode /
+  NodeGroupBinding when only `adapterId` is provided
+- bounded route-bucket acquisition is in the in-memory candidate-source path;
+  Redis backing and bounded stale cleanup are still later slices
 
 Do not treat this document as proof those gaps are already closed.
 
@@ -515,8 +512,10 @@ Acceptance:
 
 ### TW-1B: External worker registration becomes identity-first
 
-Status: mainline implemented; compatibility projection remains as a named
-migration seam until all legacy worker-level capability callers are removed.
+Status: mainline implemented for group-first capability; the worker-level
+capability projection into WorkerGroup truth is retired. AdapterNode /
+NodeGroupBinding auto-creation from legacy `adapterId` remains a bounded
+registration compatibility path.
 
 Goal: worker register should bind execution identity to an existing
 AdapterNode/WorkerGroup relation, not declare capability truth.
@@ -529,13 +528,13 @@ Scope:
   - adapter node exists
   - worker group exists
   - node-group binding exists
-- worker-level `eventBindings` are optional compatibility input on registration;
-  they must not be required by the group-first mainline
+- worker-level `eventBindings` are optional registration input for older
+  callers; SDK normalization may preserve them as a read/authorization shape,
+  but they must not create WorkerGroup capability truth
 - keep worker capability report as a report-owned slice bounded by approved
   group capability
-- retire `WorkerGroupCompatibilityProjection` from mainline capability
-  composition after WorkerGroup declaration owns event bindings; until then it
-  remains an explicitly named migration seam only
+- keep `WorkerCapabilityAuthority` composing candidate-source capability only
+  from declared WorkerGroups
 - remove worker-level `supportedProjects` and `supportedEventCodes` from the
   mainline registration shape after TW-1A owns group capability
 - remove or explicitly demote compatibility auto-creation of

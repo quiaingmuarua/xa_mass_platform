@@ -29,4 +29,6 @@ Rules:
 
 Current tracked compatibility residue:
 
-- engine compatibility projection callbacks are temporary migration residue and must not grow into a richer public query model
+- worker registration can still auto-create AdapterNode / NodeGroupBinding from
+  legacy `adapterId`; this is a bounded registration migration path, not
+  capability truth

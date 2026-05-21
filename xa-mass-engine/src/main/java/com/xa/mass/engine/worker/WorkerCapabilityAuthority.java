@@ -5,34 +5,29 @@ import com.xa.mass.base.model.Worker;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 
 /**
  * Owns effective worker capability composition for the scheduling candidate
  * source.
  *
- * <p>Declared WorkerGroups override worker-level compatibility projections.
- * Worker capability reports still enter through this owner before a new
- * immutable {@link WorkerRegistrySnapshot} is published.</p>
+ * <p>WorkerGroup declarations are the capability truth. Worker capability
+ * reports still enter through this owner before a new immutable
+ * {@link WorkerRegistrySnapshot} is published, but they must not create or
+ * mutate WorkerGroup event bindings.</p>
  */
 public final class WorkerCapabilityAuthority {
 
     private final LinkedHashMap<String, WorkerCapabilityReport> reportsByWorkerId = new LinkedHashMap<>();
 
     public synchronized WorkerRegistrySnapshot composeSnapshot(Collection<Worker> registrationRows) {
-        return WorkerGroupCompatibilityProjection.snapshotFromWorkers(effectiveWorkers(registrationRows));
+        return WorkerRegistrySnapshot.from(List.of(), effectiveWorkers(registrationRows));
     }
 
     public synchronized WorkerRegistrySnapshot composeSnapshot(Collection<Worker> registrationRows,
                                                                Collection<WorkerGroupRecord> declaredGroups) {
         List<Worker> effectiveWorkers = effectiveWorkers(registrationRows);
-        WorkerRegistrySnapshot compatibilitySnapshot =
-                WorkerGroupCompatibilityProjection.snapshotFromWorkers(effectiveWorkers);
         LinkedHashMap<String, WorkerGroupRecord> groupsById = new LinkedHashMap<>();
-        for (WorkerGroupRecord group : compatibilitySnapshot.groups()) {
-            groupsById.put(group.groupId(), group);
-        }
         if (declaredGroups != null) {
             for (WorkerGroupRecord group : declaredGroups) {
                 if (group != null) {
@@ -99,7 +94,6 @@ public final class WorkerCapabilityAuthority {
 
     private Worker effectiveWorker(Worker worker, WorkerCapabilityReport report) {
         Worker effective = copyWorker(worker);
-        effective.setSupportedEventCodes(effectiveEventCodes(worker.getSupportedEventCodes(), report.availableEventCodes()));
         if (!report.schedulingAttributes().isEmpty()) {
             LinkedHashMap<String, String> attributes = new LinkedHashMap<>();
             if (worker.getAttributes() != null) {
@@ -112,32 +106,6 @@ public final class WorkerCapabilityAuthority {
             effective.setAgentVersion(report.agentVersion());
         }
         return effective;
-    }
-
-    private static List<String> effectiveEventCodes(List<String> registrationCodes, List<String> reportCodes) {
-        if (reportCodes == null || reportCodes.isEmpty()) {
-            return List.of();
-        }
-        LinkedHashSet<String> allowed = new LinkedHashSet<>();
-        if (registrationCodes != null) {
-            for (String code : registrationCodes) {
-                String normalized = normalizeNullable(code);
-                if (normalized != null) {
-                    allowed.add(normalized);
-                }
-            }
-        }
-        if (allowed.isEmpty()) {
-            return List.of();
-        }
-        List<String> effective = new ArrayList<>();
-        for (String code : reportCodes) {
-            String normalized = normalizeNullable(code);
-            if (normalized != null && allowed.contains(normalized)) {
-                effective.add(normalized);
-            }
-        }
-        return effective.isEmpty() ? List.of() : List.copyOf(effective);
     }
 
     private static Worker registrationRow(String workerId, Collection<Worker> registrationRows) {
