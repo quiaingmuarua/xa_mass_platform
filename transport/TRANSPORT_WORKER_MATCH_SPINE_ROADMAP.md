@@ -164,7 +164,7 @@ Owns:
 - node-local group enabled / draining
 - plugin/deployment metadata
 - deployment routing scope such as business, tenant, region, pool, or route
-  key when explicitly approved by routing policy
+  bucket key when explicitly approved by routing policy
 
 Must not own:
 
@@ -200,17 +200,56 @@ implicit owner models or locks.
 Only explicitly approved routing attributes may become secondary indexes.
 Unapproved attributes remain metadata and must not be auto-indexed.
 
+## Routing Terms
+
+This roadmap uses two different routing terms:
+
+- transport `routeKey`: existing transport delivery address used with
+  `adapterId + routeKey`
+- scheduling `routeBucketKey`: engine-owned candidate bucket partition for
+  business, tenant, region, pool, or other approved dispatch routing
+
+`routeBucketKey` is a normalized string value produced by an engine-owned
+`WorkerRoutingPolicy`. It is not a new capability owner and must not be
+interpreted by transport delivery code.
+
+Inputs:
+
+- task project/event and approved task routing fields
+- `WorkerGroup` capability identity
+- approved `NodeGroupBinding` routing attributes
+- approved worker routing attributes
+
+Rules:
+
+- one worker may belong to zero, one, or many `routeBucketKey` values
+- multi-route membership is represented by set indexes, not a single worker
+  field
+- default first-slice policy returns one bucket, `default`, when no approved
+  routing field is present
+- changing routing policy may rebuild route bucket indexes, but it must not
+  mutate `WorkerGroup` capability
+- transport `routeKey` continues to be resolved later from selected worker and
+  adapter evidence
+
 ## Runtime Metadata And Index Shape
 
 The target runtime shape is hash-first and index-first for both in-memory and
-Redis runtimes. `Record` names describe owner views, not serialized blob
-requirements.
+Redis runtimes. `Meta` below means the owner row payload for the existing main
+type. It does not require new `*Meta` classes.
+
+Type mapping:
+
+- `WorkerMeta` maps to current `Worker` / future narrowed worker row
+- `WorkerGroupMeta` maps to current `WorkerGroupRecord`
+- `AdapterNodeMeta` maps to current `AdapterNodeRecord`
+- `NodeGroupBindingMeta` maps to current `NodeGroupBindingRecord`
 
 Owner rows:
 
 - `workersById`: `workerId -> WorkerMeta`
 - `workerAttributesById`: `workerId -> Map<String, String>`
-- `workerRuntimeStateById`: `workerId -> WorkerRuntimeState`
+- `workerStateProjectionById`: `workerId -> WorkerStateProjection`
 - `workerGroupsById`: `groupId -> WorkerGroupMeta`
 - `eventBindingsByGroupId`: `groupId -> Set<EventBinding>`
 - `adapterNodesById`: `adapterNodeId -> AdapterNodeMeta`
@@ -221,8 +260,8 @@ Worker indexes:
 - `workerIdsByGroupId`: `groupId -> Set<workerId>`
 - `workerIdsByAdapterNodeId`: `adapterNodeId -> Set<workerId>`
 - `workerIdsByNodeGroup`: `(adapterNodeId, groupId) -> Set<workerId>`
-- `workerRelationById`: `workerId -> (adapterNodeId, groupId, routeKey)`
-- `workerRouteById`: `workerId -> routeKey`
+- `workerRelationById`: `workerId -> (adapterNodeId, groupId)`
+- `workerRouteBucketKeysById`: `workerId -> Set<routeBucketKey>`
 
 Capability indexes:
 
@@ -233,12 +272,13 @@ Capability indexes:
 
 Bounded routing indexes:
 
-- `availableWorkersByGroupRoute`: `(groupId, routeKey) -> bounded SET/ZSET`
-  of worker ids
-- `availableNodeGroupsByGroupRoute`: `(groupId, routeKey) -> Set` of
-  `(adapterNodeId, groupId)` pairs
-- `routeKeysByEventKey`: `(projectCode, eventCode) -> Set<routeKey>` when a
-  routing policy needs precomputed route partitions
+- `availableWorkersByGroupRouteBucket`: `(groupId, routeBucketKey) -> bounded
+  SET/ZSET` of worker ids
+- `availableNodeGroupsByGroupRouteBucket`: `(groupId, routeBucketKey) ->
+  Set` of `(adapterNodeId, groupId)` pairs
+- `routeBucketKeysByEventKey`: `(projectCode, eventCode) ->
+  Set<routeBucketKey>` when a routing policy needs precomputed route
+  partitions
 
 Dynamic runtime views:
 
@@ -254,8 +294,8 @@ Scheduling hot path:
 ```text
 Task(project,eventCode,businessRoute)
   -> groupIdsByEventKey[(project,eventCode)]
-  -> routing policy resolves routeKey
-  -> availableWorkersByGroupRoute[(groupId,routeKey)]
+  -> WorkerRoutingPolicy resolves routeBucketKey candidates
+  -> availableWorkersByGroupRouteBucket[(groupId,routeBucketKey)]
   -> bounded acquire / cursor / reserve
   -> workersById[workerId]
   -> workerRelationById[workerId]
@@ -289,8 +329,10 @@ Rules:
   valid for explicit `targetWorkerId` fixed-worker dispatch
 - adapter-node offline, node-group draining, or route disable must be a gate
   overlay and lazy candidate validation path, not a per-worker fan-out update
-- `WorkerRegistrySnapshot`, if retained, is an indexed read cache; it must not
-  rebuild capability truth by scanning worker rows
+- `WorkerRegistrySnapshot` stays through this roadmap as the capability read
+  view consumed by current `WorkerCandidateIndex` and
+  `WorkerCapabilityAuthority`; after TW-1C, route-bucket candidate acquisition
+  must not depend on full group worker enumeration from that snapshot
 
 ## Million-Scale Routing Constraint
 
@@ -302,7 +344,7 @@ Business routing must not become a second capability truth. The flow is:
 
 ```text
 eventCode -> WorkerGroup capability
-group + routeKey -> bounded candidate bucket
+group + routeBucketKey -> bounded candidate bucket
 candidate -> owner gate / resource admission
 ```
 
@@ -324,7 +366,7 @@ Rules:
 - `WorkerGroup` remains the only event capability owner
 - `NodeGroupBinding` and worker attributes may provide approved routing scope
   but must not add event capability
-- hot-path candidate acquisition must use bounded `groupId + routeKey`
+- hot-path candidate acquisition must use bounded `groupId + routeBucketKey`
   buckets, not full group membership
 - task-side worker targeting is a fixed-worker constraint only; it must never
   become business routing or attribute search
@@ -335,7 +377,7 @@ Rules:
 - node/group drain, offline, or disable changes must update gate state and
   route availability, not mutate every affected worker
 - stale candidates are acceptable only if the admission path rejects them and
-  the cleanup path is bounded
+  schedules bounded cleanup through the candidate bucket owner
 - observability may inspect large relation sets offline, but dispatch loops
   must not depend on full set scans
 
@@ -463,15 +505,17 @@ of materializing all workers in a group.
 Scope:
 
 - introduce an engine-owned candidate acquisition seam that accepts
-  `groupId`, route key, and a max candidate count
-- maintain `availableWorkersByGroupRoute` from worker relation, reachability,
-  dispatch gate, and load/resource owner outcomes
+  `groupId`, `routeBucketKey`, and a max candidate count
+- maintain `availableWorkersByGroupRouteBucket` from worker relation,
+  reachability, dispatch gate, and load/resource owner outcomes
 - keep `workerIdsByGroupId` and node/group relation indexes for ownership and
   diagnostics, not direct scheduling enumeration
-- route key is resolved by routing policy from task/project/event and approved
-  routing attributes
+- `routeBucketKey` is resolved by `WorkerRoutingPolicy` from
+  task/project/event and approved routing attributes
 - node-group drain/offline gates must remove or hide an entire node/group
   route partition without per-worker fan-out
+- introduce `WorkerRouteBucketOwner` as the owner of bounded bucket mutation,
+  acquisition, stale candidate marking, and lazy cleanup
 
 Acceptance:
 
@@ -484,8 +528,28 @@ Acceptance:
 - draining one adapter node group excludes its route candidates without
   rewriting every worker under that node
 - stale bucket entries are rejected by admission and cleaned up through a
-  bounded path
+  bounded `WorkerRouteBucketOwner` path, not unbounded scheduler-side cleanup
 - changing routing policy does not change WorkerGroup capability truth
+
+First slice:
+
+- implement one in-memory `WorkerRouteBucketOwner`
+- use a default `WorkerRoutingPolicy` that resolves every non-targeted task to
+  one `routeBucketKey`: `default`
+- allow a worker to belong to multiple route buckets in the index model, but
+  only populate `default` in the first slice
+- keep Redis `ZSET` backing, advanced scoring, and periodic full reconciliation
+  out of scope for the first slice
+- keep `WorkerRegistrySnapshot` for capability lookup; only replace the
+  post-group worker enumeration with bounded bucket acquisition
+
+Later slices:
+
+- add approved route fields such as business, tenant, region, and pool
+- add Redis-backed bounded bucket operations
+- add optional `WorkerRouteBucketReconciler` watchdog for bounded background
+  cleanup when lazy eviction is insufficient
+- add multi-bucket worker membership tests
 
 ### TW-2: Dispatch evidence spine
 
@@ -591,7 +655,7 @@ Transport/proof tests:
 
 - dispatch evidence is present in trace/diagnostics
 - transport route still uses selected worker/adapter route evidence
-- multi-business proof covers at least two route keys for the same
+- multi-business proof covers at least two route bucket keys for the same
   WorkerGroup capability and proves no cross-route dispatch
 - external-worker black-box proof covers registration, poll/dispatch, result,
   and report feedback
