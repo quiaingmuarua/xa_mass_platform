@@ -554,9 +554,10 @@ Acceptance:
 ### TW-1C: Bounded route bucket acquisition
 
 Status: first in-memory slice implemented. The current implementation provides
-an engine-owned default route bucket owner and bounded candidate acquisition
-shape. Redis-backed buckets, approved route fields, advanced scoring, and
-background reconciliation remain later slices.
+an engine-owned route bucket owner, bounded candidate acquisition shape, and
+fixed approved route attributes (`business`, `tenant`, `region`, `pool`).
+Redis-backed buckets, advanced scoring, and background reconciliation remain
+later slices.
 
 Goal: million-worker deployments acquire candidates from route buckets instead
 of materializing all workers in a group.
@@ -595,18 +596,25 @@ Acceptance:
 First slice:
 
 - implement one in-memory `WorkerRouteBucketOwner`
-- use a default `WorkerRoutingPolicy` that resolves every non-targeted task to
-  one `routeBucketKey`: `default`
+- use a default `WorkerRoutingPolicy` that resolves tasks without approved
+  route attributes to one `routeBucketKey`: `default`
 - allow a worker to belong to multiple route buckets in the index model, while
-  the default runtime policy only populates `default`
+  the default runtime policy indexes `default` plus approved worker attribute
+  buckets
 - keep Redis `ZSET` backing, advanced scoring, and periodic full reconciliation
   out of scope for the first slice
 - keep `WorkerRegistrySnapshot` for capability lookup; only replace the
   post-group worker enumeration with bounded bucket acquisition
 
+Implemented route-attribute slice:
+
+- read task route input from `Task.sharedConfig.routeAttributes`
+- only approved fields `business`, `tenant`, `region`, and `pool` may become
+  route bucket keys
+- unapproved task or worker attributes do not affect bucket membership
+
 Later slices:
 
-- add approved route fields such as business, tenant, region, and pool
 - add Redis-backed bounded bucket operations
 - add optional `WorkerRouteBucketReconciler` watchdog for bounded background
   cleanup when lazy eviction is insufficient

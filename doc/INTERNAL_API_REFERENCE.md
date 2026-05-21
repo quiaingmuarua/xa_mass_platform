@@ -306,6 +306,8 @@ Contract rules:
 - omitted `executionSpec` resolves to default task execution policy
 - public create creates only the task shell and opens normal intake for later
   append/seal flow
+- optional `sharedConfig.routeAttributes` may carry route-bucket hints; only
+  engine-approved keys are used for Stage-1 candidate narrowing
 
 Example request:
 
@@ -314,7 +316,10 @@ Example request:
   "userId": "agent",
   "project": "demoApp",
   "sharedConfig": {
-    "site": "example"
+    "site": "example",
+    "routeAttributes": {
+      "region": "us"
+    }
   },
   "executionSpec": {
     "profile": "STANDARD",

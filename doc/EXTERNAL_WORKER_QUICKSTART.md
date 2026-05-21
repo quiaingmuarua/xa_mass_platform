@@ -67,7 +67,10 @@ Example dispatch payload:
     "url": "https://example.com"
   },
   "sharedConfig": {
-    "routingCode": "us"
+    "routingCode": "us",
+    "routeAttributes": {
+      "region": "us"
+    }
   }
 }
 ```

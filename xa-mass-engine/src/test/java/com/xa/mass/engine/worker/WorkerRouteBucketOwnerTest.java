@@ -1,10 +1,12 @@
 package com.xa.mass.engine.worker;
 
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -18,11 +20,11 @@ public class WorkerRouteBucketOwnerTest {
                         .eventBindings(List.of(EventBinding.of("crawler.fetch", List.of("demoApp"))))
                         .build()
         ), List.of(
-                worker("worker-1", "crawler"),
-                worker("worker-2", "crawler"),
-                worker("worker-3", "crawler"),
-                worker("worker-without-group", null),
-                worker("worker-missing-group", "missing")
+                worker("worker-1", "crawler", Map.of()),
+                worker("worker-2", "crawler", Map.of()),
+                worker("worker-3", "crawler", Map.of()),
+                worker("worker-without-group", null, Map.of()),
+                worker("worker-missing-group", "missing", Map.of())
         ));
 
         WorkerRouteBucketOwner owner = WorkerRouteBucketOwner.fromSnapshot(snapshot);
@@ -36,12 +38,35 @@ public class WorkerRouteBucketOwnerTest {
     }
 
     @Test
+    void defaultPolicyUsesOnlyApprovedRouteAttributes() {
+        WorkerRegistrySnapshot snapshot = WorkerRegistrySnapshot.from(List.of(
+                WorkerGroupRecord.builder("crawler")
+                        .eventBindings(List.of(EventBinding.of("crawler.fetch", List.of("demoApp"))))
+                        .build()
+        ), List.of(
+                worker("worker-us", "crawler", Map.of("region", "us", "color", "blue")),
+                worker("worker-eu", "crawler", Map.of("region", "eu", "color", "blue"))
+        ));
+        Task task = new Task();
+        task.setSharedConfig(Map.of(TaskSharedConfig.ROUTE_ATTRIBUTES, Map.of(
+                "region", "us",
+                "color", "blue"
+        )));
+
+        WorkerRouteBucketOwner owner = WorkerRouteBucketOwner.fromSnapshot(snapshot);
+
+        assertEquals(List.of("worker-us"), owner.acquireForTask("crawler", task, 10));
+        assertEquals(List.of("worker-us", "worker-eu"),
+                owner.acquire("crawler", WorkerRoutingPolicy.DEFAULT_ROUTE_BUCKET_KEY, 10));
+    }
+
+    @Test
     void customPolicyCanMapWorkerIntoMultipleBucketsWithoutChangingGroupCapability() {
         WorkerRegistrySnapshot snapshot = WorkerRegistrySnapshot.from(List.of(
                 WorkerGroupRecord.builder("crawler")
                         .eventBindings(List.of(EventBinding.of("crawler.fetch", List.of("demoApp"))))
                         .build()
-        ), List.of(worker("worker-1", "crawler")));
+        ), List.of(worker("worker-1", "crawler", Map.of())));
         WorkerRoutingPolicy policy = new WorkerRoutingPolicy() {
             @Override
             public Set<String> routeBucketKeysForTask(Task task) {
@@ -61,10 +86,11 @@ public class WorkerRouteBucketOwnerTest {
         assertEquals(Set.of("tenant-a", "tenant-b"), owner.routeBucketKeysByWorkerId("worker-1"));
     }
 
-    private static Worker worker(String workerId, String groupId) {
+    private static Worker worker(String workerId, String groupId, Map<String, String> attributes) {
         Worker worker = new Worker();
         worker.setWorkerId(workerId);
         worker.setWorkerGroupId(groupId);
+        worker.setAttributes(attributes);
         return worker;
     }
 }
