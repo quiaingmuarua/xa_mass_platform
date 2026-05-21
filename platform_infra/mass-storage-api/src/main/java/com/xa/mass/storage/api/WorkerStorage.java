@@ -28,10 +28,6 @@ public interface WorkerStorage extends WorkerLookupStore {
 
     List<Worker> getWorkersByGroupId(String workerGroupId);
 
-    List<Worker> getWorkersBySupportedProject(String project);
-
-    List<Worker> getWorkersBySupportedEventCode(String eventCode);
-
     List<Worker> getAllWorkers();
 
     boolean tryLockWorker(String workerId);

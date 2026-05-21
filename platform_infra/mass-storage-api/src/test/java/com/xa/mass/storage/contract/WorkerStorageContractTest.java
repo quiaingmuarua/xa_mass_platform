@@ -92,36 +92,6 @@ public abstract class WorkerStorageContractTest {
     }
 
     @Test
-    void getWorkersBySupportedProject_filtersCorrectly() {
-        Worker supports = worker("w-supports", "grp");
-        supports.setSupportedProjects(List.of("proj-x", "proj-y"));
-        storage.addWorker(supports);
-
-        Worker doesNot = worker("w-no", "grp");
-        doesNot.setSupportedProjects(List.of("proj-z"));
-        storage.addWorker(doesNot);
-
-        assertThat(storage.getWorkersBySupportedProject("proj-x"))
-                .extracting(Worker::getWorkerId).containsExactly("w-supports");
-        assertThat(storage.getWorkersBySupportedProject("proj-z"))
-                .extracting(Worker::getWorkerId).containsExactly("w-no");
-    }
-
-    @Test
-    void getWorkersBySupportedEventCode_filtersCorrectly() {
-        Worker supports = worker("w-evt", "grp");
-        supports.setSupportedEventCodes(List.of("task.crawl"));
-        storage.addWorker(supports);
-
-        Worker doesNot = worker("w-no-evt", "grp");
-        doesNot.setSupportedEventCodes(List.of("task.other"));
-        storage.addWorker(doesNot);
-
-        assertThat(storage.getWorkersBySupportedEventCode("task.crawl"))
-                .extracting(Worker::getWorkerId).containsExactly("w-evt");
-    }
-
-    @Test
     void tryLockWorker_returnsTrueOnFirstCall() {
         storage.addWorker(worker("w1", "grp"));
         assertThat(storage.tryLockWorker("w1")).isTrue();

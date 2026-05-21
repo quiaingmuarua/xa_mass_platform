@@ -152,9 +152,10 @@ public abstract class AbstractSampleWorkerClientStarter {
 
     private void connectWorkerWithRetry(String workerId, String baseUri) {
         for (int attempt = 1; attempt <= retryAttempts; attempt++) {
+            SampleWorkerClient client = null;
             try {
                 URI uri = new URI(baseUri);
-                SampleWorkerClient client = createClient(uri, workerId, taskResultStatus);
+                client = createClient(uri, workerId, taskResultStatus);
                 clientSessionManager.addClient(client);
 
                 if (client.connectBlocking(connectionTimeout, TimeUnit.SECONDS)) {
@@ -170,6 +171,7 @@ public abstract class AbstractSampleWorkerClientStarter {
                         adapterDisplayName(), workerId, attempt, retryAttempts, e.getMessage());
             }
 
+            disconnectFailedClient(client);
             clientSessionManager.removeClient(workerId);
 
             if (attempt < retryAttempts) {
@@ -183,6 +185,18 @@ public abstract class AbstractSampleWorkerClientStarter {
         }
 
         logger().error("{} worker {} failed after {} retries", adapterDisplayName(), workerId, retryAttempts);
+    }
+
+    private void disconnectFailedClient(SampleWorkerClient client) {
+        if (client == null) {
+            return;
+        }
+        try {
+            client.disconnect();
+        } catch (Exception e) {
+            logger().warn("Failed to clean up unsuccessful {} worker {} connection: {}",
+                    adapterDisplayName(), client.getWorkerId(), e.getMessage());
+        }
     }
 
     public String getConnectionStats() {
@@ -238,4 +252,3 @@ public abstract class AbstractSampleWorkerClientStarter {
 
     protected abstract SampleWorkerClient createClient(URI baseUri, String workerId, String taskResultStatus);
 }
-

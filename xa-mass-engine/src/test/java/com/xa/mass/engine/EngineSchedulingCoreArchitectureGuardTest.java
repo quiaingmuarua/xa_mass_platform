@@ -889,6 +889,27 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void workerStorageDoesNotExposeWorkerCapabilityCandidateLookup() throws IOException {
+        Path workerStoragePath = repositoryRoot().resolve(
+                "platform_infra/mass-storage-api/src/main/java/com/xa/mass/storage/api/WorkerStorage.java");
+        String source = Files.readString(workerStoragePath, StandardCharsets.UTF_8);
+
+        List<String> violations = new ArrayList<>();
+        if (Pattern.compile("\\bgetWorkersBySupportedEventCode\\s*\\(").matcher(source).find()) {
+            violations.add(workerStoragePath + " exposes supported-event candidate lookup");
+        }
+        if (Pattern.compile("\\bgetWorkersBySupportedProject\\s*\\(").matcher(source).find()) {
+            violations.add(workerStoragePath + " exposes supported-project candidate lookup");
+        }
+
+        assertTrue(violations.isEmpty(),
+                "WorkerStorage must stay control-plane worker-row storage. Capability candidate "
+                        + "lookup belongs to WorkerRegistrySnapshot / WorkerCandidateIndex, not DB-backed "
+                        + "storage APIs:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void schedulingKernelDoesNotReadWorkerLevelCapabilityAsDecisionTruth() throws IOException {
         Map<Path, List<Pattern>> guardedFiles = Map.ofEntries(
                 Map.entry(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/model/WorkerSchedulingView.java"),

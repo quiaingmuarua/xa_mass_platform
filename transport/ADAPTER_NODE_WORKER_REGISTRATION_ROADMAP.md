@@ -81,6 +81,12 @@ Task(project,eventCode)
 composes an immutable `WorkerRegistrySnapshot` from worker registration rows
 plus accepted capability reports.
 
+`WorkerRegistrySnapshot`, `AdapterNodeRecord`, `NodeGroupBindingRecord`,
+dispatch availability, worker load, and reachability are runtime read models.
+They must not be persisted through direct DB CRUD paths. If operator history or
+offline query needs these facts, emit trace/events and let the async event
+pipeline materialize durable views.
+
 ### Resolved relation conflict
 
 The old mainline contained node/group relation truth inside the capability
@@ -322,6 +328,10 @@ Task -> AdapterNode -> Workers
 ```
 
 `AdapterNode` is not capability truth.
+
+Storage must not expose worker supported-project or supported-event lookup as a
+parallel candidate source. `WorkerStorage` keeps worker rows and group lookup;
+capability narrowing belongs to `WorkerRegistrySnapshot` / `WorkerCandidateIndex`.
 
 ## Gate Semantics
 

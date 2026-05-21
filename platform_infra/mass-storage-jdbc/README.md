@@ -29,6 +29,9 @@ Current implementation facts:
 - `JdbcWorkerStorage` persists durable worker registration truth
   but keeps online/offline churn and worker locks
   in-process
+- `JdbcWorkerStorage` does not own worker capability candidate indexes; those
+  live in engine/runtime read models and should reach durable stores only via
+  trace/event ingestion if historical query is needed
 - `JdbcStorageRuntime` is currently more than a storage factory: it wires
   datasource, Flyway, adapter construction, and residue recovery, and it is the
   first file to re-check when boundary drift is suspected

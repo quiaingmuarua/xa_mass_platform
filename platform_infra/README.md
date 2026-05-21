@@ -51,6 +51,11 @@ Current truth for this conservative first slice:
 - `mass-storage-api` owns shared task/worker/rule storage contracts plus the bounded `TaskDetailStore` compatibility-projection seam and the storage-adjacent rule types referenced by those contracts
 - `mass-storage-memory` owns in-memory control-plane task/worker/rule storage plus the default QLExpress rule evaluator used by the current embedded SDK/server path and focused tests
 - `mass-storage-jdbc` owns the JDBC control-plane storage implementation plus H2/PostgreSQL dialect wiring, migrations, and residue-recovery helpers; engine manager assembly stays outside this module
+- worker runtime indexes such as `WorkerRegistrySnapshot`, `AdapterNodeRecord`,
+  `NodeGroupBindingRecord`, dispatch availability, load, and reachability are
+  runtime read models, not control-plane DB CRUD state; if they need durable
+  history or operator query, emit trace/events and let an async pipeline persist
+  them outside the hot path
 - `mass-trace-sink` owns the canonical `ExecutionEvent` model, event-name enum, and default asynchronous JSONL sink implementation
 - `xa-mass-engine` consumes the runtime contract directly and currently also declares storage-contract plus in-memory storage dependencies in the reactor; do not summarize that as "runtime only" without re-checking the root `pom.xml`
 - `xa-mass-engine` now depends on storage contracts and infra-owned in-memory storage implementations; engine no longer carries Redis storage placeholder classes or shared in-memory storage implementations under its package root
@@ -67,6 +72,9 @@ Boundary to keep stable:
 
 - runtime modules own queue, lease, delayed, expiry, counter, and backpressure truth
 - storage modules own durable control-plane truth
+- worker capability candidate indexes belong to engine/runtime owners, not
+  `WorkerStorage`; storage must not expose supported-project or supported-event
+  worker lookup APIs as scheduling shortcuts
 - high-volume task-message detail and attempt/event history belong in trace or async audit/export sinks, not in the control-plane JDBC path
 - bounded compatibility projection and runtime residue remain temporary/debug
   material even though `mass-trace-sink` is landed; do not redefine that
