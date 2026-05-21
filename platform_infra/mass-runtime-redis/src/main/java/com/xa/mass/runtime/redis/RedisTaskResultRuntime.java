@@ -633,6 +633,7 @@ public final class RedisTaskResultRuntime implements TaskResultRuntime {
         );
         String status = stringAt(raw, 0);
         if (STATUS_MARKED.equals(status)) {
+            cleanupFullyConvergedBarriers(taskId, messageId, finalSeq);
             return BarrierMarkResult.marked();
         }
         if (STATUS_ALREADY_DONE.equals(status)) {
@@ -690,6 +691,21 @@ public final class RedisTaskResultRuntime implements TaskResultRuntime {
     private void cleanupFullyConvergedStages(TaskResultRuntimeRow row) {
         if (row != null && row.attemptClosedPublished() && row.logicalFinalPublished() && row.progressApplied()) {
             discardStagedCallbacksForMessage(row.taskId(), row.messageId());
+        }
+    }
+
+    private void cleanupFullyConvergedBarriers(String taskId, String messageId, long finalSeq) {
+        TaskResultRuntimeRow current = getVisibleByMessageId(taskId, messageId).orElse(null);
+        if (current != null
+                && current.seq() == finalSeq
+                && current.attemptClosedPublished()
+                && current.logicalFinalPublished()
+                && current.progressApplied()) {
+            commands.del(
+                    keyspace.attemptClosedBarrier(taskId, messageId, finalSeq),
+                    keyspace.logicalFinalBarrier(taskId, messageId, finalSeq),
+                    keyspace.progressBarrier(taskId, messageId, finalSeq)
+            );
         }
     }
 

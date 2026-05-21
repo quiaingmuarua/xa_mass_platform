@@ -23,7 +23,6 @@ import com.xa.mass.trace.sink.ExecutionEventType;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -32,7 +31,6 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -44,6 +42,8 @@ class RedisRuntimeTraceIntegrationTest {
 
     private RedisClient redisClient;
     private StatefulRedisConnection<String, String> redisConnection;
+    private String redisUri;
+    private String runtimeNamespace;
     private RedisTaskWorkRuntime runtime;
     private InMemoryTaskStorage taskStorage;
     private TaskManager taskManager;
@@ -56,18 +56,14 @@ class RedisRuntimeTraceIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        String redisUri = System.getProperty("mass.redis.test.uri", "redis://127.0.0.1:6379/0");
-        try {
-            redisClient = RedisClient.create(redisUri);
-            redisConnection = redisClient.connect();
-        } catch (RuntimeException ex) {
-            Assumptions.assumeTrue(false, "Redis is not available for integration test: " + ex.getMessage());
-            throw ex;
-        }
+        redisUri = RedisRuntimeTestSupport.redisUri();
+        redisClient = RedisRuntimeTestSupport.createClientOrSkip("integration test");
+        redisConnection = redisClient.connect();
         now = new AtomicReference<>(Instant.parse("2026-05-06T00:00:00Z"));
+        runtimeNamespace = RedisRuntimeTestSupport.namespace("redis-trace");
         runtime = new RedisTaskWorkRuntime(
                 redisConnection,
-                new RedisTaskWorkKeyspace("xa:mass:test:redis-trace:" + UUID.randomUUID()),
+                new RedisTaskWorkKeyspace(runtimeNamespace),
                 1024,
                 now::get
         );
@@ -85,6 +81,7 @@ class RedisRuntimeTraceIntegrationTest {
         if (runtime != null) {
             runtime.shutdown();
         }
+        RedisRuntimeTestSupport.cleanupNamespace(redisUri, runtimeNamespace);
         if (redisConnection != null && redisConnection.isOpen()) {
             redisConnection.close();
         }
@@ -370,5 +367,4 @@ class RedisRuntimeTraceIntegrationTest {
         }
     }
 }
-
 

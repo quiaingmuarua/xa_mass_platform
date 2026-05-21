@@ -847,32 +847,8 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
 
     @Override
     public void shutdown() {
-        if (!running.compareAndSet(true, false)) {
-            closeRedisResources();
-            return;
-        }
-        try {
-            try {
-                long cleared = 0L;
-                for (String taskId : commands.smembers(keyspace.taskRegistrySet())) {
-                    cleared += discardTaskAtomic(taskId);
-                }
-                if (cleared > 0) {
-                    incrementRuntimeCounter(RedisTaskWorkKeyspace.COUNTER_SHUTDOWN_CLEARED_ITEMS, cleared);
-                }
-                commands.del(
-                        keyspace.readyTasksZset(),
-                        keyspace.delayedWorkZset(),
-                        keyspace.leaseExpiryZset(),
-                        keyspace.recentFinalReceiptsZset(),
-                        keyspace.taskRegistrySet()
-                );
-            } catch (RuntimeException ignored) {
-                // Redis is already unavailable; local shutdown still needs to release resources.
-            }
-        } finally {
-            closeRedisResources();
-        }
+        running.set(false);
+        closeRedisResources();
     }
 
     private WorkEnqueueStatus enqueueAtomic(TaskWorkEnvelope item, WorkEnqueueOptions options) {

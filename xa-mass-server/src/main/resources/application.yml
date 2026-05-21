@@ -32,12 +32,18 @@ mass:
       namespace: xa:mass:runtime:v1
       max-queued-items: 1000000
   transport:
+    node-id: ${random.uuid}
     delivery:
       store: memory
       max-queued-items: 100000
       max-items-per-route: 10000
       redis:
         namespace: xa:mass:transport:delivery:v1
+    presence:
+      store: memory
+      lease-millis: 30000
+      redis:
+        namespace: xa:mass:transport:presence:v1
   websocket:
     port: 18088
   queue:

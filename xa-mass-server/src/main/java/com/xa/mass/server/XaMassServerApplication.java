@@ -6,8 +6,10 @@ import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.runtime.redis.RedisTaskResultRuntime;
 import com.xa.mass.runtime.redis.RedisTaskWorkRuntime;
+import com.xa.mass.transport.presence.WorkerPresenceStore;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
+import com.xa.mass.transport.runtime.presence.RedisWorkerPresenceStore;
 import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.TaskStorage;
 import com.xa.mass.storage.jdbc.JdbcStorageMode;
@@ -82,6 +84,9 @@ public class XaMassServerApplication {
     @Value("${mass.runtime.event-max-pending-tasks:10000}")
     private int eventRuntimeMaxPendingTasks;
 
+    @Value("${mass.transport.node-id:${random.uuid}}")
+    private String transportNodeId;
+
     @Value("${mass.runtime.mode:memory}")
     private String runtimeMode;
 
@@ -102,6 +107,15 @@ public class XaMassServerApplication {
 
     @Value("${mass.transport.delivery.redis.namespace:xa:mass:transport:delivery:v1}")
     private String transportDeliveryRedisNamespace;
+
+    @Value("${mass.transport.presence.store:memory}")
+    private String transportPresenceStore;
+
+    @Value("${mass.transport.presence.lease-millis:30000}")
+    private long transportPresenceLeaseMillis;
+
+    @Value("${mass.transport.presence.redis.namespace:xa:mass:transport:presence:v1}")
+    private String transportPresenceRedisNamespace;
 
     @Value("${mass.storage.mode:memory}")
     private String storageMode;
@@ -231,9 +245,13 @@ public class XaMassServerApplication {
                 .transport(transport -> {
                     java.util.function.Supplier<TransportDeliveryStore> deliveryStoreFactory =
                             resolveTransportDeliveryStoreFactory();
+                    java.util.function.Supplier<WorkerPresenceStore> presenceStoreFactory =
+                            resolveTransportPresenceStoreFactory();
                     transport
+                        .transportNodeId(transportNodeId)
                         .maxDeliveryQueuedItems(transportDeliveryMaxQueuedItems)
                         .maxDeliveryItemsPerRoute(transportDeliveryMaxItemsPerRoute)
+                        .workerPresenceLeaseMillis(transportPresenceLeaseMillis)
                         .webSocketAdapter(webSocket -> webSocket
                                 .server(massWebSocketPort)
                                 .enabled(true)
@@ -249,6 +267,9 @@ public class XaMassServerApplication {
                                 .queueMode();
                     if (deliveryStoreFactory != null) {
                         transport.deliveryStoreFactory(deliveryStoreFactory);
+                    }
+                    if (presenceStoreFactory != null) {
+                        transport.presenceStoreFactory(presenceStoreFactory);
                     }
                 })
                 .engine(engine -> {
@@ -384,5 +405,22 @@ public class XaMassServerApplication {
         };
     }
 
-}
+    private java.util.function.Supplier<WorkerPresenceStore> resolveTransportPresenceStoreFactory() {
+        String normalizedMode = transportPresenceStore == null
+                ? "memory"
+                : transportPresenceStore.trim().toLowerCase(Locale.ROOT);
+        return switch (normalizedMode) {
+            case "", "memory" -> null;
+            case "redis" -> () -> new RedisWorkerPresenceStore(
+                    redisUri(),
+                    transportPresenceRedisNamespace,
+                    transportPresenceLeaseMillis,
+                    transportNodeId
+            );
+            default -> throw new IllegalArgumentException(
+                    "Unsupported mass.transport.presence.store: " + transportPresenceStore
+            );
+        };
+    }
 
+}

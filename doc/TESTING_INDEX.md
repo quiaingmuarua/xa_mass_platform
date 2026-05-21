@@ -500,6 +500,7 @@ Use first when:
 | retry / expiry / finality / result ingest | engine acceptance/concurrency + Boot-shell E2E | chaos for late replay / disconnect / lease expiry |
 | trace schema / event emission / operator trace query | sink or emitter tests + `xa-mass-trace` integration tests against canonical output | Boot-shell or chaos trace-observed scenario when integrated lifecycle visibility changed |
 | `TaskResultRuntime` / stable-final result rows / repair barriers / result read window | runtime contract tests for memory + Redis implementations, plus engine result convergence coverage | Boot-shell `/results` or archive E2E when public result/API shape changes |
+| runtime backend parity (`memory` vs `redis`) | shared runtime contract tests plus one shared Boot-shell scenario with backend-specific subclasses; Redis tests must use isolated namespace prefixes and explicit fixture cleanup, not `shutdown()` cleanup | add backend-specific tests only for implementation-only keyspace/script behavior, namespace isolation, or restart recovery tied to an existing invariant such as `sched.retry-redispatch` |
 | transport runtime / adapter / routing / result ingress | transport module tests + Boot-shell E2E | chaos for recovery behavior |
 | host page / filter / shell read model | server integration tests or frontend tests | one Boot-shell smoke if host behavior can drift into mainline |
 | hot-path performance / runtime counters | perf smoke + targeted engine acceptance | Boot-shell smoke if external behavior can drift |

@@ -45,7 +45,7 @@ then lets engine lifecycle policy converge the task aggregate.
 | ingress channel / inbox | `TaskResultIngestChannel`, `RedisTaskResultIngestChannel` | bounded process/JVM ingress into engine result apply | durable result log, ack ledger, task state |
 | engine ingest port | `TaskResultIngestFacade`, `TaskResultIngestPort` | narrow callable surface from transport into engine result handling | server API ownership, public result read API |
 | runtime apply truth | `TaskWorkRuntime.applyResultWithContext(...)` | lease-valid apply, retry budget consumption, runtime apply status, counters, recent receipts | trace policy, projection storage, public result reads |
-| runtime result read truth | `TaskResultRuntime` | staged callback repair anchors, stable-final visible result rows, task-local result sequence, attempt-closed/logical-final/progress barriers | work queue ownership, transport ack/redelivery, task lifecycle policy, projection/debug residue |
+| runtime result read truth | `TaskResultRuntime` | staged callback repair anchors, stable-final visible result rows, task-local result sequence, and transient attempt-closed/logical-final/progress barrier gates | work queue ownership, transport ack/redelivery, task lifecycle policy, projection/debug residue |
 | engine result orchestration | `TaskResultService` | terminal/duplicate/late classification, runtime outcome interpretation, trace, projection submission, result-side events, convergence trigger | durable ledger storage, transport I/O |
 | projection residue | `TaskDetailStore` message/attempt projection | bounded UI/debug/audit residue and review read view | callback acceptance truth, retry/finality truth, public result read truth |
 
@@ -149,6 +149,8 @@ Barrier protocol in the current kernel is:
   - `progressApplied`
 - callback path and repair path both mark those bits through runtime-owned
   barrier mutation, not by inferring completion from side effects
+- fully converged Redis barrier keys may be removed after all three row bits are
+  true; the visible row bits remain the durable idempotency truth
 
 Repair scan is bounded by runtime-owned indexes:
 
