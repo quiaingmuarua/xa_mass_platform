@@ -612,6 +612,9 @@ Implemented route-attribute slice:
 - only approved fields `business`, `tenant`, `region`, and `pool` may become
   route bucket keys
 - unapproved task or worker attributes do not affect bucket membership
+- `TaskApiWorkerAttributeRoutingIntegrationTest` proves the approved route
+  attribute bucket on the real server + websocket dispatch/result path without
+  relying on a routing rule to reject the non-matching worker
 
 Later slices:
 
