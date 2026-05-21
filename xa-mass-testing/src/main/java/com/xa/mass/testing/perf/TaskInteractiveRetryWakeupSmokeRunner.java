@@ -156,7 +156,9 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                     recoveryPort,
                     workerAssignListener::onTaskAssign,
                     config.runtimeReadyDispatchIntervalMillis(),
-                    1_000
+                    1_000,
+                    config.assignmentRetryDelayMillis(),
+                    config.runtimeReadyDispatchNoDispatchBackoffMaxMillis()
             );
 
             try {
@@ -622,6 +624,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                                long minRetryDispatchDelayMillis,
                                long assignmentRetryDelayMillis,
                                long runtimeReadyDispatchIntervalMillis,
+                               long runtimeReadyDispatchNoDispatchBackoffMaxMillis,
                                long awaitSeconds) {
         private static SmokeConfig fromSystemProperties() {
             int workerCount = intProperty("mass.retrywakeup.smoke.workers", 5);
@@ -643,6 +646,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                     longProperty("mass.retrywakeup.smoke.minRetryDispatchDelayMillis", 20L),
                     longProperty("mass.retrywakeup.smoke.assignmentRetryDelayMillis", 25L),
                     longProperty("mass.retrywakeup.smoke.runtimeReadyDispatchIntervalMillis", 25L),
+                    longProperty("mass.retrywakeup.smoke.runtimeReadyDispatchNoDispatchBackoffMaxMillis", 1_000L),
                     longProperty("mass.retrywakeup.smoke.awaitSeconds", 60L)
             );
         }
@@ -662,6 +666,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
             values.put("minRetryDispatchDelayMillis", minRetryDispatchDelayMillis);
             values.put("assignmentRetryDelayMillis", assignmentRetryDelayMillis);
             values.put("runtimeReadyDispatchIntervalMillis", runtimeReadyDispatchIntervalMillis);
+            values.put("runtimeReadyDispatchNoDispatchBackoffMaxMillis", runtimeReadyDispatchNoDispatchBackoffMaxMillis);
             values.put("awaitSeconds", awaitSeconds);
             return values;
         }
@@ -795,5 +800,3 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                 .replace("\t", "\\t");
     }
 }
-
-

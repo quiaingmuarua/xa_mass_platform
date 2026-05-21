@@ -696,14 +696,23 @@ public class WorkerManager implements WorkerLookupStore {
      */
     public static class WorkerStatusEventListener {
         private final WorkerManager workerManager;
+        private final Runnable dispatchWakeupCallback;
 
         public WorkerStatusEventListener(WorkerManager workerManager) {
+            this(workerManager, null);
+        }
+
+        public WorkerStatusEventListener(WorkerManager workerManager, Runnable dispatchWakeupCallback) {
             this.workerManager = workerManager;
+            this.dispatchWakeupCallback = dispatchWakeupCallback != null ? dispatchWakeupCallback : () -> {
+            };
         }
 
         @MassSubscribe
         public void onWorkerOnline(WorkerOnlineEvent event) {
-            recordHeartbeat(event.getWorkerId());
+            if (recordHeartbeat(event.getWorkerId())) {
+                notifyDispatchWakeup();
+            }
         }
 
         @MassSubscribe
@@ -716,14 +725,23 @@ public class WorkerManager implements WorkerLookupStore {
             log.debug("Worker offline event observed for {}", event.getWorkerId());
         }
 
-        private void recordHeartbeat(String workerId) {
+        private boolean recordHeartbeat(String workerId) {
             Worker worker = workerManager.getWorker(workerId);
             if (worker == null) {
                 log.debug("Ignoring heartbeat for unregistered worker {}", workerId);
-                return;
+                return false;
             }
             worker.setLastHeartbeat(java.time.LocalDateTime.now());
             workerManager.updateWorker(worker);
+            return true;
+        }
+
+        private void notifyDispatchWakeup() {
+            try {
+                dispatchWakeupCallback.run();
+            } catch (RuntimeException e) {
+                log.warn("Worker online dispatch wakeup callback failed", e);
+            }
         }
     }
 }

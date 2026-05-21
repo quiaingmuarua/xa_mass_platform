@@ -2,6 +2,7 @@ package com.xa.mass.starter.builder;
 
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
+import com.xa.mass.engine.watchdog.PollingIdleBackoffPolicy;
 import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.transport.model.TransportOutboundMessage;
@@ -552,6 +553,17 @@ public class MassApplicationBuilder {
             return this;
         }
 
+        public EngineBuilder runtimeReadyDispatchIdleBackoffMaxMillis(long maxBackoffMillis) {
+            config.setRuntimeReadyDispatchIdleBackoffMaxMillis(maxBackoffMillis);
+            return this;
+        }
+
+        public EngineBuilder runtimeReadyDispatchIdleBackoffPolicy(
+                PollingIdleBackoffPolicy policy) {
+            config.setRuntimeReadyDispatchIdleBackoffPolicy(policy);
+            return this;
+        }
+
         public EngineBuilder leaseWatchdogIntervalSeconds(long leaseWatchdogIntervalSeconds) {
             config.setLeaseWatchdogIntervalSeconds(leaseWatchdogIntervalSeconds);
             return this;
@@ -609,4 +621,3 @@ public class MassApplicationBuilder {
 
     }
 }
-

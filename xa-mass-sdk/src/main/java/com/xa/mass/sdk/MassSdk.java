@@ -1,6 +1,7 @@
 package com.xa.mass.sdk;
 
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
+import com.xa.mass.engine.watchdog.PollingIdleBackoffPolicy;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.transport.model.TransportOutboundMessage;
@@ -379,6 +380,17 @@ public final class MassSdk {
             return this;
         }
 
+        public EngineOptions runtimeReadyDispatchIdleBackoffMaxMillis(long maxBackoffMillis) {
+            delegate.runtimeReadyDispatchIdleBackoffMaxMillis(maxBackoffMillis);
+            return this;
+        }
+
+        public EngineOptions runtimeReadyDispatchIdleBackoffPolicy(
+                PollingIdleBackoffPolicy policy) {
+            delegate.runtimeReadyDispatchIdleBackoffPolicy(policy);
+            return this;
+        }
+
         public EngineOptions leaseWatchdogIntervalSeconds(long leaseWatchdogIntervalSeconds) {
             delegate.leaseWatchdogIntervalSeconds(leaseWatchdogIntervalSeconds);
             return this;
@@ -436,4 +448,3 @@ public final class MassSdk {
 
     }
 }
-

@@ -69,6 +69,9 @@ public class XaMassServerApplication {
     @Value("${mass.engine.assignment-retry-delay-millis:1000}")
     private long assignmentRetryDelayMillis;
 
+    @Value("${mass.engine.runtime-ready-dispatch-idle-backoff-max-millis:30000}")
+    private long runtimeReadyDispatchIdleBackoffMaxMillis;
+
     @Value("${mass.engine.lease-watchdog-interval-seconds:30}")
     private long leaseWatchdogIntervalSeconds;
 
@@ -276,6 +279,7 @@ public class XaMassServerApplication {
                     engine.enabled(true)
                             .workerThreads(workerThreads)
                             .assignmentRetryDelayMillis(assignmentRetryDelayMillis)
+                            .runtimeReadyDispatchIdleBackoffMaxMillis(runtimeReadyDispatchIdleBackoffMaxMillis)
                             .leaseWatchdogIntervalSeconds(leaseWatchdogIntervalSeconds)
                             .taskMessageLeaseSeconds(taskMessageLeaseSeconds)
                             .taskStorage(taskStorage)

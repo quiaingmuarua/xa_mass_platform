@@ -274,6 +274,7 @@ Observability:
 | `mass.websocket.port` | `18088` | WebSocket adapter port |
 | `mass.socket.port` | `18089` | Socket adapter port |
 | `mass.engine.assignment-retry-delay-millis` | `1000` | delay before the engine retries assignment after a failed or deferred dispatch cycle |
+| `mass.engine.runtime-ready-dispatch-idle-backoff-max-millis` | `30000` | max idle backoff for the default runtime-ready dispatch polling fallback policy |
 | `mass.engine.lease-watchdog-interval-seconds` | `30` | interval for scanning active task-message leases and expiring stalled in-flight attempts |
 | `mass.engine.task-message-lease-seconds` | `300` | lease duration for an in-flight task message before the engine may redispatch it |
 | `mass.storage.mode` | `memory` | server storage mode; use `jdbc-h2` for local/CI verification or `jdbc-postgres` through `mass-storage-jdbc` for durable control-plane storage |
@@ -322,6 +323,12 @@ JDBC storage scope:
 - the bundled `redis-runtime` profile applies those three Redis runtime
   switches for local diagnosis; run it with the normal server profile, for
   example `-Dspring.profiles.active=dev,redis-runtime`
+- root `compose.yaml` is the preferred local distributed-verification shell:
+  build the jar first with
+  `./mvnw -pl xa-mass-server -am -DskipTests package`, then
+  `docker compose up redis server` starts Redis and runs that server jar with
+  `dev,redis-runtime,h2`; it is a validation harness, not a production image
+  contract
 - backend-parity tests should share one scenario body and vary only
   `mass.runtime.mode` plus backend-specific connection properties; do not copy
   the same runtime semantics into separate memory-only and redis-only tests

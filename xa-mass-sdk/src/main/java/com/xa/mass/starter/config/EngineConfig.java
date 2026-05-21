@@ -26,6 +26,8 @@ import com.xa.mass.engine.rules.RuleManagerFactory;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
+import com.xa.mass.engine.watchdog.ExponentialPollingIdleBackoffPolicy;
+import com.xa.mass.engine.watchdog.PollingIdleBackoffPolicy;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
@@ -93,6 +95,9 @@ public class EngineConfig {
     private long assignmentRetryDelayMillis = 1000L;
     private long leaseWatchdogIntervalSeconds = 30L;
     private long runtimeReadyDispatchIntervalMillis = 250L;
+    private long runtimeReadyDispatchIdleBackoffMaxMillis = 30_000L;
+    private PollingIdleBackoffPolicy runtimeReadyDispatchIdleBackoffPolicy =
+            ExponentialPollingIdleBackoffPolicy.INSTANCE;
     private long taskMessageLeaseSeconds = 300L;
 
     public EngineConfig() {
@@ -137,6 +142,8 @@ public class EngineConfig {
         this.assignmentRetryDelayMillis = source.assignmentRetryDelayMillis;
         this.leaseWatchdogIntervalSeconds = source.leaseWatchdogIntervalSeconds;
         this.runtimeReadyDispatchIntervalMillis = source.runtimeReadyDispatchIntervalMillis;
+        this.runtimeReadyDispatchIdleBackoffMaxMillis = source.runtimeReadyDispatchIdleBackoffMaxMillis;
+        this.runtimeReadyDispatchIdleBackoffPolicy = source.runtimeReadyDispatchIdleBackoffPolicy;
         this.taskMessageLeaseSeconds = source.taskMessageLeaseSeconds;
     }
 
@@ -463,6 +470,25 @@ public class EngineConfig {
 
     public void setRuntimeReadyDispatchIntervalMillis(long runtimeReadyDispatchIntervalMillis) {
         this.runtimeReadyDispatchIntervalMillis = runtimeReadyDispatchIntervalMillis;
+    }
+
+    public long getRuntimeReadyDispatchIdleBackoffMaxMillis() {
+        return runtimeReadyDispatchIdleBackoffMaxMillis;
+    }
+
+    public void setRuntimeReadyDispatchIdleBackoffMaxMillis(long runtimeReadyDispatchIdleBackoffMaxMillis) {
+        this.runtimeReadyDispatchIdleBackoffMaxMillis = runtimeReadyDispatchIdleBackoffMaxMillis;
+    }
+
+    public PollingIdleBackoffPolicy getRuntimeReadyDispatchIdleBackoffPolicy() {
+        return runtimeReadyDispatchIdleBackoffPolicy;
+    }
+
+    public void setRuntimeReadyDispatchIdleBackoffPolicy(
+            PollingIdleBackoffPolicy runtimeReadyDispatchIdleBackoffPolicy) {
+        this.runtimeReadyDispatchIdleBackoffPolicy = runtimeReadyDispatchIdleBackoffPolicy != null
+                ? runtimeReadyDispatchIdleBackoffPolicy
+                : ExponentialPollingIdleBackoffPolicy.INSTANCE;
     }
 
     public long getTaskMessageLeaseSeconds() {

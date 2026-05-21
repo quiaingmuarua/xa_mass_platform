@@ -15,6 +15,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -662,7 +663,9 @@ public class WorkerManagerTest {
 
     @Test
     void workerStatusEventListenerOnlyRefreshesHeartbeatAndLeavesModelStatusUntouched() {
-        WorkerManager.WorkerStatusEventListener listener = new WorkerManager.WorkerStatusEventListener(manager);
+        AtomicInteger wakeups = new AtomicInteger();
+        WorkerManager.WorkerStatusEventListener listener =
+                new WorkerManager.WorkerStatusEventListener(manager, wakeups::incrementAndGet);
         manager.addWorker(worker("w9", "us"));
         manager.updateOnlineStatus("w9", false);
 
@@ -670,15 +673,19 @@ public class WorkerManagerTest {
         assertFalse(manager.isWorkerOnline("w9"));
         assertNotNull(manager.getWorker("w9").getLastHeartbeat());
         assertEquals(WorkerStatus.OFFLINE, manager.getWorker("w9").getStatus());
+        assertEquals(1, wakeups.get());
 
         listener.onWorkerOffline(new WorkerOfflineEvent("w9", "disconnected", null));
         assertFalse(manager.isWorkerOnline("w9"));
         assertEquals(WorkerStatus.OFFLINE, manager.getWorker("w9").getStatus());
+        assertEquals(1, wakeups.get());
     }
 
     @Test
     void workerHeartbeatEventRefreshesLastHeartbeatWithoutChangingWorkerModelAvailability() {
-        WorkerManager.WorkerStatusEventListener listener = new WorkerManager.WorkerStatusEventListener(manager);
+        AtomicInteger wakeups = new AtomicInteger();
+        WorkerManager.WorkerStatusEventListener listener =
+                new WorkerManager.WorkerStatusEventListener(manager, wakeups::incrementAndGet);
         manager.addWorker(worker("w10", "us"));
         manager.updateOnlineStatus("w10", false);
 
@@ -687,6 +694,7 @@ public class WorkerManagerTest {
         assertFalse(manager.isWorkerOnline("w10"));
         assertNotNull(manager.getWorker("w10").getLastHeartbeat());
         assertEquals(WorkerStatus.OFFLINE, manager.getWorker("w10").getStatus());
+        assertEquals(0, wakeups.get());
     }
 
     @Test

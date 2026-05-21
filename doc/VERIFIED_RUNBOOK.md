@@ -50,6 +50,38 @@ java -cp "xa-mass-server/target/classes:xa-mass-worker-pack/target/classes:xa-ma
   com.xa.mass.server.XaMassServerApplication
 ```
 
+Compose verification entry:
+
+```bash
+./mvnw -pl xa-mass-server -am -DskipTests package
+docker compose up redis server
+```
+
+The compose entry runs the already-built server jar with `dev,redis-runtime,h2`
+profiles:
+
+- H2 file storage stores control-plane task/worker/rule truth in a compose
+  volume.
+- Redis stores engine work/result runtime plus transport delivery and presence
+  runtime truth.
+- Fixed namespaces use the `xa:mass:compose:*` prefix so compose keys are easy
+  to inspect and remove.
+
+Use it for local distributed/restart verification. Compose intentionally does
+not compile the reactor; rebuild the jar on the host after code changes. It is
+not a production image or deployment contract. Stop services without deleting
+state:
+
+```bash
+docker compose down
+```
+
+Reset compose runtime state:
+
+```bash
+docker compose down -v
+```
+
 Windows guidance:
 
 - Prefer module `target/classes` plus `logs/runtime-libs/*`.
@@ -136,6 +168,20 @@ curl -s http://127.0.0.1:8088/api/v1/tasks/{taskId} \
 - terminal tasks must be read as `status=TERMINAL` plus `terminalReason`
 - task detail response returns shell and aggregate state only
 - public API no longer exposes task-item snapshot, task-item detail, or attempt-detail query routes
+
+External worker CLI contract proof:
+
+```bash
+scripts/proof/external-worker-http-contract.sh
+```
+
+This script intentionally uses only `curl` and `jq` against a running server. It
+registers the dev-only `external-proof-polling-worker-001`, marks it online,
+reports capability/state, creates and approves an `external.proof.echo` task,
+polls work, submits a result, acknowledges a worker command, and marks the
+worker offline. It is the preferred local smoke when validating the
+repo-external polling worker API through real HTTP rather than browser or UI
+automation.
 
 ## 4. Runtime Facts To Trust
 

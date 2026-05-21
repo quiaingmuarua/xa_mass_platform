@@ -115,8 +115,13 @@ public class MassEngine {
                     runtimeRecoveryPort,
                     workerAssignListener::onTaskAssign,
                     config.getRuntimeReadyDispatchIntervalMillis(),
-                    STARTUP_READY_TASK_SCAN_LIMIT
+                    STARTUP_READY_TASK_SCAN_LIMIT,
+                    config.getAssignmentRetryDelayMillis(),
+                    config.getRuntimeReadyDispatchIdleBackoffMaxMillis(),
+                    config.getRuntimeReadyDispatchIdleBackoffPolicy()
             );
+            Runnable dispatchWakeupCallback = runtimeReadyDispatchPump::wakeIdleAdmissions;
+            config.getWorkerControlService().setDispatchWakeupCallback(dispatchWakeupCallback);
             runtimeReadyDispatchPump.start();
 
             resourceReleaseListener = new TaskResourceReleaseListener(runtimeMaintenancePort, workerManager, traceEventLogger);
@@ -141,7 +146,7 @@ public class MassEngine {
             leaseWatchdog = new LeaseExpireWatchdog(runtimeMaintenancePort, config.getLeaseWatchdogIntervalSeconds());
             leaseWatchdog.start();
 
-            runtimeBridge.start(eventListeners, workerManager);
+            runtimeBridge.start(eventListeners, workerManager, dispatchWakeupCallback);
             running = true;
             logger.info("MassEngine started successfully");
         } catch (Exception e) {
@@ -179,6 +184,7 @@ public class MassEngine {
                 runtimeBridge.stop();
                 runtimeBridge = null;
             }
+            config.getWorkerControlService().setDispatchWakeupCallback(null);
             if (leaseWatchdog != null) {
                 leaseWatchdog.stop();
                 leaseWatchdog = null;
@@ -238,5 +244,3 @@ public class MassEngine {
         }
     }
 }
-
-
