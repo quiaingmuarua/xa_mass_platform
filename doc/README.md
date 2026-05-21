@@ -20,6 +20,7 @@ Most tasks only need one contract lane plus one owner README:
   [TRACE_CONTRACT.md](./TRACE_CONTRACT.md),
   [PROOF_REGISTRY.md](./PROOF_REGISTRY.md),
   [OBSERVABILITY_AND_TEST_PROOF_ROADMAP.md](./OBSERVABILITY_AND_TEST_PROOF_ROADMAP.md),
+  [WORKER_FAULT_MATRIX_ROADMAP.md](./WORKER_FAULT_MATRIX_ROADMAP.md),
   [TESTING_INDEX.md](./TESTING_INDEX.md)
 - result owner split / runtime result truth:
   [RESULT_BOUNDARY_BASELINE.md](./RESULT_BOUNDARY_BASELINE.md)
@@ -50,6 +51,7 @@ Most tasks only need one contract lane plus one owner README:
 | [TESTING_INDEX.md](./TESTING_INDEX.md) | current testing entry, CI truth, and minimum verification map |
 | [TESTING_BASELINE.md](./TESTING_BASELINE.md) | acceptance lanes and test matrix |
 | [OBSERVABILITY_AND_TEST_PROOF_ROADMAP.md](./OBSERVABILITY_AND_TEST_PROOF_ROADMAP.md) | trace/query/invariant direction for systematic proof without scattered tests |
+| [WORKER_FAULT_MATRIX_ROADMAP.md](./WORKER_FAULT_MATRIX_ROADMAP.md) | worker/resource fault matrix direction for non-ideal full-flow testing |
 | [E2E_BASELINE.md](./E2E_BASELINE.md) | Boot-shell E2E scope |
 | [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md) | verified startup and regression commands |
 | [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md) | current HTTP/API contract |
