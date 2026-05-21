@@ -82,18 +82,6 @@ public class JdbcWorkerStorage extends JdbcStorageSupport implements WorkerStora
     }
 
     @Override
-    public List<Worker> getWorkersBySupportedProject(String project) {
-        ensureLoaded();
-        return runtimeProjection.getWorkersBySupportedProject(project);
-    }
-
-    @Override
-    public List<Worker> getWorkersBySupportedEventCode(String eventCode) {
-        ensureLoaded();
-        return runtimeProjection.getWorkersBySupportedEventCode(eventCode);
-    }
-
-    @Override
     public List<Worker> getAllWorkers() {
         ensureLoaded();
         return runtimeProjection.getAllWorkers();
@@ -201,4 +189,3 @@ public class JdbcWorkerStorage extends JdbcStorageSupport implements WorkerStora
         }
     }
 }
-

@@ -18,8 +18,17 @@ public class EventListenerRegistry {
             EventBusFacade eventBus,
             WorkerManager workerManager
     ) {
+        return registerWorkerStatusListeners(eventBus, workerManager, null);
+    }
+
+    public static WorkerManager.WorkerStatusEventListener registerWorkerStatusListeners(
+            EventBusFacade eventBus,
+            WorkerManager workerManager,
+            Runnable dispatchWakeupCallback
+    ) {
         log.info("registerWorkerStatusListeners: register worker status event listeners ...");
-        WorkerManager.WorkerStatusEventListener listener = new WorkerManager.WorkerStatusEventListener(workerManager);
+        WorkerManager.WorkerStatusEventListener listener =
+                new WorkerManager.WorkerStatusEventListener(workerManager, dispatchWakeupCallback);
         eventBus.register(listener);
         return listener;
     }

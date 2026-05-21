@@ -101,6 +101,8 @@ Use with:
 - perf, SDK harness, and chaos: [../xa-mass-testing/README.md](../xa-mass-testing/README.md)
 - Boot-shell E2E suite map: [../xa-mass-server/README.md](../xa-mass-server/README.md)
 - external worker sample lane: `./scripts/run-external-worker-samples.sh`
+- external worker CLI HTTP contract smoke:
+  `./scripts/proof/external-worker-http-contract.sh`
 
 ## 4. Lane Intent
 

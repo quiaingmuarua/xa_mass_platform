@@ -709,6 +709,61 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void adapterNodeAndNodeGroupBindingDoNotOwnCapabilityTruth() throws IOException {
+        Path workerPackage = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker");
+        List<Path> ownerPaths = List.of(
+                workerPackage.resolve("AdapterNodeRecord.java"),
+                workerPackage.resolve("NodeGroupBindingRecord.java")
+        );
+        Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
+                Map.entry("eventBindings", Pattern.compile("\\beventBindings\\b")),
+                Map.entry("eventCodes", Pattern.compile("\\beventCodes\\b")),
+                Map.entry("EventBinding", Pattern.compile("\\bEventBinding\\b")),
+                Map.entry("EventKey", Pattern.compile("\\bEventKey\\b")),
+                Map.entry("WorkerCapability", Pattern.compile("\\bWorkerCapability"))
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Path path : ownerPaths) {
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            for (Map.Entry<String, Pattern> forbiddenPattern : forbiddenPatterns.entrySet()) {
+                if (forbiddenPattern.getValue().matcher(source).find()) {
+                    violations.add(path + " owns capability truth token: " + forbiddenPattern.getKey());
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "AdapterNode and NodeGroupBinding are relation/diagnostic owners only. "
+                        + "WorkerGroup remains the capability truth owner:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void workerGroupAdapterNodeRelationTruthIsRemoved() throws IOException {
+        Path workerPackage = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker");
+        Map<Path, Pattern> forbiddenPatterns = Map.of(
+                workerPackage.resolve("WorkerGroupRecord.java"),
+                Pattern.compile("\\badapterNodeId\\b"),
+                workerPackage.resolve("WorkerRegistrySnapshot.java"),
+                Pattern.compile("\\bgroupIdsByAdapterNodeId\\b")
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Map.Entry<Path, Pattern> forbiddenPattern : forbiddenPatterns.entrySet()) {
+            String source = Files.readString(forbiddenPattern.getKey(), StandardCharsets.UTF_8);
+            if (forbiddenPattern.getValue().matcher(source).find()) {
+                violations.add(forbiddenPattern.getKey() + " reintroduces group-owned node relation truth");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "WorkerGroup no longer owns adapter-node relation truth. "
+                        + "Use NodeGroupBinding for node/group relation queries:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void workerCandidateIndexStaysOnGroupCapabilityTruth() throws IOException {
         Path indexPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/worker/WorkerCandidateIndex.java");
@@ -717,6 +772,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
         Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
                 Map.entry("supportedProjects", Pattern.compile("\\.getSupportedProjects\\s*\\(")),
                 Map.entry("supportedEventCodes", Pattern.compile("\\.getSupportedEventCodes\\s*\\(")),
+                Map.entry("AdapterNode", Pattern.compile("\\bAdapterNode")),
+                Map.entry("NodeGroupBinding", Pattern.compile("\\bNodeGroupBinding")),
                 Map.entry("WorkerManager", Pattern.compile("\\bWorkerManager\\b")),
                 Map.entry("WorkerStorage", Pattern.compile("\\bWorkerStorage\\b")),
                 Map.entry("all-workers scan", Pattern.compile("\\.getAllWorkers\\s*\\("))
@@ -828,6 +885,27 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "WG candidate source must flow through WorkerCandidateIndex for target, event, and project "
                         + "lookup. Do not reintroduce worker-level supportedProject/supportedEvent storage "
                         + "indexes as active scheduling candidate sources:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void workerStorageDoesNotExposeWorkerCapabilityCandidateLookup() throws IOException {
+        Path workerStoragePath = repositoryRoot().resolve(
+                "platform_infra/mass-storage-api/src/main/java/com/xa/mass/storage/api/WorkerStorage.java");
+        String source = Files.readString(workerStoragePath, StandardCharsets.UTF_8);
+
+        List<String> violations = new ArrayList<>();
+        if (Pattern.compile("\\bgetWorkersBySupportedEventCode\\s*\\(").matcher(source).find()) {
+            violations.add(workerStoragePath + " exposes supported-event candidate lookup");
+        }
+        if (Pattern.compile("\\bgetWorkersBySupportedProject\\s*\\(").matcher(source).find()) {
+            violations.add(workerStoragePath + " exposes supported-project candidate lookup");
+        }
+
+        assertTrue(violations.isEmpty(),
+                "WorkerStorage must stay control-plane worker-row storage. Capability candidate "
+                        + "lookup belongs to WorkerRegistrySnapshot / WorkerCandidateIndex, not DB-backed "
+                        + "storage APIs:\n"
                         + String.join("\n", violations));
     }
 

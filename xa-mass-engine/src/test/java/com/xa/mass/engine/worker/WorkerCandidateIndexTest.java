@@ -79,11 +79,9 @@ public class WorkerCandidateIndexTest {
     void projectOnlyTasksUseGroupProjectCapability() {
         WorkerCandidateIndex index = new WorkerCandidateIndex(WorkerRegistrySnapshot.from(List.of(
                 WorkerGroupRecord.builder("crawler")
-                        .adapterNodeId("node-a")
                         .projectCodes(List.of("demoApp"))
                         .build(),
                 WorkerGroupRecord.builder("export")
-                        .adapterNodeId("node-a")
                         .projectCodes(List.of("otherApp"))
                         .build()
         ), List.of(
@@ -117,7 +115,6 @@ public class WorkerCandidateIndexTest {
 
     private static WorkerGroupRecord group(String groupId, String adapterNodeId, EventBinding binding) {
         return WorkerGroupRecord.builder(groupId)
-                .adapterNodeId(adapterNodeId)
                 .eventBindings(List.of(binding))
                 .build();
     }

@@ -26,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.*;
                 "mass.mock.data.workers=mock/test_mock_workers.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json",
-                "sample.client.retry-attempts=1",
+                "sample.client.retry-attempts=3",
                 "sample.client.retry-delay=1",
                 "sample.client.connection-timeout=5",
                 "sample.client.ping-delay=60",
@@ -58,6 +58,8 @@ class TaskApiTargetedWorkerDebugIntegrationTest extends ProjectionSampleE2eTest 
 
     @Test
     void targetedMockDebugTasksFlowThroughTaskMainline() throws Exception {
+        assertMinOnlineWorkers(2);
+
         String delayTaskId = createTargetedDebugTask(
                 "targeted-delay-response",
                 "mock.delay.response",
@@ -95,6 +97,8 @@ class TaskApiTargetedWorkerDebugIntegrationTest extends ProjectionSampleE2eTest 
 
     @Test
     void targetedDisconnectTaskDisconnectsWorkerAfterTaskResult() throws Exception {
+        assertMinOnlineWorkers(2);
+
         String taskId = createTargetedDebugTask(
                 "targeted-disconnect",
                 "mock.disconnect",

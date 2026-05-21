@@ -14,6 +14,7 @@ import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskResultWindow;
 import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskSyncAppendOutcome;
 import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskTimestamps;
 import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskUpdateOutcome;
+import com.xa.mass.sdk.authz.TaskOwnershipStamp;
 import com.xa.mass.sdk.model.TaskCommandResult;
 import com.xa.mass.sdk.model.TaskDetailSnapshot;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
@@ -179,6 +180,7 @@ final class TaskApiContractAssembler {
                 task.getTerminalReason(),
                 null,
                 null,
+                null,
                 execution,
                 execution,
                 counters,
@@ -236,6 +238,7 @@ final class TaskApiContractAssembler {
                 task.getTerminalReason(),
                 task.getHoldReason(),
                 task.getSourceRef(),
+                sanitizeSharedConfig(task.getSharedConfig()),
                 execution,
                 execution,
                 counters,
@@ -286,6 +289,7 @@ final class TaskApiContractAssembler {
                 null,
                 null,
                 task.getSourceRef(),
+                null,
                 execution,
                 execution,
                 counters,
@@ -345,6 +349,15 @@ final class TaskApiContractAssembler {
                 normalized.getDefaultMaxRetryCount(),
                 normalized.isForeground()
         );
+    }
+
+    private Map<String, Object> sanitizeSharedConfig(Map<String, Object> sharedConfig) {
+        if (sharedConfig == null || sharedConfig.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> sanitized = new java.util.LinkedHashMap<>(sharedConfig);
+        sanitized.remove(TaskOwnershipStamp.SHARED_CONFIG_KEY);
+        return Map.copyOf(sanitized);
     }
 
     private String enumName(Enum<?> value) {

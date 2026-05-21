@@ -10,6 +10,7 @@ import java.util.Map;
 public class ExternalWorkerRegisterApiRequest extends AbstractUnknownFieldRequest {
 
     private String workerId;
+    private String adapterNodeId;
     private String workerGroupId;
     private String adapterId;
     private String transportHint;
@@ -22,6 +23,14 @@ public class ExternalWorkerRegisterApiRequest extends AbstractUnknownFieldReques
 
     public void setWorkerId(String workerId) {
         this.workerId = workerId;
+    }
+
+    public String getAdapterNodeId() {
+        return adapterNodeId;
+    }
+
+    public void setAdapterNodeId(String adapterNodeId) {
+        this.adapterNodeId = adapterNodeId;
     }
 
     public String getWorkerGroupId() {

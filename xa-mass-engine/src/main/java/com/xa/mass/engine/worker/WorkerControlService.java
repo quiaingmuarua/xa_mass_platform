@@ -6,8 +6,11 @@ import com.xa.mass.engine.command.WorkerCommandLifecycleResult;
 import com.xa.mass.engine.command.WorkerCommandRecord;
 import com.xa.mass.engine.command.WorkerCommandRequest;
 import com.xa.mass.engine.util.TraceEventLogger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -20,6 +23,7 @@ import java.util.Optional;
  * event payloads and call this service instead of owning mutation themselves.</p>
  */
 public final class WorkerControlService {
+    private static final Logger log = LoggerFactory.getLogger(WorkerControlService.class);
 
     private final WorkerManager workerManager;
     private final WorkerCommandLifecycleOwner commandLifecycleOwner;
@@ -27,6 +31,8 @@ public final class WorkerControlService {
     private final WorkerDispatchAvailabilityOwner dispatchAvailabilityOwner;
     private final WorkerDispatchAvailabilityPolicy dispatchAvailabilityPolicy;
     private final TraceEventLogger traceEventLogger;
+    private volatile Runnable dispatchWakeupCallback = () -> {
+    };
 
     public WorkerControlService(WorkerManager workerManager,
                                 WorkerCommandLifecycleOwner commandLifecycleOwner,
@@ -73,6 +79,9 @@ public final class WorkerControlService {
 
     public WorkerCapabilityReportResult applyWorkerCapabilityReport(WorkerCapabilityReport report) {
         WorkerCapabilityReportResult result = workerManager.applyWorkerCapabilityReport(report);
+        if (result.success() && result.snapshotChanged()) {
+            notifyDispatchWakeup();
+        }
         traceEventLogger.workerCapabilityReportApplied(result);
         return result;
     }
@@ -81,6 +90,11 @@ public final class WorkerControlService {
         WorkerStateProjectionResult result = stateProjectionOwner.applyReport(report);
         if (result.success()) {
             dispatchAvailabilityPolicy.applyWorkerStateProjection(result.projection(), dispatchAvailabilityOwner);
+            if (isAvailableState(result.projection())
+                    && workerManager.getWorker(result.workerId()) != null
+                    && dispatchAvailabilityOwner.isDispatchEnabled(result.workerId())) {
+                notifyDispatchWakeup();
+            }
         }
         traceEventLogger.workerStateReportApplied(result);
         return result;
@@ -115,5 +129,25 @@ public final class WorkerControlService {
 
     public List<WorkerStateProjection> workerStateProjections() {
         return stateProjectionOwner.projections();
+    }
+
+    public void setDispatchWakeupCallback(Runnable dispatchWakeupCallback) {
+        this.dispatchWakeupCallback = dispatchWakeupCallback != null ? dispatchWakeupCallback : () -> {
+        };
+    }
+
+    private boolean isAvailableState(WorkerStateProjection projection) {
+        if (projection == null || projection.state() == null) {
+            return false;
+        }
+        return "AVAILABLE".equals(projection.state().trim().toUpperCase(Locale.ROOT));
+    }
+
+    private void notifyDispatchWakeup() {
+        try {
+            dispatchWakeupCallback.run();
+        } catch (RuntimeException e) {
+            log.warn("Worker dispatch wakeup callback failed", e);
+        }
     }
 }

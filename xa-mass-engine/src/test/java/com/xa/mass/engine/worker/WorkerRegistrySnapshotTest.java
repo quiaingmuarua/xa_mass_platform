@@ -15,9 +15,9 @@ public class WorkerRegistrySnapshotTest {
 
     @Test
     void indexesGroupsByConcreteEventKey() {
-        WorkerGroupRecord crawler = group("crawler", "node-a",
+        WorkerGroupRecord crawler = group("crawler",
                 EventBinding.of("crawler.fetch", List.of("demoApp", "searchApp")));
-        WorkerGroupRecord export = group("export", "node-b",
+        WorkerGroupRecord export = group("export",
                 EventBinding.of("report.export", List.of("reportApp")));
 
         WorkerRegistrySnapshot snapshot = WorkerRegistrySnapshot.from(List.of(crawler, export), List.of(
@@ -35,49 +35,41 @@ public class WorkerRegistrySnapshotTest {
     }
 
     @Test
-    void indexesOneAdapterNodeHostingMultipleGroups() {
-        WorkerRegistrySnapshot snapshot = WorkerRegistrySnapshot.from(List.of(
-                group("crawler", "adapter-node-1", EventBinding.of("crawler.fetch", List.of("demoApp"))),
-                group("export", "adapter-node-1", EventBinding.of("report.export", List.of("reportApp"))),
-                group("other", "adapter-node-2", EventBinding.of("other.event", List.of("otherApp")))
-        ), List.of());
-
-        assertEquals(Set.of("crawler", "export"),
-                snapshot.groupIdsByAdapterNodeId("adapter-node-1"));
-        assertEquals(Set.of("other"),
-                snapshot.groupIdsByAdapterNodeId("adapter-node-2"));
-    }
-
-    @Test
     void workerRegisterUpdateAndDeleteRebuildsWorkerIndexes() {
         WorkerRegistrySnapshot snapshot = WorkerRegistrySnapshot.from(List.of(
-                group("crawler", "node-a", EventBinding.of("crawler.fetch", List.of("demoApp"))),
-                group("export", "node-b", EventBinding.of("report.export", List.of("reportApp")))
-        ), List.of(worker("worker-1", "crawler")));
+                group("crawler", EventBinding.of("crawler.fetch", List.of("demoApp"))),
+                group("export", EventBinding.of("report.export", List.of("reportApp")))
+        ), List.of(worker("worker-1", "node-a", "crawler")));
 
         assertEquals(Set.of("worker-1"), snapshot.workerIdsByGroupId("crawler"));
+        assertEquals(Set.of("worker-1"), snapshot.workerIdsByAdapterNodeId("node-a"));
+        assertEquals(Set.of("worker-1"), snapshot.workerIdsByAdapterNodeGroup("node-a", "crawler"));
         assertEquals("crawler", snapshot.groupIdByWorkerId("worker-1").orElseThrow());
 
-        WorkerRegistrySnapshot moved = snapshot.withWorker(worker("worker-1", "export"));
+        WorkerRegistrySnapshot moved = snapshot.withWorker(worker("worker-1", "node-b", "export"));
 
         assertTrue(moved.workerIdsByGroupId("crawler").isEmpty());
+        assertTrue(moved.workerIdsByAdapterNodeGroup("node-a", "crawler").isEmpty());
         assertEquals(Set.of("worker-1"), moved.workerIdsByGroupId("export"));
+        assertEquals(Set.of("worker-1"), moved.workerIdsByAdapterNodeId("node-b"));
+        assertEquals(Set.of("worker-1"), moved.workerIdsByAdapterNodeGroup("node-b", "export"));
         assertEquals("export", moved.groupIdByWorkerId("worker-1").orElseThrow());
 
         WorkerRegistrySnapshot deleted = moved.withoutWorker("worker-1");
 
         assertTrue(deleted.workerIdsByGroupId("export").isEmpty());
+        assertTrue(deleted.workerIdsByAdapterNodeId("node-b").isEmpty());
+        assertTrue(deleted.workerIdsByAdapterNodeGroup("node-b", "export").isEmpty());
         assertTrue(deleted.groupIdByWorkerId("worker-1").isEmpty());
     }
 
     @Test
-    void groupUpdateAndDeleteRebuildsEventAndAdapterIndexes() {
-        WorkerGroupRecord initial = group("crawler", "node-a",
+    void groupUpdateAndDeleteRebuildsEventIndexes() {
+        WorkerGroupRecord initial = group("crawler",
                 EventBinding.of("crawler.fetch", List.of("demoApp")));
         WorkerRegistrySnapshot snapshot = WorkerRegistrySnapshot.from(List.of(initial), List.of());
 
         WorkerGroupRecord updated = WorkerGroupRecord.builder("crawler")
-                .adapterNodeId("node-b")
                 .eventBindings(List.of(EventBinding.of("crawler.parse", List.of("parserApp"))))
                 .defaultAttributes(Map.of("region", "us"))
                 .defaultMaxConcurrentWork(3)
@@ -85,17 +77,13 @@ public class WorkerRegistrySnapshotTest {
         WorkerRegistrySnapshot reRegistered = snapshot.withGroup(updated);
 
         assertTrue(reRegistered.groupIdsByEventKey(new EventKey("demoApp", "crawler.fetch")).isEmpty());
-        assertTrue(reRegistered.groupIdsByAdapterNodeId("node-a").isEmpty());
         assertEquals(Set.of("crawler"),
                 reRegistered.groupIdsByEventKey(new EventKey("parserApp", "crawler.parse")));
-        assertEquals(Set.of("crawler"),
-                reRegistered.groupIdsByAdapterNodeId("node-b"));
         assertEquals(3, reRegistered.group("crawler").orElseThrow().defaultMaxConcurrentWork());
 
         WorkerRegistrySnapshot deleted = reRegistered.withoutGroup("crawler");
 
         assertTrue(deleted.groupIdsByEventKey(new EventKey("parserApp", "crawler.parse")).isEmpty());
-        assertTrue(deleted.groupIdsByAdapterNodeId("node-b").isEmpty());
         assertTrue(deleted.group("crawler").isEmpty());
     }
 
@@ -112,16 +100,20 @@ public class WorkerRegistrySnapshotTest {
         assertThrows(IllegalArgumentException.class, () -> new EventKey("demoApp", " "));
     }
 
-    private static WorkerGroupRecord group(String groupId, String adapterNodeId, EventBinding binding) {
+    private static WorkerGroupRecord group(String groupId, EventBinding binding) {
         return WorkerGroupRecord.builder(groupId)
-                .adapterNodeId(adapterNodeId)
                 .eventBindings(List.of(binding))
                 .build();
     }
 
     private static Worker worker(String workerId, String groupId) {
+        return worker(workerId, null, groupId);
+    }
+
+    private static Worker worker(String workerId, String adapterNodeId, String groupId) {
         Worker worker = new Worker();
         worker.setWorkerId(workerId);
+        worker.setAdapterNodeId(adapterNodeId);
         worker.setWorkerGroupId(groupId);
         return worker;
     }

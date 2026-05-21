@@ -94,6 +94,17 @@ Use the real Boot shell plus the sample READMEs:
 - sample matrix and black-box role: [../samples/README.md](../samples/README.md)
 - per-sample commands: `samples/*/README.md`
 
+For a CLI-only public-contract smoke against an already running dev server, use:
+
+```bash
+scripts/proof/external-worker-http-contract.sh
+```
+
+The script uses only `curl` and `jq`. It drives `/worker-api/v1/**` through the
+stable polling contract and uses the dev-only `external.proof.echo` event plus
+`external-proof-submitter-key` / `external-proof-worker-key` credentials so it
+does not race the built-in demo workers.
+
 Producer traffic uses shell create plus explicit ingest:
 
 ```bash

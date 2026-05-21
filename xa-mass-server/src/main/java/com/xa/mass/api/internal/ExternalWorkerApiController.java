@@ -102,6 +102,7 @@ public class ExternalWorkerApiController {
         String transportHint = resolveSupportedTransportHint(requestBody.getTransportHint());
         WorkerRegistration request = WorkerRegistration.builder()
                 .workerId(workerId)
+                .adapterNodeId(blankToNull(requestBody.getAdapterNodeId()))
                 .workerGroupId(blankToNull(requestBody.getWorkerGroupId()))
                 .adapterId(blankToNull(requestBody.getAdapterId()))
                 .transportHint(transportHint)
@@ -109,13 +110,24 @@ public class ExternalWorkerApiController {
                 .eventBindings(eventBindings)
                 .build();
         workerRegistry.registerWorker(request);
-        return ApiResponse.success(Map.of(
-                "workerId", request.getWorkerId(),
-                "workerGroupId", request.getWorkerGroupId(),
-                "adapterId", workerClient.getWorkerAdapterId(workerId),
-                "transportHint", transportHint,
-                "eventBindings", request.getEventBindings()
-        ));
+        String effectiveAdapterId = workerClient.getWorkerAdapterId(workerId);
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("workerId", request.getWorkerId());
+        response.put("adapterNodeId", effectiveAdapterNodeId(request, effectiveAdapterId));
+        response.put("workerGroupId", request.getWorkerGroupId());
+        response.put("adapterId", effectiveAdapterId);
+        response.put("transportHint", transportHint);
+        response.put("eventBindings", request.getEventBindings());
+        return ApiResponse.success(response);
+    }
+
+    private String effectiveAdapterNodeId(WorkerRegistration request, String effectiveAdapterId) {
+        String explicitAdapterNodeId = blankToNull(request.getAdapterNodeId());
+        if (explicitAdapterNodeId != null) {
+            return explicitAdapterNodeId;
+        }
+        String requestedAdapterId = blankToNull(request.getAdapterId());
+        return requestedAdapterId != null ? requestedAdapterId : blankToNull(effectiveAdapterId);
     }
 
     @PostMapping("/workers/{workerId}:online")

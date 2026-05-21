@@ -34,6 +34,7 @@ import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.model.TaskAppendReceipt;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
+import com.xa.mass.engine.watchdog.PollingIdleBackoffPolicy;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.WorkerLookupStore;
 import com.xa.mass.storage.api.WorkerStorage;
@@ -153,12 +154,15 @@ class MassSdkTest {
 
     @Test
     void engineOptionsExposeChaosTuningKnobs() {
+        PollingIdleBackoffPolicy idleBackoffPolicy = decision -> 250L;
         MassSdkApplication app = MassSdk.builder()
                 .transport(transport -> transport
                         .webSocketAdapter(webSocket -> webSocket.enabled(false).serverEnabled(false)))
                 .engine(engine -> engine
                         .enabled(true)
                         .assignmentRetryDelayMillis(125L)
+                        .runtimeReadyDispatchIdleBackoffMaxMillis(2_000L)
+                        .runtimeReadyDispatchIdleBackoffPolicy(idleBackoffPolicy)
                         .leaseWatchdogIntervalSeconds(3L)
                         .taskMessageLeaseSeconds(7L))
                 .build();
@@ -167,6 +171,8 @@ class MassSdkTest {
 
         assertNotNull(engine);
         assertEquals(125L, engine.getConfig().getAssignmentRetryDelayMillis());
+        assertEquals(2_000L, engine.getConfig().getRuntimeReadyDispatchIdleBackoffMaxMillis());
+        assertEquals(idleBackoffPolicy, engine.getConfig().getRuntimeReadyDispatchIdleBackoffPolicy());
         assertEquals(3L, engine.getConfig().getLeaseWatchdogIntervalSeconds());
         assertEquals(7L, engine.getConfig().getTaskMessageLeaseSeconds());
     }
@@ -3568,5 +3574,3 @@ class MassSdkTest {
     }
 
 }
-
-

@@ -37,6 +37,13 @@ public final class RuntimeEventBusEngineBridge implements EngineRuntimeBridge {
 
     @Override
     public void start(TaskEventListenerRegistrar eventListeners, WorkerManager workerManager) {
+        start(eventListeners, workerManager, null);
+    }
+
+    @Override
+    public void start(TaskEventListenerRegistrar eventListeners,
+                      WorkerManager workerManager,
+                      Runnable dispatchWakeupCallback) {
         stop();
         @SuppressWarnings("unchecked")
         EventBusFacade<Object> bus = (EventBusFacade<Object>) eventBus;
@@ -45,7 +52,8 @@ public final class RuntimeEventBusEngineBridge implements EngineRuntimeBridge {
         this.taskAssignedListener = task -> bus.post(new TaskAssignedEvent(task, null, null));
         registeredEventListeners.addTaskCreatedListener(taskCreatedListener);
         registeredEventListeners.addTaskAssignedListener(taskAssignedListener);
-        this.workerStatusEventListener = EventListenerRegistry.registerWorkerStatusListeners(eventBus, workerManager);
+        this.workerStatusEventListener =
+                EventListenerRegistry.registerWorkerStatusListeners(eventBus, workerManager, dispatchWakeupCallback);
     }
 
     @Override

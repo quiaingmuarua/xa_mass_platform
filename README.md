@@ -19,6 +19,18 @@ Additional current baseline:
 - [doc/HIGH_VOLUME_MODEL_BASELINE.md](./doc/HIGH_VOLUME_MODEL_BASELINE.md)
 - [xa-mass-trace/README.md](./xa-mass-trace/README.md)
 
+Local distributed verification:
+
+```bash
+./mvnw -pl xa-mass-server -am -DskipTests package
+docker compose up redis server
+```
+
+Compose runs the already-built server jar with `dev,redis-runtime,h2`: H2 file
+storage for control-plane truth and Redis for engine/transport runtime truth.
+See [doc/VERIFIED_RUNBOOK.md](./doc/VERIFIED_RUNBOOK.md) for reset and smoke
+commands.
+
 ## What It Is
 
 XA Mass Platform is a general distributed task scheduling platform.

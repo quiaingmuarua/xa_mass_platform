@@ -25,6 +25,7 @@ public final class SdkResourceMapper {
         String transportHint = WorkerTransportHints.normalize(requireNonBlank(request.getTransportHint(), "transportHint"));
         Worker worker = new Worker();
         worker.setWorkerId(workerId);
+        worker.setAdapterNodeId(blankToNull(request.getAdapterNodeId()));
         worker.setWorkerGroupId(blankToNull(request.getWorkerGroupId()));
         worker.setSupportedProjects(normalizedList(request.getSupportedProjects()));
         worker.setSupportedEventCodes(normalizedList(request.getSupportedEventCodes()));
@@ -78,4 +79,3 @@ public final class SdkResourceMapper {
         return normalized.isEmpty() ? Collections.emptyMap() : Map.copyOf(normalized);
     }
 }
-

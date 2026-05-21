@@ -5,18 +5,17 @@ import com.xa.mass.runtime.queue.KeyedQueueOfferResult;
 import com.xa.mass.runtime.queue.KeyedQueuePollResult;
 import com.xa.mass.runtime.queue.KeyedQueuePollStatus;
 import com.xa.mass.runtime.queue.KeyedQueueSnapshot;
+import com.xa.mass.runtime.redis.RedisRuntimeTestSupport;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
-import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -36,18 +35,12 @@ class RedisKeyedBlockingQueueStoreTest {
 
     @BeforeEach
     void setUp() {
-        String redisUri = System.getProperty("mass.redis.test.uri", "redis://127.0.0.1:6379/0");
-        try {
-            redisClient = RedisClient.create(redisUri);
-            connection = redisClient.connect();
-            observerConnection = redisClient.connect();
-            commands = connection.sync();
-            observerCommands = observerConnection.sync();
-        } catch (RuntimeException ex) {
-            Assumptions.assumeTrue(false, "Redis is not available for queue test: " + ex.getMessage());
-            throw ex;
-        }
-        namespace = new RedisKeyedQueueNamespace("xa:mass:test:keyed-queue:" + UUID.randomUUID());
+        redisClient = RedisRuntimeTestSupport.createClientOrSkip("queue test");
+        connection = redisClient.connect();
+        observerConnection = redisClient.connect();
+        commands = connection.sync();
+        observerCommands = observerConnection.sync();
+        namespace = new RedisKeyedQueueNamespace(RedisRuntimeTestSupport.namespace("keyed-queue"));
         store = new RedisKeyedBlockingQueueStore<>(
                 connection,
                 namespace,
@@ -59,15 +52,10 @@ class RedisKeyedBlockingQueueStoreTest {
 
     @AfterEach
     void tearDown() {
-        if (observerConnection != null && observerConnection.isOpen()) {
-            for (String encodedKeyPart : observerCommands.smembers(namespace.activeQueuesKey())) {
-                observerCommands.del(namespace.queueKey(encodedKeyPart), namespace.metaKey(encodedKeyPart));
-            }
-            observerCommands.del(namespace.activeQueuesKey(), namespace.globalStatsKey());
-        }
         if (store != null) {
             store.shutdown();
         }
+        RedisRuntimeTestSupport.cleanupNamespace(observerCommands, namespace == null ? null : namespace.prefix());
         if (connection != null && connection.isOpen()) {
             connection.close();
         }

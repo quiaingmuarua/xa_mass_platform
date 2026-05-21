@@ -13,7 +13,6 @@ import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -21,7 +20,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -44,18 +42,12 @@ class RedisTaskWorkRuntimeTest {
 
     @BeforeEach
     void setUp() {
-        String redisUri = System.getProperty("mass.redis.test.uri", "redis://127.0.0.1:6379/0");
-        try {
-            redisClient = RedisClient.create(redisUri);
-            connection = redisClient.connect();
-            observerConnection = redisClient.connect();
-            commands = observerConnection.sync();
-        } catch (RuntimeException ex) {
-            Assumptions.assumeTrue(false, "Redis is not available for runtime test: " + ex.getMessage());
-            throw ex;
-        }
+        redisClient = RedisRuntimeTestSupport.createClientOrSkip("runtime test");
+        connection = redisClient.connect();
+        observerConnection = redisClient.connect();
+        commands = observerConnection.sync();
         now = new AtomicReference<>(Instant.parse("2026-05-06T00:00:00Z"));
-        keyspace = new RedisTaskWorkKeyspace("xa:mass:test:redis-runtime:" + UUID.randomUUID());
+        keyspace = new RedisTaskWorkKeyspace(RedisRuntimeTestSupport.namespace("redis-runtime"));
         runtime = new RedisTaskWorkRuntime(connection, keyspace, 1024, now::get);
     }
 
@@ -64,6 +56,7 @@ class RedisTaskWorkRuntimeTest {
         if (runtime != null) {
             runtime.shutdown();
         }
+        RedisRuntimeTestSupport.cleanupNamespace(commands, keyspace == null ? null : keyspace.namespace());
         if (connection != null && connection.isOpen()) {
             connection.close();
         }
@@ -160,31 +153,100 @@ class RedisTaskWorkRuntimeTest {
     }
 
     @Test
-    void shutdownClearsOnlyCurrentNamespaceResidue() {
-        RedisTaskWorkKeyspace other = new RedisTaskWorkKeyspace("xa:mass:test:redis-runtime:other:" + UUID.randomUUID());
-        commands.sadd(other.taskRegistrySet(), "foreign-task");
-        commands.rpush(other.taskReadyQueue("foreign-task"), "foreign-msg");
-        commands.zadd(other.readyTasksZset(), now.get().toEpochMilli(), "foreign-task");
+    void shutdownPreservesRedisRuntimeStateForRestartRecovery() {
+        RedisTaskWorkKeyspace other = new RedisTaskWorkKeyspace(RedisRuntimeTestSupport.namespace("redis-runtime-other"));
+        try {
+            commands.sadd(other.taskRegistrySet(), "foreign-task");
+            commands.rpush(other.taskReadyQueue("foreign-task"), "foreign-msg");
+            commands.zadd(other.readyTasksZset(), now.get().toEpochMilli(), "foreign-task");
 
-        runtime.enqueue(item("task-shutdown", "msg-1"), WorkEnqueueOptions.DEFAULT);
-        runtime.enqueue(delayedItem("task-shutdown", "msg-2", now.get().plusSeconds(60)), WorkEnqueueOptions.DEFAULT);
+            runtime.enqueue(item("task-shutdown", "msg-1"), WorkEnqueueOptions.DEFAULT);
+            ClaimedTaskWork claimed = runtime.claimReady(
+                    "task-shutdown",
+                    List.of(WorkerClaimTarget.workerLevel("worker-1", "batch-1", 1)),
+                    1,
+                    10
+            ).get(0);
+            runtime.enqueue(delayedItem("task-shutdown", "msg-2", now.get().plusSeconds(60)), WorkEnqueueOptions.DEFAULT);
 
-        runtime.shutdown();
+            runtime.shutdown();
 
-        assertTrue(commands.exists(
-                keyspace.taskRegistrySet(),
-                keyspace.readyTasksZset(),
-                keyspace.delayedWorkZset(),
-                keyspace.taskReadyQueue("task-shutdown"),
-                keyspace.taskDelayedZset("task-shutdown"),
-                keyspace.taskMembersSet("task-shutdown"),
-                keyspace.taskWorkHash("task-shutdown", "msg-1"),
-                keyspace.taskWorkHash("task-shutdown", "msg-2")
-        ) == 0);
+            String workMember = keyspace.workMember("task-shutdown", "msg-1");
+            assertTrue(commands.exists(
+                    keyspace.taskRegistrySet(),
+                    keyspace.delayedWorkZset(),
+                    keyspace.taskDelayedZset("task-shutdown"),
+                    keyspace.taskMembersSet("task-shutdown"),
+                    keyspace.taskWorkHash("task-shutdown", "msg-1"),
+                    keyspace.taskLeaseHash("task-shutdown", "msg-1")
+            ) > 0);
+            assertEquals(Set.of(workMember), commands.smembers(keyspace.taskActiveSet("task-shutdown")));
+            assertEquals(Set.of(workMember), commands.smembers(keyspace.workerActiveSet("worker-1")));
+            assertEquals(List.of(workMember), commands.zrange(keyspace.leaseExpiryZset(), 0, -1));
 
-        assertEquals(Set.of("foreign-task"), commands.smembers(other.taskRegistrySet()));
-        assertEquals(List.of("foreign-msg"), commands.lrange(other.taskReadyQueue("foreign-task"), 0, -1));
-        assertEquals(List.of("foreign-task"), commands.zrange(other.readyTasksZset(), 0, -1));
+            StatefulRedisConnection<String, String> restartedConnection = redisClient.connect();
+            RedisTaskWorkRuntime restarted = new RedisTaskWorkRuntime(restartedConnection, keyspace, 1024, now::get);
+            try {
+                assertTrue(restarted.hasActiveLeaseForWorker("task-shutdown", "worker-1"));
+                assertEquals(List.of(claimed.leaseToken()),
+                        restarted.pollExpiredLeases(10, now.get().plusSeconds(11)).stream()
+                                .map(lease -> lease.leaseToken())
+                                .toList());
+                assertEquals(ResultApplyStatus.RETRY_SCHEDULED, restarted.applyResult(TaskWorkResult.expired(
+                        "task-shutdown",
+                        "msg-1",
+                        claimed.leaseToken(),
+                        "restart recovery lease expiry",
+                        true
+                )).status());
+                assertFalse(restarted.hasActiveLeaseForWorker("task-shutdown", "worker-1"));
+                assertEquals(List.of("msg-1"), restarted.claimReady(
+                                "task-shutdown",
+                                List.of(WorkerClaimTarget.workerLevel("worker-2", "batch-2", 1)),
+                                1,
+                                10
+                        ).stream()
+                        .map(ClaimedTaskWork::messageId)
+                        .toList());
+            } finally {
+                restarted.shutdown();
+                if (restartedConnection.isOpen()) {
+                    restartedConnection.close();
+                }
+            }
+
+            assertEquals(Set.of("foreign-task"), commands.smembers(other.taskRegistrySet()));
+            assertEquals(List.of("foreign-msg"), commands.lrange(other.taskReadyQueue("foreign-task"), 0, -1));
+            assertEquals(List.of("foreign-task"), commands.zrange(other.readyTasksZset(), 0, -1));
+        } finally {
+            RedisRuntimeTestSupport.cleanupNamespace(commands, other.namespace());
+        }
+    }
+
+    @Test
+    void namespacesDoNotShareRuntimeStateOrCleanup() {
+        RedisTaskWorkKeyspace otherKeyspace = new RedisTaskWorkKeyspace(RedisRuntimeTestSupport.namespace("redis-runtime-isolated"));
+        StatefulRedisConnection<String, String> otherConnection = redisClient.connect();
+        RedisTaskWorkRuntime otherRuntime = new RedisTaskWorkRuntime(otherConnection, otherKeyspace, 1024, now::get);
+        try {
+            runtime.enqueue(item("shared-task", "main-msg"), WorkEnqueueOptions.DEFAULT);
+            otherRuntime.enqueue(item("shared-task", "other-msg"), WorkEnqueueOptions.DEFAULT);
+
+            assertEquals(List.of("main-msg"), commands.lrange(keyspace.taskReadyQueue("shared-task"), 0, -1));
+            assertEquals(List.of("other-msg"), commands.lrange(otherKeyspace.taskReadyQueue("shared-task"), 0, -1));
+
+            RedisRuntimeTestSupport.cleanupNamespace(commands, keyspace.namespace());
+
+            assertEquals(0, commands.exists(keyspace.taskReadyQueue("shared-task"), keyspace.taskRegistrySet()));
+            assertEquals(List.of("other-msg"), commands.lrange(otherKeyspace.taskReadyQueue("shared-task"), 0, -1));
+            assertEquals(Set.of("shared-task"), commands.smembers(otherKeyspace.taskRegistrySet()));
+        } finally {
+            otherRuntime.shutdown();
+            if (otherConnection.isOpen()) {
+                otherConnection.close();
+            }
+            RedisRuntimeTestSupport.cleanupNamespace(commands, otherKeyspace.namespace());
+        }
     }
 
     @Test
@@ -270,7 +332,7 @@ class RedisTaskWorkRuntimeTest {
         StatefulRedisConnection<String, String> brokenConnection = redisClient.connect();
         RedisTaskWorkRuntime brokenRuntime = new RedisTaskWorkRuntime(
                 brokenConnection,
-                new RedisTaskWorkKeyspace("xa:mass:test:redis-runtime:broken:" + UUID.randomUUID()),
+                new RedisTaskWorkKeyspace(RedisRuntimeTestSupport.namespace("redis-runtime-broken")),
                 1024,
                 now::get
         );
@@ -320,4 +382,5 @@ class RedisTaskWorkRuntimeTest {
             failure.compareAndSet(null, throwable);
         }
     }
+
 }

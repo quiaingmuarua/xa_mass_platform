@@ -46,7 +46,6 @@ final class WorkerGroupCompatibilityProjection {
 
     private static final class GroupDraft {
         private final String groupId;
-        private String adapterNodeId;
         private int defaultMaxConcurrentWork = 1;
         private final LinkedHashMap<String, LinkedHashSet<String>> projectsByEventCode = new LinkedHashMap<>();
         private final LinkedHashSet<String> projectCodes = new LinkedHashSet<>();
@@ -57,9 +56,6 @@ final class WorkerGroupCompatibilityProjection {
         }
 
         private void observe(Worker worker) {
-            if (adapterNodeId == null) {
-                adapterNodeId = normalizeNullable(worker.getAdapterId());
-            }
             defaultMaxConcurrentWork = Math.max(defaultMaxConcurrentWork, worker.getMaxConcurrentWork());
             if (defaultAttributes.isEmpty() && worker.getAttributes() != null) {
                 for (Map.Entry<String, String> entry : worker.getAttributes().entrySet()) {
@@ -109,7 +105,6 @@ final class WorkerGroupCompatibilityProjection {
                 }
             }
             return WorkerGroupRecord.builder(groupId)
-                    .adapterNodeId(adapterNodeId)
                     .eventBindings(eventBindings)
                     .projectCodes(projectCodes)
                     .defaultAttributes(defaultAttributes)

@@ -14,6 +14,12 @@ public interface EngineRuntimeBridge {
 
     void start(TaskEventListenerRegistrar eventListeners, WorkerManager workerManager);
 
+    default void start(TaskEventListenerRegistrar eventListeners,
+                       WorkerManager workerManager,
+                       Runnable dispatchWakeupCallback) {
+        start(eventListeners, workerManager);
+    }
+
     void stop();
 
     static EngineRuntimeBridge noop() {

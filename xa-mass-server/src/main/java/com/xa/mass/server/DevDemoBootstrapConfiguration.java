@@ -32,6 +32,13 @@ import java.util.Map;
 public class DevDemoBootstrapConfiguration {
 
     private static final List<String> DEMO_EVENT_CODES = List.of("demo.dispatch", "demo.dispatch.gb");
+    private static final String EXTERNAL_PROOF_EVENT_CODE = "external.proof.echo";
+    private static final String EXTERNAL_PROOF_WORKER_ID = "external-proof-polling-worker-001";
+    private static final List<String> DEMO_APP_EVENT_CODES = List.of(
+            "demo.dispatch",
+            "demo.dispatch.gb",
+            EXTERNAL_PROOF_EVENT_CODE
+    );
 
     @Value("${mass.demo.bootstrap.worker-count:36}")
     private int workerCount;
@@ -92,11 +99,19 @@ public class DevDemoBootstrapConfiguration {
                     .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
                     .projectCodes(List.of("demoApp", "demoOps"))
                     .build());
+            app.registerEventDefinition(EventDefinition.builder()
+                    .code(EXTERNAL_PROOF_EVENT_CODE)
+                    .name("External Worker Proof Echo")
+                    .description("Dev-only event reserved for CLI external worker contract proof.")
+                    .payloadTypes(List.of(PayloadType.JSON))
+                    .taskModes(List.of(TaskMode.SINGLE_RUN))
+                    .projectCodes(List.of("demoApp"))
+                    .build());
             app.registerProject(ProjectDefinition.builder()
                     .code("demoApp")
                     .name("Demo App")
                     .description("Primary dev-shell demo project with active workload and approval flow.")
-                    .eventCodes(DEMO_EVENT_CODES)
+                    .eventCodes(DEMO_APP_EVENT_CODES)
                     .build());
             app.registerProject(ProjectDefinition.builder()
                     .code("demoOps")
@@ -120,8 +135,27 @@ public class DevDemoBootstrapConfiguration {
                     .credential("demo-app-key")
                     .userId("demo-app-user")
                     .projectScope("demoApp")
-                    .eventScopes(DEMO_EVENT_CODES)
+                    .eventScopes(DEMO_APP_EVENT_CODES)
                     .attributes(Map.of("label", "Demo App Submitter"))
+                    .build());
+            app.registerSubmitter(SubmitterRegistration.builder()
+                    .principalId("external-proof-submitter")
+                    .credential("external-proof-submitter-key")
+                    .userId("external-proof-user")
+                    .projectScope("demoApp")
+                    .eventScopes(List.of(EXTERNAL_PROOF_EVENT_CODE))
+                    .attributes(Map.of("label", "External Worker CLI Proof Submitter"))
+                    .build());
+            app.registerSubmitter(SubmitterRegistration.builder()
+                    .principalId("external-proof-polling-worker")
+                    .credential("external-proof-worker-key")
+                    .permissions(List.of(PrincipalContext.EXTERNAL_WORKER_PERMISSION))
+                    .projectScopes(List.of("demoApp"))
+                    .eventScopes(List.of(EXTERNAL_PROOF_EVENT_CODE))
+                    .attributes(Map.of(
+                            "label", "External Worker CLI Proof Worker",
+                            "workerId", EXTERNAL_PROOF_WORKER_ID
+                    ))
                     .build());
             app.registerSubmitter(SubmitterRegistration.builder()
                     .principalId("demo-ops-submitter")

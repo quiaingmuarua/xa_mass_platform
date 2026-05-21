@@ -92,8 +92,6 @@ class JdbcStoragePostgresTest {
 
             assertThat(storage.getWorker("worker-1")).isPresent();
             assertThat(storage.getWorkersByGroupId("group-a")).hasSize(1);
-            assertThat(storage.getWorkersBySupportedProject("demoApp")).hasSize(1);
-            assertThat(storage.getWorkersBySupportedEventCode("event.demo")).hasSize(1);
             assertThat(storage.tryLockWorker("worker-1")).isTrue();
             assertThat(storage.tryLockWorker("worker-1")).isFalse();
             assertThat(storage.isLocked("worker-1")).isTrue();

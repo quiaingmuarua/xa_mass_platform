@@ -120,6 +120,49 @@ public class WorkerControlServiceTest {
     }
 
     @Test
+    void dispatchWakeupFiresOnlyForSchedulingRecoveryEvidence() {
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        Worker worker = new Worker();
+        worker.setWorkerId("worker-wakeup");
+        worker.setWorkerGroupId("group-wakeup");
+        worker.setSupportedProjects(List.of("demoApp"));
+        worker.setSupportedEventCodes(List.of("crawler.fetch"));
+        workerManager.addWorker(worker);
+        WorkerControlService service = new WorkerControlService(
+                workerManager,
+                new WorkerCommandLifecycleOwner(),
+                new WorkerStateProjectionOwner(),
+                TraceEventLogger.noop());
+        AtomicInteger wakeups = new AtomicInteger();
+        service.setDispatchWakeupCallback(wakeups::incrementAndGet);
+
+        assertTrue(service.applyWorkerCapabilityReport(WorkerCapabilityReport.builder("worker-wakeup", 1)
+                .availableEventCodes(List.of("crawler.fetch"))
+                .build()).success());
+        assertEquals(1, wakeups.get());
+
+        assertTrue(service.applyWorkerStateReport(WorkerStateReport.builder("worker-wakeup", 1, "DRAINING")
+                .reason("maintenance")
+                .build()).success());
+        assertEquals(1, wakeups.get());
+
+        assertTrue(service.applyWorkerStateReport(WorkerStateReport.builder("worker-wakeup", 2, "AVAILABLE")
+                .reason("resumed")
+                .build()).success());
+        assertEquals(2, wakeups.get());
+
+        assertFalse(service.applyWorkerCapabilityReport(WorkerCapabilityReport.builder("worker-wakeup", 0)
+                .availableEventCodes(List.of("crawler.fetch"))
+                .build()).success());
+        assertEquals(2, wakeups.get());
+
+        assertTrue(service.applyWorkerStateReport(WorkerStateReport.builder("worker-wakeup", 3, "DEGRADED")
+                .reason("slow")
+                .build()).success());
+        assertEquals(2, wakeups.get());
+    }
+
+    @Test
     void dispatchAvailabilityPolicyIsPluggable() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
         Worker worker = new Worker();

@@ -11,8 +11,11 @@ import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -110,6 +113,176 @@ public class WorkerManagerTest {
         assertTrue(manager.getDispatchAvailabilityOwner()
                 .enable("worker-draining", "ready"));
         assertTrue(manager.isWorkerDispatchEnabled(worker));
+    }
+
+    @Test
+    void adapterNodeRegistrySupportsUpsertAndReadViews() {
+        Instant registeredAt = Instant.parse("2026-05-20T00:00:00Z");
+        AdapterNodeRecord created = manager.registerAdapterNode(new AdapterNodeRecord(
+                " node-a ",
+                " polling ",
+                "1.0.0",
+                " endpoint-a ",
+                true,
+                true,
+                registeredAt,
+                null,
+                Map.of(" region ", " us ")
+        ));
+
+        assertEquals("node-a", created.adapterNodeId());
+        assertEquals("polling", created.adapterType());
+        assertEquals("endpoint-a", created.endpointId());
+        assertEquals(registeredAt, created.registeredAt());
+        assertNotNull(created.lastSeenAt());
+        assertEquals(Map.of("region", "us"), created.attributes());
+
+        AdapterNodeRecord updated = manager.registerAdapterNode(new AdapterNodeRecord(
+                "node-a",
+                "polling",
+                "1.0.1",
+                "endpoint-b",
+                false,
+                false,
+                null,
+                null,
+                Map.of("region", "eu")
+        ));
+
+        assertEquals(registeredAt, updated.registeredAt());
+        assertEquals("1.0.1", updated.adapterVersion());
+        assertFalse(updated.enabled());
+        assertEquals(List.of(updated), manager.adapterNodes());
+        assertEquals(updated, manager.adapterNode("node-a").orElseThrow());
+    }
+
+    @Test
+    void nodeGroupBindingRegistryMaintainsManyToManyIndexes() {
+        manager.registerAdapterNode(adapterNode("node-a"));
+        manager.registerAdapterNode(adapterNode("node-b"));
+
+        NodeGroupBindingRecord nodeAGroupOne = manager.bindNodeGroup(binding("node-a", "group-one"));
+        NodeGroupBindingRecord nodeAGroupTwo = manager.bindNodeGroup(binding("node-a", "group-two"));
+        NodeGroupBindingRecord nodeBGroupOne = manager.bindNodeGroup(binding("node-b", "group-one"));
+
+        assertEquals(Set.of("group-one", "group-two"), manager.groupIdsByAdapterNodeId("node-a"));
+        assertEquals(Set.of("node-a", "node-b"), manager.adapterNodeIdsByGroupId("group-one"));
+        assertEquals(nodeAGroupOne, manager.nodeGroupBinding("node-a", "group-one").orElseThrow());
+        assertTrue(manager.nodeGroupBindings().containsAll(List.of(nodeAGroupOne, nodeAGroupTwo, nodeBGroupOne)));
+
+        assertTrue(manager.unbindNodeGroup("node-a", "group-one"));
+
+        assertEquals(Set.of("group-two"), manager.groupIdsByAdapterNodeId("node-a"));
+        assertEquals(Set.of("node-b"), manager.adapterNodeIdsByGroupId("group-one"));
+        assertTrue(manager.nodeGroupBinding("node-a", "group-one").isEmpty());
+    }
+
+    @Test
+    void nodeGroupBindingStateChangesDoNotAffectWorkerCandidates() {
+        manager.registerAdapterNode(adapterNode("node-a"));
+        manager.bindNodeGroup(binding("node-a", "crawler"));
+        Worker worker = worker("w-binding", "crawler");
+        worker.setAdapterNodeId("node-a");
+        worker.setSupportedProjects(List.of("demoApp"));
+        worker.setSupportedEventCodes(List.of("crawler.fetch"));
+        manager.addWorker(worker);
+
+        NodeGroupBindingRecord disabled = manager.setNodeGroupBindingEnabled("node-a", "crawler", false);
+        NodeGroupBindingRecord draining = manager.setNodeGroupBindingDraining("node-a", "crawler", true);
+
+        assertFalse(disabled.enabled());
+        assertTrue(draining.draining());
+        assertFalse(manager.isWorkerDispatchEnabled(worker));
+        assertEquals(List.of("w-binding"),
+                manager.getWorkerCandidateIndex()
+                        .workersFor(task("demoApp", Map.of(TaskSharedConfig.SDK_METADATA,
+                                Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch"))))
+                        .stream()
+                        .map(Worker::getWorkerId)
+                        .toList());
+    }
+
+    @Test
+    void explicitWorkerRegistrationRequiresRegisteredNodeGroupBinding() {
+        manager.registerAdapterNode(adapterNode("node-a"));
+        Worker worker = worker("w-explicit", "crawler");
+        worker.setAdapterNodeId("node-a");
+
+        IllegalArgumentException missingBinding = assertThrows(IllegalArgumentException.class,
+                () -> manager.addWorker(worker));
+        assertTrue(missingBinding.getMessage().contains("node group binding is not registered"));
+
+        manager.bindNodeGroup(binding("node-a", "crawler"));
+        manager.addWorker(worker);
+
+        assertEquals(Set.of("w-explicit"),
+                manager.getWorkerRegistrySnapshot().workerIdsByAdapterNodeGroup("node-a", "crawler"));
+        assertEquals(Set.of("w-explicit"),
+                manager.getWorkerRegistrySnapshot().workerIdsByAdapterNodeId("node-a"));
+    }
+
+    @Test
+    void legacyWorkerRegistrationCreatesBoundedCompatibilityNodeGroupBinding() {
+        Worker worker = worker("w-legacy", "crawler");
+        worker.setAdapterId("polling");
+
+        manager.addWorker(worker);
+
+        assertEquals("polling", manager.getWorker("w-legacy").getAdapterNodeId());
+        assertTrue(manager.adapterNode("polling").isPresent());
+        assertTrue(manager.nodeGroupBinding("polling", "crawler").isPresent());
+        assertEquals(Set.of("w-legacy"),
+                manager.getWorkerRegistrySnapshot().workerIdsByAdapterNodeGroup("polling", "crawler"));
+    }
+
+    @Test
+    void nodeLocalDrainExcludesOnlyWorkersOnThatNodeGroupPair() {
+        manager.registerAdapterNode(adapterNode("node-a"));
+        manager.registerAdapterNode(adapterNode("node-b"));
+        manager.bindNodeGroup(binding("node-a", "crawler"));
+        manager.bindNodeGroup(binding("node-b", "crawler"));
+        Worker workerA = worker("w-node-a", "crawler");
+        workerA.setAdapterNodeId("node-a");
+        Worker workerB = worker("w-node-b", "crawler");
+        workerB.setAdapterNodeId("node-b");
+        manager.addWorker(workerA);
+        manager.addWorker(workerB);
+
+        manager.setNodeGroupBindingDraining("node-a", "crawler", true);
+
+        assertFalse(manager.isWorkerDispatchEnabled(workerA));
+        assertTrue(manager.isWorkerDispatchEnabled(workerB));
+
+        manager.setNodeGroupBindingDraining("node-a", "crawler", false);
+
+        assertTrue(manager.isWorkerDispatchEnabled(workerA));
+        assertTrue(manager.isWorkerDispatchEnabled(workerB));
+    }
+
+    @Test
+    void nodeGroupBindingRequiresRegisteredAdapterNode() {
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> manager.bindNodeGroup(binding("missing-node", "crawler")));
+
+        assertTrue(error.getMessage().contains("adapterNodeId is not registered"));
+    }
+
+    @Test
+    void deletingAdapterNodeRemovesNodeGroupBindings() {
+        manager.registerAdapterNode(adapterNode("node-a"));
+        manager.registerAdapterNode(adapterNode("node-b"));
+        manager.bindNodeGroup(binding("node-a", "group-one"));
+        manager.bindNodeGroup(binding("node-a", "group-two"));
+        manager.bindNodeGroup(binding("node-b", "group-one"));
+
+        assertTrue(manager.deleteAdapterNode("node-a"));
+
+        assertTrue(manager.adapterNode("node-a").isEmpty());
+        assertTrue(manager.groupIdsByAdapterNodeId("node-a").isEmpty());
+        assertEquals(Set.of("node-b"), manager.adapterNodeIdsByGroupId("group-one"));
+        assertTrue(manager.nodeGroupBinding("node-a", "group-one").isEmpty());
+        assertTrue(manager.nodeGroupBinding("node-a", "group-two").isEmpty());
+        assertTrue(manager.nodeGroupBinding("node-b", "group-one").isPresent());
     }
 
     @Test
@@ -276,8 +449,6 @@ public class WorkerManagerTest {
                         .stream()
                         .map(Worker::getWorkerId)
                         .toList());
-        assertEquals("adapter-a",
-                manager.getWorkerRegistrySnapshot().group("crawler").orElseThrow().adapterNodeId());
         assertEquals(3,
                 manager.getWorkerRegistrySnapshot().group("crawler").orElseThrow().defaultMaxConcurrentWork());
     }
@@ -492,7 +663,9 @@ public class WorkerManagerTest {
 
     @Test
     void workerStatusEventListenerOnlyRefreshesHeartbeatAndLeavesModelStatusUntouched() {
-        WorkerManager.WorkerStatusEventListener listener = new WorkerManager.WorkerStatusEventListener(manager);
+        AtomicInteger wakeups = new AtomicInteger();
+        WorkerManager.WorkerStatusEventListener listener =
+                new WorkerManager.WorkerStatusEventListener(manager, wakeups::incrementAndGet);
         manager.addWorker(worker("w9", "us"));
         manager.updateOnlineStatus("w9", false);
 
@@ -500,15 +673,19 @@ public class WorkerManagerTest {
         assertFalse(manager.isWorkerOnline("w9"));
         assertNotNull(manager.getWorker("w9").getLastHeartbeat());
         assertEquals(WorkerStatus.OFFLINE, manager.getWorker("w9").getStatus());
+        assertEquals(1, wakeups.get());
 
         listener.onWorkerOffline(new WorkerOfflineEvent("w9", "disconnected", null));
         assertFalse(manager.isWorkerOnline("w9"));
         assertEquals(WorkerStatus.OFFLINE, manager.getWorker("w9").getStatus());
+        assertEquals(1, wakeups.get());
     }
 
     @Test
     void workerHeartbeatEventRefreshesLastHeartbeatWithoutChangingWorkerModelAvailability() {
-        WorkerManager.WorkerStatusEventListener listener = new WorkerManager.WorkerStatusEventListener(manager);
+        AtomicInteger wakeups = new AtomicInteger();
+        WorkerManager.WorkerStatusEventListener listener =
+                new WorkerManager.WorkerStatusEventListener(manager, wakeups::incrementAndGet);
         manager.addWorker(worker("w10", "us"));
         manager.updateOnlineStatus("w10", false);
 
@@ -517,6 +694,7 @@ public class WorkerManagerTest {
         assertFalse(manager.isWorkerOnline("w10"));
         assertNotNull(manager.getWorker("w10").getLastHeartbeat());
         assertEquals(WorkerStatus.OFFLINE, manager.getWorker("w10").getStatus());
+        assertEquals(0, wakeups.get());
     }
 
     @Test
@@ -551,6 +729,34 @@ public class WorkerManagerTest {
     }
 
     // ---- helpers ----
+
+    private AdapterNodeRecord adapterNode(String adapterNodeId) {
+        return new AdapterNodeRecord(
+                adapterNodeId,
+                "polling",
+                "1.0.0",
+                "endpoint-" + adapterNodeId,
+                true,
+                true,
+                null,
+                null,
+                Map.of()
+        );
+    }
+
+    private NodeGroupBindingRecord binding(String adapterNodeId, String groupId) {
+        return new NodeGroupBindingRecord(
+                adapterNodeId,
+                groupId,
+                "plugin-1",
+                "deploy-1",
+                true,
+                false,
+                null,
+                null,
+                Map.of()
+        );
+    }
 
     private Worker worker(String id, String workerGroupId) {
         Worker w = new Worker();

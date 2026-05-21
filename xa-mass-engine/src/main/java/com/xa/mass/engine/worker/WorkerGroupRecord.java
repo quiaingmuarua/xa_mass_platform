@@ -14,7 +14,6 @@ import java.util.Set;
 public final class WorkerGroupRecord {
 
     private final String groupId;
-    private final String adapterNodeId;
     private final Set<EventBinding> eventBindings;
     private final Set<String> projectCodes;
     private final Map<String, String> defaultAttributes;
@@ -22,7 +21,6 @@ public final class WorkerGroupRecord {
 
     private WorkerGroupRecord(Builder builder) {
         this.groupId = requireNonBlank(builder.groupId, "groupId");
-        this.adapterNodeId = normalizeNullable(builder.adapterNodeId);
         this.eventBindings = immutableBindingSet(builder.eventBindings);
         this.projectCodes = immutableProjectCodes(builder.projectCodes, this.eventBindings);
         this.defaultAttributes = immutableStringMap(builder.defaultAttributes);
@@ -35,10 +33,6 @@ public final class WorkerGroupRecord {
 
     public String groupId() {
         return groupId;
-    }
-
-    public String adapterNodeId() {
-        return adapterNodeId;
     }
 
     public Set<EventBinding> eventBindings() {
@@ -151,7 +145,6 @@ public final class WorkerGroupRecord {
         }
         return defaultMaxConcurrentWork == that.defaultMaxConcurrentWork
                 && Objects.equals(groupId, that.groupId)
-                && Objects.equals(adapterNodeId, that.adapterNodeId)
                 && Objects.equals(eventBindings, that.eventBindings)
                 && Objects.equals(projectCodes, that.projectCodes)
                 && Objects.equals(defaultAttributes, that.defaultAttributes);
@@ -159,7 +152,7 @@ public final class WorkerGroupRecord {
 
     @Override
     public int hashCode() {
-        return Objects.hash(groupId, adapterNodeId, eventBindings, projectCodes,
+        return Objects.hash(groupId, eventBindings, projectCodes,
                 defaultAttributes, defaultMaxConcurrentWork);
     }
 
@@ -167,7 +160,6 @@ public final class WorkerGroupRecord {
     public String toString() {
         return "WorkerGroupRecord{" +
                 "groupId='" + groupId + '\'' +
-                ", adapterNodeId='" + adapterNodeId + '\'' +
                 ", eventBindings=" + eventBindings +
                 ", projectCodes=" + projectCodes +
                 ", defaultAttributes=" + defaultAttributes +
@@ -177,7 +169,6 @@ public final class WorkerGroupRecord {
 
     public static final class Builder {
         private final String groupId;
-        private String adapterNodeId;
         private Collection<EventBinding> eventBindings = Set.of();
         private Collection<String> projectCodes = Set.of();
         private Map<String, String> defaultAttributes = Map.of();
@@ -185,11 +176,6 @@ public final class WorkerGroupRecord {
 
         private Builder(String groupId) {
             this.groupId = groupId;
-        }
-
-        public Builder adapterNodeId(String adapterNodeId) {
-            this.adapterNodeId = adapterNodeId;
-            return this;
         }
 
         public Builder eventBindings(Collection<EventBinding> eventBindings) {

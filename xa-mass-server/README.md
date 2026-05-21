@@ -274,16 +274,24 @@ Observability:
 | `mass.websocket.port` | `18088` | WebSocket adapter port |
 | `mass.socket.port` | `18089` | Socket adapter port |
 | `mass.engine.assignment-retry-delay-millis` | `1000` | delay before the engine retries assignment after a failed or deferred dispatch cycle |
+| `mass.engine.runtime-ready-dispatch-idle-backoff-max-millis` | `30000` | max idle backoff for the default runtime-ready dispatch polling fallback policy |
 | `mass.engine.lease-watchdog-interval-seconds` | `30` | interval for scanning active task-message leases and expiring stalled in-flight attempts |
 | `mass.engine.task-message-lease-seconds` | `300` | lease duration for an in-flight task message before the engine may redispatch it |
 | `mass.storage.mode` | `memory` | server storage mode; use `jdbc-h2` for local/CI verification or `jdbc-postgres` through `mass-storage-jdbc` for durable control-plane storage |
 | `mass.storage.jdbc.url` | `jdbc:h2:mem:xa_mass;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false` | JDBC URL used when `mass.storage.mode` is a JDBC mode |
 | `mass.storage.jdbc.username` | `sa` | JDBC username |
 | `mass.storage.jdbc.password` | empty | JDBC password |
+| `mass.runtime.mode` | `memory` | engine runtime backend; `memory` is the default verified embedded path, `redis` opts into Redis-backed work/result runtime |
+| `mass.runtime.redis.namespace` | `xa:mass:runtime:v1` | Redis namespace prefix when `mass.runtime.mode=redis` |
+| `mass.runtime.redis.max-queued-items` | `1000000` | runtime work backpressure cap for the Redis-backed work runtime |
+| `mass.transport.node-id` | random UUID | server transport runtime node id; set explicitly when comparing Redis presence across restarts |
 | `mass.transport.delivery.store` | `memory` | embedded transport delivery-store backend; `memory` or `redis` |
 | `mass.transport.delivery.max-queued-items` | `100000` | total dispatch backlog cap for the resolved transport delivery store |
 | `mass.transport.delivery.max-items-per-route` | `10000` | per-route dispatch backlog cap for polling queues and adapter-local route queues |
 | `mass.transport.delivery.redis.namespace` | `xa:mass:transport:delivery:v1` | Redis namespace prefix when `mass.transport.delivery.store=redis` |
+| `mass.transport.presence.store` | `memory` | embedded transport worker-presence backend; `memory` or `redis` |
+| `mass.transport.presence.lease-millis` | `30000` | worker transport presence lease before stale/offline pruning may treat the route as unavailable |
+| `mass.transport.presence.redis.namespace` | `xa:mass:transport:presence:v1` | Redis namespace prefix when `mass.transport.presence.store=redis` |
 | `sample.client.auto-start` | `true` in `dev` | auto-start embedded sample clients for the default dev demo shell |
 | `sample.client.websocket-uri` | `ws://localhost:${mass.websocket.port}/ws` | target WebSocket adapter address |
 | `sample.client.socket-host` | `127.0.0.1` | target socket adapter host |
@@ -299,9 +307,31 @@ JDBC storage scope:
 - default runtime stays `memory`; opt into H2 explicitly with
   `mass.storage.mode=jdbc-h2`
 - opt into PostgreSQL with `mass.storage.mode=jdbc-postgres`
-- task-work runtime backend and transport delivery-store backend are configured
-  separately; `mass.runtime.mode` controls engine work runtime, while
-  `mass.transport.delivery.store` controls dispatch queue backend
+- task-work runtime backend, transport delivery-store backend, and transport
+  presence backend are configured separately; `mass.runtime.mode` controls
+  engine work/result runtime, `mass.transport.delivery.store` controls dispatch
+  queue backend, and `mass.transport.presence.store` controls worker
+  reachability evidence
+- for restart/recovery diagnosis with local Redis, use Redis for the runtime
+  surfaces you want to observe, for example
+  `mass.runtime.mode=redis`,
+  `mass.transport.delivery.store=redis`, and
+  `mass.transport.presence.store=redis`; this preserves runtime queues and
+  presence evidence across a server process restart, while expired leases and
+  stale presence should still converge through timeout/retry rather than
+  requiring every intermediate state to be durable
+- the bundled `redis-runtime` profile applies those three Redis runtime
+  switches for local diagnosis; run it with the normal server profile, for
+  example `-Dspring.profiles.active=dev,redis-runtime`
+- root `compose.yaml` is the preferred local distributed-verification shell:
+  build the jar first with
+  `./mvnw -pl xa-mass-server -am -DskipTests package`, then
+  `docker compose up redis server` starts Redis and runs that server jar with
+  `dev,redis-runtime,h2`; it is a validation harness, not a production image
+  contract
+- backend-parity tests should share one scenario body and vary only
+  `mass.runtime.mode` plus backend-specific connection properties; do not copy
+  the same runtime semantics into separate memory-only and redis-only tests
 - server-local persistence can use the `h2` profile together with the runnable
   server profile, for example `-Dspring.profiles.active=dev,h2`; this writes to
   `./data/xa-mass-h2/xa_mass` by default through `application-h2.yml`
