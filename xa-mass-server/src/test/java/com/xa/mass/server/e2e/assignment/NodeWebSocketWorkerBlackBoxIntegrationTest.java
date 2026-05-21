@@ -53,8 +53,10 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest
     private static final int WEBSOCKET_PORT = findFreePort();
     private static final String WORKER_ID = "node-worker-realtime-001";
     private static final String WORKER_KEY = "node-worker-realtime-key";
+    private static final String ADAPTER_NODE_ID = "node-websocket-node";
     private static final String STOCK_WORKER_ID = "stock-ws-worker-001";
     private static final String STOCK_WORKER_KEY = "stock-ws-worker-key";
+    private static final String STOCK_ADAPTER_NODE_ID = "stock-websocket-node";
 
     @Autowired
     private MassSdkApplication app;
@@ -68,8 +70,10 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest
     void externalNodeWorkerCompletesTaskThroughRealtimeRegistrationAndEventCodeRuntime() throws Exception {
         HttpHeaders workerHeaders = credentialHeaders(WORKER_KEY);
         declareExternalWorkerGroup("node-websocket-crawler", "crawlerApp", "crawler.fetch-page", workerHeaders);
+        bindExternalAdapterNode(ADAPTER_NODE_ID, "node-websocket-crawler", workerHeaders);
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", WORKER_ID,
+                "adapterNodeId", ADAPTER_NODE_ID,
                 "workerGroupId", "node-websocket-crawler",
                 "adapterId", "websocket",
                 "transportHint", "realtime",
@@ -150,8 +154,10 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest
     void externalNodeWebSocketStockWorkerHandlesAsyncRpcRequestIdsThroughStreamTask() throws Exception {
         HttpHeaders workerHeaders = credentialHeaders(STOCK_WORKER_KEY);
         declareExternalWorkerGroup("node-websocket-stock", "crawlerApp", "stock.quote.fetch", workerHeaders);
+        bindExternalAdapterNode(STOCK_ADAPTER_NODE_ID, "node-websocket-stock", workerHeaders);
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", STOCK_WORKER_ID,
+                "adapterNodeId", STOCK_ADAPTER_NODE_ID,
                 "workerGroupId", "node-websocket-stock",
                 "adapterId", "websocket",
                 "transportHint", "realtime",

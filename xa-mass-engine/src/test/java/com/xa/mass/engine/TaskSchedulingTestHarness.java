@@ -16,7 +16,10 @@ import com.xa.mass.engine.listener.TaskWorkerAssignListener;
 import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.service.AssignmentRecordService;
+import com.xa.mass.engine.worker.AdapterNodeRecord;
+import com.xa.mass.engine.worker.NodeGroupBindingRecord;
 import com.xa.mass.engine.worker.WorkerManager;
+import com.xa.mass.engine.worker.WorkerGroupRecord;
 import com.xa.mass.engine.worker.WorkerReachabilityView;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.TaskWorkStats;
@@ -34,6 +37,9 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class TaskSchedulingTestHarness {
+
+    private static final String DEFAULT_ADAPTER_NODE_ID = "test-node-main";
+    private static final String DEFAULT_WORKER_GROUP_ID = "pool-main";
 
     final InMemoryTaskStorage taskStorage;
     final TaskManager taskManager;
@@ -59,6 +65,7 @@ final class TaskSchedulingTestHarness {
         this.assignmentRecords = new AssignmentRecordService();
         this.dispatches = new ArrayList<>();
         installDefaultSchedulingRules();
+        installDefaultWorkerRegistrationSpine();
 
         SimpleTaskDispatchBinder binder = new SimpleTaskDispatchBinder(
                 taskManager,
@@ -229,7 +236,8 @@ final class TaskSchedulingTestHarness {
         Worker worker = new Worker();
         worker.setWorkerId(workerId);
         worker.setStatus(WorkerStatus.ONLINE);
-        worker.setWorkerGroupId("pool-main");
+        worker.setAdapterNodeId(DEFAULT_ADAPTER_NODE_ID);
+        worker.setWorkerGroupId(DEFAULT_WORKER_GROUP_ID);
         worker.setSupportedProjects(List.of("demoApp"));
         worker.setSupportedEventCodes(List.of());
         return worker;
@@ -245,6 +253,34 @@ final class TaskSchedulingTestHarness {
             merged.putAll(attributes);
         }
         return Map.copyOf(merged);
+    }
+
+    private void installDefaultWorkerRegistrationSpine() {
+        workerManager.upsertWorkerGroup(WorkerGroupRecord.builder(DEFAULT_WORKER_GROUP_ID)
+                .projectCodes(List.of("demoApp"))
+                .build());
+        workerManager.registerAdapterNode(new AdapterNodeRecord(
+                DEFAULT_ADAPTER_NODE_ID,
+                "test",
+                "1.0.0",
+                "endpoint-" + DEFAULT_ADAPTER_NODE_ID,
+                true,
+                true,
+                null,
+                null,
+                Map.of()
+        ));
+        workerManager.bindNodeGroup(new NodeGroupBindingRecord(
+                DEFAULT_ADAPTER_NODE_ID,
+                DEFAULT_WORKER_GROUP_ID,
+                "test-plugin",
+                "test-deployment",
+                true,
+                false,
+                null,
+                null,
+                Map.of()
+        ));
     }
 
 }

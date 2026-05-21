@@ -49,8 +49,10 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest {
     private static final int WEBSOCKET_PORT = findFreePort();
     private static final String SOCKET_WORKER_ID = "node-worker-socket-001";
     private static final String SOCKET_WORKER_KEY = "node-worker-socket-key";
+    private static final String SOCKET_ADAPTER_NODE_ID = "node-socket-node";
     private static final String WEBSOCKET_WORKER_ID = "node-worker-websocket-002";
     private static final String WEBSOCKET_WORKER_KEY = "node-worker-websocket-key";
+    private static final String WEBSOCKET_ADAPTER_NODE_ID = "node-websocket-coexist-node";
 
     @Autowired
     private MassSdkApplication app;
@@ -67,8 +69,10 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest {
 
         HttpHeaders workerHeaders = credentialHeaders(SOCKET_WORKER_KEY);
         declareExternalWorkerGroup("node-socket-crawler", "crawlerApp", "crawler.fetch-page", workerHeaders);
+        bindExternalAdapterNode(SOCKET_ADAPTER_NODE_ID, "node-socket-crawler", workerHeaders);
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", SOCKET_WORKER_ID,
+                "adapterNodeId", SOCKET_ADAPTER_NODE_ID,
                 "workerGroupId", "node-socket-crawler",
                 "adapterId", "socket",
                 "transportHint", "realtime",
@@ -147,9 +151,12 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest {
         HttpHeaders socketHeaders = credentialHeaders(SOCKET_WORKER_KEY);
         declareExternalWorkerGroup("node-websocket-demo", "demoApp", "demo.dispatch", websocketHeaders);
         declareExternalWorkerGroup("node-socket-crawler", "crawlerApp", "crawler.fetch-page", socketHeaders);
+        bindExternalAdapterNode(WEBSOCKET_ADAPTER_NODE_ID, "node-websocket-demo", websocketHeaders);
+        bindExternalAdapterNode(SOCKET_ADAPTER_NODE_ID, "node-socket-crawler", socketHeaders);
 
         assertApiOk(exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", WEBSOCKET_WORKER_ID,
+                "adapterNodeId", WEBSOCKET_ADAPTER_NODE_ID,
                 "workerGroupId", "node-websocket-demo",
                 "adapterId", "websocket",
                 "transportHint", "realtime",
@@ -158,6 +165,7 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest {
 
         assertApiOk(exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", SOCKET_WORKER_ID,
+                "adapterNodeId", SOCKET_ADAPTER_NODE_ID,
                 "workerGroupId", "node-socket-crawler",
                 "adapterId", "socket",
                 "transportHint", "realtime",
