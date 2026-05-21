@@ -776,6 +776,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 Map.entry("NodeGroupBinding", Pattern.compile("\\bNodeGroupBinding")),
                 Map.entry("WorkerManager", Pattern.compile("\\bWorkerManager\\b")),
                 Map.entry("WorkerStorage", Pattern.compile("\\bWorkerStorage\\b")),
+                Map.entry("unbounded group worker enumeration",
+                        Pattern.compile("\\.workerIdsByGroupId\\s*\\(")),
                 Map.entry("all-workers scan", Pattern.compile("\\.getAllWorkers\\s*\\("))
         );
 
@@ -786,12 +788,16 @@ class EngineSchedulingCoreArchitectureGuardTest {
                         + forbiddenPattern.getKey());
             }
         }
+        if (!Pattern.compile("\\bWorkerRouteBucketOwner\\b").matcher(source).find()) {
+            violations.add(indexPath + " does not use WorkerRouteBucketOwner for bounded acquisition");
+        }
 
         assertTrue(violations.isEmpty(),
                 "WorkerCandidateIndex is Stage-1 group-capability narrowing only. "
-                        + "It must not read worker-level compatibility capability, WorkerManager, "
-                        + "storage, full scans, or Stage-2 runtime admission state:\n"
-                        + String.join("\n", violations));
+                + "It must not read worker-level compatibility capability, WorkerManager, "
+                + "storage, unbounded group worker enumeration, full scans, "
+                + "or Stage-2 runtime admission state:\n"
+                + String.join("\n", violations));
     }
 
     @Test

@@ -95,6 +95,37 @@ public class WorkerCandidateIndexTest {
         assertEquals(List.of("worker-1"), workerIds(index.workersFor(task)));
     }
 
+    @Test
+    void nonTargetedEventLookupUsesBoundedRouteBucketAcquisition() {
+        WorkerCandidateIndex index = new WorkerCandidateIndex(WorkerRegistrySnapshot.from(List.of(
+                group("crawler", "node-a", EventBinding.of("crawler.fetch", List.of("demoApp")))
+        ), List.of(
+                worker("worker-1", "crawler"),
+                worker("worker-2", "crawler"),
+                worker("worker-3", "crawler")
+        )));
+
+        assertEquals(List.of("worker-1", "worker-2"),
+                workerIds(index.workersFor(task("demoApp", "crawler.fetch", null), 2)));
+    }
+
+    @Test
+    void targetWorkerLookupBypassesRouteBucketLimitButStillChecksGroupCapability() {
+        WorkerCandidateIndex index = new WorkerCandidateIndex(WorkerRegistrySnapshot.from(List.of(
+                group("crawler", "node-a", EventBinding.of("crawler.fetch", List.of("demoApp"))),
+                group("export", "node-a", EventBinding.of("report.export", List.of("demoApp")))
+        ), List.of(
+                worker("worker-1", "crawler"),
+                worker("worker-2", "crawler"),
+                worker("worker-3", "crawler"),
+                worker("worker-export", "export")
+        )));
+
+        assertEquals(List.of("worker-3"),
+                workerIds(index.workersFor(task("demoApp", "crawler.fetch", "worker-3"), 1)));
+        assertTrue(index.workersFor(task("demoApp", "crawler.fetch", "worker-export"), 1).isEmpty());
+    }
+
     private static List<String> workerIds(List<Worker> workers) {
         return workers.stream().map(Worker::getWorkerId).toList();
     }

@@ -553,8 +553,10 @@ Acceptance:
 
 ### TW-1C: Bounded route bucket acquisition
 
-Status: not implemented. This remains the next scaling slice after the
-group-first transport spine is stable.
+Status: first in-memory slice implemented. The current implementation provides
+an engine-owned default route bucket owner and bounded candidate acquisition
+shape. Redis-backed buckets, approved route fields, advanced scoring, and
+background reconciliation remain later slices.
 
 Goal: million-worker deployments acquire candidates from route buckets instead
 of materializing all workers in a group.
@@ -595,8 +597,8 @@ First slice:
 - implement one in-memory `WorkerRouteBucketOwner`
 - use a default `WorkerRoutingPolicy` that resolves every non-targeted task to
   one `routeBucketKey`: `default`
-- allow a worker to belong to multiple route buckets in the index model, but
-  only populate `default` in the first slice
+- allow a worker to belong to multiple route buckets in the index model, while
+  the default runtime policy only populates `default`
 - keep Redis `ZSET` backing, advanced scoring, and periodic full reconciliation
   out of scope for the first slice
 - keep `WorkerRegistrySnapshot` for capability lookup; only replace the

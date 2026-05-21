@@ -36,6 +36,7 @@ import static com.xa.mass.engine.worker.WorkerDispatchAvailabilityOwner.Dispatch
 public class WorkerManager implements WorkerLookupStore {
 
     private static final Logger log = LoggerFactory.getLogger(WorkerManager.class);
+    static final int DEFAULT_STAGE_ONE_CANDIDATE_LIMIT = 512;
 
     private final WorkerStorage workerStorage;
     private final WorkerReachabilityView reachabilityView;
@@ -52,6 +53,7 @@ public class WorkerManager implements WorkerLookupStore {
     private final LinkedHashMap<String, LinkedHashSet<String>> groupIdsByAdapterNodeId = new LinkedHashMap<>();
     private final LinkedHashMap<String, LinkedHashSet<String>> adapterNodeIdsByGroupId = new LinkedHashMap<>();
     private volatile WorkerRegistrySnapshot workerRegistrySnapshot;
+    private volatile WorkerRouteBucketOwner workerRouteBucketOwner;
     private volatile Runnable dispatchWakeupCallback = () -> {
     };
 
@@ -100,7 +102,7 @@ public class WorkerManager implements WorkerLookupStore {
         for (Worker worker : workerStorage.getAllWorkers()) {
             putRegistryRow(worker);
         }
-        this.workerRegistrySnapshot = composeWorkerRegistrySnapshot();
+        publishWorkerRegistrySnapshot(composeWorkerRegistrySnapshot());
     }
 
     public void addWorker(Worker worker) {
@@ -378,13 +380,13 @@ public class WorkerManager implements WorkerLookupStore {
         String targetWorkerId = TaskSharedConfig.targetWorkerId(task);
         String project = task != null ? task.getProject() : null;
         if (targetWorkerId != null && !targetWorkerId.isBlank()) {
-            return getWorkerCandidateIndex().workersFor(task);
+            return getWorkerCandidateIndex().workersFor(task, 1);
         }
         if (eventCode != null && !eventCode.isBlank()) {
-            return getWorkerCandidateIndex().workersFor(task);
+            return getWorkerCandidateIndex().workersFor(task, DEFAULT_STAGE_ONE_CANDIDATE_LIMIT);
         }
         if (project != null && !project.isBlank()) {
-            return getWorkerCandidateIndex().workersFor(task);
+            return getWorkerCandidateIndex().workersFor(task, DEFAULT_STAGE_ONE_CANDIDATE_LIMIT);
         }
         return workerStorage.getAllWorkers();
     }
@@ -394,7 +396,7 @@ public class WorkerManager implements WorkerLookupStore {
     }
 
     public WorkerCandidateIndex getWorkerCandidateIndex() {
-        return new WorkerCandidateIndex(workerRegistrySnapshot);
+        return new WorkerCandidateIndex(workerRegistrySnapshot, workerRouteBucketOwner);
     }
 
     public void refreshWorkerRegistrySnapshot() {
@@ -415,7 +417,7 @@ public class WorkerManager implements WorkerLookupStore {
                     workerGroupsById.values()
             );
             if (result.snapshotChanged() && result.snapshot() != null) {
-                this.workerRegistrySnapshot = result.snapshot();
+                publishWorkerRegistrySnapshot(result.snapshot());
             }
             return result;
         }
@@ -534,7 +536,13 @@ public class WorkerManager implements WorkerLookupStore {
     }
 
     private void publishWorkerRegistrySnapshot() {
-        this.workerRegistrySnapshot = composeWorkerRegistrySnapshot();
+        publishWorkerRegistrySnapshot(composeWorkerRegistrySnapshot());
+    }
+
+    private void publishWorkerRegistrySnapshot(WorkerRegistrySnapshot snapshot) {
+        WorkerRegistrySnapshot normalizedSnapshot = snapshot != null ? snapshot : WorkerRegistrySnapshot.empty();
+        this.workerRegistrySnapshot = normalizedSnapshot;
+        this.workerRouteBucketOwner = WorkerRouteBucketOwner.fromSnapshot(normalizedSnapshot);
     }
 
     private WorkerRegistrySnapshot composeWorkerRegistrySnapshot() {
