@@ -1,6 +1,6 @@
 # Transport Agent Handoff
 
-Last updated: 2026-05-11
+Last updated: 2026-05-21
 
 Status: current transport owner handoff.
 
@@ -50,7 +50,8 @@ Document layering inside `transport/`:
 - current truth: `AGENTS.md`, `TRANSPORT_BOUNDARY_BASELINE.md`,
   `WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md`
 - design/reference only: `TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md`
-- convergence roadmap: `ADAPTER_NODE_WORKER_REGISTRATION_ROADMAP.md`
+- convergence roadmaps: `ADAPTER_NODE_WORKER_REGISTRATION_ROADMAP.md`,
+  `TRANSPORT_WORKER_MATCH_SPINE_ROADMAP.md`
 - historical inventory only: `refactor/*`
 
 ## Module Map
@@ -92,8 +93,9 @@ Use this order for transport changes:
 2. [TRANSPORT_BOUNDARY_BASELINE.md](./TRANSPORT_BOUNDARY_BASELINE.md)
 3. [WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](./WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md) when changing WebSocket adapter behavior
 4. [ADAPTER_NODE_WORKER_REGISTRATION_ROADMAP.md](./ADAPTER_NODE_WORKER_REGISTRATION_ROADMAP.md) when changing worker registration endpoint, adapter-node, or node/group relation design
-5. [TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md](./TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md) for future queue-first/high-volume direction
-6. repo-root [../doc/AGENT_BASELINE.md](../doc/AGENT_BASELINE.md) and [../doc/VERIFIED_RUNBOOK.md](../doc/VERIFIED_RUNBOOK.md) for repo truth and verification
+5. [TRANSPORT_WORKER_MATCH_SPINE_ROADMAP.md](./TRANSPORT_WORKER_MATCH_SPINE_ROADMAP.md) when changing external-worker registration, group-first dispatch evidence, worker report feedback, or transport worker proof
+6. [TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md](./TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md) for future queue-first/high-volume direction
+7. repo-root [../doc/AGENT_BASELINE.md](../doc/AGENT_BASELINE.md) and [../doc/VERIFIED_RUNBOOK.md](../doc/VERIFIED_RUNBOOK.md) for repo truth and verification
 
 ## Fast Verification
 
