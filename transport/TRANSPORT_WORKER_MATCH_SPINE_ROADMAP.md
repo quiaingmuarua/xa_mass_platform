@@ -67,6 +67,8 @@ The spine is still not fully closed:
 
 - external-worker registration still requires worker-level `eventBindings` and
   derives WorkerGroup capability through compatibility projection
+- worker-level `supportedProjects` and `supportedEventCodes` still exist as
+  compatibility inputs; they must not remain mainline capability fields
 - there is no first-class external/control surface for declaring WorkerGroup
   capability before worker registration
 - `WorkerCapabilityAuthority.copyWorker()` does not currently preserve
@@ -74,6 +76,9 @@ The spine is still not fully closed:
   evidence from the effective snapshot
 - `WorkerDispatchAvailabilityOwner` is a single worker-level gate; node-group
   drain clear can accidentally clear worker-state or command-driven drain
+- candidate acquisition is still described mostly as group membership lookup;
+  million-worker deployments need bounded route buckets instead of full group
+  materialization
 - `TaskDispatchBinding` does not carry `workerGroupId`, `adapterNodeId`,
   `eventBindingKey`, or `workerCandidateSource`
 - relationship changes such as worker registered, binding enabled, drain
@@ -96,6 +101,17 @@ Do not treat this document as proof those gaps are already closed.
   path is explicit and tested.
 - Do not change worker-facing transport JSON just to add diagnostics; prefer
   trace/diagnostic evidence first.
+- Do not implement memory runtime as scan-first lists. Memory and Redis
+  runtimes should share the same logical hash/index shape.
+- Do not materialize all workers in a group on the scheduling hot path. Large
+  relation sets are allowed for ownership and diagnostics, not as direct
+  candidate lists for million-worker scheduling.
+- Do not fan out adapter-node or node-group state changes into per-worker
+  mutations. Use node/group gate overlays and bounded candidate validation.
+- Tasks without an explicit `targetWorkerId` must enter scheduling through
+  `EventKey -> WorkerGroup -> route bucket`. Direct worker lookup is only
+  allowed for explicit fixed-worker constraints and must still pass group
+  capability plus owner gates.
 
 ## Target Shape
 
@@ -147,6 +163,8 @@ Owns:
 - `(adapterNodeId, workerGroupId)` deployment relation
 - node-local group enabled / draining
 - plugin/deployment metadata
+- deployment routing scope such as business, tenant, region, pool, or route
+  key when explicitly approved by routing policy
 
 Must not own:
 
@@ -164,13 +182,162 @@ Owns:
 - worker identity
 - `adapterNodeId`
 - `workerGroupId`
+- `adapterId`
 - worker attributes
 - declared max concurrent work
 - worker-level enabled flag
 
+Must not own:
+
+- `supportedProjects` as capability truth
+- `supportedEventCodes` as capability truth
+- event bindings or project capability
+
 Worker attributes such as `deviceId`, `accountId`, `region`, and `routingTags`
 are statistics, trace, filter, and optional strategy inputs. They do not create
 implicit owner models or locks.
+
+Only explicitly approved routing attributes may become secondary indexes.
+Unapproved attributes remain metadata and must not be auto-indexed.
+
+## Runtime Metadata And Index Shape
+
+The target runtime shape is hash-first and index-first for both in-memory and
+Redis runtimes. `Record` names describe owner views, not serialized blob
+requirements.
+
+Owner rows:
+
+- `workersById`: `workerId -> WorkerMeta`
+- `workerAttributesById`: `workerId -> Map<String, String>`
+- `workerRuntimeStateById`: `workerId -> WorkerRuntimeState`
+- `workerGroupsById`: `groupId -> WorkerGroupMeta`
+- `eventBindingsByGroupId`: `groupId -> Set<EventBinding>`
+- `adapterNodesById`: `adapterNodeId -> AdapterNodeMeta`
+- `nodeGroupBindingsByKey`: `(adapterNodeId, groupId) -> NodeGroupBindingMeta`
+
+Worker indexes:
+
+- `workerIdsByGroupId`: `groupId -> Set<workerId>`
+- `workerIdsByAdapterNodeId`: `adapterNodeId -> Set<workerId>`
+- `workerIdsByNodeGroup`: `(adapterNodeId, groupId) -> Set<workerId>`
+- `workerRelationById`: `workerId -> (adapterNodeId, groupId, routeKey)`
+- `workerRouteById`: `workerId -> routeKey`
+
+Capability indexes:
+
+- `groupIdsByEventKey`: `(projectCode, eventCode) -> Set<groupId>`
+- `groupIdsByProjectCode`: `projectCode -> Set<groupId>`
+- `groupIdsByAdapterNodeId`: `adapterNodeId -> Set<groupId>`
+- `adapterNodeIdsByGroupId`: `groupId -> Set<adapterNodeId>`
+
+Bounded routing indexes:
+
+- `availableWorkersByGroupRoute`: `(groupId, routeKey) -> bounded SET/ZSET`
+  of worker ids
+- `availableNodeGroupsByGroupRoute`: `(groupId, routeKey) -> Set` of
+  `(adapterNodeId, groupId)` pairs
+- `routeKeysByEventKey`: `(projectCode, eventCode) -> Set<routeKey>` when a
+  routing policy needs precomputed route partitions
+
+Dynamic runtime views:
+
+- `reachabilityByWorkerId`: transport-owned presence evidence as engine
+  reachability view
+- `dispatchGatesByWorkerId`: source-scoped dispatch gates
+- `loadByWorkerId`: capacity, active lease count, and available slots
+- `activeWorkersByTaskId`: active worker bindings for a task
+- `tasksByWorkerId`: active task bindings for a worker
+
+Scheduling hot path:
+
+```text
+Task(project,eventCode,businessRoute)
+  -> groupIdsByEventKey[(project,eventCode)]
+  -> routing policy resolves routeKey
+  -> availableWorkersByGroupRoute[(groupId,routeKey)]
+  -> bounded acquire / cursor / reserve
+  -> workersById[workerId]
+  -> workerRelationById[workerId]
+  -> node-group gate / reachability / dispatch gate / load / lock / ranking
+```
+
+Fixed-worker path:
+
+```text
+Task(targetWorkerId,project,eventCode)
+  -> workersById[targetWorkerId]
+  -> workerRelationById[targetWorkerId]
+  -> WorkerGroup capability gate
+  -> node-group gate / reachability / dispatch gate / load / lock / ranking
+  -> singleton candidate or empty
+```
+
+Rules:
+
+- worker register/update must atomically maintain `workersById`,
+  `workerRelationById`, worker relation indexes, and approved route buckets
+- group capability update must diff old/new event bindings and update
+  capability indexes
+- node-group binding update must update relation indexes and dispatch gates,
+  not group capability
+- attributes do not get secondary indexes unless a routing/filter owner
+  explicitly needs them
+- relation indexes such as `workerIdsByGroupId` may be large; scheduling must
+  not fetch or filter them as a full candidate list
+- direct `workersById` lookup is not a general candidate source; it is only
+  valid for explicit `targetWorkerId` fixed-worker dispatch
+- adapter-node offline, node-group draining, or route disable must be a gate
+  overlay and lazy candidate validation path, not a per-worker fan-out update
+- `WorkerRegistrySnapshot`, if retained, is an indexed read cache; it must not
+  rebuild capability truth by scanning worker rows
+
+## Million-Scale Routing Constraint
+
+This roadmap targets multi-business deployments where adapter nodes shard work
+by business, tenant, region, pool, or other approved routing dimensions, and
+the total worker count may reach millions.
+
+Business routing must not become a second capability truth. The flow is:
+
+```text
+eventCode -> WorkerGroup capability
+group + routeKey -> bounded candidate bucket
+candidate -> owner gate / resource admission
+```
+
+The flow must not become:
+
+```text
+eventCode -> all workers in group -> filter by business attributes
+```
+
+It also must not become:
+
+```text
+task attributes -> direct worker search
+adapter node -> workers -> filter by event
+```
+
+Rules:
+
+- `WorkerGroup` remains the only event capability owner
+- `NodeGroupBinding` and worker attributes may provide approved routing scope
+  but must not add event capability
+- hot-path candidate acquisition must use bounded `groupId + routeKey`
+  buckets, not full group membership
+- task-side worker targeting is a fixed-worker constraint only; it must never
+  become business routing or attribute search
+- candidate buckets may be backed by Redis `SET`, `ZSET`, or an in-memory
+  equivalent, but the acquisition API must return a bounded batch
+- ranking strategy is pluggable; the core mechanism only owns route partition,
+  bounded acquisition, reservation, and owner validation
+- node/group drain, offline, or disable changes must update gate state and
+  route availability, not mutate every affected worker
+- stale candidates are acceptable only if the admission path rejects them and
+  the cleanup path is bounded
+- observability may inspect large relation sets offline, but dispatch loops
+  must not depend on full set scans
 
 ## Phase Plan
 
@@ -186,11 +353,15 @@ Scope:
   - `workerIdsByAdapterNodeId(adapterNodeId)`
   - `workerIdsByAdapterNodeGroup(adapterNodeId, workerGroupId)`
   - `groupIdByWorkerId(workerId)`
+  - the effective worker returned by the snapshot still has the registration
+    row `adapterNodeId`
 
 Acceptance:
 
 - capability report accepted for an adapter-node/group worker does not remove
   that worker from adapter-node indexes
+- effective worker returned by snapshot preserves `adapterNodeId` from the
+  registration row after capability report is applied
 - report-owned available event codes remain bounded by group/registration
   approved capability
 
@@ -211,6 +382,10 @@ Scope:
   `WORKER_STATE` and `WORKER_COMMAND`
 - update `WorkerManager` node-group drain/enable handling to write only
   `NODE_GROUP_BINDING`
+- update callers of `dispatchAvailabilityOwner.enable(...)` so relation
+  recovery clears only the relevant source gate, for example
+  `clearSource(NODE_GROUP_BINDING, workerId)`, instead of clearing all worker
+  dispatch gates
 
 Acceptance:
 
@@ -231,6 +406,9 @@ Scope:
   capability
 - capability declaration owns `eventBindings`, default attributes, default max
   concurrency, enabled flag, and capability version
+- move project/event capability ownership from worker-level
+  `supportedProjects` / `supportedEventCodes` into
+  `WorkerGroupRecord.projectCodes` / `WorkerGroupRecord.eventBindings`
 - authorization for group declaration must use group event bindings instead of
   worker register event bindings
 
@@ -238,6 +416,8 @@ Acceptance:
 
 - group capability can be declared without registering a worker
 - eventCode-to-group index is produced from WorkerGroup capability
+- project/event capability source is `WorkerGroupRecord`, not
+  `Worker.supportedProjects` or `Worker.supportedEventCodes`
 - AdapterNode and NodeGroupBinding still cannot carry event bindings
 
 ### TW-1B: External worker registration becomes identity-first
@@ -257,6 +437,11 @@ Scope:
   path after TW-1A exists
 - keep worker capability report as a report-owned slice bounded by approved
   group capability
+- retire `WorkerGroupCompatibilityProjection` from mainline capability
+  composition after WorkerGroup declaration owns event bindings; until then it
+  remains an explicitly named migration seam only
+- remove worker-level `supportedProjects` and `supportedEventCodes` from the
+  mainline registration shape after TW-1A owns group capability
 - remove or explicitly demote compatibility auto-creation of
   AdapterNode/NodeGroupBinding from worker registration when the explicit path
   is covered by tests
@@ -267,6 +452,40 @@ Acceptance:
 - worker registration does not create new capability truth
 - task eventCode still reaches workers through `WorkerCandidateIndex`
 - legacy worker-level supported event fields are not used as mainline truth
+- `WorkerCandidateIndex`, `WorkerSchedulingView`, and dispatch evidence read
+  project/event capability from `WorkerGroupRecord`
+
+### TW-1C: Bounded route bucket acquisition
+
+Goal: million-worker deployments acquire candidates from route buckets instead
+of materializing all workers in a group.
+
+Scope:
+
+- introduce an engine-owned candidate acquisition seam that accepts
+  `groupId`, route key, and a max candidate count
+- maintain `availableWorkersByGroupRoute` from worker relation, reachability,
+  dispatch gate, and load/resource owner outcomes
+- keep `workerIdsByGroupId` and node/group relation indexes for ownership and
+  diagnostics, not direct scheduling enumeration
+- route key is resolved by routing policy from task/project/event and approved
+  routing attributes
+- node-group drain/offline gates must remove or hide an entire node/group
+  route partition without per-worker fan-out
+
+Acceptance:
+
+- scheduling does not iterate all workers in a group for event tasks
+- non-targeted tasks cannot use direct `workersById` lookup as candidate
+  source
+- targeted tasks use singleton direct lookup and still pass group capability,
+  node-group gate, reachability, dispatch gate, load, and lock admission
+- candidate acquisition returns a bounded batch for each group/route
+- draining one adapter node group excludes its route candidates without
+  rewriting every worker under that node
+- stale bucket entries are rejected by admission and cleaned up through a
+  bounded path
+- changing routing policy does not change WorkerGroup capability truth
 
 ### TW-2: Dispatch evidence spine
 
@@ -289,6 +508,8 @@ Acceptance:
 
 - trace can show `eventCode -> group -> worker -> adapter node`
 - transport still resolves routes from selected worker/adapter evidence
+- `TaskDispatchItem` worker-facing fields are unchanged in the first slice;
+  evidence fields land only on internal binding, trace, or diagnostics
 - polling, websocket, and socket remain peer transport consumers of the same
   engine-selected dispatch binding
 
@@ -301,6 +522,12 @@ Scope:
 
 - introduce an engine/SDK assembly seam for worker relation availability
   wakeups
+- implement the first slice as a narrow `WorkerManager` wakeup callback wired
+  by SDK assembly, not as a broad event bus
+- call that seam from the owner mutation methods that can make workers newly
+  eligible: `addWorker(...)`, `bindNodeGroup(...)`,
+  `setNodeGroupBindingEnabled(...)`, `setNodeGroupBindingDraining(...)`, and
+  AdapterNode online/enabled mutation methods when present
 - trigger wakeup on:
   - worker registered
   - node-group binding enabled
@@ -343,6 +570,10 @@ Engine tests:
 
 - `WorkerCapabilityAuthority` preserves adapter-node evidence after report
 - `WorkerRegistrySnapshot` indexes survive report composition
+- candidate acquisition uses bounded route buckets and never materializes all
+  workers in a group on the event scheduling path
+- node-group drain/offline excludes a node/group route partition without
+  fan-out worker mutation
 - source-scoped dispatch gate interaction matrix:
   - state drain vs node drain
   - command drain vs state available
@@ -360,6 +591,8 @@ Transport/proof tests:
 
 - dispatch evidence is present in trace/diagnostics
 - transport route still uses selected worker/adapter route evidence
+- multi-business proof covers at least two route keys for the same
+  WorkerGroup capability and proves no cross-route dispatch
 - external-worker black-box proof covers registration, poll/dispatch, result,
   and report feedback
 
