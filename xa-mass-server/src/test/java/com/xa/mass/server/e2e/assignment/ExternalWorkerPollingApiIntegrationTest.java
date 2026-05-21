@@ -70,9 +70,12 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         HttpHeaders aliasHeaders = credentialHeaders("alias-worker-key");
         declareCrawlerWorkerGroup("realtime-crawler", realtimeHeaders);
         declareCrawlerWorkerGroup("realtime-crawler", aliasHeaders);
+        bindAdapterNode("realtime-node", "realtime-crawler", realtimeHeaders);
+        bindAdapterNode("alias-node", "realtime-crawler", aliasHeaders);
 
         Map<String, Object> realtimeRegisterResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", "realtime-worker-001",
+                "adapterNodeId", "realtime-node",
                 "workerGroupId", "realtime-crawler",
                 "transportHint", "realtime"
         ), realtimeHeaders);
@@ -82,6 +85,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
 
         Map<String, Object> aliasRegisterResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", "realtime-worker-002",
+                "adapterNodeId", "alias-node",
                 "workerGroupId", "realtime-crawler",
                 "transportHint", "websocket"
         ), aliasHeaders);
@@ -102,9 +106,11 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         HttpHeaders workerHeaders = credentialHeaders(credential);
         HttpHeaders submitterHeaders = credentialHeaders(submitterCredential);
         declareCrawlerWorkerGroup("node-runtime", workerHeaders);
+        bindAdapterNode("polling-node", "node-runtime", workerHeaders);
 
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", workerId,
+                "adapterNodeId", "polling-node",
                 "workerGroupId", "node-runtime",
                 "attributes", Map.of(
                         "lang", "node",
@@ -202,9 +208,11 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         HttpHeaders workerHeaders = credentialHeaders(credential);
         HttpHeaders submitterHeaders = credentialHeaders(submitterCredential);
         declareCrawlerWorkerGroup("node-runtime", workerHeaders);
+        bindAdapterNode("polling-node", "node-runtime", workerHeaders);
 
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", workerId,
+                "adapterNodeId", "polling-node",
                 "workerGroupId", "node-runtime",
                 "attributes", Map.of(
                         "lang", "node",
@@ -344,9 +352,11 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         HttpHeaders workerHeaders = credentialHeaders(credential);
         HttpHeaders submitterHeaders = credentialHeaders(submitterCredential);
         declareCrawlerWorkerGroup("node-runtime", workerHeaders);
+        bindAdapterNode("polling-node", "node-runtime", workerHeaders);
 
         assertApiOk(exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", workerId,
+                "adapterNodeId", "polling-node",
                 "workerGroupId", "node-runtime",
                 "attributes", Map.of(
                         "lang", "node",
@@ -438,6 +448,18 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
                         "eventCode", "crawler.fetch-page",
                         "projectCodes", List.of("crawlerApp")
                 ))
+        ), workerHeaders));
+    }
+
+    private void bindAdapterNode(String adapterNodeId, String workerGroupId, HttpHeaders workerHeaders) {
+        assertApiOk(exchange("/worker-api/v1/adapter-nodes", HttpMethod.POST, Map.of(
+                "adapterNodeId", adapterNodeId,
+                "adapterType", "polling",
+                "endpointId", adapterNodeId
+        ), workerHeaders));
+        assertApiOk(exchange("/worker-api/v1/node-group-bindings", HttpMethod.POST, Map.of(
+                "adapterNodeId", adapterNodeId,
+                "workerGroupId", workerGroupId
         ), workerHeaders));
     }
 

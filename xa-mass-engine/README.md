@@ -121,14 +121,12 @@ Current WorkerGroup roadmap baseline:
 - event-code and project-only candidate narrowing read `WorkerCandidateIndex`;
   the active scheduling candidate source does not call worker-level supported
   project/event storage indexes
-- `WorkerRegistrySnapshot` already indexes WorkerGroup `EventBinding` truth for
-  the candidate source; `WorkerGroupCompatibilityProjection` is a migration
-  input from current worker-level compatibility fields, not long-term
-  capability truth
-- Stage 2 scheduling capability fields are materialized from
-  `WorkerGroupRecord`; legacy worker-level supported project/event fields are
-  migration inputs to `WorkerGroupCompatibilityProjection` and diagnostics, not
-  matching truth
+- `WorkerRegistrySnapshot` indexes WorkerGroup `EventBinding` truth for the
+  candidate source; worker-level supported project/event fields are
+  compatibility read hints and diagnostics only, not matching truth
+- Stage 2 scheduling capability evidence is materialized from
+  `WorkerGroupRecord`, and explicit AdapterNode/NodeGroupBinding registration
+  is required before adapter-node scoped worker registration
 - `WorkerSchedulingCandidateEnumerator` is a strategy-package implementation
   detail, not a public extension point
 - the old unused `WorkerSelector` / `DefaultWorkerSelector` path is removed so

@@ -6,22 +6,15 @@ import com.xa.mass.api.model.AbstractUnknownFieldRequest;
 import java.util.Map;
 
 @JsonIgnoreProperties(ignoreUnknown = false)
-public class ExternalWorkerRegisterApiRequest extends AbstractUnknownFieldRequest {
+public class ExternalNodeGroupBindingApiRequest extends AbstractUnknownFieldRequest {
 
-    private String workerId;
     private String adapterNodeId;
     private String workerGroupId;
-    private String adapterId;
-    private String transportHint;
+    private String pluginVersion;
+    private String deploymentVersion;
+    private Boolean enabled;
+    private Boolean draining;
     private Map<String, String> attributes;
-
-    public String getWorkerId() {
-        return workerId;
-    }
-
-    public void setWorkerId(String workerId) {
-        this.workerId = workerId;
-    }
 
     public String getAdapterNodeId() {
         return adapterNodeId;
@@ -39,20 +32,36 @@ public class ExternalWorkerRegisterApiRequest extends AbstractUnknownFieldReques
         this.workerGroupId = workerGroupId;
     }
 
-    public String getAdapterId() {
-        return adapterId;
+    public String getPluginVersion() {
+        return pluginVersion;
     }
 
-    public void setAdapterId(String adapterId) {
-        this.adapterId = adapterId;
+    public void setPluginVersion(String pluginVersion) {
+        this.pluginVersion = pluginVersion;
     }
 
-    public String getTransportHint() {
-        return transportHint;
+    public String getDeploymentVersion() {
+        return deploymentVersion;
     }
 
-    public void setTransportHint(String transportHint) {
-        this.transportHint = transportHint;
+    public void setDeploymentVersion(String deploymentVersion) {
+        this.deploymentVersion = deploymentVersion;
+    }
+
+    public Boolean getEnabled() {
+        return enabled;
+    }
+
+    public void setEnabled(Boolean enabled) {
+        this.enabled = enabled;
+    }
+
+    public Boolean getDraining() {
+        return draining;
+    }
+
+    public void setDraining(Boolean draining) {
+        this.draining = draining;
     }
 
     public Map<String, String> getAttributes() {
@@ -62,5 +71,4 @@ public class ExternalWorkerRegisterApiRequest extends AbstractUnknownFieldReques
     public void setAttributes(Map<String, String> attributes) {
         this.attributes = attributes;
     }
-
 }

@@ -10,10 +10,13 @@ import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
+import com.xa.mass.sdk.model.AdapterNodeRegistration;
+import com.xa.mass.sdk.model.NodeGroupBindingRegistration;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.TaskStateSnapshot;
 import com.xa.mass.sdk.model.WorkerEventBinding;
+import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
@@ -243,16 +246,11 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                                        String workerGroupId,
                                        String projectCode,
                                        String routingCode) {
+        ensureWorkerGroupBinding(workerGroupId, projectCode, "chaos-websocket-node", WorkerTransportHints.REALTIME);
         app.registerWorker(WorkerRegistration.builder()
                 .workerId(workerId)
+                .adapterNodeId("chaos-websocket-node")
                 .workerGroupId(workerGroupId)
-                .supportedProjects(List.of(projectCode))
-                .eventBindings(List.of(
-                        WorkerEventBinding.builder()
-                                .eventCode(defaultEventCode(projectCode))
-                                .projectCodes(List.of(projectCode))
-                                .build()
-                ))
                 .transportHint(WorkerTransportHints.REALTIME)
                 .adapterId("websocket")
                 .attributes(Map.of("routingTags", routingCode, "country", routingCode))
@@ -263,19 +261,36 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                                       String workerGroupId,
                                       String projectCode,
                                       String routingCode) {
+        ensureWorkerGroupBinding(workerGroupId, projectCode, "chaos-polling-node", WorkerTransportHints.POLLING);
         app.registerWorker(WorkerRegistration.builder()
                 .workerId(workerId)
+                .adapterNodeId("chaos-polling-node")
                 .workerGroupId(workerGroupId)
-                .supportedProjects(List.of(projectCode))
-                .eventBindings(List.of(
-                        WorkerEventBinding.builder()
-                                .eventCode(defaultEventCode(projectCode))
-                                .projectCodes(List.of(projectCode))
-                                .build()
-                ))
                 .transportHint(WorkerTransportHints.POLLING)
                 .adapterId("polling")
                 .attributes(Map.of("routingTags", routingCode, "country", routingCode))
+                .build());
+    }
+
+    private void ensureWorkerGroupBinding(String workerGroupId,
+                                          String projectCode,
+                                          String adapterNodeId,
+                                          String adapterType) {
+        app.declareWorkerGroup(WorkerGroupDeclaration.builder()
+                .groupId(workerGroupId)
+                .eventBindings(List.of(WorkerEventBinding.builder()
+                        .eventCode(defaultEventCode(projectCode))
+                        .projectCodes(List.of(projectCode))
+                        .build()))
+                .build());
+        app.registerAdapterNode(AdapterNodeRegistration.builder()
+                .adapterNodeId(adapterNodeId)
+                .adapterType(adapterType)
+                .endpointId(adapterNodeId)
+                .build());
+        app.bindNodeGroup(NodeGroupBindingRegistration.builder()
+                .adapterNodeId(adapterNodeId)
+                .workerGroupId(workerGroupId)
                 .build());
     }
 

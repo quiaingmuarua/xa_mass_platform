@@ -270,6 +270,8 @@ public class WorkerManager implements WorkerLookupStore {
     public NodeGroupBindingRecord bindNodeGroup(NodeGroupBindingRecord binding) {
         NodeGroupBindingRecord record = requireNodeGroupBinding(binding);
         NodeGroupBindingRecord normalized;
+        validateAdapterNodeRegistered(record.adapterNodeId());
+        requireDeclaredWorkerGroup(record.groupId());
         synchronized (adapterNodeRegistryLock) {
             if (!adapterNodesById.containsKey(record.adapterNodeId())) {
                 throw new IllegalArgumentException("adapterNodeId is not registered: " + record.adapterNodeId());
@@ -566,11 +568,6 @@ public class WorkerManager implements WorkerLookupStore {
         if (adapterNodeId != null) {
             validateExplicitWorkerNodeGroupMembership(adapterNodeId, groupId);
             worker.setAdapterNodeId(adapterNodeId);
-            return worker;
-        }
-        String compatibilityAdapterNodeId = resolveCompatibilityAdapterNodeId(worker, groupId);
-        if (compatibilityAdapterNodeId != null) {
-            worker.setAdapterNodeId(compatibilityAdapterNodeId);
         }
         return worker;
     }
@@ -589,52 +586,22 @@ public class WorkerManager implements WorkerLookupStore {
                         + adapterNodeId + "/" + groupId);
             }
         }
+        requireDeclaredWorkerGroup(groupId);
     }
 
-    private String resolveCompatibilityAdapterNodeId(Worker worker, String groupId) {
-        if (groupId == null) {
-            return null;
-        }
-        String adapterId = normalizeNullable(worker.getAdapterId());
-        if (adapterId == null) {
-            return null;
-        }
+    private void validateAdapterNodeRegistered(String adapterNodeId) {
         synchronized (adapterNodeRegistryLock) {
-            NodeGroupBindingKey key = NodeGroupBindingKey.from(adapterId, groupId);
-            if (nodeGroupBindingsByKey.containsKey(key)) {
-                return adapterId;
+            if (!adapterNodesById.containsKey(adapterNodeId)) {
+                throw new IllegalArgumentException("adapterNodeId is not registered: " + adapterNodeId);
             }
-            AdapterNodeRecord compatibilityNode = adapterNodesById.get(adapterId);
-            if (compatibilityNode == null) {
-                compatibilityNode = new AdapterNodeRecord(
-                        adapterId,
-                        adapterId,
-                        null,
-                        adapterId,
-                        true,
-                        true,
-                        Instant.now(),
-                        Instant.now(),
-                        Map.of("compatibilitySource", "workerRegistration")
-                );
-                adapterNodesById.put(adapterId, compatibilityNode);
+        }
+    }
+
+    private void requireDeclaredWorkerGroup(String groupId) {
+        synchronized (workerRegistryLock) {
+            if (!workerGroupsById.containsKey(groupId)) {
+                throw new IllegalArgumentException("workerGroupId is not declared: " + groupId);
             }
-            NodeGroupBindingRecord compatibilityBinding = new NodeGroupBindingRecord(
-                    adapterId,
-                    groupId,
-                    null,
-                    null,
-                    true,
-                    false,
-                    Instant.now(),
-                    Instant.now(),
-                    Map.of("compatibilitySource", "workerRegistration")
-            );
-            nodeGroupBindingsByKey.put(key, compatibilityBinding);
-            addBindingIndex(compatibilityBinding);
-            log.debug("Resolved legacy worker registration {} to compatibility adapterNodeId {} and group {}",
-                    worker.getWorkerId(), adapterId, groupId);
-            return adapterId;
         }
     }
 

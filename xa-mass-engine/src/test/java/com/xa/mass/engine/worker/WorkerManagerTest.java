@@ -303,17 +303,18 @@ public class WorkerManagerTest {
     }
 
     @Test
-    void legacyWorkerRegistrationCreatesBoundedCompatibilityNodeGroupBinding() {
+    void workerRegistrationDoesNotCreateCompatibilityNodeGroupBindingFromAdapterId() {
         Worker worker = worker("w-legacy", "crawler");
         worker.setAdapterId("polling");
 
         manager.addWorker(worker);
 
-        assertEquals("polling", manager.getWorker("w-legacy").getAdapterNodeId());
-        assertTrue(manager.adapterNode("polling").isPresent());
-        assertTrue(manager.nodeGroupBinding("polling", "crawler").isPresent());
-        assertEquals(Set.of("w-legacy"),
-                manager.getWorkerRegistrySnapshot().workerIdsByAdapterNodeGroup("polling", "crawler"));
+        assertNull(manager.getWorker("w-legacy").getAdapterNodeId());
+        assertTrue(manager.adapterNode("polling").isEmpty());
+        assertTrue(manager.nodeGroupBinding("polling", "crawler").isEmpty());
+        assertTrue(manager.getWorkerRegistrySnapshot()
+                .workerIdsByAdapterNodeGroup("polling", "crawler")
+                .isEmpty());
     }
 
     @Test
@@ -411,6 +412,16 @@ public class WorkerManagerTest {
                 () -> manager.bindNodeGroup(binding("missing-node", "crawler")));
 
         assertTrue(error.getMessage().contains("adapterNodeId is not registered"));
+    }
+
+    @Test
+    void nodeGroupBindingRequiresDeclaredWorkerGroup() {
+        manager.registerAdapterNode(adapterNode("node-a"));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> manager.bindNodeGroup(rawBinding("node-a", "missing-group")));
+
+        assertTrue(error.getMessage().contains("workerGroupId is not declared"));
     }
 
     @Test
@@ -883,6 +894,13 @@ public class WorkerManagerTest {
     }
 
     private NodeGroupBindingRecord binding(String adapterNodeId, String groupId) {
+        if (manager.workerGroup(groupId).isEmpty()) {
+            manager.upsertWorkerGroup(WorkerGroupRecord.builder(groupId).build());
+        }
+        return rawBinding(adapterNodeId, groupId);
+    }
+
+    private NodeGroupBindingRecord rawBinding(String adapterNodeId, String groupId) {
         return new NodeGroupBindingRecord(
                 adapterNodeId,
                 groupId,

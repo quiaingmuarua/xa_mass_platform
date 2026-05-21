@@ -9,6 +9,8 @@ import com.xa.mass.storage.api.TaskStorage;
 import com.xa.mass.workerpack.sample.client.SampleWorkerClient;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.event.EventDefinition;
+import com.xa.mass.sdk.model.AdapterNodeRegistration;
+import com.xa.mass.sdk.model.NodeGroupBindingRegistration;
 import com.xa.mass.sdk.model.WorkerSnapshot;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerGroupDeclaration;
@@ -137,6 +139,18 @@ public abstract class AbstractSampleE2eTest {
                         "eventCode", eventCode,
                         "projectCodes", List.of(projectCode)
                 ))
+        ), headers));
+    }
+
+    protected void bindExternalAdapterNode(String adapterNodeId, String workerGroupId, HttpHeaders headers) {
+        assertApiOk(exchange("/worker-api/v1/adapter-nodes", HttpMethod.POST, Map.of(
+                "adapterNodeId", adapterNodeId,
+                "adapterType", "external",
+                "endpointId", adapterNodeId
+        ), headers));
+        assertApiOk(exchange("/worker-api/v1/node-group-bindings", HttpMethod.POST, Map.of(
+                "adapterNodeId", adapterNodeId,
+                "workerGroupId", workerGroupId
         ), headers));
     }
 
@@ -656,12 +670,23 @@ public abstract class AbstractSampleE2eTest {
                                                         String project,
                                                         int maxConcurrentWork,
                                                         Map<String, String> attributes) {
+        String adapterNodeId = "websocket-node";
         requireSdkApp().declareWorkerGroup(WorkerGroupDeclaration.builder()
                 .groupId(workerGroupId)
                 .eventBindings(defaultEventBindings(project))
                 .build());
+        requireSdkApp().registerAdapterNode(AdapterNodeRegistration.builder()
+                .adapterNodeId(adapterNodeId)
+                .adapterType("websocket")
+                .endpointId("sample-e2e")
+                .build());
+        requireSdkApp().bindNodeGroup(NodeGroupBindingRegistration.builder()
+                .adapterNodeId(adapterNodeId)
+                .workerGroupId(workerGroupId)
+                .build());
         return WorkerRegistration.builder()
                 .workerId(workerId)
+                .adapterNodeId(adapterNodeId)
                 .workerGroupId(workerGroupId)
                 .adapterId("websocket")
                 .transportHint("realtime")

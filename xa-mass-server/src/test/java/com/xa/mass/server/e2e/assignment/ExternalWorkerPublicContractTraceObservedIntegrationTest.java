@@ -138,9 +138,12 @@ class ExternalWorkerPublicContractTraceObservedIntegrationTest extends AbstractT
 
     private void registerRealtimeWorker(ExternalWorkerCase spec) {
         HttpHeaders workerHeaders = credentialHeaders(spec.workerKey());
+        String adapterNodeId = spec.adapterId() + "-node";
         declareExternalWorkerGroup(spec.workerGroupId(), "crawlerApp", "crawler.fetch-page", workerHeaders);
+        bindExternalAdapterNode(adapterNodeId, spec.workerGroupId(), workerHeaders);
         Map<String, Object> response = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", spec.workerId(),
+                "adapterNodeId", adapterNodeId,
                 "workerGroupId", spec.workerGroupId(),
                 "adapterId", spec.adapterId(),
                 "transportHint", "realtime",

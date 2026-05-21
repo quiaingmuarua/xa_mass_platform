@@ -11,12 +11,15 @@ import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.event.EventDefinition;
+import com.xa.mass.sdk.model.AdapterNodeRegistration;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
+import com.xa.mass.sdk.model.NodeGroupBindingRegistration;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.TaskStateSnapshot;
 import com.xa.mass.sdk.model.WorkerEventBinding;
+import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
@@ -247,17 +250,34 @@ public final class SdkPollingSchedulingSoakRunner {
                         .eventCodes(eventCodes)
                         .build());
             }
+            for (int groupIndex = 0; groupIndex < config.groupCount(); groupIndex++) {
+                app.declareWorkerGroup(WorkerGroupDeclaration.builder()
+                        .groupId(groupId(groupIndex))
+                        .eventBindings(eventBindingsForGroup(groupIndex))
+                        .build());
+            }
         }
 
         private void registerWorkers(MassSdkApplication app) {
+            app.registerAdapterNode(AdapterNodeRegistration.builder()
+                    .adapterNodeId(ADAPTER_ID + "-node")
+                    .adapterType(WorkerTransportHints.POLLING)
+                    .endpointId(ADAPTER_ID + "-node")
+                    .build());
+            for (int groupIndex = 0; groupIndex < config.groupCount(); groupIndex++) {
+                app.bindNodeGroup(NodeGroupBindingRegistration.builder()
+                        .adapterNodeId(ADAPTER_ID + "-node")
+                        .workerGroupId(groupId(groupIndex))
+                        .build());
+            }
             for (int i = 0; i < config.workerCount(); i++) {
                 int groupIndex = i % config.groupCount();
                 String groupId = groupId(groupIndex);
                 String workerId = workerId(i);
                 app.registerWorker(WorkerRegistration.builder()
                         .workerId(workerId)
+                        .adapterNodeId(ADAPTER_ID + "-node")
                         .workerGroupId(groupId)
-                        .eventBindings(eventBindingsForGroup(groupIndex))
                         .transportHint(WorkerTransportHints.POLLING)
                         .adapterId(ADAPTER_ID)
                         .maxConcurrentWork(Math.max(1, config.pollBatchSize()))

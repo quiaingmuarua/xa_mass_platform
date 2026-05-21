@@ -94,14 +94,13 @@ line:
 
 - `WorkerGroupRecord.adapterNodeId`
 - `WorkerRegistrySnapshot.groupIdsByAdapterNodeId(...)`
-- `WorkerGroupCompatibilityProjection` projecting adapter identity into group
-  snapshot truth.
+- worker-level compatibility projection paths that could derive group snapshot
+  truth from worker rows.
 
 Current code removes that node relation from `WorkerGroup` and
 `WorkerRegistrySnapshot`. `NodeGroupBinding` now owns node/group relation
-truth. `WorkerGroupCompatibilityProjection` may still project legacy worker
-capability fields into group capability truth, but it no longer owns adapter
-node relation truth.
+truth. `WorkerGroupCompatibilityProjection` is retired; WorkerGroup
+declarations are the only capability truth for candidate-source indexes.
 
 `WorkerRegistrySnapshot.groupIdsByAdapterNodeId(...)` was removed instead of
 replaced because it had no production caller.
@@ -437,7 +436,7 @@ Scope:
 - inventory `workerGroupId` usage
 - inventory removed `WorkerGroupRecord.adapterNodeId`
 - inventory removed `WorkerRegistrySnapshot.groupIdsByAdapterNodeId(...)`
-- inventory `WorkerGroupCompatibilityProjection`
+- verify `WorkerGroupCompatibilityProjection` remains absent
 - inventory worker registration through SDK/server
 - inventory `WorkerCapabilityAuthority` registration-row dependencies
 - inventory `WorkerCandidateIndex` group-first candidate path
@@ -481,7 +480,7 @@ Scope:
   - `adapterNodeId -> groupIds`
   - `groupId -> adapterNodeIds`
 - forbid `eventBindings` on the binding
-- mark `WorkerGroupCompatibilityProjection` as capability-compatibility only
+- keep `WorkerGroupCompatibilityProjection` retired
 - prevent reintroducing group-owned node relation truth
 
 Acceptance:
@@ -498,15 +497,12 @@ Goal: move worker registration to explicit node/group membership.
 
 Compatibility decision:
 
-- AN-3 uses a bounded migration path, not an immediate hard break and not an
-  open-ended fallback.
+- AN-3 no longer keeps an adapterId-derived compatibility registration path.
 - New registration callers must send `adapterNodeId` and `groupId`.
-- Existing callers that only send `adapterId` and `workerGroupId` may register
-  only when a configured bootstrap/default `AdapterNode` and exactly one
-  matching `NodeGroupBinding` can be resolved.
-- Ambiguous, missing, or unbound compatibility resolution fails registration.
-- Compatibility registrations must emit trace/diagnostic evidence and must be
-  removed after the migration window.
+- AdapterNode and NodeGroupBinding must be registered explicitly before worker
+  registration.
+- Existing in-repo callers are migrated to the explicit sequence instead of
+  preserving a fallback.
 
 Scope:
 
@@ -522,8 +518,7 @@ This is a registry-truth change, not a light request-field addition, because
 
 Acceptance:
 
-- missing adapter node or group registration follows the bounded compatibility
-  rule above or fails
+- missing adapter node or group registration fails
 - unknown adapter node fails
 - unknown group fails
 - unbound node/group pair fails
@@ -542,7 +537,7 @@ Scope:
 - remove `WorkerRegistrySnapshot.groupIdsByAdapterNodeId(...)` unless a
   temporary migration read is explicitly needed
 - remove or demote `WorkerGroupRecord.adapterNodeId`
-- remove adapter relation projection from `WorkerGroupCompatibilityProjection`
+- keep `WorkerGroupCompatibilityProjection` absent
 - update tests to prove group capability and node relation are separate
 - update docs to describe the new canonical relation owner
 

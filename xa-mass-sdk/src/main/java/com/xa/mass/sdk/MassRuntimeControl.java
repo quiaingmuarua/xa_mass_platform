@@ -7,6 +7,8 @@ import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.model.MassTaskCommandRequest;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
+import com.xa.mass.sdk.model.AdapterNodeRegistration;
+import com.xa.mass.sdk.model.NodeGroupBindingRegistration;
 import com.xa.mass.sdk.model.TaskCommandResult;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.WorkerGroupDeclaration;
@@ -86,6 +88,16 @@ public interface MassRuntimeControl {
     TaskCommandResult executeTaskCommand(String taskId, MassTaskCommandRequest request);
 
     // --- Worker management ---
+
+    /**
+     * Register AdapterNode endpoint identity before binding it to worker groups.
+     */
+    void registerAdapterNode(AdapterNodeRegistration request);
+
+    /**
+     * Declare that an AdapterNode hosts a WorkerGroup before workers join.
+     */
+    void bindNodeGroup(NodeGroupBindingRegistration request);
 
     /**
      * Declare WorkerGroup capability truth before workers in that group join.

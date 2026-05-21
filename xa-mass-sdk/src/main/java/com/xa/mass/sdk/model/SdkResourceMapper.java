@@ -27,8 +27,8 @@ public final class SdkResourceMapper {
         worker.setWorkerId(workerId);
         worker.setAdapterNodeId(blankToNull(request.getAdapterNodeId()));
         worker.setWorkerGroupId(blankToNull(request.getWorkerGroupId()));
-        worker.setSupportedProjects(normalizedList(request.getSupportedProjects()));
-        worker.setSupportedEventCodes(normalizedList(request.getSupportedEventCodes()));
+        worker.setSupportedProjects(Collections.emptyList());
+        worker.setSupportedEventCodes(Collections.emptyList());
         worker.setAdapterId(adapterId);
         worker.setOnlineStrategy(transportHint);
         worker.setMaxConcurrentWork(request.getMaxConcurrentWork());
@@ -48,20 +48,6 @@ public final class SdkResourceMapper {
             return null;
         }
         return value.trim();
-    }
-
-    private static List<String> normalizedList(List<String> values) {
-        if (values == null || values.isEmpty()) {
-            return Collections.emptyList();
-        }
-        LinkedHashSet<String> normalized = new LinkedHashSet<>();
-        for (String value : values) {
-            String normalizedValue = blankToNull(value);
-            if (normalizedValue != null) {
-                normalized.add(normalizedValue);
-            }
-        }
-        return normalized.isEmpty() ? Collections.emptyList() : List.copyOf(normalized);
     }
 
     private static Map<String, String> normalizedAttributes(Map<String, String> attributes) {

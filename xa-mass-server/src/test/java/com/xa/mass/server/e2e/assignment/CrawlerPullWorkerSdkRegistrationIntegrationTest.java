@@ -7,6 +7,8 @@ import com.xa.mass.server.e2e.support.ProjectionSampleE2eTest;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
+import com.xa.mass.sdk.model.AdapterNodeRegistration;
+import com.xa.mass.sdk.model.NodeGroupBindingRegistration;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.WorkerEventBinding;
@@ -73,8 +75,18 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends ProjectionSampleE2
                                 .build()
                 ))
                 .build());
+        app.registerAdapterNode(AdapterNodeRegistration.builder()
+                .adapterNodeId("crawler-polling-node")
+                .adapterType(WorkerTransportHints.POLLING)
+                .endpointId("crawler-polling")
+                .build());
+        app.bindNodeGroup(NodeGroupBindingRegistration.builder()
+                .adapterNodeId("crawler-polling-node")
+                .workerGroupId("crawler")
+                .build());
         app.registerWorker(WorkerRegistration.builder()
                 .workerId(workerId)
+                .adapterNodeId("crawler-polling-node")
                 .workerGroupId("crawler")
                 .transportHint(WorkerTransportHints.POLLING)
                 .attributes(Map.of(

@@ -5,8 +5,10 @@ import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.authz.TaskOwnershipStamp;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
+import com.xa.mass.sdk.model.AdapterNodeRegistration;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
+import com.xa.mass.sdk.model.NodeGroupBindingRegistration;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
@@ -75,7 +77,8 @@ class DevDemoBootstrapDataProviderTest {
                 .flatMap(group -> group.getEventBindings().stream())
                 .allMatch(binding -> binding.getProjectCodes().containsAll(List.of("demoApp", "demoOps"))));
         WorkerRegistration firstWorker = runtime.workers.get(0);
-        assertTrue(firstWorker.getEventBindings().isEmpty());
+        assertTrue(firstWorker.getAdapterNodeId() != null && !firstWorker.getAdapterNodeId().isBlank());
+        assertTrue(firstWorker.getWorkerGroupId() != null && !firstWorker.getWorkerGroupId().isBlank());
         assertEquals("us", firstWorker.getAttributes().get("country"));
         assertTrue(firstWorker.getAttributes().get("routingTags").contains("us"));
     }
@@ -178,6 +181,14 @@ class DevDemoBootstrapDataProviderTest {
         public boolean sealTask(String taskId) {
             sealedTaskIds.add(taskId);
             return true;
+        }
+
+        @Override
+        public void registerAdapterNode(AdapterNodeRegistration request) {
+        }
+
+        @Override
+        public void bindNodeGroup(NodeGroupBindingRegistration request) {
         }
 
         @Override

@@ -54,7 +54,7 @@ scheduling truth.
 Current code already has several pieces:
 
 - external worker registration accepts `adapterNodeId`, requires
-  `workerGroupId`, and no longer requires worker-level `eventBindings`
+  `workerGroupId`, and rejects worker-level capability fields
 - external/control-plane code can declare WorkerGroup capability through the
   worker-group declaration surface before worker registration
 - `WorkerRegistrySnapshot` indexes `groupId -> workerIds`,
@@ -66,15 +66,19 @@ Current code already has several pieces:
   owner apply
 - `WorkerDispatchAvailabilityOwner` uses source-scoped gates for worker state,
   worker command, and node-group binding availability
+- external/SDK registration has explicit AdapterNode and NodeGroupBinding
+  registration surfaces, and worker registration requires `adapterNodeId` when
+  joining a WorkerGroup
+- worker registration no longer auto-creates compatibility AdapterNode /
+  NodeGroupBinding records from `adapterId`
 - transport runtime owns adapter routing, delivery stores, result ingest, and
   presence stores
 
 The spine is still not fully closed:
 
-- worker-level `supportedProjects` and `supportedEventCodes` still exist as
-  compatibility inputs; they must not remain mainline capability fields
-- worker registration can still auto-create compatibility AdapterNode /
-  NodeGroupBinding when only `adapterId` is provided
+- the base Worker read model still carries legacy supported project/event
+  projections for diagnostics; registration no longer accepts them as
+  capability input
 - bounded route-bucket acquisition is in the in-memory candidate-source path;
   Redis backing and bounded stale cleanup are still later slices
 
@@ -512,10 +516,12 @@ Acceptance:
 
 ### TW-1B: External worker registration becomes identity-first
 
-Status: mainline implemented for group-first capability; the worker-level
-capability projection into WorkerGroup truth is retired. AdapterNode /
-NodeGroupBinding auto-creation from legacy `adapterId` remains a bounded
-registration compatibility path.
+Status: implemented. Group-first capability is the mainline, the worker-level
+capability projection into WorkerGroup truth is retired, and worker registration
+no longer auto-creates AdapterNode / NodeGroupBinding from legacy `adapterId`.
+NodeGroupBinding registration now requires both a registered AdapterNode and a
+declared WorkerGroup, and adapter-node scoped worker registration is rejected
+unless the explicit node/group binding exists.
 
 Goal: worker register should bind execution identity to an existing
 AdapterNode/WorkerGroup relation, not declare capability truth.
@@ -528,22 +534,21 @@ Scope:
   - adapter node exists
   - worker group exists
   - node-group binding exists
-- worker-level `eventBindings` are optional registration input for older
-  callers; SDK normalization may preserve them as a read/authorization shape,
-  but they must not create WorkerGroup capability truth
 - keep worker capability report as a report-owned slice bounded by approved
   group capability
 - keep `WorkerCapabilityAuthority` composing candidate-source capability only
   from declared WorkerGroups
-- remove worker-level `supportedProjects` and `supportedEventCodes` from the
-  mainline registration shape after TW-1A owns group capability
-- remove or explicitly demote compatibility auto-creation of
-  AdapterNode/NodeGroupBinding from worker registration when the explicit path
-  is covered by tests
+- keep worker registration capability-free: no `eventBindings`,
+  `supportedProjects`, or `supportedEventCodes` on the registration contract
+- remove compatibility auto-creation of AdapterNode/NodeGroupBinding from
+  worker registration when the explicit path is covered by tests
 
 Acceptance:
 
 - missing node, group, or binding fails worker registration
+- SDK/API registration requires explicit `adapterNodeId + workerGroupId` for
+  group workers
+- worker registration rejects or cannot express worker-level capability fields
 - worker registration does not create new capability truth
 - task eventCode still reaches workers through `WorkerCandidateIndex`
 - legacy worker-level supported event fields are not used as mainline truth

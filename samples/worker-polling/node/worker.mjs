@@ -4,6 +4,7 @@ const baseUrl = normalizeBaseUrl(process.env.MASS_BASE_URL ?? "http://127.0.0.1:
 const workerId = requiredEnv("MASS_WORKER_ID", "node-worker-api-001");
 const workerKey = requiredEnv("MASS_WORKER_KEY", "node-worker-key");
 const workerGroupId = process.env.MASS_WORKER_GROUP_ID ?? "node-runtime";
+const adapterNodeId = process.env.MASS_ADAPTER_NODE_ID ?? `${workerGroupId}-node`;
 const project = process.env.MASS_PROJECT ?? "crawlerApp";
 const eventCode = process.env.MASS_EVENT_CODE ?? "crawler.fetch-page";
 const region = process.env.MASS_REGION ?? "us";
@@ -64,8 +65,29 @@ async function registerWorker() {
   });
   console.log("[worker] declared worker group:", workerGroup.data);
 
+  const adapterNode = await post("/worker-api/v1/adapter-nodes", {
+    adapterNodeId,
+    adapterType: "polling",
+    endpointId: adapterNodeId,
+    attributes: {
+      lang: "node",
+      region,
+    },
+  });
+  console.log("[worker] registered adapter node:", adapterNode.data);
+
+  const binding = await post("/worker-api/v1/node-group-bindings", {
+    adapterNodeId,
+    workerGroupId,
+    attributes: {
+      region,
+    },
+  });
+  console.log("[worker] bound adapter node to group:", binding.data);
+
   const response = await post("/worker-api/v1/workers", {
     workerId,
+    adapterNodeId,
     workerGroupId,
     transportHint: "polling",
     attributes: {

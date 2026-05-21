@@ -65,15 +65,31 @@ with an explicit `adapterId`.
 
 app.start();
 
-app.registerWorker(WorkerRegistration.builder()
-        .workerId("crawler-worker-1")
-        .workerGroupId("crawler")
+app.declareWorkerGroup(WorkerGroupDeclaration.builder()
+        .groupId("crawler")
         .eventBindings(java.util.List.of(
                 WorkerEventBinding.builder()
                         .eventCode("demo.dispatch")
                         .projectCodes(java.util.List.of("demoApp"))
                         .build()
         ))
+        .build());
+
+app.registerAdapterNode(AdapterNodeRegistration.builder()
+        .adapterNodeId("crawler-polling-node")
+        .adapterType("polling")
+        .endpointId("crawler-polling-node")
+        .build());
+
+app.bindNodeGroup(NodeGroupBindingRegistration.builder()
+        .adapterNodeId("crawler-polling-node")
+        .workerGroupId("crawler")
+        .build());
+
+app.registerWorker(WorkerRegistration.builder()
+        .workerId("crawler-worker-1")
+        .adapterNodeId("crawler-polling-node")
+        .workerGroupId("crawler")
         .transportHint("polling")
         .attributes(java.util.Map.of("type", "crawler"))
         .build());
@@ -100,9 +116,8 @@ app.pullWorker("crawler-worker-1").connect();
 
 New worker capability registration should declare `WorkerGroupDeclaration`
 with `eventBindings`, then register worker execution identities against the
-group. Coarse `supportedProjects` / `supportedEventCodes` fields remain
-compatibility read/input residue only and must not be used as the mainline
-capability contract in new code.
+group. `WorkerRegistration` does not accept worker-level capability fields;
+use worker attributes only for routing labels and diagnostics.
 
 `WorkerContext` registration, query, and runtime payload surfaces have been
 removed from the SDK mainline. New SDK integration should start from

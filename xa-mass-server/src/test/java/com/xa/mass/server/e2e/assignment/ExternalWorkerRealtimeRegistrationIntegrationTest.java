@@ -71,9 +71,11 @@ class ExternalWorkerRealtimeRegistrationIntegrationTest extends AbstractSampleE2
                 .build());
         HttpHeaders workerHeaders = credentialHeaders(WORKER_KEY);
         declareExternalWorkerGroup("realtime-crawler", "crawlerApp", "crawler.fetch-page", workerHeaders);
+        bindExternalAdapterNode("realtime-node", "realtime-crawler", workerHeaders);
 
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", WORKER_ID,
+                "adapterNodeId", "realtime-node",
                 "workerGroupId", "realtime-crawler",
                 "transportHint", "realtime"
         ), workerHeaders);

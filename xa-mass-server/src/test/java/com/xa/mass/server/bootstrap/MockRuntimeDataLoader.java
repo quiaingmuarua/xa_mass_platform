@@ -6,8 +6,10 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassRuntimeControl;
+import com.xa.mass.sdk.model.AdapterNodeRegistration;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
+import com.xa.mass.sdk.model.NodeGroupBindingRegistration;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.WorkerEventBinding;
@@ -107,6 +109,7 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
             normalizedWorkers.add(worker);
         }
         declareWorkerGroups(runtime, normalizedWorkers);
+        bindWorkerGroups(runtime, normalizedWorkers);
         int accepted = 0;
         for (WorkerFixture worker : normalizedWorkers) {
             runtime.registerWorker(toRegistration(worker));
@@ -132,6 +135,31 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
                     .groupId(entry.getKey())
                     .eventBindings(distinctBindings(entry.getValue()))
                     .build());
+        }
+    }
+
+    private void bindWorkerGroups(MassRuntimeControl runtime, List<WorkerFixture> workers) {
+        Map<String, List<String>> groupsByAdapterNode = new LinkedHashMap<>();
+        for (WorkerFixture worker : workers) {
+            if (worker.getWorkerGroupId() == null || worker.getWorkerGroupId().isBlank()) {
+                continue;
+            }
+            groupsByAdapterNode.computeIfAbsent(worker.getAdapterId(), ignored -> new ArrayList<>())
+                    .add(worker.getWorkerGroupId());
+        }
+        for (Map.Entry<String, List<String>> entry : groupsByAdapterNode.entrySet()) {
+            String adapterNodeId = entry.getKey();
+            runtime.registerAdapterNode(AdapterNodeRegistration.builder()
+                    .adapterNodeId(adapterNodeId)
+                    .adapterType(adapterNodeId)
+                    .endpointId(adapterNodeId)
+                    .build());
+            for (String groupId : entry.getValue().stream().distinct().toList()) {
+                runtime.bindNodeGroup(NodeGroupBindingRegistration.builder()
+                        .adapterNodeId(adapterNodeId)
+                        .workerGroupId(groupId)
+                        .build());
+            }
         }
     }
 
@@ -226,6 +254,7 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
     private WorkerRegistration toRegistration(WorkerFixture worker) {
         WorkerRegistration.Builder builder = WorkerRegistration.builder()
                 .workerId(worker.getWorkerId())
+                .adapterNodeId(worker.getAdapterId())
                 .workerGroupId(worker.getWorkerGroupId())
                 .adapterId(worker.getAdapterId())
                 .transportHint(worker.getOnlineStrategy())
