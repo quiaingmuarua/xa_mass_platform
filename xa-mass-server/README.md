@@ -222,7 +222,9 @@ Current command groups:
   - `fault.state.get`
   - `fault.execution.profile`
   - `fault.execution.delay`
+  - `fault.execution.stall`
   - `fault.result.drop`
+  - `fault.result.duplicate`
   - `fault.reset`
 - `tool.*`: lightweight utility commands for debugging and demos
   - `tool.time.now`

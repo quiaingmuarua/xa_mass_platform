@@ -193,14 +193,27 @@ public class SampleWorkerSocketClient implements SampleWorkerClient {
         if (plan == null) {
             return;
         }
-        sendTaskResponse(plan.responseJson(), plan.messageId(), plan.delayMillis(), plan.disconnectWorkerId());
+        sendTaskResponse(
+                plan.responseJson(),
+                plan.messageId(),
+                plan.delayMillis(),
+                plan.disconnectWorkerId(),
+                plan.duplicateCount(),
+                plan.duplicateGapMillis()
+        );
     }
 
-    private void sendTaskResponse(String responseJson, String messageId, long delayMillis, String disconnectWorkerId) {
+    private void sendTaskResponse(String responseJson,
+                                  String messageId,
+                                  long delayMillis,
+                                  String disconnectWorkerId,
+                                  int duplicateCount,
+                                  long duplicateGapMillis) {
         if (delayMillis <= 0L) {
             try {
                 sendFrame(responseJson);
                 logger.debug("[{}] Sent socket task response for messageId={}", workerId, messageId);
+                sendDuplicateTaskResponses(responseJson, messageId, duplicateCount, duplicateGapMillis);
                 disconnectAfterTaskResultIfRequested(disconnectWorkerId);
             } catch (Exception e) {
                 logger.warn("[{}] Failed to send socket task response for messageId={}: {}", workerId, messageId, e.getMessage());
@@ -217,11 +230,33 @@ public class SampleWorkerSocketClient implements SampleWorkerClient {
             try {
                 sendFrame(responseJson);
                 logger.debug("[{}] Sent delayed socket task response for messageId={}", workerId, messageId);
+                sendDuplicateTaskResponses(responseJson, messageId, duplicateCount, duplicateGapMillis);
                 disconnectAfterTaskResultIfRequested(disconnectWorkerId);
             } catch (Exception e) {
                 logger.warn("[{}] Failed to send delayed socket task response for messageId={}: {}", workerId, messageId, e.getMessage());
             }
         }, delayMillis, TimeUnit.MILLISECONDS);
+    }
+
+    private void sendDuplicateTaskResponses(String responseJson, String messageId, int duplicateCount, long duplicateGapMillis) {
+        int boundedDuplicateCount = Math.max(0, duplicateCount);
+        for (int duplicateIndex = 1; duplicateIndex <= boundedDuplicateCount; duplicateIndex++) {
+            long delay = Math.max(0L, duplicateGapMillis) * duplicateIndex;
+            taskResponseScheduler.schedule(() -> {
+                if (!isSocketOpen()) {
+                    logger.warn("[{}] Skip duplicate socket task response because client is disconnected. messageId={}",
+                            workerId, messageId);
+                    return;
+                }
+                try {
+                    sendFrame(responseJson);
+                    logger.debug("[{}] Sent duplicate socket task response for messageId={}", workerId, messageId);
+                } catch (Exception e) {
+                    logger.warn("[{}] Failed to send duplicate socket task response for messageId={}: {}",
+                            workerId, messageId, e.getMessage());
+                }
+            }, delay, TimeUnit.MILLISECONDS);
+        }
     }
 
     private void disconnectAfterTaskResultIfRequested(String disconnectWorkerId) {
@@ -386,4 +421,3 @@ public class SampleWorkerSocketClient implements SampleWorkerClient {
         return "FAILED".equals(normalized) ? "FAILED" : "SUCCESS";
     }
 }
-

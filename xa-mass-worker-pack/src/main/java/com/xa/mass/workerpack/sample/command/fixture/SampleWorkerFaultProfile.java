@@ -52,6 +52,7 @@ public final class SampleWorkerFaultProfile {
 
     public enum StallMode {
         OFF,
+        DURATION,
         LEASE_EXPIRY,
         FOREVER
     }
@@ -82,6 +83,7 @@ public final class SampleWorkerFaultProfile {
     private final int duplicateResultCount;
     private final long duplicateResultGapMillis;
     private final StallMode stallMode;
+    private final long stallMillis;
     private final MalformedResultKind malformedResultKind;
     private final DisconnectPhase disconnectPhase;
 
@@ -97,6 +99,7 @@ public final class SampleWorkerFaultProfile {
         this.duplicateResultCount = Math.max(0, builder.duplicateResultCount);
         this.duplicateResultGapMillis = Math.max(0L, builder.duplicateResultGapMillis);
         this.stallMode = builder.stallMode == null ? StallMode.OFF : builder.stallMode;
+        this.stallMillis = Math.max(0L, builder.stallMillis);
         this.malformedResultKind = builder.malformedResultKind == null
                 ? MalformedResultKind.NONE
                 : builder.malformedResultKind;
@@ -182,6 +185,10 @@ public final class SampleWorkerFaultProfile {
         return stallMode;
     }
 
+    public long stallMillis() {
+        return stallMillis;
+    }
+
     public MalformedResultKind malformedResultKind() {
         return malformedResultKind;
     }
@@ -212,6 +219,17 @@ public final class SampleWorkerFaultProfile {
         };
     }
 
+    public boolean shouldStallWithoutResult() {
+        return enabled && (stallMode == StallMode.FOREVER || stallMode == StallMode.LEASE_EXPIRY);
+    }
+
+    public long resolveStallDelayMillis() {
+        if (!enabled || stallMode != StallMode.DURATION) {
+            return 0L;
+        }
+        return stallMillis;
+    }
+
     public Map<String, Object> toMap() {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("enabled", enabled);
@@ -225,6 +243,7 @@ public final class SampleWorkerFaultProfile {
         map.put("duplicateResultCount", duplicateResultCount);
         map.put("duplicateResultGapMillis", duplicateResultGapMillis);
         map.put("stallMode", stallMode.name());
+        map.put("stallMillis", stallMillis);
         map.put("malformedResultKind", malformedResultKind.name());
         map.put("disconnectPhase", disconnectPhase.name());
         return map;
@@ -246,6 +265,7 @@ public final class SampleWorkerFaultProfile {
         private int duplicateResultCount;
         private long duplicateResultGapMillis;
         private StallMode stallMode = StallMode.OFF;
+        private long stallMillis;
         private MalformedResultKind malformedResultKind = MalformedResultKind.NONE;
         private DisconnectPhase disconnectPhase = DisconnectPhase.NONE;
 
@@ -280,6 +300,13 @@ public final class SampleWorkerFaultProfile {
 
         public Builder stallMode(StallMode stallMode) {
             this.stallMode = stallMode;
+            this.stallMillis = 0L;
+            return this;
+        }
+
+        public Builder stallDuration(long stallMillis) {
+            this.stallMode = StallMode.DURATION;
+            this.stallMillis = stallMillis;
             return this;
         }
 

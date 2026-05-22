@@ -105,9 +105,25 @@
       "projectCodes": ["demoApp", "testApp"]
     },
     {
+      "code": "fault.execution.stall",
+      "name": "Fault Execution Stall",
+      "description": "Configure worker execution stall behavior on a targeted sample worker through the task path.",
+      "payloadTypes": ["JSON"],
+      "taskModes": ["SINGLE_RUN"],
+      "projectCodes": ["demoApp", "testApp"]
+    },
+    {
       "code": "fault.result.drop",
       "name": "Fault Result Drop",
       "description": "Configure deterministic task-result drop behavior on a targeted sample worker through the task path.",
+      "payloadTypes": ["JSON"],
+      "taskModes": ["SINGLE_RUN"],
+      "projectCodes": ["demoApp", "testApp"]
+    },
+    {
+      "code": "fault.result.duplicate",
+      "name": "Fault Result Duplicate",
+      "description": "Configure duplicate task-result submit behavior on a targeted sample worker through the task path.",
       "payloadTypes": ["JSON"],
       "taskModes": ["SINGLE_RUN"],
       "projectCodes": ["demoApp", "testApp"]
@@ -138,7 +154,9 @@
         "fault.state.get",
         "fault.execution.profile",
         "fault.execution.delay",
+        "fault.execution.stall",
         "fault.result.drop",
+        "fault.result.duplicate",
         "fault.reset"
       ]
     },
@@ -157,7 +175,9 @@
         "fault.state.get",
         "fault.execution.profile",
         "fault.execution.delay",
+        "fault.execution.stall",
         "fault.result.drop",
+        "fault.result.duplicate",
         "fault.reset"
       ]
     },

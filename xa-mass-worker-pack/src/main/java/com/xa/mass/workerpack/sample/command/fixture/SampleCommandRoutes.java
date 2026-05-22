@@ -91,9 +91,25 @@ public final class SampleCommandRoutes {
         ));
 
         registerIfAbsent(command(
+                "fault.execution.stall",
+                SampleCommandRoutes::faultExecutionStall,
+                "Configure worker execution stall behavior for a sample worker.",
+                true,
+                "prepare", "trigger", "verify"
+        ));
+
+        registerIfAbsent(command(
                 "fault.result.drop",
                 SampleCommandRoutes::faultResultDrop,
                 "Configure deterministic sample worker result-drop behavior.",
+                true,
+                "prepare", "trigger", "verify"
+        ));
+
+        registerIfAbsent(command(
+                "fault.result.duplicate",
+                SampleCommandRoutes::faultResultDuplicate,
+                "Configure duplicate task-result submit behavior for a sample worker.",
                 true,
                 "prepare", "trigger", "verify"
         ));
@@ -207,6 +223,29 @@ public final class SampleCommandRoutes {
         return buildStateResponse(workerId, state, "fault_delay_updated");
     }
 
+    private static Map<String, Object> faultExecutionStall(JsonObject request, CommandContext context) {
+        String workerId = requireWorkerId(request);
+        String until = stringValue(request, "until", "forever");
+        long millis = boundedLong(request, "millis", 0L, 30_000L);
+        SampleClientState state = stateRegistry(context).getOrCreate(workerId);
+        SampleWorkerFaultProfile.Builder builder = SampleWorkerFaultProfile.builder(
+                SampleWorkerFaultProfile.ProfileName.STUCK,
+                boundedLong(request, "seed", 0L, Long.MAX_VALUE)
+        );
+        switch (until.trim().toLowerCase()) {
+            case "forever" -> builder.stallMode(SampleWorkerFaultProfile.StallMode.FOREVER);
+            case "lease-expiry", "lease_expiry", "leaseexpiry" ->
+                    builder.stallMode(SampleWorkerFaultProfile.StallMode.LEASE_EXPIRY);
+            case "ms", "duration" -> builder.stallDuration(millis);
+            default -> throw new CommandException(
+                    ErrorCode.PARSE_ERROR,
+                    "fault.execution.stall until must be forever, lease-expiry, or ms"
+            );
+        }
+        state.setFaultProfile(builder.build());
+        return buildStateResponse(workerId, state, "fault_stall_updated");
+    }
+
     private static Map<String, Object> faultResultDrop(JsonObject request, CommandContext context) {
         String workerId = requireWorkerId(request);
         String mode = stringValue(request, "mode", "OFF");
@@ -220,6 +259,20 @@ public final class SampleCommandRoutes {
                 .resultDrop(resultDropMode(mode), percent)
                 .build());
         return buildStateResponse(workerId, state, "fault_result_drop_updated");
+    }
+
+    private static Map<String, Object> faultResultDuplicate(JsonObject request, CommandContext context) {
+        String workerId = requireWorkerId(request);
+        int count = boundedInt(request, "count", 1, 5);
+        long gapMs = boundedLong(request, "gapMs", 25L, 5_000L);
+        SampleClientState state = stateRegistry(context).getOrCreate(workerId);
+        state.setFaultProfile(SampleWorkerFaultProfile.builder(
+                        SampleWorkerFaultProfile.ProfileName.FLAKY_RESULT,
+                        boundedLong(request, "seed", 0L, Long.MAX_VALUE)
+                )
+                .duplicateResult(count, gapMs)
+                .build());
+        return buildStateResponse(workerId, state, "fault_result_duplicate_updated");
     }
 
     private static Map<String, Object> faultReset(JsonObject request, CommandContext context) {

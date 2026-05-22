@@ -114,6 +114,40 @@ class CommandRuntimeTest {
     }
 
     @Test
+    void shouldPersistFaultStallStateForWorker() {
+        JsonObject stallRequest = new JsonObject();
+        stallRequest.addProperty("event", "fault.execution.stall");
+        stallRequest.addProperty("workerId", "worker-fault-stall");
+        stallRequest.addProperty("until", "lease-expiry");
+
+        CommandResponse<?> stallResponse = SampleCommandRuntime.dispatch(stallRequest);
+
+        assertTrue(stallResponse.isSuccess());
+        Map<?, ?> state = (Map<?, ?>) ((Map<?, ?>) stallResponse.getData()).get("state");
+        Map<?, ?> faultProfile = (Map<?, ?>) state.get("faultProfile");
+        assertEquals("STUCK", faultProfile.get("profile"));
+        assertEquals("LEASE_EXPIRY", faultProfile.get("stallMode"));
+    }
+
+    @Test
+    void shouldPersistFaultDuplicateResultStateForWorker() {
+        JsonObject duplicateRequest = new JsonObject();
+        duplicateRequest.addProperty("event", "fault.result.duplicate");
+        duplicateRequest.addProperty("workerId", "worker-fault-duplicate");
+        duplicateRequest.addProperty("count", 2);
+        duplicateRequest.addProperty("gapMs", 10);
+
+        CommandResponse<?> duplicateResponse = SampleCommandRuntime.dispatch(duplicateRequest);
+
+        assertTrue(duplicateResponse.isSuccess());
+        Map<?, ?> state = (Map<?, ?>) ((Map<?, ?>) duplicateResponse.getData()).get("state");
+        Map<?, ?> faultProfile = (Map<?, ?>) state.get("faultProfile");
+        assertEquals("FLAKY_RESULT", faultProfile.get("profile"));
+        assertEquals(2, faultProfile.get("duplicateResultCount"));
+        assertEquals(10L, faultProfile.get("duplicateResultGapMillis"));
+    }
+
+    @Test
     void shouldResetFaultProfilesWithoutClearingMockState() {
         JsonObject mockDelay = new JsonObject();
         mockDelay.addProperty("event", "mock.delay.response");

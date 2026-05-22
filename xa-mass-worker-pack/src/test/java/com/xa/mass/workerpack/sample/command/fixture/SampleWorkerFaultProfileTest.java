@@ -19,6 +19,7 @@ class SampleWorkerFaultProfileTest {
         assertFalse(profile.shouldDropResult("worker", "task", "msg", 1));
         assertEquals(0, profile.duplicateResultCount());
         assertEquals(SampleWorkerFaultProfile.StallMode.OFF, profile.stallMode());
+        assertEquals(0L, profile.stallMillis());
         assertEquals(SampleWorkerFaultProfile.DisconnectPhase.NONE, profile.disconnectPhase());
     }
 
@@ -37,6 +38,26 @@ class SampleWorkerFaultProfileTest {
         assertEquals("NOISY", snapshot.get("profile"));
         assertEquals(42L, snapshot.get("seed"));
         assertEquals("UNIFORM", snapshot.get("delayDistribution"));
+    }
+
+    @Test
+    void stallProfilesExposeWhetherResultShouldBeSuppressedOrDelayed() {
+        SampleWorkerFaultProfile stuck = SampleWorkerFaultProfile.fromProfile("STUCK", 1L);
+
+        assertTrue(stuck.shouldStallWithoutResult());
+        assertEquals(SampleWorkerFaultProfile.StallMode.FOREVER, stuck.stallMode());
+
+        SampleWorkerFaultProfile duration = SampleWorkerFaultProfile.builder(
+                        SampleWorkerFaultProfile.ProfileName.STUCK,
+                        2L
+                )
+                .stallDuration(250L)
+                .build();
+
+        assertFalse(duration.shouldStallWithoutResult());
+        assertEquals(SampleWorkerFaultProfile.StallMode.DURATION, duration.stallMode());
+        assertEquals(250L, duration.resolveStallDelayMillis());
+        assertEquals(250L, duration.toMap().get("stallMillis"));
     }
 
     @Test

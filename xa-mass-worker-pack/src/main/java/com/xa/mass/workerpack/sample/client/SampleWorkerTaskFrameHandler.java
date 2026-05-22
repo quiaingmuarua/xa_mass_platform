@@ -108,6 +108,11 @@ final class SampleWorkerTaskFrameHandler {
                     workerId, extractMessageId(taskMessage), state.snapshot());
             return null;
         }
+        if (state != null && state.getFaultProfile().shouldStallWithoutResult()) {
+            logger.info("[{}] Stalled sample task response for messageId={} due to fault profile {}",
+                    workerId, extractMessageId(taskMessage), state.getFaultProfile().toMap());
+            return null;
+        }
         if (state != null && state.shouldDropFaultProfileResult(
                 workerId,
                 taskId,
@@ -118,7 +123,16 @@ final class SampleWorkerTaskFrameHandler {
                     workerId, extractMessageId(taskMessage), state.getFaultProfile().toMap());
             return null;
         }
-        return new TaskResponsePlan(GSON.toJson(response), extractMessageId(taskMessage), delayMillis, null);
+        int duplicateCount = state == null ? 0 : state.getFaultProfile().duplicateResultCount();
+        long duplicateGapMillis = state == null ? 0L : state.getFaultProfile().duplicateResultGapMillis();
+        return new TaskResponsePlan(
+                GSON.toJson(response),
+                extractMessageId(taskMessage),
+                delayMillis,
+                null,
+                duplicateCount,
+                duplicateGapMillis
+        );
     }
 
     private TaskResponsePlan prepareSampleCommandTaskResponse(JsonObject taskMessage,
@@ -172,7 +186,9 @@ final class SampleWorkerTaskFrameHandler {
                 GSON.toJson(response),
                 extractMessageId(taskMessage),
                 delayMillis,
-                resolveDisconnectWorkerId(commandResult)
+                resolveDisconnectWorkerId(commandResult),
+                0,
+                0L
         );
     }
 
@@ -187,7 +203,9 @@ final class SampleWorkerTaskFrameHandler {
                     "fault.state.get",
                     "fault.execution.profile",
                     "fault.execution.delay",
+                    "fault.execution.stall",
                     "fault.result.drop",
+                    "fault.result.duplicate",
                     "fault.reset" -> true;
             default -> false;
         };
@@ -307,7 +325,7 @@ final class SampleWorkerTaskFrameHandler {
                 extractMessageId(taskMessage),
                 retryCount == null ? 0 : retryCount
         );
-        return baseDelay + faultDelay;
+        return baseDelay + faultDelay + state.getFaultProfile().resolveStallDelayMillis();
     }
 
     boolean isTaskDispatchFrame(JsonObject taskMessage) {
@@ -422,6 +440,11 @@ final class SampleWorkerTaskFrameHandler {
         return "FAILED".equals(normalized) ? "FAILED" : "SUCCESS";
     }
 
-    record TaskResponsePlan(String responseJson, String messageId, long delayMillis, String disconnectWorkerId) {
+    record TaskResponsePlan(String responseJson,
+                            String messageId,
+                            long delayMillis,
+                            String disconnectWorkerId,
+                            int duplicateCount,
+                            long duplicateGapMillis) {
     }
 }

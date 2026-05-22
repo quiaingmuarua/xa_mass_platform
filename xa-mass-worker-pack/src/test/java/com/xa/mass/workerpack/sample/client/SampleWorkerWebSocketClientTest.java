@@ -152,6 +152,56 @@ class SampleWorkerWebSocketClientTest {
     }
 
     @Test
+    void taskRequestCanBeStalledWithoutResultByFaultProfile() throws Exception {
+        CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
+        stateRegistry.getOrCreate("worker-test").setFaultProfile(
+                SampleWorkerFaultProfile.builder(SampleWorkerFaultProfile.ProfileName.STUCK, 42L)
+                        .stallMode(SampleWorkerFaultProfile.StallMode.LEASE_EXPIRY)
+                        .build()
+        );
+
+        client.onMessage(taskMessage(false));
+
+        Thread.sleep(100L);
+        assertTrue(client.sentMessages.isEmpty());
+    }
+
+    @Test
+    void taskRequestCanBeDelayedByDurationStallProfile() throws Exception {
+        CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
+        stateRegistry.getOrCreate("worker-test").setFaultProfile(
+                SampleWorkerFaultProfile.builder(SampleWorkerFaultProfile.ProfileName.STUCK, 42L)
+                        .stallDuration(120L)
+                        .build()
+        );
+
+        client.onMessage(taskMessage(false));
+
+        Thread.sleep(50L);
+        assertTrue(client.sentMessages.isEmpty());
+
+        assertTrue(client.awaitSentCount(1, 1000L));
+    }
+
+    @Test
+    void taskRequestCanSubmitDuplicateResultsByFaultProfile() throws Exception {
+        CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
+        stateRegistry.getOrCreate("worker-test").setFaultProfile(
+                SampleWorkerFaultProfile.builder(SampleWorkerFaultProfile.ProfileName.FLAKY_RESULT, 42L)
+                        .duplicateResult(2, 10L)
+                        .build()
+        );
+
+        client.onMessage(taskMessage(false));
+
+        assertTrue(client.awaitSentCount(3, 1000L));
+        assertEquals(3, client.sentMessages.size());
+        assertEquals("msg-1", WsFrameTestSupport.messageId(WsFrameTestSupport.parse(client.sentMessages.get(0))));
+        assertEquals("msg-1", WsFrameTestSupport.messageId(WsFrameTestSupport.parse(client.sentMessages.get(1))));
+        assertEquals("msg-1", WsFrameTestSupport.messageId(WsFrameTestSupport.parse(client.sentMessages.get(2))));
+    }
+
+    @Test
     void msgIdOnlyTaskFrameIsIgnored() {
         CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
         JsonObject frame = new JsonObject();
@@ -217,6 +267,42 @@ class SampleWorkerWebSocketClientTest {
         JsonObject faultProfile = output.getAsJsonObject("state").getAsJsonObject("faultProfile");
         assertEquals("NOISY", faultProfile.get("profile").getAsString());
         assertEquals(77L, faultProfile.get("seed").getAsLong());
+    }
+
+    @Test
+    void faultStallTaskUpdatesStateThroughCommandRuntime() throws Exception {
+        CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
+        JsonObject input = new JsonObject();
+        input.addProperty("until", "forever");
+
+        client.onMessage(taskMessage("fault.execution.stall", input));
+
+        assertTrue(client.awaitSentCount(1, 1000L));
+        JsonObject output = WsFrameTestSupport.payload(WsFrameTestSupport.parse(client.sentMessages.get(0)));
+        assertEquals("fault.execution.stall", output.get("eventCode").getAsString());
+        assertEquals("fault_stall_updated", output.get("action").getAsString());
+        JsonObject faultProfile = output.getAsJsonObject("state").getAsJsonObject("faultProfile");
+        assertEquals("STUCK", faultProfile.get("profile").getAsString());
+        assertEquals("FOREVER", faultProfile.get("stallMode").getAsString());
+    }
+
+    @Test
+    void faultDuplicateTaskUpdatesStateThroughCommandRuntime() throws Exception {
+        CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
+        JsonObject input = new JsonObject();
+        input.addProperty("count", 2);
+        input.addProperty("gapMs", 10);
+
+        client.onMessage(taskMessage("fault.result.duplicate", input));
+
+        assertTrue(client.awaitSentCount(1, 1000L));
+        JsonObject output = WsFrameTestSupport.payload(WsFrameTestSupport.parse(client.sentMessages.get(0)));
+        assertEquals("fault.result.duplicate", output.get("eventCode").getAsString());
+        assertEquals("fault_result_duplicate_updated", output.get("action").getAsString());
+        JsonObject faultProfile = output.getAsJsonObject("state").getAsJsonObject("faultProfile");
+        assertEquals("FLAKY_RESULT", faultProfile.get("profile").getAsString());
+        assertEquals(2, faultProfile.get("duplicateResultCount").getAsInt());
+        assertEquals(10L, faultProfile.get("duplicateResultGapMillis").getAsLong());
     }
 
     @Test
