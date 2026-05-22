@@ -65,19 +65,21 @@ WorkerRegistry
 2. Occupancy mutations use per-worker CAS. No global lock over all workers.
 3. `WorkerStorage` CRUD interface must not survive beyond WSR-4.
 4. `lockedWorkers` must not survive beyond WSR-4.
-5. Foreground exclusivity is expressed as `declaredCapacity=1` or equivalent
-   resource policy. It is not a separate lock set.
-6. `dispatchEnabled` in `WorkerSlot` replaces the gate semantics currently in
-   `WorkerDispatchAvailabilityOwner`. Gate source tracking remains valid; it
-   now applies to the slot.
+5. Foreground exclusivity is expressed by resource-policy permit consumption,
+   not by a separate lock set. A foreground dispatch may consume all effective
+   permits for that worker without changing the worker's declared capacity.
+6. Source-scoped dispatch gates remain source-scoped. The slot may expose an
+   aggregate `dispatchEnabled` read, but `WORKER_STATE`, `WORKER_COMMAND`, and
+   `NODE_GROUP_BINDING` must not overwrite each other.
 7. Secondary indexes are maintained incrementally on slot writes, not rebuilt
    in full.
 8. `WorkerRegistrySnapshot` becomes a thin read view over the registry, not a
    full copy of all worker data.
 9. Memory and Redis implementations share the same `WorkerRegistry` contract
    and the same contract test suite.
-10. `WorkerRouteBucketOwner` may continue deriving from registry state but must
-    not hold its own stale copy of worker membership after WSR-3.
+10. `WorkerRouteBucketOwner` may continue deriving from registry state until
+    WSR-5, but any bucket read must either read registry-owned indexes directly
+    or validate worker membership before materializing candidates.
 
 ## Non-Goals
 
@@ -99,10 +101,10 @@ WorkerSlot (immutable record, updated via CAS)
     workerId          String
     groupId           String          denormalized from Worker.workerGroupId
     adapterNodeId     String          denormalized from Worker.adapterNodeId
-    worker            Worker          full attribute/metadata carrier
+    worker            Worker          defensive immutable snapshot of metadata
 
   capability
-    declaredCapacity  int             from capability report; minimum 1
+    declaredCapacity  int             from registration/report; minimum 1
     eventKeys         Set<EventKey>   capability ceiling; empty = no ceiling
 
   occupancy (CAS-maintained)
@@ -110,30 +112,65 @@ WorkerSlot (immutable record, updated via CAS)
     reservedCount     int             optimistic pre-claim reservations
 
   gate
-    dispatchEnabled   boolean         false = DRAINING or WORKER_COMMAND gate
+    disabledSources   Set<DispatchAvailabilitySource>
+    dispatchEnabled   boolean         derived: disabledSources.isEmpty()
+```
+
+`WorkerSlot` must not expose a mutable `Worker` instance as live state.
+Implementations must use one of these forms:
+
+```text
+preferred: WorkerSlotMetadata immutable record copied from Worker
+allowed:   defensive-copy Worker on slot write and slot read
+forbidden: storing and returning the caller's mutable Worker reference
 ```
 
 Derived invariants:
 
 ```text
-canReserve = dispatchEnabled
-             && activeLeaseCount + reservedCount < max(1, declaredCapacity)
+canReserve(permits) = dispatchEnabled
+                      && permits > 0
+                      && activeLeaseCount + reservedCount + permits
+                         <= max(1, declaredCapacity)
 
-isForegroundExclusive = declaredCapacity == 1
+foregroundExclusive = resource policy consumes all available permits
 ```
 
 CAS operations on `WorkerSlot`:
 
 ```text
-tryReserve(workerId)       -> boolean   CAS: +1 reservedCount if canReserve
-confirmReservation(workerId)-> boolean  CAS: -1 reservedCount, +1 activeLeaseCount
-releaseReservation(workerId)-> void     CAS: -1 reservedCount (min 0)
-recordWorkFinal(workerId)   -> void     CAS: -1 activeLeaseCount (min 0)
-setDispatchEnabled(workerId, boolean)   CAS: update gate
+tryReserve(workerId, permits)        -> boolean
+  CAS: +permits reservedCount if canReserve(permits)
+
+confirmReservation(workerId, permits)-> boolean
+  CAS: -permits reservedCount, +permits activeLeaseCount
+
+releaseReservation(workerId, permits)-> void
+  CAS: -permits reservedCount (min 0)
+
+recordWorkFinal(workerId, permits)   -> void
+  CAS: -permits activeLeaseCount (min 0)
+
+disableDispatch(workerId, source)    -> boolean
+  CAS: add source to disabledSources
+
+clearDispatchDisable(workerId, source)-> boolean
+  CAS: remove source from disabledSources
 ```
 
 Each operation is a bounded retry loop on the per-worker `AtomicReference`.
 Workers are independent so contention is bounded per worker, not global.
+
+Permit semantics:
+
+- one permit represents one runtime work lease capacity unit
+- per-worker batch claim must reserve the same number of permits that may be
+  confirmed into active leases
+- if a dispatch slot reserves N permits but runtime claims M work items, where
+  M < N, the unused `N - M` permits must be released before transport dispatch
+- foreground exclusive policy should reserve all currently available permits
+  or use an explicit policy-calculated permit cost; it must not mutate
+  `declaredCapacity`
 
 ## WorkerRegistry Contract
 
@@ -147,18 +184,21 @@ WorkerRegistry
     slots() -> Collection<WorkerSlot>
 
   occupancy mutations
-    tryReserve(workerId, taskId) -> boolean
-    confirmReservation(workerId, taskId) -> boolean
-    releaseReservation(workerId, taskId) -> void
-    recordWorkFinal(workerId, taskId) -> void
+    tryReserve(workerId, taskId, permits) -> boolean
+    confirmReservation(workerId, taskId, permits) -> boolean
+    releaseReservation(workerId, taskId, permits) -> void
+    recordWorkFinal(workerId, taskId, permits) -> void
 
   gate mutations
-    setDispatchEnabled(workerId, boolean, source) -> void
+    disableDispatch(workerId, source) -> boolean
+    clearDispatchDisable(workerId, source) -> boolean
 
   candidate indexes (space-for-time reads)
     workerIdsByGroupId(groupId) -> Set<String>
     workerIdsByAdapterNodeId(adapterNodeId) -> Set<String>
     workerIdsByAdapterNodeGroup(adapterNodeId, groupId) -> Set<String>
+    workerIdsByGroupRoute(groupId, routeBucketKey) -> Set<String>
+    workerIdsByNodeGroupRoute(adapterNodeId, groupId, routeBucketKey) -> Set<String>
     routeBucketKeysByWorkerId(workerId) -> Set<String>
 ```
 
@@ -174,12 +214,13 @@ task workerGroupSelector
   -> WorkerCandidateIndex / WorkerRouteBucketOwner (reads registry indexes)
   -> prefilter: registry.slot(workerId).dispatchEnabled + reachability
   -> rule/policy evaluation
-  -> registry.tryReserve(workerId, taskId)         // CAS, no global lock
+  -> registry.tryReserve(workerId, taskId, permits) // CAS, no global lock
   -> TaskWorkRuntime.claimReady(...)
-  -> registry.confirmReservation(workerId, taskId) // CAS
+  -> registry.confirmReservation(workerId, taskId, claimedPermits) // CAS
+  -> registry.releaseReservation(workerId, taskId, unusedPermits)  // CAS
   -> transport dispatch
   -> result / expiry convergence
-  -> registry.recordWorkFinal(workerId, taskId)    // CAS
+  -> registry.recordWorkFinal(workerId, taskId, finalPermits)      // CAS
 ```
 
 No `WorkerStorage.tryLockWorker`. No `InMemoryWorkerLoadView.synchronized`.
@@ -197,12 +238,19 @@ Scope:
 2. Define `WorkerRegistry` as an interface with the contract above.
 3. Write `WorkerRegistryContractTest` covering:
    - concurrent `tryReserve` respects `declaredCapacity`
-   - `confirmReservation` atomically moves reserved → active
+   - multi-permit `tryReserve` respects `declaredCapacity`
+   - `confirmReservation` atomically moves reserved → active by permit count
    - `releaseReservation` is idempotent (no negative counts)
    - `recordWorkFinal` is idempotent (no negative counts)
-   - `setDispatchEnabled(false)` blocks `tryReserve` immediately
+   - `disableDispatch(source)` blocks `tryReserve` immediately
+   - clearing one dispatch source does not enable a slot disabled by another
+     source
    - `upsertSlot` updates identity without disturbing occupancy counts
+   - `upsertSlot` defensively snapshots worker metadata or exposes immutable
+     metadata
    - `removeSlot` clears all index memberships
+   - route bucket index membership changes when approved routing attributes
+     change
 4. Do not implement `InMemoryWorkerRegistry` yet.
 
 Acceptance:
@@ -222,11 +270,16 @@ Scope:
 1. Implement `InMemoryWorkerRegistry`:
    - `ConcurrentHashMap<String, AtomicReference<WorkerSlot>> slotsById`
    - secondary indexes as `ConcurrentHashMap<String, ConcurrentHashMap<String, Boolean>>`
-     for `workerIdsByGroupId`, `workerIdsByAdapterNodeId`, `workerIdsByAdapterNodeGroup`
-   - index updates happen inside `upsertSlot` and `removeSlot` using
-     compare-and-remove on the old slot's groupId/adapterNodeId before adding
-     to the new slot's keys
-2. Implement `routeBucketKeysByWorkerId` using `WorkerRoutingPolicy` on upsert.
+     for group, adapter-node, node-group, and route-bucket membership
+   - same-worker identity/index writes are serialized with
+     `slotsById.compute(workerId, ...)` or an equivalent per-worker mutation
+     boundary
+   - index reads must validate the current slot before materializing a worker,
+     so stale index entries are harmless and can be lazily cleaned up
+2. Implement route bucket indexes using `WorkerRoutingPolicy` on upsert:
+   - `workerIdsByGroupRoute(groupId, routeBucketKey)`
+   - `workerIdsByNodeGroupRoute(adapterNodeId, groupId, routeBucketKey)`
+   - `routeBucketKeysByWorkerId(workerId)`
 3. `InMemoryWorkerRegistryTest` extends `WorkerRegistryContractTest`.
 4. Do not wire into `WorkerManager` yet.
 
@@ -235,7 +288,9 @@ Acceptance:
 1. All `WorkerRegistryContractTest` cases pass.
 2. Concurrent upsert and remove do not corrupt index membership.
 3. Route bucket keys are derived on upsert, not on each read.
-4. No existing test changes.
+4. Stale index entries, if produced by a race, are rejected by slot validation
+   before candidate materialization.
+5. No existing test changes.
 
 ### WSR-2: WorkerManager Convergence
 
@@ -253,9 +308,13 @@ Scope:
 4. `WorkerManager.findWorkerCandidates` continues through
    `WorkerCandidateIndex`, which now reads from registry indexes instead of
    `WorkerRegistrySnapshot.workerIdsByGroupId`.
-5. Keep `WorkerRegistrySnapshot` publication for now; derive it from
+5. `WorkerRouteBucketOwner` either reads registry route-bucket indexes directly
+   or becomes a thin policy/selection wrapper over registry-owned route
+   buckets.
+6. Keep `WorkerRegistrySnapshot` publication for now; derive it from
    `registry.slots()` instead of from `workerRegistryRows`.
-6. Keep `WorkerStorage` for persistence reads on startup only.
+7. Keep `WorkerStorage` for startup bootstrap/query compatibility only; it must
+   not be the scheduling source.
 
 Acceptance:
 
@@ -263,7 +322,8 @@ Acceptance:
 2. Worker registration and deregistration update the registry indexes.
 3. `WorkerRegistrySnapshot` is derived from registry state, not from a
    separate live map.
-4. Existing engine scheduling and manager tests pass.
+4. Route-bucket candidate acquisition is registry-backed or slot-validated.
+5. Existing engine scheduling and manager tests pass.
 
 ### WSR-3: Occupancy Convergence
 
@@ -272,23 +332,26 @@ operations. Remove the global `synchronized` lock.
 
 Scope:
 
-1. Wire `WorkerManager.tryReserveWorkerCapacity` → `registry.tryReserve`.
-2. Wire `WorkerManager.releaseWorkerReservation` → `registry.releaseReservation`.
-3. Wire load view confirm / work-final callbacks → `registry.confirmReservation`
-   and `registry.recordWorkFinal`.
+1. Wire `WorkerManager.tryReserveWorkerCapacity` → `registry.tryReserve(..., permits)`.
+2. Wire `WorkerManager.releaseWorkerReservation` → `registry.releaseReservation(..., permits)`.
+3. Wire load view confirm / work-final callbacks →
+   `registry.confirmReservation(..., permits)` and
+   `registry.recordWorkFinal(..., permits)`.
 4. `WorkerDispatchAvailabilityOwner` gate mutations call
-   `registry.setDispatchEnabled` instead of maintaining a separate
-   `disabledSourcesByWorkerId` map. Gate source tracking can remain as a
-   side-channel for diagnostics.
+   `registry.disableDispatch(source)` / `registry.clearDispatchDisable(source)`.
+   Gate source tracking can remain in `WorkerDispatchAvailabilityOwner`, but
+   the slot's disabled source set is admission truth.
 5. Remove `InMemoryWorkerLoadView` once no caller remains.
 
 Acceptance:
 
 1. `tryReserveCapacity` uses per-worker CAS with no global lock.
 2. Concurrent reserve/release for different workers does not block each other.
-3. `dispatchEnabled=false` blocks new reserves immediately.
-4. Active lease count and reservation count are never negative.
-5. Existing fault matrix chaos runners pass.
+3. Any disabled dispatch source blocks new reserves immediately.
+4. Clearing one disabled source does not clear other disabled sources.
+5. Multi-permit reserve/confirm/release counts match runtime claimed work.
+6. Active lease count and reservation count are never negative.
+7. Existing fault matrix chaos runners pass.
 
 ### WSR-4: Retire WorkerStorage Lock Interface And lockedWorkers
 
@@ -301,8 +364,8 @@ Scope:
 2. Remove `lockedWorkers` field from `InMemoryWorkerStorage`.
 3. Remove lock pass-through methods from `WorkerManager`.
 4. Update `WorkerDispatchResourceReleaser` and
-   `RuleBasedTaskWorkerMatchingStrategy` to use `registry.setDispatchEnabled`
-   or capacity-only policy instead of `tryLockWorker`.
+   `RuleBasedTaskWorkerMatchingStrategy` to use registry permits and
+   source-scoped gate operations instead of `tryLockWorker`.
 5. Update `EngineSchedulingCoreArchitectureGuardTest` to assert no
    `tryLockWorker` / `unlockWorker` / `isLocked` calls exist outside
    diagnostics.
@@ -311,8 +374,8 @@ Acceptance:
 
 1. `WorkerStorage` interface has no lock methods.
 2. `InMemoryWorkerStorage` has no `lockedWorkers` field.
-3. Foreground exclusivity is enforced by `declaredCapacity=1` or resource
-   policy, not by a separate lock.
+3. Foreground exclusivity is enforced by resource-policy permit consumption,
+   not by a separate lock and not by mutating declared worker capacity.
 4. Architecture guard fails on reintroduction of lock methods.
 5. Existing foreground and background scheduling tests pass.
 
@@ -329,8 +392,8 @@ Scope:
    where possible, or keep a copy only for the immutable-read guarantee during
    a single scheduling pass.
 3. `WorkerCandidateIndex` reads from `WorkerRegistry` indexes directly.
-4. `WorkerRouteBucketOwner` is rebuilt from registry state on slot change
-   rather than from a snapshot copy.
+4. `WorkerRouteBucketOwner` no longer owns membership. It may own only
+   selection policy over registry-provided bucket members.
 5. Remove `WorkerManager.publishWorkerRegistrySnapshot` if no longer needed
    as a full-copy publish mechanism.
 
@@ -352,11 +415,15 @@ Scope:
 1. Define Redis key structure:
 
    ```text
-   worker:{workerId}:slot     hash   identity + capacity + eventKeys
-   worker:{workerId}:occ      hash   activeLeaseCount, reservedCount, dispatchEnabled
-   group:{groupId}:workers    set    workerId members
-   node:{adapterNodeId}:workers set  workerId members
-   node-group:{nodeId}:{groupId}:workers set  workerId members
+   worker:{workerId}:slot                         hash identity + capacity + eventKeys
+   worker:{workerId}:occ                          hash activeLeaseCount, reservedCount
+   worker:{workerId}:gate                         set  disabled source names
+   worker:{workerId}:routes                       set  routeBucketKey members
+   group:{groupId}:workers                        set  workerId members
+   node:{adapterNodeId}:workers                   set  workerId members
+   node-group:{nodeId}:{groupId}:workers          set  workerId members
+   group-route:{groupId}:{routeKey}:workers       set  workerId members
+   node-group-route:{nodeId}:{groupId}:{routeKey}:workers set workerId members
    ```
 
 2. Implement `RedisWorkerRegistry` using Lua scripts or atomic commands for
@@ -371,7 +438,9 @@ Acceptance:
 2. Concurrent reserve/release with Redis atomic semantics does not allow
    over-reservation.
 3. Key structure uses isolated namespace prefixes.
-4. No memory-only assumptions leak into the Redis implementation.
+4. Route-bucket acquisition is bounded in Redis and does not require reading an
+   entire large group set.
+5. No memory-only assumptions leak into the Redis implementation.
 
 ## Testing Plan
 
@@ -379,16 +448,19 @@ Acceptance:
 
 - `WorkerRegistryContractTest` (abstract, shared by memory and Redis)
   - concurrent reserve respects declared capacity
+  - multi-permit reserve/confirm/release count correctness
   - confirm/release idempotency
-  - gate blocks reserve immediately
+  - source-scoped gate blocks reserve immediately and clears independently
   - upsert preserves occupancy counts
   - remove clears all index memberships
+  - mutable Worker input cannot mutate slot metadata or indexes after upsert
 
 ### Engine Integration
 
 - existing `WorkerManagerTest`, `WorkerCandidateIndexTest`,
   `WorkerRouteBucketOwnerTest` must pass at each phase
 - foreground scheduling cannot assign same worker concurrently
+- foreground policy consumes permits without mutating declared capacity
 - background scheduling up to declared capacity
 - no-claim path releases reservation before any transport call
 - dispatch failure compensates runtime claim and releases load
@@ -409,30 +481,29 @@ After WSR-4:
 
 Mitigation:
 
-CAS contention is per-worker. A worker with `declaredCapacity=1` under heavy
-reassignment attempts will spin, but spins are bounded by the number of
-concurrent scheduling threads, not by total fleet size. Profile before
-optimizing.
+CAS contention is per-worker. A worker under heavy reassignment attempts will
+spin, but spins are bounded by the number of concurrent scheduling threads
+targeting that worker, not by total fleet size. Permit-based foreground
+exclusivity may increase contention on hot workers; profile before optimizing.
 
 ### Risk 2: Index staleness between upsert and CAS occupancy update
 
 Mitigation:
 
-`upsertSlot` writes identity and indexes atomically from the registry's
-perspective. Occupancy CAS operates on the existing slot reference. A slot
-that is being replaced must have its index membership cleaned up before the
-new slot's membership is added. Add an explicit `removeSlot` → `upsertSlot`
-two-step in the contract test to verify no phantom index entries.
+Use a per-worker mutation boundary for slot identity/index changes. Reads from
+secondary indexes must validate the current slot before materialization, so
+stale entries are correctness-neutral and can be lazily cleaned up. Add an
+explicit `removeSlot` → `upsertSlot` two-step and a concurrent upsert/remove
+contract test to verify no phantom worker is materialized.
 
 ### Risk 3: WorkerDispatchAvailabilityOwner source tracking lost
 
 Mitigation:
 
 Source tracking (WORKER_STATE / WORKER_COMMAND / NODE_GROUP_BINDING gates) is
-diagnostic and operational metadata, not occupancy truth. Keep the source map
-as a side-channel for diagnostics; the slot's `dispatchEnabled` is the
-admission truth. The two must be kept consistent: any source that disables
-dispatch must also call `registry.setDispatchEnabled(false)`.
+admission-relevant. Store source-scoped disabled gates in the slot, or make the
+slot read from the same source set. A boolean-only `dispatchEnabled` is only a
+derived projection and must not be the mutation API.
 
 ### Risk 4: Snapshot removal breaks stable-read guarantees during scheduling
 
