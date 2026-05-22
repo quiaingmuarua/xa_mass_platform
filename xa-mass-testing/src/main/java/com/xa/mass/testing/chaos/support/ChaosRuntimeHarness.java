@@ -10,14 +10,11 @@ import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
-import com.xa.mass.sdk.model.AdapterNodeRegistration;
-import com.xa.mass.sdk.model.NodeGroupBindingRegistration;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.TaskStateSnapshot;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerGroupDeclaration;
-import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.RecentFinalWorkReceipt;
@@ -26,6 +23,7 @@ import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
+import com.xa.mass.testing.support.WorkerRegistrationSpineSupport;
 import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.TransportOutboundMessage;
@@ -247,14 +245,16 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                                        String projectCode,
                                        String routingCode) {
         ensureWorkerGroupBinding(workerGroupId, projectCode, "chaos-websocket-node", WorkerTransportHints.REALTIME);
-        app.registerWorker(WorkerRegistration.builder()
-                .workerId(workerId)
-                .adapterNodeId("chaos-websocket-node")
-                .workerGroupId(workerGroupId)
-                .transportHint(WorkerTransportHints.REALTIME)
-                .adapterId("websocket")
-                .attributes(Map.of("routingTags", routingCode, "country", routingCode))
-                .build());
+        WorkerRegistrationSpineSupport.registerWorker(
+                app,
+                workerId,
+                "chaos-websocket-node",
+                workerGroupId,
+                WorkerTransportHints.REALTIME,
+                "websocket",
+                1,
+                Map.of("routingTags", routingCode, "country", routingCode)
+        );
     }
 
     public void registerPollingWorker(String workerId,
@@ -262,14 +262,16 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                                       String projectCode,
                                       String routingCode) {
         ensureWorkerGroupBinding(workerGroupId, projectCode, "chaos-polling-node", WorkerTransportHints.POLLING);
-        app.registerWorker(WorkerRegistration.builder()
-                .workerId(workerId)
-                .adapterNodeId("chaos-polling-node")
-                .workerGroupId(workerGroupId)
-                .transportHint(WorkerTransportHints.POLLING)
-                .adapterId("polling")
-                .attributes(Map.of("routingTags", routingCode, "country", routingCode))
-                .build());
+        WorkerRegistrationSpineSupport.registerWorker(
+                app,
+                workerId,
+                "chaos-polling-node",
+                workerGroupId,
+                WorkerTransportHints.POLLING,
+                "polling",
+                1,
+                Map.of("routingTags", routingCode, "country", routingCode)
+        );
     }
 
     private void ensureWorkerGroupBinding(String workerGroupId,
@@ -283,15 +285,8 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                         .projectCodes(List.of(projectCode))
                         .build()))
                 .build());
-        app.registerAdapterNode(AdapterNodeRegistration.builder()
-                .adapterNodeId(adapterNodeId)
-                .adapterType(adapterType)
-                .endpointId(adapterNodeId)
-                .build());
-        app.bindNodeGroup(NodeGroupBindingRegistration.builder()
-                .adapterNodeId(adapterNodeId)
-                .workerGroupId(workerGroupId)
-                .build());
+        WorkerRegistrationSpineSupport.registerAdapterNode(app, adapterNodeId, adapterType);
+        WorkerRegistrationSpineSupport.bindNodeGroup(app, adapterNodeId, workerGroupId);
     }
 
     public PullWorkerSession pullWorker(String workerId) {
