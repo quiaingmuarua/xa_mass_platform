@@ -138,7 +138,8 @@ Planning rule for multi-file or core changes:
 - `Task.sharedConfig` plus runtime item payload or `payloadRef` are the generic payload boundaries
 - `target` is only a conventional key inside the runtime item payload, not a model field
 - task shell create enters through `POST /api/v1/tasks`, and work-item ingest is explicit through `POST /api/v1/tasks/{taskId}/items`
-- `eventCode` is globally unique capability identity
+- `eventCode` is business/intake/runtime evidence; scheduling candidate truth
+  is explicit `workerGroupId` / `workerGroupIds`
 - do not add scan-heavy observability or reconciliation loops to hot paths
 - trace and query concerns must not reverse-drive runtime ownership or mainline lifecycle design
 - bias transport and lifecycle writes toward idempotent operations and retry safety

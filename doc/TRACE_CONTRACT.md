@@ -264,8 +264,8 @@ Stable assignment-oriented fields are:
 - ranked worker candidate fields: `candidateRank`, `candidateScore`,
   `workerActiveLeaseCount`, `workerReservedCount`, `workerDeclaredCapacity`,
   `workerEstimatedLoadRatio`
-- group candidate-source evidence: `workerGroupId`, `eventBindingKey`,
-  `workerCandidateSource`
+- group candidate-source evidence: `workerGroupId`, `adapterNodeId`,
+  `eventBindingKey`, `workerCandidateSource`
 - scheduling profile fields: `initialStatus`, `currentStatus`,
   `dispatchLane`, `dispatchPriority`, `workloadClass`, `foreground`,
   `batchPolicy`, `leaseProfile`
@@ -322,13 +322,12 @@ cleanup without WorkerContext evidence: accepted match, binding, attempt close,
 worker lock release, and `RESOURCE_RELEASED` must all be visible through
 worker-level identity, and the scenario rejects WorkerContext lifecycle cleanup
 as the success proof.
-The `group-capability-routing` analyzer proves WorkerGroup candidate-index
-routing for SDK event tasks. It requires a worker match accepted row with
-`workerCandidateSource=GROUP_INDEX`, non-empty `workerGroupId`, non-empty
-`eventBindingKey` in `project:eventCode` form, worker scheduling evidence, a
-successful assignment summary, and a successful dispatch binding summary. The
-scenario is representative group-index proof, not a general Stage-1 statistics
-or scan-count proof.
+The `group-capability-routing` analyzer proves WorkerGroup selector routing
+for worker-backed tasks. It requires a worker match accepted row with
+`workerCandidateSource=GROUP_SELECTOR` or `GROUP_SELECTOR_WITH_NODE`, non-empty
+`workerGroupId`, worker scheduling evidence, a successful assignment summary,
+and a successful dispatch binding summary. `eventBindingKey` may appear as
+business/runtime evidence, but it is not candidate-source truth.
 The `cross-task-worker-fairness` analyzer is intentionally a two-task scenario:
 its `taskId` argument is `<bulkTaskId>,<interactiveTaskId>`. It reads canonical
 assignment rows for both tasks and proves that a budget-limited BULK assignment

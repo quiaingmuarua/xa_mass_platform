@@ -1032,18 +1032,18 @@ public final class TraceEventLogger {
         if (task == null) {
             return null;
         }
+        if (TaskSharedConfig.workerGroupSelector(task).isEmpty()) {
+            return null;
+        }
         String targetWorkerId = TaskSharedConfig.targetWorkerId(task);
         if (targetWorkerId != null && !targetWorkerId.isBlank()) {
             return "TARGET_WORKER";
         }
-        String taskEventCode = TaskSharedConfig.sdkEventCode(task);
-        if (taskEventCode != null && !taskEventCode.isBlank()) {
-            return "GROUP_INDEX";
+        String adapterNodeId = TaskSharedConfig.adapterNodeId(task);
+        if (adapterNodeId != null && !adapterNodeId.isBlank()) {
+            return "GROUP_SELECTOR_WITH_NODE";
         }
-        if (task.getProject() != null && !task.getProject().isBlank()) {
-            return "GROUP_PROJECT_INDEX";
-        }
-        return "ALL_WORKERS_FALLBACK";
+        return "GROUP_SELECTOR";
     }
 
     private static String formatDouble(double value) {

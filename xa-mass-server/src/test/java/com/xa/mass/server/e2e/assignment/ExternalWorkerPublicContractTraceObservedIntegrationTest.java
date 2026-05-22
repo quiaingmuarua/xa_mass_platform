@@ -1,6 +1,7 @@
 package com.xa.mass.server.e2e.assignment;
 
 import com.xa.mass.api.internal.SdkCredentialAuthSupport;
+import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.AbstractTraceObservedE2eTest;
 import com.xa.mass.server.e2e.support.ExternalJavaWorkerProcess;
@@ -75,7 +76,7 @@ class ExternalWorkerPublicContractTraceObservedIntegrationTest extends AbstractT
                     "control-plane registration must not create transport presence");
         }
 
-        String taskId = createCrawlerTask(spec.sourceRef());
+        String taskId = createCrawlerTask(spec.sourceRef(), spec.workerGroupId());
         RuntimeTaskSnapshot readyWhileOffline = waitForRuntimeTaskSnapshot(taskId, "READY", 10, 200L);
         assertEquals(1, readyWhileOffline.stats().readyCount());
         assertEquals(0, readyWhileOffline.stats().inflightCount());
@@ -108,12 +109,13 @@ class ExternalWorkerPublicContractTraceObservedIntegrationTest extends AbstractT
         waitForWorkerOffline(spec.workerId(), spec.workerId() + " should go offline after shutdown");
     }
 
-    private String createCrawlerTask(String sourceRef) {
+    private String createCrawlerTask(String sourceRef, String workerGroupId) {
         Map<String, Object> createResponse = exchange("/api/v1/tasks", HttpMethod.POST, Map.of(
                 "project", "crawlerApp",
                 "userId", "crawler-agent",
                 "sourceRef", sourceRef,
-                "executionSpec", Map.of("batchSize", 1)
+                "executionSpec", Map.of("batchSize", 1),
+                "sharedConfig", Map.of(TaskSharedConfig.WORKER_GROUP_ID, workerGroupId)
         ));
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
@@ -160,8 +162,18 @@ class ExternalWorkerPublicContractTraceObservedIntegrationTest extends AbstractT
         String baseUrl = "http://127.0.0.1:" + port;
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         return switch (spec.kind()) {
-            case NODE_POLLING -> ExternalNodeWorkerProcess.startPollingSample(baseUrl, spec.workerId(), spec.workerKey());
-            case JAVA_POLLING -> ExternalJavaWorkerProcess.startPollingSample(baseUrl, spec.workerId(), spec.workerKey());
+            case NODE_POLLING -> ExternalNodeWorkerProcess.startPollingSample(
+                    baseUrl,
+                    spec.workerId(),
+                    spec.workerKey(),
+                    spec.workerGroupId()
+            );
+            case JAVA_POLLING -> ExternalJavaWorkerProcess.startPollingSample(
+                    baseUrl,
+                    spec.workerId(),
+                    spec.workerKey(),
+                    spec.workerGroupId()
+            );
             case NODE_WEBSOCKET -> ExternalNodeWorkerProcess.startWebSocketSample(spec.workerId(), wsUri);
             case JAVA_WEBSOCKET -> ExternalJavaWorkerProcess.startWebSocketSample(spec.workerId(), wsUri);
             case NODE_SOCKET -> ExternalNodeWorkerProcess.startSocketSample(

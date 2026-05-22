@@ -56,8 +56,12 @@ public class WorkerCapabilityReportEventHandlerTest {
         assertTrue(response.isSuccess());
         assertEquals(List.of("worker-crawler"), workerIds(workerManager.findWorkerCandidates(
                 task("demoApp", "crawler.parse"))));
-        assertTrue(workerManager.findWorkerCandidates(task("demoApp", "crawler.fetch")).isEmpty());
-        assertTrue(workerManager.findWorkerCandidates(task("demoApp", "not.approved")).isEmpty());
+        assertEquals(List.of("worker-crawler"), workerIds(workerManager.findWorkerCandidates(
+                task("demoApp", "crawler.fetch"))));
+        assertEquals(List.of("worker-crawler"), workerIds(workerManager.findWorkerCandidates(
+                task("demoApp", "not.approved"))));
+        assertFalse(workerManager.getWorkerRegistrySnapshot()
+                .workerSupportsEventKey("worker-crawler", new EventKey("demoApp", "not.approved")));
         assertEquals("us", workerManager.getWorkerRegistrySnapshot()
                 .worker("worker-crawler")
                 .orElseThrow()
@@ -88,7 +92,8 @@ public class WorkerCapabilityReportEventHandlerTest {
         assertEquals(WorkerCapabilityReportStatus.STALE.name(), stale.getCode());
         assertEquals(List.of("worker-crawler"), workerIds(workerManager.findWorkerCandidates(
                 task("demoApp", "crawler.parse"))));
-        assertTrue(workerManager.findWorkerCandidates(task("demoApp", "crawler.fetch")).isEmpty());
+        assertEquals(List.of("worker-crawler"), workerIds(workerManager.findWorkerCandidates(
+                task("demoApp", "crawler.fetch"))));
     }
 
     private static CoreEventRequest request(long capabilityVersion, List<String> availableEventCodes) {
@@ -106,8 +111,10 @@ public class WorkerCapabilityReportEventHandlerTest {
     private static Task task(String project, String eventCode) {
         Task task = new Task();
         task.setProject(project);
-        task.setSharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
-                Map.of(TaskSharedConfig.SDK_EVENT_CODE, eventCode)));
+        task.setSharedConfig(Map.of(
+                TaskSharedConfig.WORKER_GROUP_ID, "crawler",
+                TaskSharedConfig.SDK_METADATA, Map.of(TaskSharedConfig.SDK_EVENT_CODE, eventCode)
+        ));
         return task;
     }
 

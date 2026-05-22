@@ -3,6 +3,7 @@ package com.xa.mass.sdk;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.project.ProjectRegistry;
@@ -316,9 +317,11 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     @Override
     public TaskItemBatchAppendReceipt appendTaskItemsWithReceipt(String taskId, MassTaskItemBatchAppendRequest request) {
         Objects.requireNonNull(request, "request");
+        String normalizedTaskId = requireTaskId(taskId);
+        resolveWorkerGroupSelectorForAppend(normalizedTaskId, request.getEventCode());
         List<Map<String, Object>> converted = requireAppendItems(request.getItems(), request.getEventCode());
         com.xa.mass.engine.model.TaskAppendReceipt receipt =
-                requireStartedTaskCommands().appendTaskItemsWithReceipt(requireTaskId(taskId), converted);
+                requireStartedTaskCommands().appendTaskItemsWithReceipt(normalizedTaskId, converted);
         return new TaskItemBatchAppendReceipt(receipt.taskId(), receipt.added(), receipt.messageIds());
     }
 
@@ -997,6 +1000,59 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
             projectCodes.addAll(right);
         }
         return List.copyOf(projectCodes);
+    }
+
+    private void resolveWorkerGroupSelectorForAppend(String taskId, String eventCode) {
+        String normalizedEventCode = blankToNull(eventCode);
+        if (normalizedEventCode == null) {
+            return;
+        }
+        MassEngine engine = delegate.getEngine();
+        if (engine == null || !engine.isRunning() || engine.getConfig() == null
+                || engine.getConfig().getTaskQueryService() == null
+                || engine.getConfig().getTaskCommandService() == null
+                || engine.getConfig().getWorkerManager() == null) {
+            return;
+        }
+        Task task = engine.getConfig().getTaskQueryService().getTask(taskId);
+        if (task == null || !TaskSharedConfig.workerGroupSelector(task).isEmpty()) {
+            return;
+        }
+        String workerGroupId = resolveSingleWorkerGroupId(
+                engine.getConfig().getWorkerManager().workerGroups(),
+                task.getProject(),
+                normalizedEventCode
+        );
+        if (workerGroupId == null) {
+            return;
+        }
+        Map<String, Object> sharedConfig = new LinkedHashMap<>(
+                task.getSharedConfig() == null ? Map.of() : task.getSharedConfig()
+        );
+        sharedConfig.put(TaskSharedConfig.WORKER_GROUP_ID, workerGroupId);
+        task.setSharedConfig(sharedConfig);
+        engine.getConfig().getTaskCommandService().updateTask(task);
+    }
+
+    private String resolveSingleWorkerGroupId(Collection<WorkerGroupRecord> workerGroups,
+                                             String projectCode,
+                                             String eventCode) {
+        String normalizedProjectCode = blankToNull(projectCode);
+        String normalizedEventCode = blankToNull(eventCode);
+        if (workerGroups == null || workerGroups.isEmpty()
+                || normalizedProjectCode == null || normalizedEventCode == null) {
+            return null;
+        }
+        LinkedHashSet<String> matches = new LinkedHashSet<>();
+        for (WorkerGroupRecord group : workerGroups) {
+            for (EventBinding binding : group.eventBindings()) {
+                if (normalizedEventCode.equals(binding.eventCode())
+                        && binding.projectCodes().contains(normalizedProjectCode)) {
+                    matches.add(group.groupId());
+                }
+            }
+        }
+        return matches.size() == 1 ? matches.iterator().next() : null;
     }
 
     private EventHandler resolveDefinitionHandler(EventDefinition definition) {

@@ -312,10 +312,8 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
             return PrefilterDecision.reject(AssignmentResult.CONFLICT,
                     "worker locked", contextSnapshot, true);
         }
-        String eventCode = TaskSharedConfig.sdkEventCode(task);
         String targetWorkerId = TaskSharedConfig.targetWorkerId(task);
         Map<String, String> targetWorkerAttributes = TaskSharedConfig.targetWorkerAttributes(task);
-        boolean sdkEventTask = eventCode != null && !eventCode.isBlank();
         if (targetWorkerId != null && !targetWorkerId.equals(schedulingView.workerId())) {
             return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
                     "target worker mismatch", contextSnapshot, false);
@@ -324,14 +322,6 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                 && Boolean.FALSE.equals(contextSnapshot.get("matchesTargetWorkerAttributes"))) {
             return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
                     "target worker attributes mismatch", contextSnapshot, false);
-        }
-        if (!sdkEventTask && !schedulingView.supportsProject(task.getProject())) {
-            return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
-                    "project not supported", contextSnapshot, false);
-        }
-        if (sdkEventTask && !schedulingView.supportsEvent(eventCode)) {
-            return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
-                    "event not supported", contextSnapshot, false);
         }
 
         String routingCode = TaskSharedConfig.routingCode(task);

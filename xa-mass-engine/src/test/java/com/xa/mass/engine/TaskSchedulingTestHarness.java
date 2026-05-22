@@ -102,7 +102,7 @@ final class TaskSchedulingTestHarness {
         request.setProject("demoApp");
         request.setContract(TaskContract.SESSION);
         request.setSourceRef(sourceRef);
-        request.setSharedConfig(Map.of(TaskSharedConfig.ROUTING_CODE, "us"));
+        request.setSharedConfig(defaultSharedConfig(Map.of(TaskSharedConfig.ROUTING_CODE, "us")));
         TaskExecutionSpec executionSpec = new TaskExecutionSpec();
         executionSpec.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
         executionSpec.setBatchSize(batchSize);
@@ -141,7 +141,7 @@ final class TaskSchedulingTestHarness {
         request.setProject("demoApp");
         request.setContract(TaskContract.BATCH);
         request.setSourceRef(sourceRef);
-        request.setSharedConfig(sharedConfig == null ? Map.of() : sharedConfig);
+        request.setSharedConfig(defaultSharedConfig(sharedConfig));
         TaskExecutionSpec executionSpec = new TaskExecutionSpec();
         executionSpec.setWorkloadClass(TaskWorkloadClass.BULK);
         executionSpec.setBatchSize(batchSize);
@@ -252,6 +252,15 @@ final class TaskSchedulingTestHarness {
         if (attributes != null) {
             merged.putAll(attributes);
         }
+        return Map.copyOf(merged);
+    }
+
+    private Map<String, Object> defaultSharedConfig(Map<String, Object> sharedConfig) {
+        Map<String, Object> merged = new java.util.LinkedHashMap<>();
+        if (sharedConfig != null) {
+            merged.putAll(sharedConfig);
+        }
+        merged.putIfAbsent(TaskSharedConfig.WORKER_GROUP_ID, DEFAULT_WORKER_GROUP_ID);
         return Map.copyOf(merged);
     }
 

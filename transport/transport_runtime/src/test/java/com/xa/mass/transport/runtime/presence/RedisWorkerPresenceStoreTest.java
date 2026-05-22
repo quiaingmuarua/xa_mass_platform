@@ -89,11 +89,11 @@ class RedisWorkerPresenceStoreTest {
     @Test
     void expiredOnlinePresenceMaterializesAsStaleAndClearsRouteIndex() throws Exception {
         try (RedisWorkerPresenceStore shortLeaseStore =
-                     new RedisWorkerPresenceStore(redisClient, namespacePrefix, 25L, "runtime-a", false)) {
+                     new RedisWorkerPresenceStore(redisClient, namespacePrefix, 250L, "runtime-a", false)) {
             shortLeaseStore.markOnline("worker-2", "socket", "route-2", "conn-2", "connected");
 
             assertTrue(shortLeaseStore.isRouteOnline("socket", "route-2"));
-            Thread.sleep(40L);
+            Thread.sleep(300L);
 
             WorkerPresence stale = shortLeaseStore.getPresence("worker-2");
             assertNotNull(stale);
