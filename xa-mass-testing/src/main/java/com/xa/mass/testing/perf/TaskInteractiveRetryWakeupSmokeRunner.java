@@ -33,6 +33,8 @@ import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.testing.support.TestingPaths;
+import com.xa.mass.testing.workerfault.WorkerFaultReportMetadata;
+import com.xa.mass.testing.workerfault.WorkerFaultScenarioIndex;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -372,7 +374,8 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
         }
 
         private static Path writeReport(SmokeConfig config, SmokeObservation observation) throws Exception {
-            Map<String, Object> report = new LinkedHashMap<>();
+            Map<String, Object> report = new LinkedHashMap<>(WorkerFaultReportMetadata.topLevel(
+                    WorkerFaultScenarioIndex.Scenario.INTERACTIVE_RETRY_WAKEUP));
             report.put("generatedAt", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
             report.put("config", config.toMap());
             report.put("observation", observation.toMap());

@@ -28,6 +28,8 @@ import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.testing.support.TestingPaths;
+import com.xa.mass.testing.workerfault.WorkerFaultReportMetadata;
+import com.xa.mass.testing.workerfault.WorkerFaultScenarioIndex;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import org.java_websocket.client.WebSocketClient;
@@ -534,7 +536,9 @@ public final class SdkTransportLoadRunner {
                                         DeliveryQueueSnapshot deliveryQueue,
                                         long wallNanos,
                                         RuntimeMetricsSnapshot metrics) throws Exception {
-            Map<String, Object> report = new LinkedHashMap<>();
+            Map<String, Object> report = new LinkedHashMap<>(WorkerFaultReportMetadata.topLevel(
+                    WorkerFaultScenarioIndex.Scenario.SDK_TRANSPORT_LOAD));
+            report.put("transport", config.transport().label());
             report.put("config", config.toMap());
             report.put("runtime", Map.of(
                     "transport", config.transport().label(),
