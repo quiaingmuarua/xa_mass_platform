@@ -26,6 +26,7 @@ class SoakReportWriterTest {
                         Map.of("initialWorkerCount", 1),
                         Map.of("available", true),
                         new SoakTraceProof(true, "trace-path", Map.of("valid", true), Map.of("count", 1), 0, List.of()),
+                        Map.of("scenarioId", "polling-scheduling-soak"),
                         List.of()
                 ).toMap()
         ));

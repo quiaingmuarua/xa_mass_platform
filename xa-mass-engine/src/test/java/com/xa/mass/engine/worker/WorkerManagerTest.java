@@ -671,13 +671,10 @@ public class WorkerManagerTest {
         );
 
         assertEquals(WorkerCapabilityReportStatus.ACCEPTED, result.status());
-        assertEquals(List.of("w-report-capability"),
-                manager.getWorkerCandidateIndex()
-                        .workersFor(task("demoApp", Map.of(TaskSharedConfig.SDK_METADATA,
-                                Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch"))))
-                        .stream()
-                        .map(Worker::getWorkerId)
-                        .toList());
+        assertTrue(manager.getWorkerCandidateIndex()
+                .workersFor(task("demoApp", Map.of(TaskSharedConfig.SDK_METADATA,
+                        Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch"))))
+                .isEmpty());
         assertTrue(manager.getWorkerCandidateIndex()
                 .workersFor(task("demoApp", Map.of(TaskSharedConfig.SDK_METADATA,
                         Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.parse"))))

@@ -1,6 +1,7 @@
 package com.xa.mass.testing.soak;
 
-import java.util.ArrayList;
+import com.xa.mass.testing.workerfault.WorkerFaultScenarioIndex;
+
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -19,21 +20,21 @@ final class SoakTraceAnalysisPlanner {
                 && present(lateWorkerProofTaskId)
                 && present(lateWorkerProofWorkerId)) {
             plans.add(new TraceAnalysisPlan(
-                    "late-worker-backfill",
+                    WorkerFaultScenarioIndex.TraceAnalyzerScenario.LATE_WORKER_BACKFILL.scenarioId(),
                     lateWorkerProofTaskId + "," + lateWorkerProofWorkerId
             ));
         }
-        firstTaskIdForTerminalReason(taskPlans, "ALL_MESSAGES_FAILED")
-                .ifPresent(taskId -> plans.add(new TraceAnalysisPlan(
-                        "all-failed-terminal-convergence",
-                        taskId
-                )));
-        firstTaskIdForTerminalReason(taskPlans, "MIXED_MESSAGE_RESULTS")
-                .ifPresent(taskId -> plans.add(new TraceAnalysisPlan(
-                        "mixed-result-terminal-convergence",
-                        taskId
-                )));
+        addTerminalReasonPlan(plans, taskPlans, "ALL_MESSAGES_FAILED");
+        addTerminalReasonPlan(plans, taskPlans, "MIXED_MESSAGE_RESULTS");
         return List.copyOf(plans);
+    }
+
+    private static void addTerminalReasonPlan(Set<TraceAnalysisPlan> plans,
+                                              List<SoakTaskPlanRef> taskPlans,
+                                              String terminalReason) {
+        firstTaskIdForTerminalReason(taskPlans, terminalReason)
+                .ifPresent(taskId -> WorkerFaultScenarioIndex.traceAnalyzerForSoakTerminalReason(terminalReason)
+                        .ifPresent(analyzer -> plans.add(new TraceAnalysisPlan(analyzer.scenarioId(), taskId))));
     }
 
     private static java.util.Optional<String> firstTaskIdForTerminalReason(List<SoakTaskPlanRef> taskPlans,

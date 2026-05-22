@@ -24,6 +24,8 @@ import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.testing.support.TestingPaths;
+import com.xa.mass.testing.workerfault.WorkerFaultReportMetadata;
+import com.xa.mass.testing.workerfault.WorkerFaultScenarioIndex;
 import com.xa.mass.trace.operator.TraceStatsRequest;
 import com.xa.mass.trace.operator.TraceStatsResponse;
 import com.xa.mass.trace.operator.TraceAnalyzeRequest;
@@ -596,6 +598,7 @@ public final class SdkPollingSchedulingSoakRunner {
                     workerLifecycle.toMap(),
                     deliveryDiagnostics,
                     traceProof,
+                    soakMatrixProfile(),
                     List.copyOf(failures)
             );
             Map<String, Object> report = new LinkedHashMap<>();
@@ -623,6 +626,16 @@ public final class SdkPollingSchedulingSoakRunner {
             report.put("activeLeasesAtEnd", workStats.activeLeasesAtEnd());
             report.put("proof", proof.toMap());
             return report;
+        }
+
+        private Map<String, Object> soakMatrixProfile() {
+            Map<String, Object> profile = new LinkedHashMap<>(WorkerFaultReportMetadata.topLevel(
+                    WorkerFaultScenarioIndex.Scenario.POLLING_SCHEDULING_SOAK));
+            profile.put("failureProfile", config.failureEveryNth() > 0 ? "every-" + config.failureEveryNth() : "none");
+            profile.put("lateWorkerProfile", config.requireLateWorkerWork() ? "required" : "optional");
+            profile.put("processingDelayMillis", config.processingDelayMillis());
+            profile.put("processingJitterMillis", config.processingJitterMillis());
+            return Map.copyOf(profile);
         }
 
         private SoakInvariantReport verifyInvariants(long submittedTasks,

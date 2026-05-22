@@ -10,6 +10,8 @@ import com.xa.mass.testing.chaos.support.ChaosRuntimeHarness;
 import com.xa.mass.testing.chaos.support.ChaosSupport;
 import com.xa.mass.testing.chaos.support.TaskOutcomeSnapshot;
 import com.xa.mass.testing.chaos.support.TraceEventAssertions;
+import com.xa.mass.testing.workerfault.WorkerFaultReportMetadata;
+import com.xa.mass.testing.workerfault.WorkerFaultScenarioIndex;
 import com.xa.mass.trace.operator.TraceAnalyzeResponse;
 import com.xa.mass.trace.sink.ExecutionEventType;
 import com.xa.mass.transport.model.TaskDispatchItem;
@@ -193,7 +195,10 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
                 );
                 ChaosTraceAnalysisPlanner.requireAllOk(analyses);
 
-                Path reportPath = ChaosReportWriter.write("sdk-polling-lease-expiry-redispatch-chaos", Map.of(
+                Path reportPath = ChaosReportWriter.write("sdk-polling-lease-expiry-redispatch-chaos",
+                        WorkerFaultReportMetadata.merge(
+                                WorkerFaultScenarioIndex.Scenario.POLLING_LEASE_EXPIRY_REDISPATCH,
+                                Map.of(
                         "config", config.toMap(),
                         "runtime", Map.of(
                                 "transport", "polling",
@@ -217,7 +222,7 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
                                 "chaosWorker", chaosWorker.snapshot().toMap(),
                                 "steadyWorker", steadyWorker.snapshot().toMap()
                         )
-                ));
+                )));
 
                 return new ChaosReport(
                         task.getTaskId(),

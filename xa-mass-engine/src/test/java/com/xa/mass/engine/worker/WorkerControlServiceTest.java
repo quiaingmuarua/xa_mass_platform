@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static com.xa.mass.engine.testutil.WorkerRegistrationTestSupport.registerWorker;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -29,7 +30,7 @@ public class WorkerControlServiceTest {
         worker.setWorkerGroupId("group-1");
         worker.setSupportedProjects(List.of("demoApp"));
         worker.setSupportedEventCodes(List.of("crawler.fetch"));
-        workerManager.addWorker(worker);
+        registerWorker(workerManager, worker);
         WorkerCommandLifecycleOwner commandOwner = new WorkerCommandLifecycleOwner();
         WorkerStateProjectionOwner stateOwner = new WorkerStateProjectionOwner();
         RecordingEventSink sink = new RecordingEventSink();
@@ -72,9 +73,9 @@ public class WorkerControlServiceTest {
         assertEquals("DEGRADED", service.workerStateProjection("worker-1").orElseThrow().state());
         assertEquals(1, service.workerStateProjections().size());
         assertEquals("us", workerManager.getWorkerRegistrySnapshot()
-                .group("group-1")
+                .worker("worker-1")
                 .orElseThrow()
-                .defaultAttributes()
+                .getAttributes()
                 .get("country"));
         sink.assertHasEvent(ExecutionEventType.WORKER_COMMAND_STATUS_TRANSITION, "commandId", "cmd-1");
         assertTrue(sink.eventsOfType(ExecutionEventType.WORKER_CAPABILITY_REPORT_APPLIED).stream()
@@ -89,7 +90,7 @@ public class WorkerControlServiceTest {
         Worker worker = new Worker();
         worker.setWorkerId("worker-2");
         worker.setWorkerGroupId("group-2");
-        workerManager.addWorker(worker);
+        registerWorker(workerManager, worker);
         WorkerControlService service = new WorkerControlService(
                 workerManager,
                 new WorkerCommandLifecycleOwner(),
@@ -134,7 +135,7 @@ public class WorkerControlServiceTest {
         worker.setWorkerGroupId("group-wakeup");
         worker.setSupportedProjects(List.of("demoApp"));
         worker.setSupportedEventCodes(List.of("crawler.fetch"));
-        workerManager.addWorker(worker);
+        registerWorker(workerManager, worker);
         WorkerControlService service = new WorkerControlService(
                 workerManager,
                 new WorkerCommandLifecycleOwner(),
@@ -175,7 +176,7 @@ public class WorkerControlServiceTest {
         Worker worker = new Worker();
         worker.setWorkerId("worker-3");
         worker.setWorkerGroupId("group-3");
-        workerManager.addWorker(worker);
+        registerWorker(workerManager, worker);
         AtomicInteger stateApplications = new AtomicInteger();
         AtomicInteger commandApplications = new AtomicInteger();
         WorkerDispatchAvailabilityPolicy policy = new WorkerDispatchAvailabilityPolicy() {

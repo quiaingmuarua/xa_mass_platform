@@ -3,6 +3,7 @@ package com.xa.mass.testing.chaos;
 import com.xa.mass.trace.operator.TraceAnalyzeRequest;
 import com.xa.mass.trace.operator.TraceAnalyzeResponse;
 import com.xa.mass.trace.operator.TraceOperatorService;
+import com.xa.mass.testing.workerfault.WorkerFaultScenarioIndex;
 
 import java.nio.file.Path;
 import java.util.LinkedHashSet;
@@ -41,17 +42,9 @@ final class ChaosTraceAnalysisPlanner {
 
     static List<TraceAnalysisPlan> plan(ChaosProofProfile profile, String taskId) {
         Set<TraceAnalysisPlan> plans = new LinkedHashSet<>();
-        if (present(taskId)) {
-            switch (profile) {
-                case ALL_FAILED_TERMINAL_CONVERGENCE ->
-                        plans.add(new TraceAnalysisPlan("all-failed-terminal-convergence", taskId));
-                case MIXED_RESULT_TERMINAL_CONVERGENCE ->
-                        plans.add(new TraceAnalysisPlan("mixed-result-terminal-convergence", taskId));
-                case LEASE_EXPIRY_REDISPATCH ->
-                        plans.add(new TraceAnalysisPlan("lease-expiry-redispatch", taskId));
-                case LATE_STALE_RESULT_REPLAY ->
-                        plans.add(new TraceAnalysisPlan("late-stale-result-replay", taskId));
-            }
+        if (present(taskId) && profile != null) {
+            WorkerFaultScenarioIndex.traceAnalyzerForChaosProfile(profile.name())
+                    .ifPresent(analyzer -> plans.add(new TraceAnalysisPlan(analyzer.scenarioId(), taskId)));
         }
         return List.copyOf(plans);
     }

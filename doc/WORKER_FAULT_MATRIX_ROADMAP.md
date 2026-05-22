@@ -168,6 +168,19 @@ Hard boundary:
 - production transport and engine paths must remain valid when the fault
   surface is absent
 
+Control channel:
+
+- first-slice `fault.*` events are sample-worker commands registered in
+  `CommandRegistry` alongside existing `mock.*` controls
+- the test harness issues `fault.*` commands before or during a scenario; the
+  worker stores fault state in `SampleClientState` or its successor and applies
+  it when dispatch/result/state-report code reaches the relevant phase
+- `fault.*` is not a task work item event code and must not require a second
+  worker protocol
+- worker state and capacity flaps are harness-driven one-shot commands; the
+  worker executes each requested flip through state report or capability/capacity
+  report surfaces rather than running an autonomous local flap loop
+
 Initial event families:
 
 | Event | Parameters | Behavior |
@@ -181,9 +194,9 @@ Initial event families:
 | `fault.result.malformed` | `kind`, `seed` | submits missing or invalid result fields |
 | `fault.result.identity` | `kind=wrongTask/wrongMessage/wrongWorker/wrongLease` | submits with invalid correlation identity |
 | `fault.transport.disconnect` | `phase`, `reconnectAfterMs` | disconnects before/after receive or before/after result |
-| `fault.worker.capacity.flap` | `pattern`, `periodMs` | changes effective worker capacity over time |
-| `fault.worker.state.flap` | `pattern`, `periodMs` | alternates dispatch availability state |
-| `fault.reset` | `scope` | clears test-harness fault state for the worker or worker group |
+| `fault.worker.capacity.flap` | `targetCapacity` or `toggle`, `stateVersion` | one-shot capacity/capability advertisement flip driven by the harness |
+| `fault.worker.state.flap` | `state=AVAILABLE/DRAINING/OFFLINE/DEGRADED`, `stateVersion` | one-shot state report flip driven by the harness |
+| `fault.reset` | `scope=worker/all` | clears test-harness fault state for one worker or all sample workers |
 
 Existing `mock.*` events are dev/sample controls for current fixtures only.
 They should not be expanded for new matrix rows. New matrix scenarios must use
@@ -209,6 +222,24 @@ Define worker profiles as reusable scenario inputs.
 | `NOISY` | mixed delay, duplicate, and result-drop behavior with deterministic seed |
 
 Profiles should be deterministic with a seed so CI failures are reproducible.
+Profiles are named configurations that expand to primitive `fault.*` controls.
+They should live in a shared worker fault profile registry when implemented so
+chaos, soak, perf, and worker-pack sample code do not each invent different
+profile semantics.
+
+Initial profile composition:
+
+| Profile | Primitive expansion |
+| --- | --- |
+| `FAST` | no configured fault, optional small fixed delay only when a proof line already models worker delay |
+| `NORMAL` | `fault.execution.delay` with small deterministic jitter and no loss |
+| `SLOW` | `fault.execution.delay` with high p95/p99 jitter that still normally completes before lease expiry |
+| `NEAR_TIMEOUT` | `fault.execution.stall(until=lease-expiry)` or equivalent deterministic delay minus a small safety margin; not a separate code path |
+| `STUCK` | `fault.execution.stall(until=forever)`; not a separate code path |
+| `FLAKY_RESULT` | `fault.result.drop(mode=percent)` plus optional `fault.result.duplicate(count,gapMs)` using the same seed |
+| `FLAKY_TRANSPORT` | `fault.transport.disconnect(phase,reconnectAfterMs)` with seeded phase selection |
+| `MALFORMED_RESULT` | `fault.result.malformed(kind,seed)` |
+| `NOISY` | seeded combination of `fault.execution.delay`, `fault.result.drop`, and `fault.result.duplicate`; exact rates belong in the shared registry and must be inspectable by tests |
 
 ## 7. Matrix Axes
 
@@ -242,6 +273,9 @@ First slice:
 - existing websocket chaos probes may keep running through their current
   hand-written path until equivalent matrix rows carry the same assertion and
   trace evidence
+- socket fault rows are scheduled/manual only in the first slice; promotion to
+  PR requires equivalent transport-churn evidence from `SdkTransportLoadRunner`
+  first
 - no new runner should be introduced until the existing proof lines can report
   scenario id and matrix axes consistently
 
@@ -343,11 +377,17 @@ Execution rule:
 
 Create a small matrix ledger in `xa-mass-testing` that starts from the current
 five proof lines and maps every existing runner, trace profile, and analyzer
-plan to a scenario id.
+plan to a scenario id. The ledger must be a shared Java source of truth, not
+only a Markdown table.
 
 Acceptance:
 
 - no behavior change
+- add a shared `WorkerFaultScenarioIndex`-style class or enum in
+  `xa-mass-testing` that owns scenario ids, current proof-line owner, runner
+  family, and trace analyzer scenario mappings
+- `ChaosTraceAnalysisPlanner` and `SoakTraceAnalysisPlanner` reference the
+  shared index instead of keeping unrelated local scenario-id truth
 - every PR chaos smoke runner maps to a scenario id
 - perf smoke, full perf model, SDK transport load, and polling soak each map
   their current runner/profile shape to one or more scenario ids
@@ -366,8 +406,12 @@ parity.
 
 Acceptance:
 
-- chaos reports include `scenarioId`, `transport`, `runtimeBackend`,
-  `workerProfile`, and `faultShape`
+- chaos reports flatten to a consistent top-level shape that includes
+  `scenarioId`, `transport`, `runtimeBackend`, `workerProfile`, and
+  `faultShape`
+- existing nested `runtime.transport` report shapes are normalized to the same
+  top-level fields; reports must not leave polling, websocket, and lease-expiry
+  runners with different schema shapes for the same matrix axes
 - perf smoke reports include the same fields where applicable, without
   pretending to be chaos proof
 - SDK transport load reports include transport mode, worker profile, delivery
@@ -399,9 +443,16 @@ than by mutating runtime internals.
 
 Acceptance:
 
-- fault configuration enters through normal task/event command flow
+- fault configuration enters through sample-worker `CommandRegistry` commands,
+  not task work-item dispatch
+- the harness may send `fault.*` commands before dispatch or during a scenario;
+  the worker stores command state and applies it when the next matching worker
+  execution, result-submit, state-report, or capability-report phase occurs
 - worker state/capacity/reachability effects are applied through existing
   owner surfaces, not direct runtime mutation
+- `fault.worker.state.flap` and `fault.worker.capacity.flap` are stateless
+  one-shot commands driven by the harness; repeated flap loops are modeled by
+  repeated commands, not by a worker-local timer
 - fault state can be read and reset
 - event names are grep-friendly and documented
 - invalid fault config fails fast with explicit error codes
@@ -494,6 +545,11 @@ Recommended placement:
 | scheduled/manual `sdk-transport-load` | polling/websocket/socket delivery diagnostics plus transport-churn fault rows |
 | scheduled/manual polling soak | current runtime/result/trace proof plus noisy fleet, result loss, and late-worker profiles |
 | manual | large matrix sweeps, Redis/restart fault drills, and overnight soak |
+
+Socket fault rows start in scheduled/manual `sdk-transport-load`. They must not
+be promoted into PR `chaos-smokes` until `SdkTransportLoadRunner` has equivalent
+transport-churn evidence and the matrix row carries the same assertion and trace
+surface as an existing PR probe.
 
 Do not remove a current proof-line runner from CI because a scenario id exists.
 Removal is allowed only after the scenario row carries the same setup, assertion
