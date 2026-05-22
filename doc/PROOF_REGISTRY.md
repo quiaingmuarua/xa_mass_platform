@@ -32,6 +32,18 @@ Use with:
 
 Current default is `dual-proof`.
 
+Proof value is not measured by line or branch coverage. A test belongs in this
+registry only when it proves at least one of:
+
+- lifecycle or result convergence
+- a mainline scheduling, dispatch, retry, release, or recovery mechanism
+- a core policy decision that changes eligibility, admission, routing, finality,
+  or ownership
+- a cross-boundary contract exposed through HTTP, SDK, transport, external
+  worker behavior, or trace
+- an integrated abnormal path involving concurrency, timing, process restart,
+  transport churn, lease expiry, stale result, or distributed runtime state
+
 For critical invariants:
 
 - primary proof is one authoritative deterministic lane
@@ -61,6 +73,8 @@ When a new change needs proof:
    missing or the changed risk really sits on host/runtime or distributed edge
 4. do not add a new test in another lane when an authoritative proof class
    already exists for that invariant
+5. if the risk is only implementation coverage or a happy-path duplicate, do
+   not add a test; strengthen the existing proof or delete the low-value case
 
 Mainline rule:
 

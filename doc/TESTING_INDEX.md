@@ -10,6 +10,13 @@ This is the default testing entry for both humans and agents.
 
 Read this section first if you only need the testing-system intent.
 
+- this project optimizes for system proof, not surface coverage percentage
+- high-value proof must attach to one of these risk classes:
+  - lifecycle and result convergence
+  - mainline scheduling / dispatch / retry / release mechanisms
+  - core policy behavior that changes who may run work or when work is admitted
+  - cross-boundary public contracts such as HTTP, SDK, transport, external worker, and trace
+  - integrated abnormal behavior under concurrency, timing, process, transport, or distributed-runtime edges
 - highest-value proof surface: `engine scheduling correctness`
 - representative real wiring proof: `server E2E / external worker parity`
 - distributed edge proof: `chaos / perf / black-box`
@@ -48,6 +55,9 @@ If the question is "what is the authoritative proof for this invariant?" or
 Agent rule:
 
 - pick the invariant in `PROOF_REGISTRY.md` before adding a test
+- do not add a test just to raise coverage or mirror an implementation branch;
+  name the lifecycle, mechanism, policy, boundary contract, or abnormal
+  integrated risk first
 - if the class you want to imitate is not in the registry, assume it is support
   coverage, not proof ownership
 - tests tagged `secondary-proof` are intentionally downgraded; do not clone them

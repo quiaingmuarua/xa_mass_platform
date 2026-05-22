@@ -29,6 +29,10 @@ Use with:
 
 - test decisions are organized around the current mainline:
   `project -> submitter / worker capability -> task shell -> item append -> engine runtime -> transport delivery -> result ingest -> convergence`
+- the target is system proof, not nominal coverage growth; a new or retained
+  test must prove lifecycle/convergence, a mainline mechanism, a core policy, a
+  cross-boundary contract, or an abnormal integrated path under concurrency,
+  timing, process, transport, or distributed-runtime conditions
 - core proof is priority-ordered, not flat:
   1. `Scheduling Correctness`
   2. `Kernel Convergence`
