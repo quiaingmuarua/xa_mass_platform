@@ -19,6 +19,7 @@ import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.TaskStateSnapshot;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerGroupDeclaration;
+import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskWorkStats;
@@ -265,16 +266,14 @@ public final class SdkTransportLoadRunner {
             WorkerRegistrationSpineSupport.bindNodeGroup(app, adapterNodeId, "sdk-load");
             for (int i = 0; i < workerCount; i++) {
                 String workerId = "sdk-load-worker-" + i;
-                WorkerRegistrationSpineSupport.registerWorker(
-                        app,
-                        workerId,
-                        adapterNodeId,
-                        "sdk-load",
-                        transportHint,
-                        transportMode.adapterId(),
-                        1,
-                        Map.of("routingTags", "us", "country", "us")
-                );
+                app.registerWorker(WorkerRegistration.builder()
+                        .workerId(workerId)
+                        .adapterNodeId(adapterNodeId)
+                        .workerGroupId("sdk-load")
+                        .transportHint(transportHint)
+                        .adapterId(transportMode.adapterId())
+                        .attributes(Map.of("routingTags", "us", "country", "us"))
+                        .build());
             }
         }
 

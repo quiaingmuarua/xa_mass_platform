@@ -15,6 +15,7 @@ import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.TaskStateSnapshot;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerGroupDeclaration;
+import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.RecentFinalWorkReceipt;
@@ -245,16 +246,14 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                                        String projectCode,
                                        String routingCode) {
         ensureWorkerGroupBinding(workerGroupId, projectCode, "chaos-websocket-node", WorkerTransportHints.REALTIME);
-        WorkerRegistrationSpineSupport.registerWorker(
-                app,
-                workerId,
-                "chaos-websocket-node",
-                workerGroupId,
-                WorkerTransportHints.REALTIME,
-                "websocket",
-                1,
-                Map.of("routingTags", routingCode, "country", routingCode)
-        );
+        app.registerWorker(WorkerRegistration.builder()
+                .workerId(workerId)
+                .adapterNodeId("chaos-websocket-node")
+                .workerGroupId(workerGroupId)
+                .transportHint(WorkerTransportHints.REALTIME)
+                .adapterId("websocket")
+                .attributes(Map.of("routingTags", routingCode, "country", routingCode))
+                .build());
     }
 
     public void registerPollingWorker(String workerId,
@@ -262,16 +261,14 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                                       String projectCode,
                                       String routingCode) {
         ensureWorkerGroupBinding(workerGroupId, projectCode, "chaos-polling-node", WorkerTransportHints.POLLING);
-        WorkerRegistrationSpineSupport.registerWorker(
-                app,
-                workerId,
-                "chaos-polling-node",
-                workerGroupId,
-                WorkerTransportHints.POLLING,
-                "polling",
-                1,
-                Map.of("routingTags", routingCode, "country", routingCode)
-        );
+        app.registerWorker(WorkerRegistration.builder()
+                .workerId(workerId)
+                .adapterNodeId("chaos-polling-node")
+                .workerGroupId(workerGroupId)
+                .transportHint(WorkerTransportHints.POLLING)
+                .adapterId("polling")
+                .attributes(Map.of("routingTags", routingCode, "country", routingCode))
+                .build());
     }
 
     private void ensureWorkerGroupBinding(String workerGroupId,

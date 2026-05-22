@@ -18,6 +18,7 @@ import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.TaskStateSnapshot;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerGroupDeclaration;
+import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.testing.support.TestingPaths;
@@ -268,19 +269,18 @@ public final class SdkPollingSchedulingSoakRunner {
                 int groupIndex = i % config.groupCount();
                 String groupId = groupId(groupIndex);
                 String workerId = workerId(i);
-                WorkerRegistrationSpineSupport.registerWorker(
-                        app,
-                        workerId,
-                        adapterNodeId,
-                        groupId,
-                        WorkerTransportHints.POLLING,
-                        ADAPTER_ID,
-                        Math.max(1, config.pollBatchSize()),
-                        Map.of(
+                app.registerWorker(WorkerRegistration.builder()
+                        .workerId(workerId)
+                        .adapterNodeId(adapterNodeId)
+                        .workerGroupId(groupId)
+                        .transportHint(WorkerTransportHints.POLLING)
+                        .adapterId(ADAPTER_ID)
+                        .maxConcurrentWork(Math.max(1, config.pollBatchSize()))
+                        .attributes(Map.of(
                                 "soakRunId", runId,
                                 "workerGroupId", groupId
-                        )
-                );
+                        ))
+                        .build());
             }
         }
 
