@@ -127,6 +127,7 @@ final class SampleWorkerTaskFrameHandler {
         int duplicateCount = state == null ? 0 : state.getFaultProfile().duplicateResultCount();
         long duplicateGapMillis = state == null ? 0L : state.getFaultProfile().duplicateResultGapMillis();
         if (state != null) {
+            applyResultIdentityFault(response, state.getFaultProfile().resultIdentityKind());
             applyMalformedFault(response, state.getFaultProfile().malformedResultKind());
         }
         return new TaskResponsePlan(
@@ -214,7 +215,9 @@ final class SampleWorkerTaskFrameHandler {
                     "fault.execution.stall",
                     "fault.result.drop",
                     "fault.result.duplicate",
+                    "fault.result.late",
                     "fault.result.malformed",
+                    "fault.result.identity",
                     "fault.transport.disconnect",
                     "fault.worker.state.flap",
                     "fault.reset" -> true;
@@ -336,7 +339,10 @@ final class SampleWorkerTaskFrameHandler {
                 extractMessageId(taskMessage),
                 retryCount == null ? 0 : retryCount
         );
-        return baseDelay + faultDelay + state.getFaultProfile().resolveStallDelayMillis();
+        return baseDelay
+                + faultDelay
+                + state.getFaultProfile().resolveStallDelayMillis()
+                + state.getFaultProfile().lateResultDelayMillis();
     }
 
     boolean isTaskDispatchFrame(JsonObject taskMessage) {
@@ -459,6 +465,20 @@ final class SampleWorkerTaskFrameHandler {
             case MISSING_MESSAGE_ID -> response.remove("messageId");
             case INVALID_STATUS -> response.add("success", new JsonObject());
             case INVALID_PAYLOAD -> response.addProperty("output", "not-an-object");
+            case NONE -> {
+            }
+        }
+    }
+
+    private void applyResultIdentityFault(JsonObject response, SampleWorkerFaultProfile.ResultIdentityKind identityKind) {
+        if (identityKind == null || identityKind == SampleWorkerFaultProfile.ResultIdentityKind.NONE) {
+            return;
+        }
+        switch (identityKind) {
+            case WRONG_TASK -> response.addProperty("taskId", "wrong-" + readString(response, "taskId"));
+            case WRONG_MESSAGE -> response.addProperty("messageId", "wrong-" + readString(response, "messageId"));
+            case WRONG_WORKER -> response.addProperty("workerId", "wrong-" + readString(response, "workerId"));
+            case WRONG_LEASE -> response.addProperty("leaseId", "wrong-lease");
             case NONE -> {
             }
         }

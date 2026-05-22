@@ -120,9 +120,25 @@ public final class SampleCommandRoutes {
         ));
 
         registerIfAbsent(command(
+                "fault.result.late",
+                SampleCommandRoutes::faultResultLate,
+                "Configure late task-result submit behavior for a sample worker.",
+                true,
+                "prepare", "trigger", "verify"
+        ));
+
+        registerIfAbsent(command(
                 "fault.result.malformed",
                 SampleCommandRoutes::faultResultMalformed,
                 "Configure malformed task-result submit behavior for a sample worker.",
+                true,
+                "prepare", "trigger", "verify"
+        ));
+
+        registerIfAbsent(command(
+                "fault.result.identity",
+                SampleCommandRoutes::faultResultIdentity,
+                "Configure invalid task-result identity behavior for a sample worker.",
                 true,
                 "prepare", "trigger", "verify"
         ));
@@ -304,6 +320,19 @@ public final class SampleCommandRoutes {
         return buildStateResponse(workerId, state, "fault_result_duplicate_updated");
     }
 
+    private static Map<String, Object> faultResultLate(JsonObject request, CommandContext context) {
+        String workerId = requireWorkerId(request);
+        long delayPastLeaseMs = boundedLong(request, "delayPastLeaseMs", 1_000L, 120_000L);
+        SampleClientState state = stateRegistry(context).getOrCreate(workerId);
+        state.setFaultProfile(SampleWorkerFaultProfile.builder(
+                        SampleWorkerFaultProfile.ProfileName.NEAR_TIMEOUT,
+                        boundedLong(request, "seed", 0L, Long.MAX_VALUE)
+                )
+                .lateResultDelay(delayPastLeaseMs)
+                .build());
+        return buildStateResponse(workerId, state, "fault_result_late_updated");
+    }
+
     private static Map<String, Object> faultResultMalformed(JsonObject request, CommandContext context) {
         String workerId = requireWorkerId(request);
         String kind = stringValue(request, "kind", "missing_message_id");
@@ -326,6 +355,30 @@ public final class SampleCommandRoutes {
                 .malformedResultKind(malformedKind)
                 .build());
         return buildStateResponse(workerId, state, "fault_result_malformed_updated");
+    }
+
+    private static Map<String, Object> faultResultIdentity(JsonObject request, CommandContext context) {
+        String workerId = requireWorkerId(request);
+        String kind = stringValue(request, "kind", "wrongMessage");
+        SampleWorkerFaultProfile.ResultIdentityKind identityKind;
+        try {
+            identityKind = SampleWorkerFaultProfile.ResultIdentityKind.valueOf(
+                    normalizeEnumToken(kind)
+            );
+        } catch (IllegalArgumentException e) {
+            throw new CommandException(
+                    ErrorCode.PARSE_ERROR,
+                    "fault.result.identity kind must be wrongTask, wrongMessage, wrongWorker, or wrongLease"
+            );
+        }
+        SampleClientState state = stateRegistry(context).getOrCreate(workerId);
+        state.setFaultProfile(SampleWorkerFaultProfile.builder(
+                        SampleWorkerFaultProfile.ProfileName.WRONG_IDENTITY,
+                        boundedLong(request, "seed", 0L, Long.MAX_VALUE)
+                )
+                .resultIdentityKind(identityKind)
+                .build());
+        return buildStateResponse(workerId, state, "fault_result_identity_updated");
     }
 
     private static Map<String, Object> faultTransportDisconnect(JsonObject request, CommandContext context) {
@@ -490,7 +543,7 @@ public final class SampleCommandRoutes {
 
     private static SampleWorkerFaultProfile.DelayDistribution delayDistribution(String value) {
         try {
-            return SampleWorkerFaultProfile.DelayDistribution.valueOf(value.trim().toUpperCase());
+            return SampleWorkerFaultProfile.DelayDistribution.valueOf(normalizeEnumToken(value));
         } catch (Exception e) {
             throw new CommandException(ErrorCode.PARSE_ERROR, "unsupported fault delay distribution: " + value);
         }
@@ -498,10 +551,35 @@ public final class SampleCommandRoutes {
 
     private static SampleWorkerFaultProfile.ResultDropMode resultDropMode(String value) {
         try {
-            return SampleWorkerFaultProfile.ResultDropMode.valueOf(value.trim().toUpperCase());
+            return SampleWorkerFaultProfile.ResultDropMode.valueOf(normalizeEnumToken(value));
         } catch (Exception e) {
             throw new CommandException(ErrorCode.PARSE_ERROR, "unsupported fault result drop mode: " + value);
         }
+    }
+
+    private static String normalizeEnumToken(String value) {
+        if (value == null) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder();
+        char previous = 0;
+        for (char current : value.trim().toCharArray()) {
+            if (current == '-' || current == '_' || Character.isWhitespace(current)) {
+                if (!builder.isEmpty() && builder.charAt(builder.length() - 1) != '_') {
+                    builder.append('_');
+                }
+            } else {
+                if (Character.isUpperCase(current)
+                        && Character.isLowerCase(previous)
+                        && !builder.isEmpty()
+                        && builder.charAt(builder.length() - 1) != '_') {
+                    builder.append('_');
+                }
+                builder.append(Character.toUpperCase(current));
+            }
+            previous = current;
+        }
+        return builder.toString();
     }
 
     private static Map<String, Object> workerStateReportSnapshot(WorkerStateReportSnapshot report) {

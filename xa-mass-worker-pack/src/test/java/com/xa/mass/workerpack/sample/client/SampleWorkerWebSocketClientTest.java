@@ -215,6 +215,27 @@ class SampleWorkerWebSocketClientTest {
     }
 
     @Test
+    void taskRequestCanSubmitLateResultByFaultProfile() throws Exception {
+        CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
+        stateRegistry.getOrCreate("worker-test").setFaultProfile(
+                SampleWorkerFaultProfile.builder(SampleWorkerFaultProfile.ProfileName.NEAR_TIMEOUT, 42L)
+                        .lateResultDelay(120L)
+                        .build()
+        );
+
+        client.onMessage(taskMessage(false));
+
+        Thread.sleep(50L);
+        assertTrue(client.sentMessages.isEmpty());
+
+        assertTrue(client.awaitSentCount(1, 1000L));
+        JsonObject response = WsFrameTestSupport.parse(client.sentMessages.get(0));
+        assertEquals("msg-1", WsFrameTestSupport.messageId(response));
+        assertTrue(WsFrameTestSupport.payload(response).getAsJsonObject("execution")
+                .get("durationMs").getAsLong() >= 120L);
+    }
+
+    @Test
     void taskRequestCanSubmitMalformedResultByFaultProfile() throws Exception {
         CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
         stateRegistry.getOrCreate("worker-test").setFaultProfile(
@@ -246,6 +267,24 @@ class SampleWorkerWebSocketClientTest {
         assertTrue(client.awaitSentCount(1, 1000L));
         JsonObject response = WsFrameTestSupport.parse(client.sentMessages.get(0));
         assertTrue(response.get("success").isJsonObject());
+    }
+
+    @Test
+    void taskRequestCanSubmitWrongIdentityResultByFaultProfile() throws Exception {
+        CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
+        stateRegistry.getOrCreate("worker-test").setFaultProfile(
+                SampleWorkerFaultProfile.builder(SampleWorkerFaultProfile.ProfileName.WRONG_IDENTITY, 42L)
+                        .resultIdentityKind(SampleWorkerFaultProfile.ResultIdentityKind.WRONG_MESSAGE)
+                        .build()
+        );
+
+        client.onMessage(taskMessage(false));
+
+        assertTrue(client.awaitSentCount(1, 1000L));
+        JsonObject response = WsFrameTestSupport.parse(client.sentMessages.get(0));
+        assertEquals("wrong-msg-1", WsFrameTestSupport.messageId(response));
+        assertEquals("worker-test", WsFrameTestSupport.workerId(response));
+        assertEquals("task-1", WsFrameTestSupport.taskId(response));
     }
 
     @Test
@@ -384,6 +423,23 @@ class SampleWorkerWebSocketClientTest {
     }
 
     @Test
+    void faultLateTaskUpdatesStateThroughCommandRuntime() throws Exception {
+        CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
+        JsonObject input = new JsonObject();
+        input.addProperty("delayPastLeaseMs", 1234L);
+
+        client.onMessage(taskMessage("fault.result.late", input));
+
+        assertTrue(client.awaitSentCount(1, 1000L));
+        JsonObject output = WsFrameTestSupport.payload(WsFrameTestSupport.parse(client.sentMessages.get(0)));
+        assertEquals("fault.result.late", output.get("eventCode").getAsString());
+        assertEquals("fault_result_late_updated", output.get("action").getAsString());
+        JsonObject faultProfile = output.getAsJsonObject("state").getAsJsonObject("faultProfile");
+        assertEquals("NEAR_TIMEOUT", faultProfile.get("profile").getAsString());
+        assertEquals(1234L, faultProfile.get("lateResultDelayMillis").getAsLong());
+    }
+
+    @Test
     void faultMalformedTaskUpdatesStateThroughCommandRuntime() throws Exception {
         CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
         JsonObject input = new JsonObject();
@@ -398,6 +454,23 @@ class SampleWorkerWebSocketClientTest {
         JsonObject faultProfile = output.getAsJsonObject("state").getAsJsonObject("faultProfile");
         assertEquals("MALFORMED_RESULT", faultProfile.get("profile").getAsString());
         assertEquals("INVALID_PAYLOAD", faultProfile.get("malformedResultKind").getAsString());
+    }
+
+    @Test
+    void faultIdentityTaskUpdatesStateThroughCommandRuntime() throws Exception {
+        CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
+        JsonObject input = new JsonObject();
+        input.addProperty("kind", "wrong-worker");
+
+        client.onMessage(taskMessage("fault.result.identity", input));
+
+        assertTrue(client.awaitSentCount(1, 1000L));
+        JsonObject output = WsFrameTestSupport.payload(WsFrameTestSupport.parse(client.sentMessages.get(0)));
+        assertEquals("fault.result.identity", output.get("eventCode").getAsString());
+        assertEquals("fault_result_identity_updated", output.get("action").getAsString());
+        JsonObject faultProfile = output.getAsJsonObject("state").getAsJsonObject("faultProfile");
+        assertEquals("WRONG_IDENTITY", faultProfile.get("profile").getAsString());
+        assertEquals("WRONG_WORKER", faultProfile.get("resultIdentityKind").getAsString());
     }
 
     @Test

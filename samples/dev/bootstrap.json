@@ -129,9 +129,25 @@
       "projectCodes": ["demoApp", "testApp"]
     },
     {
+      "code": "fault.result.late",
+      "name": "Fault Result Late",
+      "description": "Configure late task-result submit behavior on a targeted sample worker through the task path.",
+      "payloadTypes": ["JSON"],
+      "taskModes": ["SINGLE_RUN"],
+      "projectCodes": ["demoApp", "testApp"]
+    },
+    {
       "code": "fault.result.malformed",
       "name": "Fault Result Malformed",
       "description": "Configure malformed task-result submit behavior on a targeted sample worker through the task path.",
+      "payloadTypes": ["JSON"],
+      "taskModes": ["SINGLE_RUN"],
+      "projectCodes": ["demoApp", "testApp"]
+    },
+    {
+      "code": "fault.result.identity",
+      "name": "Fault Result Identity",
+      "description": "Configure invalid task-result identity behavior on a targeted sample worker through the task path.",
       "payloadTypes": ["JSON"],
       "taskModes": ["SINGLE_RUN"],
       "projectCodes": ["demoApp", "testApp"]
@@ -181,7 +197,9 @@
         "fault.execution.stall",
         "fault.result.drop",
         "fault.result.duplicate",
+        "fault.result.late",
         "fault.result.malformed",
+        "fault.result.identity",
         "fault.transport.disconnect",
         "fault.worker.state.flap",
         "fault.reset"
@@ -205,7 +223,9 @@
         "fault.execution.stall",
         "fault.result.drop",
         "fault.result.duplicate",
+        "fault.result.late",
         "fault.result.malformed",
+        "fault.result.identity",
         "fault.transport.disconnect",
         "fault.worker.state.flap",
         "fault.reset"

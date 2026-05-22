@@ -161,6 +161,22 @@ class CommandRuntimeTest {
     }
 
     @Test
+    void shouldPersistFaultLateResultStateForWorker() {
+        JsonObject lateRequest = new JsonObject();
+        lateRequest.addProperty("event", "fault.result.late");
+        lateRequest.addProperty("workerId", "worker-fault-late");
+        lateRequest.addProperty("delayPastLeaseMs", 1234L);
+
+        CommandResponse<?> lateResponse = SampleCommandRuntime.dispatch(lateRequest);
+
+        assertTrue(lateResponse.isSuccess());
+        Map<?, ?> state = (Map<?, ?>) ((Map<?, ?>) lateResponse.getData()).get("state");
+        Map<?, ?> faultProfile = (Map<?, ?>) state.get("faultProfile");
+        assertEquals("NEAR_TIMEOUT", faultProfile.get("profile"));
+        assertEquals(1234L, faultProfile.get("lateResultDelayMillis"));
+    }
+
+    @Test
     void shouldPersistFaultMalformedResultStateForWorker() {
         JsonObject malformedRequest = new JsonObject();
         malformedRequest.addProperty("event", "fault.result.malformed");
@@ -174,6 +190,22 @@ class CommandRuntimeTest {
         Map<?, ?> faultProfile = (Map<?, ?>) state.get("faultProfile");
         assertEquals("MALFORMED_RESULT", faultProfile.get("profile"));
         assertEquals("INVALID_STATUS", faultProfile.get("malformedResultKind"));
+    }
+
+    @Test
+    void shouldPersistFaultIdentityResultStateForWorker() {
+        JsonObject identityRequest = new JsonObject();
+        identityRequest.addProperty("event", "fault.result.identity");
+        identityRequest.addProperty("workerId", "worker-fault-identity");
+        identityRequest.addProperty("kind", "wrongMessage");
+
+        CommandResponse<?> identityResponse = SampleCommandRuntime.dispatch(identityRequest);
+
+        assertTrue(identityResponse.isSuccess());
+        Map<?, ?> state = (Map<?, ?>) ((Map<?, ?>) identityResponse.getData()).get("state");
+        Map<?, ?> faultProfile = (Map<?, ?>) state.get("faultProfile");
+        assertEquals("WRONG_IDENTITY", faultProfile.get("profile"));
+        assertEquals("WRONG_MESSAGE", faultProfile.get("resultIdentityKind"));
     }
 
     @Test

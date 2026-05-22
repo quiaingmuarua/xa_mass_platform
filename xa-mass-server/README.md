@@ -225,7 +225,9 @@ Current command groups:
   - `fault.execution.stall`
   - `fault.result.drop`
   - `fault.result.duplicate`
+  - `fault.result.late`
   - `fault.result.malformed`
+  - `fault.result.identity`
   - `fault.transport.disconnect`
   - `fault.worker.state.flap`
   - `fault.reset`

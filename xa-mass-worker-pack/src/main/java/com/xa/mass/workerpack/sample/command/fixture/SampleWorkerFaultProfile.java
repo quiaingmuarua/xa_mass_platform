@@ -23,6 +23,7 @@ public final class SampleWorkerFaultProfile {
         FLAKY_RESULT,
         FLAKY_TRANSPORT,
         MALFORMED_RESULT,
+        WRONG_IDENTITY,
         NOISY;
 
         static ProfileName fromValue(String value) {
@@ -64,6 +65,14 @@ public final class SampleWorkerFaultProfile {
         INVALID_PAYLOAD
     }
 
+    public enum ResultIdentityKind {
+        NONE,
+        WRONG_TASK,
+        WRONG_MESSAGE,
+        WRONG_WORKER,
+        WRONG_LEASE
+    }
+
     public enum DisconnectPhase {
         NONE,
         BEFORE_RECEIVE,
@@ -82,9 +91,11 @@ public final class SampleWorkerFaultProfile {
     private final int resultDropPercent;
     private final int duplicateResultCount;
     private final long duplicateResultGapMillis;
+    private final long lateResultDelayMillis;
     private final StallMode stallMode;
     private final long stallMillis;
     private final MalformedResultKind malformedResultKind;
+    private final ResultIdentityKind resultIdentityKind;
     private final DisconnectPhase disconnectPhase;
 
     private SampleWorkerFaultProfile(Builder builder) {
@@ -98,11 +109,15 @@ public final class SampleWorkerFaultProfile {
         this.resultDropPercent = Math.max(0, Math.min(100, builder.resultDropPercent));
         this.duplicateResultCount = Math.max(0, builder.duplicateResultCount);
         this.duplicateResultGapMillis = Math.max(0L, builder.duplicateResultGapMillis);
+        this.lateResultDelayMillis = Math.max(0L, builder.lateResultDelayMillis);
         this.stallMode = builder.stallMode == null ? StallMode.OFF : builder.stallMode;
         this.stallMillis = Math.max(0L, builder.stallMillis);
         this.malformedResultKind = builder.malformedResultKind == null
                 ? MalformedResultKind.NONE
                 : builder.malformedResultKind;
+        this.resultIdentityKind = builder.resultIdentityKind == null
+                ? ResultIdentityKind.NONE
+                : builder.resultIdentityKind;
         this.disconnectPhase = builder.disconnectPhase == null ? DisconnectPhase.NONE : builder.disconnectPhase;
     }
 
@@ -129,6 +144,7 @@ public final class SampleWorkerFaultProfile {
                     .build();
             case FLAKY_TRANSPORT -> builder.disconnectPhase(DisconnectPhase.BEFORE_RESULT).build();
             case MALFORMED_RESULT -> builder.malformedResultKind(MalformedResultKind.MISSING_MESSAGE_ID).build();
+            case WRONG_IDENTITY -> builder.resultIdentityKind(ResultIdentityKind.WRONG_MESSAGE).build();
             case NOISY -> builder
                     .delay(20L, 250L, DelayDistribution.UNIFORM)
                     .resultDrop(ResultDropMode.PERCENT, 10)
@@ -181,6 +197,10 @@ public final class SampleWorkerFaultProfile {
         return duplicateResultGapMillis;
     }
 
+    public long lateResultDelayMillis() {
+        return lateResultDelayMillis;
+    }
+
     public StallMode stallMode() {
         return stallMode;
     }
@@ -191,6 +211,10 @@ public final class SampleWorkerFaultProfile {
 
     public MalformedResultKind malformedResultKind() {
         return malformedResultKind;
+    }
+
+    public ResultIdentityKind resultIdentityKind() {
+        return resultIdentityKind;
     }
 
     public DisconnectPhase disconnectPhase() {
@@ -242,9 +266,11 @@ public final class SampleWorkerFaultProfile {
         map.put("resultDropPercent", resultDropPercent);
         map.put("duplicateResultCount", duplicateResultCount);
         map.put("duplicateResultGapMillis", duplicateResultGapMillis);
+        map.put("lateResultDelayMillis", lateResultDelayMillis);
         map.put("stallMode", stallMode.name());
         map.put("stallMillis", stallMillis);
         map.put("malformedResultKind", malformedResultKind.name());
+        map.put("resultIdentityKind", resultIdentityKind.name());
         map.put("disconnectPhase", disconnectPhase.name());
         return map;
     }
@@ -264,9 +290,11 @@ public final class SampleWorkerFaultProfile {
         private int resultDropPercent;
         private int duplicateResultCount;
         private long duplicateResultGapMillis;
+        private long lateResultDelayMillis;
         private StallMode stallMode = StallMode.OFF;
         private long stallMillis;
         private MalformedResultKind malformedResultKind = MalformedResultKind.NONE;
+        private ResultIdentityKind resultIdentityKind = ResultIdentityKind.NONE;
         private DisconnectPhase disconnectPhase = DisconnectPhase.NONE;
 
         private Builder(ProfileName profileName, long seed) {
@@ -298,6 +326,11 @@ public final class SampleWorkerFaultProfile {
             return this;
         }
 
+        public Builder lateResultDelay(long lateResultDelayMillis) {
+            this.lateResultDelayMillis = lateResultDelayMillis;
+            return this;
+        }
+
         public Builder stallMode(StallMode stallMode) {
             this.stallMode = stallMode;
             this.stallMillis = 0L;
@@ -312,6 +345,11 @@ public final class SampleWorkerFaultProfile {
 
         public Builder malformedResultKind(MalformedResultKind malformedResultKind) {
             this.malformedResultKind = malformedResultKind;
+            return this;
+        }
+
+        public Builder resultIdentityKind(ResultIdentityKind resultIdentityKind) {
+            this.resultIdentityKind = resultIdentityKind;
             return this;
         }
 

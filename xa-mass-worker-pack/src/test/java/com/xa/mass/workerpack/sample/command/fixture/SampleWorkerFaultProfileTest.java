@@ -18,9 +18,11 @@ class SampleWorkerFaultProfileTest {
         assertEquals(0L, profile.resolveDelayMillis("worker", "task", "msg", 1));
         assertFalse(profile.shouldDropResult("worker", "task", "msg", 1));
         assertEquals(0, profile.duplicateResultCount());
+        assertEquals(0L, profile.lateResultDelayMillis());
         assertEquals(SampleWorkerFaultProfile.StallMode.OFF, profile.stallMode());
         assertEquals(0L, profile.stallMillis());
         assertEquals(SampleWorkerFaultProfile.MalformedResultKind.NONE, profile.malformedResultKind());
+        assertEquals(SampleWorkerFaultProfile.ResultIdentityKind.NONE, profile.resultIdentityKind());
         assertEquals(SampleWorkerFaultProfile.DisconnectPhase.NONE, profile.disconnectPhase());
     }
 
@@ -69,6 +71,30 @@ class SampleWorkerFaultProfileTest {
         assertEquals(SampleWorkerFaultProfile.ProfileName.MALFORMED_RESULT, malformed.profileName());
         assertEquals(SampleWorkerFaultProfile.MalformedResultKind.MISSING_MESSAGE_ID, malformed.malformedResultKind());
         assertEquals("MISSING_MESSAGE_ID", malformed.toMap().get("malformedResultKind"));
+    }
+
+    @Test
+    void lateResultProfileExposesLateDelay() {
+        SampleWorkerFaultProfile late = SampleWorkerFaultProfile.builder(
+                        SampleWorkerFaultProfile.ProfileName.NEAR_TIMEOUT,
+                        5L
+                )
+                .lateResultDelay(1_234L)
+                .build();
+
+        assertTrue(late.enabled());
+        assertEquals(1_234L, late.lateResultDelayMillis());
+        assertEquals(1_234L, late.toMap().get("lateResultDelayMillis"));
+    }
+
+    @Test
+    void wrongIdentityProfileExposesIdentityKind() {
+        SampleWorkerFaultProfile identity = SampleWorkerFaultProfile.fromProfile("WRONG_IDENTITY", 6L);
+
+        assertTrue(identity.enabled());
+        assertEquals(SampleWorkerFaultProfile.ProfileName.WRONG_IDENTITY, identity.profileName());
+        assertEquals(SampleWorkerFaultProfile.ResultIdentityKind.WRONG_MESSAGE, identity.resultIdentityKind());
+        assertEquals("WRONG_MESSAGE", identity.toMap().get("resultIdentityKind"));
     }
 
     @Test
