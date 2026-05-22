@@ -289,6 +289,23 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore, Auto
             return null;
         }
         long now = System.currentTimeMillis();
+        WorkerPresence latestProjection = readStoredPresence(workerKey(normalizedWorkerId), normalizedWorkerId);
+        latestProjection = latestProjection != null ? materialize(latestProjection) : null;
+        if (latestProjection != null
+                && normalizedWorkerId.equals(latestProjection.getWorkerId())
+                && latestProjection.getPresenceState() == WorkerPresenceState.ONLINE
+                && latestProjection.getLeaseExpireAtEpochMillis() > now) {
+            WorkerPresence routeProjection = readRoutePresence(
+                    normalizedWorkerId,
+                    latestProjection.getAdapterId(),
+                    latestProjection.getRouteKey()
+            );
+            if (routeProjection != null
+                    && routeProjection.getPresenceState() == WorkerPresenceState.ONLINE
+                    && Objects.equals(routeProjection.getConnectionId(), latestProjection.getConnectionId())) {
+                return latestProjection;
+            }
+        }
         List<WorkerPresence> candidates = new ArrayList<>();
         for (String routeId : commands.smembers(workerRoutesKey(normalizedWorkerId))) {
             WorkerPresence presence = readStoredRoutePresence(routeId);
@@ -313,8 +330,7 @@ public final class RedisWorkerPresenceStore implements WorkerPresenceStore, Auto
             persistPresence(workerKey(normalizedWorkerId), latestRoute);
             return latestRoute;
         }
-        WorkerPresence stored = readStoredPresence(workerKey(normalizedWorkerId), normalizedWorkerId);
-        return stored != null ? materialize(stored) : null;
+        return latestProjection;
     }
 
     @Override
