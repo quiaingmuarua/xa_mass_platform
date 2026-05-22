@@ -79,6 +79,46 @@
       "payloadTypes": ["JSON"],
       "taskModes": ["SINGLE_RUN"],
       "projectCodes": ["demoApp", "testApp"]
+    },
+    {
+      "code": "fault.state.get",
+      "name": "Fault State Get",
+      "description": "Fetch the current worker fault profile state from a targeted sample worker through the task path.",
+      "payloadTypes": ["JSON"],
+      "taskModes": ["SINGLE_RUN"],
+      "projectCodes": ["demoApp", "testApp"]
+    },
+    {
+      "code": "fault.execution.profile",
+      "name": "Fault Execution Profile",
+      "description": "Configure a named deterministic fault profile on a targeted sample worker through the task path.",
+      "payloadTypes": ["JSON"],
+      "taskModes": ["SINGLE_RUN"],
+      "projectCodes": ["demoApp", "testApp"]
+    },
+    {
+      "code": "fault.execution.delay",
+      "name": "Fault Execution Delay",
+      "description": "Configure deterministic execution delay bounds on a targeted sample worker through the task path.",
+      "payloadTypes": ["JSON"],
+      "taskModes": ["SINGLE_RUN"],
+      "projectCodes": ["demoApp", "testApp"]
+    },
+    {
+      "code": "fault.result.drop",
+      "name": "Fault Result Drop",
+      "description": "Configure deterministic task-result drop behavior on a targeted sample worker through the task path.",
+      "payloadTypes": ["JSON"],
+      "taskModes": ["SINGLE_RUN"],
+      "projectCodes": ["demoApp", "testApp"]
+    },
+    {
+      "code": "fault.reset",
+      "name": "Fault Reset",
+      "description": "Reset worker fault profile state through the task path.",
+      "payloadTypes": ["JSON"],
+      "taskModes": ["SINGLE_RUN"],
+      "projectCodes": ["demoApp", "testApp"]
     }
   ],
   "projects": [
@@ -94,7 +134,12 @@
         "mock.drop.outbound",
         "mock.task.result.status",
         "mock.disconnect",
-        "mock.reset"
+        "mock.reset",
+        "fault.state.get",
+        "fault.execution.profile",
+        "fault.execution.delay",
+        "fault.result.drop",
+        "fault.reset"
       ]
     },
     {
@@ -108,7 +153,12 @@
         "mock.drop.outbound",
         "mock.task.result.status",
         "mock.disconnect",
-        "mock.reset"
+        "mock.reset",
+        "fault.state.get",
+        "fault.execution.profile",
+        "fault.execution.delay",
+        "fault.result.drop",
+        "fault.reset"
       ]
     },
     {

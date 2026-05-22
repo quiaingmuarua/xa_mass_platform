@@ -218,6 +218,12 @@ Current command groups:
   - `mock.task.result.status`
   - `mock.disconnect`
   - `mock.reset`
+- `fault.*`: configure worker-fault profile state through the same sample command path
+  - `fault.state.get`
+  - `fault.execution.profile`
+  - `fault.execution.delay`
+  - `fault.result.drop`
+  - `fault.reset`
 - `tool.*`: lightweight utility commands for debugging and demos
   - `tool.time.now`
   - `tool.geo.lookup`

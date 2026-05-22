@@ -20,3 +20,31 @@ Status: current worker-pack owner README.
 - `src/main/java/com/xa/mass/workerpack/sample/client/SampleWorkerWebSocketClient.java`
 - `src/main/java/com/xa/mass/workerpack/sample/command/runtime/SampleCommandRuntime.java`
 
+## Sample Fault State
+
+Sample worker fault injection is worker-pack local state. It must not become an
+engine model, transport protocol, or runtime owner.
+
+Current implemented surface:
+
+- `SampleClientState` stores legacy `mock.*` controls plus a reusable
+  `faultProfile` snapshot.
+- `SampleWorkerFaultProfile` defines deterministic profile names and primitive
+  settings for delay, result drop, duplicate result, stall, malformed result,
+  and disconnect phase.
+- `fault.state.get`, `fault.execution.profile`, `fault.execution.delay`,
+  `fault.result.drop`, and `fault.reset` are registered as sample command
+  routes through `CommandRegistry`.
+- the first behavior-bearing slice applies fault profile delay and result-drop
+  settings when the sample worker builds a normal task result.
+- Default state is disabled and preserves stable worker behavior.
+
+Not yet implemented:
+
+- duplicate result, malformed result, transport disconnect, state flap, and
+  capacity flap behavior
+- applying fault profiles to worker state/capability report behavior
+- matrix runner selection by scenario id
+
+Those belong to the worker-fault roadmap and should be added through normal
+sample-worker command paths, not by mutating engine or transport internals.

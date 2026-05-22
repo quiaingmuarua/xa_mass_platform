@@ -3,6 +3,7 @@ package com.xa.mass.workerpack.sample.client;
 import com.google.gson.JsonObject;
 import com.xa.mass.workerpack.sample.command.fixture.SampleClientState;
 import com.xa.mass.workerpack.sample.command.fixture.SampleClientStateRegistry;
+import com.xa.mass.workerpack.sample.command.fixture.SampleWorkerFaultProfile;
 import com.xa.mass.workerpack.sample.command.runtime.SampleCommandRuntime;
 import com.xa.mass.workerpack.testutil.WsFrameTestSupport;
 import org.junit.jupiter.api.BeforeEach;
@@ -120,6 +121,37 @@ class SampleWorkerWebSocketClientTest {
     }
 
     @Test
+    void taskRequestCanBeDelayedByFaultProfile() throws Exception {
+        CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
+        stateRegistry.getOrCreate("worker-test").setFaultProfile(
+                SampleWorkerFaultProfile.builder(SampleWorkerFaultProfile.ProfileName.SLOW, 42L)
+                        .delay(120L, 120L, SampleWorkerFaultProfile.DelayDistribution.FIXED)
+                        .build()
+        );
+
+        client.onMessage(taskMessage(false));
+
+        Thread.sleep(50L);
+        assertTrue(client.sentMessages.isEmpty());
+
+        assertTrue(client.awaitSentCount(1, 1000L));
+    }
+
+    @Test
+    void taskRequestCanBeDroppedByFaultProfile() {
+        CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
+        stateRegistry.getOrCreate("worker-test").setFaultProfile(
+                SampleWorkerFaultProfile.builder(SampleWorkerFaultProfile.ProfileName.FLAKY_RESULT, 42L)
+                        .resultDrop(SampleWorkerFaultProfile.ResultDropMode.ALWAYS, 0)
+                        .build()
+        );
+
+        client.onMessage(taskMessage(false));
+
+        assertTrue(client.sentMessages.isEmpty());
+    }
+
+    @Test
     void msgIdOnlyTaskFrameIsIgnored() {
         CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
         JsonObject frame = new JsonObject();
@@ -167,6 +199,24 @@ class SampleWorkerWebSocketClientTest {
         JsonObject state = output.getAsJsonObject("state");
         assertEquals(275L, state.get("taskResponseDelayMillis").getAsLong());
         assertTrue(output.has("command"));
+    }
+
+    @Test
+    void faultProfileTaskUpdatesStateThroughCommandRuntime() throws Exception {
+        CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
+        JsonObject input = new JsonObject();
+        input.addProperty("profile", "NOISY");
+        input.addProperty("seed", 77L);
+
+        client.onMessage(taskMessage("fault.execution.profile", input));
+
+        assertTrue(client.awaitSentCount(1, 1000L));
+        JsonObject output = WsFrameTestSupport.payload(WsFrameTestSupport.parse(client.sentMessages.get(0)));
+        assertEquals("fault.execution.profile", output.get("eventCode").getAsString());
+        assertEquals("fault_profile_updated", output.get("action").getAsString());
+        JsonObject faultProfile = output.getAsJsonObject("state").getAsJsonObject("faultProfile");
+        assertEquals("NOISY", faultProfile.get("profile").getAsString());
+        assertEquals(77L, faultProfile.get("seed").getAsLong());
     }
 
     @Test
@@ -267,4 +317,3 @@ class SampleWorkerWebSocketClientTest {
         }
     }
 }
-

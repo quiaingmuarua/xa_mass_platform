@@ -75,6 +75,76 @@ class CommandRuntimeTest {
     }
 
     @Test
+    void shouldPersistFaultProfileStateForWorker() {
+        JsonObject profileRequest = new JsonObject();
+        profileRequest.addProperty("event", "fault.execution.profile");
+        profileRequest.addProperty("workerId", "worker-fault");
+        profileRequest.addProperty("profile", "NOISY");
+        profileRequest.addProperty("seed", 123L);
+
+        CommandResponse<?> profileResponse = SampleCommandRuntime.dispatch(profileRequest);
+
+        assertTrue(profileResponse.isSuccess());
+
+        JsonObject stateRequest = new JsonObject();
+        stateRequest.addProperty("event", "fault.state.get");
+        stateRequest.addProperty("workerId", "worker-fault");
+
+        CommandResponse<?> stateResponse = SampleCommandRuntime.dispatch(stateRequest);
+
+        assertTrue(stateResponse.isSuccess());
+        Map<?, ?> state = (Map<?, ?>) ((Map<?, ?>) stateResponse.getData()).get("state");
+        Map<?, ?> faultProfile = (Map<?, ?>) state.get("faultProfile");
+        assertEquals(true, faultProfile.get("enabled"));
+        assertEquals("NOISY", faultProfile.get("profile"));
+        assertEquals(123L, faultProfile.get("seed"));
+    }
+
+    @Test
+    void shouldRejectInvalidFaultProfileConfig() {
+        JsonObject request = new JsonObject();
+        request.addProperty("event", "fault.execution.profile");
+        request.addProperty("workerId", "worker-fault-invalid");
+        request.addProperty("profile", "UNKNOWN");
+
+        CommandResponse<?> response = SampleCommandRuntime.dispatch(request);
+
+        assertFalse(response.isSuccess());
+        assertTrue(response.getMessage().contains("unsupported fault profile"));
+    }
+
+    @Test
+    void shouldResetFaultProfilesWithoutClearingMockState() {
+        JsonObject mockDelay = new JsonObject();
+        mockDelay.addProperty("event", "mock.delay.response");
+        mockDelay.addProperty("workerId", "worker-fault-reset");
+        mockDelay.addProperty("millis", 321);
+        assertTrue(SampleCommandRuntime.dispatch(mockDelay).isSuccess());
+
+        JsonObject faultProfile = new JsonObject();
+        faultProfile.addProperty("event", "fault.execution.profile");
+        faultProfile.addProperty("workerId", "worker-fault-reset");
+        faultProfile.addProperty("profile", "NOISY");
+        assertTrue(SampleCommandRuntime.dispatch(faultProfile).isSuccess());
+
+        JsonObject resetFault = new JsonObject();
+        resetFault.addProperty("event", "fault.reset");
+        resetFault.addProperty("scope", "all");
+        assertTrue(SampleCommandRuntime.dispatch(resetFault).isSuccess());
+
+        JsonObject stateRequest = new JsonObject();
+        stateRequest.addProperty("event", "fault.state.get");
+        stateRequest.addProperty("workerId", "worker-fault-reset");
+        CommandResponse<?> stateResponse = SampleCommandRuntime.dispatch(stateRequest);
+
+        assertTrue(stateResponse.isSuccess());
+        Map<?, ?> state = (Map<?, ?>) ((Map<?, ?>) stateResponse.getData()).get("state");
+        Map<?, ?> resetProfile = (Map<?, ?>) state.get("faultProfile");
+        assertEquals(321L, state.get("taskResponseDelayMillis"));
+        assertEquals(false, resetProfile.get("enabled"));
+    }
+
+    @Test
     void shouldExecuteBatchCommandWithContextExport() {
         JsonObject request = new JsonObject();
         request.addProperty("event", "batch");
@@ -118,4 +188,3 @@ class CommandRuntimeTest {
         assertEquals("CNY", ((Map<?, ?>) data.get("context")).get("currency"));
     }
 }
-

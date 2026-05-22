@@ -21,5 +21,12 @@ public class SampleClientStateRegistry {
     public void reset(String workerId) {
         getOrCreate(workerId).reset();
     }
-}
 
+    public void resetAll() {
+        states.values().forEach(SampleClientState::reset);
+    }
+
+    public void resetAllFaultProfiles() {
+        states.values().forEach(SampleClientState::resetFaultProfile);
+    }
+}

@@ -108,6 +108,16 @@ final class SampleWorkerTaskFrameHandler {
                     workerId, extractMessageId(taskMessage), state.snapshot());
             return null;
         }
+        if (state != null && state.shouldDropFaultProfileResult(
+                workerId,
+                taskId,
+                extractMessageId(taskMessage),
+                retryCount == null ? 0 : retryCount
+        )) {
+            logger.info("[{}] Dropped sample task response for messageId={} due to fault profile {}",
+                    workerId, extractMessageId(taskMessage), state.getFaultProfile().toMap());
+            return null;
+        }
         return new TaskResponsePlan(GSON.toJson(response), extractMessageId(taskMessage), delayMillis, null);
     }
 
@@ -173,7 +183,12 @@ final class SampleWorkerTaskFrameHandler {
                     "mock.drop.outbound",
                     "mock.task.result.status",
                     "mock.disconnect",
-                    "mock.reset" -> true;
+                    "mock.reset",
+                    "fault.state.get",
+                    "fault.execution.profile",
+                    "fault.execution.delay",
+                    "fault.result.drop",
+                    "fault.reset" -> true;
             default -> false;
         };
     }
@@ -278,7 +293,21 @@ final class SampleWorkerTaskFrameHandler {
         int stableHash = Objects.hash(workerId, extractMessageId(taskMessage), readString(taskMessage, "project"), stepCount);
         long jitter = Math.floorMod(stableHash, (int) DEFAULT_TASK_RESPONSE_JITTER_MS + 1);
         long failurePenalty = "FAILED".equals(taskStatus) ? 10L : 0L;
-        return DEFAULT_TASK_RESPONSE_BASE_DELAY_MS + jitter + Math.max(0, stepCount - 1) * 5L + failurePenalty;
+        long baseDelay = DEFAULT_TASK_RESPONSE_BASE_DELAY_MS
+                + jitter
+                + Math.max(0, stepCount - 1) * 5L
+                + failurePenalty;
+        if (state == null || !state.getFaultProfile().enabled()) {
+            return baseDelay;
+        }
+        Integer retryCount = readInt(taskMessage, "retryCount");
+        long faultDelay = state.getFaultProfile().resolveDelayMillis(
+                workerId,
+                readString(taskMessage, "taskId"),
+                extractMessageId(taskMessage),
+                retryCount == null ? 0 : retryCount
+        );
+        return baseDelay + faultDelay;
     }
 
     boolean isTaskDispatchFrame(JsonObject taskMessage) {
@@ -396,4 +425,3 @@ final class SampleWorkerTaskFrameHandler {
     record TaskResponsePlan(String responseJson, String messageId, long delayMillis, String disconnectWorkerId) {
     }
 }
-

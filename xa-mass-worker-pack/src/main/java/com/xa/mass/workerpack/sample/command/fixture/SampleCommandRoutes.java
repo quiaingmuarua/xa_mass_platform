@@ -65,6 +65,46 @@ public final class SampleCommandRoutes {
                 true,
                 "prepare", "verify"
         ));
+
+        registerIfAbsent(command(
+                "fault.state.get",
+                SampleCommandRoutes::faultStateGet,
+                "Return the current fault profile state for a worker.",
+                true,
+                "prepare", "verify"
+        ));
+
+        registerIfAbsent(command(
+                "fault.execution.profile",
+                SampleCommandRoutes::faultExecutionProfile,
+                "Configure a named deterministic fault profile for a sample worker.",
+                true,
+                "prepare", "trigger", "verify"
+        ));
+
+        registerIfAbsent(command(
+                "fault.execution.delay",
+                SampleCommandRoutes::faultExecutionDelay,
+                "Configure deterministic worker execution delay bounds for a sample worker.",
+                true,
+                "prepare", "trigger", "verify"
+        ));
+
+        registerIfAbsent(command(
+                "fault.result.drop",
+                SampleCommandRoutes::faultResultDrop,
+                "Configure deterministic sample worker result-drop behavior.",
+                true,
+                "prepare", "trigger", "verify"
+        ));
+
+        registerIfAbsent(command(
+                "fault.reset",
+                SampleCommandRoutes::faultReset,
+                "Reset fault profile state for one worker or all sample workers.",
+                true,
+                "prepare", "verify"
+        ));
     }
 
     private static Map<String, Object> sampleStateGet(JsonObject request, CommandContext context) {
@@ -132,6 +172,75 @@ public final class SampleCommandRoutes {
         return buildStateResponse(workerId, state, "reset");
     }
 
+    private static Map<String, Object> faultStateGet(JsonObject request, CommandContext context) {
+        String workerId = requireWorkerId(request);
+        return buildStateResponse(workerId, stateRegistry(context).getOrCreate(workerId), "fault_state");
+    }
+
+    private static Map<String, Object> faultExecutionProfile(JsonObject request, CommandContext context) {
+        String workerId = requireWorkerId(request);
+        String profile = stringValue(request, "profile", "FAST");
+        long seed = boundedLong(request, "seed", 0L, Long.MAX_VALUE);
+        SampleClientState state = stateRegistry(context).getOrCreate(workerId);
+        try {
+            state.setFaultProfile(SampleWorkerFaultProfile.fromProfile(profile, seed));
+        } catch (IllegalArgumentException e) {
+            throw new CommandException(ErrorCode.PARSE_ERROR, e.getMessage());
+        }
+        return buildStateResponse(workerId, state, "fault_profile_updated");
+    }
+
+    private static Map<String, Object> faultExecutionDelay(JsonObject request, CommandContext context) {
+        String workerId = requireWorkerId(request);
+        long minMs = boundedLong(request, "minMs", 0L, 30_000L);
+        long maxMs = boundedLong(request, "maxMs", minMs, 30_000L);
+        long seed = boundedLong(request, "seed", 0L, Long.MAX_VALUE);
+        SampleWorkerFaultProfile.DelayDistribution distribution = delayDistribution(
+                stringValue(request, "distribution", "UNIFORM"));
+        SampleClientState state = stateRegistry(context).getOrCreate(workerId);
+        state.setFaultProfile(SampleWorkerFaultProfile.builder(
+                        SampleWorkerFaultProfile.ProfileName.NORMAL,
+                        seed
+                )
+                .delay(minMs, maxMs, distribution)
+                .build());
+        return buildStateResponse(workerId, state, "fault_delay_updated");
+    }
+
+    private static Map<String, Object> faultResultDrop(JsonObject request, CommandContext context) {
+        String workerId = requireWorkerId(request);
+        String mode = stringValue(request, "mode", "OFF");
+        int percent = boundedInt(request, "percent", 0, 100);
+        long seed = boundedLong(request, "seed", 0L, Long.MAX_VALUE);
+        SampleClientState state = stateRegistry(context).getOrCreate(workerId);
+        state.setFaultProfile(SampleWorkerFaultProfile.builder(
+                        SampleWorkerFaultProfile.ProfileName.FLAKY_RESULT,
+                        seed
+                )
+                .resultDrop(resultDropMode(mode), percent)
+                .build());
+        return buildStateResponse(workerId, state, "fault_result_drop_updated");
+    }
+
+    private static Map<String, Object> faultReset(JsonObject request, CommandContext context) {
+        String scope = stringValue(request, "scope", "worker");
+        SampleClientStateRegistry registry = stateRegistry(context);
+        if ("all".equalsIgnoreCase(scope)) {
+            registry.resetAllFaultProfiles();
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("action", "fault_reset");
+            result.put("scope", "all");
+            return result;
+        }
+        if (!"worker".equalsIgnoreCase(scope)) {
+            throw new CommandException(ErrorCode.PARSE_ERROR, "fault.reset scope must be worker or all");
+        }
+        String workerId = requireWorkerId(request);
+        SampleClientState state = registry.getOrCreate(workerId);
+        state.resetFaultProfile();
+        return buildStateResponse(workerId, state, "fault_reset");
+    }
+
     private static Map<String, Object> buildStateResponse(String workerId, SampleClientState state, String action) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("workerId", workerId);
@@ -175,6 +284,34 @@ public final class SampleCommandRoutes {
         }
     }
 
+    private static int boundedInt(JsonObject json, String field, int defaultValue, int maxValue) {
+        if (json == null || !json.has(field) || json.get(field).isJsonNull()) {
+            return defaultValue;
+        }
+        try {
+            int value = json.get(field).getAsInt();
+            return Math.max(0, Math.min(value, maxValue));
+        } catch (Exception e) {
+            throw new CommandException(ErrorCode.PARSE_ERROR, field + " must be a number");
+        }
+    }
+
+    private static SampleWorkerFaultProfile.DelayDistribution delayDistribution(String value) {
+        try {
+            return SampleWorkerFaultProfile.DelayDistribution.valueOf(value.trim().toUpperCase());
+        } catch (Exception e) {
+            throw new CommandException(ErrorCode.PARSE_ERROR, "unsupported fault delay distribution: " + value);
+        }
+    }
+
+    private static SampleWorkerFaultProfile.ResultDropMode resultDropMode(String value) {
+        try {
+            return SampleWorkerFaultProfile.ResultDropMode.valueOf(value.trim().toUpperCase());
+        } catch (Exception e) {
+            throw new CommandException(ErrorCode.PARSE_ERROR, "unsupported fault result drop mode: " + value);
+        }
+    }
+
     private static void registerIfAbsent(CommandDefinition<?, ?> definition) {
         if (!CommandRegistry.contains(definition.getEvent())) {
             CommandRegistry.register(definition);
@@ -200,4 +337,3 @@ public final class SampleCommandRoutes {
         );
     }
 }
-
