@@ -50,6 +50,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @DirtiesContext
 class TaskApiCrossTaskWorkerFairnessTraceObservedIntegrationTest extends AbstractTraceObservedE2eTest {
 
+    private static final String WORKER_GROUP_ID = "fairness-pool";
     private static final int WEBSOCKET_PORT = findFreePort();
     private static final Path TRACE_OUTPUT_DIR = traceOutputDir("cross-task-worker-fairness-trace-observed");
 
@@ -68,7 +69,7 @@ class TaskApiCrossTaskWorkerFairnessTraceObservedIntegrationTest extends Abstrac
                 String workerId = "fairness-worker-" + i;
                 registerSdkStatelessWorkerWithAttributes(
                         workerId,
-                        "fairness-pool",
+                        WORKER_GROUP_ID,
                         "demoApp",
                         Map.of("routingTags", "shared,us")
                 );
@@ -86,14 +87,16 @@ class TaskApiCrossTaskWorkerFairnessTraceObservedIntegrationTest extends Abstrac
                     "bulk pressure task",
                     targets("bulk-target-", 100),
                     1,
-                    "BULK"
+                    "BULK",
+                    WORKER_GROUP_ID
             );
             String interactiveTaskId = createTaskId(
                     "cross-task-fairness-interactive",
                     "interactive task under bulk pressure",
                     List.of("interactive-target"),
                     1,
-                    "INTERACTIVE"
+                    "INTERACTIVE",
+                    WORKER_GROUP_ID
             );
 
             assertApiOk(approveTask(bulkTaskId));

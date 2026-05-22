@@ -80,6 +80,11 @@ WorkerRegistry
 10. `WorkerRouteBucketOwner` may continue deriving from registry state until
     WSR-5, but any bucket read must either read registry-owned indexes directly
     or validate worker membership before materializing candidates.
+11. Event binding evidence stored on a worker slot is report-ceiling and
+    diagnostic truth only. It must not become a scheduling candidate-source key.
+12. Secondary indexes may be briefly stale inside a registry mutation window,
+    but candidate materialization must validate the current slot and bounded
+    cleanup must remove stale members.
 
 ## Non-Goals
 
@@ -101,11 +106,11 @@ WorkerSlot (immutable record, updated via CAS)
     workerId          String
     groupId           String          denormalized from Worker.workerGroupId
     adapterNodeId     String          denormalized from Worker.adapterNodeId
-    worker            Worker          defensive immutable snapshot of metadata
+    workerMeta        WorkerMeta      immutable copy of worker metadata
 
   capability
     declaredCapacity  int             from registration/report; minimum 1
-    eventKeys         Set<EventKey>   capability ceiling; empty = no ceiling
+    eventBindingCeiling Set<EventKey> report ceiling; empty = no ceiling
 
   occupancy (CAS-maintained)
     activeLeaseCount  int             confirmed active leases
@@ -116,14 +121,31 @@ WorkerSlot (immutable record, updated via CAS)
     dispatchEnabled   boolean         derived: disabledSources.isEmpty()
 ```
 
-`WorkerSlot` must not expose a mutable `Worker` instance as live state.
-Implementations must use one of these forms:
+`WorkerSlot` must not expose a mutable `Worker` instance as live state. The
+slot stores `WorkerMeta`, an immutable metadata copy derived from the mutable
+`Worker` registration/report model.
+
+Minimum `WorkerMeta` shape:
 
 ```text
-preferred: WorkerSlotMetadata immutable record copied from Worker
-allowed:   defensive-copy Worker on slot write and slot read
-forbidden: storing and returning the caller's mutable Worker reference
+WorkerMeta
+  workerId
+  groupId
+  adapterNodeId
+  adapterId
+  transportHint
+  attributes immutable Map<String,String>
+  agentVersion / runtimeVersion when present
+  status / diagnostic values as immutable values only
 ```
+
+If an API needs to return `Worker`, it must build a fresh copy from
+`WorkerMeta`. Storing and returning the caller's mutable `Worker` reference is
+forbidden.
+
+`eventBindingCeiling` is not scheduling truth. It exists only for capability
+report ceilings, catalog/report validation, and diagnostic evidence. Candidate
+source remains `workerGroupSelector -> group/route bucket -> workerId`.
 
 Derived invariants:
 
@@ -178,7 +200,7 @@ Permit semantics:
 WorkerRegistry
 
   slot access
-    upsertSlot(Worker, int declaredCapacity, Set<EventKey> eventKeys) -> void
+    upsertSlot(WorkerMeta, int declaredCapacity, Set<EventKey> eventBindingCeiling) -> void
     removeSlot(workerId) -> void
     slot(workerId) -> Optional<WorkerSlot>
     slots() -> Collection<WorkerSlot>
@@ -200,10 +222,42 @@ WorkerRegistry
     workerIdsByGroupRoute(groupId, routeBucketKey) -> Set<String>
     workerIdsByNodeGroupRoute(adapterNodeId, groupId, routeBucketKey) -> Set<String>
     routeBucketKeysByWorkerId(workerId) -> Set<String>
+
+  task occupancy indexes
+    activeWorkerIdsByTask(taskId) -> Set<String>
+    activeWorkerCountForTask(taskId) -> int
+    activeLeaseCountByTaskWorker(taskId, workerId) -> int
 ```
 
 `WorkerRegistry` replaces the combined surface of `WorkerStorage`,
 `InMemoryWorkerLoadView`, and the lock methods on `WorkerManager`.
+
+Task occupancy indexes replace `InMemoryWorkerLoadView.activeWorkerCountsByTask`.
+They are maintained by `confirmReservation(...)` and `recordWorkFinal(...)`.
+They are visibility/admission evidence only; final work ownership still belongs
+to `TaskWorkRuntime` active leases.
+
+## Upsert Semantics Under Occupancy
+
+`upsertSlot(...)` may happen while a worker has reserved or active work. The
+registry must preserve occupancy counters and apply identity/index changes only
+to future candidate selection.
+
+Rules:
+
+1. `groupId`, `adapterNodeId`, route attributes, and other metadata changes
+   update candidate indexes for future dispatch only.
+2. Active leases remain bound to the workerId and original runtime lease
+   evidence. They are not moved or dropped when group/node/route changes.
+3. Lowering `declaredCapacity` below `activeLeaseCount + reservedCount` is
+   allowed, but it must block new reserves until occupancy falls below the new
+   capacity. It must not truncate active or reserved counts.
+4. Raising `declaredCapacity` can allow new reserves immediately if gates and
+   route filters pass.
+5. Relation changes during active occupancy must emit diagnostic evidence so
+   trace/debug output can explain why old work and new candidate indexes differ.
+6. `eventBindingCeiling` changes affect report ceiling / diagnostics only.
+   They must not change worker candidate-source truth.
 
 ## Target Scheduling Path
 
@@ -235,27 +289,37 @@ tests proving CAS correctness under concurrency. No behavior change.
 Scope:
 
 1. Define `WorkerSlot` as an immutable record with the fields above.
-2. Define `WorkerRegistry` as an interface with the contract above.
-3. Write `WorkerRegistryContractTest` covering:
+2. Define `WorkerMeta` as an immutable metadata copy and ensure `WorkerSlot`
+   stores `WorkerMeta`, not mutable `Worker`.
+3. Define `WorkerRegistry` as an interface with the contract above.
+4. Write `WorkerRegistryContractTest` covering:
    - concurrent `tryReserve` respects `declaredCapacity`
    - multi-permit `tryReserve` respects `declaredCapacity`
    - `confirmReservation` atomically moves reserved → active by permit count
    - `releaseReservation` is idempotent (no negative counts)
    - `recordWorkFinal` is idempotent (no negative counts)
+   - `activeWorkerCountForTask` and `activeWorkerIdsByTask` track confirmed
+     active leases and are cleared by `recordWorkFinal`
    - `disableDispatch(source)` blocks `tryReserve` immediately
    - clearing one dispatch source does not enable a slot disabled by another
      source
    - `upsertSlot` updates identity without disturbing occupancy counts
-   - `upsertSlot` defensively snapshots worker metadata or exposes immutable
-     metadata
+   - `upsertSlot` cannot be affected by mutating the source `Worker` after
+     metadata conversion
+   - lowering capacity below current occupancy blocks new reserve but preserves
+     active and reserved counts
+   - group/node/route upsert changes index membership without dropping active
+     occupancy
+   - `eventBindingCeiling` is not used as a candidate-source selector
    - `removeSlot` clears all index memberships
    - route bucket index membership changes when approved routing attributes
      change
-4. Do not implement `InMemoryWorkerRegistry` yet.
+5. Do not implement `InMemoryWorkerRegistry` yet.
 
 Acceptance:
 
-1. `WorkerSlot` and `WorkerRegistry` compile and have full javadoc contracts.
+1. `WorkerMeta`, `WorkerSlot`, and `WorkerRegistry` compile and have full
+   javadoc contracts.
 2. `WorkerRegistryContractTest` is abstract with a factory method for the
    implementation under test.
 3. No existing test changes.
@@ -290,7 +354,9 @@ Acceptance:
 3. Route bucket keys are derived on upsert, not on each read.
 4. Stale index entries, if produced by a race, are rejected by slot validation
    before candidate materialization.
-5. No existing test changes.
+5. Task-level active worker indexes stay correct under concurrent confirm/final
+   operations.
+6. No existing test changes.
 
 ### WSR-2: WorkerManager Convergence
 
@@ -304,7 +370,7 @@ Scope:
 2. Worker registration (`putRegistryRow`, `removeRegistryRow`) calls
    `registry.upsertSlot` / `registry.removeSlot`.
 3. `WorkerCapabilityAuthority.applyReport` updates `declaredCapacity` and
-   `eventKeys` on the slot via `registry.upsertSlot`.
+   `eventBindingCeiling` on the slot via `registry.upsertSlot`.
 4. `WorkerManager.findWorkerCandidates` continues through
    `WorkerCandidateIndex`, which now reads from registry indexes instead of
    `WorkerRegistrySnapshot.workerIdsByGroupId`.
@@ -323,7 +389,9 @@ Acceptance:
 3. `WorkerRegistrySnapshot` is derived from registry state, not from a
    separate live map.
 4. Route-bucket candidate acquisition is registry-backed or slot-validated.
-5. Existing engine scheduling and manager tests pass.
+5. `WorkerRegistrySnapshot` and diagnostics expose event binding ceiling as
+   report evidence only, not candidate-source truth.
+6. Existing engine scheduling and manager tests pass.
 
 ### WSR-3: Occupancy Convergence
 
@@ -350,8 +418,10 @@ Acceptance:
 3. Any disabled dispatch source blocks new reserves immediately.
 4. Clearing one disabled source does not clear other disabled sources.
 5. Multi-permit reserve/confirm/release counts match runtime claimed work.
-6. Active lease count and reservation count are never negative.
-7. Existing fault matrix chaos runners pass.
+6. `activeWorkerCountForTask(taskId)` matches currently confirmed active
+   worker occupancy.
+7. Active lease count and reservation count are never negative.
+8. Existing fault matrix chaos runners pass.
 
 ### WSR-4: Retire WorkerStorage Lock Interface And lockedWorkers
 
@@ -415,10 +485,12 @@ Scope:
 1. Define Redis key structure:
 
    ```text
-   worker:{workerId}:slot                         hash identity + capacity + eventKeys
+   worker:{workerId}:slot                         hash identity + capacity + eventBindingCeiling
    worker:{workerId}:occ                          hash activeLeaseCount, reservedCount
    worker:{workerId}:gate                         set  disabled source names
    worker:{workerId}:routes                       set  routeBucketKey members
+   task:{taskId}:active-workers                   set  workerId members
+   task-worker:{taskId}:{workerId}:active-count   string/integer
    group:{groupId}:workers                        set  workerId members
    node:{adapterNodeId}:workers                   set  workerId members
    node-group:{nodeId}:{groupId}:workers          set  workerId members
@@ -452,8 +524,10 @@ Acceptance:
   - confirm/release idempotency
   - source-scoped gate blocks reserve immediately and clears independently
   - upsert preserves occupancy counts
+  - upsert under active occupancy handles group/node/route/capacity changes
   - remove clears all index memberships
   - mutable Worker input cannot mutate slot metadata or indexes after upsert
+  - event binding ceiling is not candidate-source truth
 
 ### Engine Integration
 
@@ -462,6 +536,7 @@ Acceptance:
 - foreground scheduling cannot assign same worker concurrently
 - foreground policy consumes permits without mutating declared capacity
 - background scheduling up to declared capacity
+- active worker count by task remains correct across claim/result/expiry
 - no-claim path releases reservation before any transport call
 - dispatch failure compensates runtime claim and releases load
 

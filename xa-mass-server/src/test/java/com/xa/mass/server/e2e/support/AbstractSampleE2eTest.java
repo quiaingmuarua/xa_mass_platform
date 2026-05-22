@@ -192,7 +192,16 @@ public abstract class AbstractSampleE2eTest {
                                   List<String> targets,
                                   int batchSize,
                                   String workloadClass) {
-        return createTaskId(sourceRef, textContent, targets, batchSize, workloadClass, null);
+        return createTaskId(sourceRef, textContent, targets, batchSize, workloadClass, (Integer) null);
+    }
+
+    protected String createTaskId(String sourceRef,
+                                  String textContent,
+                                  List<String> targets,
+                                  int batchSize,
+                                  String workloadClass,
+                                  String workerGroupId) {
+        return createTaskId(sourceRef, textContent, targets, batchSize, workloadClass, (Integer) null, workerGroupId);
     }
 
     protected String createTaskId(String sourceRef,
@@ -201,11 +210,21 @@ public abstract class AbstractSampleE2eTest {
                                   int batchSize,
                                   String workloadClass,
                                   Integer defaultMaxRetryCount) {
+        return createTaskId(sourceRef, textContent, targets, batchSize, workloadClass, defaultMaxRetryCount, "us");
+    }
+
+    protected String createTaskId(String sourceRef,
+                                  String textContent,
+                                  List<String> targets,
+                                  int batchSize,
+                                  String workloadClass,
+                                  Integer defaultMaxRetryCount,
+                                  String workerGroupId) {
         String defaultRoutingCode = "us";
         Map<String, Object> sharedConfig = new LinkedHashMap<>();
         sharedConfig.put("textContent", textContent);
         sharedConfig.put(TaskSharedConfig.ROUTING_CODE, defaultRoutingCode);
-        sharedConfig.put(TaskSharedConfig.WORKER_GROUP_ID, "us");
+        sharedConfig.put(TaskSharedConfig.WORKER_GROUP_ID, workerGroupId);
         Map<String, Object> createBody = new LinkedHashMap<>();
         createBody.put("project", "demoApp");
         createBody.put("sharedConfig", sharedConfig);
