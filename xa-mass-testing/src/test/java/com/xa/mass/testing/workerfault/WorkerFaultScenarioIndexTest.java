@@ -55,4 +55,23 @@ class WorkerFaultScenarioIndexTest {
         assertTrue(WorkerFaultScenarioIndex.scenarioForRunner(
                 WorkerFaultScenarioIndex.RunnerFamily.SDK_POLLING_SCHEDULING_SOAK).isPresent());
     }
+
+    @Test
+    void resolvesScenarioIdToExecutableRunnerMainClass() {
+        WorkerFaultScenarioIndex.Scenario scenario = WorkerFaultScenarioIndex.scenarioForId(
+                "polling-lease-expiry-redispatch").orElseThrow();
+
+        assertEquals(WorkerFaultScenarioIndex.RunnerFamily.SDK_POLLING_LEASE_EXPIRY_REDISPATCH_CHAOS,
+                scenario.runnerFamily());
+        assertEquals("com.xa.mass.testing.chaos.SdkPollingLeaseExpiryRedispatchChaosRunner",
+                scenario.runnerFamily().mainClassName());
+    }
+
+    @Test
+    void scenarioCliResolvesScenarioIdFromFirstArgument() {
+        WorkerFaultScenarioIndex.Scenario scenario = WorkerFaultScenarioCli.resolveScenario(
+                new String[]{"polling-all-failed-terminal-convergence"});
+
+        assertEquals(WorkerFaultScenarioIndex.Scenario.POLLING_ALL_FAILED_TERMINAL_CONVERGENCE, scenario);
+    }
 }

@@ -62,18 +62,48 @@ fi
 TIMEOUT_SECONDS="${CHAOS_TIMEOUT_SECONDS:-30}"
 PROCESSING_DELAY="${CHAOS_PROCESSING_DELAY:-10}"
 
-# Probes that must pass on every PR.
+# Scenario rows that must pass on every PR.
 # Keep this list fast (< 15 s each). Add new proven-stable runners here after
 # they've been validated in at least one scheduled run.
-SMOKE_RUNNERS=(
-  "com.xa.mass.testing.chaos.SdkPollingAllMessagesFailedChaosRunner"
-  "com.xa.mass.testing.chaos.SdkPollingMixedResultsChaosRunner"
-  "com.xa.mass.testing.chaos.SdkPollingMessageRetryExhaustedChaosRunner"
-  "com.xa.mass.testing.chaos.SdkPollingLeaseExpiryRedispatchChaosRunner"
-  "com.xa.mass.testing.chaos.SdkWebSocketDisconnectChaosRunner"
-  "com.xa.mass.testing.chaos.SdkWebSocketLeaseExpiryRedispatchChaosRunner"
-  "com.xa.mass.testing.chaos.SdkWebSocketLateResultAfterLeaseExpiryChaosRunner"
+SMOKE_SCENARIOS=(
+  "polling-all-failed-terminal-convergence"
+  "polling-mixed-result-terminal-convergence"
+  "polling-retry-exhausted"
+  "polling-lease-expiry-redispatch"
+  "websocket-disconnect-reconnect"
+  "websocket-lease-expiry-redispatch"
+  "websocket-late-stale-result-replay"
 )
+
+runner_source_for_scenario() {
+  case "$1" in
+    polling-all-failed-terminal-convergence)
+      echo "com.xa.mass.testing.chaos.SdkPollingAllMessagesFailedChaosRunner"
+      ;;
+    polling-mixed-result-terminal-convergence)
+      echo "com.xa.mass.testing.chaos.SdkPollingMixedResultsChaosRunner"
+      ;;
+    polling-retry-exhausted)
+      echo "com.xa.mass.testing.chaos.SdkPollingMessageRetryExhaustedChaosRunner"
+      ;;
+    polling-lease-expiry-redispatch)
+      echo "com.xa.mass.testing.chaos.SdkPollingLeaseExpiryRedispatchChaosRunner"
+      ;;
+    websocket-disconnect-reconnect)
+      echo "com.xa.mass.testing.chaos.SdkWebSocketDisconnectChaosRunner"
+      ;;
+    websocket-lease-expiry-redispatch)
+      echo "com.xa.mass.testing.chaos.SdkWebSocketLeaseExpiryRedispatchChaosRunner"
+      ;;
+    websocket-late-stale-result-replay)
+      echo "com.xa.mass.testing.chaos.SdkWebSocketLateResultAfterLeaseExpiryChaosRunner"
+      ;;
+    *)
+      echo "FAILED: no chaos runner source mapping for scenario $1" >&2
+      return 1
+      ;;
+  esac
+}
 
 FORBIDDEN_MAINLINE_TOKENS=(
   "ProjectionTestViews"
@@ -89,7 +119,8 @@ FORBIDDEN_MAINLINE_TOKENS=(
 )
 
 echo "== Checking chaos smoke source guardrails =="
-for runner in "${SMOKE_RUNNERS[@]}"; do
+for scenario in "${SMOKE_SCENARIOS[@]}"; do
+  runner="$(runner_source_for_scenario "${scenario}")"
   runner_path="${runner//.//}.java"
   source_file="${REPO_ROOT}/xa-mass-testing/src/main/java/${runner_path}"
   if [[ ! -f "${source_file}" ]]; then
@@ -107,11 +138,11 @@ for runner in "${SMOKE_RUNNERS[@]}"; do
 done
 rm -f /tmp/xa-mass-chaos-guard-match.txt
 
-FAILED_RUNNERS=()
+FAILED_SCENARIOS=()
 
-for runner in "${SMOKE_RUNNERS[@]}"; do
+for scenario in "${SMOKE_SCENARIOS[@]}"; do
   echo ""
-  echo "== Chaos probe: ${runner} =="
+  echo "== Chaos scenario: ${scenario} =="
   set +e
   java \
     -Dmass.sdk.chaos.forceExit=false \
@@ -119,24 +150,25 @@ for runner in "${SMOKE_RUNNERS[@]}"; do
     -Dmass.sdk.chaos.processingDelayMillis="${PROCESSING_DELAY}" \
     "$@" \
     -cp "${RUNTIME_CLASSPATH}" \
-    "${runner}"
+    "com.xa.mass.testing.workerfault.WorkerFaultScenarioCli" \
+    "${scenario}"
   EXIT_CODE=$?
   set -e
   if [[ ${EXIT_CODE} -ne 0 ]]; then
-    echo "FAILED: ${runner} exited with code ${EXIT_CODE}"
-    FAILED_RUNNERS+=("${runner}")
+    echo "FAILED: ${scenario} exited with code ${EXIT_CODE}"
+    FAILED_SCENARIOS+=("${scenario}")
   else
-    echo "PASSED: ${runner}"
+    echo "PASSED: ${scenario}"
   fi
 done
 
 echo ""
-if [[ ${#FAILED_RUNNERS[@]} -gt 0 ]]; then
-  echo "== Chaos smoke gate FAILED: ${#FAILED_RUNNERS[@]} probe(s) failed:"
-  for r in "${FAILED_RUNNERS[@]}"; do
+if [[ ${#FAILED_SCENARIOS[@]} -gt 0 ]]; then
+  echo "== Chaos smoke gate FAILED: ${#FAILED_SCENARIOS[@]} scenario(s) failed:"
+  for r in "${FAILED_SCENARIOS[@]}"; do
     echo "  - ${r}"
   done
   exit 1
 else
-  echo "== Chaos smoke gate PASSED: all ${#SMOKE_RUNNERS[@]} probe(s) succeeded"
+  echo "== Chaos smoke gate PASSED: all ${#SMOKE_SCENARIOS[@]} scenario(s) succeeded"
 fi

@@ -18,18 +18,40 @@ public final class WorkerFaultScenarioIndex {
     }
 
     public enum RunnerFamily {
-        SDK_POLLING_ALL_MESSAGES_FAILED_CHAOS,
-        SDK_POLLING_MIXED_RESULTS_CHAOS,
-        SDK_POLLING_MESSAGE_RETRY_EXHAUSTED_CHAOS,
-        SDK_POLLING_LEASE_EXPIRY_REDISPATCH_CHAOS,
-        SDK_WEBSOCKET_DISCONNECT_CHAOS,
-        SDK_WEBSOCKET_LEASE_EXPIRY_REDISPATCH_CHAOS,
-        SDK_WEBSOCKET_LATE_RESULT_AFTER_LEASE_EXPIRY_CHAOS,
-        TASK_WORKLOAD_MIX_SMOKE,
-        TASK_INTERACTIVE_RETRY_WAKEUP_SMOKE,
-        TASK_FLOW_LOAD_MODEL,
-        SDK_TRANSPORT_LOAD,
-        SDK_POLLING_SCHEDULING_SOAK
+        SDK_POLLING_ALL_MESSAGES_FAILED_CHAOS(
+                "com.xa.mass.testing.chaos.SdkPollingAllMessagesFailedChaosRunner"),
+        SDK_POLLING_MIXED_RESULTS_CHAOS(
+                "com.xa.mass.testing.chaos.SdkPollingMixedResultsChaosRunner"),
+        SDK_POLLING_MESSAGE_RETRY_EXHAUSTED_CHAOS(
+                "com.xa.mass.testing.chaos.SdkPollingMessageRetryExhaustedChaosRunner"),
+        SDK_POLLING_LEASE_EXPIRY_REDISPATCH_CHAOS(
+                "com.xa.mass.testing.chaos.SdkPollingLeaseExpiryRedispatchChaosRunner"),
+        SDK_WEBSOCKET_DISCONNECT_CHAOS(
+                "com.xa.mass.testing.chaos.SdkWebSocketDisconnectChaosRunner"),
+        SDK_WEBSOCKET_LEASE_EXPIRY_REDISPATCH_CHAOS(
+                "com.xa.mass.testing.chaos.SdkWebSocketLeaseExpiryRedispatchChaosRunner"),
+        SDK_WEBSOCKET_LATE_RESULT_AFTER_LEASE_EXPIRY_CHAOS(
+                "com.xa.mass.testing.chaos.SdkWebSocketLateResultAfterLeaseExpiryChaosRunner"),
+        TASK_WORKLOAD_MIX_SMOKE(
+                "com.xa.mass.testing.perf.TaskWorkloadMixSmokeRunner"),
+        TASK_INTERACTIVE_RETRY_WAKEUP_SMOKE(
+                "com.xa.mass.testing.perf.TaskInteractiveRetryWakeupSmokeRunner"),
+        TASK_FLOW_LOAD_MODEL(
+                "com.xa.mass.testing.perf.TaskFlowLoadModelRunner"),
+        SDK_TRANSPORT_LOAD(
+                "com.xa.mass.testing.concurrency.SdkTransportLoadRunner"),
+        SDK_POLLING_SCHEDULING_SOAK(
+                "com.xa.mass.testing.soak.SdkPollingSchedulingSoakRunner");
+
+        private final String mainClassName;
+
+        RunnerFamily(String mainClassName) {
+            this.mainClassName = mainClassName;
+        }
+
+        public String mainClassName() {
+            return mainClassName;
+        }
     }
 
     public enum TraceAnalyzerScenario {
@@ -246,6 +268,15 @@ public final class WorkerFaultScenarioIndex {
         }
         return Arrays.stream(Scenario.values())
                 .filter(scenario -> scenario.runnerFamily() == runnerFamily)
+                .findFirst();
+    }
+
+    public static Optional<Scenario> scenarioForId(String scenarioId) {
+        if (scenarioId == null || scenarioId.isBlank()) {
+            return Optional.empty();
+        }
+        return Arrays.stream(Scenario.values())
+                .filter(scenario -> scenario.scenarioId().equals(scenarioId.trim()))
                 .findFirst();
     }
 

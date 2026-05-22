@@ -82,7 +82,7 @@ Testing-policy note:
 | `chaos: polling all messages failed` | `com.xa.mass.testing.chaos.SdkPollingAllMessagesFailedChaosRunner` | polling worker always submits failure with no retries; all messages converge to FAILED and the task closes with ALL_MESSAGES_FAILED | `target/chaos-reports/` |
 | `chaos: polling mixed results` | `com.xa.mass.testing.chaos.SdkPollingMixedResultsChaosRunner` | multi-message task where some messages succeed and some fail (driven by per-message `shouldFail` input flag); task closes with MIXED_MESSAGE_RESULTS | `target/chaos-reports/` |
 | `chaos: polling message retry exhausted` | `com.xa.mass.testing.chaos.SdkPollingMessageRetryExhaustedChaosRunner` | polling worker always fails; each message has `maxRetryCount=2` and burns 3 total attempts before `RETRY_EXHAUSTED` finalization; task closes with ALL_MESSAGES_FAILED; `TASK_WORK_RETRY_RESET` events verified in trace | `target/chaos-reports/` |
-| `chaos smoke bundle (CI gate)` | `scripts/run-chaos-smokes.sh` | fast CI gate running seven runtime/aggregate/trace-first probes; exits non-zero if any probe fails; wired into `.github/workflows/maven.yml` `chaos-smokes` job | `target/chaos-reports/` |
+| `chaos smoke bundle (CI gate)` | `scripts/run-chaos-smokes.sh` | fast CI gate running seven scenario ids backed by the existing runtime/aggregate/trace-first probes; exits non-zero if any scenario fails; wired into `.github/workflows/maven.yml` `chaos-smokes` job | `target/chaos-reports/` |
 
 ## Commands
 
@@ -205,10 +205,16 @@ cd xa-mass-testing
 ..\mvnw.cmd -Dexec.classpathScope=compile -Dmaven.test.skip=true compile org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.chaos.SdkPollingMessageRetryExhaustedChaosRunner
 ```
 
-Chaos smoke bundle (all three CI-gated probes):
+Chaos smoke bundle (all seven CI-gated scenario ids):
 
 ```bash
 xa-mass-testing/scripts/run-chaos-smokes.sh
+```
+
+Direct scenario-id entrypoint for a single existing probe:
+
+```bash
+./mvnw -pl xa-mass-testing -am -Dexec.classpathScope=compile -Dmaven.test.skip=true compile org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.workerfault.WorkerFaultScenarioCli -Dexec.args=polling-lease-expiry-redispatch
 ```
 
 ## Reading Rule
