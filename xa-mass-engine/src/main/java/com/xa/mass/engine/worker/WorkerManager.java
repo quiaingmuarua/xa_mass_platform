@@ -378,8 +378,16 @@ public class WorkerManager implements WorkerLookupStore {
     }
 
     public List<Worker> findWorkerCandidates(Task task) {
-        int limit = TaskSharedConfig.targetWorkerId(task) == null
-                ? DEFAULT_STAGE_ONE_CANDIDATE_LIMIT
+        return findWorkerCandidates(task, DEFAULT_STAGE_ONE_CANDIDATE_LIMIT);
+    }
+
+    public List<Worker> findWorkerCandidates(Task task, int maxCandidateCount) {
+        String targetWorkerId = TaskSharedConfig.targetWorkerId(task);
+        if (targetWorkerId == null && maxCandidateCount <= 0) {
+            return List.of();
+        }
+        int limit = targetWorkerId == null
+                ? Math.max(1, maxCandidateCount)
                 : 1;
         return getWorkerCandidateIndex().workersFor(task, limit);
     }

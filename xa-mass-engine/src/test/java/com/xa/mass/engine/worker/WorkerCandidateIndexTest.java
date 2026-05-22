@@ -125,8 +125,9 @@ public class WorkerCandidateIndexTest {
                 worker("worker-3", "crawler")
         )));
 
-        assertEquals(List.of("worker-1", "worker-2"),
-                workerIds(index.workersFor(task("demoApp", "crawler.fetch", null, "crawler"), 2)));
+        List<String> workerIds = workerIds(index.workersFor(task("demoApp", "crawler.fetch", null, "crawler"), 2));
+        assertEquals(2, workerIds.size());
+        assertTrue(List.of("worker-1", "worker-2", "worker-3").containsAll(workerIds));
     }
 
     @Test

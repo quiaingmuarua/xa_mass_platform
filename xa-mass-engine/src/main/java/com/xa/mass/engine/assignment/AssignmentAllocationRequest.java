@@ -7,8 +7,6 @@ public record AssignmentAllocationRequest(
         Task task,
         TaskStatus initialStatus,
         int readyWorkCount,
-        int workerCandidateCount,
-        int currentTaskWorkerCount,
-        boolean taskLevelEventCapability
+        int currentTaskWorkerCount
 ) {
 }

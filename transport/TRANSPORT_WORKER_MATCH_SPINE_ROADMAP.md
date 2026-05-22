@@ -249,7 +249,7 @@ Owns:
 
 - `availableWorkersByGroupRouteBucket`
 - `workerRouteBucketKeysById`
-- bounded candidate acquisition
+- bounded candidate acquisition through `WorkerRouteBucketSelectionPolicy`
 - stale candidate marking and bounded lazy cleanup when a later slice adds
   explicit stale-entry mutation
 
@@ -260,6 +260,9 @@ Callers:
   capability snapshot changes
 - dispatch/admission calls it to acquire a bounded relation-candidate batch;
   reachability, dispatch gate, load, and lock rejection remain Stage-2 truth
+- the default first-slice selection policy uses random indexed sampling from
+  large buckets to avoid fixed-prefix worker hot spots; ranking remains a
+  separate Stage-2 policy
 
 Must not own:
 
@@ -564,8 +567,13 @@ Acceptance:
 Status: first in-memory slice implemented. The current implementation provides
 an engine-owned route bucket owner, bounded candidate acquisition shape, and
 fixed approved route attributes (`business`, `tenant`, `region`, `pool`).
-Redis-backed buckets, advanced scoring, and background reconciliation remain
-later slices.
+Large bucket acquisition uses a pluggable random indexed sampling policy before
+Stage-2 filtering/ranking. Matching now requests a Stage-1 sample that is
+separate from the final dispatch worker limit: default sample min is 512,
+default oversample factor is 4x, and default sample max is 2048. Assignment
+allocation no longer pre-counts candidates by issuing its own Stage-1 lookup;
+candidate acquisition happens once in matching. Redis-backed buckets, advanced
+scoring, and background reconciliation remain later slices.
 
 Goal: million-worker deployments acquire candidates from route buckets instead
 of materializing all workers in a group.
@@ -585,6 +593,13 @@ Scope:
   first slice; later route-bucket pruning must not require per-worker fan-out
 - introduce `WorkerRouteBucketOwner` as the owner of bounded bucket acquisition
   and later bounded stale-entry mutation
+- keep bucket selection pluggable; the default policy samples random indexes
+  from large buckets and does not encode final ranking or eligibility
+- keep Stage-1 sample size separate from final dispatch worker count; the
+  sample should be large enough to survive Stage-2 offline/full/rule rejection
+  without turning acquisition into a full worker scan
+- keep assignment allocation independent from Stage-1 candidate-source shape;
+  it plans worker budget/count, while matching owns candidate acquisition
 - wire first-slice bucket updates through explicit `WorkerManager` calls after
   owner mutations, not through a generic event bus
 
@@ -595,7 +610,12 @@ Acceptance:
   source
 - targeted tasks use singleton direct lookup and still pass group capability,
   node-group gate, reachability, dispatch gate, load, and lock admission
-- candidate acquisition returns a bounded batch for each group/route
+- candidate acquisition returns a bounded sampled batch for each group/route
+  instead of repeatedly taking the fixed bucket prefix
+- `RuleBasedTaskWorkerMatchingStrategy` requests an oversampled Stage-1 batch
+  before applying Stage-2 ranking and dispatch limits
+- `TaskWorkerAssignListener` does not pre-fetch or pre-count route-bucket
+  candidates before invoking the matching strategy
 - draining one adapter node group is enforced by Stage-2 dispatch availability
   and must not mutate WorkerGroup capability or worker route attributes
 - any later stale bucket cleanup must be bounded under `WorkerRouteBucketOwner`,

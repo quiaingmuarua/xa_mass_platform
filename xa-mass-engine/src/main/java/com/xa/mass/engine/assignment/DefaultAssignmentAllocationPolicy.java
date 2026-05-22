@@ -36,12 +36,8 @@ public final class DefaultAssignmentAllocationPolicy implements AssignmentAlloca
                 ? Math.max(task.getMinRequiredWorkerCount(), 1)
                 : 1;
         int baseline = Math.max(requiredStartWorkerCount, desiredDispatchWorkerCount);
-        int requestedMatchCount = request.taskLevelEventCapability()
-                ? baseline
-                : Math.max(baseline, Math.max(request.workerCandidateCount(), 1));
-        int dispatchCandidateLimit = request.taskLevelEventCapability()
-                ? desiredDispatchWorkerCount
-                : Integer.MAX_VALUE;
+        int requestedMatchCount = baseline;
+        int dispatchCandidateLimit = desiredDispatchWorkerCount;
         if (budgetDecision.workerBudget() != null) {
             requestedMatchCount = Math.min(requestedMatchCount, budgetDecision.availableWorkerCount());
             dispatchCandidateLimit = Math.min(dispatchCandidateLimit, budgetDecision.availableWorkerCount());

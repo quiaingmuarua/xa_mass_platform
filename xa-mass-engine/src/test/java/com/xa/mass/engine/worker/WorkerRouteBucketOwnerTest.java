@@ -11,6 +11,8 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class WorkerRouteBucketOwnerTest {
 
@@ -30,8 +32,9 @@ public class WorkerRouteBucketOwnerTest {
 
         WorkerRouteBucketOwner owner = WorkerRouteBucketOwner.fromSnapshot(snapshot);
 
-        assertEquals(List.of("worker-1", "worker-2"),
-                owner.acquire("crawler", WorkerRoutingPolicy.DEFAULT_ROUTE_BUCKET_KEY, 2));
+        List<String> acquired = owner.acquire("crawler", WorkerRoutingPolicy.DEFAULT_ROUTE_BUCKET_KEY, 2);
+        assertEquals(2, acquired.size());
+        assertTrue(Set.of("worker-1", "worker-2", "worker-3").containsAll(acquired));
         assertEquals(Set.of(WorkerRoutingPolicy.DEFAULT_ROUTE_BUCKET_KEY),
                 owner.routeBucketKeysByWorkerId("worker-1"));
         assertEquals(Set.of(), owner.routeBucketKeysByWorkerId("worker-without-group"));
@@ -50,12 +53,17 @@ public class WorkerRouteBucketOwnerTest {
                         .build()
         ), workers);
 
-        WorkerRouteBucketOwner owner = WorkerRouteBucketOwner.fromSnapshot(snapshot);
+        WorkerRouteBucketOwner owner = WorkerRouteBucketOwner.fromSnapshot(
+                snapshot,
+                WorkerRoutingPolicy.defaultPolicy(),
+                new RandomWorkerRouteBucketSelectionPolicy(bound -> bound - 1)
+        );
 
         List<String> acquired = owner.acquire("crawler", WorkerRoutingPolicy.DEFAULT_ROUTE_BUCKET_KEY, 17);
         assertEquals(17, acquired.size());
-        assertEquals("worker-0", acquired.getFirst());
-        assertEquals("worker-16", acquired.getLast());
+        assertNotEquals("worker-0", acquired.getFirst());
+        assertEquals("worker-983", acquired.getFirst());
+        assertEquals("worker-999", acquired.getLast());
     }
 
     @Test

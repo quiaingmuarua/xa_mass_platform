@@ -917,6 +917,10 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "com/xa/mass/engine/util/TraceEventLogger.java");
         Path ruleConfigPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/rules/RuleConfig.java");
+        Path assignmentListenerPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/listener/TaskWorkerAssignListener.java");
+        Path allocationRequestPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/assignment/AssignmentAllocationRequest.java");
 
         String candidateIndex = Files.readString(candidateIndexPath, StandardCharsets.UTF_8);
         String findWorkerCandidates = sourceMethod(
@@ -926,6 +930,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
         String binder = Files.readString(binderPath, StandardCharsets.UTF_8);
         String traceLogger = Files.readString(traceLoggerPath, StandardCharsets.UTF_8);
         String ruleConfig = Files.readString(ruleConfigPath, StandardCharsets.UTF_8);
+        String assignmentListener = Files.readString(assignmentListenerPath, StandardCharsets.UTF_8);
+        String allocationRequest = Files.readString(allocationRequestPath, StandardCharsets.UTF_8);
 
         List<String> violations = new ArrayList<>();
         if (Pattern.compile("\\bTaskSharedConfig\\.sdkEventCode\\s*\\(").matcher(candidateIndex).find()) {
@@ -950,6 +956,20 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
         if (ruleConfig.contains("worker_capability_check") || ruleConfig.contains("supportsEvent")) {
             violations.add(ruleConfigPath + " keeps event/project capability as default eligibility truth");
+        }
+        if (assignmentListener.contains("usesTaskLevelEventCapability")
+                || assignmentListener.contains("TaskSharedConfig.sdkEventCode(task)")) {
+            violations.add(assignmentListenerPath + " uses task eventCode as assignment allocation truth");
+        }
+        if (Pattern.compile("\\bfindWorkerCandidates\\s*\\(").matcher(assignmentListener).find()) {
+            violations.add(assignmentListenerPath + " pre-fetches Stage-1 candidates before matching");
+        }
+        if (allocationRequest.contains("taskLevelEventCapability")) {
+            violations.add(allocationRequestPath + " exposes event capability allocation wording");
+        }
+        if (allocationRequest.contains("workerCandidateCount")
+                || allocationRequest.contains("groupSelectorCandidateSource")) {
+            violations.add(allocationRequestPath + " couples allocation planning to Stage-1 candidate source shape");
         }
 
         assertTrue(violations.isEmpty(),

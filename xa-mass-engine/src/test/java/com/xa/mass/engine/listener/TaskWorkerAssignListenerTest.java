@@ -2,6 +2,7 @@ package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.TaskAssignmentEventSink;
@@ -150,7 +151,7 @@ public class TaskWorkerAssignListenerTest {
     void onTaskAssignUsesMinRequiredWorkerCountWhenItExceedsCalculatedNeed() {
         Task task = createTask(3, 10, 4, TaskStatus.READY);
         java.util.Map<String, Object> sharedConfig = new java.util.HashMap<>(task.getSharedConfig());
-        sharedConfig.put("_sdk", java.util.Map.of("eventCode", "demo-event"));
+        sharedConfig.put(TaskSharedConfig.WORKER_GROUP_ID, "group-a");
         task.setSharedConfig(sharedConfig);
         Worker worker1 = createWorker("worker-1");
         Worker worker2 = createWorker("worker-2");
@@ -506,4 +507,3 @@ public class TaskWorkerAssignListenerTest {
         }
     }
 }
-

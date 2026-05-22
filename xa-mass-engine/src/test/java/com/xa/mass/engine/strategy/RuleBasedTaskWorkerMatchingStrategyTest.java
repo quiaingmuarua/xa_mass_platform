@@ -658,6 +658,22 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         assertEquals("worker capacity unavailable after candidate ranking", rejectedRecord.getReason());
     }
 
+    @Test
+    void matchWorkersOversamplesStageOneCandidateAcquisitionBeforeDispatchLimit() {
+        Worker worker = worker("worker-sampled", "pool-a");
+        RecordingWorkerManager workerManager = new RecordingWorkerManager(List.of(worker));
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        AssignmentRecordService recordService = new AssignmentRecordService();
+        RuleBasedTaskWorkerMatchingStrategy strategy =
+                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+
+        List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(backgroundTask("task-sampled"), 1);
+
+        assertEquals(1, matched.size());
+        assertTrue(workerManager.lastMaxCandidateCount > 1);
+        assertTrue(workerManager.lastMaxCandidateCount >= RuleBasedTaskWorkerMatchingStrategy.DEFAULT_STAGE_ONE_SAMPLE_MIN);
+    }
+
     private RuleDefinition rule(String id, String content) {
         RuleDefinition rule = new RuleDefinition();
         rule.setId(id);
@@ -716,5 +732,21 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                 .filter(item -> workerId.equals(item.getWorkerId()))
                 .findFirst()
                 .orElse(null);
+    }
+
+    private static final class RecordingWorkerManager extends WorkerManager {
+        private final List<Worker> candidates;
+        private int lastMaxCandidateCount;
+
+        private RecordingWorkerManager(List<Worker> candidates) {
+            super(new InMemoryWorkerStorage(), workerId -> WorkerReachabilityState.ONLINE);
+            this.candidates = List.copyOf(candidates);
+        }
+
+        @Override
+        public List<Worker> findWorkerCandidates(Task task, int maxCandidateCount) {
+            lastMaxCandidateCount = maxCandidateCount;
+            return candidates;
+        }
     }
 }

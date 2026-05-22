@@ -23,22 +23,31 @@ import java.util.Set;
 public final class WorkerRouteBucketOwner {
 
     private final WorkerRoutingPolicy routingPolicy;
+    private final WorkerRouteBucketSelectionPolicy selectionPolicy;
     private final Map<GroupRouteBucketKey, List<String>> workerIdsByGroupRouteBucket;
     private final Map<NodeGroupRouteBucketKey, List<String>> workerIdsByNodeGroupRouteBucket;
     private final Map<String, Set<String>> routeBucketKeysByWorkerId;
 
     private WorkerRouteBucketOwner(WorkerRoutingPolicy routingPolicy,
+                                   WorkerRouteBucketSelectionPolicy selectionPolicy,
                                    Map<GroupRouteBucketKey, List<String>> workerIdsByGroupRouteBucket,
                                    Map<NodeGroupRouteBucketKey, List<String>> workerIdsByNodeGroupRouteBucket,
                                    Map<String, Set<String>> routeBucketKeysByWorkerId) {
         this.routingPolicy = Objects.requireNonNull(routingPolicy, "routingPolicy");
+        this.selectionPolicy = Objects.requireNonNull(selectionPolicy, "selectionPolicy");
         this.workerIdsByGroupRouteBucket = immutableListMap(workerIdsByGroupRouteBucket);
         this.workerIdsByNodeGroupRouteBucket = immutableListMap(workerIdsByNodeGroupRouteBucket);
         this.routeBucketKeysByWorkerId = immutableSetMap(routeBucketKeysByWorkerId);
     }
 
     public static WorkerRouteBucketOwner empty() {
-        return new WorkerRouteBucketOwner(WorkerRoutingPolicy.defaultPolicy(), Map.of(), Map.of(), Map.of());
+        return new WorkerRouteBucketOwner(
+                WorkerRoutingPolicy.defaultPolicy(),
+                RandomWorkerRouteBucketSelectionPolicy.defaultPolicy(),
+                Map.of(),
+                Map.of(),
+                Map.of()
+        );
     }
 
     public static WorkerRouteBucketOwner fromSnapshot(WorkerRegistrySnapshot snapshot) {
@@ -47,10 +56,19 @@ public final class WorkerRouteBucketOwner {
 
     public static WorkerRouteBucketOwner fromSnapshot(WorkerRegistrySnapshot snapshot,
                                                       WorkerRoutingPolicy routingPolicy) {
+        return fromSnapshot(snapshot, routingPolicy, RandomWorkerRouteBucketSelectionPolicy.defaultPolicy());
+    }
+
+    public static WorkerRouteBucketOwner fromSnapshot(WorkerRegistrySnapshot snapshot,
+                                                      WorkerRoutingPolicy routingPolicy,
+                                                      WorkerRouteBucketSelectionPolicy selectionPolicy) {
         if (snapshot == null) {
             return empty();
         }
         WorkerRoutingPolicy policy = routingPolicy != null ? routingPolicy : WorkerRoutingPolicy.defaultPolicy();
+        WorkerRouteBucketSelectionPolicy selector = selectionPolicy != null
+                ? selectionPolicy
+                : RandomWorkerRouteBucketSelectionPolicy.defaultPolicy();
         LinkedHashMap<GroupRouteBucketKey, List<String>> mutableBuckets = new LinkedHashMap<>();
         LinkedHashMap<NodeGroupRouteBucketKey, List<String>> mutableNodeBuckets = new LinkedHashMap<>();
         LinkedHashMap<String, Set<String>> mutableWorkerBuckets = new LinkedHashMap<>();
@@ -73,7 +91,7 @@ public final class WorkerRouteBucketOwner {
                 }
             }
         }
-        return new WorkerRouteBucketOwner(policy, mutableBuckets, mutableNodeBuckets, mutableWorkerBuckets);
+        return new WorkerRouteBucketOwner(policy, selector, mutableBuckets, mutableNodeBuckets, mutableWorkerBuckets);
     }
 
     public List<String> acquireForTask(String groupId, Task task, int maxCandidateCount) {
@@ -116,10 +134,15 @@ public final class WorkerRouteBucketOwner {
                     List.of()
             );
         }
-        if (workerIds.size() <= maxCandidateCount) {
-            return workerIds;
-        }
-        return List.copyOf(workerIds.subList(0, maxCandidateCount));
+        return selectionPolicy.select(
+                new WorkerRouteBucketSelectionContext(
+                        normalizedGroupId,
+                        normalizedAdapterNodeId,
+                        normalizedRouteBucketKey
+                ),
+                workerIds,
+                maxCandidateCount
+        );
     }
 
     public Set<String> routeBucketKeysByWorkerId(String workerId) {

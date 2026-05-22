@@ -2,7 +2,6 @@ package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.TaskAssignmentEventSink;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
@@ -155,9 +154,7 @@ public class TaskWorkerAssignListener {
                 task,
                 initialStatus,
                 readyWorkCount,
-                workerManager.findWorkerCandidates(task).size(),
-                workerManager.getActiveWorkerCountForTask(task.getTid()),
-                usesTaskLevelEventCapability(task)
+                workerManager.getActiveWorkerCountForTask(task.getTid())
         ));
         if (allocationPlan.requestedMatchCount() <= 0) {
             AssignmentAllocationDecision allocationDecision =
@@ -272,11 +269,6 @@ public class TaskWorkerAssignListener {
         return true;
     }
 
-    private boolean usesTaskLevelEventCapability(Task task) {
-        String eventCode = TaskSharedConfig.sdkEventCode(task);
-        return eventCode != null && !eventCode.isBlank();
-    }
-
     private void releaseLocksIfExclusive(Task task, List<WorkerSchedulingCandidate> workers) {
         resourceReleaser.releaseLocks(task, workers,
                 "UNLOCK_WORKER", "TaskWorkerAssignListener", "surplus or skipped dispatch candidate");
@@ -355,4 +347,3 @@ public class TaskWorkerAssignListener {
         );
     }
 }
-
