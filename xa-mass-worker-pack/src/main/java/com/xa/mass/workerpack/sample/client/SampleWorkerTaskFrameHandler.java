@@ -5,6 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.xa.mass.command.model.CommandResponse;
 import com.xa.mass.workerpack.sample.command.fixture.SampleClientState;
+import com.xa.mass.workerpack.sample.command.fixture.SampleWorkerFaultProfile;
 import com.xa.mass.workerpack.sample.command.runtime.SampleCommandRuntime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -125,13 +126,19 @@ final class SampleWorkerTaskFrameHandler {
         }
         int duplicateCount = state == null ? 0 : state.getFaultProfile().duplicateResultCount();
         long duplicateGapMillis = state == null ? 0L : state.getFaultProfile().duplicateResultGapMillis();
+        if (state != null) {
+            applyMalformedFault(response, state.getFaultProfile().malformedResultKind());
+        }
         return new TaskResponsePlan(
                 GSON.toJson(response),
                 extractMessageId(taskMessage),
                 delayMillis,
                 null,
                 duplicateCount,
-                duplicateGapMillis
+                duplicateGapMillis,
+                state == null || !state.getFaultProfile().enabled()
+                        ? SampleWorkerFaultProfile.DisconnectPhase.NONE
+                        : state.getFaultProfile().disconnectPhase()
         );
     }
 
@@ -188,7 +195,8 @@ final class SampleWorkerTaskFrameHandler {
                 delayMillis,
                 resolveDisconnectWorkerId(commandResult),
                 0,
-                0L
+                0L,
+                SampleWorkerFaultProfile.DisconnectPhase.NONE
         );
     }
 
@@ -206,6 +214,8 @@ final class SampleWorkerTaskFrameHandler {
                     "fault.execution.stall",
                     "fault.result.drop",
                     "fault.result.duplicate",
+                    "fault.result.malformed",
+                    "fault.transport.disconnect",
                     "fault.reset" -> true;
             default -> false;
         };
@@ -440,11 +450,25 @@ final class SampleWorkerTaskFrameHandler {
         return "FAILED".equals(normalized) ? "FAILED" : "SUCCESS";
     }
 
+    private void applyMalformedFault(JsonObject response, SampleWorkerFaultProfile.MalformedResultKind malformedKind) {
+        if (malformedKind == null || malformedKind == SampleWorkerFaultProfile.MalformedResultKind.NONE) {
+            return;
+        }
+        switch (malformedKind) {
+            case MISSING_MESSAGE_ID -> response.remove("messageId");
+            case INVALID_STATUS -> response.add("success", new JsonObject());
+            case INVALID_PAYLOAD -> response.addProperty("output", "not-an-object");
+            case NONE -> {
+            }
+        }
+    }
+
     record TaskResponsePlan(String responseJson,
                             String messageId,
                             long delayMillis,
                             String disconnectWorkerId,
                             int duplicateCount,
-                            long duplicateGapMillis) {
+                            long duplicateGapMillis,
+                            SampleWorkerFaultProfile.DisconnectPhase disconnectPhase) {
     }
 }

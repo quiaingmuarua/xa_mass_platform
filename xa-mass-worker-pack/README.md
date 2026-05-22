@@ -33,20 +33,25 @@ Current implemented surface:
   settings for delay, result drop, duplicate result, stall, malformed result,
   and disconnect phase.
 - `fault.state.get`, `fault.execution.profile`, `fault.execution.delay`,
-  `fault.execution.stall`, `fault.result.drop`, `fault.result.duplicate`, and
-  `fault.reset` are registered as sample command routes through
+  `fault.execution.stall`, `fault.result.drop`, `fault.result.duplicate`,
+  `fault.result.malformed`, `fault.transport.disconnect`, and `fault.reset` are registered as sample command routes through
   `CommandRegistry`.
 - the first behavior-bearing slice applies fault profile delay, stall, and
-  result-drop/duplicate settings when the sample worker builds a normal task
-  result.
+  result-drop/duplicate/malformed/transport-disconnect settings when the sample
+  worker builds a normal task result.
 - `fault.execution.stall(until=forever|lease-expiry)` suppresses result submit
   so the platform must recover through lease expiry; `until=ms` adds bounded
   delay and still submits normally.
+- `fault.result.malformed(kind=missing_message_id|invalid_status|invalid_payload)`
+  mutates the next normal task result frame after command ACK, so the platform
+  sees bad result evidence without changing engine or transport owners.
+- `fault.transport.disconnect(phase=before_receive|after_receive|before_result|after_result)`
+  closes the sample worker connection around normal task result submission.
 - Default state is disabled and preserves stable worker behavior.
 
 Not yet implemented:
 
-- malformed result, transport disconnect, state flap, and capacity flap behavior
+- state flap and capacity flap behavior
 - applying fault profiles to worker state/capability report behavior
 - matrix runner selection by scenario id
 

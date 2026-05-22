@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.xa.mass.workerpack.sample.command.fixture.SampleClientState;
 import com.xa.mass.workerpack.sample.command.fixture.SampleClientStateRegistry;
+import com.xa.mass.workerpack.sample.command.fixture.SampleWorkerFaultProfile;
 import com.xa.mass.workerpack.sample.command.runtime.SampleCommandRuntime;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
 import org.slf4j.Logger;
@@ -199,7 +200,8 @@ public class SampleWorkerSocketClient implements SampleWorkerClient {
                 plan.delayMillis(),
                 plan.disconnectWorkerId(),
                 plan.duplicateCount(),
-                plan.duplicateGapMillis()
+                plan.duplicateGapMillis(),
+                plan.disconnectPhase()
         );
     }
 
@@ -208,12 +210,18 @@ public class SampleWorkerSocketClient implements SampleWorkerClient {
                                   long delayMillis,
                                   String disconnectWorkerId,
                                   int duplicateCount,
-                                  long duplicateGapMillis) {
+                                  long duplicateGapMillis,
+                                  SampleWorkerFaultProfile.DisconnectPhase disconnectPhase) {
         if (delayMillis <= 0L) {
             try {
+                if (disconnectBeforeResult(disconnectPhase)) {
+                    disconnectForFaultPhase(disconnectPhase, messageId);
+                    return;
+                }
                 sendFrame(responseJson);
                 logger.debug("[{}] Sent socket task response for messageId={}", workerId, messageId);
                 sendDuplicateTaskResponses(responseJson, messageId, duplicateCount, duplicateGapMillis);
+                disconnectAfterResultForFaultPhase(disconnectPhase, messageId);
                 disconnectAfterTaskResultIfRequested(disconnectWorkerId);
             } catch (Exception e) {
                 logger.warn("[{}] Failed to send socket task response for messageId={}: {}", workerId, messageId, e.getMessage());
@@ -228,14 +236,40 @@ public class SampleWorkerSocketClient implements SampleWorkerClient {
                 return;
             }
             try {
+                if (disconnectBeforeResult(disconnectPhase)) {
+                    disconnectForFaultPhase(disconnectPhase, messageId);
+                    return;
+                }
                 sendFrame(responseJson);
                 logger.debug("[{}] Sent delayed socket task response for messageId={}", workerId, messageId);
                 sendDuplicateTaskResponses(responseJson, messageId, duplicateCount, duplicateGapMillis);
+                disconnectAfterResultForFaultPhase(disconnectPhase, messageId);
                 disconnectAfterTaskResultIfRequested(disconnectWorkerId);
             } catch (Exception e) {
                 logger.warn("[{}] Failed to send delayed socket task response for messageId={}: {}", workerId, messageId, e.getMessage());
             }
         }, delayMillis, TimeUnit.MILLISECONDS);
+    }
+
+    private boolean disconnectBeforeResult(SampleWorkerFaultProfile.DisconnectPhase phase) {
+        return phase == SampleWorkerFaultProfile.DisconnectPhase.BEFORE_RECEIVE
+                || phase == SampleWorkerFaultProfile.DisconnectPhase.AFTER_RECEIVE
+                || phase == SampleWorkerFaultProfile.DisconnectPhase.BEFORE_RESULT;
+    }
+
+    private void disconnectAfterResultForFaultPhase(SampleWorkerFaultProfile.DisconnectPhase phase, String messageId) {
+        if (phase == SampleWorkerFaultProfile.DisconnectPhase.AFTER_RESULT) {
+            disconnectForFaultPhase(phase, messageId);
+        }
+    }
+
+    private void disconnectForFaultPhase(SampleWorkerFaultProfile.DisconnectPhase phase, String messageId) {
+        if (phase == null || phase == SampleWorkerFaultProfile.DisconnectPhase.NONE) {
+            return;
+        }
+        logger.info("[{}] Closing socket worker for fault transport phase {} messageId={}",
+                workerId, phase, messageId);
+        closeConnection();
     }
 
     private void sendDuplicateTaskResponses(String responseJson, String messageId, int duplicateCount, long duplicateGapMillis) {

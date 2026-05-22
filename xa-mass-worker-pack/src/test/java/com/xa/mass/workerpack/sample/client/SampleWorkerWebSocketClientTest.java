@@ -17,6 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SampleWorkerWebSocketClientTest {
@@ -202,6 +203,71 @@ class SampleWorkerWebSocketClientTest {
     }
 
     @Test
+    void taskRequestCanSubmitMalformedResultByFaultProfile() throws Exception {
+        CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
+        stateRegistry.getOrCreate("worker-test").setFaultProfile(
+                SampleWorkerFaultProfile.builder(SampleWorkerFaultProfile.ProfileName.MALFORMED_RESULT, 42L)
+                        .malformedResultKind(SampleWorkerFaultProfile.MalformedResultKind.MISSING_MESSAGE_ID)
+                        .build()
+        );
+
+        client.onMessage(taskMessage(false));
+
+        assertTrue(client.awaitSentCount(1, 1000L));
+        JsonObject response = WsFrameTestSupport.parse(client.sentMessages.get(0));
+        assertNull(WsFrameTestSupport.messageId(response));
+        assertEquals("worker-test", WsFrameTestSupport.workerId(response));
+        assertEquals("task-1", WsFrameTestSupport.taskId(response));
+    }
+
+    @Test
+    void taskRequestCanSubmitInvalidStatusResultByFaultProfile() throws Exception {
+        CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
+        stateRegistry.getOrCreate("worker-test").setFaultProfile(
+                SampleWorkerFaultProfile.builder(SampleWorkerFaultProfile.ProfileName.MALFORMED_RESULT, 42L)
+                        .malformedResultKind(SampleWorkerFaultProfile.MalformedResultKind.INVALID_STATUS)
+                        .build()
+        );
+
+        client.onMessage(taskMessage(false));
+
+        assertTrue(client.awaitSentCount(1, 1000L));
+        JsonObject response = WsFrameTestSupport.parse(client.sentMessages.get(0));
+        assertTrue(response.get("success").isJsonObject());
+    }
+
+    @Test
+    void taskRequestCanDisconnectBeforeResultByFaultProfile() throws Exception {
+        CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
+        stateRegistry.getOrCreate("worker-test").setFaultProfile(
+                SampleWorkerFaultProfile.builder(SampleWorkerFaultProfile.ProfileName.FLAKY_TRANSPORT, 42L)
+                        .disconnectPhase(SampleWorkerFaultProfile.DisconnectPhase.BEFORE_RESULT)
+                        .build()
+        );
+
+        client.onMessage(taskMessage(false));
+
+        assertTrue(client.awaitClosed(1000L));
+        assertTrue(client.sentMessages.isEmpty());
+    }
+
+    @Test
+    void taskRequestCanDisconnectAfterResultByFaultProfile() throws Exception {
+        CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
+        stateRegistry.getOrCreate("worker-test").setFaultProfile(
+                SampleWorkerFaultProfile.builder(SampleWorkerFaultProfile.ProfileName.FLAKY_TRANSPORT, 42L)
+                        .disconnectPhase(SampleWorkerFaultProfile.DisconnectPhase.AFTER_RESULT)
+                        .build()
+        );
+
+        client.onMessage(taskMessage(false));
+
+        assertTrue(client.awaitSentCount(1, 1000L));
+        assertTrue(client.awaitClosed(1000L));
+        assertEquals("msg-1", WsFrameTestSupport.messageId(WsFrameTestSupport.parse(client.sentMessages.get(0))));
+    }
+
+    @Test
     void msgIdOnlyTaskFrameIsIgnored() {
         CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
         JsonObject frame = new JsonObject();
@@ -303,6 +369,40 @@ class SampleWorkerWebSocketClientTest {
         assertEquals("FLAKY_RESULT", faultProfile.get("profile").getAsString());
         assertEquals(2, faultProfile.get("duplicateResultCount").getAsInt());
         assertEquals(10L, faultProfile.get("duplicateResultGapMillis").getAsLong());
+    }
+
+    @Test
+    void faultMalformedTaskUpdatesStateThroughCommandRuntime() throws Exception {
+        CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
+        JsonObject input = new JsonObject();
+        input.addProperty("kind", "invalid-payload");
+
+        client.onMessage(taskMessage("fault.result.malformed", input));
+
+        assertTrue(client.awaitSentCount(1, 1000L));
+        JsonObject output = WsFrameTestSupport.payload(WsFrameTestSupport.parse(client.sentMessages.get(0)));
+        assertEquals("fault.result.malformed", output.get("eventCode").getAsString());
+        assertEquals("fault_result_malformed_updated", output.get("action").getAsString());
+        JsonObject faultProfile = output.getAsJsonObject("state").getAsJsonObject("faultProfile");
+        assertEquals("MALFORMED_RESULT", faultProfile.get("profile").getAsString());
+        assertEquals("INVALID_PAYLOAD", faultProfile.get("malformedResultKind").getAsString());
+    }
+
+    @Test
+    void faultTransportDisconnectTaskUpdatesStateThroughCommandRuntime() throws Exception {
+        CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
+        JsonObject input = new JsonObject();
+        input.addProperty("phase", "after-result");
+
+        client.onMessage(taskMessage("fault.transport.disconnect", input));
+
+        assertTrue(client.awaitSentCount(1, 1000L));
+        JsonObject output = WsFrameTestSupport.payload(WsFrameTestSupport.parse(client.sentMessages.get(0)));
+        assertEquals("fault.transport.disconnect", output.get("eventCode").getAsString());
+        assertEquals("fault_transport_disconnect_updated", output.get("action").getAsString());
+        JsonObject faultProfile = output.getAsJsonObject("state").getAsJsonObject("faultProfile");
+        assertEquals("FLAKY_TRANSPORT", faultProfile.get("profile").getAsString());
+        assertEquals("AFTER_RESULT", faultProfile.get("disconnectPhase").getAsString());
     }
 
     @Test

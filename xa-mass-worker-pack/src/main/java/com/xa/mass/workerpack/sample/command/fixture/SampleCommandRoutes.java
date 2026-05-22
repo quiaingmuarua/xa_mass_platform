@@ -115,6 +115,22 @@ public final class SampleCommandRoutes {
         ));
 
         registerIfAbsent(command(
+                "fault.result.malformed",
+                SampleCommandRoutes::faultResultMalformed,
+                "Configure malformed task-result submit behavior for a sample worker.",
+                true,
+                "prepare", "trigger", "verify"
+        ));
+
+        registerIfAbsent(command(
+                "fault.transport.disconnect",
+                SampleCommandRoutes::faultTransportDisconnect,
+                "Configure transport disconnect behavior for a sample worker.",
+                true,
+                "prepare", "trigger", "verify"
+        ));
+
+        registerIfAbsent(command(
                 "fault.reset",
                 SampleCommandRoutes::faultReset,
                 "Reset fault profile state for one worker or all sample workers.",
@@ -273,6 +289,54 @@ public final class SampleCommandRoutes {
                 .duplicateResult(count, gapMs)
                 .build());
         return buildStateResponse(workerId, state, "fault_result_duplicate_updated");
+    }
+
+    private static Map<String, Object> faultResultMalformed(JsonObject request, CommandContext context) {
+        String workerId = requireWorkerId(request);
+        String kind = stringValue(request, "kind", "missing_message_id");
+        SampleWorkerFaultProfile.MalformedResultKind malformedKind;
+        try {
+            malformedKind = SampleWorkerFaultProfile.MalformedResultKind.valueOf(
+                    kind.trim().toUpperCase().replace('-', '_')
+            );
+        } catch (IllegalArgumentException e) {
+            throw new CommandException(
+                    ErrorCode.PARSE_ERROR,
+                    "fault.result.malformed kind must be missing_message_id, invalid_status, or invalid_payload"
+            );
+        }
+        SampleClientState state = stateRegistry(context).getOrCreate(workerId);
+        state.setFaultProfile(SampleWorkerFaultProfile.builder(
+                        SampleWorkerFaultProfile.ProfileName.MALFORMED_RESULT,
+                        boundedLong(request, "seed", 0L, Long.MAX_VALUE)
+                )
+                .malformedResultKind(malformedKind)
+                .build());
+        return buildStateResponse(workerId, state, "fault_result_malformed_updated");
+    }
+
+    private static Map<String, Object> faultTransportDisconnect(JsonObject request, CommandContext context) {
+        String workerId = requireWorkerId(request);
+        String phase = stringValue(request, "phase", "before_result");
+        SampleWorkerFaultProfile.DisconnectPhase disconnectPhase;
+        try {
+            disconnectPhase = SampleWorkerFaultProfile.DisconnectPhase.valueOf(
+                    phase.trim().toUpperCase().replace('-', '_')
+            );
+        } catch (IllegalArgumentException e) {
+            throw new CommandException(
+                    ErrorCode.PARSE_ERROR,
+                    "fault.transport.disconnect phase must be before_receive, after_receive, before_result, or after_result"
+            );
+        }
+        SampleClientState state = stateRegistry(context).getOrCreate(workerId);
+        state.setFaultProfile(SampleWorkerFaultProfile.builder(
+                        SampleWorkerFaultProfile.ProfileName.FLAKY_TRANSPORT,
+                        boundedLong(request, "seed", 0L, Long.MAX_VALUE)
+                )
+                .disconnectPhase(disconnectPhase)
+                .build());
+        return buildStateResponse(workerId, state, "fault_transport_disconnect_updated");
     }
 
     private static Map<String, Object> faultReset(JsonObject request, CommandContext context) {

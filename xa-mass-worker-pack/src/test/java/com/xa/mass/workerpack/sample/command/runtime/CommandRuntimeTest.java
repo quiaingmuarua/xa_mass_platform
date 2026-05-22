@@ -148,6 +148,38 @@ class CommandRuntimeTest {
     }
 
     @Test
+    void shouldPersistFaultMalformedResultStateForWorker() {
+        JsonObject malformedRequest = new JsonObject();
+        malformedRequest.addProperty("event", "fault.result.malformed");
+        malformedRequest.addProperty("workerId", "worker-fault-malformed");
+        malformedRequest.addProperty("kind", "invalid-status");
+
+        CommandResponse<?> malformedResponse = SampleCommandRuntime.dispatch(malformedRequest);
+
+        assertTrue(malformedResponse.isSuccess());
+        Map<?, ?> state = (Map<?, ?>) ((Map<?, ?>) malformedResponse.getData()).get("state");
+        Map<?, ?> faultProfile = (Map<?, ?>) state.get("faultProfile");
+        assertEquals("MALFORMED_RESULT", faultProfile.get("profile"));
+        assertEquals("INVALID_STATUS", faultProfile.get("malformedResultKind"));
+    }
+
+    @Test
+    void shouldPersistFaultTransportDisconnectStateForWorker() {
+        JsonObject disconnectRequest = new JsonObject();
+        disconnectRequest.addProperty("event", "fault.transport.disconnect");
+        disconnectRequest.addProperty("workerId", "worker-fault-disconnect");
+        disconnectRequest.addProperty("phase", "after-result");
+
+        CommandResponse<?> disconnectResponse = SampleCommandRuntime.dispatch(disconnectRequest);
+
+        assertTrue(disconnectResponse.isSuccess());
+        Map<?, ?> state = (Map<?, ?>) ((Map<?, ?>) disconnectResponse.getData()).get("state");
+        Map<?, ?> faultProfile = (Map<?, ?>) state.get("faultProfile");
+        assertEquals("FLAKY_TRANSPORT", faultProfile.get("profile"));
+        assertEquals("AFTER_RESULT", faultProfile.get("disconnectPhase"));
+    }
+
+    @Test
     void shouldResetFaultProfilesWithoutClearingMockState() {
         JsonObject mockDelay = new JsonObject();
         mockDelay.addProperty("event", "mock.delay.response");
