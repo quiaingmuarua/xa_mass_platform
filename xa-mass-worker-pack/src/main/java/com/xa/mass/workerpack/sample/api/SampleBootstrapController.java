@@ -6,7 +6,7 @@ import com.xa.mass.workerpack.sample.api.model.SampleRuleBootstrapRequest;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.catalog.PayloadType;
-import com.xa.mass.sdk.catalog.ProjectMetadata;
+import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.event.EventDefinition;
 import org.springframework.beans.factory.annotation.Value;
@@ -74,7 +74,7 @@ public class SampleBootstrapController {
 
         int projectCount = 0;
         for (SampleCatalogBootstrapRequest.ProjectRegistration project : request.getProjects()) {
-            app.registerProject(ProjectMetadata.builder()
+            app.registerProject(ProjectDefinition.builder()
                     .code(project.getCode())
                     .name(project.getName())
                     .description(project.getDescription())

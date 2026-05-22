@@ -2,6 +2,7 @@ package com.xa.mass.server.e2e.lifecycle;
 
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
@@ -14,7 +15,6 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 @SpringBootTest(
         classes = XaMassServerApplication.class,
@@ -22,7 +22,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
         properties = {
                 "sample.client.auto-start=true",
                 "mass.mock.data.workers=mock/test_mock_workers.json",
-                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json",
                 "sample.client.retry-attempts=1",
@@ -34,7 +33,17 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
+@Tag("secondary-proof")
 class TaskApiIntegrationTest extends AbstractSampleE2eTest {
+
+    /**
+     * Support-only workload-class coverage.
+     *
+     * <p>The mainline lifecycle/result proof chain now lives in
+     * {@code ServerLifecycleResultConvergenceSuite} and the registry-backed
+     * trace scenarios. Keep this class only for workload-class shell assertions
+     * that are not yet promoted into a stronger proof line.
+     */
 
     private static final int WEBSOCKET_PORT = findFreePort();
 
@@ -44,37 +53,47 @@ class TaskApiIntegrationTest extends AbstractSampleE2eTest {
     }
 
     @Test
-    void createApproveAndCompleteTaskOverRealMockRuntime() throws Exception {
+    void interactiveWorkloadClassPreservedThroughTerminal() throws Exception {
         assertMinOnlineWorkers(2);
-        String taskId = createTaskId("integration-task", "integration smoke", List.of("target-a", "target-b"), 1);
-
-        Map<String, Object> beforeAudit = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
-        assertApiOk(beforeAudit);
-        Map<String, Object> createdTask = task(beforeAudit);
-        assertEquals("NEW", createdTask.get("status"));
-        assertEquals("SEALED", createdTask.get("intakeStatus"));
-        assertEquals(Boolean.FALSE, createdTask.get("openEnded"));
-
-        Map<String, Object> auditResponse = exchange(
-                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=integration",
-                HttpMethod.POST,
-                null
+        String taskId = createTaskId(
+                "interactive-workload-task",
+                "interactive workload smoke",
+                List.of("interactive-target-001"),
+                1,
+                "INTERACTIVE"
         );
-        assertApiOk(auditResponse);
+        assertApiOk(audit(taskId, "interactive-workload"));
 
-        TaskSnapshot snapshot = waitForTerminalTask(taskId);
+        RuntimeTaskSnapshot snapshot = waitForTerminalRuntimeTask(taskId);
+        assertEquals("ALL_MESSAGES_SUCCEEDED", snapshot.task().get("terminalReason"));
+        assertEquals("INTERACTIVE", snapshot.task().get("workloadClass"));
+        assertEquals(1, snapshot.stats().successCount());
 
-        assertEquals("TERMINAL", snapshot.task().get("status"));
-        assertEquals(2, ((Number) snapshot.task().get("peakAssignedWorkerCount")).intValue());
-        assertEquals(2, ((Number) snapshot.task().get("taskSuccessNumber")).intValue());
-        assertEquals(2, snapshot.messages().size());
+        Map<String, Object> detail = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
+        assertApiOk(detail);
+        assertEquals("INTERACTIVE", task(detail).get("workloadClass"));
+    }
 
-        for (Map<String, Object> message : snapshot.messages()) {
-            assertEquals("SUCCESS", message.get("status"));
-            assertEquals("BUSINESS_SUCCESS", message.get("finalReason"));
-        assertNotNull(message.get("latestAttemptWorkerId"));
-        assertNotNull(message.get("latestAttemptWorkerContextId"));
-        assertNotNull(message.get("latestAttemptBatchId"));
-        }
+    @Test
+    void bulkWorkloadClassPreservedThroughTerminal() throws Exception {
+        assertMinOnlineWorkers(2);
+        String taskId = createTaskId(
+                "bulk-workload-task",
+                "bulk workload smoke",
+                List.of("bulk-target-001", "bulk-target-002", "bulk-target-003"),
+                2,
+                "BULK"
+        );
+        assertApiOk(audit(taskId, "bulk-workload"));
+
+        RuntimeTaskSnapshot snapshot = waitForTerminalRuntimeTask(taskId);
+        assertEquals("ALL_MESSAGES_SUCCEEDED", snapshot.task().get("terminalReason"));
+        assertEquals("BULK", snapshot.task().get("workloadClass"));
+        assertEquals(3, snapshot.stats().totalCount());
+        assertEquals(3, snapshot.stats().successCount());
+
+        Map<String, Object> detail = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
+        assertApiOk(detail);
+        assertEquals("BULK", task(detail).get("workloadClass"));
     }
 }

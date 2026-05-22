@@ -1,23 +1,28 @@
 package com.xa.mass.storage.api;
 
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 
 import java.util.List;
 import java.util.Optional;
 
 /**
- * Storage abstraction for worker and worker-context state.
+ * Runtime registry abstraction for worker identity, indexes, and worker locks.
  *
  * <p>The active lock contract is intentionally worker-level: the lock protects
- * one active execution lane per worker in the current runtime model, even when
- * a worker owns multiple worker contexts.
+ * one active execution lane per worker in the current runtime model. This is
+ * not a DB CRUD contract; durable worker history belongs in trace/audit
+ * projections.
  */
-public interface WorkerStorage {
+public interface WorkerStorage extends WorkerLookupStore {
 
     void addWorker(Worker worker);
 
     Optional<Worker> getWorker(String workerId);
+
+    @Override
+    default Worker findWorker(String workerId) {
+        return getWorker(workerId).orElse(null);
+    }
 
     boolean updateWorker(Worker worker);
 
@@ -25,23 +30,7 @@ public interface WorkerStorage {
 
     List<Worker> getWorkersByGroupId(String workerGroupId);
 
-    List<Worker> getWorkersBySupportedProject(String project);
-
-    List<Worker> getWorkersBySupportedEventCode(String eventCode);
-
     List<Worker> getAllWorkers();
-
-    void addWorkerContext(WorkerContext workerContext);
-
-    List<WorkerContext> getWorkerContexts(String workerId);
-
-    Optional<WorkerContext> getWorkerContextById(String workerContextId);
-
-    boolean updateWorkerContextById(String workerContextId, WorkerContext workerContext);
-
-    boolean deleteWorkerContextById(String workerContextId);
-
-    List<WorkerContext> getAllWorkerContexts();
 
     boolean tryLockWorker(String workerId);
 

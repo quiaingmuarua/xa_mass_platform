@@ -1,5 +1,7 @@
 package com.xa.mass.transport.model;
 
+import com.xa.mass.transport.packet.PacketType;
+import com.xa.mass.transport.packet.TransportPacket;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -20,7 +22,7 @@ class DispatchOutcomeTest {
         assertEquals("websocket", outcome.getAdapterId());
         assertEquals("delivery-1", outcome.getDeliveryId());
         assertEquals("worker-1", outcome.getRouteKey());
-        assertEquals("attempt-1", outcome.getCorrelationKey());
+        assertEquals("attempt-1", outcome.getAttemptId());
         assertEquals(DispatchOutcomeStatus.SENT, outcome.getStatus());
         assertFalse(outcome.isRetryable());
         assertNull(outcome.getReason());
@@ -46,18 +48,13 @@ class DispatchOutcomeTest {
         assertNull(outcome.getAdapterId());
         assertNull(outcome.getDeliveryId());
         assertNull(outcome.getRouteKey());
-        assertNull(outcome.getCorrelationKey());
+        assertNull(outcome.getAttemptId());
         assertEquals(DispatchOutcomeStatus.INVALID_ITEM, outcome.getStatus());
         assertEquals("missing item", outcome.getReason());
     }
 
     private TransportDispatchEnvelope envelope() {
-        return new TransportDispatchEnvelope(
-                "delivery-1",
-                "polling",
-                "worker-1",
-                "attempt-1",
-                new TaskDispatchItem(
+        TaskDispatchItem item = new TaskDispatchItem(
                 "task-1",
                 "msg-1",
                 "crawler.fetch-page",
@@ -65,13 +62,31 @@ class DispatchOutcomeTest {
                 "demoApp",
                 "agent",
                 0,
+                "attempt-1",
                 "worker-1",
                 "ctx-1",
                 "batch-1",
                 Map.of("target", "target-1"),
                 Map.of()
+        );
+        return new TransportDispatchEnvelope(
+                "delivery-1",
+                new TransportPacket(
+                        TransportPacket.CURRENT_VERSION,
+                        "delivery-1",
+                        "attempt-1",
+                        PacketType.TASK_DISPATCH,
+                        "polling",
+                        "worker-1",
+                        item.getTaskId(),
+                        item.getMessageId(),
+                        item.attemptId(),
+                        item.getEventCode(),
+                        TransportPacket.JSON_CONTENT_TYPE,
+                        item.transportPayloadView()
                 ),
                 10L
         );
     }
 }
+

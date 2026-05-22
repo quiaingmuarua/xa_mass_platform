@@ -1,15 +1,21 @@
 package com.xa.mass.transport.websocket.session;
 
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
+import com.xa.mass.transport.presence.WorkerPresenceState;
+import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
+import com.xa.mass.transport.websocket.worker.WebSocketRealtimeWorkerAdapter;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelId;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
+
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.*;
 
@@ -19,7 +25,7 @@ class ServerSessionManagerShutdownTest {
 
     @BeforeEach
     void setUp() {
-        manager = new ServerSessionManager();
+        manager = new ServerSessionManager(WebSocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID);
     }
 
     @Test
@@ -39,13 +45,27 @@ class ServerSessionManagerShutdownTest {
         verify(ch1).close();
         verify(ch2).close();
         assertEquals(0, manager.getWorkerConnectionCount());
-        assertFalse(manager.isRouteOnline("worker-1"));
-        assertFalse(manager.isRouteOnline("worker-2"));
+        assertFalse(manager.isAdapterRouteOnline(manager.getAdapterId(), "worker-1"));
+        assertFalse(manager.isAdapterRouteOnline(manager.getAdapterId(), "worker-2"));
     }
 
     @Test
     void shutdownOnEmptyManagerIsIdempotent() {
         assertDoesNotThrow(() -> manager.shutdown());
+    }
+
+    @Test
+    void adapterScopedLookupsUseConfiguredAdapterId() {
+        manager = new ServerSessionManager("ws-public");
+        Channel channel = mockActiveChannel("worker-1");
+        ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
+
+        manager.addSession("route-1", "worker-1", channel, ctx);
+
+        assertTrue(manager.isAdapterRouteOnline("ws-public", "route-1"));
+        assertFalse(manager.isAdapterRouteOnline("websocket", "route-1"));
+        assertEquals("ws-public", manager.getAdapterId());
+        assertEquals("ws-public", manager.listWorkerEndpoints().get(0).getAdapterId());
     }
 
     @Test
@@ -61,18 +81,38 @@ class ServerSessionManagerShutdownTest {
         manager.addSession("worker-1", "worker-1", secondChannel, secondCtx);
 
         verify(systemEventChannel, times(1)).publishWorkerOnline("worker-1", "websocket connected", null);
-        assertTrue(manager.isRouteOnline("worker-1"));
+        assertTrue(manager.isAdapterRouteOnline(manager.getAdapterId(), "worker-1"));
         assertEquals(secondChannel, manager.getChannel("worker-1"));
 
         manager.removeSession(firstChannel);
 
         verify(systemEventChannel, never()).publishWorkerOffline("worker-1", "websocket disconnected", null);
-        assertTrue(manager.isRouteOnline("worker-1"));
+        assertTrue(manager.isAdapterRouteOnline(manager.getAdapterId(), "worker-1"));
 
         manager.removeSession(secondChannel);
 
         verify(systemEventChannel, times(1)).publishWorkerOffline("worker-1", "websocket disconnected", null);
-        assertFalse(manager.isRouteOnline("worker-1"));
+        assertFalse(manager.isAdapterRouteOnline(manager.getAdapterId(), "worker-1"));
+    }
+
+    @Test
+    void sessionsProjectPresenceIntoTransportOwnedStore() {
+        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore(30_000L, "ws-node-1");
+        manager.setWorkerPresenceStore(presenceStore);
+        Channel channel = mockActiveChannel("worker-1");
+        ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
+
+        manager.addSession("route-1", "worker-1", channel, ctx);
+
+        assertEquals(WorkerPresenceState.ONLINE, presenceStore.getPresence("worker-1").getPresenceState());
+        assertEquals("route-1", presenceStore.getPresence("worker-1").getRouteKey());
+        assertEquals("ws-node-1", presenceStore.findOwners("worker-1").getFirst().transportNodeId());
+        assertTrue(presenceStore.isRouteOnline(manager.getAdapterId(), "route-1"));
+
+        manager.removeSession(channel);
+
+        assertEquals(WorkerPresenceState.OFFLINE, presenceStore.getPresence("worker-1").getPresenceState());
+        assertFalse(presenceStore.isRouteOnline(manager.getAdapterId(), "route-1"));
     }
 
     @Test
@@ -98,6 +138,30 @@ class ServerSessionManagerShutdownTest {
     }
 
     @Test
+    void removingStaleChannelDoesNotOfflineReplacementPresence() {
+        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore();
+        manager.setWorkerPresenceStore(presenceStore);
+        Channel firstChannel = mockActiveChannel("worker-1-old");
+        Channel secondChannel = mockActiveChannel("worker-1-new");
+        ChannelHandlerContext firstCtx = mock(ChannelHandlerContext.class);
+        ChannelHandlerContext secondCtx = mock(ChannelHandlerContext.class);
+
+        manager.addSession("route-1", "worker-1", firstChannel, firstCtx);
+        manager.addSession("route-1", "worker-1", secondChannel, secondCtx);
+
+        manager.removeSession(firstChannel);
+
+        assertEquals(WorkerPresenceState.ONLINE, presenceStore.getPresence("worker-1").getPresenceState());
+        assertEquals("worker-1-new", presenceStore.getPresence("worker-1").getConnectionId());
+        assertTrue(presenceStore.isRouteOnline(manager.getAdapterId(), "route-1"));
+
+        manager.removeSession(secondChannel);
+
+        assertEquals(WorkerPresenceState.OFFLINE, presenceStore.getPresence("worker-1").getPresenceState());
+        assertFalse(presenceStore.isRouteOnline(manager.getAdapterId(), "route-1"));
+    }
+
+    @Test
     void shutdownSkipsInactiveChannels() {
         Channel active = mockActiveChannel("active");
         Channel inactive = mock(Channel.class);
@@ -114,6 +178,36 @@ class ServerSessionManagerShutdownTest {
 
         verify(active).close();
         verify(inactive, never()).close();
+    }
+
+    @Test
+    void shutdownMarksPresenceOfflineBeforeClearingRoutes() {
+        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore();
+        manager.setWorkerPresenceStore(presenceStore);
+        Channel channel = mockActiveChannel("worker-1");
+        ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
+
+        manager.addSession("route-1", "worker-1", channel, ctx);
+
+        manager.shutdown();
+
+        assertEquals(WorkerPresenceState.OFFLINE, presenceStore.getPresence("worker-1").getPresenceState());
+        assertFalse(presenceStore.isRouteOnline(manager.getAdapterId(), "route-1"));
+    }
+
+    @Test
+    void activeWebSocketSessionRefreshesPresenceLease() {
+        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore(1_200L);
+        manager.setWorkerPresenceStore(presenceStore);
+        Channel channel = mockActiveChannel("worker-1");
+        ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
+
+        manager.addSession("route-1", "worker-1", channel, ctx);
+
+        assertTimeoutPreemptively(Duration.ofSeconds(5), () -> {
+            Thread.sleep(2_200L);
+            assertEquals(WorkerPresenceState.ONLINE, presenceStore.getPresence("worker-1").getPresenceState());
+        });
     }
 
     private Channel mockActiveChannel(String idText) {

@@ -6,7 +6,6 @@ package com.xa.mass.sdk.authz;
 public enum PlatformResourceType {
     TASK,
     WORKER,
-    WORKER_CONTEXT,
     RULE,
     SUBMITTER
 }

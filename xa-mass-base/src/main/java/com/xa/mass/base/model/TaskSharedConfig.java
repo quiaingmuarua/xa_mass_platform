@@ -1,6 +1,8 @@
 package com.xa.mass.base.model;
 
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -12,6 +14,10 @@ import java.util.Map;
 public final class TaskSharedConfig {
 
     public static final String ROUTING_CODE = "routingCode";
+    public static final String ROUTE_ATTRIBUTES = "routeAttributes";
+    public static final String WORKER_GROUP_ID = "workerGroupId";
+    public static final String WORKER_GROUP_IDS = "workerGroupIds";
+    public static final String ADAPTER_NODE_ID = "adapterNodeId";
     public static final String TARGET_WORKER_ID = "targetWorkerId";
     public static final String TARGET_WORKER_ATTRIBUTES = "targetWorkerAttributes";
     public static final String SDK_METADATA = "_sdk";
@@ -41,11 +47,42 @@ public final class TaskSharedConfig {
         return stringValue(task.getSharedConfig(), TARGET_WORKER_ID);
     }
 
+    public static String adapterNodeId(Task task) {
+        if (task == null) {
+            return null;
+        }
+        return stringValue(task.getSharedConfig(), ADAPTER_NODE_ID);
+    }
+
+    public static List<String> workerGroupSelector(Task task) {
+        if (task == null) {
+            return List.of();
+        }
+        return workerGroupSelector(task.getSharedConfig());
+    }
+
+    public static List<String> workerGroupSelector(Map<String, Object> sharedConfig) {
+        if (sharedConfig == null || sharedConfig.isEmpty()) {
+            return List.of();
+        }
+        LinkedHashSet<String> normalized = new LinkedHashSet<>();
+        addNormalized(normalized, sharedConfig.get(WORKER_GROUP_ID));
+        addNormalized(normalized, sharedConfig.get(WORKER_GROUP_IDS));
+        return normalized.isEmpty() ? List.of() : List.copyOf(normalized);
+    }
+
     public static Map<String, String> targetWorkerAttributes(Task task) {
         if (task == null) {
             return Map.of();
         }
         return stringMapValue(task.getSharedConfig(), TARGET_WORKER_ATTRIBUTES);
+    }
+
+    public static Map<String, String> routeAttributes(Task task) {
+        if (task == null) {
+            return Map.of();
+        }
+        return stringMapValue(task.getSharedConfig(), ROUTE_ATTRIBUTES);
     }
 
     public static String stringValue(Map<String, Object> sharedConfig, String key) {
@@ -86,6 +123,29 @@ public final class TaskSharedConfig {
         }
         String text = String.valueOf(value).trim();
         return text.isEmpty() ? null : text;
+    }
+
+    private static void addNormalized(LinkedHashSet<String> target, Object value) {
+        if (value == null) {
+            return;
+        }
+        if (value instanceof Iterable<?> values) {
+            for (Object item : values) {
+                addNormalized(target, item);
+            }
+            return;
+        }
+        if (value.getClass().isArray()) {
+            int length = java.lang.reflect.Array.getLength(value);
+            for (int i = 0; i < length; i++) {
+                addNormalized(target, java.lang.reflect.Array.get(value, i));
+            }
+            return;
+        }
+        String text = String.valueOf(value).trim();
+        if (!text.isEmpty()) {
+            target.add(text);
+        }
     }
 
     @SuppressWarnings("unchecked")

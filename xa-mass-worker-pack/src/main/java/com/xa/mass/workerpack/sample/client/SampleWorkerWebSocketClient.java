@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.xa.mass.workerpack.sample.command.fixture.SampleClientState;
 import com.xa.mass.workerpack.sample.command.fixture.SampleClientStateRegistry;
+import com.xa.mass.workerpack.sample.command.fixture.SampleWorkerFaultProfile;
 import com.xa.mass.workerpack.sample.command.runtime.SampleCommandRuntime;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
@@ -105,7 +106,15 @@ public class SampleWorkerWebSocketClient extends WebSocketClient implements Samp
         if (plan == null) {
             return;
         }
-        sendTaskResponse(plan.responseJson(), plan.messageId(), plan.delayMillis(), plan.disconnectWorkerId());
+        sendTaskResponse(
+                plan.responseJson(),
+                plan.messageId(),
+                plan.delayMillis(),
+                plan.disconnectWorkerId(),
+                plan.duplicateCount(),
+                plan.duplicateGapMillis(),
+                plan.disconnectPhase()
+        );
     }
 
     @Override
@@ -184,10 +193,22 @@ public class SampleWorkerWebSocketClient extends WebSocketClient implements Samp
         return stateRegistry == null ? null : stateRegistry.getOrCreate(workerId);
     }
 
-    private void sendTaskResponse(String responseJson, String messageId, long delayMillis, String disconnectWorkerId) {
+    private void sendTaskResponse(String responseJson,
+                                  String messageId,
+                                  long delayMillis,
+                                  String disconnectWorkerId,
+                                  int duplicateCount,
+                                  long duplicateGapMillis,
+                                  SampleWorkerFaultProfile.DisconnectPhase disconnectPhase) {
         if (delayMillis <= 0L) {
+            if (disconnectBeforeResult(disconnectPhase)) {
+                disconnectForFaultPhase(disconnectPhase, messageId);
+                return;
+            }
             send(responseJson);
             logger.debug("[{}] Sent sample task response for messageId: {}", workerId, messageId);
+            sendDuplicateTaskResponses(responseJson, messageId, duplicateCount, duplicateGapMillis);
+            disconnectAfterResultForFaultPhase(disconnectPhase, messageId);
             disconnectAfterTaskResultIfRequested(disconnectWorkerId);
             return;
         }
@@ -199,13 +220,59 @@ public class SampleWorkerWebSocketClient extends WebSocketClient implements Samp
                 return;
             }
             try {
+                if (disconnectBeforeResult(disconnectPhase)) {
+                    disconnectForFaultPhase(disconnectPhase, messageId);
+                    return;
+                }
                 send(responseJson);
                 logger.debug("[{}] Sent delayed sample task response for messageId: {}", workerId, messageId);
+                sendDuplicateTaskResponses(responseJson, messageId, duplicateCount, duplicateGapMillis);
+                disconnectAfterResultForFaultPhase(disconnectPhase, messageId);
                 disconnectAfterTaskResultIfRequested(disconnectWorkerId);
             } catch (Exception e) {
                 logger.warn("[{}] Failed to send delayed sample task response for messageId={}: {}", workerId, messageId, e.getMessage());
             }
         }, delayMillis, TimeUnit.MILLISECONDS);
+    }
+
+    private boolean disconnectBeforeResult(SampleWorkerFaultProfile.DisconnectPhase phase) {
+        return phase == SampleWorkerFaultProfile.DisconnectPhase.BEFORE_RECEIVE
+                || phase == SampleWorkerFaultProfile.DisconnectPhase.AFTER_RECEIVE
+                || phase == SampleWorkerFaultProfile.DisconnectPhase.BEFORE_RESULT;
+    }
+
+    private void disconnectAfterResultForFaultPhase(SampleWorkerFaultProfile.DisconnectPhase phase, String messageId) {
+        if (phase == SampleWorkerFaultProfile.DisconnectPhase.AFTER_RESULT) {
+            disconnectForFaultPhase(phase, messageId);
+        }
+    }
+
+    private void disconnectForFaultPhase(SampleWorkerFaultProfile.DisconnectPhase phase, String messageId) {
+        if (phase == null || phase == SampleWorkerFaultProfile.DisconnectPhase.NONE) {
+            return;
+        }
+        logger.info("[{}] Closing worker connection for fault transport phase {} messageId={}",
+                workerId, phase, messageId);
+        closeConnection();
+    }
+
+    private void sendDuplicateTaskResponses(String responseJson, String messageId, int duplicateCount, long duplicateGapMillis) {
+        int boundedDuplicateCount = Math.max(0, duplicateCount);
+        for (int duplicateIndex = 1; duplicateIndex <= boundedDuplicateCount; duplicateIndex++) {
+            long delay = Math.max(0L, duplicateGapMillis) * duplicateIndex;
+            taskResponseScheduler.schedule(() -> {
+                if (!isOpen()) {
+                    logger.warn("[{}] Skip duplicate task response because client is disconnected. messageId={}", workerId, messageId);
+                    return;
+                }
+                try {
+                    send(responseJson);
+                    logger.debug("[{}] Sent duplicate sample task response for messageId: {}", workerId, messageId);
+                } catch (Exception e) {
+                    logger.warn("[{}] Failed to send duplicate sample task response for messageId={}: {}", workerId, messageId, e.getMessage());
+                }
+            }, delay, TimeUnit.MILLISECONDS);
+        }
     }
 
     private void disconnectAfterTaskResultIfRequested(String disconnectWorkerId) {
@@ -318,4 +385,3 @@ public class SampleWorkerWebSocketClient extends WebSocketClient implements Samp
         }
     }
 }
-

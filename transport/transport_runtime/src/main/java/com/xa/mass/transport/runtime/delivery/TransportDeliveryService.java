@@ -7,6 +7,8 @@ import com.xa.mass.transport.model.TransportDeliveryAddressing;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
 
 import java.util.ArrayList;
+import java.util.AbstractList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,30 +46,44 @@ public final class TransportDeliveryService {
         for (TransportDispatchEnvelope envelope : envelopes) {
             outcomes.add(deliveryStore.enqueue(envelope));
         }
-        return List.copyOf(outcomes);
+        return Collections.unmodifiableList(outcomes);
     }
 
     public List<TransportDispatchEnvelope> drainEnvelopes(String adapterId, String routeKey, int maxItems) {
         return deliveryStore.drain(adapterId, routeKey, maxItems);
     }
 
-    public TransportDeliveryPollResult pollEnvelopes(String adapterId, String routeKey, int maxItems, long timeoutMillis) {
-        try {
-            return deliveryStore.poll(adapterId, routeKey, maxItems, Math.max(0L, timeoutMillis), TimeUnit.MILLISECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return TransportDeliveryPollResult.interrupted();
-        }
+    public List<TransportDispatchEnvelope> pollEnvelopes(String adapterId, String routeKey, int maxItems, long timeoutMillis) {
+        return pollEnvelopeResult(adapterId, routeKey, maxItems, timeoutMillis).getEnvelopes();
     }
 
-    public List<TaskDispatchItem> pollPayloads(String adapterId, String routeKey, int maxItems, long timeoutMillis) {
-        TransportDeliveryPollResult result = pollEnvelopes(adapterId, routeKey, maxItems, timeoutMillis);
-        if (result.getStatus() != TransportDeliveryPollStatus.DELIVERED) {
+    public TransportDeliveryPollResult pollEnvelopeResult(String adapterId, String routeKey, int maxItems, long timeoutMillis) {
+        TransportDeliveryPollResult result;
+        try {
+            result = deliveryStore.poll(adapterId, routeKey, maxItems, Math.max(0L, timeoutMillis), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return TransportDeliveryPollResult.unavailable();
+        }
+        return result;
+    }
+
+    public List<TaskDispatchItem> pollDispatchViews(String adapterId, String routeKey, int maxItems, long timeoutMillis) {
+        return toDispatchViews(pollEnvelopeResult(adapterId, routeKey, maxItems, timeoutMillis).getEnvelopes());
+    }
+
+    public static TaskDispatchItem toDispatchView(TransportDispatchEnvelope envelope) {
+        if (envelope == null) {
+            throw new IllegalArgumentException("envelope must not be null");
+        }
+        return TaskDispatchItem.fromTransportPacket(envelope.getPacket());
+    }
+
+    public static List<TaskDispatchItem> toDispatchViews(List<TransportDispatchEnvelope> envelopes) {
+        if (envelopes == null || envelopes.isEmpty()) {
             return List.of();
         }
-        return result.getEnvelopes().stream()
-                .map(TransportDispatchEnvelope::getPayload)
-                .toList();
+        return Collections.unmodifiableList(new DispatchItemListView(envelopes));
     }
 
     public TransportDeliveryServiceStats stats() {
@@ -133,7 +149,7 @@ public final class TransportDeliveryService {
                 outcomes.add(DispatchOutcome.failed(adapterId, envelope, e.getMessage(), true));
             }
         }
-        return List.copyOf(outcomes);
+        return Collections.unmodifiableList(outcomes);
     }
 
     private DirectDeliveryCounters directCounters(String adapterId) {
@@ -162,4 +178,31 @@ public final class TransportDeliveryService {
             );
         }
     }
+
+    private static final class DispatchItemListView extends AbstractList<TaskDispatchItem> {
+        private final List<TransportDispatchEnvelope> envelopes;
+        private final TaskDispatchItem[] cache;
+
+        private DispatchItemListView(List<TransportDispatchEnvelope> envelopes) {
+            this.envelopes = Objects.requireNonNull(envelopes, "envelopes");
+            this.cache = new TaskDispatchItem[envelopes.size()];
+        }
+
+        @Override
+        public TaskDispatchItem get(int index) {
+            TaskDispatchItem cached = cache[index];
+            if (cached != null) {
+                return cached;
+            }
+            TaskDispatchItem resolved = toDispatchView(envelopes.get(index));
+            cache[index] = resolved;
+            return resolved;
+        }
+
+        @Override
+        public int size() {
+            return envelopes.size();
+        }
+    }
 }
+

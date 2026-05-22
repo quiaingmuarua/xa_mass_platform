@@ -111,8 +111,8 @@ public final class SubmitterRegistration {
         );
     }
 
-    public SubmitterMetadata toMetadata() {
-        return SubmitterMetadata.from(this);
+    public SubmitterProfile toProfile() {
+        return SubmitterProfile.from(this);
     }
 
     @Override

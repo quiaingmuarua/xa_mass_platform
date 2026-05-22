@@ -16,6 +16,10 @@ import java.io.IOException;
 public class ApiAuthInterceptor implements HandlerInterceptor {
 
     static final String SDK_CREDENTIAL_BYPASS = "__SDK_CREDENTIAL_BYPASS__";
+    static final String SDK_OR_OPERATOR_ROUTE = "__SDK_OR_OPERATOR_ROUTE__";
+    static final String OPERATOR_AUTH_ONLY = "__OPERATOR_AUTH_ONLY__";
+    public static final String AUTHENTICATED_PRINCIPAL_ATTR =
+            ApiAuthInterceptor.class.getName() + ".authenticatedPrincipal";
 
     private final ApiAuthService apiAuthService;
     private final ObjectMapper objectMapper;
@@ -53,7 +57,25 @@ public class ApiAuthInterceptor implements HandlerInterceptor {
 
         try {
             if (routeAuthorization != null) {
+                if (SDK_OR_OPERATOR_ROUTE.equals(routeAuthorization.requiredPermission())) {
+                    PrincipalContext submitter = apiAuthorizationService.resolveTaskViewerCredential(
+                            request.getHeader(SdkCredentialAuthSupport.API_KEY_HEADER),
+                            request.getHeader("Authorization"),
+                            java.util.Map.of(
+                                    "method", request.getMethod(),
+                                    "path", request.getRequestURI()
+                            )
+                    );
+                    if (submitter != null) {
+                        request.setAttribute(AUTHENTICATED_PRINCIPAL_ATTR, submitter);
+                        return true;
+                    }
+                }
                 PrincipalContext principal = apiAuthService.requireAuthenticated(request);
+                request.setAttribute(AUTHENTICATED_PRINCIPAL_ATTR, principal);
+                if (OPERATOR_AUTH_ONLY.equals(routeAuthorization.requiredPermission())) {
+                    return true;
+                }
                 apiAuthorizationService.requireOperatorRoutePermission(
                         principal,
                         routeAuthorization.resourceType(),
@@ -84,8 +106,8 @@ public class ApiAuthInterceptor implements HandlerInterceptor {
     private boolean requiresAuthenticationOnly(HttpServletRequest request) {
         String uri = request.getRequestURI();
         String method = request.getMethod();
-        return ("GET".equalsIgnoreCase(method) && "/api/auth/me".equals(uri))
-                || ("POST".equalsIgnoreCase(method) && "/api/auth/logout".equals(uri));
+        return ("GET".equalsIgnoreCase(method) && "/api/v1/auth/me".equals(uri))
+                || ("POST".equalsIgnoreCase(method) && "/api/v1/auth/logout".equals(uri));
     }
 
     private boolean hasSdkCredentialAttempt(HttpServletRequest request) {

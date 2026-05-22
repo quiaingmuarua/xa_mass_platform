@@ -1,6 +1,6 @@
 package com.xa.mass.workerpack.sample.starter;
 
-import com.xa.mass.base.model.Worker;
+import com.xa.mass.sdk.model.WorkerSnapshot;
 import com.xa.mass.workerpack.sample.client.SampleWorkerClient;
 import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
 import com.xa.mass.workerpack.sample.config.SampleConfig;
@@ -54,11 +54,11 @@ public class WebSocketClientStarter extends AbstractSampleWorkerClientStarter {
     }
 
     @Override
-    protected List<Worker> loadWorkers() {
+    protected List<WorkerSnapshot> loadWorkers() {
         return super.loadWorkers();
     }
 
-    protected boolean isWebSocketClientWorker(Worker worker) {
+    protected boolean isWebSocketClientWorker(WorkerSnapshot worker) {
         return isClientWorker(worker);
     }
 

@@ -7,7 +7,8 @@ import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
+import com.xa.mass.server.e2e.support.ProjectionSampleE2eTest;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -25,7 +26,6 @@ import java.sql.DriverManager;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -39,14 +39,21 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         properties = {
                 "sample.client.auto-start=false",
                 "mass.mock.data.workers=mock/test_mock_workers_empty.json",
-                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts_empty.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class PostgresExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
+@Tag("secondary-proof")
+class PostgresExternalWorkerPollingApiIntegrationTest extends ProjectionSampleE2eTest {
+
+    /**
+     * Support-only storage compatibility coverage.
+     *
+     * <p>This validates external-worker polling against the PostgreSQL-backed
+     * shell. It is not mainline parity proof ownership.
+     */
 
     private static final int WEBSOCKET_PORT = findFreePort();
 
@@ -76,7 +83,7 @@ class PostgresExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eT
 
         app.replaceDefaultRules(List.of(
                 rule("crawler-online-project", "isWorkerAvailable == true && isWorkerLocked == false && supportsProject == true"),
-                rule("crawler-context-routing", "isWorkerContextAllocatable == true && workerContextMatchesRoutingCode == true")
+                rule("crawler-scheduling-routing", "isWorkerSchedulingResourceAllocatable == true && workerSchedulingMatchesRoutingCode == true")
         ));
         registerExternalWorkerSubmitter(
                 "polling-pg-worker",
@@ -94,56 +101,47 @@ class PostgresExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eT
                 .eventScopes(List.of("crawler.fetch-page"))
                 .build());
 
-        HttpHeaders workerHeaders = sdkCredentialHeaders(workerCredential);
-        HttpHeaders submitterHeaders = sdkCredentialHeaders(submitterCredential);
+        HttpHeaders workerHeaders = credentialHeaders(workerCredential);
+        HttpHeaders submitterHeaders = credentialHeaders(submitterCredential);
+        declareExternalWorkerGroup("polling-postgres", "crawlerApp", "crawler.fetch-page", workerHeaders);
+        bindExternalAdapterNode("polling-postgres-node", "polling-postgres", workerHeaders);
 
-        Map<String, Object> registerResponse = exchange("/worker-api/workers/register", HttpMethod.POST, Map.of(
+        Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", workerId,
+                "adapterNodeId", "polling-postgres-node",
                 "workerGroupId", "polling-postgres",
-                "attributes", Map.of("runtime", "postgres-e2e"),
-                "eventBindings", List.of(Map.of(
-                        "eventCode", "crawler.fetch-page",
-                        "projectCodes", List.of("crawlerApp")
-                ))
+                "attributes", Map.of(
+                        "runtime", "postgres-e2e",
+                        "routingTags", "us",
+                        "country", "us",
+                        "region", "us"
+                )
         ), workerHeaders);
         assertApiOk(registerResponse);
         assertEquals("polling", responseData(registerResponse).get("transportHint"));
 
-        Map<String, Object> contextResponse = exchange("/worker-api/worker-contexts/register", HttpMethod.POST, Map.of(
-                "workerContextId", "ctx-" + workerId,
-                "workerId", workerId,
-                "project", "crawlerApp",
-                "routingTags", Set.of("us"),
-                "attributes", Map.of("region", "us")
-        ), workerHeaders);
-        assertApiOk(contextResponse);
-
-        assertApiOk(exchange("/worker-api/workers/" + workerId + "/online", HttpMethod.POST, Map.of(
+        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":online", HttpMethod.POST, Map.of(
                 "reason", "postgres-storage-online"
         ), workerHeaders));
-        waitUntil(() -> app.isWorkerOnline(workerId), "worker should be online before task approval");
+        waitUntil(() -> app.isWorkerOnline(workerId), "worker transport presence should be online before task approval");
 
         Map<String, Object> createBody = new LinkedHashMap<>();
-        createBody.put("taskName", "crawler-fetch-page-postgres");
         createBody.put("project", "crawlerApp");
         createBody.put("userId", "crawler-agent");
-        createBody.put("eventCode", "crawler.fetch-page");
+        createBody.put("sourceRef", "crawler-fetch-page-postgres");
         createBody.put("sharedConfig", Map.of("routingCode", "us"));
-        createBody.put("inputs", List.of(Map.of("url", "https://example.test/postgres-page")));
-        createBody.put("batchSize", 1);
-        Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, createBody, submitterHeaders);
+        createBody.put("executionSpec", Map.of("batchSize", 1));
+        Map<String, Object> createResponse = createTaskShell(createBody, submitterHeaders);
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
+        assertApiOk(appendTaskItems(taskId, "crawler.fetch-page", List.of(Map.of("url", "https://example.test/postgres-page"))));
+        assertApiOk(sealTask(taskId));
 
-        assertApiOk(exchange(
-                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=postgres-jdbc-e2e",
-                HttpMethod.POST,
-                null
-        ));
+        assertApiOk(approveTask(taskId));
 
         List<Map<String, Object>> items = List.of();
         for (int attempt = 0; attempt < 20 && items.isEmpty(); attempt++) {
-            Map<String, Object> pollResponse = exchange("/worker-api/workers/" + workerId + "/poll", HttpMethod.POST, Map.of(
+            Map<String, Object> pollResponse = exchange("/worker-api/v1/workers/" + workerId + ":poll", HttpMethod.POST, Map.of(
                     "maxMessages", 10,
                     "timeoutMs", 1000
             ), workerHeaders);
@@ -153,7 +151,7 @@ class PostgresExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eT
         assertFalse(items.isEmpty(), "expected polling worker to receive a task item");
 
         Map<String, Object> item = items.getFirst();
-        Map<String, Object> resultResponse = exchange("/worker-api/workers/" + workerId + "/results", HttpMethod.POST, Map.of(
+        Map<String, Object> resultResponse = exchange("/worker-api/v1/workers/" + workerId + ":submit-result", HttpMethod.POST, Map.of(
                 "taskId", item.get("taskId"),
                 "messageId", item.get("messageId"),
                 "success", true,
@@ -171,15 +169,15 @@ class PostgresExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eT
         assertEquals("TERMINAL", terminal.task().get("status"));
         assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));
 
-        assertApiOk(exchange("/worker-api/workers/" + workerId + "/offline", HttpMethod.POST, Map.of(
+        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":offline", HttpMethod.POST, Map.of(
                 "reason", "postgres-storage-offline"
         ), workerHeaders));
-        waitUntil(() -> !app.isWorkerOnline(workerId), "worker should be offline after explicit disconnect");
+        waitUntil(() -> !app.isWorkerOnline(workerId), "worker transport presence should be offline after explicit disconnect");
 
         assertJdbcProjection(taskId, String.valueOf(item.get("messageId")), workerId);
     }
 
-    private HttpHeaders sdkCredentialHeaders(String credential) {
+    private HttpHeaders credentialHeaders(String credential) {
         HttpHeaders headers = new HttpHeaders();
         headers.add(SdkCredentialAuthSupport.API_KEY_HEADER, credential);
         return headers;

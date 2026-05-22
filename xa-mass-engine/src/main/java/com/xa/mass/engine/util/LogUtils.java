@@ -18,7 +18,6 @@ public final class LogUtils {
     public static final String USER_ID = "userId";
     public static final String WORKER_ID = "workerId";
     public static final String TASK_ID = "taskId";
-    public static final String WORKER_CONTEXT_ID = "workerContextId";
     public static final String OPERATION = "operation";
     public static final String MODULE = "module";
     public static final String RESULT = "result";
@@ -50,10 +49,6 @@ public final class LogUtils {
 
     public static void setTaskId(String taskId) {
         MDC.put(TASK_ID, taskId);
-    }
-
-    public static void setWorkerContextId(String workerContextId) {
-        MDC.put(WORKER_CONTEXT_ID, workerContextId);
     }
 
     public static void setOperation(String operation) {
@@ -136,14 +131,6 @@ public final class LogUtils {
         setOperation(operation);
         setResult(result);
         logger.info("Task operation: taskId={}, operation={}, result={}", taskId, operation, result);
-    }
-
-    public static void logWorkerContextOperation(String workerContextId, String operation, String result) {
-        setWorkerContextId(workerContextId);
-        setOperation(operation);
-        setResult(result);
-        logger.info("Worker-context operation: workerContextId={}, operation={}, result={}",
-                workerContextId, operation, result);
     }
 
     public static void logRuleEvaluation(String ruleId, String workerId, String taskId, boolean passed) {

@@ -3,15 +3,17 @@ package com.xa.mass.server.bootstrap;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassRuntimeControl;
-import com.xa.mass.sdk.model.MassTaskCreateRequest;
-import com.xa.mass.sdk.model.WorkerContextRegistration;
+import com.xa.mass.sdk.model.AdapterNodeRegistration;
+import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
+import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
+import com.xa.mass.sdk.model.NodeGroupBindingRegistration;
+import com.xa.mass.sdk.model.TaskExecutionOptions;
+import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.WorkerEventBinding;
+import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.transport.WorkerTransportHints;
 import org.slf4j.Logger;
@@ -23,8 +25,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -38,36 +42,29 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
             .registerModule(new JavaTimeModule());
 
     private final String workerConfigPath;
-    private final String workerContextConfigPath;
     private final String taskConfigPath;
     private final String ruleConfigPath;
     private final boolean loadWorkers;
-    private final boolean loadWorkerContexts;
     private final boolean loadTasks;
     private final boolean loadRules;
 
     public MockRuntimeDataLoader(String workerConfigPath,
-                                 String workerContextConfigPath,
                                  String taskConfigPath,
                                  String ruleConfigPath) {
-        this(workerConfigPath, workerContextConfigPath, taskConfigPath, ruleConfigPath,
-                true, true, true, true);
+        this(workerConfigPath, taskConfigPath, ruleConfigPath,
+                true, true, true);
     }
 
     public MockRuntimeDataLoader(String workerConfigPath,
-                                 String workerContextConfigPath,
                                  String taskConfigPath,
                                  String ruleConfigPath,
                                  boolean loadWorkers,
-                                 boolean loadWorkerContexts,
                                  boolean loadTasks,
                                  boolean loadRules) {
         this.workerConfigPath = workerConfigPath;
-        this.workerContextConfigPath = workerContextConfigPath;
         this.taskConfigPath = taskConfigPath;
         this.ruleConfigPath = ruleConfigPath;
         this.loadWorkers = loadWorkers;
-        this.loadWorkerContexts = loadWorkerContexts;
         this.loadTasks = loadTasks;
         this.loadRules = loadRules;
     }
@@ -75,17 +72,12 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
     @Override
     public void loadInto(MassRuntimeControl runtime) {
         Objects.requireNonNull(runtime, "runtime");
-        logger.info("Loading bootstrap data [workers={}, contexts={}, rules={}, tasks={}]",
-                workerConfigPath, workerContextConfigPath, ruleConfigPath, taskConfigPath);
+        logger.info("Loading bootstrap data [workers={}, rules={}, tasks={}]",
+                workerConfigPath, ruleConfigPath, taskConfigPath);
         if (loadWorkers) {
             loadWorkers(runtime);
         } else {
             logger.info("Worker bootstrap load disabled [path={}]", workerConfigPath);
-        }
-        if (loadWorkerContexts) {
-            loadWorkerContexts(runtime);
-        } else {
-            logger.info("Worker context bootstrap load disabled [path={}]", workerContextConfigPath);
         }
         if (loadRules) {
             loadRules(runtime);
@@ -101,43 +93,74 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
     }
 
     private void loadWorkers(MassRuntimeControl runtime) {
-        Worker[] workers = readConfig(workerConfigPath, Worker[].class);
+        WorkerFixture[] workers = readConfig(workerConfigPath, WorkerFixture[].class);
         if (workers == null) return;
         if (workers.length == 0) {
             logger.warn("Worker config loaded but produced 0 entries [path={}]", workerConfigPath);
             return;
         }
-        int accepted = 0;
-        for (Worker worker : workers) {
+        List<WorkerFixture> normalizedWorkers = new ArrayList<>();
+        for (WorkerFixture worker : workers) {
             if (worker == null || worker.getWorkerId() == null || worker.getWorkerId().isBlank()) {
                 logger.warn("Skipping worker fixture because workerId is missing");
                 continue;
             }
             normalizeWorker(worker);
+            normalizedWorkers.add(worker);
+        }
+        declareWorkerGroups(runtime, normalizedWorkers);
+        bindWorkerGroups(runtime, normalizedWorkers);
+        int accepted = 0;
+        for (WorkerFixture worker : normalizedWorkers) {
             runtime.registerWorker(toRegistration(worker));
             accepted++;
         }
         logger.info("Loaded {} workers via SDK registration [path={}]", accepted, workerConfigPath);
     }
 
-    private void loadWorkerContexts(MassRuntimeControl runtime) {
-        WorkerContext[] contexts = readConfig(workerContextConfigPath, WorkerContext[].class);
-        if (contexts == null) return;
-        if (contexts.length == 0) {
-            logger.info("Worker context config is empty, workers will run stateless [path={}]", workerContextConfigPath);
-            return;
-        }
-        int accepted = 0;
-        for (WorkerContext ctx : contexts) {
-            normalizeWorkerContext(ctx);
-            if (ctx.getWorkerId() == null || ctx.getWorkerId().isBlank()) {
-                logger.warn("Skipping worker context {} - workerId missing", ctx.getWorkerContextId());
+    private void declareWorkerGroups(MassRuntimeControl runtime, List<WorkerFixture> workers) {
+        Map<String, List<WorkerEventBinding>> bindingsByGroupId = new LinkedHashMap<>();
+        for (WorkerFixture worker : workers) {
+            String groupId = worker.getWorkerGroupId();
+            if (groupId == null || groupId.isBlank()) {
                 continue;
             }
-            runtime.registerWorkerContext(toRegistration(ctx));
-            accepted++;
+            List<WorkerEventBinding> eventBindings = toEventBindings(worker);
+            if (!eventBindings.isEmpty()) {
+                bindingsByGroupId.computeIfAbsent(groupId, ignored -> new ArrayList<>()).addAll(eventBindings);
+            }
         }
-        logger.info("Loaded {} worker contexts via SDK registration [path={}]", accepted, workerContextConfigPath);
+        for (Map.Entry<String, List<WorkerEventBinding>> entry : bindingsByGroupId.entrySet()) {
+            runtime.declareWorkerGroup(WorkerGroupDeclaration.builder()
+                    .groupId(entry.getKey())
+                    .eventBindings(distinctBindings(entry.getValue()))
+                    .build());
+        }
+    }
+
+    private void bindWorkerGroups(MassRuntimeControl runtime, List<WorkerFixture> workers) {
+        Map<String, List<String>> groupsByAdapterNode = new LinkedHashMap<>();
+        for (WorkerFixture worker : workers) {
+            if (worker.getWorkerGroupId() == null || worker.getWorkerGroupId().isBlank()) {
+                continue;
+            }
+            groupsByAdapterNode.computeIfAbsent(worker.getAdapterId(), ignored -> new ArrayList<>())
+                    .add(worker.getWorkerGroupId());
+        }
+        for (Map.Entry<String, List<String>> entry : groupsByAdapterNode.entrySet()) {
+            String adapterNodeId = entry.getKey();
+            runtime.registerAdapterNode(AdapterNodeRegistration.builder()
+                    .adapterNodeId(adapterNodeId)
+                    .adapterType(adapterNodeId)
+                    .endpointId(adapterNodeId)
+                    .build());
+            for (String groupId : entry.getValue().stream().distinct().toList()) {
+                runtime.bindNodeGroup(NodeGroupBindingRegistration.builder()
+                        .adapterNodeId(adapterNodeId)
+                        .workerGroupId(groupId)
+                        .build());
+            }
+        }
     }
 
     private void loadRules(MassRuntimeControl runtime) {
@@ -151,14 +174,22 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
     }
 
     private void loadTasks(MassRuntimeControl runtime) {
-        TaskCreateRequestDto[] dtos = readConfig(taskConfigPath, TaskCreateRequestDto[].class);
+        BootstrapTaskFixture[] dtos = readConfig(taskConfigPath, BootstrapTaskFixture[].class);
         if (dtos == null) return;
         if (dtos.length == 0) {
             logger.info("Task config is empty, no bootstrap tasks [path={}]", taskConfigPath);
             return;
         }
-        for (TaskCreateRequestDto dto : dtos) {
-            runtime.createTask(toSdkRequest(dto));
+        for (BootstrapTaskFixture dto : dtos) {
+            TaskShellSnapshot task = runtime.createTaskShell(toShellCreateRequest(dto));
+            if (dto.getInputs() != null && !dto.getInputs().isEmpty()) {
+                runtime.appendTaskItems(task.getTaskId(), MassTaskItemBatchAppendRequest.builder()
+                        .items(new ArrayList<>(dto.getInputs()))
+                        .build());
+            }
+            if (!dto.isKeepIntakeOpen()) {
+                runtime.sealTask(task.getTaskId());
+            }
         }
         logger.info("Loaded {} task requests [path={}]", dtos.length, taskConfigPath);
     }
@@ -182,7 +213,7 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
         }
     }
 
-    private void normalizeWorker(Worker worker) {
+    private void normalizeWorker(WorkerFixture worker) {
         if (worker == null) {
             return;
         }
@@ -220,35 +251,26 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
         }
     }
 
-    private void normalizeWorkerContext(WorkerContext workerContext) {
-        if (workerContext == null) {
-            return;
-        }
-        if (workerContext.getRoutingTags() != null && !workerContext.getRoutingTags().isEmpty()) {
-            workerContext.setRoutingTags(
-                    workerContext.getRoutingTags().stream()
-                            .filter(Objects::nonNull)
-                            .map(String::toLowerCase)
-                            .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new))
-            );
-        }
-    }
-
-    private WorkerRegistration toRegistration(Worker worker) {
+    private WorkerRegistration toRegistration(WorkerFixture worker) {
         WorkerRegistration.Builder builder = WorkerRegistration.builder()
                 .workerId(worker.getWorkerId())
+                .adapterNodeId(worker.getAdapterId())
                 .workerGroupId(worker.getWorkerGroupId())
-                .eventBindings(toEventBindings(worker))
                 .adapterId(worker.getAdapterId())
                 .transportHint(worker.getOnlineStrategy())
                 .attributes(worker.getAttributes());
-        if (worker.getSupportedEventCodes() == null || worker.getSupportedEventCodes().isEmpty()) {
-            builder.supportedProjects(worker.getSupportedProjects());
-        }
         return builder.build();
     }
 
-    private List<WorkerEventBinding> toEventBindings(Worker worker) {
+    private List<WorkerEventBinding> distinctBindings(List<WorkerEventBinding> bindings) {
+        if (bindings == null || bindings.isEmpty()) {
+            return List.of();
+        }
+        List<WorkerEventBinding> distinct = bindings.stream().distinct().toList();
+        return distinct.isEmpty() ? List.of() : List.copyOf(distinct);
+    }
+
+    private List<WorkerEventBinding> toEventBindings(WorkerFixture worker) {
         List<String> supportedEventCodes = worker.getSupportedEventCodes();
         if (supportedEventCodes == null || supportedEventCodes.isEmpty()) {
             return List.of();
@@ -265,18 +287,6 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
                     .build());
         }
         return bindings.isEmpty() ? List.of() : List.copyOf(bindings);
-    }
-
-    private WorkerContextRegistration toRegistration(WorkerContext workerContext) {
-        WorkerContextRegistration.Builder builder = WorkerContextRegistration.builder()
-                .workerContextId(workerContext.getWorkerContextId())
-                .workerId(workerContext.getWorkerId())
-                .routingTags(workerContext.getRoutingTags())
-                .attributes(workerContext.getAttributes());
-        if (workerContext.getProject() != null && !workerContext.getProject().isBlank()) {
-            builder.project(workerContext.getProject());
-        }
-        return builder.build();
     }
 
     private String readConfigFile(String configPath) throws IOException {
@@ -304,17 +314,176 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
         }
     }
 
-    private MassTaskCreateRequest toSdkRequest(TaskCreateRequestDto dto) {
-        return MassTaskCreateRequest.builder()
+    private MassTaskShellCreateRequest toShellCreateRequest(BootstrapTaskFixture dto) {
+        TaskExecutionOptions executionSpec = new TaskExecutionOptions();
+        executionSpec.setBatchSize(dto.getBatchSize());
+        executionSpec.setMaxRuntimeSeconds(dto.getMaxRuntimeSeconds());
+        executionSpec.setWorkloadClass(dto.getWorkloadClass());
+        return MassTaskShellCreateRequest.builder()
                 .userId(dto.getUserId())
                 .project(dto.getProject())
-                .taskName(dto.getTaskName())
                 .sharedConfig(dto.getSharedConfig())
-                .inputs(dto.getInputs())
-                .batchSize(dto.getBatchSize())
-                .defaultMsgMaxRetryCount(dto.getDefaultMsgMaxRetryCount())
-                .openEnded(dto.isOpenEnded())
-                .maxRuntimeSeconds(dto.getMaxRuntimeSeconds())
+                .executionSpec(executionSpec)
+                .sourceRef(dto.getSourceRef())
                 .build();
+    }
+
+    private static final class WorkerFixture {
+        private String workerId;
+        private String workerGroupId;
+        private String adapterId;
+        private String onlineStrategy;
+        private String agentVersion;
+        private List<String> supportedProjects;
+        private List<String> supportedEventCodes;
+        private java.util.Map<String, String> attributes;
+
+        public String getWorkerId() {
+            return workerId;
+        }
+
+        public void setWorkerId(String workerId) {
+            this.workerId = workerId;
+        }
+
+        public String getWorkerGroupId() {
+            return workerGroupId;
+        }
+
+        public void setWorkerGroupId(String workerGroupId) {
+            this.workerGroupId = workerGroupId;
+        }
+
+        public String getAdapterId() {
+            return adapterId;
+        }
+
+        public void setAdapterId(String adapterId) {
+            this.adapterId = adapterId;
+        }
+
+        public String getOnlineStrategy() {
+            return onlineStrategy;
+        }
+
+        public void setOnlineStrategy(String onlineStrategy) {
+            this.onlineStrategy = onlineStrategy;
+        }
+
+        public String getAgentVersion() {
+            return agentVersion;
+        }
+
+        public void setAgentVersion(String agentVersion) {
+            this.agentVersion = agentVersion;
+        }
+
+        public List<String> getSupportedProjects() {
+            return supportedProjects;
+        }
+
+        public void setSupportedProjects(List<String> supportedProjects) {
+            this.supportedProjects = supportedProjects;
+        }
+
+        public List<String> getSupportedEventCodes() {
+            return supportedEventCodes;
+        }
+
+        public void setSupportedEventCodes(List<String> supportedEventCodes) {
+            this.supportedEventCodes = supportedEventCodes;
+        }
+
+        public java.util.Map<String, String> getAttributes() {
+            return attributes;
+        }
+
+        public void setAttributes(java.util.Map<String, String> attributes) {
+            this.attributes = attributes;
+        }
+    }
+
+    private static final class BootstrapTaskFixture {
+        private String userId;
+        private String project;
+        private java.util.Map<String, Object> sharedConfig;
+        private java.util.List<java.util.Map<String, Object>> inputs;
+        private int batchSize;
+        private boolean keepIntakeOpen;
+        private int maxRuntimeSeconds;
+        private String workloadClass;
+        private String sourceRef;
+
+        public String getUserId() {
+            return userId;
+        }
+
+        public void setUserId(String userId) {
+            this.userId = userId;
+        }
+
+        public String getProject() {
+            return project;
+        }
+
+        public void setProject(String project) {
+            this.project = project;
+        }
+
+        public java.util.Map<String, Object> getSharedConfig() {
+            return sharedConfig;
+        }
+
+        public void setSharedConfig(java.util.Map<String, Object> sharedConfig) {
+            this.sharedConfig = sharedConfig;
+        }
+
+        public java.util.List<java.util.Map<String, Object>> getInputs() {
+            return inputs;
+        }
+
+        public void setInputs(java.util.List<java.util.Map<String, Object>> inputs) {
+            this.inputs = inputs;
+        }
+
+        public int getBatchSize() {
+            return batchSize;
+        }
+
+        public void setBatchSize(int batchSize) {
+            this.batchSize = batchSize;
+        }
+
+        public boolean isKeepIntakeOpen() {
+            return keepIntakeOpen;
+        }
+
+        public void setKeepIntakeOpen(boolean keepIntakeOpen) {
+            this.keepIntakeOpen = keepIntakeOpen;
+        }
+
+        public int getMaxRuntimeSeconds() {
+            return maxRuntimeSeconds;
+        }
+
+        public void setMaxRuntimeSeconds(int maxRuntimeSeconds) {
+            this.maxRuntimeSeconds = maxRuntimeSeconds;
+        }
+
+        public String getWorkloadClass() {
+            return workloadClass;
+        }
+
+        public void setWorkloadClass(String workloadClass) {
+            this.workloadClass = workloadClass;
+        }
+
+        public String getSourceRef() {
+            return sourceRef;
+        }
+
+        public void setSourceRef(String sourceRef) {
+            this.sourceRef = sourceRef;
+        }
     }
 }

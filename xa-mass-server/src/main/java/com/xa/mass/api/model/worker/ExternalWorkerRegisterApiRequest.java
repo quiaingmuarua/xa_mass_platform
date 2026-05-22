@@ -3,18 +3,17 @@ package com.xa.mass.api.model.worker;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.xa.mass.api.model.AbstractUnknownFieldRequest;
 
-import java.util.List;
 import java.util.Map;
 
 @JsonIgnoreProperties(ignoreUnknown = false)
 public class ExternalWorkerRegisterApiRequest extends AbstractUnknownFieldRequest {
 
     private String workerId;
+    private String adapterNodeId;
     private String workerGroupId;
     private String adapterId;
     private String transportHint;
     private Map<String, String> attributes;
-    private List<ExternalWorkerEventBindingApiRequest> eventBindings;
 
     public String getWorkerId() {
         return workerId;
@@ -22,6 +21,14 @@ public class ExternalWorkerRegisterApiRequest extends AbstractUnknownFieldReques
 
     public void setWorkerId(String workerId) {
         this.workerId = workerId;
+    }
+
+    public String getAdapterNodeId() {
+        return adapterNodeId;
+    }
+
+    public void setAdapterNodeId(String adapterNodeId) {
+        this.adapterNodeId = adapterNodeId;
     }
 
     public String getWorkerGroupId() {
@@ -56,11 +63,4 @@ public class ExternalWorkerRegisterApiRequest extends AbstractUnknownFieldReques
         this.attributes = attributes;
     }
 
-    public List<ExternalWorkerEventBindingApiRequest> getEventBindings() {
-        return eventBindings;
-    }
-
-    public void setEventBindings(List<ExternalWorkerEventBindingApiRequest> eventBindings) {
-        this.eventBindings = eventBindings;
-    }
 }

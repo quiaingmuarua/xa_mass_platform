@@ -18,18 +18,66 @@ flows, commands, and module-local inventories.
 - XA Mass Platform is a general distributed task scheduling platform
 - the kernel problem is: match structured work items to heterogeneous,
   stateful executors, track per-item result, and converge task-level state
-- stable kernel: `Task / TaskMsg / TaskMsgAttempt / assignment / result / audit / terminal policy`
+- stable kernel: `Task / assignment / result / audit / terminal policy`
+- kernel truth is explicitly split across:
+  - `Task.contract`
+  - `Task.intakeStatus`
+  - `TaskWorkRuntime` for ready/delayed/lease/counter truth
+- result convergence is runtime-first, but the active owner split must be
+  verified from `RESULT_BOUNDARY_BASELINE.md` plus current engine/runtime code
 - runtime seams are transport-neutral: task dispatch, result ingest, and system events
 - runtime entry is SDK-first; demo HTTP/UI surfaces validate the kernel but do not redefine it
 - observability belongs in logs, traces, counters, and bounded diagnostics, not scan-heavy hot-path projections
+- canonical trace write-path ownership stays in `platform_infra/mass-trace-sink`;
+  operator trace read/query ownership stays in `xa-mass-trace`
+- process-local EventBus bridging is optional shell wiring, not default engine runtime truth
 
-Canonical slots:
+SDK-first boundary rules:
+
+- the stable integration boundary for workers, embedding clients, and external
+  automation is the SDK contract surface, not server DTOs and not engine/base
+  aggregates
+- `xa-mass-server` is the reference host and validation shell; host auth,
+  project, tenant, user, and console requirements may shape server APIs, but
+  they must not redefine kernel owner semantics
+- `xa-mass-base` and `xa-mass-engine` models may evolve quickly; public
+  compatibility is preserved through SDK request models and SDK snapshot
+  read-models instead of freezing internal `Task` / `Worker` / runtime types
+- SDK snapshots are contract read-models only; engine/runtime logic must not
+  consume SDK snapshots as decision input
+
+Current owner vocabulary:
+
+- `Task` is the task/control aggregate truth
+- `Task.contract` is the runtime contract truth: `SESSION | BATCH`
+- `Task.intakeStatus` is the intake-window truth: `OPEN | SEALED`
+- `TaskWorkRuntime` is the hot-path owner for ready work, lease, retry, expiry,
+  and backpressure truth
+- result apply and visible final-result ownership are runtime-first concerns;
+  verify `TaskResultService`, `TaskWorkRuntime.applyResultWithContext(...)`,
+  `TaskResultRuntime`, and `RESULT_BOUNDARY_BASELINE.md` together before
+  documenting the split more narrowly
+- `xa-mass-trace` is the current operator-facing read path for canonical trace
+  artifacts; it does not own a second event schema or lifecycle truth
+- current bounded compatibility residue lives behind engine-internal owners plus
+  neutral storage-edge projection records; legacy message-model naming is
+  intentionally not part of the active public/kernel vocabulary
+- `TaskMessageProjection` / `TaskMessageAttemptProjection` are the current
+  storage-edge compatibility residue shapes
+- `WorkerContext` is retired historical compatibility vocabulary, not active
+  SDK/server/storage/trace truth. It is not an engine scheduling truth and must
+  not be reintroduced as the worker capability or resource-lifecycle owner.
+
+Stable kernel slots:
 
 - worker: `Worker`
-- optional worker context: `WorkerContext`
+- worker scheduling view: worker registration, event bindings, scheduling
+  attributes, reachability, and runtime load/capacity facts
+- task contract boundary: `Task.contract`
+- task intake boundary: `Task.intakeStatus`
 - task-level workload boundary: `Task.workloadClass`
-- work item: `TaskMsg`
-- per-item payload: `TaskMsg.input/output`
+- runtime work item identity: `taskId + messageId`
+- per-item runtime payload boundary: runtime ingress payload or `payloadRef`
 - task-level dispatch config: `Task.sharedConfig`
 
 ## 3. Model Boundaries
@@ -37,8 +85,9 @@ Canonical slots:
 Keep one canonical truth per layer:
 
 - HTTP API: typed controller-edge DTOs plus `ApiResponse<T>`
-- SDK API: `MassTaskCreateRequest`, `MassTaskRequest`, `EventDefinition`
-- engine/core: `Task`, `TaskMsg`, `TaskMsgAttempt`, matching, lifecycle, and terminal semantics
+- SDK API: `MassTaskShellCreateRequest`, `MassTaskItemBatchAppendRequest`, `EventDefinition`
+- engine/core: `Task` aggregate truth plus matching, lifecycle, terminal
+  semantics, and engine-internal bounded compatibility projection handling
 - transport runtime: transport-neutral dispatch/result/system-event seams
 - adapter layer: protocol-specific frame I/O and adapter-local codec only
 
@@ -46,23 +95,37 @@ Boundary rules:
 
 - do not let protocol fields become business or lifecycle truth
 - `EventDefinition.code` is globally unique capability identity
+- do not let server view DTOs or SDK snapshots become kernel runtime truth
+- task contract owns lifecycle, terminal, and default dispatch expectation
 - task runtime scheduling semantics resolve from `Task.workloadClass`, not from free-form `sharedConfig`
-- task orchestration and worker matching belong at task or task-slice level; do not reintroduce per-`TaskMsg` rule matching on the hot path
-- `TaskMsg` read surfaces are bounded compatibility or audit helpers, not the production business-detail query model
+- task orchestration and worker matching belong at task or task-slice level; do not reintroduce per-message rule matching on the hot path
+- message/attempt read surfaces are bounded compatibility or audit helpers, not
+  the production business-detail query model
 
 ## 4. Mainline Reality
 
+- current mainline execution path:
+  - `Task shell -> item append -> runtime enqueue -> dispatch binder -> transport delivery view -> result convergence -> task state`
 - real Boot entry: `xa-mass-server`
 - embedded runtime composition: `xa-mass-sdk`
 - Java baseline: JDK 21 with virtual threads routed through explicit runtime abstractions
 - current runtime/storage split:
-  - `platform_infra/mass-runtime-api` owns queue/lease/counter contracts
+  - `platform_infra/mass-runtime-api` owns queue/lease/counter contracts plus
+    the active result-runtime boundary
   - `platform_infra/mass-runtime-memory` is the current verified runtime implementation
   - `platform_infra/mass-storage-api` owns task/worker/rule storage contracts
+  - `platform_infra/mass-trace-sink` owns canonical trace schema + sink write
+    path; `xa-mass-trace` owns local operator read/query over that output
 - current engine truth:
-  - `TaskWorkRuntime` owns ready work, active lease, retry scheduling, expiry, and backpressure truth
-  - `TaskMsg` remains the bounded logical compatibility projection
-  - `TaskMsgAttempt` remains the auditable attempt history
+  - `TaskWorkRuntime` owns ready work, active lease, retry scheduling, expiry,
+    and backpressure truth
+  - result convergence is runtime-first and currently crosses
+    `TaskResultService`, `TaskWorkRuntime.applyResultWithContext(...)`, and the
+    result-runtime/public-result boundary documented in
+    `RESULT_BOUNDARY_BASELINE.md`
+  - bounded message/attempt compatibility state is carried through
+    `TaskMessageProjection` / `TaskMessageAttemptProjection` plus
+    engine-internal projection access
   - `TaskManager` remains the engine-internal orchestration facade; cross-module
     callers should prefer `TaskCommandService`, `TaskQueryService`,
     `TaskResultIngestFacade`, `TaskEventService`, and runtime ports
@@ -71,17 +134,57 @@ Boundary rules:
   - `xa-mass-engine` for `concurrency`
   - `xa-mass-server` for Boot-shell `E2E`
 
+Fast code verification path for new agents:
+
+Read these before inferring architecture from historical vocabulary:
+
+1. `xa-mass-engine/src/main/java/com/xa/mass/engine/TaskManager.java`
+2. `xa-mass-engine/src/main/java/com/xa/mass/engine/TaskLifecycleService.java`
+3. `xa-mass-engine/src/main/java/com/xa/mass/engine/TaskResultService.java`
+4. `platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/api/TaskWorkRuntime.java`
+5. `platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/api/TaskResultRuntime.java`
+6. `platform_infra/mass-storage-api/src/main/java/com/xa/mass/storage/api/TaskDetailStore.java`
+7. `doc/RESULT_BOUNDARY_BASELINE.md`
+8. `xa-mass-trace/README.md`
+9. `doc/TRACE_CONTRACT.md`
+
+Read them to verify three things quickly:
+
+- runtime admission happens through `TaskWorkRuntime`, not through a
+  task-message CRUD mainline
+- callback/expiry/result convergence is runtime-first; verify the split between
+  runtime apply truth, stable-final result rows, and compatibility residue from
+  the active result baseline and code
+- bounded message/attempt reads live behind explicit compatibility surfaces and
+  are not the default engine query model
+- canonical trace diagnosis should start from `xa-mass-trace` over sink output,
+  not from MDC string logs or ad hoc projection reads
+
 ## 5. Current Contract Summary
 
-- task creation route: `POST /status/api/tasks`
+- task shell creation route: `POST /api/v1/tasks`
 - `project` and `userId` are required business bindings on create
-- `inputs` is the supported create shape for work-item materialization
-- `workloadClass` is explicit at create time and defaults to `BULK`
+- shell create runs in single-tenant mode with tenant-aware semantics; current
+  default tenant is `default`
+- `Task.project` is the task-owned business container; capability/event auth is
+  expected to converge on project grant plus explicit ingest declaration rather
+  than task-level event truth
+- `taskName` is a server-derived display field, not a client-provided shell
+  truth field
+- work-item materialization is explicit through `POST /api/v1/tasks/{taskId}/items`
+- `executionSpec` is the task-level execution policy envelope; current defaults
+  remain `contract=BATCH`, `profile=STANDARD`, `workloadClass=BULK`,
+  `batchSize=1`, `maxRuntimeSeconds=0`
+- ingress form such as inline create, repeated append, file import, or
+  `sourceRef` metadata does not define the runtime contract; engine lifecycle,
+  dispatch, and terminal semantics come from `Task.contract`
 - aggregate truth stays on `Task.project`, `Task.user`, and `Task.sharedConfig`
-- per-item truth stays on `TaskMsg.input/output`
-- `Task.intakeStatus` is the append-window truth; `openEnded` is compatibility projection only
+- per-item runtime truth stays on the runtime ingress item and dispatch/result
+  flow; bounded compatibility projection may retain payload summary or
+  `payloadRef`
+- `Task.intakeStatus` is the append-window truth; the legacy boolean intake projection has been removed from the task model
 - public contracts do not define a dedicated routing-code field
-- engine-provided `TaskMsg` reads remain bounded compatibility helpers
+- engine-provided message/attempt reads remain bounded compatibility helpers
 
 Lifecycle and trace detail live in:
 
@@ -92,10 +195,16 @@ Lifecycle and trace detail live in:
 ## 6. Hard Guardrails
 
 - prefer transport-neutral names and contracts for new cross-adapter boundaries
-- `Task.sharedConfig` and `TaskMsg.input/output` are the main payload boundaries
+- `Task.sharedConfig` plus runtime item payload / `payloadRef` are the main
+  payload boundaries
 - `Task.project` and `Task.user` are first-class task truth; do not push them back into bags or free-form attributes
-- `WorkerContext.workerId` is the single owner truth
-- `WorkerMatchContext` plus rule evaluation is the matching truth
+- worker capability truth is moving to `WorkerGroup.eventBindings`; worker
+  registration still carries compatibility event bindings during convergence,
+  but scheduling decisions must consume group capability, worker scheduling
+  facts, and runtime load/capacity facts, not `WorkerContext`
+- `WorkerMatchContext` plus rule evaluation is current matching input, but it
+  must stay a scheduling-context object and must not become a replacement
+  worker-resource owner
 - UI pages, mock runtime, and demo APIs must not redefine the kernel
 - do not add full-table, full-task, or full-attempt scans to hot paths
 - new or changed policy seams must keep ownership explicit across matching, assignment, attempt, release, refill, intake, control, and terminal decisions

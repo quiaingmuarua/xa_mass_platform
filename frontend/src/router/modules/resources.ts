@@ -16,6 +16,38 @@ export const resourceRoutes: AppRouteRecordRaw[] = [
         },
         children: [
             {
+                path: 'projects',
+                name: 'projects',
+                component: () =>
+                    import('@/pages/resources/projects/ProjectsPage.vue'),
+                meta: {
+                    title: 'Projects',
+                    icon: 'Notebook',
+                    order: 21,
+                    hidden: false,
+                    keepAlive: true,
+                    requiresAuth: true,
+                    permissions: ['task:view'],
+                    menuVisible: true,
+                },
+            },
+            {
+                path: 'projects/:projectCode',
+                name: 'project-detail',
+                component: () =>
+                    import('@/pages/resources/projects/ProjectDetailPage.vue'),
+                meta: {
+                    title: 'Project Detail',
+                    icon: 'Notebook',
+                    order: 22,
+                    hidden: true,
+                    keepAlive: false,
+                    requiresAuth: true,
+                    permissions: ['task:view'],
+                    menuVisible: false,
+                },
+            },
+            {
                 path: 'workers',
                 name: 'workers',
                 component: () =>
@@ -23,7 +55,7 @@ export const resourceRoutes: AppRouteRecordRaw[] = [
                 meta: {
                     title: 'Workers',
                     icon: 'Cpu',
-                    order: 21,
+                    order: 23,
                     hidden: false,
                     keepAlive: true,
                     requiresAuth: true,
@@ -39,28 +71,12 @@ export const resourceRoutes: AppRouteRecordRaw[] = [
                 meta: {
                     title: 'Worker Detail',
                     icon: 'Cpu',
-                    order: 21,
+                    order: 23,
                     hidden: true,
                     keepAlive: false,
                     requiresAuth: true,
                     permissions: ['worker:view'],
                     menuVisible: false,
-                },
-            },
-            {
-                path: 'worker-contexts',
-                name: 'worker-contexts',
-                component: () =>
-                    import('@/pages/resources/worker-contexts/WorkerContextsPage.vue'),
-                meta: {
-                    title: 'Worker Contexts',
-                    icon: 'Connection',
-                    order: 22,
-                    hidden: false,
-                    keepAlive: true,
-                    requiresAuth: true,
-                    permissions: ['worker:view'],
-                    menuVisible: true,
                 },
             },
             {
@@ -71,7 +87,7 @@ export const resourceRoutes: AppRouteRecordRaw[] = [
                 meta: {
                     title: 'Rules',
                     icon: 'SetUp',
-                    order: 23,
+                    order: 25,
                     hidden: false,
                     keepAlive: true,
                     requiresAuth: true,
@@ -87,7 +103,7 @@ export const resourceRoutes: AppRouteRecordRaw[] = [
                 meta: {
                     title: 'Configs',
                     icon: 'Tools',
-                    order: 24,
+                    order: 26,
                     hidden: false,
                     keepAlive: true,
                     requiresAuth: true,

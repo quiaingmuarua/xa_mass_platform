@@ -1,9 +1,9 @@
 package com.xa.mass.engine.monkey.report;
 
-import com.xa.mass.engine.service.AssignmentRecordService;
+import com.xa.mass.engine.service.AssignmentDiagnosticView;
 
 public interface AssignmentPipelineStep {
-    void process(AssignmentRecordService recordService);
+    void process(AssignmentDiagnosticView recordService);
 
     String getName();
 

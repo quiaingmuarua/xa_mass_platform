@@ -3,7 +3,6 @@ package com.xa.mass.api.auth;
 import com.xa.mass.api.internal.SdkCredentialAuthSupport;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.PrincipalContext;
-import com.xa.mass.base.model.UserRef;
 import com.xa.mass.sdk.authz.AuthorizationDecision;
 import com.xa.mass.sdk.authz.AuthorizationPolicy;
 import com.xa.mass.sdk.authz.AuthorizationReasonCode;
@@ -40,7 +39,7 @@ public class ApiAuthorizationService {
         this.authorizationPolicy = authorizationPolicy == null ? new DefaultAuthorizationPolicy() : authorizationPolicy;
     }
 
-    public PrincipalContext resolveSdkSubmitter(String apiKeyHeader,
+    public PrincipalContext resolveSubmitterPrincipal(String apiKeyHeader,
                                                 String authorizationHeader,
                                                 ApiSecurityScenario scenario,
                                                 Map<String, Object> context) {
@@ -63,7 +62,7 @@ public class ApiAuthorizationService {
                                                                               String requestedUserId,
                                                                               Map<String, Object> context) {
         PrincipalContext submitter =
-                resolveSdkSubmitter(apiKeyHeader, authorizationHeader, ApiSecurityScenario.SUBMITTER_TASK_CREATE, context);
+                resolveSubmitterPrincipal(apiKeyHeader, authorizationHeader, ApiSecurityScenario.SUBMITTER_TASK_CREATE, context);
         if (submitter == null) {
             return null;
         }
@@ -109,21 +108,50 @@ public class ApiAuthorizationService {
 
     public PrincipalContext resolveAuthorizedTaskViewer(String apiKeyHeader,
                                                         String authorizationHeader,
-                                                        com.xa.mass.base.model.Task task,
+                                                        String taskId,
+                                                        String project,
+                                                        Map<String, Object> sharedConfig,
                                                         Map<String, Object> context) {
         PrincipalContext submitter =
-                resolveSdkSubmitter(apiKeyHeader, authorizationHeader, ApiSecurityScenario.SUBMITTER_TASK_VIEW, context);
+                resolveSubmitterPrincipal(apiKeyHeader, authorizationHeader, ApiSecurityScenario.SUBMITTER_TASK_VIEW, context);
         if (submitter == null) {
             return null;
         }
-        requireTaskOwnershipAccess(submitter, task, ApiSecurityScenario.SUBMITTER_TASK_VIEW, context);
+        requireTaskOwnershipAccess(submitter, taskId, project, sharedConfig, ApiSecurityScenario.SUBMITTER_TASK_VIEW, context);
         return submitter;
     }
 
     public PrincipalContext resolveTaskViewerCredential(String apiKeyHeader,
                                                         String authorizationHeader,
                                                         Map<String, Object> context) {
-        return resolveSdkSubmitter(apiKeyHeader, authorizationHeader, ApiSecurityScenario.SUBMITTER_TASK_VIEW, context);
+        return resolveSubmitterPrincipal(apiKeyHeader, authorizationHeader, ApiSecurityScenario.SUBMITTER_TASK_VIEW, context);
+    }
+
+    public PrincipalContext resolveAuthorizedTaskAppender(String apiKeyHeader,
+                                                          String authorizationHeader,
+                                                          String taskId,
+                                                          String project,
+                                                          Map<String, Object> sharedConfig,
+                                                          List<String> eventCodes,
+                                                          Map<String, Object> context) {
+        PrincipalContext submitter =
+                resolveSubmitterPrincipal(apiKeyHeader, authorizationHeader, ApiSecurityScenario.SUBMITTER_TASK_APPEND, context);
+        if (submitter == null) {
+            return null;
+        }
+        requireTaskOwnershipAccess(submitter, taskId, project, sharedConfig, ApiSecurityScenario.SUBMITTER_TASK_APPEND, context);
+        List<String> normalizedEventCodes = eventCodes == null ? List.of() : List.copyOf(eventCodes);
+        for (String eventCode : normalizedEventCodes) {
+            requireSubmitterTaskAccess(
+                    submitter,
+                    project,
+                    eventCode,
+                    null,
+                    ApiSecurityScenario.SUBMITTER_TASK_APPEND,
+                    context
+            );
+        }
+        return submitter;
     }
 
     public void requireOperatorRoutePermission(PrincipalContext principal,
@@ -150,8 +178,19 @@ public class ApiAuthorizationService {
                                            String userId,
                                            ApiSecurityScenario scenario,
                                            Map<String, Object> context) {
+        requireSubmitterTaskAccess(principal, project, eventCode, userId, scenario, context);
+    }
+
+    private void requireSubmitterTaskAccess(PrincipalContext principal,
+                                            String project,
+                                            String eventCode,
+                                            String userId,
+                                            ApiSecurityScenario scenario,
+                                            Map<String, Object> context) {
         Map<String, Object> resourceAttributes = new LinkedHashMap<>();
-        resourceAttributes.put(DefaultAuthorizationPolicy.ATTR_REQUIRED_PERMISSION, scenario.requiredPermission());
+        if (scenario.requiredPermission() != null && !scenario.requiredPermission().isBlank()) {
+            resourceAttributes.put(DefaultAuthorizationPolicy.ATTR_REQUIRED_PERMISSION, scenario.requiredPermission());
+        }
         if (userId != null) {
             resourceAttributes.put(DefaultAuthorizationPolicy.ATTR_USER_ID, userId);
         }
@@ -199,17 +238,19 @@ public class ApiAuthorizationService {
     }
 
     public void requireTaskOwnershipAccess(PrincipalContext principal,
-                                           com.xa.mass.base.model.Task task,
+                                           String taskId,
+                                           String project,
+                                           Map<String, Object> sharedConfig,
                                            ApiSecurityScenario scenario,
                                            Map<String, Object> context) {
-        Map<String, Object> resourceAttributes = taskOwnershipAttributes(task);
+        Map<String, Object> resourceAttributes = taskOwnershipAttributes(taskId, project, sharedConfig);
         AuthorizationDecision decision = TaskOwnershipSupport.authorizeOwnership(
                 principal,
-                task != null ? task.getSharedConfig() : null
+                sharedConfig
         );
         if (!decision.isAllowed()) {
             logDenied(scenario.surface(), principal, scenario.resourceType(), scenario.action(),
-                    task != null ? task.getProject() : null,
+                    project,
                     null,
                     null,
                     resourceAttributes,
@@ -221,10 +262,10 @@ public class ApiAuthorizationService {
     }
 
     public boolean allowsTaskOwnershipAccess(PrincipalContext principal,
-                                             com.xa.mass.base.model.Task task) {
+                                             Map<String, Object> sharedConfig) {
         return TaskOwnershipSupport.authorizeOwnership(
                 principal,
-                task != null ? task.getSharedConfig() : null
+                sharedConfig
         ).isAllowed();
     }
 
@@ -285,19 +326,21 @@ public class ApiAuthorizationService {
         return Map.copyOf(context);
     }
 
-    private Map<String, Object> taskOwnershipAttributes(com.xa.mass.base.model.Task task) {
-        if (task == null) {
+    private Map<String, Object> taskOwnershipAttributes(String taskId,
+                                                        String project,
+                                                        Map<String, Object> sharedConfig) {
+        if (taskId == null && project == null && (sharedConfig == null || sharedConfig.isEmpty())) {
             return Map.of();
         }
         Map<String, Object> attributes = new LinkedHashMap<>();
-        if (task.getTid() != null) {
-            attributes.put("taskId", task.getTid());
+        if (taskId != null) {
+            attributes.put("taskId", taskId);
         }
-        if (task.getProject() != null) {
-            attributes.put("project", task.getProject());
+        if (project != null) {
+            attributes.put("project", project);
         }
         com.xa.mass.sdk.authz.TaskOwnershipStamp stamp =
-                com.xa.mass.sdk.authz.TaskOwnershipStamp.fromSharedConfig(task.getSharedConfig());
+                com.xa.mass.sdk.authz.TaskOwnershipStamp.fromSharedConfig(sharedConfig);
         if (stamp != null) {
             attributes.put("ownerPrincipalId", stamp.getCreatedByPrincipalId());
             attributes.put("ownerPrincipalType", stamp.getCreatedByPrincipalType().name());
@@ -326,12 +369,19 @@ public class ApiAuthorizationService {
         String normalizedRequestedUserId = SdkCredentialAuthSupport.firstNonBlank(requestedUserId);
         String scopedUserId = SdkCredentialAuthSupport.firstNonBlank(submitter.getUserId());
         if (scopedUserId != null) {
-            return UserRef.requireUserId(scopedUserId);
+            return requireUserId(scopedUserId);
         }
         if (normalizedRequestedUserId != null) {
-            return UserRef.requireUserId(normalizedRequestedUserId);
+            return requireUserId(normalizedRequestedUserId);
         }
-        return UserRef.requireUserId(submitter.getPrincipalId());
+        return requireUserId(submitter.getPrincipalId());
+    }
+
+    private String requireUserId(String userId) {
+        if (userId == null || userId.isBlank()) {
+            throw new IllegalArgumentException("userId is required");
+        }
+        return userId.trim();
     }
 
     public record AuthorizedSubmitterTaskCreate(PrincipalContext principal,

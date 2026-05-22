@@ -28,8 +28,8 @@
           <div class="metric-value">{{ workerCount }}</div>
         </div>
         <div class="metric-tile">
-          <div class="metric-label">Worker contexts</div>
-          <div class="metric-value">{{ contextCount }}</div>
+          <div class="metric-label">Capabilities</div>
+          <div class="metric-value">{{ capabilityCount }}</div>
         </div>
         <div class="metric-tile">
           <div class="metric-label">Rules</div>
@@ -47,8 +47,8 @@
           <div class="metric-value">{{ onlineWorkerCount }}</div>
         </div>
         <div class="metric-tile">
-          <div class="metric-label">Contexts in use</div>
-          <div class="metric-value">{{ inUseContextCount }}</div>
+          <div class="metric-label">Locked workers</div>
+          <div class="metric-value">{{ lockedWorkerCount }}</div>
         </div>
         <div class="metric-tile">
           <div class="metric-label">Integration mode</div>
@@ -141,7 +141,7 @@
 import {computed, onMounted, ref} from 'vue'
 import {listRules} from '@/api/rules'
 import {listTasks} from '@/api/tasks'
-import {listWorkerContexts, listWorkers} from '@/api/workers'
+import {listWorkers} from '@/api/workers'
 import {getAppConfig} from '@/app/config'
 import {useAuth} from '@/auth/use-auth'
 import PageEmptyState from '@/components/PageEmptyState.vue'
@@ -149,7 +149,7 @@ import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
 import type {RuleListItem} from '@/types/rules'
 import type {TaskListItem} from '@/types/tasks'
-import type {WorkerContextListItem, WorkerListItem,} from '@/types/workers'
+import type {WorkerListItem} from '@/types/workers'
 import {toErrorMessage} from '@/utils/errors'
 
 const { user } = useAuth()
@@ -158,24 +158,29 @@ const loading = ref(false)
 const errorMessage = ref('')
 const tasks = ref<TaskListItem[]>([])
 const workers = ref<WorkerListItem[]>([])
-const workerContexts = ref<WorkerContextListItem[]>([])
 const rules = ref<RuleListItem[]>([])
 
 const taskCount = computed(() => tasks.value.length)
 const workerCount = computed(() => workers.value.length)
-const contextCount = computed(() => workerContexts.value.length)
 const ruleCount = computed(() => rules.value.length)
+const capabilityCount = computed(
+  () =>
+    new Set(
+      workers.value.flatMap((worker) =>
+        worker.eventBindings?.length
+          ? worker.eventBindings.map((binding) => binding.eventCode)
+          : worker.supportedEventCodes,
+      ),
+    ).size,
+)
 const runningTaskCount = computed(
   () => tasks.value.filter((task) => task.status === 'RUNNING').length,
 )
 const onlineWorkerCount = computed(
   () => workers.value.filter((worker) => worker.status === 'ONLINE').length,
 )
-const inUseContextCount = computed(
-  () =>
-    workerContexts.value.filter((context) =>
-      ['RESERVED', 'OCCUPIED'].includes(context.status),
-    ).length,
+const lockedWorkerCount = computed(
+  () => workers.value.filter((worker) => worker.locked).length,
 )
 const taskStatusCounts = computed<Record<string, number>>(() => {
   return tasks.value.reduce<Record<string, number>>((acc, task) => {
@@ -195,21 +200,18 @@ async function loadOverview(): Promise<void> {
   errorMessage.value = ''
 
   try {
-    const [taskResponse, workerResponse, contextResponse, ruleResponse] =
+    const [taskResponse, workerResponse, ruleResponse] =
       await Promise.all([
         listTasks(),
         listWorkers(),
-        listWorkerContexts(),
         listRules(),
       ])
     tasks.value = taskResponse.items
     workers.value = workerResponse.items
-    workerContexts.value = contextResponse.items
     rules.value = ruleResponse.items
   } catch (error) {
     tasks.value = []
     workers.value = []
-    workerContexts.value = []
     rules.value = []
     errorMessage.value = toErrorMessage(
       error,

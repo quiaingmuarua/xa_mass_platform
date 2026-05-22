@@ -4,6 +4,8 @@ import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
+import com.xa.mass.transport.packet.TransportPacket;
+import com.xa.mass.transport.runtime.packet.TransportPacketFactory;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -29,8 +31,8 @@ class InMemoryTransportDeliveryStoreTest {
 
         assertEquals(DispatchOutcomeStatus.QUEUED, pollingOutcome.getStatus());
         assertEquals(DispatchOutcomeStatus.QUEUED, websocketOutcome.getStatus());
-        assertEquals(List.of(pollingItem), payloads(store.drain("polling", "worker-1", 10)));
-        assertEquals(List.of(websocketItem), payloads(store.drain("websocket", "worker-1", 10)));
+        assertEquals(List.of("msg-1"), messageIds(store.drain("polling", "worker-1", 10)));
+        assertEquals(List.of("msg-2"), messageIds(store.drain("websocket", "worker-1", 10)));
     }
 
     @Test
@@ -202,7 +204,7 @@ class InMemoryTransportDeliveryStoreTest {
         Thread.sleep(50L);
         store.enqueue(envelope("polling", item));
 
-        assertEquals(List.of(item), payloads(polled.get(1, TimeUnit.SECONDS)));
+        assertEquals(List.of("msg-1"), messageIds(polled.get(1, TimeUnit.SECONDS)));
     }
 
     @Test
@@ -226,8 +228,8 @@ class InMemoryTransportDeliveryStoreTest {
         assertEquals(List.of("msg-1", "msg-2"),
                 List.of(firstPoller.get(1, TimeUnit.SECONDS), secondPoller.get(1, TimeUnit.SECONDS)).stream()
                         .flatMap(List::stream)
-                        .map(TransportDispatchEnvelope::getPayload)
-                        .map(TaskDispatchItem::getMessageId)
+                        .map(TransportDispatchEnvelope::getPacket)
+                        .map(TransportPacket::messageId)
                         .sorted()
                         .toList());
     }
@@ -314,8 +316,8 @@ class InMemoryTransportDeliveryStoreTest {
                 "demoApp",
                 "agent",
                 0,
+                "attempt-" + messageId,
                 workerId,
-                null,
                 "batch-1",
                 Map.of("target", "target-1"),
                 Map.of()
@@ -327,23 +329,21 @@ class InMemoryTransportDeliveryStoreTest {
     }
 
     private TransportDispatchEnvelope envelope(String adapterId, TaskDispatchItem item, long createdAtEpochMillis) {
+        String deliveryId = "delivery-" + adapterId + "-" + item.getMessageId();
         return new TransportDispatchEnvelope(
-                "delivery-" + adapterId + "-" + item.getMessageId(),
-                adapterId,
-                item.getWorkerId(),
-                item.attemptId(),
-                item,
+                deliveryId,
+                new TransportPacketFactory(() -> deliveryId)
+                        .fromDispatchView(adapterId, item.getWorkerId(), item.attemptId(), item),
                 createdAtEpochMillis
         );
     }
 
     private TransportDispatchEnvelope invalidEnvelope(String adapterId, TaskDispatchItem item) {
+        String deliveryId = "delivery-" + adapterId + "-" + item.getMessageId();
         return new TransportDispatchEnvelope(
-                "delivery-" + adapterId + "-" + item.getMessageId(),
-                adapterId,
-                " ",
-                item.attemptId(),
-                item,
+                deliveryId,
+                new TransportPacketFactory(() -> deliveryId)
+                        .fromDispatchView(adapterId, " ", item.attemptId(), item),
                 1L
         );
     }
@@ -364,12 +364,11 @@ class InMemoryTransportDeliveryStoreTest {
         return (List<TransportDispatchEnvelope>) result;
     }
 
-    private List<TaskDispatchItem> payloads(List<TransportDispatchEnvelope> envelopes) {
-        return envelopes.stream().map(TransportDispatchEnvelope::getPayload).toList();
-    }
-
     private List<String> messageIds(List<TransportDispatchEnvelope> envelopes) {
-        return envelopes.stream().map(TransportDispatchEnvelope::getPayload).map(TaskDispatchItem::getMessageId).toList();
+        return envelopes.stream()
+                .map(TransportDispatchEnvelope::getPacket)
+                .map(TransportPacket::messageId)
+                .toList();
     }
 
     private void waitUntil(BooleanSupplier condition) throws InterruptedException {
@@ -387,3 +386,4 @@ class InMemoryTransportDeliveryStoreTest {
         boolean getAsBoolean();
     }
 }
+

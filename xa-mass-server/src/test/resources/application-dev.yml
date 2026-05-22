@@ -1,17 +1,4 @@
 mass:
-  mock:
+  demo:
     bootstrap:
-      enabled: true
-      register-dev-catalog: true
-      register-dev-submitters: true
-      load-rules: true
-
-sample:
-  bootstrap:
-    api-key: dev-bootstrap-key
-  worker:
-    auto-start: false
-
-mock:
-  client:
-    auto-start: false
+      enabled: false

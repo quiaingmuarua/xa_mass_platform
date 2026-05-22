@@ -13,7 +13,7 @@ class TaskRuntimeProfileResolverTest {
     @Test
     void resolvesInteractivePolicyProfile() {
         Task task = new Task();
-        task.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
+        task.getExecutionSpec().setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
 
         TaskRuntimeProfile profile = resolver.resolve(task);
 

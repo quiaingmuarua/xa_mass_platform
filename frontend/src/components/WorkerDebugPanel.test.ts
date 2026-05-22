@@ -4,10 +4,10 @@ import {mockAdminUser, mockViewerUser} from '@/auth/mock-user'
 import {setMockCurrentUser} from '@/auth/use-auth'
 import WorkerDebugPanel from '@/components/WorkerDebugPanel.vue'
 
-const createTask = vi.hoisted(() => vi.fn())
+const invokeSyncTaskDebug = vi.hoisted(() => vi.fn())
 
 vi.mock('@/api/tasks', () => ({
-    createTask,
+    invokeSyncTaskDebug,
 }))
 
 describe('WorkerDebugPanel', () => {
@@ -25,14 +25,17 @@ describe('WorkerDebugPanel', () => {
     }
 
     beforeEach(() => {
-        createTask.mockReset()
+        invokeSyncTaskDebug.mockReset()
     })
 
     it('submits a targeted task instead of a direct worker message', async () => {
         setMockCurrentUser(mockAdminUser)
-        createTask.mockResolvedValue({
+        invokeSyncTaskDebug.mockResolvedValue({
             taskId: 'task-debug-001',
-            message: 'Task created',
+            messageId: 'msg-debug-001',
+            synced: true,
+            timedOut: false,
+            status: 'SUCCESS',
         })
 
         const wrapper = mount(WorkerDebugPanel, {
@@ -55,24 +58,18 @@ describe('WorkerDebugPanel', () => {
         await submitButton!.trigger('click')
         await flushPromises()
 
-        expect(createTask).toHaveBeenCalledWith({
+        expect(invokeSyncTaskDebug).toHaveBeenCalledWith({
             userId: mockAdminUser.id,
             project: 'demoApp',
-            taskName: 'worker-debug:mock.state.get',
             eventCode: 'mock.state.get',
-            mode: 'SINGLE_RUN',
-            payloadType: 'JSON',
             sharedConfig: {
                 targetWorkerId: 'worker-us-01',
             },
-            inputs: [
+            items: [
                 {
                     includeRuntime: true,
                 },
             ],
-            batchSize: 1,
-            defaultMsgMaxRetryCount: 0,
-            openEnded: false,
             maxRuntimeSeconds: 60,
         })
         expect(wrapper.text()).toContain('task-debug-001')

@@ -4,63 +4,79 @@ import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.worker.WorkerStatus;
+import com.xa.mass.base.event.DeliveryAcknowledgementMode;
+import com.xa.mass.base.event.EventConvergenceMode;
+import com.xa.mass.base.event.PriorityClass;
+import com.xa.mass.base.event.ResponseMode;
+import com.xa.mass.base.event.TargetScope;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
 import com.xa.mass.command.event.CoreEventDescriptor;
 import com.xa.mass.command.event.CoreEventResponse;
 import com.xa.mass.command.event.InMemoryMassEventRuntime;
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.engine.TaskQueryService;
-import com.xa.mass.engine.TaskMessageLogicallyFinalListener;
-import com.xa.mass.engine.TaskResultIngestFacade;
+import com.xa.mass.engine.TaskWorkLogicallyFinalEvent;
+import com.xa.mass.engine.TaskWorkLogicallyFinalListener;
+import com.xa.mass.engine.TaskWorkProjectionState;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
-import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.model.TaskCreateRequestDto;
+import com.xa.mass.base.model.TaskExecutionSpec;
+import com.xa.mass.base.model.TaskShellCreateRequestDto;
+import com.xa.mass.engine.model.TaskAppendReceipt;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
+import com.xa.mass.engine.worker.EventKey;
+import com.xa.mass.engine.watchdog.PollingIdleBackoffPolicy;
+import com.xa.mass.storage.api.RuleStorage;
+import com.xa.mass.storage.api.WorkerLookupStore;
+import com.xa.mass.storage.api.WorkerStorage;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.rule.RuleDefinition;
-import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.storage.rule.RuleType;
-import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
-import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
-import com.xa.mass.transport.websocket.runtime.WebSocketEmbeddedRuntimeSupport;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
 import com.xa.mass.transport.websocket.session.ServerSessionManager;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.PrincipalContext;
-import com.xa.mass.sdk.auth.SubmitterMetadata;
+import com.xa.mass.sdk.auth.SubmitterProfile;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
-import com.xa.mass.sdk.catalog.ProjectMetadata;
-import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
+import com.xa.mass.sdk.catalog.ProjectDefinition;
+import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.event.PlatformEventCodes;
 import com.xa.mass.sdk.event.EventDefinition;
-import com.xa.mass.sdk.model.MassTaskCreateRequest;
-import com.xa.mass.sdk.model.MassTaskRequest;
+import com.xa.mass.sdk.internal.DefaultTransportDebugOperations;
+import com.xa.mass.sdk.internal.TransportDebugOperations;
+import com.xa.mass.sdk.model.AdapterNodeRegistration;
+import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
+import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.MassTaskUpdateRequest;
+import com.xa.mass.sdk.model.NodeGroupBindingRegistration;
+import com.xa.mass.sdk.model.TaskWorkFinalNotification;
+import com.xa.mass.sdk.model.TaskDetailSnapshot;
+import com.xa.mass.sdk.model.TaskExecutionOptions;
+import com.xa.mass.sdk.model.TaskResultItemSnapshot;
+import com.xa.mass.sdk.model.TaskResultWindowSnapshot;
 import com.xa.mass.sdk.model.WorkerEventBinding;
-import com.xa.mass.sdk.model.WorkerContextRegistration;
+import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.auth.PrincipalType;
+import com.xa.mass.sdk.authz.TaskOwnershipSupport;
 import com.xa.mass.sdk.authz.TaskOwnershipStamp;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.MassApplication;
@@ -69,11 +85,11 @@ import com.xa.mass.starter.builder.MassApplicationBuilder;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.config.TransportRuntimeComposition;
+import com.xa.mass.starter.config.TransportRuntimeRole;
 import com.xa.mass.transport.runtime.CompositeWorkerEndpointRegistry;
 import com.xa.mass.transport.runtime.RuntimeEventBusWorkerSystemEventChannel;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
-import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportRegistrationResolver;
@@ -81,13 +97,21 @@ import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryPollResult;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryStoreStats;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
-import com.xa.mass.engine.worker.WorkerAdapter;
+import com.xa.mass.transport.presence.WorkerPresence;
+import com.xa.mass.transport.presence.WorkerPresenceState;
+import com.xa.mass.transport.presence.WorkerPresenceStore;
+import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
+import com.xa.mass.transport.worker.WorkerAdapter;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.TaskPullChannel;
+import com.xa.mass.transport.channel.TaskPullResult;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.model.TaskDispatchItem;
@@ -134,12 +158,15 @@ class MassSdkTest {
 
     @Test
     void engineOptionsExposeChaosTuningKnobs() {
+        PollingIdleBackoffPolicy idleBackoffPolicy = decision -> 250L;
         MassSdkApplication app = MassSdk.builder()
                 .transport(transport -> transport
                         .webSocketAdapter(webSocket -> webSocket.enabled(false).serverEnabled(false)))
                 .engine(engine -> engine
                         .enabled(true)
                         .assignmentRetryDelayMillis(125L)
+                        .runtimeReadyDispatchIdleBackoffMaxMillis(2_000L)
+                        .runtimeReadyDispatchIdleBackoffPolicy(idleBackoffPolicy)
                         .leaseWatchdogIntervalSeconds(3L)
                         .taskMessageLeaseSeconds(7L))
                 .build();
@@ -148,6 +175,8 @@ class MassSdkTest {
 
         assertNotNull(engine);
         assertEquals(125L, engine.getConfig().getAssignmentRetryDelayMillis());
+        assertEquals(2_000L, engine.getConfig().getRuntimeReadyDispatchIdleBackoffMaxMillis());
+        assertEquals(idleBackoffPolicy, engine.getConfig().getRuntimeReadyDispatchIdleBackoffPolicy());
         assertEquals(3L, engine.getConfig().getLeaseWatchdogIntervalSeconds());
         assertEquals(7L, engine.getConfig().getTaskMessageLeaseSeconds());
     }
@@ -155,7 +184,7 @@ class MassSdkTest {
     @Test
     void builderProjectCatalogBootstrapSeedsProjects() {
         ProjectEventCatalogRegistry bootstrapRegistry = new ProjectEventCatalogRegistry();
-        bootstrapRegistry.registerProject(ProjectMetadata.builder()
+        bootstrapRegistry.registerProject(ProjectDefinition.builder()
                 .code("seedApp")
                 .name("Seed App")
                 .description("builder bootstrap project")
@@ -363,7 +392,7 @@ class MassSdkTest {
                 writer.newLine();
                 writer.flush();
 
-                waitUntil(() -> app.listSessions().stream().anyMatch(MassSdkTest::hasActiveSocketConnection),
+                waitUntil(() -> runtimeDiagnostics(app).listSessions().stream().anyMatch(MassSdkTest::hasActiveSocketConnection),
                         "sdk socket hello should register an active socket session");
             }
         } finally {
@@ -385,7 +414,12 @@ class MassSdkTest {
         config.setWorkerEndpointRegistry(overriddenRegistry);
         WorkerSystemEventChannel customSystemEventChannel = mock(WorkerSystemEventChannel.class);
         config.setCustomSystemEventChannel(customSystemEventChannel);
-        WorkerTransportRuntimeFactory customFactory = context -> mock(TransportRuntimeRegistry.class);
+        WorkerTransportRuntimeFactory customFactory = (workerLookupStore,
+                                                     taskResultIngestChannel,
+                                                     systemEventChannel,
+                                                     workerPresenceStore,
+                                                     deliveryService,
+                                                     adapterBindings) -> mock(TransportRuntimeRegistry.class);
         config.setWorkerTransportRuntimeFactory(customFactory);
 
         TransportRuntimeComposition customizedRuntimeComposition = config.snapshotRuntimeComposition();
@@ -396,33 +430,67 @@ class MassSdkTest {
     }
 
     @Test
+    void runtimeCompositionResolvesCustomTransportDeliveryStoreFactory() {
+        TransportConfig config = new TransportConfig();
+        StubTransportDeliveryStore store = new StubTransportDeliveryStore();
+        config.setDeliveryStoreFactory(() -> store);
+
+        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+
+        assertSame(store, runtimeComposition.resolveTransportDeliveryStore());
+    }
+
+    @Test
+    void transportRuntimeRoleDefaultsToEmbeddedAndSnapshotsConfiguredValue() {
+        TransportConfig config = new TransportConfig();
+        assertEquals(TransportRuntimeRole.EMBEDDED, config.snapshotRuntimeComposition().getRuntimeRole());
+
+        config.setRuntimeRole(TransportRuntimeRole.ENGINE_PRODUCER);
+        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+        config.setRuntimeRole(TransportRuntimeRole.TRANSPORT_CONSUMER);
+
+        assertEquals(TransportRuntimeRole.ENGINE_PRODUCER, runtimeComposition.getRuntimeRole());
+        assertEquals(TransportRuntimeRole.TRANSPORT_CONSUMER, config.snapshotRuntimeComposition().getRuntimeRole());
+
+        config.setRuntimeRole(null);
+        assertEquals(TransportRuntimeRole.EMBEDDED, config.snapshotRuntimeComposition().getRuntimeRole());
+    }
+
+    @Test
+    void sdkTransportOptionsExposeDistributedRuntimeRoleAndRedisChannels() {
+        MassSdkApplication app = MassSdk.builder()
+                .transport(transport -> transport
+                        .transportRuntimeRole(TransportRuntimeRole.TRANSPORT_CONSUMER)
+                        .redisDistributedChannels("redis://localhost:6379", "test:xa:distributed")
+                        .webSocketAdapter(webSocket -> webSocket.enabled(false).serverEnabled(false)))
+                .engine(engine -> engine.enabled(true))
+                .build();
+
+        TransportRuntimeComposition runtimeComposition = readField(
+                requireDelegate(app),
+                "transportRuntimeComposition",
+                TransportRuntimeComposition.class
+        );
+
+        assertEquals(TransportRuntimeRole.TRANSPORT_CONSUMER, runtimeComposition.getRuntimeRole());
+        assertNull(requireDelegate(app).getEngine());
+    }
+
+    @Test
     void runtimeCompositionWebSocketBootstrapReflectsCurrentNestedAdapterConfig() {
         TransportConfig config = new TransportConfig();
         config.getBundledWebSocketAdapterConfig().setEnabled(false);
         config.getBundledWebSocketAdapterConfig().setServerEnabled(false);
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
-        VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
-                new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
-
-        TransportAdapterContribution contribution;
-        try {
-            contribution = adapterBootstrap(runtimeComposition, "websocket").create(
-                    new TransportAdapterBootstrapContext<>(
-                            new CompositeWorkerEndpointRegistry(),
-                            null,
-                            new RuntimeEventBusWorkerSystemEventChannel(),
-                            deliveryService(),
-                            runtimeTaskExecutor
-                    )
-            );
-        } finally {
-            shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
-        }
-
-        assertNull(contribution.getTransportBinding());
-        assertNull(contribution.getManagedTransportAdapter());
-        assertNull(contribution.getTransportServer());
-        assertNull(contribution.getRawWorkerMessageChannel());
+        assertEquals(
+                List.of(),
+                runtimeComposition.resolveTransportAdapterBootstraps().stream()
+                        .map(TransportAdapterBootstrap::descriptor)
+                        .filter(Objects::nonNull)
+                        .map(TransportAdapterDescriptor::getAdapterId)
+                        .filter("websocket"::equals)
+                        .toList()
+        );
     }
 
     @Test
@@ -434,24 +502,24 @@ class MassSdkTest {
         VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
                 new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
 
-        TransportAdapterContribution contribution;
+        TransportAdapterBootstrapContext bootstrapContext;
         try {
-            contribution = adapterBootstrap(runtimeComposition, "socket").create(
-                    new TransportAdapterBootstrapContext<>(
-                            new CompositeWorkerEndpointRegistry(),
-                            mock(TaskResultIngestChannel.class),
-                            new RuntimeEventBusWorkerSystemEventChannel(),
-                            deliveryService(),
-                            runtimeTaskExecutor
-                    )
+            bootstrapContext = new TransportAdapterBootstrapContext(
+                    new CompositeWorkerEndpointRegistry(),
+                    mock(TaskResultIngestChannel.class),
+                    new RuntimeEventBusWorkerSystemEventChannel(),
+                    new InMemoryWorkerPresenceStore(),
+                    deliveryService(),
+                    runtimeTaskExecutor
             );
+            adapterBootstrap(runtimeComposition, "socket").contribute(bootstrapContext);
         } finally {
             shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
         }
 
-        assertNotNull(contribution.getTransportBinding());
-        assertNotNull(contribution.getTransportServer());
-        assertNotNull(contribution.getRawWorkerMessageChannel());
+        assertNotNull(bootstrapContext.getTransportBinding());
+        assertNotNull(bootstrapContext.getTransportServer());
+        assertNotNull(bootstrapContext.getRawWorkerMessageChannel());
     }
 
     @Test
@@ -463,25 +531,90 @@ class MassSdkTest {
         VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
                 new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
 
-        TransportAdapterContribution contribution;
+        TransportAdapterBootstrapContext bootstrapContext;
         try {
-            contribution = adapterBootstrap(runtimeComposition, "websocket").create(
-                    new TransportAdapterBootstrapContext<>(
-                            new CompositeWorkerEndpointRegistry(),
-                            mock(TaskResultIngestChannel.class),
-                            new RuntimeEventBusWorkerSystemEventChannel(),
-                            deliveryService(),
-                            runtimeTaskExecutor
-                    )
+            bootstrapContext = new TransportAdapterBootstrapContext(
+                    new CompositeWorkerEndpointRegistry(),
+                    mock(TaskResultIngestChannel.class),
+                    new RuntimeEventBusWorkerSystemEventChannel(),
+                    new InMemoryWorkerPresenceStore(),
+                    deliveryService(),
+                    runtimeTaskExecutor
             );
+            adapterBootstrap(runtimeComposition, "websocket").contribute(bootstrapContext);
         } finally {
             shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
         }
 
-        assertNotNull(contribution.getTransportBinding());
-        assertNull(contribution.getManagedTransportAdapter());
-        assertNotNull(contribution.getTransportServer());
-        assertNotNull(contribution.getRawWorkerMessageChannel());
+        assertNotNull(bootstrapContext.getTransportBinding());
+        assertNull(bootstrapContext.getManagedTransportAdapter());
+        assertNotNull(bootstrapContext.getTransportServer());
+        assertNotNull(bootstrapContext.getRawWorkerMessageChannel());
+    }
+
+    @Test
+    void runtimeCompositionWebSocketBootstrapUsesConfiguredAdapterId() {
+        TransportConfig config = new TransportConfig();
+        config.getBundledWebSocketAdapterConfig().setAdapterId("ws-public");
+        config.getBundledWebSocketAdapterConfig().setEnabled(true);
+        config.getBundledWebSocketAdapterConfig().setServerEnabled(false);
+        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+        VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
+                new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
+
+        TransportAdapterBootstrapContext bootstrapContext;
+        try {
+            bootstrapContext = new TransportAdapterBootstrapContext(
+                    new CompositeWorkerEndpointRegistry(),
+                    mock(TaskResultIngestChannel.class),
+                    new RuntimeEventBusWorkerSystemEventChannel(),
+                    new InMemoryWorkerPresenceStore(),
+                    deliveryService(),
+                    runtimeTaskExecutor
+            );
+            adapterBootstrap(runtimeComposition, "ws-public").contribute(bootstrapContext);
+        } finally {
+            shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
+        }
+
+        assertEquals("ws-public", adapterBootstrap(runtimeComposition, "ws-public").descriptor().getAdapterId());
+        assertNotNull(bootstrapContext.getTransportBinding());
+        assertEquals("ws-public", bootstrapContext.getTransportBinding().getWorkerAdapter().protocol());
+        assertEquals("ws-public", bootstrapContext.getRawWorkerMessageChannel().adapterId());
+        assertEquals("ws-public",
+                runtimeComposition.resolveRegistrationAdapterId("ws-public", WorkerTransportHints.REALTIME));
+    }
+
+    @Test
+    void runtimeCompositionSocketBootstrapUsesConfiguredAdapterId() {
+        TransportConfig config = new TransportConfig();
+        config.getBundledSocketAdapterConfig().setAdapterId("socket-edge");
+        config.getBundledSocketAdapterConfig().setEnabled(true);
+        config.getBundledSocketAdapterConfig().setServerEnabled(false);
+        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+        VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
+                new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
+
+        TransportAdapterBootstrapContext bootstrapContext;
+        try {
+            bootstrapContext = new TransportAdapterBootstrapContext(
+                    new CompositeWorkerEndpointRegistry(),
+                    mock(TaskResultIngestChannel.class),
+                    new RuntimeEventBusWorkerSystemEventChannel(),
+                    new InMemoryWorkerPresenceStore(),
+                    deliveryService(),
+                    runtimeTaskExecutor
+            );
+            adapterBootstrap(runtimeComposition, "socket-edge").contribute(bootstrapContext);
+        } finally {
+            shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
+        }
+
+        assertNotNull(bootstrapContext.getTransportBinding());
+        assertEquals("socket-edge", bootstrapContext.getTransportBinding().getWorkerAdapter().protocol());
+        assertEquals("socket-edge", bootstrapContext.getRawWorkerMessageChannel().adapterId());
+        assertEquals("socket-edge",
+                runtimeComposition.resolveRegistrationAdapterId("socket-edge", WorkerTransportHints.REALTIME));
     }
 
     @Test
@@ -489,22 +622,90 @@ class MassSdkTest {
         TransportConfig config = new TransportConfig();
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
         WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
-        WebSocketDispatchRuntimeContext dispatcherContext = WebSocketEmbeddedRuntimeSupport.createDispatcherContext(
-                endpointRegistry,
-                null,
-                runtimeComposition.resolveSystemEventChannel()
-        );
+        VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
+                new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
 
-        IllegalStateException error = assertThrows(
-                IllegalStateException.class,
-                () -> WebSocketEmbeddedRuntimeSupport.createTransportServer(
-                        config.getBundledWebSocketAdapterConfig(),
-                        dispatcherContext,
-                        endpointRegistry
-                )
-        );
+        IllegalStateException error;
+        try {
+            error = assertThrows(
+                    IllegalStateException.class,
+                    () -> adapterBootstrap(runtimeComposition, config.getBundledWebSocketAdapterConfig().getAdapterId()).contribute(
+                            new TransportAdapterBootstrapContext(
+                                    endpointRegistry,
+                                    null,
+                                    runtimeComposition.resolveSystemEventChannel(),
+                                    new InMemoryWorkerPresenceStore(),
+                                    deliveryService(),
+                                    runtimeTaskExecutor
+                            )
+                    )
+            );
+        } finally {
+            shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
+        }
 
         assertTrue(error.getMessage().contains("WebSocket-managed endpoint registry"));
+    }
+
+    @Test
+    void bundledWebSocketTransportBootstrapRejectsMismatchedSessionRegistryAdapterId() {
+        TransportConfig config = new TransportConfig();
+        config.getBundledWebSocketAdapterConfig().setAdapterId("ws-public");
+        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+        VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
+                new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
+
+        IllegalStateException error;
+        try {
+            error = assertThrows(
+                    IllegalStateException.class,
+                    () -> adapterBootstrap(runtimeComposition, "ws-public").contribute(
+                            new TransportAdapterBootstrapContext(
+                                    new ServerSessionManager("websocket"),
+                                    mock(TaskResultIngestChannel.class),
+                                    new RuntimeEventBusWorkerSystemEventChannel(),
+                                    new InMemoryWorkerPresenceStore(),
+                                    deliveryService(),
+                                    runtimeTaskExecutor
+                            )
+                    )
+            );
+        } finally {
+            shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
+        }
+
+        assertTrue(error.getMessage().contains("endpoint registry adapterId 'ws-public'"));
+    }
+
+    @Test
+    void bundledSocketTransportBootstrapRejectsMismatchedSessionRegistryAdapterId() {
+        TransportConfig config = new TransportConfig();
+        config.getBundledSocketAdapterConfig().setAdapterId("socket-edge");
+        config.getBundledSocketAdapterConfig().setEnabled(true);
+        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+        VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
+                new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
+
+        IllegalStateException error;
+        try {
+            error = assertThrows(
+                    IllegalStateException.class,
+                    () -> adapterBootstrap(runtimeComposition, "socket-edge").contribute(
+                            new TransportAdapterBootstrapContext(
+                                    new com.xa.mass.transport.socket.session.SocketSessionManager("socket", null),
+                                    mock(TaskResultIngestChannel.class),
+                                    new RuntimeEventBusWorkerSystemEventChannel(),
+                                    new InMemoryWorkerPresenceStore(),
+                                    deliveryService(),
+                                    runtimeTaskExecutor
+                            )
+                    )
+            );
+        } finally {
+            shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
+        }
+
+        assertTrue(error.getMessage().contains("endpoint registry adapterId 'socket-edge'"));
     }
 
     @Test
@@ -551,29 +752,216 @@ class MassSdkTest {
     }
 
     @Test
-    void runtimeCompositionCanAggregateAdditionalTransportAdapterBootstraps() {
+    void transportRuntimeCompositionRequiresExplicitAdapterIdWhenCustomRuntimeFactoryHasNoRegistrationMetadata() {
         TransportConfig config = new TransportConfig();
-        config.addSupplementalTransportAdapterBootstrap(context -> TransportAdapterContribution.empty());
+        config.getBundledWebSocketAdapterConfig().setEnabled(false);
+        config.getBundledWebSocketAdapterConfig().setServerEnabled(false);
+        config.setWorkerTransportRuntimeFactory((workerLookupStore,
+                                                taskResultIngestChannel,
+                                                systemEventChannel,
+                                                workerPresenceStore,
+                                                deliveryService,
+                                                adapterBindings) -> mock(TransportRuntimeRegistry.class));
 
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
 
-        Assertions.assertEquals(3, runtimeComposition.resolveTransportAdapterBootstraps().size());
+        IllegalStateException error = assertThrows(
+                IllegalStateException.class,
+                () -> runtimeComposition.resolveRegistrationAdapterId(null, "polling")
+        );
+        assertEquals(
+                "worker adapterId must be set before runtime start when transport registration metadata is unavailable",
+                error.getMessage()
+        );
+        assertEquals("custom-polling",
+                runtimeComposition.resolveRegistrationAdapterId(" custom-polling ", "polling"));
+    }
+
+    @Test
+    void transportRuntimeCompositionUsesBootstrapDescriptorEvenWithCustomRuntimeFactory() {
+        TransportConfig config = new TransportConfig();
+        config.setWorkerTransportRuntimeFactory((workerLookupStore,
+                                                taskResultIngestChannel,
+                                                systemEventChannel,
+                                                workerPresenceStore,
+                                                deliveryService,
+                                                adapterBindings) -> mock(TransportRuntimeRegistry.class));
+        config.setPrimaryTransportAdapterBootstrap(new DescriptorOnlyBootstrap(
+                new TransportAdapterDescriptor("custom-rt", WorkerTransportHints.REALTIME)
+        ));
+
+        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+
+        assertEquals("custom-rt", runtimeComposition.resolveRegistrationAdapterId("custom-rt", "realtime"));
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> runtimeComposition.resolveRegistrationAdapterId(null, "realtime")
+        );
+        assertEquals("worker adapterId must be set when transportHint 'realtime' is used",
+                error.getMessage());
+    }
+
+    @Test
+    void transportRuntimeCompositionUsesRuntimeFactoryRegistrationMetadataWhenProvided() {
+        TransportConfig config = new TransportConfig();
+        config.getBundledWebSocketAdapterConfig().setEnabled(false);
+        config.getBundledWebSocketAdapterConfig().setServerEnabled(false);
+        config.setWorkerTransportRuntimeFactory(new WorkerTransportRuntimeFactory() {
+            @Override
+            public TransportRuntimeRegistry create(WorkerLookupStore workerLookupStore,
+                                                   TaskResultIngestChannel taskResultIngestChannel,
+                                                   WorkerSystemEventChannel systemEventChannel,
+                                                   com.xa.mass.transport.presence.WorkerPresenceStore workerPresenceStore,
+                                                   TransportDeliveryService deliveryService,
+                                                   List<TransportBinding> adapterBindings) {
+                return mock(TransportRuntimeRegistry.class);
+            }
+
+            @Override
+            public List<TransportAdapterDescriptor> registrationDescriptors() {
+                return List.of(new TransportAdapterDescriptor("polling-http-v2", WorkerTransportHints.POLLING));
+            }
+        });
+
+        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+
+        assertEquals("polling-http-v2", runtimeComposition.resolveRegistrationAdapterId(null, "polling"));
+        assertEquals("polling-http-v2", runtimeComposition.resolveRegistrationAdapterId("polling-http-v2", "polling"));
+    }
+
+    @Test
+    void runtimeCompositionCanAggregateAdditionalTransportAdapterBootstraps() {
+        TransportConfig config = new TransportConfig();
+        config.addSupplementalTransportAdapterBootstrap(context -> {
+        });
+
+        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+
+        Assertions.assertEquals(2, runtimeComposition.resolveTransportAdapterBootstraps().size());
+    }
+
+    @Test
+    void runtimeCompositionCanAppendAdditionalBundledRealtimeAdapterInstances() {
+        TransportConfig config = new TransportConfig();
+        com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig extraWebSocket =
+                new com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig();
+        extraWebSocket.setAdapterId("ws-internal");
+        extraWebSocket.setEnabled(true);
+        extraWebSocket.setServerEnabled(false);
+        config.addSupplementalWebSocketAdapterConfig(extraWebSocket);
+
+        com.xa.mass.transport.socket.runtime.SocketAdapterConfig extraSocket =
+                new com.xa.mass.transport.socket.runtime.SocketAdapterConfig();
+        extraSocket.setAdapterId("socket-edge");
+        extraSocket.setEnabled(true);
+        extraSocket.setServerEnabled(false);
+        config.addSupplementalSocketAdapterConfig(extraSocket);
+
+        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+
+        assertNotNull(adapterBootstrap(runtimeComposition, "websocket"));
+        assertThrows(AssertionError.class, () -> adapterBootstrap(runtimeComposition, "socket"));
+        assertNotNull(adapterBootstrap(runtimeComposition, "ws-internal"));
+        assertNotNull(adapterBootstrap(runtimeComposition, "socket-edge"));
+        assertEquals(3, runtimeComposition.resolveTransportAdapterBootstraps().size());
+    }
+
+    @Test
+    void runtimeCompositionRejectsDuplicateAdapterIdsAcrossBundledInstances() {
+        TransportConfig config = new TransportConfig();
+        com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig extraWebSocket =
+                new com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig();
+        extraWebSocket.setAdapterId("websocket");
+        extraWebSocket.setEnabled(true);
+        config.addSupplementalWebSocketAdapterConfig(extraWebSocket);
+
+        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+
+        IllegalStateException error = assertThrows(
+                IllegalStateException.class,
+                runtimeComposition::resolveTransportAdapterBootstraps
+        );
+        assertTrue(error.getMessage().contains("Duplicate transport adapterId configured: websocket"));
     }
 
     @Test
     void transportRuntimeCompositionSnapshotsDeliveryQueueCapacity() {
         TransportConfig config = new TransportConfig();
         config.setMaxDeliveryQueuedItems(42);
+        config.setMaxDeliveryItemsPerRoute(7);
         config.setEventHandlerTimeoutMillis(123);
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
 
         config.setMaxDeliveryQueuedItems(84);
+        config.setMaxDeliveryItemsPerRoute(9);
         config.setEventHandlerTimeoutMillis(456);
 
         assertEquals(42, runtimeComposition.getMaxDeliveryQueuedItems());
+        assertEquals(7, runtimeComposition.getMaxDeliveryItemsPerRoute());
         assertEquals(123, runtimeComposition.getEventHandlerTimeoutMillis());
         assertThrows(IllegalArgumentException.class, () -> config.setMaxDeliveryQueuedItems(0));
+        assertThrows(IllegalArgumentException.class, () -> config.setMaxDeliveryItemsPerRoute(0));
         assertThrows(IllegalArgumentException.class, () -> config.setEventHandlerTimeoutMillis(-1));
+    }
+
+    @Test
+    void massApplicationStopsCustomTransportDeliveryStore() {
+        StubTransportDeliveryStore store = new StubTransportDeliveryStore();
+        MassSdkApplication app = MassSdk.builder()
+                .transport(transport -> transport
+                        .deliveryStoreFactory(() -> store)
+                        .webSocketAdapter(webSocket -> webSocket.enabled(false).serverEnabled(false)))
+                .engine(engine -> engine.enabled(false))
+                .build();
+
+        app.start();
+        app.stop();
+
+        assertTrue(store.shutdownCalled.get());
+    }
+
+    @Test
+    void sdkBuilderAcceptsRedisDeliveryStoreNamespaceOverride() {
+        MassSdkApplication app = MassSdk.builder()
+                .transport(transport -> transport
+                        .maxDeliveryItemsPerRoute(5)
+                        .redisDeliveryStore("redis://127.0.0.1:6379/0", "xa:mass:test:transport:delivery")
+                        .webSocketAdapter(webSocket -> webSocket.enabled(false).serverEnabled(false)))
+                .engine(engine -> engine.enabled(false))
+                .build();
+
+        assertNotNull(app);
+        assertFalse(app.isRunning());
+    }
+
+    @Test
+    void massApplicationStopsCustomPresenceStore() {
+        StubWorkerPresenceStore store = new StubWorkerPresenceStore();
+        MassSdkApplication app = MassSdk.builder()
+                .transport(transport -> transport
+                        .presenceStoreFactory(() -> store)
+                        .webSocketAdapter(webSocket -> webSocket.enabled(false).serverEnabled(false)))
+                .engine(engine -> engine.enabled(false))
+                .build();
+
+        app.start();
+        app.stop();
+
+        assertTrue(store.closed.get());
+    }
+
+    @Test
+    void sdkBuilderAcceptsRedisPresenceStoreNamespaceOverride() {
+        MassSdkApplication app = MassSdk.builder()
+                .transport(transport -> transport
+                        .workerPresenceLeaseMillis(5_000L)
+                        .redisPresenceStore("redis://127.0.0.1:6379/0", "xa:mass:test:transport:presence")
+                        .webSocketAdapter(webSocket -> webSocket.enabled(false).serverEnabled(false)))
+                .engine(engine -> engine.enabled(false))
+                .build();
+
+        assertNotNull(app);
+        assertFalse(app.isRunning());
     }
 
     void explicitRealtimeBuilderWrapsRuntimeApplication() {
@@ -591,7 +979,7 @@ class MassSdkTest {
                 .build();
 
         Assertions.assertThrows(IllegalStateException.class,
-                () -> app.createTask(MassTaskCreateRequest.builder().build()));
+                () -> createShellWithOptionalItems(app, MassTaskShellCreateRequest.builder().build(), null, List.of(), false));
         assertEngineOperationsFailFast(app);
     }
 
@@ -646,9 +1034,11 @@ class MassSdkTest {
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
-        Map<String, Object> queueDetail = app.getQueueDetail();
-        Map<String, Object> sessionStats = app.getSessionStats();
-        Map<String, Object> enqueueResult = app.enqueueRawMessage(Map.of("workerId", "worker-debug-1", "rawJson", "{\"eventCode\":\"platform.test\"}"));
+        Map<String, Object> queueDetail = runtimeDiagnostics(app).getQueueDetail();
+        Map<String, Object> sessionStats = runtimeDiagnostics(app).getSessionStats();
+        Map<String, Object> enqueueResult = rawTransportDebug(app).enqueueRawMessage(
+                Map.of("workerId", "worker-debug-1", "rawJson", "{\"eventCode\":\"platform.test\"}")
+        );
 
         assertEquals(2, queueDetail.get("inputQueueSize"));
         assertEquals(5, queueDetail.get("outputQueueSize"));
@@ -662,10 +1052,150 @@ class MassSdkTest {
                 .get("available"));
         assertEquals(0, sessionStats.get("activeConnections"));
         assertEquals(0L, sessionStats.get("workerCount"));
+        assertEquals(Map.of(), sessionStats.get("activeConnectionsByAdapter"));
         assertEquals(true, enqueueResult.get("success"));
         verify(delegate).getTransportQueueDetail();
         verify(delegate, atLeastOnce()).getEndpointRegistry();
         verify(delegate).sendRawTransportMessage(eq("worker-debug-1"), eq("{\"eventCode\":\"platform.test\"}"), anyString());
+    }
+
+    @Test
+    void sdkWorkerOnlineReadsTransportPresenceBeforeWorkerModelStatus() {
+        MassApplication delegate = mock(MassApplication.class);
+        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore();
+        presenceStore.markOnline("worker-1", "polling", "worker-1", "worker-1", "connected");
+        when(delegate.getWorkerPresenceStore()).thenReturn(presenceStore);
+
+        MassSdkApplication app = new MassSdkApplication(delegate);
+
+        assertTrue(app.isWorkerOnline("worker-1"));
+
+        presenceStore.markOffline("worker-1", "polling", "worker-1", "worker-1", "disconnect");
+
+        assertFalse(app.isWorkerOnline("worker-1"));
+    }
+
+    @Test
+    void sdkWorkerOnlineTreatsStalePresenceAsOffline() {
+        MassApplication delegate = mock(MassApplication.class);
+        WorkerPresenceStore presenceStore = new WorkerPresenceStore() {
+            @Override
+            public WorkerPresence markOnline(String workerId, String adapterId, String routeKey, String connectionId, String reason) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public WorkerPresence refreshHeartbeat(String workerId, String adapterId, String routeKey, String connectionId, String reason) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public WorkerPresence markOffline(String workerId, String adapterId, String routeKey, String connectionId, String reason) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public WorkerPresence getPresence(String workerId) {
+                return new WorkerPresence(
+                        workerId,
+                        "polling",
+                        workerId,
+                        WorkerPresenceState.STALE,
+                        1L,
+                        1L,
+                        "runtime-a",
+                        workerId,
+                        1L,
+                        null
+                );
+            }
+
+            @Override
+            public boolean isRouteOnline(String adapterId, String routeKey) {
+                return false;
+            }
+
+            @Override
+            public List<WorkerPresence> listActivePresences() {
+                return List.of();
+            }
+
+            @Override
+            public int pruneExpired() {
+                return 0;
+            }
+        };
+        when(delegate.getWorkerPresenceStore()).thenReturn(presenceStore);
+
+        MassSdkApplication app = new MassSdkApplication(delegate);
+
+        assertFalse(app.isWorkerOnline("worker-stale"));
+    }
+
+    @Test
+    void sdkWorkerOnlineFollowsNewestPresenceOwnerAfterReconnect() {
+        MassApplication delegate = mock(MassApplication.class);
+        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore();
+        when(delegate.getWorkerPresenceStore()).thenReturn(presenceStore);
+
+        MassSdkApplication app = new MassSdkApplication(delegate);
+
+        presenceStore.markOnline("worker-2", "websocket", "route-old", "conn-old", "connected");
+        assertTrue(app.isWorkerOnline("worker-2"));
+
+        presenceStore.markOnline("worker-2", "socket", "route-new", "conn-new", "reconnected");
+        presenceStore.markOffline("worker-2", "websocket", "route-old", "conn-old", "late-disconnect");
+
+        assertTrue(app.isWorkerOnline("worker-2"));
+        assertEquals("conn-new", presenceStore.getPresence("worker-2").getConnectionId());
+        assertEquals("socket", presenceStore.getPresence("worker-2").getAdapterId());
+        assertEquals("route-new", presenceStore.getPresence("worker-2").getRouteKey());
+
+        presenceStore.markOffline("worker-2", "socket", "route-new", "conn-new", "disconnect");
+
+        assertFalse(app.isWorkerOnline("worker-2"));
+    }
+
+    @Test
+    void sessionDiagnosticsExposeAdapterIdAndRouteKey() {
+        MassApplication delegate = mock(MassApplication.class);
+        WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class,
+                withSettings().extraInterfaces(com.xa.mass.transport.WorkerEndpointInspector.class));
+        com.xa.mass.transport.WorkerEndpointInspector inspector =
+                (com.xa.mass.transport.WorkerEndpointInspector) endpointRegistry;
+
+        when(delegate.getEndpointRegistry()).thenReturn(endpointRegistry);
+        when(endpointRegistry.getActiveConnectionCount()).thenReturn(2);
+        when(inspector.listWorkerEndpoints()).thenReturn(List.of(
+                new com.xa.mass.transport.WorkerEndpointSnapshot(
+                        "route-public",
+                        "worker-1",
+                        true,
+                        "endpoint-1",
+                        "ws-public"
+                ),
+                new com.xa.mass.transport.WorkerEndpointSnapshot(
+                        "route-internal",
+                        "worker-1",
+                        true,
+                        "endpoint-2",
+                        "ws-internal"
+                )
+        ));
+
+        MassSdkApplication app = new MassSdkApplication(delegate);
+
+        List<Map<String, Object>> sessions = runtimeDiagnostics(app).listSessions();
+        Map<String, Object> sessionStats = runtimeDiagnostics(app).getSessionStats();
+
+        assertEquals(1, sessions.size());
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> connections = (List<Map<String, Object>>) sessions.get(0).get("connections");
+        assertEquals("route-public", connections.get(0).get("routeKey"));
+        assertEquals("ws-public", connections.get(0).get("adapterId"));
+        assertEquals(2, sessionStats.get("activeConnections"));
+        assertEquals(1L, sessionStats.get("workerCount"));
+        assertEquals(Map.of("ws-public", 1L, "ws-internal", 1L), sessionStats.get("activeConnectionsByAdapter"));
     }
 
     @Test
@@ -675,7 +1205,7 @@ class MassSdkTest {
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
-        Map<String, Object> enqueueResult = app.enqueueRawMessage(Map.of(
+        Map<String, Object> enqueueResult = rawTransportDebug(app).enqueueRawMessage(Map.of(
                 "workerId", "worker-debug-2",
                 "rawJson", "{\"eventCode\":\"platform.direct\"}"
         ));
@@ -697,30 +1227,31 @@ class MassSdkTest {
             app.start();
 
             assertTrue(app.isRunning());
-            assertEquals(false, app.getQueueDetail().get("transporterAvailable"));
-        assertEquals(-1, app.getQueueDetail().get("inputQueueSize"));
-        assertEquals(-1, app.getQueueDetail().get("outputQueueSize"));
-        Map<?, ?> deliveryDiagnostics = (Map<?, ?>) app.getQueueDetail().get("deliveryDiagnostics");
-        assertEquals(true, deliveryDiagnostics.get("available"));
-        assertEquals(0, deliveryDiagnostics.get("queuedItems"));
-        assertEquals(0, deliveryDiagnostics.get("queueCount"));
-        assertEquals(0, deliveryDiagnostics.get("waitingPollers"));
-        assertEquals(100_000, deliveryDiagnostics.get("maxQueuedItems"));
-        assertEquals(0L, deliveryDiagnostics.get("oldestQueuedAgeMillis"));
-        assertEquals(0L, deliveryDiagnostics.get("enqueuedItems"));
-        assertEquals(0L, deliveryDiagnostics.get("drainedItems"));
-        assertEquals(0L, deliveryDiagnostics.get("backpressureRejectedItems"));
-        assertEquals(0L, deliveryDiagnostics.get("invalidItems"));
-        assertEquals(0L, deliveryDiagnostics.get("unavailableItems"));
-        assertEquals(0L, deliveryDiagnostics.get("shutdownClearedItems"));
-        assertEquals(0L, deliveryDiagnostics.get("directSentItems"));
-        assertEquals(0L, deliveryDiagnostics.get("directOfflineItems"));
-        assertEquals(0L, deliveryDiagnostics.get("directFailedItems"));
-        assertEquals(0L, deliveryDiagnostics.get("directInvalidItems"));
-        assertEquals(0L, deliveryDiagnostics.get("directUnavailableItems"));
-        assertEquals(Map.of(), deliveryDiagnostics.get("queueByAdapter"));
-        assertEquals(Map.of(), deliveryDiagnostics.get("directByAdapter"));
-            Map<?, ?> runtimeExecutors = (Map<?, ?>) app.getQueueDetail().get("runtimeExecutors");
+            Map<String, Object> queueDetail = runtimeDiagnostics(app).getQueueDetail();
+            assertEquals(true, queueDetail.get("transporterAvailable"));
+            assertEquals(0, queueDetail.get("inputQueueSize"));
+            assertEquals(0, queueDetail.get("outputQueueSize"));
+            Map<?, ?> deliveryDiagnostics = (Map<?, ?>) queueDetail.get("deliveryDiagnostics");
+            assertEquals(true, deliveryDiagnostics.get("available"));
+            assertEquals(0, deliveryDiagnostics.get("queuedItems"));
+            assertEquals(0, deliveryDiagnostics.get("queueCount"));
+            assertEquals(0, deliveryDiagnostics.get("waitingPollers"));
+            assertEquals(100_000, deliveryDiagnostics.get("maxQueuedItems"));
+            assertEquals(0L, deliveryDiagnostics.get("oldestQueuedAgeMillis"));
+            assertEquals(0L, deliveryDiagnostics.get("enqueuedItems"));
+            assertEquals(0L, deliveryDiagnostics.get("drainedItems"));
+            assertEquals(0L, deliveryDiagnostics.get("backpressureRejectedItems"));
+            assertEquals(0L, deliveryDiagnostics.get("invalidItems"));
+            assertEquals(0L, deliveryDiagnostics.get("unavailableItems"));
+            assertEquals(0L, deliveryDiagnostics.get("shutdownClearedItems"));
+            assertEquals(0L, deliveryDiagnostics.get("directSentItems"));
+            assertEquals(0L, deliveryDiagnostics.get("directOfflineItems"));
+            assertEquals(0L, deliveryDiagnostics.get("directFailedItems"));
+            assertEquals(0L, deliveryDiagnostics.get("directInvalidItems"));
+            assertEquals(0L, deliveryDiagnostics.get("directUnavailableItems"));
+            assertEquals(Map.of(), deliveryDiagnostics.get("queueByAdapter"));
+            assertEquals(Map.of(), deliveryDiagnostics.get("directByAdapter"));
+            Map<?, ?> runtimeExecutors = (Map<?, ?>) queueDetail.get("runtimeExecutors");
             assertEquals(true, ((Map<?, ?>) runtimeExecutors.get("transport")).get("available"));
             assertEquals(10_000, ((Map<?, ?>) runtimeExecutors.get("transport")).get("maxPendingTasks"));
             assertEquals(false, ((Map<?, ?>) runtimeExecutors.get("event")).get("available"));
@@ -741,7 +1272,7 @@ class MassSdkTest {
         try {
             app.start();
 
-        Map<?, ?> deliveryDiagnostics = (Map<?, ?>) app.getQueueDetail().get("deliveryDiagnostics");
+        Map<?, ?> deliveryDiagnostics = (Map<?, ?>) runtimeDiagnostics(app).getQueueDetail().get("deliveryDiagnostics");
         assertEquals(true, deliveryDiagnostics.get("available"));
         assertEquals(7, deliveryDiagnostics.get("maxQueuedItems"));
         assertEquals(Map.of(), deliveryDiagnostics.get("queueByAdapter"));
@@ -764,7 +1295,7 @@ class MassSdkTest {
         try {
             app.start();
 
-            Map<?, ?> runtimeExecutors = (Map<?, ?>) app.getQueueDetail().get("runtimeExecutors");
+            Map<?, ?> runtimeExecutors = (Map<?, ?>) runtimeDiagnostics(app).getQueueDetail().get("runtimeExecutors");
             assertEquals(17, ((Map<?, ?>) runtimeExecutors.get("transport")).get("maxPendingTasks"));
             assertEquals(3, ((Map<?, ?>) runtimeExecutors.get("event")).get("maxPendingTasks"));
         } finally {
@@ -833,7 +1364,7 @@ class MassSdkTest {
         try {
             app.start();
             assertEventDispatchRunsOnVirtualThread(app, "req-fast-1");
-            Map<?, ?> runtimeExecutors = (Map<?, ?>) app.getQueueDetail().get("runtimeExecutors");
+            Map<?, ?> runtimeExecutors = (Map<?, ?>) runtimeDiagnostics(app).getQueueDetail().get("runtimeExecutors");
             assertEquals(true, ((Map<?, ?>) runtimeExecutors.get("event")).get("available"));
             assertEquals(1L, ((Map<?, ?>) runtimeExecutors.get("event")).get("completedTasks"));
             app.stop();
@@ -849,37 +1380,47 @@ class MassSdkTest {
     void createTaskUsesSdkRequestAsPrimaryContract() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
+        EngineConfig config = mock(EngineConfig.class);
+        TaskCommandService taskCommandService = mock(TaskCommandService.class);
+        TaskQueryService taskQueryService = mock(TaskQueryService.class);
         Task createdTask = new Task();
+        createdTask.setTid("task-001");
+        Task hydratedTask = new Task();
+        hydratedTask.setTid("task-001");
+        hydratedTask.setProject("demoApp");
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
-        when(engine.createTask(any(TaskCreateRequestDto.class))).thenReturn(createdTask);
+        when(engine.getConfig()).thenReturn(config);
+        when(config.getTaskCommandService()).thenReturn(taskCommandService);
+        when(config.getTaskQueryService()).thenReturn(taskQueryService);
+        when(engine.createTaskShell(any(TaskShellCreateRequestDto.class))).thenReturn(createdTask);
+        when(taskQueryService.getTask("task-001")).thenReturn(hydratedTask);
+        stubAppendReceipts(taskCommandService);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
-        MassTaskCreateRequest request = MassTaskCreateRequest.builder()
+        MassTaskShellCreateRequest request = MassTaskShellCreateRequest.builder()
                 .userId("agent")
                 .project("demoApp")
-                .taskName("sdk-task")
+                .sourceRef("sdk-task")
                 .sharedConfig(Map.of("textContent", "hello", "routingCode", "us"))
-                .inputs(List.of(
-                        Map.of("target", "target-a"),
-                        Map.of("target", "target-b")
-                ))
-                .batchSize(2)
-                .defaultMsgMaxRetryCount(5)
-                .openEnded(true)
-                .maxRuntimeSeconds(600)
+                .executionSpec(taskExecutionOptions(null, 2, 600, 0))
                 .build();
 
-        Task result = app.createTask(request);
+        TaskDetailSnapshot result = createShellWithOptionalItems(app, request, "demo.dispatch", List.of(
+                Map.of("target", "target-a"),
+                Map.of("target", "target-b")
+        ), true);
 
-        assertSame(createdTask, result);
-        var captor = org.mockito.ArgumentCaptor.forClass(TaskCreateRequestDto.class);
-        verify(engine).createTask(captor.capture());
-        TaskCreateRequestDto dto = captor.getValue();
+        assertNotNull(result);
+        Assertions.assertEquals("task-001", result.getTaskId());
+        Assertions.assertEquals("demoApp", result.getProject());
+        var captor = org.mockito.ArgumentCaptor.forClass(TaskShellCreateRequestDto.class);
+        verify(engine).createTaskShell(captor.capture());
+        TaskShellCreateRequestDto dto = captor.getValue();
         Assertions.assertEquals("agent", dto.getUserId());
         Assertions.assertEquals("demoApp", dto.getProject());
-        Assertions.assertEquals("sdk-task", dto.getTaskName());
+        Assertions.assertEquals("sdk-task", dto.getSourceRef());
         Assertions.assertEquals(
                 TaskOwnershipStamp.applyToSharedConfig(
                         Map.of("textContent", "hello", "routingCode", "us"),
@@ -887,14 +1428,12 @@ class MassSdkTest {
                 ),
                 dto.getSharedConfig()
         );
-        Assertions.assertEquals(List.of(
-                Map.of("target", "target-a"),
-                Map.of("target", "target-b")
-        ), dto.getInputs());
-        Assertions.assertEquals(2, dto.getBatchSize());
-        Assertions.assertEquals(5, dto.getDefaultMsgMaxRetryCount());
-        Assertions.assertTrue(dto.isOpenEnded());
-        Assertions.assertEquals(600, dto.getMaxRuntimeSeconds());
+        Assertions.assertEquals(2, dto.getExecutionSpec().getBatchSize());
+        Assertions.assertEquals(600, dto.getExecutionSpec().getMaxRuntimeSeconds());
+        verify(taskCommandService).appendTaskItemsWithReceipt("task-001", List.of(
+                Map.of("target", "target-a", "eventCode", "demo.dispatch"),
+                Map.of("target", "target-b", "eventCode", "demo.dispatch")
+        ));
     }
 
     @Test
@@ -902,8 +1441,8 @@ class MassSdkTest {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
         EngineConfig config = new EngineConfig();
-        WorkerManager workerManager = spy(config.getWorkerManager());
-        config.setWorkerManager(workerManager);
+        WorkerStorage workerStorage = spy(config.getWorkerStorage());
+        config.setWorkerStorage(workerStorage);
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
@@ -912,102 +1451,35 @@ class MassSdkTest {
 
         MassSdkApplication app = new MassSdkApplication(delegate);
         registerExampleTaskCatalog(app);
+        declareSdkTestGroup(app, "crawler", List.of(WorkerEventBinding.builder()
+                .eventCode("crawler.fetch-page")
+                .projectCodes(List.of("crawlerApp"))
+                .build()));
+        bindSdkTestNode(app, "crawler");
         app.registerWorker(WorkerRegistration.builder()
                 .workerId("crawler-worker-001")
+                .adapterNodeId("sdk-test-node")
                 .workerGroupId("crawler")
-                .eventBindings(List.of(
-                        WorkerEventBinding.builder()
-                                .eventCode("crawler.fetch-page")
-                                .projectCodes(List.of("crawlerApp"))
-                                .build()
-                ))
                 .transportHint("polling")
+                .maxConcurrentWork(4)
                 .attributes(Map.of("type", "crawler"))
                 .build());
 
         var captor = org.mockito.ArgumentCaptor.forClass(Worker.class);
-        verify(workerManager).addWorker(captor.capture());
+        verify(workerStorage).addWorker(captor.capture());
         Worker worker = captor.getValue();
         Assertions.assertEquals("crawler-worker-001", worker.getWorkerId());
         Assertions.assertEquals("crawler", worker.getWorkerGroupId());
-        Assertions.assertEquals(List.of("crawlerApp"), worker.getSupportedProjects());
-        Assertions.assertEquals(List.of("crawler.fetch-page"), worker.getSupportedEventCodes());
+        Assertions.assertTrue(worker.getSupportedProjects().isEmpty());
+        Assertions.assertTrue(worker.getSupportedEventCodes().isEmpty());
         Assertions.assertEquals("polling", worker.getOnlineStrategy());
+        Assertions.assertEquals(4, worker.getMaxConcurrentWork());
         Assertions.assertEquals(Map.of("type", "crawler"), worker.getAttributes());
         Assertions.assertEquals(WorkerStatus.OFFLINE, worker.getStatus());
     }
 
     @Test
-    void registerWorkerContextUsesSdkContractAndStartsIdle() {
-        MassApplication delegate = mock(MassApplication.class);
-        MassEngine engine = mock(MassEngine.class);
-        EngineConfig config = new EngineConfig();
-        WorkerManager workerManager = spy(config.getWorkerManager());
-        config.setWorkerManager(workerManager);
-
-        when(delegate.getEngine()).thenReturn(engine);
-        when(engine.isRunning()).thenReturn(true);
-        when(engine.getConfig()).thenReturn(config);
-
-        MassSdkApplication app = new MassSdkApplication(delegate);
-        app.registerWorkerContext(WorkerContextRegistration.builder()
-                .workerContextId("ctx-crawler-worker-001")
-                .workerId("crawler-worker-001")
-                .routingTags(Set.of("web", "us"))
-                .attributes(Map.of("region", "us"))
-                .build());
-
-        var captor = org.mockito.ArgumentCaptor.forClass(WorkerContext.class);
-        verify(workerManager).addWorkerContext(captor.capture());
-        WorkerContext workerContext = captor.getValue();
-        Assertions.assertEquals("ctx-crawler-worker-001", workerContext.getWorkerContextId());
-        Assertions.assertEquals("crawler-worker-001", workerContext.getWorkerId());
-        Assertions.assertEquals(Set.of("web", "us"), workerContext.getRoutingTags());
-        Assertions.assertEquals(Map.of("region", "us"), workerContext.getAttributes());
-        Assertions.assertEquals(WorkerContextStatus.IDLE, workerContext.getStatus());
-    }
-
-    @Test
-    void taskMessageAttemptQueriesUseSdkSurface() {
-        MassApplication delegate = mock(MassApplication.class);
-        MassEngine engine = mock(MassEngine.class);
-        TaskQueryService taskQueries = mock(TaskQueryService.class);
-        EngineConfig config = mock(EngineConfig.class);
-        TaskMsg message = new TaskMsg();
-        TaskMsgAttempt activeAttempt = new TaskMsgAttempt();
-        List<TaskMsgAttempt> attempts = List.of(activeAttempt);
-        TaskStateValidationResult projectionAudit = new TaskStateValidationResult(
-                true,
-                false,
-                TaskStatus.READY,
-                null,
-                0,
-                0,
-                0,
-                0,
-                TaskStateValidationResult.Scope.PROJECTION_AUDIT,
-                List.of()
-        );
-
-        when(delegate.getEngine()).thenReturn(engine);
-        when(engine.isRunning()).thenReturn(true);
-        when(engine.getConfig()).thenReturn(config);
-        when(config.getTaskQueryService()).thenReturn(taskQueries);
-        when(taskQueries.getTaskMessage("task-1", "msg-1")).thenReturn(message);
-        when(taskQueries.getTaskMessageAttempts("task-1", "msg-1")).thenReturn(attempts);
-        when(taskQueries.getLatestActiveTaskMessageAttempt("task-1", "msg-1")).thenReturn(activeAttempt);
-        when(taskQueries.auditTaskProjectionState("task-1")).thenReturn(projectionAudit);
-
-        MassSdkApplication app = new MassSdkApplication(delegate);
-
-        assertSame(message, app.getTaskMessage("task-1", "msg-1"));
-        assertSame(attempts, app.getTaskMessageAttempts("task-1", "msg-1"));
-        assertSame(activeAttempt, app.getLatestActiveTaskMessageAttempt("task-1", "msg-1"));
-        assertSame(projectionAudit, app.auditTaskProjectionState("task-1"));
-    }
-
-    @Test
-    void taskAdminCommandsUseSdkCommandSurface() {
+    void taskAdminCommandsUseSdkResumeAndUpdateSurface() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
         TaskCommandService taskCommands = mock(TaskCommandService.class);
@@ -1027,33 +1499,38 @@ class MassSdkTest {
         when(taskQueries.getTask("task-1")).thenReturn(task);
         when(taskCommands.resumeTaskDetailed("task-1")).thenReturn(TaskResumeResult.resumedToReady());
         when(taskCommands.updateTask(task)).thenReturn(true);
-        when(taskCommands.deleteTask("task-1")).thenReturn(true);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
         SdkTaskResumeResult resumeResult = app.resumeTaskDetailed("task-1");
         boolean updated = app.updateTaskDefinition("task-1", MassTaskUpdateRequest.builder()
-                .taskName("after")
+                .project("testApp")
+                .userId("user-2")
+                .sharedConfig(Map.of("routingCode", "us"))
                 .build());
-        boolean deleted = app.deleteTask("task-1");
 
         assertTrue(resumeResult.success());
         assertEquals("READY", resumeResult.status());
         assertTrue(updated);
-        assertEquals("after", task.getTaskName());
-        assertTrue(deleted);
+        assertEquals("before", task.getTaskName());
+        assertEquals("testApp", task.getProject());
+        assertEquals("user-2", task.getUser().getUserId());
+        assertEquals(Map.of("routingCode", "us"), task.getSharedConfig());
         verify(taskCommands).resumeTaskDetailed("task-1");
         verify(taskCommands).updateTask(task);
-        verify(taskCommands).deleteTask("task-1");
     }
 
     @Test
-    void taskMessageFinalListenerUsesSdkCommandEventSurface() {
+    void taskWorkFinalListenerUsesSdkOwnedNotificationSurface() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
         TaskEventService taskEvents = mock(TaskEventService.class);
         EngineConfig config = mock(EngineConfig.class);
-        TaskMessageLogicallyFinalListener listener = mock(TaskMessageLogicallyFinalListener.class);
+        java.util.concurrent.atomic.AtomicReference<TaskWorkFinalNotification> capturedNotification =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        TaskWorkFinalListener listener = capturedNotification::set;
+        Task task = new Task();
+        task.setSharedConfig(Map.of("route", "alpha"));
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
@@ -1062,9 +1539,34 @@ class MassSdkTest {
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
-        app.addTaskMessageLogicallyFinalListener(listener);
+        app.addTaskWorkFinalListener(listener);
 
-        verify(taskEvents).addTaskMessageLogicallyFinalListener(listener);
+        org.mockito.ArgumentCaptor<TaskWorkLogicallyFinalListener> captor =
+                org.mockito.ArgumentCaptor.forClass(TaskWorkLogicallyFinalListener.class);
+        verify(taskEvents).addTaskWorkLogicallyFinalListener(captor.capture());
+
+        captor.getValue().onTaskWorkLogicallyFinal(task, new TaskWorkLogicallyFinalEvent(
+                "task-1",
+                "msg-1",
+                TaskWorkProjectionState.MessageStatus.SUCCESS,
+                TaskWorkProjectionState.MessageFinalReason.BUSINESS_SUCCESS,
+                2,
+                null,
+                null,
+                "payload-ref-1",
+                Map.of("answer", 42)
+        ));
+
+        TaskWorkFinalNotification notification = capturedNotification.get();
+        assertNotNull(notification);
+        assertEquals("task-1", notification.taskId());
+        assertEquals(Map.of("route", "alpha"), notification.sharedConfig());
+        assertEquals("msg-1", notification.finalSnapshot().messageId());
+        assertEquals("SUCCESS", notification.finalSnapshot().status());
+        assertEquals("BUSINESS_SUCCESS", notification.finalSnapshot().finalReason());
+        assertEquals(2, notification.finalSnapshot().retryCount());
+        assertEquals("payload-ref-1", notification.finalSnapshot().payloadRef());
+        assertEquals(Map.of("answer", 42), notification.finalSnapshot().output());
     }
 
     @Test
@@ -1072,7 +1574,7 @@ class MassSdkTest {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
         EngineConfig config = new EngineConfig();
-        RuleManager<Map<String, Object>> ruleManager = config.getRuleManager();
+        RuleStorage ruleStorage = config.getRuleStorage();
         RuleDefinition replacement = new RuleDefinition();
         replacement.setId("sdk_rule");
         replacement.setName("sdk_rule");
@@ -1086,34 +1588,7 @@ class MassSdkTest {
         MassSdkApplication app = new MassSdkApplication(delegate);
         app.replaceDefaultRules(List.of(replacement));
 
-        Assertions.assertEquals(List.of(replacement), ruleManager.getDefaultRules());
-    }
-
-    @Test
-    void engineConfigRejectsSchedulerMismatchAfterTaskManagerIsConfigured() {
-        EngineConfig config = new EngineConfig();
-        SimpleTaskScheduler scheduler = new SimpleTaskScheduler();
-        config.setScheduler(scheduler);
-        config.setTaskManager(new com.xa.mass.engine.TaskManager(
-                scheduler,
-                new InMemoryTaskStorage(),
-                new InMemoryTaskWorkRuntime()
-        ));
-
-        assertThrows(IllegalStateException.class,
-                () -> config.setScheduler(new SimpleTaskScheduler()));
-    }
-
-    @Test
-    void engineConfigRejectsTaskManagerSchedulerMismatchAfterSchedulerIsConfigured() {
-        EngineConfig config = new EngineConfig();
-        config.setScheduler(new SimpleTaskScheduler());
-
-        assertThrows(IllegalArgumentException.class,
-                () -> config.setTaskManager(new com.xa.mass.engine.TaskManager(
-                        new SimpleTaskScheduler(),
-                        new InMemoryTaskStorage(),
-                        new InMemoryTaskWorkRuntime())));
+        Assertions.assertEquals(List.of(replacement), ruleStorage.getAllRules());
     }
 
     @Test
@@ -1122,17 +1597,23 @@ class MassSdkTest {
         InMemoryTaskWorkRuntime runtime = new InMemoryTaskWorkRuntime();
 
         config.setTaskWorkRuntime(runtime);
-
-        TaskManager taskManager = config.getTaskManager();
-
         assertSame(runtime, config.getTaskWorkRuntime());
-        assertSame(runtime, taskManager.getTaskWorkRuntime());
+        List<Map<String, Object>> inputs = List.of(Map.of("target", "alpha"));
+        TaskShellCreateRequestDto shell = new TaskShellCreateRequestDto();
+        shell.setSourceRef("runtime-assembly");
+        shell.setProject("demoApp");
+        shell.setUserId("sdk-test");
+        shell.setExecutionSpec(taskExecutionSpec(null, 1, 0, 3));
+        Task task = config.getTaskCommandService().createTaskShell(shell);
+        config.getTaskCommandService().appendTaskItems(task.getTid(), inputs);
+        assertTrue(config.getTaskCommandService().sealTask(task.getTid()));
+        assertEquals(1, runtime.stats(task.getTid()).readyCount());
     }
 
     @Test
     void engineConfigRejectsTaskWorkRuntimeMismatchAfterTaskManagerIsConfigured() {
         EngineConfig config = new EngineConfig();
-        config.getTaskManager();
+        config.getTaskCommandService();
 
         assertThrows(IllegalStateException.class,
                 () -> config.setTaskWorkRuntime(new InMemoryTaskWorkRuntime()));
@@ -1154,81 +1635,135 @@ class MassSdkTest {
     }
 
     @Test
-    void engineConfigResetsRuntimeBoundariesWhenTaskManagerChanges() {
+    void engineConfigRequiresExplicitTaskDetailStoreAfterReplacingTaskStorage() {
         EngineConfig config = new EngineConfig();
 
-        TaskResultIngestFacade oldResultIngestFacade = config.getTaskResultIngestFacade();
-        TaskAssignmentRuntimePort oldAssignmentRuntimePort = config.getTaskAssignmentRuntimePort();
-        TaskRuntimeMaintenancePort oldRuntimeMaintenancePort = config.getTaskRuntimeMaintenancePort();
-        TaskRuntimeRecoveryPort oldRuntimeRecoveryPort = config.getTaskRuntimeRecoveryPort();
+        config.setTaskStorage(new InMemoryTaskStorage());
 
-        TaskManager replacement = new TaskManager(
-                config.getScheduler(),
-                new InMemoryTaskStorage(),
-                new InMemoryTaskWorkRuntime()
-        );
-        config.setTaskManager(replacement);
+        IllegalStateException error = assertThrows(IllegalStateException.class, config::getTaskCommandService);
+        assertEquals("taskDetailStore is not configured; provide an explicit taskDetailStore via setTaskDetailStore()",
+                error.getMessage());
+    }
 
-        assertNotSame(oldResultIngestFacade, config.getTaskResultIngestFacade());
-        assertNotSame(oldAssignmentRuntimePort, config.getTaskAssignmentRuntimePort());
-        assertNotSame(oldRuntimeMaintenancePort, config.getTaskRuntimeMaintenancePort());
-        assertNotSame(oldRuntimeRecoveryPort, config.getTaskRuntimeRecoveryPort());
+    @Test
+    void engineConfigDerivesWorkerManagerFromCurrentWorkerStorage() {
+        EngineConfig config = new EngineConfig();
+        WorkerManager initial = config.getWorkerManager();
+        assertSame(initial, config.getWorkerManager());
+        WorkerStorage replacement = spy(new com.xa.mass.storage.memory.InMemoryWorkerStorage());
+        Worker worker = new Worker();
+        worker.setWorkerId("worker-rebound");
+
+        config.setWorkerStorage(replacement);
+
+        WorkerManager rebound = config.getWorkerManager();
+        assertNotSame(initial, rebound);
+        assertSame(rebound, config.getWorkerManager());
+        rebound.addWorker(worker);
+
+        verify(replacement).addWorker(worker);
+        assertNotNull(replacement.getWorker("worker-rebound").orElse(null));
+    }
+
+    @Test
+    void engineConfigReinitializesDefaultRulesForReplacementRuleStorage() {
+        EngineConfig config = new EngineConfig();
+        var initial = config.getRuleManager();
+        RuleStorage replacement = new com.xa.mass.storage.memory.InMemoryRuleStorage();
+
+        config.setRuleStorage(replacement);
+
+        var rebound = config.getRuleManager();
+        assertNotSame(initial, rebound);
+        Assertions.assertFalse(replacement.getAllRules().isEmpty());
     }
 
     @Test
     void createTaskSupportsModeAwareSdkRequest() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
+        EngineConfig config = mock(EngineConfig.class);
+        TaskCommandService taskCommandService = mock(TaskCommandService.class);
+        TaskQueryService taskQueryService = mock(TaskQueryService.class);
         Task createdTask = new Task();
+        createdTask.setTid("task-stream-001");
+        Task hydratedTask = new Task();
+        hydratedTask.setTid("task-stream-001");
+        hydratedTask.setProject("demoApp");
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
-        when(engine.createTask(any(TaskCreateRequestDto.class))).thenReturn(createdTask);
+        when(engine.getConfig()).thenReturn(config);
+        when(config.getTaskCommandService()).thenReturn(taskCommandService);
+        when(config.getTaskQueryService()).thenReturn(taskQueryService);
+        when(engine.createTaskShell(any(TaskShellCreateRequestDto.class))).thenReturn(createdTask);
+        when(taskQueryService.getTask("task-stream-001")).thenReturn(hydratedTask);
+        stubAppendReceipts(taskCommandService);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
         registerExampleTaskCatalog(app);
-        MassTaskRequest request = MassTaskRequest.streaming("demoApp", "crawler-stream")
+        MassTaskShellCreateRequest request = MassTaskShellCreateRequest.builder()
                 .userId("agent")
-                .eventCode("crawler.fetch-page")
-                .payloadType(PayloadType.JSON)
+                .project("demoApp")
+                .sourceRef("crawler-stream")
                 .sharedConfig(Map.of("routingCode", "us"))
-                .jsonInputs(List.of(
-                        Map.of("url", "https://example.test/page-1"),
-                        Map.of("url", "https://example.test/page-2")
-                ))
-                .batchSize(1)
-                .defaultMsgMaxRetryCount(2)
-                .maxRuntimeSeconds(60)
+                .executionSpec(taskExecutionOptions(null, 1, 60, 0))
                 .build();
 
-        Task result = app.createTask(request);
+        TaskDetailSnapshot result = createShellWithOptionalItems(app, request, "crawler.fetch-page", List.of(
+                Map.of("url", "https://example.test/page-1"),
+                Map.of("url", "https://example.test/page-2")
+        ), true);
 
-        assertSame(createdTask, result);
-        var captor = org.mockito.ArgumentCaptor.forClass(TaskCreateRequestDto.class);
-        verify(engine).createTask(captor.capture());
-        TaskCreateRequestDto dto = captor.getValue();
+        assertNotNull(result);
+        Assertions.assertEquals("task-stream-001", result.getTaskId());
+        Assertions.assertEquals("demoApp", result.getProject());
+        var captor = org.mockito.ArgumentCaptor.forClass(TaskShellCreateRequestDto.class);
+        verify(engine).createTaskShell(captor.capture());
+        TaskShellCreateRequestDto dto = captor.getValue();
         Assertions.assertEquals("agent", dto.getUserId());
         Assertions.assertEquals("demoApp", dto.getProject());
-        Assertions.assertEquals("crawler-stream", dto.getTaskName());
-        Assertions.assertTrue(dto.isOpenEnded());
+        Assertions.assertEquals("crawler-stream", dto.getSourceRef());
         Assertions.assertEquals(
                 TaskOwnershipStamp.applyToSharedConfig(
-                        Map.of(
-                                "routingCode", "us",
-                                "_sdk", Map.of(
-                                        "eventCode", "crawler.fetch-page",
-                                        "payloadType", "JSON",
-                                        "taskMode", "STREAMING"
-                                )
-                        ),
+                        Map.of("routingCode", "us"),
                         new TaskOwnershipStamp("sdk-internal", PrincipalType.SERVICE)
                 ),
                 dto.getSharedConfig()
         );
-        Assertions.assertEquals(List.of(
-                Map.of("type", "json", "data", Map.of("url", "https://example.test/page-1")),
-                Map.of("type", "json", "data", Map.of("url", "https://example.test/page-2"))
-        ), dto.getInputs());
+        verify(taskCommandService).appendTaskItemsWithReceipt("task-stream-001", List.of(
+                Map.of("url", "https://example.test/page-1", "eventCode", "crawler.fetch-page"),
+                Map.of("url", "https://example.test/page-2", "eventCode", "crawler.fetch-page")
+        ));
+    }
+
+    @Test
+    void appendTaskItemsPassesMapPayloadThroughWithoutShellInspection() {
+        MassApplication delegate = mock(MassApplication.class);
+        MassEngine engine = mock(MassEngine.class);
+        EngineConfig config = mock(EngineConfig.class);
+        TaskCommandService taskCommandService = mock(TaskCommandService.class);
+
+        when(delegate.getEngine()).thenReturn(engine);
+        when(engine.isRunning()).thenReturn(true);
+        when(engine.getConfig()).thenReturn(config);
+        when(config.getTaskCommandService()).thenReturn(taskCommandService);
+        stubAppendReceipts(taskCommandService);
+
+        MassSdkApplication app = new MassSdkApplication(delegate);
+
+        int added = app.appendTaskItems("task-map-001", MassTaskItemBatchAppendRequest.builder()
+                .items(List.of(
+                        Map.of("target", "hello"),
+                        Map.of("target", "world")
+                ))
+                .build());
+
+        assertEquals(2, added);
+        verify(taskCommandService).appendTaskItemsWithReceipt("task-map-001", List.of(
+                Map.of("target", "hello"),
+                Map.of("target", "world")
+        ));
     }
 
     @Test
@@ -1243,7 +1778,7 @@ class MassSdkTest {
                 .defaultRoutingCode("bot")
                 .handler((request, principal) -> EventResponse.success(Map.of("accepted", true), request.getRequestId()))
                 .build();
-        ProjectMetadata projectMetadata = ProjectMetadata.builder()
+        ProjectDefinition projectDefinition = ProjectDefinition.builder()
                 .code("botApp")
                 .name("Bot App")
                 .description("Bot-oriented sdk catalog entry")
@@ -1251,13 +1786,13 @@ class MassSdkTest {
                 .build();
 
         app.registerEventDefinition(eventDefinition);
-        app.registerProject(projectMetadata);
+        app.registerProject(projectDefinition);
 
         Assertions.assertTrue(app instanceof ResourceOperations);
         Assertions.assertNotNull(app.getEvent("bot.command"));
         Assertions.assertEquals("bot.command", app.getEvent("bot.command").getCode());
         Assertions.assertEquals("Bot Command", app.getEvent("bot.command").getName());
-        Assertions.assertEquals(projectMetadata, app.getProject("botApp"));
+        Assertions.assertEquals(projectDefinition, app.getProject("botApp"));
         Assertions.assertTrue(app.hasEvent("bot.command"));
         Assertions.assertTrue(app.hasProject("botApp"));
         Assertions.assertTrue(app.projectSupportsEvent("botApp", "bot.command"));
@@ -1283,9 +1818,12 @@ class MassSdkTest {
                 .payloadTypes(List.of(PayloadType.TEXT, PayloadType.JSON))
                 .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
                 .defaultRoutingCode("bot")
+                .priorityClass(PriorityClass.INTERACTIVE)
+                .responseMode(ResponseMode.STREAM)
+                .targetScope(TargetScope.WORKER)
                 .handler((request, principal) -> EventResponse.success(Map.of("accepted", true), request.getRequestId()))
                 .build());
-        app.registerProject(ProjectMetadata.builder()
+        app.registerProject(ProjectDefinition.builder()
                 .code("botApp")
                 .name("Bot App")
                 .description("bot project")
@@ -1301,8 +1839,18 @@ class MassSdkTest {
         assertEquals(List.of("TEXT", "JSON"), descriptor.getPayloadTypes());
         assertEquals(List.of("SINGLE_RUN", "STREAMING"), descriptor.getTaskModes());
         assertEquals("bot", descriptor.getDefaultRoutingCode());
+        assertEquals(PriorityClass.INTERACTIVE, descriptor.getPriorityClass());
+        assertEquals(ResponseMode.STREAM, descriptor.getResponseMode());
+        assertEquals(DeliveryAcknowledgementMode.NONE, descriptor.getDeliveryAcknowledgementMode());
+        assertEquals(EventConvergenceMode.STREAM, descriptor.getConvergenceMode());
+        assertEquals(TargetScope.WORKER, descriptor.getTargetScope());
         assertEquals(List.of("botApp"), app.getEvent("bot.command").getProjectCodes());
         assertEquals(descriptor.getDescription(), app.getEvent("bot.command").getDescription());
+        assertEquals(PriorityClass.INTERACTIVE, app.getEvent("bot.command").getPriorityClass());
+        assertEquals(ResponseMode.STREAM, app.getEvent("bot.command").getResponseMode());
+        assertEquals(DeliveryAcknowledgementMode.NONE, app.getEvent("bot.command").getDeliveryAcknowledgementMode());
+        assertEquals(EventConvergenceMode.STREAM, app.getEvent("bot.command").getConvergenceMode());
+        assertEquals(TargetScope.WORKER, app.getEvent("bot.command").getTargetScope());
     }
 
     @Test
@@ -1311,7 +1859,7 @@ class MassSdkTest {
         MassApplication delegate = mock(MassApplication.class);
         when(delegate.getEventRuntime()).thenReturn(runtime);
         MassSdkApplication app = new MassSdkApplication(delegate);
-        app.registerProject(ProjectMetadata.builder()
+        app.registerProject(ProjectDefinition.builder()
                 .code("runtimeApp")
                 .name("Runtime App")
                 .description("runtime-backed project")
@@ -1326,6 +1874,11 @@ class MassSdkTest {
                         .payloadTypes(List.of("JSON"))
                         .taskModes(List.of("SINGLE_RUN"))
                         .projectCodes(List.of("runtimeApp"))
+                        .priorityClass(PriorityClass.BULK)
+                        .responseMode(ResponseMode.FINAL_RESULT)
+                        .deliveryAcknowledgementMode(DeliveryAcknowledgementMode.DELIVERY_ACCEPTED)
+                        .convergenceMode(EventConvergenceMode.FINAL_RESULT)
+                        .targetScope(TargetScope.TASK_ENGINE)
                         .enabled(true)
                         .build(),
                 (request, principal) -> CoreEventResponse.success(Map.of("ok", true), request.getRequestId())
@@ -1333,15 +1886,21 @@ class MassSdkTest {
 
         assertNotNull(app.getEvent("runtime.only"));
         assertEquals("Runtime Only", app.getEvent("runtime.only").getName());
+        assertEquals(PriorityClass.BULK, app.getEvent("runtime.only").getPriorityClass());
+        assertEquals(ResponseMode.FINAL_RESULT, app.getEvent("runtime.only").getResponseMode());
+        assertEquals(DeliveryAcknowledgementMode.DELIVERY_ACCEPTED,
+                app.getEvent("runtime.only").getDeliveryAcknowledgementMode());
+        assertEquals(EventConvergenceMode.FINAL_RESULT, app.getEvent("runtime.only").getConvergenceMode());
+        assertEquals(TargetScope.TASK_ENGINE, app.getEvent("runtime.only").getTargetScope());
         assertTrue(app.listEvents().stream().anyMatch(event -> "runtime.only".equals(event.getCode())));
         assertEquals(List.of("runtime.only"),
                 app.getEventsForProject("runtimeApp").stream().map(EventDefinition::getCode).toList());
         assertEquals(List.of("runtime.only"),
-                app.metadataCatalog().getEventsForProject("runtimeApp").stream()
+                app.catalog().getEventsForProject("runtimeApp").stream()
                         .map(EventDefinition::getCode)
                         .toList());
         assertEquals(List.of("runtime.only"),
-                app.metadataCatalog().getEventsForProject("runtimeApp").stream()
+                app.catalog().getEventsForProject("runtimeApp").stream()
                         .map(EventDefinition::getCode)
                         .toList());
     }
@@ -1349,7 +1908,7 @@ class MassSdkTest {
     @Test
     void eventDefinitionBecomesSingleSourceForMetadataScopeAndHandler() {
         MassSdkApplication app = new MassSdkApplication(mock(MassApplication.class));
-        app.registerProject(ProjectMetadata.builder()
+        app.registerProject(ProjectDefinition.builder()
                 .code("botApp")
                 .name("Bot App")
                 .description("bot project")
@@ -1389,12 +1948,12 @@ class MassSdkTest {
         assertEquals(List.of("bot.command"),
                 app.getEventsForProject("botApp").stream().map(EventDefinition::getCode).toList());
 
-        SdkMetadataCatalog metadataCatalog = app.metadataCatalog();
+        ControlPlaneCatalog metadataCatalog = app.catalog();
         assertTrue(metadataCatalog.listEvents().stream().anyMatch(event -> "bot.command".equals(event.getCode())));
         assertEquals(List.of("bot.command"),
                 metadataCatalog.getEventsForProject("botApp").stream().map(EventDefinition::getCode).toList());
 
-        SdkMetadataCatalog catalog = app.metadataCatalog();
+        ControlPlaneCatalog catalog = app.catalog();
         assertTrue(catalog.listEvents().stream().anyMatch(event -> "bot.command".equals(event.getCode())));
         assertEquals(List.of("bot.command"),
                 catalog.getEventsForProject("botApp").stream().map(EventDefinition::getCode).toList());
@@ -1415,7 +1974,7 @@ class MassSdkTest {
 
         Assertions.assertTrue(app instanceof AuthProvider);
         Assertions.assertTrue(app.hasSubmitter("telegram-bot"));
-        SubmitterMetadata submitterMetadata = SubmitterMetadata.from(submitterRegistration);
+        SubmitterProfile submitterMetadata = SubmitterProfile.from(submitterRegistration);
         Assertions.assertEquals(List.of(submitterMetadata), app.listSubmitters());
         Assertions.assertEquals(submitterMetadata, app.getSubmitter("telegram-bot"));
         PrincipalContext submitterContext = app.authenticateSubmitter("test-api-key");
@@ -1437,7 +1996,7 @@ class MassSdkTest {
                 .principalId("crawler-read-key")
                 .credential("crawler-read-secret")
                 .userId("crawler-user")
-                .permissions(List.of("metadata:view"))
+                .permissions(List.of("catalog:view"))
                 .projectScopes(List.of("crawlerApp"))
                 .eventScopes(List.of("crawler.fetch-page"))
                 .build());
@@ -1472,7 +2031,7 @@ class MassSdkTest {
                 .projectScope("telegramApp")
                 .build());
 
-        SubmitterMetadata metadata = app.getSubmitter("telegram-bot");
+        SubmitterProfile metadata = app.getSubmitter("telegram-bot");
 
         Assertions.assertNotNull(metadata);
         Assertions.assertEquals("telegram-bot", metadata.getPrincipalId());
@@ -1525,7 +2084,7 @@ class MassSdkTest {
     }
 
     @Test
-    void dispatchEventCanCreateCatalogTaskThroughEventEntry() {
+    void dispatchEventRejectsTaskBackedCatalogTaskEntry() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         MassSdkApplication app = MassSdk.builder()
@@ -1549,14 +2108,9 @@ class MassSdkTest {
                     eventPrincipal("client-a", "user-a", "crawlerApp", "crawler.fetch-page")
             );
 
-            assertTrue(response.isSuccess());
+            assertFalse(response.isSuccess());
+            Assertions.assertEquals("TASK_BACKED_EVENT_REQUIRES_TASK_API", response.getCode());
             Assertions.assertEquals("req-catalog-create", response.getRequestId());
-            Assertions.assertInstanceOf(Task.class, response.getData());
-            Task task = (Task) response.getData();
-            Assertions.assertEquals("crawlerApp", task.getProject());
-            Assertions.assertEquals("crawler-fetch-via-event", task.getTaskName());
-            Assertions.assertEquals(1, app.getTaskMessages(task.getTid(), 1).size());
-            Assertions.assertEquals("json", app.getTaskMessages(task.getTid(), 1).get(0).getInput().get("type"));
         } finally {
             app.stop();
         }
@@ -1591,7 +2145,7 @@ class MassSdkTest {
     }
 
     @Test
-    void createTaskRejectsUnsupportedSdkProjectAndEventContract() {
+    void dispatchEventRejectsTaskBackedCatalogEventContract() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
 
@@ -1601,23 +2155,18 @@ class MassSdkTest {
         MassSdkApplication app = new MassSdkApplication(delegate);
         registerExampleTaskCatalog(app);
 
-        Assertions.assertThrows(IllegalArgumentException.class,
-                () -> app.createTask(MassTaskRequest.singleRun("missingApp", "unknown-task")
-                        .jsonInputs(List.of(Map.of("target", "value")))
-                        .build()));
+        EventResponse response = app.dispatchEvent(
+                EventRequest.builder()
+                        .event("crawler.fetch-page")
+                        .project("crawlerApp")
+                        .payload(Map.of("url", "https://example.test"))
+                        .requestId("req-task-backed-reject")
+                        .build(),
+                eventPrincipal("client-a", "user-a", "crawlerApp", "crawler.fetch-page")
+        );
 
-        Assertions.assertThrows(IllegalArgumentException.class,
-                () -> app.createTask(MassTaskRequest.singleRun("telegramApp", "crawler-task")
-                        .eventCode("crawler.fetch-page")
-                        .jsonInputs(List.of(Map.of("url", "https://example.test")))
-                        .build()));
-
-        Assertions.assertThrows(IllegalArgumentException.class,
-                () -> app.createTask(MassTaskRequest.singleRun("rcsApp", "sms-task")
-                        .eventCode("sms.acquire-number")
-                        .payloadType(PayloadType.TEXT)
-                        .textInputs(List.of("hello"))
-                        .build()));
+        assertFalse(response.isSuccess());
+        assertEquals("TASK_BACKED_EVENT_REQUIRES_TASK_API", response.getCode());
     }
 
     @Test
@@ -1633,20 +2182,19 @@ class MassSdkTest {
 
         try {
             app.start();
-            app.registerProject(ProjectMetadata.builder()
+            app.registerProject(ProjectDefinition.builder()
                     .code("botAppExecutableTest")
                     .name("Bot App Executable Test")
                     .description("custom runtime project")
                     .eventCodes(List.of("chatbot.reply"))
                     .build());
 
-            Task task = app.createTask(MassTaskCreateRequest.builder()
+            TaskDetailSnapshot task = createShellWithOptionalItems(app, MassTaskShellCreateRequest.builder()
                     .userId("bot-agent")
                     .project("botAppExecutableTest")
-                    .taskName("custom-project-task")
-                    .inputs(List.of(Map.of("target", "chat-1")))
-                    .batchSize(1)
-                    .build());
+                    .sourceRef("custom-project-task")
+                    .executionSpec(taskExecutionOptions(null, 1, 0, 0))
+                    .build(), "chatbot.reply", List.of(Map.of("target", "chat-1")), false);
 
             assertNotNull(task);
             Assertions.assertEquals("botAppExecutableTest", task.getProject());
@@ -1656,7 +2204,7 @@ class MassSdkTest {
     }
 
     @Test
-    void createTaskSupportsCustomRegisteredProjectAndEventCatalog() {
+    void createTaskShellSupportsCustomRegisteredProjectAndEventCatalog() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
         MassSdkApplication app = MassSdk.builder()
@@ -1675,18 +2223,19 @@ class MassSdkTest {
                     .payloadTypes(List.of(PayloadType.TEXT))
                     .taskModes(List.of(TaskMode.SINGLE_RUN))
                     .build());
-            app.registerProject(ProjectMetadata.builder()
+            app.registerProject(ProjectDefinition.builder()
                     .code("botAppCatalogTest")
                     .name("Bot App Catalog Test")
                     .description("custom runtime project")
                     .eventCodes(List.of("bot.command"))
                     .build());
 
-            Task task = app.createTask(MassTaskRequest.singleRun("botAppCatalogTest", "bot-command-task")
+            TaskDetailSnapshot task = createShellWithOptionalItems(app, MassTaskShellCreateRequest.builder()
                     .userId("bot-agent")
-                    .eventCode("bot.command")
-                    .textInputs(List.of("/start"))
-                    .build());
+                    .project("botAppCatalogTest")
+                    .sourceRef("bot-command-task")
+                    .executionSpec(taskExecutionOptions(null, 1, 0, 0))
+                    .build(), "bot.command", List.of(Map.of("text", "/start")), false);
 
             assertNotNull(task);
             Assertions.assertEquals("botAppCatalogTest", task.getProject());
@@ -1718,25 +2267,25 @@ class MassSdkTest {
                 .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
                 .build());
 
-        app.registerProject(ProjectMetadata.builder()
+        app.registerProject(ProjectDefinition.builder()
                 .code("crawlerApp")
                 .name("Crawler App")
                 .description("Example crawler project.")
                 .eventCodes(List.of("crawler.fetch-page"))
                 .build());
-        app.registerProject(ProjectMetadata.builder()
+        app.registerProject(ProjectDefinition.builder()
                 .code("demoApp")
                 .name("Demo App")
                 .description("Example demo project.")
                 .eventCodes(List.of("crawler.fetch-page"))
                 .build());
-        app.registerProject(ProjectMetadata.builder()
+        app.registerProject(ProjectDefinition.builder()
                 .code("telegramApp")
                 .name("Telegram App")
                 .description("Example telegram project.")
                 .eventCodes(List.of("chatbot.reply"))
                 .build());
-        app.registerProject(ProjectMetadata.builder()
+        app.registerProject(ProjectDefinition.builder()
                 .code("rcsApp")
                 .name("RCS App")
                 .description("Example RCS project.")
@@ -1749,8 +2298,8 @@ class MassSdkTest {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
         EngineConfig config = new EngineConfig();
-        WorkerManager workerManager = spy(config.getWorkerManager());
-        config.setWorkerManager(workerManager);
+        WorkerStorage workerStorage = spy(config.getWorkerStorage());
+        config.setWorkerStorage(workerStorage);
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
@@ -1763,56 +2312,35 @@ class MassSdkTest {
         workerAttributes.put(" type ", "crawler");
         workerAttributes.put(" ", "ignored");
         workerAttributes.put("null-value", null);
+        declareSdkTestGroup(app, "crawler", List.of(WorkerEventBinding.builder()
+                .eventCode("crawler.fetch-page")
+                .projectCodes(List.of("crawlerApp"))
+                .build()));
+        bindSdkTestNode(app, "crawler");
         app.registerWorker(WorkerRegistration.builder()
                 .workerId(" crawler-worker-001 ")
+                .adapterNodeId(" sdk-test-node ")
                 .workerGroupId(" crawler ")
-                .eventBindings(List.of(
-                        WorkerEventBinding.builder()
-                                .eventCode(" crawler.fetch-page ")
-                                .projectCodes(Arrays.asList(" crawlerApp ", "crawlerApp", " "))
-                                .build()
-                ))
                 .transportHint(" POLLING ")
                 .attributes(workerAttributes)
                 .build());
 
-        Map<String, String> contextAttributes = new LinkedHashMap<>();
-        contextAttributes.put(" region ", "us");
-        contextAttributes.put("", "ignored");
-        LinkedHashSet<String> routingTags = new LinkedHashSet<>(Arrays.asList(" ROUTE-US ", "route-us", " "));
-        app.registerWorkerContext(WorkerContextRegistration.builder()
-                .workerContextId(" ctx-crawler-worker-001 ")
-                .workerId(" crawler-worker-001 ")
-                .routingTags(routingTags)
-                .attributes(contextAttributes)
-                .build());
-
         var workerCaptor = org.mockito.ArgumentCaptor.forClass(Worker.class);
-        verify(workerManager).addWorker(workerCaptor.capture());
+        verify(workerStorage).addWorker(workerCaptor.capture());
         Worker worker = workerCaptor.getValue();
         Assertions.assertEquals("crawler-worker-001", worker.getWorkerId());
         Assertions.assertEquals("crawler", worker.getWorkerGroupId());
-        Assertions.assertEquals(List.of("crawlerApp"), worker.getSupportedProjects());
-        Assertions.assertEquals(List.of("crawler.fetch-page"), worker.getSupportedEventCodes());
+        Assertions.assertTrue(worker.getSupportedProjects().isEmpty());
+        Assertions.assertTrue(worker.getSupportedEventCodes().isEmpty());
         Assertions.assertEquals("polling", worker.getOnlineStrategy());
         Assertions.assertEquals(Map.of("type", "crawler"), worker.getAttributes());
-
-        var contextCaptor = org.mockito.ArgumentCaptor.forClass(WorkerContext.class);
-        verify(workerManager).addWorkerContext(contextCaptor.capture());
-        WorkerContext workerContext = contextCaptor.getValue();
-        Assertions.assertEquals("ctx-crawler-worker-001", workerContext.getWorkerContextId());
-        Assertions.assertEquals("crawler-worker-001", workerContext.getWorkerId());
-        Assertions.assertEquals(Set.of("route-us"), workerContext.getRoutingTags());
-        Assertions.assertEquals(Map.of("region", "us"), workerContext.getAttributes());
     }
 
     @Test
-    void eventBindingsBecomeWorkerCapabilityTruth() {
+    void declareWorkerGroupCreatesGroupCapabilityBeforeWorkerRegistration() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
         EngineConfig config = new EngineConfig();
-        WorkerManager workerManager = spy(config.getWorkerManager());
-        config.setWorkerManager(workerManager);
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
@@ -1822,49 +2350,55 @@ class MassSdkTest {
         MassSdkApplication app = new MassSdkApplication(delegate);
         registerExampleTaskCatalog(app);
 
+        app.declareWorkerGroup(WorkerGroupDeclaration.builder()
+                .groupId("crawler")
+                .eventBindings(List.of(WorkerEventBinding.builder()
+                        .eventCode("crawler.fetch-page")
+                        .projectCodes(List.of("crawlerApp"))
+                        .build()))
+                .defaultAttributes(Map.of("source", "declared"))
+                .defaultMaxConcurrentWork(3)
+                .build());
+
+        WorkerManager workerManager = config.getWorkerManager();
+        Assertions.assertEquals(Set.of("crawler"), workerManager.getWorkerRegistrySnapshot()
+                .groupIdsByEventKey(new EventKey("crawlerApp", "crawler.fetch-page")));
+        Assertions.assertTrue(workerManager.getWorkerRegistrySnapshot().workerIdsByGroupId("crawler").isEmpty());
+        var group = workerManager.workerGroup("crawler").orElseThrow();
+        Assertions.assertEquals(Map.of("source", "declared"), group.defaultAttributes());
+        Assertions.assertEquals(3, group.defaultMaxConcurrentWork());
+
+        bindSdkTestNode(app, "crawler");
         app.registerWorker(WorkerRegistration.builder()
-                .workerId("binding-worker-1")
-                .supportedProjects(List.of("legacy-project"))
-                .supportedEventCodes(List.of("legacy.event"))
-                .eventBindings(List.of(
-                        WorkerEventBinding.builder()
-                                .eventCode("crawler.fetch-page")
-                                .projectCodes(List.of("demoApp"))
-                                .build(),
-                        WorkerEventBinding.builder()
-                                .eventCode("chatbot.reply")
-                                .build()
-                ))
+                .workerId("crawler-worker-001")
+                .adapterNodeId("sdk-test-node")
+                .workerGroupId("crawler")
                 .transportHint("polling")
                 .build());
 
-        var workerCaptor = org.mockito.ArgumentCaptor.forClass(Worker.class);
-        verify(workerManager).addWorker(workerCaptor.capture());
-        Worker worker = workerCaptor.getValue();
-        Assertions.assertEquals(List.of("demoApp", "telegramApp", "rcsApp"), worker.getSupportedProjects());
-        Assertions.assertEquals(List.of("crawler.fetch-page", "chatbot.reply"), worker.getSupportedEventCodes());
+        Assertions.assertEquals(Set.of("crawler-worker-001"),
+                workerManager.getWorkerRegistrySnapshot().workerIdsByGroupId("crawler"));
     }
 
     @Test
-    void eventBindingsRejectUnknownEvent() {
+    void declareWorkerGroupRejectsUnknownEvent() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
-        stubDefaultTransportRegistrationResolution(delegate);
+        when(engine.getConfig()).thenReturn(new EngineConfig());
 
         MassSdkApplication app = new MassSdkApplication(delegate);
         registerExampleTaskCatalog(app);
 
         IllegalArgumentException error = assertThrows(
                 IllegalArgumentException.class,
-                () -> app.registerWorker(WorkerRegistration.builder()
-                        .workerId("binding-worker-unknown")
-                        .eventBindings(List.of(
-                                WorkerEventBinding.builder().eventCode("missing.event").build()
-                        ))
-                        .transportHint("polling")
+                () -> app.declareWorkerGroup(WorkerGroupDeclaration.builder()
+                        .groupId("unknown")
+                        .eventBindings(List.of(WorkerEventBinding.builder()
+                                .eventCode("missing.event")
+                                .build()))
                         .build())
         );
 
@@ -1872,28 +2406,25 @@ class MassSdkTest {
     }
 
     @Test
-    void eventBindingsRejectProjectOutsideEventScope() {
+    void declareWorkerGroupRejectsProjectOutsideEventScope() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
-        stubDefaultTransportRegistrationResolution(delegate);
+        when(engine.getConfig()).thenReturn(new EngineConfig());
 
         MassSdkApplication app = new MassSdkApplication(delegate);
         registerExampleTaskCatalog(app);
 
         IllegalArgumentException error = assertThrows(
                 IllegalArgumentException.class,
-                () -> app.registerWorker(WorkerRegistration.builder()
-                        .workerId("binding-worker-scope")
-                        .eventBindings(List.of(
-                                WorkerEventBinding.builder()
-                                        .eventCode("crawler.fetch-page")
-                                        .projectCodes(List.of("telegramApp"))
-                                        .build()
-                        ))
-                        .transportHint("polling")
+                () -> app.declareWorkerGroup(WorkerGroupDeclaration.builder()
+                        .groupId("crawler")
+                        .eventBindings(List.of(WorkerEventBinding.builder()
+                                .eventCode("crawler.fetch-page")
+                                .projectCodes(List.of("telegramApp"))
+                                .build()))
                         .build())
         );
 
@@ -1901,28 +2432,25 @@ class MassSdkTest {
     }
 
     @Test
-    void legacyCapabilityListsRejectProjectOutsideEventScope() {
+    void declareWorkerGroupRequiresEventBindings() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
-        stubDefaultTransportRegistrationResolution(delegate);
+        when(engine.getConfig()).thenReturn(new EngineConfig());
 
         MassSdkApplication app = new MassSdkApplication(delegate);
         registerExampleTaskCatalog(app);
 
         IllegalArgumentException error = assertThrows(
                 IllegalArgumentException.class,
-                () -> app.registerWorker(WorkerRegistration.builder()
-                        .workerId("legacy-worker-scope")
-                        .supportedProjects(List.of("telegramApp"))
-                        .supportedEventCodes(List.of("crawler.fetch-page"))
-                        .transportHint("polling")
+                () -> app.declareWorkerGroup(WorkerGroupDeclaration.builder()
+                        .groupId("empty")
                         .build())
         );
 
-        Assertions.assertTrue(error.getMessage().contains("outside event scope"));
+        Assertions.assertEquals("eventBindings is required", error.getMessage());
     }
 
     @Test
@@ -1950,8 +2478,6 @@ class MassSdkTest {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
         EngineConfig config = new EngineConfig();
-        WorkerManager workerManager = spy(config.getWorkerManager());
-        config.setWorkerManager(workerManager);
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
@@ -2013,12 +2539,17 @@ class MassSdkTest {
     void registerWorkerRejectsMissingAdapterIdWhenRealtimeFamilyHasOnlyOneRuntimeAdapter() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
-        WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
-                context.getWorkerManager(),
-                context.getTaskResultIngestChannel(),
-                context.getSystemEventChannel(),
-                List.of(TransportBinding.builder(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME))
-                        .build())
+        WorkerTransportRuntimeFactory transportFactory = (workerLookupStore,
+                                                         taskResultIngestChannel,
+                                                         systemEventChannel,
+                                                         workerPresenceStore,
+                                                         deliveryService,
+                                                         adapterBindings) -> new TransportRuntimeRegistry(
+                workerLookupStore,
+                taskResultIngestChannel,
+                systemEventChannel,
+                workerPresenceStore,
+                List.of(workerIdRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)))
         );
 
         MassSdkApplication app = MassSdk.builder()
@@ -2049,15 +2580,19 @@ class MassSdkTest {
     void registerWorkerRejectsMissingAdapterIdWhenMultipleRealtimeAdaptersAreConfigured() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
-        WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
-                context.getWorkerManager(),
-                context.getTaskResultIngestChannel(),
-                context.getSystemEventChannel(),
+        WorkerTransportRuntimeFactory transportFactory = (workerLookupStore,
+                                                         taskResultIngestChannel,
+                                                         systemEventChannel,
+                                                         workerPresenceStore,
+                                                         deliveryService,
+                                                         adapterBindings) -> new TransportRuntimeRegistry(
+                workerLookupStore,
+                taskResultIngestChannel,
+                systemEventChannel,
+                workerPresenceStore,
                 List.of(
-                        TransportBinding.builder(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME))
-                                .build(),
-                        TransportBinding.builder(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
-                                .build()
+                        workerIdRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)),
+                        workerIdRouteBinding(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
                 )
         );
 
@@ -2089,15 +2624,19 @@ class MassSdkTest {
     void registerWorkerUsesExplicitRealtimeAdapterIdWhenMultipleRealtimeAdaptersAreConfigured() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
-        WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
-                context.getWorkerManager(),
-                context.getTaskResultIngestChannel(),
-                context.getSystemEventChannel(),
+        WorkerTransportRuntimeFactory transportFactory = (workerLookupStore,
+                                                         taskResultIngestChannel,
+                                                         systemEventChannel,
+                                                         workerPresenceStore,
+                                                         deliveryService,
+                                                         adapterBindings) -> new TransportRuntimeRegistry(
+                workerLookupStore,
+                taskResultIngestChannel,
+                systemEventChannel,
+                workerPresenceStore,
                 List.of(
-                        TransportBinding.builder(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME))
-                                .build(),
-                        TransportBinding.builder(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
-                                .build()
+                        workerIdRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)),
+                        workerIdRouteBinding(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
                 )
         );
 
@@ -2128,15 +2667,19 @@ class MassSdkTest {
     void getWorkerTransportHintFallsBackToRegistryBindingInsteadOfNormalizingAdapterId() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
-        WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
-                context.getWorkerManager(),
-                context.getTaskResultIngestChannel(),
-                context.getSystemEventChannel(),
+        WorkerTransportRuntimeFactory transportFactory = (workerLookupStore,
+                                                         taskResultIngestChannel,
+                                                         systemEventChannel,
+                                                         workerPresenceStore,
+                                                         deliveryService,
+                                                         adapterBindings) -> new TransportRuntimeRegistry(
+                workerLookupStore,
+                taskResultIngestChannel,
+                systemEventChannel,
+                workerPresenceStore,
                 List.of(
-                        TransportBinding.builder(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME))
-                                .build(),
-                        TransportBinding.builder(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
-                                .build()
+                        workerIdRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)),
+                        workerIdRouteBinding(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
                 )
         );
 
@@ -2155,7 +2698,12 @@ class MassSdkTest {
                     .adapterId("websocket")
                     .transportHint("realtime")
                     .build());
-            app.getWorker("realtime-worker-websocket").setOnlineStrategy(null);
+            Worker worker = requireDelegate(app).getEngine().getConfig()
+                    .getWorkerStorage()
+                    .getWorker("realtime-worker-websocket")
+                    .orElseThrow();
+            worker.setOnlineStrategy(null);
+            assertTrue(requireDelegate(app).getEngine().getConfig().getWorkerStorage().updateWorker(worker));
 
             assertEquals(WorkerTransportHints.REALTIME, app.getWorkerTransportHint("realtime-worker-websocket"));
         } finally {
@@ -2178,7 +2726,7 @@ class MassSdkTest {
             app.start();
             Worker worker = new Worker();
             worker.setWorkerId("worker-without-transport");
-            requireDelegate(app).getEngine().getConfig().getWorkerManager().addWorker(worker);
+            requireDelegate(app).getEngine().getConfig().getWorkerStorage().addWorker(worker);
 
             IllegalStateException error = assertThrows(
                     IllegalStateException.class,
@@ -2195,11 +2743,17 @@ class MassSdkTest {
     void pullWorkerRejectsRealtimeWorkerWhenTransportIsNotPullCapable() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
-        WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
-                context.getWorkerManager(),
-                context.getTaskResultIngestChannel(),
-                context.getSystemEventChannel(),
-                List.of(TransportBinding.builder(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)).build())
+        WorkerTransportRuntimeFactory transportFactory = (workerLookupStore,
+                                                         taskResultIngestChannel,
+                                                         systemEventChannel,
+                                                         workerPresenceStore,
+                                                         deliveryService,
+                                                         adapterBindings) -> new TransportRuntimeRegistry(
+                workerLookupStore,
+                taskResultIngestChannel,
+                systemEventChannel,
+                workerPresenceStore,
+                List.of(workerIdRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)))
         );
 
         MassSdkApplication app = MassSdk.builder()
@@ -2233,13 +2787,19 @@ class MassSdkTest {
     void pullWorkerRejectsUnsupportedTransportEvenWhenAnotherPullCapableBindingExists() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
-        WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
-                context.getWorkerManager(),
-                context.getTaskResultIngestChannel(),
-                context.getSystemEventChannel(),
-                List.of(TransportBinding.builder(new StubPullCapableAdapter("queue-consumer", "queue-consumer"))
-                        .taskPullChannel(new StubPullCapableAdapter("queue-consumer", "queue-consumer"))
-                        .build())
+        WorkerTransportRuntimeFactory transportFactory = (workerLookupStore,
+                                                         taskResultIngestChannel,
+                                                         systemEventChannel,
+                                                         workerPresenceStore,
+                                                         deliveryService,
+                                                         adapterBindings) -> new TransportRuntimeRegistry(
+                workerLookupStore,
+                taskResultIngestChannel,
+                systemEventChannel,
+                workerPresenceStore,
+                List.of(workerIdRouteBinding(
+                        new StubPullCapableAdapter("queue-consumer", "queue-consumer"),
+                        new StubPullCapableAdapter("queue-consumer", "queue-consumer")))
         );
 
         MassSdkApplication app = MassSdk.builder()
@@ -2274,13 +2834,17 @@ class MassSdkTest {
                 "polling-http-v2",
                 WorkerTransportHints.POLLING
         );
-        WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
-                context.getWorkerManager(),
-                context.getTaskResultIngestChannel(),
-                context.getSystemEventChannel(),
-                List.of(TransportBinding.builder(pollingAdapter)
-                        .taskPullChannel(pollingAdapter)
-                        .build())
+        WorkerTransportRuntimeFactory transportFactory = (workerLookupStore,
+                                                         taskResultIngestChannel,
+                                                         systemEventChannel,
+                                                         workerPresenceStore,
+                                                         deliveryService,
+                                                         adapterBindings) -> new TransportRuntimeRegistry(
+                workerLookupStore,
+                taskResultIngestChannel,
+                systemEventChannel,
+                workerPresenceStore,
+                List.of(workerIdRouteBinding(pollingAdapter, pollingAdapter))
         );
 
         MassSdkApplication app = MassSdk.builder()
@@ -2317,6 +2881,7 @@ class MassSdkTest {
                 .build();
 
         try {
+            registerExampleTaskCatalog(app);
             app.start();
 
             RuleDefinition rule = new RuleDefinition();
@@ -2326,35 +2891,43 @@ class MassSdkTest {
             rule.setContent("isWorkerAvailable && supportsProject");
             app.replaceDefaultRules(List.of(rule));
 
+            app.declareWorkerGroup(WorkerGroupDeclaration.builder()
+                    .groupId("polling-crawler")
+                    .eventBindings(List.of(WorkerEventBinding.builder()
+                            .eventCode("crawler.fetch-page")
+                            .projectCodes(List.of("demoApp"))
+                            .build()))
+                    .build());
+            bindSdkTestNode(app, "polling-crawler");
             app.registerWorker(WorkerRegistration.builder()
                     .workerId("polling-worker-1")
-                    .supportedProjects(List.of("demoApp"))
+                    .adapterNodeId("sdk-test-node")
+                    .workerGroupId("polling-crawler")
                     .transportHint("polling")
                     .build());
 
             PullWorkerSession session = app.pullWorker("polling-worker-1");
             session.connect();
 
-            Task task = app.createTask(MassTaskCreateRequest.builder()
+            TaskDetailSnapshot task = createShellWithOptionalItems(app, MassTaskShellCreateRequest.builder()
                     .userId("crawler-agent")
                     .project("demoApp")
-                    .taskName("fetch-page")
+                    .sourceRef("fetch-page")
                     .sharedConfig(Map.of("mode", "pull"))
-                    .inputs(List.of(Map.of("url", "https://example.test/page-1")))
-                    .batchSize(1)
-                    .build());
+                    .executionSpec(taskExecutionOptions(null, 1, 0, 0))
+                    .build(), "crawler.fetch-page", List.of(Map.of("url", "https://example.test/page-1")), false);
 
-            assertTrue(app.approveTask(task.getTid()));
+            assertTrue(app.approveTask(task.getTaskId()));
 
             TaskDispatchItem dispatchItem = waitFor(
-                    Duration.ofSeconds(5),
+                    Duration.ofSeconds(10),
                     () -> {
-                        List<TaskDispatchItem> polled = session.poll(1);
+                        List<TaskDispatchItem> polled = session.poll(1, 250L);
                         return polled.isEmpty() ? null : polled.get(0);
                     }
             );
             assertNotNull(dispatchItem);
-            Assertions.assertEquals(task.getTid(), dispatchItem.getTaskId());
+            Assertions.assertEquals(task.getTaskId(), dispatchItem.getTaskId());
             Assertions.assertEquals("https://example.test/page-1", dispatchItem.getInput().get("url"));
             Assertions.assertEquals("pull", dispatchItem.getSharedConfig().get("mode"));
 
@@ -2365,50 +2938,61 @@ class MassSdkTest {
                     Map.of("httpStatus", 200, "bodyLength", 42)
             ));
 
-            Task terminalTask = waitFor(
+            TaskDetailSnapshot terminalTask = waitFor(
                     Duration.ofSeconds(5),
                     () -> {
-                        Task current = app.getTask(task.getTid());
-                        return current != null && current.getStatus() == TaskStatus.TERMINAL ? current : null;
+                        TaskDetailSnapshot current = app.getTaskDetail(task.getTaskId());
+                        return current != null && "TERMINAL".equals(current.getStatus()) ? current : null;
                     }
             );
 
             assertNotNull(terminalTask);
-            Assertions.assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, terminalTask.getTerminalReason());
+            Assertions.assertEquals("ALL_MESSAGES_SUCCEEDED", terminalTask.getTerminalReason());
 
-            TaskMsg finalMessage = app.getTaskMessages(task.getTid(), 1).get(0);
-            Assertions.assertEquals("SUCCESS", finalMessage.getStatus().name());
-            Assertions.assertEquals(200, finalMessage.getOutput().get("httpStatus"));
+            TaskResultWindowSnapshot resultWindow = app.readTaskResults(task.getTaskId(), 0, 10);
+            Assertions.assertEquals(1, resultWindow.getItems().size());
+            TaskResultItemSnapshot resultRow = resultWindow.getItems().getFirst();
+            Assertions.assertEquals("polling-worker-1", resultRow.getWorkerId());
+            Assertions.assertFalse(resultRow.getAttemptId().contains("-na-"));
+            Assertions.assertEquals("SUCCESS", resultRow.getStatus());
         } finally {
             app.stop();
         }
     }
 
     @Test
-    void massTaskRequestConvenienceBuildersExposeExpectedModeAndInputShape() {
-        MassTaskRequest textRequest = MassTaskRequest.singleRun("demoApp", "chatbot")
-                .userId("agent")
-                .payloadType(PayloadType.TEXT)
-                .textInputs(List.of("hello", "world"))
-                .build();
-        MassTaskRequest jsonRequest = MassTaskRequest.streaming("demoApp", "crawler")
-                .userId("agent")
-                .payloadType(PayloadType.JSON)
-                .jsonInputs(List.of(Map.of("target", "https://example.test")))
-                .build();
+    void appendTaskItemsAppliesBatchEventCodeWithoutPayloadRewriting() {
+        MassApplication delegate = mock(MassApplication.class);
+        MassEngine engine = mock(MassEngine.class);
+        EngineConfig config = mock(EngineConfig.class);
+        TaskCommandService taskCommandService = mock(TaskCommandService.class);
+        when(delegate.getEngine()).thenReturn(engine);
+        when(engine.isRunning()).thenReturn(true);
+        when(engine.getConfig()).thenReturn(config);
+        when(config.getTaskCommandService()).thenReturn(taskCommandService);
+        stubAppendReceipts(taskCommandService);
 
-        Assertions.assertEquals(TaskMode.SINGLE_RUN, textRequest.getMode());
-        Assertions.assertFalse(textRequest.isStreaming());
-        Assertions.assertEquals(List.of(
-                Map.of("type", "text", "text", "hello"),
-                Map.of("type", "text", "text", "world")
-        ), textRequest.toEngineInputs());
+        MassSdkApplication app = new MassSdkApplication(delegate);
 
-        Assertions.assertEquals(TaskMode.STREAMING, jsonRequest.getMode());
-        Assertions.assertTrue(jsonRequest.isStreaming());
-        Assertions.assertEquals(List.of(
-                Map.of("type", "json", "data", Map.of("target", "https://example.test"))
-        ), jsonRequest.toEngineInputs());
+        app.appendTaskItems("task-map-002", MassTaskItemBatchAppendRequest.builder()
+                .eventCode("demo.dispatch")
+                .items(List.of(
+                        Map.of("target", "hello"),
+                        Map.of("target", "world")
+                ))
+                .build());
+        app.appendTaskItems("task-json-002", MassTaskItemBatchAppendRequest.builder()
+                .eventCode("crawler.fetch-page")
+                .items(List.of(Map.of("target", "https://example.test")))
+                .build());
+
+        verify(taskCommandService).appendTaskItemsWithReceipt("task-map-002", List.of(
+                Map.of("target", "hello", "eventCode", "demo.dispatch"),
+                Map.of("target", "world", "eventCode", "demo.dispatch")
+        ));
+        verify(taskCommandService).appendTaskItemsWithReceipt("task-json-002", List.of(
+                Map.of("target", "https://example.test", "eventCode", "crawler.fetch-page")
+        ));
     }
 
     @Test
@@ -2423,15 +3007,32 @@ class MassSdkTest {
         assertMissingMethod(MassSdkApplication.class, "getWorkerManager");
         assertMissingMethod(MassSdkApplication.class, "updateTask", Task.class);
         assertMissingMethod(MassSdkApplication.class, "updateWorker", Worker.class);
+        assertMissingMethod(MassSdkApplication.class, "publishTaskEvents");
+        assertMissingMethod(MassSdkApplication.class, "listSessions");
+        assertMissingMethod(MassSdkApplication.class, "getSessionStats");
+        assertMissingMethod(MassSdkApplication.class, "enqueueRawMessage", Map.class);
+        assertMissingMethod(MassSdkApplication.class, "getQueueDetail");
+        assertMissingMethod(MassSdkApplication.class, "getQueueMetrics");
         assertMissingMethod(MassSdk.Builder.class, "unwrap");
         assertMissingMethod(MassSdk.TransportOptions.class, "unwrap");
         assertMissingMethod(MassSdk.EngineOptions.class, "unwrap");
         assertMissingMethod(MassEngine.class, "addWorker", Worker.class);
-        assertMissingMethod(MassEngine.class, "addWorkerContext", WorkerContext.class);
+        Assertions.assertThrows(ClassNotFoundException.class,
+                () -> Class.forName("com.xa.mass.sdk.model.WorkerContextRegistration"));
+        Assertions.assertThrows(ClassNotFoundException.class,
+                () -> Class.forName("com.xa.mass.sdk.model.WorkerContextSnapshot"));
+        Assertions.assertThrows(ClassNotFoundException.class,
+                () -> Class.forName("com.xa.mass.base.model.WorkerContext"));
+        Assertions.assertThrows(ClassNotFoundException.class,
+                () -> Class.forName("com.xa.mass.base.enums.worker.WorkerContextStatus"));
         assertMissingMethod(MassEngine.class, "getTaskManager");
         assertMissingMethod(MassEngine.class, "getWorkerManager");
+        assertMissingMethod(MassEngine.class, "publishTaskEvents");
+        assertMissingMethod(EngineConfig.class, "setWorkerManager", WorkerManager.class);
+        assertMissingMethod(EngineConfig.class, "setRuleManager", com.xa.mass.engine.rules.RuleManager.class);
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.sdk.TaskOperations"));
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.sdk.WorkerOperations"));
+        Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.sdk.TransportOperations"));
     }
 
     @Test
@@ -2447,6 +3048,8 @@ class MassSdkTest {
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.starter.transport.DefaultWorkerTransportRuntimeFactory"));
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.starter.transport.TransportRuntimeRegistry"));
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.gateway.runtime.WebSocketEmbeddedRuntimeSupport"));
+        Assertions.assertThrows(ClassNotFoundException.class,
+                () -> Class.forName("com.xa.mass.transport.websocket.runtime.WebSocketEmbeddedRuntimeSupport"));
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.starter.MassWebSocketAdapter"));
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.starter.config.WebSocketConfig"));
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.starter.config.WebSocketRuntimeComposition"));
@@ -2499,25 +3102,14 @@ class MassSdkTest {
         assertMissingMethod(TransportConfig.class, "resolveWorkerTransportRuntimeFactory");
         assertMissingMethod(TransportConfig.class, "resolveTransportAdapterBootstrap");
         assertMissingMethod(TransportConfig.class, "resolveSocketTransportAdapterBootstrap");
-        assertMissingMethod(
-                TransportConfig.class,
-                "createTransportServer",
-                WebSocketDispatchRuntimeContext.class,
-                WorkerEndpointRegistry.class,
-                int.class
-        );
+        Assertions.assertThrows(ClassNotFoundException.class,
+                () -> Class.forName("com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext"));
+        Assertions.assertThrows(ClassNotFoundException.class,
+                () -> Class.forName("com.xa.mass.transport.websocket.session.EventBusWorkerSystemEventChannel"));
         assertMissingMethod(TransportRuntimeComposition.class, "isTransportServerEnabled");
         assertMissingMethod(TransportRuntimeComposition.class, "getTransportServerPort");
         assertMissingMethod(TransportRuntimeComposition.class, "getTransportEndpointPath");
         assertMissingMethod(TransportRuntimeComposition.class, "getMaxConnections");
-        assertMissingMethod(
-                WebSocketEmbeddedRuntimeSupport.class,
-                "createDispatcherContext",
-                com.xa.mass.base.channel.tranporter.MessageTransporter.class,
-                WorkerEndpointRegistry.class,
-                TaskResultIngestChannel.class,
-                WorkerSystemEventChannel.class
-        );
         Assertions.assertThrows(NoSuchMethodException.class, () -> TransportServerFactoryContext.class.getDeclaredMethod("getFrameCodec"));
         Assertions.assertThrows(NoSuchMethodException.class, () -> TransportServerFactoryContext.class.getDeclaredConstructor(
                 WorkerEndpointRegistry.class,
@@ -2526,27 +3118,14 @@ class MassSdkTest {
                 int.class,
                 String.class
         ));
-        Assertions.assertThrows(NoSuchMethodException.class,
-                () -> com.xa.mass.transport.runtime.WorkerTransportRuntimeFactoryContext.class.getDeclaredMethod("getFrameCodec"));
-        Assertions.assertThrows(NoSuchMethodException.class,
-                () -> com.xa.mass.transport.runtime.WorkerTransportRuntimeFactoryContext.class.getDeclaredMethod("isWebSocketEnabled"));
-        Assertions.assertThrows(NoSuchMethodException.class, () -> com.xa.mass.transport.runtime.WorkerTransportRuntimeFactoryContext.class.getDeclaredConstructor(
-                com.xa.mass.engine.TaskManager.class,
-                com.xa.mass.engine.WorkerManager.class,
-                com.xa.mass.base.channel.tranporter.MessageTransporter.class,
-                WorkerEndpointRegistry.class,
-                com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec.class,
-                com.xa.mass.transport.channel.TaskResultIngestChannel.class,
-                com.xa.mass.transport.channel.WorkerSystemEventChannel.class,
-                boolean.class
-        ));
+        Assertions.assertThrows(ClassNotFoundException.class,
+                () -> Class.forName("com.xa.mass.transport.runtime.WorkerTransportRuntimeFactoryContext"));
     }
 
     private static void assertEngineOperationsFailFast(MassSdkApplication app) {
         List<Executable> operations = List.of(
-                () -> app.getTask("task-1"),
-                app::getAllTasks,
-                () -> app.getTasksByStatus(TaskStatus.READY),
+                () -> app.getTaskDetail("task-1"),
+                () -> app.getTaskSummariesByStatus("READY"),
                 () -> app.approveTask("task-1"),
                 () -> app.rejectTask("task-1"),
                 () -> app.blockTask("task-1"),
@@ -2554,31 +3133,19 @@ class MassSdkTest {
                 () -> app.resumeTaskDetailed("task-1"),
                 () -> app.resumeTask("task-1"),
                 () -> app.cancelTask("task-1"),
-                () -> app.terminateTask("task-1", TaskTerminalReason.MANUAL_CANCELLED),
-                () -> app.appendTaskItems("task-1", List.of()),
+                () -> app.terminateTask("task-1", "MANUAL_CANCELLED"),
+                () -> app.appendTaskItems("task-1", MassTaskItemBatchAppendRequest.builder().items(List.of()).build()),
                 () -> app.sealTask("task-1"),
-                () -> app.getTaskMessages("task-1", 1),
-                () -> app.getTaskMessage("task-1", "msg-1"),
-                () -> app.getTaskMessageAttempts("task-1", "msg-1"),
-                () -> app.getLatestActiveTaskMessageAttempt("task-1", "msg-1"),
-                () -> app.resolveTaskState("task-1"),
-                () -> app.validateTaskState("task-1"),
-                () -> app.auditTaskProjectionState("task-1"),
+                () -> app.taskDiagnostics().resolveTaskState("task-1"),
+                () -> app.taskDiagnostics().validateTaskState("task-1"),
                 () -> app.getWorker("worker-1"),
                 app::getAllWorkers,
-                app::getAllWorkerContexts,
-                () -> app.getWorkerContexts("worker-1"),
-                () -> app.getWorkerContextById("context-1"),
-                () -> app.isWorkerLocked("worker-1"),
+                () -> runtimeDiagnostics(app).isWorkerLocked("worker-1"),
                 () -> app.isWorkerOnline("worker-1"),
+                () -> app.declareWorkerGroup(WorkerGroupDeclaration.builder().groupId("group-1").build()),
                 () -> app.registerWorker(WorkerRegistration.builder().workerId("worker-1").build()),
-                () -> app.registerWorkerContext(WorkerContextRegistration.builder()
-                        .workerContextId("context-1")
-                        .workerId("worker-1")
-                        .build()),
                 () -> app.pullWorker("worker-1"),
-                () -> app.replaceDefaultRules(List.of()),
-                app::publishTaskEvents
+                () -> app.replaceDefaultRules(List.of())
         );
 
         for (Executable operation : operations) {
@@ -2642,8 +3209,8 @@ class MassSdkTest {
         return readField(app, "delegate", MassApplication.class);
     }
 
-    private static TransportAdapterBootstrap<TransportOutboundMessage> adapterBootstrap(TransportRuntimeComposition runtimeComposition,
-                                                                                      String adapterId) {
+    private static TransportAdapterBootstrap adapterBootstrap(TransportRuntimeComposition runtimeComposition,
+                                                              String adapterId) {
         return runtimeComposition.resolveTransportAdapterBootstraps().stream()
                 .filter(bootstrap -> bootstrap.descriptor() != null
                         && adapterId.equals(bootstrap.descriptor().getAdapterId()))
@@ -2679,6 +3246,19 @@ class MassSdkTest {
         Assertions.assertThrows(NoSuchMethodException.class, () -> type.getDeclaredMethod(methodName, parameterTypes));
     }
 
+    private static TransportBinding workerIdRouteBinding(WorkerAdapter adapter) {
+        return TransportBinding.builder(adapter)
+                .routeKeyResolver((dispatchBinding, routeContext) -> dispatchBinding != null ? dispatchBinding.workerId() : null)
+                .build();
+    }
+
+    private static TransportBinding workerIdRouteBinding(WorkerAdapter adapter, TaskPullChannel taskPullChannel) {
+        return TransportBinding.builder(adapter)
+                .routeKeyResolver((dispatchBinding, routeContext) -> dispatchBinding != null ? dispatchBinding.workerId() : null)
+                .taskPullChannel(taskPullChannel)
+                .build();
+    }
+
     private static <T> T waitFor(Duration timeout, ThrowingSupplier<T> supplier) throws Exception {
         long deadline = System.nanoTime() + timeout.toNanos();
         while (System.nanoTime() < deadline) {
@@ -2707,6 +3287,56 @@ class MassSdkTest {
                         invocation.getArgument(0, String.class),
                         invocation.getArgument(1, String.class)
                 ));
+    }
+
+    private static void bindSdkTestNode(MassSdkApplication app, String workerGroupId) {
+        app.registerAdapterNode(AdapterNodeRegistration.builder()
+                .adapterNodeId("sdk-test-node")
+                .adapterType(WorkerTransportHints.POLLING)
+                .endpointId("sdk-test")
+                .build());
+        app.bindNodeGroup(NodeGroupBindingRegistration.builder()
+                .adapterNodeId("sdk-test-node")
+                .workerGroupId(workerGroupId)
+                .build());
+    }
+
+    private static void declareSdkTestGroup(MassSdkApplication app,
+                                            String workerGroupId,
+                                            List<WorkerEventBinding> eventBindings) {
+        app.declareWorkerGroup(WorkerGroupDeclaration.builder()
+                .groupId(workerGroupId)
+                .eventBindings(eventBindings)
+                .build());
+    }
+
+    private static TaskDetailSnapshot createShellWithOptionalItems(MassSdkApplication app,
+                                                                   MassTaskShellCreateRequest request,
+                                                                   String eventCode,
+                                                                   List<Object> items,
+                                                                   boolean keepIntakeOpen) {
+        Objects.requireNonNull(app, "app");
+        Objects.requireNonNull(request, "request");
+        String taskId = app.createTaskShell(request).getTaskId();
+        if (items != null && !items.isEmpty()) {
+            app.appendTaskItems(taskId, MassTaskItemBatchAppendRequest.builder()
+                    .eventCode(eventCode)
+                    .items(items)
+                    .build());
+        }
+        if (!keepIntakeOpen) {
+            assertTrue(app.sealTask(taskId));
+        }
+        return app.getTaskDetail(taskId);
+    }
+
+    private static void stubAppendReceipts(TaskCommandService taskCommandService) {
+        when(taskCommandService.appendTaskItemsWithReceipt(any(), any()))
+                .thenAnswer(invocation -> {
+                    String taskId = invocation.getArgument(0, String.class);
+                    List<?> items = invocation.getArgument(1, List.class);
+                    return new TaskAppendReceipt(taskId, items.size(), List.of());
+                });
     }
 
     @FunctionalInterface
@@ -2778,13 +3408,13 @@ class MassSdkTest {
         }
 
         @Override
-        public List<TaskDispatchItem> pollTaskMessages(String workerId, int maxMessages, long timeoutMillis) {
-            return List.of();
+        public TaskPullResult pollTaskMessagesResult(String workerId, int maxMessages, long timeoutMillis) {
+            return TaskPullResult.empty();
         }
     }
 
     private static final class StaticDedicatedServerBootstrap
-            implements TransportAdapterBootstrap<TransportOutboundMessage> {
+            implements TransportAdapterBootstrap {
 
         private final TransportServer transportServer;
 
@@ -2793,10 +3423,8 @@ class MassSdkTest {
         }
 
         @Override
-        public TransportAdapterContribution create(TransportAdapterBootstrapContext<TransportOutboundMessage> context) {
-            return TransportAdapterContribution.builder()
-                    .transportServer(transportServer)
-                    .build();
+        public void contribute(TransportAdapterBootstrapContext context) {
+            context.registerTransportServer(transportServer);
         }
     }
 
@@ -2821,12 +3449,12 @@ class MassSdkTest {
                 return false;
             }
             return Boolean.TRUE.equals(connectionInfo.get("active"))
-                    && Objects.equals("socket", connectionInfo.get("transport"));
+                    && Objects.equals("socket", connectionInfo.get("adapterId"));
         });
     }
 
     private static final class DescriptorOnlyBootstrap
-            implements TransportAdapterBootstrap<TransportOutboundMessage> {
+            implements TransportAdapterBootstrap {
 
         private final TransportAdapterDescriptor descriptor;
 
@@ -2840,9 +3468,136 @@ class MassSdkTest {
         }
 
         @Override
-        public TransportAdapterContribution create(TransportAdapterBootstrapContext<TransportOutboundMessage> context) {
-            return TransportAdapterContribution.empty();
+        public void contribute(TransportAdapterBootstrapContext context) {
         }
+    }
+
+    private static final class StubTransportDeliveryStore implements TransportDeliveryStore {
+        private final AtomicBoolean shutdownCalled = new AtomicBoolean(false);
+
+        @Override
+        public com.xa.mass.transport.model.DispatchOutcome enqueue(
+                com.xa.mass.transport.model.TransportDispatchEnvelope envelope) {
+            return com.xa.mass.transport.model.DispatchOutcome.queued(
+                    envelope == null ? null : envelope.getAdapterId(),
+                    envelope
+            );
+        }
+
+        @Override
+        public List<com.xa.mass.transport.model.TransportDispatchEnvelope> drain(String adapterId, String routeKey, int maxItems) {
+            return List.of();
+        }
+
+        @Override
+        public TransportDeliveryPollResult poll(String adapterId,
+                                                String routeKey,
+                                                int maxItems,
+                                                long timeout,
+                                                TimeUnit unit) {
+            return TransportDeliveryPollResult.empty();
+        }
+
+        @Override
+        public TransportDeliveryStoreStats stats() {
+            return new TransportDeliveryStoreStats(0, 0, 0, 1);
+        }
+
+        @Override
+        public void shutdown() {
+            shutdownCalled.set(true);
+        }
+    }
+
+    private static final class StubWorkerPresenceStore
+            implements com.xa.mass.transport.presence.WorkerPresenceStore, AutoCloseable {
+
+        private final AtomicBoolean closed = new AtomicBoolean(false);
+        private final InMemoryWorkerPresenceStore delegate = new InMemoryWorkerPresenceStore();
+
+        @Override
+        public com.xa.mass.transport.presence.WorkerPresence markOnline(String workerId,
+                                                                        String adapterId,
+                                                                        String routeKey,
+                                                                        String connectionId,
+                                                                        String reason) {
+            return delegate.markOnline(workerId, adapterId, routeKey, connectionId, reason);
+        }
+
+        @Override
+        public com.xa.mass.transport.presence.WorkerPresence refreshHeartbeat(String workerId,
+                                                                              String adapterId,
+                                                                              String routeKey,
+                                                                              String connectionId,
+                                                                              String reason) {
+            return delegate.refreshHeartbeat(workerId, adapterId, routeKey, connectionId, reason);
+        }
+
+        @Override
+        public com.xa.mass.transport.presence.WorkerPresence markOffline(String workerId,
+                                                                         String adapterId,
+                                                                         String routeKey,
+                                                                         String connectionId,
+                                                                         String reason) {
+            return delegate.markOffline(workerId, adapterId, routeKey, connectionId, reason);
+        }
+
+        @Override
+        public com.xa.mass.transport.presence.WorkerPresence getPresence(String workerId) {
+            return delegate.getPresence(workerId);
+        }
+
+        @Override
+        public boolean isRouteOnline(String adapterId, String routeKey) {
+            return delegate.isRouteOnline(adapterId, routeKey);
+        }
+
+        @Override
+        public List<com.xa.mass.transport.presence.WorkerPresence> listActivePresences() {
+            return delegate.listActivePresences();
+        }
+
+        @Override
+        public int pruneExpired() {
+            return delegate.pruneExpired();
+        }
+
+        @Override
+        public void close() {
+            closed.set(true);
+        }
+    }
+
+    private static TaskExecutionSpec taskExecutionSpec(com.xa.mass.base.enums.task.TaskWorkloadClass workloadClass,
+                                                       int batchSize,
+                                                       int maxRuntimeSeconds,
+                                                       int defaultMaxRetryCount) {
+        TaskExecutionSpec spec = new TaskExecutionSpec();
+        spec.setWorkloadClass(workloadClass);
+        spec.setBatchSize(batchSize);
+        spec.setMaxRuntimeSeconds(maxRuntimeSeconds);
+        spec.setDefaultMaxRetryCount(defaultMaxRetryCount);
+        return spec;
+    }
+
+    private static TaskExecutionOptions taskExecutionOptions(com.xa.mass.base.enums.task.TaskWorkloadClass workloadClass,
+                                                             int batchSize,
+                                                             int maxRuntimeSeconds,
+                                                             int defaultMaxRetryCount) {
+        TaskExecutionOptions spec = new TaskExecutionOptions();
+        spec.setWorkloadClass(workloadClass == null ? null : workloadClass.name());
+        spec.setBatchSize(batchSize);
+        spec.setMaxRuntimeSeconds(maxRuntimeSeconds);
+        spec.setDefaultMaxRetryCount(defaultMaxRetryCount);
+        return spec;
+    }
+
+    private static RuntimeDiagnosticsOperations runtimeDiagnostics(MassSdkApplication app) {
+        return app.runtimeDiagnostics();
+    }
+
+    private static TransportDebugOperations rawTransportDebug(MassSdkApplication app) {
+        return new DefaultTransportDebugOperations(app.runtimeApplication());
     }
 
 }

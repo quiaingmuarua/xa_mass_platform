@@ -5,16 +5,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-TESTS=(
-  "NodePollingWorkerBlackBoxIntegrationTest"
-  "NodeWebSocketWorkerBlackBoxIntegrationTest"
-  "NodeSocketWorkerBlackBoxIntegrationTest"
-  "JavaPollingWorkerBlackBoxIntegrationTest"
-  "JavaWebSocketWorkerBlackBoxIntegrationTest"
-  "JavaSocketWorkerBlackBoxIntegrationTest"
-)
-
-TEST_ARG="$(IFS=,; echo "${TESTS[*]}")"
+TEST_ARG="ExternalWorkerParitySuite"
+SUREFIRE_REPORT_DIR="xa-mass-server/target/surefire-reports"
 
 echo "[external-worker-samples] repo root: ${REPO_ROOT}"
 echo "[external-worker-samples] tests: ${TEST_ARG}"
@@ -54,7 +46,10 @@ else
 fi
 
 cd "${REPO_ROOT}"
+rm -rf "${SUREFIRE_REPORT_DIR}"
 "${MVN_CMD[@]}" -pl xa-mass-server -am \
   -Dsurefire.failIfNoSpecifiedTests=false \
   "-Dtest=${TEST_ARG}" \
   test
+
+"${REPO_ROOT}/.github/scripts/assert-surefire-executed-tests.sh" "${SUREFIRE_REPORT_DIR}"

@@ -16,12 +16,12 @@ export const runtimeRoutes: AppRouteRecordRaw[] = [
         },
         children: [
             {
-                path: 'metadata',
-                name: 'runtime-metadata',
+                path: 'discovery',
+                name: 'runtime-discovery',
                 component: () =>
-                    import('@/pages/runtime/RuntimeMetadataPage.vue'),
+                    import('@/pages/runtime/RuntimeDiscoveryPage.vue'),
                 meta: {
-                    title: 'Metadata',
+                    title: 'Discovery',
                     icon: 'Tickets',
                     order: 41,
                     hidden: false,

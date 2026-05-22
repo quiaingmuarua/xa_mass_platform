@@ -2,6 +2,12 @@ package com.xa.mass.transport.runtime.delivery;
 
 /**
  * Per-adapter runtime delivery-store snapshot for queue-focused diagnostics.
+ *
+ * <p>{@code queuedItems} and {@code queueCount} are hard contract fields.
+ * {@code waitingPollers}, {@code oldestQueuedAgeMillis}, and
+ * {@code backpressureRejectedItems} are best-effort diagnostics that future
+ * distributed queue implementations may approximate without reproducing the
+ * exact local waiter model of the in-memory reference store.
  */
 public final class TransportDeliveryQueueStats {
 

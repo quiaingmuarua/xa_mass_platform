@@ -2,7 +2,8 @@ package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.engine.model.TaskCreateRequestDto;
+import com.xa.mass.base.model.TaskShellCreateRequestDto;
+import com.xa.mass.engine.model.TaskAppendReceipt;
 import com.xa.mass.engine.model.TaskResumeResult;
 
 import java.util.List;
@@ -18,62 +19,67 @@ import java.util.Objects;
  */
 public class TaskCommandService {
 
-    private final TaskManager taskManager;
+    private final TaskCommandPort taskCommands;
 
-    public TaskCommandService(TaskManager taskManager) {
-        this.taskManager = Objects.requireNonNull(taskManager, "taskManager");
+    public TaskCommandService(TaskCommandPort taskCommands) {
+        this.taskCommands = Objects.requireNonNull(taskCommands, "taskCommands");
     }
 
-    public Task createTask(TaskCreateRequestDto dto) {
-        return taskManager.createTask(dto);
+    public Task createTaskShell(TaskShellCreateRequestDto dto) {
+        return taskCommands.createTaskShell(dto);
     }
 
     public boolean updateTask(Task task) {
-        return taskManager.updateTask(task);
+        return taskCommands.updateTask(task);
     }
 
     public boolean deleteTask(String taskId) {
-        return taskManager.deleteTask(taskId);
+        return taskCommands.deleteTask(taskId);
     }
 
     public boolean approveTask(String taskId) {
-        return taskManager.approveTask(taskId);
+        return taskCommands.approveTask(taskId);
     }
 
     public boolean rejectTask(String taskId) {
-        return taskManager.rejectTask(taskId);
+        return taskCommands.rejectTask(taskId);
     }
 
     public boolean blockTask(String taskId) {
-        return taskManager.blockTask(taskId);
+        return taskCommands.blockTask(taskId);
     }
 
     public boolean pauseTask(String taskId) {
-        return taskManager.pauseTask(taskId);
+        return taskCommands.pauseTask(taskId);
     }
 
     public TaskResumeResult resumeTaskDetailed(String taskId) {
-        return taskManager.resumeTaskDetailed(taskId);
+        return taskCommands.resumeTaskDetailed(taskId);
     }
 
     public boolean resumeTask(String taskId) {
-        return taskManager.resumeTask(taskId);
+        return taskCommands.resumeTask(taskId);
     }
 
     public boolean cancelTask(String taskId) {
-        return taskManager.cancelTask(taskId);
+        return taskCommands.cancelTask(taskId);
     }
 
     public boolean terminateTask(String taskId, TaskTerminalReason reason) {
-        return taskManager.terminateTask(taskId, reason);
+        return taskCommands.terminateTask(taskId, reason);
     }
 
-    public int appendTaskItems(String taskId, List<Map<String, Object>> inputs) {
-        return taskManager.appendTaskItems(taskId, inputs);
+    public TaskAppendReceipt appendTaskItemsWithReceipt(String taskId, List<Map<String, Object>> items) {
+        return taskCommands.appendTaskItemsWithReceipt(taskId, items);
+    }
+
+    public int appendTaskItems(String taskId, List<Map<String, Object>> items) {
+        return appendTaskItemsWithReceipt(taskId, items).added();
     }
 
     public boolean sealTask(String taskId) {
-        return taskManager.sealTask(taskId);
+        return taskCommands.sealTask(taskId);
     }
 
 }
+

@@ -5,7 +5,7 @@ import type {AuthUser} from '@/types/auth'
 export const backendAuthProvider: AuthProvider = {
     async loadCurrentUser() {
         try {
-            return await requestApiData<AuthUser>('/api/auth/me')
+            return await requestApiData<AuthUser>('/api/v1/auth/me')
         } catch (error) {
             if (error instanceof ApiError && error.status === 401) {
                 return null
@@ -18,7 +18,7 @@ export const backendAuthProvider: AuthProvider = {
         throw new Error('Backend login page is not implemented yet.')
     },
     async logout() {
-        await requestApiData('/api/auth/logout', {
+        await requestApiData('/api/v1/auth/logout', {
             method: 'POST',
         })
     },

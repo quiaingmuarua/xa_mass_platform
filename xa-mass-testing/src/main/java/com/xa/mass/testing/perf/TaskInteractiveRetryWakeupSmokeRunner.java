@@ -4,33 +4,37 @@ import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
+import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
+import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
+import com.xa.mass.base.model.TaskShellCreateRequestDto;
+import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskCommandService;
-import com.xa.mass.engine.TaskManager;
-import com.xa.mass.engine.TaskManagerAssignmentRuntimePort;
-import com.xa.mass.engine.TaskManagerResultIngestFacade;
-import com.xa.mass.engine.TaskManagerRuntimeMaintenancePort;
 import com.xa.mass.engine.TaskEventService;
-import com.xa.mass.engine.TaskResultIngestFacade;
-import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.listener.SimpleTaskMsgAssignListener;
+import com.xa.mass.engine.TaskRuntimeMaintenancePort;
+import com.xa.mass.engine.TaskRuntimeRecoveryPort;
+import com.xa.mass.engine.worker.WorkerManager;
+import com.xa.mass.engine.worker.WorkerReachabilityState;
+import com.xa.mass.engine.listener.SimpleTaskDispatchBinder;
 import com.xa.mass.engine.listener.TaskAssignWorker;
-import com.xa.mass.engine.listener.TaskDispatchBinding;
-import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
-import com.xa.mass.engine.model.MatchedWorkerContext;
-import com.xa.mass.engine.model.TaskCreateRequestDto;
+import com.xa.mass.engine.model.WorkerSchedulingCandidate;
+import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
-import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
+import com.xa.mass.engine.watchdog.RuntimeReadyDispatchPump;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
+import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.testing.support.TestingPaths;
+import com.xa.mass.testing.workerfault.WorkerFaultReportMetadata;
+import com.xa.mass.testing.workerfault.WorkerFaultScenarioIndex;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -42,8 +46,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -84,13 +86,14 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
 
         private SmokeReport run() throws Exception {
             InMemoryTaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
-            TaskManager taskManager = new TaskManager(
-                    new NoOpTaskScheduler(),
-                    new InMemoryTaskStorage(),
-                    taskWorkRuntime);
-            TaskCommandService taskCommands = new TaskCommandService(taskManager);
-            TaskEventService taskEvents = new TaskEventService(taskManager);
-            TaskResultIngestFacade taskResultIngestFacade = new TaskManagerResultIngestFacade(taskManager);
+            InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
+            EngineConfig engineConfig = buildEngineConfig(taskStorage, taskWorkRuntime);
+            TaskCommandService taskCommands = engineConfig.getTaskCommandService();
+            TaskEventService taskEvents = engineConfig.getTaskEventService();
+            TaskResultIngestFacade taskResultIngestFacade = engineConfig.getTaskResultIngestFacade();
+            TaskAssignmentRuntimePort assignmentRuntimePort = engineConfig.getTaskAssignmentRuntimePort();
+            TaskRuntimeMaintenancePort maintenancePort = engineConfig.getTaskRuntimeMaintenancePort();
+            TaskRuntimeRecoveryPort recoveryPort = engineConfig.getTaskRuntimeRecoveryPort();
             WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
             AssignmentRecordService recordService = new AssignmentRecordService();
             RetryTiming timing = new RetryTiming();
@@ -109,11 +112,13 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
             CountDownLatch interactiveTerminalLatch = new CountDownLatch(1);
             AtomicInteger callbackSequence = new AtomicInteger();
             Map<String, AtomicInteger> interactiveAttempts = new ConcurrentHashMap<>();
+            Map<String, TaskWorkloadClass> workloadByTaskId = new ConcurrentHashMap<>();
 
-            TaskMsgDispatchListener dispatchListener = (task, dispatchBindings) -> {
-                timing.onDispatch(task, dispatchBindings.size());
+            TaskDispatchBatchListener dispatchListener = (task, dispatchBindings) -> {
+                TaskWorkloadClass workloadClass = workloadByTaskId.get(task.taskId());
+                timing.onDispatch(task.taskId(), workloadClass, dispatchBindings.size());
                 for (TaskDispatchBinding binding : dispatchBindings) {
-                    ExecutorService callbackExecutor = task.getWorkloadClass() == TaskWorkloadClass.INTERACTIVE
+                    ExecutorService callbackExecutor = workloadClass == TaskWorkloadClass.INTERACTIVE
                             ? interactiveCallbackExecutor
                             : bulkCallbackExecutor;
                     callbackExecutor.submit(() -> handleBinding(
@@ -121,18 +126,18 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                             taskWorkRuntime,
                             timing,
                             interactiveAttempts,
+                            workloadByTaskId,
                             task,
-                            binding.taskMsg(),
+                            binding,
                             callbackSequence.incrementAndGet()
                     ));
                 }
             };
 
-            TaskWorkerMatchingStrategy matchingStrategy = new DeterministicMatchingStrategy(workerManager);
-            TaskManagerAssignmentRuntimePort assignmentRuntimePort =
-                    new TaskManagerAssignmentRuntimePort(taskManager);
-            SimpleTaskMsgAssignListener msgAssignListener =
-                    new SimpleTaskMsgAssignListener(
+            TaskWorkerMatchingStrategy matchingStrategy =
+                    new LaneAwareMatchingStrategy(workerManager, config.reservedInteractiveWorkers());
+            SimpleTaskDispatchBinder dispatchBinder =
+                    new SimpleTaskDispatchBinder(
                             assignmentRuntimePort,
                             workerManager,
                             recordService,
@@ -142,32 +147,42 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                     new TaskWorkerAssignListener(
                             matchingStrategy,
                             workerManager,
-                            msgAssignListener,
+                            dispatchBinder,
                             assignmentRuntimePort,
                             taskEvents
                     );
             TaskAssignWorker assignWorker = new TaskAssignWorker(workerAssignListener, config.assignmentRetryDelayMillis());
             TaskResourceReleaseListener releaseListener =
-                    new TaskResourceReleaseListener(new TaskManagerRuntimeMaintenancePort(taskManager), workerManager);
+                    new TaskResourceReleaseListener(maintenancePort, workerManager);
+            RuntimeReadyDispatchPump runtimeReadyDispatchPump = new RuntimeReadyDispatchPump(
+                    recoveryPort,
+                    workerAssignListener::onTaskAssign,
+                    config.runtimeReadyDispatchIntervalMillis(),
+                    1_000,
+                    config.assignmentRetryDelayMillis(),
+                    config.runtimeReadyDispatchNoDispatchBackoffMaxMillis()
+            );
 
             try {
                 registerWorkers(workerManager, config.workerCount());
                 taskEvents.addTaskReadyListener(assignWorker::submit);
                 taskEvents.addTaskDispatchListener(assignWorker::submit);
-                taskEvents.addTaskMessageAttemptClosedListener(releaseListener::onTaskMessageAttemptClosed);
+                taskEvents.addTaskWorkAttemptClosedListener(releaseListener::onTaskWorkAttemptClosed);
                 taskEvents.addTaskTerminalListener(releaseListener::onTaskTerminal);
                 taskEvents.addTaskTerminalListener(task -> {
-                    if (TaskWorkloadClass.BULK == task.getWorkloadClass()) {
+                    if (TaskWorkloadClass.BULK == task.getExecutionSpec().getWorkloadClass()) {
                         timing.onTerminal(task);
                         bulkTerminalLatch.countDown();
-                    } else if (TaskWorkloadClass.INTERACTIVE == task.getWorkloadClass()) {
+                    } else if (TaskWorkloadClass.INTERACTIVE == task.getExecutionSpec().getWorkloadClass()) {
                         timing.onTerminal(task);
                         interactiveTerminalLatch.countDown();
                     }
                 });
                 assignWorker.start();
+                runtimeReadyDispatchPump.start();
 
-                Task bulkTask = taskCommands.createTask(buildBulkRequest(config));
+                Task bulkTask = materializeTask(taskCommands, buildBulkRequest(config));
+                workloadByTaskId.put(bulkTask.getTid(), bulkTask.getExecutionSpec().getWorkloadClass());
                 timing.onCreated(bulkTask);
                 require(taskCommands.approveTask(bulkTask.getTid()), "bulk task should approve");
                 timing.onApproved(bulkTask);
@@ -176,7 +191,8 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
 
                 Thread.sleep(config.interactiveSubmitDelayMillis());
 
-                Task interactiveTask = taskCommands.createTask(buildInteractiveRequest(config));
+                Task interactiveTask = materializeTask(taskCommands, buildInteractiveRequest(config));
+                workloadByTaskId.put(interactiveTask.getTid(), interactiveTask.getExecutionSpec().getWorkloadClass());
                 timing.onCreated(interactiveTask);
                 require(taskCommands.approveTask(interactiveTask.getTid()), "interactive task should approve");
                 timing.onApproved(interactiveTask);
@@ -219,6 +235,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                 Path reportPath = writeReport(config, observation);
                 return new SmokeReport(config, observation, reportPath);
             } finally {
+                runtimeReadyDispatchPump.stop();
                 assignWorker.stop();
                 interactiveCallbackExecutor.shutdownNow();
                 bulkCallbackExecutor.shutdownNow();
@@ -229,12 +246,15 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                                    InMemoryTaskWorkRuntime taskWorkRuntime,
                                    RetryTiming timing,
                                    Map<String, AtomicInteger> interactiveAttempts,
-                                   Task task,
-                                   TaskMsg taskMsg,
+                                   Map<String, TaskWorkloadClass> workloadByTaskId,
+                                   TaskDispatchContext task,
+                                   TaskDispatchBinding binding,
                                    int callbackSeq) {
-            boolean interactive = task.getWorkloadClass() == TaskWorkloadClass.INTERACTIVE;
+            TaskWorkloadClass workloadClass = workloadByTaskId.get(task.taskId());
+            boolean interactive = workloadClass == TaskWorkloadClass.INTERACTIVE;
+            String messageId = binding.messageId();
             int attemptNo = interactive
-                    ? interactiveAttempts.computeIfAbsent(taskMsg.getMessageId(), ignored -> new AtomicInteger())
+                    ? interactiveAttempts.computeIfAbsent(messageId, ignored -> new AtomicInteger())
                     .incrementAndGet()
                     : 1;
             int delayMillis = interactive
@@ -242,7 +262,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                     ? config.interactiveFailureProcessingDelayMillis()
                     : config.interactiveSuccessProcessingDelayMillis())
                     : config.bulkProcessingDelayMillis();
-            timing.onCallbackStart(task);
+            timing.onCallbackStart(task.taskId(), workloadClass);
             try {
                 if (delayMillis > 0) {
                     Thread.sleep(delayMillis);
@@ -250,9 +270,9 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                 boolean success = !interactive || attemptNo > 1;
                 String detail = success ? "ok" : "synthetic retryable failure";
                 String errorCode = success ? null : "SYNTHETIC_RETRY";
-                boolean accepted = taskResultIngestFacade.handleTaskMessageResult(
-                        task.getTid(),
-                        taskMsg.getMessageId(),
+                boolean accepted = taskResultIngestFacade.ingestTaskResult(
+                        task.taskId(),
+                        messageId,
                         success,
                         detail,
                         errorCode,
@@ -262,41 +282,71 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                                 "attemptNo", attemptNo
                         )
                 );
-                require(accepted, "result callback should be accepted for " + taskMsg.getMessageId());
+                require(accepted, "result callback should be accepted for " + messageId);
                 if (interactive && attemptNo == 1) {
-                    timing.onInteractiveFailure(task, taskMsg, taskWorkRuntime.stats(task.getTid()));
+                    timing.onInteractiveFailure(task.taskId(), taskWorkRuntime.stats(task.taskId()));
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 throw new IllegalStateException("callback interrupted", e);
             } finally {
-                timing.onCallbackFinish(task);
+                timing.onCallbackFinish(task.taskId(), workloadClass);
             }
         }
 
-        private static TaskCreateRequestDto buildBulkRequest(SmokeConfig config) {
-            TaskCreateRequestDto dto = new TaskCreateRequestDto();
-            dto.setTaskName("bulk-retry-wakeup-smoke");
-            dto.setProject("demoApp");
-            dto.setUserId("retry-wakeup-smoke");
-            dto.setWorkloadClass(TaskWorkloadClass.BULK);
-            dto.setBatchSize(config.bulkBatchSize());
-            dto.setInputs(buildInputs("bulk", config.bulkMessages()));
-            dto.setSharedConfig(Map.of("source", "TaskInteractiveRetryWakeupSmokeRunner", "workload", "bulk"));
-            return dto;
+        private static TaskCreatePlan buildBulkRequest(SmokeConfig config) {
+            TaskShellCreateRequestDto shell = new TaskShellCreateRequestDto();
+            shell.setSourceRef("bulk-retry-wakeup-smoke");
+            shell.setProject("demoApp");
+            shell.setUserId("retry-wakeup-smoke");
+            shell.setExecutionSpec(taskExecutionSpec(TaskWorkloadClass.BULK, config.bulkBatchSize(), 3));
+            shell.setSharedConfig(Map.of("source", "TaskInteractiveRetryWakeupSmokeRunner", "workload", "bulk"));
+            return new TaskCreatePlan(shell, buildInputs("bulk", config.bulkMessages()), false);
         }
 
-        private static TaskCreateRequestDto buildInteractiveRequest(SmokeConfig config) {
-            TaskCreateRequestDto dto = new TaskCreateRequestDto();
-            dto.setTaskName("interactive-retry-wakeup-smoke");
-            dto.setProject("demoApp");
-            dto.setUserId("retry-wakeup-smoke");
-            dto.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
-            dto.setBatchSize(1);
-            dto.setDefaultMsgMaxRetryCount(1);
-            dto.setInputs(buildInputs("interactive", 1));
-            dto.setSharedConfig(Map.of("source", "TaskInteractiveRetryWakeupSmokeRunner", "workload", "interactive"));
-            return dto;
+        private static EngineConfig buildEngineConfig(InMemoryTaskStorage taskStorage,
+                                                      InMemoryTaskWorkRuntime taskWorkRuntime) {
+            EngineConfig engineConfig = new EngineConfig();
+            engineConfig.setTaskStorage(taskStorage);
+            engineConfig.setTaskDetailStore(taskStorage);
+            engineConfig.setTaskWorkRuntime(taskWorkRuntime);
+            return engineConfig;
+        }
+
+        private static TaskCreatePlan buildInteractiveRequest(SmokeConfig config) {
+            TaskShellCreateRequestDto shell = new TaskShellCreateRequestDto();
+            shell.setSourceRef("interactive-retry-wakeup-smoke");
+            shell.setProject("demoApp");
+            shell.setUserId("retry-wakeup-smoke");
+            shell.setExecutionSpec(taskExecutionSpec(TaskWorkloadClass.INTERACTIVE, 1, 1));
+            shell.setSharedConfig(Map.of("source", "TaskInteractiveRetryWakeupSmokeRunner", "workload", "interactive"));
+            return new TaskCreatePlan(shell, buildInputs("interactive", 1), false);
+        }
+
+        private static Task materializeTask(TaskCommandService taskCommands, TaskCreatePlan request) {
+            Task task = taskCommands.createTaskShell(request.shell());
+            if (!request.inputs().isEmpty()) {
+                taskCommands.appendTaskItems(task.getTid(), request.inputs());
+            }
+            if (!request.keepIntakeOpen()) {
+                require(taskCommands.sealTask(task.getTid()), "task should seal after ingest");
+            }
+            return task;
+        }
+
+        private record TaskCreatePlan(TaskShellCreateRequestDto shell,
+                                      List<Map<String, Object>> inputs,
+                                      boolean keepIntakeOpen) {
+        }
+
+        private static TaskExecutionSpec taskExecutionSpec(TaskWorkloadClass workloadClass,
+                                                           int batchSize,
+                                                           int defaultMaxRetryCount) {
+            TaskExecutionSpec spec = new TaskExecutionSpec();
+            spec.setWorkloadClass(workloadClass);
+            spec.setBatchSize(batchSize);
+            spec.setDefaultMaxRetryCount(defaultMaxRetryCount);
+            return spec;
         }
 
         private static List<Map<String, Object>> buildInputs(String prefix, int count) {
@@ -320,18 +370,12 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                 worker.setStatus(WorkerStatus.ONLINE);
                 worker.setLastHeartbeat(LocalDateTime.now());
                 workerManager.addWorker(worker);
-
-                WorkerContext workerContext = new WorkerContext();
-                workerContext.setWorkerContextId("retry-wakeup-context-" + i);
-                workerContext.setWorkerId(worker.getWorkerId());
-                workerContext.setProject("demoApp");
-                workerContext.setRoutingTags(Set.of("default"));
-                workerManager.addWorkerContext(workerContext);
             }
         }
 
         private static Path writeReport(SmokeConfig config, SmokeObservation observation) throws Exception {
-            Map<String, Object> report = new LinkedHashMap<>();
+            Map<String, Object> report = new LinkedHashMap<>(WorkerFaultReportMetadata.topLevel(
+                    WorkerFaultScenarioIndex.Scenario.INTERACTIVE_RETRY_WAKEUP));
             report.put("generatedAt", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
             report.put("config", config.toMap());
             report.put("observation", observation.toMap());
@@ -344,19 +388,25 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
         }
     }
 
-    private static final class DeterministicMatchingStrategy implements TaskWorkerMatchingStrategy {
+    private static final class LaneAwareMatchingStrategy implements TaskWorkerMatchingStrategy {
         private final WorkerManager workerManager;
+        private final int reservedInteractiveWorkers;
 
-        private DeterministicMatchingStrategy(WorkerManager workerManager) {
+        private LaneAwareMatchingStrategy(WorkerManager workerManager, int reservedInteractiveWorkers) {
             this.workerManager = workerManager;
+            this.reservedInteractiveWorkers = Math.max(reservedInteractiveWorkers, 0);
         }
 
         @Override
-        public List<MatchedWorkerContext> matchWorkers(Task task, int maxWorkerCount) {
-            List<MatchedWorkerContext> matched = new ArrayList<>();
+        public List<WorkerSchedulingCandidate> matchWorkers(Task task, int maxWorkerCount) {
+            List<WorkerSchedulingCandidate> matched = new ArrayList<>();
             for (Worker worker : workerManager.getAllWorkers()) {
                 if (matched.size() >= maxWorkerCount) {
                     break;
+                }
+                if (task.getExecutionSpec().getWorkloadClass() == TaskWorkloadClass.BULK
+                        && isReservedInteractiveWorker(worker)) {
+                    continue;
                 }
                 if (!worker.isAvailable() || !worker.supportsProject(task.getProject())) {
                     continue;
@@ -364,22 +414,30 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                 if (!workerManager.tryLockWorker(worker.getWorkerId())) {
                     continue;
                 }
-                WorkerContext selectedContext = null;
-                for (WorkerContext workerContext : workerManager.getWorkerContexts(worker.getWorkerId())) {
-                    if (workerContext != null
-                            && workerContext.isAllocatable()
-                            && Objects.equals(task.getProject(), workerContext.getProject())) {
-                        selectedContext = workerContext;
-                        break;
-                    }
-                }
-                if (selectedContext == null) {
-                    workerManager.unlockWorker(worker.getWorkerId());
-                    continue;
-                }
-                matched.add(new MatchedWorkerContext(worker, selectedContext));
+                matched.add(new WorkerSchedulingCandidate(
+                        worker,
+                        WorkerSchedulingView.from(worker, WorkerReachabilityState.ONLINE, true, true)
+                ));
             }
             return matched;
+        }
+
+        private boolean isReservedInteractiveWorker(Worker worker) {
+            if (reservedInteractiveWorkers <= 0 || worker == null || worker.getWorkerId() == null) {
+                return false;
+            }
+            String workerId = worker.getWorkerId();
+            int dash = workerId.lastIndexOf('-');
+            if (dash < 0 || dash == workerId.length() - 1) {
+                return false;
+            }
+            try {
+                int workerIndex = Integer.parseInt(workerId.substring(dash + 1));
+                int totalWorkers = workerManager.getAllWorkers().size();
+                return workerIndex >= Math.max(totalWorkers - reservedInteractiveWorkers, 0);
+            } catch (NumberFormatException ignored) {
+                return false;
+            }
         }
     }
 
@@ -405,9 +463,9 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
         private volatile String interactiveTaskId;
 
         private void onCreated(Task task) {
-            if (task.getWorkloadClass() == TaskWorkloadClass.BULK) {
+            if (task.getExecutionSpec().getWorkloadClass() == TaskWorkloadClass.BULK) {
                 bulkTaskId = task.getTid();
-            } else if (task.getWorkloadClass() == TaskWorkloadClass.INTERACTIVE) {
+            } else if (task.getExecutionSpec().getWorkloadClass() == TaskWorkloadClass.INTERACTIVE) {
                 interactiveTaskId = task.getTid();
             }
         }
@@ -416,14 +474,17 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
             approvedAtNanos.put(task.getTid(), System.nanoTime());
         }
 
-        private void onDispatch(Task task, int itemCount) {
+        private void onDispatch(String taskId, TaskWorkloadClass workloadClass, int itemCount) {
+            if (taskId == null || workloadClass == null) {
+                return;
+            }
             long now = System.nanoTime();
-            dispatchCyclesByWorkload.computeIfAbsent(task.getWorkloadClass(), ignored -> new LongAdder()).increment();
-            dispatchItemsByWorkload.computeIfAbsent(task.getWorkloadClass(), ignored -> new LongAdder()).add(itemCount);
+            dispatchCyclesByWorkload.computeIfAbsent(workloadClass, ignored -> new LongAdder()).increment();
+            dispatchItemsByWorkload.computeIfAbsent(workloadClass, ignored -> new LongAdder()).add(itemCount);
             int dispatchCount = dispatchCountByTaskId
-                    .computeIfAbsent(task.getTid(), ignored -> new AtomicInteger())
+                    .computeIfAbsent(taskId, ignored -> new AtomicInteger())
                     .incrementAndGet();
-            if (task.getWorkloadClass() == TaskWorkloadClass.BULK) {
+            if (workloadClass == TaskWorkloadClass.BULK) {
                 bulkFirstDispatchLatch.countDown();
                 return;
             }
@@ -442,26 +503,30 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
             }
         }
 
-        private void onCallbackStart(Task task) {
-            if (task.getWorkloadClass() == TaskWorkloadClass.BULK) {
+        private void onCallbackStart(String taskId, TaskWorkloadClass workloadClass) {
+            if (taskId == null || workloadClass == null) {
+                return;
+            }
+            if (workloadClass == TaskWorkloadClass.BULK) {
                 bulkCallbacksInFlight.incrementAndGet();
             }
         }
 
-        private void onCallbackFinish(Task task) {
-            if (task.getWorkloadClass() == TaskWorkloadClass.BULK) {
+        private void onCallbackFinish(String taskId, TaskWorkloadClass workloadClass) {
+            if (taskId == null || workloadClass == null) {
+                return;
+            }
+            if (workloadClass == TaskWorkloadClass.BULK) {
                 bulkCallbacksInFlight.updateAndGet(current -> current > 0 ? current - 1 : 0);
             }
         }
 
-        private void onInteractiveFailure(Task task, TaskMsg taskMsg, TaskWorkStats statsAfterFailure) {
-            if (interactiveTaskId != null
-                    && interactiveTaskId.equals(task.getTid())
-                    && "INIT".equals(taskMsg.getStatus().name())) {
+        private void onInteractiveFailure(String taskId, TaskWorkStats statsAfterFailure) {
+            if (interactiveTaskId != null && interactiveTaskId.equals(taskId)) {
                 if (statsAfterFailure != null) {
                     interactiveDelayedCountBeforeWakeup.compareAndSet(-1L, statsAfterFailure.delayedCount());
                 }
-                AtomicInteger dispatchCount = dispatchCountByTaskId.get(task.getTid());
+                AtomicInteger dispatchCount = dispatchCountByTaskId.get(taskId);
                 interactiveDispatchCountBeforeWakeup.compareAndSet(-1L, dispatchCount != null ? dispatchCount.get() : 0L);
                 interactiveFailureCompletedAtNanos.compareAndSet(-1L, System.nanoTime());
                 interactiveFailureLatch.countDown();
@@ -550,6 +615,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
     }
 
     private record SmokeConfig(int workerCount,
+                               int reservedInteractiveWorkers,
                                int bulkMessages,
                                int bulkBatchSize,
                                int bulkProcessingDelayMillis,
@@ -560,14 +626,18 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                                long interactiveSubmitDelayMillis,
                                long minRetryDispatchDelayMillis,
                                long assignmentRetryDelayMillis,
+                               long runtimeReadyDispatchIntervalMillis,
+                               long runtimeReadyDispatchNoDispatchBackoffMaxMillis,
                                long awaitSeconds) {
         private static SmokeConfig fromSystemProperties() {
             int workerCount = intProperty("mass.retrywakeup.smoke.workers", 5);
             int bulkMessages = intProperty("mass.retrywakeup.smoke.bulkMessages", 320);
-            int bulkWorkersTarget = Math.max(workerCount - 1, 1);
+            int reservedInteractiveWorkers = intProperty("mass.retrywakeup.smoke.reservedInteractiveWorkers", 1);
+            int bulkWorkersTarget = Math.max(workerCount - reservedInteractiveWorkers, 1);
             int defaultBulkBatchSize = Math.max((int) Math.ceil((double) bulkMessages / bulkWorkersTarget), 1);
             return new SmokeConfig(
                     workerCount,
+                    reservedInteractiveWorkers,
                     bulkMessages,
                     intProperty("mass.retrywakeup.smoke.bulkBatchSize", defaultBulkBatchSize),
                     intProperty("mass.retrywakeup.smoke.bulkProcessingDelayMillis", 80),
@@ -578,6 +648,8 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                     longProperty("mass.retrywakeup.smoke.interactiveSubmitDelayMillis", 20L),
                     longProperty("mass.retrywakeup.smoke.minRetryDispatchDelayMillis", 20L),
                     longProperty("mass.retrywakeup.smoke.assignmentRetryDelayMillis", 25L),
+                    longProperty("mass.retrywakeup.smoke.runtimeReadyDispatchIntervalMillis", 25L),
+                    longProperty("mass.retrywakeup.smoke.runtimeReadyDispatchNoDispatchBackoffMaxMillis", 1_000L),
                     longProperty("mass.retrywakeup.smoke.awaitSeconds", 60L)
             );
         }
@@ -585,6 +657,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
         private Map<String, Object> toMap() {
             Map<String, Object> values = new LinkedHashMap<>();
             values.put("workerCount", workerCount);
+            values.put("reservedInteractiveWorkers", reservedInteractiveWorkers);
             values.put("bulkMessages", bulkMessages);
             values.put("bulkBatchSize", bulkBatchSize);
             values.put("bulkProcessingDelayMillis", bulkProcessingDelayMillis);
@@ -595,6 +668,8 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
             values.put("interactiveSubmitDelayMillis", interactiveSubmitDelayMillis);
             values.put("minRetryDispatchDelayMillis", minRetryDispatchDelayMillis);
             values.put("assignmentRetryDelayMillis", assignmentRetryDelayMillis);
+            values.put("runtimeReadyDispatchIntervalMillis", runtimeReadyDispatchIntervalMillis);
+            values.put("runtimeReadyDispatchNoDispatchBackoffMaxMillis", runtimeReadyDispatchNoDispatchBackoffMaxMillis);
             values.put("awaitSeconds", awaitSeconds);
             return values;
         }
@@ -655,48 +730,6 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                     observation.interactiveRetryDispatchedBeforeBulkTerminal(),
                     observation.bulkCallbacksInFlightAtInteractiveRetryDispatch(),
                     reportPath);
-        }
-    }
-
-    private static final class NoOpTaskScheduler implements TaskScheduler {
-        @Override
-        public SchedulingResult scheduleTask(Task task) {
-            return SchedulingResult.success(List.of());
-        }
-
-        @Override
-        public List<SchedulingResult> scheduleTasks(List<Task> tasks) {
-            return List.of();
-        }
-
-        @Override
-        public boolean handleTaskMsgCompletion(TaskMsg taskMsg) {
-            return true;
-        }
-
-        @Override
-        public boolean handleTaskMsgFailure(TaskMsg taskMsg, String errorMessage) {
-            return true;
-        }
-
-        @Override
-        public boolean retryTaskMsg(TaskMsg taskMsg) {
-            return true;
-        }
-
-        @Override
-        public boolean cancelTask(String taskId) {
-            return true;
-        }
-
-        @Override
-        public boolean pauseTask(String taskId) {
-            return true;
-        }
-
-        @Override
-        public boolean resumeTask(String taskId) {
-            return true;
         }
     }
 

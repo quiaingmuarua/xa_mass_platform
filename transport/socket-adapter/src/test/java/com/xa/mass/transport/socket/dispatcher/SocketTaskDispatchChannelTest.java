@@ -4,6 +4,8 @@ import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
+import com.xa.mass.transport.packet.PacketType;
+import com.xa.mass.transport.packet.TransportPacket;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
@@ -25,20 +27,22 @@ class SocketTaskDispatchChannelTest {
     @Test
     void dispatchReturnsSentWhenSessionManagerAcceptsMessage() {
         SocketSessionManager sessionManager = mock(SocketSessionManager.class);
-        when(sessionManager.sendToRoute(org.mockito.ArgumentMatchers.eq("worker-1"), any())).thenReturn(true);
+        when(sessionManager.sendToAdapterRoute(org.mockito.ArgumentMatchers.eq("socket"), org.mockito.ArgumentMatchers.eq("worker-1"), any()))
+                .thenReturn(true);
         SocketTaskDispatchChannel channel = channel(sessionManager);
 
         List<DispatchOutcome> outcomes = channel.dispatchEnvelopes(List.of(envelope(item("msg-1", "worker-1"))));
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.SENT, outcomes.get(0).getStatus());
-        verify(sessionManager).sendToRoute(org.mockito.ArgumentMatchers.eq("worker-1"), any());
+        verify(sessionManager).sendToAdapterRoute(org.mockito.ArgumentMatchers.eq("socket"), org.mockito.ArgumentMatchers.eq("worker-1"), any());
     }
 
     @Test
     void dispatchReturnsEndpointOfflineWhenSessionManagerRejectsMessage() {
         SocketSessionManager sessionManager = mock(SocketSessionManager.class);
-        when(sessionManager.sendToRoute(org.mockito.ArgumentMatchers.eq("worker-1"), any())).thenReturn(false);
+        when(sessionManager.sendToAdapterRoute(org.mockito.ArgumentMatchers.eq("socket"), org.mockito.ArgumentMatchers.eq("worker-1"), any()))
+                .thenReturn(false);
         SocketTaskDispatchChannel channel = channel(sessionManager);
 
         List<DispatchOutcome> outcomes = channel.dispatchEnvelopes(List.of(envelope(item("msg-1", "worker-1"))));
@@ -57,8 +61,8 @@ class SocketTaskDispatchChannelTest {
                 "demoApp",
                 "agent",
                 0,
+                "attempt-" + messageId,
                 workerId,
-                null,
                 "batch-1",
                 Map.of("target", "target-1"),
                 Map.of()
@@ -67,6 +71,7 @@ class SocketTaskDispatchChannelTest {
 
     private SocketTaskDispatchChannel channel(SocketSessionManager sessionManager) {
         return new SocketTaskDispatchChannel(
+                "socket",
                 sessionManager,
                 new SocketTransportFrameCodec(),
                 new TransportDeliveryService(new InMemoryTransportDeliveryStore())
@@ -76,11 +81,22 @@ class SocketTaskDispatchChannelTest {
     private TransportDispatchEnvelope envelope(TaskDispatchItem item) {
         return new TransportDispatchEnvelope(
                 "delivery-" + item.getMessageId(),
-                "socket",
-                item.getWorkerId(),
-                item.attemptId(),
-                item,
+                new TransportPacket(
+                        TransportPacket.CURRENT_VERSION,
+                        "delivery-" + item.getMessageId(),
+                        item.attemptId(),
+                        PacketType.TASK_DISPATCH,
+                        "socket",
+                        item.getWorkerId(),
+                        item.getTaskId(),
+                        item.getMessageId(),
+                        item.attemptId(),
+                        item.getEventCode(),
+                        TransportPacket.JSON_CONTENT_TYPE,
+                        item.transportPayloadView()
+                ),
                 1L
         );
     }
 }
+

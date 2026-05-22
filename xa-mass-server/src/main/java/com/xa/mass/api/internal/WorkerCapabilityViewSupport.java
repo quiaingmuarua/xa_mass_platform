@@ -1,9 +1,9 @@
 package com.xa.mass.api.internal;
 
-import com.xa.mass.base.model.Worker;
-import com.xa.mass.sdk.TransportOperations;
-import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
+import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
 import com.xa.mass.sdk.event.EventDefinition;
+import com.xa.mass.sdk.RuntimeDiagnosticsOperations;
+import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.transport.WorkerTransportHints;
 
 import java.util.ArrayList;
@@ -18,13 +18,13 @@ final class WorkerCapabilityViewSupport {
     private WorkerCapabilityViewSupport() {
     }
 
-    static Map<String, List<Map<String, Object>>> groupConnectionsByWorker(TransportOperations transportOperations) {
-        if (transportOperations == null) {
+    static Map<String, List<Map<String, Object>>> groupConnectionsByWorker(RuntimeDiagnosticsOperations runtimeDiagnostics) {
+        if (runtimeDiagnostics == null) {
             return Map.of();
         }
 
         Map<String, List<Map<String, Object>>> grouped = new LinkedHashMap<>();
-        List<Map<String, Object>> sessions = transportOperations.listSessions();
+        List<Map<String, Object>> sessions = runtimeDiagnostics.listSessions();
         if (sessions == null || sessions.isEmpty()) {
             return grouped;
         }
@@ -42,15 +42,36 @@ final class WorkerCapabilityViewSupport {
         return grouped;
     }
 
-    static List<Map<String, Object>> deriveEventBindings(Worker worker, SdkMetadataCatalog metadataCatalog) {
-        List<String> supportedEventCodes = normalizeStringList(worker == null ? null : worker.getSupportedEventCodes());
+    static List<Map<String, Object>> deriveEventBindings(List<String> supportedEventCodes,
+                                                         ControlPlaneCatalog catalog) {
+        return deriveEventBindings(null, supportedEventCodes, catalog);
+    }
+
+    static List<Map<String, Object>> deriveEventBindings(List<WorkerEventBinding> workerEventBindings,
+                                                         List<String> supportedEventCodes,
+                                                         ControlPlaneCatalog catalog) {
+        if (workerEventBindings != null && !workerEventBindings.isEmpty()) {
+            List<Map<String, Object>> bindings = new ArrayList<>(workerEventBindings.size());
+            for (WorkerEventBinding binding : workerEventBindings) {
+                if (binding == null || binding.getEventCode() == null || binding.getEventCode().isBlank()) {
+                    continue;
+                }
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("eventCode", binding.getEventCode());
+                item.put("projectCodes", normalizeStringList(binding.getProjectCodes()));
+                bindings.add(item);
+            }
+            return bindings.isEmpty() ? List.of() : List.copyOf(bindings);
+        }
+
+        supportedEventCodes = normalizeStringList(supportedEventCodes);
         if (supportedEventCodes.isEmpty()) {
             return List.of();
         }
 
         List<Map<String, Object>> bindings = new ArrayList<>(supportedEventCodes.size());
         for (String eventCode : supportedEventCodes) {
-            EventDefinition definition = metadataCatalog == null ? null : metadataCatalog.getEvent(eventCode);
+            EventDefinition definition = catalog == null ? null : catalog.getEvent(eventCode);
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("eventCode", eventCode);
             item.put("projectCodes", resolveBindingProjects(definition));
@@ -68,26 +89,12 @@ final class WorkerCapabilityViewSupport {
         );
     }
 
-    static String resolveTransportHint(Worker worker, List<Map<String, Object>> connections) {
-        String workerTransport = WorkerTransportHints.normalize(worker == null ? null : worker.getOnlineStrategy());
-        if (workerTransport != null) {
-            return workerTransport;
-        }
-        if (connections == null || connections.isEmpty()) {
-            return null;
-        }
-        for (Map<String, Object> connection : connections) {
-            String connectionTransport =
-                    WorkerTransportHints.normalize(readTrimmed(connection == null ? null : connection.get("transport")));
-            if (connectionTransport != null) {
-                return connectionTransport;
-            }
-        }
-        return null;
+    static String resolveTransportHint(String onlineStrategy) {
+        return WorkerTransportHints.normalize(onlineStrategy);
     }
 
-    static String resolveAdapterId(Worker worker, List<Map<String, Object>> connections) {
-        String workerAdapterId = readTrimmed(worker == null ? null : worker.getAdapterId());
+    static String resolveAdapterId(String workerAdapterId, List<Map<String, Object>> connections) {
+        workerAdapterId = readTrimmed(workerAdapterId);
         if (workerAdapterId != null) {
             return workerAdapterId;
         }
@@ -95,9 +102,9 @@ final class WorkerCapabilityViewSupport {
             return null;
         }
         for (Map<String, Object> connection : connections) {
-            String connectionTransport = readTrimmed(connection == null ? null : connection.get("transport"));
-            if (connectionTransport != null) {
-                return connectionTransport.toLowerCase(java.util.Locale.ROOT);
+            String connectionAdapterId = readTrimmed(connection == null ? null : connection.get("adapterId"));
+            if (connectionAdapterId != null) {
+                return connectionAdapterId.toLowerCase(java.util.Locale.ROOT);
             }
         }
         return null;
@@ -123,7 +130,8 @@ final class WorkerCapabilityViewSupport {
             Map<String, Object> normalized = new LinkedHashMap<>();
             normalized.put("active", Boolean.TRUE.equals(map.get("active")));
             normalized.put("endpointId", readTrimmed(map.get("endpointId")));
-            normalized.put("transport", readTrimmed(map.get("transport")));
+            normalized.put("routeKey", readTrimmed(map.get("routeKey")));
+            normalized.put("adapterId", readTrimmed(map.get("adapterId")));
             connections.add(normalized);
         }
         return connections.isEmpty() ? List.of() : List.copyOf(connections);

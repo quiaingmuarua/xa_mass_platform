@@ -9,8 +9,8 @@ import java.util.Objects;
 /**
  * Process-local projection cache for SDK event definitions.
  *
- * <p>The SDK facade reads from this registry, but the canonical event metadata
- * may be derived from a lower-level runtime source such as
+ * <p>The SDK facade reads from this registry, but the canonical event catalog
+ * entry may be derived from a lower-level runtime source such as
  * {@code com.xa.mass.command.event.MassEventRuntime}.
  */
 public final class EventDefinitionRegistry {

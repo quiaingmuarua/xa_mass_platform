@@ -1,29 +1,21 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.task.TaskHoldReason;
-import com.xa.mass.base.enums.task.TaskIngestStatus;
-import com.xa.mass.base.enums.task.TaskIntakeStatus;
-import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
-import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptFinalReason;
-import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
-import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.engine.model.TaskAppendReceipt;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.engine.util.TraceEventLogger;
-import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.runtime.api.TaskWorkRuntimeStats;
 import com.xa.mass.runtime.api.TaskWorkStats;
+import com.xa.mass.runtime.api.WorkEnqueueOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Owns task-level lifecycle transitions that are not callback-result specific.
@@ -32,12 +24,16 @@ class TaskLifecycleService {
 
     private static final Logger logger = LoggerFactory.getLogger(TaskLifecycleService.class);
 
-    private final TaskLifecycleRuntimePort lifecycleRuntime;
+    private final TaskManager taskManager;
     private final TaskStateResolver stateResolver;
+    private final TraceEventLogger traceEventLogger;
 
-    TaskLifecycleService(TaskLifecycleRuntimePort lifecycleRuntime, TaskStateResolver stateResolver) {
-        this.lifecycleRuntime = lifecycleRuntime;
+    TaskLifecycleService(TaskManager taskManager,
+                         TaskStateResolver stateResolver,
+                         TraceEventLogger traceEventLogger) {
+        this.taskManager = taskManager;
         this.stateResolver = stateResolver;
+        this.traceEventLogger = traceEventLogger;
     }
 
     boolean approveTask(String taskId) {
@@ -46,17 +42,17 @@ class TaskLifecycleService {
         LogUtils.logOperationStart("APPROVE_TASK", "TaskManager", "taskId", taskId);
 
         try {
-            Task task = lifecycleRuntime.getTask(taskId);
+            Task task = taskManager.getTask(taskId);
             if (task != null
                     && (task.getStatus() == TaskStatus.NEW || task.getStatus() == TaskStatus.BLOCKED)) {
                 TaskStatus fromStatus = task.getStatus();
                 boolean result = task.transitionTo(TaskStatus.READY);
                 if (result) {
                     task.setHoldReason(null);
-                    TraceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
+                    traceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
                             "APPROVE_TASK", "TaskManager", "task approved");
-                    lifecycleRuntime.updateTask(task);
-                    lifecycleRuntime.publishTaskReady(task);
+                    taskManager.updateTask(task);
+                    taskManager.publishTaskReady(task);
                     long duration = System.currentTimeMillis() - startTime;
                     LogUtils.logOperationSuccess("task approved", duration);
                 } else {
@@ -82,14 +78,14 @@ class TaskLifecycleService {
         LogUtils.logOperationStart("REJECT_TASK", "TaskManager", "taskId", taskId);
 
         try {
-            Task task = lifecycleRuntime.getTask(taskId);
+            Task task = taskManager.getTask(taskId);
             if (task != null && task.getStatus() == TaskStatus.NEW) {
                 TaskStatus fromStatus = task.getStatus();
                 boolean result = task.transitionToBlocked(TaskHoldReason.REVIEW_REJECTED);
                 if (result) {
-                    TraceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
+                    traceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
                             "REJECT_TASK", "TaskManager", "task rejected");
-                    lifecycleRuntime.updateTask(task);
+                    taskManager.updateTask(task);
                     long duration = System.currentTimeMillis() - startTime;
                     LogUtils.logOperationSuccess("task rejected and moved to BLOCKED", duration);
                 } else {
@@ -115,16 +111,15 @@ class TaskLifecycleService {
         LogUtils.logOperationStart("BLOCK_TASK", "TaskManager", "taskId", taskId);
 
         try {
-            Task task = lifecycleRuntime.getTask(taskId);
+            Task task = taskManager.getTask(taskId);
             if (task != null
                     && (task.getStatus() == TaskStatus.READY || task.getStatus() == TaskStatus.RUNNING)) {
                 TaskStatus fromStatus = task.getStatus();
                 boolean result = task.transitionToBlocked(TaskHoldReason.MANUAL_BLOCKED);
                 if (result) {
-                    TraceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
+                    traceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
                             "BLOCK_TASK", "TaskManager", "task blocked");
-                    lifecycleRuntime.updateTask(task);
-                    lifecycleRuntime.pauseTaskScheduling(taskId);
+                    taskManager.updateTask(task);
                     long duration = System.currentTimeMillis() - startTime;
                     LogUtils.logOperationSuccess("task blocked", duration);
                 } else {
@@ -150,16 +145,15 @@ class TaskLifecycleService {
         LogUtils.logOperationStart("PAUSE_TASK", "TaskManager", "taskId", taskId);
 
         try {
-            Task task = lifecycleRuntime.getTask(taskId);
+            Task task = taskManager.getTask(taskId);
             if (task != null && (task.getStatus() == TaskStatus.READY || task.getStatus() == TaskStatus.RUNNING)) {
                 TaskStatus fromStatus = task.getStatus();
                 boolean result = task.transitionTo(TaskStatus.PAUSED);
                 if (result) {
                     task.setHoldReason(null);
-                    TraceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
+                    traceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
                             "PAUSE_TASK", "TaskManager", "task paused");
-                    lifecycleRuntime.updateTask(task);
-                    lifecycleRuntime.pauseTaskScheduling(taskId);
+                    taskManager.updateTask(task);
                     long duration = System.currentTimeMillis() - startTime;
                     LogUtils.logOperationSuccess("task paused", duration);
                 } else {
@@ -185,22 +179,22 @@ class TaskLifecycleService {
         LogUtils.logOperationStart("RESUME_TASK", "TaskManager", "taskId", taskId);
 
         try {
-            Task task = lifecycleRuntime.getTask(taskId);
+            Task task = taskManager.getTask(taskId);
             if (task != null && task.getStatus() == TaskStatus.PAUSED) {
-                TaskWorkStats stats = lifecycleRuntime.getTaskWorkStats(taskId);
-                TaskTerminalPolicyDecision decision = lifecycleRuntime.evaluateTerminalPolicy(task, stats);
+                TaskWorkStats stats = taskManager.getTaskWorkStats(taskId);
+                TaskTerminalPolicyDecision decision = taskManager.evaluateTerminalPolicy(task, stats);
                 if (decision.getOutcome() == TaskTerminalPolicyDecision.Outcome.FINALIZE_TO_TERMINAL) {
                     task.setTaskSuccessNumber((int) Math.min(stats.successCount(), Integer.MAX_VALUE));
                     TaskTerminalReason terminalReason = decision.getTerminalReason();
                     TaskStatus fromStatus = task.getStatus();
                     boolean result = task.transitionTo(TaskStatus.TERMINAL, terminalReason);
                     if (result) {
-                        TraceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
+                        traceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
                                 "RESUME_TASK", "TaskManager", "task already completed while paused");
-                        TraceEventLogger.taskTerminalClosed(taskId, fromStatus, terminalReason,
+                        traceEventLogger.taskTerminalClosed(taskId, fromStatus, terminalReason,
                                 "RESUME_TASK", "TaskManager", "task already completed while paused");
-                        lifecycleRuntime.updateTask(task);
-                        lifecycleRuntime.publishTaskTerminal(task);
+                        taskManager.updateTask(task);
+                        taskManager.publishTaskTerminal(task);
                         long duration = System.currentTimeMillis() - startTime;
                         LogUtils.logOperationSuccess("task completed while paused and closed to TERMINAL", duration);
                         return TaskResumeResult.completedToTerminal(terminalReason);
@@ -213,11 +207,10 @@ class TaskLifecycleService {
                 boolean result = task.transitionTo(TaskStatus.READY);
                 if (result) {
                     task.setHoldReason(null);
-                    TraceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
+                    traceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
                             "RESUME_TASK", "TaskManager", "task resumed to ready");
-                    lifecycleRuntime.updateTask(task);
-                    lifecycleRuntime.resumeTaskScheduling(taskId);
-                    lifecycleRuntime.publishTaskReady(task);
+                    taskManager.updateTask(task);
+                    taskManager.publishTaskReady(task);
                     long duration = System.currentTimeMillis() - startTime;
                     LogUtils.logOperationSuccess("task resumed to READY", duration);
                     return TaskResumeResult.resumedToReady();
@@ -245,106 +238,105 @@ class TaskLifecycleService {
         return doTerminateTask(taskId, reason, "TERMINATE_TASK");
     }
 
-    int appendTaskItems(String taskId, List<java.util.Map<String, Object>> inputs) {
-        Task task = lifecycleRuntime.getTask(taskId);
+    TaskAppendReceipt appendTaskItemsWithReceipt(String taskId, List<java.util.Map<String, Object>> items) {
+        Task task = taskManager.getTask(taskId);
         if (task == null) {
             throw new IllegalArgumentException("Task not found: " + taskId);
         }
-        if (inputs == null || inputs.isEmpty()) {
-            throw new IllegalArgumentException("inputs must be a non-empty list");
+        if (items == null || items.isEmpty()) {
+            throw new IllegalArgumentException("items must be a non-empty list");
         }
-        if (inputs.size() > TaskManager.MAX_INGEST_BATCH_ITEMS) {
-            throw new IllegalArgumentException("append inputs exceed ingest batch limit: "
-                    + inputs.size() + " > " + TaskManager.MAX_INGEST_BATCH_ITEMS);
+        if (items.size() > TaskManager.MAX_INGEST_BATCH_ITEMS) {
+            throw new IllegalArgumentException("append items exceed ingest batch limit: "
+                    + items.size() + " > " + TaskManager.MAX_INGEST_BATCH_ITEMS);
         }
-        if (!canAcceptTaskInputs(task)) {
-            throw new IllegalStateException(describeInputAppendRejection(task, taskId));
+        if (!canAcceptTaskItems(task)) {
+            throw new IllegalStateException(describeItemAppendRejection(task, taskId));
         }
 
-        int added = 0;
-        for (java.util.Map<String, Object> input : inputs) {
-            String messageId = java.util.UUID.randomUUID().toString();
-            TaskMsg taskMsg = new TaskMsg(messageId, taskId, input);
-            lifecycleRuntime.addTaskMessage(taskId, taskMsg);
-            added++;
+        List<RuntimeTaskIngressItem> ingressItems = new java.util.ArrayList<>(items.size());
+        for (java.util.Map<String, Object> item : items) {
+            ingressItems.add(RuntimeTaskIngressItem.fromInput(
+                    taskId,
+                    java.util.UUID.randomUUID().toString(),
+                    item,
+                    task.getExecutionSpec().getDefaultMaxRetryCount()
+            ));
         }
+        validateAtomicAppendAdmission(task, addedItemCount(ingressItems));
+        taskManager.addRuntimeIngressItems(task, ingressItems);
+        int added = ingressItems.size();
+        List<String> messageIds = ingressItems.stream()
+                .map(RuntimeTaskIngressItem::messageId)
+                .toList();
         task.setTaskTargetNumber(task.getTaskTargetNumber() + added);
         task.setTaskEligibleNumber(task.getTaskEligibleNumber() + added);
-        task.setIngestStatus(resolvePostAppendIngestStatus(task));
-        lifecycleRuntime.updateTask(task);
+        taskManager.updateTask(task);
         if (task.getStatus().isActive()) {
-            lifecycleRuntime.requestTaskDispatch(task);
+            taskManager.requestTaskDispatch(task);
         }
-        logger.info("[appendTaskItems] Added {} items to open-ended task {}", added, taskId);
-        return added;
+        logger.info("[appendTaskItems] Added {} items to task {}", added, taskId);
+        return new TaskAppendReceipt(taskId, added, messageIds);
+    }
+
+    int appendTaskItems(String taskId, List<java.util.Map<String, Object>> items) {
+        return appendTaskItemsWithReceipt(taskId, items).added();
+    }
+
+    private void validateAtomicAppendAdmission(Task task, int itemCount) {
+        if (task == null || itemCount <= 0) {
+            return;
+        }
+        WorkEnqueueOptions enqueueOptions = taskManager.enqueueOptionsResolver().resolve(task);
+        TaskWorkStats taskStats = taskManager.getTaskWorkRuntime().stats(task.getTid());
+        long projectedReadyCount = taskStats.readyCount() + itemCount;
+        if (projectedReadyCount > enqueueOptions.maxReadyItemsPerTask()) {
+            throw new IllegalStateException("task work enqueue failed: status=BACKPRESSURE_REJECTED, reason=task ready backlog is full");
+        }
+        TaskWorkRuntimeStats runtimeStats = taskManager.getTaskWorkRuntime().stats();
+        long projectedQueuedCount = runtimeStats.readyItems() + runtimeStats.delayedItems() + itemCount;
+        if (projectedQueuedCount > runtimeStats.maxQueuedItems()) {
+            throw new IllegalStateException("task work enqueue failed: status=BACKPRESSURE_REJECTED, reason=engine work backlog is full");
+        }
+    }
+
+    private int addedItemCount(List<RuntimeTaskIngressItem> ingressItems) {
+        return ingressItems == null ? 0 : ingressItems.size();
     }
 
     boolean sealTask(String taskId) {
-        Task task = lifecycleRuntime.getTask(taskId);
+        Task task = taskManager.getTask(taskId);
         if (task == null) {
             return false;
         }
-        if (task.getSourceType() == TaskSourceType.FILE) {
-            if (task.getIngestStatus() == TaskIngestStatus.SEALED
-                    || task.getIngestStatus() == TaskIngestStatus.FAILED) {
-                return false;
-            }
-            task.setIngestStatus(TaskIngestStatus.SEALED);
-        } else if (task.getIntakeStatus() == TaskIntakeStatus.OPEN) {
-            task.setIntakeStatus(TaskIntakeStatus.SEALED);
-            task.setIngestStatus(TaskIngestStatus.SEALED);
-        } else {
+        if (!task.isIntakeOpen()) {
             return false;
         }
-        lifecycleRuntime.updateTask(task);
+        task.sealIntake();
+        taskManager.updateTask(task);
         stateResolver.updateTaskProgress(taskId);
         logger.info("[sealTask] Sealed task {}", taskId);
         return true;
     }
 
-    private boolean canAcceptTaskInputs(Task task) {
-        if (task.getStatus() == null || task.getStatus().isFinal()) {
-            return false;
-        }
-        if (task.getSourceType() == TaskSourceType.FILE) {
-            return task.getIngestStatus() != TaskIngestStatus.SEALED
-                    && task.getIngestStatus() != TaskIngestStatus.FAILED;
-        }
-        return task.getIntakeStatus() == TaskIntakeStatus.OPEN
-                && (task.getStatus().isActive() || task.getStatus() == TaskStatus.PAUSED);
+    private boolean canAcceptTaskItems(Task task) {
+        return task.getStatus() != null
+                && !task.getStatus().isFinal()
+                && task.isIntakeOpen();
     }
 
-    private String describeInputAppendRejection(Task task, String taskId) {
-        if (task.getSourceType() == TaskSourceType.FILE) {
-            if (task.getIngestStatus() == TaskIngestStatus.SEALED) {
-                return "Task ingest already sealed: " + taskId;
-            }
-            if (task.getIngestStatus() == TaskIngestStatus.FAILED) {
-                return "Task ingest failed and cannot accept more inputs: " + taskId;
-            }
-            return "Task cannot accept file ingest inputs in status " + task.getStatus();
+    private String describeItemAppendRejection(Task task, String taskId) {
+        if (task.isIntakeSealed()) {
+            return "Task intake is sealed: " + taskId;
         }
-        if (task.getIntakeStatus() != TaskIntakeStatus.OPEN) {
-            return "Task is not open-ended: " + taskId;
-        }
-        return "Task not active: " + task.getStatus();
-    }
-
-    private TaskIngestStatus resolvePostAppendIngestStatus(Task task) {
-        if (task.getSourceType() == TaskSourceType.FILE) {
-            return TaskIngestStatus.READY;
-        }
-        if (task.getIntakeStatus() == TaskIntakeStatus.OPEN) {
-            return TaskIngestStatus.READY;
-        }
-        return task.getIngestStatus();
+        return "Task intake is closed or task is terminal: " + task.getStatus();
     }
 
     boolean deleteTask(String taskId) {
         LogUtils.setTaskId(taskId);
         LogUtils.logOperationStart("DELETE_TASK", "TaskManager", "taskId", taskId);
 
-        Task task = lifecycleRuntime.getTask(taskId);
+        Task task = taskManager.getTask(taskId);
         if (task == null) {
             LogUtils.logOperationFailure("TASK_DELETE_ERROR", "task not found", 0);
             return false;
@@ -357,9 +349,9 @@ class TaskLifecycleService {
             return false;
         }
 
-        boolean result = lifecycleRuntime.deleteTaskRecord(taskId);
+        boolean result = taskManager.deleteTaskRecord(taskId);
         if (result) {
-            lifecycleRuntime.discardTaskRuntime(taskId);
+            taskManager.discardTaskRuntime(taskId);
             LogUtils.logOperationSuccess("task deleted", 0);
         } else {
             LogUtils.logOperationFailure("TASK_DELETE_ERROR", "task deletion failed", 0);
@@ -373,20 +365,19 @@ class TaskLifecycleService {
         LogUtils.logOperationStart(trigger, "TaskManager", "taskId", taskId, "reason", reason.name());
 
         try {
-            Task task = lifecycleRuntime.getTask(taskId);
+            Task task = taskManager.getTask(taskId);
             if (task != null && !task.getStatus().isFinal()) {
                 TaskStatus fromStatus = task.getStatus();
                 boolean result = task.transitionTo(TaskStatus.TERMINAL, reason);
                 if (result) {
-                    TraceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
+                    closeTaskIntakeOnTerminal(task);
+                    traceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
                             trigger, "TaskManager", "task terminated: " + reason);
-                    TraceEventLogger.taskTerminalClosed(taskId, fromStatus, reason,
+                    traceEventLogger.taskTerminalClosed(taskId, fromStatus, reason,
                             trigger, "TaskManager", "task terminated: " + reason);
-                    lifecycleRuntime.updateTask(task);
-                    cancelPendingMessages(task);
-                    lifecycleRuntime.cancelTaskScheduling(taskId);
-                    lifecycleRuntime.publishTaskTerminal(task);
-                    lifecycleRuntime.discardTaskRuntime(taskId);
+                    taskManager.updateTask(task);
+                    taskManager.publishTaskTerminal(task);
+                    taskManager.discardTaskRuntime(taskId);
                     long duration = System.currentTimeMillis() - startTime;
                     LogUtils.logOperationSuccess("task terminated: " + reason, duration);
                 } else {
@@ -406,127 +397,10 @@ class TaskLifecycleService {
         }
     }
 
-    private void cancelPendingMessages(Task task) {
-        String taskId = task.getTid();
-        Map<String, ActiveLeaseRecord> activeLeaseByMessageId = activeLeaseByMessageId(taskId);
-        for (TaskMsg msg : lifecycleRuntime.getNonFinalTaskMessages(taskId)) {
-            cancelPendingMessage(task, msg, activeLeaseByMessageId.get(msg.getMessageId()));
-        }
-    }
-
-    private void cancelPendingMessage(Task task, TaskMsg msg, ActiveLeaseRecord activeLease) {
-        if (msg == null || msg.isCompleted()) {
+    private void closeTaskIntakeOnTerminal(Task task) {
+        if (task == null) {
             return;
         }
-
-        TaskMsgStatus status = msg.getStatus();
-        TaskMsgAttempt activeAttempt = null;
-        boolean attemptClosed = false;
-        if (activeLease != null) {
-            RuntimeLeaseProjectionSupport.ProjectionLeaseSyncResult leaseSync =
-                    RuntimeLeaseProjectionSupport.recoverAndSynchronizeActiveAttempt(
-                            lifecycleRuntime,
-                            task.getTid(),
-                            msg,
-                            activeLease,
-                            "CANCEL_PENDING_MESSAGES",
-                            "runtime active lease synchronized compatibility projection before terminal cleanup"
-                    );
-            activeAttempt = leaseSync.activeAttempt();
-            if (activeAttempt != null && !leaseSync.synchronizedProjection()) {
-                return;
-            }
-            status = msg.getStatus();
-        } else if (status == TaskMsgStatus.ASSIGNED || status == TaskMsgStatus.RUNNING) {
-            activeAttempt = lifecycleRuntime.getLatestActiveTaskMessageAttempt(task.getTid(), msg.getMessageId());
-        }
-        if (activeAttempt != null) {
-            if (activeAttempt != null
-                    && TaskMessageAttemptSupport.expireAttempt(
-                    activeAttempt,
-                    TaskMsgAttemptFinalReason.MANUAL_CANCELLED,
-                    "task cancelled")) {
-                lifecycleRuntime.updateTaskMessageAttempt(task.getTid(), msg.getMessageId(), activeAttempt);
-                attemptClosed = true;
-            }
-        }
-
-        boolean updated = false;
-        if (activeLease == null && status == TaskMsgStatus.INIT) {
-            updated = msg.cancelBeforeDispatch("task cancelled");
-            if (!updated) {
-                return;
-            }
-            TraceEventLogger.taskMsgStatusTransition(
-                    msg,
-                    null,
-                    TaskMsgStatus.INIT,
-                    msg.getStatus(),
-                    "CANCEL_PENDING_MESSAGES",
-                    "TaskManager",
-                    "task cancelled before dispatch"
-            );
-        } else if (activeLease != null || activeAttempt != null) {
-            updated = msg.markAsExpired(TaskMsgFinalReason.MANUAL_CANCELLED);
-            if (updated) {
-                TraceEventLogger.taskMsgStatusTransition(
-                        msg,
-                        activeAttempt,
-                        status,
-                        msg.getStatus(),
-                        "CANCEL_PENDING_MESSAGES",
-                        "TaskManager",
-                        "task cancelled after assignment"
-                );
-            }
-        } else {
-            msg.forceFinalize(TaskMsgStatus.FAILED, TaskMsgFinalReason.MANUAL_CANCELLED, "task cancelled");
-            updated = true;
-            TraceEventLogger.taskMsgStatusTransition(
-                    msg,
-                    null,
-                    status,
-                    msg.getStatus(),
-                    "CANCEL_PENDING_MESSAGES",
-                    "TaskManager",
-                    "task cancelled without active runtime lease"
-            );
-        }
-        if (!updated) {
-            return;
-        }
-
-        lifecycleRuntime.updateTaskMessage(task.getTid(), msg);
-        if (attemptClosed && activeAttempt != null) {
-            TraceEventLogger.taskMessageAttemptClosed(
-                    task,
-                    msg,
-                    activeAttempt,
-                    "CANCEL_PENDING_MESSAGES",
-                    "TaskManager",
-                    "task termination closed the current attempt"
-            );
-            lifecycleRuntime.publishTaskMessageAttemptClosed(task, msg, activeAttempt);
-        }
-        TraceEventLogger.taskMessageLogicallyFinal(
-                task,
-                msg,
-                activeAttempt,
-                "CANCEL_PENDING_MESSAGES",
-                "TaskManager",
-                "task termination finalized the logical message"
-        );
-        lifecycleRuntime.publishTaskMessageLogicallyFinal(task, msg);
-    }
-
-    private Map<String, ActiveLeaseRecord> activeLeaseByMessageId(String taskId) {
-        Map<String, ActiveLeaseRecord> activeLeaseByMessageId = new HashMap<>();
-        for (ActiveLeaseRecord lease : lifecycleRuntime.getActiveLeases(taskId)) {
-            if (lease == null || lease.messageId() == null || lease.messageId().isBlank()) {
-                continue;
-            }
-            activeLeaseByMessageId.put(lease.messageId(), lease);
-        }
-        return activeLeaseByMessageId;
+        task.sealIntake();
     }
 }

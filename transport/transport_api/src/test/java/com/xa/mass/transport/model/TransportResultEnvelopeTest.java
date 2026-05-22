@@ -15,77 +15,108 @@ class TransportResultEnvelopeTest {
     void fromReportCapturesTransportMetadataAndReportIdentity() {
         TaskResultReport report = report();
 
-        TransportResultEnvelope envelope = TransportResultEnvelope.fromReport(
+        TransportResultEnvelope envelope = TransportResultEnvelope.addressed(
                 " WebSocket ",
-                " worker-1 ",
-                " endpoint-1 ",
+                " route-1 ",
                 report
         );
 
         assertEquals("websocket", envelope.getAdapterId());
-        assertEquals("worker-1", envelope.getWorkerId());
-        assertEquals("endpoint-1", envelope.getEndpointId());
+        assertEquals("route-1", envelope.getRouteKey());
         assertNull(envelope.getAttemptId());
         assertNull(envelope.getLeaseToken());
+        assertNull(envelope.getTraceId());
         assertSame(report, envelope.getReport());
         assertEquals("task-1", envelope.getTaskId());
         assertEquals("msg-1", envelope.getMessageId());
     }
 
     @Test
-    void metadataFieldsTolerateNullAndBlankValues() {
-        TransportResultEnvelope envelope = TransportResultEnvelope.fromReport(
-                " ",
-                null,
-                "\t",
+    void diagnosticFieldsTolerateNullAndBlankValues() {
+        TransportResultEnvelope envelope = TransportResultEnvelope.addressed(
+                "polling",
+                "route-1",
                 report()
         );
 
-        assertNull(envelope.getAdapterId());
-        assertNull(envelope.getWorkerId());
-        assertNull(envelope.getEndpointId());
+        assertEquals("polling", envelope.getAdapterId());
+        assertEquals("route-1", envelope.getRouteKey());
         assertNull(envelope.getAttemptId());
         assertNull(envelope.getLeaseToken());
+        assertNull(envelope.getTraceId());
     }
 
     @Test
-    void fromDispatchItemCarriesAttemptIdentityWithoutChangingReportPayload() {
+    void fromDispatchContextCarriesAttemptIdentityWithoutChangingReportPayload() {
         TaskResultReport report = report();
-        TaskDispatchItem item = new TaskDispatchItem(
-                "task-1",
-                "msg-1",
-                "crawler.fetch-page",
-                "task-name",
-                "demoApp",
-                "agent",
-                0,
-                "attempt-1",
-                "worker-1",
-                "ctx-1",
-                "batch-1",
-                Map.of("target", "alpha"),
-                Map.of()
-        );
 
-        TransportResultEnvelope envelope = TransportResultEnvelope.fromDispatchItem(
+        TransportResultEnvelope envelope = new TransportResultEnvelope(
                 " Polling ",
-                " endpoint-1 ",
-                item,
+                " route-1 ",
+                " attempt-1 ",
+                null,
+                null,
                 report
         );
 
         assertEquals("polling", envelope.getAdapterId());
-        assertEquals("worker-1", envelope.getWorkerId());
-        assertEquals("endpoint-1", envelope.getEndpointId());
+        assertEquals("route-1", envelope.getRouteKey());
         assertEquals("attempt-1", envelope.getAttemptId());
         assertNull(envelope.getLeaseToken());
+        assertNull(envelope.getTraceId());
         assertSame(report, envelope.getReport());
+    }
+
+    @Test
+    void fromReportCarriesTraceIdWhenProvided() {
+        TransportResultEnvelope envelope = new TransportResultEnvelope(
+                "polling",
+                "route-1",
+                null,
+                null,
+                " trace-123 ",
+                report()
+        );
+
+        assertNull(envelope.getAttemptId());
+        assertEquals("trace-123", envelope.getTraceId());
+    }
+
+    @Test
+    void fromDispatchContextCarriesTraceIdWhenProvided() {
+        TransportResultEnvelope envelope = new TransportResultEnvelope(
+                "polling",
+                "route-1",
+                "attempt-1",
+                null,
+                " trace-attempt-1 ",
+                report()
+        );
+
+        assertEquals("attempt-1", envelope.getAttemptId());
+        assertNull(envelope.getLeaseToken());
+        assertEquals("trace-attempt-1", envelope.getTraceId());
     }
 
     @Test
     void reportIsRequired() {
         assertThrows(NullPointerException.class,
-                () -> TransportResultEnvelope.fromReport("polling", "worker-1", "endpoint-1", null));
+                () -> TransportResultEnvelope.addressed("polling", "route-1", null));
+    }
+
+    @Test
+    void canonicalTransportAddressIsRequired() {
+        IllegalArgumentException adapterIdError = assertThrows(
+                IllegalArgumentException.class,
+                () -> TransportResultEnvelope.addressed(" ", "route-1", report())
+        );
+        assertEquals("adapterId must not be blank", adapterIdError.getMessage());
+
+        IllegalArgumentException routeKeyError = assertThrows(
+                IllegalArgumentException.class,
+                () -> TransportResultEnvelope.addressed("polling", " ", report())
+        );
+        assertEquals("routeKey must not be blank", routeKeyError.getMessage());
     }
 
     private TaskResultReport report() {
@@ -99,3 +130,4 @@ class TransportResultEnvelopeTest {
         );
     }
 }
+

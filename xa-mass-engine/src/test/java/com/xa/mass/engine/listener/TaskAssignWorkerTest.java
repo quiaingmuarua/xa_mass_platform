@@ -3,14 +3,20 @@ package com.xa.mass.engine.listener;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.engine.runtime.TaskRuntimeProfile;
 import com.xa.mass.engine.runtime.TaskRuntimeProfileResolver;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
+import com.xa.mass.engine.testutil.RecordingEventSink;
 import com.xa.mass.engine.util.TraceEventLogCapture;
+import com.xa.mass.engine.util.TraceEventLogger;
+import com.xa.mass.trace.sink.ExecutionEvent;
+import com.xa.mass.trace.sink.ExecutionEventType;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -22,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-class TaskAssignWorkerTest {
+public class TaskAssignWorkerTest {
 
     private TaskAssignWorker worker;
     private List<Task> assigned;
@@ -66,7 +72,7 @@ class TaskAssignWorkerTest {
 
         Task task = readyTask("t1");
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
-            worker.submit(task);
+            assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(task));
 
             assertTrue(latch.await(3, TimeUnit.SECONDS), "Task should be processed within 3s");
             assertEquals(1, assigned.size());
@@ -100,26 +106,25 @@ class TaskAssignWorkerTest {
             return false;
         }).when(retryingListener).onTaskAssign(any());
 
-        worker = new TaskAssignWorker(retryingListener, 50L);
+        RecordingEventSink sink = new RecordingEventSink();
+        worker = new TaskAssignWorker(retryingListener, 50L, new TraceEventLogger(sink));
         worker.start();
 
         Task task = readyTask("retry");
-        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
-            worker.submit(task);
+        assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(task));
 
-            assertTrue(assignedLatch.await(3, TimeUnit.SECONDS), "READY task should be retried until assignment succeeds");
-            assertEquals(TaskStatus.RUNNING, task.getStatus());
-            assertEquals(2, attempts.get());
-            verify(retryingListener, atLeast(2)).onTaskAssign(same(task));
-            assertTrue(awaitCondition(() -> hasRetryDelayEvent(capture, "retry", "50")),
-                    "retry scheduling trace should be captured before assertions run");
-            assertTrue(awaitCondition(() -> hasQueueSnapshotEvent(capture, "retry", "RETRY_SCHEDULED",
-                    mdc -> "1".equals(mdc.get("scheduledRetryCount")))),
-                    "retry-scheduled queue snapshot should be captured before assertions run");
-            assertTrue(awaitCondition(() -> hasQueueSnapshotEvent(capture, "retry", "RETRY_ENQUEUED",
-                    mdc -> "TaskAssignWorker".equals(mdc.get("source")))),
-                    "retry-enqueued queue snapshot should be captured before assertions run");
-        }
+        assertTrue(assignedLatch.await(3, TimeUnit.SECONDS), "READY task should be retried until assignment succeeds");
+        assertEquals(TaskStatus.RUNNING, task.getStatus());
+        assertEquals(2, attempts.get());
+        verify(retryingListener, atLeast(2)).onTaskAssign(same(task));
+        assertTrue(awaitCondition(() -> hasRetryDelayEvent(sink, "retry", 50L)),
+                "retry scheduling trace should be captured before assertions run");
+        assertTrue(awaitCondition(() -> hasQueueSnapshotEvent(sink, "retry", "RETRY_SCHEDULED",
+                attrs -> Integer.valueOf(1).equals(attrs.get("scheduledRetryCount")))),
+                "retry-scheduled queue snapshot should be captured before assertions run");
+        assertTrue(awaitCondition(() -> hasQueueSnapshotEvent(sink, "retry", "RETRY_ENQUEUED",
+                attrs -> "TaskAssignWorker".equals(attrs.get("source")))),
+                "retry-enqueued queue snapshot should be captured before assertions run");
     }
 
     @Test
@@ -143,7 +148,7 @@ class TaskAssignWorkerTest {
 
         Task task = runningTask("running-retry");
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
-            worker.submit(task);
+            assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(task));
 
             assertTrue(assignedLatch.await(3, TimeUnit.SECONDS), "RUNNING task should be retried until replenishment succeeds");
             assertEquals(TaskStatus.RUNNING, task.getStatus());
@@ -169,8 +174,8 @@ class TaskAssignWorkerTest {
         newTask.setTid("skipped");
         newTask.setStatus(TaskStatus.NEW);
 
-        worker.submit(newTask);
-        worker.submit(readyTask("processed"));
+        assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(newTask));
+        assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(readyTask("processed")));
 
         assertTrue(processedLatch.await(3, TimeUnit.SECONDS));
         assertEquals(1, assigned.size());
@@ -201,9 +206,9 @@ class TaskAssignWorkerTest {
 
         Task task = readyTask("dedup");
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
-            assertTrue(worker.submit(task));
+            assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(task));
             assertTrue(firstAttemptEntered.await(3, TimeUnit.SECONDS), "first assignment attempt should start");
-            assertFalse(worker.submit(task));
+            assertEquals(TaskAssignWorker.SubmitResult.DEDUP_SKIPPED, worker.submitDetailed(task));
             releaseFirstAttempt.countDown();
 
             assertTrue(assignedLatch.await(3, TimeUnit.SECONDS), "Task should still be processed once");
@@ -216,17 +221,21 @@ class TaskAssignWorkerTest {
     }
 
     @Test
-    void submitRejectsDistinctTaskWhenAssignmentSignalQueueIsFull() throws InterruptedException {
+    void submitDefersDistinctTaskWhenAssignmentSignalQueueIsFull() throws InterruptedException {
         worker.stop();
 
         CountDownLatch firstAttemptStarted = new CountDownLatch(1);
         CountDownLatch releaseFirstAttempt = new CountDownLatch(1);
+        CountDownLatch rejectedEventuallyProcessed = new CountDownLatch(1);
         TaskWorkerAssignListener blockingListener = mock(TaskWorkerAssignListener.class);
         doAnswer(invocation -> {
             Task task = invocation.getArgument(0);
             firstAttemptStarted.countDown();
             assertTrue(releaseFirstAttempt.await(3, TimeUnit.SECONDS));
             task.transitionTo(TaskStatus.RUNNING);
+            if ("rejected".equals(task.getTid())) {
+                rejectedEventuallyProcessed.countDown();
+            }
             return true;
         }).when(blockingListener).onTaskAssign(any());
 
@@ -234,15 +243,25 @@ class TaskAssignWorkerTest {
         worker.start();
 
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
-            assertTrue(worker.submit(readyTask("blocking")));
+            assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(readyTask("blocking")));
             assertTrue(firstAttemptStarted.await(3, TimeUnit.SECONDS));
-            assertTrue(worker.submit(readyTask("queued")));
-            assertFalse(worker.submit(readyTask("rejected")));
+            assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(readyTask("queued")));
+            assertEquals(TaskAssignWorker.SubmitResult.RETRY_SCHEDULED, worker.submitDetailed(readyTask("rejected")));
 
             capture.assertHasEvent("ASSIGNMENT_QUEUE_SNAPSHOT", mdc ->
                     "rejected".equals(mdc.get("taskId"))
                             && "QUEUE_FULL".equals(mdc.get("queueAction"))
-                            && "REJECTED".equals(mdc.get("result")));
+                            && "DEFERRED".equals(mdc.get("result")));
+            releaseFirstAttempt.countDown();
+            assertTrue(rejectedEventuallyProcessed.await(3, TimeUnit.SECONDS),
+                    "queue-full submission should be retried until it enters the assignment queue");
+            capture.assertHasEvent("ASSIGNMENT_QUEUE_SNAPSHOT", mdc ->
+                    "rejected".equals(mdc.get("taskId"))
+                            && "SUBMIT_RETRY_SCHEDULED".equals(mdc.get("queueAction"))
+                            && "DEFERRED".equals(mdc.get("result")));
+            assertTrue(awaitCondition(() -> hasQueueSnapshotEvent(capture, "rejected", "RETRY_ENQUEUED",
+                            mdc -> "SUCCESS".equals(mdc.get("result")))),
+                    "retry-enqueued queue snapshot should be captured before assertions run");
         } finally {
             releaseFirstAttempt.countDown();
         }
@@ -261,7 +280,8 @@ class TaskAssignWorkerTest {
             Task task = invocation.getArgument(0);
             int currentAttempt = attempts.incrementAndGet();
             if (currentAttempt == 1) {
-                assertFalse(worker.submit(task), "second submit while tracked should be deferred");
+                assertEquals(TaskAssignWorker.SubmitResult.DEFERRED_REQUEUE_MARKED, worker.submitDetailed(task),
+                        "second submit while tracked should be deferred");
                 deferredSubmitObserved.countDown();
                 assertTrue(releaseFirstAttempt.await(3, TimeUnit.SECONDS));
             } else if (currentAttempt == 2) {
@@ -275,7 +295,7 @@ class TaskAssignWorkerTest {
 
         Task task = runningTask("deferred-requeue");
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
-            assertTrue(worker.submit(task));
+            assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(task));
             assertTrue(deferredSubmitObserved.await(3, TimeUnit.SECONDS),
                     "deferred submit should be observed during the first assignment cycle");
             releaseFirstAttempt.countDown();
@@ -313,8 +333,8 @@ class TaskAssignWorkerTest {
         Task bulkTask = bulkTask("bulk-retry-delay");
 
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
-            assertTrue(worker.submit(interactiveTask));
-            assertTrue(worker.submit(bulkTask));
+            assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(interactiveTask));
+            assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(bulkTask));
 
             assertTrue(awaitCondition(() -> hasRetryDelayEvent(capture, "interactive-retry-delay", "25")),
                     "interactive retry should use the shorter resolved delay");
@@ -352,9 +372,9 @@ class TaskAssignWorkerTest {
         Task interactiveTask = interactiveTask("interactive-fast");
 
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
-            assertTrue(worker.submit(bulkTask));
+            assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(bulkTask));
             assertTrue(bulkStarted.await(3, TimeUnit.SECONDS), "bulk lane should start processing first");
-            assertTrue(worker.submit(interactiveTask));
+            assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(interactiveTask));
             assertTrue(interactiveProcessed.await(1, TimeUnit.SECONDS),
                     "interactive lane should still make progress while bulk lane is blocked");
 
@@ -369,6 +389,103 @@ class TaskAssignWorkerTest {
         } finally {
             releaseBulk.countDown();
         }
+    }
+
+    @Test
+    void higherPrioritySignalRunsBeforeEarlierNormalSignalInSameLane() throws InterruptedException {
+        worker.stop();
+
+        CountDownLatch blockerStarted = new CountDownLatch(1);
+        CountDownLatch releaseBlocker = new CountDownLatch(1);
+        CountDownLatch processed = new CountDownLatch(3);
+        List<String> processedOrder = Collections.synchronizedList(new ArrayList<>());
+
+        TaskWorkerAssignListener priorityAwareListener = mock(TaskWorkerAssignListener.class);
+        doAnswer(invocation -> {
+            Task task = invocation.getArgument(0);
+            processedOrder.add(task.getTid());
+            if ("lane-blocker".equals(task.getTid())) {
+                blockerStarted.countDown();
+                assertTrue(releaseBlocker.await(3, TimeUnit.SECONDS));
+            }
+            task.transitionTo(TaskStatus.RUNNING);
+            processed.countDown();
+            return true;
+        }).when(priorityAwareListener).onTaskAssign(any());
+
+        TaskRuntimeProfileResolver sameLanePriorityResolver = new TaskRuntimeProfileResolver() {
+            @Override
+            public TaskRuntimeProfile resolve(Task task) {
+                TaskRuntimeProfile.DispatchPriority priority = task != null
+                        && "lane-high".equals(task.getTid())
+                        ? TaskRuntimeProfile.DispatchPriority.HIGH
+                        : TaskRuntimeProfile.DispatchPriority.NORMAL;
+                return new TaskRuntimeProfile(
+                        TaskWorkloadClass.BULK,
+                        TaskRuntimeProfile.DispatchLane.BULK,
+                        priority,
+                        TaskRuntimeProfile.BatchPolicy.LARGE,
+                        TaskRuntimeProfile.LeaseProfile.NORMAL,
+                        TaskRuntimeProfile.BackpressureClass.BULK
+                );
+            }
+        };
+
+        worker = new TaskAssignWorker(
+                priorityAwareListener,
+                50L,
+                10,
+                new TaskRuntimeRetryPolicyResolver(),
+                sameLanePriorityResolver,
+                TraceEventLogger.noop()
+        );
+        worker.start();
+
+        assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(readyTask("lane-blocker")));
+        assertTrue(blockerStarted.await(3, TimeUnit.SECONDS), "blocker should occupy the lane worker");
+        assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(readyTask("lane-normal")));
+        assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(readyTask("lane-high")));
+
+        releaseBlocker.countDown();
+
+        assertTrue(processed.await(3, TimeUnit.SECONDS), "all lane signals should be processed");
+        assertEquals(List.of("lane-blocker", "lane-high", "lane-normal"), processedOrder);
+    }
+
+    @Test
+    void samePrioritySignalsRemainFifoWithinLane() throws InterruptedException {
+        worker.stop();
+
+        CountDownLatch blockerStarted = new CountDownLatch(1);
+        CountDownLatch releaseBlocker = new CountDownLatch(1);
+        CountDownLatch processed = new CountDownLatch(3);
+        List<String> processedOrder = Collections.synchronizedList(new ArrayList<>());
+
+        TaskWorkerAssignListener listener = mock(TaskWorkerAssignListener.class);
+        doAnswer(invocation -> {
+            Task task = invocation.getArgument(0);
+            processedOrder.add(task.getTid());
+            if ("fifo-blocker".equals(task.getTid())) {
+                blockerStarted.countDown();
+                assertTrue(releaseBlocker.await(3, TimeUnit.SECONDS));
+            }
+            task.transitionTo(TaskStatus.RUNNING);
+            processed.countDown();
+            return true;
+        }).when(listener).onTaskAssign(any());
+
+        worker = new TaskAssignWorker(listener, 50L, 10);
+        worker.start();
+
+        assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(bulkTask("fifo-blocker")));
+        assertTrue(blockerStarted.await(3, TimeUnit.SECONDS), "blocker should occupy the lane worker");
+        assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(bulkTask("fifo-first")));
+        assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(bulkTask("fifo-second")));
+
+        releaseBlocker.countDown();
+
+        assertTrue(processed.await(3, TimeUnit.SECONDS), "all lane signals should be processed");
+        assertEquals(List.of("fifo-blocker", "fifo-first", "fifo-second"), processedOrder);
     }
 
     @Test
@@ -452,13 +569,13 @@ class TaskAssignWorkerTest {
 
     private Task interactiveTask(String tid) {
         Task t = readyTask(tid);
-        t.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
+        t.getExecutionSpec().setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
         return t;
     }
 
     private Task bulkTask(String tid) {
         Task t = readyTask(tid);
-        t.setWorkloadClass(TaskWorkloadClass.BULK);
+        t.getExecutionSpec().setWorkloadClass(TaskWorkloadClass.BULK);
         return t;
     }
 
@@ -488,6 +605,14 @@ class TaskAssignWorkerTest {
                         && "TaskAssignWorker".equals(mdc.get("source")));
     }
 
+    private boolean hasRetryDelayEvent(RecordingEventSink sink, String taskId, long retryDelayMillis) {
+        return sink.eventsOfType(ExecutionEventType.ASSIGNMENT_RETRY_SCHEDULED).stream()
+                .anyMatch(event -> event.getIdentity() != null
+                        && taskId.equals(event.getIdentity().taskId())
+                        && Long.valueOf(retryDelayMillis).equals(event.getAttrs().get("retryDelayMillis"))
+                        && "TaskAssignWorker".equals(event.getAttrs().get("source")));
+    }
+
     private boolean hasQueueSnapshotEvent(TraceEventLogCapture capture,
                                           String taskId,
                                           String queueAction,
@@ -497,5 +622,17 @@ class TaskAssignWorkerTest {
                 .anyMatch(mdc -> taskId.equals(mdc.get("taskId"))
                         && queueAction.equals(mdc.get("queueAction"))
                         && extraMatch.test(mdc));
+    }
+
+    private boolean hasQueueSnapshotEvent(RecordingEventSink sink,
+                                          String taskId,
+                                          String queueAction,
+                                          Predicate<java.util.Map<String, Object>> extraMatch) {
+        return sink.eventsOfType(ExecutionEventType.ASSIGNMENT_QUEUE_SNAPSHOT).stream()
+                .filter(event -> event.getIdentity() != null)
+                .filter(event -> taskId.equals(event.getIdentity().taskId()))
+                .filter(event -> queueAction.equals(event.getAttrs().get("queueAction")))
+                .map(ExecutionEvent::getAttrs)
+                .anyMatch(extraMatch);
     }
 }

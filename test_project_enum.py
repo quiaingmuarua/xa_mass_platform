@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Smoke-check a few current config-related HTTP endpoints against the local dev app.
+Smoke-check current runtime config endpoints against the local dev app.
 """
 
 import json
@@ -21,38 +21,7 @@ def dump_json_response(response: requests.Response) -> None:
 
 def test_project_enum() -> None:
     print("=== project list ===")
-    dump_json_response(requests.get(f"{BASE_URL}/api/config/projects"))
-
-    print("\n=== project codes ===")
-    dump_json_response(requests.get(f"{BASE_URL}/api/config/projects/codes"))
-
-    print("\n=== validate demoApp ===")
-    dump_json_response(requests.get(f"{BASE_URL}/api/config/projects/validate/demoApp"))
-
-
-def test_add_project() -> None:
-    print("\n=== add project ===")
-    payload = {
-        "code": "testApp",
-        "name": "test-app",
-    }
-    response = requests.post(
-        f"{BASE_URL}/api/config/projects",
-        headers={"Content-Type": "application/json"},
-        json=payload,
-    )
-    dump_json_response(response)
-
-    print("\n=== project list after add ===")
-    dump_json_response(requests.get(f"{BASE_URL}/api/config/projects"))
-
-
-def test_delete_project() -> None:
-    print("\n=== delete project ===")
-    dump_json_response(requests.delete(f"{BASE_URL}/api/config/projects/testApp"))
-
-    print("\n=== delete default project demoApp ===")
-    dump_json_response(requests.delete(f"{BASE_URL}/api/config/projects/demoApp"))
+    dump_json_response(requests.get(f"{BASE_URL}/api/v1/runtime/config/projects"))
 
 
 def test_config_page() -> None:
@@ -74,8 +43,6 @@ if __name__ == "__main__":
     time.sleep(5)
 
     test_project_enum()
-    test_add_project()
-    test_delete_project()
     test_config_page()
 
     print("\nsmoke checks complete")

@@ -1,5 +1,6 @@
 package com.xa.mass.engine;
 
+import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 
@@ -9,21 +10,21 @@ import java.util.concurrent.RejectedExecutionException;
  * Owns task-level dispatch request submission, including coalesced delayed
  * retry wakeups.
  *
- * <p>Runtime retries are task-owned assignment signals, not one sleeping
- * wakeup per logical message. This keeps the retry path aligned with the task
- * orchestration boundary and avoids redundant redispatch churn under bursty
- * retry pressure.
+ * <p>This owner now only applies to session/interactive orchestration.
+ * Batch/bulk retry visibility is driven directly by {@code TaskWorkRuntime}
+ * plus runtime-ready recovery, so engine no longer layers a second delayed
+ * task wakeup track on top of batch runtime truth.
  */
 class TaskDispatchRequestService {
 
-    private final TaskDispatchRequestRuntimePort dispatchRuntime;
+    private final TaskManager taskManager;
     private final RuntimeTaskExecutor retryWakeupExecutor;
     private final DelayedDispatchSchedule delayedDispatchSchedule;
 
-    TaskDispatchRequestService(TaskDispatchRequestRuntimePort dispatchRuntime,
+    TaskDispatchRequestService(TaskManager taskManager,
                                RuntimeTaskExecutor retryWakeupExecutor,
                                DelayedDispatchSchedule delayedDispatchSchedule) {
-        this.dispatchRuntime = dispatchRuntime;
+        this.taskManager = taskManager;
         this.retryWakeupExecutor = retryWakeupExecutor;
         this.delayedDispatchSchedule = delayedDispatchSchedule;
     }
@@ -32,12 +33,18 @@ class TaskDispatchRequestService {
         if (!isUsable(task)) {
             return;
         }
+        if (task.getContract() == TaskContract.BATCH) {
+            return;
+        }
         delayedDispatchSchedule.remove(task.getTid());
-        dispatchRuntime.publishTaskDispatchRequested(task);
+        taskManager.publishTaskDispatchRequested(task);
     }
 
     void requestDelayed(Task task, long delayMillis) {
         if (!isUsable(task)) {
+            return;
+        }
+        if (task.getContract() == TaskContract.BATCH) {
             return;
         }
         if (delayMillis <= 0L) {
@@ -97,14 +104,14 @@ class TaskDispatchRequestService {
             return;
         }
 
-        Task refreshedTask = dispatchRuntime.getTask(taskId);
+        Task refreshedTask = taskManager.getTask(taskId);
         if (refreshedTask == null || refreshedTask.getStatus().isFinal()) {
             return;
         }
-        if (!dispatchRuntime.hasPendingDispatchableMessages(taskId)) {
+        if (!taskManager.hasDispatchReadyWork(taskId)) {
             return;
         }
-        dispatchRuntime.publishTaskDispatchRequested(refreshedTask);
+        taskManager.publishTaskDispatchRequested(refreshedTask);
     }
 
     private boolean isUsable(Task task) {

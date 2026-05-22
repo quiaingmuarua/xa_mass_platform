@@ -12,7 +12,7 @@ import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.catalog.PayloadType;
-import com.xa.mass.sdk.catalog.ProjectMetadata;
+import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.event.EventResponse;
@@ -44,17 +44,11 @@ public class TestDevBootstrapConfiguration {
     @Value("${mass.mock.data.tasks:mock/mock_tasks.json}")
     private String tasksConfigPath;
 
-    @Value("${mass.mock.data.worker-contexts:mock/mock_worker_contexts.json}")
-    private String workerContextsConfigPath;
-
     @Value("${mass.mock.data.rules:mock/mock_rules.json}")
     private String rulesConfigPath;
 
     @Value("${mass.mock.bootstrap.load-workers:true}")
     private boolean loadBootstrapWorkers;
-
-    @Value("${mass.mock.bootstrap.load-worker-contexts:true}")
-    private boolean loadBootstrapWorkerContexts;
 
     @Value("${mass.mock.bootstrap.load-tasks:true}")
     private boolean loadBootstrapTasks;
@@ -63,15 +57,13 @@ public class TestDevBootstrapConfiguration {
     private boolean loadBootstrapRules;
 
     @Bean
-    @ConditionalOnProperty(prefix = "mass.mock.bootstrap", name = "enabled", havingValue = "true")
+    @ConditionalOnProperty(prefix = "mass.mock.bootstrap", name = "enabled", havingValue = "true", matchIfMissing = true)
     public MassBootstrapDataProvider mockRuntimeDataLoader() {
         return new MockRuntimeDataLoader(
                 workersConfigPath,
-                workerContextsConfigPath,
                 tasksConfigPath,
                 rulesConfigPath,
                 loadBootstrapWorkers,
-                loadBootstrapWorkerContexts,
                 loadBootstrapTasks,
                 loadBootstrapRules
         );
@@ -79,7 +71,7 @@ public class TestDevBootstrapConfiguration {
 
     @Bean
     @Order(10)
-    @ConditionalOnProperty(prefix = "mass.mock.bootstrap", name = "enabled", havingValue = "true")
+    @ConditionalOnProperty(prefix = "mass.mock.bootstrap", name = "enabled", havingValue = "true", matchIfMissing = true)
     public CommandLineRunner testFixtureLoadRunner(MassSdkApplication app,
                                                    MassBootstrapDataProvider bootstrapDataProvider) {
         return args -> bootstrapDataProvider.loadInto(app);
@@ -87,7 +79,7 @@ public class TestDevBootstrapConfiguration {
 
     @Bean
     @Order(Ordered.HIGHEST_PRECEDENCE)
-    @ConditionalOnProperty(prefix = "mass.mock.bootstrap", name = "register-dev-catalog", havingValue = "true")
+    @ConditionalOnProperty(prefix = "mass.mock.bootstrap", name = "register-dev-catalog", havingValue = "true", matchIfMissing = true)
     public CommandLineRunner testCatalogBootstrapRunner(MassSdkApplication app) {
         return args -> {
             registerCatalogTaskDefinition(app, EventDefinition.builder()
@@ -125,7 +117,7 @@ public class TestDevBootstrapConfiguration {
             registerMockTaskDefinitions(app);
             registerRuntimeToolDefinitions(app);
 
-            app.registerProject(ProjectMetadata.builder()
+            app.registerProject(ProjectDefinition.builder()
                     .code("demoApp")
                     .name("Demo App")
                     .description("Default demo project. Event catalog is registered through the SDK runtime.")
@@ -140,7 +132,7 @@ public class TestDevBootstrapConfiguration {
                             "mock.reset"
                     ))
                     .build());
-            app.registerProject(ProjectMetadata.builder()
+            app.registerProject(ProjectDefinition.builder()
                     .code("testApp")
                     .name("Test App")
                     .description("Test project used by regression and E2E fixtures.")
@@ -154,13 +146,13 @@ public class TestDevBootstrapConfiguration {
                             "mock.reset"
                     ))
                     .build());
-            app.registerProject(ProjectMetadata.builder()
+            app.registerProject(ProjectDefinition.builder()
                     .code("otherApp")
                     .name("Other App")
                     .description("Secondary demo project used by the dev validation shell.")
                     .eventCodes(List.of("demo.dispatch", "demo.dispatch.gb"))
                     .build());
-            app.registerProject(ProjectMetadata.builder()
+            app.registerProject(ProjectDefinition.builder()
                     .code("crawlerApp")
                     .name("Crawler")
                     .description("Crawler worker lab project for SDK-created pull worker scenarios.")
@@ -171,7 +163,7 @@ public class TestDevBootstrapConfiguration {
 
     @Bean
     @Order(Ordered.HIGHEST_PRECEDENCE + 1)
-    @ConditionalOnProperty(prefix = "mass.mock.bootstrap", name = "register-dev-submitters", havingValue = "true")
+    @ConditionalOnProperty(prefix = "mass.mock.bootstrap", name = "register-dev-submitters", havingValue = "true", matchIfMissing = true)
     public CommandLineRunner testSubmitterBootstrapRunner(MassSdkApplication app) {
         return args -> {
             app.registerSubmitter(SubmitterRegistration.builder()

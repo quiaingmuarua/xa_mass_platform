@@ -17,13 +17,13 @@ public interface TaskRuntimeMaintenancePort {
 
     List<ActiveLeaseRecord> pollExpiredLeases(int limit, Instant now);
 
-    boolean hasPendingDispatchableMessages(String taskId);
+    boolean hasDispatchReadyWork(String taskId);
 
-    boolean hasProcessingMessagesForWorker(String taskId, String workerId);
+    boolean hasActiveWorkForWorker(String taskId, String workerId);
 
     void requestTaskDispatch(Task task);
 
-    boolean expireTaskMessage(String taskId, String messageId);
+    boolean expireLeasedWork(String taskId, String messageId);
 
     List<Task> pollExpiredMaxRuntimeTasks(LocalDateTime now, int limit);
 

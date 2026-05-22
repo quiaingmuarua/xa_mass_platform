@@ -2,12 +2,11 @@ package com.xa.mass.server.e2e.assignment;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
-import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
+import com.xa.mass.server.e2e.support.ProjectionSampleE2eTest;
 import com.xa.mass.server.testutil.WsFrameTestSupport;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
@@ -34,14 +33,14 @@ import static org.junit.jupiter.api.Assertions.assertNull;
         properties = {
                 "sample.client.auto-start=false",
                 "mass.mock.data.workers=mock/test_mock_workers_empty.json",
-                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts_empty.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
 )
 @ActiveProfiles("dev")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
-class TaskApiMultiRoundDispatchIntegrationTest extends AbstractSampleE2eTest {
+@Tag("secondary-proof")
+class TaskApiMultiRoundDispatchIntegrationTest extends ProjectionSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
     private static final Gson GSON = new Gson();
@@ -69,11 +68,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractSampleE2eTest {
                     1
             );
 
-            Map<String, Object> approveResponse = exchange(
-                    "/status/api/tasks/" + taskId + "/audit?approved=true&comment=multi-round",
-                    HttpMethod.POST,
-                    null
-            );
+            Map<String, Object> approveResponse = approveTask(taskId);
             assertApiOk(approveResponse);
 
             TaskSnapshot terminal = waitForTerminalTask(taskId);
@@ -88,8 +83,6 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractSampleE2eTest {
                 assertEquals(workerId, message.get("latestAttemptWorkerId"));
             }
 
-            WorkerContext workerContext = app.getWorkerContexts(workerId).get(0);
-            assertEquals(WorkerContextStatus.IDLE, workerContext.getStatus());
         } finally {
             client.disconnect();
         }
@@ -113,11 +106,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractSampleE2eTest {
                     2
             );
 
-            Map<String, Object> approveResponse = exchange(
-                    "/status/api/tasks/" + taskId + "/audit?approved=true&comment=multi-round-batch-two",
-                    HttpMethod.POST,
-                    null
-            );
+            Map<String, Object> approveResponse = approveTask(taskId);
             assertApiOk(approveResponse);
 
             JsonObject first = client.awaitTask(3, TimeUnit.SECONDS);
@@ -225,4 +214,3 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractSampleE2eTest {
         }
     }
 }
-

@@ -10,13 +10,45 @@ public final class TransportDeliveryPollResult {
     private final TransportDeliveryPollStatus status;
     private final List<TransportDispatchEnvelope> envelopes;
 
-    public TransportDeliveryPollResult(TransportDeliveryPollStatus status, List<TransportDispatchEnvelope> envelopes) {
+    private TransportDeliveryPollResult(TransportDeliveryPollStatus status, List<TransportDispatchEnvelope> envelopes) {
+        this(status, envelopes, false);
+    }
+
+    private TransportDeliveryPollResult(TransportDeliveryPollStatus status,
+                                        List<TransportDispatchEnvelope> envelopes,
+                                        boolean trustedView) {
         this.status = Objects.requireNonNull(status, "status");
-        this.envelopes = envelopes == null || envelopes.isEmpty() ? List.of() : List.copyOf(envelopes);
+        if (envelopes == null || envelopes.isEmpty()) {
+            this.envelopes = List.of();
+            return;
+        }
+        this.envelopes = trustedView ? envelopes : List.copyOf(envelopes);
+    }
+
+    public static TransportDeliveryPollResult of(TransportDeliveryPollStatus status,
+                                                 List<TransportDispatchEnvelope> envelopes) {
+        Objects.requireNonNull(status, "status");
+        return switch (status) {
+            case DELIVERED -> delivered(envelopes);
+            case EMPTY -> empty();
+            case INVALID_REQUEST -> invalidRequest();
+            case UNAVAILABLE -> unavailable();
+            case SHUTDOWN -> shutdown();
+        };
     }
 
     public static TransportDeliveryPollResult delivered(List<TransportDispatchEnvelope> envelopes) {
+        if (envelopes == null || envelopes.isEmpty()) {
+            throw new IllegalArgumentException("delivered poll result must include at least one envelope");
+        }
         return new TransportDeliveryPollResult(TransportDeliveryPollStatus.DELIVERED, envelopes);
+    }
+
+    static TransportDeliveryPollResult deliveredView(List<TransportDispatchEnvelope> envelopes) {
+        if (envelopes == null || envelopes.isEmpty()) {
+            throw new IllegalArgumentException("delivered poll result must include at least one envelope");
+        }
+        return new TransportDeliveryPollResult(TransportDeliveryPollStatus.DELIVERED, envelopes, true);
     }
 
     public static TransportDeliveryPollResult empty() {
@@ -25,10 +57,6 @@ public final class TransportDeliveryPollResult {
 
     public static TransportDeliveryPollResult invalidRequest() {
         return new TransportDeliveryPollResult(TransportDeliveryPollStatus.INVALID_REQUEST, List.of());
-    }
-
-    public static TransportDeliveryPollResult interrupted() {
-        return new TransportDeliveryPollResult(TransportDeliveryPollStatus.INTERRUPTED, List.of());
     }
 
     public static TransportDeliveryPollResult unavailable() {

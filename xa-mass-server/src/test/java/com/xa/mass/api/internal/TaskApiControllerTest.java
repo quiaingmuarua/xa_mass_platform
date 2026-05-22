@@ -1,21 +1,43 @@
 package com.xa.mass.api.internal;
 
-import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.enums.task.TaskTerminalReason;
-import com.xa.mass.base.enums.task.TaskWorkloadClass;
-import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.sdk.SdkTaskResumeResult;
+import com.xa.mass.api.auth.ApiAuthInterceptor;
+import com.xa.mass.api.sync.SyncTaskResultBridge;
+import com.xa.mass.api.sync.TaskSyncRequestSupervisor;
 import com.xa.mass.sdk.TaskAdminOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
+import com.xa.mass.sdk.TaskResultQueryOperations;
+import com.xa.mass.sdk.TaskStageEvidenceOperations;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.auth.PrincipalType;
 import com.xa.mass.sdk.authz.TaskOwnershipStamp;
-import com.xa.mass.sdk.catalog.*;
+import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
+import com.xa.mass.sdk.catalog.PayloadType;
+import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
+import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
+import com.xa.mass.sdk.catalog.ProjectDefinition;
+import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.event.EventDefinition;
-import com.xa.mass.sdk.model.MassTaskCreateRequest;
-import com.xa.mass.sdk.model.MassTaskRequest;
+import com.xa.mass.sdk.model.MassTaskCommandRequest;
+import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
+import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
+import com.xa.mass.sdk.model.TaskAccessSnapshot;
+import com.xa.mass.sdk.model.TaskCommandResult;
+import com.xa.mass.sdk.model.TaskDetailSnapshot;
+import com.xa.mass.sdk.model.TaskExecutionOptions;
+import com.xa.mass.sdk.model.TaskResultArchiveSnapshot;
+import com.xa.mass.sdk.model.TaskResultItemSnapshot;
+import com.xa.mass.sdk.model.TaskResultWindowSnapshot;
+import com.xa.mass.sdk.model.TaskStageEvidenceRequest;
+import com.xa.mass.sdk.model.TaskStageEvidenceSnapshot;
+import com.xa.mass.sdk.model.TaskStageProjectionSnapshot;
+import com.xa.mass.sdk.model.TaskShellSnapshot;
+import com.xa.mass.sdk.model.TaskStateSnapshot;
+import com.xa.mass.sdk.model.TaskItemBatchAppendReceipt;
+import com.xa.mass.sdk.model.TaskWorkFinalSnapshot;
+import com.xa.mass.storage.api.TaskDetailStore;
+import com.xa.mass.storage.api.projection.TaskMessageProjectionFinalReason;
+import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,12 +49,26 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.time.Instant;
+import java.util.concurrent.CompletableFuture;
 
+import static org.hamcrest.Matchers.nullValue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.argThat;
-import static org.mockito.Mockito.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @ExtendWith(MockitoExtension.class)
 class TaskApiControllerTest {
@@ -43,184 +79,110 @@ class TaskApiControllerTest {
     private TaskQueryOperations taskQueries;
 
     @Mock
+    private TaskResultQueryOperations taskResultQueries;
+
+    @Mock
     private TaskAdminOperations taskAdmin;
 
     @Mock
     private AuthProvider authProvider;
 
+    @Mock
+    private TaskDetailStore taskDetailStore;
+
+    @Mock
+    private SyncTaskResultBridge syncTaskResultBridge;
+
+    @Mock
+    private TaskStageEvidenceOperations taskStageEvidence;
+
+    private TaskSyncRequestSupervisor taskSyncRequestSupervisor;
+
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        ProjectEventCatalog catalog = createTaskCatalog();
-        mockMvc = MockMvcBuilders.standaloneSetup(new TaskApiController(taskQueries, taskAdmin, catalog, authProvider)).build();
+        taskSyncRequestSupervisor = new TaskSyncRequestSupervisor(null, 500, 100, 20);
+        mockMvc = MockMvcBuilders.standaloneSetup(
+                new TaskApiController(taskQueries, taskResultQueries, taskAdmin, createTaskCatalog(), taskDetailStore,
+                        authProvider, syncTaskResultBridge, taskSyncRequestSupervisor, taskStageEvidence),
+                new InternalTaskReviewController(taskQueries, taskDetailStore)
+        ).build();
     }
 
     @Test
-    void auditApprovesNewTaskThroughSdkFacade() throws Exception {
-        Task newTask = taskWithStatus(TaskStatus.NEW);
-        Task readyTask = taskWithStatus(TaskStatus.READY);
+    void createTaskShellDelegatesToSdkShellCreate() throws Exception {
+        TaskShellSnapshot createdTask = taskShell("task-001", "demoApp", "agent");
+        when(taskAdmin.createTaskShell(any(MassTaskShellCreateRequest.class))).thenReturn(createdTask);
 
-        when(taskQueries.getTask(TASK_ID)).thenReturn(newTask, readyTask);
-        when(taskAdmin.approveTask(TASK_ID)).thenReturn(true);
-
-        mockMvc.perform(post("/status/api/tasks/{taskId}/audit", TASK_ID)
-                        .param("approved", "true")
-                        .param("comment", "smoke"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.newStatus").value("READY"))
-                .andExpect(jsonPath("$.data.message").value("Task approved"));
-
-        verify(taskAdmin).approveTask(TASK_ID);
-        verify(taskAdmin, never()).rejectTask(TASK_ID);
-    }
-
-    @Test
-    void pauseReturnsSuccessWhenSdkAllowsIt() throws Exception {
-        when(taskQueries.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.READY));
-        when(taskAdmin.pauseTask(TASK_ID)).thenReturn(true);
-
-        mockMvc.perform(post("/status/api/tasks/{taskId}/pause", TASK_ID))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.message").value("Task paused"));
-    }
-
-    @Test
-    void resumeReturnsSuccessWhenSdkAllowsIt() throws Exception {
-        when(taskQueries.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.PAUSED));
-        when(taskAdmin.resumeTaskDetailed(TASK_ID))
-                .thenReturn(new SdkTaskResumeResult(true, "READY", null, false));
-
-        mockMvc.perform(post("/status/api/tasks/{taskId}/resume", TASK_ID))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.message").value("Task resumed"))
-                .andExpect(jsonPath("$.data.newStatus").value("READY"));
-    }
-
-    @Test
-    void resumeReturnsTerminalWhenPausedTaskAlreadyCompleted() throws Exception {
-        when(taskQueries.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.PAUSED));
-        when(taskAdmin.resumeTaskDetailed(TASK_ID))
-                .thenReturn(new SdkTaskResumeResult(true, "TERMINAL", TaskTerminalReason.ALL_MESSAGES_SUCCEEDED.name(), true));
-
-        mockMvc.perform(post("/status/api/tasks/{taskId}/resume", TASK_ID))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.message").value("Task already completed while paused and was closed to TERMINAL"))
-                .andExpect(jsonPath("$.data.newStatus").value("TERMINAL"))
-                .andExpect(jsonPath("$.data.terminalReason").value("ALL_MESSAGES_SUCCEEDED"));
-    }
-
-    @Test
-    void terminateDelegatesToExplicitTerminateCommand() throws Exception {
-        when(taskQueries.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.RUNNING));
-        when(taskAdmin.terminateTask(TASK_ID, TaskTerminalReason.MANUAL_CANCELLED)).thenReturn(true);
-
-        mockMvc.perform(post("/status/api/tasks/{taskId}/terminate", TASK_ID))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.message").value("Task terminated"));
-
-        verify(taskAdmin).terminateTask(TASK_ID, TaskTerminalReason.MANUAL_CANCELLED);
-        verify(taskAdmin, never()).cancelTask(TASK_ID);
-    }
-
-    @Test
-    void createTaskReturnsTaskIdAndDelegatesRequestToSdk() throws Exception {
-        Task createdTask = taskWithStatus(TaskStatus.NEW);
-
-        when(taskAdmin.createTask(any(MassTaskCreateRequest.class))).thenReturn(createdTask);
-
-        mockMvc.perform(post("/status/api/tasks")
+        mockMvc.perform(post("/api/v1/tasks")
                         .contentType("application/json")
                         .content("""
                                 {
-                                  "taskName":"smoke-create",
                                   "project":"demoApp",
-                                  "workloadClass":"INTERACTIVE",
                                   "sharedConfig":{"textContent":"hello"},
                                   "userId":"agent",
-                                  "inputs":[{"target":"alpha"},{"target":"beta"}],
-                                  "batchSize":2
+                                  "executionSpec":{"workloadClass":"INTERACTIVE","batchSize":2,"foreground":false}
                                 }
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.taskId").value(TASK_ID))
-                .andExpect(jsonPath("$.data.message").value("Task created"));
+                .andExpect(jsonPath("$.data.task.taskId").value(TASK_ID))
+                .andExpect(jsonPath("$.data.task.project").value("demoApp"))
+                .andExpect(jsonPath("$.data.task.execution.workloadClass").value("INTERACTIVE"))
+                .andExpect(jsonPath("$.data.task.execution.batchSize").value(2))
+                .andExpect(jsonPath("$.data.task.execution.foreground").value(false))
+                .andExpect(jsonPath("$.data.task.counters.successCount").value(0));
 
-        ArgumentCaptor<MassTaskCreateRequest> captor = ArgumentCaptor.forClass(MassTaskCreateRequest.class);
-        verify(taskAdmin).createTask(captor.capture());
-        MassTaskCreateRequest request = captor.getValue();
-        org.junit.jupiter.api.Assertions.assertEquals("smoke-create", request.getTaskName());
-        org.junit.jupiter.api.Assertions.assertEquals("demoApp", request.getProject());
-        org.junit.jupiter.api.Assertions.assertEquals("hello", request.getSharedConfig().get("textContent"));
-        org.junit.jupiter.api.Assertions.assertEquals("agent", request.getUserId());
-        org.junit.jupiter.api.Assertions.assertEquals(2, request.getBatchSize());
-        org.junit.jupiter.api.Assertions.assertEquals(TaskWorkloadClass.INTERACTIVE, request.getWorkloadClass());
-        TaskOwnershipStamp ownershipStamp = TaskOwnershipStamp.fromSharedConfig(request.getSharedConfig());
-        org.junit.jupiter.api.Assertions.assertNotNull(ownershipStamp);
-        org.junit.jupiter.api.Assertions.assertEquals("ops-admin", ownershipStamp.getCreatedByPrincipalId());
-        org.junit.jupiter.api.Assertions.assertEquals(PrincipalType.OPERATOR, ownershipStamp.getCreatedByPrincipalType());
-        org.junit.jupiter.api.Assertions.assertEquals(List.of(
-                Map.of("target", "alpha"),
-                Map.of("target", "beta")
-        ), request.getInputs());
+        ArgumentCaptor<MassTaskShellCreateRequest> captor = ArgumentCaptor.forClass(MassTaskShellCreateRequest.class);
+        verify(taskAdmin).createTaskShell(captor.capture());
+        MassTaskShellCreateRequest request = captor.getValue();
+        assertEquals("demoApp", request.getProject());
+        assertEquals("default", request.getTenantId());
+        assertEquals("agent", request.getUserId());
+        assertNull(request.getContract());
+        assertEquals(2, request.getExecutionSpec().getBatchSize());
+        assertEquals("INTERACTIVE", request.getExecutionSpec().getWorkloadClass());
+        assertEquals(false, request.getExecutionSpec().isForeground());
     }
 
     @Test
-    void createTaskWithSdkFieldsDelegatesToSdkModeRequest() throws Exception {
-        Task createdTask = taskWithStatus(TaskStatus.NEW);
-        createdTask.setTid("task-sdk-001");
-
-        when(taskAdmin.createTask(any(MassTaskRequest.class))).thenReturn(createdTask);
-
-        mockMvc.perform(post("/status/api/tasks")
+    void createTaskShellRejectsLegacyNestedExecutionSpecContract() throws Exception {
+        mockMvc.perform(post("/api/v1/tasks")
                         .contentType("application/json")
                         .content("""
                                 {
-                                  "taskName":"sdk-crawler",
                                   "project":"demoApp",
-                                  "eventCode":"crawler.fetch-page",
-                                  "workloadClass":"BULK",
-                                  "mode":"STREAMING",
-                                  "payloadType":"JSON",
-                                  "sharedConfig":{"site":"example"},
                                   "userId":"agent",
-                                  "inputs":[{"url":"https://example.test"}],
-                                  "batchSize":1,
-                                  "defaultMsgMaxRetryCount":2,
-                                  "maxRuntimeSeconds":60
+                                  "executionSpec":{"contract":"SESSION","workloadClass":"INTERACTIVE"}
                                 }
                                 """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.taskId").value("task-sdk-001"))
-                .andExpect(jsonPath("$.data.message").value("Task created"));
+                .andExpect(status().isBadRequest());
 
-        ArgumentCaptor<MassTaskRequest> captor = ArgumentCaptor.forClass(MassTaskRequest.class);
-        verify(taskAdmin).createTask(captor.capture());
-        MassTaskRequest request = captor.getValue();
-        org.junit.jupiter.api.Assertions.assertEquals("sdk-crawler", request.getTaskName());
-        org.junit.jupiter.api.Assertions.assertEquals("demoApp", request.getProject());
-        org.junit.jupiter.api.Assertions.assertEquals("crawler.fetch-page", request.getEventCode());
-        org.junit.jupiter.api.Assertions.assertEquals("example", request.getSharedConfig().get("site"));
-        org.junit.jupiter.api.Assertions.assertTrue(request.isStreaming());
-        org.junit.jupiter.api.Assertions.assertEquals(TaskWorkloadClass.BULK, request.getWorkloadClass());
-        org.junit.jupiter.api.Assertions.assertEquals(List.of(
-                Map.of("type", "json", "data", Map.of("url", "https://example.test"))
-        ), request.toEngineInputs());
+        verify(taskAdmin, never()).createTaskShell(any());
     }
 
     @Test
-    void createTaskWithSdkCredentialUsesSubmitterScopeAndDelegatesToSdkModeRequest() throws Exception {
-        Task createdTask = taskWithStatus(TaskStatus.NEW);
-        createdTask.setTid("task-sdk-002");
-        createdTask.setProject("crawlerApp");
-        createdTask.setUser(com.xa.mass.base.model.UserRef.of("crawler-agent"));
+    void createTaskShellRejectsLegacyInputsField() throws Exception {
+        mockMvc.perform(post("/api/v1/tasks")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "project":"demoApp",
+                                  "userId":"agent",
+                                  "inputs":[{"target":"alpha"}]
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400));
+
+        verify(taskAdmin, never()).createTaskShell(any());
+    }
+
+    @Test
+    void createTaskShellWithSdkCredentialUsesSubmitterScope() throws Exception {
+        TaskShellSnapshot createdTask = taskShell("task-sdk-001", "crawlerApp", "crawler-agent");
 
         when(authProvider.authenticate("sdk-key")).thenReturn(new PrincipalContext(
                 "crawler-agent",
@@ -231,538 +193,609 @@ class TaskApiControllerTest {
                 List.of("crawler.fetch-page"),
                 Map.of("transport", "polling")
         ));
-        when(taskAdmin.createTask(any(MassTaskRequest.class))).thenReturn(createdTask);
+        when(taskAdmin.createTaskShell(any(MassTaskShellCreateRequest.class))).thenReturn(createdTask);
 
-        mockMvc.perform(post("/status/api/tasks")
+        mockMvc.perform(post("/api/v1/tasks")
                         .header("X-Mass-Api-Key", "sdk-key")
                         .contentType("application/json")
                         .content("""
                                 {
-                                  "taskName":"sdk-crawler",
-                                  "eventCode":"crawler.fetch-page",
-                                  "payloadType":"JSON",
-                                  "sharedConfig":{"source":"sdk"},
-                                  "inputs":[{"url":"https://example.test"}],
-                                  "batchSize":1
+                                  "sharedConfig":{"eventCode":"crawler.fetch-page"}
                                 }
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.taskId").value("task-sdk-002"))
+                .andExpect(jsonPath("$.data.taskId").value("task-sdk-001"))
                 .andExpect(jsonPath("$.data.project").value("crawlerApp"))
-                .andExpect(jsonPath("$.data.userId").value("crawler-agent"))
-                .andExpect(jsonPath("$.data.principalId").value("crawler-agent"));
-
-        ArgumentCaptor<MassTaskRequest> captor = ArgumentCaptor.forClass(MassTaskRequest.class);
-        verify(taskAdmin).createTask(captor.capture());
-        MassTaskRequest request = captor.getValue();
-        org.junit.jupiter.api.Assertions.assertEquals("crawlerApp", request.getProject());
-        org.junit.jupiter.api.Assertions.assertEquals("crawler-agent", request.getUserId());
-        org.junit.jupiter.api.Assertions.assertEquals("crawler.fetch-page", request.getEventCode());
-        TaskOwnershipStamp ownershipStamp = TaskOwnershipStamp.fromSharedConfig(request.getSharedConfig());
-        org.junit.jupiter.api.Assertions.assertNotNull(ownershipStamp);
-        org.junit.jupiter.api.Assertions.assertEquals("crawler-agent", ownershipStamp.getCreatedByPrincipalId());
-        org.junit.jupiter.api.Assertions.assertEquals(PrincipalType.SERVICE, ownershipStamp.getCreatedByPrincipalType());
+                .andExpect(jsonPath("$.data.userId").value("crawler-agent"));
     }
 
     @Test
-    void createTaskWithSdkCredentialRejectsInvalidCredential() throws Exception {
-        when(authProvider.authenticate("bad-key")).thenReturn(null);
+    void approveUsesCommandRoute() throws Exception {
+        when(taskAdmin.executeTaskCommand(eq(TASK_ID), any(MassTaskCommandRequest.class)))
+                .thenReturn(new TaskCommandResult(
+                        TASK_ID, "APPROVE", true, true, "READY", "OPEN",
+                        null, null, null, null
+                ));
 
-        mockMvc.perform(post("/status/api/tasks")
-                        .header("X-Mass-Api-Key", "bad-key")
+        mockMvc.perform(post("/api/v1/tasks/{taskId}/commands", TASK_ID)
+                        .requestAttr(ApiAuthInterceptor.AUTHENTICATED_PRINCIPAL_ATTR, operatorPrincipal())
                         .contentType("application/json")
                         .content("""
                                 {
-                                  "taskName":"sdk-crawler",
-                                  "eventCode":"crawler.fetch-page",
-                                  "inputs":[{"url":"https://example.test"}]
+                                  "command":"APPROVE"
                                 }
                                 """))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value(401))
-                .andExpect(jsonPath("$.msg").value("Invalid or missing SDK credential"));
-
-        verify(taskAdmin, never()).createTask(any(MassTaskRequest.class));
-        verify(taskAdmin, never()).createTask(any(MassTaskCreateRequest.class));
-    }
-
-    @Test
-    void createTaskWithSdkCredentialRejectsProjectScopeViolation() throws Exception {
-        when(authProvider.authenticate("sdk-key")).thenReturn(new PrincipalContext(
-                "telegram-bot",
-                "bot-user",
-                "telegramApp",
-                List.of("task:create"),
-                List.of("telegramApp"),
-                List.of("chatbot.reply"),
-                Map.of()
-        ));
-
-        mockMvc.perform(post("/status/api/tasks")
-                        .header("X-Mass-Api-Key", "sdk-key")
-                        .contentType("application/json")
-                        .content("""
-                                {
-                                  "taskName":"bot-reply",
-                                  "project":"crawlerApp",
-                                  "eventCode":"chatbot.reply",
-                                  "payloadType":"TEXT",
-                                  "inputs":["hello"]
-                                }
-                                """))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value(403))
-                .andExpect(jsonPath("$.msg").value("SDK credential project scope denied: crawlerApp"));
-
-        verify(taskAdmin, never()).createTask(any(MassTaskRequest.class));
-    }
-
-    @Test
-    void createTaskWithSdkCredentialRejectsUserScopeViolation() throws Exception {
-        when(authProvider.authenticate("sdk-key")).thenReturn(new PrincipalContext(
-                "telegram-bot",
-                "bot-user",
-                "telegramApp",
-                List.of("task:create"),
-                List.of("telegramApp"),
-                List.of("chatbot.reply"),
-                Map.of()
-        ));
-
-        mockMvc.perform(post("/status/api/tasks")
-                        .header("Authorization", "Bearer sdk-key")
-                        .contentType("application/json")
-                        .content("""
-                                {
-                                  "taskName":"bot-reply",
-                                  "eventCode":"chatbot.reply",
-                                  "payloadType":"TEXT",
-                                  "userId":"another-user",
-                                  "inputs":["hello"]
-                                }
-                                """))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value(403))
-                .andExpect(jsonPath("$.msg").value("SDK credential user scope denied: another-user"));
-
-        verify(taskAdmin, never()).createTask(any(MassTaskRequest.class));
-    }
-
-    @Test
-    void createTaskWithSdkCredentialRejectsMissingCreatePermission() throws Exception {
-        when(authProvider.authenticate("sdk-key")).thenReturn(new PrincipalContext(
-                "crawler-key",
-                "crawler-agent",
-                "crawlerApp",
-                List.of("metadata:view"),
-                List.of("crawlerApp"),
-                List.of("crawler.fetch-page"),
-                Map.of()
-        ));
-
-        mockMvc.perform(post("/status/api/tasks")
-                        .header("X-Mass-Api-Key", "sdk-key")
-                        .contentType("application/json")
-                        .content("""
-                                {
-                                  "taskName":"sdk-crawler",
-                                  "eventCode":"crawler.fetch-page",
-                                  "payloadType":"JSON",
-                                  "inputs":[{"url":"https://example.test"}]
-                                }
-                                """))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value(403))
-                .andExpect(jsonPath("$.msg").value("SDK credential permission denied: task:create"));
-
-        verify(taskAdmin, never()).createTask(any(MassTaskRequest.class));
-    }
-
-    @Test
-    void createTaskWithSdkCredentialRejectsEventScopeViolation() throws Exception {
-        when(authProvider.authenticate("sdk-key")).thenReturn(new PrincipalContext(
-                "crawler-key",
-                "crawler-agent",
-                "crawlerApp",
-                List.of("task:create"),
-                List.of("crawlerApp"),
-                List.of("crawler.parse-result"),
-                Map.of()
-        ));
-
-        mockMvc.perform(post("/status/api/tasks")
-                        .header("X-Mass-Api-Key", "sdk-key")
-                        .contentType("application/json")
-                        .content("""
-                                {
-                                  "taskName":"sdk-crawler",
-                                  "eventCode":"crawler.fetch-page",
-                                  "payloadType":"JSON",
-                                  "inputs":[{"url":"https://example.test"}]
-                                }
-                                """))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value(403))
-                .andExpect(jsonPath("$.msg").value("SDK credential event scope denied: crawler.fetch-page"));
-
-        verify(taskAdmin, never()).createTask(any(MassTaskRequest.class));
-    }
-
-    @Test
-    void createTaskRejectsUnsupportedProjectEventBinding() throws Exception {
-        mockMvc.perform(post("/status/api/tasks")
-                        .contentType("application/json")
-                        .content("""
-                                {
-                                  "project":"rcsApp",
-                                  "taskName":"bad-event",
-                                  "eventCode":"crawler.fetch-page",
-                                  "mode":"SINGLE_RUN",
-                                  "payloadType":"JSON",
-                                  "userId":"agent",
-                                  "inputs":[{"target":"x"}]
-                                }
-                                """))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value(400));
-
-        verify(taskAdmin, never()).createTask(any(MassTaskRequest.class));
-    }
-
-    @Test
-    void createTaskRejectsUnknownFields() throws Exception {
-        mockMvc.perform(post("/status/api/tasks")
-                        .contentType("application/json")
-                        .content("""
-                                {
-                                  "taskName":"smoke-create",
-                                  "project":"demoApp",
-                                  "sharedConfig":{"textContent":"hello"},
-                                  "userId":"agent",
-                                  "inputs":[{"target":"alpha"}],
-                                  "targetJsonList":["{\\"phone\\":\\"1\\"}"]
-                                }
-                                """))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value(400))
-                .andExpect(jsonPath("$.msg").value("Task create failed: Unsupported task create fields: targetJsonList"));
-
-        verify(taskAdmin, never()).createTask(any(MassTaskCreateRequest.class));
-    }
-
-    @Test
-    void getTaskReturnsTaskAndMaterializedItems() throws Exception {
-        Task task = taskWithStatus(TaskStatus.READY);
-        task.setProject("demoApp");
-        task.setUser(com.xa.mass.base.model.UserRef.of("agent-1"));
-        task.setSharedConfig(TaskOwnershipStamp.applyToSharedConfig(
-                Map.of("source", "sdk"),
-                new TaskOwnershipStamp("crawler-agent", PrincipalType.SERVICE)
-        ));
-
-        when(taskQueries.getTask(TASK_ID)).thenReturn(task);
-        when(taskQueries.countTaskMessages(TASK_ID)).thenReturn(2L);
-        when(taskQueries.getTaskMessages(eq(TASK_ID), anyInt())).thenReturn(List.of(
-                new TaskMsg("msg-1", TASK_ID, Map.of("target", "alpha")),
-                new TaskMsg("msg-2", TASK_ID, Map.of("target", "beta"))
-        ));
-        when(taskQueries.validateTaskState(TASK_ID)).thenReturn(Map.of(
-                "valid", true,
-                "needsResolution", false,
-                "status", "READY"
-        ));
-
-        mockMvc.perform(get("/status/api/tasks/{taskId}", TASK_ID))
                 .andExpect(status().isOk())
-                .andExpect(content().contentTypeCompatibleWith("application/json"))
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.task.tid").value(TASK_ID))
-                .andExpect(jsonPath("$.data.task.status").value("READY"))
-                .andExpect(jsonPath("$.data.task.project").value("demoApp"))
-                .andExpect(jsonPath("$.data.task.user.userId").value("agent-1"))
-                .andExpect(jsonPath("$.data.task.sharedConfig.source").value("sdk"))
-                .andExpect(jsonPath("$.data.task.sharedConfig._massSecurity").doesNotExist())
-                .andExpect(jsonPath("$.data.items[0].target").value("alpha"))
-                .andExpect(jsonPath("$.data.items[1].target").value("beta"))
-                .andExpect(jsonPath("$.data.itemsTotal").value(2))
-                .andExpect(jsonPath("$.data.itemsLimit").value(100))
-                .andExpect(jsonPath("$.data.itemsTruncated").value(false))
-                .andExpect(jsonPath("$.data.security.createdByPrincipalId").value("crawler-agent"))
-                .andExpect(jsonPath("$.data.security.createdByPrincipalType").value("SERVICE"))
-                .andExpect(jsonPath("$.data.compatTargetList").doesNotExist())
-                .andExpect(jsonPath("$.data.stateValidation.valid").value(true))
-                .andExpect(jsonPath("$.data.stateValidation.needsResolution").value(false))
-                .andExpect(jsonPath("$.data.stateValidation.status").value("READY"));
+                .andExpect(jsonPath("$.data.command").value("APPROVE"))
+                .andExpect(jsonPath("$.data.status").value("READY"));
     }
 
     @Test
-    void getTaskProjectionAuditReturnsExplicitDiagnosticSurface() throws Exception {
-        Task task = taskWithStatus(TaskStatus.READY);
-        when(taskQueries.getTask(TASK_ID)).thenReturn(task);
-        when(taskQueries.auditTaskProjectionState(TASK_ID)).thenReturn(Map.of(
-                "valid", false,
-                "scope", "PROJECTION_AUDIT",
-                "violations", List.of("ACTIVE_ATTEMPT_WITH_FINAL_MESSAGE")
+    void taskStageEvidenceEndpointsDelegateToSdkSurface() throws Exception {
+        when(taskQueries.getTaskDetail(TASK_ID)).thenReturn(taskDetail("RUNNING", "detail-task", "demoApp"));
+        TaskStageProjectionSnapshot projection = new TaskStageProjectionSnapshot(
+                TASK_ID,
+                "msg-001",
+                "FETCH",
+                2,
+                "DONE",
+                "page fetched",
+                Instant.parse("2026-05-18T10:10:00Z"),
+                Instant.parse("2026-05-18T10:10:01Z")
+        );
+        when(taskStageEvidence.reportTaskStageEvidence(any())).thenReturn(new TaskStageEvidenceSnapshot(
+                "ACCEPTED", TASK_ID, "msg-001", "FETCH", 2, true, true, "updated", projection
         ));
+        when(taskStageEvidence.getTaskStageProjection(TASK_ID, "msg-001", "FETCH")).thenReturn(projection);
+        when(taskStageEvidence.listTaskStageProjections(TASK_ID, "msg-001")).thenReturn(List.of(projection));
 
-        mockMvc.perform(get("/status/api/tasks/{taskId}/projection-audit", TASK_ID))
+        mockMvc.perform(post("/api/v1/tasks/{taskId}/items/{messageId}/stages/{stageName}/evidence",
+                        TASK_ID, "msg-001", "FETCH")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "stageVersion":2,
+                                  "stageStatus":"DONE",
+                                  "detail":"page fetched",
+                                  "observedAt":"2026-05-18T10:10:00Z",
+                                  "attributes":{"url":"https://example.test"}
+                                }
+                                """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.taskId").value(TASK_ID))
-                .andExpect(jsonPath("$.data.projectionAudit.valid").value(false))
-                .andExpect(jsonPath("$.data.projectionAudit.scope").value("PROJECTION_AUDIT"))
-                .andExpect(jsonPath("$.data.projectionAudit.violations[0]").value("ACTIVE_ATTEMPT_WITH_FINAL_MESSAGE"));
+                .andExpect(jsonPath("$.data.accepted").value(true))
+                .andExpect(jsonPath("$.data.projection.stageStatus").value("DONE"));
 
-        verify(taskQueries).auditTaskProjectionState(TASK_ID);
-    }
+        ArgumentCaptor<TaskStageEvidenceRequest> captor =
+                ArgumentCaptor.forClass(TaskStageEvidenceRequest.class);
+        verify(taskStageEvidence).reportTaskStageEvidence(captor.capture());
+        assertEquals(TASK_ID, captor.getValue().taskId());
+        assertEquals("msg-001", captor.getValue().messageId());
+        assertEquals("FETCH", captor.getValue().stageName());
+        assertEquals("https://example.test", captor.getValue().attributes().get("url"));
 
-    @Test
-    void listTasksExposesDerivedSecurityView() throws Exception {
-        Task task = taskWithStatus(TaskStatus.NEW);
-        task.setTaskName("secured-task");
-        task.setProject("demoApp");
-        task.setUser(com.xa.mass.base.model.UserRef.of("agent-1"));
-        task.setSharedConfig(TaskOwnershipStamp.applyToSharedConfig(
-                Map.of("source", "sdk"),
-                new TaskOwnershipStamp("ops-admin", PrincipalType.OPERATOR)
-        ));
-
-        when(taskQueries.getAllTasks()).thenReturn(List.of(task));
-
-        mockMvc.perform(get("/status/api/tasks"))
+        mockMvc.perform(get("/api/v1/tasks/{taskId}/items/{messageId}/stages/{stageName}",
+                        TASK_ID, "msg-001", "FETCH"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.items[0].id").value(TASK_ID))
-                .andExpect(jsonPath("$.data.items[0].security.createdByPrincipalId").value("ops-admin"))
-                .andExpect(jsonPath("$.data.items[0].security.createdByPrincipalType").value("OPERATOR"));
-    }
+                .andExpect(jsonPath("$.data.stageStatus").value("DONE"));
 
-    @Test
-    void listTasksWithSdkCredentialFiltersToOwnedTasks() throws Exception {
-        Task ownedTask = taskWithStatus(TaskStatus.NEW);
-        ownedTask.setTaskName("owned-task");
-        ownedTask.setSharedConfig(TaskOwnershipStamp.applyToSharedConfig(
-                Map.of("source", "sdk"),
-                new TaskOwnershipStamp("crawler-agent", PrincipalType.SERVICE)
-        ));
-        Task foreignTask = taskWithStatus(TaskStatus.NEW);
-        foreignTask.setTid("task-foreign-001");
-        foreignTask.setTaskName("foreign-task");
-        foreignTask.setSharedConfig(TaskOwnershipStamp.applyToSharedConfig(
-                Map.of("source", "sdk"),
-                new TaskOwnershipStamp("other-agent", PrincipalType.SERVICE)
-        ));
-
-        when(authProvider.authenticate("sdk-key")).thenReturn(new PrincipalContext(
-                "crawler-agent",
-                "crawler-user",
-                "crawlerApp",
-                List.of("task:create"),
-                List.of("crawlerApp"),
-                List.of("crawler.fetch-page"),
-                Map.of()
-        ));
-        when(taskQueries.getAllTasks()).thenReturn(List.of(ownedTask, foreignTask));
-
-        mockMvc.perform(get("/status/api/tasks")
-                        .header("X-Mass-Api-Key", "sdk-key"))
+        mockMvc.perform(get("/api/v1/tasks/{taskId}/items/{messageId}/stages", TASK_ID, "msg-001"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.total").value(1))
-                .andExpect(jsonPath("$.data.items[0].taskName").value("owned-task"));
+                .andExpect(jsonPath("$.data.items[0].stageName").value("FETCH"));
     }
 
     @Test
-    void getTaskWithSdkCredentialRejectsOwnerMismatch() throws Exception {
-        Task task = taskWithStatus(TaskStatus.READY);
-        task.setSharedConfig(TaskOwnershipStamp.applyToSharedConfig(
-                Map.of("source", "sdk"),
-                new TaskOwnershipStamp("other-agent", PrincipalType.SERVICE)
-        ));
+    void resumeReturnsTerminalCloseMessageWhenAlreadyCompletedWhilePaused() throws Exception {
+        when(taskAdmin.executeTaskCommand(eq(TASK_ID), any(MassTaskCommandRequest.class)))
+                .thenReturn(new TaskCommandResult(
+                        TASK_ID, "RESUME", true, true, "TERMINAL", "SEALED",
+                        "ALL_MESSAGES_SUCCEEDED", null, null, null
+                ));
 
-        when(authProvider.authenticate("sdk-key")).thenReturn(new PrincipalContext(
-                "crawler-agent",
-                "crawler-user",
-                "crawlerApp",
-                List.of("task:create"),
-                List.of("crawlerApp"),
-                List.of("crawler.fetch-page"),
-                Map.of()
-        ));
-        when(taskQueries.getTask(TASK_ID)).thenReturn(task);
-
-        mockMvc.perform(get("/status/api/tasks/{taskId}", TASK_ID)
-                        .header("X-Mass-Api-Key", "sdk-key"))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.msg").value("SDK credential owner mismatch: other-agent"));
-    }
-
-    @Test
-    void getTaskMessagesWithSdkCredentialRejectsOwnerMismatch() throws Exception {
-        Task task = taskWithStatus(TaskStatus.READY);
-        task.setSharedConfig(TaskOwnershipStamp.applyToSharedConfig(
-                Map.of("source", "sdk"),
-                new TaskOwnershipStamp("other-agent", PrincipalType.SERVICE)
-        ));
-
-        when(authProvider.authenticate("sdk-key")).thenReturn(new PrincipalContext(
-                "crawler-agent",
-                "crawler-user",
-                "crawlerApp",
-                List.of("task:create"),
-                List.of("crawlerApp"),
-                List.of("crawler.fetch-page"),
-                Map.of()
-        ));
-        when(taskQueries.getTask(TASK_ID)).thenReturn(task);
-
-        mockMvc.perform(get("/status/api/tasks/{taskId}/messages", TASK_ID)
-                        .header("X-Mass-Api-Key", "sdk-key"))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.msg").value("SDK credential owner mismatch: other-agent"));
-    }
-
-    @Test
-    void deleteTaskReturnsSuccessWhenTaskExists() throws Exception {
-        when(taskQueries.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.NEW));
-        when(taskAdmin.deleteTask(TASK_ID)).thenReturn(true);
-
-        mockMvc.perform(delete("/status/api/tasks/{taskId}", TASK_ID))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.message").value("Task deleted"));
-    }
-
-    @Test
-    void updateTaskMutatesExistingTaskAndDelegatesToSdk() throws Exception {
-        Task existingTask = taskWithStatus(TaskStatus.NEW);
-        existingTask.setUser(com.xa.mass.base.model.UserRef.of("before"));
-        when(taskQueries.getTask(TASK_ID)).thenReturn(existingTask);
-
-        mockMvc.perform(put("/status/api/tasks/{taskId}", TASK_ID)
+        mockMvc.perform(post("/api/v1/tasks/{taskId}/commands", TASK_ID)
+                        .requestAttr(ApiAuthInterceptor.AUTHENTICATED_PRINCIPAL_ATTR, operatorPrincipal())
                         .contentType("application/json")
                         .content("""
                                 {
-                                  "taskName":"updated-name",
-                                  "project":"testApp",
-                                  "sharedConfig":{
-                                    "textContent":"updated-content",
-                                    "_massSecurity":{
-                                      "createdByPrincipalId":"forged-owner",
-                                      "createdByPrincipalType":"SERVICE"
-                                    }
-                                  },
-                                  "userId":"updated-user",
-                                  "batchSize":5
+                                  "command":"RESUME"
                                 }
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.message").value("Task updated"));
+                .andExpect(jsonPath("$.data.status").value("TERMINAL"))
+                .andExpect(jsonPath("$.data.terminalReason").value("ALL_MESSAGES_SUCCEEDED"));
+    }
 
-        verify(taskAdmin).updateTaskDefinition(eq(TASK_ID), argThat(request ->
-                "updated-name".equals(request.getTaskName())
-                        && "testApp".equals(request.getProject())
-                        && "updated-content".equals(request.getSharedConfig() != null ? request.getSharedConfig().get("textContent") : null)
-                        && (request.getSharedConfig() == null || !request.getSharedConfig().containsKey(TaskOwnershipStamp.SHARED_CONFIG_KEY))
-                        && "updated-user".equals(request.getUserId())
-                        && Integer.valueOf(5).equals(request.getBatchSize())
+    @Test
+    void getTaskDoesNotReturnItemsByDefault() throws Exception {
+        when(taskQueries.getTaskDetail(TASK_ID)).thenReturn(taskDetail("READY", "detail-task", "demoApp"));
+
+        mockMvc.perform(get("/api/v1/tasks/{taskId}", TASK_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.task.taskId").value(TASK_ID))
+                .andExpect(jsonPath("$.data.task.tid").value(TASK_ID))
+                .andExpect(jsonPath("$.data.task.taskName").value("detail-task"))
+                .andExpect(jsonPath("$.data.task.execution.batchSize").value(1))
+                .andExpect(jsonPath("$.data.task.counters.targetCount").value(0))
+                .andExpect(jsonPath("$.data.task.timestamps.updatedAt").value(""))
+                .andExpect(jsonPath("$.data.task.sharedConfig.routingCode").value("us"))
+                .andExpect(jsonPath("$.data.task.sharedConfig._massSecurity").doesNotExist())
+                .andExpect(jsonPath("$.data.security.createdByPrincipalId").value("agent"))
+                .andExpect(jsonPath("$.data.security.createdByPrincipalType").value("SERVICE"))
+                .andExpect(jsonPath("$.data.stateValidation").doesNotExist())
+                .andExpect(jsonPath("$.data.items").doesNotExist());
+    }
+
+    @Test
+    void getTaskReviewReturnsSeedAndResultPreview() throws Exception {
+        when(taskQueries.getTaskDetail(TASK_ID)).thenReturn(taskDetail("RUNNING", "detail-task", "demoApp"));
+        when(taskDetailStore.getTaskMessageStats(TASK_ID)).thenReturn(new TaskDetailStore.TaskMessageStats(2, 1, 0, 0, 1));
+        when(taskDetailStore.getTaskMessageProjections(TASK_ID, 12)).thenReturn(List.of(
+                new TaskDetailStore.TaskMessageProjection(
+                        "msg-001",
+                        TASK_ID,
+                        Map.of("eventCode", "crawler.fetch-page", "url", "https://example.test/a"),
+                        null,
+                        TaskMessageProjectionStatus.SUCCESS,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        0,
+                        3,
+                        null,
+                        null,
+                        TaskMessageProjectionFinalReason.BUSINESS_SUCCESS,
+                        Map.of("html", "<ok>"),
+                        "attempt-001",
+                        "worker-001",
+                        "batch-001"
+                )
         ));
-    }
 
-    @Test
-    void getTaskMessagesReturnsCompatibilitySnapshot() throws Exception {
-        TaskMsg first = new TaskMsg("msg-1", TASK_ID, Map.of("target", "alpha"));
-        first.setOutput(Map.of("result", "ok"));
-        TaskMsg second = new TaskMsg("msg-2", TASK_ID, Map.of("target", "beta"));
-        when(taskQueries.countTaskMessages(TASK_ID)).thenReturn(2L);
-        when(taskQueries.getTaskMessages(TASK_ID, 100)).thenReturn(List.of(first, second));
-
-        mockMvc.perform(get("/status/api/tasks/{taskId}/messages", TASK_ID))
+        mockMvc.perform(get("/internal/v1/review/tasks/{taskId}", TASK_ID))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.total").value(2))
-                .andExpect(jsonPath("$.data.limit").value(100))
-                .andExpect(jsonPath("$.data.truncated").value(false))
-                .andExpect(jsonPath("$.data.messages[0].messageId").value("msg-1"))
-                .andExpect(jsonPath("$.data.messages[0].input.target").value("alpha"))
-                .andExpect(jsonPath("$.data.messages[0].output.result").value("ok"))
-                .andExpect(jsonPath("$.data.messages[1].messageId").value("msg-2"));
-
-        verify(taskQueries).getTaskMessages(TASK_ID, 100);
-        verify(taskQueries).countTaskMessages(TASK_ID);
+                .andExpect(jsonPath("$.data.summary.totalItems").value(2))
+                .andExpect(jsonPath("$.data.seedPreview[0].eventCode").value("crawler.fetch-page"))
+                .andExpect(jsonPath("$.data.resultPreview[0].workerId").value("worker-001"))
+                .andExpect(jsonPath("$.data.exports.seedUrl").value("/internal/v1/review/tasks/task-001/seed-export"));
     }
 
     @Test
-    void getTaskMessagesCapsRequestedLimitWithoutPagination() throws Exception {
-        when(taskQueries.countTaskMessages(TASK_ID)).thenReturn(1_000L);
-        when(taskQueries.getTaskMessages(TASK_ID, 500))
-                .thenReturn(List.of(new TaskMsg("msg-1", TASK_ID, Map.of("target", "alpha"))));
+    void exportTaskSeedsReturnsAttachmentPayload() throws Exception {
+        when(taskQueries.getTaskDetail(TASK_ID)).thenReturn(taskDetail("RUNNING", "detail-task", "demoApp"));
+        when(taskDetailStore.getTaskMessageStats(TASK_ID)).thenReturn(new TaskDetailStore.TaskMessageStats(1, 0, 0, 0, 1));
+        when(taskDetailStore.getTaskMessageProjections(TASK_ID, 1)).thenReturn(List.of(
+                new TaskDetailStore.TaskMessageProjection(
+                        "msg-001",
+                        TASK_ID,
+                        Map.of("eventCode", "crawler.fetch-page", "url", "https://example.test/a"),
+                        null,
+                        TaskMessageProjectionStatus.ASSIGNED,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        0,
+                        3,
+                        null,
+                        null,
+                        null,
+                        Map.of(),
+                        "attempt-001",
+                        "worker-001",
+                        "batch-001"
+                )
+        ));
 
-        mockMvc.perform(get("/status/api/tasks/{taskId}/messages", TASK_ID)
-                        .param("limit", "1000"))
+        mockMvc.perform(get("/internal/v1/review/tasks/{taskId}/seed-export", TASK_ID))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.total").value(1000))
-                .andExpect(jsonPath("$.data.limit").value(500))
-                .andExpect(jsonPath("$.data.truncated").value(true))
-                .andExpect(jsonPath("$.data.page").doesNotExist())
-                .andExpect(jsonPath("$.data.size").doesNotExist());
-
-        verify(taskQueries).getTaskMessages(TASK_ID, 500);
+                .andExpect(jsonPath("$.taskId").value(TASK_ID))
+                .andExpect(jsonPath("$.rows[0].messageId").value("msg-001"));
     }
 
     @Test
-    void appendTaskItemsUsesStoredTextPayloadType() throws Exception {
-        Task task = new Task();
-        task.setTid(TASK_ID);
-        task.setSharedConfig(Map.of("_sdk", Map.of(
-                "eventCode", "chatbot.reply",
-                "payloadType", "TEXT",
-                "taskMode", "STREAMING"
-        )));
+    void getTaskResultsReturnsLiveOrderedWindow() throws Exception {
+        when(taskQueries.getTaskDetail(TASK_ID)).thenReturn(taskDetail("RUNNING", "detail-task", "demoApp"));
+        when(taskResultQueries.readTaskResults(TASK_ID, 1, 2)).thenReturn(new TaskResultWindowSnapshot(
+                TASK_ID,
+                List.of(
+                        resultRow(2, "msg-002", "SUCCESS", "worker-002"),
+                        resultRow(3, "msg-003", "FAILED", "worker-003")
+                ),
+                3,
+                false,
+                3
+        ));
+        when(taskResultQueries.getTaskResultArchiveManifest(TASK_ID)).thenReturn(new TaskResultArchiveSnapshot(
+                TASK_ID, false, "ndjson", "application/x-ndjson", "gzip", 0, null, null));
 
-        when(taskQueries.getTask(TASK_ID)).thenReturn(task);
-        when(taskAdmin.appendTaskItems(any(), any())).thenReturn(2);
+        mockMvc.perform(get("/api/v1/tasks/{taskId}/results", TASK_ID)
+                        .param("afterSeq", "1")
+                        .param("limit", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mode").value("LIVE"))
+                .andExpect(jsonPath("$.data.taskTerminal").value(false))
+                .andExpect(jsonPath("$.data.archiveReady").value(false))
+                .andExpect(jsonPath("$.data.items[0].seq").value(2))
+                .andExpect(jsonPath("$.data.items[0].messageId").value("msg-002"))
+                .andExpect(jsonPath("$.data.items[0].workerId").value("worker-002"))
+                .andExpect(jsonPath("$.data.items[1].seq").value(3))
+                .andExpect(jsonPath("$.data.nextAfterSeq").value(3))
+                .andExpect(jsonPath("$.data.hasMore").value(false));
+    }
 
-        mockMvc.perform(post("/status/api/tasks/{taskId}/items", TASK_ID)
+    @Test
+    void getTaskResultArchiveManifestReturnsArchiveMetadataForTerminalTask() throws Exception {
+        when(taskQueries.getTaskDetail(TASK_ID)).thenReturn(taskDetail("TERMINAL", "detail-task", "demoApp"));
+        when(taskResultQueries.getTaskResultArchiveManifest(TASK_ID)).thenReturn(new TaskResultArchiveSnapshot(
+                TASK_ID, true, "ndjson", "application/x-ndjson", "gzip", 1, 64L, "checksum"));
+
+        mockMvc.perform(get("/api/v1/tasks/{taskId}/results/archive", TASK_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.ready").value(true))
+                .andExpect(jsonPath("$.data.format").value("ndjson"))
+                .andExpect(jsonPath("$.data.contentType").value("application/x-ndjson"))
+                .andExpect(jsonPath("$.data.contentEncoding").value("gzip"))
+                .andExpect(jsonPath("$.data.itemCount").value(1))
+                .andExpect(jsonPath("$.data.downloadUrl").value("/api/v1/tasks/task-001/results/archive/content"));
+    }
+
+    @Test
+    void appendTaskItemsPassesBatchEventCode() throws Exception {
+        when(taskQueries.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
+        when(taskAdmin.appendTaskItems(any(), any(MassTaskItemBatchAppendRequest.class))).thenReturn(2);
+
+        mockMvc.perform(post("/api/v1/tasks/{taskId}/items", TASK_ID)
                         .contentType("application/json")
                         .content("""
                                 {
-                                  "inputs":["hello","world"]
+                                  "eventCode":"chatbot.reply",
+                                  "items":[{"text":"hello"},{"text":"world"}]
                                 }
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.added").value(2));
 
-        verify(taskAdmin).appendTaskItems(TASK_ID, List.of(
-                Map.of("type", "text", "text", "hello"),
-                Map.of("type", "text", "text", "world")
-        ));
+        ArgumentCaptor<MassTaskItemBatchAppendRequest> captor =
+                ArgumentCaptor.forClass(MassTaskItemBatchAppendRequest.class);
+        verify(taskAdmin).appendTaskItems(org.mockito.ArgumentMatchers.eq(TASK_ID), captor.capture());
+        assertEquals(List.of(Map.of("text", "hello"), Map.of("text", "world")), captor.getValue().getItems());
+        assertEquals("chatbot.reply", captor.getValue().getEventCode());
     }
 
     @Test
-    void sealTaskDelegatesToSdkFacade() throws Exception {
-        Task task = taskWithStatus(TaskStatus.RUNNING);
-        when(taskQueries.getTask(TASK_ID)).thenReturn(task);
-        when(taskAdmin.sealTask(TASK_ID)).thenReturn(true);
+    void appendTaskItemsRejectsMissingEventCode() throws Exception {
+        when(taskQueries.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
 
-        mockMvc.perform(put("/status/api/tasks/{taskId}/seal", TASK_ID))
+        mockMvc.perform(post("/api/v1/tasks/{taskId}/items", TASK_ID)
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "items":[{"target":"hello"}]
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.msg").value("append requires batch eventCode or per-item eventCode"));
+
+        verify(taskAdmin, never()).appendTaskItems(any(), any(MassTaskItemBatchAppendRequest.class));
+    }
+
+    @Test
+    void appendTaskItemsRejectsRemovedRetrySeedField() throws Exception {
+        mockMvc.perform(post("/api/v1/tasks/{taskId}/items", TASK_ID)
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "eventCode":"chatbot.reply",
+                                  "items":[{"text":"hello"}],
+                                  "defaultMsgMaxRetryCount":5
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+
+        verify(taskAdmin, never()).appendTaskItems(any(), any(MassTaskItemBatchAppendRequest.class));
+    }
+
+    @Test
+    void appendTaskItemSyncReturnsStableFinalResult() throws Exception {
+        when(taskQueries.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
+        when(taskQueries.getTaskState(TASK_ID)).thenReturn(taskState("READY", "OPEN"));
+        when(taskAdmin.appendTaskItemsWithReceipt(any(), any(MassTaskItemBatchAppendRequest.class)))
+                .thenReturn(new TaskItemBatchAppendReceipt(TASK_ID, 1, List.of("msg-001")));
+        CompletableFuture<TaskWorkFinalSnapshot> future = new CompletableFuture<>();
+        when(syncTaskResultBridge.register(TASK_ID, "msg-001")).thenReturn(future);
+        when(syncTaskResultBridge.getExistingFinal(TASK_ID, "msg-001")).thenReturn(Optional.empty());
+
+        org.springframework.test.web.servlet.MvcResult mvcResult = mockMvc.perform(post("/api/v1/tasks/{taskId}/items:sync", TASK_ID)
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "eventCode":"chatbot.reply",
+                                  "item":{"text":"hello"},
+                                  "timeoutMs":2000
+                                }
+                                """))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        future.complete(new TaskWorkFinalSnapshot(
+                TASK_ID,
+                "msg-001",
+                "SUCCESS",
+                "BUSINESS_SUCCESS",
+                0,
+                null,
+                null,
+                null,
+                Map.of("ok", true)
+        ));
+        mvcResult.getAsyncResult(2000);
+
+        mockMvc.perform(asyncDispatch(mvcResult))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.message").value("Task sealed"));
-
-        verify(taskAdmin).sealTask(TASK_ID);
+                .andExpect(jsonPath("$.data.taskId").value(TASK_ID))
+                .andExpect(jsonPath("$.data.messageId").value("msg-001"))
+                .andExpect(jsonPath("$.data.synced").value(true))
+                .andExpect(jsonPath("$.data.timedOut").value(false))
+                .andExpect(jsonPath("$.data.timeoutMs").value(2000))
+                .andExpect(jsonPath("$.data.status").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.finalReason").value("BUSINESS_SUCCESS"))
+                .andExpect(jsonPath("$.data.output.ok").value(true));
     }
 
-    private Task taskWithStatus(TaskStatus status) {
-        Task task = new Task();
-        task.setTid(TASK_ID);
-        task.setStatus(status);
-        return task;
+    @Test
+    void appendTaskItemSyncReturnsTimeoutWithoutCancellingAppend() throws Exception {
+        when(taskQueries.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
+        when(taskQueries.getTaskState(TASK_ID)).thenReturn(taskState("RUNNING", "OPEN"));
+        when(taskAdmin.appendTaskItemsWithReceipt(any(), any(MassTaskItemBatchAppendRequest.class)))
+                .thenReturn(new TaskItemBatchAppendReceipt(TASK_ID, 1, List.of("msg-009")));
+        CompletableFuture<TaskWorkFinalSnapshot> future = new CompletableFuture<>();
+        when(syncTaskResultBridge.register(TASK_ID, "msg-009")).thenReturn(future);
+        when(syncTaskResultBridge.getExistingFinal(TASK_ID, "msg-009")).thenReturn(Optional.empty());
+
+        org.springframework.test.web.servlet.MvcResult mvcResult = mockMvc.perform(post("/api/v1/tasks/{taskId}/items:sync", TASK_ID)
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "eventCode":"chatbot.reply",
+                                  "item":{"text":"hello"},
+                                  "timeoutMs":1
+                                }
+                                """))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+        mvcResult.getAsyncResult(2000);
+
+        mockMvc.perform(asyncDispatch(mvcResult))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.messageId").value("msg-009"))
+                .andExpect(jsonPath("$.data.synced").value(false))
+                .andExpect(jsonPath("$.data.timedOut").value(true))
+                .andExpect(jsonPath("$.data.timeoutMs").value(1));
     }
 
-    private ProjectEventCatalog createTaskCatalog() {
+    @Test
+    void appendTaskItemSyncRejectsNonActiveTaskState() throws Exception {
+        when(taskQueries.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
+        when(taskQueries.getTaskState(TASK_ID)).thenReturn(taskState("NEW", "OPEN"));
+
+        mockMvc.perform(post("/api/v1/tasks/{taskId}/items:sync", TASK_ID)
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "eventCode":"chatbot.reply",
+                                  "item":{"text":"hello"}
+                                }
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.msg").value("Task sync append requires READY or RUNNING task status"));
+
+        verify(taskAdmin, never()).appendTaskItemsWithReceipt(any(), any(MassTaskItemBatchAppendRequest.class));
+    }
+
+    @Test
+    void appendTaskItemSyncRejectsMultipleResolvedEventCodes() throws Exception {
+        when(taskQueries.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
+        when(taskQueries.getTaskState(TASK_ID)).thenReturn(taskState("READY", "OPEN"));
+
+        mockMvc.perform(post("/api/v1/tasks/{taskId}/items:sync", TASK_ID)
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "eventCode":"chatbot.reply",
+                                  "item":{"eventCode":"crawler.fetch-page","text":"hello"}
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.msg").value("sync append requires exactly one resolved eventCode"));
+
+        verify(taskAdmin, never()).appendTaskItemsWithReceipt(any(), any(MassTaskItemBatchAppendRequest.class));
+    }
+
+    @Test
+    void appendTaskItemSyncRejectsWhenTaskSyncCapacityIsExceeded() throws Exception {
+        TaskSyncRequestSupervisor zeroCapacitySupervisor = new TaskSyncRequestSupervisor(null, 500, 100, 1);
+        zeroCapacitySupervisor.acquire("demoApp", TASK_ID);
+        MockMvc capacityMvc = MockMvcBuilders.standaloneSetup(
+                new TaskApiController(taskQueries, taskResultQueries, taskAdmin, createTaskCatalog(), taskDetailStore,
+                        authProvider, syncTaskResultBridge, zeroCapacitySupervisor),
+                new InternalTaskReviewController(taskQueries, taskDetailStore)
+        ).build();
+
+        when(taskQueries.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
+        when(taskQueries.getTaskState(TASK_ID)).thenReturn(taskState("READY", "OPEN"));
+
+        capacityMvc.perform(post("/api/v1/tasks/{taskId}/items:sync", TASK_ID)
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "eventCode":"chatbot.reply",
+                                  "item":{"text":"hello"}
+                                }
+                                """))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.msg").value("Too many in-flight sync task requests for task: task-001"));
+    }
+
+    @Test
+    void sealTaskUsesCommandRoute() throws Exception {
+        when(taskAdmin.executeTaskCommand(eq(TASK_ID), any(MassTaskCommandRequest.class)))
+                .thenReturn(new TaskCommandResult(
+                        TASK_ID, "SEAL", true, true, "RUNNING", "SEALED",
+                        null, null, null, null
+                ));
+
+        mockMvc.perform(post("/api/v1/tasks/{taskId}/commands", TASK_ID)
+                        .requestAttr(ApiAuthInterceptor.AUTHENTICATED_PRINCIPAL_ATTR, operatorPrincipal())
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "command":"SEAL"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.command").value("SEAL"))
+                .andExpect(jsonPath("$.data.intakeStatus").value("SEALED"));
+    }
+
+    @Test
+    void deleteTaskRouteIsNotMapped() throws Exception {
+        mockMvc.perform(delete("/api/v1/tasks/{taskId}", TASK_ID))
+                .andExpect(status().isMethodNotAllowed());
+    }
+
+    @Test
+    void updateTaskUsesPatchRoute() throws Exception {
+        when(taskQueries.getTaskState(TASK_ID)).thenReturn(taskState("NEW"));
+        when(taskAdmin.updateTaskDefinition(any(), any())).thenReturn(true);
+
+        mockMvc.perform(patch("/api/v1/tasks/{taskId}", TASK_ID)
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "sharedConfig":{"routingCode":"us"}
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.message").value("Task updated"));
+    }
+
+    private TaskShellSnapshot taskShell(String taskId, String project, String userId) {
+        return new TaskShellSnapshot(taskId, "task-name", "default", project, userId, null, null);
+    }
+
+    private TaskStateSnapshot taskState(String status) {
+        return taskState(status, "OPEN");
+    }
+
+    private TaskStateSnapshot taskState(String status, String intakeStatus) {
+        return new TaskStateSnapshot(TASK_ID, status, null, intakeStatus);
+    }
+
+    private PrincipalContext operatorPrincipal() {
+        return new PrincipalContext(
+                "operator-1",
+                PrincipalType.SERVICE,
+                "operator-user",
+                null,
+                List.of("*", "task:edit", "task:govern", "task:control"),
+                List.of("*"),
+                List.of("*"),
+                Map.of()
+        );
+    }
+
+    private TaskAccessSnapshot taskAccess(String project) {
+        return new TaskAccessSnapshot(TASK_ID, project, Map.of(), "OPEN");
+    }
+
+    private TaskDetailStore.TaskMessageProjection projection(String messageId,
+                                                             TaskMessageProjectionStatus status,
+                                                             TaskMessageProjectionFinalReason finalReason,
+                                                             Map<String, Object> input,
+                                                             Map<String, Object> output,
+                                                             String workerId) {
+        return new TaskDetailStore.TaskMessageProjection(
+                messageId,
+                TASK_ID,
+                input,
+                null,
+                status,
+                null,
+                null,
+                null,
+                null,
+                null,
+                0,
+                3,
+                null,
+                null,
+                finalReason,
+                output,
+                "attempt-" + messageId,
+                workerId,
+                "batch-" + messageId
+        );
+    }
+
+    private TaskResultItemSnapshot resultRow(long seq, String messageId, String status, String workerId) {
+        return new TaskResultItemSnapshot(
+                seq,
+                messageId,
+                "crawler.fetch-page",
+                status,
+                "SUCCESS".equals(status) ? "BUSINESS_SUCCESS" : "RETRY_EXHAUSTED",
+                0,
+                3,
+                workerId,
+                "batch-001",
+                "attempt-001",
+                "payload-ref",
+                Instant.parse("2026-05-13T00:00:00Z"),
+                Instant.parse("2026-05-13T00:00:01Z"),
+                Instant.parse("2026-05-13T00:00:02Z"),
+                Instant.parse("2026-05-13T00:00:03Z"),
+                Instant.parse("2026-05-13T00:00:03Z"),
+                "FAILED".equals(status) ? "ERR" : null,
+                "FAILED".equals(status) ? "failed" : null,
+                Map.of("messageId", messageId)
+        );
+    }
+
+    private TaskDetailSnapshot taskDetail(String status, String taskName, String project) {
+        return new TaskDetailSnapshot(
+                TASK_ID,
+                "default",
+                taskName,
+                null,
+                project,
+                status,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                TaskOwnershipStamp.applyToSharedConfig(
+                        Map.of("routingCode", "us"),
+                        new TaskOwnershipStamp("agent", PrincipalType.SERVICE)
+                ),
+                null,
+                new TaskExecutionOptions(),
+                null,
+                "OPEN",
+                "agent",
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+    }
+
+    private ControlPlaneCatalog createTaskCatalog() {
         ProjectEventCatalogRegistry catalog = DefaultProjectEventCatalogFactory.createDefaultProjectRegistry();
         catalog.registerEventDefinition(EventDefinition.builder()
                 .code("crawler.fetch-page")
@@ -778,23 +811,17 @@ class TaskApiControllerTest {
                 .payloadTypes(List.of(PayloadType.TEXT, PayloadType.JSON))
                 .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
                 .build());
-        catalog.registerProject(ProjectMetadata.builder()
+        catalog.registerProject(ProjectDefinition.builder()
                 .code("demoApp")
                 .name("Demo App")
                 .description("Test demo app")
                 .eventCodes(List.of("crawler.fetch-page", "chatbot.reply"))
                 .build());
-        catalog.registerProject(ProjectMetadata.builder()
+        catalog.registerProject(ProjectDefinition.builder()
                 .code("crawlerApp")
                 .name("Crawler App")
                 .description("Test crawler app")
                 .eventCodes(List.of("crawler.fetch-page"))
-                .build());
-        catalog.registerProject(ProjectMetadata.builder()
-                .code("telegramApp")
-                .name("Telegram App")
-                .description("Test telegram app")
-                .eventCodes(List.of("chatbot.reply"))
                 .build());
         return catalog;
     }

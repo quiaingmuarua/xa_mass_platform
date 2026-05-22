@@ -1,8 +1,8 @@
 package com.xa.mass.server.e2e.assignment;
 
-import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
+import com.xa.mass.server.e2e.support.ProjectionSampleE2eTest;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
@@ -24,10 +24,9 @@ import static org.junit.jupiter.api.Assertions.*;
         properties = {
                 "sample.client.auto-start=true",
                 "mass.mock.data.workers=mock/test_mock_workers.json",
-                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json",
-                "sample.client.retry-attempts=1",
+                "sample.client.retry-attempts=3",
                 "sample.client.retry-delay=1",
                 "sample.client.connection-timeout=5",
                 "sample.client.ping-delay=60",
@@ -36,11 +35,21 @@ import static org.junit.jupiter.api.Assertions.*;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class TaskApiTargetedWorkerDebugIntegrationTest extends AbstractSampleE2eTest {
+@Tag("secondary-proof")
+class TaskApiTargetedWorkerDebugIntegrationTest extends ProjectionSampleE2eTest {
+
+    /**
+     * Support-only debug-task coverage.
+     *
+     * <p>This class validates targeted debug/event harness behavior, not a
+     * registry-backed scheduling or lifecycle invariant. Keep it out of new
+     * mainline proof chains.
+     */
 
     private static final int WEBSOCKET_PORT = findFreePort();
     private static final String STATE_WORKER_ID = "it-worker-0";
     private static final String DISCONNECT_WORKER_ID = "it-worker-1";
+    private static final String TARGET_WORKER_ID_KEY = "targetWorkerId";
 
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {
@@ -49,6 +58,8 @@ class TaskApiTargetedWorkerDebugIntegrationTest extends AbstractSampleE2eTest {
 
     @Test
     void targetedMockDebugTasksFlowThroughTaskMainline() throws Exception {
+        assertMinOnlineWorkers(2);
+
         String delayTaskId = createTargetedDebugTask(
                 "targeted-delay-response",
                 "mock.delay.response",
@@ -86,6 +97,8 @@ class TaskApiTargetedWorkerDebugIntegrationTest extends AbstractSampleE2eTest {
 
     @Test
     void targetedDisconnectTaskDisconnectsWorkerAfterTaskResult() throws Exception {
+        assertMinOnlineWorkers(2);
+
         String taskId = createTargetedDebugTask(
                 "targeted-disconnect",
                 "mock.disconnect",
@@ -118,18 +131,17 @@ class TaskApiTargetedWorkerDebugIntegrationTest extends AbstractSampleE2eTest {
                                            Map<String, Object> input) {
         Map<String, Object> createBody = new LinkedHashMap<>();
         createBody.put("project", "demoApp");
-        createBody.put("taskName", taskName);
-        createBody.put("eventCode", eventCode);
-        createBody.put("mode", "SINGLE_RUN");
-        createBody.put("payloadType", "JSON");
         createBody.put("userId", "itest");
-        createBody.put("sharedConfig", Map.of(TaskSharedConfig.TARGET_WORKER_ID, workerId));
-        createBody.put("inputs", List.of(input));
-        createBody.put("batchSize", 1);
+        createBody.put("sharedConfig", Map.of(TARGET_WORKER_ID_KEY, workerId));
+        createBody.put("sourceRef", taskName);
+        createBody.put("executionSpec", Map.of("batchSize", 1));
 
-        Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, createBody);
+        Map<String, Object> createResponse = createTaskShell(createBody);
         assertApiOk(createResponse);
-        return String.valueOf(responseData(createResponse).get("taskId"));
+        String taskId = String.valueOf(responseData(createResponse).get("taskId"));
+        assertApiOk(appendTaskItems(taskId, eventCode, List.of(input)));
+        assertApiOk(sealTask(taskId));
+        return taskId;
     }
 
     @SuppressWarnings("unchecked")
@@ -157,9 +169,10 @@ class TaskApiTargetedWorkerDebugIntegrationTest extends AbstractSampleE2eTest {
 
     @SuppressWarnings("unchecked")
     private boolean hasActiveEndpoint(String workerId) {
-        Map<String, Object> response = exchange("/status/api/workers", HttpMethod.GET, null);
+        Map<String, Object> response = exchange("/api/v1/catalog/worker-capabilities", HttpMethod.GET, null);
         assertApiOk(response);
-        List<Map<String, Object>> items = (List<Map<String, Object>>) responseData(response).get("items");
+        Object data = response.get("data");
+        List<Map<String, Object>> items = data instanceof List<?> list ? (List<Map<String, Object>>) list : null;
         if (items == null) {
             return false;
         }

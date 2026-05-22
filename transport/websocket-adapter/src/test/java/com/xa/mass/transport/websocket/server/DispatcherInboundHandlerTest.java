@@ -4,6 +4,7 @@ import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundMessage;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundMessageSink;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.websocket.session.ServerSessionManager;
+import com.xa.mass.transport.websocket.worker.WebSocketRealtimeWorkerAdapter;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelId;
@@ -65,7 +66,7 @@ class DispatcherInboundHandlerTest {
 
         acceptedInboundMessage = new AtomicReference<>();
         inboundMessageSink = acceptedInboundMessage::set;
-        sessionManager = new ServerSessionManager();
+        sessionManager = new ServerSessionManager(WebSocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID);
         WebSocketTransportFrameCodec codec = new WebSocketTransportFrameCodec();
         handler = new DispatcherInboundHandler(codec, inboundMessageSink, sessionManager);
     }
@@ -80,7 +81,7 @@ class DispatcherInboundHandlerTest {
     }
 
     @Test
-    void missingWorkerIdOrMessageIdSendsMissingFieldsError() throws Exception {
+    void missingWorkerIdOrRouteKeySendsMissingFieldsError() throws Exception {
         handler.channelRead0(ctx, frame("{\"eventCode\":\"mock.state.get\"}"));
 
         String sent = sentFrame.get();
@@ -124,10 +125,54 @@ class DispatcherInboundHandlerTest {
         assertNull(sentFrame.get());
         assertEquals(controlJson, acceptedInboundMessage.get().getRawJson());
         assertEquals("worker-1", acceptedInboundMessage.get().getWorkerId());
+        assertEquals("worker-1", acceptedInboundMessage.get().getRouteKey());
         assertEquals("test-ch", acceptedInboundMessage.get().getEndpointId());
         assertNotNull(acceptedInboundMessage.get().getParsedFrame());
         assertEquals(1, sessionManager.getWorkerConnectionCount());
         assertNotNull(sessionManager.getChannelContext("worker-1"));
+    }
+
+    @Test
+    void messageWithoutInlineRouteKeyUsesHandshakeRegisteredRouteKey() throws Exception {
+        handler.userEventTriggered(ctx, new WebSocketServerProtocolHandler.HandshakeComplete(
+                "/ws?workerId=worker-1&routeKey=ws-route-11",
+                new DefaultHttpHeaders(),
+                null
+        ));
+        String controlJson = """
+                {
+                  "messageId": "ctrl-001",
+                  "response": false,
+                  "project": "demoApp",
+                  "eventCode": "mock.state.get",
+                  "requestId": "req-1",
+                  "payload": {
+                    "verbose": true
+                  }
+                }
+                """;
+        handler.channelRead0(ctx, frame(controlJson));
+
+        assertNull(sentFrame.get());
+        assertEquals("worker-1", acceptedInboundMessage.get().getWorkerId());
+        assertEquals("ws-route-11", acceptedInboundMessage.get().getRouteKey());
+        assertNotNull(sessionManager.getChannelContext("ws-route-11"));
+        assertNull(sessionManager.getChannelContext("worker-1"));
+    }
+
+    @Test
+    void handshakeRouteKeyOverridesWorkerIdAsSessionAddress() throws Exception {
+        handler.userEventTriggered(ctx, new WebSocketServerProtocolHandler.HandshakeComplete(
+                "/ws?workerId=worker-1&routeKey=ws-route-9",
+                new DefaultHttpHeaders(),
+                null
+        ));
+
+        assertEquals(1, sessionManager.getWorkerConnectionCount());
+        assertNotNull(sessionManager.getChannelContext("ws-route-9"));
+        assertNull(sessionManager.getChannelContext("worker-1"));
+        assertEquals("worker-1", sessionManager.getWorkerId(channel));
+        assertEquals("ws-route-9", sessionManager.getRouteKey(channel));
     }
 
     @Test
@@ -169,7 +214,7 @@ class DispatcherInboundHandlerTest {
     }
 
     @Test
-    void missingMessageIdSendsMissingFieldsError() throws Exception {
+    void controlFrameWithoutMessageIdStillEnqueuesRawJson() throws Exception {
         handler.userEventTriggered(ctx, new WebSocketServerProtocolHandler.HandshakeComplete(
                 "/ws?workerId=worker-1",
                 new DefaultHttpHeaders(),
@@ -183,9 +228,10 @@ class DispatcherInboundHandlerTest {
 
         handler.channelRead0(ctx, frame(controlJson));
 
-        String sent = sentFrame.get();
-        assertNotNull(sent);
-        assertTrue(sent.contains("MISSING_FIELDS"));
+        assertNull(sentFrame.get());
+        assertNotNull(acceptedInboundMessage.get());
+        assertEquals("worker-1", acceptedInboundMessage.get().getWorkerId());
+        assertEquals("worker-1", acceptedInboundMessage.get().getRouteKey());
     }
 
     @Test
@@ -214,7 +260,8 @@ class WebSocketServerImplDisconnectTest {
 
     @Test
     void channelInactiveRemovesDisconnectedSessionFromSessionManager() throws Exception {
-        ServerSessionManager sessionManager = org.mockito.Mockito.spy(new ServerSessionManager());
+        ServerSessionManager sessionManager = org.mockito.Mockito.spy(
+                new ServerSessionManager(WebSocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID));
         WebSocketServerImpl server = new WebSocketServerImpl(
                 18088,
                 10,
@@ -251,6 +298,7 @@ class WebSocketServerImplDisconnectTest {
         assertEquals(0, sessionManager.getWorkerConnectionCount());
         assertNull(sessionManager.getChannel("worker-1"));
         assertNull(sessionManager.getWorkerId(channel));
+        assertNull(sessionManager.getRouteKey(channel));
     }
 
     @Test
@@ -264,7 +312,8 @@ class WebSocketServerImplDisconnectTest {
 
     @Test
     void channelActiveRejectsConnectionsBeyondConfiguredMax() throws Exception {
-        ServerSessionManager sessionManager = org.mockito.Mockito.spy(new ServerSessionManager());
+        ServerSessionManager sessionManager = org.mockito.Mockito.spy(
+                new ServerSessionManager(WebSocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID));
         WebSocketServerImpl server = new WebSocketServerImpl(
                 18088,
                 1,

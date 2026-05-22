@@ -28,7 +28,6 @@ import static org.junit.jupiter.api.Assertions.*;
         properties = {
                 "sample.client.auto-start=false",
                 "mass.mock.data.workers=mock/test_mock_workers.json",
-                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
@@ -65,50 +64,42 @@ class TaskApiTerminateRunningIntegrationTest extends AbstractSampleE2eTest {
                     1
             );
 
-            Map<String, Object> approveResponse = exchange(
-                    "/status/api/tasks/" + taskId + "/audit?approved=true&comment=approve",
-                    HttpMethod.POST,
-                    null
-            );
+            Map<String, Object> approveResponse = approveTask(taskId);
             assertApiOk(approveResponse);
 
-            TaskSnapshot runningSnapshot = waitForTaskSnapshot(taskId, "RUNNING");
+            RuntimeTaskSnapshot runningSnapshot = waitForRuntimeTaskSnapshot(taskId, "RUNNING", 20, 250L);
             assertEquals(2, ((Number) runningSnapshot.task().get("peakAssignedWorkerCount")).intValue());
             assertEquals(0, ((Number) runningSnapshot.task().get("taskSuccessNumber")).intValue());
-            assertEquals(2, runningSnapshot.messages().size());
-            assertTrue(runningSnapshot.messages().stream().allMatch(message -> "ASSIGNED".equals(message.get("status"))));
+            assertEquals(2, runningSnapshot.stats().inflightCount());
 
             assertNotNull(firstClient.awaitTask(3, TimeUnit.SECONDS), "First worker did not receive a task dispatch");
             assertNotNull(secondClient.awaitTask(3, TimeUnit.SECONDS), "Second worker did not receive a task dispatch");
 
-            Map<String, Object> terminateResponse = exchange(
-                    "/status/api/tasks/" + taskId + "/terminate",
-                    HttpMethod.POST,
-                    null
-            );
+            Map<String, Object> terminateResponse = terminateTask(taskId);
             assertApiOk(terminateResponse);
 
-            TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL");
+            RuntimeTaskSnapshot terminalSnapshot = waitForRuntimeTaskSnapshot(taskId, "TERMINAL", 20, 250L);
             assertEquals("TERMINAL", terminalSnapshot.task().get("status"));
             assertEquals(0, ((Number) terminalSnapshot.task().get("taskSuccessNumber")).intValue());
-            assertEquals(2, terminalSnapshot.messages().size());
-            assertTrue(terminalSnapshot.messages().stream().allMatch(message -> "EXPIRED".equals(message.get("status"))));
+            assertEquals(0, terminalSnapshot.stats().successCount());
+            assertEquals(0, terminalSnapshot.stats().processingCount());
+            assertTrue(terminalSnapshot.activeLeases().isEmpty(), "terminate must release in-flight runtime leases");
 
-            Map<String, Object> deleteResponse = exchange(
-                    "/status/api/tasks/" + taskId,
+            ResponseEntity<Map> deleteResponse = restTemplate.exchange(
+                    "http://127.0.0.1:" + port + "/api/v1/tasks/" + taskId,
                     HttpMethod.DELETE,
-                    null
+                    org.springframework.http.HttpEntity.EMPTY,
+                    Map.class
             );
-            assertApiOk(deleteResponse);
+            assertEquals(405, deleteResponse.getStatusCode().value());
 
-            ResponseEntity<Map> deletedTaskResponse = restTemplate.exchange(
-                    "http://127.0.0.1:" + port + "/status/api/tasks/" + taskId,
+            ResponseEntity<Map> taskResponseAfterDeleteAttempt = restTemplate.exchange(
+                    "http://127.0.0.1:" + port + "/api/v1/tasks/" + taskId,
                     HttpMethod.GET,
                     org.springframework.http.HttpEntity.EMPTY,
                     Map.class
             );
-            assertEquals(404, deletedTaskResponse.getStatusCode().value());
-            assertEquals(404, ((Number) deletedTaskResponse.getBody().get("code")).intValue());
+            assertEquals(200, taskResponseAfterDeleteAttempt.getStatusCode().value());
         } finally {
             firstClient.disconnect();
             secondClient.disconnect();

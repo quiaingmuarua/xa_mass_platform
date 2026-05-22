@@ -1,28 +1,43 @@
 package com.xa.mass.sdk;
 
-import com.google.gson.Gson;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.enums.Project;
-import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.base.project.ProjectRegistry;
 import com.xa.mass.command.event.*;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;
-import com.xa.mass.engine.TaskMessageLogicallyFinalListener;
-import com.xa.mass.engine.WorkerManager;
+import com.xa.mass.engine.command.WorkerCommandAcknowledgement;
+import com.xa.mass.engine.command.WorkerCommandLifecycleResult;
+import com.xa.mass.engine.command.WorkerCommandRecord;
+import com.xa.mass.engine.command.WorkerCommandRequest;
+import com.xa.mass.engine.command.WorkerCommandStatus;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
+import com.xa.mass.engine.stage.TaskStageEvidenceResult;
+import com.xa.mass.engine.stage.TaskStageEvidenceService;
+import com.xa.mass.engine.stage.TaskStageProjection;
+import com.xa.mass.engine.worker.EventBinding;
+import com.xa.mass.engine.worker.WorkerCapabilityReport;
+import com.xa.mass.engine.worker.WorkerCapabilityReportResult;
+import com.xa.mass.engine.worker.WorkerControlService;
+import com.xa.mass.engine.worker.WorkerGroupRecord;
+import com.xa.mass.engine.worker.AdapterNodeRecord;
+import com.xa.mass.engine.worker.NodeGroupBindingRecord;
+import com.xa.mass.engine.worker.WorkerStateProjection;
+import com.xa.mass.engine.worker.WorkerStateProjectionResult;
+import com.xa.mass.engine.worker.WorkerStateReport;
+import com.xa.mass.runtime.api.TaskResultRuntime;
+import com.xa.mass.runtime.api.TaskResultRuntimeRow;
+import com.xa.mass.runtime.api.TaskResultWindow;
+import com.xa.mass.storage.api.RuleStorage;
+import com.xa.mass.storage.api.WorkerStorage;
 import com.xa.mass.storage.rule.RuleDefinition;
-import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.storage.rule.RuleType;
 import com.xa.mass.sdk.auth.*;
 import com.xa.mass.sdk.authz.*;
@@ -37,14 +52,15 @@ import com.xa.mass.sdk.model.*;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
-import com.xa.mass.transport.WorkerEndpointInspector;
-import com.xa.mass.transport.WorkerEndpointRegistry;
-import com.xa.mass.transport.WorkerEndpointSnapshot;
 import com.xa.mass.transport.WorkerTransportHints;
+import com.xa.mass.transport.channel.TaskPullResult;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TaskResultReport;
 
+import java.io.IOException;
+import java.io.OutputStream;
 import java.util.*;
+import java.util.zip.GZIPOutputStream;
 
 /**
  * Consumer-facing runtime handle returned by the SDK facade.
@@ -53,13 +69,19 @@ import java.util.*;
  * runtime, but the stable embedding path stays on {@code com.xa.mass.sdk.*}
  * methods rather than exposing starter/runtime internals directly.
  */
-public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOperations, TaskAdminOperations,
-        WorkerQueryOperations, WorkerAdminOperations,
+public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOperations, TaskResultQueryOperations, TaskAdminOperations,
+        WorkerInspectionOperations, WorkerQueryOperations, WorkerRegistryOperations,
+        WorkerClientOperations, WorkerAdminOperations,
+        WorkerControlOperations, TaskStageEvidenceOperations,
         ResourceOperations, AuthProvider, PrincipalDirectory,
         ExternalWorkerOperations, AuthorizationPolicy,
-        RuleOperations, TransportOperations {
+        RuleOperations {
 
-    private static final Gson GSON = new Gson();
+    private static final int ARCHIVE_STREAM_WINDOW = Integer.getInteger("xa.mass.sdk.resultArchiveStreamWindow", 1000);
+    private static final String RESULT_ARCHIVE_FORMAT = "ndjson";
+    private static final String RESULT_ARCHIVE_CONTENT_TYPE = "application/x-ndjson";
+    private static final String RESULT_ARCHIVE_CONTENT_ENCODING = "gzip";
+    private static final com.google.gson.Gson RESULT_JSON = new com.google.gson.Gson();
 
     private final MassApplication delegate;
     private final ProjectEventCatalogRegistry bootstrapProjectCatalogRegistry;
@@ -69,7 +91,9 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     private final MassEventRuntime eventRuntime;
     private final EventDefinitionRegistry eventDefinitionRegistry;
     private final Map<String, EventHandler> eventHandlerCache;
-    private final ProjectEventCatalog sdkMetadataCatalogView;
+    private final ControlPlaneCatalog controlPlaneCatalogView;
+    private final TaskDiagnosticOperations taskDiagnostics;
+    private final RuntimeDiagnosticsOperations runtimeDiagnostics;
 
     MassSdkApplication(MassApplication delegate) {
         this(delegate, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(), new InMemorySubmitterRegistry());
@@ -95,14 +119,16 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         this.eventRuntime = delegate.getEventRuntime() != null ? delegate.getEventRuntime() : new InMemoryMassEventRuntime();
         this.eventDefinitionRegistry = new EventDefinitionRegistry();
         this.eventHandlerCache = new LinkedHashMap<>();
-        this.sdkMetadataCatalogView = new DefinitionBackedProjectEventCatalog(
+        this.controlPlaneCatalogView = new DefinitionBackedControlPlaneCatalog(
                 this::listProjects,
                 this::getProject,
                 this::listEvents,
                 this::getEvent,
                 this::getEventsForProject
         );
-        this.eventPermissionService = new DefaultEventPermissionService(sdkMetadataCatalogView);
+        this.taskDiagnostics = new DefaultTaskDiagnosticOperations(this::requireStartedTaskQueries);
+        this.runtimeDiagnostics = new DefaultRuntimeDiagnosticsOperations(delegate);
+        this.eventPermissionService = new DefaultEventPermissionService(controlPlaneCatalogView);
         this.authorizationPolicy = new DefaultAuthorizationPolicy();
         registerEnabledCatalogProjectsIntoCore();
         registerCatalogEventDefinitions();
@@ -121,6 +147,14 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return delegate.isRunning();
     }
 
+    /**
+     * Advanced embedded-runtime seam for operator shells and server wiring that
+     * intentionally live below the stable SDK mainline surface.
+     */
+    MassApplication runtimeApplication() {
+        return delegate;
+    }
+
     @Override
     public EventResponse dispatchEvent(EventRequest request, PrincipalContext principal) {
         Objects.requireNonNull(request, "request");
@@ -132,59 +166,127 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
-    public Task createTask(MassTaskCreateRequest request) {
+    public TaskShellSnapshot createTaskShell(MassTaskShellCreateRequest request) {
         MassEngine engine = requireStartedEngine();
-        return engine.createTask(SdkResourceMapper.toEngineRequest(
+        return toTaskShellSnapshot(engine.createTaskShell(SdkResourceMapper.toEngineRequest(
                 TaskOwnershipSupport.stamp(request, internalPrincipal(request.getUserId()))
-        ));
+        )));
     }
 
     @Override
-    public Task createTask(MassTaskRequest request) {
-        MassTaskRequest stampedRequest = TaskOwnershipSupport.stamp(request, internalPrincipal(request.getUserId()));
-        validateTaskCatalogContract(stampedRequest);
-        if (stampedRequest.getEventCode() == null || stampedRequest.getEventCode().isBlank()) {
-            return requireStartedEngine().createTask(MassTaskRequestMapper.toEngineRequest(stampedRequest));
+    public TaskDetailSnapshot getTaskDetail(String taskId) {
+        return toTaskDetailSnapshot(requireStartedTaskQueries().getTask(taskId));
+    }
+
+    @Override
+    public List<TaskSummarySnapshot> listTaskSummaries(int offset, int limit) {
+        return requireStartedTaskQueries().listTasksPaged(offset, limit).stream()
+                .map(this::toTaskSummarySnapshot)
+                .toList();
+    }
+
+    @Override
+    public List<TaskSummarySnapshot> getTaskSummariesByStatus(String status) {
+        return requireStartedTaskQueries().getTasksByStatus(
+                parseTaskStatus(status)
+        ).stream().map(this::toTaskSummarySnapshot).toList();
+    }
+
+    @Override
+    public boolean taskExists(String taskId) {
+        return requireStartedTaskQueries().getTask(requireTaskId(taskId)) != null;
+    }
+
+    @Override
+    public TaskStateSnapshot getTaskState(String taskId) {
+        Task task = requireStartedTaskQueries().getTask(requireTaskId(taskId));
+        if (task == null) {
+            return null;
         }
-        EventResponse response = dispatchEventInternal(
-                EventRequest.builder()
-                        .event(stampedRequest.getEventCode())
-                        .project(stampedRequest.getProject())
-                        .requestId(UUID.randomUUID().toString())
-                        .payload(Map.of("request", stampedRequest))
-                        .build(),
-                internalPrincipal(stampedRequest.getUserId())
+        return toTaskStateSnapshot(task);
+    }
+
+    @Override
+    public TaskAccessSnapshot getTaskAccess(String taskId) {
+        Task task = requireStartedTaskQueries().getTask(requireTaskId(taskId));
+        if (task == null) {
+            return null;
+        }
+        return toTaskAccessSnapshot(task);
+    }
+
+    @Override
+    public TaskResultWindowSnapshot readTaskResults(String taskId, long afterSeq, int limit) {
+        TaskResultWindow window = requireStartedTaskResultRuntime()
+                .readWindow(requireTaskId(taskId), Math.max(0L, afterSeq), Math.max(1, limit));
+        return toTaskResultWindowSnapshot(window);
+    }
+
+    @Override
+    public Optional<TaskWorkFinalSnapshot> getTaskWorkFinal(String taskId, String messageId) {
+        return requireStartedTaskResultRuntime()
+                .getVisibleByMessageId(requireTaskId(taskId), requireMessageId(messageId))
+                .map(this::toTaskWorkFinalSnapshot);
+    }
+
+    @Override
+    public TaskResultArchiveSnapshot getTaskResultArchiveManifest(String taskId) {
+        String normalizedTaskId = requireTaskId(taskId);
+        TaskDetailSnapshot task = getTaskDetail(normalizedTaskId);
+        boolean ready = task != null && "TERMINAL".equalsIgnoreCase(task.getStatus());
+        long itemCount = requireStartedTaskResultRuntime().countVisibleResults(normalizedTaskId);
+        return new TaskResultArchiveSnapshot(
+                normalizedTaskId,
+                ready,
+                RESULT_ARCHIVE_FORMAT,
+                RESULT_ARCHIVE_CONTENT_TYPE,
+                RESULT_ARCHIVE_CONTENT_ENCODING,
+                ready ? itemCount : 0L,
+                null,
+                null
         );
-        requireSuccessfulEventResponse(response);
-        return (Task) response.getData();
     }
 
-    public Task getTask(String taskId) {
-        return requireStartedTaskQueries().getTask(taskId);
-    }
-
-    public List<Task> getAllTasks() {
-        return requireStartedTaskQueries().getAllTasks();
-    }
-
-    public List<Task> getTasksByStatus(TaskStatus status) {
-        return requireStartedTaskQueries().getTasksByStatus(status);
+    @Override
+    public void writeTaskResultArchiveContent(String taskId, OutputStream sink) {
+        Objects.requireNonNull(sink, "sink");
+        String normalizedTaskId = requireTaskId(taskId);
+        try {
+            GZIPOutputStream gzip = new GZIPOutputStream(sink);
+            long afterSeq = 0L;
+            while (true) {
+                TaskResultWindow window = requireStartedTaskResultRuntime()
+                        .readWindow(normalizedTaskId, afterSeq, ARCHIVE_STREAM_WINDOW);
+                for (TaskResultRuntimeRow row : window.items()) {
+                    gzip.write(RESULT_JSON.toJson(toTaskResultItemSnapshot(row)).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    gzip.write('\n');
+                }
+                if (!window.hasMore()) {
+                    gzip.finish();
+                    gzip.flush();
+                    return;
+                }
+                afterSeq = window.nextAfterSeq();
+            }
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to stream task result archive: " + e.getMessage(), e);
+        }
     }
 
     public boolean approveTask(String taskId) {
-        return booleanEvent(PlatformEventCodes.TASK_APPROVE, Map.of("taskId", taskId));
+        return executeTaskCommand(taskId, MassTaskCommandRequest.builder().command("APPROVE").build()).isAccepted();
     }
 
     public boolean rejectTask(String taskId) {
-        return booleanEvent(PlatformEventCodes.TASK_REJECT, Map.of("taskId", taskId));
+        return executeTaskCommand(taskId, MassTaskCommandRequest.builder().command("REJECT").build()).isAccepted();
     }
 
     public boolean blockTask(String taskId) {
-        return booleanEvent(PlatformEventCodes.TASK_BLOCK, Map.of("taskId", taskId));
+        return executeTaskCommand(taskId, MassTaskCommandRequest.builder().command("BLOCK").build()).isAccepted();
     }
 
     public boolean pauseTask(String taskId) {
-        return booleanEvent(PlatformEventCodes.TASK_PAUSE, Map.of("taskId", taskId));
+        return executeTaskCommand(taskId, MassTaskCommandRequest.builder().command("PAUSE").build()).isAccepted();
     }
 
     public SdkTaskResumeResult resumeTaskDetailed(String taskId) {
@@ -198,69 +300,46 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     public boolean resumeTask(String taskId) {
-        return booleanEvent(PlatformEventCodes.TASK_RESUME, Map.of("taskId", taskId));
+        return executeTaskCommand(taskId, MassTaskCommandRequest.builder().command("RESUME").build()).isAccepted();
     }
 
     public boolean cancelTask(String taskId) {
-        return booleanEvent(PlatformEventCodes.TASK_CANCEL, Map.of("taskId", taskId));
+        return requireStartedTaskCommands().cancelTask(requireTaskId(taskId));
     }
 
-    public boolean terminateTask(String taskId, TaskTerminalReason reason) {
-        return booleanEvent(PlatformEventCodes.TASK_TERMINATE, Map.of(
-                "taskId", taskId,
-                "reason", reason == null ? TaskTerminalReason.MANUAL_CANCELLED.name() : reason.name()
-        ));
+    public boolean terminateTask(String taskId, String reason) {
+        return executeTaskCommand(taskId, MassTaskCommandRequest.builder()
+                .command("TERMINATE")
+                .reason(reason)
+                .build()).isAccepted();
     }
 
-    public int appendTaskItems(String taskId, List<Map<String, Object>> inputs) {
-        EventResponse response = dispatchEventInternal(EventRequest.builder()
-                .event(PlatformEventCodes.TASK_APPEND_ITEMS)
-                .payload(Map.of("taskId", taskId, "inputs", inputs == null ? List.of() : inputs))
-                .requestId(UUID.randomUUID().toString())
-                .build(), internalPrincipal(null));
-        requireSuccessfulEventResponse(response);
-        return ((Number) response.getData()).intValue();
+    @Override
+    public TaskItemBatchAppendReceipt appendTaskItemsWithReceipt(String taskId, MassTaskItemBatchAppendRequest request) {
+        Objects.requireNonNull(request, "request");
+        String normalizedTaskId = requireTaskId(taskId);
+        resolveWorkerGroupSelectorForAppend(normalizedTaskId, request.getEventCode());
+        List<Map<String, Object>> converted = requireAppendItems(request.getItems(), request.getEventCode());
+        com.xa.mass.engine.model.TaskAppendReceipt receipt =
+                requireStartedTaskCommands().appendTaskItemsWithReceipt(normalizedTaskId, converted);
+        return new TaskItemBatchAppendReceipt(receipt.taskId(), receipt.added(), receipt.messageIds());
+    }
+
+    @Override
+    public int appendTaskItems(String taskId, MassTaskItemBatchAppendRequest request) {
+        return appendTaskItemsWithReceipt(taskId, request).added();
     }
 
     public boolean sealTask(String taskId) {
-        return booleanEvent(PlatformEventCodes.TASK_SEAL, Map.of("taskId", taskId));
+        return executeTaskCommand(taskId, MassTaskCommandRequest.builder().command("SEAL").build()).isAccepted();
     }
 
-    public List<TaskMsg> getTaskMessages(String taskId, int limit) {
-        return requireStartedTaskQueries().getTaskMessages(taskId, limit);
+    public TaskDiagnosticOperations taskDiagnostics() {
+        return taskDiagnostics;
     }
 
-    @Override
-    public TaskMsg getTaskMessage(String taskId, String messageId) {
-        return requireStartedTaskQueries().getTaskMessage(taskId, messageId);
-    }
-
-    @Override
-    public List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId) {
-        return requireStartedTaskQueries().getTaskMessageAttempts(taskId, messageId);
-    }
-
-    @Override
-    public TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
-        return requireStartedTaskQueries().getLatestActiveTaskMessageAttempt(taskId, messageId);
-    }
-
-    @Override
-    public long countTaskMessages(String taskId) {
-        return requireStartedTaskQueries().countTaskMessages(taskId);
-    }
-
-    public TaskStateResolutionResult resolveTaskState(String taskId) {
-        return requireStartedTaskQueries().resolveTaskState(taskId);
-    }
-
-    public TaskStateValidationResult validateTaskState(String taskId) {
-        return requireStartedTaskQueries().validateTaskState(taskId);
-    }
-
-    @Override
-    public TaskStateValidationResult auditTaskProjectionState(String taskId) {
-        return requireStartedTaskQueries().auditTaskProjectionState(taskId);
+    public RuntimeDiagnosticsOperations runtimeDiagnostics() {
+        return runtimeDiagnostics;
     }
 
     @Override
@@ -269,9 +348,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         Task task = requireStartedTaskQueries().getTask(requireTaskId(taskId));
         if (task == null) {
             return false;
-        }
-        if (request.getTaskName() != null) {
-            task.setTaskName(request.getTaskName());
         }
         if (request.getProject() != null) {
             task.setProject(request.getProject());
@@ -282,43 +358,247 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         if (request.getUserId() != null) {
             task.setUser(UserRef.of(request.getUserId()));
         }
-        if (request.getBatchSize() != null && request.getBatchSize() > 0) {
-            task.setBatchSize(request.getBatchSize());
-        }
         return requireStartedTaskCommands().updateTask(task);
     }
 
     @Override
-    public boolean deleteTask(String taskId) {
-        return requireStartedTaskCommands().deleteTask(taskId);
+    public TaskCommandResult executeTaskCommand(String taskId, MassTaskCommandRequest request) {
+        Objects.requireNonNull(request, "request");
+        String normalizedTaskId = requireTaskId(taskId);
+        String normalizedCommand = normalizeTaskCommand(request.getCommand());
+        TaskQueryService taskQueries = requireStartedTaskQueries();
+        TaskCommandService taskCommands = requireStartedTaskCommands();
+
+        Task before = taskQueries.getTask(normalizedTaskId);
+        if (before == null) {
+            return toTaskCommandResult(normalizedTaskId, normalizedCommand, false, false,
+                    null, "Task not found", "TASK_NOT_FOUND");
+        }
+
+        boolean accepted = switch (normalizedCommand) {
+            case "APPROVE" -> taskCommands.approveTask(normalizedTaskId);
+            case "REJECT" -> taskCommands.rejectTask(normalizedTaskId);
+            case "BLOCK" -> executeBlockTask(taskCommands, normalizedTaskId, before);
+            case "PAUSE" -> taskCommands.pauseTask(normalizedTaskId);
+            case "RESUME" -> taskCommands.resumeTaskDetailed(normalizedTaskId).isSuccess();
+            case "TERMINATE" -> taskCommands.terminateTask(
+                    normalizedTaskId,
+                    parseTaskTerminalReason(request.getReason(),
+                            com.xa.mass.base.enums.task.TaskTerminalReason.MANUAL_CANCELLED)
+            );
+            case "SEAL" -> taskCommands.sealTask(normalizedTaskId);
+            default -> throw new IllegalArgumentException("Unsupported task command: " + normalizedCommand);
+        };
+
+        Task after = taskQueries.getTask(normalizedTaskId);
+        if (accepted) {
+            return toTaskCommandResult(normalizedTaskId, normalizedCommand, true, true,
+                    after != null ? after : before, null, null);
+        }
+        return toTaskCommandResult(normalizedTaskId, normalizedCommand, false, true,
+                after != null ? after : before,
+                "Task command is not allowed in the current state",
+                "COMMAND_NOT_ALLOWED");
+    }
+
+    @Override
+    public void registerAdapterNode(AdapterNodeRegistration request) {
+        MassEngine engine = requireStartedEngine();
+        Objects.requireNonNull(request, "request");
+        engine.getConfig().getWorkerManager().registerAdapterNode(new AdapterNodeRecord(
+                request.getAdapterNodeId(),
+                request.getAdapterType(),
+                request.getAdapterVersion(),
+                request.getEndpointId(),
+                request.isEnabled(),
+                request.isOnline(),
+                null,
+                null,
+                request.getAttributes()
+        ));
+    }
+
+    @Override
+    public void bindNodeGroup(NodeGroupBindingRegistration request) {
+        MassEngine engine = requireStartedEngine();
+        Objects.requireNonNull(request, "request");
+        engine.getConfig().getWorkerManager().bindNodeGroup(new NodeGroupBindingRecord(
+                request.getAdapterNodeId(),
+                request.getWorkerGroupId(),
+                request.getPluginVersion(),
+                request.getDeploymentVersion(),
+                request.isEnabled(),
+                request.isDraining(),
+                null,
+                null,
+                request.getAttributes()
+        ));
+    }
+
+    @Override
+    public void declareWorkerGroup(WorkerGroupDeclaration request) {
+        MassEngine engine = requireStartedEngine();
+        engine.getConfig().getWorkerManager().upsertWorkerGroup(toWorkerGroupRecord(
+                Objects.requireNonNull(request, "request")
+        ));
     }
 
     @Override
     public void registerWorker(WorkerRegistration request) {
         requireStartedEngine();
-        EventResponse response = dispatchEventInternal(EventRequest.builder()
-                .event(PlatformEventCodes.WORKER_REGISTER)
-                .payload(Map.of("request", request))
-                .requestId(UUID.randomUUID().toString())
-                .build(), internalPrincipal(null));
-        requireSuccessfulEventResponse(response);
+        WorkerRegistration registration = normalizeWorkerRegistration(request);
+        requireStartedEngine().getConfig().getWorkerManager().addWorker(SdkResourceMapper.toWorker(registration));
     }
 
     @Override
-    public void registerWorkerContext(WorkerContextRegistration request) {
-        requireStartedEngine();
-        EventResponse response = dispatchEventInternal(EventRequest.builder()
-                .event(PlatformEventCodes.WORKER_CONTEXT_REGISTER)
-                .payload(Map.of("request", request))
-                .requestId(UUID.randomUUID().toString())
-                .build(), internalPrincipal(null));
-        requireSuccessfulEventResponse(response);
+    public WorkerCapabilityReportSnapshot reportWorkerCapability(WorkerCapabilityReportRequest request) {
+        Objects.requireNonNull(request, "request");
+        WorkerCapabilityReportResult result = requireStartedWorkerControlService()
+                .applyWorkerCapabilityReport(WorkerCapabilityReport.builder(
+                                request.workerId(),
+                                request.capabilityVersion())
+                        .availableEventCodes(request.availableEventCodes())
+                        .schedulingAttributes(request.schedulingAttributes())
+                        .agentVersion(request.agentVersion())
+                        .build());
+        return new WorkerCapabilityReportSnapshot(
+                result.status().name(),
+                result.workerId(),
+                result.capabilityVersion(),
+                result.success(),
+                result.snapshotChanged(),
+                result.reason()
+        );
+    }
+
+    @Override
+    public WorkerStateReportSnapshot reportWorkerState(WorkerStateReportRequest request) {
+        Objects.requireNonNull(request, "request");
+        WorkerStateProjectionResult result = requireStartedWorkerControlService()
+                .applyWorkerStateReport(WorkerStateReport.builder(
+                                request.workerId(),
+                                request.stateVersion(),
+                                request.state())
+                        .reason(request.reason())
+                        .observedAt(request.observedAt())
+                        .attributes(request.attributes())
+                        .build());
+        return new WorkerStateReportSnapshot(
+                result.status().name(),
+                result.workerId(),
+                result.stateVersion(),
+                result.success(),
+                result.projectionChanged(),
+                result.reason(),
+                toWorkerStateProjectionSnapshot(result.projection())
+        );
+    }
+
+    @Override
+    public WorkerStateProjectionSnapshot getWorkerStateProjection(String workerId) {
+        return toWorkerStateProjectionSnapshot(requireStartedWorkerControlService()
+                .workerStateProjection(requireWorkerId(workerId))
+                .orElse(null));
+    }
+
+    @Override
+    public List<WorkerStateProjectionSnapshot> listWorkerStateProjections() {
+        return requireStartedWorkerControlService().workerStateProjections().stream()
+                .map(this::toWorkerStateProjectionSnapshot)
+                .toList();
+    }
+
+    @Override
+    public WorkerCommandResultSnapshot requestWorkerCommand(WorkerCommandSubmitRequest request) {
+        Objects.requireNonNull(request, "request");
+        WorkerCommandLifecycleResult result = requireStartedWorkerControlService()
+                .requestWorkerCommand(WorkerCommandRequest.builder(
+                                request.commandId(),
+                                request.workerId(),
+                                request.commandType())
+                        .requester(request.requester())
+                        .reason(request.reason())
+                        .idempotencyKey(request.idempotencyKey())
+                        .deadlineEpochMillis(request.deadlineEpochMillis())
+                        .payload(request.payload())
+                        .build());
+        return toWorkerCommandResultSnapshot(result);
+    }
+
+    @Override
+    public WorkerCommandResultSnapshot acknowledgeWorkerCommand(WorkerCommandAcknowledgementRequest request) {
+        Objects.requireNonNull(request, "request");
+        WorkerCommandLifecycleResult result = requireStartedWorkerControlService()
+                .applyWorkerCommandAcknowledgement(new WorkerCommandAcknowledgement(
+                        request.commandId(),
+                        parseWorkerCommandStatus(request.status()),
+                        request.reason()
+                ));
+        return toWorkerCommandResultSnapshot(result);
+    }
+
+    @Override
+    public WorkerCommandSnapshot getWorkerCommand(String commandId) {
+        return toWorkerCommandSnapshot(requireStartedWorkerControlService()
+                .workerCommand(requireCommandId(commandId))
+                .orElse(null));
+    }
+
+    @Override
+    public List<WorkerCommandSnapshot> listWorkerCommandsForWorker(String workerId) {
+        return requireStartedWorkerControlService()
+                .workerCommandsForWorker(requireWorkerId(workerId))
+                .stream()
+                .map(this::toWorkerCommandSnapshot)
+                .toList();
+    }
+
+    @Override
+    public TaskStageEvidenceSnapshot reportTaskStageEvidence(TaskStageEvidenceRequest request) {
+        Objects.requireNonNull(request, "request");
+        TaskStageEvidenceResult result = requireStartedTaskStageEvidenceService()
+                .applyEvidence(
+                        request.taskId(),
+                        request.messageId(),
+                        request.stageName(),
+                        request.stageVersion(),
+                        request.stageStatus(),
+                        request.detail(),
+                        request.observedAt(),
+                        request.attributes());
+        return new TaskStageEvidenceSnapshot(
+                result.status().name(),
+                result.taskId(),
+                result.messageId(),
+                result.stageName(),
+                result.stageVersion(),
+                result.success(),
+                result.projectionChanged(),
+                result.reason(),
+                toTaskStageProjectionSnapshot(result.projection())
+        );
+    }
+
+    @Override
+    public TaskStageProjectionSnapshot getTaskStageProjection(String taskId, String messageId, String stageName) {
+        return toTaskStageProjectionSnapshot(requireStartedTaskStageEvidenceService()
+                .projection(requireTaskId(taskId), requireMessageId(messageId), requireStageName(stageName))
+                .orElse(null));
+    }
+
+    @Override
+    public List<TaskStageProjectionSnapshot> listTaskStageProjections(String taskId, String messageId) {
+        return requireStartedTaskStageEvidenceService()
+                .projectionsForMessage(requireTaskId(taskId), requireMessageId(messageId))
+                .stream()
+                .map(this::toTaskStageProjectionSnapshot)
+                .toList();
     }
 
     @Override
     public String getWorkerAdapterId(String workerId) {
         String normalizedWorkerId = requireWorkerId(workerId);
-        Worker worker = getWorker(normalizedWorkerId);
+        Worker worker = loadWorker(normalizedWorkerId);
         if (worker == null) {
             throw new IllegalArgumentException("Worker not found: " + normalizedWorkerId);
         }
@@ -333,7 +613,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     @Override
     public String getWorkerTransportHint(String workerId) {
-        Worker worker = getWorker(requireWorkerId(workerId));
+        Worker worker = loadWorker(requireWorkerId(workerId));
         if (worker == null) {
             throw new IllegalArgumentException("Worker not found: " + requireWorkerId(workerId));
         }
@@ -347,22 +627,19 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return transportHint;
     }
 
-    public Worker getWorker(String workerId) {
-        return requireStartedWorkerManager().getWorker(workerId);
+    @Override
+    public WorkerSnapshot getWorker(String workerId) {
+        return toWorkerSnapshot(loadWorker(workerId));
     }
 
-    public List<Worker> getAllWorkers() {
-        return requireStartedWorkerManager().getAllWorkers();
+    @Override
+    public List<WorkerSnapshot> getAllWorkers() {
+        return requireStartedWorkerStorage().getAllWorkers().stream()
+                .map(this::toWorkerSnapshot)
+                .toList();
     }
 
-    public List<WorkerContext> getAllWorkerContexts() {
-        return requireStartedWorkerManager().getAllWorkerContexts();
-    }
-
-    public List<WorkerContext> getWorkerContexts(String workerId) {
-        return requireStartedWorkerManager().getWorkerContexts(workerId);
-    }
-
+    @Override
     public PullWorkerSession pullWorker(String workerId) {
         requireStartedEngine();
         return delegate.openPullWorkerSession(workerId);
@@ -389,11 +666,16 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
-    public List<TaskDispatchItem> pollTasks(String workerId, int maxMessages, long timeoutMillis) {
+    public TaskPullResult pollTasksResult(String workerId, int maxMessages, long timeoutMillis) {
         if (maxMessages <= 0) {
             throw new IllegalArgumentException("maxMessages must be greater than 0");
         }
-        return externalPullWorkerSession(workerId).poll(maxMessages, timeoutMillis);
+        return externalPullWorkerSession(workerId).pollResult(maxMessages, timeoutMillis);
+    }
+
+    @Override
+    public List<TaskDispatchItem> pollTasks(String workerId, int maxMessages, long timeoutMillis) {
+        return pollTasksResult(workerId, maxMessages, timeoutMillis).getDispatchViews();
     }
 
     @Override
@@ -409,31 +691,30 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         );
     }
 
-    public WorkerContext getWorkerContextById(String workerContextId) {
-        return requireStartedWorkerManager().getWorkerContextById(workerContextId);
-    }
-
-    public boolean isWorkerLocked(String workerId) {
-        return requireStartedWorkerManager().isLocked(workerId);
-    }
-
+    @Override
     public boolean isWorkerOnline(String workerId) {
-        return requireStartedWorkerManager().isWorkerOnline(workerId);
+        String normalizedWorkerId = requireWorkerId(workerId);
+        if (delegate.getWorkerPresenceStore() != null) {
+            return delegate.getWorkerPresenceStore().isWorkerOnline(normalizedWorkerId);
+        }
+        Worker worker = loadWorker(normalizedWorkerId);
+        return worker != null && worker.getStatus() != null && worker.getStatus().isAvailable();
     }
 
     @Override
     public boolean updateWorkerSupportedProjects(String workerId, List<String> supportedProjects) {
-        Worker worker = requireStartedWorkerManager().getWorker(requireWorkerId(workerId));
+        WorkerStorage workerStorage = requireStartedWorkerStorage();
+        Worker worker = workerStorage.getWorker(requireWorkerId(workerId)).orElse(null);
         if (worker == null) {
             return false;
         }
         worker.setSupportedProjects(normalizedProjectCodes(supportedProjects));
-        return requireStartedWorkerManager().updateWorker(worker);
+        return workerStorage.updateWorker(worker);
     }
 
     @Override
-    public void registerProject(ProjectMetadata projectMetadata) {
-        ProjectMetadata normalized = Objects.requireNonNull(projectMetadata, "projectMetadata");
+    public void registerProject(ProjectDefinition projectDefinition) {
+        ProjectDefinition normalized = Objects.requireNonNull(projectDefinition, "projectDefinition");
         bootstrapProjectCatalogRegistry.registerProject(normalized);
         registerProjectIntoCore(normalized);
         syncProjectScopeIntoDefinitions(normalized);
@@ -445,12 +726,12 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
-    public List<ProjectMetadata> listProjects() {
+    public List<ProjectDefinition> listProjects() {
         return bootstrapProjectCatalogRegistry.listProjects();
     }
 
     @Override
-    public ProjectMetadata getProject(String projectCode) {
+    public ProjectDefinition getProject(String projectCode) {
         return bootstrapProjectCatalogRegistry.getProject(projectCode);
     }
 
@@ -483,8 +764,8 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
-    public SdkMetadataCatalog metadataCatalog() {
-        return sdkMetadataCatalogView;
+    public ControlPlaneCatalog catalog() {
+        return controlPlaneCatalogView;
     }
 
     @Override
@@ -493,12 +774,12 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
-    public List<SubmitterMetadata> listSubmitters() {
+    public List<SubmitterProfile> listSubmitters() {
         return submitterRegistry.listSubmitters();
     }
 
     @Override
-    public SubmitterMetadata getSubmitter(String principalId) {
+    public SubmitterProfile getSubmitter(String principalId) {
         return submitterRegistry.getSubmitter(principalId);
     }
 
@@ -523,104 +804,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     private void registerControlPlaneEventHandlers() {
-        registerPlatformEvent(
-                PlatformEventCodes.WORKER_REGISTER,
-                "Platform Worker Register",
-                "Register a worker identity and capability record.",
-                (request, principal) -> {
-                    WorkerRegistration registration = resolveWorkerRegistration(request);
-                    requireStartedWorkerManager().addWorker(SdkResourceMapper.toWorker(registration));
-                    return CoreEventResponse.success(Boolean.TRUE, request.getRequestId());
-                }
-        );
-        registerPlatformEvent(
-                PlatformEventCodes.WORKER_CONTEXT_REGISTER,
-                "Platform Worker Context Register",
-                "Register a worker execution context.",
-                (request, principal) -> {
-                    WorkerContextRegistration registration = resolveWorkerContextRegistration(request);
-                    requireStartedWorkerManager().addWorkerContext(SdkResourceMapper.toWorkerContext(registration));
-                    return CoreEventResponse.success(Boolean.TRUE, request.getRequestId());
-                }
-        );
-        registerPlatformEvent(
-                PlatformEventCodes.TASK_APPROVE,
-                "Platform Task Approve",
-                "Approve a task and move it into scheduling.",
-                (request, principal) -> CoreEventResponse.success(
-                        requireStartedTaskCommands().approveTask(readRequiredString(request.getPayload(), "taskId")),
-                        request.getRequestId())
-        );
-        registerPlatformEvent(
-                PlatformEventCodes.TASK_REJECT,
-                "Platform Task Reject",
-                "Reject a task and block it before scheduling.",
-                (request, principal) -> CoreEventResponse.success(
-                        requireStartedTaskCommands().rejectTask(readRequiredString(request.getPayload(), "taskId")),
-                        request.getRequestId())
-        );
-        registerPlatformEvent(
-                PlatformEventCodes.TASK_BLOCK,
-                "Platform Task Block",
-                "Block an active or ready task.",
-                (request, principal) -> CoreEventResponse.success(
-                        requireStartedTaskCommands().blockTask(readRequiredString(request.getPayload(), "taskId")),
-                        request.getRequestId())
-        );
-        registerPlatformEvent(
-                PlatformEventCodes.TASK_PAUSE,
-                "Platform Task Pause",
-                "Pause a running or ready task.",
-                (request, principal) -> CoreEventResponse.success(
-                        requireStartedTaskCommands().pauseTask(readRequiredString(request.getPayload(), "taskId")),
-                        request.getRequestId())
-        );
-        registerPlatformEvent(
-                PlatformEventCodes.TASK_RESUME,
-                "Platform Task Resume",
-                "Resume a paused task.",
-                (request, principal) -> CoreEventResponse.success(
-                        requireStartedTaskCommands().resumeTask(readRequiredString(request.getPayload(), "taskId")),
-                        request.getRequestId())
-        );
-        registerPlatformEvent(
-                PlatformEventCodes.TASK_CANCEL,
-                "Platform Task Cancel",
-                "Cancel a task and close it to terminal.",
-                (request, principal) -> CoreEventResponse.success(
-                        requireStartedTaskCommands().cancelTask(readRequiredString(request.getPayload(), "taskId")),
-                        request.getRequestId())
-        );
-        registerPlatformEvent(
-                PlatformEventCodes.TASK_TERMINATE,
-                "Platform Task Terminate",
-                "Terminate a task with an explicit terminal reason.",
-                (request, principal) -> CoreEventResponse.success(
-                                requireStartedTaskCommands().terminateTask(
-                                        readRequiredString(request.getPayload(), "taskId"),
-                                TaskTerminalReason.valueOf(readString(request.getPayload(), "reason", TaskTerminalReason.MANUAL_CANCELLED.name()))
-                        ),
-                        request.getRequestId())
-        );
-        registerPlatformEvent(
-                PlatformEventCodes.TASK_APPEND_ITEMS,
-                "Platform Task Append Items",
-                "Append more inputs to an open-intake task.",
-                (request, principal) -> CoreEventResponse.success(
-                        requireStartedTaskCommands().appendTaskItems(
-                                readRequiredString(request.getPayload(), "taskId"),
-                                readInputMaps(request.getPayload().get("inputs"))
-                        ),
-                        request.getRequestId())
-        );
-        registerPlatformEvent(
-                PlatformEventCodes.TASK_SEAL,
-                "Platform Task Seal",
-                "Seal an open-intake task against further appends.",
-                (request, principal) -> CoreEventResponse.success(
-                        requireStartedTaskCommands().sealTask(readRequiredString(request.getPayload(), "taskId")),
-                        request.getRequestId())
-        );
         registerPlatformEvent(
                 PlatformEventCodes.META_PROJECTS_LIST,
                 "Platform Meta Projects List",
@@ -673,6 +856,9 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 .enabled(existing == null || existing.isEnabled())
                 .defaultRoutingCode(existing != null ? existing.getDefaultRoutingCode() : null)
                 .projectCodes(existing != null ? existing.getProjectCodes() : List.of())
+                .priorityClass(existing != null ? existing.getPriorityClass() : null)
+                .responseMode(existing != null ? existing.getResponseMode() : null)
+                .targetScope(existing != null ? existing.getTargetScope() : null)
                 .handler((request, principal) -> toSdkResponse(
                         handler.handle(toCoreRequest(request), toCorePrincipal(principal))
                 ))
@@ -743,6 +929,9 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 .enabled(normalized.isEnabled())
                 .defaultRoutingCode(normalized.getDefaultRoutingCode())
                 .projectCodes(mergeProjectCodes(resolveProjectCodesForEvent(normalized.getCode()), normalized.getProjectCodes()))
+                .priorityClass(normalized.getPriorityClass())
+                .responseMode(normalized.getResponseMode())
+                .targetScope(normalized.getTargetScope())
                 .handler(resolveDefinitionHandler(normalized))
                 .build();
         eventHandlerCache.put(merged.getCode(), merged.getHandler());
@@ -754,11 +943,11 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return eventHandlerCache.get(eventCode);
     }
 
-    private void syncProjectScopeIntoDefinitions(ProjectMetadata projectMetadata) {
-        if (projectMetadata.getEventCodes() == null || projectMetadata.getEventCodes().isEmpty()) {
+    private void syncProjectScopeIntoDefinitions(ProjectDefinition projectDefinition) {
+        if (projectDefinition.getEventCodes() == null || projectDefinition.getEventCodes().isEmpty()) {
             return;
         }
-        for (String eventCode : projectMetadata.getEventCodes()) {
+        for (String eventCode : projectDefinition.getEventCodes()) {
             EventDefinition existing = getEvent(eventCode);
             if (existing == null) {
                 continue;
@@ -776,7 +965,10 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                             .taskModes(existing.getTaskModes())
                             .enabled(existing.isEnabled())
                             .defaultRoutingCode(existing.getDefaultRoutingCode())
-                            .projectCodes(mergeProjectCodes(existing.getProjectCodes(), List.of(projectMetadata.getCode())))
+                            .projectCodes(mergeProjectCodes(existing.getProjectCodes(), List.of(projectDefinition.getCode())))
+                            .priorityClass(existing.getPriorityClass())
+                            .responseMode(existing.getResponseMode())
+                            .targetScope(existing.getTargetScope())
                             .handler(existingHandler)
                             .build()),
                     toCoreHandler(existingHandler)
@@ -791,9 +983,9 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         if (existing != null) {
             projectCodes.addAll(existing.getProjectCodes());
         }
-        for (ProjectMetadata projectMetadata : bootstrapProjectCatalogRegistry.listProjects()) {
-            if (projectMetadata.getEventCodes().contains(eventCode)) {
-                projectCodes.add(projectMetadata.getCode());
+        for (ProjectDefinition projectDefinition : bootstrapProjectCatalogRegistry.listProjects()) {
+            if (projectDefinition.getEventCodes().contains(eventCode)) {
+                projectCodes.add(projectDefinition.getCode());
             }
         }
         return List.copyOf(projectCodes);
@@ -810,55 +1002,90 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return List.copyOf(projectCodes);
     }
 
+    private void resolveWorkerGroupSelectorForAppend(String taskId, String eventCode) {
+        String normalizedEventCode = blankToNull(eventCode);
+        if (normalizedEventCode == null) {
+            return;
+        }
+        MassEngine engine = delegate.getEngine();
+        if (engine == null || !engine.isRunning() || engine.getConfig() == null
+                || engine.getConfig().getTaskQueryService() == null
+                || engine.getConfig().getTaskCommandService() == null
+                || engine.getConfig().getWorkerManager() == null) {
+            return;
+        }
+        Task task = engine.getConfig().getTaskQueryService().getTask(taskId);
+        if (task == null || !TaskSharedConfig.workerGroupSelector(task).isEmpty()) {
+            return;
+        }
+        String workerGroupId = resolveSingleWorkerGroupId(
+                engine.getConfig().getWorkerManager().workerGroups(),
+                task.getProject(),
+                normalizedEventCode
+        );
+        if (workerGroupId == null) {
+            return;
+        }
+        Map<String, Object> sharedConfig = new LinkedHashMap<>(
+                task.getSharedConfig() == null ? Map.of() : task.getSharedConfig()
+        );
+        sharedConfig.put(TaskSharedConfig.WORKER_GROUP_ID, workerGroupId);
+        task.setSharedConfig(sharedConfig);
+        engine.getConfig().getTaskCommandService().updateTask(task);
+    }
+
+    private String resolveSingleWorkerGroupId(Collection<WorkerGroupRecord> workerGroups,
+                                             String projectCode,
+                                             String eventCode) {
+        String normalizedProjectCode = blankToNull(projectCode);
+        String normalizedEventCode = blankToNull(eventCode);
+        if (workerGroups == null || workerGroups.isEmpty()
+                || normalizedProjectCode == null || normalizedEventCode == null) {
+            return null;
+        }
+        LinkedHashSet<String> matches = new LinkedHashSet<>();
+        for (WorkerGroupRecord group : workerGroups) {
+            for (EventBinding binding : group.eventBindings()) {
+                if (normalizedEventCode.equals(binding.eventCode())
+                        && binding.projectCodes().contains(normalizedProjectCode)) {
+                    matches.add(group.groupId());
+                }
+            }
+        }
+        return matches.size() == 1 ? matches.iterator().next() : null;
+    }
+
     private EventHandler resolveDefinitionHandler(EventDefinition definition) {
         if (definition.getHandler() != null) {
             return definition.getHandler();
         }
-        return (request, principal) -> dispatchCatalogTaskEvent(request, principal, definition);
+        return (request, principal) -> unsupportedCatalogTaskEvent(request, definition);
     }
 
-    private EventResponse dispatchCatalogTaskEvent(EventRequest request,
-                                                   PrincipalContext principal,
-                                                   EventDefinition definition) {
-        MassTaskRequest taskRequest = TaskOwnershipSupport.stamp(
-                resolveTaskRequest(request, principal, definition),
-                principal == null ? internalPrincipal(null) : principal
+    private EventResponse unsupportedCatalogTaskEvent(EventRequest request, EventDefinition definition) {
+        Objects.requireNonNull(request, "request");
+        Objects.requireNonNull(definition, "definition");
+        if (!definition.getTaskModes().isEmpty()) {
+            return EventResponse.failure(
+                    "TASK_BACKED_EVENT_REQUIRES_TASK_API",
+                    "Task-backed event " + definition.getCode()
+                            + " must use createTaskShell + appendTaskItems + sealTask instead of dispatchEvent",
+                    request.getRequestId()
+            );
+        }
+        return EventResponse.failure(
+                "EVENT_HANDLER_NOT_REGISTERED",
+                "No runtime event handler registered for event: " + definition.getCode(),
+                request.getRequestId()
         );
-        validateTaskCatalogContract(taskRequest);
-        Task task = requireStartedEngine().createTask(MassTaskRequestMapper.toEngineRequest(taskRequest));
-        return EventResponse.success(task, request.getRequestId());
     }
 
-    private MassTaskRequest resolveTaskRequest(EventRequest request,
-                                               PrincipalContext principal,
-                                               EventDefinition definition) {
-        Object embeddedRequest = request.getPayload().get("request");
-        if (embeddedRequest instanceof MassTaskRequest massTaskRequest) {
-            return massTaskRequest;
+    private Map<String, Object> stringObjectMap(Map<?, ?> rawMap) {
+        LinkedHashMap<String, Object> copy = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
+            copy.put(String.valueOf(entry.getKey()), entry.getValue());
         }
-
-        Map<String, Object> payload = request.getPayload();
-        Map<String, String> headers = request.getHeaders();
-        TaskMode mode = parseTaskMode(headers.get("taskMode"), definition);
-        PayloadType payloadType = parsePayloadType(headers.get("payloadType"), definition);
-        MassTaskRequest.Builder builder = MassTaskRequest.builder()
-                .userId(firstNonBlank(headers.get("userId"), principal == null ? null : principal.getUserId()))
-                .project(request.getProject())
-                .taskName(firstNonBlank(headers.get("taskName"), request.getEvent().value()))
-                .eventCode(request.getEvent().value())
-                .mode(mode)
-                .payloadType(payloadType)
-                .sharedConfig(resolveSharedConfig(payload, headers))
-                .batchSize(readInt(headers.get("batchSize"), 1))
-                .defaultMsgMaxRetryCount(readInt(headers.get("defaultMsgMaxRetryCount"), 3))
-                .maxRuntimeSeconds(readInt(headers.get("maxRuntimeSeconds"), 0));
-
-        if (payloadType == PayloadType.TEXT) {
-            builder.inputs(resolveTextInputs(payload));
-        } else {
-            builder.inputs(resolveJsonInputs(payload));
-        }
-        return builder.build();
+        return Collections.unmodifiableMap(copy);
     }
 
     private Map<String, Object> resolveSharedConfig(Map<String, Object> payload, Map<String, String> headers) {
@@ -875,41 +1102,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return sharedConfig;
     }
 
-    private List<com.xa.mass.sdk.model.MassInput> resolveTextInputs(Map<String, Object> payload) {
-        Object texts = payload.get("texts");
-        if (texts instanceof List<?> values && !values.isEmpty()) {
-            List<com.xa.mass.sdk.model.MassInput> inputs = new ArrayList<>(values.size());
-            for (Object value : values) {
-                inputs.add(new TextInput(value == null ? "" : String.valueOf(value)));
-            }
-            return inputs;
-        }
-        Object text = payload.get("text");
-        if (text != null) {
-            return List.of(new TextInput(String.valueOf(text)));
-        }
-        return List.of(new TextInput(""));
-    }
-
-    private List<com.xa.mass.sdk.model.MassInput> resolveJsonInputs(Map<String, Object> payload) {
-        Object rawInputs = payload.get("inputs");
-        if (rawInputs instanceof List<?> values && !values.isEmpty()) {
-            List<com.xa.mass.sdk.model.MassInput> inputs = new ArrayList<>(values.size());
-            for (Object value : values) {
-                inputs.add(new JsonInput(readMap(value)));
-            }
-            return inputs;
-        }
-        Map<String, Object> input = new LinkedHashMap<>(payload);
-        input.remove("sharedConfig");
-        input.remove("inputs");
-        input.remove("request");
-        if (input.isEmpty()) {
-            input = Map.of();
-        }
-        return List.of(new JsonInput(input));
-    }
-
     private WorkerRegistration resolveWorkerRegistration(CoreEventRequest request) {
         Object embedded = request.getPayload().get("request");
         if (embedded instanceof WorkerRegistration registration) {
@@ -918,29 +1110,13 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         Map<String, Object> payload = request.getPayload();
         return normalizeWorkerRegistration(WorkerRegistration.builder()
                 .workerId(readRequiredString(payload, "workerId"))
+                .adapterNodeId(readString(payload, "adapterNodeId", null))
                 .workerGroupId(readString(payload, "workerGroupId", null))
-                .supportedProjects(readStringList(payload.get("supportedProjects")))
-                .supportedEventCodes(readStringList(payload.get("supportedEventCodes")))
-                .eventBindings(readWorkerEventBindings(payload.get("eventBindings")))
                 .adapterId(readString(payload, "adapterId", null))
                 .transportHint(readString(payload, "transportHint", null))
+                .maxConcurrentWork(readInt(readString(payload, "maxConcurrentWork", null), 1))
                 .attributes(readStringMap(payload.get("attributes")))
                 .build());
-    }
-
-    private WorkerContextRegistration resolveWorkerContextRegistration(CoreEventRequest request) {
-        Object embedded = request.getPayload().get("request");
-        if (embedded instanceof WorkerContextRegistration registration) {
-            return registration;
-        }
-        Map<String, Object> payload = request.getPayload();
-        return WorkerContextRegistration.builder()
-                .workerContextId(readRequiredString(payload, "workerContextId"))
-                .workerId(readRequiredString(payload, "workerId"))
-                .project(readString(payload, "project", null))
-                .routingTags(Set.copyOf(readStringList(payload.get("routingTags"))))
-                .attributes(readStringMap(payload.get("attributes")))
-                .build();
     }
 
     private String resolveProjectCodeForMeta(CoreEventRequest request) {
@@ -978,53 +1154,8 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         );
     }
 
-    private boolean booleanEvent(String eventCode, Map<String, Object> payload) {
-        EventResponse response = dispatchEventInternal(EventRequest.builder()
-                .event(eventCode)
-                .payload(payload)
-                .requestId(UUID.randomUUID().toString())
-                .build(), internalPrincipal(null));
-        requireSuccessfulEventResponse(response);
-        return Boolean.TRUE.equals(response.getData());
-    }
-
-    private void requireSuccessfulEventResponse(EventResponse response) {
-        if (response != null && response.isSuccess()) {
-            return;
-        }
-        String code = response == null ? null : response.getCode();
-        String message = response == null ? "event dispatch failed" : response.getMessage();
-        if ("BAD_REQUEST".equalsIgnoreCase(code)) {
-            throw new IllegalArgumentException(message);
-        }
-        if ("FORBIDDEN".equalsIgnoreCase(code)) {
-            throw new SecurityException(message);
-        }
-        throw new IllegalStateException(message);
-    }
-
     private PrincipalContext internalPrincipal(String userId) {
         return PrincipalContext.internalService("sdk-internal", userId);
-    }
-
-    private TaskMode parseTaskMode(String rawValue, EventDefinition definition) {
-        if (rawValue != null && !rawValue.isBlank()) {
-            return TaskMode.valueOf(rawValue.trim().toUpperCase());
-        }
-        if (definition != null && !definition.getTaskModes().isEmpty()) {
-            return definition.getTaskModes().get(0);
-        }
-        return TaskMode.SINGLE_RUN;
-    }
-
-    private PayloadType parsePayloadType(String rawValue, EventDefinition definition) {
-        if (rawValue != null && !rawValue.isBlank()) {
-            return PayloadType.valueOf(rawValue.trim().toUpperCase());
-        }
-        if (definition != null && !definition.getPayloadTypes().isEmpty()) {
-            return definition.getPayloadTypes().get(0);
-        }
-        return PayloadType.JSON;
     }
 
     private String readRequiredString(Map<String, Object> payload, String field) {
@@ -1136,17 +1267,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return normalized.isEmpty() ? List.of() : List.copyOf(normalized);
     }
 
-    private List<Map<String, Object>> readInputMaps(Object value) {
-        if (!(value instanceof List<?> list) || list.isEmpty()) {
-            return List.of();
-        }
-        List<Map<String, Object>> inputs = new ArrayList<>(list.size());
-        for (Object item : list) {
-            inputs.add(readMap(item));
-        }
-        return List.copyOf(inputs);
-    }
-
     private String firstNonBlank(String left, String right) {
         if (left != null && !left.isBlank()) {
             return left.trim();
@@ -1164,6 +1284,10 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return value.trim();
     }
 
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
     private String requireWorkerId(String workerId) {
         if (workerId == null || workerId.isBlank()) {
             throw new IllegalArgumentException("workerId must not be blank");
@@ -1178,59 +1302,68 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return taskId.trim();
     }
 
+    private String requireMessageId(String messageId) {
+        if (messageId == null || messageId.isBlank()) {
+            throw new IllegalArgumentException("messageId must not be blank");
+        }
+        return messageId.trim();
+    }
+
+    private String requireCommandId(String commandId) {
+        if (commandId == null || commandId.isBlank()) {
+            throw new IllegalArgumentException("commandId must not be blank");
+        }
+        return commandId.trim();
+    }
+
+    private String requireStageName(String stageName) {
+        if (stageName == null || stageName.isBlank()) {
+            throw new IllegalArgumentException("stageName must not be blank");
+        }
+        return stageName.trim();
+    }
+
     private PullWorkerSession externalPullWorkerSession(String workerId) {
         return pullWorker(requireWorkerId(workerId));
     }
 
-    private WorkerRegistration normalizeWorkerRegistration(WorkerRegistration registration) {
-        Objects.requireNonNull(registration, "registration");
-        List<WorkerEventBinding> bindings = normalizedWorkerBindings(registration);
-        LinkedHashSet<String> supportedEventCodes = new LinkedHashSet<>();
-        LinkedHashSet<String> supportedProjects = new LinkedHashSet<>();
-        if (bindings != null && !bindings.isEmpty()) {
-            for (WorkerEventBinding binding : bindings) {
-                EventDefinition definition = requireEnabledEventDefinition(binding.getEventCode());
-                supportedEventCodes.add(definition.getCode());
-                supportedProjects.addAll(resolveWorkerBindingProjects(definition, binding));
-            }
-        } else {
-            supportedEventCodes.addAll(normalizedStringList(registration.getSupportedEventCodes()));
-            supportedProjects.addAll(normalizedStringList(registration.getSupportedProjects()));
+    private WorkerGroupRecord toWorkerGroupRecord(WorkerGroupDeclaration declaration) {
+        List<WorkerEventBinding> declaredBindings = declaration.getEventBindings();
+        if (declaredBindings.isEmpty()) {
+            throw new IllegalArgumentException("eventBindings is required");
         }
-        String normalizedTransportHint =
-                WorkerTransportHints.normalize(requireNonBlank(registration.getTransportHint(), "transportHint"));
-        String resolvedAdapterId = resolveRegistrationAdapterId(registration.getAdapterId(), normalizedTransportHint);
-
-        return WorkerRegistration.builder()
-                .workerId(registration.getWorkerId())
-                .workerGroupId(registration.getWorkerGroupId())
-                .supportedProjects(List.copyOf(supportedProjects))
-                .supportedEventCodes(List.copyOf(supportedEventCodes))
-                .eventBindings(bindings)
-                .adapterId(resolvedAdapterId)
-                .transportHint(normalizedTransportHint)
-                .attributes(registration.getAttributes())
+        List<EventBinding> eventBindings = new ArrayList<>(declaredBindings.size());
+        for (WorkerEventBinding binding : declaredBindings) {
+            EventDefinition definition = requireEnabledEventDefinition(binding.getEventCode());
+            eventBindings.add(EventBinding.of(definition.getCode(), resolveWorkerBindingProjects(definition, binding)));
+        }
+        return WorkerGroupRecord.builder(declaration.getGroupId())
+                .eventBindings(eventBindings)
+                .defaultAttributes(declaration.getDefaultAttributes())
+                .defaultMaxConcurrentWork(declaration.getDefaultMaxConcurrentWork())
                 .build();
     }
 
-    private List<WorkerEventBinding> normalizedWorkerBindings(WorkerRegistration registration) {
-        List<WorkerEventBinding> explicitBindings = registration.getEventBindings();
-        if (explicitBindings != null && !explicitBindings.isEmpty()) {
-            return List.copyOf(explicitBindings);
+    private WorkerRegistration normalizeWorkerRegistration(WorkerRegistration registration) {
+        Objects.requireNonNull(registration, "registration");
+        String normalizedTransportHint =
+                WorkerTransportHints.normalize(requireNonBlank(registration.getTransportHint(), "transportHint"));
+        String resolvedAdapterId = resolveRegistrationAdapterId(registration.getAdapterId(), normalizedTransportHint);
+        String workerGroupId = blankToNull(registration.getWorkerGroupId());
+        String adapterNodeId = blankToNull(registration.getAdapterNodeId());
+        if (workerGroupId != null && adapterNodeId == null) {
+            throw new IllegalArgumentException("adapterNodeId must not be blank when workerGroupId is provided");
         }
-        List<String> legacyEventCodes = normalizedStringList(registration.getSupportedEventCodes());
-        if (legacyEventCodes.isEmpty()) {
-            return List.of();
-        }
-        List<String> legacyProjectCodes = normalizedStringList(registration.getSupportedProjects());
-        List<WorkerEventBinding> derivedBindings = new ArrayList<>(legacyEventCodes.size());
-        for (String eventCode : legacyEventCodes) {
-            derivedBindings.add(WorkerEventBinding.builder()
-                    .eventCode(eventCode)
-                    .projectCodes(legacyProjectCodes)
-                    .build());
-        }
-        return List.copyOf(derivedBindings);
+
+        return WorkerRegistration.builder()
+                .workerId(registration.getWorkerId())
+                .adapterNodeId(adapterNodeId)
+                .workerGroupId(workerGroupId)
+                .adapterId(resolvedAdapterId)
+                .transportHint(normalizedTransportHint)
+                .maxConcurrentWork(registration.getMaxConcurrentWork())
+                .attributes(registration.getAttributes())
+                .build();
     }
 
     private String resolveRegistrationAdapterId(String requestedAdapterId, String transportHint) {
@@ -1263,25 +1396,25 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         }
         List<String> resolvedProjects = new ArrayList<>(binding.getProjectCodes().size());
         for (String projectCode : binding.getProjectCodes()) {
-            ProjectMetadata projectMetadata = getProject(projectCode);
-            if (projectMetadata == null) {
+            ProjectDefinition projectDefinition = getProject(projectCode);
+            if (projectDefinition == null) {
                 throw new IllegalArgumentException("Unsupported worker project: " + projectCode);
             }
-            if (!projectMetadata.isEnabled()) {
+            if (!projectDefinition.isEnabled()) {
                 throw new IllegalArgumentException("Worker project is disabled: " + projectCode);
             }
-            if (!definitionScope.contains(projectMetadata.getCode())) {
-                throw new IllegalArgumentException("Worker project " + projectMetadata.getCode()
+            if (!definitionScope.contains(projectDefinition.getCode())) {
+                throw new IllegalArgumentException("Worker project " + projectDefinition.getCode()
                         + " is outside event scope: " + definition.getCode());
             }
-            resolvedProjects.add(projectMetadata.getCode());
+            resolvedProjects.add(projectDefinition.getCode());
         }
         return List.copyOf(resolvedProjects);
     }
 
     private void registerEnabledCatalogProjectsIntoCore() {
-        for (ProjectMetadata projectMetadata : bootstrapProjectCatalogRegistry.listProjects()) {
-            registerProjectIntoCore(projectMetadata);
+        for (ProjectDefinition projectDefinition : bootstrapProjectCatalogRegistry.listProjects()) {
+            registerProjectIntoCore(projectDefinition);
         }
     }
 
@@ -1301,6 +1434,11 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 .taskModes(definition.getTaskModes().stream().map(Enum::name).toList())
                 .defaultRoutingCode(definition.getDefaultRoutingCode())
                 .projectCodes(definition.getProjectCodes())
+                .priorityClass(definition.getPriorityClass())
+                .responseMode(definition.getResponseMode())
+                .deliveryAcknowledgementMode(definition.getDeliveryAcknowledgementMode())
+                .convergenceMode(definition.getConvergenceMode())
+                .targetScope(definition.getTargetScope())
                 .enabled(definition.isEnabled())
                 .build();
     }
@@ -1336,6 +1474,11 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 .enabled(descriptor.isEnabled())
                 .defaultRoutingCode(descriptor.getDefaultRoutingCode())
                 .projectCodes(resolveProjectCodesForEvent(descriptor.getEvent(), descriptor.getProjectCodes()))
+                .priorityClass(descriptor.getPriorityClass())
+                .responseMode(descriptor.getResponseMode())
+                .deliveryAcknowledgementMode(descriptor.getDeliveryAcknowledgementMode())
+                .convergenceMode(descriptor.getConvergenceMode())
+                .targetScope(descriptor.getTargetScope())
                 .handler(eventHandlerCache.get(descriptor.getEvent()))
                 .build();
     }
@@ -1345,9 +1488,9 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         if (seedProjectCodes != null) {
             projectCodes.addAll(seedProjectCodes);
         }
-        for (ProjectMetadata projectMetadata : bootstrapProjectCatalogRegistry.listProjects()) {
-            if (projectMetadata.getEventCodes().contains(eventCode)) {
-                projectCodes.add(projectMetadata.getCode());
+        for (ProjectDefinition projectDefinition : bootstrapProjectCatalogRegistry.listProjects()) {
+            if (projectDefinition.getEventCodes().contains(eventCode)) {
+                projectCodes.add(projectDefinition.getCode());
             }
         }
         return List.copyOf(projectCodes);
@@ -1365,7 +1508,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
             try {
                 payloadTypes.add(PayloadType.valueOf(value.trim().toUpperCase(Locale.ROOT)));
             } catch (IllegalArgumentException ignored) {
-                // Keep derived SDK metadata tolerant of unknown internal descriptor values.
+                // Keep the derived catalog projection tolerant of unknown internal descriptor values.
             }
         }
         return List.copyOf(payloadTypes);
@@ -1383,7 +1526,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
             try {
                 taskModes.add(TaskMode.valueOf(value.trim().toUpperCase(Locale.ROOT)));
             } catch (IllegalArgumentException ignored) {
-                // Keep derived SDK metadata tolerant of unknown internal descriptor values.
+                // Keep the derived catalog projection tolerant of unknown internal descriptor values.
             }
         }
         return List.copyOf(taskModes);
@@ -1395,14 +1538,14 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 .toList();
     }
 
-    private void registerProjectIntoCore(ProjectMetadata projectMetadata) {
-        Objects.requireNonNull(projectMetadata, "projectMetadata");
-        ProjectRegistry.register(projectMetadata.getCode(), projectMetadata.getName(), projectMetadata.isEnabled());
+    private void registerProjectIntoCore(ProjectDefinition projectDefinition) {
+        Objects.requireNonNull(projectDefinition, "projectDefinition");
+        ProjectRegistry.register(projectDefinition.getCode(), projectDefinition.getName(), projectDefinition.isEnabled());
     }
 
     @Override
     public List<Map<String, Object>> listDefaultRules() {
-        return requireStartedRuleManager().getDefaultRules().stream()
+        return requireStartedRuleStorage().getAllRules().stream()
                 .sorted(Comparator.comparing(RuleDefinition::getId, Comparator.nullsLast(String::compareTo)))
                 .map(this::toRuleItem)
                 .toList();
@@ -1415,146 +1558,42 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     @Override
     public List<String> listRegisteredEvaluatorTypes() {
-        return requireStartedRuleManager().getRegisteredEvaluatorTypes().stream().map(Enum::name).toList();
+        return requireStartedRuleStorage().getRegisteredEvaluatorTypes().stream().map(Enum::name).toList();
     }
 
     @Override
     public void replaceDefaultRules(Collection<RuleDefinition> rules) {
         Objects.requireNonNull(rules, "rules");
-        RuleManager<Map<String, Object>> ruleManager = requireStartedRuleManager();
-        ruleManager.clear();
-        ruleManager.addDefaultRules(List.copyOf(rules));
-    }
-
-    @Override
-    public void publishTaskEvents() {
-        requireStartedEngine();
-        delegate.publishTaskEvents();
-    }
-
-    @Override
-    public List<Map<String, Object>> listSessions() {
-        List<Map<String, Object>> data = new ArrayList<>();
-        WorkerEndpointInspector endpointInspector = resolveEndpointInspector();
-        if (endpointInspector == null) {
-            return data;
-        }
-
-        Map<String, List<WorkerEndpointSnapshot>> grouped = new HashMap<>();
-        for (WorkerEndpointSnapshot snapshot : endpointInspector.listWorkerEndpoints()) {
-            grouped.computeIfAbsent(snapshot.getWorkerId(), ignored -> new ArrayList<>()).add(snapshot);
-        }
-        grouped.forEach((workerId, endpoints) -> {
-            Map<String, Object> entry = new LinkedHashMap<>();
-            entry.put("workerId", workerId);
-            List<Map<String, Object>> connections = new ArrayList<>();
-            endpoints.forEach(snapshot -> {
-                Map<String, Object> connectionInfo = new LinkedHashMap<>();
-                connectionInfo.put("active", snapshot.isActive());
-                connectionInfo.put("endpointId", snapshot.getEndpointId());
-                connectionInfo.put("transport", snapshot.getTransport());
-                connections.add(connectionInfo);
-            });
-            entry.put("connections", connections);
-            data.add(entry);
-        });
-        return data;
-    }
-
-    @Override
-    public Map<String, Object> getSessionStats() {
-        Map<String, Object> data = new LinkedHashMap<>();
-        WorkerEndpointRegistry endpointRegistry = resolveEndpointRegistry();
-        WorkerEndpointInspector endpointInspector = resolveEndpointInspector();
-        if (endpointRegistry != null) {
-            data.put("activeConnections", endpointRegistry.getActiveConnectionCount());
-            data.put("workerCount", endpointInspector != null
-                    ? endpointInspector.listWorkerEndpoints().stream().map(WorkerEndpointSnapshot::getWorkerId).distinct().count()
-                    : 0L);
-        } else {
-            data.put("activeConnections", 0);
-            data.put("workerCount", 0L);
-        }
-        return data;
-    }
-
-    @Override
-    public Map<String, Object> enqueueRawMessage(Map<String, Object> request) {
-        Object workerId = request.get("workerId");
-        if (!(workerId instanceof String workerIdText) || workerIdText.isBlank()) {
-            return Map.of("success", false, "msg", "workerId is required");
-        }
-        Object rawJson = request.get("rawJson");
-        String payload = rawJson instanceof String rawText ? rawText : GSON.toJson(request);
-        boolean accepted = delegate.sendRawTransportMessage(
-                workerIdText.trim(),
-                payload,
-                UUID.randomUUID().toString()
-        );
-        if (!accepted) {
-            return Map.of("success", false, "msg", "no transport side-channel accepted workerId");
-        }
-        return Map.of("success", true, "msg", "message enqueued");
-    }
-
-    @Override
-    public Map<String, Object> getQueueDetail() {
-        return delegate.getTransportQueueDetail();
-    }
-
-    @Override
-    public Map<String, Object> getQueueMetrics() {
-        return Map.of(
-                "inputQueueRate", 0,
-                "outputQueueRate", 0
-        );
-    }
-
-    private void validateTaskCatalogContract(MassTaskRequest request) {
-        Objects.requireNonNull(request, "request");
-        ProjectMetadata projectMetadata = bootstrapProjectCatalogRegistry.getProject(request.getProject());
-        if (projectMetadata == null) {
-            throw new IllegalArgumentException("Unsupported SDK project: " + request.getProject());
-        }
-        if (!projectMetadata.isEnabled()) {
-            throw new IllegalArgumentException("SDK project is disabled: " + request.getProject());
-        }
-        String eventCode = request.getEventCode();
-        if (eventCode == null || eventCode.isBlank()) {
-            return;
-        }
-        EventDefinition definition = getEvent(eventCode);
-        if (definition == null) {
-            throw new IllegalArgumentException("Unsupported SDK event: " + eventCode);
-        }
-        if (!definition.isEnabled()) {
-            throw new IllegalArgumentException("SDK event is disabled: " + eventCode);
-        }
-        if (definition.getProjectCodes().isEmpty() || !definition.getProjectCodes().contains(request.getProject())) {
-            throw new IllegalArgumentException("SDK project " + request.getProject()
-                    + " does not support event: " + eventCode);
-        }
-        if (!definition.getPayloadTypes().isEmpty()
-                && !definition.getPayloadTypes().contains(request.getPayloadType())) {
-            throw new IllegalArgumentException("SDK event " + eventCode
-                    + " does not support payload type: " + request.getPayloadType());
-        }
-        if (!definition.getTaskModes().isEmpty()
-                && !definition.getTaskModes().contains(request.getMode())) {
-            throw new IllegalArgumentException("SDK event " + eventCode
-                    + " does not support task mode: " + request.getMode());
-        }
+        RuleStorage ruleStorage = requireStartedRuleStorage();
+        ruleStorage.clear();
+        ruleStorage.addRules(List.copyOf(rules));
     }
 
     /**
      * Registers a listener that fires synchronously when a task message reaches its
      * logically final state (success or exhausted retries). Safe to call before
-     * {@link #start()} 鈥?the listener is registered on the engine command/event
+     * {@link #start()} 闁?the listener is registered on the engine command/event
      * surface which exists independent of engine lifecycle.
      */
-    public void addTaskMessageLogicallyFinalListener(TaskMessageLogicallyFinalListener listener) {
+    public void addTaskWorkFinalListener(TaskWorkFinalListener listener) {
         Objects.requireNonNull(listener, "listener");
-        requireStartedTaskEvents().addTaskMessageLogicallyFinalListener(listener);
+        requireStartedTaskEvents().addTaskWorkLogicallyFinalListener((task, event) -> listener.onTaskWorkFinal(
+                new TaskWorkFinalNotification(
+                        event.taskId(),
+                        task == null ? Map.of() : task.getSharedConfig(),
+                        new TaskWorkFinalSnapshot(
+                                event.taskId(),
+                                event.messageId(),
+                                event.status() == null ? null : event.status().name(),
+                                event.finalReason() == null ? null : event.finalReason().name(),
+                                event.retryCount(),
+                                event.errorCode(),
+                                event.errorMessage(),
+                                event.payloadRef(),
+                                event.output()
+                        )
+                )
+        ));
     }
 
     private TaskCommandService requireStartedTaskCommands() {
@@ -1573,6 +1612,14 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return taskQueries;
     }
 
+    private TaskResultRuntime requireStartedTaskResultRuntime() {
+        TaskResultRuntime runtime = requireStartedEngine().getConfig().getTaskResultRuntime();
+        if (runtime == null) {
+            throw new IllegalStateException("Task result runtime is unavailable for this SDK application");
+        }
+        return runtime;
+    }
+
     private TaskEventService requireStartedTaskEvents() {
         TaskEventService taskEvents = requireStartedEngine().getConfig().getTaskEventService();
         if (taskEvents == null) {
@@ -1581,29 +1628,410 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return taskEvents;
     }
 
-    private WorkerManager requireStartedWorkerManager() {
-        WorkerManager workerManager = requireStartedEngine().getConfig().getWorkerManager();
-        if (workerManager == null) {
-            throw new IllegalStateException("Worker manager is unavailable for this SDK application");
+    private WorkerStorage requireStartedWorkerStorage() {
+        WorkerStorage workerStorage = requireStartedEngine().getConfig().getWorkerStorage();
+        if (workerStorage == null) {
+            throw new IllegalStateException("Worker storage is unavailable for this SDK application");
         }
-        return workerManager;
+        return workerStorage;
     }
 
-    private RuleManager<Map<String, Object>> requireStartedRuleManager() {
-        RuleManager<Map<String, Object>> ruleManager = requireStartedEngine().getConfig().getRuleManager();
-        if (ruleManager == null) {
-            throw new IllegalStateException("Rule manager is unavailable for this SDK application");
+    private RuleStorage requireStartedRuleStorage() {
+        RuleStorage ruleStorage = requireStartedEngine().getConfig().getRuleStorage();
+        if (ruleStorage == null) {
+            throw new IllegalStateException("Rule storage is unavailable for this SDK application");
         }
-        return ruleManager;
+        return ruleStorage;
     }
 
-    private WorkerEndpointRegistry resolveEndpointRegistry() {
-        return delegate.getEndpointRegistry();
+    private WorkerControlService requireStartedWorkerControlService() {
+        WorkerControlService service = requireStartedEngine().getConfig().getWorkerControlService();
+        if (service == null) {
+            throw new IllegalStateException("Worker control service is unavailable for this SDK application");
+        }
+        return service;
     }
 
-    private WorkerEndpointInspector resolveEndpointInspector() {
-        WorkerEndpointRegistry endpointRegistry = resolveEndpointRegistry();
-        return endpointRegistry instanceof WorkerEndpointInspector inspector ? inspector : null;
+    private TaskStageEvidenceService requireStartedTaskStageEvidenceService() {
+        TaskStageEvidenceService service = requireStartedEngine().getConfig().getTaskStageEvidenceService();
+        if (service == null) {
+            throw new IllegalStateException("Task stage evidence service is unavailable for this SDK application");
+        }
+        return service;
+    }
+
+    private Map<String, Object> copyMap(Map<String, Object> source) {
+        if (source == null) {
+            return null;
+        }
+        if (source.isEmpty()) {
+            return Map.of();
+        }
+        LinkedHashMap<String, Object> copy = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : source.entrySet()) {
+            if (entry.getKey() == null) {
+                throw new NullPointerException("map key");
+            }
+            copy.put(entry.getKey(), entry.getValue());
+        }
+        return Collections.unmodifiableMap(copy);
+    }
+
+    private String enumName(Enum<?> value) {
+        return value == null ? null : value.name();
+    }
+
+    private Worker loadWorker(String workerId) {
+        return requireStartedWorkerStorage().getWorker(workerId).orElse(null);
+    }
+
+    private boolean executeBlockTask(TaskCommandService taskCommands, String taskId, Task currentTask) {
+        if (taskCommands.blockTask(taskId)) {
+            return true;
+        }
+        return currentTask != null
+                && currentTask.getStatus() == com.xa.mass.base.enums.task.TaskStatus.NEW
+                && taskCommands.rejectTask(taskId);
+    }
+
+    private TaskCommandResult toTaskCommandResult(String taskId,
+                                                  String command,
+                                                  boolean accepted,
+                                                  boolean taskExists,
+                                                  Task task,
+                                                  String failureReason,
+                                                  String reasonCode) {
+        return new TaskCommandResult(
+                taskId,
+                command,
+                accepted,
+                taskExists,
+                task != null ? enumName(task.getStatus()) : null,
+                task != null ? enumName(task.getIntakeStatus()) : null,
+                task != null ? enumName(task.getTerminalReason()) : null,
+                task != null ? enumName(task.getHoldReason()) : null,
+                failureReason,
+                reasonCode
+        );
+    }
+
+    private String normalizeTaskCommand(String command) {
+        if (command == null || command.isBlank()) {
+            throw new IllegalArgumentException("command is required");
+        }
+        return command.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private WorkerCommandStatus parseWorkerCommandStatus(String status) {
+        if (status == null || status.isBlank()) {
+            throw new IllegalArgumentException("worker command status is required");
+        }
+        return WorkerCommandStatus.valueOf(status.trim().toUpperCase(Locale.ROOT));
+    }
+
+    private WorkerCommandResultSnapshot toWorkerCommandResultSnapshot(WorkerCommandLifecycleResult result) {
+        if (result == null) {
+            return null;
+        }
+        return new WorkerCommandResultSnapshot(
+                result.code().name(),
+                result.success(),
+                result.previousStatus() == null ? null : result.previousStatus().name(),
+                result.currentStatus() == null ? null : result.currentStatus().name(),
+                result.reason(),
+                toWorkerCommandSnapshot(result.record())
+        );
+    }
+
+    private WorkerCommandSnapshot toWorkerCommandSnapshot(WorkerCommandRecord record) {
+        if (record == null) {
+            return null;
+        }
+        return new WorkerCommandSnapshot(
+                record.commandId(),
+                record.workerId(),
+                record.commandType(),
+                record.status() == null ? null : record.status().name(),
+                record.requester(),
+                record.reason(),
+                record.idempotencyKey(),
+                record.deadlineEpochMillis(),
+                record.payload(),
+                record.statusReason(),
+                record.createdAt(),
+                record.updatedAt()
+        );
+    }
+
+    private WorkerStateProjectionSnapshot toWorkerStateProjectionSnapshot(WorkerStateProjection projection) {
+        if (projection == null) {
+            return null;
+        }
+        return new WorkerStateProjectionSnapshot(
+                projection.workerId(),
+                projection.stateVersion(),
+                projection.state(),
+                projection.reason(),
+                projection.observedAt(),
+                projection.acceptedAt()
+        );
+    }
+
+    private TaskStageProjectionSnapshot toTaskStageProjectionSnapshot(TaskStageProjection projection) {
+        if (projection == null) {
+            return null;
+        }
+        return new TaskStageProjectionSnapshot(
+                projection.taskId(),
+                projection.messageId(),
+                projection.stageName(),
+                projection.stageVersion(),
+                projection.stageStatus(),
+                projection.detail(),
+                projection.observedAt(),
+                projection.acceptedAt()
+        );
+    }
+
+    private WorkerSnapshot toWorkerSnapshot(Worker worker) {
+        if (worker == null) {
+            return null;
+        }
+        WorkerGroupRecord group = resolveWorkerGroup(worker.getWorkerGroupId());
+        List<String> supportedProjects = group != null
+                ? List.copyOf(group.projectCodes())
+                : worker.getSupportedProjects();
+        List<String> supportedEventCodes = group != null
+                ? List.copyOf(group.eventCodes())
+                : worker.getSupportedEventCodes();
+        List<WorkerEventBinding> eventBindings = group != null
+                ? toWorkerEventBindings(group)
+                : deriveWorkerEventBindings(worker);
+        return new WorkerSnapshot(
+                worker.getWorkerId(),
+                enumName(worker.getStatus()),
+                worker.getAgentVersion(),
+                worker.getLastHeartbeat(),
+                supportedProjects,
+                supportedEventCodes,
+                eventBindings,
+                worker.getWorkerGroupId(),
+                worker.getAdapterId(),
+                worker.getOnlineStrategy(),
+                worker.getMaxConcurrentWork(),
+                worker.getAttributes(),
+                worker.getCreateTime(),
+                worker.getUpdateTime()
+        );
+    }
+
+    private WorkerGroupRecord resolveWorkerGroup(String workerGroupId) {
+        if (workerGroupId == null || workerGroupId.isBlank()) {
+            return null;
+        }
+        return requireStartedEngine()
+                .getConfig()
+                .getWorkerManager()
+                .workerGroup(workerGroupId)
+                .orElse(null);
+    }
+
+    private List<WorkerEventBinding> toWorkerEventBindings(WorkerGroupRecord group) {
+        if (group == null || group.eventBindings().isEmpty()) {
+            return List.of();
+        }
+        List<WorkerEventBinding> bindings = new ArrayList<>(group.eventBindings().size());
+        for (EventBinding binding : group.eventBindings()) {
+            bindings.add(WorkerEventBinding.builder()
+                    .eventCode(binding.eventCode())
+                    .projectCodes(binding.projectCodes())
+                    .build());
+        }
+        return List.copyOf(bindings);
+    }
+
+    private List<WorkerEventBinding> deriveWorkerEventBindings(Worker worker) {
+        if (worker == null) {
+            return List.of();
+        }
+        List<String> supportedEventCodes = worker.getSupportedEventCodes();
+        if (supportedEventCodes == null || supportedEventCodes.isEmpty()) {
+            return List.of();
+        }
+        List<WorkerEventBinding> bindings = new ArrayList<>(supportedEventCodes.size());
+        for (String eventCode : supportedEventCodes) {
+            if (eventCode == null || eventCode.isBlank()) {
+                continue;
+            }
+            EventDefinition definition = controlPlaneCatalogView.getEvent(eventCode);
+            bindings.add(WorkerEventBinding.builder()
+                    .eventCode(eventCode)
+                    .projectCodes(definition == null ? List.of() : definition.getProjectCodes())
+                    .build());
+        }
+        return bindings.isEmpty() ? List.of() : List.copyOf(bindings);
+    }
+
+    private TaskShellSnapshot toTaskShellSnapshot(Task task) {
+        if (task == null) {
+            return null;
+        }
+        return new TaskShellSnapshot(
+                task.getTid(),
+                task.getTaskName(),
+                task.getTenantId(),
+                task.getProject(),
+                task.getUser() == null ? null : task.getUser().getUserId(),
+                enumName(task.getContract()),
+                task.getSourceRef()
+        );
+    }
+
+    private TaskStateSnapshot toTaskStateSnapshot(Task task) {
+        return new TaskStateSnapshot(
+                task.getTid(),
+                enumName(task.getStatus()),
+                enumName(task.getTerminalReason()),
+                enumName(task.getIntakeStatus())
+        );
+    }
+
+    private TaskAccessSnapshot toTaskAccessSnapshot(Task task) {
+        return new TaskAccessSnapshot(
+                task.getTid(),
+                task.getProject(),
+                copyMap(task.getSharedConfig()),
+                enumName(task.getIntakeStatus())
+        );
+    }
+
+    private TaskSummarySnapshot toTaskSummarySnapshot(Task task) {
+        if (task == null) {
+            return null;
+        }
+        return new TaskSummarySnapshot(
+                task.getTid(),
+                task.getTaskName(),
+                task.getTenantId(),
+                task.getProject(),
+                task.getUser() == null ? null : task.getUser().getUserId(),
+                enumName(task.getContract()),
+                enumName(task.getStatus()),
+                enumName(task.getTerminalReason()),
+                toTaskExecutionOptions(task.getExecutionSpec()),
+                task.getTaskSuccessNumber(),
+                task.getTaskEligibleNumber(),
+                task.getUpdateTime()
+        );
+    }
+
+    private TaskDetailSnapshot toTaskDetailSnapshot(Task task) {
+        if (task == null) {
+            return null;
+        }
+        return new TaskDetailSnapshot(
+                task.getTid(),
+                task.getTenantId(),
+                task.getTaskName(),
+                enumName(task.getContract()),
+                task.getProject(),
+                enumName(task.getStatus()),
+                task.getTaskTargetNumber(),
+                task.getTaskEligibleNumber(),
+                task.getTaskSuccessNumber(),
+                task.getTaskNonSuccessNumber(),
+                task.getMinRequiredWorkerCount(),
+                task.getPeakAssignedWorkerCount(),
+                copyMap(task.getSharedConfig()),
+                enumName(task.getHoldReason()),
+                toTaskExecutionOptions(task.getExecutionSpec()),
+                task.getSourceRef(),
+                enumName(task.getIntakeStatus()),
+                task.getUser() == null ? null : task.getUser().getUserId(),
+                task.getCreateTime(),
+                task.getUpdateTime(),
+                task.getStartTime(),
+                task.getEndTime(),
+                enumName(task.getTerminalReason())
+        );
+    }
+
+    private TaskResultWindowSnapshot toTaskResultWindowSnapshot(TaskResultWindow window) {
+        return new TaskResultWindowSnapshot(
+                window.taskId(),
+                window.items().stream().map(this::toTaskResultItemSnapshot).toList(),
+                window.nextAfterSeq(),
+                window.hasMore(),
+                window.totalVisible()
+        );
+    }
+
+    private TaskResultItemSnapshot toTaskResultItemSnapshot(TaskResultRuntimeRow row) {
+        return new TaskResultItemSnapshot(
+                row.seq(),
+                row.messageId(),
+                row.eventCode(),
+                row.status(),
+                row.finalReason(),
+                row.retryCount(),
+                row.maxRetryCount(),
+                row.workerId(),
+                row.batchId(),
+                row.attemptId(),
+                row.payloadRef(),
+                row.createTime(),
+                row.assignedTime(),
+                row.startTime(),
+                row.completeTime(),
+                row.updateTime(),
+                row.errorCode(),
+                row.errorMessage(),
+                row.output()
+        );
+    }
+
+    private TaskWorkFinalSnapshot toTaskWorkFinalSnapshot(TaskResultRuntimeRow row) {
+        return new TaskWorkFinalSnapshot(
+                row.taskId(),
+                row.messageId(),
+                row.status(),
+                row.finalReason(),
+                row.retryCount(),
+                row.errorCode(),
+                row.errorMessage(),
+                row.payloadRef(),
+                row.output()
+        );
+    }
+
+    private TaskExecutionOptions toTaskExecutionOptions(com.xa.mass.base.model.TaskExecutionSpec spec) {
+        TaskExecutionOptions view = new TaskExecutionOptions();
+        if (spec == null) {
+            return view;
+        }
+        view.setProfile(enumName(spec.getProfile()));
+        view.setWorkloadClass(enumName(spec.getWorkloadClass()));
+        view.setBatchSize(spec.getBatchSize());
+        view.setMaxRuntimeSeconds(spec.getMaxRuntimeSeconds());
+        view.setDefaultMaxRetryCount(spec.getDefaultMaxRetryCount());
+        view.setForeground(spec.isForeground());
+        return view;
+    }
+
+    private com.xa.mass.base.enums.task.TaskStatus parseTaskStatus(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return com.xa.mass.base.enums.task.TaskStatus.valueOf(value.trim().toUpperCase(Locale.ROOT));
+    }
+
+    private com.xa.mass.base.enums.task.TaskTerminalReason parseTaskTerminalReason(
+            String value,
+            com.xa.mass.base.enums.task.TaskTerminalReason defaultValue) {
+        if (value == null || value.isBlank()) {
+            return defaultValue;
+        }
+        return com.xa.mass.base.enums.task.TaskTerminalReason.valueOf(value.trim().toUpperCase(Locale.ROOT));
     }
 
     private Map<String, Object> toRuleItem(RuleDefinition rule) {
@@ -1638,5 +2066,26 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
             throw new IllegalStateException("Mass engine has not been started");
         }
         return engine;
+    }
+
+    private List<Map<String, Object>> requireAppendItems(List<Object> items, String batchEventCode) {
+        if (items == null || items.isEmpty()) {
+            return List.of();
+        }
+        List<Map<String, Object>> normalized = new ArrayList<>(items.size());
+        for (Object item : items) {
+            if (!(item instanceof Map<?, ?> rawMap)) {
+                throw new IllegalArgumentException("SDK append items must be JSON object maps");
+            }
+            Map<String, Object> normalizedMap = stringObjectMap(rawMap);
+            if (batchEventCode != null && !batchEventCode.isBlank() && !normalizedMap.containsKey("eventCode")) {
+                LinkedHashMap<String, Object> merged = new LinkedHashMap<>(normalizedMap);
+                merged.put("eventCode", batchEventCode.trim());
+                normalized.add(Map.copyOf(merged));
+            } else {
+                normalized.add(normalizedMap);
+            }
+        }
+        return List.copyOf(normalized);
     }
 }

@@ -9,7 +9,6 @@ import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.model.TransportResultEnvelope;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
 import com.xa.mass.transport.socket.session.SocketSessionManager;
-import com.xa.mass.transport.socket.worker.SocketRealtimeWorkerAdapter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,6 +38,7 @@ public final class SocketTransportServer implements TransportServer {
     private static final Logger logger = LoggerFactory.getLogger(SocketTransportServer.class);
     public static final String BOUND_PORT_PROPERTY = "mass.socket.bound-port";
 
+    private final String adapterId;
     private final String bindHost;
     private final int port;
     private final int maxConnections;
@@ -53,7 +53,8 @@ public final class SocketTransportServer implements TransportServer {
     private volatile ServerSocket serverSocket;
     private volatile Future<?> acceptTask;
 
-    public SocketTransportServer(String bindHost,
+    public SocketTransportServer(String adapterId,
+                                 String bindHost,
                                  int port,
                                  int maxConnections,
                                  SocketSessionManager sessionManager,
@@ -61,6 +62,7 @@ public final class SocketTransportServer implements TransportServer {
                                  TaskResultIngestChannel taskResultIngestChannel,
                                  WorkerSystemEventChannel systemEventChannel,
                                  RuntimeTaskExecutor runtimeTaskExecutor) {
+        this.adapterId = Objects.requireNonNull(adapterId, "adapterId");
         this.bindHost = bindHost;
         this.port = port;
         this.maxConnections = maxConnections;
@@ -149,6 +151,7 @@ public final class SocketTransportServer implements TransportServer {
     private void handleClient(Socket client) {
         String endpointId = UUID.randomUUID().toString();
         String boundWorkerId = null;
+        String boundRouteKey = null;
         try (Socket socket = client;
              BufferedReader reader = new BufferedReader(
                      new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
@@ -165,7 +168,8 @@ public final class SocketTransportServer implements TransportServer {
                     if (boundWorkerId == null) {
                         continue;
                     }
-                    sessionManager.addSession(boundWorkerId, boundWorkerId, endpointId, socket, writer);
+                    boundRouteKey = firstNonBlank(frameCodec.extractRouteKey(frame), boundWorkerId);
+                    sessionManager.addSession(boundRouteKey, boundWorkerId, endpointId, socket, writer);
                     continue;
                 }
                 if (boundWorkerId == null) {
@@ -173,13 +177,8 @@ public final class SocketTransportServer implements TransportServer {
                     continue;
                 }
                 if (frameCodec.isHeartbeatFrame(frame)) {
-                    if (systemEventChannel != null) {
-                        systemEventChannel.publishWorkerHeartbeat(
-                                boundWorkerId,
-                                "socket heartbeat",
-                                frameCodec.extractTraceId(frame)
-                        );
-                    }
+                    String traceId = firstNonBlank(frameCodec.extractTraceId(frame), frameCodec.extractMessageId(frame));
+                    sessionManager.recordHeartbeat(boundRouteKey, boundWorkerId, endpointId, "socket heartbeat", traceId);
                     continue;
                 }
                 if (frameCodec.isCanonicalTaskResult(frame)) {
@@ -188,19 +187,27 @@ public final class SocketTransportServer implements TransportServer {
                         continue;
                     }
                     TaskResultReport report = frameCodec.decodeCanonicalTaskResult(frame);
-                    taskResultIngestChannel.ingest(TransportResultEnvelope.fromReport(
-                            SocketRealtimeWorkerAdapter.PROTOCOL,
-                            boundWorkerId,
-                            endpointId,
+                    String traceId = firstNonBlank(frameCodec.extractTraceId(frame), frameCodec.extractMessageId(frame));
+                    boolean accepted = taskResultIngestChannel.ingest(new TransportResultEnvelope(
+                            adapterId,
+                            boundRouteKey,
+                            null,
+                            null,
+                            traceId,
                             report
                     ));
+                    if (!accepted) {
+                        throw new IllegalStateException("task result ingest channel rejected inbound socket task result");
+                    }
                     continue;
                 }
-                logger.warn("Ignoring unsupported socket frame: endpointId={}, workerId={}", endpointId, boundWorkerId);
+                logger.warn("Ignoring unsupported socket frame: endpointId={}, routeKey={}, workerId={}",
+                        endpointId, boundRouteKey, boundWorkerId);
             }
         } catch (Exception ex) {
             if (running.get()) {
-                logger.error("Socket client loop failed: endpointId={}, workerId={}", endpointId, boundWorkerId, ex);
+                logger.error("Socket client loop failed: endpointId={}, routeKey={}, workerId={}",
+                        endpointId, boundRouteKey, boundWorkerId, ex);
             }
         } finally {
             sessionManager.removeSession(endpointId);
@@ -240,4 +247,15 @@ public final class SocketTransportServer implements TransportServer {
             // Best-effort startup cleanup.
         }
     }
+
+    private static String firstNonBlank(String first, String second) {
+        if (first != null && !first.isBlank()) {
+            return first;
+        }
+        if (second != null && !second.isBlank()) {
+            return second;
+        }
+        return null;
+    }
 }
+

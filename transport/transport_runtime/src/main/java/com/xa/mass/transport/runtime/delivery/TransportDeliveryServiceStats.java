@@ -6,6 +6,11 @@ import java.util.Map;
  * Runtime transport delivery diagnostics snapshot assembled at service level.
  * Queue/store metrics come from {@link TransportDeliveryStoreStats}; direct-send
  * counters are owned by {@link TransportDeliveryService}.
+ *
+ * <p>This is a convenience flattening of queue-path store diagnostics plus
+ * direct-send counters. For queue semantics, prefer reading
+ * {@link #getStoreStats()} as the source of truth and treat the flattened
+ * best-effort fields accordingly.
  */
 public final class TransportDeliveryServiceStats {
 

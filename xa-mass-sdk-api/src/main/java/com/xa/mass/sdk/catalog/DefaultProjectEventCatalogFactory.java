@@ -1,5 +1,7 @@
 package com.xa.mass.sdk.catalog;
 
+import com.xa.mass.base.model.TenantConstants;
+
 import java.util.List;
 
 /**
@@ -40,12 +42,13 @@ public final class DefaultProjectEventCatalogFactory {
         return createDefaultProjectRegistry();
     }
 
-    private static ProjectMetadata project(String code, String name, String description, List<String> eventCodes) {
-        return ProjectMetadata.builder()
+    private static ProjectDefinition project(String code, String name, String description, List<String> eventCodes) {
+        return ProjectDefinition.builder()
+                .tenantId(TenantConstants.DEFAULT_TENANT_ID)
                 .code(code)
                 .name(name)
                 .description(description)
-                .eventCodes(eventCodes)
+                .authorizedEventCodes(eventCodes)
                 .build();
     }
 }

@@ -1,15 +1,16 @@
-# XA Mass Platform Internal API Reference
+﻿# XA Mass Platform Internal API Reference
 
-Last updated: 2026-04-29
+Last updated: 2026-05-12
 
 Status: current global HTTP/API reference.
 
-This document tracks the current active HTTP/API surface in the mainline runtime.
+This document tracks the active HTTP surface in the mainline runtime after the
+API v1 normalization and task shell / item ingest split.
 
 Status labels used below:
 
 - `Implemented`: endpoint exists and is wired into the current runtime
-- `Partial`: endpoint exists but is mainly diagnostic, placeholder, or thin passthrough
+- `Partial`: endpoint exists but is mainly diagnostic or thin passthrough
 - `Console`: backend-served SPA shell or route handled by the control console
 
 Scope:
@@ -22,295 +23,310 @@ Scope:
 Out of scope:
 
 - startup commands
-- end-to-end verification logs
+- full E2E walkthrough detail
 - architecture history
 
-For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md).
+For verified startup and validation flows, use
+[VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md).
 
 ## 1. Scope Notes
 
-- This file is an HTTP/API dictionary. For platform, module, and boundary truth, use [AGENT_BASELINE.md](./AGENT_BASELINE.md).
-- The current HTTP/API surface validates the kernel; it does not define the kernel.
-- `/sdk/meta/**` is read-only metadata discovery, not a second task domain.
-- SDK credential callers use the same `POST /status/api/tasks` route as console/operator callers; `/sdk/submitters/me` is credential introspection only.
-- control-console mock auth still uses request headers, but those headers now resolve to built-in operator `PrincipalContext` definitions instead of a separate permission truth model.
-- unified control-plane authorization now flows through `AuthorizationPolicy` from `xa-mass-sdk-api` / `xa-mass-sdk`; `xa-mass-server` is the HTTP host adapter that resolves principals and forwards authorization requests.
-- `EventDefinition.code` is the global event/capability identity; `project` remains scope metadata for task ownership and event eligibility.
-- `Task.project` and `Task.user` are first-class core bindings even though API edge shapes still use `project` and `userId`.
-- Stable payload boundaries are `Task.sharedConfig` and `TaskMsg.input/output`.
-- framework-owned task-create ownership metadata is currently persisted in the reserved internal envelope `Task.sharedConfig._massSecurity` with `createdByPrincipalId` and `createdByPrincipalType`.
-- HTTP read surfaces do not expose `_massSecurity` directly; callers should treat `data.security` as the supported task ownership read model.
-- `Task.workloadClass` is an explicit task-level create field; current values are `INTERACTIVE` and `BULK`, and omission defaults to `BULK`.
-- `TaskMsg.output` is the canonical logical success payload for one work item; `result` remains a summary/string read-model field.
-- `TaskMsgAttempt` keeps the concrete attempt-level callback snapshot, including per-attempt output/error details.
-- `target` is only a conventional key inside `TaskMsg.input`.
-- `Task.intakeStatus` is the active append-window lifecycle truth; `openEnded` is only the create/request projection.
-- `TaskMsg.latestAttemptWorkerId`, `latestAttemptWorkerContextId`, and `latestAttemptBatchId` are latest-attempt projections of `TaskMsgAttempt`.
-- `/status/api/workers` and `/sdk/meta/worker-capabilities` are the current joined worker capability read models: SDK registration remains capability truth, session/endpoint facts come from the transport layer, and the response joins them by `workerId`.
+- This file is an HTTP/API dictionary. For platform and boundary truth, use
+  [AGENT_BASELINE.md](./AGENT_BASELINE.md).
+- The HTTP surface validates the kernel; it does not define the kernel.
+- Formal API prefixes are now versioned:
+  - `/api/v1/**` for operator and SDK-facing control-plane APIs
+  - `/worker-api/v1/**` for repo-external worker data-plane APIs
+  - `/internal/v1/**` for debug and test-only surfaces
+- Historical unversioned public routes are removed from the active runtime.
+- `Task.sharedConfig` plus per-item runtime payload / `payloadRef` remain the
+  generic payload boundaries.
+- `target` is only a conventional key inside the per-item input payload.
+- `eventCode` is the global event/capability identity.
+- `Task.project` and `Task.user` remain first-class core bindings even though
+  some API shapes use `project` and `userId`.
+- current runtime is single-tenant, but API/model semantics are tenant-aware;
+  projects resolve under the default tenant `default`
+- framework-owned task-create ownership metadata is persisted in the reserved
+  internal envelope `Task.sharedConfig._massSecurity`; HTTP read models expose
+  supported ownership state through `data.security`, not the raw reserved
+  envelope.
+- task detail is now shell-oriented and does not implicitly return item payload
+  snapshots. Public v1 keeps task item/result visibility behind an explicit
+  review/export surface instead of mixing it into shell detail.
+- public task create is now shell-only. Public ingest is explicit and happens
+  after shell creation by `taskId`.
+- request safety for item ingest is enforced at the server ingress layer with:
+  - HTTP request size guard
+  - batch item count limit
+  - single item serialized size limit
+  - total serialized batch size limit
 
-## 1.1 Event Control Plane Notes
+## 2. Auth and Surface Partitioning
 
-- Stable event invocation contract: `EventRequest`, `EventResponse`, and `PrincipalContext`.
-- Control-plane authorization resolves one unified `PrincipalContext` and then applies direct permissions plus `projectScopes` / `eventScopes`.
-- `AuthorizationPolicy` is the current shared authorization entrypoint for operator routes, SDK submitter task create, and external worker HTTP access.
-- SDK task-read ownership checks use the shared `TaskOwnershipStamp` / `AuthorizationReasonCode` contract and are adapted by the server host layer rather than hidden inside controller-local string rules.
-- `EventDefinition.code` is the event/capability identity used by dispatch, catalog reads, and permission checks; `project` remains scope metadata only.
-- Task-backed business events enter through the SDK event path and normalize to task creation; direct runtime events are handled inside the embedded SDK runtime rather than through adapter protocol frames.
-- Built-in runtime control events are also registered into the SDK metadata catalog so metadata and dispatch stay aligned.
-- Manual worker debug is task-backed. Use `POST /status/api/tasks` with `eventCode` plus `sharedConfig.targetWorkerId` when the task must target one worker.
+### 2.1 Auth API
 
-## 1.2 External Worker Notes
+Base path: `/api/v1/auth`
 
-- Public repo-external worker data-plane contract is the polling HTTP surface under `/worker-api/*`.
-- Shared repo-external control-plane registration also begins at `/worker-api/workers/register`, including realtime adapter onboarding.
-- External worker capability must be declared through `eventBindings`; external worker registration does not define a second capability identity model.
-- Realtime adapter frame shapes remain adapter-local compatibility seams. Do not treat them as the stable public non-Java worker protocol.
-- `/worker-api/*` is authenticated with SDK credentials, not operator user-mode headers.
-- `/worker-api/*` authorization is evaluated through the shared `AuthorizationPolicy`; the HTTP layer only adapts headers and request fields into that contract.
-- required worker credential rules:
-  - permission must include `worker:poll`
-  - credential attributes must bind `workerId`
-  - registration requests are still constrained by credential `eventScopes` and `projectScopes`
-- External workers receive `TaskDispatchItem` payloads, execute locally by `eventCode`, and submit `TaskResultReport`.
-- Realtime workers establish online presence through transport connection; polling workers do it through the worker API.
-- External workers do not receive direct business/control messages outside normal task lifecycle dispatch.
-- For a runnable local example, use [EXTERNAL_WORKER_QUICKSTART.md](./EXTERNAL_WORKER_QUICKSTART.md).
-
-## 2. SDK Metadata API
-
-### 2.1 List SDK Projects
+#### Get Current Operator Principal
 
 - Method: `GET`
-- Path: `/sdk/meta/projects`
+- Path: `/api/v1/auth/me`
 - Status: `Implemented`
 
-Response notes:
+#### Logout Operator Principal
 
-- returns the registered `ProjectMetadata` list
-- each project includes `code`, `name`, `description`, `enabled`, and `eventCodes`
-- `eventCodes` reference globally unique catalog event codes; they are not per-project-local names
-
-### 2.2 Get SDK Project
-
-- Method: `GET`
-- Path: `/sdk/meta/projects/{projectCode}`
+- Method: `POST`
+- Path: `/api/v1/auth/logout`
 - Status: `Implemented`
 
-Behavior:
+Notes:
 
-- returns the registered `ProjectMetadata`
-- returns HTTP 404 when `projectCode` does not exist in the catalog
+- These routes are for control-console/operator auth state.
+- submitter credentials use API-key/Bearer auth and do not participate in
+  operator session login.
 
-### 2.3 List Events For One SDK Project
+### 2.2 Submitter Credential Introspection
 
-- Method: `GET`
-- Path: `/sdk/meta/projects/{projectCode}/events`
-- Status: `Implemented`
+Base path: `/api/v1/submitters`
 
-Behavior:
-
-- returns the full `EventDefinition` list for the project's declared `eventCodes`
-- returns HTTP 404 when `projectCode` does not exist in the catalog
-
-### 2.4 List SDK Events
+#### Get Current SDK Submitter
 
 - Method: `GET`
-- Path: `/sdk/meta/events`
-- Status: `Implemented`
-
-Response notes:
-
-- returns the registered `EventDefinition` list
-- each event includes `code`, `name`, `description`, `payloadTypes`, `taskModes`, and `enabled`
-- `taskModes=[]` means the event is a direct runtime definition, not a task-create event
-
-### 2.5 Get SDK Event
-
-- Method: `GET`
-- Path: `/sdk/meta/events/{eventCode}`
-- Status: `Implemented`
-
-Behavior:
-
-- returns the registered `EventDefinition`
-- `taskModes=[]` means the event is direct runtime discovery/dispatch only
-- returns HTTP 404 when `eventCode` does not exist in the catalog
-
-### 2.6 List SDK Event Capabilities
-
-- Method: `GET`
-- Path: `/sdk/meta/event-capabilities`
-- Status: `Implemented`
-
-Response notes:
-
-- returns one row per registered global event
-- `invocationModel=TASK_BACKED` means the event creates/dispatches task work items through `POST /status/api/tasks`
-- `invocationModel=DIRECT_RUNTIME` means the event is handled directly by the SDK runtime definition
-- `onlineWorkerIds` is derived from live workers declaring `supportedEventCodes`; `supportedProjects` is not treated as capability truth
-- capability identity is the global `eventCode`; project membership only describes where that event may be invoked
-- `ready=true` means either a direct runtime handler exists or at least one online worker currently declares the event
-
-### 2.7 List Worker Capability Snapshots
-
-- Method: `GET`
-- Path: `/sdk/meta/worker-capabilities`
-- Status: `Implemented`
-
-Response notes:
-
-- returns one row per registered worker
-- joins SDK worker capability declarations with current transport session snapshots by `workerId`
-- `supportedEventCodes` remains the flat runtime capability list used by matching
-- `eventBindings` is the richer capability view derived from event metadata scope for each declared `supportedEventCode`
-- `supportedProjects` remains a separate coarse worker scope hint and is not used as capability identity
-- `adapterId` is the concrete runtime adapter identity (`polling`, `websocket`, `socket`, ...)
-- `transportHint` is the coarse transport family (`polling`, `realtime`, ...)
-- adapter labels and old compatibility names (`websocket`, `ws`, `push`, `pull`, `queue`, ...) are not `transportHint` aliases
-- capability views expose both fields; runtime routing keys off `adapterId`, not `transportHint`
-- `connections` and `hasActiveEndpoint` come from the transport/session layer and are reachability facts, not capability truth
-- worker inventory may still display `supportedProjects` as a coarse scope hint, but the server no longer exposes an operator write path for mutating that hint through the control console API
-
-## 2.6 SDK Submitter Introspection API
-
-### 2.6.1 Get Current SDK Submitter
-
-- Method: `GET`
-- Path: `/sdk/submitters/me`
+- Path: `/api/v1/submitters/me`
 - Status: `Implemented`
 
 Headers:
 
 - `X-Mass-Api-Key: <credential>` or `Authorization: Bearer <credential>`
 
-Contract notes:
+Notes:
 
 - resolves the current credential through `AuthProvider.authenticate(...)`
-- returns the authenticated submitter view with `principalId`, `userId`, `projectScope`, `permissions`, `projectScopes`, `eventScopes`, and `attributes`
-- submitter credentials are API-key style credentials; multiple credentials may resolve to the same `userId` while keeping independent permissions and scopes
+- returns the authenticated submitter view with `principalId`, `userId`,
+  `projectScope`, `permissions`, `projectScopes`, `eventScopes`, and
+  `attributes`
 - does not expose raw credential material
-- returns HTTP 401 when the credential is missing or invalid
-- this endpoint is not a control-console login/session API and does not participate in operator RBAC
+- returns HTTP `401` when the credential is missing or invalid
 
-## 3. Task API
+## 3. Project API
 
-Base path: `/status/api/tasks`
+Base path: `/api/v1/projects`
 
-### 3.1 List Tasks
+### 3.1 List Projects
 
 - Method: `GET`
-- Path: `/status/api/tasks`
+- Path: `/api/v1/projects`
 - Status: `Implemented`
 
-Behavior notes:
+Returns the registered project list.
 
-- operator callers still require `task:view`
-- SDK credential callers may also use this route
-- current SDK task-list behavior is ownership-scoped: only tasks whose internal ownership stamp matches the credential principal are returned
+### 3.2 Get Project
 
-### 3.2 Create Task
+- Method: `GET`
+- Path: `/api/v1/projects/{projectCode}`
+- Status: `Implemented`
+
+Returns HTTP `404` when `projectCode` does not exist.
+
+### 3.3 List Project Events
+
+- Method: `GET`
+- Path: `/api/v1/projects/{projectCode}/events`
+- Status: `Implemented`
+
+Returns the full `EventDefinition` list for the project's declared
+`eventCodes`. Event definitions include descriptive metadata fields:
+`priorityClass`, `responseMode`, and `targetScope`. These fields are catalog
+metadata and do not change task scheduling, result finality, or transport
+delivery behavior by themselves.
+
+### 3.4 List Project Submitters
+
+- Method: `GET`
+- Path: `/api/v1/projects/{projectCode}/submitters`
+- Status: `Implemented`
+
+Returns the effective submitter list visible for the project scope.
+
+Notes:
+
+- includes both explicitly project-scoped submitters and wildcard/global
+  submitters whose scopes still authorize the project
+- this is a control-plane ownership view; it does not expose raw credentials
+
+## 4. Catalog API
+
+Base path: `/api/v1/catalog`
+
+### 4.1 List Events
+
+- Method: `GET`
+- Path: `/api/v1/catalog/events`
+- Status: `Implemented`
+
+Notes:
+
+- returns the registered `EventDefinition` list
+- each event includes `priorityClass`, `responseMode`, and `targetScope`
+  metadata with conservative defaults
+- `taskModes=[]` means the event is direct runtime discovery/dispatch, not a
+  task-backed event
+- event metadata is descriptive only; it is not queue placement, result
+  convergence, or worker command routing truth
+
+### 4.2 Get Event
+
+- Method: `GET`
+- Path: `/api/v1/catalog/events/{eventCode}`
+- Status: `Implemented`
+
+Returns HTTP `404` when `eventCode` does not exist.
+
+### 4.3 List Event Capabilities
+
+- Method: `GET`
+- Path: `/api/v1/catalog/event-capabilities`
+- Status: `Implemented`
+
+Notes:
+
+- returns one row per registered global event
+- each row includes `priorityClass`, `responseMode`, and `targetScope` from the
+  registered event definition
+- `invocationModel=TASK_BACKED` means the event enters through the task shell
+  create plus item ingest flow
+- `invocationModel=DIRECT_RUNTIME` means the event is handled directly by the
+  SDK runtime definition
+- `ready=true` means either a direct runtime handler exists or at least one
+  online worker declares the event
+
+### 4.4 List Worker Capability Snapshots
+
+- Method: `GET`
+- Path: `/api/v1/catalog/worker-capabilities`
+- Status: `Implemented`
+
+Notes:
+
+- joins SDK worker capability declarations with current transport/session
+  snapshots by `workerId`
+- `eventBindings` is the capability truth exposed to operators
+- `supportedEventCodes` remains a flat compatibility/read convenience derived
+  from worker capability declarations; do not treat it as a separate matching
+  owner
+- `adapterId` is the concrete runtime adapter identity
+- `transportHint` is the coarse transport family
+- `online` follows transport presence truth, not the worker model status field
+- `connections` and `hasActiveEndpoint` are reachability facts from the
+  transport/session layer, not capability truth
+
+## 5. Task API
+
+Base path: `/api/v1/tasks`
+
+Task API is now explicitly split into:
+
+- shell lifecycle
+- item ingest
+- command routes
+- result reads
+
+Public create no longer accepts `inputs` and no longer mixes create with
+dispatch.
+
+Public task responses use the shared `ApiResponse<T>` envelope and server-owned
+canonical task objects rather than anonymous controller maps. The canonical
+objects intentionally keep a few redundant aliases for caller ergonomics:
+
+- `ApiTask`: task shell, state, intake, execution, counters, and timestamps
+- `ApiTaskExecution`: `profile`, `workloadClass`, `batchSize`,
+  `maxRuntimeSeconds`, `defaultMaxRetryCount`
+- `ApiTaskCounters`: target, eligible, success, non-success, and worker counters
+- `ApiTaskTimestamps`: created, updated, started, and ended timestamps
+- `ApiTaskCommandOutcome`: unified command result
+- `ApiTaskResultWindow`: live ordered result read window
+- `ApiTaskResultArchive`: terminal archive manifest
+
+### 4.1 List Tasks
+
+- Method: `GET`
+- Path: `/api/v1/tasks`
+- Status: `Implemented`
+
+Query params:
+
+- `keyword` optional
+- `project` optional, exact project code filter
+- `status` optional
+- `offset` optional, default `0`
+- `limit` optional, default `500`
+
+Notes:
+
+- operator callers require normal task-view authorization
+- submitter credential callers may also use this route
+- current SDK list behavior is ownership-scoped
+- project filtering is shell-level ownership filtering, not item-level
+  `eventCode` filtering
+- response `data` is `ApiTaskListResult` with `items` and `total`
+- each item is an `ApiTask`
+
+### 4.2 Create Task Shell
 
 - Method: `POST`
-- Path: `/status/api/tasks`
+- Path: `/api/v1/tasks`
 - Status: `Implemented`
 
 Supported request fields:
 
 - `userId`
 - `project`
-- `taskName`
-- `eventCode`
-- `mode`
-- `payloadType`
+- `contract` (`SESSION` or `BATCH`) top-level field; controls lifecycle,
+  dispatch, and terminal contract
 - `sharedConfig`
-- `inputs`
-- `batchSize`
-- `defaultMsgMaxRetryCount`
-- `openEnded`
-- `maxRuntimeSeconds`
-- `sourceType`
-- `workloadClass`
+- `executionSpec`
 - `sourceRef`
+
+Not supported on this route:
+
+- `inputs`
+- retired fields such as `targetJsonList`, `targetType`, and `extraParams`
 
 Contract rules:
 
-- `project` and `userId` are required
-- `inputs` must be a non-empty list
-- unsupported `project` values are rejected
+- `project` and `userId` are required after auth scoping is resolved
 - unknown JSON fields are rejected
-- retired fields such as `targetJsonList`, `targetType`, and `extraParams` are not supported
-- `workloadClass` controls engine runtime optimization intent only; it is not inferred from `sharedConfig`
-- current supported workload classes are `INTERACTIVE` and `BULK`
-- omitted `workloadClass` defaults to `BULK`
-- when `eventCode` is present, create uses the SDK mode/payload-aware path
-- when `eventCode` is present, `project` and `eventCode` must exist in the SDK metadata catalog and the project must declare support for that event
-- when `eventCode` is present, runtime worker capability is matched by worker-declared `supportedEventCodes`
-- `supportedProjects` remains only a coarse worker grouping/filter hint; it is not the runtime event-capability source of truth
-- SDK credential callers use this same route with `X-Mass-Api-Key` or `Authorization: Bearer ...`
-- when an SDK credential is present, `AuthProvider.authenticate(...)` resolves a `PrincipalContext`
-- SDK credentials must include `task:create` to create tasks
-- when an SDK credential has `projectScopes`, the request `project` must be allowed by that scope; `projectScope` remains a single-project compatibility projection
-- when an SDK credential has `eventScopes`, the request `eventCode` must be allowed by that scope
-- when an SDK submitter has `projectScope`, the request `project` may be omitted or must match that scope; mismatches return HTTP 403
-- when an SDK submitter has `userId`, the request `userId` may be omitted or must match that scope; mismatches return HTTP 403
-- when an SDK submitter has no scoped `userId`, user resolution order is request `userId`, then submitter `principalId`
-- invalid or missing SDK credentials return HTTP 401
-- successful task create writes framework-owned ownership metadata to the reserved internal envelope `sharedConfig._massSecurity`
-- callers must not rely on `_massSecurity` as a public request/response schema; read ownership through the explicit `security` view
-- `mode` defaults to `SINGLE_RUN`, or `STREAMING` when `openEnded=true` and `mode` is omitted
-- `payloadType` defaults to `JSON`
-- `defaultMsgMaxRetryCount` defaults to `3`
-- `openEnded` defaults to `false`
-- `maxRuntimeSeconds` defaults to `0` and disables runtime-limit termination
-- the public task API has no dedicated routing-code field; keep task-level payload or hints inside `sharedConfig` only when a concrete runtime contract requires them
+- `taskName` is server-derived and persisted on the shell; callers must not
+  provide it
+- `eventCode` is not part of task shell truth and must not be provided on this
+  route
+- `contract` is a top-level field; providing it inside `executionSpec` is
+  rejected with an error
+- omitted `executionSpec` resolves to default task execution policy
+- public create creates only the task shell and opens normal intake for later
+  append/seal flow
+- optional `sharedConfig.routeAttributes` may carry route-bucket hints; only
+  engine-approved keys are used for Stage-1 candidate narrowing
 
 Example request:
-
-```json
-  {
-    "userId": "agent",
-    "project": "demoApp",
-    "taskName": "smoke-lifecycle",
-    "workloadClass": "INTERACTIVE",
-    "sharedConfig": {
-      "textContent": "hello"
-    },
-  "inputs": [
-    {
-      "target": "target-001"
-    },
-    {
-      "target": "target-002"
-    }
-  ],
-  "batchSize": 1,
-  "defaultMsgMaxRetryCount": 3,
-  "openEnded": false,
-  "maxRuntimeSeconds": 0
-}
-```
-
-SDK-style example:
 
 ```json
 {
   "userId": "agent",
   "project": "demoApp",
-  "taskName": "sdk-crawler",
-  "eventCode": "demo.dispatch",
-  "mode": "STREAMING",
-  "payloadType": "JSON",
   "sharedConfig": {
-    "site": "example"
-  },
-  "inputs": [
-    {
-      "url": "https://example.test"
+    "site": "example",
+    "routeAttributes": {
+      "region": "us"
     }
-  ],
-  "batchSize": 1,
-  "defaultMsgMaxRetryCount": 2,
-  "maxRuntimeSeconds": 60
+  },
+  "executionSpec": {
+    "profile": "STANDARD",
+    "workloadClass": "INTERACTIVE",
+    "batchSize": 1,
+    "maxRuntimeSeconds": 60
+  }
 }
 ```
 
@@ -322,331 +338,102 @@ Example response:
   "msg": "ok",
   "data": {
     "taskId": "task-uuid",
-    "message": "Task created"
+    "task": {
+      "taskId": "task-uuid",
+      "id": "task-uuid",
+      "tid": "task-uuid",
+      "taskName": "demoApp-BATCH-task-uuid",
+      "project": "demoApp",
+      "userId": "agent",
+      "contract": "BATCH",
+      "execution": {
+        "profile": "STANDARD",
+        "workloadClass": "BULK",
+        "batchSize": 1,
+        "maxRuntimeSeconds": 60,
+        "defaultMaxRetryCount": 0
+      },
+      "counters": {
+        "targetCount": 0,
+        "eligibleCount": 0,
+        "successCount": 0,
+        "nonSuccessCount": 0,
+        "minRequiredWorkerCount": 0,
+        "peakAssignedWorkerCount": 0
+      }
+    },
+    "message": "Task shell created"
   }
 }
 ```
 
-### 3.3 Get Task
+### 4.3 Get Task Detail
 
 - Method: `GET`
-- Path: `/status/api/tasks/{taskId}`
+- Path: `/api/v1/tasks/{taskId}`
 - Status: `Implemented`
 
 Response notes:
 
 - returns `task`
-- returns a bounded `items` snapshot derived from persisted `TaskMsg.input`
-- optional `limit` controls the snapshot size; default `100`, hard-capped at `500`
-- `itemsTotal` reports the total task-message count and `itemsTruncated` reports
-  whether the bounded snapshot omitted items
-- returns `stateValidation`
-- explicit compatibility/projection audit is available separately at `/status/api/tasks/{taskId}/projection-audit`
-- `task.project` is serialized as the canonical project code
-- `task.user` is serialized as the current business-user binding object
-- task detail returns caller-visible `sharedConfig` only; framework-reserved `_massSecurity` is stripped from the HTTP read model
-- task detail exposes the supported ownership read model at `data.security`
-- SDK credential callers may also use this route; current read gate is ownership-based and requires the credential principal to match the internal ownership stamp
-- SDK credential owner mismatches return HTTP 403 with an explicit reason
-- returns HTTP 404 with `ApiResponse.error(404, ...)` when the task does not exist
+- returns `security`
+- does not return item payload snapshots by default
+- submitter credential callers may use this route under the same ownership-based
+  task-view gate
+- response `data` is `ApiTaskGetResult`
+- `data.task` is `ApiTask`
+- `data.security` is the server-owned security/config view
 
-Example response shape:
+### 4.4 Update Task Shell
 
-```json
-{
-  "code": 0,
-  "msg": "ok",
-  "data": {
-    "task": {
-      "tid": "task-uuid",
-      "taskName": "smoke-lifecycle",
-      "project": "demoApp",
-      "user": {
-        "userId": "agent"
-      },
-      "status": "NEW",
-      "sharedConfig": {
-        "textContent": "hello"
-      },
-      "intakeStatus": "SEALED",
-      "openEnded": false,
-      "batchSize": 1,
-      "maxRuntimeSeconds": 0
-    },
-    "items": [
-      {
-        "target": "target-001"
-      },
-      {
-        "target": "target-002"
-      }
-    ],
-    "stateValidation": {
-      "valid": true,
-      "needsResolution": false,
-      "violations": []
-    }
-  }
-}
-```
-
-### 3.3.1 Projection Audit (Diagnostic)
-
-- Method: `GET`
-- Path: `/status/api/tasks/{taskId}/projection-audit`
-- Status: `Implemented`
-
-Response notes:
-
-- returns `taskId`
-- returns `projectionAudit`
-- this is an explicit diagnostic-only compatibility/projection audit
-- unlike `stateValidation`, this path may inspect bounded `TaskMsg` / `TaskMsgAttempt` projection state
-- SDK credential callers may use this route under the same ownership-based task-view gate as task detail
-
-Example response shape:
-
-```json
-{
-  "code": 0,
-  "msg": "ok",
-  "data": {
-    "taskId": "task-uuid",
-    "projectionAudit": {
-      "valid": false,
-      "scope": "PROJECTION_AUDIT",
-      "violations": [
-        "ACTIVE_ATTEMPT_WITH_FINAL_MESSAGE"
-      ]
-    }
-  }
-}
-```
-
-### 3.4 Update Task Metadata
-
-- Method: `PUT`
-- Path: `/status/api/tasks/{taskId}`
+- Method: `PATCH`
+- Path: `/api/v1/tasks/{taskId}`
 - Status: `Implemented`
 
 Supported request fields:
 
 - `userId`
 - `project`
-- `taskName`
 - `sharedConfig`
-- `batchSize`
 
 Contract rules:
 
-- metadata-only update path
-- only `NEW` and `BLOCKED` tasks may be updated; returns HTTP 400 otherwise
-- omitted fields keep the currently persisted metadata/binding values
-- `inputs` and unknown fields are rejected with HTTP 400
+- shell-only update path
+- only `NEW` and `BLOCKED` tasks may be updated
+- omitted fields keep the currently persisted values
+- `taskName` is server-derived and cannot be patched
+- `inputs` and unknown fields are rejected with HTTP `400`
 
-### 3.5 Delete Task
+### 4.5 Delete Task
 
 - Method: `DELETE`
-- Path: `/status/api/tasks/{taskId}`
-- Status: `Implemented`
+- Path: `/api/v1/tasks/{taskId}`
+- Status: `Removed from public task API`
 
 Contract rules:
 
-- only `NEW` and `TERMINAL` tasks can be deleted
-- returns `ApiResponse.error(...)` when the task is in a non-deletable state
+- physical task delete is not a public mainline capability
+- public callers should use `POST /api/v1/tasks/{taskId}/commands` with
+  `TERMINATE` when they need to close task lifecycle
+- operator cleanup, if needed, belongs under an internal/operator-only surface
 
-### 3.6 Audit Task
-
-- Method: `POST`
-- Path: `/status/api/tasks/{taskId}/audit`
-- Status: `Implemented`
-
-Query params:
-
-- `approved`: required, `true` or `false`
-- `comment`: optional
-
-Behavior:
-
-- `approved=true`: `NEW` or `BLOCKED` -> `READY`
-- `approved=false`: `NEW` -> `BLOCKED`
-- returns `ApiResponse.error(...)` if the transition is not allowed from the current state
-
-Example success response:
-
-```json
-{
-  "code": 0,
-  "msg": "ok",
-  "data": {
-    "message": "Task approved",
-    "newStatus": "READY"
-  }
-}
-```
-
-### 3.7 Pause Task
+### 4.6 Append Task Items
 
 - Method: `POST`
-- Path: `/status/api/tasks/{taskId}/pause`
-- Status: `Implemented`
-
-Behavior:
-
-- `READY` or `RUNNING` -> `PAUSED`
-
-### 3.8 Resume Task
-
-- Method: `POST`
-- Path: `/status/api/tasks/{taskId}/resume`
-- Status: `Implemented`
-
-Behavior:
-
-- normally `PAUSED` -> `READY`
-- if the task already completed while paused, the response reports closure to `TERMINAL`
-
-Example success response:
-
-```json
-{
-  "code": 0,
-  "msg": "ok",
-  "data": {
-    "message": "Task resumed",
-    "newStatus": "READY",
-    "terminalReason": ""
-  }
-}
-```
-
-Alternate success response when it already completed:
-
-```json
-{
-  "code": 0,
-  "msg": "ok",
-  "data": {
-    "message": "Task already completed while paused and was closed to TERMINAL",
-    "newStatus": "TERMINAL",
-    "terminalReason": "ALL_MESSAGES_SUCCEEDED"
-  }
-}
-```
-
-### 3.9 Terminate Task
-
-- Method: `POST`
-- Path: `/status/api/tasks/{taskId}/terminate`
-- Status: `Implemented`
-
-Behavior:
-
-- any non-`TERMINAL` task may be closed to `TERMINAL`
-
-### 3.10 Status Routing Helper
-
-- Method: `PUT`
-- Path: `/status/api/tasks/{taskId}/status`
-- Status: `Implemented`
-
-Query param:
-
-- `status`: one of `READY`, `BLOCKED`, `PAUSED`, `TERMINAL`
-
-Behavior:
-
-- `READY` routes to approve or resume depending on current state
-- `BLOCKED` routes by current state:
-  - `NEW -> BLOCKED` uses review rejection
-  - `READY/RUNNING -> BLOCKED` uses runtime blocking
-- `PAUSED` routes to pause
-- `TERMINAL` routes to cancel
-- no direct route exists for `RUNNING` through this helper
-
-### 3.11 Runtime Block Task
-
-- Method: `POST`
-- Path: `/status/api/tasks/{taskId}/block`
-- Status: `Implemented`
-
-Behavior:
-
-- explicit runtime block endpoint
-- allowed from `READY` and `RUNNING`
-- moves the task to `BLOCKED`
-- unlike audit reject, this is not limited to `NEW`
-
-### 3.12 List Task Messages
-
-- Method: `GET`
-- Path: `/status/api/tasks/{taskId}/messages`
-- Status: `Implemented`
-
-Query params:
-
-- optional `limit`: default `100`, hard-capped at `500`
-- no `page`, `offset`, or cursor contract is exposed; this endpoint is a
-  bounded compatibility/debug snapshot, not a high-volume detail API
-
-Response shape:
-
-- primary per-item payload truth is `messages[*].input` and `messages[*].output`
-- `target` is only a conventional key inside `messages[*].input`
-- raw top-level target projections are not part of the message read model
-- `total` reports the task-message count; `truncated=true` means the bounded
-  snapshot omitted messages
-- SDK credential callers may also use this route; current read gate is ownership-based and requires the credential principal to match the internal ownership stamp
-
-```json
-{
-  "code": 0,
-  "msg": "ok",
-  "data": {
-    "total": 2,
-    "limit": 100,
-    "truncated": false,
-    "messages": [
-      {
-        "messageId": "msg-1",
-        "taskId": "task-uuid",
-        "status": "SUCCESS",
-        "latestAttemptWorkerId": "worker-a",
-        "latestAttemptWorkerContextId": "worker-context-a",
-        "latestAttemptBatchId": "batch-1",
-        "retryCount": 0,
-        "maxRetryCount": 3,
-        "finalReason": "BUSINESS_SUCCESS",
-        "result": "ok",
-        "errorMessage": null,
-        "errorCode": null,
-        "input": {
-          "target": "target-001"
-        },
-        "output": {}
-      }
-    ]
-  }
-}
-```
-
-### 3.13 Append Items To Open-Ended Task
-
-- Method: `POST`
-- Path: `/status/api/tasks/{taskId}/items`
+- Path: `/api/v1/tasks/{taskId}/items`
 - Status: `Implemented`
 
 Request shape:
 
 ```json
 {
-  "inputs": [
+  "eventCode": "demo.dispatch",
+  "items": [
     {
-      "target": "target-003"
+      "target": "target-001"
     },
     {
-      "target": "target-004",
-      "priority": "high"
+      "target": "target-002"
     }
   ]
 }
@@ -654,263 +441,562 @@ Request shape:
 
 Contract rules:
 
-- `inputs` must be a non-empty list
+- `items` must be a non-empty list
+- append requires batch-level `eventCode` or per-item `eventCode`
 - task must exist
-- task must have `intakeStatus=OPEN`
-- task must still be active
+- task intake must still be open
+- request is subject to ingress safety limits
+- payload is treated as opaque ingress data; the runtime does not infer payload
+  schema from the task shell
 
-Example response:
+Current server guardrails:
+
+- max item count: `500`
+- max single item serialized size: `64 KiB`
+- max total serialized batch size: `1 MiB`
+
+### 4.6.1 Sync Append One Item
+
+- Method: `POST`
+- Path: `/api/v1/tasks/{taskId}/items:sync`
+- Status: `Implemented`
+
+Request shape:
 
 ```json
 {
-  "code": 0,
-  "msg": "ok",
-  "data": {
-    "message": "Items appended",
-    "added": 2
-  }
+  "eventCode": "demo.dispatch",
+  "item": {
+    "target": "target-001"
+  },
+  "timeoutMs": 5000,
+  "clientRequestId": "req-001"
 }
 ```
 
-### 3.14 Seal Open-Ended Task
+Contract rules:
 
-- Method: `PUT`
-- Path: `/status/api/tasks/{taskId}/seal`
+- appends exactly one item to an already-created task
+- task must be in `READY` or `RUNNING`
+- task intake must be `OPEN`
+- append requires request-level `eventCode` or item-level `eventCode`
+- resolved event/capability identity must collapse to exactly one eventCode
+- request is subject to the same ingress safety limits as normal append
+- server wait is handled as an async HTTP request lifecycle rather than blocking
+  a servlet thread for the full worker round-trip
+- server enforces in-flight protection at global, project, and task scope; when
+  exceeded this route returns HTTP `429`
+- timeout only ends the HTTP wait; the appended item continues running
+- response includes `taskId`, `messageId`, `synced`, `timedOut`, `timeoutMs`,
+  and when available the stable-final result payload fields
+- this route reads final truth from runtime result state, not projection residue
+
+### 4.7 Task Command Surface
+
+- Method: `POST`
+- Path: `/api/v1/tasks/{taskId}/commands`
+- Status: `Implemented`
+
+Request shape:
+
+```json
+{
+  "command": "SEAL",
+  "reason": "optional",
+  "options": {}
+}
+```
+
+Supported commands:
+
+- `APPROVE`
+- `REJECT`
+- `BLOCK`
+- `PAUSE`
+- `RESUME`
+- `TERMINATE`
+- `SEAL`
+
+Response notes:
+
+- returns unified command execution result
+- includes post-command task state fields such as `status`, `intakeStatus`,
+  `terminalReason`, and `holdReason`
+- invalid command name returns `400`
+- command rejected by current task state returns `409`
+- response `data` is `ApiTaskCommandOutcome`
+
+### 4.8 Task Detail Boundaries
+
+- `GET /api/v1/tasks/{taskId}` returns task shell, aggregate state, and security view
+- task shell detail remains separate from task review/export payload visibility
+- residue or projection diagnostics are not part of the default task detail contract
+
+### 4.9 Task Result Stream
+
+- Method: `GET`
+- Path: `/api/v1/tasks/{taskId}/results`
+- Status: `Implemented`
+
+Query parameters:
+
+- `afterSeq` optional
+- `limit` optional, bounded read window rather than paging contract
+
+Response notes:
+
+- returns committed stable-final rows from `TaskResultRuntime`, not
+  `TaskDetailStore` projection
+- response fields include `mode`, `taskTerminal`, `archiveReady`, `items`,
+  `nextAfterSeq`, `hasMore`, and optional `archiveUrl`
+- callers own checkpointing through `afterSeq`
+- this route does not expose paging or ack semantics
+- response `data` is `ApiTaskResultWindow`
+
+### 4.10 Task Result Archive Manifest
+
+- Method: `GET`
+- Path: `/api/v1/tasks/{taskId}/results/archive`
 - Status: `Implemented`
 
 Behavior:
 
-- closes the append window for an open-ended task
-- once sealed, normal terminal convergence resumes when all engine runtime work items are final
+- returns terminal-result archive manifest
+- archive contract is fixed to `ndjson`
+- content encoding is surfaced explicitly, currently `gzip`
+- archive rows are streamed from `TaskResultRuntime` committed visible rows
+- `byteSize` and `checksum` may be `null` when the runtime does not materialize
+  archive metadata ahead of download
+- response `data` is `ApiTaskResultArchive`
 
-Example response:
-
-```json
-{
-  "code": 0,
-  "msg": "ok",
-  "data": {
-    "message": "Task sealed",
-    "status": "RUNNING"
-  }
-}
-```
-
-## 4. Queue APIs
-
-Base path: `/api/queue`
-
-### 4.1 Queue Status
+### 4.11 Task Result Archive Content
 
 - Method: `GET`
-- Path: `/api/queue/status`
+- Path: `/api/v1/tasks/{taskId}/results/archive/content`
 - Status: `Implemented`
 
-Response shape:
+Behavior:
 
-```json
-{
-  "success": true,
-  "data": {
-    "inputQueueSize": 0,
-    "outputQueueSize": 0
-  }
-}
-```
+- downloads the archive payload for terminal task results
+- `Content-Type: application/x-ndjson`
+- `Content-Encoding: gzip` when declared by the manifest
+- response is streamed directly from the SDK/runtime writer; the controller does
+  not buffer the full archive in memory before sending it
+- controller must not read projection rows for public result responses
 
-### 4.2 Queue Detail
+### 4.12 Task Item Stage Evidence
 
-- Method: `GET`
-- Path: `/api/queue/detail`
+- Method: `POST`
+- Path: `/api/v1/tasks/{taskId}/items/{messageId}/stages/{stageName}/evidence`
 - Status: `Implemented`
 
-Response shape:
+Behavior:
 
-```json
-{
-  "success": true,
-  "data": {
-    "inputQueueSize": 0,
-    "outputQueueSize": 0,
-    "transporterAvailable": true,
-    "deliveryDiagnostics": {
-      "available": true,
-      "queuedItems": 0,
-      "queueCount": 0,
-      "waitingPollers": 0,
-      "maxQueuedItems": 100000,
-      "oldestQueuedAgeMillis": 0,
-      "enqueuedItems": 0,
-      "drainedItems": 0,
-      "backpressureRejectedItems": 0,
-      "invalidItems": 0,
-      "unavailableItems": 0,
-      "shutdownClearedItems": 0,
-      "directSentItems": 0,
-      "directOfflineItems": 0,
-      "directFailedItems": 0,
-      "directInvalidItems": 0,
-      "directUnavailableItems": 0,
-      "queueByAdapter": {
-        "polling": {
-          "queuedItems": 0,
-          "queueCount": 0,
-          "waitingPollers": 0,
-          "oldestQueuedAgeMillis": 0,
-          "backpressureRejectedItems": 0
-        }
-      },
-      "directByAdapter": {
-        "websocket": {
-          "sentItems": 0,
-          "offlineItems": 0,
-          "failedItems": 0,
-          "invalidItems": 0,
-          "unavailableItems": 0
-        }
-      }
-    },
-    "runtimeExecutors": {
-      "transport": {
-        "available": true,
-        "submittedTasks": 0,
-        "completedTasks": 0,
-        "rejectedTasks": 0,
-        "activeTasks": 0,
-        "pendingTasks": 0,
-        "maxPendingTasks": 10000
-      },
-      "event": {
-        "available": false,
-        "submittedTasks": 0,
-        "completedTasks": 0,
-        "rejectedTasks": 0,
-        "activeTasks": 0,
-        "pendingTasks": 0,
-        "maxPendingTasks": 0
-      }
-    }
-  }
-}
-```
+- reports bounded task item stage evidence through the SDK
+  `TaskStageEvidenceOperations` owner-backed surface
+- writes stage evidence only; it does not enter `/results` and does not create
+  stable-final task result rows
+- path variables own `taskId`, `messageId`, and `stageName`
+- response `data` is the SDK `TaskStageEvidenceSnapshot`
 
-Notes:
-
-- queue metrics are compatibility/observability data only; they are not the
-  transport runtime routing truth
-- queue diagnostics are operator-only read surfaces; they are not a repo-external worker or SDK contract
-- `inputQueueSize` / `outputQueueSize` are the only supported root queue size
-  fields on this control-plane surface.
-- `transporterAvailable` may be `false`, with queue sizes reported as `-1`,
-  when the embedded runtime is assembled through adapter-native paths without a
-  shared message transporter
-- `deliveryDiagnostics` is the runtime delivery-store diagnostic surface. It reports
-  shared dispatch backlog and polling waiters, not engine-owned task lifecycle
-  or retry state. `oldestQueuedAgeMillis` is for backlog age monitoring only.
-  The cumulative counters are process-local diagnostics for accepted, drained,
-  rejected, invalid, unavailable, shutdown-cleared, and direct-send delivery
-  outcomes. `queueByAdapter` breaks queue-focused store diagnostics down by
-  concrete `adapterId`, and `directByAdapter` breaks direct-send counters down
-  by concrete `adapterId` for realtime adapter troubleshooting.
-- `deliveryDiagnostics` is a combined diagnostics envelope, not proof that direct-send
-  outcomes are queue-owned. `queueByAdapter` remains queue-path only, while
-  `directByAdapter` remains direct-send only.
-- `runtimeExecutors` reports admission and execution counters for runtime-owned
-  transport and optional bounded event-handler executors. `maxPendingTasks`
-  reflects SDK runtime config, not a fixed platform constant.
-
-### 4.3 Queue Metrics
+### 4.13 Task Item Stage Projection Reads
 
 - Method: `GET`
-- Path: `/api/queue/metrics`
+- Paths:
+  - `/api/v1/tasks/{taskId}/items/{messageId}/stages`
+  - `/api/v1/tasks/{taskId}/items/{messageId}/stages/{stageName}`
+- Status: `Implemented`
+
+Behavior:
+
+- reads bounded stage projections through the SDK `TaskStageEvidenceOperations`
+  surface
+- list response uses `{items,total}` in the shared `ApiResponse` envelope
+- projection reads are stage evidence read models, not task result rows
+
+### 4.14 Internal Review Preview
+
+- Method: `GET`
+- Path: `/internal/v1/review/tasks/{taskId}`
+- Status: `Implemented`
+
+Behavior:
+
+- returns bounded seed/result preview rows for console or debug review only
+- this is not part of the public task API contract
+
+### 4.15 Internal Review Seed Export
+
+- Method: `GET`
+- Path: `/internal/v1/review/tasks/{taskId}/seed-export`
+- Status: `Implemented`
+
+### 4.16 Internal Review Result Export
+
+- Method: `GET`
+- Path: `/internal/v1/review/tasks/{taskId}/result-export`
+- Status: `Implemented`
+
+### 4.17 Removed Task Route Shapes
+
+The following historical task route shapes are no longer part of the active
+public API:
+
+- create-with-inputs on public create
+- `:approve`, `:reject`, `:pause`, `:resume`, `:block`, `:terminate`, `:seal`
+- public `/review`, `/review/seed-export`, `/review/result-export`
+- public `DELETE /api/v1/tasks/{taskId}`
+- `/messages` as the main item list route
+
+## 5. Runtime Diagnostics API
+
+Base path: `/api/v1/runtime`
+
+These routes are control-plane/operator diagnostics. They do not redefine
+kernel truth.
+
+### 5.1 Queue Detail
+
+- Method: `GET`
+- Path: `/api/v1/runtime/queues`
+- Status: `Implemented`
+
+Response notes:
+
+- returns queue/detail diagnostics from the SDK internal transport debug handle
+- operator diagnostic surface only
+
+### 5.2 Queue Metrics
+
+- Method: `GET`
+- Path: `/api/v1/runtime/queues/metrics`
 - Status: `Partial`
 
 Current behavior:
 
 - endpoint exists
-- currently returns static zero values rather than real throughput metrics
+- currently returns reserved metrics data rather than a stable throughput
+  contract
 
-## 5. Session APIs
-
-Base path: `/api/session`
-
-### 5.1 List Sessions
+### 5.3 List Sessions
 
 - Method: `GET`
-- Path: `/api/session/list`
+- Path: `/api/v1/runtime/sessions`
 - Status: `Implemented`
 
 Current meaning:
 
-- this endpoint returns transport endpoint snapshots, not a kernel-level worker truth source
-- current mainline data is backed by the WebSocket adapter, but the response shape is transport-neutral
-- session diagnostics are operator-only read surfaces and should not be used as a second worker-control API
+- returns transport endpoint snapshots, not a kernel worker truth source
+- session diagnostics are operator-only read surfaces
 
-Response shape:
-
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "workerId": "dev123",
-      "connections": [
-        {
-          "active": true,
-          "endpointId": "abc123",
-          "transport": "websocket"
-        }
-      ]
-    }
-  ]
-}
-```
-
-### 5.2 Session Stats
+### 5.4 Session Stats
 
 - Method: `GET`
-- Path: `/api/session/stats`
+- Path: `/api/v1/runtime/sessions:stats`
 - Status: `Implemented`
 
 Current meaning:
 
-- `activeConnections` counts currently addressable transport endpoints
+- `activeConnections` counts addressable transport endpoints
 - `workerCount` counts distinct workers represented in the endpoint snapshot set
-- current WebSocket adapter uses a single endpoint per worker; session inspection no longer exposes any role/lane field
+- `activeConnectionsByAdapter` breaks active endpoints down by concrete
+  `adapterId`
 
-Response shape:
-
-```json
-{
-  "success": true,
-  "data": {
-    "activeConnections": 2,
-    "workerCount": 1
-  }
-}
-```
-
-## 6. Config APIs
-
-### 6.1 Global Project List
+### 5.5 Global Project Config
 
 - Method: `GET`
-- Path: `/api/config/projects`
+- Path: `/api/v1/runtime/config/projects`
 - Status: `Implemented`
 
 Behavior:
 
-- returns the configured project code list from `GlobalConfig`
-- requires authenticated operator context; it exists to populate backend-served console forms, not as a public metadata surface
+- returns configured project codes from `GlobalConfig`
+- intended for backend-served console/runtime configuration reads
 
-### 6.2 Backend-Served Control Console
+### 5.6 List Workers
+
+- Method: `GET`
+- Path: `/api/v1/runtime/workers`
+- Status: `Implemented`
+
+Notes:
+
+- `status` is the control-plane worker model status
+- `transportReachability` and `transportOnline` are transport-owned reachability
+  facts read through the SDK/transport presence view
+- joins worker state with current connection snapshots
+- `eventBindings` remains the richer capability read model
+
+### 5.7 Worker Capability And State Reports
+
+- Methods:
+  - `POST /api/v1/runtime/workers/{workerId}/capability-reports`
+  - `POST /api/v1/runtime/workers/{workerId}/state-reports`
+- Status: `Implemented`
+
+Behavior:
+
+- reports owner-backed worker capability and state through the SDK
+  `WorkerControlOperations` surface
+- these endpoints are runtime/report ingress, not worker CRUD or device/account
+  management
+- path `workerId` is the identity truth; a body `workerId`, when supplied, must
+  match the path
+- capability reports update the worker capability authority through the SDK
+  owner-backed path
+- state reports update the bounded worker state projection owner
+
+### 5.8 Worker State Projection Reads
+
+- Methods:
+  - `GET /api/v1/runtime/workers/{workerId}/state`
+  - `GET /api/v1/runtime/workers/states`
+- Status: `Implemented`
+
+Behavior:
+
+- reads bounded worker state projections through SDK `WorkerControlOperations`
+- list response uses `{items}` in the shared `ApiResponse` envelope
+- this is a read model and not scheduling truth
+
+### 5.9 Worker Command Control And Reads
+
+- Methods:
+  - `POST /api/v1/runtime/workers/{workerId}/commands`
+  - `POST /api/v1/runtime/workers/{workerId}/commands/{commandId}/ack`
+  - `GET /api/v1/runtime/workers/{workerId}/commands`
+  - `GET /api/v1/runtime/workers/commands/{commandId}`
+- Status: `Implemented`
+
+Behavior:
+
+- submits and acknowledges worker commands through SDK
+  `WorkerControlOperations`
+- command status and acknowledgements do not enter task result runtime
+- list response uses `{items,total}` in the shared `ApiResponse` envelope
+- path `workerId` is the target identity for command submit/list
+
+### 5.10 Worker Context Runtime View
+
+- Path: `/api/v1/runtime/worker-contexts`
+- Status: `Removed`
+
+Notes:
+
+- `WorkerContext` is no longer a server/runtime CRUD or diagnostic resource
+- worker mainline visibility belongs to `/api/v1/runtime/workers` plus
+  transport/session diagnostics
+- scheduling proof should use worker attributes, event bindings, transport
+  presence, runtime load/resource traces, and canonical assignment trace rows
+
+### 5.11 List Rules
+
+- Method: `GET`
+- Path: `/api/v1/runtime/rules`
+- Status: `Implemented`
+
+### 5.12 Rule Catalog
+
+- Method: `GET`
+- Path: `/api/v1/runtime/rules/meta`
+- Status: `Implemented`
+
+## 6. External Worker API
+
+Base path: `/worker-api/v1`
+
+External polling workers remain the stable repo-external integration path for
+non-Java runtimes. Realtime adapter validation may still reuse portions of the
+same registration model, but polling remains the primary public data-plane
+contract.
+
+### 6.1 Declare Worker Group
+
+- Method: `POST`
+- Path: `/worker-api/v1/worker-groups`
+- Status: `Implemented`
+
+Request notes:
+
+- `groupId` is required
+- `eventBindings` is required and becomes WorkerGroup capability truth
+- `defaultAttributes` and `defaultMaxConcurrentWork` are optional group
+  defaults
+- caller must authenticate with a worker credential that includes `worker:poll`
+  and is allowed for every declared event/project binding
+
+### 6.2 Register Worker
+
+- Method: `POST`
+- Path: `/worker-api/v1/workers`
+- Status: `Implemented`
+
+Request notes:
+
+- `workerId` is required
+- `workerGroupId` is required
+- `eventBindings` is optional compatibility input; WorkerGroup declaration is
+  the capability owner
+- `transportHint` defaults to `polling`
+- `adapterId` is optional for polling and required for realtime
+- caller must authenticate with a worker credential that includes `worker:poll`
+  and binds the same `workerId`
+
+### 6.3 Register Worker Context
+
+- Path: `/worker-api/v1/workers/{workerId}/contexts`
+- Status: `Removed`
+
+Notes:
+
+- external workers declare group capability through
+  `/worker-api/v1/worker-groups`
+- worker registration binds execution identity to a `workerGroupId` plus worker
+  attributes and transport presence
+- account/device inventory belongs to worker-management/system-event ownership,
+  not to engine/server WorkerContext CRUD
+
+### 6.4 Worker Online
+
+- Method: `POST`
+- Path: `/worker-api/v1/workers/{workerId}:online`
+- Status: `Implemented`
+
+### 6.5 Worker Heartbeat
+
+- Method: `POST`
+- Path: `/worker-api/v1/workers/{workerId}:heartbeat`
+- Status: `Implemented`
+
+### 6.6 Worker Offline
+
+- Method: `POST`
+- Path: `/worker-api/v1/workers/{workerId}:offline`
+- Status: `Implemented`
+
+### 6.7 Poll Tasks
+
+- Method: `POST`
+- Path: `/worker-api/v1/workers/{workerId}:poll`
+- Status: `Implemented`
+
+Request body:
+
+- optional `maxMessages`, default `1`
+- optional `timeoutMs`, range `0..30000`
+
+Response notes:
+
+- returns `TaskDispatchItem[]` in `data.items`
+- `eventCode` is the worker handler identity
+- `input` is the per-item logical payload
+- `sharedConfig` is the task-level shared payload
+
+### 6.8 Submit Task Result
+
+- Method: `POST`
+- Path: `/worker-api/v1/workers/{workerId}:submit-result`
+- Status: `Implemented`
+
+Request notes:
+
+- request maps onto `TaskResultReport`
+- `taskId` and `messageId` are required
+- `output` is the canonical logical callback payload
+
+### 6.9 Report Worker Capability
+
+- Method: `POST`
+- Path: `/worker-api/v1/workers/{workerId}:report-capability`
+- Status: `Implemented`
+
+Request notes:
+
+- caller must authenticate with a worker credential that includes `worker:poll`
+  and binds the same `workerId`
+- `capabilityVersion` is optional; when omitted the server synthesizes one from
+  current wall-clock time
+- `availableEventCodes` must stay within the worker credential event scope
+- the report is a bounded capability snapshot, not an incremental patch
+
+### 6.10 Report Worker State
+
+- Method: `POST`
+- Path: `/worker-api/v1/workers/{workerId}:report-state`
+- Status: `Implemented`
+
+Request notes:
+
+- caller must authenticate with a worker credential that includes `worker:poll`
+  and binds the same `workerId`
+- `stateVersion` is optional; when omitted the server synthesizes one from
+  current wall-clock time
+- external worker public contract currently accepts only:
+  `AVAILABLE`, `DEGRADED`, `DRAINING`, `OFFLINE`
+- the report is a bounded state snapshot, not an incremental patch
+- worker state projection remains separate from transport presence truth
+- current scheduling integration recognizes `DRAINING` as a dispatch gate:
+  future assignments stop, while already in-flight work continues normally
+- dispatch re-enable stays explicit in current mainline: failed or expired
+  `DRAIN` command outcomes do not reopen dispatch; a later
+  `report-state(AVAILABLE)` is required
+
+### 6.11 Acknowledge Worker Command
+
+- Method: `POST`
+- Path: `/worker-api/v1/workers/{workerId}/commands/{commandId}:ack`
+- Status: `Implemented`
+
+Request notes:
+
+- caller must authenticate with a worker credential that includes `worker:poll`
+  and binds the same `workerId`
+- the command referenced by `commandId` must belong to the same `workerId`
+- request maps onto the owner-backed worker command acknowledgement surface
+- in current mainline, acknowledging a `DRAIN` command to an accepted delivery or
+  execution state disables future dispatches to that worker without interrupting
+  already in-flight work
+- later `FAILED` or `EXPIRED` command outcomes do not re-enable dispatch on
+  their own; recovery remains an explicit worker state report via
+  `report-state(AVAILABLE)`
+
+## 7. Internal Debug API
+
+Base path: `/internal/v1/debug`
+
+These routes are not part of the formal public task API.
+
+### 7.1 Sync Task Invocation
+
+- Method: `POST`
+- Path: `/internal/v1/debug/task-invocations:sync`
+- Status: `Implemented`
+
+Purpose:
+
+- debug/test-only single-item sync invocation path
+- not a replacement for public task create or public item ingest
+
+Contract rules:
+
+- request uses an internal debug-only invocation DTO on this route
+- exactly one item is required
+- `mode`, when provided, must be `SINGLE_RUN`
+- uses the same ingest guardrails as public append
+- creates shell, appends the one item, seals, approves, and waits for a
+  logically-final result
+- sync waiting is message-scoped (`taskId + messageId`), not encoded through
+  task-level `sharedConfig`
+
+## 8. Console Surface
+
+### 8.1 Backend-Served Control Console
 
 - Method: `GET`
 - Paths:
   - `/`
   - `/tasks`
   - `/resources/workers`
-  - `/resources/worker-contexts`
   - `/resources/rules`
   - `/resources/configs`
   - `/runtime/diagnostics`
@@ -922,185 +1008,34 @@ Behavior:
 Behavior:
 
 - returns the SPA shell from the built `frontend/dist`
-- browser-side routing handles the page view after the shell loads
-- `/status`, `/status/tasks`, `/status/workers`, `/status/rules`, and `/config` are redirect aliases only and are not the primary console entrypoints
-- worker-context read models now include first-class `project` when the context is bound to a specific project/account domain
+- browser-side routing handles page view after shell load
+- WorkerContext console routes are removed; worker resource diagnostics live
+  under `/resources/workers` and runtime diagnostic views
 
-## 7. Legacy Control-Surface Notes
-
-- `/api/message/send` has been removed from the server API surface
-- raw transport-envelope injection is not an accepted operator or SDK contract; task-backed dispatch must enter through `POST /status/api/tasks`, and repo-external worker data-plane traffic must stay on `/worker-api/*`
-
-```json
-{
-  "code": 0,
-  "msg": "ok",
-  "data": {
-    "success": true,
-    "msg": "message queued"
-  }
-}
-```
-
-## 8. External Worker Transport API
-
-External polling workers remain the stable public integration path for non-Java runtimes such as Node, Python, or Go. The same registration API is also used by current realtime adapter validation paths when the embedded runtime assembles them.
-
-For a full local dev walkthrough, including demo credentials and a runnable Node worker, use [EXTERNAL_WORKER_QUICKSTART.md](./EXTERNAL_WORKER_QUICKSTART.md).
-
-### 8.1 Register External Worker
-
-- Method: `POST`
-- Path: `/worker-api/workers/register`
-- Status: `Implemented`
-
-Request notes:
-
-- `workerId` is required
-- `eventBindings` is required and is the canonical capability declaration
-- `transportHint` is optional; when omitted it defaults to `polling`
-- `adapterId` is optional for polling and required for realtime
-- `transportHint` remains a coarse family; runtime routing resolves the concrete adapter through `adapterId`
-- `transportHint` must use canonical family values such as `polling` or `realtime`; adapter names like `websocket` are not accepted as aliases
-- when `transportHint=realtime`, `adapterId` must be explicit even if the runtime currently assembles only one realtime adapter
-- caller must authenticate with an SDK credential that includes `worker:poll` and `attributes.workerId == workerId`
-
-Example:
-
-```json
-{
-  "workerId": "node-worker-1",
-  "adapterId": "polling",
-  "workerGroupId": "node-runtime",
-  "attributes": {
-    "lang": "node"
-  },
-  "eventBindings": [
-    {
-      "eventCode": "crawler.fetch-page",
-      "projectCodes": ["crawlerApp"]
-    }
-  ]
-}
-```
-
-### 8.2 Register External Worker Context
-
-- Method: `POST`
-- Path: `/worker-api/worker-contexts/register`
-- Status: `Implemented`
-
-Request notes:
-
-- `workerContextId` and `workerId` are required
-- `project`, `routingTags`, and `attributes` map directly onto `WorkerContextRegistration`
-- stateless workers may skip this API entirely
-- caller must authenticate with an SDK credential bound to the same `workerId`
-
-### 8.3 Mark External Worker Online
-
-- Method: `POST`
-- Path: `/worker-api/workers/{workerId}/online`
-- Status: `Implemented`
-
-Behavior:
-
-- maps to the same runtime online transition used by pull workers
-- affects transport/session reachability only; it does not bypass engine scheduling
-- caller must authenticate with an SDK credential bound to the path `workerId`
-
-### 8.4 External Worker Heartbeat
-
-- Method: `POST`
-- Path: `/worker-api/workers/{workerId}/heartbeat`
-- Status: `Implemented`
-
-Behavior:
-
-- refreshes worker liveness through the runtime system-event channel
-- caller must authenticate with an SDK credential bound to the path `workerId`
-
-### 8.5 Poll Tasks
-
-- Method: `POST`
-- Path: `/worker-api/workers/{workerId}/poll`
-- Status: `Implemented`
-
-Request body:
-
-- optional `maxMessages`
-- defaults to `1` when omitted
-- rejects `maxMessages <= 0`
-
-Response notes:
-
-- `data.items` is a `TaskDispatchItem[]`
-- `eventCode` is the worker handler identity
-- `input` is the per-item logical payload
-- worker transports must not leak SDK-internal wrapper shapes such as `{type,data}` into `input`
-- `sharedConfig` is the task-level shared payload
-- caller must authenticate with an SDK credential bound to the path `workerId`
-
-### 8.6 Submit Task Result
-
-- Method: `POST`
-- Path: `/worker-api/workers/{workerId}/results`
-- Status: `Implemented`
-
-Request notes:
-
-- request body maps directly onto `TaskResultReport`
-- `taskId` and `messageId` are required
-- `output` is the canonical success/failure payload written back to `TaskMsg.output`
-- caller must authenticate with an SDK credential bound to the path `workerId`
-
-### 8.7 Mark External Worker Offline
-
-- Method: `POST`
-- Path: `/worker-api/workers/{workerId}/offline`
-- Status: `Implemented`
-
-Behavior:
-
-- marks the worker offline through the runtime system-event channel
-- caller must authenticate with an SDK credential bound to the path `workerId`
-
-## 9. Worker Debug Surface
-
-Manual worker debug no longer has a dedicated `/status/workers/*` API.
-
-Use the normal task create API:
-
-- Method: `POST`
-- Path: `/status/api/tasks`
-- Status: `Implemented`
-
-Request notes:
-
-- set `project`, `taskName`, and `eventCode`
-- send the debug payload through `inputs`
-- fix the target worker with `sharedConfig.targetWorkerId`
-- worker capability and permission checks still resolve by global `eventCode`
-
-Behavior:
-
-- debug actions flow through normal engine scheduling, assignment, dispatch, result ingest, and terminal convergence
-- there is no separate worker message-history read model
-- the worker detail UI may still present a debug-focused form, but it submits a task instead of a direct worker message
-
-## 10. Health And Docs
+## 9. Health and Docs
 
 - `GET /actuator/health` - `Implemented`
 - `GET /doc.html` - `Demo`
+- `GET /v3/api-docs` - `Implemented`
 
-## 11. Response Shape Notes
+Doc handoff:
+
+- `/doc.html` is the Knife4j browser UI for exploring the active API.
+- `/v3/api-docs` exports the OpenAPI JSON document for generated handoff docs
+  and client review.
+- Task API request and response objects carry OpenAPI schema annotations in
+  the server code; Markdown remains the narrative contract, while Knife4j is
+  the exportable field-level contract.
+
+## 10. Response Shape Notes
 
 The active JSON API surface uses one response family:
 
 - success: `{"code":0,"msg":"ok","data":...}`
 - error: `{"code":<http-ish code>,"msg":"<reason>","data":null}`
 
-Implication:
+Implications:
 
 - consumers should read payloads from `data`
-- task endpoints follow the same `ApiResponse<T>` envelope as the other JSON endpoints
+- task, catalog, runtime, and worker APIs all follow the same
+  `ApiResponse<T>` envelope

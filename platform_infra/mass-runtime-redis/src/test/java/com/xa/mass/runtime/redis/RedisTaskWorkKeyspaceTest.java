@@ -15,6 +15,7 @@ class RedisTaskWorkKeyspaceTest {
         assertEquals("xa:mass:runtime:v1:delayed:work", keyspace.delayedWorkZset());
         assertEquals("xa:mass:runtime:v1:lease:expiry", keyspace.leaseExpiryZset());
         assertEquals("xa:mass:runtime:v1:stats", keyspace.runtimeStatsHash());
+        assertEquals("xa:mass:runtime:v1:tasks", keyspace.taskRegistrySet());
         assertEquals("xa:mass:runtime:v1:task:task-1:ready", keyspace.taskReadyQueue("task-1"));
         assertEquals("xa:mass:runtime:v1:task:task-1:delayed", keyspace.taskDelayedZset("task-1"));
         assertEquals("xa:mass:runtime:v1:task:task-1:work:msg-1", keyspace.taskWorkHash("task-1", "msg-1"));

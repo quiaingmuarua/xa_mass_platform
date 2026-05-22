@@ -8,46 +8,41 @@ root [AGENTS.md](../../AGENTS.md) and [../README.md](../README.md) first.
 ## Role
 
 - owns JDBC task truth persistence
-- owns JDBC worker and worker-context registration persistence
 - owns JDBC rule-definition persistence
-- owns H2/PostgreSQL dialect wiring, migrations, and startup residue recovery
+- owns H2/PostgreSQL dialect wiring and migrations
+- does not own worker runtime registry, worker locks, dispatch gates, or
+  worker registration churn
 
 ## Read This As Current Truth
 
 Stable boundary:
 
 - durable control-plane truth belongs here
+- worker runtime registry truth does not belong here; worker history/operator
+  query should flow through trace/audit ingestion instead of hot-path CRUD
 - hot-path queue, lease, retry visibility, and backpressure truth do not
 - high-volume task-message detail and attempt timelines do not
-- if some detail clearly fits a future trace/audit stream better than either DB
-  or runtime state, do not widen JDBC ownership just because trace is not fully
-  implemented yet
+- if some detail clearly fits trace/audit better than either DB or runtime
+  state, do not widen JDBC ownership
 
 Current implementation facts:
 
 - `JdbcTaskStorage` persists durable task truth but keeps `TaskMsg` and
   `TaskMsgAttempt` compatibility reads in-process
-- `JdbcWorkerStorage` persists durable worker/worker-context registration truth
-  but keeps online/offline churn, worker locks, and context occupancy residue
-  in-process
 - `JdbcStorageRuntime` is currently more than a storage factory: it wires
-  datasource, Flyway, adapter construction, and residue recovery, and it is the
+  datasource, Flyway, and adapter construction, and it is the
   first file to re-check when boundary drift is suspected
 
 Current implementation drift to keep explicit:
 
 - `JdbcStorageRuntime` is still a convenience bundle for datasource, migration,
-  adapter construction, and residue recovery; treat it as convergence work, not
-  a long-term public extension point
+  and adapter construction; treat it as convergence work, not a long-term
+  public extension point
 - `JdbcTaskStorage` now owns a JDBC-local process-local compatibility
   projection instead of reusing the full in-memory task-storage backend, but
   that residue is still in-process and restart-volatile
-- `JdbcWorkerStorage` now owns a JDBC-local process-local compatibility
-  projection for worker/context/lock residue, but that residue is still
-  in-process and restart-volatile
-- some of that residue is present only because the trace/audit layer is not yet
-  landed; treat it as bounded compatibility state, not as evidence that JDBC
-  should absorb message history or execution timelines
+- worker runtime storage is intentionally not provided by this module; use the
+  runtime worker registry backend selected by engine/transport assembly
 
 Do not describe those drift points as target architecture. If they change,
 update this README in the same change.
@@ -56,8 +51,7 @@ update this README in the same change.
 
 - `src/main/java/com/xa/mass/storage/jdbc/JdbcStorageRuntime.java`
 - `src/main/java/com/xa/mass/storage/jdbc/JdbcTaskStorage.java`
-- `src/main/java/com/xa/mass/storage/jdbc/JdbcWorkerStorage.java`
-- `src/main/java/com/xa/mass/storage/jdbc/JdbcRuntimeResidueRecovery.java`
+- `src/main/java/com/xa/mass/storage/jdbc/JdbcRuleStorage.java`
 
 ## Fast Verification
 

@@ -11,5 +11,5 @@ export async function listProjectCodes(): Promise<string[]> {
         return ['demoApp', 'crawlerApp', 'testApp']
     }
 
-    return requestApiData<string[]>('/api/config/projects')
+    return requestApiData<string[]>('/api/v1/runtime/config/projects')
 }

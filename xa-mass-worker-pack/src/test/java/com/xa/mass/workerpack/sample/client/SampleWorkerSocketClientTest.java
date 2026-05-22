@@ -3,6 +3,7 @@ package com.xa.mass.workerpack.sample.client;
 import com.google.gson.JsonObject;
 import com.xa.mass.workerpack.sample.command.fixture.SampleClientState;
 import com.xa.mass.workerpack.sample.command.fixture.SampleClientStateRegistry;
+import com.xa.mass.workerpack.sample.command.fixture.SampleWorkerFaultProfile;
 import com.xa.mass.workerpack.sample.command.runtime.SampleCommandRuntime;
 import com.xa.mass.workerpack.testutil.WsFrameTestSupport;
 import org.junit.jupiter.api.BeforeEach;
@@ -66,6 +67,37 @@ class SampleWorkerSocketClientTest {
         client.handleInboundFrame(taskMessage(false));
 
         assertTrue(client.sentMessages.isEmpty());
+    }
+
+    @Test
+    void taskRequestCanDisconnectBeforeResultByFaultProfile() throws Exception {
+        CapturingSampleWorkerSocketClient client = new CapturingSampleWorkerSocketClient("worker-test");
+        stateRegistry.getOrCreate("worker-test").setFaultProfile(
+                SampleWorkerFaultProfile.builder(SampleWorkerFaultProfile.ProfileName.FLAKY_TRANSPORT, 42L)
+                        .disconnectPhase(SampleWorkerFaultProfile.DisconnectPhase.BEFORE_RESULT)
+                        .build()
+        );
+
+        client.handleInboundFrame(taskMessage(false));
+
+        assertTrue(client.awaitClosed(1000L));
+        assertTrue(client.sentMessages.isEmpty());
+    }
+
+    @Test
+    void taskRequestCanDisconnectAfterResultByFaultProfile() throws Exception {
+        CapturingSampleWorkerSocketClient client = new CapturingSampleWorkerSocketClient("worker-test");
+        stateRegistry.getOrCreate("worker-test").setFaultProfile(
+                SampleWorkerFaultProfile.builder(SampleWorkerFaultProfile.ProfileName.FLAKY_TRANSPORT, 42L)
+                        .disconnectPhase(SampleWorkerFaultProfile.DisconnectPhase.AFTER_RESULT)
+                        .build()
+        );
+
+        client.handleInboundFrame(taskMessage(false));
+
+        assertTrue(client.awaitSentCount(1, 1000L));
+        assertTrue(client.awaitClosed(1000L));
+        assertEquals("msg-1", WsFrameTestSupport.messageId(WsFrameTestSupport.parse(client.sentMessages.get(0))));
     }
 
     @Test
@@ -157,4 +189,3 @@ class SampleWorkerSocketClientTest {
         }
     }
 }
-

@@ -1,6 +1,7 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.base.runtime.result.TaskResultCorrelation;
+import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 
 import java.util.Map;
 
@@ -10,24 +11,25 @@ import java.util.Map;
  */
 public final class TaskManagerResultIngestFacade implements TaskResultIngestFacade {
 
-    private final TaskManager taskManager;
+    private final TaskResultIngestPort resultIngestPort;
 
-    public TaskManagerResultIngestFacade(TaskManager taskManager) {
-        this.taskManager = taskManager;
+    public TaskManagerResultIngestFacade(TaskResultIngestPort resultIngestPort) {
+        this.resultIngestPort = java.util.Objects.requireNonNull(resultIngestPort, "resultIngestPort");
     }
 
     @Override
-    public boolean handleTaskMessageResult(String taskId,
-                                           String messageId,
-                                           boolean success,
-                                           String detail,
-                                           String errorCode,
-                                           Map<String, Object> output) {
-        return taskManager.handleTaskMessageResult(taskId, messageId, success, detail, errorCode, output);
+    public boolean ingestTaskResult(String taskId,
+                                    String messageId,
+                                    boolean success,
+                                    String detail,
+                                    String errorCode,
+                                    Map<String, Object> output) {
+        return resultIngestPort.ingestTaskResult(taskId, messageId, success, detail, errorCode, output);
     }
 
     @Override
-    public TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
-        return taskManager.getLatestActiveTaskMessageAttempt(taskId, messageId);
+    public TaskResultCorrelation getResultCorrelation(String taskId, String messageId) {
+        return resultIngestPort.getResultCorrelation(taskId, messageId);
     }
 }
+

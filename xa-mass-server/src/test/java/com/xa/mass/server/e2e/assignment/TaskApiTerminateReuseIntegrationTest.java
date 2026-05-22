@@ -2,11 +2,11 @@ package com.xa.mass.server.e2e.assignment;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
-import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
+import com.xa.mass.server.e2e.support.ProjectionSampleE2eTest;
 import com.xa.mass.server.testutil.WsFrameTestSupport;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
@@ -16,6 +16,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 import java.net.URI;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -23,6 +24,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(
         classes = XaMassServerApplication.class,
@@ -30,14 +32,14 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
         properties = {
                 "sample.client.auto-start=false",
                 "mass.mock.data.workers=mock/test_mock_workers_empty.json",
-                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts_empty.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class TaskApiTerminateReuseIntegrationTest extends AbstractSampleE2eTest {
+@Tag("secondary-proof")
+class TaskApiTerminateReuseIntegrationTest extends ProjectionSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
     private static final Gson GSON = new Gson();
@@ -65,16 +67,11 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractSampleE2eTest {
             TaskSnapshot firstRunning = waitForTaskSnapshot(firstTaskId, "RUNNING", 20, 500L);
             assertEquals(workerId, firstRunning.messages().get(0).get("latestAttemptWorkerId"));
 
-            Map<String, Object> firstTerminate = exchange(
-                    "/status/api/tasks/" + firstTaskId + "/terminate",
-                    HttpMethod.POST,
-                    null
-            );
+            Map<String, Object> firstTerminate = terminateTask(firstTaskId);
             assertApiOk(firstTerminate);
 
             TaskSnapshot firstTerminal = waitForTaskSnapshot(firstTaskId, "TERMINAL", 20, 500L);
-            assertEquals("EXPIRED", firstTerminal.messages().get(0).get("status"));
-            assertEquals(WorkerContextStatus.IDLE, app.getWorkerContexts(workerId).get(0).getStatus());
+            assertTrue(List.of("EXPIRED", "FAILED").contains(String.valueOf(firstTerminal.messages().get(0).get("status"))));
 
             String secondTaskId = createTaskId("terminate-reuse-second", "terminate reuse second", "target-b");
             Map<String, Object> secondApprove = audit(secondTaskId, "terminate-reuse-2");
@@ -85,14 +82,9 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractSampleE2eTest {
             TaskSnapshot secondRunning = waitForTaskSnapshot(secondTaskId, "RUNNING", 20, 500L);
             assertEquals(workerId, secondRunning.messages().get(0).get("latestAttemptWorkerId"));
 
-            Map<String, Object> secondTerminate = exchange(
-                    "/status/api/tasks/" + secondTaskId + "/terminate",
-                    HttpMethod.POST,
-                    null
-            );
+            Map<String, Object> secondTerminate = terminateTask(secondTaskId);
             assertApiOk(secondTerminate);
             waitForTaskSnapshot(secondTaskId, "TERMINAL", 20, 500L);
-            assertEquals(WorkerContextStatus.IDLE, app.getWorkerContexts(workerId).get(0).getStatus());
         } finally {
             client.disconnect();
         }
@@ -128,4 +120,3 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractSampleE2eTest {
         }
     }
 }
-

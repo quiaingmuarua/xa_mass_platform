@@ -12,17 +12,21 @@ Use this module for end-to-end validation of:
 
 Repository-level startup instructions in [`../doc/VERIFIED_RUNBOOK.md`](../doc/VERIFIED_RUNBOOK.md) are the source of truth.
 
+For current test-layer truth, minimum verification, and CI gate truth, start
+with [`../doc/TESTING_INDEX.md`](../doc/TESTING_INDEX.md). This README only
+covers server-owned Boot-shell E2E, black-box, and host-shell validation
+assets.
+
 ## Current Role
 
 - real Spring Boot entrypoint: `com.xa.mass.server.XaMassServerApplication`
 - starts runtime through `xa-mass-sdk` and directly owns the backend-hosted control console, JSON APIs, and frontend shell under `com.xa.mass.api`
+- acts as a reference host and validation shell; server HTTP/auth/project/tenant/user surfaces may evolve for host needs, but they must not redefine engine-kernel semantics or replace SDK contracts as the stable integration boundary
 - acts as the HTTP/security host adapter: request headers and routes resolve to `PrincipalContext` plus `AuthorizationRequest`, while authorization truth lives in `xa-mass-sdk-api` / `xa-mass-sdk`
 - worker, task, and rule resources are created through the embedded SDK runtime
-- default `dev` startup now externalizes project/event/submitter/rule bootstrap plus seed worker/task creation through `samples/dev/launch-workers.mjs`
-- JSON fixture bootstrap remains a test-only input path, but default `dev` no longer bootstraps catalog resources, rules, workers, or tasks from packaged fixture files
-- default `dev` startup does not auto-start embedded sample clients; worker presence is expected to come from external sample or real worker processes
-- default `dev` sample bootstrap exposes a sample-only write surface at `/sample-api/bootstrap/*`
-  protected by `X-Sample-Bootstrap-Key`
+- owner-backed worker control and task-stage evidence HTTP routes adapt to SDK
+  operation interfaces; controllers must not call engine handlers or concrete
+  owner internals directly
 
 Controller/console ownership now includes:
 
@@ -31,12 +35,18 @@ Controller/console ownership now includes:
 - backend-hosted control console shell
 - frontend route serving from built `frontend/dist`
 
+What this module does not own:
+
+- task lifecycle, assignment, retry, terminal, or result-kernel semantics
+- the stable integration contract for external workers or embedding callers
+- runtime truth defined by transport or sample/demo protocol details
+
 ## Security Wiring
 
-- operator, SDK submitter, and external worker HTTP entrypoints now converge on the shared SDK authorization contract
+- operator, submitter credential, and external worker HTTP entrypoints now converge on the shared SDK authorization contract
 - `ApiAuthInterceptor` resolves operator principals and forwards route permission checks to `AuthorizationPolicy`
-- `TaskApiController` keeps the existing HTTP contract but routes SDK submitter create checks through the shared policy
-- `TaskApiController` now also supports SDK submitter task read on `list / detail / messages` through centralized ownership checks derived from the internal task ownership stamp
+- `TaskApiController` keeps the existing HTTP contract but routes submitter credential create checks through the shared policy
+- `TaskApiController` now also supports submitter credential task read on `list / detail / messages` through centralized ownership checks derived from the internal task ownership stamp
 - `ExternalWorkerApiController` keeps the existing worker HTTP contract but routes worker credential checks through the same policy
 - host-side authorization adaptation is centralized in `com.xa.mass.api.auth.ApiAuthorizationService`, including deny-message mapping and structured deny logging
 - operator route-to-permission declarations are centralized in `com.xa.mass.api.auth.ApiRouteAuthorizationCatalog`
@@ -52,12 +62,23 @@ Current host security matrix:
 
 | Scenario | Principal surface | Resource/action | Current gate |
 | --- | --- | --- | --- |
-| `SUBMITTER_TASK_CREATE` | SDK credential | `TASK / CREATE` | `task:create` + project/event/user scope |
-| `SUBMITTER_TASK_VIEW` | SDK credential | `TASK / VIEW` | ownership match against the internal task ownership stamp |
-| `WORKER_REGISTER` | external worker credential | `WORKER / REGISTER` | `worker:poll` + worker binding + event/project scope |
-| `WORKER_CONTEXT_REGISTER` | external worker credential | `WORKER_CONTEXT / REGISTER` | `worker:poll` + worker binding + project scope |
+| `SUBMITTER_TASK_CREATE` | submitter credential | `TASK / CREATE` | `task:create` + project/user scope |
+| `SUBMITTER_TASK_VIEW` | submitter credential | `TASK / VIEW` | ownership match against the internal task ownership stamp |
+| `SUBMITTER_TASK_APPEND` | submitter credential | `TASK / EDIT` | ownership match + `task:create` + project/event scope |
+| `WORKER_REGISTER` | external worker credential | `WORKER / REGISTER` | `worker:poll` + worker binding for worker registration; event/project scope for worker group declaration and compatibility worker event bindings |
 | `WORKER_ONLINE` / `WORKER_HEARTBEAT` / `WORKER_OFFLINE` / `WORKER_POLL` | external worker credential | `WORKER / POLL` | `worker:poll` + worker binding |
 | `WORKER_SUBMIT_RESULT` | external worker credential | `WORKER / REPORT_RESULT` | `worker:poll` + worker binding |
+| `WORKER_REPORT_CAPABILITY` / `WORKER_REPORT_STATE` / `WORKER_ACK_COMMAND` | external worker credential | `WORKER / POLL` | `worker:poll` + worker binding, plus capability event scope on capability reports |
+
+Current worker-state contract note:
+
+- `report-state(DRAINING)` disables future dispatches to that worker in current
+  mainline, but it does not revoke or interrupt already in-flight work
+- acknowledging a `DRAIN` worker command to an accepted state converges to the
+  same dispatch gate truth
+- current re-enable rule is explicit: dispatch stays disabled across failed or
+  expired `DRAIN` command outcomes and resumes only after a later
+  `report-state(AVAILABLE)`
 
 ## Port Model
 
@@ -91,8 +112,10 @@ After startup:
 
 - HTTP control console: `http://localhost:8088/`
 - HTTP tasks view: `http://localhost:8088/tasks`
+- HTTP projects view: `http://localhost:8088/resources/projects`
 - HTTP workers view: `http://localhost:8088/resources/workers`
 - HTTP API docs: `http://localhost:8088/doc.html`
+- OpenAPI JSON export: `http://localhost:8088/v3/api-docs`
 - WebSocket: `ws://localhost:18088/ws`
 - Socket when enabled: `tcp://localhost:18089`
 
@@ -100,8 +123,32 @@ Control-console routing note:
 
 - `/status`, `/status/tasks`, `/status/workers`, and `/status/rules` are redirect aliases only
 - the backend-hosted SPA routes above are the primary operator entrypoints
+- project now has a dedicated read/control-plane surface under
+  `/api/v1/projects/**`, and the console exposes it as a first-class navigation
+  entry through `Resources -> Projects`
 
-## Effective Sample Client Startup
+## Dev Shell Details
+
+Everything below this section is intentionally dev/demo/sample wiring. It is
+useful for local validation, Boot-shell E2E, and black-box debugging, but it is
+not the stable definition of platform ownership.
+
+### Dev Demo Bootstrap
+
+When `spring.profiles.active=dev` and `mass.demo.bootstrap.enabled=true`, the server starts with a mainline demo shell instead of an external fixture bootstrap.
+
+The demo bootstrap intentionally stays inside server-owned dev wiring:
+
+- demo projects, events, submitters, workers, and seeded task shells
+  are registered strictly through SDK-native APIs
+- the default dev path can auto-start embedded sample adapter clients so the
+  seeded demo workers go `ONLINE` and process demo tasks
+- JSON fixture bootstrap remains a test-only input path; packaged fixture files
+  are not the default dev startup source
+- sample-only bootstrap writes stay behind `/sample-api/bootstrap/*` protected
+  by `X-Sample-Bootstrap-Key`
+
+### Effective Sample Client Startup
 
 For test or explicit fixture paths, embedded sample clients are owned by `xa-mass-worker-pack` and started by:
 
@@ -111,8 +158,8 @@ For test or explicit fixture paths, embedded sample clients are owned by `xa-mas
 
 Startup behavior:
 
-- disabled in default `dev`
-- gated by `sample.client.auto-start=true` only for tests or explicit local fixture runs
+- enabled in the default dev demo shell through `sample.client.auto-start=true`
+- uses `sample.client.websocket-uri=ws://localhost:${mass.websocket.port}/ws` so the embedded sample clients follow the active WebSocket adapter port
 - triggered by `ApplicationReadyEvent`
 - shared startup orchestration is adapter-aware; websocket and socket specifics stay in their own starters
 - discovers sample clients from SDK-registered `Worker` resources
@@ -120,16 +167,19 @@ Startup behavior:
 - does not read a separate worker JSON client list
 - idempotent startup protection through an internal `AtomicBoolean`
 
-## Worker Resource Fixtures
+### Worker Resource Fixtures
 
-`MockRuntimeDataLoader` is now test-only fixture support for local/E2E startup data. JSON is only a fixture input format; resource creation still goes through `MassSdkApplication.registerWorker(...)` and `registerWorkerContext(...)`.
+`MockRuntimeDataLoader` is now test-only fixture support for local/E2E startup
+data. JSON is only a fixture input format; worker resource creation still goes
+through `MassSdkApplication.registerWorker(...)`. Worker scheduling attributes
+must be declared directly on worker fixture JSON; the separate WorkerContext
+fixture input path has been removed.
 
 Current fixture behavior:
 
 - worker JSON entries are mapped to `WorkerRegistration`
-- worker-context JSON entries are mapped to `WorkerContextRegistration`
 - runtime state fields in JSON such as `Worker.status=ONLINE` are ignored; online state comes from transport liveness
-- task JSON continues to map to `MassTaskCreateRequest`
+- task JSON fixture bootstrap remains a test-only aggregate fixture input
 - rule JSON continues to replace default rules when non-empty
 - default `dev` profile no longer wires fixture bootstrap at all; those properties are kept in test config only
 
@@ -138,12 +188,11 @@ Default worker fixtures now carry a small executor profile:
 - `adapterId=websocket` for WebSocket-backed dev workers
 - `onlineStrategy=realtime` for WebSocket-backed dev workers
 - worker attributes such as `runtime`, `workerType`, `region`, and `lane`
-- worker-context attributes such as `country` and `network`
 
 These labels are dev/E2E routing and observability signals. Production-style
 resources should still be created through the SDK resource APIs.
 
-## Sample Worker Execution Behavior
+### Sample Worker Execution Behavior
 
 Auto-started sample WebSocket clients behave like lightweight executors:
 
@@ -156,7 +205,7 @@ Auto-started sample WebSocket clients behave like lightweight executors:
 The extra payload fields are server observability data. Lifecycle decisions
 still come from the task kernel, attempts, and result status.
 
-## Sample Command Runtime
+### Sample Command Runtime
 
 `xa-mass-server` exposes the worker-pack sample command runtime through normal task execution.
 
@@ -169,6 +218,19 @@ Current command groups:
   - `mock.task.result.status`
   - `mock.disconnect`
   - `mock.reset`
+- `fault.*`: configure worker-fault profile state through the same sample command path
+  - `fault.state.get`
+  - `fault.execution.profile`
+  - `fault.execution.delay`
+  - `fault.execution.stall`
+  - `fault.result.drop`
+  - `fault.result.duplicate`
+  - `fault.result.late`
+  - `fault.result.malformed`
+  - `fault.result.identity`
+  - `fault.transport.disconnect`
+  - `fault.worker.state.flap`
+  - `fault.reset`
 - `tool.*`: lightweight utility commands for debugging and demos
   - `tool.time.now`
   - `tool.geo.lookup`
@@ -177,36 +239,43 @@ Current command groups:
 
 Transport facts:
 
-- worker debug requests are submitted through `POST /status/api/tasks`
+- worker debug requests are submitted through `POST /internal/v1/debug/task-invocations:sync` for one-item debug runs, or `POST /api/v1/tasks` + `POST /api/v1/tasks/{taskId}/items` for normal task-backed flows
 - fix the selected worker with `sharedConfig.targetWorkerId`
 - command execution stays on normal task lifecycle and does not use a dedicated worker-control side-channel
 
-Example request body:
+Example normal task-backed flow:
 
 ```json
+POST /api/v1/tasks
 {
   "project": "demoApp",
-  "taskName": "targeted-delay-response",
-  "eventCode": "mock.delay.response",
-  "mode": "SINGLE_RUN",
-  "payloadType": "JSON",
   "userId": "itest",
+  "sourceRef": "mock-delay-response",
   "sharedConfig": {
     "targetWorkerId": "it-worker-0"
   },
-  "inputs": [
+  "executionSpec": {
+    "batchSize": 1
+  }
+}
+```
+
+```json
+POST /api/v1/tasks/{taskId}/items
+{
+  "eventCode": "mock.delay.response",
+  "items": [
     {
       "millis": 500
     }
-  ],
-  "batchSize": 1
+  ]
 }
 ```
 
 Observability:
 
 - debug submissions return `taskId`
-- targeted debug tasks can be inspected through normal task detail and message views
+- targeted debug tasks should be inspected through normal task detail plus explicit internal/debug diagnostics when deeper residue inspection is needed
 - `mock.disconnect` is designed to close the worker after its task result is sent
 - `tool.geo.lookup` and `tool.currency.quote` are simulated helpers and must be treated as fake data sources
 
@@ -217,17 +286,32 @@ Observability:
 | `server.port` | `8088` | HTTP port |
 | `mass.websocket.port` | `18088` | WebSocket adapter port |
 | `mass.socket.port` | `18089` | Socket adapter port |
+| `mass.engine.assignment-retry-delay-millis` | `1000` | delay before the engine retries assignment after a failed or deferred dispatch cycle |
+| `mass.engine.runtime-ready-dispatch-idle-backoff-max-millis` | `30000` | max idle backoff for the default runtime-ready dispatch polling fallback policy |
+| `mass.engine.lease-watchdog-interval-seconds` | `30` | interval for scanning active task-message leases and expiring stalled in-flight attempts |
+| `mass.engine.task-message-lease-seconds` | `300` | lease duration for an in-flight task message before the engine may redispatch it |
 | `mass.storage.mode` | `memory` | server storage mode; use `jdbc-h2` for local/CI verification or `jdbc-postgres` through `mass-storage-jdbc` for durable control-plane storage |
 | `mass.storage.jdbc.url` | `jdbc:h2:mem:xa_mass;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false` | JDBC URL used when `mass.storage.mode` is a JDBC mode |
 | `mass.storage.jdbc.username` | `sa` | JDBC username |
 | `mass.storage.jdbc.password` | empty | JDBC password |
-| `sample.client.auto-start` | `false` | auto-start embedded sample clients only for explicit fixture/test runs |
+| `mass.runtime.mode` | `memory` | engine runtime backend; `memory` is the default verified embedded path, `redis` opts into Redis-backed work/result runtime |
+| `mass.runtime.redis.namespace` | `xa:mass:runtime:v1` | Redis namespace prefix when `mass.runtime.mode=redis` |
+| `mass.runtime.redis.max-queued-items` | `1000000` | runtime work backpressure cap for the Redis-backed work runtime |
+| `mass.transport.node-id` | random UUID | server transport runtime node id; set explicitly when comparing Redis presence across restarts |
+| `mass.transport.delivery.store` | `memory` | embedded transport delivery-store backend; `memory` or `redis` |
+| `mass.transport.delivery.max-queued-items` | `100000` | total dispatch backlog cap for the resolved transport delivery store |
+| `mass.transport.delivery.max-items-per-route` | `10000` | per-route dispatch backlog cap for polling queues and adapter-local route queues |
+| `mass.transport.delivery.redis.namespace` | `xa:mass:transport:delivery:v1` | Redis namespace prefix when `mass.transport.delivery.store=redis` |
+| `mass.transport.presence.store` | `memory` | embedded transport worker-presence backend; `memory` or `redis` |
+| `mass.transport.presence.lease-millis` | `30000` | worker transport presence lease before stale/offline pruning may treat the route as unavailable |
+| `mass.transport.presence.redis.namespace` | `xa:mass:transport:presence:v1` | Redis namespace prefix when `mass.transport.presence.store=redis` |
+| `sample.client.auto-start` | `true` in `dev` | auto-start embedded sample clients for the default dev demo shell |
 | `sample.client.websocket-uri` | `ws://localhost:${mass.websocket.port}/ws` | target WebSocket adapter address |
 | `sample.client.socket-host` | `127.0.0.1` | target socket adapter host |
 | `sample.client.socket-port` | `18089` | fallback socket adapter port when no bound-port override is published |
 | `sample.client.task-result-status` | `SUCCESS` | force sample result frames to `SUCCESS` or `FAILED` |
 | `sample.bootstrap.api-key` | `dev-bootstrap-key` | sample-only bootstrap credential for `/sample-api/bootstrap/*` |
-| `sample.worker.auto-start` | `true` in `dev` | launch external sample supervisor under `samples/dev/` |
+| `sample.worker.auto-start` | `false` in `dev` | keep the external sample supervisor off by default; enable explicitly for the separate cross-process sample shell |
 
 JDBC storage scope:
 
@@ -236,6 +320,31 @@ JDBC storage scope:
 - default runtime stays `memory`; opt into H2 explicitly with
   `mass.storage.mode=jdbc-h2`
 - opt into PostgreSQL with `mass.storage.mode=jdbc-postgres`
+- task-work runtime backend, transport delivery-store backend, and transport
+  presence backend are configured separately; `mass.runtime.mode` controls
+  engine work/result runtime, `mass.transport.delivery.store` controls dispatch
+  queue backend, and `mass.transport.presence.store` controls worker
+  reachability evidence
+- for restart/recovery diagnosis with local Redis, use Redis for the runtime
+  surfaces you want to observe, for example
+  `mass.runtime.mode=redis`,
+  `mass.transport.delivery.store=redis`, and
+  `mass.transport.presence.store=redis`; this preserves runtime queues and
+  presence evidence across a server process restart, while expired leases and
+  stale presence should still converge through timeout/retry rather than
+  requiring every intermediate state to be durable
+- the bundled `redis-runtime` profile applies those three Redis runtime
+  switches for local diagnosis; run it with the normal server profile, for
+  example `-Dspring.profiles.active=dev,redis-runtime`
+- root `compose.yaml` is the preferred local distributed-verification shell:
+  build the jar first with
+  `./mvnw -pl xa-mass-server -am -DskipTests package`, then
+  `docker compose up redis server` starts Redis and runs that server jar with
+  `dev,redis-runtime,h2`; it is a validation harness, not a production image
+  contract
+- backend-parity tests should share one scenario body and vary only
+  `mass.runtime.mode` plus backend-specific connection properties; do not copy
+  the same runtime semantics into separate memory-only and redis-only tests
 - server-local persistence can use the `h2` profile together with the runnable
   server profile, for example `-Dspring.profiles.active=dev,h2`; this writes to
   `./data/xa-mass-h2/xa_mass` by default through `application-h2.yml`
@@ -247,12 +356,12 @@ JDBC storage scope:
   runnable server profile, for example `-Dspring.profiles.active=dev,postgres`
 - integration tests should keep using isolated in-memory H2 JDBC URLs so DB
   assertions are repeatable and do not depend on a developer's persisted data
-- JDBC storage persists task truth, worker/context registration truth, and rule
+- JDBC storage persists task truth, worker registration truth, and rule
   definitions
 - JDBC storage also persists low-frequency principal credential truth used by
-  SDK submitter and external worker API-key authentication
-- `TaskMsg`, `TaskMsgAttempt`, worker locks, heartbeat churn, and context
-  occupancy churn stay process-local runtime projection state
+  submitter and external worker API-key authentication
+- `TaskMsg`, `TaskMsgAttempt`, worker locks, and heartbeat churn stay
+  process-local runtime projection state
 - do not use JDBC storage as a cross-task message-status analytics surface;
   large-scale message history, attempt history, heartbeat streams, and failure
   analysis should flow through queues, trace, audit sinks, or downstream
@@ -261,7 +370,6 @@ JDBC storage scope:
 Mock-data loading order:
 
 - workers
-- explicit worker contexts
 - rules: non-empty config replaces the current default rules; empty config is treated as no override
 - tasks
 
@@ -271,8 +379,54 @@ Mainline stance:
 
 - end-to-end integration coverage is the primary acceptance gate for runtime behavior
 - unit tests remain important support coverage, but they are not the main proof for task lifecycle correctness
+- Boot-shell E2E is the representative proof surface for host-side mainline
+  behavior, including `project`, `submitter`, `worker`, task shell, dispatch
+  wiring, and result convergence
+- project-level authoritative-vs-representative proof ownership lives in
+  [../doc/PROOF_REGISTRY.md](../doc/PROOF_REGISTRY.md); use it before adding
+  another server E2E class for a scheduling or lifecycle invariant
+- the full scheduling-correctness matrix belongs engine-first; server E2E keeps
+  representative assignment, polling, routing, and reuse scenarios
+- `ServerSchedulingE2eSuite` is runtime-first and representative; projection-heavy
+  scenarios live in `ServerProjectionResidueSuite`, and generic smoke/support
+  cases tagged `secondary-proof` stay out of the mainline suite
+- `ServerLifecycleResultConvergenceSuite` asserts task aggregate plus
+  `TaskWorkRuntime` stats/lease truth; diagnostic projection/audit cases live in
+  `ServerProjectionAuditSuite`, while low-standard lifecycle smoke stays tagged
+  `secondary-proof`
+- `ServerSupportCoverageSuite`, `ServerLifecycleSupportCoverageSuite`, and
+  `ServerStorageCompatibilitySuite` are the explicit homes for downgraded
+  smoke/support coverage; if a server E2E class lives there, treat it as shell
+  confidence or compatibility coverage, not proof ownership
+- `ServerMainlineE2eArchitectureGuardTest` is included in the mainline
+  scheduling and lifecycle suites to reject projection-first helpers and
+  implicit `var` declarations
+- `ServerProofOwnershipGuardTest` keeps mainline suite membership registry-backed
+  and blocks `secondary-proof` or support-suite coverage from drifting back
+  into scheduling, lifecycle, or parity proof suites
+- server tests must not treat `com.xa.mass.base.model.*` as a stable host-shell
+  API contract
 - integration suites are grouped by domain under `src/test/java/com/xa/mass/server/e2e`
 - shared HTTP/task polling helpers now live in `src/test/java/com/xa/mass/server/e2e/support/AbstractSampleE2eTest`
+
+What this module proves:
+
+- real Spring Boot host wiring and HTTP contracts
+- mainline boundary behavior for `project / submitter / worker / workerContext`
+- full-chain task shell -> item append -> dispatch -> result ingest ->
+  convergence behavior
+- public result reads and archive endpoints use SDK `TaskResultQueryOperations`
+  backed by `TaskResultRuntime` stable-final rows; controllers must not read
+  `TaskDetailStore.TaskMessageProjection` for result rows
+- representative scheduling scenarios on the real host path, not the full
+  competition matrix
+
+What this module should not become:
+
+- a replacement for engine concurrency/acceptance tests
+- a place to lock in `base model` as a permanent server-host API surface
+- a suite that manufactures mainline scenarios by mutating storage/runtime
+  truth directly
 
 Focused verified regression command:
 
@@ -283,7 +437,7 @@ mvn --% -pl xa-mass-server -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegra
 Transport-focused regression command:
 
 ```bash
-mvn --% -pl xa-mass-server -am -Dtest=SampleWorkerSocketClientTest,SocketClientStarterTest,SocketTaskApiIntegrationTest,WebSocketClientStarterTest,TransportChannelWiringIntegrationTest,NodeWebSocketWorkerBlackBoxIntegrationTest,NodeSocketWorkerBlackBoxIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn --% -pl xa-mass-server -am -Dtest=SampleWorkerSocketClientTest,SocketClientStarterTest,WebSocketClientStarterTest,ExternalWorkerPublicContractTraceObservedIntegrationTest,NodeWebSocketWorkerBlackBoxIntegrationTest,NodeSocketWorkerBlackBoxIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Cross-language sample black-box regression:
@@ -292,17 +446,24 @@ Cross-language sample black-box regression:
 ./scripts/run-external-worker-samples.sh
 ```
 
+The script runs `ExternalWorkerParitySuite`, which covers Java and Node workers
+across polling, WebSocket, and socket adapters. The suite asserts task
+aggregate state, runtime stats, active-lease release, and terminal reason first;
+worker output/read-model assertions only support payload parity checks. The
+script also verifies that the suite produced real surefire testcase execution,
+so suite-wrapper `tests=0` XML cannot silently pass as the black-box gate.
+
 Covered areas:
 
 - `e2e/lifecycle`: create -> approve -> assign -> run -> complete, pause/resume guards, pause-completion, terminate-running, resume-and-complete
 - `e2e/results`: failed-result terminal closure, mixed results, callback replay idempotency
 - `e2e/assignment`: delayed worker availability and multi-task assignment behavior
 - `CrawlerPullWorkerSdkRegistrationIntegrationTest`: SDK-created crawler worker resource, pull connect/poll/result, and terminal read-model verification without sample worker JSON
-- `e2e/audit`: `stateValidation` exposure and terminal metadata consistency through the real HTTP path
-- `e2e/assignment`: targeted worker debug task behavior and disconnect-after-result behavior
+- `e2e/audit`: diagnostic task-state validation and terminal metadata consistency through the real runtime path
+- `e2e/assignment`: targeted worker debug, adapter-ambiguity, and storage-compat
+  support coverage
 - `WebSocketClientStarterTest`: auto-start and idempotent startup behavior
 - `SocketClientStarterTest`: adapter-aware socket starter wiring and bound-port resolution
-- `SocketTaskApiIntegrationTest`: auto-started socket sample workers go online, receive tasks, and return canonical results
 - `SampleWorkerSocketClientTest`: canonical socket dispatch handling, task-result write-back, and disconnect-after-result behavior
 - `SampleWorkerWebSocketClientTest`: task dispatch handling, canonical task-result write-back, delay/drop fault injection, and targeted debug task behavior
 
@@ -312,54 +473,74 @@ Covered areas:
 
 High-signal classes:
 
+- guardrail:
+  - `ServerMainlineE2eArchitectureGuardTest`
 - lifecycle:
-  - `TaskApiIntegrationTest`
   - `TaskApiLifecycleGuardsIntegrationTest`
   - `TaskApiPauseCompletionIntegrationTest`
   - `TaskApiResumeAndCompleteIntegrationTest`
   - `TaskApiTerminateRunningIntegrationTest`
 - assignment, routing, and capacity:
-  - `TaskApiDelayedWorkerAvailabilityIntegrationTest`
-  - `TaskApiMinimumWorkerGateIntegrationTest`
-  - `TaskApiMultiRoundDispatchIntegrationTest`
-  - `TaskApiWorkerContextAttributeRoutingIntegrationTest`
+  - `TaskApiMultiTaskAssignmentIntegrationTest`
+  - `TaskApiMinimumWorkerGateTraceObservedIntegrationTest`
+  - `TaskApiDelayedWorkerAvailabilityTraceObservedIntegrationTest`
+  - `TaskApiRetryRedispatchTraceObservedIntegrationTest`
+  - `TaskApiSingleWorkerReuseTraceObservedIntegrationTest`
+  - `TaskApiWorkerAttributeRoutingTraceObservedIntegrationTest`
   - `TaskApiWorkerWithoutContextIntegrationTest`
-  - `TaskApiSingleWorkerReuseIntegrationTest`
-  - `TaskApiTerminateReuseIntegrationTest`
-  - `TransportChannelWiringIntegrationTest`
-  - `PollingWorkerTaskFlowIntegrationTest`
   - `CrawlerPullWorkerSdkRegistrationIntegrationTest`
 - results and idempotence:
+  - `TaskApiAllMessagesFailedTraceObservedIntegrationTest`
+  - `TaskApiCallbackReplayTraceObservedIntegrationTest`
   - `TaskApiFailureResultIntegrationTest`
-  - `TaskApiMixedResultsIntegrationTest`
-  - `TaskApiCallbackReplayIntegrationTest`
+  - `TaskApiMixedResultsTraceObservedIntegrationTest`
 - external worker black-box:
+  - `ExternalWorkerParitySuite`
+  - `ExternalWorkerPublicContractTraceObservedIntegrationTest`
+  - `ExternalWorkerPollingApiIntegrationTest`
   - `NodePollingWorkerBlackBoxIntegrationTest`
   - `NodeWebSocketWorkerBlackBoxIntegrationTest`
   - `NodeSocketWorkerBlackBoxIntegrationTest`
   - `JavaPollingWorkerBlackBoxIntegrationTest`
   - `JavaWebSocketWorkerBlackBoxIntegrationTest`
   - `JavaSocketWorkerBlackBoxIntegrationTest`
+- secondary/support only:
+  - `SdkTaskApiIntegrationTest`
+  - `TaskApiIntegrationTest`
+  - `TaskApiTargetedWorkerDebugIntegrationTest`
+  - `DevSampleWorkerLauncherIntegrationTest`
+  - `ExternalWorkerRealtimeRegistrationIntegrationTest`
+  - `H2ExternalWorkerPollingApiIntegrationTest`
+  - `PostgresExternalWorkerPollingApiIntegrationTest`
+  - `CatalogApiIntegrationTest`
+  - `SdkTaskApiIntegrationTest` is retained only for support-level unified
+    task API and submitter-credential shell coverage; it is not a lifecycle or
+    scheduling mainline proof class
+  - `TaskApiIntegrationTest` is retained only for support-level workload-class
+    shell coverage; it is not a lifecycle/result mainline proof class
 - console and audit:
   - `ControlConsoleRoutingIntegrationTest`
+- explicit projection residue/audit:
+  - `TaskApiMultiRoundDispatchIntegrationTest`
+  - `TaskApiTerminateReuseIntegrationTest`
   - `TaskApiStateValidationIntegrationTest`
-- targeted worker debug:
-  - `TaskApiTargetedWorkerDebugIntegrationTest`
 
 Fixture rules:
 
-- prefer `registerWorker(...)`, `registerWorkerContext(...)`, `replaceDefaultRules(...)`, and `createTask(...)`
-- worker JSON and worker-context JSON are fixture inputs, not runtime truth
+- prefer `registerWorker(...)`, `replaceDefaultRules(...)`, `createTaskShell(...)`, `appendTaskItems(...)`, and `executeTaskCommand(..., "SEAL")`
+- worker JSON is a fixture input, not runtime truth
 - direct `WorkerManager` and `RuleManager` setup writes are not mainline E2E setup
-- direct `TaskManager` writes stay limited to focused white-box assertions or fault injection
+- direct `TaskManager`, `TaskStorage`, or runtime writes stay limited to
+  focused white-box assertions, audit-only verification, or deterministic fault
+  injection
+- new mainline tests should prefer SDK or HTTP surfaces over direct
+  `com.xa.mass.base.model.*` manipulation
 
-Current gaps:
+Scheduling-proof note:
 
-Project-level gap index: [`../doc/CURRENT_GAPS.md`](../doc/CURRENT_GAPS.md).
-
-- cancel from `RUNNING` via HTTP API
-- cancel from `READY` via HTTP API
-- worker disconnect during in-flight execution
-- stronger real-runtime `EXPIRED` message coverage
-- broader `batchSize > 1` multi-worker coverage
-- resume short-circuit where a paused task is already complete underneath
+- when a scenario's failure means the wrong worker was selected, excluded, or
+  re-selected, strengthen engine acceptance coverage first
+- add server E2E when the real risk is that HTTP/SDK/transport wiring changes
+  the scheduling outcome
+- if the scenario also claims canonical trace visibility, pair it with the
+  invariant or scenario entry in [../doc/PROOF_REGISTRY.md](../doc/PROOF_REGISTRY.md)

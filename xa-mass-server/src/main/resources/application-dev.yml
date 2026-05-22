@@ -1,5 +1,15 @@
 # Development profile overrides for the verified server shell.
 mass:
+  demo:
+    bootstrap:
+      enabled: true
+      worker-count: 36
+      task-count: 12
+      items-per-task: 1500
+      batch-size: 20
+      default-max-retry-count: 1
+      auto-approve-tasks: true
+      routing-lanes: us,gb,de,fr,sg,jp
   runtime:
     event-handler-timeout-ms: 5000
     transport-max-pending-tasks: 10000
@@ -24,7 +34,10 @@ logging:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 
 sample:
+  client:
+    auto-start: true
+    websocket-uri: ws://localhost:${mass.websocket.port}/ws
   bootstrap:
     api-key: dev-bootstrap-key
   worker:
-    auto-start: true
+    auto-start: false

@@ -1,14 +1,23 @@
 # Testing Baseline
 
-Last updated: 2026-04-27
+Last updated: 2026-05-12
 
 Status: current global testing baseline.
 
-System-level map of the testing lanes. Use module READMEs for concrete commands
-and suite inventories.
+System-level map of the testing lanes.
+
+Use [TESTING_INDEX.md](./TESTING_INDEX.md) as the default entry for current CI
+truth, current asset map, and change-type minimum verification. This file keeps
+only the cross-module lane model and placement rules.
+
+Use [PROOF_REGISTRY.md](./PROOF_REGISTRY.md) when the question is not only
+"which lane?" but "which class or analyzer is the current authoritative proof
+for this invariant?"
 
 Use with:
 
+- [./PROOF_REGISTRY.md](./PROOF_REGISTRY.md)
+- [./TESTING_INDEX.md](./TESTING_INDEX.md)
 - [./VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
 - [./E2E_BASELINE.md](./E2E_BASELINE.md)
 - [./TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
@@ -18,56 +27,182 @@ Use with:
 
 ## 1. Core Rule
 
-- core acceptance is `Boot-shell E2E + concurrency + perf`
-- `cross-language sample black-box` is also core for external worker compatibility
-- `chaos` is scheduled/manual, not a default PR-required lane
-- acceptance bias is throughput, HA recovery, and idempotent behavior
+- test decisions are organized around the current mainline:
+  `project -> submitter / worker capability -> task shell -> item append -> engine runtime -> transport delivery -> result ingest -> convergence`
+- the target is system proof, not nominal coverage growth; a new or retained
+  test must prove lifecycle/convergence, a mainline mechanism, a core policy, a
+  cross-boundary contract, or an abnormal integrated path under concurrency,
+  timing, process, transport, or distributed-runtime conditions
+- core proof is priority-ordered, not flat:
+  1. `Scheduling Correctness`
+  2. `Kernel Convergence`
+  3. `Platform Viability / Boot-shell E2E`
+  4. `Chaos / Perf / Distributed-readiness`
+- core proof is split intentionally:
+  - scheduling correctness proves worker selection, contention, redispatch, and contract-aware convergence under real business scenarios
+  - local engine/transport tests protect deterministic kernel and boundary invariants
+  - E2E / black-box / chaos protect real wiring, parity, and distributed edge behavior
+- `project` is a mainline business boundary, not only a metadata/resource surface
+- `transport` is an explicit validation boundary, not an engine implementation detail
+- perf and chaos are part of the project-level test estate, but current CI gate
+  truth belongs to [TESTING_INDEX.md](./TESTING_INDEX.md)
+- projection-first proof style is downgraded; compatibility projection is bounded residue, not the primary execution proof surface
+- generic smoke or support E2E may still exist, but if it is not named in
+  [PROOF_REGISTRY.md](./PROOF_REGISTRY.md) it is not mainline proof ownership
+- tests tagged `secondary-proof` are explicit support coverage and should not be
+  copied when adding new lifecycle or scheduling proof
+- server-side `secondary-proof` shell coverage should live under explicit
+  support suites such as `ServerSupportCoverageSuite` or
+  `ServerLifecycleSupportCoverageSuite`, and storage-specific shells should live
+  under compatibility suites such as `ServerStorageCompatibilitySuite`, not
+  inside mainline scheduling, lifecycle, or parity suites
+- server-side `secondary-proof` identity is mechanically guarded in both
+  directions: support/compat suites may only contain downgraded classes, and
+  downgraded classes may not remain orphaned outside those suites
+- server mainline proof ownership is now mechanically guarded:
+  `ServerSchedulingE2eSuite`, `ServerLifecycleResultConvergenceSuite`, and
+  `ExternalWorkerParitySuite` may select only registry-backed classes and must
+  not re-import support or `secondary-proof` coverage
+- engine PR mainline suites are now runtime-first:
+  `EngineSchedulingCoreSuite` and `EngineKernelConvergenceSuite` no longer
+  carry projection-heavy residue classes directly; compatibility residue and
+  audit live in explicit secondary suites
+- `EngineSchedulingCoreArchitectureGuardTest` derives its scan list from
+  `EngineSchedulingCoreSuite` `@SelectClasses`, so newly added scheduling-core
+  tests are covered automatically and projection-first helpers stay out of the
+  mainline test set; it also rejects implicit `var` declarations in the core
+  scheduling proof surface so assertion ownership stays grep-friendly
+- `EngineKernelConvergenceArchitectureGuardTest` derives its scan list from
+  `EngineKernelConvergenceSuite` `@SelectClasses`, so newly added lifecycle /
+  convergence mainline tests stay runtime/task-aggregate first instead of
+  silently drifting back to projection-first proof
+- engine proof ownership is now mechanically split: mainline suites must not
+  pull classes back out of `EngineProjectionResidueSuite` or
+  `EngineProjectionAuditSuite`, and those support suites must contain only
+  explicit `secondary-proof` coverage; downgraded engine tests may not remain
+  orphaned outside those suites
 
 ## 2. Lane Map
 
 | Lane | Owner | Weight / placement |
 | --- | --- | --- |
-| `invariant` / `module` | owning module tests | PR support coverage |
-| `SDK embedded harness` | `xa-mass-testing` | support, fast transport-aware probe |
-| `Boot-shell E2E` | `xa-mass-server` | core, PR required focused subset |
-| `cross-language sample black-box` | `xa-mass-server` | core, PR + nightly |
-| `concurrency` | `xa-mass-engine` | core when race-sensitive; broader matrix nightly/release |
-| `perf` | `xa-mass-testing` | core signal; smoke optional/non-blocking, trend nightly/release |
-| `chaos` | `xa-mass-testing` | scheduled/manual/release robustness |
+| `Scheduling Correctness` | `xa-mass-engine` first, `xa-mass-server` representative E2E | highest-priority proof for matching, contention, redispatch, gating, and contract-aware convergence |
+| `Kernel Convergence` | `xa-mass-engine` | lifecycle, retry, expiry, finality, release, and convergence invariants |
+| `Platform Viability / Boot-shell E2E` | `xa-mass-server` | representative real-host proof that HTTP, SDK, transport, and workers are wired correctly |
+| `cross-language black-box` | `xa-mass-server` | adapter/language parity proof for external workers across Java / Node and multiple adapters |
+| `transport boundary` | `transport/*`, `xa-mass-testing`, `xa-mass-server` | adapter routing, result ingress, and transport/engine decoupling proof |
+| `perf / chaos / distributed-readiness` | `xa-mass-testing` | scale, recovery, disconnect, replay, and degraded-condition proof around the scheduling mainline |
+| `mainline boundary` | `xa-mass-server` | `project / submitter / worker / worker scheduling capability` boundary proof on real host surfaces |
+| `local invariant / module` | owning module tests | support coverage only when it adds kernel or boundary debugging value |
 
 ## 3. Command Ownership
 
+- proof ownership, authoritative-vs-representative pairing, and current known
+  gaps: [PROOF_REGISTRY.md](./PROOF_REGISTRY.md)
+- current minimum verification and CI truth: [TESTING_INDEX.md](./TESTING_INDEX.md)
 - startup, smoke, and focused regression commands: [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
 - engine race/refill/release coverage: [../xa-mass-engine/README.md](../xa-mass-engine/README.md)
 - perf, SDK harness, and chaos: [../xa-mass-testing/README.md](../xa-mass-testing/README.md)
 - Boot-shell E2E suite map: [../xa-mass-server/README.md](../xa-mass-server/README.md)
 - external worker sample lane: `./scripts/run-external-worker-samples.sh`
+- external worker CLI HTTP contract smoke:
+  `./scripts/proof/external-worker-http-contract.sh`
 
-## 4. Change-Type Matrix
+## 4. Lane Intent
 
-| Change type | Read first | Owning surface | Minimum verification |
-| --- | --- | --- | --- |
-| task lifecycle or state transitions | [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md), [TRACE_CONTRACT.md](./TRACE_CONTRACT.md), [E2E_BASELINE.md](./E2E_BASELINE.md) | `xa-mass-engine`, then `xa-mass-server` E2E | `concurrency` + `Boot-shell E2E` |
-| callback/result handling | [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md), [TRACE_CONTRACT.md](./TRACE_CONTRACT.md) | engine result ingest and transport result channels | `concurrency` + `Boot-shell E2E` |
-| retry / logical-message finality | [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md), [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md) | `TaskWorkRuntime`, `TaskManager`, attempt/result services | `concurrency` + `Boot-shell E2E` |
-| worker release / worker-context release | [../xa-mass-engine/README.md](../xa-mass-engine/README.md), [TRACE_CONTRACT.md](./TRACE_CONTRACT.md) | engine resource release listeners and worker manager | `concurrency` + `Boot-shell E2E` |
-| assignment refill / batching / gate semantics | [../xa-mass-engine/README.md](../xa-mass-engine/README.md), [../xa-mass-server/README.md](../xa-mass-server/README.md) | assignment listener, matching strategy, Boot-shell E2E | `Boot-shell E2E` + targeted `concurrency`; add `perf` if hot |
-| external polling worker API | [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md), [EXTERNAL_WORKER_QUICKSTART.md](./EXTERNAL_WORKER_QUICKSTART.md), [../xa-mass-server/README.md](../xa-mass-server/README.md) | `/worker-api/*`, SDK external worker operations | external worker black-box + `Boot-shell E2E` |
-| transport adapter/runtime boundary | [../transport/AGENTS.md](../transport/AGENTS.md), [../transport/TRANSPORT_BOUNDARY_BASELINE.md](../transport/TRANSPORT_BOUNDARY_BASELINE.md) | `transport/*`, SDK transport composition | transport module tests + `Boot-shell E2E` |
-| hot-path storage or counters | [HIGH_VOLUME_MODEL_BASELINE.md](./HIGH_VOLUME_MODEL_BASELINE.md), [../xa-mass-testing/README.md](../xa-mass-testing/README.md) | `TaskWorkRuntime`, storage ports, task convergence | `perf` + targeted `concurrency`; add one E2E smoke if external behavior can drift |
-| resilience under disconnect, delay, restart, drop | [CURRENT_GAPS.md](./CURRENT_GAPS.md), [../xa-mass-testing/README.md](../xa-mass-testing/README.md), [../xa-mass-server/README.md](../xa-mass-server/README.md) | transport/runtime recovery and engine convergence | deterministic concurrency surrogate first; `chaos` for scheduled/manual proof |
+- `Scheduling Correctness` proves the platform's core business value:
+  the right workers are selected, excluded, re-selected, and converged under
+  contention, gating, retry, and contract differences
+- current engine-first scheduling matrix includes explicit tests for:
+  `TaskContractSchedulingBehaviorTest`, `TaskSchedulingContentionTest`,
+  `TaskWorkerEligibilityTest`, `TaskRedispatchCompetitionTest`, and
+  `TaskSchedulingGateAndTargetingTest`
+- that matrix now includes active degraded-presence competition:
+  a worker can lose transport reachability while holding a lease, and later
+  READY tasks must exclude it and choose an eligible backup without projection reads
+- reachability also participates in gate decisions:
+  `minRequiredWorkerCount` is evaluated against currently eligible workers, so
+  a dropped worker keeps the task READY without half-dispatching work
+- target-worker routing is covered under contention:
+  a task with a fixed target worker must not drift to an idle backup worker while
+  the target is locked, and it must dispatch to the target after release
+- retry-exhausted batch expiry is covered as a competition scenario:
+  final convergence must release the worker lock/capacity/resource binding so a
+  waiting READY task can acquire the resource
+- delayed availability is covered in engine-first form:
+  READY work remains queued when no worker scheduling candidate is eligible,
+  then dispatches when an eligible worker registers, becomes reachable, or has
+  available capacity
+- schedulable membership is covered under contention:
+  a waiting task paused before resource release must not acquire the released
+  worker until it is resumed
+- `Kernel Convergence` verifies lifecycle and convergence invariants that are
+  easier to prove deterministically under concurrency than through the host shell
+- `Platform Viability / Boot-shell E2E` proves the host shell exposes the
+  mainline correctly; it does not replace the scheduling matrix
+- `cross-language black-box` proves external worker compatibility and scheduling
+  parity across process and language boundaries
+- cross-language parity is suite-owned by `ExternalWorkerParitySuite`; the
+  runner script invokes the suite instead of maintaining a parallel class list
+- `transport boundary` verifies routing, result ingress, and decoupling so
+  transport does not redefine kernel semantics
+- `perf / chaos / distributed-readiness` proves degraded-condition resilience
+  around the real scheduling path; it does not replace ordinary feature acceptance
+- current PR chaos smokes in `xa-mass-testing` are runtime/aggregate/trace-first
+  distributed-edge probes only: polling lease-expiry redispatch, websocket
+  lease-expiry redispatch, and websocket stale late-result replay. Result-shape
+  variants such as all-failed, mixed-result, and retry-exhausted remain
+  scheduled/manual support because their primary proof is the engine/server/trace
+  convergence chain.
 
-## 5. CI Labels
+For change-type specific minimum verification, use
+[TESTING_INDEX.md](./TESTING_INDEX.md).
 
-`build`, `lifecycle-integration`, `cross-language-blackbox`, `perf-smokes`.
+## 5. Fast Path
 
-## 6. Fast Path
+Identify the dominant boundary first:
 
-Identify owner module first: engine for races/refill, testing for perf/SDK/chaos, server for Boot-shell E2E. Fan out to broader trace/project docs only after the owner path is clear.
+- `xa-mass-engine` first for scheduling correctness, lifecycle, retry, expiry,
+  release, and convergence
+- `xa-mass-server` for representative Boot-shell E2E and host-boundary proof
+- `transport/*` plus `xa-mass-testing` for transport runtime, routing, perf, and chaos
+
+Read the owner README after [TESTING_INDEX.md](./TESTING_INDEX.md) confirms the
+minimum verification set.
+
+## 6. Projection-First Tests
+
+- keep local kernel tests strong; do not weaken lifecycle or convergence coverage
+- rewrite tests that prove runtime/result correctness by immediately reading compatibility projection
+- keep compatibility projection assertions only when proving bounded residue, overlay, or explicit no-op behavior
+- keep compatibility residue ownership explicit:
+  `EngineProjectionResidueSuite` and `EngineProjectionAuditSuite` are valid supporting lanes, but they do not define the scheduling-core gate
+- keep server compatibility residue ownership explicit:
+  `ServerProjectionResidueSuite` and `ServerProjectionAuditSuite` are valid
+  supporting lanes; `ServerSchedulingE2eSuite` and
+  `ServerLifecycleResultConvergenceSuite` stay runtime/aggregate-first
+- `ServerMainlineE2eArchitectureGuardTest` derives its scan list from
+  `ServerSchedulingE2eSuite` and `ServerLifecycleResultConvergenceSuite`
+  `@SelectClasses`, so newly added mainline server E2E tests are covered
+  automatically and projection-first helpers plus implicit `var` declarations
+  stay out of the mainline suites
+- `ServerMainSourceArchitectureGuardTest` scans `xa-mass-server/src/main/java`
+  and fails if server mainline imports `com.xa.mass.base.*`,
+  `com.xa.mass.engine.*`, or `com.xa.mass.sdk.internal.*`
+- server E2E projection helpers live behind the explicit
+  `ProjectionSampleE2eTest` support base; the default `AbstractSampleE2eTest`
+  only exposes runtime-first task snapshot helpers
+- when the real risk is disconnect, replay, late result, takeover, or host/runtime wiring, prefer Boot-shell E2E, cross-language black-box, or chaos over adding more projection-first local tests
+- chaos/perf reports may read bounded compatibility residue for diagnostics,
+  but the runner's pass/fail proof must stay runtime/aggregate/trace-first
 
 ## 7. Documentation Rule
 
 - this file answers cross-module testing questions only
 - detailed perf, concurrency, chaos, and suite maps belong in owner READMEs
 - `doc/` should not accumulate module-local testing playbooks
-- [E2E_BASELINE.md](./E2E_BASELINE.md) and [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md) stay project-level because they define release-gate scope and verified runtime behavior
+- [TESTING_INDEX.md](./TESTING_INDEX.md) is the only default entry for current
+  CI truth, current suite map, and minimum verification rules
+- [E2E_BASELINE.md](./E2E_BASELINE.md) and
+  [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md) stay project-level because they
+  define release-scope semantics and verified runtime behavior

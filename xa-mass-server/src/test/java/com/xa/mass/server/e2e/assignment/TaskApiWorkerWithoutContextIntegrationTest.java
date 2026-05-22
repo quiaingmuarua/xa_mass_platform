@@ -1,8 +1,10 @@
 package com.xa.mass.server.e2e.assignment;
 
+import com.google.gson.JsonObject;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
+import com.xa.mass.server.testutil.WsFrameTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
@@ -15,6 +17,9 @@ import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -24,7 +29,6 @@ import static org.junit.jupiter.api.Assertions.*;
         properties = {
                 "sample.client.auto-start=false",
                 "mass.mock.data.workers=mock/test_mock_workers_empty.json",
-                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts_empty.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
@@ -45,41 +49,73 @@ class TaskApiWorkerWithoutContextIntegrationTest extends AbstractSampleE2eTest {
         registerSdkStatelessWorker("stateless-worker", "demoApp");
 
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        SampleWorkerWebSocketClient client = new SampleWorkerWebSocketClient(uri, "stateless-worker");
+        ManualAckWebSocketClient client = new ManualAckWebSocketClient(uri, "stateless-worker");
         try {
             assertClientConnects(client, "stateless worker client failed to connect");
 
             Map<String, Object> createBody = new LinkedHashMap<>();
-            createBody.put("taskName", "worker-without-context");
             createBody.put("project", "demoApp");
             createBody.put("sharedConfig", Map.of("textContent", "stateless dispatch integration"));
             createBody.put("userId", "itest");
-            createBody.put("inputs", List.of(Map.of("target", "target-a")));
-            createBody.put("batchSize", 1);
+            createBody.put("sourceRef", "worker-without-context");
+            createBody.put("executionSpec", Map.of("batchSize", 1));
 
-            Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, createBody);
+            Map<String, Object> createResponse = createTaskShell(createBody);
             assertApiOk(createResponse);
             String taskId = String.valueOf(responseData(createResponse).get("taskId"));
+            assertApiOk(appendTaskItems(taskId, "demo.dispatch", List.of(Map.of("target", "target-a"))));
+            assertApiOk(sealTask(taskId));
 
-            Map<String, Object> auditResponse = exchange(
-                    "/status/api/tasks/" + taskId + "/audit?approved=true&comment=worker-without-context",
-                    HttpMethod.POST,
-                    null
-            );
+            Map<String, Object> auditResponse = approveTask(taskId);
             assertApiOk(auditResponse);
 
-            TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL", 20, 500L);
+            JsonObject dispatch = client.awaitTask(3, TimeUnit.SECONDS);
+            assertNotNull(dispatch, "stateless worker should receive the task when routing is not required");
+            client.sendSuccess(dispatch, "stateless-ok");
+
+            RuntimeTaskSnapshot terminalSnapshot = waitForRuntimeTaskSnapshot(taskId, "TERMINAL", 20, 500L);
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminalSnapshot.task().get("terminalReason"));
             assertEquals(1, ((Number) terminalSnapshot.task().get("peakAssignedWorkerCount")).intValue());
-            assertEquals(1, terminalSnapshot.messages().size());
-
-            Map<String, Object> message = terminalSnapshot.messages().get(0);
-            assertEquals("stateless-worker", message.get("latestAttemptWorkerId"));
-            assertNull(message.get("latestAttemptWorkerContextId"));
-            assertEquals("SUCCESS", message.get("status"));
-            assertNotNull(message.get("latestAttemptBatchId"));
+            assertEquals(1, terminalSnapshot.stats().successCount());
         } finally {
             client.disconnect();
+        }
+    }
+
+    private static final class ManualAckWebSocketClient extends SampleWorkerWebSocketClient {
+        private final BlockingQueue<JsonObject> taskQueue = new LinkedBlockingQueue<>();
+
+        private ManualAckWebSocketClient(URI serverUri, String workerId) {
+            super(serverUri, workerId);
+        }
+
+        @Override
+        public void onMessage(String message) {
+            try {
+                JsonObject frame = WsFrameTestSupport.parse(message);
+                if (frame != null && WsFrameTestSupport.isTask(frame) && !WsFrameTestSupport.isResponse(frame)) {
+                    taskQueue.offer(frame);
+                    return;
+                }
+            } catch (Exception ignored) {
+                // Fall through to the base client for non-task frames or malformed payloads.
+            }
+            super.onMessage(message);
+        }
+
+        private JsonObject awaitTask(long timeout, TimeUnit unit) throws InterruptedException {
+            return taskQueue.poll(timeout, unit);
+        }
+
+        private void sendSuccess(JsonObject taskMessage, String detail) throws Exception {
+            sendMessage(WsFrameTestSupport.buildTaskResult(
+                    WsFrameTestSupport.messageId(taskMessage),
+                    WsFrameTestSupport.project(taskMessage),
+                    getWorkerId(),
+                    WsFrameTestSupport.taskId(taskMessage),
+                    "SUCCESS",
+                    detail
+            ));
         }
     }
 }

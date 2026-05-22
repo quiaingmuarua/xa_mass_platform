@@ -1,12 +1,17 @@
 package com.xa.mass.transport.polling.worker;
 
 import com.xa.mass.transport.channel.NoopWorkerSystemEventChannel;
+import com.xa.mass.transport.channel.TaskPullStatus;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
+import com.xa.mass.transport.presence.WorkerPresenceState;
+import com.xa.mass.transport.packet.PacketType;
+import com.xa.mass.transport.packet.TransportPacket;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
+import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -27,7 +32,11 @@ class PollingWorkerAdapterTest {
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.QUEUED, outcomes.get(0).getStatus());
-        assertEquals(List.of(item), adapter.pollTaskMessages("worker-1", 10, 0));
+        assertEquals(TaskPullStatus.DELIVERED, adapter.pollTaskMessagesResult("worker-1", 1, 0).getStatus());
+        adapter.dispatchEnvelopes(List.of(envelope(item("msg-2", "worker-1"))));
+        assertEquals(List.of("msg-2"), adapter.pollTaskMessages("worker-1", 10, 0).stream()
+                .map(TaskDispatchItem::getMessageId)
+                .toList());
     }
 
     @Test
@@ -39,6 +48,7 @@ class PollingWorkerAdapterTest {
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.INVALID_ITEM, outcomes.get(0).getStatus());
         assertTrue(adapter.pollTaskMessages("worker-1", 10, 0).isEmpty());
+        assertEquals(TaskPullStatus.EMPTY, adapter.pollTaskMessagesResult("worker-1", 10, 0).getStatus());
     }
 
     @Test
@@ -59,9 +69,44 @@ class PollingWorkerAdapterTest {
                 adapter.pollTaskMessages("worker-1", PollingWorkerAdapter.MAX_INBOX_SIZE + 10, 0).size());
     }
 
+    @Test
+    void pollResultPreservesDeliveredAndInvalidRequestStatuses() {
+        PollingWorkerAdapter adapter = adapter();
+        adapter.dispatchEnvelopes(List.of(envelope(item("msg-1", "worker-1"))));
+
+        assertEquals(TaskPullStatus.DELIVERED, adapter.pollTaskMessagesResult("worker-1", 1, 0).getStatus());
+        assertEquals(TaskPullStatus.INVALID_REQUEST, adapter.pollTaskMessagesResult(" ", 10, 0).getStatus());
+        assertEquals(TaskPullStatus.INVALID_REQUEST, adapter.pollTaskMessagesResult("worker-1", 0, 0).getStatus());
+    }
+
+    @Test
+    void workerPresenceAnnouncementsUpdateTransportOwnedPresence() {
+        InMemoryWorkerPresenceStore presenceStore = new InMemoryWorkerPresenceStore(30_000L, "poll-node-1");
+        PollingWorkerAdapter adapter = adapter(presenceStore);
+
+        adapter.announceWorkerOnline("worker-1", "poll connected");
+
+        assertEquals(WorkerPresenceState.ONLINE, presenceStore.getPresence("worker-1").getPresenceState());
+        assertEquals("poll-node-1", presenceStore.findOwners("worker-1").getFirst().transportNodeId());
+        assertTrue(presenceStore.isRouteOnline(PollingWorkerAdapter.PROTOCOL, "worker-1"));
+
+        adapter.publishWorkerHeartbeat("worker-1", "poll heartbeat");
+        assertEquals(WorkerPresenceState.ONLINE, presenceStore.getPresence("worker-1").getPresenceState());
+
+        adapter.announceWorkerOffline("worker-1", "poll disconnect");
+
+        assertEquals(WorkerPresenceState.OFFLINE, presenceStore.getPresence("worker-1").getPresenceState());
+        assertTrue(presenceStore.listActivePresences().isEmpty());
+    }
+
     private PollingWorkerAdapter adapter() {
+        return adapter(new InMemoryWorkerPresenceStore());
+    }
+
+    private PollingWorkerAdapter adapter(InMemoryWorkerPresenceStore presenceStore) {
         return new PollingWorkerAdapter(
                 NoopWorkerSystemEventChannel.INSTANCE,
+                presenceStore,
                 new TransportDeliveryService(
                         new InMemoryTransportDeliveryStore(
                                 InMemoryTransportDeliveryStore.DEFAULT_MAX_QUEUED_ITEMS,
@@ -80,8 +125,8 @@ class PollingWorkerAdapterTest {
                 "demoApp",
                 "agent",
                 0,
+                "attempt-" + messageId,
                 workerId,
-                null,
                 "batch-1",
                 Map.of("target", "target-1"),
                 Map.of()
@@ -89,24 +134,32 @@ class PollingWorkerAdapterTest {
     }
 
     private TransportDispatchEnvelope envelope(TaskDispatchItem item) {
-        return new TransportDispatchEnvelope(
-                "delivery-" + item.getMessageId(),
-                PollingWorkerAdapter.PROTOCOL,
-                item.getWorkerId(),
-                item.attemptId(),
-                item,
-                1L
-        );
+        return envelope("delivery-" + item.getMessageId(), item.getWorkerId(), item);
     }
 
     private TransportDispatchEnvelope invalidEnvelope(TaskDispatchItem item) {
+        return envelope("delivery-" + item.getMessageId(), " ", item);
+    }
+
+    private TransportDispatchEnvelope envelope(String deliveryId, String routeKey, TaskDispatchItem item) {
         return new TransportDispatchEnvelope(
-                "delivery-" + item.getMessageId(),
-                PollingWorkerAdapter.PROTOCOL,
-                " ",
-                item.attemptId(),
-                item,
+                deliveryId,
+                new TransportPacket(
+                        TransportPacket.CURRENT_VERSION,
+                        deliveryId,
+                        item.attemptId(),
+                        PacketType.TASK_DISPATCH,
+                        PollingWorkerAdapter.PROTOCOL,
+                        routeKey,
+                        item.getTaskId(),
+                        item.getMessageId(),
+                        item.attemptId(),
+                        item.getEventCode(),
+                        TransportPacket.JSON_CONTENT_TYPE,
+                        item.transportPayloadView()
+                ),
                 1L
         );
     }
 }
+

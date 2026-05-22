@@ -1,22 +1,24 @@
 package com.xa.mass.transport.model;
 
-import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
-import com.xa.mass.base.model.TaskSharedConfig;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
+import com.xa.mass.transport.packet.PacketType;
+import com.xa.mass.transport.packet.TransportPacket;
+import com.xa.mass.transport.payload.TransportJsonValueNormalizer;
 
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
 /**
- * Transport-neutral logical dispatch item delivered to worker transports.
+ * Worker-facing dispatch view reconstructed from or assembled into the
+ * transport packet mainline.
  *
- * <p>This class is currently a narrow hybrid: worker-facing task payload plus
- * runtime dispatch metadata used by adapters. Internal metadata such as
- * {@link #attemptId()} intentionally avoids JavaBean getter naming so worker
- * API serializers do not expose it by convention.</p>
+ * <p>This class is intentionally not the transport queue/store protocol.
+ * {@link TransportPacket} remains the transport-owned main protocol. This view
+ * exists for worker APIs and adapter codecs that need the dispatch payload in a
+ * convenient structured shape while still carrying bounded runtime metadata
+ * such as {@link #attemptId()} and {@link #routeKey()}.</p>
  *
  * <p>Do not add more lifecycle or security state here. If this hybrid becomes
  * a constraint, split worker payload and runtime dispatch context deliberately
@@ -32,11 +34,12 @@ public final class TaskDispatchItem {
     private final String userId;
     private final int retryCount;
     private final String attemptId;
+    private final String routeKey;
     private final String workerId;
-    private final String workerContextId;
     private final String batchId;
     private final Map<String, Object> input;
     private final Map<String, Object> sharedConfig;
+    private final Map<String, Object> transportPayload;
 
     public TaskDispatchItem(String taskId,
                             String messageId,
@@ -46,12 +49,11 @@ public final class TaskDispatchItem {
                             String userId,
                             int retryCount,
                             String workerId,
-                            String workerContextId,
                             String batchId,
                             Map<String, Object> input,
                             Map<String, Object> sharedConfig) {
         this(taskId, messageId, eventCode, taskName, project, userId, retryCount,
-                null, workerId, workerContextId, batchId, input, sharedConfig);
+                null, workerId, batchId, input, sharedConfig);
     }
 
     public TaskDispatchItem(String taskId,
@@ -63,23 +65,66 @@ public final class TaskDispatchItem {
                             int retryCount,
                             String attemptId,
                             String workerId,
-                            String workerContextId,
                             String batchId,
                             Map<String, Object> input,
                             Map<String, Object> sharedConfig) {
-        this.taskId = taskId;
-        this.messageId = messageId;
-        this.eventCode = eventCode;
+        this(taskId, messageId, eventCode, taskName, project, userId, retryCount,
+                attemptId, null, workerId, batchId, input, sharedConfig, false, null);
+    }
+
+    public TaskDispatchItem(String taskId,
+                            String messageId,
+                            String eventCode,
+                            String taskName,
+                            String project,
+                            String userId,
+                            int retryCount,
+                            String attemptId,
+                            String routeKey,
+                            String workerId,
+                            String batchId,
+                            Map<String, Object> input,
+                            Map<String, Object> sharedConfig) {
+        this(taskId, messageId, eventCode, taskName, project, userId, retryCount,
+                attemptId, routeKey, workerId, batchId, input, sharedConfig, false, null);
+    }
+
+    private TaskDispatchItem(String taskId,
+                             String messageId,
+                             String eventCode,
+                             String taskName,
+                             String project,
+                             String userId,
+                             int retryCount,
+                             String attemptId,
+                             String routeKey,
+                             String workerId,
+                             String batchId,
+                             Map<String, Object> input,
+                             Map<String, Object> sharedConfig,
+                             boolean trustedImmutablePayload,
+                             Map<String, Object> transportPayload) {
+        this.taskId = requireText(taskId, "taskId");
+        this.messageId = requireText(messageId, "messageId");
+        this.eventCode = optionalText(eventCode);
         this.taskName = taskName;
         this.project = project;
         this.userId = userId;
         this.retryCount = retryCount;
         this.attemptId = attemptId;
+        this.routeKey = routeKey;
         this.workerId = workerId;
-        this.workerContextId = workerContextId;
         this.batchId = batchId;
-        this.input = immutableCopy(input);
-        this.sharedConfig = immutableCopy(sharedConfig);
+        this.input = trustedImmutablePayload
+                ? trustedMap(input)
+                : normalizeObject(input, TransportPacket.PAYLOAD_INPUT);
+        this.sharedConfig = trustedImmutablePayload
+                ? trustedMap(sharedConfig)
+                : normalizeObject(sharedConfig, TransportPacket.PAYLOAD_SHARED_CONFIG);
+        this.transportPayload = transportPayload != null
+                ? trustedMap(transportPayload)
+                : buildTransportPayload(taskName, project, userId, retryCount, workerId, batchId,
+                this.input, this.sharedConfig);
     }
 
     public String getTaskId() {
@@ -94,23 +139,77 @@ public final class TaskDispatchItem {
         return eventCode;
     }
 
-    public static TaskDispatchItem from(Task task, TaskMsg taskMsg, TaskMsgAttempt attempt) {
-        Objects.requireNonNull(taskMsg, "taskMsg");
-        Objects.requireNonNull(attempt, "attempt");
+    public static TaskDispatchItem from(TaskDispatchContext task, TaskDispatchBinding dispatchBinding) {
+        Objects.requireNonNull(task, "task");
+        Objects.requireNonNull(dispatchBinding, "dispatchBinding");
         return new TaskDispatchItem(
-                task.getTid(),
-                taskMsg.getMessageId(),
-                TaskSharedConfig.sdkEventCode(task),
-                task.getTaskName(),
-                task.getProject(),
-                task.getUser() != null ? task.getUser().getUserId() : null,
-                taskMsg.getRetryCount(),
-                attempt.getAttemptId(),
-                attempt.getWorkerId(),
-                attempt.getWorkerContextId(),
-                attempt.getBatchId(),
-                normalizeInput(task, taskMsg),
-                task.getSharedConfig()
+                task.taskId(),
+                dispatchBinding.messageId(),
+                firstNonBlank(dispatchBinding.eventCode(), task.eventCode()),
+                task.taskName(),
+                task.project(),
+                task.userId(),
+                dispatchBinding.retryCount(),
+                dispatchBinding.attemptId(),
+                null,
+                dispatchBinding.workerId(),
+                dispatchBinding.batchId(),
+                normalizeInput(dispatchBinding.payload()),
+                task.sharedConfig()
+        );
+    }
+
+    public static TaskDispatchItem fromDecodedTransportPayload(String taskId,
+                                                               String messageId,
+                                                               String eventCode,
+                                                               String taskName,
+                                                               String project,
+                                                               String userId,
+                                                               int retryCount,
+                                                               String attemptId,
+                                                               String routeKey,
+                                                               String workerId,
+                                                               String batchId,
+                                                               Map<String, Object> input,
+                                                               Map<String, Object> sharedConfig) {
+        return new TaskDispatchItem(
+                taskId,
+                messageId,
+                eventCode,
+                taskName,
+                project,
+                userId,
+                retryCount,
+                attemptId,
+                routeKey,
+                workerId,
+                batchId,
+                input,
+                sharedConfig,
+                true,
+                null
+        );
+    }
+
+    public static TaskDispatchItem fromTransportPacket(TransportPacket packet) {
+        requireDispatchPacket(packet);
+        Map<String, Object> payload = packet.payload();
+        return new TaskDispatchItem(
+                packet.taskId(),
+                packet.messageId(),
+                packet.eventCode(),
+                packet.payloadString(TransportPacket.PAYLOAD_TASK_NAME),
+                packet.payloadString(TransportPacket.PAYLOAD_PROJECT),
+                packet.payloadString(TransportPacket.PAYLOAD_USER_ID),
+                packet.payloadInt(TransportPacket.PAYLOAD_RETRY_COUNT),
+                packet.attemptId(),
+                packet.routeKey(),
+                packet.payloadString(TransportPacket.PAYLOAD_WORKER_ID),
+                packet.payloadString(TransportPacket.PAYLOAD_BATCH_ID),
+                packet.payloadObject(TransportPacket.PAYLOAD_INPUT),
+                packet.payloadObject(TransportPacket.PAYLOAD_SHARED_CONFIG),
+                true,
+                payload
         );
     }
 
@@ -134,12 +233,12 @@ public final class TaskDispatchItem {
         return attemptId;
     }
 
-    public String getWorkerId() {
-        return workerId;
+    public String routeKey() {
+        return routeKey;
     }
 
-    public String getWorkerContextId() {
-        return workerContextId;
+    public String getWorkerId() {
+        return workerId;
     }
 
     public String getBatchId() {
@@ -154,88 +253,119 @@ public final class TaskDispatchItem {
         return sharedConfig;
     }
 
-    public TaskDispatchRuntimeMetadata runtimeMetadata() {
-        return new TaskDispatchRuntimeMetadata(
-                attemptId,
-                workerId,
-                workerContextId,
-                batchId
-        );
+    public Map<String, Object> transportPayloadView() {
+        return transportPayload;
     }
 
-    public TaskDispatchWireView wireView() {
-        return new TaskDispatchWireView(
-                taskId,
-                messageId,
-                eventCode,
-                taskName,
-                project,
-                userId,
-                retryCount,
-                workerId,
-                workerContextId,
-                batchId,
-                input,
-                sharedConfig
-        );
+    private static Map<String, Object> buildTransportPayload(String taskName,
+                                                             String project,
+                                                             String userId,
+                                                             int retryCount,
+                                                             String workerId,
+                                                             String batchId,
+                                                             Map<String, Object> input,
+                                                             Map<String, Object> sharedConfig) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        put(payload, TransportPacket.PAYLOAD_TASK_NAME, taskName);
+        put(payload, TransportPacket.PAYLOAD_PROJECT, project);
+        put(payload, TransportPacket.PAYLOAD_USER_ID, userId);
+        payload.put(TransportPacket.PAYLOAD_RETRY_COUNT, retryCount);
+        put(payload, TransportPacket.PAYLOAD_WORKER_ID, workerId);
+        put(payload, TransportPacket.PAYLOAD_BATCH_ID, batchId);
+        payload.put(TransportPacket.PAYLOAD_INPUT, input);
+        payload.put(TransportPacket.PAYLOAD_SHARED_CONFIG, sharedConfig);
+        return Map.copyOf(payload);
     }
 
-    public Map<String, Object> mergedPayload() {
-        Map<String, Object> payload = new LinkedHashMap<>(input);
-        payload.putAll(sharedConfig);
-        payload.put("taskId", taskId);
-        payload.put("taskName", taskName);
-        payload.put("eventCode", eventCode);
-        payload.put("project", project);
-        payload.put("userId", userId);
-        payload.put("workerId", workerId);
-        payload.put("workerContextId", workerContextId);
-        payload.put("batchId", batchId);
-        payload.put("retryCount", retryCount);
-        return Collections.unmodifiableMap(payload);
+    private static Map<String, Object> normalizeObject(Map<String, Object> values, String fieldName) {
+        return TransportJsonValueNormalizer.normalizeObject(values, fieldName);
     }
 
-    private static Map<String, Object> immutableCopy(Map<String, Object> values) {
+    private static Map<String, Object> trustedMap(Map<String, Object> values) {
         if (values == null || values.isEmpty()) {
-            return Collections.emptyMap();
+            return Map.of();
         }
-        return Collections.unmodifiableMap(new LinkedHashMap<>(values));
+        return values;
+    }
+
+    private static void requireDispatchPacket(TransportPacket packet) {
+        if (packet == null) {
+            throw new IllegalArgumentException("packet must not be null");
+        }
+        if (packet.type() != PacketType.TASK_DISPATCH) {
+            throw new IllegalArgumentException("packet must be TASK_DISPATCH");
+        }
+    }
+
+    private static void put(Map<String, Object> target, String key, String value) {
+        if (value != null && !value.isBlank()) {
+            target.put(key, value);
+        }
     }
 
     @SuppressWarnings("unchecked")
-    private static Map<String, Object> normalizeInput(Task task, TaskMsg taskMsg) {
-        Map<String, Object> rawInput = taskMsg == null ? null : taskMsg.getInput();
+    private static Map<String, Object> normalizeInput(Map<String, Object> rawInput) {
         if (rawInput == null || rawInput.isEmpty()) {
-            return Collections.emptyMap();
+            return Map.of();
         }
-        String payloadType = sdkPayloadType(task);
-        if ("JSON".equals(payloadType)) {
+        if (isWrappedJsonPayload(rawInput)) {
             Object data = rawInput.get("data");
-            if (data instanceof Map<?, ?> map) {
-                return immutableCopy((Map<String, Object>) map);
-            }
+            return normalizeObject((Map<String, Object>) data, TransportPacket.PAYLOAD_INPUT);
         }
-        if ("TEXT".equals(payloadType)) {
-            Object text = rawInput.get("text");
-            if (text instanceof String value) {
-                return Map.of("text", value);
-            }
+        if (isWrappedTextPayload(rawInput)) {
+            return Map.of("text", rawInput.get("text"));
         }
-        return immutableCopy(rawInput);
+        return normalizeObject(rawInput, TransportPacket.PAYLOAD_INPUT);
     }
 
-    private static String sdkPayloadType(Task task) {
-        if (task == null || task.getSharedConfig() == null) {
-            return null;
+    private static boolean isWrappedJsonPayload(Map<String, Object> rawInput) {
+        if (rawInput == null) {
+            return false;
         }
-        Object sdk = task.getSharedConfig().get("_sdk");
-        if (!(sdk instanceof Map<?, ?> metadata)) {
-            return null;
+        Object data = rawInput.get("data");
+        if (!(data instanceof Map<?, ?>)) {
+            return false;
         }
-        Object payloadType = metadata.get("payloadType");
-        if (!(payloadType instanceof String value) || value.isBlank()) {
-            return null;
-        }
-        return value.trim().toUpperCase();
+        Object type = rawInput.get("type");
+        return type instanceof String text && "json".equalsIgnoreCase(text);
     }
+
+    private static boolean isWrappedTextPayload(Map<String, Object> rawInput) {
+        if (rawInput == null) {
+            return false;
+        }
+        Object text = rawInput.get("text");
+        if (!(text instanceof String)) {
+            return false;
+        }
+        Object type = rawInput.get("type");
+        return type instanceof String value && "text".equalsIgnoreCase(value);
+    }
+
+    private static String firstNonBlank(String primary, String fallback) {
+        if (primary != null && !primary.isBlank()) {
+            return primary;
+        }
+        if (fallback != null && !fallback.isBlank()) {
+            return fallback;
+        }
+        return null;
+    }
+
+    private static String requireText(String value, String fieldName) {
+        Objects.requireNonNull(value, fieldName);
+        if (value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + " must not be blank");
+        }
+        return value.trim();
+    }
+
+    private static String optionalText(String value) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.trim();
+        return normalized.isEmpty() ? null : normalized;
+    }
+
 }

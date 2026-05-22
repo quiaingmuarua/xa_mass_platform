@@ -1,8 +1,7 @@
 package com.xa.mass.sdk.model;
 
+import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.transport.WorkerTransportHints;
 
 import java.util.*;
@@ -15,22 +14,8 @@ public final class SdkResourceMapper {
     private SdkResourceMapper() {
     }
 
-    public static TaskCreateRequestDto toEngineRequest(MassTaskCreateRequest request) {
-        Objects.requireNonNull(request, "request");
-        TaskCreateRequestDto dto = new TaskCreateRequestDto();
-        dto.setUserId(request.getUserId());
-        dto.setProject(request.getProject());
-        dto.setTaskName(request.getTaskName());
-        dto.setSharedConfig(request.getSharedConfig());
-        dto.setInputs(request.getInputs());
-        dto.setBatchSize(request.getBatchSize());
-        dto.setDefaultMsgMaxRetryCount(request.getDefaultMsgMaxRetryCount());
-        dto.setOpenEnded(request.isOpenEnded());
-        dto.setMaxRuntimeSeconds(request.getMaxRuntimeSeconds());
-        dto.setSourceType(request.getSourceType());
-        dto.setWorkloadClass(request.getWorkloadClass());
-        dto.setSourceRef(request.getSourceRef());
-        return dto;
+    public static TaskShellCreateRequestDto toEngineRequest(MassTaskShellCreateRequest request) {
+        return MassTaskShellCreateRequestMapper.toEngineRequest(request);
     }
 
     public static Worker toWorker(WorkerRegistration request) {
@@ -40,27 +25,15 @@ public final class SdkResourceMapper {
         String transportHint = WorkerTransportHints.normalize(requireNonBlank(request.getTransportHint(), "transportHint"));
         Worker worker = new Worker();
         worker.setWorkerId(workerId);
+        worker.setAdapterNodeId(blankToNull(request.getAdapterNodeId()));
         worker.setWorkerGroupId(blankToNull(request.getWorkerGroupId()));
-        worker.setSupportedProjects(normalizedList(request.getSupportedProjects()));
-        worker.setSupportedEventCodes(normalizedList(request.getSupportedEventCodes()));
+        worker.setSupportedProjects(Collections.emptyList());
+        worker.setSupportedEventCodes(Collections.emptyList());
         worker.setAdapterId(adapterId);
         worker.setOnlineStrategy(transportHint);
+        worker.setMaxConcurrentWork(request.getMaxConcurrentWork());
         worker.setAttributes(normalizedAttributes(request.getAttributes()));
         return worker;
-    }
-
-    public static WorkerContext toWorkerContext(WorkerContextRegistration request) {
-        Objects.requireNonNull(request, "request");
-        WorkerContext workerContext = new WorkerContext();
-        workerContext.setWorkerContextId(requireNonBlank(request.getWorkerContextId(), "workerContextId"));
-        workerContext.setWorkerId(requireNonBlank(request.getWorkerId(), "workerId"));
-        String project = blankToNull(request.getProject());
-        if (project != null) {
-            workerContext.setProject(project);
-        }
-        workerContext.setRoutingTags(normalizedRoutingTags(request.getRoutingTags()));
-        workerContext.setAttributes(normalizedAttributes(request.getAttributes()));
-        return workerContext;
     }
 
     private static String requireNonBlank(String value, String fieldName) {
@@ -75,34 +48,6 @@ public final class SdkResourceMapper {
             return null;
         }
         return value.trim();
-    }
-
-    private static List<String> normalizedList(List<String> values) {
-        if (values == null || values.isEmpty()) {
-            return Collections.emptyList();
-        }
-        LinkedHashSet<String> normalized = new LinkedHashSet<>();
-        for (String value : values) {
-            String normalizedValue = blankToNull(value);
-            if (normalizedValue != null) {
-                normalized.add(normalizedValue);
-            }
-        }
-        return normalized.isEmpty() ? Collections.emptyList() : List.copyOf(normalized);
-    }
-
-    private static Set<String> normalizedRoutingTags(Set<String> values) {
-        if (values == null || values.isEmpty()) {
-            return Collections.emptySet();
-        }
-        LinkedHashSet<String> normalized = new LinkedHashSet<>();
-        for (String value : values) {
-            String normalizedValue = blankToNull(value);
-            if (normalizedValue != null) {
-                normalized.add(normalizedValue.toLowerCase(Locale.ROOT));
-            }
-        }
-        return normalized.isEmpty() ? Collections.emptySet() : Set.copyOf(normalized);
     }
 
     private static Map<String, String> normalizedAttributes(Map<String, String> attributes) {

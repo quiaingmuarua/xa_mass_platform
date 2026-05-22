@@ -1,6 +1,6 @@
 package com.xa.mass.api.internal;
 
-import com.xa.mass.sdk.TransportOperations;
+import com.xa.mass.sdk.RuntimeDiagnosticsOperations;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,46 +21,51 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class SessionControllerTest {
 
     @Mock
-    private TransportOperations transportOperations;
+    private RuntimeDiagnosticsOperations runtimeDiagnostics;
 
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(new SessionController(transportOperations)).build();
+        mockMvc = MockMvcBuilders.standaloneSetup(new SessionController(runtimeDiagnostics)).build();
     }
 
     @Test
     void listSessionsReturnsTransportNeutralEndpointSnapshots() throws Exception {
-        when(transportOperations.listSessions()).thenReturn(List.of(Map.of(
+        when(runtimeDiagnostics.listSessions()).thenReturn(List.of(Map.of(
                 "workerId", "worker-1",
                 "connections", List.of(Map.of(
                         "active", true,
                         "endpointId", "endpoint-1",
-                        "transport", "websocket"
+                        "routeKey", "route-1",
+                        "adapterId", "ws-public"
                 ))
         )));
 
-        mockMvc.perform(get("/api/session/list"))
+        mockMvc.perform(get("/api/v1/runtime/sessions"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data[0].workerId").value("worker-1"))
                 .andExpect(jsonPath("$.data[0].connections[0].active").value(true))
                 .andExpect(jsonPath("$.data[0].connections[0].endpointId").value("endpoint-1"))
-                .andExpect(jsonPath("$.data[0].connections[0].transport").value("websocket"));
+                .andExpect(jsonPath("$.data[0].connections[0].routeKey").value("route-1"))
+                .andExpect(jsonPath("$.data[0].connections[0].adapterId").value("ws-public"));
     }
 
     @Test
     void sessionStatsUseSdkCounts() throws Exception {
-        when(transportOperations.getSessionStats()).thenReturn(Map.of(
+        when(runtimeDiagnostics.getSessionStats()).thenReturn(Map.of(
                 "activeConnections", 2,
-                "workerCount", 2L
+                "workerCount", 2L,
+                "activeConnectionsByAdapter", Map.of("ws-public", 1L, "socket-edge", 1L)
         ));
 
-        mockMvc.perform(get("/api/session/stats"))
+        mockMvc.perform(get("/api/v1/runtime/sessions:stats"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.activeConnections").value(2))
-                .andExpect(jsonPath("$.data.workerCount").value(2));
+                .andExpect(jsonPath("$.data.workerCount").value(2))
+                .andExpect(jsonPath("$.data.activeConnectionsByAdapter.ws-public").value(1))
+                .andExpect(jsonPath("$.data.activeConnectionsByAdapter.socket-edge").value(1));
     }
 }

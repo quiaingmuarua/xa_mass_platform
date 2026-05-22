@@ -5,15 +5,14 @@ import com.xa.mass.base.jsondsl.processor.GenerateProcessor;
 import com.xa.mass.base.jsondsl.processor.ProcessingContext;
 import com.xa.mass.base.jsondsl.processor.ProcessorRegistry;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskExecutionSpec;
+import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
-import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.model.TaskCreateRequestDto;
+import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
-import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,9 +27,10 @@ public class EngineExample {
     private static final Logger log = LoggerFactory.getLogger(EngineExample.class);
 
     public static void main(String[] args) {
+        InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
         TaskManager taskManager = new TaskManager(
-                new SimpleTaskScheduler(),
-                new InMemoryTaskStorage(),
+                taskStorage,
+                taskStorage,
                 new InMemoryTaskWorkRuntime());
         TaskCommandService taskCommands = new TaskCommandService(taskManager);
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
@@ -40,18 +40,20 @@ public class EngineExample {
         List<Worker> workers = genMockWorker();
         workers.forEach(workerManager::addWorker);
 
-        List<WorkerContext> workerContexts = genMockWorkerContext();
-        workerContexts.forEach(workerManager::addWorkerContext);
-
-        TaskCreateRequestDto taskDto = new TaskCreateRequestDto();
-        taskCommands.createTask(taskDto);
+        TaskShellCreateRequestDto taskDto = new TaskShellCreateRequestDto();
+        taskDto.setSourceRef("demo-task");
+        taskDto.setProject("demoApp");
+        taskDto.setUserId("demo-user");
+        TaskExecutionSpec taskSpec = new TaskExecutionSpec();
+        taskSpec.setBatchSize(1);
+        taskSpec.setDefaultMaxRetryCount(3);
+        taskDto.setExecutionSpec(taskSpec);
+        Task task = taskCommands.createTaskShell(taskDto);
+        taskCommands.appendTaskItems(task.getTid(), List.of(Map.of("target", "demo-target")));
+        taskCommands.sealTask(task.getTid());
     }
 
     public static Task genMockTask() {
-        return null;
-    }
-
-    public static List<WorkerContext> genMockWorkerContext() {
         return null;
     }
 
@@ -67,3 +69,4 @@ public class EngineExample {
         return processor.generate(definition, new ProcessingContext("test-context"), Worker.class);
     }
 }
+

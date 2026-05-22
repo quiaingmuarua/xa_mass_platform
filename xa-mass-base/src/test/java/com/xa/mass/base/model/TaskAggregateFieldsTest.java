@@ -40,32 +40,27 @@ class TaskAggregateFieldsTest {
     }
 
     @Test
-    void openEndedCompatibilityProjectionTracksIntakeStatus() {
+    void intakeStatusIsTheCanonicalAppendWindowTruth() {
         Task task = new Task("task-4", "aggregate", "demoApp", 1, java.util.Map.of("textContent", "hello"), UserRef.of("user-4"));
 
         assertEquals(com.xa.mass.base.enums.task.TaskIntakeStatus.SEALED, task.getIntakeStatus());
-        assertFalse(task.isOpenEnded());
-
-        task.setOpenEnded(true);
-
+        task.setIntakeStatus(com.xa.mass.base.enums.task.TaskIntakeStatus.OPEN);
         assertEquals(com.xa.mass.base.enums.task.TaskIntakeStatus.OPEN, task.getIntakeStatus());
-        assertTrue(task.isOpenEnded());
 
         task.setIntakeStatus(com.xa.mass.base.enums.task.TaskIntakeStatus.SEALED);
 
         assertEquals(com.xa.mass.base.enums.task.TaskIntakeStatus.SEALED, task.getIntakeStatus());
-        assertFalse(task.isOpenEnded());
     }
 
     @Test
     void batchSizeIsNormalizedAtTheSetterBoundary() {
         Task task = new Task("task-5", "aggregate", "demoApp", 1, java.util.Map.of("textContent", "hello"), UserRef.of("user-5"));
 
-        task.setBatchSize(0);
-        assertEquals(1, task.getBatchSize());
+        task.getExecutionSpec().setBatchSize(0);
+        assertEquals(1, task.getExecutionSpec().getBatchSize());
 
-        task.setBatchSize(3);
-        assertEquals(3, task.getBatchSize());
+        task.getExecutionSpec().setBatchSize(3);
+        assertEquals(3, task.getExecutionSpec().getBatchSize());
     }
 
     @Test
@@ -82,6 +77,6 @@ class TaskAggregateFieldsTest {
     void workloadClassDefaultsToBulk() {
         Task task = new Task();
 
-        assertEquals(TaskWorkloadClass.BULK, task.getWorkloadClass());
+        assertNull(task.getExecutionSpec().getWorkloadClass());
     }
 }

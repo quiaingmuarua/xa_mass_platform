@@ -1,13 +1,12 @@
 package com.xa.mass.api.sync;
 
-import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.sdk.model.TaskWorkFinalNotification;
+import com.xa.mass.sdk.model.TaskWorkFinalSnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationListener;
-import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 import java.util.Optional;
@@ -19,26 +18,25 @@ import java.util.concurrent.TimeoutException;
 /**
  * Bridges async task result events to blocking HTTP callers.
  *
- * <p>Callers register a {@link CompletableFuture} keyed by a correlation ID
- * embedded in the task's sharedConfig before creating the task. When the engine
- * fires {@code onTaskMessageLogicallyFinal}, the future is completed and the
- * waiting HTTP thread unblocks.
+ * <p>Callers register a {@link CompletableFuture} keyed by {@code taskId + messageId}.
+ * When the engine fires {@code onTaskMessageLogicallyFinal}, the future is
+ * completed and the waiting HTTP thread unblocks. Callers also get an
+ * immediate runtime-state fallback lookup during await so they do not miss a
+ * final result that raced ahead of registration.
  *
  * <p>The listener is registered after {@link ApplicationReadyEvent} so the
  * engine and task event surface are fully started before we hook in.
  */
 @Component
-@Profile("dev")
 public class SyncTaskResultBridge implements ApplicationListener<ApplicationReadyEvent> {
 
     private static final Logger logger = LoggerFactory.getLogger(SyncTaskResultBridge.class);
 
     public static final long MAX_TIMEOUT_MS = 10_000L;
     public static final long DEFAULT_TIMEOUT_MS = 5_000L;
-    public static final String SYNC_KEY = "_syncKey";
 
     private final MassSdkApplication app;
-    private final ConcurrentHashMap<String, CompletableFuture<TaskMsg>> pending = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, CompletableFuture<TaskWorkFinalSnapshot>> pendingByMessage = new ConcurrentHashMap<>();
 
     public SyncTaskResultBridge(MassSdkApplication app) {
         this.app = app;
@@ -46,57 +44,82 @@ public class SyncTaskResultBridge implements ApplicationListener<ApplicationRead
 
     @Override
     public void onApplicationEvent(ApplicationReadyEvent event) {
-        app.addTaskMessageLogicallyFinalListener(this::onMessageLogicallyFinal);
+        app.addTaskWorkFinalListener(this::onWorkLogicallyFinal);
         logger.info("SyncTaskResultBridge listener registered");
     }
 
-    private void onMessageLogicallyFinal(Task task, TaskMsg taskMsg) {
-        String correlationId = resolveCorrelationId(task);
-        if (correlationId == null) {
+    private void onWorkLogicallyFinal(TaskWorkFinalNotification notification) {
+        if (notification == null || notification.finalSnapshot() == null) {
             return;
         }
-        CompletableFuture<TaskMsg> future = pending.remove(correlationId);
+        String taskId = notification.taskId();
+        String messageId = notification.finalSnapshot().messageId();
+        if (taskId == null || taskId.isBlank() || messageId == null || messageId.isBlank()) {
+            return;
+        }
+        CompletableFuture<TaskWorkFinalSnapshot> future = pendingByMessage.remove(messageKey(taskId, messageId));
         if (future != null) {
-            future.complete(taskMsg);
+            future.complete(notification.finalSnapshot());
         }
     }
 
-    private String resolveCorrelationId(Task task) {
-        if (task == null || task.getSharedConfig() == null) {
-            return null;
-        }
-        Object value = task.getSharedConfig().get(SYNC_KEY);
-        return value instanceof String s && !s.isBlank() ? s.trim() : null;
+    public CompletableFuture<TaskWorkFinalSnapshot> register(String taskId, String messageId) {
+        return pendingByMessage.computeIfAbsent(messageKey(taskId, messageId), key -> new CompletableFuture<>());
     }
 
-    /**
-     * Registers a future keyed by {@code correlationId}. Must be called
-     * <em>before</em> the task is created to avoid a timing gap.
-     */
-    public CompletableFuture<TaskMsg> register(String correlationId) {
-        return pending.computeIfAbsent(correlationId, k -> new CompletableFuture<>());
+    public Optional<TaskWorkFinalSnapshot> getExistingFinal(String taskId, String messageId) {
+        return app.getTaskWorkFinal(taskId, messageId);
+    }
+
+    public void unregister(String taskId,
+                           String messageId,
+                           CompletableFuture<TaskWorkFinalSnapshot> future) {
+        if (future == null) {
+            return;
+        }
+        pendingByMessage.remove(messageKey(taskId, messageId), future);
     }
 
     /**
      * Blocks the calling thread until the future completes or {@code timeoutMs}
      * (capped at {@link #MAX_TIMEOUT_MS}) elapses.
      *
-     * @return the completed {@link TaskMsg}, or empty on timeout / interrupt
+     * @return the completed logical-final event, or empty on timeout / interrupt
      */
-    public Optional<TaskMsg> await(String correlationId, CompletableFuture<TaskMsg> future, long timeoutMs) {
+    public Optional<TaskWorkFinalSnapshot> await(String taskId,
+                                                 String messageId,
+                                                 CompletableFuture<TaskWorkFinalSnapshot> future,
+                                                 long timeoutMs) {
+        String key = messageKey(taskId, messageId);
+        Optional<TaskWorkFinalSnapshot> existing = getExistingFinal(taskId, messageId);
+        if (existing.isPresent()) {
+            pendingByMessage.remove(key, future);
+            future.complete(existing.get());
+            return existing;
+        }
         long bounded = Math.max(1L, Math.min(timeoutMs, MAX_TIMEOUT_MS));
         try {
             return Optional.of(future.get(bounded, TimeUnit.MILLISECONDS));
         } catch (TimeoutException e) {
-            pending.remove(correlationId, future);
+            pendingByMessage.remove(key, future);
             return Optional.empty();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            pending.remove(correlationId, future);
+            pendingByMessage.remove(key, future);
             return Optional.empty();
         } catch (Exception e) {
-            pending.remove(correlationId, future);
+            pendingByMessage.remove(key, future);
             throw new IllegalStateException("Sync result await failed: " + e.getMessage(), e);
         }
+    }
+
+    private String messageKey(String taskId, String messageId) {
+        if (taskId == null || taskId.isBlank()) {
+            throw new IllegalArgumentException("taskId must not be blank");
+        }
+        if (messageId == null || messageId.isBlank()) {
+            throw new IllegalArgumentException("messageId must not be blank");
+        }
+        return taskId.trim() + "|" + messageId.trim();
     }
 }

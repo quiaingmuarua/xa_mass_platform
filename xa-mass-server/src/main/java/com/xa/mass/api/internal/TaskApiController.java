@@ -3,786 +3,892 @@ package com.xa.mass.api.internal;
 import com.xa.mass.api.auth.ApiAuthService;
 import com.xa.mass.api.auth.ApiAuthorizationService;
 import com.xa.mass.api.auth.ApiSecurityScenario;
+import com.xa.mass.api.auth.ApiPermissionNames;
 import com.xa.mass.api.auth.TaskSecurityViewSupport;
 import com.xa.mass.api.model.ApiResponse;
-import com.xa.mass.api.model.task.TaskAppendItemsApiRequest;
-import com.xa.mass.api.sync.SyncTaskResultBridge;
-import com.xa.mass.api.model.task.TaskCreateApiRequest;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTask;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskAppendOutcome;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskCommandOutcome;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskCreateOutcome;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskGetResult;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskListResult;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskResultArchive;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskResultItem;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskResultWindow;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskSyncAppendOutcome;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskUpdateOutcome;
+import com.xa.mass.api.model.task.TaskCommandApiRequest;
+import com.xa.mass.api.model.task.TaskItemBatchIngestApiRequest;
+import com.xa.mass.api.model.task.TaskItemSyncIngestApiRequest;
+import com.xa.mass.api.model.task.TaskStageEvidenceApiRequest;
+import com.xa.mass.api.model.task.TaskShellCreateApiRequest;
 import com.xa.mass.api.model.task.TaskUpdateApiRequest;
-import com.xa.mass.base.enums.task.TaskSourceType;
-import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.enums.task.TaskTerminalReason;
-import com.xa.mass.base.model.ProjectRef;
-import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.UserRef;
-import com.xa.mass.sdk.SdkTaskResumeResult;
+import com.xa.mass.api.sync.SyncTaskResultBridge;
+import com.xa.mass.api.sync.TaskSyncRequestSupervisor;
 import com.xa.mass.sdk.TaskAdminOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
+import com.xa.mass.sdk.TaskResultQueryOperations;
+import com.xa.mass.sdk.TaskStageEvidenceOperations;
 import com.xa.mass.sdk.auth.PrincipalContext;
+import com.xa.mass.sdk.authz.PlatformAction;
+import com.xa.mass.sdk.authz.PlatformResourceType;
 import com.xa.mass.sdk.authz.TaskOwnershipSupport;
-import com.xa.mass.sdk.catalog.*;
+import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
+import com.xa.mass.sdk.catalog.ProjectDefinition;
+import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
 import com.xa.mass.sdk.model.*;
+import com.xa.mass.storage.api.TaskDetailStore;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.context.request.async.DeferredResult;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
+import java.util.concurrent.TimeUnit;
 
 @RestController
-@RequestMapping("/status/api/tasks")
+@RequestMapping("/api/v1/tasks")
+@Tag(name = "Task API", description = "Public task shell, item ingest, command, and result APIs")
 public class TaskApiController {
 
     private static final DateTimeFormatter DATE_TIME_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-    private static final Set<TaskStatus> EDITABLE_TASK_STATUSES = Set.of(TaskStatus.NEW, TaskStatus.BLOCKED);
-    private static final int DEFAULT_TASK_MESSAGE_SNAPSHOT_LIMIT = 100;
-    private static final int MAX_TASK_MESSAGE_SNAPSHOT_LIMIT = 500;
+    private static final Set<String> EDITABLE_TASK_STATUSES = Set.of("NEW", "BLOCKED");
+    private static final int MAX_INGEST_ITEM_COUNT = Integer.getInteger("xa.mass.api.maxIngestItemCount", 500);
+    private static final int MAX_INGEST_ITEM_BYTES = Integer.getInteger("xa.mass.api.maxIngestItemBytes", 64 * 1024);
+    private static final int MAX_INGEST_TOTAL_BYTES = Integer.getInteger("xa.mass.api.maxIngestTotalBytes", 1024 * 1024);
+    private static final int DEFAULT_RESULT_WINDOW = Integer.getInteger("xa.mass.api.taskResultDefaultWindow", 200);
+    private static final int MAX_RESULT_WINDOW = Integer.getInteger("xa.mass.api.taskResultMaxWindow", 1000);
+    private static final MediaType NDJSON_MEDIA_TYPE = MediaType.parseMediaType("application/x-ndjson");
+    private static final com.fasterxml.jackson.databind.ObjectMapper SIZE_OBJECT_MAPPER =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+    private static final com.fasterxml.jackson.databind.ObjectMapper RESPONSE_OBJECT_MAPPER =
+            new com.fasterxml.jackson.databind.ObjectMapper();
 
     private final TaskQueryOperations taskQueries;
+    private final TaskResultQueryOperations taskResultQueries;
     private final TaskAdminOperations taskAdmin;
-    private final SdkMetadataCatalog metadataCatalog;
+    private final ControlPlaneCatalog catalog;
+    private final TaskDetailStore taskDetailStore;
     private final ApiAuthService apiAuthService;
     private final ApiAuthorizationService apiAuthorizationService;
     private final TaskSecurityViewSupport taskSecurityViewSupport;
+    private final TaskApiContractAssembler taskApiContractAssembler;
+    private final SyncTaskResultBridge syncTaskResultBridge;
+    private final TaskSyncRequestSupervisor taskSyncRequestSupervisor;
+    private final TaskStageEvidenceOperations taskStageEvidence;
 
-    @Autowired(required = false)
-    private SyncTaskResultBridge syncBridge;
-
-    public TaskApiController(TaskQueryOperations taskQueries, TaskAdminOperations taskAdmin) {
-        this(taskQueries, taskAdmin, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(),
-                new ApiAuthService(), new ApiAuthorizationService(), new TaskSecurityViewSupport());
+    public TaskApiController(TaskQueryOperations taskQueries,
+                             TaskAdminOperations taskAdmin) {
+        this(taskQueries, taskAdmin, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(), null,
+                new ApiAuthService(), new ApiAuthorizationService(), new TaskSecurityViewSupport(), null, null, null);
     }
 
     public TaskApiController(TaskQueryOperations taskQueries,
                              TaskAdminOperations taskAdmin,
-                             SdkMetadataCatalog metadataCatalog) {
-        this(taskQueries, taskAdmin, metadataCatalog, new ApiAuthService(), new ApiAuthorizationService(),
-                new TaskSecurityViewSupport());
+                             ControlPlaneCatalog catalog) {
+        this(taskQueries, taskAdmin, catalog, null, new ApiAuthService(), new ApiAuthorizationService(),
+                new TaskSecurityViewSupport(), null, null, null);
     }
 
     public TaskApiController(TaskQueryOperations taskQueries,
+                             TaskResultQueryOperations taskResultQueries,
                              TaskAdminOperations taskAdmin,
-                             SdkMetadataCatalog metadataCatalog,
+                             ControlPlaneCatalog catalog,
+                             TaskDetailStore taskDetailStore,
                              com.xa.mass.sdk.auth.AuthProvider authProvider) {
-        this(taskQueries, taskAdmin, metadataCatalog, new ApiAuthService(),
-                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport());
+        this(taskQueries, taskResultQueries, taskAdmin, catalog, taskDetailStore, new ApiAuthService(),
+                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), null, null, null);
+    }
+
+    public TaskApiController(TaskQueryOperations taskQueries,
+                             TaskResultQueryOperations taskResultQueries,
+                             TaskAdminOperations taskAdmin,
+                             ControlPlaneCatalog catalog,
+                             TaskDetailStore taskDetailStore,
+                             com.xa.mass.sdk.auth.AuthProvider authProvider,
+                             SyncTaskResultBridge syncTaskResultBridge) {
+        this(taskQueries, taskResultQueries, taskAdmin, catalog, taskDetailStore, authProvider, syncTaskResultBridge, null);
+    }
+
+    public TaskApiController(TaskQueryOperations taskQueries,
+                             TaskResultQueryOperations taskResultQueries,
+                             TaskAdminOperations taskAdmin,
+                             ControlPlaneCatalog catalog,
+                             TaskDetailStore taskDetailStore,
+                             com.xa.mass.sdk.auth.AuthProvider authProvider,
+                             SyncTaskResultBridge syncTaskResultBridge,
+                             TaskSyncRequestSupervisor taskSyncRequestSupervisor) {
+        this(taskQueries, taskResultQueries, taskAdmin, catalog, taskDetailStore, new ApiAuthService(),
+                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), syncTaskResultBridge,
+                taskSyncRequestSupervisor, null);
+    }
+
+    public TaskApiController(TaskQueryOperations taskQueries,
+                             TaskResultQueryOperations taskResultQueries,
+                             TaskAdminOperations taskAdmin,
+                             ControlPlaneCatalog catalog,
+                             TaskDetailStore taskDetailStore,
+                             com.xa.mass.sdk.auth.AuthProvider authProvider,
+                             SyncTaskResultBridge syncTaskResultBridge,
+                             TaskSyncRequestSupervisor taskSyncRequestSupervisor,
+                             TaskStageEvidenceOperations taskStageEvidence) {
+        this(taskQueries, taskResultQueries, taskAdmin, catalog, taskDetailStore, new ApiAuthService(),
+                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), syncTaskResultBridge,
+                taskSyncRequestSupervisor, taskStageEvidence);
+    }
+
+    public TaskApiController(TaskQueryOperations taskQueries,
+                             TaskAdminOperations taskAdmin,
+                             ControlPlaneCatalog catalog,
+                             TaskDetailStore taskDetailStore,
+                             com.xa.mass.sdk.auth.AuthProvider authProvider) {
+        this(taskQueries, taskAdmin, catalog, taskDetailStore, new ApiAuthService(),
+                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), null, null, null);
+    }
+
+    public TaskApiController(TaskQueryOperations taskQueries,
+                             TaskAdminOperations taskAdmin,
+                             ControlPlaneCatalog catalog,
+                             com.xa.mass.sdk.auth.AuthProvider authProvider) {
+        this(taskQueries, taskAdmin, catalog, null, new ApiAuthService(),
+                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), null, null, null);
     }
 
     @Autowired
     public TaskApiController(TaskQueryOperations taskQueries,
                              TaskAdminOperations taskAdmin,
-                             SdkMetadataCatalog metadataCatalog,
+                             ControlPlaneCatalog catalog,
+                             TaskDetailStore taskDetailStore,
                              ApiAuthService apiAuthService,
                              ApiAuthorizationService apiAuthorizationService,
-                             TaskSecurityViewSupport taskSecurityViewSupport) {
+                             TaskSecurityViewSupport taskSecurityViewSupport,
+                             SyncTaskResultBridge syncTaskResultBridge,
+                             TaskSyncRequestSupervisor taskSyncRequestSupervisor,
+                             ObjectProvider<TaskStageEvidenceOperations> taskStageEvidenceProvider) {
+        this(taskQueries,
+                taskQueries instanceof TaskResultQueryOperations resultQueries ? resultQueries : null,
+                taskAdmin,
+                catalog,
+                taskDetailStore,
+                apiAuthService,
+                apiAuthorizationService,
+                taskSecurityViewSupport,
+                syncTaskResultBridge,
+                taskSyncRequestSupervisor,
+                taskStageEvidenceProvider == null ? null : taskStageEvidenceProvider.getIfAvailable());
+    }
+
+    private TaskApiController(TaskQueryOperations taskQueries,
+                              TaskResultQueryOperations taskResultQueries,
+                              TaskAdminOperations taskAdmin,
+                              ControlPlaneCatalog catalog,
+                              TaskDetailStore taskDetailStore,
+                              ApiAuthService apiAuthService,
+                              ApiAuthorizationService apiAuthorizationService,
+                              TaskSecurityViewSupport taskSecurityViewSupport,
+                              SyncTaskResultBridge syncTaskResultBridge,
+                              TaskSyncRequestSupervisor taskSyncRequestSupervisor,
+                              TaskStageEvidenceOperations taskStageEvidence) {
         this.taskQueries = taskQueries;
+        this.taskResultQueries = taskResultQueries != null
+                ? taskResultQueries
+                : taskQueries instanceof TaskResultQueryOperations resultQueries ? resultQueries : null;
         this.taskAdmin = taskAdmin;
-        this.metadataCatalog = metadataCatalog;
+        this.catalog = catalog;
+        this.taskDetailStore = taskDetailStore;
         this.apiAuthService = apiAuthService == null ? new ApiAuthService() : apiAuthService;
         this.apiAuthorizationService = apiAuthorizationService == null ? new ApiAuthorizationService() : apiAuthorizationService;
         this.taskSecurityViewSupport = taskSecurityViewSupport == null ? new TaskSecurityViewSupport() : taskSecurityViewSupport;
+        this.taskApiContractAssembler = new TaskApiContractAssembler(DATE_TIME_FORMATTER);
+        this.syncTaskResultBridge = syncTaskResultBridge;
+        this.taskSyncRequestSupervisor = taskSyncRequestSupervisor == null
+                ? new TaskSyncRequestSupervisor()
+                : taskSyncRequestSupervisor;
+        this.taskStageEvidence = taskStageEvidence;
     }
 
     @GetMapping("")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> listTasks(
+    @Operation(
+            summary = "List tasks",
+            description = "Returns a bounded list of task shell summaries. Project filtering is task-level; item eventCode is not task truth."
+    )
+    public ResponseEntity<ApiResponse<ApiTaskListResult>> listTasks(
                                                                       @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
                                                                       @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+                                                                      @Parameter(description = "Optional keyword matched against task id, task name, or project")
                                                                       @RequestParam(required = false) String keyword,
-                                                                      @RequestParam(required = false) TaskStatus status) {
-        try {
+                                                                      @Parameter(description = "Optional exact project code filter")
+                                                                      @RequestParam(required = false) String project,
+                                                                      @Parameter(description = "Optional task status filter")
+                                                                      @RequestParam(required = false) String status,
+                                                                      @Parameter(description = "Storage scan offset when status is not supplied")
+                                                                      @RequestParam(defaultValue = "0") int offset,
+                                                                      @Parameter(description = "Bounded list window size")
+                                                                      @RequestParam(defaultValue = "500") int limit) {
+        return executeApi("Task list failed", () -> {
             PrincipalContext submitterViewer = resolveTaskViewerCredential(apiKeyHeader, authorizationHeader);
             String normalizedKeyword = keyword == null ? "" : keyword.trim().toLowerCase();
-            List<Map<String, Object>> items = taskQueries.getAllTasks().stream()
-                    .filter(task -> submitterViewer == null || apiAuthorizationService.allowsTaskOwnershipAccess(submitterViewer, task))
-                    .filter(task -> matchesKeyword(task, normalizedKeyword))
-                    .filter(task -> status == null || task.getStatus() == status)
+            String normalizedProject = project == null ? "" : project.trim();
+            // push status filter to storage when provided; otherwise use bounded page scan
+            List<TaskSummarySnapshot> candidates = status != null
+                    ? taskQueries.getTaskSummariesByStatus(status)
+                    : taskQueries.listTaskSummaries(offset, Math.min(limit, 1000));
+            List<ApiTask> items = candidates.stream()
+                    .filter(task -> canViewTaskSummary(task, submitterViewer))
+                    .filter(task -> matchesProject(task.getProject(), normalizedProject))
+                    .filter(task -> matchesKeyword(task.getTaskId(), task.getTaskName(), task.getProject(), normalizedKeyword))
                     .sorted(Comparator
-                            .comparing(Task::getUpdateTime, Comparator.nullsLast(Comparator.reverseOrder()))
-                            .thenComparing(Task::getCreateTime, Comparator.nullsLast(Comparator.reverseOrder())))
-                              .map(this::toTaskListItem)
-                    .collect(Collectors.toList());
-            return ok(Map.of("items", items, "total", items.size()));
-        } catch (SdkUnauthenticatedException e) {
-            return unauthorized(e.getMessage());
-        } catch (SecurityException e) {
-            return forbidden(e.getMessage());
-        } catch (Exception e) {
-            return badRequest("Task list failed: " + e.getMessage());
-        }
+                            .comparing(TaskSummarySnapshot::getUpdateTime, Comparator.nullsLast(Comparator.reverseOrder())))
+                    .map(taskApiContractAssembler::toApiTask)
+                    .toList();
+            return ok(taskApiContractAssembler.toTaskListResult(items));
+        });
     }
 
     @PostMapping("")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> createTask(
+    @Operation(
+            summary = "Create task shell",
+            description = "Creates only the task shell. Work items must be ingested separately through /items."
+    )
+    public ResponseEntity<ApiResponse<ApiTaskCreateOutcome>> createTask(
             @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
             HttpServletRequest httpRequest,
-            @RequestBody TaskCreateApiRequest requestBody) {
-        try {
-            validateKnownFields(requestBody, "task create");
+            @RequestBody TaskShellCreateApiRequest requestBody) {
+        return executeApi("Task shell create failed", () -> {
+            validateKnownFields(requestBody, "task shell create");
 
             ApiAuthorizationService.AuthorizedSubmitterTaskCreate submitterTaskCreate =
                     resolveSubmitterTaskCreate(apiKeyHeader, authorizationHeader, requestBody);
             if (submitterTaskCreate != null) {
-                Task task = taskAdmin.createTask(TaskOwnershipSupport.stamp(
-                        toMassTaskRequest(requestBody, submitterTaskCreate.project(), submitterTaskCreate.userId()),
+                TaskShellSnapshot task = taskAdmin.createTaskShell(TaskOwnershipSupport.stamp(
+                        toMassTaskShellCreateRequest(requestBody, submitterTaskCreate.project(), submitterTaskCreate.userId()),
                         submitterTaskCreate.principal()
                 ));
-                return ok(Map.of(
-                        "taskId", task.getTid(),
-                        "project", task.getProject(),
-                        "userId", task.getUser() != null ? task.getUser().getUserId() : submitterTaskCreate.userId(),
-                        "principalId", submitterTaskCreate.principal().getPrincipalId(),
-                        "message", "Task created"
+                return ok(taskApiContractAssembler.toCreateOutcome(
+                        task,
+                        requestBody.getExecutionSpec(),
+                        submitterTaskCreate.principal().getPrincipalId(),
+                        "Task shell created"
                 ));
             }
 
             PrincipalContext operator = apiAuthService.requireAuthenticated(httpRequest);
-            Task task = hasEventCode(requestBody)
-                    ? taskAdmin.createTask(TaskOwnershipSupport.stamp(toMassTaskRequest(requestBody), operator))
-                    : taskAdmin.createTask(TaskOwnershipSupport.stamp(toTaskCreateRequest(requestBody), operator));
-            return ok(Map.of("taskId", task.getTid(), "message", "Task created"));
-        } catch (SdkUnauthenticatedException e) {
-            return unauthorized(e.getMessage());
-        } catch (SecurityException e) {
-            return forbidden(e.getMessage());
-        } catch (Exception e) {
-            return badRequest("Task create failed: " + e.getMessage());
-        }
-    }
-
-    @PostMapping("/sync")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> createTaskSync(
-            @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
-            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
-            @RequestParam(required = false) Long timeoutMs,
-            HttpServletRequest httpRequest,
-            @RequestBody TaskCreateApiRequest requestBody) {
-        if (syncBridge == null) {
-            return badRequest("Sync task API is not available in this runtime profile");
-        }
-        try {
-            validateKnownFields(requestBody, "sync task create");
-            validateSyncRequest(requestBody);
-
-            long resolvedTimeoutMs = resolveTimeoutMs(timeoutMs);
-            String correlationId = UUID.randomUUID().toString();
-
-            // Register future BEFORE task creation to close the timing gap.
-            CompletableFuture<TaskMsg> future = syncBridge.register(correlationId);
-
-            ApiAuthorizationService.AuthorizedSubmitterTaskCreate submitterTaskCreate =
-                    resolveSubmitterTaskCreate(apiKeyHeader, authorizationHeader, requestBody);
-            Task task;
-            if (submitterTaskCreate != null) {
-                task = taskAdmin.createTask(TaskOwnershipSupport.stamp(
-                        toMassTaskRequestWithSyncKey(
-                                requestBody,
-                                submitterTaskCreate.project(),
-                                submitterTaskCreate.userId(),
-                                correlationId
-                        ),
-                        submitterTaskCreate.principal()
-                ));
-            } else {
-                PrincipalContext operator = apiAuthService.requireAuthenticated(httpRequest);
-                task = hasEventCode(requestBody)
-                        ? taskAdmin.createTask(TaskOwnershipSupport.stamp(
-                                toMassTaskRequestWithSyncKey(requestBody, requestBody.getProject(), requestBody.getUserId(), correlationId),
-                                operator
-                        ))
-                        : taskAdmin.createTask(TaskOwnershipSupport.stamp(
-                                toTaskCreateRequestWithSyncKey(requestBody, correlationId),
-                                operator
-                        ));
-            }
-
-            String taskId = task.getTid();
-            List<TaskMsg> messages = taskQueries.getTaskMessages(taskId, 1);
-            String messageId = messages.isEmpty() ? "" : messages.get(0).getMessageId();
-
-            Optional<TaskMsg> result = syncBridge.await(correlationId, future, resolvedTimeoutMs);
-
-            Map<String, Object> data = new LinkedHashMap<>();
-            data.put("taskId", taskId);
-            data.put("messageId", messageId);
-            if (result.isPresent()) {
-                TaskMsg msg = result.get();
-                data.put("synced", true);
-                data.put("timedOut", false);
-                data.put("status", msg.getStatus() != null ? msg.getStatus().name() : "UNKNOWN");
-                data.put("output", msg.getOutput() != null ? msg.getOutput() : Map.of());
-                data.put("errorCode", msg.getErrorCode() != null ? msg.getErrorCode() : "");
-                data.put("errorMessage", msg.getErrorMessage() != null ? msg.getErrorMessage() : "");
-            } else {
-                data.put("synced", false);
-                data.put("timedOut", true);
-                data.put("timeoutMs", resolvedTimeoutMs);
-            }
-            return ok(data);
-        } catch (SdkUnauthenticatedException e) {
-            return unauthorized(e.getMessage());
-        } catch (SecurityException e) {
-            return forbidden(e.getMessage());
-        } catch (Exception e) {
-            return badRequest("Sync task create failed: " + e.getMessage());
-        }
+            TaskShellSnapshot task = taskAdmin.createTaskShell(TaskOwnershipSupport.stamp(
+                    toMassTaskShellCreateRequest(requestBody),
+                    operator
+            ));
+            return ok(taskApiContractAssembler.toCreateOutcome(
+                    task,
+                    requestBody.getExecutionSpec(),
+                    operator.getPrincipalId(),
+                    "Task shell created"
+            ));
+        });
     }
 
     @GetMapping("/{taskId}")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> getTask(
+    @Operation(
+            summary = "Get task detail",
+            description = "Returns task shell, aggregate state, execution, counters, timestamps, and security view. Item payload snapshots are not returned by default."
+    )
+    public ResponseEntity<ApiResponse<ApiTaskGetResult>> getTask(
                                                                     @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
                                                                     @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
-                                                                    @PathVariable String taskId,
-                                                                    @RequestParam(required = false) Integer limit) {
-        try {
-            int boundedLimit = resolveTaskMessageLimit(limit);
-            Task task = taskQueries.getTask(taskId);
-            if (task == null) {
-                return notFound("Task not found: " + taskId);
-            }
-            resolveTaskViewer(apiKeyHeader, authorizationHeader, task);
-            long itemTotal = taskQueries.countTaskMessages(taskId);
-            List<Map<String, Object>> items = taskQueries.getTaskMessages(taskId, boundedLimit).stream()
-                    .map(TaskMsg::getInput)
-                    .map(input -> input == null ? Map.<String, Object>of() : new LinkedHashMap<>(input))
-                    .collect(Collectors.toList());
-            Map<String, Object> response = new LinkedHashMap<>();
-            response.put("task", toTaskDetailTaskView(task));
-            response.put("items", items);
-            response.put("itemsTotal", itemTotal);
-            response.put("itemsLimit", boundedLimit);
-            response.put("itemsTruncated", itemTotal > items.size());
-            response.put("security", taskSecurityViewSupport.toSecurityView(task));
-            response.put("stateValidation", taskQueries.validateTaskState(taskId));
-            return ok(response);
-        } catch (SdkUnauthenticatedException e) {
-            return unauthorized(e.getMessage());
-        } catch (SecurityException e) {
-            return forbidden(e.getMessage());
-        } catch (Exception e) {
-            return badRequest("Task lookup failed: " + e.getMessage());
-        }
-    }
-
-    @GetMapping("/{taskId}/projection-audit")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> getTaskProjectionAudit(
-            @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
-            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
-            @PathVariable String taskId) {
-        try {
-            Task task = taskQueries.getTask(taskId);
-            if (task == null) {
-                return notFound("Task not found: " + taskId);
-            }
-            resolveTaskViewer(apiKeyHeader, authorizationHeader, task);
-            return ok(Map.of(
-                    "taskId", taskId,
-                    "projectionAudit", taskQueries.auditTaskProjectionState(taskId)
+                                                                    @PathVariable String taskId) {
+        return executeApi("Task lookup failed", () -> {
+            TaskDetailSnapshot task = requireAuthorizedTaskDetail(apiKeyHeader, authorizationHeader, taskId);
+            return ok(taskApiContractAssembler.toGetResult(
+                    task,
+                    taskSecurityViewSupport.toSecurityView(task.getSharedConfig())
             ));
-        } catch (SdkUnauthenticatedException e) {
-            return unauthorized(e.getMessage());
-        } catch (SecurityException e) {
-            return forbidden(e.getMessage());
-        } catch (Exception e) {
-            return badRequest("Task projection audit failed: " + e.getMessage());
-        }
+        });
     }
 
-    @PutMapping("/{taskId}/status")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> updateTaskStatus(@PathVariable String taskId,
-                                                                             @RequestParam TaskStatus status) {
-        try {
-            Task task = taskQueries.getTask(taskId);
-            if (task == null) {
-                return notFound("Task not found: " + taskId);
-            }
-
-            boolean success = switch (status) {
-                case READY -> task.getStatus() == TaskStatus.PAUSED
-                        ? taskAdmin.resumeTaskDetailed(taskId).success()
-                        : taskAdmin.approveTask(taskId);
-                case BLOCKED -> blockTask(task);
-                case PAUSED -> taskAdmin.pauseTask(taskId);
-                case TERMINAL -> taskAdmin.terminateTask(taskId, TaskTerminalReason.MANUAL_CANCELLED);
-                default -> false;
-            };
-
-            Task updatedTask = taskQueries.getTask(taskId);
-            if (success && updatedTask != null) {
-                return ok(Map.of("message", "Task status updated", "newStatus", updatedTask.getStatus().name()));
-            }
-            return conflict("Task cannot transition to status " + status.name());
-        } catch (Exception e) {
-            return badRequest("Task status update failed: " + e.getMessage());
-        }
-    }
-
-    @PostMapping("/{taskId}/block")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> blockTask(@PathVariable String taskId) {
-        try {
-            Task task = taskQueries.getTask(taskId);
-            if (task == null) {
-                return notFound("Task not found: " + taskId);
-            }
-            if (blockTask(task)) {
-                return ok(Map.of("message", "Task blocked"));
-            }
-            return conflict("Task cannot be blocked from the current state");
-        } catch (Exception e) {
-            return badRequest("Task block failed: " + e.getMessage());
-        }
-    }
-
-    @PostMapping("/{taskId}/audit")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> auditTask(@PathVariable String taskId,
-                                                                      @RequestParam String approved,
-                                                                      @RequestParam(required = false) String comment) {
-        try {
-            Task task = taskQueries.getTask(taskId);
-            if (task == null) {
-                return notFound("Task not found: " + taskId);
-            }
-            boolean isApproved = "true".equalsIgnoreCase(approved);
-            boolean success = isApproved ? taskAdmin.approveTask(taskId) : taskAdmin.rejectTask(taskId);
-            Task updatedTask = taskQueries.getTask(taskId);
-            if (success && updatedTask != null) {
-                return ok(Map.of(
-                        "message", isApproved ? "Task approved" : "Task rejected",
-                        "newStatus", updatedTask.getStatus().name()
-                ));
-            }
-            return badRequest("Task cannot be audited from the current state");
-        } catch (Exception e) {
-            return badRequest("Task audit failed: " + e.getMessage());
-        }
-    }
-
-    @PostMapping("/{taskId}/pause")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> pauseTask(@PathVariable String taskId) {
-        try {
-            Task task = taskQueries.getTask(taskId);
-            if (task == null) {
-                return notFound("Task not found: " + taskId);
-            }
-            if (taskAdmin.pauseTask(taskId)) {
-                return ok(Map.of("message", "Task paused"));
-            }
-            return conflict("Task cannot be paused from the current state");
-        } catch (Exception e) {
-            return badRequest("Task pause failed: " + e.getMessage());
-        }
-    }
-
-    @PostMapping("/{taskId}/resume")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> resumeTask(@PathVariable String taskId) {
-        try {
-            Task task = taskQueries.getTask(taskId);
-            if (task == null) {
-                return notFound("Task not found: " + taskId);
-            }
-            SdkTaskResumeResult result = taskAdmin.resumeTaskDetailed(taskId);
-            if (result.success()) {
-                String message = result.completedToTerminal()
-                        ? "Task already completed while paused and was closed to TERMINAL"
-                        : "Task resumed";
-                return ok(Map.of(
-                        "message", message,
-                        "newStatus", result.status(),
-                        "terminalReason", result.terminalReason() != null ? result.terminalReason() : ""
-                ));
-            }
-            return conflict("Task cannot be resumed from the current state");
-        } catch (Exception e) {
-            return badRequest("Task resume failed: " + e.getMessage());
-        }
-    }
-
-    @PostMapping("/{taskId}/terminate")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> terminateTask(@PathVariable String taskId) {
-        try {
-            Task task = taskQueries.getTask(taskId);
-            if (task == null) {
-                return notFound("Task not found: " + taskId);
-            }
-            if (taskAdmin.terminateTask(taskId, TaskTerminalReason.MANUAL_CANCELLED)) {
-                return ok(Map.of("message", "Task terminated"));
-            }
-            return conflict("Task cannot be terminated from the current state");
-        } catch (Exception e) {
-            return badRequest("Task terminate failed: " + e.getMessage());
-        }
-    }
-
-    @DeleteMapping("/{taskId}")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> deleteTask(@PathVariable String taskId) {
-        try {
-            Task task = taskQueries.getTask(taskId);
-            if (task == null) {
-                return notFound("Task not found: " + taskId);
-            }
-            boolean deleted = taskAdmin.deleteTask(taskId);
-            if (deleted) {
-                return ok(Map.of("message", "Task deleted"));
-            }
-            return badRequest("Task delete failed: current status " + task.getStatus().name() + " cannot be deleted");
-        } catch (Exception e) {
-            return badRequest("Task delete failed: " + e.getMessage());
-        }
-    }
-
-    @PutMapping("/{taskId}")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> updateTask(@PathVariable String taskId,
-                                                                       @RequestBody TaskUpdateApiRequest requestBody) {
-        try {
-            Task task = taskQueries.getTask(taskId);
-            if (task == null) {
-                return notFound("Task not found: " + taskId);
-            }
-            if (!EDITABLE_TASK_STATUSES.contains(task.getStatus())) {
-                return badRequest("Task update failed: Only NEW or BLOCKED tasks can be updated");
+    @PatchMapping("/{taskId}")
+    @Operation(
+            summary = "Update task shell",
+            description = "Updates shell-level editable fields for NEW or BLOCKED tasks. taskName is server-derived and cannot be patched."
+    )
+    public ResponseEntity<ApiResponse<ApiTaskUpdateOutcome>> updateTask(@Parameter(description = "Task id")
+                                                                        @PathVariable String taskId,
+                                                                        @RequestBody TaskUpdateApiRequest requestBody) {
+        return executeApi("Task update failed", () -> {
+            TaskStateSnapshot state = getExistingTaskState(taskId);
+            String status = state == null ? null : state.getStatus();
+            if (!EDITABLE_TASK_STATUSES.contains(status)) {
+                throw badRequestError("Task update failed: Only NEW or BLOCKED tasks can be updated");
             }
 
             validateKnownFields(requestBody, "task update");
             MassTaskUpdateRequest request = toTaskUpdateRequest(requestBody);
             taskAdmin.updateTaskDefinition(taskId, request);
-            return ok(Map.of("message", "Task updated"));
-        } catch (Exception e) {
-            return badRequest("Task update failed: " + e.getMessage());
-        }
+            return ok(taskApiContractAssembler.toUpdateOutcome(taskId, state, "Task updated"));
+        });
     }
 
     @PostMapping("/{taskId}/items")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> appendTaskItems(@PathVariable String taskId,
-                                                                            @RequestBody TaskAppendItemsApiRequest requestBody) {
-        try {
+    @Operation(
+            summary = "Append task items",
+            description = "Explicitly ingests a batch of opaque work item payloads while task intake is open."
+    )
+    public ResponseEntity<ApiResponse<ApiTaskAppendOutcome>> appendTaskItems(
+                                                                             @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
+                                                                             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+                                                                             @PathVariable String taskId,
+                                                                             @RequestBody TaskItemBatchIngestApiRequest requestBody) {
+        return executeApi("Append items failed", () -> {
             validateKnownFields(requestBody, "task append items");
-            Task task = taskQueries.getTask(taskId);
-            if (task == null) {
-                return notFound("Task not found: " + taskId);
+            TaskAccessSnapshot task = requireTaskAccess(taskId);
+            List<Object> items = requestBody.getItems();
+            if (items == null || items.isEmpty()) {
+                throw badRequestError("items must be a non-empty list");
             }
-            List<Object> inputs = requestBody.getInputs();
-            if (inputs == null || inputs.isEmpty()) {
-                return badRequest("inputs must be a non-empty list");
+            validateIngestGuardrails(items);
+            List<String> eventCodes = resolveAppendEventCodes(requestBody, items);
+            if (eventCodes.isEmpty()) {
+                throw badRequestError("append requires batch eventCode or per-item eventCode");
             }
-            int added = taskAdmin.appendTaskItems(taskId, toAppendInputs(inputs, task));
-            return ok(Map.of("message", "Items appended", "added", added));
-        } catch (IllegalArgumentException e) {
-            return badRequest(e.getMessage());
-        } catch (IllegalStateException e) {
-            return conflict(e.getMessage());
-        } catch (Exception e) {
-            return badRequest("Append items failed: " + e.getMessage());
-        }
-    }
-
-    @PutMapping("/{taskId}/seal")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> sealTask(@PathVariable String taskId) {
-        try {
-            boolean sealed = taskAdmin.sealTask(taskId);
-            if (sealed) {
-                Task task = taskQueries.getTask(taskId);
-                return ok(Map.of("message", "Task sealed", "status", task != null ? task.getStatus().name() : ""));
+            for (String eventCode : eventCodes) {
+                validateProjectAndEvent(task.getProject(), eventCode);
             }
-            return conflict("Task not found or not open-ended");
-        } catch (Exception e) {
-            return badRequest("Seal task failed: " + e.getMessage());
-        }
-    }
-
-    @GetMapping("/{taskId}/messages")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> getTaskMessages(
-                                                                            @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
-                                                                            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
-                                                                            @PathVariable String taskId,
-                                                                            @RequestParam(required = false) Integer limit) {
-        try {
-            if (SdkCredentialAuthSupport.hasCredentialAttempt(apiKeyHeader, authorizationHeader)) {
-                Task task = taskQueries.getTask(taskId);
-                if (task == null) {
-                    return notFound("Task not found: " + taskId);
-                }
-                resolveTaskViewer(apiKeyHeader, authorizationHeader, task);
-            }
-            int boundedLimit = resolveTaskMessageLimit(limit);
-            long total = taskQueries.countTaskMessages(taskId);
-            List<TaskMsg> taskMessages = taskQueries.getTaskMessages(taskId, boundedLimit);
-            List<Map<String, Object>> messages = taskMessages.stream()
-                    .map(this::toTaskMessageView)
-                    .collect(Collectors.toList());
-            return ok(Map.of(
-                    "total", total,
-                    "limit", boundedLimit,
-                    "truncated", total > messages.size(),
-                    "messages", messages
+            resolveTaskAppender(apiKeyHeader, authorizationHeader, task.getTaskId(), task.getProject(),
+                    task.getSharedConfig(), eventCodes);
+            int added = taskAdmin.appendTaskItems(taskId, MassTaskItemBatchAppendRequest.builder()
+                    .eventCode(requestBody.getEventCode())
+                    .items(items)
+                    .build());
+            return ok(taskApiContractAssembler.toAppendOutcome(
+                    taskId,
+                    added,
+                    null,
+                    task.getIntakeStatus(),
+                    "Items appended"
             ));
+        });
+    }
+
+    @PostMapping("/{taskId}/items:sync")
+    @Operation(
+            summary = "Append one task item and wait for its final result",
+            description = "Appends exactly one opaque work item to an active task and blocks until that item reaches stable finality or the caller timeout elapses. Timing out only ends the HTTP wait; task execution continues."
+    )
+    public Object appendTaskItemSync(
+            @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+            @PathVariable String taskId,
+            @RequestBody TaskItemSyncIngestApiRequest requestBody) {
+        TaskSyncRequestSupervisor.SyncLease syncLease = null;
+        try {
+            validateKnownFields(requestBody, "task sync append");
+            TaskAccessSnapshot task = requireTaskAccess(taskId);
+            TaskStateSnapshot state = getExistingTaskState(taskId);
+            requireSyncAppendableState(state);
+
+            Object item = requireSyncItem(requestBody);
+            List<Object> items = List.of(item);
+            validateIngestGuardrails(items);
+
+            String eventCode = resolveSingleSyncEventCode(requestBody, item);
+            validateProjectAndEvent(task.getProject(), eventCode);
+            resolveTaskAppender(apiKeyHeader, authorizationHeader, task.getTaskId(), task.getProject(),
+                    task.getSharedConfig(), List.of(eventCode));
+            syncLease = taskSyncRequestSupervisor.acquire(task.getProject(), taskId);
+            TaskSyncRequestSupervisor.SyncLease acquiredLease = syncLease;
+
+            TaskItemBatchAppendReceipt receipt = taskAdmin.appendTaskItemsWithReceipt(taskId, MassTaskItemBatchAppendRequest.builder()
+                    .eventCode(requestBody.getEventCode())
+                    .items(items)
+                    .build());
+            String messageId = requireSingleMessageId(receipt);
+            long timeoutMs = resolveSyncTimeoutMs(requestBody.getTimeoutMs());
+            SyncTaskResultBridge bridge = requireSyncTaskResultBridge();
+            CompletableFuture<TaskWorkFinalSnapshot> future = bridge.register(taskId, messageId);
+            DeferredResult<ResponseEntity<ApiResponse<ApiTaskSyncAppendOutcome>>> deferred = new DeferredResult<>();
+            CompletableFuture.runAsync(() -> {
+                bridge.unregister(taskId, messageId, future);
+                if (deferred.setResult(ok(taskApiContractAssembler.toSyncAppendOutcome(
+                        taskId,
+                        messageId,
+                        timeoutMs,
+                        null
+                )))) {
+                    acquiredLease.finish(TaskSyncRequestSupervisor.CompletionOutcome.TIMED_OUT);
+                }
+            }, CompletableFuture.delayedExecutor(timeoutMs, TimeUnit.MILLISECONDS));
+            deferred.onCompletion(() -> {
+                bridge.unregister(taskId, messageId, future);
+                acquiredLease.finish(TaskSyncRequestSupervisor.CompletionOutcome.CANCELLED);
+            });
+
+            Optional<TaskWorkFinalSnapshot> existing = bridge.getExistingFinal(taskId, messageId);
+            if (existing.isPresent()) {
+                bridge.unregister(taskId, messageId, future);
+                if (deferred.setResult(ok(taskApiContractAssembler.toSyncAppendOutcome(
+                        taskId,
+                        messageId,
+                        timeoutMs,
+                        existing.get()
+                )))) {
+                    acquiredLease.finish(TaskSyncRequestSupervisor.CompletionOutcome.SYNCED);
+                }
+                return deferred;
+            }
+
+            future.whenComplete((finalSnapshot, throwable) -> {
+                if (throwable != null) {
+                    if (deferred.setResult(badRequest("Sync append failed: " + throwable.getMessage()))) {
+                        acquiredLease.finish(TaskSyncRequestSupervisor.CompletionOutcome.FAILED);
+                    }
+                    return;
+                }
+                if (deferred.setResult(ok(taskApiContractAssembler.toSyncAppendOutcome(
+                        taskId,
+                        messageId,
+                        timeoutMs,
+                        finalSnapshot
+                )))) {
+                    acquiredLease.finish(TaskSyncRequestSupervisor.CompletionOutcome.SYNCED);
+                }
+            });
+            return deferred;
+        } catch (TaskSyncRequestSupervisor.SyncCapacityExceededException e) {
+            return tooManyRequests(e.getMessage());
+        } catch (TaskApiException e) {
+            if (syncLease != null) {
+                syncLease.finish(TaskSyncRequestSupervisor.CompletionOutcome.FAILED);
+            }
+            return e.toResponse();
+        } catch (SdkUnauthenticatedException e) {
+            if (syncLease != null) {
+                syncLease.finish(TaskSyncRequestSupervisor.CompletionOutcome.FAILED);
+            }
+            return unauthorized(e.getMessage());
+        } catch (SecurityException e) {
+            if (syncLease != null) {
+                syncLease.finish(TaskSyncRequestSupervisor.CompletionOutcome.FAILED);
+            }
+            return forbidden(e.getMessage());
+        } catch (Exception e) {
+            if (syncLease != null) {
+                syncLease.finish(TaskSyncRequestSupervisor.CompletionOutcome.FAILED);
+            }
+            return badRequest("Sync append failed: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/{taskId}/commands")
+    @Operation(
+            summary = "Execute task command",
+            description = "Runs a lifecycle, governance, or intake command such as APPROVE, REJECT, PAUSE, RESUME, TERMINATE, BLOCK, or SEAL."
+    )
+    public ResponseEntity<ApiResponse<ApiTaskCommandOutcome>> executeTaskCommand(HttpServletRequest httpRequest,
+                                                                                 @Parameter(description = "Task id")
+                                                                                 @PathVariable String taskId,
+                                                                                 @RequestBody TaskCommandApiRequest requestBody) {
+        return executeApi("Task command failed", () -> {
+            validateKnownFields(requestBody, "task command");
+            TaskCommandAuthorization authorization = resolveTaskCommandAuthorization(requestBody.getCommand());
+            requireTaskCommandPermission(httpRequest, taskId, authorization, requestBody.getCommand());
+
+            TaskCommandResult result = taskAdmin.executeTaskCommand(taskId, toMassTaskCommandRequest(requestBody));
+            if (result.isAccepted()) {
+                return ok(taskApiContractAssembler.toCommandOutcome(result));
+            }
+            if (!result.isTaskExists()) {
+                throw notFoundError("Task not found: " + taskId);
+            }
+            throw conflictError(result.getFailureReason() != null
+                    ? result.getFailureReason()
+                    : "Task command is not allowed in the current state");
+        });
+    }
+
+    @GetMapping("/{taskId}/results")
+    @Operation(
+            summary = "Read live task results",
+            description = "Reads an ordered result window using afterSeq. This is checkpoint-style sequential reading, not pagination and not ack-based consumption."
+    )
+    public ResponseEntity<ApiResponse<ApiTaskResultWindow>> getTaskResults(
+            @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+            @Parameter(description = "Task id")
+            @PathVariable String taskId,
+            @Parameter(description = "Return items after this task-local sequence number")
+            @RequestParam(defaultValue = "0") long afterSeq,
+            @Parameter(description = "Maximum number of items in this read window")
+            @RequestParam(required = false) Integer limit) {
+        return executeApi("Task results lookup failed", () -> {
+            if (afterSeq < 0) {
+                throw badRequestError("afterSeq must be greater than or equal to 0");
+            }
+            TaskDetailSnapshot task = requireAuthorizedTaskDetail(apiKeyHeader, authorizationHeader, taskId);
+            TaskResultQueryOperations resultQueries = requireTaskResultQueries();
+            int resolvedLimit = resolveResultWindow(limit);
+            TaskResultWindowSnapshot window = resultQueries.readTaskResults(taskId, afterSeq, resolvedLimit);
+            List<ApiTaskResultItem> items = window.getItems().stream()
+                    .map(taskApiContractAssembler::toResultItem)
+                    .toList();
+            long nextAfterSeq = window.getNextAfterSeq();
+            boolean taskTerminal = isTerminalTask(task);
+            boolean archiveReady = resultQueries.getTaskResultArchiveManifest(taskId).isReady();
+
+            return ok(taskApiContractAssembler.toResultWindow(
+                    taskId,
+                    taskTerminal,
+                    archiveReady,
+                    items,
+                    nextAfterSeq,
+                    window.isHasMore(),
+                    archiveReady ? "/api/v1/tasks/" + taskId + "/results/archive" : null
+            ));
+        });
+    }
+
+    @GetMapping("/{taskId}/results/archive")
+    @Operation(
+            summary = "Get task result archive manifest",
+            description = "Returns terminal archive readiness and download metadata. Archive content is fixed to gzip-compressed ndjson."
+    )
+    public ResponseEntity<ApiResponse<ApiTaskResultArchive>> getTaskResultsArchiveManifest(
+            @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+            @PathVariable String taskId) {
+        return executeApi("Task result archive lookup failed", () -> {
+            TaskDetailSnapshot task = requireAuthorizedTaskDetail(apiKeyHeader, authorizationHeader, taskId);
+            TaskResultArchiveSnapshot manifest = requireTaskResultQueries().getTaskResultArchiveManifest(taskId);
+            return ok(taskApiContractAssembler.toResultArchive(
+                    taskId,
+                    manifest.isReady() && isTerminalTask(task),
+                    manifest.getContentType(),
+                    manifest.getItemCount(),
+                    manifest.getByteSize(),
+                    manifest.getChecksum(),
+                    manifest.isReady() ? "/api/v1/tasks/" + taskId + "/results/archive/content" : ""
+            ));
+        });
+    }
+
+    @PostMapping("/{taskId}/items/{messageId}/stages/{stageName}/evidence")
+    @Operation(
+            summary = "Report task item stage evidence",
+            description = "Owner-backed task item stage evidence ingress. This path does not write task final results."
+    )
+    public ResponseEntity<ApiResponse<TaskStageEvidenceSnapshot>> reportTaskStageEvidence(
+            @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+            @PathVariable String taskId,
+            @PathVariable String messageId,
+            @PathVariable String stageName,
+            @RequestBody TaskStageEvidenceApiRequest requestBody) {
+        return executeApi("Task stage evidence report failed", () -> {
+            validateKnownFields(requestBody, "task stage evidence report");
+            requireAuthorizedTaskAppenderTarget(apiKeyHeader, authorizationHeader, taskId);
+            return ok(requireTaskStageEvidence().reportTaskStageEvidence(
+                    new TaskStageEvidenceRequest(
+                            taskId,
+                            messageId,
+                            stageName,
+                            requestBody.getStageVersion(),
+                            requestBody.getStageStatus(),
+                            requestBody.getDetail(),
+                            requestBody.getObservedAt(),
+                            requestBody.getAttributes()
+                    )
+            ));
+        });
+    }
+
+    @GetMapping("/{taskId}/items/{messageId}/stages")
+    @Operation(summary = "List task item stage projections")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> listTaskStageProjections(
+                                                                                     @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
+                                                                                     @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+                                                                                     @PathVariable String taskId,
+                                                                                     @PathVariable String messageId) {
+        return executeApi("Task stage projection list failed", () -> {
+            requireAuthorizedTaskDetail(apiKeyHeader, authorizationHeader, taskId);
+            List<TaskStageProjectionSnapshot> items = requireTaskStageEvidence()
+                    .listTaskStageProjections(taskId, messageId);
+            return ok(Map.of(
+                    "items", items,
+                    "total", items.size()
+            ));
+        });
+    }
+
+    @GetMapping("/{taskId}/items/{messageId}/stages/{stageName}")
+    @Operation(summary = "Get task item stage projection")
+    public ResponseEntity<ApiResponse<TaskStageProjectionSnapshot>> getTaskStageProjection(
+                                                                                          @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
+                                                                                          @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+                                                                                          @PathVariable String taskId,
+                                                                                          @PathVariable String messageId,
+                                                                                          @PathVariable String stageName) {
+        return executeApi("Task stage projection lookup failed", () -> {
+            requireAuthorizedTaskDetail(apiKeyHeader, authorizationHeader, taskId);
+            return ok(requireTaskStageEvidence().getTaskStageProjection(taskId, messageId, stageName));
+        });
+    }
+
+    @GetMapping("/{taskId}/results/archive/content")
+    @Operation(
+            summary = "Download task result archive",
+            description = "Downloads the gzip-compressed ndjson result archive. This endpoint returns raw content rather than ApiResponse."
+    )
+    public ResponseEntity<?> downloadTaskResultsArchive(
+            @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+            @PathVariable String taskId) {
+        return executeRawApi("Task result archive download failed", () -> {
+            TaskDetailSnapshot task = requireAuthorizedTaskDetail(apiKeyHeader, authorizationHeader, taskId);
+            TaskResultQueryOperations resultQueries = requireTaskResultQueries();
+            if (!isTerminalTask(task) || !resultQueries.getTaskResultArchiveManifest(taskId).isReady()) {
+                throw conflictError("Task result archive is not ready");
+            }
+            StreamingResponseBody archive = outputStream -> resultQueries.writeTaskResultArchiveContent(taskId, outputStream);
+            return ResponseEntity.ok()
+                    .contentType(NDJSON_MEDIA_TYPE)
+                    .header(HttpHeaders.CONTENT_ENCODING, "gzip")
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "attachment; filename=\"" + buildTaskResultArchiveFileName(task) + "\"")
+                    .body(archive);
+        });
+    }
+
+    private <T> ResponseEntity<ApiResponse<T>> ok(T data) {
+        return ResponseEntity.ok(ApiResponse.success(data));
+    }
+
+    private <T> ResponseEntity<ApiResponse<T>> badRequest(String message) {
+        return ResponseEntity.badRequest().body(ApiResponse.error(400, message));
+    }
+
+    private <T> ResponseEntity<ApiResponse<T>> conflict(String message) {
+        return ResponseEntity.status(409).body(ApiResponse.error(409, message));
+    }
+
+    private <T> ResponseEntity<ApiResponse<T>> unauthorized(String message) {
+        return ResponseEntity.status(401).body(ApiResponse.error(401, message));
+    }
+
+    private <T> ResponseEntity<ApiResponse<T>> forbidden(String message) {
+        return ResponseEntity.status(403).body(ApiResponse.error(403, message));
+    }
+
+    private <T> ResponseEntity<ApiResponse<T>> notFound(String message) {
+        return ResponseEntity.status(404).body(ApiResponse.error(404, message));
+    }
+
+    private <T> ResponseEntity<ApiResponse<T>> tooManyRequests(String message) {
+        return ResponseEntity.status(429).body(ApiResponse.error(429, message));
+    }
+
+    private <T> ResponseEntity<ApiResponse<T>> executeApi(String failurePrefix,
+                                                          ApiResponseSupplier<T> action) {
+        try {
+            return action.execute();
+        } catch (TaskApiException e) {
+            return e.toResponse();
         } catch (SdkUnauthenticatedException e) {
             return unauthorized(e.getMessage());
         } catch (SecurityException e) {
             return forbidden(e.getMessage());
         } catch (Exception e) {
-            return badRequest("Task message lookup failed: " + e.getMessage());
+            return badRequest(failurePrefix + ": " + e.getMessage());
         }
     }
 
-    private int resolveTaskMessageLimit(Integer requestedLimit) {
-        if (requestedLimit == null) {
-            return DEFAULT_TASK_MESSAGE_SNAPSHOT_LIMIT;
-        }
-        if (requestedLimit <= 0) {
-            throw new IllegalArgumentException("limit must be greater than 0");
-        }
-        return Math.min(requestedLimit, MAX_TASK_MESSAGE_SNAPSHOT_LIMIT);
-    }
-
-    private Map<String, Object> toTaskMessageView(TaskMsg taskMsg) {
-        Map<String, Object> view = new LinkedHashMap<>();
-        view.put("messageId", taskMsg.getMessageId());
-        view.put("taskId", taskMsg.getTaskId());
-        view.put("status", taskMsg.getStatus() != null ? taskMsg.getStatus().name() : null);
-        view.put("latestAttemptWorkerId", taskMsg.getLatestAttemptWorkerId());
-        view.put("latestAttemptWorkerContextId", taskMsg.getLatestAttemptWorkerContextId());
-        view.put("latestAttemptBatchId", taskMsg.getLatestAttemptBatchId());
-        view.put("retryCount", taskMsg.getRetryCount());
-        view.put("maxRetryCount", taskMsg.getMaxRetryCount());
-        view.put("errorMessage", taskMsg.getErrorMessage());
-        view.put("errorCode", taskMsg.getErrorCode());
-        view.put("finalReason", taskMsg.getFinalReason() != null ? taskMsg.getFinalReason().name() : null);
-        view.put("assignedTime", taskMsg.getAssignedTime());
-        view.put("createTime", taskMsg.getCreateTime());
-        view.put("updateTime", taskMsg.getUpdateTime());
-        view.put("startTime", taskMsg.getStartTime());
-        view.put("completeTime", taskMsg.getCompleteTime());
-        view.put("input", taskMsg.getInput() == null ? Map.of() : new LinkedHashMap<>(taskMsg.getInput()));
-        view.put("output", taskMsg.getOutput() == null ? Map.of() : new LinkedHashMap<>(taskMsg.getOutput()));
-        return view;
-    }
-
-    private Map<String, Object> toTaskListItem(Task task) {
-        Map<String, Object> item = new LinkedHashMap<>();
-        item.put("id", task.getTid());
-        item.put("taskName", task.getTaskName());
-        item.put("project", task.getProject());
-        item.put("userId", task.getUser() != null ? task.getUser().getUserId() : null);
-        item.put("status", task.getStatus() != null ? task.getStatus().name() : null);
-        item.put("workloadClass", task.getWorkloadClass() != null ? task.getWorkloadClass().name() : null);
-        item.put("terminalReason", task.getTerminalReason() != null ? task.getTerminalReason().name() : null);
-        item.put("successCount", task.getTaskSuccessNumber());
-        item.put("eligibleCount", task.getTaskEligibleNumber());
-        item.put("batchSize", task.getBatchSize());
-        item.put("updatedAt", formatDateTime(task.getUpdateTime()));
-        item.put("security", taskSecurityViewSupport.toSecurityView(task));
-        return item;
-    }
-
-    private Task toTaskDetailTaskView(Task task) {
-        Task view = new Task();
-        BeanUtils.copyProperties(task, view);
-        view.setSharedConfig(taskSecurityViewSupport.sanitizeSharedConfig(task.getSharedConfig()));
-        return view;
-    }
-
-    private ResponseEntity<ApiResponse<Map<String, Object>>> ok(Map<String, ?> data) {
-        return ResponseEntity.ok(ApiResponse.success(new LinkedHashMap<>(data)));
-    }
-
-    private ResponseEntity<ApiResponse<Map<String, Object>>> badRequest(String message) {
-        return ResponseEntity.badRequest().body(ApiResponse.error(400, message));
-    }
-
-    private ResponseEntity<ApiResponse<Map<String, Object>>> conflict(String message) {
-        return ResponseEntity.status(409).body(ApiResponse.error(409, message));
-    }
-
-    private ResponseEntity<ApiResponse<Map<String, Object>>> unauthorized(String message) {
-        return ResponseEntity.status(401).body(ApiResponse.error(401, message));
-    }
-
-    private ResponseEntity<ApiResponse<Map<String, Object>>> forbidden(String message) {
-        return ResponseEntity.status(403).body(ApiResponse.error(403, message));
-    }
-
-    private ResponseEntity<ApiResponse<Map<String, Object>>> notFound(String message) {
-        return ResponseEntity.status(404).body(ApiResponse.error(404, message));
-    }
-
-    private void validateKnownFields(TaskCreateApiRequest requestBody, String operationName) {
-        if (requestBody == null || isEmptyCreateRequest(requestBody)) {
-            throw new IllegalArgumentException("task request body is required");
-        }
-        if (requestBody.hasUnknownFields()) {
-            throw new IllegalArgumentException("Unsupported " + operationName + " fields: "
-                    + String.join(", ", requestBody.getUnknownFieldNames()));
+    private ResponseEntity<?> executeRawApi(String failurePrefix,
+                                            RawResponseSupplier action) {
+        try {
+            return action.execute();
+        } catch (TaskApiException e) {
+            return e.toResponse();
+        } catch (SdkUnauthenticatedException e) {
+            return unauthorized(e.getMessage());
+        } catch (SecurityException e) {
+            return forbidden(e.getMessage());
+        } catch (Exception e) {
+            return badRequest(failurePrefix + ": " + e.getMessage());
         }
     }
 
-    private void validateKnownFields(TaskUpdateApiRequest requestBody, String operationName) {
-        if (requestBody == null || isEmptyUpdateRequest(requestBody)) {
-            throw new IllegalArgumentException("task request body is required");
-        }
-        if (requestBody.hasUnknownFields()) {
-            throw new IllegalArgumentException("Unsupported " + operationName + " fields: "
-                    + String.join(", ", requestBody.getUnknownFieldNames()));
-        }
+    private MassTaskShellCreateRequest toMassTaskShellCreateRequest(TaskShellCreateApiRequest requestBody) {
+        return toMassTaskShellCreateRequest(requestBody, requestBody.getProject(), requestBody.getUserId());
     }
 
-    private void validateKnownFields(TaskAppendItemsApiRequest requestBody, String operationName) {
-        if (requestBody == null) {
-            throw new IllegalArgumentException("task request body is required");
-        }
-        if (requestBody.hasUnknownFields()) {
-            throw new IllegalArgumentException("Unsupported " + operationName + " fields: "
-                    + String.join(", ", requestBody.getUnknownFieldNames()));
-        }
-    }
-
-    private MassTaskCreateRequest toTaskCreateRequest(TaskCreateApiRequest requestBody) {
-        requireBusinessBindings(requestBody.getProject(), requestBody.getUserId());
-        return MassTaskCreateRequest.builder()
-                .userId(requestBody.getUserId())
-                .project(requestBody.getProject())
-                .taskName(requestBody.getTaskName())
-                .sharedConfig(taskSecurityViewSupport.sanitizeSharedConfig(requestBody.getSharedConfig()))
-                .inputs(toPlainJsonInputs(requestBody.getInputs()))
-                .batchSize(requestBody.getBatchSize())
-                .defaultMsgMaxRetryCount(requestBody.getDefaultMsgMaxRetryCount())
-                .openEnded(requestBody.isOpenEnded())
-                .maxRuntimeSeconds(requestBody.getMaxRuntimeSeconds())
-                .sourceType(resolveSourceType(requestBody))
-                .workloadClass(requestBody.getWorkloadClass())
-                .sourceRef(requestBody.getSourceRef())
-                .build();
-    }
-
-    private MassTaskRequest toMassTaskRequest(TaskCreateApiRequest requestBody) {
-        return toMassTaskRequest(requestBody, requestBody.getProject(), requestBody.getUserId());
-    }
-
-    private MassTaskRequest toMassTaskRequest(TaskCreateApiRequest requestBody, String resolvedProject, String resolvedUserId) {
+    private MassTaskShellCreateRequest toMassTaskShellCreateRequest(TaskShellCreateApiRequest requestBody,
+                                                                    String resolvedProject,
+                                                                    String resolvedUserId) {
         requireBusinessBindings(resolvedProject, resolvedUserId);
-        if (requestBody.getTaskName() == null || requestBody.getTaskName().isBlank()) {
-            throw new IllegalArgumentException("taskName is required");
-        }
-        if (requestBody.getEventCode() == null || requestBody.getEventCode().isBlank()) {
-            throw new IllegalArgumentException("eventCode is required");
-        }
-        validateProjectAndEvent(resolvedProject, requestBody.getEventCode());
-
-        TaskMode mode = requestBody.getMode() != null
-                ? requestBody.getMode()
-                : (requestBody.isOpenEnded() ? TaskMode.STREAMING : TaskMode.SINGLE_RUN);
-        PayloadType payloadType = requestBody.getPayloadType() != null
-                ? requestBody.getPayloadType()
-                : PayloadType.JSON;
-
-        return MassTaskRequest.builder()
+        return MassTaskShellCreateRequest.builder()
                 .userId(resolvedUserId)
+                .tenantId(resolveProjectTenantId(resolvedProject))
                 .project(resolvedProject)
-                .taskName(requestBody.getTaskName())
-                .eventCode(requestBody.getEventCode())
-                .mode(mode)
-                .payloadType(payloadType)
+                .contract(requestBody.getContract())
                 .sharedConfig(taskSecurityViewSupport.sanitizeSharedConfig(requestBody.getSharedConfig()))
-                .inputs(toMassInputs(requestBody.getInputs(), payloadType, resolveSourceType(requestBody)))
-                .batchSize(requestBody.getBatchSize())
-                .defaultMsgMaxRetryCount(requestBody.getDefaultMsgMaxRetryCount())
-                .maxRuntimeSeconds(requestBody.getMaxRuntimeSeconds())
-                .sourceType(resolveSourceType(requestBody))
-                .workloadClass(requestBody.getWorkloadClass())
+                .executionSpec(TaskExecutionOptions.normalized(requestBody.getExecutionSpec()))
                 .sourceRef(requestBody.getSourceRef())
                 .build();
     }
 
     private MassTaskUpdateRequest toTaskUpdateRequest(TaskUpdateApiRequest requestBody) {
         if (requestBody.getProject() != null) {
-            ProjectRef.require(requestBody.getProject());
+            requireProjectCode(requestBody.getProject());
         }
         if (requestBody.getUserId() != null) {
-            UserRef.requireUserId(requestBody.getUserId());
+            requireUserId(requestBody.getUserId());
         }
         return MassTaskUpdateRequest.builder()
                 .userId(requestBody.getUserId())
                 .project(requestBody.getProject())
-                .taskName(requestBody.getTaskName())
                 .sharedConfig(taskSecurityViewSupport.sanitizeSharedConfig(requestBody.getSharedConfig()))
-                .batchSize(requestBody.getBatchSize())
                 .build();
     }
 
-    private boolean isEmptyCreateRequest(TaskCreateApiRequest requestBody) {
+    private MassTaskCommandRequest toMassTaskCommandRequest(TaskCommandApiRequest requestBody) {
+        return MassTaskCommandRequest.builder()
+                .command(requestBody.getCommand())
+                .reason(requestBody.getReason())
+                .options(requestBody.getOptions())
+                .build();
+    }
+
+    private boolean isEmptyCreateRequest(TaskShellCreateApiRequest requestBody) {
         return requestBody.getUserId() == null
                 && requestBody.getProject() == null
-                && requestBody.getTaskName() == null
-                && requestBody.getEventCode() == null
-                && requestBody.getMode() == null
-                && requestBody.getPayloadType() == null
+                && requestBody.getContract() == null
                 && requestBody.getSharedConfig() == null
-                && requestBody.getInputs() == null
-                && requestBody.getBatchSize() == 0
-                && requestBody.getDefaultMsgMaxRetryCount() == 3
-                && !requestBody.isOpenEnded()
-                && requestBody.getMaxRuntimeSeconds() == 0
-                && requestBody.getSourceType() == null
-                && requestBody.getWorkloadClass() == null
+                && requestBody.getExecutionSpec() == null
                 && requestBody.getSourceRef() == null;
     }
 
     private boolean isEmptyUpdateRequest(TaskUpdateApiRequest requestBody) {
         return requestBody.getUserId() == null
                 && requestBody.getProject() == null
-                && requestBody.getTaskName() == null
-                && requestBody.getSharedConfig() == null
-                && requestBody.getBatchSize() == null;
+                && requestBody.getSharedConfig() == null;
     }
 
-    private boolean blockTask(Task task) {
-        if (task == null) {
-            return false;
-        }
-        if (task.getStatus() == TaskStatus.NEW) {
-            return taskAdmin.rejectTask(task.getTid());
-        }
-        return taskAdmin.blockTask(task.getTid());
-    }
-
-    private boolean matchesKeyword(Task task, String normalizedKeyword) {
+    private boolean matchesKeyword(String taskId,
+                                   String taskName,
+                                   String project,
+                                   String normalizedKeyword) {
         if (normalizedKeyword == null || normalizedKeyword.isBlank()) {
             return true;
         }
-        return containsIgnoreCase(task.getTid(), normalizedKeyword)
-                || containsIgnoreCase(task.getTaskName(), normalizedKeyword)
-                || containsIgnoreCase(task.getProject(), normalizedKeyword);
+        return containsIgnoreCase(taskId, normalizedKeyword)
+                || containsIgnoreCase(taskName, normalizedKeyword)
+                || containsIgnoreCase(project, normalizedKeyword);
+    }
+
+    private boolean matchesProject(String taskProject, String normalizedProject) {
+        if (normalizedProject == null || normalizedProject.isBlank()) {
+            return true;
+        }
+        if (taskProject == null || taskProject.isBlank()) {
+            return false;
+        }
+        return taskProject.trim().equalsIgnoreCase(normalizedProject.trim());
     }
 
     private boolean containsIgnoreCase(String source, String normalizedKeyword) {
         return source != null && source.toLowerCase().contains(normalizedKeyword);
     }
 
+    private TaskCommandAuthorization resolveTaskCommandAuthorization(String command) {
+        String normalizedCommand = normalizeTaskCommand(command);
+        return switch (normalizedCommand) {
+            case "APPROVE", "REJECT" -> new TaskCommandAuthorization(PlatformAction.APPROVE, ApiPermissionNames.TASK_GOVERN);
+            case "PAUSE" -> new TaskCommandAuthorization(PlatformAction.PAUSE, ApiPermissionNames.TASK_CONTROL);
+            case "RESUME" -> new TaskCommandAuthorization(PlatformAction.RESUME, ApiPermissionNames.TASK_CONTROL);
+            case "TERMINATE" -> new TaskCommandAuthorization(PlatformAction.TERMINATE, ApiPermissionNames.TASK_CONTROL);
+            case "BLOCK", "SEAL" -> new TaskCommandAuthorization(PlatformAction.EDIT, ApiPermissionNames.TASK_EDIT);
+            default -> throw new IllegalArgumentException("Unsupported task command: " + normalizedCommand);
+        };
+    }
+
+    private void requireTaskCommandPermission(HttpServletRequest request,
+                                              String taskId,
+                                              TaskCommandAuthorization authorization,
+                                              String requestedCommand) {
+        PrincipalContext principal = request != null
+                ? (PrincipalContext) request.getAttribute(com.xa.mass.api.auth.ApiAuthInterceptor.AUTHENTICATED_PRINCIPAL_ATTR)
+                : null;
+        if (principal == null) {
+            principal = apiAuthService.requireAuthenticated(request);
+        }
+        apiAuthorizationService.requireOperatorRoutePermission(
+                principal,
+                PlatformResourceType.TASK,
+                authorization.action(),
+                authorization.permission(),
+                "task-command",
+                Map.of(
+                        "taskId", taskId != null ? taskId : "",
+                        "command", requestedCommand != null ? requestedCommand : ""
+                )
+        );
+    }
+
+    private String normalizeTaskCommand(String command) {
+        if (command == null || command.isBlank()) {
+            throw new IllegalArgumentException("command is required");
+        }
+        return command.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private int resolveResultWindow(Integer requestedLimit) {
+        if (requestedLimit == null || requestedLimit <= 0) {
+            return DEFAULT_RESULT_WINDOW;
+        }
+        return Math.min(requestedLimit, MAX_RESULT_WINDOW);
+    }
+
+    private boolean isTerminalTask(TaskDetailSnapshot task) {
+        return task != null && "TERMINAL".equalsIgnoreCase(task.getStatus());
+    }
+
+    private String buildTaskResultArchiveFileName(TaskDetailSnapshot task) {
+        String taskName = task != null && task.getTaskName() != null ? task.getTaskName().trim() : "task";
+        String normalizedTaskName = taskName.replaceAll("[^a-zA-Z0-9._-]+", "-");
+        if (normalizedTaskName.isBlank()) {
+            normalizedTaskName = "task";
+        }
+        return normalizedTaskName + "-results-" + task.getTaskId() + ".ndjson.gz";
+    }
+
     private void requireBusinessBindings(String project, String userId) {
-        ProjectRef.require(project);
-        UserRef.requireUserId(userId);
+        requireProjectCode(project);
+        requireUserId(userId);
     }
 
     private ApiAuthorizationService.AuthorizedSubmitterTaskCreate resolveSubmitterTaskCreate(String apiKeyHeader,
                                                                                              String authorizationHeader,
-                                                                                             TaskCreateApiRequest requestBody) {
+                                                                                             TaskShellCreateApiRequest requestBody) {
         try {
             return apiAuthorizationService.resolveAuthorizedSubmitterTaskCreate(
                     apiKeyHeader,
                     authorizationHeader,
                     requestBody != null ? requestBody.getProject() : null,
-                    requestBody != null ? requestBody.getEventCode() : null,
+                    null,
                     requestBody != null ? requestBody.getUserId() : null,
                     Map.of(
-                        "taskName", requestBody != null ? String.valueOf(requestBody.getTaskName()) : "",
-                        "mode", requestBody != null ? String.valueOf(requestBody.getMode()) : "",
-                        "payloadType", requestBody != null ? String.valueOf(requestBody.getPayloadType()) : "",
+                        "executionProfile", requestBody != null && requestBody.getExecutionSpec() != null
+                                ? String.valueOf(requestBody.getExecutionSpec().getProfile()) : "",
                         "scenario", ApiSecurityScenario.SUBMITTER_TASK_CREATE.name()
                     )
             );
@@ -793,14 +899,18 @@ public class TaskApiController {
 
     private PrincipalContext resolveTaskViewer(String apiKeyHeader,
                                                String authorizationHeader,
-                                               Task task) {
+                                               String taskId,
+                                               String project,
+                                               Map<String, Object> sharedConfig) {
         try {
             return apiAuthorizationService.resolveAuthorizedTaskViewer(
                     apiKeyHeader,
                     authorizationHeader,
-                    task,
+                    taskId,
+                    project,
+                    sharedConfig,
                     Map.of(
-                            "taskId", task != null ? String.valueOf(task.getTid()) : "",
+                            "taskId", taskId != null ? taskId : "",
                             "scenario", ApiSecurityScenario.SUBMITTER_TASK_VIEW.name()
                     )
             );
@@ -824,204 +934,385 @@ public class TaskApiController {
         }
     }
 
-    private boolean hasEventCode(TaskCreateApiRequest requestBody) {
-        return requestBody.getEventCode() != null && !requestBody.getEventCode().isBlank();
+    private boolean canViewTaskSummary(TaskSummarySnapshot task, PrincipalContext submitterViewer) {
+        if (submitterViewer == null) {
+            return true;
+        }
+        TaskAccessSnapshot access = taskQueries.getTaskAccess(task.getTaskId());
+        if (access == null) {
+            return false;
+        }
+        return apiAuthorizationService.allowsTaskOwnershipAccess(submitterViewer, access.getSharedConfig());
+    }
+
+    private PrincipalContext resolveTaskAppender(String apiKeyHeader,
+                                                 String authorizationHeader,
+                                                 String taskId,
+                                                 String project,
+                                                 Map<String, Object> sharedConfig,
+                                                 List<String> eventCodes) {
+        try {
+            return apiAuthorizationService.resolveAuthorizedTaskAppender(
+                    apiKeyHeader,
+                    authorizationHeader,
+                    taskId,
+                    project,
+                    sharedConfig,
+                    eventCodes,
+                    Map.of(
+                            "taskId", taskId != null ? taskId : "",
+                            "project", project != null ? project : "",
+                            "eventCodes", eventCodes == null ? List.of() : eventCodes,
+                            "scenario", ApiSecurityScenario.SUBMITTER_TASK_APPEND.name()
+                    )
+            );
+        } catch (com.xa.mass.api.auth.ApiForbiddenException ex) {
+            throw new SecurityException(ex.getMessage());
+        } catch (com.xa.mass.api.auth.ApiUnauthenticatedException ex) {
+            throw new SdkUnauthenticatedException(ex.getMessage());
+        }
+    }
+
+    private String requireProjectCode(String project) {
+        if (project == null || project.isBlank()) {
+            throw new IllegalArgumentException("project is required");
+        }
+        return project.trim();
+    }
+
+    private String requireUserId(String userId) {
+        if (userId == null || userId.isBlank()) {
+            throw new IllegalArgumentException("userId is required");
+        }
+        return userId.trim();
+    }
+
+    private void validateKnownFields(TaskShellCreateApiRequest requestBody, String operationName) {
+        if (requestBody == null || isEmptyCreateRequest(requestBody)) {
+            throw new IllegalArgumentException("task request body is required");
+        }
+        if (requestBody.hasUnknownFields()) {
+            throw new IllegalArgumentException("Unsupported " + operationName + " fields: "
+                    + String.join(", ", requestBody.getUnknownFieldNames()));
+        }
+    }
+
+    private void validateKnownFields(TaskUpdateApiRequest requestBody, String operationName) {
+        if (requestBody == null || isEmptyUpdateRequest(requestBody)) {
+            throw new IllegalArgumentException("task request body is required");
+        }
+        if (requestBody.hasUnknownFields()) {
+            throw new IllegalArgumentException("Unsupported " + operationName + " fields: "
+                    + String.join(", ", requestBody.getUnknownFieldNames()));
+        }
+    }
+
+    private void validateKnownFields(TaskItemBatchIngestApiRequest requestBody, String operationName) {
+        if (requestBody == null) {
+            throw new IllegalArgumentException("task request body is required");
+        }
+        if (requestBody.hasUnknownFields()) {
+            throw new IllegalArgumentException("Unsupported " + operationName + " fields: "
+                    + String.join(", ", requestBody.getUnknownFieldNames()));
+        }
+    }
+
+    private void validateKnownFields(TaskItemSyncIngestApiRequest requestBody, String operationName) {
+        if (requestBody == null) {
+            throw new IllegalArgumentException("task request body is required");
+        }
+        if (requestBody.hasUnknownFields()) {
+            throw new IllegalArgumentException("Unsupported " + operationName + " fields: "
+                    + String.join(", ", requestBody.getUnknownFieldNames()));
+        }
+    }
+
+    private void validateKnownFields(TaskCommandApiRequest requestBody, String operationName) {
+        if (requestBody == null || requestBody.getCommand() == null || requestBody.getCommand().isBlank()) {
+            throw new IllegalArgumentException("task request body is required");
+        }
+        if (requestBody.hasUnknownFields()) {
+            throw new IllegalArgumentException("Unsupported " + operationName + " fields: "
+                    + String.join(", ", requestBody.getUnknownFieldNames()));
+        }
+    }
+
+    private void validateKnownFields(TaskStageEvidenceApiRequest requestBody, String operationName) {
+        if (requestBody == null) {
+            throw new IllegalArgumentException("task request body is required");
+        }
+        if (requestBody.hasUnknownFields()) {
+            throw new IllegalArgumentException("Unsupported " + operationName + " fields: "
+                    + String.join(", ", requestBody.getUnknownFieldNames()));
+        }
+    }
+
+    private List<String> resolveAppendEventCodes(TaskItemBatchIngestApiRequest requestBody,
+                                                 List<Object> items) {
+        return resolveAppendEventCodes(requestBody != null ? requestBody.getEventCode() : null, items);
+    }
+
+    private List<String> resolveAppendEventCodes(String batchEventCode,
+                                                 List<Object> items) {
+        LinkedHashSet<String> eventCodes = new LinkedHashSet<>();
+        String normalizedBatchEventCode = normalizeEventCode(batchEventCode);
+        if (normalizedBatchEventCode != null) {
+            eventCodes.add(normalizedBatchEventCode);
+        }
+        if (items != null) {
+            for (Object item : items) {
+                String itemEventCode = extractItemEventCode(item);
+                if (itemEventCode != null) {
+                    eventCodes.add(itemEventCode);
+                }
+            }
+        }
+        return eventCodes.isEmpty() ? List.of() : List.copyOf(eventCodes);
+    }
+
+    private String extractItemEventCode(Object item) {
+        if (!(item instanceof Map<?, ?> rawMap)) {
+            return null;
+        }
+        Object rawEventCode = rawMap.get("eventCode");
+        if (rawEventCode == null) {
+            return null;
+        }
+        return normalizeEventCode(String.valueOf(rawEventCode));
+    }
+
+    private Object requireSyncItem(TaskItemSyncIngestApiRequest requestBody) {
+        if (requestBody == null || requestBody.getItem() == null) {
+            throw badRequestError("item is required");
+        }
+        return requestBody.getItem();
+    }
+
+    private String resolveSingleSyncEventCode(TaskItemSyncIngestApiRequest requestBody,
+                                              Object item) {
+        List<String> eventCodes = resolveAppendEventCodes(
+                requestBody != null ? requestBody.getEventCode() : null,
+                List.of(item)
+        );
+        if (eventCodes.isEmpty()) {
+            throw badRequestError("sync append requires request eventCode or item.eventCode");
+        }
+        if (eventCodes.size() != 1) {
+            throw badRequestError("sync append requires exactly one resolved eventCode");
+        }
+        return eventCodes.get(0);
+    }
+
+    private void requireSyncAppendableState(TaskStateSnapshot state) {
+        String status = state != null ? state.getStatus() : null;
+        if (!"READY".equalsIgnoreCase(status) && !"RUNNING".equalsIgnoreCase(status)) {
+            throw conflictError("Task sync append requires READY or RUNNING task status");
+        }
+        String intakeStatus = state != null ? state.getIntakeStatus() : null;
+        if (!"OPEN".equalsIgnoreCase(intakeStatus)) {
+            throw conflictError("Task sync append requires OPEN intake status");
+        }
+    }
+
+    private String requireSingleMessageId(TaskItemBatchAppendReceipt receipt) {
+        if (receipt == null) {
+            throw new IllegalStateException("Task append receipt is unavailable");
+        }
+        if (receipt.added() != 1) {
+            throw new IllegalStateException("Sync append must add exactly one item, got: " + receipt.added());
+        }
+        if (receipt.messageIds().size() != 1) {
+            throw new IllegalStateException("Sync append must return exactly one message id");
+        }
+        String messageId = receipt.messageIds().get(0);
+        if (messageId == null || messageId.isBlank()) {
+            throw new IllegalStateException("Sync append returned blank message id");
+        }
+        return messageId;
+    }
+
+    private long resolveSyncTimeoutMs(Long requestedTimeoutMs) {
+        if (requestedTimeoutMs == null || requestedTimeoutMs <= 0L) {
+            return SyncTaskResultBridge.DEFAULT_TIMEOUT_MS;
+        }
+        return Math.min(requestedTimeoutMs, SyncTaskResultBridge.MAX_TIMEOUT_MS);
+    }
+
+    private String normalizeEventCode(String eventCode) {
+        if (eventCode == null || eventCode.isBlank()) {
+            return null;
+        }
+        return eventCode.trim();
     }
 
     private void validateProjectAndEvent(String projectCode, String eventCode) {
-        ProjectMetadata projectMetadata = metadataCatalog.getProject(projectCode);
-        if (projectMetadata == null) {
-            throw new IllegalArgumentException("Unsupported project metadata code: " + projectCode);
+        ProjectDefinition projectDefinition = catalog.getProject(projectCode);
+        if (projectDefinition == null) {
+            throw new IllegalArgumentException("Unsupported project code: " + projectCode);
         }
-        if (metadataCatalog.getEvent(eventCode) == null) {
+        if (catalog.getEvent(eventCode) == null) {
             throw new IllegalArgumentException("Unsupported event code: " + eventCode);
         }
-        if (!projectMetadata.getEventCodes().contains(eventCode)) {
+        if (!projectDefinition.getAuthorizedEventCodes().contains(eventCode)) {
             throw new IllegalArgumentException("Project " + projectCode + " does not support event " + eventCode);
         }
     }
 
-    private List<Map<String, Object>> toPlainJsonInputs(List<Object> rawInputs) {
-        if (rawInputs == null) {
-            return null;
+    private String resolveProjectTenantId(String projectCode) {
+        ProjectDefinition projectDefinition = catalog.getProject(projectCode);
+        if (projectDefinition == null) {
+            throw new IllegalArgumentException("Unsupported project code: " + projectCode);
         }
-        return rawInputs.stream()
-                .map(this::mapInputWithoutDeclaredPayloadType)
-                .collect(Collectors.toList());
+        return projectDefinition.getTenantId();
     }
 
-    private List<Map<String, Object>> toAppendInputs(List<Object> rawInputs, Task task) {
-        PayloadType payloadType = resolvePayloadType(task);
-        if (payloadType == null) {
-            return rawInputs.stream()
-                    .map(this::mapInputWithoutDeclaredPayloadType)
-                    .collect(Collectors.toList());
+    private void validateIngestGuardrails(List<Object> items) {
+        if (items == null || items.isEmpty()) {
+            throw new IllegalArgumentException("items must contain at least one work item");
         }
-        return toMassInputs(rawInputs, payloadType, task.getSourceType()).stream()
-                .map(MassInput::toTaskMsgInput)
-                .collect(Collectors.toList());
-    }
-
-    private Map<String, Object> mapInputWithoutDeclaredPayloadType(Object rawInput) {
-        if (rawInput instanceof String text) {
-            return new TextInput(text).toTaskMsgInput();
+        if (items.size() > MAX_INGEST_ITEM_COUNT) {
+            throw new IllegalArgumentException("items exceed ingest batch limit: "
+                    + items.size() + " > " + MAX_INGEST_ITEM_COUNT);
         }
-        if (rawInput instanceof Map<?, ?> map) {
-            return stringObjectMap(map);
-        }
-        throw new IllegalArgumentException("Unsupported input item type: " + rawInput);
-    }
-
-    private List<MassInput> toMassInputs(List<Object> rawInputs, PayloadType payloadType, TaskSourceType sourceType) {
-        if ((rawInputs == null || rawInputs.isEmpty())
-                && sourceType != null
-                && sourceType.allowsEmptyInitialInputs()) {
-            return List.of();
-        }
-        if (rawInputs == null || rawInputs.isEmpty()) {
-            throw new IllegalArgumentException("inputs must contain at least one work item");
-        }
-        PayloadType resolvedPayloadType = payloadType != null ? payloadType : PayloadType.JSON;
-        return rawInputs.stream()
-                .map(rawInput -> toMassInput(rawInput, resolvedPayloadType))
-                .collect(Collectors.toList());
-    }
-
-    private MassInput toMassInput(Object rawInput, PayloadType payloadType) {
-        return switch (payloadType) {
-            case TEXT -> {
-                if (!(rawInput instanceof String text)) {
-                    throw new IllegalArgumentException("TEXT payloadType requires string inputs");
+        int totalBytes = 0;
+        for (Object item : items) {
+            try {
+                int bytes = SIZE_OBJECT_MAPPER.writeValueAsString(item).getBytes(StandardCharsets.UTF_8).length;
+                if (bytes > MAX_INGEST_ITEM_BYTES) {
+                    throw new IllegalArgumentException("single item exceeds size limit: "
+                            + bytes + " > " + MAX_INGEST_ITEM_BYTES);
                 }
-                yield new TextInput(text);
+                totalBytes += bytes;
+            } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                throw new IllegalArgumentException("item cannot be serialized as JSON: " + e.getMessage(), e);
             }
-            case JSON -> {
-                if (!(rawInput instanceof Map<?, ?> map)) {
-                    throw new IllegalArgumentException("JSON payloadType requires object inputs");
-                }
-                yield new JsonInput(stringObjectMap(map));
-            }
-        };
-    }
-
-    private PayloadType resolvePayloadType(Task task) {
-        if (task == null || task.getSharedConfig() == null) {
-            return null;
         }
-        Object sdk = task.getSharedConfig().get("_sdk");
-        if (!(sdk instanceof Map<?, ?> sdkMetadata)) {
-            return null;
-        }
-        Object payloadType = sdkMetadata.get("payloadType");
-        if (!(payloadType instanceof String payloadTypeName) || payloadTypeName.isBlank()) {
-            return null;
-        }
-        return PayloadType.valueOf(payloadTypeName);
-    }
-
-    private Map<String, Object> stringObjectMap(Map<?, ?> rawMap) {
-        Map<String, Object> copy = new LinkedHashMap<>();
-        for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
-            copy.put(String.valueOf(entry.getKey()), entry.getValue());
-        }
-        return Map.copyOf(copy);
-    }
-
-    private String formatDateTime(LocalDateTime value) {
-        return value == null ? "" : value.format(DATE_TIME_FORMATTER);
-    }
-
-    private TaskSourceType resolveSourceType(TaskCreateApiRequest requestBody) {
-        if (requestBody.getSourceType() != null) {
-            return requestBody.getSourceType();
-        }
-        return requestBody.isOpenEnded() ? TaskSourceType.STREAM : TaskSourceType.BATCH;
-    }
-
-    private void validateSyncRequest(TaskCreateApiRequest requestBody) {
-        if (requestBody.isOpenEnded()) {
-            throw new IllegalArgumentException("Sync task does not support open-ended mode");
-        }
-        if (requestBody.getMode() != null && requestBody.getMode() != TaskMode.SINGLE_RUN) {
-            throw new IllegalArgumentException("Sync task requires SINGLE_RUN mode, got: " + requestBody.getMode());
-        }
-        List<Object> inputs = requestBody.getInputs();
-        if (inputs == null || inputs.isEmpty()) {
-            throw new IllegalArgumentException("Sync task requires exactly one input item");
-        }
-        if (inputs.size() > 1) {
-            throw new IllegalArgumentException("Sync task requires exactly one input item; got " + inputs.size());
+        if (totalBytes > MAX_INGEST_TOTAL_BYTES) {
+            throw new IllegalArgumentException("items exceed total size limit: "
+                    + totalBytes + " > " + MAX_INGEST_TOTAL_BYTES);
         }
     }
 
-    private long resolveTimeoutMs(Long requested) {
-        if (requested == null || requested <= 0) {
-            return SyncTaskResultBridge.DEFAULT_TIMEOUT_MS;
-        }
-        return Math.min(requested, SyncTaskResultBridge.MAX_TIMEOUT_MS);
+    private TaskDetailSnapshot requireAuthorizedTaskDetail(String apiKeyHeader,
+                                                           String authorizationHeader,
+                                                           String taskId) {
+        TaskDetailSnapshot task = requireTaskDetail(taskId);
+        resolveTaskViewer(apiKeyHeader, authorizationHeader, task.getTaskId(), task.getProject(), task.getSharedConfig());
+        return task;
     }
 
-    private Map<String, Object> mergeSyncKey(Map<String, Object> existing, String syncKey) {
-        Map<String, Object> merged = new LinkedHashMap<>();
-        if (existing != null) {
-            merged.putAll(taskSecurityViewSupport.sanitizeSharedConfig(existing));
-        }
-        merged.put(SyncTaskResultBridge.SYNC_KEY, syncKey);
-        return Map.copyOf(merged);
+    private TaskDetailSnapshot requireAuthorizedTaskAppenderTarget(String apiKeyHeader,
+                                                                  String authorizationHeader,
+                                                                  String taskId) {
+        TaskDetailSnapshot task = requireTaskDetail(taskId);
+        resolveTaskAppender(
+                apiKeyHeader,
+                authorizationHeader,
+                task.getTaskId(),
+                task.getProject(),
+                task.getSharedConfig(),
+                List.of()
+        );
+        return task;
     }
 
-    private MassTaskRequest toMassTaskRequestWithSyncKey(TaskCreateApiRequest requestBody,
-                                                         String resolvedProject,
-                                                         String resolvedUserId,
-                                                         String syncKey) {
-        requireBusinessBindings(resolvedProject, resolvedUserId);
-        if (requestBody.getTaskName() == null || requestBody.getTaskName().isBlank()) {
-            throw new IllegalArgumentException("taskName is required");
+    private TaskDetailSnapshot requireTaskDetail(String taskId) {
+        TaskDetailSnapshot task = taskQueries.getTaskDetail(taskId);
+        if (task == null) {
+            throw notFoundError("Task not found: " + taskId);
         }
-        if (requestBody.getEventCode() == null || requestBody.getEventCode().isBlank()) {
-            throw new IllegalArgumentException("eventCode is required");
-        }
-        validateProjectAndEvent(resolvedProject, requestBody.getEventCode());
-        PayloadType payloadType = requestBody.getPayloadType() != null ? requestBody.getPayloadType() : PayloadType.JSON;
-        return MassTaskRequest.builder()
-                .userId(resolvedUserId)
-                .project(resolvedProject)
-                .taskName(requestBody.getTaskName())
-                .eventCode(requestBody.getEventCode())
-                .mode(TaskMode.SINGLE_RUN)
-                .payloadType(payloadType)
-                .sharedConfig(mergeSyncKey(requestBody.getSharedConfig(), syncKey))
-                .inputs(toMassInputs(requestBody.getInputs(), payloadType, TaskSourceType.BATCH))
-                .batchSize(requestBody.getBatchSize())
-                .defaultMsgMaxRetryCount(requestBody.getDefaultMsgMaxRetryCount())
-                .maxRuntimeSeconds(requestBody.getMaxRuntimeSeconds())
-                .sourceType(TaskSourceType.BATCH)
-                .workloadClass(requestBody.getWorkloadClass())
-                .sourceRef(requestBody.getSourceRef())
-                .build();
+        return task;
     }
 
-    private MassTaskCreateRequest toTaskCreateRequestWithSyncKey(TaskCreateApiRequest requestBody, String syncKey) {
-        requireBusinessBindings(requestBody.getProject(), requestBody.getUserId());
-        return MassTaskCreateRequest.builder()
-                .userId(requestBody.getUserId())
-                .project(requestBody.getProject())
-                .taskName(requestBody.getTaskName())
-                .sharedConfig(mergeSyncKey(requestBody.getSharedConfig(), syncKey))
-                .inputs(toPlainJsonInputs(requestBody.getInputs()))
-                .batchSize(requestBody.getBatchSize())
-                .defaultMsgMaxRetryCount(requestBody.getDefaultMsgMaxRetryCount())
-                .openEnded(false)
-                .maxRuntimeSeconds(requestBody.getMaxRuntimeSeconds())
-                .sourceType(TaskSourceType.BATCH)
-                .workloadClass(requestBody.getWorkloadClass())
-                .sourceRef(requestBody.getSourceRef())
-                .build();
+    private TaskAccessSnapshot requireTaskAccess(String taskId) {
+        TaskAccessSnapshot task = taskQueries.getTaskAccess(taskId);
+        if (task == null) {
+            throw notFoundError("Task not found: " + taskId);
+        }
+        return task;
+    }
+
+    private TaskStateSnapshot getExistingTaskState(String taskId) {
+        TaskStateSnapshot state = taskQueries.getTaskState(taskId);
+        if (state == null && !taskQueries.taskExists(taskId)) {
+            throw notFoundError("Task not found: " + taskId);
+        }
+        return state;
+    }
+
+    private void requireTaskExists(String taskId) {
+        if (!taskQueries.taskExists(taskId)) {
+            throw notFoundError("Task not found: " + taskId);
+        }
+    }
+
+    private TaskResultQueryOperations requireTaskResultQueries() {
+        if (taskResultQueries == null) {
+            throw new IllegalStateException("Task result runtime query surface is unavailable");
+        }
+        return taskResultQueries;
+    }
+
+    private TaskStageEvidenceOperations requireTaskStageEvidence() {
+        if (taskStageEvidence == null) {
+            throw new IllegalStateException("Task stage evidence surface is unavailable");
+        }
+        return taskStageEvidence;
+    }
+
+    private SyncTaskResultBridge requireSyncTaskResultBridge() {
+        if (syncTaskResultBridge == null) {
+            throw new IllegalStateException("Task sync result bridge is unavailable");
+        }
+        return syncTaskResultBridge;
+    }
+
+    private TaskApiException badRequestError(String message) {
+        return new TaskApiException(400, message);
+    }
+
+    private TaskApiException conflictError(String message) {
+        return new TaskApiException(409, message);
+    }
+
+    private TaskApiException notFoundError(String message) {
+        return new TaskApiException(404, message);
     }
 
     private static final class SdkUnauthenticatedException extends RuntimeException {
         private SdkUnauthenticatedException(String message) {
             super(message);
+        }
+    }
+
+    @FunctionalInterface
+    private interface ApiResponseSupplier<T> {
+        ResponseEntity<ApiResponse<T>> execute() throws Exception;
+    }
+
+    @FunctionalInterface
+    private interface RawResponseSupplier {
+        ResponseEntity<?> execute() throws Exception;
+    }
+
+    private record TaskCommandAuthorization(PlatformAction action, String permission) {
+    }
+
+    private final class TaskApiException extends RuntimeException {
+        private final int statusCode;
+
+        private TaskApiException(int statusCode, String message) {
+            super(message);
+            this.statusCode = statusCode;
+        }
+
+        private <T> ResponseEntity<ApiResponse<T>> toResponse() {
+            return switch (statusCode) {
+                case 400 -> badRequest(getMessage());
+                case 404 -> notFound(getMessage());
+                case 409 -> conflict(getMessage());
+                default -> ResponseEntity.status(statusCode).body(ApiResponse.error(statusCode, getMessage()));
+            };
         }
     }
 }

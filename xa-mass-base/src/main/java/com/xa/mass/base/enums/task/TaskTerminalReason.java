@@ -13,24 +13,9 @@ public enum TaskTerminalReason {
     RETRY_BUDGET_EXHAUSTED;
 
     /**
-     * Reasons that are allowed to close a task even while intake is still OPEN.
-     *
-     * <p>These are operator- or policy-driven stop conditions rather than
-     * normal "all persisted messages finalized" convergence.
-     */
-    public boolean allowsOpenIntakeClosure() {
-        return switch (this) {
-            case MANUAL_CANCELLED,
-                    MAX_RUNTIME_REACHED,
-                    SUCCESS_RATE_REACHED,
-                    RETRY_BUDGET_EXHAUSTED -> true;
-            default -> false;
-        };
-    }
-
-    /**
      * Non-message policy closure reasons. These are terminal reasons whose
-     * semantics are not derived directly from the current TaskMsg aggregate.
+     * semantics are not derived directly from the current compatibility
+     * message projection.
      */
     public boolean isPolicyDrivenStop() {
         return switch (this) {

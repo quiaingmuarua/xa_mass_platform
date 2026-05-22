@@ -2,7 +2,7 @@ package com.xa.mass.sdk.authz;
 
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
-import com.xa.mass.sdk.catalog.ProjectMetadata;
+import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventDefinition;
@@ -19,12 +19,12 @@ class DefaultEventPermissionServiceTest {
     @Test
     void authorizeUsesGlobalEventIdentityAndProjectAsScopeOnly() {
         ProjectEventCatalogRegistry catalog = new ProjectEventCatalogRegistry();
-        catalog.registerProject(ProjectMetadata.builder()
+        catalog.registerProject(ProjectDefinition.builder()
                 .code("demoApp")
                 .name("Demo App")
                 .eventCodes(List.of("crawler.fetch-page"))
                 .build());
-        catalog.registerProject(ProjectMetadata.builder()
+        catalog.registerProject(ProjectDefinition.builder()
                 .code("crawlerApp")
                 .name("Crawler App")
                 .eventCodes(List.of("crawler.fetch-page"))

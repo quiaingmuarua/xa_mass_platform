@@ -1,6 +1,6 @@
 # Transport Agent Handoff
 
-Last updated: 2026-04-29
+Last updated: 2026-05-21
 
 Status: current transport owner handoff.
 
@@ -15,9 +15,31 @@ entry for `transport/`.
 - `polling-adapter`, `websocket-adapter`, and `socket-adapter` are peer adapters.
 - `adapterId` is concrete runtime truth. `transportHint` is only a coarse family.
 - `routeKey` is the transport delivery address. Current mainline bindings resolve
-  it from `workerId`, but that is policy, not a transport-global invariant.
+  it from `workerId` by default, but adapter ingress may bind an explicit
+  `routeKey` instead. That is policy, not a transport-global invariant.
+- route-only endpoint helpers may exist inside one concrete adapter, but the
+  transport-neutral runtime surface must route with `adapterId + routeKey`
+  only. Composite registries must not guess ownership from route-only access.
+- raw/debug worker side-channels are also adapter-scoped. They may resolve one
+  concrete active route for a worker, but once resolved they must dispatch via
+  the serving adapter identity instead of reviving route-only shared semantics.
+- worker reachability truth now lives in a transport-owned presence plane.
+  Adapters write `WorkerPresenceStore`; engine consumes a reachability view and
+  must not re-own transport online truth through worker heartbeat folding.
+  Presence ownership is connection-aware: reconnect may replace the current
+  owner, while heartbeat/offline only apply when the caller still holds the
+  stored `connectionId`.
+- `WorkerSystemEventChannel` is current worker presence ingress only. It is not
+  the lifecycle owner for future worker command, worker state-report, or
+  capability self-report flows.
+- `TransportPacket` is the internal flat transport envelope. Dispatch now
+  creates packet-backed envelopes before adapter delivery, but worker-facing
+  websocket/socket/polling JSON remains unchanged in this phase.
 - Queue mechanics may live under `platform_infra`; transport still owns
   `TransportDispatchEnvelope`, `TransportDeliveryStore`, and `DispatchOutcome`.
+- Embedded runtime composition currently defaults to the in-memory delivery
+  store, but SDK/starter wiring may swap in a Redis-backed
+  `TransportDeliveryStore` without changing transport-facing contracts.
 
 Canonical transport concepts live in
 [TRANSPORT_BOUNDARY_BASELINE.md](./TRANSPORT_BOUNDARY_BASELINE.md). Use that as
@@ -28,6 +50,8 @@ Document layering inside `transport/`:
 - current truth: `AGENTS.md`, `TRANSPORT_BOUNDARY_BASELINE.md`,
   `WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md`
 - design/reference only: `TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md`
+- convergence roadmaps: `ADAPTER_NODE_WORKER_REGISTRATION_ROADMAP.md`,
+  `TRANSPORT_WORKER_MATCH_SPINE_ROADMAP.md`
 - historical inventory only: `refactor/*`
 
 ## Module Map
@@ -68,8 +92,10 @@ Use this order for transport changes:
 1. local code under the touched module
 2. [TRANSPORT_BOUNDARY_BASELINE.md](./TRANSPORT_BOUNDARY_BASELINE.md)
 3. [WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](./WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md) when changing WebSocket adapter behavior
-4. [TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md](./TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md) for future queue-first/high-volume direction
-5. repo-root [../doc/AGENT_BASELINE.md](../doc/AGENT_BASELINE.md) and [../doc/VERIFIED_RUNBOOK.md](../doc/VERIFIED_RUNBOOK.md) for repo truth and verification
+4. [ADAPTER_NODE_WORKER_REGISTRATION_ROADMAP.md](./ADAPTER_NODE_WORKER_REGISTRATION_ROADMAP.md) when changing worker registration endpoint, adapter-node, or node/group relation design
+5. [TRANSPORT_WORKER_MATCH_SPINE_ROADMAP.md](./TRANSPORT_WORKER_MATCH_SPINE_ROADMAP.md) when changing external-worker registration, group-first dispatch evidence, worker report feedback, or transport worker proof
+6. [TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md](./TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md) for future queue-first/high-volume direction
+7. repo-root [../doc/AGENT_BASELINE.md](../doc/AGENT_BASELINE.md) and [../doc/VERIFIED_RUNBOOK.md](../doc/VERIFIED_RUNBOOK.md) for repo truth and verification
 
 ## Fast Verification
 
@@ -85,5 +111,5 @@ Acceptance focus:
 
 - dispatch hits the correct adapter by `adapterId`
 - polling `poll` and result submission work
-- realtime direct-send and endpoint online/offline perception work
+- realtime direct-send and presence/online perception work
 - result ingest remains transport-only and does not mutate engine lifecycle directly

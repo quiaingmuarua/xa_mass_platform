@@ -1,8 +1,9 @@
 package com.xa.mass.server.e2e.lifecycle;
 
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
+import com.xa.mass.server.e2e.support.ProjectionSampleE2eTest;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpEntity;
@@ -15,6 +16,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 import java.util.Map;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -25,8 +27,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
                 "sample.client.auto-start=true",
+                "mass.mock.bootstrap.enabled=true",
+                "mass.mock.bootstrap.register-dev-catalog=true",
+                "mass.mock.bootstrap.register-dev-submitters=false",
                 "mass.mock.data.workers=mock/test_mock_workers.json",
-                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json",
                 "sample.client.retry-attempts=1",
@@ -38,7 +42,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class SdkTaskApiIntegrationTest extends AbstractSampleE2eTest {
+@Tag("secondary-proof")
+class SdkTaskApiIntegrationTest extends ProjectionSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
 
@@ -49,7 +54,7 @@ class SdkTaskApiIntegrationTest extends AbstractSampleE2eTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void createTaskThroughUnifiedTaskApiWithSdkCredentialCompletesOverRealRuntime() throws Exception {
+    void createTaskThroughUnifiedTaskApiWithSubmitterCredentialCompletesOverRealRuntime() throws Exception {
         app.registerSubmitter(SubmitterRegistration.builder()
                 .principalId("crawler-agent")
                 .credential("sdk-test-key")
@@ -58,29 +63,21 @@ class SdkTaskApiIntegrationTest extends AbstractSampleE2eTest {
                 .attributes(Map.of("transport", "websocket"))
                 .build());
 
-        Map<String, Object> createResponse = exchangeWithHeaders("/status/api/tasks", HttpMethod.POST, Map.of(
+        Map<String, Object> createResponse = createTaskShell(Map.of(
                 "project", "demoApp",
-                "taskName", "sdk-runtime-task",
-                "eventCode", "demo.dispatch",
-                "mode", "SINGLE_RUN",
-                "payloadType", "JSON",
-                "sharedConfig", Map.of("source", "sdk"),
-                "inputs", java.util.List.of(Map.of("target", "sdk-target-001")),
-                "batchSize", 1,
-                "defaultMsgMaxRetryCount", 2
-        ), Map.of("X-Mass-Api-Key", "sdk-test-key"));
+                "sharedConfig", Map.of("source", "submitter"),
+                "executionSpec", Map.of("batchSize", 1)
+        ), submitterCredentialHeaders(Map.of("X-Mass-Api-Key", "sdk-test-key")));
 
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
         assertEquals("demoApp", responseData(createResponse).get("project"));
         assertEquals("sdk-client", responseData(createResponse).get("userId"));
         assertEquals("crawler-agent", responseData(createResponse).get("principalId"));
+        assertApiOk(appendTaskItems(taskId, "demo.dispatch", java.util.List.of(Map.of("target", "sdk-target-001"))));
+        assertApiOk(sealTask(taskId));
 
-        Map<String, Object> approveResponse = exchange(
-                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=sdk",
-                HttpMethod.POST,
-                null
-        );
+        Map<String, Object> approveResponse = approveTask(taskId);
         assertApiOk(approveResponse);
 
         TaskSnapshot snapshot = waitForTerminalTask(taskId);
@@ -89,24 +86,25 @@ class SdkTaskApiIntegrationTest extends AbstractSampleE2eTest {
         assertEquals(1, snapshot.messages().size());
         assertEquals("SUCCESS", snapshot.messages().get(0).get("status"));
 
-        Map<String, Object> detailResponse = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
+        Map<String, Object> detailResponse = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
         assertApiOk(detailResponse);
         Map<String, Object> task = task(detailResponse);
         Map<String, Object> securityView = (Map<String, Object>) responseData(detailResponse).get("security");
         Map<String, Object> sharedConfig = (Map<String, Object>) task.get("sharedConfig");
-        Map<String, Object> sdkMetadata = (Map<String, Object>) sharedConfig.get("_sdk");
-
-        assertEquals("demo.dispatch", sdkMetadata.get("eventCode"));
-        assertEquals("JSON", sdkMetadata.get("payloadType"));
-        assertEquals("SINGLE_RUN", sdkMetadata.get("taskMode"));
         assertTrue(sharedConfig.containsKey("source"));
         assertFalse(sharedConfig.containsKey("_massSecurity"));
         assertEquals("crawler-agent", securityView.get("createdByPrincipalId"));
         assertEquals("SERVICE", securityView.get("createdByPrincipalType"));
+
+        Map<String, Object> listResponse = exchange("/api/v1/tasks", HttpMethod.GET, null,
+                submitterCredentialHeaders(Map.of("X-Mass-Api-Key", "sdk-test-key")));
+        assertApiOk(listResponse);
+        List<Map<String, Object>> items = (List<Map<String, Object>>) responseData(listResponse).get("items");
+        assertTrue(items.stream().anyMatch(item -> taskId.equals(String.valueOf(item.get("id")))));
     }
 
     @Test
-    void createTaskThroughUnifiedTaskApiRejectsSdkSubmitterScopeViolation() {
+    void createTaskThroughUnifiedTaskApiRejectsSubmitterScopeViolation() {
         app.registerSubmitter(SubmitterRegistration.builder()
                 .principalId("telegram-bot")
                 .credential("telegram-key")
@@ -114,20 +112,17 @@ class SdkTaskApiIntegrationTest extends AbstractSampleE2eTest {
                 .projectScope("demoApp")
                 .build());
 
-        Map<String, Object> createResponse = exchangeWithHeaders("/status/api/tasks", HttpMethod.POST, Map.of(
+        Map<String, Object> createResponse = createTaskShell(Map.of(
                 "project", "crawlerApp",
-                "taskName", "scope-violation",
-                "eventCode", "crawler.fetch-page",
-                "payloadType", "JSON",
-                "inputs", java.util.List.of(Map.of("url", "https://example.test"))
-        ), Map.of("Authorization", "Bearer telegram-key"));
+                "userId", "bot-user"
+        ), submitterCredentialHeaders(Map.of("Authorization", "Bearer telegram-key")));
 
         assertApiError(createResponse, 403);
-        assertEquals("SDK credential project scope denied: crawlerApp", apiMsg(createResponse));
+        assertEquals("Submitter credential project scope denied: crawlerApp", apiMsg(createResponse));
     }
 
     @Test
-    void createTaskThroughUnifiedTaskApiRejectsSdkSubmitterEventScopeViolation() {
+    void appendTaskThroughUnifiedTaskApiRejectsSubmitterEventScopeViolation() {
         app.registerSubmitter(SubmitterRegistration.builder()
                 .principalId("crawler-reader")
                 .credential("crawler-reader-key")
@@ -136,28 +131,28 @@ class SdkTaskApiIntegrationTest extends AbstractSampleE2eTest {
                 .eventScopes(java.util.List.of("crawler.parse-result"))
                 .build());
 
-        Map<String, Object> createResponse = exchangeWithHeaders("/status/api/tasks", HttpMethod.POST, Map.of(
+        Map<String, Object> createResponse = createTaskShell(Map.of(
                 "project", "crawlerApp",
-                "taskName", "event-scope-violation",
-                "eventCode", "crawler.fetch-page",
-                "payloadType", "JSON",
-                "inputs", java.util.List.of(Map.of("url", "https://example.test"))
-        ), Map.of("X-Mass-Api-Key", "crawler-reader-key"));
+                "userId", "crawler-user"
+        ), submitterCredentialHeaders(Map.of("X-Mass-Api-Key", "crawler-reader-key")));
 
-        assertApiError(createResponse, 403);
-        assertEquals("SDK credential event scope denied: crawler.fetch-page", apiMsg(createResponse));
+        assertApiOk(createResponse);
+        String taskId = String.valueOf(responseData(createResponse).get("taskId"));
+
+        Map<String, Object> appendResponse = exchange("/api/v1/tasks/" + taskId + "/items", HttpMethod.POST, Map.of(
+                "eventCode", "crawler.fetch-page",
+                "items", java.util.List.of(Map.of("url", "https://example.test/page-1"))
+        ), submitterCredentialHeaders(Map.of("X-Mass-Api-Key", "crawler-reader-key")));
+
+        assertApiError(appendResponse, 403);
+        assertEquals("Submitter credential event scope denied: crawler.fetch-page", apiMsg(appendResponse));
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> exchangeWithHeaders(String path,
-                                                    HttpMethod method,
-                                                    Object body,
-                                                    Map<String, String> headers) {
-        String url = "http://127.0.0.1:" + port + path;
+    private HttpHeaders submitterCredentialHeaders(Map<String, String> headers) {
         HttpHeaders httpHeaders = new HttpHeaders();
         httpHeaders.set("Content-Type", "application/json");
         headers.forEach(httpHeaders::set);
-        ResponseEntity<Map> response = restTemplate.exchange(url, method, new HttpEntity<>(body, httpHeaders), Map.class);
-        return response.getBody();
+        return httpHeaders;
     }
 }

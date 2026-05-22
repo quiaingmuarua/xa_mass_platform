@@ -32,6 +32,9 @@ describe('TaskDetailPage', () => {
         await flushPromises()
 
         expect(wrapper.text()).toContain('Warm worker pool')
-        expect(wrapper.text()).toContain('BUSINESS_SUCCESS')
+        expect(wrapper.text()).toContain('Runtime summary')
+        expect(wrapper.text()).toContain('Seed preview')
+        expect(wrapper.text()).toContain('Result preview')
+        expect(wrapper.text()).toContain('worker-demo-01')
     })
 })

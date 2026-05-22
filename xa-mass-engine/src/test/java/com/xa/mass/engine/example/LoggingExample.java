@@ -45,10 +45,7 @@ public class LoggingExample {
         LogUtils.logTaskOperation("task-001", "ASSIGN", "SUCCESS");
         LogUtils.logTaskOperation("task-002", "PAUSE", "SUCCESS");
 
-        // 记录WorkerContext操作日志
-        LogUtils.logWorkerContextOperation("worker-context-001", "VALIDATE", "SUCCESS");
-        LogUtils.logWorkerContextOperation("worker-context-002", "REFRESH", "FAILED");
-
+        // Rule evaluation logs
         // 记录规则评估日志
         LogUtils.logRuleEvaluation("rule-001", "worker-001", "task-001", true);
         LogUtils.logRuleEvaluation("rule-002", "worker-002", "task-002", false);
@@ -62,7 +59,6 @@ public class LoggingExample {
         LogUtils.setUserId("user-001");
         LogUtils.setWorkerId("worker-001");
         LogUtils.setTaskId("task-001");
-        LogUtils.setWorkerContextId("worker-context-001");
         LogUtils.setOperation("COMPLEX_OPERATION");
         LogUtils.setModule("BUSINESS_LOGIC");
         LogUtils.setResult("SUCCESS");

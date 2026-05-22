@@ -1,8 +1,6 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,12 +26,18 @@ public class TaskEventPublisher implements TaskAssignmentEventSink, TaskEventLis
     private final List<Consumer<Task>> taskReadyListeners = new CopyOnWriteArrayList<>();
     private final List<Consumer<Task>> taskDispatchListeners = new CopyOnWriteArrayList<>();
     private final List<Consumer<Task>> taskTerminalListeners = new CopyOnWriteArrayList<>();
-    private final List<TaskMessageAttemptClosedListener> taskMessageAttemptClosedListeners = new CopyOnWriteArrayList<>();
-    private final List<TaskMessageLogicallyFinalListener> taskMessageLogicallyFinalListeners = new CopyOnWriteArrayList<>();
+    private final List<TaskWorkAttemptClosedListener> taskWorkAttemptClosedListeners = new CopyOnWriteArrayList<>();
+    private final List<TaskWorkLogicallyFinalListener> taskWorkLogicallyFinalListeners = new CopyOnWriteArrayList<>();
 
     public void addTaskCreatedListener(Consumer<Task> listener) {
         if (listener != null) {
             taskCreatedListeners.add(listener);
+        }
+    }
+
+    public void removeTaskCreatedListener(Consumer<Task> listener) {
+        if (listener != null) {
+            taskCreatedListeners.remove(listener);
         }
     }
 
@@ -43,9 +47,21 @@ public class TaskEventPublisher implements TaskAssignmentEventSink, TaskEventLis
         }
     }
 
+    public void removeTaskAssignedListener(Consumer<Task> listener) {
+        if (listener != null) {
+            taskAssignedListeners.remove(listener);
+        }
+    }
+
     public void addTaskReadyListener(Consumer<Task> listener) {
         if (listener != null) {
             taskReadyListeners.add(listener);
+        }
+    }
+
+    public void removeTaskReadyListener(Consumer<Task> listener) {
+        if (listener != null) {
+            taskReadyListeners.remove(listener);
         }
     }
 
@@ -55,21 +71,45 @@ public class TaskEventPublisher implements TaskAssignmentEventSink, TaskEventLis
         }
     }
 
+    public void removeTaskDispatchListener(Consumer<Task> listener) {
+        if (listener != null) {
+            taskDispatchListeners.remove(listener);
+        }
+    }
+
     public void addTaskTerminalListener(Consumer<Task> listener) {
         if (listener != null) {
             taskTerminalListeners.add(listener);
         }
     }
 
-    public void addTaskMessageAttemptClosedListener(TaskMessageAttemptClosedListener listener) {
+    public void removeTaskTerminalListener(Consumer<Task> listener) {
         if (listener != null) {
-            taskMessageAttemptClosedListeners.add(listener);
+            taskTerminalListeners.remove(listener);
         }
     }
 
-    public void addTaskMessageLogicallyFinalListener(TaskMessageLogicallyFinalListener listener) {
+    public void addTaskWorkAttemptClosedListener(TaskWorkAttemptClosedListener listener) {
         if (listener != null) {
-            taskMessageLogicallyFinalListeners.add(listener);
+            taskWorkAttemptClosedListeners.add(listener);
+        }
+    }
+
+    public void removeTaskWorkAttemptClosedListener(TaskWorkAttemptClosedListener listener) {
+        if (listener != null) {
+            taskWorkAttemptClosedListeners.remove(listener);
+        }
+    }
+
+    public void addTaskWorkLogicallyFinalListener(TaskWorkLogicallyFinalListener listener) {
+        if (listener != null) {
+            taskWorkLogicallyFinalListeners.add(listener);
+        }
+    }
+
+    public void removeTaskWorkLogicallyFinalListener(TaskWorkLogicallyFinalListener listener) {
+        if (listener != null) {
+            taskWorkLogicallyFinalListeners.remove(listener);
         }
     }
 
@@ -123,25 +163,40 @@ public class TaskEventPublisher implements TaskAssignmentEventSink, TaskEventLis
         }
     }
 
-    public void publishTaskMessageAttemptClosed(Task task, TaskMsg taskMsg, TaskMsgAttempt attempt) {
-        for (TaskMessageAttemptClosedListener listener : taskMessageAttemptClosedListeners) {
+    public void publishTaskWorkAttemptClosed(Task task, TaskWorkAttemptClosedEvent event) {
+        for (TaskWorkAttemptClosedListener listener : taskWorkAttemptClosedListeners) {
             try {
-                listener.onTaskMessageAttemptClosed(task, taskMsg, attempt);
+                listener.onTaskWorkAttemptClosed(task, event);
             } catch (Exception e) {
-                logger.error("Task message attempt-closed listener failed for task {}, msg {}, attempt {}",
-                        task.getTid(), taskMsg.getMessageId(), attempt != null ? attempt.getAttemptId() : "null", e);
+                logger.error("Task work attempt-closed listener failed for task {}, msg {}, attempt {}",
+                        task.getTid(),
+                        event != null ? event.messageId() : "null",
+                        event != null ? event.attemptId() : "null",
+                        e);
             }
         }
     }
 
-    public void publishTaskMessageLogicallyFinal(Task task, TaskMsg taskMsg) {
-        for (TaskMessageLogicallyFinalListener listener : taskMessageLogicallyFinalListeners) {
+    public void publishTaskWorkLogicallyFinal(Task task, TaskWorkLogicallyFinalEvent event) {
+        for (TaskWorkLogicallyFinalListener listener : taskWorkLogicallyFinalListeners) {
             try {
-                listener.onTaskMessageLogicallyFinal(task, taskMsg);
+                listener.onTaskWorkLogicallyFinal(task, event);
             } catch (Exception e) {
-                logger.error("Task message logically-final listener failed for task {}, msg {}",
-                        task.getTid(), taskMsg.getMessageId(), e);
+                logger.error("Task work logically-final listener failed for task {}, msg {}",
+                        task.getTid(), event != null ? event.messageId() : "null", e);
             }
         }
+    }
+
+    public TaskEventListenerSnapshot listenerSnapshot() {
+        return new TaskEventListenerSnapshot(
+                taskCreatedListeners.size(),
+                taskAssignedListeners.size(),
+                taskReadyListeners.size(),
+                taskDispatchListeners.size(),
+                taskTerminalListeners.size(),
+                taskWorkAttemptClosedListeners.size(),
+                taskWorkLogicallyFinalListeners.size()
+        );
     }
 }

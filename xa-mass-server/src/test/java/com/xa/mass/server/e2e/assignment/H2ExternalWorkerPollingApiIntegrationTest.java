@@ -4,10 +4,12 @@ import com.xa.mass.api.internal.SdkCredentialAuthSupport;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.storage.rule.RuleType;
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
+import com.xa.mass.server.e2e.support.ProjectionSampleE2eTest;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.auth.PrincipalContext;
+import com.xa.mass.engine.model.TaskStateValidationResult;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -21,7 +23,6 @@ import org.springframework.test.context.DynamicPropertySource;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.BooleanSupplier;
 import java.sql.DriverManager;
 
@@ -35,14 +36,21 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         properties = {
                 "sample.client.auto-start=false",
                 "mass.mock.data.workers=mock/test_mock_workers_empty.json",
-                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts_empty.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class H2ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
+@Tag("secondary-proof")
+class H2ExternalWorkerPollingApiIntegrationTest extends ProjectionSampleE2eTest {
+
+    /**
+     * Support-only storage compatibility coverage.
+     *
+     * <p>This validates external-worker polling against a JDBC/H2 backend. Keep
+     * it out of mainline parity or scheduling proof chains.
+     */
 
     private static final int WEBSOCKET_PORT = findFreePort();
     private static final String JDBC_URL = isolatedH2JdbcUrl("external_polling");
@@ -64,7 +72,7 @@ class H2ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
 
         app.replaceDefaultRules(List.of(
                 rule("crawler-online-project", "isWorkerAvailable == true && isWorkerLocked == false && supportsProject == true"),
-                rule("crawler-context-routing", "isWorkerContextAllocatable == true && workerContextMatchesRoutingCode == true")
+                rule("crawler-scheduling-routing", "isWorkerSchedulingResourceAllocatable == true && workerSchedulingMatchesRoutingCode == true")
         ));
         registerExternalWorkerSubmitter(
                 "polling-h2-worker",
@@ -82,61 +90,53 @@ class H2ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
                 .eventScopes(List.of("crawler.fetch-page"))
                 .build());
 
-        HttpHeaders workerHeaders = sdkCredentialHeaders(workerCredential);
-        HttpHeaders submitterHeaders = sdkCredentialHeaders(submitterCredential);
+        HttpHeaders workerHeaders = credentialHeaders(workerCredential);
+        HttpHeaders submitterHeaders = credentialHeaders(submitterCredential);
+        declareExternalWorkerGroup("polling-jdbc", "crawlerApp", "crawler.fetch-page", workerHeaders);
+        bindExternalAdapterNode("polling-h2-node", "polling-jdbc", workerHeaders);
 
-        Map<String, Object> registerResponse = exchange("/worker-api/workers/register", HttpMethod.POST, Map.of(
+        Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", workerId,
+                "adapterNodeId", "polling-h2-node",
                 "workerGroupId", "polling-jdbc",
-                "attributes", Map.of("runtime", "jdbc-e2e"),
-                "eventBindings", List.of(Map.of(
-                        "eventCode", "crawler.fetch-page",
-                        "projectCodes", List.of("crawlerApp")
-                ))
+                "attributes", Map.of(
+                        "runtime", "jdbc-e2e",
+                        "routingTags", "us",
+                        "country", "us",
+                        "region", "us"
+                )
         ), workerHeaders);
         assertApiOk(registerResponse);
         assertEquals("polling", responseData(registerResponse).get("transportHint"));
 
-        Map<String, Object> contextResponse = exchange("/worker-api/worker-contexts/register", HttpMethod.POST, Map.of(
-                "workerContextId", "ctx-" + workerId,
-                "workerId", workerId,
-                "project", "crawlerApp",
-                "routingTags", Set.of("us"),
-                "attributes", Map.of("region", "us")
-        ), workerHeaders);
-        assertApiOk(contextResponse);
-
-        assertApiOk(exchange("/worker-api/workers/" + workerId + "/online", HttpMethod.POST, Map.of(
+        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":online", HttpMethod.POST, Map.of(
                 "reason", "jdbc-storage-online"
         ), workerHeaders));
-        waitUntil(() -> app.isWorkerOnline(workerId), "worker should be online before task approval");
+        waitUntil(() -> app.isWorkerOnline(workerId), "worker transport presence should be online before task approval");
 
         Map<String, Object> createBody = new LinkedHashMap<>();
-        createBody.put("taskName", "crawler-fetch-page-h2");
         createBody.put("project", "crawlerApp");
         createBody.put("userId", "crawler-agent");
-        createBody.put("eventCode", "crawler.fetch-page");
+        createBody.put("sourceRef", "crawler-fetch-page-h2");
         createBody.put("sharedConfig", Map.of("routingCode", "us"));
-        createBody.put("inputs", List.of(Map.of("url", "https://example.test/h2-page")));
-        createBody.put("batchSize", 1);
-        Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, createBody, submitterHeaders);
+        createBody.put("executionSpec", Map.of("batchSize", 1));
+        Map<String, Object> createResponse = createTaskShell(createBody, submitterHeaders);
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
+        assertApiOk(appendTaskItems(taskId, "crawler.fetch-page", List.of(Map.of("url", "https://example.test/h2-page"))));
+        assertApiOk(sealTask(taskId));
 
-        Map<String, Object> createdDetail = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
+        Map<String, Object> createdDetail = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
         assertApiOk(createdDetail);
         assertEquals("NEW", task(createdDetail).get("status"));
-        assertEquals(Boolean.TRUE, stateValidation(createdDetail).get("valid"));
+        TaskStateValidationResult createdValidation = validateTaskState(taskId);
+        assertTrue(createdValidation.isValid());
 
-        assertApiOk(exchange(
-                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=h2-jdbc-e2e",
-                HttpMethod.POST,
-                null
-        ));
+        assertApiOk(approveTask(taskId));
 
         List<Map<String, Object>> items = List.of();
         for (int attempt = 0; attempt < 20 && items.isEmpty(); attempt++) {
-            Map<String, Object> pollResponse = exchange("/worker-api/workers/" + workerId + "/poll", HttpMethod.POST, Map.of(
+            Map<String, Object> pollResponse = exchange("/worker-api/v1/workers/" + workerId + ":poll", HttpMethod.POST, Map.of(
                     "maxMessages", 10,
                     "timeoutMs", 1000
             ), workerHeaders);
@@ -149,7 +149,7 @@ class H2ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         assertEquals(taskId, item.get("taskId"));
         assertEquals(workerId, item.get("workerId"));
 
-        Map<String, Object> resultResponse = exchange("/worker-api/workers/" + workerId + "/results", HttpMethod.POST, Map.of(
+        Map<String, Object> resultResponse = exchange("/worker-api/v1/workers/" + workerId + ":submit-result", HttpMethod.POST, Map.of(
                 "taskId", item.get("taskId"),
                 "messageId", item.get("messageId"),
                 "success", true,
@@ -169,20 +169,21 @@ class H2ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         assertEquals("SUCCESS", terminal.messages().getFirst().get("status"));
         assertEquals(workerId, terminal.messages().getFirst().get("latestAttemptWorkerId"));
 
-        Map<String, Object> terminalDetail = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
+        Map<String, Object> terminalDetail = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
         assertApiOk(terminalDetail);
-        assertEquals(Boolean.TRUE, stateValidation(terminalDetail).get("valid"));
-        assertEquals(Boolean.FALSE, stateValidation(terminalDetail).get("needsResolution"));
+        TaskStateValidationResult terminalValidation = validateTaskState(taskId);
+        assertTrue(terminalValidation.isValid());
+        assertFalse(terminalValidation.isNeedsResolution());
 
-        assertApiOk(exchange("/worker-api/workers/" + workerId + "/offline", HttpMethod.POST, Map.of(
+        assertApiOk(exchange("/worker-api/v1/workers/" + workerId + ":offline", HttpMethod.POST, Map.of(
                 "reason", "jdbc-storage-offline"
         ), workerHeaders));
-        waitUntil(() -> !app.isWorkerOnline(workerId), "worker should be offline after explicit disconnect");
+        waitUntil(() -> !app.isWorkerOnline(workerId), "worker transport presence should be offline after explicit disconnect");
 
-        assertJdbcProjection(taskId, workerId);
+        assertJdbcProjection(taskId);
     }
 
-    private HttpHeaders sdkCredentialHeaders(String credential) {
+    private HttpHeaders credentialHeaders(String credential) {
         HttpHeaders headers = new HttpHeaders();
         headers.add(SdkCredentialAuthSupport.API_KEY_HEADER, credential);
         return headers;
@@ -229,7 +230,7 @@ class H2ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
                 .build());
     }
 
-    private void assertJdbcProjection(String taskId, String workerId) throws Exception {
+    private void assertJdbcProjection(String taskId) throws Exception {
         try (var conn = DriverManager.getConnection(JDBC_URL, "sa", "")) {
             try (var ps = conn.prepareStatement("""
                     SELECT status, project, schedulable, json
@@ -244,32 +245,6 @@ class H2ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
                     assertFalse(rs.getBoolean("schedulable"));
                     assertJsonContains(rs.getString("json"), "\"terminalReason\":\"ALL_MESSAGES_SUCCEEDED\"");
                     assertFalse(rs.next(), "task_id should remain unique");
-                }
-            }
-
-            try (var ps = conn.prepareStatement("""
-                    SELECT json
-                    FROM xa_worker
-                    WHERE worker_id = ?
-                    """)) {
-                ps.setString(1, workerId);
-                try (var rs = ps.executeQuery()) {
-                    assertTrue(rs.next(), "worker row should exist");
-                    assertJsonContains(rs.getString("json"), "\"status\":\"OFFLINE\"");
-                    assertFalse(rs.next(), "worker_id should remain unique");
-                }
-            }
-
-            try (var ps = conn.prepareStatement("""
-                    SELECT json
-                    FROM xa_worker_context
-                    WHERE worker_context_id = ?
-                    """)) {
-                ps.setString(1, "ctx-" + workerId);
-                try (var rs = ps.executeQuery()) {
-                    assertTrue(rs.next(), "worker context row should exist");
-                    assertJsonContains(rs.getString("json"), "\"status\":\"IDLE\"");
-                    assertFalse(rs.next(), "worker_context_id should remain unique");
                 }
             }
 
@@ -297,7 +272,7 @@ class H2ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
 
             try (var ps = conn.prepareStatement("""
                     SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
-                    WHERE TABLE_NAME IN ('xa_task_msg', 'xa_task_msg_attempt', 'xa_worker_lock')
+                    WHERE TABLE_NAME IN ('xa_task_msg', 'xa_task_msg_attempt', 'xa_worker_lock', 'xa_worker')
                     """)) {
                 try (var rs = ps.executeQuery()) {
                     assertTrue(rs.next());

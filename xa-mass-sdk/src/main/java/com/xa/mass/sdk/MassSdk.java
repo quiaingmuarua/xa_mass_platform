@@ -1,23 +1,29 @@
 package com.xa.mass.sdk;
 
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
-import com.xa.mass.engine.TaskManager;
-import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.rules.RuleManager;
-import com.xa.mass.engine.strategy.TaskScheduler;
+import com.xa.mass.engine.watchdog.PollingIdleBackoffPolicy;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
+import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.auth.SubmitterRegistry;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
+import com.xa.mass.storage.api.RuleStorage;
+import com.xa.mass.storage.api.TaskDetailStore;
+import com.xa.mass.storage.api.TaskStorage;
+import com.xa.mass.storage.api.WorkerStorage;
 import com.xa.mass.starter.builder.MassApplicationBuilder;
+import com.xa.mass.starter.config.TransportRuntimeRole;
+import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
+import com.xa.mass.transport.presence.WorkerPresenceStore;
 import com.xa.mass.transport.TransportServerFactory;
 
-import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * Consumer-facing SDK facade for embedding XA Mass Platform.
@@ -100,9 +106,21 @@ public final class MassSdk {
             return this;
         }
 
+        public TransportOptions addWebSocketAdapter(Consumer<WebSocketAdapterOptions> configurator) {
+            Objects.requireNonNull(configurator, "configurator");
+            delegate.addWebSocketAdapter(inner -> configurator.accept(new WebSocketAdapterOptions(inner)));
+            return this;
+        }
+
         public TransportOptions socketAdapter(Consumer<SocketAdapterOptions> configurator) {
             Objects.requireNonNull(configurator, "configurator");
             delegate.socketAdapter(inner -> configurator.accept(new SocketAdapterOptions(inner)));
+            return this;
+        }
+
+        public TransportOptions addSocketAdapter(Consumer<SocketAdapterOptions> configurator) {
+            Objects.requireNonNull(configurator, "configurator");
+            delegate.addSocketAdapter(inner -> configurator.accept(new SocketAdapterOptions(inner)));
             return this;
         }
 
@@ -115,8 +133,108 @@ public final class MassSdk {
             return this;
         }
 
+        public TransportOptions deliveryStoreFactory(Supplier<TransportDeliveryStore> deliveryStoreFactory) {
+            delegate.deliveryStoreFactory(deliveryStoreFactory);
+            return this;
+        }
+
+        public TransportOptions presenceStoreFactory(Supplier<WorkerPresenceStore> presenceStoreFactory) {
+            delegate.presenceStoreFactory(presenceStoreFactory);
+            return this;
+        }
+
+        public TransportOptions redisDeliveryStore(String redisUri) {
+            delegate.redisDeliveryStore(redisUri);
+            return this;
+        }
+
+        public TransportOptions redisDeliveryStore(String redisUri, String namespacePrefix) {
+            delegate.redisDeliveryStore(redisUri, namespacePrefix);
+            return this;
+        }
+
+        public TransportOptions redisPresenceStore(String redisUri) {
+            delegate.redisPresenceStore(redisUri);
+            return this;
+        }
+
+        public TransportOptions redisPresenceStore(String redisUri, String namespacePrefix) {
+            delegate.redisPresenceStore(redisUri, namespacePrefix);
+            return this;
+        }
+
+        public TransportOptions redisDispatchHandoff(String redisUri) {
+            delegate.redisDispatchHandoff(redisUri);
+            return this;
+        }
+
+        public TransportOptions redisDispatchHandoff(String redisUri, String namespacePrefix) {
+            delegate.redisDispatchHandoff(redisUri, namespacePrefix);
+            return this;
+        }
+
+        public TransportOptions redisNodeTargetedDispatchHandoff(String redisUri) {
+            delegate.redisNodeTargetedDispatchHandoff(redisUri);
+            return this;
+        }
+
+        public TransportOptions redisNodeTargetedDispatchHandoff(String redisUri, String namespacePrefix) {
+            delegate.redisNodeTargetedDispatchHandoff(redisUri, namespacePrefix);
+            return this;
+        }
+
+        public TransportOptions redisResultInbox(String redisUri) {
+            delegate.redisResultInbox(redisUri);
+            return this;
+        }
+
+        public TransportOptions redisResultInbox(String redisUri, String namespacePrefix) {
+            delegate.redisResultInbox(redisUri, namespacePrefix);
+            return this;
+        }
+
+        public TransportOptions redisDispatchFailureInbox(String redisUri) {
+            delegate.redisDispatchFailureInbox(redisUri);
+            return this;
+        }
+
+        public TransportOptions redisDispatchFailureInbox(String redisUri, String namespacePrefix) {
+            delegate.redisDispatchFailureInbox(redisUri, namespacePrefix);
+            return this;
+        }
+
+        public TransportOptions redisDistributedChannels(String redisUri) {
+            delegate.redisDistributedChannels(redisUri);
+            return this;
+        }
+
+        public TransportOptions redisDistributedChannels(String redisUri, String namespacePrefix) {
+            delegate.redisDistributedChannels(redisUri, namespacePrefix);
+            return this;
+        }
+
+        public TransportOptions transportRuntimeRole(TransportRuntimeRole runtimeRole) {
+            delegate.transportRuntimeRole(runtimeRole);
+            return this;
+        }
+
+        public TransportOptions transportNodeId(String transportNodeId) {
+            delegate.transportNodeId(transportNodeId);
+            return this;
+        }
+
         public TransportOptions maxDeliveryQueuedItems(int maxDeliveryQueuedItems) {
             delegate.maxDeliveryQueuedItems(maxDeliveryQueuedItems);
+            return this;
+        }
+
+        public TransportOptions maxDeliveryItemsPerRoute(int maxDeliveryItemsPerRoute) {
+            delegate.maxDeliveryItemsPerRoute(maxDeliveryItemsPerRoute);
+            return this;
+        }
+
+        public TransportOptions workerPresenceLeaseMillis(long workerPresenceLeaseMillis) {
+            delegate.workerPresenceLeaseMillis(workerPresenceLeaseMillis);
             return this;
         }
 
@@ -146,7 +264,7 @@ public final class MassSdk {
         }
 
         public TransportOptions addSupplementalTransportAdapterBootstrap(
-                TransportAdapterBootstrap<TransportOutboundMessage> transportAdapterBootstrap) {
+                TransportAdapterBootstrap transportAdapterBootstrap) {
             delegate.addSupplementalTransportAdapterBootstrap(transportAdapterBootstrap);
             return this;
         }
@@ -167,6 +285,11 @@ public final class MassSdk {
 
         public WebSocketAdapterOptions enabled(boolean enabled) {
             delegate.enabled(enabled);
+            return this;
+        }
+
+        public WebSocketAdapterOptions adapterId(String adapterId) {
+            delegate.adapterId(adapterId);
             return this;
         }
 
@@ -214,6 +337,11 @@ public final class MassSdk {
             return this;
         }
 
+        public SocketAdapterOptions adapterId(String adapterId) {
+            delegate.adapterId(adapterId);
+            return this;
+        }
+
         public SocketAdapterOptions serverEnabled(boolean enabled) {
             delegate.serverEnabled(enabled);
             return this;
@@ -252,6 +380,17 @@ public final class MassSdk {
             return this;
         }
 
+        public EngineOptions runtimeReadyDispatchIdleBackoffMaxMillis(long maxBackoffMillis) {
+            delegate.runtimeReadyDispatchIdleBackoffMaxMillis(maxBackoffMillis);
+            return this;
+        }
+
+        public EngineOptions runtimeReadyDispatchIdleBackoffPolicy(
+                PollingIdleBackoffPolicy policy) {
+            delegate.runtimeReadyDispatchIdleBackoffPolicy(policy);
+            return this;
+        }
+
         public EngineOptions leaseWatchdogIntervalSeconds(long leaseWatchdogIntervalSeconds) {
             delegate.leaseWatchdogIntervalSeconds(leaseWatchdogIntervalSeconds);
             return this;
@@ -267,13 +406,18 @@ public final class MassSdk {
             return this;
         }
 
-        public EngineOptions scheduler(TaskScheduler scheduler) {
-            delegate.scheduler(scheduler);
+        public EngineOptions taskStorage(TaskStorage taskStorage) {
+            delegate.taskStorage(taskStorage);
             return this;
         }
 
-        public EngineOptions taskManager(TaskManager taskManager) {
-            delegate.taskManager(taskManager);
+        /**
+         * Supplies the bounded compatibility projection store for task-message
+         * residue and attempt detail. This is not the engine's runtime truth or
+         * a public query-model ownership point.
+         */
+        public EngineOptions taskDetailStore(TaskDetailStore taskDetailStore) {
+            delegate.taskDetailStore(taskDetailStore);
             return this;
         }
 
@@ -282,16 +426,25 @@ public final class MassSdk {
             return this;
         }
 
-        public EngineOptions workerManager(WorkerManager workerManager) {
-            delegate.workerManager(workerManager);
+        public EngineOptions taskResultRuntime(TaskResultRuntime taskResultRuntime) {
+            delegate.taskResultRuntime(taskResultRuntime);
             return this;
         }
 
-        public EngineOptions ruleManager(RuleManager<Map<String, Object>> ruleManager) {
-            delegate.ruleManager(ruleManager);
+        public EngineOptions workerStorage(WorkerStorage workerStorage) {
+            delegate.workerStorage(workerStorage);
+            return this;
+        }
+
+        public EngineOptions ruleStorage(RuleStorage ruleStorage) {
+            delegate.ruleStorage(ruleStorage);
+            return this;
+        }
+
+        public EngineOptions executionEventSink(ExecutionEventSink executionEventSink) {
+            delegate.executionEventSink(executionEventSink);
             return this;
         }
 
     }
 }
-

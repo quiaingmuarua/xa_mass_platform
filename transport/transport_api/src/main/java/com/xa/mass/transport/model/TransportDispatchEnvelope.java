@@ -1,5 +1,8 @@
 package com.xa.mass.transport.model;
 
+import com.xa.mass.transport.packet.PacketType;
+import com.xa.mass.transport.packet.TransportPacket;
+
 import java.util.Objects;
 
 /**
@@ -9,23 +12,14 @@ import java.util.Objects;
 public final class TransportDispatchEnvelope {
 
     private final String deliveryId;
-    private final String adapterId;
-    private final String routeKey;
-    private final String correlationKey;
-    private final TaskDispatchItem payload;
+    private final TransportPacket packet;
     private final long createdAtEpochMillis;
 
     public TransportDispatchEnvelope(String deliveryId,
-                                     String adapterId,
-                                     String routeKey,
-                                     String correlationKey,
-                                     TaskDispatchItem payload,
+                                     TransportPacket packet,
                                      long createdAtEpochMillis) {
         this.deliveryId = requireText(deliveryId, "deliveryId");
-        this.adapterId = TransportDeliveryAddressing.normalizeAdapterId(adapterId);
-        this.routeKey = TransportDeliveryAddressing.normalizeRouteKey(routeKey);
-        this.correlationKey = TransportDeliveryAddressing.normalizeText(correlationKey);
-        this.payload = Objects.requireNonNull(payload, "payload");
+        this.packet = requireDispatchPacket(packet);
         this.createdAtEpochMillis = createdAtEpochMillis;
     }
 
@@ -34,19 +28,23 @@ public final class TransportDispatchEnvelope {
     }
 
     public String getAdapterId() {
-        return adapterId;
+        return packet.adapterId();
     }
 
     public String getRouteKey() {
-        return routeKey;
+        return packet.routeKey();
     }
 
-    public String getCorrelationKey() {
-        return correlationKey;
+    public String getAttemptId() {
+        return packet.attemptId();
     }
 
-    public TaskDispatchItem getPayload() {
-        return payload;
+    public String getTraceId() {
+        return packet.traceId();
+    }
+
+    public TransportPacket getPacket() {
+        return packet;
     }
 
     public long getCreatedAtEpochMillis() {
@@ -59,6 +57,14 @@ public final class TransportDispatchEnvelope {
             throw new IllegalArgumentException(field + " must not be blank");
         }
         return value.trim();
+    }
+
+    private static TransportPacket requireDispatchPacket(TransportPacket packet) {
+        Objects.requireNonNull(packet, "packet");
+        if (packet.type() != PacketType.TASK_DISPATCH) {
+            throw new IllegalArgumentException("TransportDispatchEnvelope requires TASK_DISPATCH packet");
+        }
+        return packet;
     }
 
 }

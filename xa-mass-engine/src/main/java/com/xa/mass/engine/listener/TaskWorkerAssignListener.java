@@ -2,13 +2,22 @@ package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.TaskAssignmentEventSink;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
-import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.model.MatchedWorkerContext;
+import com.xa.mass.engine.worker.WorkerManager;
+import com.xa.mass.engine.assignment.AssignmentAllocationDecision;
+import com.xa.mass.engine.assignment.AssignmentAllocationOutcome;
+import com.xa.mass.engine.assignment.AssignmentAllocationPlan;
+import com.xa.mass.engine.assignment.AssignmentAllocationPolicy;
+import com.xa.mass.engine.assignment.AssignmentAllocationRequest;
+import com.xa.mass.engine.assignment.DefaultAssignmentAllocationPolicy;
+import com.xa.mass.engine.model.WorkerSchedulingCandidate;
+import com.xa.mass.engine.resource.DefaultWorkerDispatchResourcePolicy;
+import com.xa.mass.engine.resource.WorkerDispatchResourceReleaser;
+import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
 import com.xa.mass.engine.rules.RuleManager;
-import com.xa.mass.engine.service.AssignmentRecordService;
+import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
 import com.xa.mass.engine.strategy.RuleBasedTaskWorkerMatchingStrategy;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.engine.util.TraceEventLogger;
@@ -17,7 +26,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * Listens for task assignment events and delegates worker matching to a pluggable strategy.
@@ -27,30 +35,95 @@ public class TaskWorkerAssignListener {
 
     private final TaskWorkerMatchingStrategy matchingStrategy;
     private final WorkerManager workerManager;
-    private final TaskMsgAssignListener msgAssignListener;
+    private final TaskDispatchBinder dispatchBinder;
     private final TaskAssignmentRuntimePort assignmentRuntime;
     private final TaskAssignmentEventSink assignmentEventSink;
+    private final TraceEventLogger traceEventLogger;
+    private final AssignmentAllocationPolicy allocationPolicy;
+    private final WorkerDispatchResourcePolicy resourcePolicy;
+    private final WorkerDispatchResourceReleaser resourceReleaser;
 
     public TaskWorkerAssignListener(RuleManager<Map<String, Object>> ruleManager,
                                     WorkerManager workerManager,
-                                    TaskMsgAssignListener msgAssignListener,
-                                    AssignmentRecordService recordService,
+                                    TaskDispatchBinder dispatchBinder,
+                                    AssignmentDiagnosticRecorder recordService,
                                     TaskAssignmentRuntimePort assignmentRuntime,
                                     TaskAssignmentEventSink assignmentEventSink) {
-        this(new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService),
-                workerManager, msgAssignListener, assignmentRuntime, assignmentEventSink);
+        this(ruleManager, workerManager, dispatchBinder, recordService, assignmentRuntime, assignmentEventSink, TraceEventLogger.noop());
+    }
+
+    public TaskWorkerAssignListener(RuleManager<Map<String, Object>> ruleManager,
+                                    WorkerManager workerManager,
+                                    TaskDispatchBinder dispatchBinder,
+                                    AssignmentDiagnosticRecorder recordService,
+                                    TaskAssignmentRuntimePort assignmentRuntime,
+                                    TaskAssignmentEventSink assignmentEventSink,
+                                    TraceEventLogger traceEventLogger) {
+        this(new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService, traceEventLogger),
+                workerManager, dispatchBinder, assignmentRuntime, assignmentEventSink, traceEventLogger);
     }
 
     public TaskWorkerAssignListener(TaskWorkerMatchingStrategy matchingStrategy,
                                     WorkerManager workerManager,
-                                    TaskMsgAssignListener msgAssignListener,
+                                    TaskDispatchBinder dispatchBinder,
                                     TaskAssignmentRuntimePort assignmentRuntime,
                                     TaskAssignmentEventSink assignmentEventSink) {
+        this(matchingStrategy, workerManager, dispatchBinder, assignmentRuntime, assignmentEventSink, TraceEventLogger.noop());
+    }
+
+    public TaskWorkerAssignListener(TaskWorkerMatchingStrategy matchingStrategy,
+                                    WorkerManager workerManager,
+                                    TaskDispatchBinder dispatchBinder,
+                                    TaskAssignmentRuntimePort assignmentRuntime,
+                                    TaskAssignmentEventSink assignmentEventSink,
+                                    TraceEventLogger traceEventLogger) {
+        this(matchingStrategy, workerManager, dispatchBinder, assignmentRuntime, assignmentEventSink,
+                traceEventLogger, new DefaultAssignmentAllocationPolicy());
+    }
+
+    TaskWorkerAssignListener(TaskWorkerMatchingStrategy matchingStrategy,
+                             WorkerManager workerManager,
+                             TaskDispatchBinder dispatchBinder,
+                             TaskAssignmentRuntimePort assignmentRuntime,
+                             TaskAssignmentEventSink assignmentEventSink,
+                             TraceEventLogger traceEventLogger,
+                             AssignmentAllocationPolicy allocationPolicy) {
+        this(matchingStrategy, workerManager, dispatchBinder, assignmentRuntime, assignmentEventSink,
+                traceEventLogger, allocationPolicy, new DefaultWorkerDispatchResourcePolicy());
+    }
+
+    TaskWorkerAssignListener(TaskWorkerMatchingStrategy matchingStrategy,
+                             WorkerManager workerManager,
+                             TaskDispatchBinder dispatchBinder,
+                             TaskAssignmentRuntimePort assignmentRuntime,
+                             TaskAssignmentEventSink assignmentEventSink,
+                             TraceEventLogger traceEventLogger,
+                             AssignmentAllocationPolicy allocationPolicy,
+                             WorkerDispatchResourcePolicy resourcePolicy) {
+        this(matchingStrategy, workerManager, dispatchBinder, assignmentRuntime, assignmentEventSink,
+                traceEventLogger, allocationPolicy, resourcePolicy, null);
+    }
+
+    TaskWorkerAssignListener(TaskWorkerMatchingStrategy matchingStrategy,
+                             WorkerManager workerManager,
+                             TaskDispatchBinder dispatchBinder,
+                             TaskAssignmentRuntimePort assignmentRuntime,
+                             TaskAssignmentEventSink assignmentEventSink,
+                             TraceEventLogger traceEventLogger,
+                             AssignmentAllocationPolicy allocationPolicy,
+                             WorkerDispatchResourcePolicy resourcePolicy,
+                             WorkerDispatchResourceReleaser resourceReleaser) {
         this.matchingStrategy = matchingStrategy;
         this.workerManager = workerManager;
-        this.msgAssignListener = msgAssignListener;
+        this.dispatchBinder = dispatchBinder;
         this.assignmentRuntime = assignmentRuntime;
         this.assignmentEventSink = assignmentEventSink;
+        this.traceEventLogger = traceEventLogger;
+        this.allocationPolicy = allocationPolicy == null ? new DefaultAssignmentAllocationPolicy() : allocationPolicy;
+        this.resourcePolicy = resourcePolicy == null ? new DefaultWorkerDispatchResourcePolicy() : resourcePolicy;
+        this.resourceReleaser = resourceReleaser == null
+                ? new WorkerDispatchResourceReleaser(workerManager, this.resourcePolicy, traceEventLogger)
+                : resourceReleaser;
     }
 
     /**
@@ -59,7 +132,7 @@ public class TaskWorkerAssignListener {
     public boolean onTaskAssign(Task task) {
         TaskStatus initialStatus = task.getStatus();
         if (initialStatus != TaskStatus.READY && initialStatus != TaskStatus.RUNNING) {
-            TraceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
+            traceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
                     "task status is not dispatchable: " + initialStatus, null);
             emitAssignmentSummary(task, initialStatus, 0, 0, 0, 0,
                     0, 0, 0, 0,
@@ -67,103 +140,119 @@ public class TaskWorkerAssignListener {
             return false;
         }
 
-        int pendingDispatchCount = assignmentRuntime.countPendingDispatchableMessages(task.getTid());
-        if (pendingDispatchCount <= 0) {
-            TraceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
-                    "no pending INIT task messages", null);
-            emitAssignmentSummary(task, initialStatus, pendingDispatchCount, 0, 0, 0,
+        int readyWorkCount = assignmentRuntime.countDispatchReadyWork(task.getTid());
+        if (readyWorkCount <= 0) {
+            traceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
+                    "no runtime-ready work", null);
+            emitAssignmentSummary(task, initialStatus, readyWorkCount, 0, 0, 0,
                     0, 0, 0, 0,
-                    "no pending INIT task messages", "SKIPPED");
+                    "no runtime-ready work", "SKIPPED");
             return false;
         }
 
-        int desiredDispatchWorkerCount = getDesiredDispatchWorkerCount(task, pendingDispatchCount);
-        int requiredStartWorkerCount = initialStatus == TaskStatus.READY
-                ? getRequiredStartWorkerCount(task)
-                : 1;
-        int matchRequestCount = Math.max(requiredStartWorkerCount, desiredDispatchWorkerCount);
-        List<MatchedWorkerContext> matched = matchWorkersWithRules(task, matchRequestCount);
-        if (matched.isEmpty()) {
-            TraceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
-                    "no matched worker-context candidates", requiredStartWorkerCount);
-            emitAssignmentSummary(task, initialStatus, pendingDispatchCount, desiredDispatchWorkerCount,
-                    requiredStartWorkerCount, matchRequestCount,
+        AssignmentAllocationPlan allocationPlan = allocationPolicy.plan(new AssignmentAllocationRequest(
+                task,
+                initialStatus,
+                readyWorkCount,
+                workerManager.getActiveWorkerCountForTask(task.getTid())
+        ));
+        if (allocationPlan.requestedMatchCount() <= 0) {
+            AssignmentAllocationDecision allocationDecision =
+                    allocationPolicy.decide(allocationPlan, task.getStatus(), List.of());
+            traceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
+                    allocationDecision.reason(), allocationPlan.requiredStartWorkerCount());
+            emitAssignmentSummary(task, initialStatus, readyWorkCount, allocationPlan,
                     0, 0, 0, 0,
-                    "no matched worker-context candidates", "SKIPPED");
+                    allocationDecision.reason(), "SKIPPED");
             return false;
         }
-        if (initialStatus == TaskStatus.READY && matched.size() < requiredStartWorkerCount) {
-            log.info("[WorkerAssign] Keep task {} in READY because matched workers {} are below required minimum {}",
-                    task.getTid(), matched.size(), requiredStartWorkerCount);
-            TraceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
-                    "matched workers below minimum start gate", requiredStartWorkerCount);
-            unlockWorkers(matched);
-            emitAssignmentSummary(task, initialStatus, pendingDispatchCount, desiredDispatchWorkerCount,
-                    requiredStartWorkerCount, matchRequestCount,
+        List<WorkerSchedulingCandidate> matched = matchingStrategy.matchWorkers(task, allocationPlan.requestedMatchCount());
+        log.info("[WorkerAssign] Strategy {} matched {} worker scheduling candidates for task {}",
+                matchingStrategy.getClass().getSimpleName(), matched.size(), task.getTid());
+        AssignmentAllocationDecision allocationDecision = allocationPolicy.decide(allocationPlan, task.getStatus(), matched);
+        if (allocationDecision.outcome() == AssignmentAllocationOutcome.BUDGET_EXHAUSTED) {
+            traceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
+                    allocationDecision.reason(), allocationPlan.requiredStartWorkerCount());
+            releaseReservedAndUnlockWorkers(task, matched);
+            emitAssignmentSummary(task, initialStatus, readyWorkCount, allocationPlan,
                     matched.size(), 0, 0, 0,
-                    "matched workers below minimum start gate", "SKIPPED");
+                    allocationDecision.reason(), "SKIPPED");
             return false;
         }
-        if (task.getStatus() != initialStatus) {
+        if (allocationDecision.outcome() == AssignmentAllocationOutcome.NO_MATCH) {
+            traceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
+                    allocationDecision.reason(), allocationPlan.requiredStartWorkerCount());
+            emitAssignmentSummary(task, initialStatus, readyWorkCount, allocationPlan,
+                    0, 0, 0, 0,
+                    allocationDecision.reason(), "SKIPPED");
+            return false;
+        }
+        if (allocationDecision.outcome() == AssignmentAllocationOutcome.BELOW_MIN_START_GATE) {
+            log.info("[WorkerAssign] Keep task {} in READY because matched workers {} are below required minimum {}",
+                    task.getTid(), matched.size(), allocationPlan.requiredStartWorkerCount());
+            traceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
+                    allocationDecision.reason(), allocationPlan.requiredStartWorkerCount());
+            releaseReservedAndUnlockWorkers(task, matched);
+            emitAssignmentSummary(task, initialStatus, readyWorkCount, allocationPlan,
+                    matched.size(), 0, 0, 0,
+                    allocationDecision.reason(), "SKIPPED");
+            return false;
+        }
+        if (allocationDecision.outcome() == AssignmentAllocationOutcome.TASK_STATUS_CHANGED) {
             log.info("[WorkerAssign] Skip dispatch for task {} because status changed from {} to {} during matching",
                     task.getTid(), initialStatus, task.getStatus());
-            TraceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
-                    "task status changed during matching from " + initialStatus + " to " + task.getStatus(),
-                    requiredStartWorkerCount);
-            unlockWorkers(matched);
-            emitAssignmentSummary(task, initialStatus, pendingDispatchCount, desiredDispatchWorkerCount,
-                    requiredStartWorkerCount, matchRequestCount,
+            traceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
+                    allocationDecision.reason(),
+                    allocationPlan.requiredStartWorkerCount());
+            releaseReservedAndUnlockWorkers(task, matched);
+            emitAssignmentSummary(task, initialStatus, readyWorkCount, allocationPlan,
                     matched.size(), 0, 0, 0,
-                    "task status changed during matching from " + initialStatus + " to " + task.getStatus(), "SKIPPED");
+                    allocationDecision.reason(), "SKIPPED");
             return false;
         }
 
-        List<MatchedWorkerContext> dispatchCandidates = matched.subList(0, Math.min(matched.size(), desiredDispatchWorkerCount));
-        if (dispatchCandidates.isEmpty()) {
-            TraceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
-                    "no dispatch candidates remained after capacity trim", requiredStartWorkerCount);
-            unlockWorkers(matched);
-            emitAssignmentSummary(task, initialStatus, pendingDispatchCount, desiredDispatchWorkerCount,
-                    requiredStartWorkerCount, matchRequestCount,
+        List<WorkerSchedulingCandidate> dispatchCandidates = allocationDecision.dispatchCandidates();
+        if (allocationDecision.outcome() == AssignmentAllocationOutcome.NO_DISPATCH_CANDIDATES) {
+            traceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
+                    allocationDecision.reason(), allocationPlan.requiredStartWorkerCount());
+            releaseReservedAndUnlockWorkers(task, matched);
+            emitAssignmentSummary(task, initialStatus, readyWorkCount, allocationPlan,
                     matched.size(), 0, 0, 0,
-                    "no dispatch candidates remained after capacity trim", "SKIPPED");
+                    allocationDecision.reason(), "SKIPPED");
             return false;
         }
-        unlockWorkers(matched.subList(dispatchCandidates.size(), matched.size()));
+        releaseReservedAndUnlockWorkers(task, matched.subList(dispatchCandidates.size(), matched.size()));
 
-        List<TaskDispatchBinding> dispatchedBindings = msgAssignListener.onMsgAssign(task, List.copyOf(dispatchCandidates));
+        List<TaskDispatchBinding> dispatchedBindings = dispatchBinder.bindDispatches(task, List.copyOf(dispatchCandidates));
         long usedWorkerCount = dispatchedBindings.stream()
-                .map(TaskDispatchBinding::attempt)
-                .map(TaskMsgAttempt::getWorkerId)
+                .map(TaskDispatchBinding::workerId)
                 .filter(workerId -> workerId != null && !workerId.isBlank())
                 .distinct()
                 .count();
         if (usedWorkerCount <= 0) {
-            TraceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
-                    "matched candidates produced no bound task messages", requiredStartWorkerCount);
-            unlockWorkers(dispatchCandidates);
-            emitAssignmentSummary(task, initialStatus, pendingDispatchCount, desiredDispatchWorkerCount,
-                    requiredStartWorkerCount, matchRequestCount,
+            traceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
+                    "matched candidates produced no bound work", allocationPlan.requiredStartWorkerCount());
+            releaseLocksIfExclusive(task, dispatchCandidates);
+            emitAssignmentSummary(task, initialStatus, readyWorkCount, allocationPlan,
                     matched.size(), dispatchCandidates.size(), dispatchedBindings.size(), 0,
-                    "matched candidates produced no bound task messages", "SKIPPED");
+                    "matched candidates produced no bound work", "SKIPPED");
             return false;
         }
 
-        TraceEventLogger.dispatchRequested(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
-                "matched candidates produced dispatchable task messages");
+        traceEventLogger.dispatchRequested(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
+                "matched candidates produced dispatchable work");
 
         task.setPeakAssignedWorkerCount(Math.max(task.getPeakAssignedWorkerCount(), (int) usedWorkerCount));
         if (initialStatus == TaskStatus.READY && !task.transitionTo(TaskStatus.RUNNING)) {
             log.warn("[WorkerAssign] Failed to transition task {} from READY to RUNNING", task.getTid());
-            unlockWorkers(dispatchCandidates);
-            emitAssignmentSummary(task, initialStatus, pendingDispatchCount, desiredDispatchWorkerCount,
-                    requiredStartWorkerCount, matchRequestCount,
+            releaseLocksIfExclusive(task, dispatchCandidates);
+            emitAssignmentSummary(task, initialStatus, readyWorkCount, allocationPlan,
                     matched.size(), dispatchCandidates.size(), dispatchedBindings.size(), (int) usedWorkerCount,
                     "task failed to transition from READY to RUNNING after dispatch", "FAILED");
             return false;
         }
         if (initialStatus == TaskStatus.READY) {
-            TraceEventLogger.taskStatusTransition(
+            traceEventLogger.taskStatusTransition(
                     task.getTid(),
                     initialStatus,
                     task.getStatus(),
@@ -172,8 +261,7 @@ public class TaskWorkerAssignListener {
                     "matched workers dispatched"
             );
         }
-        emitAssignmentSummary(task, initialStatus, pendingDispatchCount, desiredDispatchWorkerCount,
-                requiredStartWorkerCount, matchRequestCount,
+        emitAssignmentSummary(task, initialStatus, readyWorkCount, allocationPlan,
                 matched.size(), dispatchCandidates.size(), dispatchedBindings.size(), (int) usedWorkerCount,
                 "matched workers dispatched", "SUCCESS");
         assignmentRuntime.updateTask(task);
@@ -181,34 +269,47 @@ public class TaskWorkerAssignListener {
         return true;
     }
 
-    /**
-     * Kept for compatibility with current tests and callers; the implementation is now strategy-based.
-     */
-    List<MatchedWorkerContext> matchWorkersWithRules(Task task, int maxWorkerCount) {
-        List<MatchedWorkerContext> matchedWorkers = matchingStrategy.matchWorkers(task, maxWorkerCount);
-        log.info("[WorkerAssign] Strategy {} matched {} worker-context candidates for task {}",
-                matchingStrategy.getClass().getSimpleName(), matchedWorkers.size(), task.getTid());
-        return matchedWorkers;
+    private void releaseLocksIfExclusive(Task task, List<WorkerSchedulingCandidate> workers) {
+        resourceReleaser.releaseLocks(task, workers,
+                "UNLOCK_WORKER", "TaskWorkerAssignListener", "surplus or skipped dispatch candidate");
     }
 
-    private int getDesiredDispatchWorkerCount(Task task, int pendingDispatchCount) {
-        int remainingMessages = Math.max(pendingDispatchCount, 1);
-        return Math.max(1, (int) Math.ceil((double) remainingMessages / task.getBatchSize()));
+    private void releaseReservedAndUnlockWorkers(Task task, List<WorkerSchedulingCandidate> workers) {
+        resourceReleaser.releaseReservationsAndLocks(task, workers,
+                "UNLOCK_WORKER", "TaskWorkerAssignListener", "surplus or skipped dispatch candidate");
     }
 
-    private int getRequiredStartWorkerCount(Task task) {
-        return Math.max(task.getMinRequiredWorkerCount(), 1);
-    }
-
-    private void unlockWorkers(List<MatchedWorkerContext> workers) {
-        for (String workerId : workers.stream()
-                .map(MatchedWorkerContext::getWorkerId)
-                .distinct()
-                .collect(Collectors.toList())) {
-            workerManager.unlockWorker(workerId);
-            TraceEventLogger.workerLockReleased(null, workerId, "UNLOCK_WORKER", "TaskWorkerAssignListener",
-                    "surplus or skipped dispatch candidate");
-        }
+    private void emitAssignmentSummary(Task task,
+                                       TaskStatus initialStatus,
+                                       int pendingDispatchCount,
+                                       AssignmentAllocationPlan allocationPlan,
+                                       int matchedWorkerCount,
+                                       int dispatchCandidateCount,
+                                       int dispatchedMessageCount,
+                                       int usedWorkerCount,
+                                       String reason,
+                                       String result) {
+        traceEventLogger.assignmentSummary(
+                task,
+                initialStatus,
+                task.getStatus(),
+                pendingDispatchCount,
+                allocationPlan.desiredDispatchWorkerCount(),
+                allocationPlan.requiredStartWorkerCount(),
+                allocationPlan.requestedMatchCount(),
+                allocationPlan.workerBudget(),
+                allocationPlan.currentTaskWorkerCount(),
+                allocationPlan.budgetLimited(),
+                matchedWorkerCount,
+                dispatchCandidateCount,
+                dispatchedMessageCount,
+                usedWorkerCount,
+                task.getPeakAssignedWorkerCount(),
+                "ON_TASK_ASSIGN",
+                "TaskWorkerAssignListener",
+                reason,
+                result
+        );
     }
 
     private void emitAssignmentSummary(Task task,
@@ -223,7 +324,7 @@ public class TaskWorkerAssignListener {
                                        int usedWorkerCount,
                                        String reason,
                                        String result) {
-        TraceEventLogger.assignmentSummary(
+        traceEventLogger.assignmentSummary(
                 task,
                 initialStatus,
                 task.getStatus(),
@@ -231,6 +332,9 @@ public class TaskWorkerAssignListener {
                 desiredDispatchWorkerCount,
                 requiredStartWorkerCount,
                 requestedMatchCount,
+                null,
+                0,
+                false,
                 matchedWorkerCount,
                 dispatchCandidateCount,
                 dispatchedMessageCount,

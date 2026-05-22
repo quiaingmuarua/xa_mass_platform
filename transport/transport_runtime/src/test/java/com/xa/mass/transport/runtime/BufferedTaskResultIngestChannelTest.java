@@ -5,7 +5,6 @@ import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.model.TransportResultEnvelope;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -56,12 +55,43 @@ class BufferedTaskResultIngestChannelTest {
         };
 
         BufferedTaskResultIngestChannel channel = new BufferedTaskResultIngestChannel(delegate);
-        TransportResultEnvelope envelope = TransportResultEnvelope.fromReport("polling", "w1", "w1", report("t1", "m1"));
+        TransportResultEnvelope envelope = TransportResultEnvelope.addressed("polling", "w1", report("t1", "m1"));
         boolean accepted = channel.ingest(envelope);
 
         assertTrue(accepted);
         assertTrue(latch.await(2, TimeUnit.SECONDS), "delegate must receive the envelope within 2s");
         assertEquals(1, received.size());
+
+        channel.shutdown();
+    }
+
+    @Test
+    void mixedReportsAndEnvelopesDrainWithoutLosingTypeSpecificHandling() throws InterruptedException {
+        CountDownLatch latch = new CountDownLatch(2);
+        List<String> received = new CopyOnWriteArrayList<>();
+        TaskResultIngestChannel delegate = new TaskResultIngestChannel() {
+            @Override
+            public boolean ingest(TaskResultReport report) {
+                received.add("report:" + report.getMessageId());
+                latch.countDown();
+                return true;
+            }
+
+            @Override
+            public boolean ingest(TransportResultEnvelope envelope) {
+                received.add("envelope:" + envelope.getMessageId());
+                latch.countDown();
+                return true;
+            }
+        };
+
+        BufferedTaskResultIngestChannel channel = new BufferedTaskResultIngestChannel(delegate, 8);
+
+        assertTrue(channel.ingest(report("task", "msg-report")));
+        assertTrue(channel.ingest(TransportResultEnvelope.addressed("polling", "w1", report("task", "msg-envelope"))));
+
+        assertTrue(latch.await(2, TimeUnit.SECONDS), "delegate must receive both queued items");
+        assertEquals(List.of("report:msg-report", "envelope:msg-envelope"), received);
 
         channel.shutdown();
     }
@@ -87,7 +117,7 @@ class BufferedTaskResultIngestChannelTest {
             assertTrue(channel.ingest(report("task", "msg-" + i)));
         }
 
-        // Unblock the slow delegate and immediately call shutdown — must drain all.
+        // Unblock the slow delegate and immediately call shutdown; it must drain all.
         startLatch.countDown();
         channel.shutdown();
 
@@ -95,29 +125,38 @@ class BufferedTaskResultIngestChannelTest {
     }
 
     @Test
-    void fullQueueReturnsFalseInsteadOfBlocking() {
-        TaskResultIngestChannel blockingDelegate = report -> {
-            try {
-                Thread.sleep(60_000);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+    void fullQueueFallsBackToSynchronousDelegateInsteadOfDropping() throws InterruptedException {
+        CountDownLatch blocker = new CountDownLatch(1);
+        CountDownLatch firstDispatchStarted = new CountDownLatch(1);
+        CountDownLatch synchronousFallback = new CountDownLatch(1);
+        List<String> received = new CopyOnWriteArrayList<>();
+        TaskResultIngestChannel delegate = report -> {
+            received.add(report.getMessageId());
+            if ("msg-0".equals(report.getMessageId())) {
+                firstDispatchStarted.countDown();
+                try {
+                    blocker.await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            if ("msg-overflow".equals(report.getMessageId())) {
+                synchronousFallback.countDown();
             }
             return true;
         };
 
-        int capacity = 4;
-        BufferedTaskResultIngestChannel channel = new BufferedTaskResultIngestChannel(blockingDelegate, capacity);
+        BufferedTaskResultIngestChannel channel = new BufferedTaskResultIngestChannel(delegate, 1);
+        assertTrue(channel.ingest(report("task", "msg-0")));
+        assertTrue(firstDispatchStarted.await(1, TimeUnit.SECONDS), "drainer must start processing the first item");
+        assertTrue(channel.ingest(report("task", "msg-1")));
+        assertTrue(channel.ingest(report("task", "msg-overflow")));
 
-        // First item is consumed by the drainer immediately; fill the remaining slots.
-        List<Boolean> results = new ArrayList<>();
-        for (int i = 0; i < capacity + 4; i++) {
-            results.add(channel.ingest(report("t", "m-" + i)));
-        }
+        assertTrue(synchronousFallback.await(1, TimeUnit.SECONDS), "overflow item must be ingested synchronously");
 
-        // At least the last few should be false (queue full).
-        assertTrue(results.contains(false), "ingest must return false when queue is full");
-
+        blocker.countDown();
         channel.shutdown();
+        assertTrue(received.contains("msg-overflow"));
     }
 
     @Test

@@ -14,8 +14,8 @@ class TaskRuntimeClaimOptionsResolverTest {
     @Test
     void interactiveTasksResolveSmallClaimWindowAndShortLease() {
         Task task = new Task();
-        task.setBatchSize(8);
-        task.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
+        task.getExecutionSpec().setBatchSize(8);
+        task.getExecutionSpec().setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
 
         TaskWorkClaimOptions options = resolver.resolve(task, 3, 300L);
 
@@ -27,8 +27,8 @@ class TaskRuntimeClaimOptionsResolverTest {
     @Test
     void interactiveLeaseDoesNotExceedSmallerGlobalLease() {
         Task task = new Task();
-        task.setBatchSize(8);
-        task.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
+        task.getExecutionSpec().setBatchSize(8);
+        task.getExecutionSpec().setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
 
         TaskWorkClaimOptions options = resolver.resolve(task, 2, 5L);
 
@@ -40,8 +40,8 @@ class TaskRuntimeClaimOptionsResolverTest {
     @Test
     void bulkTasksKeepTaskBatchSizeAndNormalLease() {
         Task task = new Task();
-        task.setBatchSize(4);
-        task.setWorkloadClass(TaskWorkloadClass.BULK);
+        task.getExecutionSpec().setBatchSize(4);
+        task.getExecutionSpec().setWorkloadClass(TaskWorkloadClass.BULK);
 
         TaskWorkClaimOptions options = resolver.resolve(task, 3, 120L);
 

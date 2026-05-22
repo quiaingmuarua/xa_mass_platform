@@ -1,51 +1,144 @@
 package com.xa.mass.storage.api;
 
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
+import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionFinalReason;
+import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
+import com.xa.mass.storage.api.projection.TaskMessageProjectionFinalReason;
+import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
 
+import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
- * Storage seam for task message and attempt detail.
+ * Storage seam for task-message compatibility projection and attempt detail.
  *
  * <p>Separated from {@link TaskStorage} so that the high-frequency
  * message/attempt write path can be routed to a different sink (e.g. a
  * trace/audit module) without touching the control-plane task storage or the
  * engine orchestration code. The current in-memory and JDBC implementations
  * implement both interfaces; future trace sinks implement only this one.
+ *
+ * <p>Callers should treat this seam as bounded projection residue for
+ * review/debug/audit and projection health checks. It is not result repair
+ * truth, public result read truth, or a durable-history contract.
+ *
+ * <p>This seam exposes only neutral storage-edge projection records. Any
+ * compatibility materialization belongs to engine-internal residue owners, not
+ * to this storage contract.</p>
  */
 public interface TaskDetailStore {
 
-    void addTaskMessage(String taskId, TaskMsg taskMsg);
+    /**
+     * Engine-facing bounded projection upsert.
+     *
+     * <p>Mainline engine code should prefer this helper over open-coding
+     * add/update CRUD flow so the residue seam stays a projection sink rather
+     * than a message-CRUD owner.</p>
+     */
+    @CompatibilityProjectionOnly
+    boolean upsertTaskMessageProjection(String taskId, TaskMessageProjection projection);
 
-    List<TaskMsg> getTaskMessages(String taskId);
+    /**
+     * Engine-facing bounded projection snapshot read.
+     *
+     * <p>Mainline engine code should prefer this neutral snapshot view over
+     * materializing compatibility residue directly.</p>
+     */
+    @CompatibilityProjectionOnly
+    Optional<TaskMessageProjection> getTaskMessageProjection(String taskId, String messageId);
 
-    List<TaskMsg> getTaskMessages(String taskId, int limit);
+    @CompatibilityProjectionOnly
+    List<TaskMessageProjection> getTaskMessageProjections(String taskId, int limit);
 
-    List<TaskMsg> getNonFinalTaskMessages(String taskId);
+    /**
+     * Engine-facing bounded latest-attempt projection upsert.
+     *
+     * <p>This helper exists so dispatch/result/expiry convergence can treat
+     * attempt residue as one bounded write step instead of a CRUD lifecycle.</p>
+     */
+    @CompatibilityProjectionOnly
+    boolean upsertTaskMessageAttemptProjection(String taskId,
+                                               String messageId,
+                                               TaskMessageAttemptProjection projection);
 
-    long countTaskMessages(String taskId);
+    @CompatibilityProjectionOnly
+    List<TaskMessageAttemptProjection> getTaskMessageAttemptProjections(String taskId, String messageId);
 
-    Optional<TaskMsg> getTaskMessage(String taskId, String messageId);
+    @CompatibilityProjectionOnly
+    Optional<TaskMessageAttemptProjection> getLatestTaskMessageAttemptProjection(String taskId,
+                                                                                 String messageId);
 
-    boolean updateTaskMessage(String taskId, TaskMsg taskMsg);
+    @CompatibilityProjectionOnly
+    default Optional<TaskMessageAttemptProjection> getLatestActiveTaskMessageAttemptProjection(String taskId,
+                                                                                               String messageId) {
+        List<TaskMessageAttemptProjection> projections = getTaskMessageAttemptProjections(taskId, messageId);
+        for (int i = projections.size() - 1; i >= 0; i--) {
+            TaskMessageAttemptProjection projection = projections.get(i);
+            if (projection != null && projection.status() != null && !projection.status().isFinal()) {
+                return Optional.of(projection);
+            }
+        }
+        return Optional.empty();
+    }
 
-    void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt);
-
-    List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId);
-
-    Optional<TaskMsgAttempt> getLatestTaskMessageAttempt(String taskId, String messageId);
-
-    Optional<TaskMsgAttempt> getLatestActiveTaskMessageAttempt(String taskId, String messageId);
-
-    boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt);
-
+    /** Aggregate diagnostics only; these stats do not promote the residue rows to runtime truth. */
     TaskMessageStats getTaskMessageStats(String taskId);
 
     TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId);
 
     TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId);
+
+    @CompatibilityProjectionOnly
+    record TaskMessageProjection(String messageId,
+                                 String taskId,
+                                 Map<String, Object> input,
+                                 String payloadRef,
+                                 TaskMessageProjectionStatus status,
+                                 LocalDateTime assignedTime,
+                                 LocalDateTime createTime,
+                                 LocalDateTime updateTime,
+                                 LocalDateTime startTime,
+                                 LocalDateTime completeTime,
+                                 int retryCount,
+                                 int maxRetryCount,
+                                 String errorMessage,
+                                 String errorCode,
+                                 TaskMessageProjectionFinalReason finalReason,
+                                 Map<String, Object> output,
+                                 String latestAttemptId,
+                                 String latestAttemptWorkerId,
+                                 String latestAttemptBatchId) {
+
+        public TaskMessageProjection {
+            input = copyMap(input);
+            output = copyMap(output);
+            retryCount = Math.max(0, retryCount);
+            maxRetryCount = Math.max(0, maxRetryCount);
+        }
+    }
+
+    @CompatibilityProjectionOnly
+    record TaskMessageAttemptProjection(String attemptId,
+                                        String taskId,
+                                        String messageId,
+                                        int attemptNo,
+                                        String workerId,
+                                        String batchId,
+                                        TaskMessageAttemptProjectionStatus status,
+                                        TaskMessageAttemptProjectionFinalReason finalReason,
+                                        String errorMessage,
+                                        String errorCode,
+                                        Map<String, Object> output) {
+
+        public TaskMessageAttemptProjection {
+            output = copyMap(output);
+            attemptNo = Math.max(0, attemptNo);
+        }
+    }
 
     class TaskMessageStats {
         private final long total;
@@ -101,5 +194,22 @@ public interface TaskDetailStore {
         public long getRunningAttempts() { return runningAttempts; }
         public long getFailedAttempts() { return failedAttempts; }
         public long getExpiredAttempts() { return expiredAttempts; }
+    }
+
+    private static Map<String, Object> copyMap(Map<String, Object> source) {
+        if (source == null) {
+            return null;
+        }
+        if (source.isEmpty()) {
+            return Map.of();
+        }
+        LinkedHashMap<String, Object> copy = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : source.entrySet()) {
+            if (entry.getKey() == null) {
+                throw new NullPointerException("map key");
+            }
+            copy.put(entry.getKey(), entry.getValue());
+        }
+        return Collections.unmodifiableMap(copy);
     }
 }

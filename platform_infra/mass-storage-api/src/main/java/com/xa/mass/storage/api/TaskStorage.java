@@ -18,7 +18,7 @@ public interface TaskStorage {
 
     boolean deleteTask(String taskId);
 
-    List<Task> getAllTasks();
+    List<Task> listTasksPaged(int offset, int limit);
 
     List<Task> getTasksByStatus(TaskStatus status);
 

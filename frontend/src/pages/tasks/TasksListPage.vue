@@ -14,7 +14,7 @@
         type="primary"
         @click="openCreateDialog"
       >
-        Create task
+        Create task shell
       </el-button>
     </header>
 
@@ -30,6 +30,12 @@
           v-model="filters.keyword"
           clearable
           placeholder="Search by task name or id"
+          @keyup.enter="loadTasks"
+        />
+        <el-input
+          v-model="filters.project"
+          clearable
+          placeholder="Project"
           @keyup.enter="loadTasks"
         />
         <el-select
@@ -87,7 +93,7 @@
 
     <el-dialog
       v-model="createDialogVisible"
-      title="Create task"
+      title="Create task shell"
       width="760px"
       destroy-on-close
     >
@@ -115,8 +121,8 @@
         class="dialog-alert"
         type="info"
         :closable="false"
-        :title="`Metadata starter context: ${starterEventCode}`"
-        description="Task create API does not have a first-class event field. Keep project as the business binding and map any event-specific contract through sharedConfig or inputs only when your backend/runtime expects it."
+        :title="`Event starter context: ${starterEventCode}`"
+        description="Task shell create stays event-agnostic. This starter only pre-fills the append capability eventCode and payload examples."
       />
 
       <el-alert
@@ -144,14 +150,6 @@
       <el-form label-position="top">
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="Task name" required>
-              <el-input
-                v-model="createForm.taskName"
-                placeholder="Warm worker pool"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
             <el-form-item label="Project" required>
               <el-select
                 v-model="createForm.project"
@@ -171,6 +169,14 @@
               </el-select>
             </el-form-item>
           </el-col>
+          <el-col :span="12">
+            <el-form-item label="Append event code" required>
+              <el-input
+                v-model="createForm.eventCode"
+                placeholder="demo.dispatch"
+              />
+            </el-form-item>
+          </el-col>
         </el-row>
 
         <el-row :gutter="16">
@@ -179,16 +185,6 @@
               <el-input-number
                 v-model="createForm.batchSize"
                 :min="1"
-                :step="1"
-                controls-position="right"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="Max retry count">
-              <el-input-number
-                v-model="createForm.defaultMsgMaxRetryCount"
-                :min="0"
                 :step="1"
                 controls-position="right"
               />
@@ -208,20 +204,20 @@
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="Intake mode">
+            <el-form-item label="Keep intake open">
               <el-switch
-                v-model="createForm.openEnded"
+                v-model="createForm.keepIntakeOpen"
                 inline-prompt
                 active-text="Open"
-                inactive-text="Sealed"
+                inactive-text="Seal"
               />
             </el-form-item>
           </el-col>
         </el-row>
 
-        <el-form-item label="Inputs" required>
+        <el-form-item label="Items" required>
           <el-input
-            v-model="createForm.inputsText"
+            v-model="createForm.itemsText"
             type="textarea"
             :rows="8"
             placeholder='One JSON object per line, for example:
@@ -230,7 +226,7 @@
           />
           <div class="field-hint">
             One work item per line. Each line must be a JSON object and will be
-            sent as `inputs`.
+            sent through the item ingest API.
           </div>
         </el-form-item>
 
@@ -252,7 +248,7 @@
       <template #footer>
         <el-button @click="createDialogVisible = false">Cancel</el-button>
         <el-button type="primary" :loading="creatingTask" @click="handleCreate">
-          Create
+          Create shell
         </el-button>
       </template>
     </el-dialog>
@@ -264,14 +260,18 @@ import {ElMessage} from 'element-plus'
 import {computed, onActivated, onMounted, reactive, ref, watch} from 'vue'
 import {useRoute, useRouter} from 'vue-router'
 import {listProjectCodes} from '@/api/configs'
-import {createTask, listTasks} from '@/api/tasks'
+import {appendTaskItems, createTaskShell, listTasks, sealTask} from '@/api/tasks'
 import {useAuth} from '@/auth/use-auth'
 import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
-import type {TaskCreateRequest, TaskListItem} from '@/types/tasks'
+import type {
+  TaskItemBatchAppendRequest,
+  TaskListItem,
+  TaskShellCreateRequest,
+} from '@/types/tasks'
 import {toErrorMessage} from '@/utils/errors'
-import {resolveTaskStarterDraft, stringifyStarterInputs, stringifyStarterSharedConfig,} from '@/utils/task-starters'
+import {resolveTaskStarterDraft, stringifyStarterItems, stringifyStarterSharedConfig,} from '@/utils/task-starters'
 
 const router = useRouter()
 const route = useRoute()
@@ -290,16 +290,16 @@ const handledDraftSignature = ref('')
 const starterGuidance = ref<string[]>([])
 const filters = reactive({
   keyword: '',
+  project: '',
   status: '' as TaskListItem['status'] | '',
 })
 const createForm = reactive({
-  taskName: '',
   project: '',
+  eventCode: '',
   batchSize: 1,
-  defaultMsgMaxRetryCount: 3,
-  openEnded: false,
+  keepIntakeOpen: false,
   maxRuntimeSeconds: 0,
-  inputsText: '{"target":"alpha"}\n{"target":"beta"}',
+  itemsText: '{"target":"alpha"}\n{"target":"beta"}',
   sharedConfigText: '{}',
 })
 
@@ -353,6 +353,11 @@ async function loadTasks(): Promise<void> {
   }
 }
 
+function applyTaskFiltersFromQuery(): void {
+  filters.project =
+    typeof route.query.project === 'string' ? route.query.project : ''
+}
+
 async function loadProjectOptions(): Promise<void> {
   projectOptionsLoading.value = true
   projectOptionsError.value = ''
@@ -384,13 +389,12 @@ function openCreateDialog(): void {
 }
 
 function resetCreateForm(): void {
-  createForm.taskName = ''
   createForm.project = projectOptions.value[0] ?? ''
+  createForm.eventCode = starterEventCode.value || ''
   createForm.batchSize = 1
-  createForm.defaultMsgMaxRetryCount = 3
-  createForm.openEnded = false
+  createForm.keepIntakeOpen = false
   createForm.maxRuntimeSeconds = 0
-  createForm.inputsText = '{"target":"alpha"}\n{"target":"beta"}'
+  createForm.itemsText = '{"target":"alpha"}\n{"target":"beta"}'
   createForm.sharedConfigText = '{}'
   starterGuidance.value = []
 }
@@ -403,7 +407,6 @@ function maybeOpenCreateDialogFromQuery(): void {
   const signature = JSON.stringify({
     create: route.query.create,
     project: route.query.project,
-    taskName: route.query.taskName,
     eventCode: route.query.eventCode,
   })
 
@@ -432,28 +435,28 @@ function applyCreateDraftFromQuery(): void {
   })
 
   createForm.project = starter.projectCode
-  createForm.taskName = starter.taskName
+  createForm.eventCode = starter.eventCode || ''
   createForm.batchSize = starter.batchSize
-  createForm.defaultMsgMaxRetryCount = starter.defaultMsgMaxRetryCount
-  createForm.openEnded = starter.openEnded
+  createForm.keepIntakeOpen = starter.keepIntakeOpen
   createForm.maxRuntimeSeconds = starter.maxRuntimeSeconds
-  createForm.inputsText = stringifyStarterInputs(starter.inputs)
+  createForm.itemsText = stringifyStarterItems(starter.items)
   createForm.sharedConfigText = stringifyStarterSharedConfig(
     starter.sharedConfig,
   )
   starterGuidance.value = starter.guidance
-
-  if (typeof route.query.taskName === 'string') {
-    createForm.taskName = route.query.taskName
-  }
 }
 
 async function handleCreate(): Promise<void> {
   createErrorMessage.value = ''
 
-  let payload: TaskCreateRequest
+  let shellRequest: TaskShellCreateRequest
+  let appendRequest: TaskItemBatchAppendRequest
+  let keepIntakeOpen: boolean
   try {
-    payload = buildCreateRequest()
+    const draft = buildCreateDraft()
+    shellRequest = draft.shellRequest
+    appendRequest = draft.appendRequest
+    keepIntakeOpen = draft.keepIntakeOpen
   } catch (error) {
     createErrorMessage.value = toErrorMessage(error, 'Task request is invalid.')
     return
@@ -461,7 +464,11 @@ async function handleCreate(): Promise<void> {
 
   creatingTask.value = true
   try {
-    const result = await createTask(payload)
+    const result = await createTaskShell(shellRequest)
+    await appendTaskItems(result.taskId, appendRequest)
+    if (!keepIntakeOpen) {
+      await sealTask(result.taskId)
+    }
     ElMessage.success(result.message)
     createDialogVisible.value = false
     await loadTasks()
@@ -476,53 +483,52 @@ async function handleCreate(): Promise<void> {
   }
 }
 
-function buildCreateRequest(): TaskCreateRequest {
-  const taskName = createForm.taskName.trim()
+function buildCreateDraft(): {
+  shellRequest: TaskShellCreateRequest
+  appendRequest: TaskItemBatchAppendRequest
+  keepIntakeOpen: boolean
+} {
   const project = createForm.project.trim()
+  const eventCode = createForm.eventCode.trim()
 
-  if (!taskName) {
-    throw new Error('Task name is required.')
-  }
   if (!project) {
     throw new Error('Project is required.')
   }
+  if (!eventCode) {
+    throw new Error('Append event code is required.')
+  }
 
-  const inputs = parseInputLines(createForm.inputsText)
+  const items = parseItemLines(createForm.itemsText)
   const sharedConfig = parseJsonObject(
     createForm.sharedConfigText,
     'Shared config',
   )
   return {
-    userId: currentOperatorId.value,
-    project,
-    taskName,
-    eventCode: starterEventCode.value || undefined,
-    mode: starterEventCode.value
-      ? createForm.openEnded
-        ? 'STREAMING'
-        : 'SINGLE_RUN'
-      : undefined,
-    payloadType: starterEventCode.value ? 'JSON' : undefined,
-    sharedConfig,
-    inputs,
-    batchSize: Math.max(1, Number(createForm.batchSize) || 1),
-    defaultMsgMaxRetryCount: Math.max(
-      0,
-      Number(createForm.defaultMsgMaxRetryCount) || 0,
-    ),
-    openEnded: createForm.openEnded,
-    maxRuntimeSeconds: Math.max(0, Number(createForm.maxRuntimeSeconds) || 0),
+    shellRequest: {
+      userId: currentOperatorId.value,
+      project,
+      sharedConfig,
+      executionSpec: {
+        batchSize: Math.max(1, Number(createForm.batchSize) || 1),
+        maxRuntimeSeconds: Math.max(0, Number(createForm.maxRuntimeSeconds) || 0),
+      },
+    },
+    appendRequest: {
+      eventCode,
+      items,
+    },
+    keepIntakeOpen: createForm.keepIntakeOpen,
   }
 }
 
-function parseInputLines(value: string): Array<Record<string, unknown>> {
+function parseItemLines(value: string): Array<Record<string, unknown>> {
   const lines = value
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
 
   if (lines.length === 0) {
-    throw new Error('Inputs must contain at least one JSON object line.')
+    throw new Error('Items must contain at least one JSON object line.')
   }
 
   return lines.map((line, index) => {
@@ -530,11 +536,11 @@ function parseInputLines(value: string): Array<Record<string, unknown>> {
     try {
       parsed = JSON.parse(line)
     } catch {
-      throw new Error(`Input line ${index + 1} is not valid JSON.`)
+      throw new Error(`Item line ${index + 1} is not valid JSON.`)
     }
 
     if (!isPlainRecord(parsed)) {
-      throw new Error(`Input line ${index + 1} must be a JSON object.`)
+      throw new Error(`Item line ${index + 1} must be a JSON object.`)
     }
 
     return parsed
@@ -570,17 +576,21 @@ function goToTask(taskId: string): void {
 }
 
 onMounted(() => {
+  applyTaskFiltersFromQuery()
   void loadTasks()
   maybeOpenCreateDialogFromQuery()
 })
 
 onActivated(() => {
+  applyTaskFiltersFromQuery()
   maybeOpenCreateDialogFromQuery()
 })
 
 watch(
   () => route.query,
   () => {
+    applyTaskFiltersFromQuery()
+    void loadTasks()
     maybeOpenCreateDialogFromQuery()
   },
 )
@@ -594,7 +604,7 @@ watch(
 }
 
 .toolbar :deep(.el-input) {
-  width: 260px;
+  width: 220px;
 }
 
 .toolbar :deep(.el-select) {

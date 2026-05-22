@@ -30,8 +30,18 @@ public class TaskEventService implements TaskEventListenerRegistrar, TaskAssignm
     }
 
     @Override
+    public void removeTaskCreatedListener(Consumer<Task> listener) {
+        registrar.removeTaskCreatedListener(listener);
+    }
+
+    @Override
     public void addTaskAssignedListener(Consumer<Task> listener) {
         registrar.addTaskAssignedListener(listener);
+    }
+
+    @Override
+    public void removeTaskAssignedListener(Consumer<Task> listener) {
+        registrar.removeTaskAssignedListener(listener);
     }
 
     @Override
@@ -40,8 +50,18 @@ public class TaskEventService implements TaskEventListenerRegistrar, TaskAssignm
     }
 
     @Override
+    public void removeTaskReadyListener(Consumer<Task> listener) {
+        registrar.removeTaskReadyListener(listener);
+    }
+
+    @Override
     public void addTaskDispatchListener(Consumer<Task> listener) {
         registrar.addTaskDispatchListener(listener);
+    }
+
+    @Override
+    public void removeTaskDispatchListener(Consumer<Task> listener) {
+        registrar.removeTaskDispatchListener(listener);
     }
 
     @Override
@@ -50,17 +70,39 @@ public class TaskEventService implements TaskEventListenerRegistrar, TaskAssignm
     }
 
     @Override
-    public void addTaskMessageAttemptClosedListener(TaskMessageAttemptClosedListener listener) {
-        registrar.addTaskMessageAttemptClosedListener(listener);
+    public void removeTaskTerminalListener(Consumer<Task> listener) {
+        registrar.removeTaskTerminalListener(listener);
     }
 
     @Override
-    public void addTaskMessageLogicallyFinalListener(TaskMessageLogicallyFinalListener listener) {
-        registrar.addTaskMessageLogicallyFinalListener(listener);
+    public void addTaskWorkAttemptClosedListener(TaskWorkAttemptClosedListener listener) {
+        registrar.addTaskWorkAttemptClosedListener(listener);
+    }
+
+    @Override
+    public void removeTaskWorkAttemptClosedListener(TaskWorkAttemptClosedListener listener) {
+        registrar.removeTaskWorkAttemptClosedListener(listener);
+    }
+
+    @Override
+    public void addTaskWorkLogicallyFinalListener(TaskWorkLogicallyFinalListener listener) {
+        registrar.addTaskWorkLogicallyFinalListener(listener);
+    }
+
+    @Override
+    public void removeTaskWorkLogicallyFinalListener(TaskWorkLogicallyFinalListener listener) {
+        registrar.removeTaskWorkLogicallyFinalListener(listener);
     }
 
     @Override
     public void publishTaskAssigned(Task task) {
         assignmentEventSink.publishTaskAssigned(task);
+    }
+
+    public TaskEventListenerSnapshot listenerSnapshot() {
+        if (registrar instanceof TaskEventPublisher publisher) {
+            return publisher.listenerSnapshot();
+        }
+        return new TaskEventListenerSnapshot(0, 0, 0, 0, 0, 0, 0);
     }
 }

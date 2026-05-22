@@ -21,30 +21,20 @@ public class RuleConfig {
         basicRule.setDescription("Worker must be available and unlocked");
         rules.add(basicRule);
 
-        RuleDefinition workerContextRule = new RuleDefinition();
-        workerContextRule.setId("worker_context_status_check");
-        workerContextRule.setType(RuleType.QL_EXPRESS);
-        workerContextRule.setContent("hasWorkerContext == false || isWorkerContextAllocatable == true");
-        workerContextRule.setDescription("Worker without context is allowed; otherwise worker context must be allocatable");
-        rules.add(workerContextRule);
+        RuleDefinition schedulingResourceRule = new RuleDefinition();
+        schedulingResourceRule.setId("worker_scheduling_resource_check");
+        schedulingResourceRule.setType(RuleType.QL_EXPRESS);
+        schedulingResourceRule.setContent("isWorkerSchedulingResourceAllocatable == true");
+        schedulingResourceRule.setDescription("Worker scheduling resource must be allocatable");
+        rules.add(schedulingResourceRule);
 
         RuleDefinition routingRule = new RuleDefinition();
         routingRule.setId("routing_code_match");
         routingRule.setType(RuleType.QL_EXPRESS);
         routingRule.setContent(
-                "taskHasRoutingRequirement == false || workerContextMatchesRoutingCode == true");
-        routingRule.setDescription("Routing code, when required, must match one of the worker context routing tags");
+                "taskHasRoutingRequirement == false || workerSchedulingMatchesRoutingCode == true");
+        routingRule.setDescription("Routing code, when required, must match one of the worker scheduling routing tags");
         rules.add(routingRule);
-
-        RuleDefinition capabilityRule = new RuleDefinition();
-        capabilityRule.setId("worker_capability_check");
-        capabilityRule.setType(RuleType.QL_EXPRESS);
-        capabilityRule.setContent(
-                "((taskEventCode == null || taskEventCode == '') && supportsProject == true) "
-                        + "|| ((taskEventCode != null && taskEventCode != '') && supportsEvent == true)");
-        capabilityRule.setDescription(
-                "Project support gates non-SDK tasks; SDK event tasks are matched by explicit worker event capability");
-        rules.add(capabilityRule);
 
         RuleDefinition loadRule = new RuleDefinition();
         loadRule.setId("worker_load_check");
@@ -105,8 +95,8 @@ public class RuleConfig {
         routingRule.setId("routing_code_match");
         routingRule.setType(RuleType.QL_EXPRESS);
         routingRule.setContent(
-                "taskHasRoutingRequirement == false || workerContextMatchesRoutingCode == true");
-        routingRule.setDescription("Routing code, when required, must match one of the worker context routing tags");
+                "taskHasRoutingRequirement == false || workerSchedulingMatchesRoutingCode == true");
+        routingRule.setDescription("Routing code, when required, must match one of the worker scheduling routing tags");
         rules.add(routingRule);
 
         return rules;

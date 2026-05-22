@@ -1,11 +1,24 @@
 package com.xa.mass.transport.model;
 
-import java.util.Collections;
+import com.xa.mass.transport.packet.PacketType;
+import com.xa.mass.transport.packet.TransportPacket;
+import com.xa.mass.transport.payload.TransportJsonValueNormalizer;
+
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 
 /**
- * Transport-neutral task execution result reported by a worker.
+ * Worker-reported result payload consumed by the transport result-ingress path.
+ *
+ * <p>This class is the worker-facing result payload, not the transport-owned
+ * ingress envelope. {@link TransportResultEnvelope} carries transport address
+ * metadata around this payload when runtime ingress needs adapter/route
+ * context.</p>
+ *
+ * <p>{@code output} is a JSON-object payload boundary. Values must remain
+ * JSON-safe so result reports can round-trip through non-memory transport
+ * queues and codecs without relying on JVM-local object shapes.</p>
  */
 public final class TaskResultReport {
 
@@ -15,6 +28,7 @@ public final class TaskResultReport {
     private final String detail;
     private final String errorCode;
     private final Map<String, Object> output;
+    private final Map<String, Object> transportPayload;
 
     public TaskResultReport(String taskId,
                             String messageId,
@@ -22,12 +36,26 @@ public final class TaskResultReport {
                             String detail,
                             String errorCode,
                             Map<String, Object> output) {
-        this.taskId = taskId;
-        this.messageId = messageId;
+        this(taskId, messageId, success, detail, errorCode, output, null, false);
+    }
+
+    private TaskResultReport(String taskId,
+                             String messageId,
+                             boolean success,
+                             String detail,
+                             String errorCode,
+                             Map<String, Object> output,
+                             Map<String, Object> transportPayload,
+                             boolean trustedImmutableOutput) {
+        this.taskId = requireText(taskId, "taskId");
+        this.messageId = requireText(messageId, "messageId");
         this.success = success;
         this.detail = detail;
         this.errorCode = errorCode;
-        this.output = immutableCopy(output);
+        this.output = trustedImmutableOutput ? trustedMap(output) : immutableCopy(output);
+        this.transportPayload = transportPayload != null
+                ? trustedMap(transportPayload)
+                : buildTransportPayload(success, detail, errorCode, this.output);
     }
 
     public String getTaskId() {
@@ -54,10 +82,91 @@ public final class TaskResultReport {
         return output;
     }
 
-    private static Map<String, Object> immutableCopy(Map<String, Object> values) {
-        if (values == null || values.isEmpty()) {
-            return Collections.emptyMap();
-        }
-        return Collections.unmodifiableMap(new LinkedHashMap<>(values));
+    /**
+     * Internal packet payload projection reused by runtime packet assembly and
+     * decode paths.
+     */
+    public Map<String, Object> transportPayloadView() {
+        return transportPayload;
     }
+
+    public static TaskResultReport fromTransportPacket(TransportPacket packet) {
+        requireResultPacket(packet);
+        Map<String, Object> payload = packet.payload();
+        return new TaskResultReport(
+                packet.taskId(),
+                packet.messageId(),
+                packet.payloadBoolean(TransportPacket.PAYLOAD_SUCCESS),
+                packet.payloadString(TransportPacket.PAYLOAD_DETAIL),
+                packet.payloadString(TransportPacket.PAYLOAD_ERROR_CODE),
+                packet.payloadObject(TransportPacket.PAYLOAD_OUTPUT),
+                payload,
+                true
+        );
+    }
+
+    public static TaskResultReport fromDecodedTransportPayload(String taskId,
+                                                               String messageId,
+                                                               boolean success,
+                                                               String detail,
+                                                               String errorCode,
+                                                               Map<String, Object> output) {
+        return new TaskResultReport(
+                taskId,
+                messageId,
+                success,
+                detail,
+                errorCode,
+                output,
+                null,
+                true
+        );
+    }
+
+    private static Map<String, Object> buildTransportPayload(boolean success,
+                                                             String detail,
+                                                             String errorCode,
+                                                             Map<String, Object> output) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put(TransportPacket.PAYLOAD_SUCCESS, success);
+        put(payload, TransportPacket.PAYLOAD_DETAIL, detail);
+        put(payload, TransportPacket.PAYLOAD_ERROR_CODE, errorCode);
+        payload.put(TransportPacket.PAYLOAD_OUTPUT, output);
+        return Map.copyOf(payload);
+    }
+
+    private static Map<String, Object> immutableCopy(Map<String, Object> values) {
+        return TransportJsonValueNormalizer.normalizeObject(values, TransportPacket.PAYLOAD_OUTPUT);
+    }
+
+    private static Map<String, Object> trustedMap(Map<String, Object> values) {
+        if (values == null || values.isEmpty()) {
+            return Map.of();
+        }
+        return values;
+    }
+
+    private static void requireResultPacket(TransportPacket packet) {
+        if (packet == null) {
+            throw new IllegalArgumentException("packet must not be null");
+        }
+        if (packet.type() != PacketType.TASK_RESULT) {
+            throw new IllegalArgumentException("packet must be TASK_RESULT");
+        }
+    }
+
+    private static void put(Map<String, Object> payload, String key, String value) {
+        if (value != null && !value.isBlank()) {
+            payload.put(key, value);
+        }
+    }
+
+    private static String requireText(String value, String fieldName) {
+        Objects.requireNonNull(value, fieldName);
+        if (value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + " must not be blank");
+        }
+        return value.trim();
+    }
+
 }

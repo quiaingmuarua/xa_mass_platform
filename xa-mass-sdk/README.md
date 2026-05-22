@@ -37,17 +37,18 @@ Create an SDK application handle:
 ```java
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
-import com.xa.mass.sdk.auth.SubmitterMetadata;
+import com.xa.mass.sdk.auth.SubmitterProfile;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
-import com.xa.mass.sdk.model.MassTaskCreateRequest;
-import com.xa.mass.sdk.model.MassTaskRequest;
+import com.xa.mass.base.model.TaskExecutionSpec;
+import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
+import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.WorkerEventBinding;
-import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 
 MassSdkApplication app = MassSdk.builder()
         .transport(transport -> transport
                 .webSocketAdapter(webSocket -> webSocket
+                        .adapterId("ws-public")
                         .server(19090, "/ws")
                         .enabled(false)
                         .serverEnabled(false)))
@@ -57,75 +58,209 @@ MassSdkApplication app = MassSdk.builder()
 Mainline transport configuration is adapter-owned: use nested
 `webSocketAdapter(...)`, `socketAdapter(...)`, or other explicit adapter blocks.
 Start from `MassSdk.builder()` and assemble the adapters you actually want.
+When the same adapter type needs multiple concrete runtime instances, keep one
+bundled slot with `webSocketAdapter(...)` / `socketAdapter(...)` and add extra
+instances through `addWebSocketAdapter(...)` / `addSocketAdapter(...)`, each
+with an explicit `adapterId`.
 
 app.start();
 
-app.registerWorker(WorkerRegistration.builder()
-        .workerId("crawler-worker-1")
-        .workerGroupId("crawler")
-        .supportedProjects(java.util.List.of("demoApp"))
+app.declareWorkerGroup(WorkerGroupDeclaration.builder()
+        .groupId("crawler")
         .eventBindings(java.util.List.of(
                 WorkerEventBinding.builder()
                         .eventCode("demo.dispatch")
                         .projectCodes(java.util.List.of("demoApp"))
                         .build()
         ))
+        .build());
+
+app.registerAdapterNode(AdapterNodeRegistration.builder()
+        .adapterNodeId("crawler-polling-node")
+        .adapterType("polling")
+        .endpointId("crawler-polling-node")
+        .build());
+
+app.bindNodeGroup(NodeGroupBindingRegistration.builder()
+        .adapterNodeId("crawler-polling-node")
+        .workerGroupId("crawler")
+        .build());
+
+app.registerWorker(WorkerRegistration.builder()
+        .workerId("crawler-worker-1")
+        .adapterNodeId("crawler-polling-node")
+        .workerGroupId("crawler")
         .transportHint("polling")
         .attributes(java.util.Map.of("type", "crawler"))
         .build());
-app.registerWorkerContext(WorkerContextRegistration.builder()
-        .workerContextId("ctx-crawler-worker-1")
-        .workerId("crawler-worker-1")
-        .project("demoApp")
-        .routingTags(java.util.Set.of("us"))
-        .attributes(java.util.Map.of("region", "us"))
-        .build());
 
-app.createTask(MassTaskCreateRequest.builder()
+var task = app.createTaskShell(MassTaskShellCreateRequest.builder()
         .userId("agent")
         .project("demoApp")
-        .taskName("demo-task")
         .sharedConfig(java.util.Map.of("textContent", "hello", "routingCode", "us"))
-        .inputs(java.util.List.of(java.util.Map.of("target", "target-a")))
-        .batchSize(1)
+        .executionSpec(new TaskExecutionSpec())
+        .build());
+
+app.appendTaskItems(task.getTid(), MassTaskItemBatchAppendRequest.builder()
+        .eventCode("demo.dispatch")
+        .items(java.util.List.of(
+                java.util.Map.of("target", "target-a")))
+        .build());
+
+app.executeTaskCommand(task.getTid(), com.xa.mass.sdk.model.MassTaskCommandRequest.builder()
+        .command("SEAL")
         .build());
 
 app.pullWorker("crawler-worker-1").connect();
 ```
 
-`supportedProjects` is only a coarse worker grouping/filter hint. New worker capability registration should declare `eventBindings`; when `eventBindings` is present it becomes the worker capability truth and SDK registration derives `supportedEventCodes` / `supportedProjects` from it.
+New worker capability registration should declare `WorkerGroupDeclaration`
+with `eventBindings`, then register worker execution identities against the
+group. `WorkerRegistration` does not accept worker-level capability fields;
+use worker attributes only for routing labels and diagnostics.
+
+`WorkerContext` registration, query, and runtime payload surfaces have been
+removed from the SDK mainline. New SDK integration should start from
+`WorkerGroupDeclaration`, `WorkerRegistration`, transport identity, and
+external worker client flows.
 
 `transportHint` is required for worker registration, and `adapterId` is the concrete runtime identity. Registration resolution now comes from transport runtime metadata rather than SDK-side `realtime -> websocket` guessing. Realtime workers must always register with explicit `adapterId + transportHint`; only polling keeps the implicit family default to `polling`. `pullWorker(...)` also resolves strictly from the worker's declared transport identity and fails fast on transport mismatch instead of falling back to another pull-capable adapter. Adapter-id aliases such as `ws`, `pull`, `queue`, or `tcp-socket` are not accepted as runtime identities; use canonical adapter ids such as `websocket`, `polling`, or `socket`. `transportHint` aliases such as `websocket`, `ws`, `push`, `pull`, or `queue` are also not accepted; use canonical coarse families such as `realtime` or `polling`. Adapter implementation labels such as `WorkerAdapter.protocol()` are no longer treated as runtime transport truth; selection keys off canonical registration identity instead.
 
-Register SDK catalog metadata when the embedding side wants to expose its own
-project/event directory:
+When runtime reachability needs cross-instance truth, configure shared transport
+presence through `redisDistributedChannels(...)`, `redisPresenceStore(...)`, or
+`presenceStoreFactory(...)`. Adapters still own local
+session/connect/heartbeat ingress, but shared presence projection belongs to
+transport runtime rather than engine-local worker status. A worker may have
+multiple route owners; dispatch routing reads the route-owner view and then
+writes the assigned batch to the selected `transportNodeId` inbox.
+
+Task result reads are exposed through `TaskResultQueryOperations`, separate
+from task aggregate query. `readTaskResults(...)` and archive streaming read
+committed stable-final rows from `TaskResultRuntime`; they do not read
+`TaskDetailStore` projection residue. Memory result runtime is volatile
+local/dev truth, while Redis result runtime is the cross-process result read
+truth.
+
+Owner-backed worker-control and stage-evidence APIs are exposed through SDK
+contracts instead of engine internals:
+
+- `WorkerControlOperations` reports worker capability and bounded worker state,
+  requests/acknowledges worker commands, and reads command/state snapshots.
+- `TaskStageEvidenceOperations` reports task item stage evidence and reads
+  bounded stage projections.
+
+These APIs call `WorkerControlService` / `TaskStageEvidenceService` inside the
+engine. They do not write public task results, do not treat worker state as
+reachability truth, and do not expose engine owner records directly.
+
+Distributed transport v1 splits one engine producer JVM from one or more
+transport consumer JVMs without adding server-owned transport endpoints. Use
+Redis-backed runtime channels for dispatch handoff, result ingest, and
+dispatch-failure compensation. `redisDistributedChannels(...)` wires the
+node-targeted dispatch inbox, result inbox, dispatch-failure inbox, Redis
+presence, Redis delivery store, and transport-node registry under the supplied
+namespace:
+
+```java
+import com.xa.mass.starter.config.TransportRuntimeRole;
+
+String redisUri = "redis://localhost:6379";
+
+MassSdkApplication engineProducer = MassSdk.builder()
+        .transport(transport -> transport
+                .transportRuntimeRole(TransportRuntimeRole.ENGINE_PRODUCER)
+                .redisDistributedChannels(redisUri, "xa:mass:prod:transport")
+                .webSocketAdapter(webSocket -> webSocket
+                        .enabled(false)
+                        .serverEnabled(false)))
+        .engine(engine -> engine.enabled(true))
+        .build();
+```
+
+```java
+import com.xa.mass.starter.config.TransportRuntimeRole;
+
+String redisUri = "redis://localhost:6379";
+
+MassSdkApplication transportConsumer = MassSdk.builder()
+        .transport(transport -> transport
+                .transportRuntimeRole(TransportRuntimeRole.TRANSPORT_CONSUMER)
+                .transportNodeId("edge-node-a")
+                .redisDistributedChannels(redisUri, "xa:mass:prod:transport")
+                .webSocketAdapter(webSocket -> webSocket
+                        .adapterId("ws-public")
+                        .server(19090, "/ws")
+                        .enabled(true)
+                        .serverEnabled(true)))
+        .engine(engine -> engine.enabled(false))
+        .build();
+```
+
+The dispatch handoff carries only post-claim `TaskDispatchBatch` values. In
+multi-adapter mode the engine producer reads the shared worker route-owner view,
+selects an ONLINE route whose transport node is ONLINE, and writes the batch to
+that node's Redis inbox. It is not a duplicate of the runtime ready queue, and
+transport consumers must not apply results, retry tasks, or mutate task
+lifecycle directly. Result and retryable dispatch-failure inboxes are drained
+by the engine producer into its local engine ports.
+
+For multi-instance realtime assembly, `adapterType` and `adapterId` are not the
+same concept. For example, two bundled WebSocket instances might use adapter ids
+such as `ws-public` and `ws-internal`; both still belong to transport hint
+`realtime`.
+
+Register SDK project and event resources when the embedding side wants to
+expose its own control-plane directory:
 
 ```java
 import com.xa.mass.sdk.catalog.PayloadType;
-import com.xa.mass.sdk.catalog.ProjectMetadata;
+import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.event.EventDefinition;
+import com.xa.mass.base.event.PriorityClass;
+import com.xa.mass.base.event.ResponseMode;
+import com.xa.mass.base.event.TargetScope;
 
 app.registerEventDefinition(EventDefinition.builder()
         .code("bot.command")
         .name("Bot Command")
         .description("Handle a bot command")
-        .payloadTypes(java.util.List.of(PayloadType.TEXT, PayloadType.JSON))
+        .payloadTypes(java.util.List.of(PayloadType.JSON))
         .taskModes(java.util.List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
+        .priorityClass(PriorityClass.STANDARD)
+        .responseMode(ResponseMode.FINAL_RESULT)
+        .targetScope(TargetScope.WORKER)
         .build());
 
-app.registerProject(ProjectMetadata.builder()
+app.registerProject(ProjectDefinition.builder()
         .code("botApp")
         .name("Bot App")
         .description("Telegram-style bot project")
         .eventCodes(java.util.List.of("bot.command"))
         .build());
 
-app.createTask(MassTaskRequest.singleRun("botApp", "bot-command")
+var botTask = app.createTaskShell(MassTaskShellCreateRequest.builder()
+        .userId("bot-user")
+        .project("botApp")
+        .executionSpec(new TaskExecutionSpec())
+        .build());
+
+app.appendTaskItems(botTask.getTid(), MassTaskItemBatchAppendRequest.builder()
         .eventCode("bot.command")
-        .textInputs(java.util.List.of("/start"))
+        .items(java.util.List.of(
+                java.util.Map.of("command", "/start")))
+        .build());
+
+app.executeTaskCommand(botTask.getTid(), com.xa.mass.sdk.model.MassTaskCommandRequest.builder()
+        .command("SEAL")
         .build());
 ```
+
+`priorityClass`, `responseMode`, and `targetScope` are event catalog metadata.
+They are exposed through SDK/server catalog reads so operators can understand
+event behavior, but they do not directly change queue ordering, result
+convergence, transport delivery, or worker command routing. Omitted values
+default to `STANDARD`, `FINAL_RESULT`, and `WORKER`.
 
 Register a lightweight principal credential binding when an embedding app wants
 an API-key or service-account style identity:
@@ -143,11 +278,11 @@ app.registerSubmitter(SubmitterRegistration.builder()
         .build());
 
 var submitter = app.authenticateSubmitter("dev-api-key");
-SubmitterMetadata metadata = app.getSubmitter("telegram-bot");
+SubmitterProfile submitterProfile = app.getSubmitter("telegram-bot");
 ```
 
 `registerSubmitter(...)` accepts the raw credential. `listSubmitters()` and
-`getSubmitter(...)` return `SubmitterMetadata` and intentionally do not expose
+`getSubmitter(...)` return `SubmitterProfile` and intentionally do not expose
 the credential back to callers. Registering the same credential for a different
 principal is rejected. A single `userId` can own multiple credentials; each
 credential keeps its own permissions, project scopes, and event scopes.
@@ -155,27 +290,53 @@ credential keeps its own permissions, project scopes, and event scopes.
 The returned `MassSdkApplication` exposes:
 
 - lifecycle: `start()`, `stop()`, `isRunning()`
-- common task operations after `start()`: `createTask(MassTaskCreateRequest)`, `createTask(MassTaskRequest)`, `getTask(...)`, `getAllTasks()`, `getTasksByStatus(...)`, `approveTask(...)`, `rejectTask(...)`, `blockTask(...)`, `pauseTask(...)`, `resumeTask(...)`, `resumeTaskDetailed(...)`, `cancelTask(...)`, `terminateTask(...)`
-- open-ended task operations after `start()`: `appendTaskItems(...)`, `sealTask(...)`
-- audit and compatibility diagnostics after `start()`: bounded `getTaskMessages(..., limit)`, `resolveTaskState(...)`, `validateTaskState(...)`, `auditTaskProjectionState(...)` (`validateTaskState(...)` stays bounded runtime validation; `auditTaskProjectionState(...)` is the explicit deep compatibility-projection audit)
-- common worker operations after `start()`: `registerWorker(...)`, `registerWorkerContext(...)`, `getWorker(...)`, `getAllWorkers()`, `getAllWorkerContexts()`, `getWorkerContexts(...)`, `getWorkerContextById(...)`, `isWorkerLocked(...)`, `isWorkerOnline(...)`
-- resource/control-plane operations through `ResourceOperations`: `registerProject(...)`, `registerEventDefinition(...)`, `registerSubmitter(...)`, `listProjects()`, `getProject(...)`, `listEvents()`, `getEvent(...)`, `getEventsForProject(...)`, `listSubmitters()`, `getSubmitter(...)`, `authenticateSubmitter(...)`, `hasProject(...)`, `hasEvent(...)`, `hasSubmitter(...)`, `projectSupportsEvent(...)`; submitter list/get return `SubmitterMetadata` without credentials
-- pull-style worker entry after `start()`: `pullWorker(...)`
-- stable runtime bootstrap surface after `start()`: `publishTaskEvents()`, plus open registration methods such as `registerWorker(...)`, `registerWorkerContext(...)`, `createTask(...)`, `replaceDefaultRules(...)`
+- mainline task operations after `start()`: `createTaskShell(...)`, `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)`, `executeTaskCommand(taskId, MassTaskCommandRequest)`, `getTaskDetail(...)`, `listTaskSummaries(...)`, `getTaskSummariesByStatus(...)`, `getTaskState(...)`, `getTaskAccess(...)`
+- diagnostic-only task state helpers require the explicit `app.taskDiagnostics()` surface; they are not part of the recommended task shell / ingest mainline
+- operator/runtime read diagnostics require the explicit `app.runtimeDiagnostics()` surface; they are not part of the task/worker mainline
+- raw transport side-channel access remains internal/operator-only below the stable SDK surface; product or server code should not depend on `sdk.internal`
+- worker mainline after `start()`: `registerWorker(...)`, `getWorker(...)`, `getAllWorkers()`, `isWorkerOnline(...)`
+- worker client/mainline after `start()`: `pullWorker(...)`, `workerOnline(...)`, `workerHeartbeat(...)`, `workerOffline(...)`, `pollTasks(...)`, `submitResult(...)`
+- resource/control-plane operations through `ResourceOperations`: `registerProject(...)`, `registerEventDefinition(...)`, `registerSubmitter(...)`, `listProjects()`, `getProject(...)`, `listEvents()`, `getEvent(...)`, `getEventsForProject(...)`, `listSubmitters()`, `getSubmitter(...)`, `authenticateSubmitter(...)`, `hasProject(...)`, `hasEvent(...)`, `hasSubmitter(...)`, `projectSupportsEvent(...)`; submitter list/get return `SubmitterProfile` without credentials
+- stable runtime bootstrap surface after `start()`: open mainline registration/mutation methods such as `registerWorker(...)`, `createTaskShell(...)`, `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)`, `executeTaskCommand(taskId, MassTaskCommandRequest)`, `replaceDefaultRules(...)`; WorkerContext registration is no longer an SDK surface
 - new bootstrap integration seam: `EngineOptions.bootstrapDataProvider(...)` accepts a pluggable `MassBootstrapDataProvider`
 
 Current SDK contracts:
 
 | Area | Contract |
 | --- | --- |
-| task create | `MassTaskCreateRequest` is generic compatibility create; `MassTaskRequest` is SDK v1 for `single-run` / `streaming`, `text` / `json`, and event-aware creation |
-| worker resources | `WorkerRegistration` / `WorkerContextRegistration` declare identity/capability only; workers start `OFFLINE`, contexts `IDLE`; transport liveness owns online state |
-| resources | `ResourceOperations` owns project/event/submitter resources; enabled projects also bind into engine task creation and worker-context project checks |
+| task create | mainline SDK flow is `MassTaskShellCreateRequest` plus explicit `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)` and `executeTaskCommand(taskId, MassTaskCommandRequest)` for lifecycle/governance; `taskName` is server-derived, and capability `eventCode` belongs on append batches or per-item ingress rather than task shell truth |
+| worker resources | `WorkerRegistration` declares worker identity/capability mainline; transport liveness owns online state, and `isWorkerOnline(...)` reads transport presence when available (`STALE`/`OFFLINE` both surface as not online). WorkerContext registration/snapshot contracts have been removed from the SDK |
+| resources | `ResourceOperations` owns project/event/submitter resources; project is a first-class control-plane binding and enabled projects also bind into engine task creation and worker capability checks |
 | business events | default catalog ships no business task events; embedding apps or dev fixtures register event codes explicitly |
-| submitters | in-memory principal/API-key binding only, not a full user subsystem; queries return `SubmitterMetadata`, not credentials |
-| diagnostics/detail | `validateTaskState(...)` is bounded runtime validation, `auditTaskProjectionState(...)` is explicit diagnostic audit, and `getTaskMessages(..., limit)` is compatibility/demo detail; production detail belongs in logs, trace, audit sinks, or async persistence |
-| removed paths | direct engine/manager/runtime escape hatches are removed; default path is `MassSdkApplication` |
+| submitters | in-memory principal/API-key binding only, not a full user subsystem; queries return `SubmitterProfile`, not credentials |
+| diagnostics/detail | bounded runtime validation/resolution stays behind `app.taskDiagnostics()` instead of the default `MassSdkApplication` task mainline. SDK mainline no longer exposes task-item or attempt detail query APIs; production detail belongs in logs, trace, audit sinks, or async persistence |
+| removed paths | direct engine/manager/runtime escape hatches are removed; queue/session/raw transport debug methods are also off the stable `MassSdkApplication` main surface |
 | startup/bootstrap | operations fail fast without a started engine; mock/demo bootstrap belongs outside SDK via `MassBootstrapDataProvider` / `MassRuntimeControl` |
+
+For embedded runtime wiring, keep the mainline on storage/runtime contracts
+such as `taskStorage(...)`, `taskDetailStore(...)`, `taskWorkRuntime(...)`,
+`workerStorage(...)`, and `ruleStorage(...)`. Do not make `TaskManager` or
+`WorkerManager` the default SDK assembly surface.
+Shell-mainline SDK create maps onto `TaskShellCreateRequestDto`; worker registration/query helpers use `WorkerStorage`
+for control-plane truth instead of treating `WorkerManager` as the default SDK
+dependency; SDK rule list/replace helpers now use `RuleStorage` directly
+instead of carrying `RuleManager` as the default outer-layer dependency.
+Within starter assembly, `EngineConfig` now treats `WorkerManager` and
+`RuleManager` as derived helpers over `WorkerStorage` / `RuleStorage` rather
+than independent config slots that outer modules should wire or cache.
+Embedded transport runtime assembly also consumes only
+`WorkerLookupStore`-level worker resolution instead of reaching through the
+broader worker facade.
+Assignment no longer hands dispatch-ready batches straight into the transport
+routing listener. SDK runtime assembly now inserts an explicit
+`TaskDispatchHandoff` seam between engine and transport; the bundled default is
+still an in-memory queue plus pump, but the replacement boundary is now
+explicit for split runtime wiring through `redisDispatchHandoff(...)` or
+`redisDistributedChannels(...)`. Multi-process adapter wiring uses
+`NodeTargetedTaskDispatchHandoff`, so each transport JVM polls only its own
+`transportNodeId` inbox. The companion result and dispatch-failure Redis
+inboxes are runtime channels back to the engine process; they are not server
+APIs and they do not move task lifecycle ownership into transport.
 
 ## Compatibility Policy
 
@@ -225,6 +386,9 @@ Stable builder mainline is `transport(...)`. Bundled WebSocket settings belong
 under explicit adapter-owned config such as
 `transport(... -> webSocketAdapter(...))`; there is no separate WebSocket-named
 builder mainline in `xa-mass-sdk`.
+Additional same-type adapter instances can be appended through
+`transport(... -> addWebSocketAdapter(...))` and
+`transport(... -> addSocketAdapter(...))`.
 
 Current embedded-runtime mainline snapshots `TransportConfig` into an internal
 runtime-composition object during `MassApplication` construction. Runtime
@@ -255,8 +419,15 @@ Custom primary transport bootstraps are resolved from their own descriptor
 metadata rather than from the bundled WebSocket enable flag, so swapping the
 primary adapter does not silently erase pre-start registration identity.
 Runtime delivery backlog admission is configured through the transport builder;
-`maxDeliveryQueuedItems(...)` controls the total in-memory queued dispatch cap
-used by the embedded delivery store before a Redis/JDBC-backed store is added.
+`maxDeliveryQueuedItems(...)` controls the total queued dispatch cap used by
+the resolved delivery store. The embedded mainline still defaults to the
+in-memory delivery store, but SDK composition may replace it through
+`deliveryStoreFactory(...)` or `redisDeliveryStore(redisUri[, namespacePrefix])`
+without changing transport runtime contracts.
+`maxDeliveryItemsPerRoute(...)` controls per-route backlog admission for both
+the in-memory and Redis-backed delivery stores, so per-worker polling queues
+and adapter-local route backpressure can be tuned without changing transport
+contracts.
 Runtime executor admission is also configurable through
 `transportRuntimeMaxPendingTasks(...)` and `eventRuntimeMaxPendingTasks(...)`;
 both default to 10000 pending tasks and are reported in executor diagnostics.
@@ -266,11 +437,11 @@ direct runtime handlers in bounded virtual-thread execution; timeout returns an
 `EVENT_TIMEOUT` response and cancellation is cooperative, so handlers should
 remain interrupt-aware and use bounded I/O.
 Runtime executor diagnostics for transport and optional event-handler execution
-are surfaced through `getQueueDetail().runtimeExecutors` and the Boot-shell
-`/api/queue/detail` response. Delivery-store diagnostics also expose
-`getQueueDetail().deliveryDiagnostics.queueByAdapter`, which is the adapter-neutral
+are surfaced through the explicit operator/runtime `app.runtimeDiagnostics().getQueueDetail()`
+view and the Boot-shell `/api/v1/runtime/queues` response. Delivery-store diagnostics also expose
+`app.runtimeDiagnostics().getQueueDetail().deliveryDiagnostics.queueByAdapter`, which is the adapter-neutral
 per-`adapterId` queue breakdown intended to survive a later Redis/JDBC store
 replacement. Realtime direct-send counters are intentionally separate under
-`getQueueDetail().deliveryDiagnostics.directByAdapter`; they share delivery outcome
+`app.runtimeDiagnostics().getQueueDetail().deliveryDiagnostics.directByAdapter`; they share delivery outcome
 language with queued delivery but they do not imply queue ownership, dequeue,
 or durable backlog state.

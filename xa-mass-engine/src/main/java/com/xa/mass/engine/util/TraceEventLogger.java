@@ -2,13 +2,27 @@ package com.xa.mass.engine.util;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
-import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
-import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
-import com.xa.mass.base.model.*;
+import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskSharedConfig;
+import com.xa.mass.base.model.Worker;
+import com.xa.mass.engine.TaskWorkProjectionState.AttemptFinalReason;
+import com.xa.mass.engine.TaskWorkProjectionState.AttemptStatus;
+import com.xa.mass.engine.TaskWorkProjectionState.MessageFinalReason;
+import com.xa.mass.engine.TaskWorkProjectionState.MessageStatus;
+import com.xa.mass.engine.load.WorkerLoadSnapshot;
+import com.xa.mass.engine.model.WorkerSchedulingCandidate;
+import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.engine.runtime.TaskRuntimeProfile;
 import com.xa.mass.engine.runtime.TaskRuntimeProfileResolver;
+import com.xa.mass.engine.command.WorkerCommandLifecycleResult;
+import com.xa.mass.engine.stage.TaskStageEvidenceResult;
+import com.xa.mass.engine.worker.WorkerCapabilityReportResult;
+import com.xa.mass.engine.worker.WorkerStateProjectionResult;
 import com.xa.mass.runtime.api.TaskWorkStats;
+import com.xa.mass.trace.sink.ExecutionEvent;
+import com.xa.mass.trace.sink.ExecutionEventSink;
+import com.xa.mass.trace.sink.ExecutionEventType;
+import com.xa.mass.trace.sink.NoopExecutionEventSink;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -17,759 +31,938 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Emits structured transition traces through MDC-backed logs.
- * Keep the public event names and field names stable because tests and docs rely on them.
+ * Canonical execution-trace emitter for engine lifecycle events.
+ *
+ * <p>This class owns the mapping from engine business semantics to the shared
+ * {@link ExecutionEvent} model. Diagnostic logs may remain elsewhere, but they
+ * are not the trace contract.</p>
  */
 public final class TraceEventLogger {
 
-    private static final Logger TRACE_LOGGER = LoggerFactory.getLogger(TraceEventLogger.class);
+    private static final Logger LOG = LoggerFactory.getLogger(TraceEventLogger.class);
     private static final TaskRuntimeProfileResolver TASK_RUNTIME_PROFILE_RESOLVER = new TaskRuntimeProfileResolver();
 
-    private TraceEventLogger() {
+    private final ExecutionEventSink sink;
+
+    public TraceEventLogger(ExecutionEventSink sink) {
+        this.sink = sink == null ? new NoopExecutionEventSink() : sink;
     }
 
-    public static void taskStatusTransition(String taskId,
-                                            TaskStatus fromStatus,
-                                            TaskStatus toStatus,
-                                            String trigger,
-                                            String source,
-                                            String reason) {
-        emit("TASK_STATUS_TRANSITION", fields(
-                "entityType", "Task",
-                "entityId", taskId,
-                "taskId", taskId,
-                "fromStatus", enumName(fromStatus),
-                "toStatus", enumName(toStatus),
-                "trigger", trigger,
-                "source", source,
-                "reason", reason,
-                "result", "SUCCESS"
-        ));
+    public static TraceEventLogger noop() {
+        return new TraceEventLogger(new NoopExecutionEventSink());
     }
 
-    public static void taskTerminalClosed(String taskId,
-                                          TaskStatus fromStatus,
-                                          TaskTerminalReason terminalReason,
-                                          String trigger,
-                                          String source,
-                                          String reason) {
-        emit("TASK_TERMINAL_CLOSED", fields(
-                "entityType", "Task",
-                "entityId", taskId,
-                "taskId", taskId,
-                "fromStatus", enumName(fromStatus),
-                "toStatus", TaskStatus.TERMINAL.name(),
-                "terminalReason", enumName(terminalReason),
-                "trigger", trigger,
-                "source", source,
-                "reason", reason,
-                "result", "SUCCESS"
-        ));
+    public void taskStatusTransition(String taskId,
+                                     TaskStatus fromStatus,
+                                     TaskStatus toStatus,
+                                     String trigger,
+                                     String source,
+                                     String reason) {
+        emit(event(ExecutionEventType.TASK_STATUS_TRANSITION)
+                .identity(identity -> identity.taskId(taskId))
+                .transition(enumName(fromStatus), enumName(toStatus), reason)
+                .attrs(attrs(
+                        "trigger", trigger,
+                        "source", source,
+                        "reason", reason,
+                        "result", "SUCCESS"
+                ))
+                .build());
     }
 
-    public static void taskMsgStatusTransition(TaskMsg taskMsg,
-                                               TaskMsgStatus fromStatus,
-                                               TaskMsgStatus toStatus,
+    public void taskTerminalClosed(String taskId,
+                                   TaskStatus fromStatus,
+                                   TaskTerminalReason terminalReason,
+                                   String trigger,
+                                   String source,
+                                   String reason) {
+        emit(event(ExecutionEventType.TASK_TERMINAL_CLOSED)
+                .identity(identity -> identity.taskId(taskId))
+                .transition(enumName(fromStatus), TaskStatus.TERMINAL.name(), reason)
+                .attrs(attrs(
+                        "trigger", trigger,
+                        "source", source,
+                        "reason", reason,
+                        "result", "SUCCESS",
+                        "terminalReason", enumName(terminalReason)
+                ))
+                .build());
+    }
+
+    public void taskWorkStatusTransition(TaskWorkTraceView workView,
+                                        MessageStatus fromStatus,
+                                        MessageStatus toStatus,
+                                        String trigger,
+                                        String source,
+                                        String reason) {
+        taskWorkStatusTransition(workView, null, null, null, fromStatus, toStatus, trigger, source, reason);
+    }
+
+    public void taskWorkStatusTransition(TaskWorkTraceView workView,
+                                        String attemptId,
+                                        String workerId,
+                                        String batchId,
+                                        MessageStatus fromStatus,
+                                        MessageStatus toStatus,
+                                        String trigger,
+                                        String source,
+                                        String reason) {
+        if (workView == null) {
+            return;
+        }
+        emit(event(ExecutionEventType.TASK_WORK_STATUS_TRANSITION)
+                .identity(identity -> identity
+                        .taskId(workView.taskId())
+                        .messageId(workView.messageId())
+                        .attemptId(attemptId != null ? attemptId : workView.latestAttemptId())
+                        .workerId(workerId != null ? workerId : workView.latestAttemptWorkerId())
+                        .leaseToken(null))
+                .transition(enumName(fromStatus), enumName(toStatus), reason)
+                .attrs(attrs(
+                        "trigger", trigger,
+                        "source", source,
+                        "reason", reason,
+                        "result", "SUCCESS",
+                        "finalReason", enumName(workView.finalReason()),
+                        "latestAttemptBatchId", batchId != null ? batchId : workView.latestAttemptBatchId()
+                ))
+                .build());
+    }
+
+    public void taskWorkAttemptStatusTransition(String taskId,
+                                               String messageId,
+                                               String attemptId,
+                                               Integer attemptNo,
+                                               String workerId,
+                                               String batchId,
+                                               AttemptFinalReason finalReason,
+                                               AttemptStatus fromStatus,
+                                               AttemptStatus toStatus,
                                                String trigger,
                                                String source,
                                                String reason) {
-        taskMsgStatusTransition(taskMsg, null, fromStatus, toStatus, trigger, source, reason);
+        taskWorkAttemptStatusTransition(taskId, messageId, attemptId, attemptNo, workerId, batchId,
+                finalReason, fromStatus, toStatus, trigger, source, reason, null);
     }
 
-    public static void taskMsgStatusTransition(TaskMsg taskMsg,
-                                               TaskMsgAttempt attempt,
-                                               TaskMsgStatus fromStatus,
-                                               TaskMsgStatus toStatus,
-                                               String trigger,
-                                               String source,
-                                               String reason) {
-        if (taskMsg == null) {
-            return;
-        }
-        emit("TASK_MSG_STATUS_TRANSITION", fields(
-                "entityType", "TaskMsg",
-                "entityId", taskMsg.getMessageId(),
-                "taskId", taskMsg.getTaskId(),
-                "messageId", taskMsg.getMessageId(),
-                "latestAttemptWorkerId", latestAttemptWorkerId(taskMsg, attempt),
-                "latestAttemptWorkerContextId", latestAttemptWorkerContextId(taskMsg, attempt),
-                "latestAttemptBatchId", latestAttemptBatchId(taskMsg, attempt),
-                "fromStatus", enumName(fromStatus),
-                "toStatus", enumName(toStatus),
-                "finalReason", enumName(taskMsg.getFinalReason()),
-                "trigger", trigger,
-                "source", source,
-                "reason", reason,
-                "result", "SUCCESS"
-        ));
-    }
-
-    public static void taskMsgAttemptStatusTransition(TaskMsgAttempt attempt,
-                                                      TaskMsgAttemptStatus fromStatus,
-                                                      TaskMsgAttemptStatus toStatus,
-                                                      String trigger,
-                                                      String source,
-                                                      String reason) {
-        if (attempt == null) {
-            return;
-        }
-        emit("TASK_MSG_ATTEMPT_STATUS_TRANSITION", fields(
-                "entityType", "TaskMsgAttempt",
-                "entityId", attempt.getAttemptId(),
-                "taskId", attempt.getTaskId(),
-                "messageId", attempt.getMessageId(),
-                "attemptId", attempt.getAttemptId(),
-                "attemptNo", String.valueOf(attempt.getAttemptNo()),
-                "workerId", attempt.getWorkerId(),
-                "workerContextId", attempt.getWorkerContextId(),
-                "batchId", attempt.getBatchId(),
-                "fromStatus", enumName(fromStatus),
-                "toStatus", enumName(toStatus),
-                "finalReason", enumName(attempt.getFinalReason()),
-                "trigger", trigger,
-                "source", source,
-                "reason", reason,
-                "result", "SUCCESS"
-        ));
-    }
-
-    public static void taskMsgRetryReset(TaskMsg taskMsg, String trigger, String source, String reason) {
-        taskMsgRetryReset(taskMsg, null, null, trigger, source, reason);
-    }
-
-    public static void taskMsgRetryReset(TaskMsg taskMsg,
-                                         TaskMsgAttempt attempt,
-                                         Long workRetryDelayMillis,
-                                         String trigger,
-                                         String source,
-                                         String reason) {
-        if (taskMsg == null) {
-            return;
-        }
-        emit("TASK_MSG_RETRY_RESET", fields(
-                "entityType", "TaskMsg",
-                "entityId", taskMsg.getMessageId(),
-                "taskId", taskMsg.getTaskId(),
-                "messageId", taskMsg.getMessageId(),
-                "latestAttemptWorkerId", latestAttemptWorkerId(taskMsg, attempt),
-                "latestAttemptWorkerContextId", latestAttemptWorkerContextId(taskMsg, attempt),
-                "latestAttemptBatchId", latestAttemptBatchId(taskMsg, attempt),
-                "fromStatus", "FAILED_OR_EXPIRED",
-                "toStatus", TaskMsgStatus.INIT.name(),
-                "retryCount", String.valueOf(taskMsg.getRetryCount()),
-                "workRetryDelayMillis", stringValue(workRetryDelayMillis),
-                "trigger", trigger,
-                "source", source,
-                "reason", reason,
-                "result", "SUCCESS"
-        ));
-    }
-
-    public static void workerContextStatusTransition(String taskId,
-                                                     WorkerContext workerContext,
-                                                     WorkerContextStatus fromStatus,
-                                                     WorkerContextStatus toStatus,
-                                                     String trigger,
-                                                     String source,
-                                                     String reason) {
-        if (workerContext == null) {
-            return;
-        }
-        emit("WORKER_CONTEXT_STATUS_TRANSITION", fields(
-                "entityType", "WorkerContext",
-                "entityId", workerContext.getWorkerContextId(),
-                "taskId", taskId,
-                "workerId", workerContext.getWorkerId(),
-                "workerContextId", workerContext.getWorkerContextId(),
-                "fromStatus", enumName(fromStatus),
-                "toStatus", enumName(toStatus),
-                "trigger", trigger,
-                "source", source,
-                "reason", reason,
-                "result", "SUCCESS"
-        ));
-    }
-
-    public static void workerLockAcquired(String taskId, String workerId, String trigger, String source, String reason) {
-        emit("WORKER_LOCK_ACQUIRED", fields(
-                "entityType", "Worker",
-                "entityId", workerId,
-                "taskId", taskId,
-                "workerId", workerId,
-                "trigger", trigger,
-                "source", source,
-                "reason", reason,
-                "result", "SUCCESS"
-        ));
-    }
-
-    public static void workerLockReleased(String taskId, String workerId, String trigger, String source, String reason) {
-        emit("WORKER_LOCK_RELEASED", fields(
-                "entityType", "Worker",
-                "entityId", workerId,
-                "taskId", taskId,
-                "workerId", workerId,
-                "trigger", trigger,
-                "source", source,
-                "reason", reason,
-                "result", "SUCCESS"
-        ));
-    }
-
-    public static void workerMatchAccepted(String taskId, Worker worker, WorkerContext workerContext, String reason) {
-        if (worker == null) {
-            return;
-        }
-        emit("WORKER_MATCH_ACCEPTED", fields(
-                "entityType", "Worker",
-                "entityId", worker.getWorkerId(),
-                "taskId", taskId,
-                "workerId", worker.getWorkerId(),
-                "workerContextId", workerContext != null ? workerContext.getWorkerContextId() : null,
-                "source", "RuleBasedTaskWorkerMatchingStrategy",
-                "reason", reason,
-                "result", "SUCCESS"
-        ));
-    }
-
-    public static void workerMatchRejected(String taskId, Worker worker, WorkerContext workerContext, String reason) {
-        if (worker == null) {
-            return;
-        }
-        emit("WORKER_MATCH_REJECTED", fields(
-                "entityType", "Worker",
-                "entityId", worker.getWorkerId(),
-                "taskId", taskId,
-                "workerId", worker.getWorkerId(),
-                "workerContextId", workerContext != null ? workerContext.getWorkerContextId() : null,
-                "source", "RuleBasedTaskWorkerMatchingStrategy",
-                "reason", reason,
-                "result", "REJECTED"
-        ));
-    }
-
-    public static void dispatchRequested(String taskId,
-                                         String trigger,
-                                         String source,
-                                         String reason) {
-        emit("DISPATCH_REQUESTED", fields(
-                "entityType", "Task",
-                "entityId", taskId,
-                "taskId", taskId,
-                "trigger", trigger,
-                "source", source,
-                "reason", reason,
-                "result", "SUCCESS"
-        ));
-    }
-
-    public static void dispatchSkipped(String taskId,
-                                       String trigger,
-                                       String source,
-                                       String reason,
-                                       Integer requiredMinWorkerCount) {
-        emit("DISPATCH_SKIPPED", fields(
-                "entityType", "Task",
-                "entityId", taskId,
-                "taskId", taskId,
-                "trigger", trigger,
-                "source", source,
-                "reason", reason,
-                "requiredMinWorkerCount",
-                requiredMinWorkerCount != null ? String.valueOf(requiredMinWorkerCount) : null,
-                "result", "SKIPPED"
-        ));
-    }
-
-    public static void dispatchSkipped(Task task,
-                                       String trigger,
-                                       String source,
-                                       String reason,
-                                       Integer requiredMinWorkerCount) {
-        if (task == null) {
-            return;
-        }
-        Map<String, String> traceFields = fields(
-                "entityType", "Task",
-                "entityId", task.getTid(),
-                "taskId", task.getTid(),
-                "trigger", trigger,
-                "source", source,
-                "reason", reason,
-                "requiredMinWorkerCount",
-                requiredMinWorkerCount != null ? String.valueOf(requiredMinWorkerCount) : null,
-                "result", "SKIPPED"
-        );
-        putTaskRuntimeProfile(traceFields, task);
-        emit("DISPATCH_SKIPPED", traceFields);
-    }
-
-    public static void assignmentRetryScheduled(String taskId,
-                                                TaskStatus currentStatus,
-                                                String trigger,
-                                                String source,
-                                                String reason,
-                                                long retryDelayMillis) {
-        emit("ASSIGNMENT_RETRY_SCHEDULED", fields(
-                "entityType", "Task",
-                "entityId", taskId,
-                "taskId", taskId,
-                "currentStatus", enumName(currentStatus),
-                "retryDelayMillis", String.valueOf(retryDelayMillis),
-                "trigger", trigger,
-                "source", source,
-                "reason", reason,
-                "result", "SCHEDULED"
-        ));
-    }
-
-    public static void callbackAccepted(TaskMsg taskMsg, String reason) {
-        callbackAccepted(taskMsg, null, reason);
-    }
-
-    public static void callbackAccepted(TaskMsg taskMsg, TaskMsgAttempt attempt, String reason) {
-        if (taskMsg == null) {
-            return;
-        }
-        emit("CALLBACK_ACCEPTED", fields(
-                "entityType", "TaskMsg",
-                "entityId", taskMsg.getMessageId(),
-                "taskId", taskMsg.getTaskId(),
-                "messageId", taskMsg.getMessageId(),
-                "latestAttemptWorkerId", latestAttemptWorkerId(taskMsg, attempt),
-                "latestAttemptWorkerContextId", latestAttemptWorkerContextId(taskMsg, attempt),
-                "latestAttemptBatchId", latestAttemptBatchId(taskMsg, attempt),
-                "source", "TaskManager",
-                "reason", reason,
-                "result", "SUCCESS"
-        ));
-    }
-
-    public static void dispatchRequested(Task task,
-                                         String trigger,
-                                         String source,
-                                         String reason) {
-        if (task == null) {
-            return;
-        }
-        Map<String, String> traceFields = fields(
-                "entityType", "Task",
-                "entityId", task.getTid(),
-                "taskId", task.getTid(),
-                "trigger", trigger,
-                "source", source,
-                "reason", reason,
-                "result", "SUCCESS"
-        );
-        putTaskRuntimeProfile(traceFields, task);
-        emit("DISPATCH_REQUESTED", traceFields);
-    }
-
-    public static void callbackIgnoredDuplicate(TaskMsg taskMsg, String reason) {
-        callbackIgnoredDuplicate(taskMsg, null, reason);
-    }
-
-    public static void callbackIgnoredDuplicate(TaskMsg taskMsg, TaskMsgAttempt attempt, String reason) {
-        if (taskMsg == null) {
-            return;
-        }
-        emit("CALLBACK_IGNORED_DUPLICATE", fields(
-                "entityType", "TaskMsg",
-                "entityId", taskMsg.getMessageId(),
-                "taskId", taskMsg.getTaskId(),
-                "messageId", taskMsg.getMessageId(),
-                "latestAttemptWorkerId", latestAttemptWorkerId(taskMsg, attempt),
-                "latestAttemptWorkerContextId", latestAttemptWorkerContextId(taskMsg, attempt),
-                "latestAttemptBatchId", latestAttemptBatchId(taskMsg, attempt),
-                "source", "TaskManager",
-                "reason", reason,
-                "result", "IGNORED"
-        ));
-    }
-
-    public static void callbackIgnoredLate(TaskMsg taskMsg, String reason) {
-        callbackIgnoredLate(taskMsg, null, reason);
-    }
-
-    public static void callbackIgnoredLate(TaskMsg taskMsg, TaskMsgAttempt attempt, String reason) {
-        if (taskMsg == null) {
-            return;
-        }
-        emit("CALLBACK_IGNORED_LATE", fields(
-                "entityType", "TaskMsg",
-                "entityId", taskMsg.getMessageId(),
-                "taskId", taskMsg.getTaskId(),
-                "messageId", taskMsg.getMessageId(),
-                "latestAttemptWorkerId", latestAttemptWorkerId(taskMsg, attempt),
-                "latestAttemptWorkerContextId", latestAttemptWorkerContextId(taskMsg, attempt),
-                "latestAttemptBatchId", latestAttemptBatchId(taskMsg, attempt),
-                "source", "TaskManager",
-                "reason", reason,
-                "result", "IGNORED"
-        ));
-    }
-
-    public static void callbackRejectedNoActiveAttempt(String taskId,
-                                                       String messageId,
-                                                       TaskMsgStatus taskMsgStatus,
-                                                       String reason) {
-        emit("CALLBACK_REJECTED_NO_ACTIVE_ATTEMPT", fields(
-                "entityType", "TaskMsg",
-                "entityId", messageId,
-                "taskId", taskId,
-                "messageId", messageId,
-                "taskMsgStatus", enumName(taskMsgStatus),
-                "source", "TaskManager",
-                "reason", reason,
-                "result", "REJECTED"
-        ));
-    }
-
-    public static void callbackRejectedNoActiveLease(TaskMsg taskMsg, String reason) {
-        callbackRejectedNoActiveLease(taskMsg, null, reason);
-    }
-
-    public static void callbackRejectedNoActiveLease(TaskMsg taskMsg, TaskMsgAttempt attempt, String reason) {
-        if (taskMsg == null) {
-            return;
-        }
-        emit("CALLBACK_REJECTED_NO_ACTIVE_LEASE", fields(
-                "entityType", "TaskMsg",
-                "entityId", taskMsg.getMessageId(),
-                "taskId", taskMsg.getTaskId(),
-                "messageId", taskMsg.getMessageId(),
-                "taskMsgStatus", enumName(taskMsg.getStatus()),
-                "latestAttemptWorkerId", latestAttemptWorkerId(taskMsg, attempt),
-                "latestAttemptWorkerContextId", latestAttemptWorkerContextId(taskMsg, attempt),
-                "latestAttemptBatchId", latestAttemptBatchId(taskMsg, attempt),
-                "source", "TaskManager",
-                "reason", reason,
-                "result", "REJECTED"
-        ));
-    }
-
-    public static void callbackRejectedInvalidState(TaskMsg taskMsg, String reason) {
-        callbackRejectedInvalidState(taskMsg, null, reason);
-    }
-
-    public static void callbackRejectedInvalidState(TaskMsg taskMsg, TaskMsgAttempt attempt, String reason) {
-        if (taskMsg == null) {
-            return;
-        }
-        emit("CALLBACK_REJECTED_INVALID_STATE", fields(
-                "entityType", "TaskMsg",
-                "entityId", taskMsg.getMessageId(),
-                "taskId", taskMsg.getTaskId(),
-                "messageId", taskMsg.getMessageId(),
-                "taskMsgStatus", enumName(taskMsg.getStatus()),
-                "latestAttemptWorkerId", latestAttemptWorkerId(taskMsg, attempt),
-                "latestAttemptWorkerContextId", latestAttemptWorkerContextId(taskMsg, attempt),
-                "latestAttemptBatchId", latestAttemptBatchId(taskMsg, attempt),
-                "source", "TaskManager",
-                "reason", reason,
-                "result", "REJECTED"
-        ));
-    }
-
-    public static void taskMessageAttemptClosed(Task task,
-                                                TaskMsg taskMsg,
-                                                TaskMsgAttempt attempt,
-                                                String trigger,
-                                                String source,
-                                                String reason) {
-        if (task == null || taskMsg == null || attempt == null) {
-            return;
-        }
-        emit("TASK_MSG_ATTEMPT_CLOSED", fields(
-                "entityType", "TaskMsgAttempt",
-                "entityId", attempt.getAttemptId(),
-                "taskId", task.getTid(),
-                "messageId", taskMsg.getMessageId(),
-                "attemptId", attempt.getAttemptId(),
-                "attemptNo", String.valueOf(attempt.getAttemptNo()),
-                "workerId", attempt.getWorkerId(),
-                "workerContextId", attempt.getWorkerContextId(),
-                "batchId", attempt.getBatchId(),
-                "attemptStatus", enumName(attempt.getStatus()),
-                "attemptFinalReason", enumName(attempt.getFinalReason()),
-                "taskMsgStatus", enumName(taskMsg.getStatus()),
-                "taskMsgFinalReason", enumName(taskMsg.getFinalReason()),
-                "trigger", trigger,
-                "source", source,
-                "reason", reason,
-                "result", "SUCCESS"
-        ));
-    }
-
-    public static void taskMessageLogicallyFinal(Task task,
-                                                 TaskMsg taskMsg,
-                                                 String trigger,
-                                                 String source,
-                                                 String reason) {
-        taskMessageLogicallyFinal(task, taskMsg, null, trigger, source, reason);
-    }
-
-    public static void taskMessageLogicallyFinal(Task task,
-                                                 TaskMsg taskMsg,
-                                                 TaskMsgAttempt attempt,
-                                                 String trigger,
-                                                 String source,
-                                                 String reason) {
-        if (task == null || taskMsg == null) {
-            return;
-        }
-        emit("TASK_MSG_LOGICALLY_FINAL", fields(
-                "entityType", "TaskMsg",
-                "entityId", taskMsg.getMessageId(),
-                "taskId", task.getTid(),
-                "messageId", taskMsg.getMessageId(),
-                "latestAttemptWorkerId", latestAttemptWorkerId(taskMsg, attempt),
-                "latestAttemptWorkerContextId", latestAttemptWorkerContextId(taskMsg, attempt),
-                "latestAttemptBatchId", latestAttemptBatchId(taskMsg, attempt),
-                "taskMsgStatus", enumName(taskMsg.getStatus()),
-                "taskMsgFinalReason", enumName(taskMsg.getFinalReason()),
-                "retryCount", String.valueOf(taskMsg.getRetryCount()),
-                "trigger", trigger,
-                "source", source,
-                "reason", reason,
-                "result", "SUCCESS"
-        ));
-    }
-
-    public static void resourceReleased(String taskId, String workerId, String workerContextId, String reason) {
-        emit("RESOURCE_RELEASED", fields(
-                "entityType", workerContextId != null ? "WorkerContext" : "Worker",
-                "entityId", workerContextId != null ? workerContextId : workerId,
-                "taskId", taskId,
-                "workerId", workerId,
-                "workerContextId", workerContextId,
-                "source", "TaskResourceReleaseListener",
-                "reason", reason,
-                "result", "SUCCESS"
-        ));
-    }
-
-    public static void resourceReleaseFailed(String taskId, String workerId, String workerContextId, String reason) {
-        emit("RESOURCE_RELEASE_FAILED", fields(
-                "entityType", workerContextId != null ? "WorkerContext" : "Worker",
-                "entityId", workerContextId != null ? workerContextId : workerId,
-                "taskId", taskId,
-                "workerId", workerId,
-                "workerContextId", workerContextId,
-                "source", "TaskResourceReleaseListener",
-                "reason", reason,
-                "result", "FAILED"
-        ));
-    }
-
-    public static void taskProgressSnapshot(Task task,
-                                            TaskWorkStats stats,
-                                            String resolutionOutcome,
-                                            boolean needsTerminalClosure,
-                                            String trigger,
-                                            String source,
-                                            String reason) {
-        if (task == null || stats == null) {
-            return;
-        }
-        Map<String, String> traceFields = fields(
-                "entityType", "Task",
-                "entityId", task.getTid(),
-                "taskId", task.getTid(),
-                "taskStatus", enumName(task.getStatus()),
-                "terminalReason", enumName(task.getTerminalReason()),
-                "taskTargetNumber", String.valueOf(task.getTaskTargetNumber()),
-                "taskEligibleNumber", String.valueOf(task.getTaskEligibleNumber()),
-                "taskSuccessNumber", String.valueOf(task.getTaskSuccessNumber()),
-                "taskNonSuccessNumber", String.valueOf(task.getTaskNonSuccessNumber()),
-                "peakAssignedWorkerCount", String.valueOf(task.getPeakAssignedWorkerCount()),
-                "minRequiredWorkerCount", String.valueOf(task.getMinRequiredWorkerCount()),
-                "batchSize", String.valueOf(task.getBatchSize()),
-                "intakeStatus", enumName(task.getIntakeStatus()),
-                "holdReason", enumName(task.getHoldReason()),
-                "schedulable", String.valueOf(task.isSchedulable()),
-                "progressPercent", formatDouble(task.getProgressPercentage()),
-                "totalMessages", String.valueOf(stats.totalCount()),
-                "successMessages", String.valueOf(stats.successCount()),
-                "failedMessages", String.valueOf(stats.failedCount()),
-                "expiredMessages", String.valueOf(stats.expiredCount()),
-                "processingMessages", String.valueOf(stats.processingCount()),
-                "finalMessages", String.valueOf(stats.finalCount()),
-                "pendingMessages", String.valueOf(stats.pendingCount()),
-                "successRate", formatDouble(stats.successRate()),
-                "failureRate", formatDouble(stats.failureRate()),
-                "resolutionOutcome", resolutionOutcome,
-                "needsTerminalClosure", String.valueOf(needsTerminalClosure),
-                "trigger", trigger,
-                "source", source,
-                "reason", reason,
-                "result", "SUCCESS"
-        );
-        putTaskRuntimeProfile(traceFields, task);
-        emit("TASK_PROGRESS_SNAPSHOT", traceFields);
-    }
-
-    public static void assignmentSummary(Task task,
-                                         TaskStatus initialStatus,
-                                         TaskStatus currentStatus,
-                                         Integer pendingDispatchCount,
-                                         Integer desiredDispatchWorkerCount,
-                                         Integer requiredStartWorkerCount,
-                                         Integer requestedMatchCount,
-                                         Integer matchedWorkerCount,
-                                         Integer dispatchCandidateCount,
-                                         Integer dispatchedMessageCount,
-                                         Integer usedWorkerCount,
-                                         Integer peakAssignedWorkerCount,
-                                         String trigger,
-                                         String source,
-                                         String reason,
-                                         String result) {
-        if (task == null) {
-            return;
-        }
-        Map<String, String> traceFields = fields(
-                "entityType", "Task",
-                "entityId", task.getTid(),
-                "taskId", task.getTid(),
-                "initialStatus", enumName(initialStatus),
-                "currentStatus", enumName(currentStatus),
-                "pendingDispatchCount", stringValue(pendingDispatchCount),
-                "desiredDispatchWorkerCount", stringValue(desiredDispatchWorkerCount),
-                "requiredStartWorkerCount", stringValue(requiredStartWorkerCount),
-                "requestedMatchCount", stringValue(requestedMatchCount),
-                "matchedWorkerCount", stringValue(matchedWorkerCount),
-                "dispatchCandidateCount", stringValue(dispatchCandidateCount),
-                "dispatchedMessageCount", stringValue(dispatchedMessageCount),
-                "usedWorkerCount", stringValue(usedWorkerCount),
-                "peakAssignedWorkerCount", stringValue(peakAssignedWorkerCount),
-                "trigger", trigger,
-                "source", source,
-                "reason", reason,
-                "result", result
-        );
-        putTaskRuntimeProfile(traceFields, task);
-        emit("ASSIGNMENT_SUMMARY", traceFields);
-    }
-
-    public static void dispatchBindingSummary(Task task,
-                                              int pendingMessageCount,
-                                              int matchedWorkerCount,
-                                              int dispatchSlotCount,
-                                              int dispatchedMessageCount,
-                                              int uniqueWorkerCount,
-                                              int uniqueWorkerContextCount,
-                                              int perWorkerBatchLimit,
-                                              String trigger,
-                                              String source,
-                                              String reason,
-                                              String result) {
-        if (task == null) {
-            return;
-        }
-        Map<String, String> traceFields = fields(
-                "entityType", "Task",
-                "entityId", task.getTid(),
-                "taskId", task.getTid(),
-                "pendingMessageCount", String.valueOf(pendingMessageCount),
-                "matchedWorkerCount", String.valueOf(matchedWorkerCount),
-                "dispatchSlotCount", String.valueOf(dispatchSlotCount),
-                "dispatchedMessageCount", String.valueOf(dispatchedMessageCount),
-                "unassignedMessageCount", String.valueOf(Math.max(pendingMessageCount - dispatchedMessageCount, 0)),
-                "uniqueWorkerCount", String.valueOf(uniqueWorkerCount),
-                "uniqueWorkerContextCount", String.valueOf(uniqueWorkerContextCount),
-                "perWorkerBatchLimit", String.valueOf(perWorkerBatchLimit),
-                "trigger", trigger,
-                "source", source,
-                "reason", reason,
-                "result", result
-        );
-        putTaskRuntimeProfile(traceFields, task);
-        emit("DISPATCH_BINDING_SUMMARY", traceFields);
-    }
-
-    public static void taskStateValidationSummary(String taskId,
-                                                  TaskStatus taskStatus,
-                                                  TaskTerminalReason terminalReason,
-                                                  long totalMessages,
-                                                  long successMessages,
-                                                  long failedMessages,
-                                                  long processingMessages,
-                                                  boolean valid,
-                                                  boolean needsResolution,
-                                                  int violationCount,
-                                                  String violations,
-                                                  String trigger,
-                                                  String source,
-                                                  String validationScope,
-                                                  String reason,
-                                                  String result) {
-        long finalMessages = successMessages + failedMessages;
-        emit("TASK_STATE_VALIDATION_SUMMARY", fields(
-                "entityType", "Task",
-                "entityId", taskId,
-                "taskId", taskId,
-                "taskStatus", enumName(taskStatus),
-                "terminalReason", enumName(terminalReason),
-                "totalMessages", String.valueOf(totalMessages),
-                "successMessages", String.valueOf(successMessages),
-                "failedMessages", String.valueOf(failedMessages),
-                "processingMessages", String.valueOf(processingMessages),
-                "pendingMessages", String.valueOf(Math.max(totalMessages - finalMessages, 0)),
-                "valid", String.valueOf(valid),
-                "needsResolution", String.valueOf(needsResolution),
-                "violationCount", String.valueOf(violationCount),
-                "violations", violations,
-                "trigger", trigger,
-                "source", source,
-                "validationScope", validationScope,
-                "reason", reason,
-                "result", result
-        ));
-    }
-
-    public static void assignmentQueueSnapshot(Task task,
-                                               TaskStatus taskStatus,
-                                               String dispatchLane,
-                                               int queueDepth,
-                                               int trackedBatchPendingCount,
-                                               int scheduledRetryCount,
-                                               String queueAction,
-                                               Long retryDelayMillis,
+    public void taskWorkAttemptStatusTransition(String taskId,
+                                               String messageId,
+                                               String attemptId,
+                                               Integer attemptNo,
+                                               String workerId,
+                                               String batchId,
+                                               AttemptFinalReason finalReason,
+                                               AttemptStatus fromStatus,
+                                               AttemptStatus toStatus,
                                                String trigger,
                                                String source,
                                                String reason,
-                                               String result) {
-        Map<String, String> traceFields = fields(
-                "entityType", "AssignmentQueue",
-                "entityId", task != null && task.getTid() != null && !task.getTid().isBlank() ? task.getTid() : "task-assign-queue",
-                "taskId", task != null ? task.getTid() : null,
-                "taskStatus", enumName(taskStatus),
-                "dispatchLane", dispatchLane,
-                "queueDepth", String.valueOf(queueDepth),
-                "trackedBatchPendingCount", String.valueOf(trackedBatchPendingCount),
-                "scheduledRetryCount", String.valueOf(scheduledRetryCount),
-                "queueAction", queueAction,
-                "retryDelayMillis", stringValue(retryDelayMillis),
+                                               Map<String, Object> extraAttrs) {
+        if (attemptId == null || attemptId.isBlank()) {
+            return;
+        }
+        Map<String, Object> values = attrs(
                 "trigger", trigger,
                 "source", source,
                 "reason", reason,
-                "result", result
+                "result", "SUCCESS",
+                "attemptNo", attemptNo,
+                "finalReason", enumName(finalReason),
+                "batchId", batchId
         );
-        putTaskRuntimeProfile(traceFields, task);
-        emit("ASSIGNMENT_QUEUE_SNAPSHOT", traceFields);
+        if (extraAttrs != null && !extraAttrs.isEmpty()) {
+            values.putAll(extraAttrs);
+        }
+        emit(event(ExecutionEventType.TASK_WORK_ATTEMPT_STATUS_TRANSITION)
+                .identity(identity -> identity
+                        .taskId(taskId)
+                        .messageId(messageId)
+                        .attemptId(attemptId)
+                        .workerId(workerId))
+                .transition(enumName(fromStatus), enumName(toStatus), reason)
+                .attrs(values)
+                .build());
     }
 
-    private static void emit(String event, Map<String, String> fields) {
+    public void taskWorkRetryReset(TaskWorkTraceView workView,
+                                  Long workRetryDelayMillis,
+                                  String trigger,
+                                  String source,
+                                  String reason) {
+        taskWorkRetryReset(workView, null, null, null, workRetryDelayMillis, trigger, source, reason);
+    }
+
+    public void taskWorkRetryReset(TaskWorkTraceView workView,
+                                  String attemptId,
+                                  String workerId,
+                                  String batchId,
+                                  Long workRetryDelayMillis,
+                                  String trigger,
+                                  String source,
+                                  String reason) {
+        if (workView == null) {
+            return;
+        }
+        emit(event(ExecutionEventType.TASK_WORK_RETRY_RESET)
+                .identity(identity -> identity
+                        .taskId(workView.taskId())
+                        .messageId(workView.messageId())
+                        .attemptId(attemptId != null ? attemptId : workView.latestAttemptId())
+                        .workerId(workerId != null ? workerId : workView.latestAttemptWorkerId()))
+                .transition("FAILED_OR_EXPIRED", MessageStatus.INIT.name(), reason)
+                .attrs(attrs(
+                        "trigger", trigger,
+                        "source", source,
+                        "reason", reason,
+                        "result", "SUCCESS",
+                        "retryCount", workView.retryCount(),
+                        "workRetryDelayMillis", workRetryDelayMillis,
+                        "latestAttemptBatchId", batchId != null ? batchId : workView.latestAttemptBatchId()
+                ))
+                .build());
+    }
+
+    public void workerLockAcquired(String taskId, String workerId, String trigger, String source, String reason) {
+        emit(event(ExecutionEventType.WORKER_LOCK_ACQUIRED)
+                .identity(identity -> identity.taskId(taskId).workerId(workerId))
+                .attrs(attrs(
+                        "trigger", trigger,
+                        "source", source,
+                        "reason", reason,
+                        "result", "SUCCESS"
+                ))
+                .build());
+    }
+
+    public void workerLockReleased(String taskId, String workerId, String trigger, String source, String reason) {
+        emit(event(ExecutionEventType.WORKER_LOCK_RELEASED)
+                .identity(identity -> identity.taskId(taskId).workerId(workerId))
+                .attrs(attrs(
+                        "trigger", trigger,
+                        "source", source,
+                        "reason", reason,
+                        "result", "SUCCESS"
+                ))
+                .build());
+    }
+
+    public void workerMatchAccepted(String taskId,
+                                    WorkerSchedulingCandidate candidate,
+                                    String reason,
+                                    Integer candidateRank,
+                                    Double candidateScore) {
+        workerMatchAccepted(taskId, candidate, reason, candidateRank, candidateScore, null);
+    }
+
+    public void workerMatchAccepted(String taskId,
+                                    WorkerSchedulingCandidate candidate,
+                                    String reason,
+                                    Integer candidateRank,
+                                    Double candidateScore,
+                                    WorkerLoadSnapshot workerLoadSnapshot) {
+        workerMatchAccepted(null, taskId, candidate, reason, candidateRank, candidateScore, workerLoadSnapshot);
+    }
+
+    public void workerMatchAccepted(Task task,
+                                    WorkerSchedulingCandidate candidate,
+                                    String reason,
+                                    Integer candidateRank,
+                                    Double candidateScore,
+                                    WorkerLoadSnapshot workerLoadSnapshot) {
+        workerMatchAccepted(task, task != null ? task.getTid() : null, candidate, reason, candidateRank,
+                candidateScore, workerLoadSnapshot);
+    }
+
+    private void workerMatchAccepted(Task task,
+                                     String taskId,
+                                     WorkerSchedulingCandidate candidate,
+                                     String reason,
+                                     Integer candidateRank,
+                                     Double candidateScore,
+                                     WorkerLoadSnapshot workerLoadSnapshot) {
+        if (candidate == null) {
+            return;
+        }
+        emitWorkerMatchEvent(ExecutionEventType.WORKER_MATCH_ACCEPTED, task, taskId,
+                candidate.getWorker(), reason, "SUCCESS",
+                workerSchedulingRankAttrs(task, candidate.getSchedulingView(), workerLoadSnapshot, candidateRank, candidateScore));
+    }
+
+    public void workerMatchRejected(String taskId,
+                                    WorkerSchedulingCandidate candidate,
+                                    String reason,
+                                    Integer candidateRank,
+                                    Double candidateScore) {
+        workerMatchRejected(taskId, candidate, reason, candidateRank, candidateScore, null);
+    }
+
+    public void workerMatchRejected(String taskId,
+                                    WorkerSchedulingCandidate candidate,
+                                    String reason,
+                                    Integer candidateRank,
+                                    Double candidateScore,
+                                    WorkerLoadSnapshot workerLoadSnapshot) {
+        workerMatchRejected(null, taskId, candidate, reason, candidateRank, candidateScore, workerLoadSnapshot);
+    }
+
+    public void workerMatchRejected(Task task,
+                                    WorkerSchedulingCandidate candidate,
+                                    String reason,
+                                    Integer candidateRank,
+                                    Double candidateScore,
+                                    WorkerLoadSnapshot workerLoadSnapshot) {
+        workerMatchRejected(task, task != null ? task.getTid() : null, candidate, reason, candidateRank,
+                candidateScore, workerLoadSnapshot);
+    }
+
+    private void workerMatchRejected(Task task,
+                                     String taskId,
+                                     WorkerSchedulingCandidate candidate,
+                                     String reason,
+                                     Integer candidateRank,
+                                     Double candidateScore,
+                                     WorkerLoadSnapshot workerLoadSnapshot) {
+        if (candidate == null) {
+            return;
+        }
+        emitWorkerMatchEvent(ExecutionEventType.WORKER_MATCH_REJECTED, task, taskId,
+                candidate.getWorker(), reason, "REJECTED",
+                workerSchedulingRankAttrs(task, candidate.getSchedulingView(), workerLoadSnapshot, candidateRank, candidateScore));
+    }
+
+    private void emitWorkerMatchEvent(ExecutionEventType eventType,
+                                      Task task,
+                                      String taskId,
+                                      Worker worker,
+                                      String reason,
+                                      String result,
+                                      Map<String, Object> extraAttrs) {
+        if (worker == null) {
+            return;
+        }
+        Map<String, Object> values = attrs(
+                "source", "RuleBasedTaskWorkerMatchingStrategy",
+                "reason", reason,
+                "result", result
+        );
+        putTaskRuntimeProfile(values, task);
+        if (extraAttrs != null) {
+            values.putAll(extraAttrs);
+        }
+        emit(event(eventType)
+                .identity(identity -> identity
+                        .taskId(taskId)
+                        .workerId(worker.getWorkerId()))
+                .outcome(eventType == ExecutionEventType.WORKER_MATCH_ACCEPTED, null, reason)
+                .attrs(values)
+                .build());
+    }
+
+    public void dispatchRequested(String taskId, String trigger, String source, String reason) {
+        emit(event(ExecutionEventType.DISPATCH_REQUESTED)
+                .identity(identity -> identity.taskId(taskId))
+                .attrs(attrs(
+                        "trigger", trigger,
+                        "source", source,
+                        "reason", reason,
+                        "result", "SUCCESS"
+                ))
+                .build());
+    }
+
+    public void dispatchRequested(Task task, String trigger, String source, String reason) {
+        if (task == null) {
+            return;
+        }
+        Map<String, Object> attrs = attrs(
+                "trigger", trigger,
+                "source", source,
+                "reason", reason,
+                "result", "SUCCESS"
+        );
+        putTaskRuntimeProfile(attrs, task);
+        emit(event(ExecutionEventType.DISPATCH_REQUESTED)
+                .identity(identity -> identity.taskId(task.getTid()))
+                .attrs(attrs)
+                .build());
+    }
+
+    public void dispatchSkipped(String taskId,
+                                String trigger,
+                                String source,
+                                String reason,
+                                Integer requiredMinWorkerCount) {
+        emit(event(ExecutionEventType.DISPATCH_SKIPPED)
+                .identity(identity -> identity.taskId(taskId))
+                .attrs(attrs(
+                        "trigger", trigger,
+                        "source", source,
+                        "reason", reason,
+                        "result", "SKIPPED",
+                        "requiredMinWorkerCount", requiredMinWorkerCount
+                ))
+                .build());
+    }
+
+    public void dispatchSkipped(Task task,
+                                String trigger,
+                                String source,
+                                String reason,
+                                Integer requiredMinWorkerCount) {
+        if (task == null) {
+            return;
+        }
+        Map<String, Object> attrs = attrs(
+                "trigger", trigger,
+                "source", source,
+                "reason", reason,
+                "result", "SKIPPED",
+                "requiredMinWorkerCount", requiredMinWorkerCount
+        );
+        putTaskRuntimeProfile(attrs, task);
+        emit(event(ExecutionEventType.DISPATCH_SKIPPED)
+                .identity(identity -> identity.taskId(task.getTid()))
+                .attrs(attrs)
+                .build());
+    }
+
+    public void assignmentRetryScheduled(String taskId,
+                                         TaskStatus currentStatus,
+                                         String trigger,
+                                         String source,
+                                         String reason,
+                                         long retryDelayMillis) {
+        emit(event(ExecutionEventType.ASSIGNMENT_RETRY_SCHEDULED)
+                .identity(identity -> identity.taskId(taskId))
+                .attrs(attrs(
+                        "trigger", trigger,
+                        "source", source,
+                        "reason", reason,
+                        "result", "SCHEDULED",
+                        "currentStatus", enumName(currentStatus),
+                        "retryDelayMillis", retryDelayMillis
+                ))
+                .build());
+    }
+
+    public void callbackAccepted(TaskWorkTraceView workView, String reason) {
+        if (workView == null) {
+            return;
+        }
+        emit(callbackEvent(ExecutionEventType.CALLBACK_ACCEPTED, workView, reason, "SUCCESS", true));
+    }
+
+    public void callbackIgnoredDuplicate(TaskWorkTraceView workView, String reason) {
+        if (workView == null) {
+            return;
+        }
+        emit(callbackEvent(ExecutionEventType.CALLBACK_IGNORED_DUPLICATE, workView, reason, "IGNORED", true));
+    }
+
+    public void callbackIgnoredLate(TaskWorkTraceView workView, String reason) {
+        if (workView == null) {
+            return;
+        }
+        emit(callbackEvent(ExecutionEventType.CALLBACK_IGNORED_LATE, workView, reason, "IGNORED", true));
+    }
+
+    public void callbackRejectedNoActiveAttempt(String taskId,
+                                                String messageId,
+                                                MessageStatus workStatus,
+                                                String reason) {
+        emit(event(ExecutionEventType.CALLBACK_REJECTED_NO_ACTIVE_ATTEMPT)
+                .identity(identity -> identity.taskId(taskId).messageId(messageId))
+                .outcome(false, null, reason)
+                .attrs(attrs(
+                        "source", "TaskManager",
+                        "reason", reason,
+                        "result", "REJECTED",
+                        "workStatus", enumName(workStatus)
+                ))
+                .build());
+    }
+
+    public void callbackRejectedNoActiveLease(TaskWorkTraceView workView, String reason) {
+        if (workView == null) {
+            return;
+        }
+        emit(callbackEvent(ExecutionEventType.CALLBACK_REJECTED_NO_ACTIVE_LEASE, workView, reason, "REJECTED", false));
+    }
+
+    public void callbackRejectedInvalidState(TaskWorkTraceView workView, String reason) {
+        if (workView == null) {
+            return;
+        }
+        emit(callbackEvent(ExecutionEventType.CALLBACK_REJECTED_INVALID_STATE, workView, reason, "REJECTED", false));
+    }
+
+    public void taskWorkAttemptClosed(Task task,
+                                         TaskWorkTraceView workView,
+                                         String attemptId,
+                                         Integer attemptNo,
+                                         String workerId,
+                                         String batchId,
+                                         AttemptStatus attemptStatus,
+                                         AttemptFinalReason attemptFinalReason,
+                                         String trigger,
+                                         String source,
+                                         String reason) {
+        if (task == null || workView == null || attemptId == null || attemptId.isBlank()) {
+            return;
+        }
+        emit(event(ExecutionEventType.TASK_WORK_ATTEMPT_CLOSED)
+                .identity(identity -> identity
+                        .taskId(task.getTid())
+                        .messageId(workView.messageId())
+                        .attemptId(attemptId)
+                        .workerId(workerId))
+                .outcome(true, null, reason)
+                .attrs(attrs(
+                        "trigger", trigger,
+                        "source", source,
+                        "reason", reason,
+                        "result", "SUCCESS",
+                        "attemptNo", attemptNo,
+                        "attemptStatus", enumName(attemptStatus),
+                        "attemptFinalReason", enumName(attemptFinalReason),
+                        "workStatus", enumName(workView.status()),
+                        "workFinalReason", enumName(workView.finalReason()),
+                        "batchId", batchId
+                ))
+                .build());
+    }
+
+    public void taskWorkLogicallyFinal(Task task,
+                                          TaskWorkTraceView workView,
+                                          String attemptId,
+                                          String workerId,
+                                          String batchId,
+                                          String trigger,
+                                          String source,
+                                          String reason) {
+        if (task == null || workView == null) {
+            return;
+        }
+        emit(event(ExecutionEventType.TASK_WORK_LOGICALLY_FINAL)
+                .identity(identity -> identity
+                        .taskId(task.getTid())
+                        .messageId(workView.messageId())
+                        .attemptId(attemptId != null ? attemptId : workView.latestAttemptId())
+                        .workerId(workerId != null ? workerId : workView.latestAttemptWorkerId()))
+                .outcome(true, workView.errorCode(), reason)
+                .attrs(attrs(
+                        "trigger", trigger,
+                        "source", source,
+                        "reason", reason,
+                        "result", "SUCCESS",
+                        "workStatus", enumName(workView.status()),
+                        "workFinalReason", enumName(workView.finalReason()),
+                        "retryCount", workView.retryCount(),
+                        "latestAttemptBatchId", batchId != null ? batchId : workView.latestAttemptBatchId()
+                ))
+                .build());
+    }
+
+    public void resourceReleased(String taskId, String workerId, String reason) {
+        resourceReleased(taskId, workerId, null, "TaskResourceReleaseListener", reason, null);
+    }
+
+    public void resourceReleased(String taskId,
+                                 String workerId,
+                                 String trigger,
+                                 String source,
+                                 String reason,
+                                 String resourceKind) {
+        emit(event(ExecutionEventType.RESOURCE_RELEASED)
+                .identity(identity -> identity
+                        .taskId(taskId)
+                        .workerId(workerId))
+                .outcome(true, null, reason)
+                .attrs(attrs(
+                        "trigger", trigger,
+                        "source", source,
+                        "reason", reason,
+                        "resourceKind", resourceKind,
+                        "result", "SUCCESS"
+                ))
+                .build());
+    }
+
+    public void resourceReleaseFailed(String taskId, String workerId, String reason) {
+        emit(event(ExecutionEventType.RESOURCE_RELEASE_FAILED)
+                .identity(identity -> identity
+                        .taskId(taskId)
+                        .workerId(workerId))
+                .outcome(false, null, reason)
+                .attrs(attrs(
+                        "source", "TaskResourceReleaseListener",
+                        "reason", reason,
+                        "result", "FAILED"
+                ))
+                .build());
+    }
+
+    public void leaseExpired(TaskWorkTraceView workView,
+                             String attemptId,
+                             String workerId,
+                             String batchId,
+                             MessageStatus fromStatus,
+                             MessageStatus toStatus,
+                             String errorCode,
+                             String trigger,
+                             String source,
+                             String reason) {
+        if (workView == null) {
+            return;
+        }
+        emit(event(ExecutionEventType.LEASE_EXPIRED)
+                .identity(identity -> identity
+                        .taskId(workView.taskId())
+                        .messageId(workView.messageId())
+                        .attemptId(attemptId != null ? attemptId : workView.latestAttemptId())
+                        .workerId(workerId != null ? workerId : workView.latestAttemptWorkerId()))
+                .transition(enumName(fromStatus), enumName(toStatus), reason)
+                .outcome(false, errorCode != null ? errorCode : workView.errorCode(), reason)
+                .attrs(attrs(
+                        "trigger", trigger,
+                        "source", source,
+                        "reason", reason,
+                        "result", enumName(toStatus),
+                        "latestAttemptBatchId", batchId != null ? batchId : workView.latestAttemptBatchId()
+                ))
+                .build());
+    }
+
+    public void taskProgressSnapshot(Task task,
+                                     TaskWorkStats stats,
+                                     String resolutionOutcome,
+                                     boolean needsTerminalClosure,
+                                     String trigger,
+                                     String source,
+                                     String reason) {
+        if (task == null || stats == null) {
+            return;
+        }
+        Map<String, Object> attrs = attrs(
+                "trigger", trigger,
+                "source", source,
+                "reason", reason,
+                "result", "SUCCESS",
+                "taskStatus", enumName(task.getStatus()),
+                "terminalReason", enumName(task.getTerminalReason()),
+                "taskTargetNumber", task.getTaskTargetNumber(),
+                "taskEligibleNumber", task.getTaskEligibleNumber(),
+                "taskSuccessNumber", task.getTaskSuccessNumber(),
+                "taskNonSuccessNumber", task.getTaskNonSuccessNumber(),
+                "peakAssignedWorkerCount", task.getPeakAssignedWorkerCount(),
+                "minRequiredWorkerCount", task.getMinRequiredWorkerCount(),
+                "batchSize", task.getExecutionSpec().getBatchSize(),
+                "intakeStatus", enumName(task.getIntakeStatus()),
+                "holdReason", enumName(task.getHoldReason()),
+                "schedulable", task.isSchedulable(),
+                "progressPercent", formatDouble(task.getProgressPercentage()),
+                "totalMessages", stats.totalCount(),
+                "successMessages", stats.successCount(),
+                "failedMessages", stats.failedCount(),
+                "expiredMessages", stats.expiredCount(),
+                "processingMessages", stats.processingCount(),
+                "finalMessages", stats.finalCount(),
+                "pendingMessages", stats.pendingCount(),
+                "successRate", formatDouble(stats.successRate()),
+                "failureRate", formatDouble(stats.failureRate()),
+                "resolutionOutcome", resolutionOutcome,
+                "needsTerminalClosure", needsTerminalClosure
+        );
+        putTaskRuntimeProfile(attrs, task);
+        emit(event(ExecutionEventType.TASK_PROGRESS_SNAPSHOT)
+                .identity(identity -> identity.taskId(task.getTid()))
+                .attrs(attrs)
+                .build());
+    }
+
+    public void assignmentSummary(Task task,
+                                  TaskStatus initialStatus,
+                                  TaskStatus currentStatus,
+                                  Integer pendingDispatchCount,
+                                  Integer desiredDispatchWorkerCount,
+                                  Integer requiredStartWorkerCount,
+                                  Integer requestedMatchCount,
+                                  Integer workerBudget,
+                                  Integer currentTaskWorkerCount,
+                                  Boolean budgetLimited,
+                                  Integer matchedWorkerCount,
+                                  Integer dispatchCandidateCount,
+                                  Integer dispatchedMessageCount,
+                                  Integer usedWorkerCount,
+                                  Integer peakAssignedWorkerCount,
+                                  String trigger,
+                                  String source,
+                                  String reason,
+                                  String result) {
+        if (task == null) {
+            return;
+        }
+        Map<String, Object> attrs = attrs(
+                "trigger", trigger,
+                "source", source,
+                "reason", reason,
+                "result", result,
+                "initialStatus", enumName(initialStatus),
+                "currentStatus", enumName(currentStatus),
+                "pendingDispatchCount", pendingDispatchCount,
+                "desiredDispatchWorkerCount", desiredDispatchWorkerCount,
+                "requiredStartWorkerCount", requiredStartWorkerCount,
+                "requestedMatchCount", requestedMatchCount,
+                "workerBudget", workerBudget,
+                "currentTaskWorkerCount", currentTaskWorkerCount,
+                "budgetLimited", budgetLimited,
+                "matchedWorkerCount", matchedWorkerCount,
+                "dispatchCandidateCount", dispatchCandidateCount,
+                "dispatchedMessageCount", dispatchedMessageCount,
+                "usedWorkerCount", usedWorkerCount,
+                "peakAssignedWorkerCount", peakAssignedWorkerCount
+        );
+        putTaskRuntimeProfile(attrs, task);
+        emit(event(ExecutionEventType.ASSIGNMENT_SUMMARY)
+                .identity(identity -> identity.taskId(task.getTid()))
+                .attrs(attrs)
+                .build());
+    }
+
+    public void dispatchBindingSummary(Task task,
+                                       int pendingMessageCount,
+                                       int matchedWorkerCount,
+                                       int dispatchSlotCount,
+                                       int dispatchedMessageCount,
+                                       int uniqueWorkerCount,
+                                       int perWorkerBatchLimit,
+                                       String trigger,
+                                       String source,
+                                       String reason,
+                                       String result) {
+        if (task == null) {
+            return;
+        }
+        Map<String, Object> attrs = attrs(
+                "trigger", trigger,
+                "source", source,
+                "reason", reason,
+                "result", result,
+                "pendingMessageCount", pendingMessageCount,
+                "matchedWorkerCount", matchedWorkerCount,
+                "dispatchSlotCount", dispatchSlotCount,
+                "dispatchedMessageCount", dispatchedMessageCount,
+                "unassignedMessageCount", Math.max(pendingMessageCount - dispatchedMessageCount, 0),
+                "uniqueWorkerCount", uniqueWorkerCount,
+                "perWorkerBatchLimit", perWorkerBatchLimit
+        );
+        putTaskRuntimeProfile(attrs, task);
+        emit(event(ExecutionEventType.DISPATCH_BINDING_SUMMARY)
+                .identity(identity -> identity.taskId(task.getTid()))
+                .attrs(attrs)
+                .build());
+    }
+
+    public void taskStateValidationSummary(String taskId,
+                                           TaskStatus taskStatus,
+                                           TaskTerminalReason terminalReason,
+                                           long totalMessages,
+                                           long successMessages,
+                                           long failedMessages,
+                                           long processingMessages,
+                                           boolean valid,
+                                           boolean needsResolution,
+                                           int violationCount,
+                                           String violations,
+                                           String trigger,
+                                           String source,
+                                           String validationScope,
+                                           String reason,
+                                           String result) {
+        emit(event(ExecutionEventType.TASK_STATE_VALIDATION_SUMMARY)
+                .identity(identity -> identity.taskId(taskId))
+                .outcome(valid && !needsResolution, null, reason)
+                .attrs(attrs(
+                        "trigger", trigger,
+                        "source", source,
+                        "reason", reason,
+                        "result", result,
+                        "taskStatus", enumName(taskStatus),
+                        "terminalReason", enumName(terminalReason),
+                        "totalMessages", totalMessages,
+                        "successMessages", successMessages,
+                        "failedMessages", failedMessages,
+                        "processingMessages", processingMessages,
+                        "pendingMessages", Math.max(totalMessages - (successMessages + failedMessages), 0),
+                        "valid", valid,
+                        "needsResolution", needsResolution,
+                        "violationCount", violationCount,
+                        "violations", violations,
+                        "validationScope", validationScope
+                ))
+                .build());
+    }
+
+    public void assignmentQueueSnapshot(Task task,
+                                        TaskStatus taskStatus,
+                                        String dispatchLane,
+                                        int queueDepth,
+                                        int trackedBatchPendingCount,
+                                        int scheduledRetryCount,
+                                        String queueAction,
+                                        Long retryDelayMillis,
+                                        String trigger,
+                                        String source,
+                                        String reason,
+                                        String result) {
+        Map<String, Object> attrs = attrs(
+                "trigger", trigger,
+                "source", source,
+                "reason", reason,
+                "result", result,
+                "taskStatus", enumName(taskStatus),
+                "dispatchLane", dispatchLane,
+                "queueDepth", queueDepth,
+                "trackedBatchPendingCount", trackedBatchPendingCount,
+                "scheduledRetryCount", scheduledRetryCount,
+                "queueAction", queueAction,
+                "retryDelayMillis", retryDelayMillis
+        );
+        putTaskRuntimeProfile(attrs, task);
+        emit(event(ExecutionEventType.ASSIGNMENT_QUEUE_SNAPSHOT)
+                .identity(identity -> identity.taskId(task != null ? task.getTid() : null))
+                .attrs(attrs)
+                .build());
+    }
+
+    public void workerCapabilityReportApplied(WorkerCapabilityReportResult result) {
+        if (result == null) {
+            return;
+        }
+        emit(event(ExecutionEventType.WORKER_CAPABILITY_REPORT_APPLIED)
+                .identity(identity -> identity.workerId(result.workerId()))
+                .outcome(result.success(), result.success() ? null : result.status().name(), result.reason())
+                .attrs(attrs(
+                        "source", "WorkerCapabilityAuthority",
+                        "reason", result.reason(),
+                        "result", result.status().name(),
+                        "capabilityVersion", result.capabilityVersion(),
+                        "snapshotChanged", result.snapshotChanged()
+                ))
+                .build());
+    }
+
+    public void workerCommandStatusTransition(WorkerCommandLifecycleResult result) {
+        if (result == null || result.record() == null) {
+            return;
+        }
+        emit(event(ExecutionEventType.WORKER_COMMAND_STATUS_TRANSITION)
+                .identity(identity -> identity.workerId(result.record().workerId()))
+                .transition(enumName(result.previousStatus()), enumName(result.currentStatus()), result.reason())
+                .outcome(result.success(), result.success() ? null : result.code().name(), result.reason())
+                .attrs(attrs(
+                        "source", "WorkerCommandLifecycleOwner",
+                        "reason", result.reason(),
+                        "result", result.code().name(),
+                        "commandId", result.record().commandId(),
+                        "commandType", result.record().commandType(),
+                        "commandStatus", enumName(result.record().status()),
+                        "requester", result.record().requester(),
+                        "idempotencyKey", result.record().idempotencyKey(),
+                        "deadlineEpochMillis", result.record().deadlineEpochMillis()
+                ))
+                .build());
+    }
+
+    public void workerStateReportApplied(WorkerStateProjectionResult result) {
+        if (result == null) {
+            return;
+        }
+        emit(event(ExecutionEventType.WORKER_STATE_REPORT_APPLIED)
+                .identity(identity -> identity.workerId(result.workerId()))
+                .outcome(result.success(), result.success() ? null : result.status().name(), result.reason())
+                .attrs(attrs(
+                        "source", "WorkerStateProjectionOwner",
+                        "reason", result.reason(),
+                        "result", result.status().name(),
+                        "stateVersion", result.stateVersion(),
+                        "projectionChanged", result.projectionChanged(),
+                        "workerState", result.projection() != null ? result.projection().state() : null,
+                        "observedAt", result.projection() != null ? result.projection().observedAt() : null,
+                        "recentReportCount", result.projection() != null ? result.projection().recentReports().size() : null
+                ))
+                .build());
+    }
+
+    public void taskStageEvidenceApplied(TaskStageEvidenceResult result) {
+        if (result == null) {
+            return;
+        }
+        emit(event(ExecutionEventType.TASK_STAGE_EVIDENCE_APPLIED)
+                .identity(identity -> identity
+                        .taskId(result.taskId())
+                        .messageId(result.messageId()))
+                .outcome(result.success(), result.success() ? null : result.status().name(), result.reason())
+                .attrs(attrs(
+                        "source", "TaskStageEvidenceOwner",
+                        "reason", result.reason(),
+                        "result", result.status().name(),
+                        "stageName", result.stageName(),
+                        "stageVersion", result.stageVersion(),
+                        "stageStatus", result.projection() != null ? result.projection().stageStatus() : null,
+                        "projectionChanged", result.projectionChanged(),
+                        "observedAt", result.projection() != null ? result.projection().observedAt() : null,
+                        "recentEvidenceCount", result.projection() != null ? result.projection().recentEvidence().size() : null,
+                        "stableFinalResult", false
+                ))
+                .build());
+    }
+
+    private ExecutionEvent callbackEvent(ExecutionEventType eventType,
+                                         TaskWorkTraceView workView,
+                                         String reason,
+                                         String result,
+                                         boolean success) {
+        return event(eventType)
+                .identity(identity -> identity
+                        .taskId(workView.taskId())
+                        .messageId(workView.messageId())
+                        .attemptId(workView.latestAttemptId())
+                        .workerId(workView.latestAttemptWorkerId()))
+                .outcome(success, workView.errorCode(), reason)
+                .attrs(attrs(
+                        "source", "TaskManager",
+                        "reason", reason,
+                        "result", result,
+                        "workStatus", enumName(workView.status()),
+                        "latestAttemptBatchId", workView.latestAttemptBatchId()
+                ))
+                .build();
+    }
+
+    private ExecutionEvent.Builder event(ExecutionEventType eventType) {
+        ExecutionEvent.Builder builder = ExecutionEvent.builder().eventType(eventType);
+        String traceId = MDC.get(LogUtils.TRACE_ID);
+        if (traceId != null && !traceId.isBlank()) {
+            builder.traceId(traceId);
+        }
+        return builder;
+    }
+
+    private void emit(ExecutionEvent event) {
         Map<String, String> previous = MDC.getCopyOfContextMap();
         try {
-            MDC.put("event", event);
-            for (Map.Entry<String, String> entry : fields.entrySet()) {
+            sink.emit(event);
+            Map<String, String> flattened = flatten(event);
+            MDC.put("event", event.getEventType().name());
+            for (Map.Entry<String, String> entry : flattened.entrySet()) {
                 if (entry.getValue() != null && !entry.getValue().isBlank()) {
                     MDC.put(entry.getKey(), entry.getValue());
                 }
             }
-            TRACE_LOGGER.info(event);
+            LOG.info(event.getEventType().name());
+        } catch (RuntimeException e) {
+            LOG.warn("Failed to emit trace event {}", event != null ? event.getEventType() : null, e);
         } finally {
             MDC.clear();
             if (previous != null) {
@@ -778,10 +971,55 @@ public final class TraceEventLogger {
         }
     }
 
-    private static Map<String, String> fields(String... entries) {
-        Map<String, String> values = new LinkedHashMap<>();
+    private static Map<String, Object> attrs(Object... entries) {
+        Map<String, Object> values = new LinkedHashMap<>();
         for (int i = 0; i + 1 < entries.length; i += 2) {
-            values.put(entries[i], entries[i + 1]);
+            values.put(String.valueOf(entries[i]), entries[i + 1]);
+        }
+        return values;
+    }
+
+    private static Map<String, Object> workerSchedulingRankAttrs(WorkerSchedulingView view,
+                                                                 Integer candidateRank,
+                                                                 Double candidateScore) {
+        return workerSchedulingRankAttrs(null, view, null, candidateRank, candidateScore);
+    }
+
+    private static Map<String, Object> workerSchedulingRankAttrs(Task task,
+                                                                 WorkerSchedulingView view,
+                                                                 WorkerLoadSnapshot workerLoadSnapshot,
+                                                                 Integer candidateRank,
+                                                                 Double candidateScore) {
+        Map<String, Object> values = attrs(
+                "candidateRank", candidateRank,
+                "candidateScore", candidateScore != null ? formatDouble(candidateScore) : null
+        );
+        if (view != null) {
+            String routingCode = TaskSharedConfig.routingCode(task);
+            String taskEventCode = TaskSharedConfig.sdkEventCode(task);
+            values.put("workerSchedulingResourceId", view.schedulingResourceId());
+            values.put("workerSchedulingRoutingTags", view.schedulingRoutingTags());
+            values.put("workerSchedulingAttributes", view.schedulingAttributes());
+            values.put("workerSchedulingMatchesRoutingCode",
+                    routingCode != null && view.schedulingRoutingTagsContain(routingCode));
+            values.put("workerGroupId", view.workerGroupId());
+            values.put("adapterNodeId", view.adapterNodeId());
+            values.put("workerCandidateSource", workerCandidateSource(task));
+            if (task != null && taskEventCode != null && !taskEventCode.isBlank()
+                    && task.getProject() != null && !task.getProject().isBlank()) {
+                values.put("eventBindingKey", task.getProject().trim() + ":" + taskEventCode.trim());
+            }
+        }
+        if (workerLoadSnapshot != null) {
+            values.put("workerActiveLeaseCount", workerLoadSnapshot.activeLeaseCount());
+            values.put("workerReservedCount", workerLoadSnapshot.reservedCount());
+            values.put("workerDeclaredCapacity", workerLoadSnapshot.declaredCapacity());
+            values.put("workerEstimatedLoadRatio", formatDouble(workerLoadSnapshot.estimatedLoadRatio()));
+        } else if (view != null) {
+            values.put("workerActiveLeaseCount", view.activeLeaseCount());
+            values.put("workerReservedCount", view.reservedCount());
+            values.put("workerDeclaredCapacity", view.declaredCapacity());
+            values.put("workerEstimatedLoadRatio", formatDouble(view.estimatedLoadRatio()));
         }
         return values;
     }
@@ -790,41 +1028,87 @@ public final class TraceEventLogger {
         return value != null ? value.name() : null;
     }
 
-    private static String stringValue(Integer value) {
-        return value != null ? String.valueOf(value) : null;
-    }
-
-    private static String stringValue(Long value) {
-        return value != null ? String.valueOf(value) : null;
+    private static String workerCandidateSource(Task task) {
+        if (task == null) {
+            return null;
+        }
+        if (TaskSharedConfig.workerGroupSelector(task).isEmpty()) {
+            return null;
+        }
+        String targetWorkerId = TaskSharedConfig.targetWorkerId(task);
+        if (targetWorkerId != null && !targetWorkerId.isBlank()) {
+            return "TARGET_WORKER";
+        }
+        String adapterNodeId = TaskSharedConfig.adapterNodeId(task);
+        if (adapterNodeId != null && !adapterNodeId.isBlank()) {
+            return "GROUP_SELECTOR_WITH_NODE";
+        }
+        return "GROUP_SELECTOR";
     }
 
     private static String formatDouble(double value) {
         return String.format(java.util.Locale.ROOT, "%.1f", value);
     }
 
-    private static String latestAttemptWorkerId(TaskMsg taskMsg, TaskMsgAttempt attempt) {
-        return attempt != null ? attempt.getWorkerId() : taskMsg.getLatestAttemptWorkerId();
-    }
-
-    private static String latestAttemptWorkerContextId(TaskMsg taskMsg, TaskMsgAttempt attempt) {
-        return attempt != null ? attempt.getWorkerContextId() : taskMsg.getLatestAttemptWorkerContextId();
-    }
-
-    private static String latestAttemptBatchId(TaskMsg taskMsg, TaskMsgAttempt attempt) {
-        return attempt != null ? attempt.getBatchId() : taskMsg.getLatestAttemptBatchId();
-    }
-
-    private static void putTaskRuntimeProfile(Map<String, String> fields, Task task) {
+    private static void putTaskRuntimeProfile(Map<String, Object> attrs, Task task) {
         if (task == null) {
             return;
         }
         TaskRuntimeProfile profile = TASK_RUNTIME_PROFILE_RESOLVER.resolve(task);
-        fields.put("workloadClass", enumName(task.getWorkloadClass()));
-        fields.put("dispatchLane", enumName(profile.dispatchLane()));
-        fields.put("dispatchPriority", enumName(profile.dispatchPriority()));
-        fields.put("batchPolicy", enumName(profile.batchPolicy()));
-        fields.put("leaseProfile", enumName(profile.leaseProfile()));
-        fields.put("backpressureClass", enumName(profile.backpressureClass()));
+        attrs.put("workloadClass", enumName(task.getExecutionSpec().getWorkloadClass()));
+        attrs.put("foreground", task.getExecutionSpec().isForeground());
+        attrs.put("dispatchLane", enumName(profile.dispatchLane()));
+        attrs.put("dispatchPriority", enumName(profile.dispatchPriority()));
+        attrs.put("batchPolicy", enumName(profile.batchPolicy()));
+        attrs.put("leaseProfile", enumName(profile.leaseProfile()));
+        attrs.put("backpressureClass", enumName(profile.backpressureClass()));
+    }
+
+    private static Map<String, String> flatten(ExecutionEvent event) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        if (event == null) {
+            return fields;
+        }
+        put(fields, "traceId", event.getTraceId());
+        if (event.getIdentity() != null) {
+            put(fields, "taskId", event.getIdentity().taskId());
+            put(fields, "messageId", event.getIdentity().messageId());
+            put(fields, "attemptId", event.getIdentity().attemptId());
+            put(fields, "workerId", event.getIdentity().workerId());
+            put(fields, "leaseToken", event.getIdentity().leaseToken());
+        }
+        if (event.getTransition() != null) {
+            put(fields, "fromStatus", event.getTransition().src());
+            put(fields, "toStatus", event.getTransition().dst());
+        }
+        if (event.getAttrs() != null) {
+            for (Map.Entry<String, Object> entry : event.getAttrs().entrySet()) {
+                put(fields, entry.getKey(), stringify(entry.getValue()));
+            }
+        }
+        return fields;
+    }
+
+    private static void put(Map<String, String> fields, String key, String value) {
+        if (value != null) {
+            fields.put(key, value);
+        }
+    }
+
+    private static String stringify(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    public record TaskWorkTraceView(
+            String taskId,
+            String messageId,
+            String latestAttemptId,
+            String latestAttemptWorkerId,
+            String latestAttemptBatchId,
+            MessageStatus status,
+            MessageFinalReason finalReason,
+            int retryCount,
+            String errorCode
+    ) {
     }
 }
-

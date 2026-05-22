@@ -4,6 +4,7 @@ import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
+import com.xa.mass.transport.runtime.packet.TransportPacketFactory;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -12,6 +13,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TransportDeliveryServiceTest {
@@ -125,25 +127,41 @@ class TransportDeliveryServiceTest {
         TaskDispatchItem item = item("msg-1", "worker-1");
         service.enqueue(List.of(envelope(item)));
 
-        assertEquals(List.of(item), service.pollPayloads("polling", "worker-1", 10, 0));
+        assertEquals(List.of("msg-1"), service.pollEnvelopes("polling", "worker-1", 10, 0).stream()
+                .map(TransportDeliveryService::toDispatchView)
+                .map(TaskDispatchItem::getMessageId)
+                .toList());
     }
 
     @Test
     void pollUsesCanonicalAdapterAndRouteKeys() {
         TransportDeliveryService service = service();
         TaskDispatchItem item = item("msg-1", " worker-1 ");
-        service.enqueue(List.of(new TransportDispatchEnvelope(
-                "delivery-msg-1",
-                " Polling ",
-                " worker-1 ",
-                item.attemptId(),
-                item,
-                1L
-        )));
+        service.enqueue(List.of(envelope("delivery-msg-1", " Polling ", " worker-1 ", item)));
 
-        assertEquals(List.of("msg-1"), service.pollPayloads("polling", "worker-1", 10, 0).stream()
+        assertEquals(List.of("msg-1"), service.pollEnvelopes("polling", "worker-1", 10, 0).stream()
+                .map(TransportDeliveryService::toDispatchView)
                 .map(TaskDispatchItem::getMessageId)
                 .toList());
+    }
+
+    @Test
+    void pollDispatchResultPreservesEmptyAndInvalidRequestStatuses() {
+        TransportDeliveryService service = service();
+
+        assertEquals(TransportDeliveryPollStatus.EMPTY,
+                service.pollEnvelopeResult("polling", "worker-1", 10, 0).getStatus());
+        assertEquals(TransportDeliveryPollStatus.INVALID_REQUEST,
+                service.pollEnvelopeResult("polling", " ", 10, 0).getStatus());
+    }
+
+    @Test
+    void toDispatchItemsCachesProjectedItemsPerEnvelopeIndex() {
+        TaskDispatchItem item = item("msg-1", "worker-1");
+        List<TaskDispatchItem> projected = TransportDeliveryService.toDispatchViews(List.of(envelope(item)));
+
+        assertSame(projected.get(0), projected.get(0));
+        assertEquals("msg-1", projected.get(0).getMessageId());
     }
 
     @Test
@@ -209,7 +227,7 @@ class TransportDeliveryServiceTest {
         service.shutdown();
 
         assertEquals(0, service.stats().getQueuedItems());
-        assertTrue(service.pollPayloads("polling", "worker-1", 10, 0).isEmpty());
+        assertTrue(service.pollEnvelopes("polling", "worker-1", 10, 0).isEmpty());
         assertEquals(DispatchOutcomeStatus.ADAPTER_UNAVAILABLE,
                 service.enqueue(List.of(envelope(item("msg-2", "worker-1")))).get(0).getStatus());
     }
@@ -231,8 +249,8 @@ class TransportDeliveryServiceTest {
                 "demoApp",
                 "agent",
                 0,
+                "attempt-" + messageId,
                 workerId,
-                null,
                 "batch-1",
                 Map.of("target", "target-1"),
                 Map.of()
@@ -240,24 +258,23 @@ class TransportDeliveryServiceTest {
     }
 
     private TransportDispatchEnvelope envelope(TaskDispatchItem item) {
-        return new TransportDispatchEnvelope(
-                "delivery-" + item.getMessageId(),
-                "polling",
-                item.getWorkerId(),
-                item.attemptId(),
-                item,
-                1L
-        );
+        return envelope("delivery-" + item.getMessageId(), "polling", item.getWorkerId(), item);
     }
 
     private TransportDispatchEnvelope invalidEnvelope(TaskDispatchItem item) {
+        return envelope("delivery-" + item.getMessageId(), "polling", " ", item);
+    }
+
+    private TransportDispatchEnvelope envelope(String deliveryId,
+                                              String adapterId,
+                                              String routeKey,
+                                              TaskDispatchItem item) {
         return new TransportDispatchEnvelope(
-                "delivery-" + item.getMessageId(),
-                "polling",
-                " ",
-                item.attemptId(),
-                item,
+                deliveryId,
+                new TransportPacketFactory(() -> deliveryId)
+                        .fromDispatchView(adapterId, routeKey, item.attemptId(), item),
                 1L
         );
     }
 }
+

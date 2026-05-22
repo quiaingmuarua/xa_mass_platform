@@ -1,18 +1,17 @@
 package com.xa.mass.sdk;
 
-import com.xa.mass.sdk.model.WorkerContextRegistration;
-import com.xa.mass.sdk.model.WorkerRegistration;
-
 import java.util.List;
 
 /**
- * Worker mutation/admin surface used by embedded shells and repo-local tooling.
+ * Transitional worker mutation/admin surface used by embedded shells and
+ * repo-local tooling.
  */
-public interface WorkerAdminOperations {
+public interface WorkerAdminOperations extends WorkerRegistryOperations {
 
-    void registerWorker(WorkerRegistration request);
-
-    void registerWorkerContext(WorkerContextRegistration request);
-
+    /**
+     * @deprecated Capability truth belongs to {@code WorkerGroupDeclaration}.
+     * Do not extend this coarse compatibility mutation surface.
+     */
+    @Deprecated(forRemoval = false)
     boolean updateWorkerSupportedProjects(String workerId, List<String> supportedProjects);
 }

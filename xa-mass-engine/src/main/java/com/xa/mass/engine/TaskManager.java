@@ -1,34 +1,47 @@
 package com.xa.mass.engine;
 
+import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
+import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskIntakeStatus;
-import com.xa.mass.base.enums.task.TaskIngestStatus;
-import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
+import com.xa.mass.base.runtime.result.TaskResultCorrelation;
+import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
 import com.xa.mass.base.model.*;
-import com.xa.mass.engine.model.TaskCreateRequestDto;
+import com.xa.mass.base.model.TaskShellCreateRequestDto;
+import com.xa.mass.engine.model.TaskAppendReceipt;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
 import com.xa.mass.engine.policy.AllWorkFinalTaskTerminalPolicy;
+import com.xa.mass.engine.policy.ContractAwareTaskTerminalPolicy;
 import com.xa.mass.engine.policy.TaskTerminalPolicy;
+import com.xa.mass.engine.runtime.TaskRuntimeEnqueueOptionsResolver;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
 import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.TaskStorage;
-import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.runtime.api.BarrierClaim;
+import com.xa.mass.runtime.api.BarrierMarkResult;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
+import com.xa.mass.runtime.api.RecentFinalWorkReceipt;
 import com.xa.mass.runtime.api.ResultApplyOutcome;
+import com.xa.mass.runtime.api.RuntimeResultApplyContext;
+import com.xa.mass.runtime.api.TaskResultRuntime;
+import com.xa.mass.runtime.api.TaskResultWindow;
 import com.xa.mass.runtime.api.TaskWorkClaimOptions;
+import com.xa.mass.runtime.api.TaskWorkEnvelope;
 import com.xa.mass.runtime.api.TaskWorkResult;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.api.WorkEnqueueOutcome;
 import com.xa.mass.runtime.api.WorkEnqueueStatus;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
+import com.xa.mass.trace.sink.ExecutionEventSink;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,7 +53,7 @@ import java.util.function.Supplier;
 
 /**
  * Internal engine orchestration facade and composition root for task lifecycle,
- * compatibility projection, and runtime-bridge wiring.
+ * best-effort compatibility residue writes, and runtime-bridge wiring.
  *
  * <p>This remains the owner of engine assembly semantics, but it is not the
  * preferred cross-module caller surface for shell, SDK, transport, or testing
@@ -49,144 +62,154 @@ import java.util.function.Supplier;
  * {@link TaskAssignmentRuntimePort}, {@link TaskRuntimeMaintenancePort},
  * {@link TaskRuntimeRecoveryPort}, and {@link TaskEventService}.
  */
-public class TaskManager {
+public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMaintenancePort, TaskRuntimeRecoveryPort, TaskStateRuntimePort, TaskQueryPort, TaskCommandPort, TaskResultIngestPort {
 
     private static final Logger logger = LoggerFactory.getLogger(TaskManager.class);
-    static final int MAX_INITIAL_INLINE_INPUTS = Integer.getInteger("xa.mass.engine.maxInitialInlineInputs", 10_000);
     static final int MAX_INGEST_BATCH_ITEMS = Integer.getInteger("xa.mass.engine.maxIngestBatchItems", 10_000);
 
     private final TaskStorage taskStorage;
-    private final TaskDetailStore taskDetailStore;
-    private final TaskScheduler taskScheduler;
+    private final TaskCompatibilityProjectionStore compatibilityProjectionStore;
     private final TaskTerminalPolicy taskTerminalPolicy;
     private final TaskEventPublisher eventPublisher;
     private final TaskStateResolver stateResolver;
     private final TaskStateValidator stateValidator;
+    private final TaskProjectionStateAuditor projectionStateAuditor;
     private final TaskDispatchRequestService dispatchRequestService;
     private final TaskLifecycleService lifecycleService;
     private final TaskResultService resultService;
-    private final TaskRuntimeBridge taskRuntimeBridge;
+    private final TaskWorkRuntime taskWorkRuntime;
+    private final TaskResultRuntime taskResultRuntime;
+    private final TaskRuntimeEnqueueOptionsResolver enqueueOptionsResolver;
     private final TaskConcurrencyStrategy concurrencyCoordinator;
     private final VirtualThreadRuntimeTaskExecutor retryWakeupExecutor;
-    private long taskMessageLeaseSeconds = 300L;
+    /**
+     * Async executor for best-effort compatibility projection writes.
+     *
+     * <p>Projection writes are {@link CompatibilityProjectionOnly} residue - they must not block the runtime callback hot path. Submitting them here
+     * offloads the blocking storage I/O to a virtual-thread pool so the caller
+     * returns as soon as the runtime mutation completes.</p>
+     */
+    private final VirtualThreadRuntimeTaskExecutor projectionWriteExecutor;
+    private final com.xa.mass.engine.util.TraceEventLogger traceEventLogger;
+    private long workLeaseSeconds = 300L;
 
-    public TaskManager(TaskScheduler taskScheduler, TaskStorage taskStorage, TaskWorkRuntime taskWorkRuntime) {
-        this(taskScheduler, taskStorage, requireDetailStore(taskStorage), new AllWorkFinalTaskTerminalPolicy(), taskWorkRuntime);
-    }
-
-    public TaskManager(TaskScheduler taskScheduler,
-                       TaskStorage taskStorage,
+    public TaskManager(TaskStorage taskStorage,
                        TaskDetailStore taskDetailStore,
                        TaskWorkRuntime taskWorkRuntime) {
-        this(taskScheduler, taskStorage, taskDetailStore, new AllWorkFinalTaskTerminalPolicy(), taskWorkRuntime);
+        this(taskStorage, taskDetailStore, new ContractAwareTaskTerminalPolicy(), taskWorkRuntime,
+                new com.xa.mass.runtime.memory.InMemoryTaskResultRuntime(), null);
     }
 
-    public TaskManager(TaskScheduler taskScheduler,
-                       TaskStorage taskStorage,
-                       TaskTerminalPolicy taskTerminalPolicy,
-                       TaskWorkRuntime taskWorkRuntime) {
-        this(taskScheduler, taskStorage, requireDetailStore(taskStorage), taskTerminalPolicy, taskWorkRuntime);
-    }
-
-    public TaskManager(TaskScheduler taskScheduler,
-                       TaskStorage taskStorage,
+    public TaskManager(TaskStorage taskStorage,
                        TaskDetailStore taskDetailStore,
                        TaskTerminalPolicy taskTerminalPolicy,
                        TaskWorkRuntime taskWorkRuntime) {
-        this.taskScheduler = taskScheduler;
-        this.taskStorage = taskStorage;
-        this.taskDetailStore = Objects.requireNonNull(taskDetailStore, "taskDetailStore");
+        this(taskStorage, taskDetailStore, taskTerminalPolicy, taskWorkRuntime,
+                new com.xa.mass.runtime.memory.InMemoryTaskResultRuntime(), null);
+    }
+
+    public TaskManager(TaskStorage taskStorage,
+                       TaskDetailStore taskDetailStore,
+                       TaskWorkRuntime taskWorkRuntime,
+                       ExecutionEventSink executionEventSink) {
+        this(taskStorage, taskDetailStore, new ContractAwareTaskTerminalPolicy(), taskWorkRuntime,
+                new com.xa.mass.runtime.memory.InMemoryTaskResultRuntime(), executionEventSink);
+    }
+
+    public TaskManager(TaskStorage taskStorage,
+                       TaskDetailStore taskDetailStore,
+                       TaskWorkRuntime taskWorkRuntime,
+                       TaskResultRuntime taskResultRuntime,
+                       ExecutionEventSink executionEventSink) {
+        this(taskStorage, taskDetailStore, new ContractAwareTaskTerminalPolicy(), taskWorkRuntime,
+                taskResultRuntime, executionEventSink);
+    }
+
+    public TaskManager(TaskStorage taskStorage,
+                       TaskDetailStore taskDetailStore,
+                       TaskTerminalPolicy taskTerminalPolicy,
+                       TaskWorkRuntime taskWorkRuntime,
+                       ExecutionEventSink executionEventSink) {
+        this(taskStorage, taskDetailStore, taskTerminalPolicy, taskWorkRuntime,
+                new com.xa.mass.runtime.memory.InMemoryTaskResultRuntime(), executionEventSink);
+    }
+
+    public TaskManager(TaskStorage taskStorage,
+                       TaskDetailStore taskDetailStore,
+                       TaskTerminalPolicy taskTerminalPolicy,
+                       TaskWorkRuntime taskWorkRuntime,
+                       TaskResultRuntime taskResultRuntime,
+                       ExecutionEventSink executionEventSink) {
+        this.taskStorage = Objects.requireNonNull(taskStorage, "taskStorage");
+        TaskDetailStore requiredTaskDetailStore = Objects.requireNonNull(taskDetailStore, "taskDetailStore");
+        this.compatibilityProjectionStore = new TaskCompatibilityProjectionStore(requiredTaskDetailStore);
         TaskWorkRuntime requiredTaskWorkRuntime = Objects.requireNonNull(taskWorkRuntime, "taskWorkRuntime");
+        TaskResultRuntime requiredTaskResultRuntime = Objects.requireNonNull(taskResultRuntime, "taskResultRuntime");
         this.taskTerminalPolicy = Objects.requireNonNull(taskTerminalPolicy, "taskTerminalPolicy");
+        this.traceEventLogger = new com.xa.mass.engine.util.TraceEventLogger(executionEventSink);
         this.eventPublisher = new TaskEventPublisher();
-        this.stateResolver = new TaskStateResolver(new TaskManagerStateRuntimePort(this));
-        this.stateValidator = new TaskStateValidator(new TaskManagerStateRuntimePort(this));
-        this.taskRuntimeBridge = new TaskRuntimeBridge(
-                taskStorage,
-                requiredTaskWorkRuntime,
-                new com.xa.mass.engine.runtime.TaskRuntimeEnqueueOptionsResolver()
+        this.stateResolver = new TaskStateResolver(
+                this,
+                traceEventLogger
         );
+        this.stateValidator = new TaskStateValidator(
+                this,
+                traceEventLogger
+        );
+        this.projectionStateAuditor = new TaskProjectionStateAuditor(
+                stateValidator,
+                compatibilityProjectionStore
+        );
+        this.taskWorkRuntime = requiredTaskWorkRuntime;
+        this.taskResultRuntime = requiredTaskResultRuntime;
+        this.enqueueOptionsResolver = new TaskRuntimeEnqueueOptionsResolver();
         this.concurrencyCoordinator = new LocalTaskConcurrencyCoordinator();
         this.retryWakeupExecutor = new VirtualThreadRuntimeTaskExecutor(
                 "engine-retry-wakeup-",
                 Integer.getInteger("xa.mass.engine.retryWakeupMaxPendingTasks", 10_000)
         );
+        this.projectionWriteExecutor = new VirtualThreadRuntimeTaskExecutor(
+                "engine-proj-write-",
+                Integer.getInteger("xa.mass.engine.projectionWriteMaxPendingTasks", 50_000)
+        );
         this.dispatchRequestService = new TaskDispatchRequestService(
-                new TaskManagerDispatchRequestRuntimePort(this),
+                this,
                 retryWakeupExecutor,
                 new LocalDelayedDispatchSchedule()
         );
         this.lifecycleService = new TaskLifecycleService(
-                new TaskManagerLifecycleRuntimePort(this),
-                stateResolver
+                this,
+                stateResolver,
+                traceEventLogger
         );
         this.resultService = new TaskResultService(
-                new TaskManagerResultRuntimePort(this),
-                new TaskRuntimeRetryPolicyResolver()
+                this,
+                compatibilityProjectionStore,
+                requiredTaskResultRuntime,
+                new TaskRuntimeRetryPolicyResolver(),
+                traceEventLogger
         );
     }
 
-    /**
-     * Creates the task shell, initializes intake/source/runtime truth, ingests
-     * initial inputs, enqueues runtime work, and writes bounded compatibility
-     * {@link TaskMsg} projection rows.
-     *
-     * <p>This path is intentionally kept stable in this round. It is the next
-     * internal split candidate, but should not accumulate more unrelated
-     * responsibilities.
-     */
-    Task createTask(TaskCreateRequestDto dto) {
-        validateCreateRequest(dto);
+    @Override
+    public Task createTaskShell(TaskShellCreateRequestDto dto) {
+        validateTaskShellCreateRequest(dto);
         long startTime = System.currentTimeMillis();
-        LogUtils.logOperationStart("CREATE_TASK", "TaskManager",
-                "taskName", dto.getTaskName(),
+        LogUtils.logOperationStart("CREATE_TASK_SHELL", "TaskManager",
                 "project", dto.getProject(),
                 "routingCode", TaskSharedConfig.stringValue(dto.getSharedConfig(), TaskSharedConfig.ROUTING_CODE));
 
         try {
-            String tid = java.util.UUID.randomUUID().toString();
-            LogUtils.setTaskId(tid);
-
-            UserRef user = UserRef.of(dto.getUserId());
-            LogUtils.setUserId(dto.getUserId());
-
-            List<Map<String, Object>> inputs = dto.getInputs() == null ? List.of() : dto.getInputs();
-            TaskSourceType sourceType = resolveSourceType(dto);
-            if (inputs.isEmpty() && !sourceType.allowsEmptyInitialInputs()) {
-                throw new IllegalArgumentException("inputs must contain at least one work item");
-            }
-            int initNumber = inputs.size();
-
-            Task task = new Task(
-                    tid,
-                    dto.getTaskName(),
-                    dto.getProject(),
-                    initNumber,
-                    dto.getSharedConfig() != null ? dto.getSharedConfig() : new java.util.HashMap<>(),
-                    user
-            );
-            task.setSourceType(sourceType);
-            task.setWorkloadClass(dto.getWorkloadClass());
-            task.setSourceRef(normalizeSourceRef(dto.getSourceRef()));
-            task.setIngestStatus(resolveInitialIngestStatus(sourceType, dto.isOpenEnded(), initNumber));
-            task.setBatchSize(dto.getBatchSize());
-            // intakeStatus is the runtime truth; openEnded remains a compatibility projection.
-            task.setIntakeStatus(dto.isOpenEnded() ? TaskIntakeStatus.OPEN : TaskIntakeStatus.SEALED);
-            task.setMaxRuntimeSeconds(dto.getMaxRuntimeSeconds());
-            taskStorage.saveTask(task);
-            ingestInitialInputs(tid, dto, inputs);
-
-            eventPublisher.publishTaskCreated(task);
+            Task task = createTaskShellInternal(dto);
             long duration = System.currentTimeMillis() - startTime;
-            LogUtils.logOperationSuccess("task created: taskId=" + tid
-                    + ", sourceType=" + sourceType
-                    + ", initialMessageCount=" + initNumber
-                    + ", ingestStatus=" + task.getIngestStatus(), duration);
+            LogUtils.logOperationSuccess("task shell created: taskId=" + task.getTid()
+                    + ", contract=" + task.getContract()
+                    + ", intakeStatus=" + task.getIntakeStatus(), duration);
             return task;
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - startTime;
             LogUtils.logOperationFailure("TASK_CREATE_ERROR", e.getMessage(), duration);
-            logger.error("Failed to create task", e);
+            logger.error("Failed to create task shell", e);
             throw e;
         }
     }
@@ -194,7 +217,8 @@ public class TaskManager {
     /**
      * Returns a task by id or {@code null} if it does not exist.
      */
-    Task getTask(String taskId) {
+    @Override
+    public Task getTask(String taskId) {
         LogUtils.setTaskId(taskId);
         LogUtils.logOperationStart("GET_TASK", "TaskManager", "taskId", taskId);
 
@@ -212,7 +236,8 @@ public class TaskManager {
     /**
      * Persists a task update.
      */
-    boolean updateTask(Task task) {
+    @Override
+    public boolean updateTask(Task task) {
         LogUtils.setTaskId(task.getTid());
         LogUtils.logOperationStart("UPDATE_TASK", "TaskManager", "taskId", task.getTid());
 
@@ -230,30 +255,32 @@ public class TaskManager {
     /**
      * Deletes a task if it is still safe to remove.
      */
-    boolean deleteTask(String taskId) {
+    @Override
+    public boolean deleteTask(String taskId) {
         return withTaskLock(taskId, () -> lifecycleService.deleteTask(taskId));
     }
 
-    /**
-     * Returns all persisted tasks.
-     */
-    List<Task> getAllTasks() {
-        LogUtils.logOperationStart("GET_ALL_TASKS", "TaskManager");
-
-        List<Task> tasks = taskStorage.getAllTasks();
-
-        LogUtils.logOperationSuccess("loaded all tasks: count=" + tasks.size(), 0);
-        return tasks;
+    @Override
+    public List<Task> listTasksPaged(int offset, int limit) {
+        return taskStorage.listTasksPaged(offset, limit);
     }
 
-    List<Task> getRuntimeDispatchableTasks(int limit) {
-        return taskRuntimeBridge.getRuntimeDispatchableTasks(limit);
+    @Override
+    public List<Task> getRuntimeDispatchableTasks(int limit) {
+        if (limit <= 0) {
+            return List.of();
+        }
+        return taskWorkRuntime.readyTaskIds(limit).stream()
+                .map(taskId -> taskStorage.getTask(taskId).orElse(null))
+                .filter(task -> task != null)
+                .toList();
     }
 
     /**
      * Returns tasks currently in the given status.
      */
-    List<Task> getTasksByStatus(TaskStatus status) {
+    @Override
+    public List<Task> getTasksByStatus(TaskStatus status) {
         LogUtils.logOperationStart("GET_TASKS_BY_STATUS", "TaskManager", "status", status.name());
 
         List<Task> tasks = taskStorage.getTasksByStatus(status);
@@ -274,181 +301,200 @@ public class TaskManager {
         return tasks;
     }
 
-    List<Task> pollExpiredMaxRuntimeTasks(LocalDateTime now, int limit) {
+    @Override
+    public List<Task> pollExpiredMaxRuntimeTasks(LocalDateTime now, int limit) {
         return taskStorage.pollExpiredMaxRuntimeTasks(now, limit);
     }
 
-    boolean approveTask(String taskId) {
+    @Override
+    public boolean approveTask(String taskId) {
         return withTaskLock(taskId, () -> lifecycleService.approveTask(taskId));
     }
 
-    boolean rejectTask(String taskId) {
+    @Override
+    public boolean rejectTask(String taskId) {
         return withTaskLock(taskId, () -> lifecycleService.rejectTask(taskId));
     }
 
-    boolean blockTask(String taskId) {
+    @Override
+    public boolean blockTask(String taskId) {
         return withTaskLock(taskId, () -> lifecycleService.blockTask(taskId));
     }
 
-    boolean pauseTask(String taskId) {
+    @Override
+    public boolean pauseTask(String taskId) {
         return withTaskLock(taskId, () -> lifecycleService.pauseTask(taskId));
     }
 
-    TaskResumeResult resumeTaskDetailed(String taskId) {
+    @Override
+    public TaskResumeResult resumeTaskDetailed(String taskId) {
         return withTaskLock(taskId, () -> lifecycleService.resumeTaskDetailed(taskId));
     }
 
-    boolean resumeTask(String taskId) {
+    @Override
+    public boolean resumeTask(String taskId) {
         return resumeTaskDetailed(taskId).isSuccess();
     }
 
     /**
      * Manually terminates a non-final task (operator/user-initiated cancellation).
      */
-    boolean cancelTask(String taskId) {
+    @Override
+    public boolean cancelTask(String taskId) {
         return withTaskLock(taskId, () -> lifecycleService.cancelTask(taskId));
     }
 
     /**
      * Policy-driven task termination (e.g. max-runtime exceeded, success-rate reached).
      */
-    boolean terminateTask(String taskId, TaskTerminalReason reason) {
+    @Override
+    public boolean terminateTask(String taskId, TaskTerminalReason reason) {
         return withTaskLock(taskId, () -> lifecycleService.terminateTask(taskId, reason));
     }
 
     /**
-     * Appends new work items to a READY or RUNNING open-ended task.
+     * Appends new work items to a READY or RUNNING task whose intake window is still open.
      */
-    int appendTaskItems(String taskId, List<java.util.Map<String, Object>> inputs) {
-        return withTaskLock(taskId, () -> lifecycleService.appendTaskItems(taskId, inputs));
+    @Override
+    public TaskAppendReceipt appendTaskItemsWithReceipt(String taskId, List<java.util.Map<String, Object>> items) {
+        return withTaskLock(taskId, () -> lifecycleService.appendTaskItemsWithReceipt(taskId, items));
     }
 
     /**
-     * Seals an open-ended task.
+     * Appends new work items to a READY or RUNNING task whose intake window is still open.
      */
-    boolean sealTask(String taskId) {
+    @Override
+    public int appendTaskItems(String taskId, List<java.util.Map<String, Object>> items) {
+        return appendTaskItemsWithReceipt(taskId, items).added();
+    }
+
+    /**
+     * Closes the current task intake window.
+     */
+    @Override
+    public boolean sealTask(String taskId) {
         return withTaskLock(taskId, () -> lifecycleService.sealTask(taskId));
     }
 
     /**
-     * Persists a task message under the owning task.
+     * Runtime-first ingest for one logical work item.
+     *
+     * <p>Runtime admission happens before compatibility projection write so
+     * the bounded compatibility projection is not the canonical ingest product for execution
+     * correctness.</p>
      */
-    void addTaskMessage(String taskId, TaskMsg taskMsg) {
-        LogUtils.setTaskId(taskId);
-        LogUtils.logOperationStart("ADD_TASK_MESSAGE", "TaskManager",
-                "taskId", taskId,
-                "messageId", taskMsg.getMessageId());
+    void ingestRuntimeInput(String taskId,
+                      String messageId,
+                      java.util.Map<String, Object> input,
+                      int maxRetryCount) {
+        addRuntimeIngressItem(RuntimeTaskIngressItem.fromInput(taskId, messageId, input, maxRetryCount));
+    }
 
-        WorkEnqueueOutcome outcome = enqueueTaskWork(taskId, taskMsg);
-        if (!taskRuntimeBridge.isTaskWorkEnqueueAccepted(outcome)) {
-            throw new IllegalStateException("task work enqueue failed: status="
-                    + outcome.status() + ", reason=" + outcome.reason());
+    void ingestRuntimePayloadRef(String taskId,
+                           String messageId,
+                           String payloadRef,
+                           int maxRetryCount) {
+        addRuntimeIngressItem(new RuntimeTaskIngressItem(
+                taskId,
+                messageId,
+                null,
+                Map.of(),
+                payloadRef,
+                0,
+                maxRetryCount
+        ));
+    }
+
+    void addRuntimeIngressItems(Task task, List<RuntimeTaskIngressItem> ingressItems) {
+        if (task == null) {
+            throw new IllegalArgumentException("task is required");
         }
-        taskDetailStore.addTaskMessage(taskId, taskMsg);
-
-        LogUtils.logOperationSuccess("task message added", 0);
-    }
-
-    /**
-     * Package-local compatibility read surface for demo/tests and explicit
-     * projection audit. Do not treat full task-message reads as a future
-     * business-detail path.
-     */
-    List<TaskMsg> getTaskMessages(String taskId) {
-        return taskDetailStore.getTaskMessages(taskId);
-    }
-
-    /**
-     * Bounded compatibility read for UI/debug snapshots. Not a pagination or
-     * analysis contract.
-     */
-    List<TaskMsg> getTaskMessages(String taskId, int limit) {
-        return taskDetailStore.getTaskMessages(taskId, limit);
-    }
-
-    long countTaskMessages(String taskId) {
-        return taskDetailStore.countTaskMessages(taskId);
-    }
-
-    TaskMsg getTaskMessage(String taskId, String messageId) {
-        return taskDetailStore.getTaskMessage(taskId, messageId).orElse(null);
-    }
-
-    boolean updateTaskMessage(String taskId, TaskMsg taskMsg) {
-        return taskDetailStore.updateTaskMessage(taskId, taskMsg);
-    }
-
-    void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
-        taskDetailStore.addTaskMessageAttempt(taskId, messageId, attempt);
-    }
-
-    List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId) {
-        return taskDetailStore.getTaskMessageAttempts(taskId, messageId);
-    }
-
-    TaskMsgAttempt getLatestTaskMessageAttempt(String taskId, String messageId) {
-        return taskDetailStore.getLatestTaskMessageAttempt(taskId, messageId).orElse(null);
-    }
-
-    TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
-        return taskDetailStore.getLatestActiveTaskMessageAttempt(taskId, messageId).orElse(null);
-    }
-
-    boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
-        return taskDetailStore.updateTaskMessageAttempt(taskId, messageId, attempt);
-    }
-
-    public long getTaskMessageLeaseSeconds() {
-        return taskMessageLeaseSeconds;
-    }
-
-    public void setTaskMessageLeaseSeconds(long taskMessageLeaseSeconds) {
-        if (taskMessageLeaseSeconds <= 0) {
-            throw new IllegalArgumentException("taskMessageLeaseSeconds must be greater than 0");
+        if (ingressItems == null || ingressItems.isEmpty()) {
+            throw new IllegalArgumentException("ingressItems must be a non-empty list");
         }
-        this.taskMessageLeaseSeconds = taskMessageLeaseSeconds;
+        LogUtils.setTaskId(task.getTid());
+        LogUtils.logOperationStart("ADD_RUNTIME_WORK_BATCH", "TaskManager",
+                "taskId", task.getTid(),
+                "messageCount", String.valueOf(ingressItems.size()));
+        for (RuntimeTaskIngressItem ingressItem : ingressItems) {
+            if (ingressItem == null) {
+                throw new IllegalArgumentException("ingressItems must not contain null");
+            }
+            if (!task.getTid().equals(ingressItem.taskId())) {
+                throw new IllegalArgumentException("ingress item taskId mismatch: expected "
+                        + task.getTid() + " but was " + ingressItem.taskId());
+            }
+            WorkEnqueueOutcome outcome = enqueueTaskWork(task, ingressItem);
+            if (outcome != null && outcome.status() != WorkEnqueueStatus.ENQUEUED) {
+                throw new IllegalStateException("task work enqueue failed: status="
+                        + outcome.status() + ", reason=" + outcome.reason());
+            }
+            if (!compatibilityProjectionStore.upsertRuntimeIngressAccepted(ingressItem)) {
+                logger.warn("Compatibility projection write failed for taskId={}, messageId={} during runtime ingest; runtime work already enqueued",
+                        ingressItem.taskId(), ingressItem.messageId());
+            }
+        }
+        LogUtils.logOperationSuccess("runtime work batch added: count=" + ingressItems.size(), 0);
+    }
+
+    private void addRuntimeIngressItem(RuntimeTaskIngressItem ingressItem) {
+        if (ingressItem == null) {
+            throw new IllegalArgumentException("ingressItem is required");
+        }
+        Task task = taskStorage.getTask(ingressItem.taskId()).orElse(null);
+        if (task == null) {
+            throw new IllegalArgumentException("Task not found: " + ingressItem.taskId());
+        }
+        addRuntimeIngressItems(task, List.of(ingressItem));
+    }
+
+    public long getWorkLeaseSeconds() {
+        return workLeaseSeconds;
+    }
+
+    public void setWorkLeaseSeconds(long workLeaseSeconds) {
+        if (workLeaseSeconds <= 0) {
+            throw new IllegalArgumentException("workLeaseSeconds must be greater than 0");
+        }
+        this.workLeaseSeconds = workLeaseSeconds;
     }
 
     /**
-     * Expires a single in-flight task message and recalculates task convergence.
+     * Expires a single in-flight leased work item and recalculates task convergence.
      */
-    public boolean expireTaskMessage(String taskId, String messageId) {
-        TaskResultService.TaskMessageMutationOutcome outcome = withTaskMessageReadLock(taskId, messageId,
-                () -> resultService.expireTaskMessage(taskId, messageId));
+    @Override
+    public boolean expireLeasedWork(String taskId, String messageId) {
+        TaskResultService.ResultMutationOutcome outcome = withTaskWorkReadLock(taskId, messageId,
+                () -> resultService.expireLeasedWork(taskId, messageId));
         if (outcome.progressDirty()) {
-            updateTaskProgress(taskId);
+            applyResultProgress(outcome, taskId);
         }
         return outcome.accepted();
     }
 
-    /**
-     * Returns the current persisted task-message aggregate for a task.
-     */
-    TaskDetailStore.TaskMessageStats getTaskMessageStats(String taskId) {
-        return taskDetailStore.getTaskMessageStats(taskId);
+    @Override
+    public int countDispatchReadyWork(String taskId) {
+        long readyCount = taskWorkRuntime.stats(taskId).readyCount();
+        return readyCount > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) readyCount;
     }
 
-    List<TaskMsg> getNonFinalTaskMessages(String taskId) {
-        return taskDetailStore.getNonFinalTaskMessages(taskId);
+    @Override
+    public boolean hasDispatchReadyWork(String taskId) {
+        return countDispatchReadyWork(taskId) > 0;
     }
 
-    int countPendingDispatchableMessages(String taskId) {
-        return taskRuntimeBridge.countPendingDispatchableMessages(taskId);
+    @Override
+    public boolean hasActiveWorkForWorker(String taskId, String workerId) {
+        return taskWorkRuntime.hasActiveLeaseForWorker(taskId, workerId);
     }
 
-    boolean hasPendingDispatchableMessages(String taskId) {
-        return taskRuntimeBridge.hasPendingDispatchableMessages(taskId);
+    @Override
+    public TaskWorkStats getTaskWorkStats(String taskId) {
+        return taskWorkRuntime.stats(taskId);
     }
 
-    boolean hasProcessingMessagesForWorker(String taskId, String workerId) {
-        return taskRuntimeBridge.hasProcessingMessagesForWorker(taskId, workerId);
-    }
-
-    TaskWorkStats getTaskWorkStats(String taskId) {
-        return taskRuntimeBridge.getTaskWorkStats(taskId);
-    }
-
-    TaskTerminalPolicyDecision evaluateTerminalPolicy(Task task, TaskWorkStats stats) {
+    @Override
+    public TaskTerminalPolicyDecision evaluateTerminalPolicy(Task task, TaskWorkStats stats) {
         return taskTerminalPolicy.evaluate(task, stats);
     }
 
@@ -462,18 +508,6 @@ public class TaskManager {
 
     void publishTaskDispatchRequested(Task task) {
         eventPublisher.publishTaskDispatchRequested(task);
-    }
-
-    TaskDetailStore.TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
-        return taskDetailStore.getTaskMessageAttemptStats(taskId, messageId);
-    }
-
-    private static TaskDetailStore requireDetailStore(TaskStorage taskStorage) {
-        if (taskStorage instanceof TaskDetailStore tds) {
-            return tds;
-        }
-        throw new IllegalArgumentException(
-                "taskStorage must implement TaskDetailStore; use the explicit constructor to provide a separate TaskDetailStore");
     }
 
     boolean deleteTaskRecord(String taskId) {
@@ -496,31 +530,30 @@ public class TaskManager {
      * Resolves task state explicitly from runtime-owned work stats plus the
      * persisted task aggregate.
      */
-    TaskStateResolutionResult resolveTaskState(String taskId) {
+    @Override
+    public TaskStateResolutionResult resolveTaskState(String taskId) {
         return withTaskLock(taskId, () -> stateResolver.resolveTaskState(taskId));
     }
 
     /**
      * Audit-only invariant validation. This path is intentionally bounded and
      * should not be treated as a hot-path runtime query surface. This method
-     * validates task/runtime aggregates without scanning the full TaskMsg
-     * compatibility projection.
+     * validates task/runtime aggregates without scanning the full
+     * compatibility work projection residue.
      */
-    TaskStateValidationResult validateTaskState(String taskId) {
+    @Override
+    public TaskStateValidationResult validateTaskState(String taskId) {
         return withTaskLock(taskId, () -> stateValidator.validateTaskState(taskId));
     }
 
     /**
-     * Explicit deep audit of the persisted TaskMsg projection plus attempt
-     * aggregates. This is diagnostic-only and may require a full task-message
-     * snapshot.
+     * Explicit deep audit of the persisted compatibility projection plus
+     * attempt aggregates. This is diagnostic-only and may require a full
+     * bounded work-projection snapshot.
      */
+    @CompatibilityProjectionOnly
     TaskStateValidationResult auditTaskProjectionState(String taskId) {
-        return withTaskLock(taskId, () -> stateValidator.auditTaskProjectionState(taskId));
-    }
-
-    public TaskScheduler getScheduler() {
-        return this.taskScheduler;
+        return withTaskLock(taskId, () -> projectionStateAuditor.auditTaskProjectionState(taskId));
     }
 
     /**
@@ -535,39 +568,52 @@ public class TaskManager {
         dispatchRequestService.shutdown();
         resultService.shutdown();
         retryWakeupExecutor.shutdown();
-        taskRuntimeBridge.shutdown();
+        projectionWriteExecutor.shutdown();
+        taskResultRuntime.shutdown();
+        taskWorkRuntime.shutdown();
     }
 
-    public boolean handleTaskMessageResult(String taskId, String messageId, boolean success, String detail) {
-        TaskResultService.TaskMessageMutationOutcome outcome = withTaskMessageReadLock(taskId, messageId,
-                () -> resultService.handleTaskMessageResult(taskId, messageId, success, detail));
+    boolean ingestTaskResult(String taskId, String messageId, boolean success, String detail) {
+        TaskResultService.ResultMutationOutcome outcome = withTaskWorkReadLock(taskId, messageId,
+                () -> resultService.ingestTaskResult(taskId, messageId, success, detail));
         if (outcome.progressDirty()) {
-            updateTaskProgress(taskId);
+            applyResultProgress(outcome, taskId);
         }
         return outcome.accepted();
     }
 
-    public boolean handleTaskMessageResult(String taskId, String messageId, boolean success, String detail, String errorCode) {
-        TaskResultService.TaskMessageMutationOutcome outcome = withTaskMessageReadLock(taskId, messageId,
-                () -> resultService.handleTaskMessageResult(taskId, messageId, success, detail, errorCode));
+    boolean ingestTaskResult(String taskId, String messageId, boolean success, String detail, String errorCode) {
+        TaskResultService.ResultMutationOutcome outcome = withTaskWorkReadLock(taskId, messageId,
+                () -> resultService.ingestTaskResult(taskId, messageId, success, detail, errorCode));
         if (outcome.progressDirty()) {
-            updateTaskProgress(taskId);
+            applyResultProgress(outcome, taskId);
         }
         return outcome.accepted();
     }
 
-    public boolean handleTaskMessageResult(String taskId,
-                                           String messageId,
-                                           boolean success,
-                                           String detail,
-                                           String errorCode,
-                                           Map<String, Object> output) {
-        TaskResultService.TaskMessageMutationOutcome outcome = withTaskMessageReadLock(taskId, messageId,
-                () -> resultService.handleTaskMessageResult(taskId, messageId, success, detail, errorCode, output));
+    @Override
+    public boolean ingestTaskResult(String taskId,
+                                    String messageId,
+                                    boolean success,
+                                    String detail,
+                                    String errorCode,
+                                    Map<String, Object> output) {
+        TaskResultService.ResultMutationOutcome outcome = withTaskWorkReadLock(taskId, messageId,
+                () -> resultService.ingestTaskResult(taskId, messageId, success, detail, errorCode, output));
         if (outcome.progressDirty()) {
-            updateTaskProgress(taskId);
+            applyResultProgress(outcome, taskId);
         }
         return outcome.accepted();
+    }
+
+    @Override
+    public TaskResultCorrelation getResultCorrelation(String taskId, String messageId) {
+        return TaskResultCorrelationSupport.fromRuntimeState(
+                taskId,
+                messageId,
+                null,
+                getActiveLease(taskId, messageId).orElse(null)
+        );
     }
 
     <T> T withTaskLock(String taskId, Supplier<T> action) {
@@ -581,56 +627,45 @@ public class TaskManager {
         });
     }
 
-    private <T> T withTaskMessageReadLock(String taskId, String messageId, Supplier<T> action) {
-        return concurrencyCoordinator.withTaskMessageReadLock(taskId, messageId, action);
+    private <T> T withTaskWorkReadLock(String taskId, String messageId, Supplier<T> action) {
+        return concurrencyCoordinator.withTaskWorkReadLock(taskId, messageId, action);
     }
 
     private void reconcileTaskProgress(String taskId) {
         concurrencyCoordinator.reconcileTaskProgress(taskId, () -> resolveTaskProgressUnderTaskLock(taskId));
     }
 
-    private void validateCreateRequest(TaskCreateRequestDto dto) {
+    private void validateTaskShellCreateRequest(TaskShellCreateRequestDto dto) {
         if (dto == null) {
             throw new IllegalArgumentException("task request body is required");
         }
         ProjectRef.require(dto.getProject());
         UserRef.requireUserId(dto.getUserId());
-        TaskSourceType sourceType = resolveSourceType(dto);
-        List<Map<String, Object>> inputs = dto.getInputs() == null ? List.of() : dto.getInputs();
-        if (sourceType == TaskSourceType.FILE
-                && (dto.getSourceRef() == null || dto.getSourceRef().isBlank())) {
-            throw new IllegalArgumentException("sourceRef is required for FILE task sources");
+        if (dto.getTenantId() == null || dto.getTenantId().isBlank()) {
+            dto.setTenantId(TenantConstants.DEFAULT_TENANT_ID);
         }
-        if (sourceType == TaskSourceType.FILE && !inputs.isEmpty()) {
-            throw new IllegalArgumentException("FILE task sources must be created as a sourceRef shell; ingest work items in batches");
-        }
-        if (sourceType == TaskSourceType.BATCH && inputs.size() > MAX_INITIAL_INLINE_INPUTS) {
-            throw new IllegalArgumentException("BATCH task initial inputs exceed inline create limit: "
-                    + inputs.size() + " > " + MAX_INITIAL_INLINE_INPUTS);
-        }
-        if (sourceType == TaskSourceType.STREAM && inputs.size() > MAX_INGEST_BATCH_ITEMS) {
-            throw new IllegalArgumentException("STREAM task initial inputs exceed ingest batch limit: "
-                    + inputs.size() + " > " + MAX_INGEST_BATCH_ITEMS);
-        }
+        TaskExecutionSpec normalizedSpec = TaskExecutionSpec.normalized(dto.getExecutionSpec());
+        TaskContract contract = resolveShellContract(dto);
+        normalizedSpec.setWorkloadClass(resolveWorkloadClass(contract, normalizedSpec));
+        dto.setContract(contract);
+        dto.setExecutionSpec(normalizedSpec);
     }
 
-    private TaskSourceType resolveSourceType(TaskCreateRequestDto dto) {
-        if (dto.getSourceType() != null) {
-            return dto.getSourceType();
+    private TaskContract resolveShellContract(TaskShellCreateRequestDto dto) {
+        if (dto != null && dto.getContract() != null) {
+            return dto.getContract();
         }
-        return dto.isOpenEnded() ? TaskSourceType.STREAM : TaskSourceType.BATCH;
+        return TaskContract.BATCH;
     }
 
-    private TaskIngestStatus resolveInitialIngestStatus(TaskSourceType sourceType,
-                                                        boolean openEnded,
-                                                        int initialMessageCount) {
-        if (sourceType == TaskSourceType.FILE) {
-            return initialMessageCount > 0 ? TaskIngestStatus.READY : TaskIngestStatus.PENDING;
+    private com.xa.mass.base.enums.task.TaskWorkloadClass resolveWorkloadClass(TaskContract contract,
+                                                                               TaskExecutionSpec normalizedSpec) {
+        if (normalizedSpec != null && normalizedSpec.getWorkloadClass() != null) {
+            return normalizedSpec.getWorkloadClass();
         }
-        if (openEnded || sourceType == TaskSourceType.STREAM) {
-            return TaskIngestStatus.READY;
-        }
-        return TaskIngestStatus.SEALED;
+        return contract == TaskContract.SESSION
+                ? com.xa.mass.base.enums.task.TaskWorkloadClass.INTERACTIVE
+                : com.xa.mass.base.enums.task.TaskWorkloadClass.BULK;
     }
 
     private String normalizeSourceRef(String sourceRef) {
@@ -640,8 +675,16 @@ public class TaskManager {
         return sourceRef.trim();
     }
 
-    public TaskWorkRuntime getTaskWorkRuntime() {
-        return taskRuntimeBridge.runtime();
+    TaskWorkRuntime getTaskWorkRuntime() {
+        return taskWorkRuntime;
+    }
+
+    TaskRuntimeEnqueueOptionsResolver enqueueOptionsResolver() {
+        return enqueueOptionsResolver;
+    }
+
+    com.xa.mass.engine.util.TraceEventLogger traceEvents() {
+        return traceEventLogger;
     }
 
     /**
@@ -650,7 +693,8 @@ public class TaskManager {
      * <p>This is a runtime orchestration method, not a public business API
      * contract.
      */
-    void requestTaskDispatch(Task task) {
+    @Override
+    public void requestTaskDispatch(Task task) {
         dispatchRequestService.requestImmediate(task);
     }
 
@@ -658,59 +702,227 @@ public class TaskManager {
         dispatchRequestService.requestDelayed(task, delayMillis);
     }
 
-    List<ClaimedTaskWork> claimReady(String taskId,
-                                     List<WorkerClaimTarget> claimTargets,
-                                     TaskWorkClaimOptions claimOptions) {
-        return taskRuntimeBridge.claimReady(taskId, claimTargets, claimOptions);
+    @Override
+    public List<ClaimedTaskWork> claimReady(String taskId,
+                                            List<WorkerClaimTarget> claimTargets,
+                                            TaskWorkClaimOptions claimOptions) {
+        return taskWorkRuntime.claimReady(taskId, claimTargets, claimOptions);
     }
 
     java.util.Optional<ActiveLeaseRecord> getActiveLease(String taskId, String messageId) {
-        return taskRuntimeBridge.getActiveLease(taskId, messageId);
+        return taskWorkRuntime.getActiveLease(taskId, messageId);
     }
 
-    List<ActiveLeaseRecord> getActiveLeases(String taskId) {
-        return taskRuntimeBridge.getActiveLeases(taskId);
+    java.util.Optional<TaskWorkEnvelope> getTaskWork(String taskId, String messageId) {
+        return taskWorkRuntime.getWork(taskId, messageId);
     }
 
-    List<ActiveLeaseRecord> pollExpiredLeases(int limit, java.time.Instant now) {
-        return taskRuntimeBridge.pollExpiredLeases(limit, now);
+    java.util.Optional<RecentFinalWorkReceipt> getRecentFinalReceipt(String taskId, String messageId) {
+        return taskWorkRuntime.getRecentFinalReceipt(taskId, messageId);
+    }
+
+    public TaskResultWindow readTaskResultWindow(String taskId, long afterSeq, int limit) {
+        return taskResultRuntime.readWindow(taskId, afterSeq, limit);
+    }
+
+    public long countTaskResults(String taskId) {
+        return taskResultRuntime.countVisibleResults(taskId);
+    }
+
+    @Override
+    public List<ActiveLeaseRecord> getActiveLeases(String taskId) {
+        return taskWorkRuntime.activeLeases(taskId);
+    }
+
+    @Override
+    public List<ActiveLeaseRecord> pollExpiredLeases(int limit, java.time.Instant now) {
+        return taskWorkRuntime.pollExpiredLeases(limit, now);
     }
 
     void discardTaskRuntime(String taskId) {
-        taskRuntimeBridge.discardTaskRuntime(taskId);
+        taskWorkRuntime.discardTask(taskId);
+        taskResultRuntime.discardTask(taskId);
     }
 
     ResultApplyOutcome applyTaskWorkResult(TaskWorkResult result) {
-        return taskRuntimeBridge.applyTaskWorkResult(result);
+        return taskWorkRuntime.applyResult(result);
     }
 
-    void publishTaskMessageAttemptClosed(Task task, TaskMsg taskMsg, TaskMsgAttempt attempt) {
-        eventPublisher.publishTaskMessageAttemptClosed(task, taskMsg, attempt);
+    /**
+     * Single-call atomic equivalent of three separate runtime round-trips
+     * ({@code getActiveLease} + {@code getWork} + {@code applyResult}).
+     *
+     * <p>Returns the pre-apply lease and work snapshot together with the outcome
+     * so the engine callback path does not need additional runtime reads after
+     * the mutation.</p>
+     */
+    RuntimeResultApplyContext applyTaskWorkResultWithContext(TaskWorkResult result) {
+        return taskWorkRuntime.applyResultWithContext(result);
     }
 
-    void publishTaskMessageLogicallyFinal(Task task, TaskMsg taskMsg) {
-        eventPublisher.publishTaskMessageLogicallyFinal(task, taskMsg);
+    TaskResultRuntime getTaskResultRuntime() {
+        return taskResultRuntime;
     }
 
-    void handleTaskMsgCompletion(TaskMsg taskMsg) {
-        taskScheduler.handleTaskMsgCompletion(taskMsg);
+    void applyTaskResultProgressOnce(String taskId, String messageId, long finalSeq) {
+        BarrierClaim claim = taskResultRuntime.claimProgressApply(taskId, messageId, finalSeq);
+        if (!claim.claimedByCaller()) {
+            return;
+        }
+        updateTaskProgress(taskId);
+        BarrierMarkResult markResult = taskResultRuntime.markProgressApplied(
+                taskId, messageId, finalSeq, claim.claimToken());
+        if (!markResult.completed()) {
+            logger.warn("Task result progress barrier mark did not complete for taskId={}, messageId={}, seq={}, status={}, reason={}",
+                    taskId, messageId, finalSeq, markResult.status(), markResult.reason());
+            return;
+        }
+        cleanupResultStageIfConverged(taskId, messageId);
     }
 
-    void handleTaskMsgFailure(TaskMsg taskMsg, String detail) {
-        taskScheduler.handleTaskMsgFailure(taskMsg, detail);
+    private void cleanupResultStageIfConverged(String taskId, String messageId) {
+        taskResultRuntime.getVisibleByMessageId(taskId, messageId)
+                .filter(row -> row.attemptClosedPublished() && row.logicalFinalPublished() && row.progressApplied())
+                .ifPresent(row -> taskResultRuntime.discardStagedCallbacksForMessage(taskId, messageId));
     }
 
-    private void ingestInitialInputs(String taskId, TaskCreateRequestDto dto, List<Map<String, Object>> inputs) {
-        for (Map<String, Object> input : inputs) {
-            String messageId = java.util.UUID.randomUUID().toString();
-            TaskMsg taskMsg = new TaskMsg(messageId, taskId, input);
-            taskMsg.setMaxRetryCount(dto.getDefaultMsgMaxRetryCount());
-            addTaskMessage(taskId, taskMsg);
+    /**
+     * Submits a best-effort compatibility projection write to the async
+     * projection executor.
+     *
+     * <p>The task is dropped (with a warning) if the executor's pending-task
+     * capacity is exhausted. Callers must not treat this as a durable write
+     * path - projection residue is secondary to runtime truth.</p>
+     *
+     * @param task the projection write to execute off the hot path
+     */
+    @CompatibilityProjectionOnly
+    void submitProjectionWrite(Runnable task) {
+        try {
+            projectionWriteExecutor.submit(task);
+        } catch (java.util.concurrent.RejectedExecutionException ex) {
+            logger.warn("Projection write executor at capacity - dropping best-effort projection write: {}",
+                    ex.getMessage());
         }
     }
 
-    private WorkEnqueueOutcome enqueueTaskWork(String taskId, TaskMsg taskMsg) {
-        return taskRuntimeBridge.enqueueTaskWork(taskId, taskMsg);
+    @Override
+    public boolean compensateDispatchSubmitFailure(Task task,
+                                                   List<TaskDispatchBinding> dispatchBindings,
+                                                   String detail) {
+        if (task == null || dispatchBindings == null || dispatchBindings.isEmpty()) {
+            return true;
+        }
+        boolean progressDirty = false;
+        for (TaskDispatchBinding dispatchBinding : dispatchBindings) {
+            if (dispatchBinding == null || dispatchBinding.messageId() == null) {
+                continue;
+            }
+            String messageId = dispatchBinding.messageId();
+            TaskResultService.ResultMutationOutcome outcome = withTaskWorkReadLock(task.getTid(), messageId,
+                    () -> resultService.compensateDispatchSubmitFailure(task, dispatchBinding, detail));
+            if (!outcome.accepted()) {
+                return false;
+            }
+            progressDirty |= outcome.progressDirty();
+        }
+        if (progressDirty) {
+            updateTaskProgress(task.getTid());
+        }
+        return true;
     }
-}
 
+    private void applyResultProgress(TaskResultService.ResultMutationOutcome outcome, String taskId) {
+        if (outcome.hasProgressBarrier()) {
+            applyTaskResultProgressOnce(outcome.progressTaskId(), outcome.progressMessageId(), outcome.progressSeq());
+            return;
+        }
+        updateTaskProgress(taskId);
+    }
+
+    void publishTaskWorkAttemptClosed(Task task, TaskWorkAttemptClosedEvent event) {
+        eventPublisher.publishTaskWorkAttemptClosed(task, event);
+    }
+
+    void publishTaskWorkLogicallyFinal(Task task, TaskWorkLogicallyFinalEvent event) {
+        eventPublisher.publishTaskWorkLogicallyFinal(task, event);
+    }
+
+    private WorkEnqueueOutcome enqueueTaskWork(Task task, RuntimeTaskIngressItem ingressItem) {
+        if (ingressItem == null || ingressItem.messageId() == null || ingressItem.messageId().isBlank()) {
+            return null;
+        }
+        TaskWorkEnvelope item = new TaskWorkEnvelope(
+                ingressItem.taskId(),
+                ingressItem.messageId(),
+                ingressItem.eventCode() != null ? ingressItem.eventCode()
+                        : task != null ? TaskSharedConfig.sdkEventCode(task) : null,
+                ingressItem.inlinePayload(),
+                ingressItem.payloadRef(),
+                ingressItem.retryCount(),
+                ingressItem.maxRetryCount(),
+                null,
+                null,
+                java.time.Instant.now()
+        );
+        return taskWorkRuntime.enqueue(item, enqueueOptionsResolver.resolve(task));
+    }
+
+    private Task createTaskShellInternal(TaskShellCreateRequestDto dto) {
+        return createTaskRecord(dto, resolveInitialIntakeStatus());
+    }
+
+    private Task createTaskRecord(TaskShellCreateRequestDto dto,
+                                  TaskIntakeStatus intakeStatus) {
+        String tid = java.util.UUID.randomUUID().toString();
+        LogUtils.setTaskId(tid);
+        UserRef user = UserRef.of(dto.getUserId());
+        LogUtils.setUserId(dto.getUserId());
+
+        Task task = new Task(
+                tid,
+                deriveTaskName(dto, tid),
+                dto.getProject(),
+                0,
+                dto.getSharedConfig() != null ? dto.getSharedConfig() : new java.util.HashMap<>(),
+                user
+        );
+        task.setTenantId(dto.getTenantId());
+        task.setContract(dto.getContract());
+        task.setExecutionSpec(TaskExecutionSpec.normalized(dto.getExecutionSpec()));
+        task.setSourceRef(normalizeSourceRef(dto.getSourceRef()));
+        task.setIntakeStatus(intakeStatus);
+        taskStorage.saveTask(task);
+        eventPublisher.publishTaskCreated(task);
+        return task;
+    }
+
+    private TaskIntakeStatus resolveInitialIntakeStatus() {
+        return TaskIntakeStatus.OPEN;
+    }
+
+    private String deriveTaskName(TaskShellCreateRequestDto dto, String taskId) {
+        String project = dto.getProject() != null ? dto.getProject().trim() : "task";
+        TaskContract contract = dto.getContract() != null ? dto.getContract() : TaskContract.BATCH;
+        String normalizedContract = contract.name().toLowerCase(java.util.Locale.ROOT);
+        String profile = dto.getExecutionSpec() != null && dto.getExecutionSpec().getProfile() != null
+                ? dto.getExecutionSpec().getProfile().name().toLowerCase(java.util.Locale.ROOT)
+                : "standard";
+        String sourceRef = normalizeSourceRef(dto.getSourceRef());
+        String sourceHint = sourceRef == null ? null : basename(sourceRef);
+        String shortTaskId = taskId.length() <= 8 ? taskId : taskId.substring(0, 8);
+        if (sourceHint != null && !sourceHint.isBlank()) {
+            return project + "-" + normalizedContract + "-" + profile + "-" + sourceHint + "-" + shortTaskId;
+        }
+        return project + "-" + normalizedContract + "-" + profile + "-" + shortTaskId;
+    }
+
+    private String basename(String value) {
+        String normalized = value.replace('\\', '/');
+        int slash = normalized.lastIndexOf('/');
+        String leaf = slash >= 0 ? normalized.substring(slash + 1) : normalized;
+        String sanitized = leaf.replaceAll("[^A-Za-z0-9._-]", "-");
+        return sanitized.isBlank() ? null : sanitized;
+    }
+
+}

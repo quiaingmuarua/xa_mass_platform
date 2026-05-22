@@ -1,12 +1,33 @@
 # E2E Baseline
 
-Last updated: 2026-04-27
+Last updated: 2026-05-18
 
 Status: current global E2E baseline.
 
 This is the short release-gate baseline for active-mainline E2E coverage.
 Detailed suite inventory stays in [../xa-mass-server/README.md](../xa-mass-server/README.md).
 Overall testing-system placement stays in [./TESTING_BASELINE.md](./TESTING_BASELINE.md).
+Authoritative-vs-representative proof ownership stays in
+[./PROOF_REGISTRY.md](./PROOF_REGISTRY.md).
+
+## 0. Fast Intent
+
+Use Boot-shell E2E when the real risk is:
+
+- real host/runtime wiring
+- representative assignment and result-convergence behavior through the server shell
+- external worker parity across process, language, or adapter boundaries
+
+Do not use Boot-shell E2E as the first home for:
+
+- the full worker-selection competition matrix
+- every scheduling/contention permutation
+- projection-first lifecycle proof
+
+E2E is the platform-viability proof surface, not the only or highest-value
+proof of scheduling correctness. The full competition matrix belongs primarily
+to engine acceptance/concurrency tests, while E2E keeps representative real-host
+assignment, polling, routing, and result-convergence scenarios.
 
 ## 1. What Counts As Real E2E
 
@@ -22,13 +43,33 @@ White-box fixtures are allowed for setup and fault injection, but not as a repla
 Current mainline note:
 
 - today the Boot-shell E2E path validates the stable polling external-worker path plus the current websocket/socket realtime adapter paths
-- pull-style shell coverage is currently represented by `PollingWorkerTaskFlowIntegrationTest`, `CrawlerPullWorkerSdkRegistrationIntegrationTest`, `ExternalWorkerPollingApiIntegrationTest`, `NodePollingWorkerBlackBoxIntegrationTest`, and `TransportChannelWiringIntegrationTest`
+- pull-style shell coverage is currently represented by `CrawlerPullWorkerSdkRegistrationIntegrationTest` plus focused parity/API coverage such as `ExternalWorkerPollingApiIntegrationTest`; earlier generic polling/transport smoke helpers have been retired instead of kept as parallel proof-like noise
+- cross-language / cross-adapter worker parity is represented by `ExternalWorkerParitySuite`, covering Java and Node workers across polling, WebSocket, and socket adapters
+- downgraded shell-smoke tests now belong in explicit support suites such as
+  `ServerSupportCoverageSuite` and `ServerLifecycleSupportCoverageSuite`; do
+  not promote them back into mainline scheduling or lifecycle suites without a
+  registry change
+- `SdkTaskApiIntegrationTest` remains support-only unified task API and
+  submitter-credential shell coverage; it is intentionally outside
+  lifecycle/result proof ownership
+- `TaskApiIntegrationTest` remains support-only workload-class shell coverage;
+  it is intentionally outside lifecycle/result proof ownership
 
 Fixture note:
 
 - E2E tests may still use white-box fixtures for setup and fault injection
-- prefer SDK capability entrypoints such as `MassSdkApplication.registerWorker(...)`, `registerWorkerContext(...)`, `replaceDefaultRules(...)`, and `createTask(...)` for new setup code
+- prefer SDK capability entrypoints such as `MassSdkApplication.registerWorker(...)`, `replaceDefaultRules(...)`, `createTaskShell(...)`, `appendTaskItems(...)`, and `executeTaskCommand(..., "SEAL")` for batch/file ingest setup code
+- WorkerContext compatibility registration has been removed; E2E setup should prefer worker attributes, event bindings, transport presence, and runtime load proof
 - current active E2E fixtures have eliminated direct `WorkerManager` and `RuleManager` setup writes; remaining direct manager mutation is limited to intentional `TaskManager` invariant/fault-injection scenarios
+
+Proof-surface note:
+
+- E2E is the preferred proof surface when the real risk is integrated lifecycle wiring, host/runtime interaction, transport interplay, or distributed edge behavior
+- E2E is not where the full worker-selection competition matrix should live; keep engine-first scheduling proof for contention, redispatch, and contract-aware convergence
+- compatibility projection may still be asserted as bounded residue, but it is not the primary proof surface for lifecycle correctness
+- when E2E claims trace coverage, read canonical sink output through
+  `xa-mass-trace` or the same query backend path rather than asserting raw log
+  strings
 
 ## 2. Mandatory Release-Gate Scenarios
 
@@ -41,14 +82,14 @@ Core lifecycle:
 - `pause -> resume`
 - `approve -> assign -> running -> terminate -> delete`
 - `running -> pause -> callback -> terminal`
-- `openEnded -> complete current messages -> remain non-terminal -> seal -> terminal`
+- `SESSION task -> complete current messages -> remain non-terminal -> explicit terminate`
 
 Robustness:
 
 - duplicate callback replay is idempotent
 - late callback after manual terminal closure is ignored
 - mixed results close with `MIXED_MESSAGE_RESULTS`
-- task detail and message detail expose `intakeStatus` and item-level `finalReason`
+- task detail exposes shell aggregate fields such as `intakeStatus`; item-level terminal residue is not part of the public detail contract
 
 Assignment and capacity:
 
@@ -57,21 +98,28 @@ Assignment and capacity:
 - `batchSize=1` multi-round dispatch completes across rounds
 - assignment skips dispatch if the task left `READY` during matching
 - each dispatch creates attempt state that remains consistent with message projection
-- retry creates a new attempt and re-queues the logical message without duplicating the `TaskMsg` row
+- retry creates a new attempt and re-queues the logical message without duplicating the compatibility message row
+- `BATCH` lease expiry consumes retry budget as attempt loss; exhausted budget closes the item as failure rather than logical timeout
+- representative multi-task assignment survives real server + SDK + engine wiring without double assignment
+- representative worker scheduling/routing remains correct under the assignment scenarios carried by the server E2E suite
 
-Worker and context:
+Worker scheduling and compatibility:
 
-- worker-context attribute routing selects the right context
-- stateless worker can execute tasks without routing-required context
+- worker attribute / routing-tag selection chooses an eligible worker
+- worker can execute tasks without WorkerContext compatibility setup
 - polling/pull worker path can execute `create -> approve -> dispatch -> result -> terminal`
 - SDK-created worker resources can register as `OFFLINE`, connect through pull transport, poll work, submit result output, and disconnect back to offline
-- external polling worker API can register a worker/context, mark it online, poll `TaskDispatchItem`, submit `TaskResultReport`, and return offline
-- the runnable Node polling worker example can join through `/worker-api`, surface capability in `/sdk/meta/*`, complete task work, and exit cleanly
+- external polling worker API can register a worker, mark it online, poll `TaskDispatchItem`, submit `TaskResultReport`, and return offline
+- the runnable Node polling worker example can join through `/worker-api/v1/**`, surface capability in `/api/v1/catalog/*`, complete task work, and exit cleanly
 - targeted worker debug runs through normal `create -> approve -> assign -> dispatch -> result -> terminal`, with fixed-worker selection carried by `Task.sharedConfig.targetWorkerId`
-- same worker can own multiple contexts without overwrite
-- releasing one context does not release sibling contexts
-- worker/context is reusable after normal terminal completion
-- worker/context is reusable after manual terminate
+- new E2E scheduling proof must not reintroduce WorkerContext compatibility
+  setup or context-id assertions; use worker attributes, event bindings,
+  transport presence, runtime load, and canonical trace evidence instead
+- worker/resource capacity is reusable after normal terminal completion
+- worker/resource capacity is reusable after manual terminate
+- targeted-worker debug, dev launcher/bootstrap, catalog read-surface, realtime
+  adapter ambiguity, and storage-specific polling shells are support-only
+  coverage unless promoted into `PROOF_REGISTRY.md`
 
 Control console:
 
@@ -80,8 +128,8 @@ Control console:
 
 Audit:
 
-- `GET /status/api/tasks/{taskId}` exposes valid state-audit output
-- `needsResolution=true` is visible when task/message state diverges
+- public `GET /api/v1/tasks/{taskId}` stays shell/aggregate-only
+- task-state validation and `needsResolution=true` assertions run through explicit diagnostic surfaces, not public task detail payload
 
 ## 3. Change Rule
 
@@ -91,13 +139,33 @@ If a change touches:
 - terminal convergence
 - matching semantics
 - retry semantics
-- worker lock or context release
+- worker lock / capacity / resource release
 - lifecycle API contracts
 - policy interaction precedence
 
-then acceptance requires both:
+then acceptance requires:
 
-1. E2E coverage for the changed path
-2. trace coverage for the critical transition
+1. engine scheduling/kernel coverage for the changed path
+2. representative E2E coverage for the changed host/runtime path
+3. trace coverage for the critical transition
 
-For policy interaction changes, also cover the touched pairwise interaction from [../xa-mass-engine/POLICY_INTERACTION_BASELINE.md](../xa-mass-engine/POLICY_INTERACTION_BASELINE.md).
+Use [PROOF_REGISTRY.md](./PROOF_REGISTRY.md) first when you need to know which
+engine class, representative E2E scenario, and trace analyzer currently form
+the intended dual-proof chain.
+
+For scheduling-policy changes, also cover the touched risky interaction pair from [../xa-mass-engine/doc/baseline/SCHEDULING_KERNEL_BASELINE.md](../xa-mass-engine/doc/baseline/SCHEDULING_KERNEL_BASELINE.md).
+
+Trace coverage note:
+
+- trace coverage means the scenario can be reconstructed from canonical
+  `ExecutionEvent` output using `xa-mass-trace` commands such as `timeline`,
+  `stats`, or `validate`, or using the same query backend path in-process
+- raw log lines may still assist diagnosis, but they are not the release-gate
+  proof surface for trace coverage
+
+## 4. Relation To Local Kernel Tests
+
+- E2E does not replace deterministic engine/transport invariant tests
+- scheduling correctness should be proved engine-first; E2E should prove that the same behavior survives real host/runtime wiring
+- local kernel tests should continue to prove retry, expiry, release, finality, and convergence ordering directly
+- what should move upward into E2E/chaos/black-box is projection-first proof style for integrated or distributed behavior

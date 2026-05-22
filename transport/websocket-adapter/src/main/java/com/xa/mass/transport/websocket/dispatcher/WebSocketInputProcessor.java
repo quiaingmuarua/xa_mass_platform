@@ -4,11 +4,9 @@ import com.google.gson.JsonObject;
 import com.xa.mass.base.exception.CommandException;
 import com.xa.mass.base.exception.ErrorCode;
 import com.xa.mass.base.exception.ValidationException;
-import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext;
 import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.model.TransportResultEnvelope;
 import com.xa.mass.transport.websocket.util.WebSocketStringValues;
-import com.xa.mass.transport.websocket.worker.WebSocketRealtimeWorkerAdapter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,9 +18,9 @@ import java.util.Objects;
 public final class WebSocketInputProcessor {
     private static final Logger logger = LoggerFactory.getLogger(WebSocketInputProcessor.class);
 
-    private final WebSocketDispatchRuntimeContext context;
+    private final WebSocketDispatcherContext context;
 
-    public WebSocketInputProcessor(WebSocketDispatchRuntimeContext context) {
+    public WebSocketInputProcessor(WebSocketDispatcherContext context) {
         this.context = Objects.requireNonNull(context, "context");
     }
 
@@ -59,15 +57,26 @@ public final class WebSocketInputProcessor {
         }
         try {
             TaskResultReport report = context.getFrameCodec().decodeCanonicalTaskResult(frame);
-            context.getTaskResultIngestChannel().ingest(TransportResultEnvelope.fromReport(
-                    WebSocketRealtimeWorkerAdapter.PROTOCOL,
-                    WebSocketStringValues.firstNonBlank(
-                            context.getFrameCodec().extractWorkerId(frame),
-                            inboundMessage.getWorkerId()
-                    ),
-                    inboundMessage.getEndpointId(),
+            String workerId = WebSocketStringValues.firstNonBlank(
+                    context.getFrameCodec().extractWorkerId(frame),
+                    inboundMessage.getWorkerId()
+            );
+            String routeKey = WebSocketStringValues.firstNonBlank(
+                    context.getFrameCodec().extractRouteKey(frame),
+                    inboundMessage.getRouteKey(),
+                    workerId
+            );
+            boolean accepted = context.getTaskResultIngestChannel().ingest(new TransportResultEnvelope(
+                    context.getAdapterId(),
+                    routeKey,
+                    null,
+                    null,
+                    context.getFrameCodec().extractTraceId(frame),
                     report
             ));
+            if (!accepted) {
+                throw new IllegalStateException("task result ingest channel rejected inbound canonical task result");
+            }
         } catch (IllegalArgumentException ex) {
             logger.warn("Canonical task result rejected: {}", ex.getMessage());
         }
@@ -94,3 +103,4 @@ public final class WebSocketInputProcessor {
         logger.error("WebSocket input processing failed", ex);
     }
 }
+

@@ -11,7 +11,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 describe('backendAuthProvider', () => {
-    it('loads the current user from /api/auth/me', async () => {
+    it('loads the current user from /api/v1/auth/me', async () => {
         setRuntimeConfigOverrides({
             apiBaseUrl: '/backend',
         })
@@ -33,14 +33,14 @@ describe('backendAuthProvider', () => {
         const user = await backendAuthProvider.loadCurrentUser()
 
         expect(fetchMock).toHaveBeenCalledWith(
-            '/backend/api/auth/me',
+            '/backend/api/v1/auth/me',
             expect.any(Object),
         )
         expect(user?.id).toBe('ops-admin')
         expect(user?.permissions).toEqual(['task:view'])
     })
 
-    it('returns null when /api/auth/me is unauthorized', async () => {
+    it('returns null when /api/v1/auth/me is unauthorized', async () => {
         vi.stubGlobal(
             'fetch',
             vi.fn().mockResolvedValue(
@@ -58,7 +58,7 @@ describe('backendAuthProvider', () => {
         await expect(backendAuthProvider.loadCurrentUser()).resolves.toBeNull()
     })
 
-    it('throws when /api/auth/me fails for non-auth reasons', async () => {
+    it('throws when /api/v1/auth/me fails for non-auth reasons', async () => {
         vi.stubGlobal(
             'fetch',
             vi.fn().mockResolvedValue(

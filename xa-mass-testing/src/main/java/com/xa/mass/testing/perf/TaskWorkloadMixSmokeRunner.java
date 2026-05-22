@@ -1,36 +1,39 @@
 package com.xa.mass.testing.perf;
 
 import com.xa.mass.base.enums.task.TaskStatus;
+import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
+import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
+import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
+import com.xa.mass.base.model.TaskShellCreateRequestDto;
+import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskCommandService;
-import com.xa.mass.engine.TaskManager;
-import com.xa.mass.engine.TaskManagerAssignmentRuntimePort;
-import com.xa.mass.engine.TaskManagerResultIngestFacade;
-import com.xa.mass.engine.TaskManagerRuntimeMaintenancePort;
 import com.xa.mass.engine.TaskEventService;
-import com.xa.mass.engine.TaskResultIngestFacade;
-import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.listener.SimpleTaskMsgAssignListener;
+import com.xa.mass.engine.TaskRuntimeMaintenancePort;
+import com.xa.mass.engine.worker.WorkerManager;
+import com.xa.mass.engine.worker.WorkerReachabilityState;
+import com.xa.mass.engine.listener.SimpleTaskDispatchBinder;
 import com.xa.mass.engine.listener.TaskAssignWorker;
-import com.xa.mass.engine.listener.TaskDispatchBinding;
-import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
-import com.xa.mass.engine.model.MatchedWorkerContext;
-import com.xa.mass.engine.model.TaskCreateRequestDto;
+import com.xa.mass.engine.model.WorkerSchedulingCandidate;
+import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
-import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
+import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.testing.support.TestingPaths;
+import com.xa.mass.testing.workerfault.WorkerFaultReportMetadata;
+import com.xa.mass.testing.workerfault.WorkerFaultScenarioIndex;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -42,8 +45,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -79,13 +80,13 @@ public final class TaskWorkloadMixSmokeRunner {
         }
 
         private SmokeReport run() throws Exception {
-            TaskManager taskManager = new TaskManager(
-                    new NoOpTaskScheduler(),
-                    new InMemoryTaskStorage(),
-                    new InMemoryTaskWorkRuntime());
-            TaskCommandService taskCommands = new TaskCommandService(taskManager);
-            TaskEventService taskEvents = new TaskEventService(taskManager);
-            TaskResultIngestFacade taskResultIngestFacade = new TaskManagerResultIngestFacade(taskManager);
+            InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
+            EngineConfig engineConfig = buildEngineConfig(taskStorage, new InMemoryTaskWorkRuntime());
+            TaskCommandService taskCommands = engineConfig.getTaskCommandService();
+            TaskEventService taskEvents = engineConfig.getTaskEventService();
+            TaskResultIngestFacade taskResultIngestFacade = engineConfig.getTaskResultIngestFacade();
+            TaskAssignmentRuntimePort assignmentRuntimePort = engineConfig.getTaskAssignmentRuntimePort();
+            TaskRuntimeMaintenancePort maintenancePort = engineConfig.getTaskRuntimeMaintenancePort();
             WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
             AssignmentRecordService recordService = new AssignmentRecordService();
             WorkloadTiming timing = new WorkloadTiming();
@@ -96,19 +97,26 @@ public final class TaskWorkloadMixSmokeRunner {
             });
             CountDownLatch bulkTerminalLatch = new CountDownLatch(1);
             CountDownLatch interactiveTerminalLatch = new CountDownLatch(1);
+            Map<String, TaskWorkloadClass> workloadByTaskId = new ConcurrentHashMap<>();
 
-            TaskMsgDispatchListener dispatchListener = (task, dispatchBindings) -> {
-                timing.onDispatch(task, dispatchBindings.size());
+            TaskDispatchBatchListener dispatchListener = (task, dispatchBindings) -> {
+                TaskWorkloadClass workloadClass = workloadByTaskId.get(task.taskId());
+                timing.onDispatch(task.taskId(), workloadClass, dispatchBindings.size());
                 for (TaskDispatchBinding binding : dispatchBindings) {
-                    callbackExecutor.submit(() -> handleBinding(taskResultIngestFacade, timing, task, binding.taskMsg()));
+                    callbackExecutor.submit(() -> handleBinding(
+                            taskResultIngestFacade,
+                            timing,
+                            workloadByTaskId,
+                            task,
+                            binding
+                    ));
                 }
             };
 
-            TaskWorkerMatchingStrategy matchingStrategy = new DeterministicMatchingStrategy(workerManager);
-            TaskManagerAssignmentRuntimePort assignmentRuntimePort =
-                    new TaskManagerAssignmentRuntimePort(taskManager);
-            SimpleTaskMsgAssignListener msgAssignListener =
-                    new SimpleTaskMsgAssignListener(
+            TaskWorkerMatchingStrategy matchingStrategy =
+                    new LaneAwareMatchingStrategy(workerManager, config.reservedInteractiveWorkers());
+            SimpleTaskDispatchBinder dispatchBinder =
+                    new SimpleTaskDispatchBinder(
                             assignmentRuntimePort,
                             workerManager,
                             recordService,
@@ -118,32 +126,33 @@ public final class TaskWorkloadMixSmokeRunner {
                     new TaskWorkerAssignListener(
                             matchingStrategy,
                             workerManager,
-                            msgAssignListener,
+                            dispatchBinder,
                             assignmentRuntimePort,
                             taskEvents
                     );
             TaskAssignWorker assignWorker = new TaskAssignWorker(workerAssignListener, config.assignmentRetryDelayMillis());
             TaskResourceReleaseListener releaseListener =
-                    new TaskResourceReleaseListener(new TaskManagerRuntimeMaintenancePort(taskManager), workerManager);
+                    new TaskResourceReleaseListener(maintenancePort, workerManager);
 
             try {
                 registerWorkers(workerManager, config.workerCount());
                 taskEvents.addTaskReadyListener(assignWorker::submit);
                 taskEvents.addTaskDispatchListener(assignWorker::submit);
-                taskEvents.addTaskMessageAttemptClosedListener(releaseListener::onTaskMessageAttemptClosed);
+                taskEvents.addTaskWorkAttemptClosedListener(releaseListener::onTaskWorkAttemptClosed);
                 taskEvents.addTaskTerminalListener(releaseListener::onTaskTerminal);
                 taskEvents.addTaskTerminalListener(task -> {
-                    if (TaskWorkloadClass.BULK == task.getWorkloadClass()) {
+                    if (TaskWorkloadClass.BULK == task.getExecutionSpec().getWorkloadClass()) {
                         timing.onTerminal(task);
                         bulkTerminalLatch.countDown();
-                    } else if (TaskWorkloadClass.INTERACTIVE == task.getWorkloadClass()) {
+                    } else if (TaskWorkloadClass.INTERACTIVE == task.getExecutionSpec().getWorkloadClass()) {
                         timing.onTerminal(task);
                         interactiveTerminalLatch.countDown();
                     }
                 });
                 assignWorker.start();
 
-                Task bulkTask = taskCommands.createTask(buildBulkRequest(config));
+                Task bulkTask = materializeTask(taskCommands, buildBulkRequest(config));
+                workloadByTaskId.put(bulkTask.getTid(), bulkTask.getExecutionSpec().getWorkloadClass());
                 timing.onCreated(bulkTask);
                 require(taskCommands.approveTask(bulkTask.getTid()), "bulk task should approve");
                 timing.onApproved(bulkTask);
@@ -152,7 +161,8 @@ public final class TaskWorkloadMixSmokeRunner {
 
                 Thread.sleep(config.interactiveSubmitDelayMillis());
 
-                Task interactiveTask = taskCommands.createTask(buildInteractiveRequest(config));
+                Task interactiveTask = materializeTask(taskCommands, buildInteractiveRequest(config));
+                workloadByTaskId.put(interactiveTask.getTid(), interactiveTask.getExecutionSpec().getWorkloadClass());
                 timing.onCreated(interactiveTask);
                 require(taskCommands.approveTask(interactiveTask.getTid()), "interactive task should approve");
                 timing.onApproved(interactiveTask);
@@ -185,55 +195,90 @@ public final class TaskWorkloadMixSmokeRunner {
 
         private void handleBinding(TaskResultIngestFacade taskResultIngestFacade,
                                    WorkloadTiming timing,
-                                   Task task,
-                                   TaskMsg taskMsg) {
-            int delayMillis = task.getWorkloadClass() == TaskWorkloadClass.INTERACTIVE
+                                   Map<String, TaskWorkloadClass> workloadByTaskId,
+                                   TaskDispatchContext task,
+                                   TaskDispatchBinding binding) {
+            TaskWorkloadClass workloadClass = workloadByTaskId.get(task.taskId());
+            int delayMillis = workloadClass == TaskWorkloadClass.INTERACTIVE
                     ? config.interactiveProcessingDelayMillis()
                     : config.bulkProcessingDelayMillis();
-            timing.onCallbackStart(task);
+            timing.onCallbackStart(task.taskId(), workloadClass);
             try {
                 if (delayMillis > 0) {
                     Thread.sleep(delayMillis);
                 }
-                boolean accepted = taskResultIngestFacade.handleTaskMessageResult(
-                        task.getTid(),
-                        taskMsg.getMessageId(),
+                boolean accepted = taskResultIngestFacade.ingestTaskResult(
+                        task.taskId(),
+                        binding.messageId(),
                         true,
                         "ok",
                         null,
                         Map.of("runner", "TaskWorkloadMixSmokeRunner")
                 );
-                require(accepted, "result callback should be accepted for " + taskMsg.getMessageId());
+                require(accepted, "result callback should be accepted for " + binding.messageId());
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 throw new IllegalStateException("callback interrupted", e);
             } finally {
-                timing.onCallbackFinish(task);
+                timing.onCallbackFinish(task.taskId(), workloadClass);
             }
         }
 
-        private static TaskCreateRequestDto buildBulkRequest(SmokeConfig config) {
-            TaskCreateRequestDto dto = new TaskCreateRequestDto();
-            dto.setTaskName("bulk-workload-smoke");
-            dto.setProject("demoApp");
-            dto.setUserId("workload-smoke");
-            dto.setWorkloadClass(TaskWorkloadClass.BULK);
-            dto.setBatchSize(config.bulkBatchSize());
-            dto.setInputs(buildInputs("bulk", config.bulkMessages()));
-            dto.setSharedConfig(Map.of("source", "TaskWorkloadMixSmokeRunner", "workload", "bulk"));
-            return dto;
+        private static TaskCreatePlan buildBulkRequest(SmokeConfig config) {
+            TaskShellCreateRequestDto shell = new TaskShellCreateRequestDto();
+            shell.setSourceRef("bulk-workload-smoke");
+            shell.setProject("demoApp");
+            shell.setUserId("workload-smoke");
+            shell.setContract(TaskContract.BATCH);
+            shell.setExecutionSpec(taskExecutionSpec(TaskWorkloadClass.BULK, config.bulkBatchSize(), 3));
+            shell.setSharedConfig(Map.of("source", "TaskWorkloadMixSmokeRunner", "workload", "bulk"));
+            return new TaskCreatePlan(shell, buildInputs("bulk", config.bulkMessages()), false);
         }
 
-        private static TaskCreateRequestDto buildInteractiveRequest(SmokeConfig config) {
-            TaskCreateRequestDto dto = new TaskCreateRequestDto();
-            dto.setTaskName("interactive-workload-smoke");
-            dto.setProject("demoApp");
-            dto.setUserId("workload-smoke");
-            dto.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
-            dto.setBatchSize(config.interactiveBatchSize());
-            dto.setInputs(buildInputs("interactive", config.interactiveMessages()));
-            dto.setSharedConfig(Map.of("source", "TaskWorkloadMixSmokeRunner", "workload", "interactive"));
-            return dto;
+        private static EngineConfig buildEngineConfig(InMemoryTaskStorage taskStorage,
+                                                      InMemoryTaskWorkRuntime taskWorkRuntime) {
+            EngineConfig engineConfig = new EngineConfig();
+            engineConfig.setTaskStorage(taskStorage);
+            engineConfig.setTaskDetailStore(taskStorage);
+            engineConfig.setTaskWorkRuntime(taskWorkRuntime);
+            return engineConfig;
+        }
+
+        private static TaskCreatePlan buildInteractiveRequest(SmokeConfig config) {
+            TaskShellCreateRequestDto shell = new TaskShellCreateRequestDto();
+            shell.setSourceRef("interactive-workload-smoke");
+            shell.setProject("demoApp");
+            shell.setUserId("workload-smoke");
+            shell.setContract(TaskContract.BATCH);
+            shell.setExecutionSpec(taskExecutionSpec(TaskWorkloadClass.INTERACTIVE, config.interactiveBatchSize(), 3));
+            shell.setSharedConfig(Map.of("source", "TaskWorkloadMixSmokeRunner", "workload", "interactive"));
+            return new TaskCreatePlan(shell, buildInputs("interactive", config.interactiveMessages()), false);
+        }
+
+        private static Task materializeTask(TaskCommandService taskCommands, TaskCreatePlan request) {
+            Task task = taskCommands.createTaskShell(request.shell());
+            if (!request.inputs().isEmpty()) {
+                taskCommands.appendTaskItems(task.getTid(), request.inputs());
+            }
+            if (!request.keepIntakeOpen()) {
+                require(taskCommands.sealTask(task.getTid()), "task should seal after ingest");
+            }
+            return task;
+        }
+
+        private record TaskCreatePlan(TaskShellCreateRequestDto shell,
+                                      List<Map<String, Object>> inputs,
+                                      boolean keepIntakeOpen) {
+        }
+
+        private static TaskExecutionSpec taskExecutionSpec(TaskWorkloadClass workloadClass,
+                                                           int batchSize,
+                                                           int defaultMaxRetryCount) {
+            TaskExecutionSpec spec = new TaskExecutionSpec();
+            spec.setWorkloadClass(workloadClass);
+            spec.setBatchSize(batchSize);
+            spec.setDefaultMaxRetryCount(defaultMaxRetryCount);
+            return spec;
         }
 
         private static List<Map<String, Object>> buildInputs(String prefix, int count) {
@@ -256,18 +301,12 @@ public final class TaskWorkloadMixSmokeRunner {
                 worker.setStatus(WorkerStatus.ONLINE);
                 worker.setLastHeartbeat(LocalDateTime.now());
                 workerManager.addWorker(worker);
-
-                WorkerContext workerContext = new WorkerContext();
-                workerContext.setWorkerContextId("workload-smoke-context-" + i);
-                workerContext.setWorkerId(worker.getWorkerId());
-                workerContext.setProject("demoApp");
-                workerContext.setRoutingTags(Set.of("default"));
-                workerManager.addWorkerContext(workerContext);
             }
         }
 
         private static Path writeReport(SmokeConfig config, SmokeObservation observation) throws Exception {
-            Map<String, Object> report = new LinkedHashMap<>();
+            Map<String, Object> report = new LinkedHashMap<>(WorkerFaultReportMetadata.topLevel(
+                    WorkerFaultScenarioIndex.Scenario.WORKLOAD_MIX_INTERACTIVE_UNDER_BULK));
             report.put("generatedAt", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
             report.put("config", config.toMap());
             report.put("observation", observation.toMap());
@@ -280,19 +319,25 @@ public final class TaskWorkloadMixSmokeRunner {
         }
     }
 
-    private static final class DeterministicMatchingStrategy implements TaskWorkerMatchingStrategy {
+    private static final class LaneAwareMatchingStrategy implements TaskWorkerMatchingStrategy {
         private final WorkerManager workerManager;
+        private final int reservedInteractiveWorkers;
 
-        private DeterministicMatchingStrategy(WorkerManager workerManager) {
+        private LaneAwareMatchingStrategy(WorkerManager workerManager, int reservedInteractiveWorkers) {
             this.workerManager = workerManager;
+            this.reservedInteractiveWorkers = Math.max(reservedInteractiveWorkers, 0);
         }
 
         @Override
-        public List<MatchedWorkerContext> matchWorkers(Task task, int maxWorkerCount) {
-            List<MatchedWorkerContext> matched = new ArrayList<>();
+        public List<WorkerSchedulingCandidate> matchWorkers(Task task, int maxWorkerCount) {
+            List<WorkerSchedulingCandidate> matched = new ArrayList<>();
             for (Worker worker : workerManager.getAllWorkers()) {
                 if (matched.size() >= maxWorkerCount) {
                     break;
+                }
+                if (task.getExecutionSpec().getWorkloadClass() == TaskWorkloadClass.BULK
+                        && isReservedInteractiveWorker(worker)) {
+                    continue;
                 }
                 if (!worker.isAvailable() || !worker.supportsProject(task.getProject())) {
                     continue;
@@ -300,22 +345,30 @@ public final class TaskWorkloadMixSmokeRunner {
                 if (!workerManager.tryLockWorker(worker.getWorkerId())) {
                     continue;
                 }
-                WorkerContext selectedContext = null;
-                for (WorkerContext workerContext : workerManager.getWorkerContexts(worker.getWorkerId())) {
-                    if (workerContext != null
-                            && workerContext.isAllocatable()
-                            && Objects.equals(task.getProject(), workerContext.getProject())) {
-                        selectedContext = workerContext;
-                        break;
-                    }
-                }
-                if (selectedContext == null) {
-                    workerManager.unlockWorker(worker.getWorkerId());
-                    continue;
-                }
-                matched.add(new MatchedWorkerContext(worker, selectedContext));
+                matched.add(new WorkerSchedulingCandidate(
+                        worker,
+                        WorkerSchedulingView.from(worker, WorkerReachabilityState.ONLINE, true, true)
+                ));
             }
             return matched;
+        }
+
+        private boolean isReservedInteractiveWorker(Worker worker) {
+            if (reservedInteractiveWorkers <= 0 || worker == null || worker.getWorkerId() == null) {
+                return false;
+            }
+            String workerId = worker.getWorkerId();
+            int dash = workerId.lastIndexOf('-');
+            if (dash < 0 || dash == workerId.length() - 1) {
+                return false;
+            }
+            try {
+                int workerIndex = Integer.parseInt(workerId.substring(dash + 1));
+                int totalWorkers = workerManager.getAllWorkers().size();
+                return workerIndex >= Math.max(totalWorkers - reservedInteractiveWorkers, 0);
+            } catch (NumberFormatException ignored) {
+                return false;
+            }
         }
     }
 
@@ -335,10 +388,10 @@ public final class TaskWorkloadMixSmokeRunner {
         private volatile String interactiveTaskId;
 
         private void onCreated(Task task) {
-            workloadByTaskId.put(task.getTid(), task.getWorkloadClass());
-            if (task.getWorkloadClass() == TaskWorkloadClass.BULK) {
+            workloadByTaskId.put(task.getTid(), task.getExecutionSpec().getWorkloadClass());
+            if (task.getExecutionSpec().getWorkloadClass() == TaskWorkloadClass.BULK) {
                 bulkTaskId = task.getTid();
-            } else if (task.getWorkloadClass() == TaskWorkloadClass.INTERACTIVE) {
+            } else if (task.getExecutionSpec().getWorkloadClass() == TaskWorkloadClass.INTERACTIVE) {
                 interactiveTaskId = task.getTid();
             }
         }
@@ -347,14 +400,17 @@ public final class TaskWorkloadMixSmokeRunner {
             approvedAtNanos.put(task.getTid(), System.nanoTime());
         }
 
-        private void onDispatch(Task task, int itemCount) {
+        private void onDispatch(String taskId, TaskWorkloadClass workloadClass, int itemCount) {
+            if (taskId == null || workloadClass == null) {
+                return;
+            }
             long now = System.nanoTime();
-            dispatchCyclesByWorkload.computeIfAbsent(task.getWorkloadClass(), ignored -> new LongAdder()).increment();
-            dispatchItemsByWorkload.computeIfAbsent(task.getWorkloadClass(), ignored -> new LongAdder()).add(itemCount);
-            firstDispatchAtNanos.putIfAbsent(task.getTid(), now);
-            if (task.getWorkloadClass() == TaskWorkloadClass.BULK) {
+            dispatchCyclesByWorkload.computeIfAbsent(workloadClass, ignored -> new LongAdder()).increment();
+            dispatchItemsByWorkload.computeIfAbsent(workloadClass, ignored -> new LongAdder()).add(itemCount);
+            firstDispatchAtNanos.putIfAbsent(taskId, now);
+            if (workloadClass == TaskWorkloadClass.BULK) {
                 bulkFirstDispatchLatch.countDown();
-            } else if (task.getWorkloadClass() == TaskWorkloadClass.INTERACTIVE) {
+            } else if (workloadClass == TaskWorkloadClass.INTERACTIVE) {
                 interactiveBulkCallbacksAtFirstDispatch.compareAndSet(-1L, bulkCallbacksInFlight.get());
                 boolean bulkStillRunning = bulkTaskId != null && !terminalAtNanos.containsKey(bulkTaskId);
                 if (bulkStillRunning) {
@@ -367,14 +423,20 @@ public final class TaskWorkloadMixSmokeRunner {
             return bulkFirstDispatchLatch.await(timeout, unit);
         }
 
-        private void onCallbackStart(Task task) {
-            if (task.getWorkloadClass() == TaskWorkloadClass.BULK) {
+        private void onCallbackStart(String taskId, TaskWorkloadClass workloadClass) {
+            if (taskId == null || workloadClass == null) {
+                return;
+            }
+            if (workloadClass == TaskWorkloadClass.BULK) {
                 bulkCallbacksInFlight.incrementAndGet();
             }
         }
 
-        private void onCallbackFinish(Task task) {
-            if (task.getWorkloadClass() == TaskWorkloadClass.BULK) {
+        private void onCallbackFinish(String taskId, TaskWorkloadClass workloadClass) {
+            if (taskId == null || workloadClass == null) {
+                return;
+            }
+            if (workloadClass == TaskWorkloadClass.BULK) {
                 bulkCallbacksInFlight.updateAndGet(current -> current > 0 ? current - 1 : 0);
             }
         }
@@ -387,6 +449,7 @@ public final class TaskWorkloadMixSmokeRunner {
         private SmokeObservation snapshot(SmokeConfig config) {
             return new SmokeObservation(
                     config.workerCount(),
+                    config.reservedInteractiveWorkers(),
                     config.bulkMessages(),
                     config.interactiveMessages(),
                     millisBetweenApprovedAndEvent(bulkTaskId, firstDispatchAtNanos),
@@ -437,6 +500,7 @@ public final class TaskWorkloadMixSmokeRunner {
     }
 
     private record SmokeConfig(int workerCount,
+                               int reservedInteractiveWorkers,
                                int bulkMessages,
                                int bulkBatchSize,
                                int interactiveMessages,
@@ -451,14 +515,15 @@ public final class TaskWorkloadMixSmokeRunner {
         private static SmokeConfig fromSystemProperties() {
             int workerCount = intProperty("mass.workload.smoke.workers", 5);
             int bulkMessages = intProperty("mass.workload.smoke.bulkMessages", 160);
-            int reservedInteractiveWorkers = 1;
+            int reservedInteractiveWorkers = intProperty("mass.workload.smoke.reservedInteractiveWorkers", 1);
             int bulkWorkersTarget = Math.max(workerCount - reservedInteractiveWorkers, 1);
             int defaultBulkBatchSize = Math.max((int) Math.ceil((double) bulkMessages / bulkWorkersTarget), 1);
             return new SmokeConfig(
                     workerCount,
+                    reservedInteractiveWorkers,
                     bulkMessages,
                     intProperty("mass.workload.smoke.bulkBatchSize", defaultBulkBatchSize),
-                    intProperty("mass.workload.smoke.interactiveMessages", 2),
+                    intProperty("mass.workload.smoke.interactiveMessages", 1),
                     intProperty("mass.workload.smoke.interactiveBatchSize", 1),
                     intProperty("mass.workload.smoke.bulkProcessingDelayMillis", 40),
                     intProperty("mass.workload.smoke.interactiveProcessingDelayMillis", 2),
@@ -473,6 +538,7 @@ public final class TaskWorkloadMixSmokeRunner {
         private Map<String, Object> toMap() {
             Map<String, Object> values = new LinkedHashMap<>();
             values.put("workerCount", workerCount);
+            values.put("reservedInteractiveWorkers", reservedInteractiveWorkers);
             values.put("bulkMessages", bulkMessages);
             values.put("bulkBatchSize", bulkBatchSize);
             values.put("interactiveMessages", interactiveMessages);
@@ -489,6 +555,7 @@ public final class TaskWorkloadMixSmokeRunner {
     }
 
     private record SmokeObservation(int workerCount,
+                                    int reservedInteractiveWorkers,
                                     int bulkMessages,
                                     int interactiveMessages,
                                     long bulkFirstDispatchMillis,
@@ -507,6 +574,7 @@ public final class TaskWorkloadMixSmokeRunner {
         private Map<String, Object> toMap() {
             Map<String, Object> values = new LinkedHashMap<>();
             values.put("workerCount", workerCount);
+            values.put("reservedInteractiveWorkers", reservedInteractiveWorkers);
             values.put("bulkMessages", bulkMessages);
             values.put("interactiveMessages", interactiveMessages);
             values.put("bulkFirstDispatchMillis", bulkFirstDispatchMillis);
@@ -540,48 +608,6 @@ public final class TaskWorkloadMixSmokeRunner {
                     observation.interactiveDispatchedBeforeBulkTerminal(),
                     observation.bulkCallbacksInFlightAtInteractiveFirstDispatch(),
                     reportPath);
-        }
-    }
-
-    private static final class NoOpTaskScheduler implements TaskScheduler {
-        @Override
-        public SchedulingResult scheduleTask(Task task) {
-            return SchedulingResult.success(List.of());
-        }
-
-        @Override
-        public List<SchedulingResult> scheduleTasks(List<Task> tasks) {
-            return List.of();
-        }
-
-        @Override
-        public boolean handleTaskMsgCompletion(TaskMsg taskMsg) {
-            return true;
-        }
-
-        @Override
-        public boolean handleTaskMsgFailure(TaskMsg taskMsg, String errorMessage) {
-            return true;
-        }
-
-        @Override
-        public boolean retryTaskMsg(TaskMsg taskMsg) {
-            return true;
-        }
-
-        @Override
-        public boolean cancelTask(String taskId) {
-            return true;
-        }
-
-        @Override
-        public boolean pauseTask(String taskId) {
-            return true;
-        }
-
-        @Override
-        public boolean resumeTask(String taskId) {
-            return true;
         }
     }
 
@@ -655,3 +681,4 @@ public final class TaskWorkloadMixSmokeRunner {
                 .replace("\t", "\\t");
     }
 }
+

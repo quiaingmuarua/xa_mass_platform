@@ -1,14 +1,21 @@
 package com.xa.mass.server.e2e.support;
 
-import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.Worker;
+import com.xa.mass.base.model.TaskSharedConfig;
+import com.xa.mass.engine.model.TaskStateValidationResult;
+import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.runtime.api.TaskWorkStats;
+import com.xa.mass.runtime.api.TaskWorkRuntime;
+import com.xa.mass.storage.api.TaskStorage;
 import com.xa.mass.workerpack.sample.client.SampleWorkerClient;
 import com.xa.mass.sdk.MassSdkApplication;
-import com.xa.mass.sdk.model.WorkerContextRegistration;
+import com.xa.mass.sdk.event.EventDefinition;
+import com.xa.mass.sdk.model.AdapterNodeRegistration;
+import com.xa.mass.sdk.model.NodeGroupBindingRegistration;
+import com.xa.mass.sdk.model.WorkerSnapshot;
 import com.xa.mass.sdk.model.WorkerEventBinding;
+import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
-import com.xa.mass.starter.MassApplication;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -47,6 +54,12 @@ public abstract class AbstractSampleE2eTest {
 
     @Autowired(required = false)
     protected MassSdkApplication app;
+
+    @Autowired
+    protected TaskStorage taskStorage;
+
+    @Autowired
+    protected TaskWorkRuntime taskWorkRuntime;
 
     protected static void registerWebSocketProperties(DynamicPropertyRegistry registry, int websocketPort) {
         registry.add("mass.websocket.port", () -> websocketPort);
@@ -117,6 +130,31 @@ public abstract class AbstractSampleE2eTest {
         return response.getBody();
     }
 
+    protected void declareExternalWorkerGroup(String groupId,
+                                              String projectCode,
+                                              String eventCode,
+                                              HttpHeaders headers) {
+        assertApiOk(exchange("/worker-api/v1/worker-groups", HttpMethod.POST, Map.of(
+                "groupId", groupId,
+                "eventBindings", List.of(Map.of(
+                        "eventCode", eventCode,
+                        "projectCodes", List.of(projectCode)
+                ))
+        ), headers));
+    }
+
+    protected void bindExternalAdapterNode(String adapterNodeId, String workerGroupId, HttpHeaders headers) {
+        assertApiOk(exchange("/worker-api/v1/adapter-nodes", HttpMethod.POST, Map.of(
+                "adapterNodeId", adapterNodeId,
+                "adapterType", "external",
+                "endpointId", adapterNodeId
+        ), headers));
+        assertApiOk(exchange("/worker-api/v1/node-group-bindings", HttpMethod.POST, Map.of(
+                "adapterNodeId", adapterNodeId,
+                "workerGroupId", workerGroupId
+        ), headers));
+    }
+
     @SuppressWarnings("unchecked")
     protected Map<String, Object> task(Map<String, Object> response) {
         return (Map<String, Object>) responseData(response).get("task");
@@ -127,56 +165,159 @@ public abstract class AbstractSampleE2eTest {
         return (List<Map<String, Object>>) responseData(response).get("messages");
     }
 
-    @SuppressWarnings("unchecked")
-    protected Map<String, Object> stateValidation(Map<String, Object> response) {
-        return (Map<String, Object>) responseData(response).get("stateValidation");
+    protected TaskStateValidationResult validateTaskState(String taskId) {
+        return requireSdkApp().taskDiagnostics().validateTaskState(taskId);
     }
 
-    @SuppressWarnings("unchecked")
-    protected List<String> violations(Map<String, Object> validation) {
-        return (List<String>) validation.get("violations");
+    protected List<String> violations(TaskStateValidationResult validation) {
+        return validation.getViolations() == null
+                ? List.of()
+                : validation.getViolations().stream().map(Enum::name).toList();
     }
 
-    protected String createTaskId(String taskName, String textContent, List<String> targets, int batchSize) {
-        return createTaskId(taskName, textContent, targets, batchSize, null);
+    protected String createTaskId(String sourceRef, String textContent, List<String> targets, int batchSize) {
+        return createTaskId(sourceRef, textContent, targets, batchSize, null);
     }
 
-    protected String createTaskId(String taskName,
+    protected String createTaskId(String sourceRef,
                                   String textContent,
                                   List<String> targets,
                                   int batchSize,
-                                  TaskWorkloadClass workloadClass) {
-        String defaultRoutingCode = "us";
-        Map<String, Object> createBody = new LinkedHashMap<>();
-        createBody.put("taskName", taskName);
-        createBody.put("project", "demoApp");
-        createBody.put("sharedConfig", java.util.Map.of("textContent", textContent, "routingCode", defaultRoutingCode));
-        createBody.put("userId", "itest");
-        if (workloadClass != null) {
-            createBody.put("workloadClass", workloadClass.name());
-        }
-        createBody.put("inputs", targets.stream()
-                .map(target -> Map.<String, Object>of("target", target))
-                .toList());
-        createBody.put("batchSize", batchSize);
+                                  int defaultMaxRetryCount) {
+        return createTaskId(sourceRef, textContent, targets, batchSize, null, defaultMaxRetryCount);
+    }
 
-        Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, createBody);
+    protected String createTaskId(String sourceRef,
+                                  String textContent,
+                                  List<String> targets,
+                                  int batchSize,
+                                  String workloadClass) {
+        return createTaskId(sourceRef, textContent, targets, batchSize, workloadClass, null);
+    }
+
+    protected String createTaskId(String sourceRef,
+                                  String textContent,
+                                  List<String> targets,
+                                  int batchSize,
+                                  String workloadClass,
+                                  Integer defaultMaxRetryCount) {
+        String defaultRoutingCode = "us";
+        Map<String, Object> sharedConfig = new LinkedHashMap<>();
+        sharedConfig.put("textContent", textContent);
+        sharedConfig.put(TaskSharedConfig.ROUTING_CODE, defaultRoutingCode);
+        sharedConfig.put(TaskSharedConfig.WORKER_GROUP_ID, "us");
+        Map<String, Object> createBody = new LinkedHashMap<>();
+        createBody.put("project", "demoApp");
+        createBody.put("sharedConfig", sharedConfig);
+        createBody.put("userId", "itest");
+        createBody.put("sourceRef", sourceRef);
+        Map<String, Object> executionSpec = new LinkedHashMap<>();
+        executionSpec.put("batchSize", batchSize);
+        if (workloadClass != null && !workloadClass.isBlank()) {
+            executionSpec.put("workloadClass", workloadClass);
+        }
+        if (defaultMaxRetryCount != null) {
+            executionSpec.put("defaultMaxRetryCount", defaultMaxRetryCount);
+        }
+        createBody.put("executionSpec", executionSpec);
+
+        Map<String, Object> createResponse = createTaskShell(createBody);
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
         assertFalse(taskId.isBlank());
+        Map<String, Object> ingestResponse = appendTaskItems(
+                taskId,
+                "demo.dispatch",
+                targets.stream()
+                        .map(target -> Map.<String, Object>of("target", target))
+                        .toList()
+        );
+        assertApiOk(ingestResponse);
+        Map<String, Object> sealResponse = sealTask(taskId);
+        assertApiOk(sealResponse);
         return taskId;
     }
 
-    protected String createTaskId(String taskName, String textContent, String target) {
-        return createTaskId(taskName, textContent, List.of(target), 1);
+    protected String createTaskId(String sourceRef, String textContent, String target) {
+        return createTaskId(sourceRef, textContent, List.of(target), 1);
     }
 
-    protected String createTaskId(String taskName, String... targets) {
-        return createTaskId(taskName, taskName + " integration", List.of(targets), 1);
+    protected String createTaskId(String sourceRef, String... targets) {
+        return createTaskId(sourceRef, sourceRef + " integration", List.of(targets), 1);
     }
 
     protected Map<String, Object> audit(String taskId, String comment) {
-        return exchange("/status/api/tasks/" + taskId + "/audit?approved=true&comment=" + comment, HttpMethod.POST, null);
+        return approveTask(taskId);
+    }
+
+    protected Map<String, Object> createTaskShell(Object body) {
+        return exchange("/api/v1/tasks", HttpMethod.POST, body);
+    }
+
+    protected Map<String, Object> createTaskShell(Object body, HttpHeaders headers) {
+        return exchange("/api/v1/tasks", HttpMethod.POST, body, headers);
+    }
+
+    protected Map<String, Object> appendTaskItems(String taskId,
+                                                  String eventCode,
+                                                  List<?> items) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        if (eventCode != null && !eventCode.isBlank()) {
+            body.put("eventCode", eventCode);
+        }
+        body.put("items", items);
+        return exchange("/api/v1/tasks/" + taskId + "/items", HttpMethod.POST, body);
+    }
+
+    protected Map<String, Object> sealTask(String taskId) {
+        return executeTaskCommand(taskId, "SEAL");
+    }
+
+    protected Map<String, Object> approveTask(String taskId) {
+        return executeTaskCommand(taskId, "APPROVE");
+    }
+
+    protected Map<String, Object> rejectTask(String taskId) {
+        return executeTaskCommand(taskId, "REJECT");
+    }
+
+    protected Map<String, Object> pauseTask(String taskId) {
+        return executeTaskCommand(taskId, "PAUSE");
+    }
+
+    protected Map<String, Object> resumeTask(String taskId) {
+        return executeTaskCommand(taskId, "RESUME");
+    }
+
+    protected Map<String, Object> blockTask(String taskId) {
+        return executeTaskCommand(taskId, "BLOCK");
+    }
+
+    protected Map<String, Object> terminateTask(String taskId) {
+        return executeTaskCommand(taskId, "TERMINATE");
+    }
+
+    protected Map<String, Object> executeTaskCommand(String taskId, String command) {
+        return executeTaskCommand(taskId, command, null);
+    }
+
+    protected Map<String, Object> executeTaskCommand(String taskId, String command, String reason) {
+        return executeTaskCommand(taskId, command, reason, null);
+    }
+
+    protected Map<String, Object> executeTaskCommand(String taskId,
+                                                     String command,
+                                                     String reason,
+                                                     HttpHeaders headers) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("command", command);
+        if (reason != null && !reason.isBlank()) {
+            body.put("reason", reason);
+        }
+        if (headers == null) {
+            return exchange("/api/v1/tasks/" + taskId + "/commands", HttpMethod.POST, body);
+        }
+        return exchange("/api/v1/tasks/" + taskId + "/commands", HttpMethod.POST, body, headers);
     }
 
     @SuppressWarnings("unchecked")
@@ -210,39 +351,6 @@ public abstract class AbstractSampleE2eTest {
         return msg == null ? null : String.valueOf(msg);
     }
 
-    protected TaskSnapshot waitForTaskSnapshot(String taskId, String expectedStatus) throws InterruptedException {
-        return waitForTaskSnapshot(taskId, expectedStatus, 20, 250L);
-    }
-
-    protected TaskSnapshot waitForTaskSnapshot(String taskId, String expectedStatus, int maxAttempts, long sleepMillis)
-            throws InterruptedException {
-        return waitForTaskSnapshot(taskId,
-                snapshot -> expectedStatus.equals(snapshot.task().get("status")),
-                expectedStatus,
-                maxAttempts,
-                sleepMillis);
-    }
-
-    protected TaskSnapshot waitForTaskSnapshot(String taskId,
-                                               Predicate<TaskSnapshot> condition,
-                                               String expectation,
-                                               int maxAttempts,
-                                               long sleepMillis) throws InterruptedException {
-        return awaitValue(
-                "Task " + taskId + " did not reach expected snapshot: " + expectation,
-                maxAttempts,
-                sleepMillis,
-                () -> fetchTaskSnapshot(taskId),
-                condition,
-                latestSnapshot -> "status=" + (latestSnapshot == null ? "<none>" : latestSnapshot.task().get("status"))
-                        + ", messages=" + (latestSnapshot == null ? 0 : latestSnapshot.messages().size())
-        );
-    }
-
-    protected TaskSnapshot waitForTerminalTask(String taskId) throws InterruptedException {
-        return waitForTaskSnapshot(taskId, "TERMINAL");
-    }
-
     protected Map<String, Object> waitForTaskDetail(String taskId, String expectedStatus) throws InterruptedException {
         return waitForTaskDetail(taskId, expectedStatus, 20, 250L);
     }
@@ -253,20 +361,56 @@ public abstract class AbstractSampleE2eTest {
                 "Task " + taskId + " did not reach " + expectedStatus + " within timeout",
                 maxAttempts,
                 sleepMillis,
-                () -> exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null),
+                () -> exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null),
                 detailResponse -> expectedStatus.equals(task(detailResponse).get("status")),
                 detailResponse -> "status=" + task(detailResponse).get("status")
         );
     }
 
-    protected TaskSnapshot fetchTaskSnapshot(String taskId) {
-        Map<String, Object> detailResponse = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
-        Map<String, Object> messagesResponse = exchange(
-                "/status/api/tasks/" + taskId + "/messages",
-                HttpMethod.GET,
-                null
+    protected RuntimeTaskSnapshot waitForRuntimeTaskSnapshot(String taskId,
+                                                             String expectedStatus,
+                                                             int maxAttempts,
+                                                             long sleepMillis) throws InterruptedException {
+        return waitForRuntimeTaskSnapshot(
+                taskId,
+                snapshot -> expectedStatus.equals(snapshot.task().get("status")),
+                expectedStatus,
+                maxAttempts,
+                sleepMillis);
+    }
+
+    protected RuntimeTaskSnapshot waitForRuntimeTaskSnapshot(String taskId,
+                                                             Predicate<RuntimeTaskSnapshot> condition,
+                                                             String expectation,
+                                                             int maxAttempts,
+                                                             long sleepMillis) throws InterruptedException {
+        return awaitValue(
+                "Task " + taskId + " did not reach expected runtime state: " + expectation,
+                maxAttempts,
+                sleepMillis,
+                () -> fetchRuntimeTaskSnapshot(taskId),
+                condition,
+                latestSnapshot -> "status=" + (latestSnapshot == null ? "<none>" : latestSnapshot.task().get("status"))
+                        + ", ready=" + (latestSnapshot == null ? 0 : latestSnapshot.stats().readyCount())
+                        + ", inflight=" + (latestSnapshot == null ? 0 : latestSnapshot.stats().inflightCount())
         );
-        return new TaskSnapshot(task(detailResponse), messages(messagesResponse));
+    }
+
+    protected RuntimeTaskSnapshot waitForTerminalRuntimeTask(String taskId) throws InterruptedException {
+        return waitForRuntimeTaskSnapshot(taskId, "TERMINAL", 20, 250L);
+    }
+
+    protected RuntimeTaskSnapshot fetchRuntimeTaskSnapshot(String taskId) {
+        Map<String, Object> detailResponse = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
+        Map<String, Object> task = task(detailResponse);
+        return new RuntimeTaskSnapshot(
+                task,
+                List.copyOf(resolveTaskWorkRuntime().activeLeases(taskId)),
+                resolveTaskWorkRuntime().stats(taskId));
+    }
+
+    private TaskWorkRuntime resolveTaskWorkRuntime() {
+        return taskWorkRuntime;
     }
 
     protected void assertClientConnects(SampleWorkerClient client, String failureMessage) throws Exception {
@@ -281,7 +425,7 @@ public abstract class AbstractSampleE2eTest {
     }
 
     protected boolean updateStoredTask(Task task) {
-        return requireDelegate().getEngine().getConfig().getTaskCommandService().updateTask(task);
+        return taskStorage.updateTask(task);
     }
 
     protected <T extends SampleWorkerClient> T connectClientWithRetries(Supplier<T> clientSupplier,
@@ -311,17 +455,17 @@ public abstract class AbstractSampleE2eTest {
     }
 
     /**
-     * Asserts that at least {@code minExpected} ONLINE workers are registered with the runtime.
+     * Asserts that at least {@code minExpected} workers currently have transport reachability.
      *
-     * <p>Call this before dispatching tasks that depend on sample realtime workers being ready.
+     * <p>Call this before dispatching tasks that depend on sample workers being ready.
      * A failure here means SDK resource registration or adapter-specific sample client startup did not
-     * produce the expected workers - surfacing the problem early rather than waiting for a
+     * converge transport presence - surfacing the problem early rather than waiting for a
      * task to time out in READY state.
      */
     @SuppressWarnings("unchecked")
     protected void assertMinOnlineWorkers(int minExpected) throws InterruptedException {
         int online = awaitValue(
-                "Expected at least " + minExpected + " ONLINE worker(s)",
+                "Expected at least " + minExpected + " transport-online worker(s)",
                 20,
                 250L,
                 this::fetchOnlineWorkerCount,
@@ -330,17 +474,17 @@ public abstract class AbstractSampleE2eTest {
         );
         if (online < minExpected) {
             throw new AssertionError(
-                    "Expected at least " + minExpected + " ONLINE worker(s) but found " + online
-                            + " after waiting. Check bootstrap config JSON format and sample transport client startup logs.");
+                    "Expected at least " + minExpected + " transport-online worker(s) but found " + online
+                            + " after waiting. Check bootstrap config JSON format, transport presence wiring, and sample transport client startup logs.");
         }
     }
 
-    protected Worker waitForWorkerStatus(String workerId,
-                                         String expectedStatus,
-                                         int maxAttempts,
-                                         long sleepMillis,
-                                         Runnable livenessCheck,
-                                         Supplier<String> diagnosticsSupplier) throws InterruptedException {
+    protected WorkerSnapshot waitForWorkerStatus(String workerId,
+                                                 String expectedStatus,
+                                                 int maxAttempts,
+                                                 long sleepMillis,
+                                                 Runnable livenessCheck,
+                                                 Supplier<String> diagnosticsSupplier) throws InterruptedException {
         try {
             return awaitValue(
                     "Worker " + workerId + " did not reach status " + expectedStatus,
@@ -353,10 +497,35 @@ public abstract class AbstractSampleE2eTest {
                         return fetchRuntimeWorker(workerId);
                     },
                     worker -> worker != null
-                            && worker.getStatus() != null
-                            && expectedStatus.equals(worker.getStatus().name()),
+                            && expectedStatus.equals(worker.getStatus()),
                     worker -> worker == null ? "<not-registered>" : worker.toString()
             );
+        } catch (AssertionError error) {
+            if (livenessCheck != null) {
+                livenessCheck.run();
+            }
+            String diagnostics = diagnosticsSupplier == null ? "" : diagnosticsSupplier.get();
+            if (diagnostics == null || diagnostics.isBlank()) {
+                throw error;
+            }
+            throw new AssertionError(error.getMessage() + System.lineSeparator()
+                    + "Process output:" + System.lineSeparator() + diagnostics, error);
+        }
+    }
+
+    protected void waitForWorkerPresenceOnline(String workerId,
+                                               int maxAttempts,
+                                               long sleepMillis,
+                                               Runnable livenessCheck,
+                                               Supplier<String> diagnosticsSupplier) throws InterruptedException {
+        try {
+            boolean online = awaitCondition(() -> {
+                if (livenessCheck != null) {
+                    livenessCheck.run();
+                }
+                return requireSdkApp().isWorkerOnline(workerId);
+            }, maxAttempts, sleepMillis);
+            assertTrue(online, "Worker " + workerId + " did not become transport-online");
         } catch (AssertionError error) {
             if (livenessCheck != null) {
                 livenessCheck.run();
@@ -421,26 +590,14 @@ public abstract class AbstractSampleE2eTest {
                 + (latestValue == null ? "<none>" : latestStateRenderer.apply(latestValue)));
     }
 
-    @SuppressWarnings("unchecked")
     private int fetchOnlineWorkerCount() {
-        Map<String, Object> response = exchange("/status/api/workers", HttpMethod.GET, null);
-        if (!isApiOk(response)) {
-            return 0;
-        }
-        Object data = response.get("data");
-        if (!(data instanceof Map<?, ?> dataMap)) {
-            return 0;
-        }
-        Object items = dataMap.get("items");
-        if (!(items instanceof List<?> list)) {
-            return 0;
-        }
-        return (int) list.stream()
-                .filter(item -> item instanceof Map<?, ?> m && "ONLINE".equals(m.get("status")))
+        return (int) requireSdkApp().getAllWorkers().stream()
+                .map(WorkerSnapshot::getWorkerId)
+                .filter(workerId -> workerId != null && requireSdkApp().isWorkerOnline(workerId))
                 .count();
     }
 
-    private Worker fetchRuntimeWorker(String workerId) {
+    private WorkerSnapshot fetchRuntimeWorker(String workerId) {
         return requireSdkApp().getAllWorkers().stream()
                 .filter(worker -> workerId.equals(worker.getWorkerId()))
                 .findFirst()
@@ -464,8 +621,13 @@ public abstract class AbstractSampleE2eTest {
     }
 
     protected void registerSdkWorkerWithContext(String workerId, String routingTag, String project) {
-        requireSdkApp().registerWorker(createWorkerRegistration(workerId, "us", project));
-        requireSdkApp().registerWorkerContext(createWorkerContextRegistration(workerId, routingTag));
+        requireSdkApp().registerWorker(createWorkerRegistration(
+                workerId,
+                "us",
+                project,
+                1,
+                schedulingAttributes(routingTag, Map.of())
+        ));
     }
 
     protected void registerSdkWorkerWithContext(String workerId,
@@ -473,36 +635,68 @@ public abstract class AbstractSampleE2eTest {
                                                 String routingTag,
                                                 String project,
                                                 Map<String, Object> contextAttributes) {
-        requireSdkApp().registerWorker(createWorkerRegistration(workerId, workerGroupId, project));
-        requireSdkApp().registerWorkerContext(createWorkerContextRegistration(workerId, routingTag, contextAttributes));
+        requireSdkApp().registerWorker(createWorkerRegistration(
+                workerId,
+                workerGroupId,
+                project,
+                1,
+                schedulingAttributes(routingTag, contextAttributes)
+        ));
     }
 
     protected void registerSdkStatelessWorker(String workerId, String project) {
-        requireSdkApp().registerWorker(createWorkerRegistration(workerId, "us", project));
+        registerSdkStatelessWorker(workerId, project, 1);
     }
 
-    private MassApplication requireDelegate() {
-        assertNotNull(app, "MassSdkApplication is required");
-        return readField(app, "delegate", MassApplication.class);
+    protected void registerSdkStatelessWorker(String workerId, String project, int maxConcurrentWork) {
+        requireSdkApp().registerWorker(createWorkerRegistration(workerId, "us", project, maxConcurrentWork));
     }
 
-    private static <T> T readField(Object target, String fieldName, Class<T> fieldType) {
-        try {
-            java.lang.reflect.Field field = target.getClass().getDeclaredField(fieldName);
-            field.setAccessible(true);
-            return fieldType.cast(field.get(target));
-        } catch (ReflectiveOperationException e) {
-            throw new RuntimeException(e);
-        }
+    protected void registerSdkStatelessWorkerWithAttributes(String workerId,
+                                                            String workerGroupId,
+                                                            String project,
+                                                            Map<String, String> attributes) {
+        requireSdkApp().registerWorker(createWorkerRegistration(workerId, workerGroupId, project, 1, attributes));
     }
 
     private WorkerRegistration createWorkerRegistration(String workerId, String workerGroupId, String project) {
+        return createWorkerRegistration(workerId, workerGroupId, project, 1);
+    }
+
+    private WorkerRegistration createWorkerRegistration(String workerId,
+                                                        String workerGroupId,
+                                                        String project,
+                                                        int maxConcurrentWork) {
+        return createWorkerRegistration(workerId, workerGroupId, project, maxConcurrentWork, Map.of());
+    }
+
+    private WorkerRegistration createWorkerRegistration(String workerId,
+                                                        String workerGroupId,
+                                                        String project,
+                                                        int maxConcurrentWork,
+                                                        Map<String, String> attributes) {
+        String adapterNodeId = "websocket-node";
+        requireSdkApp().declareWorkerGroup(WorkerGroupDeclaration.builder()
+                .groupId(workerGroupId)
+                .eventBindings(defaultEventBindings(project))
+                .build());
+        requireSdkApp().registerAdapterNode(AdapterNodeRegistration.builder()
+                .adapterNodeId(adapterNodeId)
+                .adapterType("websocket")
+                .endpointId("sample-e2e")
+                .build());
+        requireSdkApp().bindNodeGroup(NodeGroupBindingRegistration.builder()
+                .adapterNodeId(adapterNodeId)
+                .workerGroupId(workerGroupId)
+                .build());
         return WorkerRegistration.builder()
                 .workerId(workerId)
+                .adapterNodeId(adapterNodeId)
                 .workerGroupId(workerGroupId)
-                .eventBindings(defaultEventBindings(project))
                 .adapterId("websocket")
                 .transportHint("realtime")
+                .maxConcurrentWork(maxConcurrentWork)
+                .attributes(attributes == null ? Map.of() : attributes)
                 .build();
     }
 
@@ -516,36 +710,39 @@ public abstract class AbstractSampleE2eTest {
     }
 
     private List<String> defaultSupportedEvents(String project) {
-        return switch (project) {
+        List<String> preferred = switch (project) {
             case "crawlerApp" -> List.of("crawler.fetch-page");
             case "testApp" -> List.of("demo.dispatch");
             case "otherApp", "demoApp" -> List.of("demo.dispatch", "demo.dispatch.gb");
             default -> List.of();
         };
+        List<String> available = requireSdkApp().getEventsForProject(project).stream()
+                .map(EventDefinition::getCode)
+                .toList();
+        if (available.isEmpty()) {
+            throw new IllegalStateException("No runtime events registered for project: " + project);
+        }
+        List<String> resolved = preferred.stream()
+                .filter(available::contains)
+                .toList();
+        return resolved.isEmpty() ? List.of(available.getFirst()) : resolved;
     }
 
-    private WorkerContextRegistration createWorkerContextRegistration(String workerId, String routingTag) {
-        return createWorkerContextRegistration(workerId, routingTag, Map.of());
-    }
-
-    private WorkerContextRegistration createWorkerContextRegistration(String workerId,
-                                                                     String routingTag,
-                                                                     Map<String, Object> contextAttributes) {
-        Map<String, String> normalizedAttributes = contextAttributes == null || contextAttributes.isEmpty()
-                ? Map.of()
-                : contextAttributes.entrySet().stream()
-                .collect(java.util.stream.Collectors.toMap(
-                        Map.Entry::getKey,
-                        entry -> String.valueOf(entry.getValue()),
-                        (left, right) -> right,
-                        java.util.LinkedHashMap::new
-                ));
-        return WorkerContextRegistration.builder()
-                .workerContextId("worker-context-" + workerId)
-                .workerId(workerId)
-                .routingTags(java.util.Set.of(routingTag))
-                .attributes(normalizedAttributes)
-                .build();
+    private Map<String, String> schedulingAttributes(String routingTag, Map<String, Object> contextAttributes) {
+        java.util.LinkedHashMap<String, String> attributes = new java.util.LinkedHashMap<>();
+        if (routingTag != null && !routingTag.isBlank()) {
+            attributes.put("routingTag", routingTag);
+            attributes.put("routingTags", routingTag);
+            attributes.put("country", routingTag);
+        }
+        if (contextAttributes != null) {
+            contextAttributes.forEach((key, value) -> {
+                if (key != null && value != null) {
+                    attributes.put(key, String.valueOf(value));
+                }
+            });
+        }
+        return attributes;
     }
 
     private MassSdkApplication requireSdkApp() {
@@ -555,6 +752,8 @@ public abstract class AbstractSampleE2eTest {
         return app;
     }
 
-    protected record TaskSnapshot(Map<String, Object> task, List<Map<String, Object>> messages) {
+    protected record RuntimeTaskSnapshot(Map<String, Object> task,
+                                         List<ActiveLeaseRecord> activeLeases,
+                                         TaskWorkStats stats) {
     }
 }

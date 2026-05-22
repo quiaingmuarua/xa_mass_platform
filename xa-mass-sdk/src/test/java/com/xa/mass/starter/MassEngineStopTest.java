@@ -58,9 +58,69 @@ class MassEngineStopTest {
         assertTrue(engine.isRunning());
         assertNotNull(readField(engine, "assignWorker"));
         assertSame(config.getTaskCommandService(), readField(engine, "taskCommands"));
-        assertSame(config.getWorkerManager(), readField(engine, "workerManager"));
 
         engine.stop();
+    }
+
+    @Test
+    void startDoesNotInstallRuntimeEventBusBridgeByDefault() {
+        EngineConfig config = new EngineConfig();
+        MassEngine engine = new MassEngine(config);
+
+        try {
+            engine.start();
+
+            assertEquals(0, listenerSnapshot(config).taskCreatedListeners());
+            assertEquals(0, listenerSnapshot(config).taskAssignedListeners());
+            assertEquals(1, listenerSnapshot(config).taskReadyListeners());
+            assertEquals(1, listenerSnapshot(config).taskDispatchListeners());
+            assertEquals(1, listenerSnapshot(config).taskTerminalListeners());
+            assertEquals(1, listenerSnapshot(config).taskWorkAttemptClosedListeners());
+        } finally {
+            engine.stop();
+        }
+    }
+
+    @Test
+    void stopRemovesEngineRuntimeListenersSoRestartDoesNotAccumulate() {
+        EngineConfig config = new EngineConfig();
+        MassEngine engine = new MassEngine(config);
+
+        engine.start();
+        engine.stop();
+
+        assertEquals(0, listenerSnapshot(config).taskReadyListeners());
+        assertEquals(0, listenerSnapshot(config).taskDispatchListeners());
+        assertEquals(0, listenerSnapshot(config).taskTerminalListeners());
+        assertEquals(0, listenerSnapshot(config).taskWorkAttemptClosedListeners());
+
+        engine.start();
+        try {
+            assertEquals(1, listenerSnapshot(config).taskReadyListeners());
+            assertEquals(1, listenerSnapshot(config).taskDispatchListeners());
+            assertEquals(1, listenerSnapshot(config).taskTerminalListeners());
+            assertEquals(1, listenerSnapshot(config).taskWorkAttemptClosedListeners());
+        } finally {
+            engine.stop();
+        }
+    }
+
+    @Test
+    void explicitRuntimeEventBusBridgeAddsAndRemovesShellBridgeListeners() {
+        EngineConfig config = new EngineConfig();
+        config.setRuntimeBridge(RuntimeEventBusEngineBridge.runtimeBus());
+        MassEngine engine = new MassEngine(config);
+
+        engine.start();
+        try {
+            assertEquals(1, listenerSnapshot(config).taskCreatedListeners());
+            assertEquals(1, listenerSnapshot(config).taskAssignedListeners());
+        } finally {
+            engine.stop();
+        }
+
+        assertEquals(0, listenerSnapshot(config).taskCreatedListeners());
+        assertEquals(0, listenerSnapshot(config).taskAssignedListeners());
     }
 
     // ---- helpers ----
@@ -90,6 +150,10 @@ class MassEngineStopTest {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private com.xa.mass.engine.TaskEventListenerSnapshot listenerSnapshot(EngineConfig config) {
+        return config.getTaskEventService().listenerSnapshot();
     }
 
     private void setField(Object target, String fieldName, Object value) {

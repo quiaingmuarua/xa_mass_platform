@@ -1,17 +1,23 @@
 package com.xa.mass.transport.socket.server;
 
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
+import com.xa.mass.transport.channel.TaskResultIngestChannel;
+import com.xa.mass.transport.model.TaskResultReport;
+import com.xa.mass.transport.model.TransportResultEnvelope;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
 import com.xa.mass.transport.socket.session.SocketSessionManager;
+import com.xa.mass.transport.socket.worker.SocketRealtimeWorkerAdapter;
 import org.junit.jupiter.api.Test;
 
 import java.io.BufferedWriter;
 import java.io.OutputStreamWriter;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -23,10 +29,11 @@ class SocketTransportServerTest {
     void startAndClientHandlingUseRuntimeExecutor() throws Exception {
         VirtualThreadRuntimeTaskExecutor executor = new VirtualThreadRuntimeTaskExecutor("socket-test-", 4);
         SocketTransportServer server = new SocketTransportServer(
+                "socket",
                 "127.0.0.1",
                 0,
                 10,
-                new SocketSessionManager(null),
+                new SocketSessionManager(SocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID, null),
                 new SocketTransportFrameCodec(),
                 null,
                 null,
@@ -56,8 +63,10 @@ class SocketTransportServerTest {
     @Test
     void helloFrameRegistersSocketSession() throws Exception {
         VirtualThreadRuntimeTaskExecutor executor = new VirtualThreadRuntimeTaskExecutor("socket-test-", 4);
-        SocketSessionManager sessionManager = new SocketSessionManager(null);
+        SocketSessionManager sessionManager =
+                new SocketSessionManager(SocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID, null);
         SocketTransportServer server = new SocketTransportServer(
+                "socket",
                 "127.0.0.1",
                 0,
                 10,
@@ -78,8 +87,106 @@ class SocketTransportServerTest {
                 writer.newLine();
                 writer.flush();
 
-                waitUntil(() -> sessionManager.isRouteOnline("worker-1"),
+                waitUntil(() -> sessionManager.isAdapterRouteOnline("socket", "worker-1"),
                         "hello frame should register worker socket session");
+            }
+        } finally {
+            server.stop();
+            executor.shutdown();
+            executor.awaitTermination(5, TimeUnit.SECONDS);
+            System.clearProperty(SocketTransportServer.BOUND_PORT_PROPERTY);
+        }
+    }
+
+    @Test
+    void helloFrameRouteKeyOverridesWorkerIdAsSocketAddress() throws Exception {
+        VirtualThreadRuntimeTaskExecutor executor = new VirtualThreadRuntimeTaskExecutor("socket-test-", 4);
+        SocketSessionManager sessionManager =
+                new SocketSessionManager(SocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID, null);
+        SocketTransportServer server = new SocketTransportServer(
+                "socket",
+                "127.0.0.1",
+                0,
+                10,
+                sessionManager,
+                new SocketTransportFrameCodec(),
+                null,
+                null,
+                executor
+        );
+
+        try {
+            server.start();
+            int port = Integer.parseInt(System.getProperty(SocketTransportServer.BOUND_PORT_PROPERTY));
+            try (Socket socket = new Socket("127.0.0.1", port);
+                 BufferedWriter writer = new BufferedWriter(
+                         new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8))) {
+                writer.write("{\"type\":\"hello\",\"workerId\":\"worker-1\",\"routeKey\":\"socket-route-9\"}");
+                writer.newLine();
+                writer.flush();
+
+                waitUntil(() -> sessionManager.isAdapterRouteOnline("socket", "socket-route-9"),
+                        "hello frame should register socket routeKey independently");
+                assertFalse(sessionManager.isAdapterRouteOnline("socket", "worker-1"));
+            }
+        } finally {
+            server.stop();
+            executor.shutdown();
+            executor.awaitTermination(5, TimeUnit.SECONDS);
+            System.clearProperty(SocketTransportServer.BOUND_PORT_PROPERTY);
+        }
+    }
+
+    @Test
+    void canonicalTaskResultIngressUsesBoundRouteKeyAndMessageIdTraceFallback() throws Exception {
+        VirtualThreadRuntimeTaskExecutor executor = new VirtualThreadRuntimeTaskExecutor("socket-test-", 4);
+        SocketSessionManager sessionManager =
+                new SocketSessionManager(SocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID, null);
+        AtomicReference<TransportResultEnvelope> capturedEnvelope = new AtomicReference<>();
+        SocketTransportServer server = new SocketTransportServer(
+                "socket",
+                "127.0.0.1",
+                0,
+                10,
+                sessionManager,
+                new SocketTransportFrameCodec(),
+                new TaskResultIngestChannel() {
+                    @Override
+                    public boolean ingest(TaskResultReport report) {
+                        return true;
+                    }
+
+                    @Override
+                    public boolean ingest(TransportResultEnvelope envelope) {
+                        capturedEnvelope.set(envelope);
+                        return true;
+                    }
+                },
+                null,
+                executor
+        );
+
+        try {
+            server.start();
+            int port = Integer.parseInt(System.getProperty(SocketTransportServer.BOUND_PORT_PROPERTY));
+            try (Socket socket = new Socket("127.0.0.1", port);
+                 BufferedWriter writer = new BufferedWriter(
+                         new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8))) {
+                writer.write("{\"type\":\"hello\",\"workerId\":\"worker-1\",\"routeKey\":\"socket-route-9\"}");
+                writer.newLine();
+                writer.write("""
+                        {"messageId":"msg-1","taskId":"task-1","success":true,"detail":"ok","output":{"status":"SUCCESS"}}
+                        """.trim());
+                writer.newLine();
+                writer.flush();
+
+                waitUntil(() -> capturedEnvelope.get() != null,
+                        "canonical socket result should be ingested");
+                assertEquals("socket", capturedEnvelope.get().getAdapterId());
+                assertEquals("socket-route-9", capturedEnvelope.get().getRouteKey());
+                assertEquals("msg-1", capturedEnvelope.get().getTraceId());
+                assertEquals("task-1", capturedEnvelope.get().getTaskId());
+                assertEquals("msg-1", capturedEnvelope.get().getMessageId());
             }
         } finally {
             server.stop();
@@ -94,10 +201,11 @@ class SocketTransportServerTest {
         VirtualThreadRuntimeTaskExecutor executor = new VirtualThreadRuntimeTaskExecutor("socket-test-", 1);
         executor.shutdown();
         SocketTransportServer server = new SocketTransportServer(
+                "socket",
                 "127.0.0.1",
                 0,
                 10,
-                new SocketSessionManager(null),
+                new SocketSessionManager(SocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID, null),
                 new SocketTransportFrameCodec(),
                 null,
                 null,

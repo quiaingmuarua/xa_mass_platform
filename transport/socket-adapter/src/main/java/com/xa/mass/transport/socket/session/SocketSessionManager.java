@@ -4,6 +4,9 @@ import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
+import com.xa.mass.transport.presence.WorkerPresenceStore;
+import com.xa.mass.transport.runtime.RouteEndpointIndex;
+import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -12,8 +15,6 @@ import java.io.IOException;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Adapter-owned endpoint registry for raw TCP socket workers.
@@ -22,11 +23,16 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
 
     private static final Logger logger = LoggerFactory.getLogger(SocketSessionManager.class);
 
-    private final Map<String, SocketWorkerEndpoint> endpointsByRouteKey = new ConcurrentHashMap<>();
-    private final Map<String, RouteEndpointBinding> routeBindingByEndpointId = new ConcurrentHashMap<>();
+    private final String adapterId;
+    private final RouteEndpointIndex<String, SocketWorkerEndpoint> routeIndex = new RouteEndpointIndex<>();
     private volatile WorkerSystemEventChannel systemEventChannel;
+    private volatile WorkerPresenceStore workerPresenceStore = new InMemoryWorkerPresenceStore();
 
-    public SocketSessionManager(WorkerSystemEventChannel systemEventChannel) {
+    public SocketSessionManager(String adapterId, WorkerSystemEventChannel systemEventChannel) {
+        if (adapterId == null || adapterId.isBlank()) {
+            throw new IllegalArgumentException("adapterId must not be blank");
+        }
+        this.adapterId = adapterId.trim().toLowerCase(java.util.Locale.ROOT);
         this.systemEventChannel = systemEventChannel;
     }
 
@@ -35,49 +41,52 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
                                         String endpointId,
                                         Socket socket,
                                         BufferedWriter writer) {
-        boolean wasOnline = isRouteOnline(routeKey);
-        SocketWorkerEndpoint existing = endpointsByRouteKey.get(routeKey);
-        if (existing != null && existing.isActive() && existing.endpointId().equals(endpointId)) {
+        boolean wasOnline = hasActiveRoute(routeKey);
+        RouteEndpointIndex.BindResult<String, SocketWorkerEndpoint> result = routeIndex.bind(
+                routeKey,
+                workerId,
+                endpointId,
+                new SocketWorkerEndpoint(endpointId, socket, writer),
+                SocketWorkerEndpoint::isActive
+        );
+        if (result.unchanged()) {
             return;
         }
-        if (existing != null && !existing.endpointId().equals(endpointId)) {
-            closeQuietly(existing);
-            routeBindingByEndpointId.remove(existing.endpointId());
+        RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> previous = result.previousEntry();
+        if (previous != null && !previous.handle().equals(endpointId)) {
+            closeQuietly(previous.endpoint());
         }
 
-        SocketWorkerEndpoint endpoint = new SocketWorkerEndpoint(routeKey, workerId, endpointId, socket, writer);
-        endpointsByRouteKey.put(routeKey, endpoint);
-        routeBindingByEndpointId.put(endpointId, new RouteEndpointBinding(routeKey, workerId));
-
         logger.info("Connected: routeKey={} workerId={} endpointId={} totalRoutes={}",
-                routeKey, workerId, endpointId, endpointsByRouteKey.size());
-        if (!wasOnline && endpoint.isActive() && systemEventChannel != null) {
+                routeKey, workerId, endpointId, routeIndex.routeCount());
+        if (result.currentEntry().endpoint().isActive()) {
+            workerPresenceStore.markOnline(workerId, adapterId, routeKey, endpointId, "socket connected");
+        }
+        if (!wasOnline && result.currentEntry().endpoint().isActive() && systemEventChannel != null) {
             systemEventChannel.publishWorkerOnline(workerId, "socket connected", null);
         }
     }
 
     public synchronized void removeSession(String endpointId) {
-        RouteEndpointBinding binding = routeBindingByEndpointId.remove(endpointId);
+        RouteEndpointIndex.RemoveResult<String, SocketWorkerEndpoint> result = routeIndex.removeByHandle(endpointId);
+        RouteEndpointIndex.Binding binding = result.binding();
         if (binding == null) {
             return;
         }
-        SocketWorkerEndpoint endpoint = endpointsByRouteKey.get(binding.routeKey());
-        boolean removedCurrent = endpoint != null && endpoint.endpointId().equals(endpointId);
-        if (removedCurrent) {
-            endpointsByRouteKey.remove(binding.routeKey());
-            closeQuietly(endpoint);
+        if (result.removedCurrentRoute()) {
+            closeQuietly(result.removedEntry().endpoint());
         }
 
         logger.info("Disconnected: routeKey={} workerId={} endpointId={}",
                 binding.routeKey(), binding.workerId(), endpointId);
-        if (removedCurrent && systemEventChannel != null) {
+        if (result.removedCurrentRoute() && systemEventChannel != null) {
+            workerPresenceStore.markOffline(binding.workerId(), adapterId, binding.routeKey(), endpointId, "socket disconnected");
             systemEventChannel.publishWorkerOffline(binding.workerId(), "socket disconnected", null);
         }
     }
 
-    @Override
-    public boolean sendToRoute(String routeKey, String message) {
-        SocketWorkerEndpoint endpoint = endpointsByRouteKey.get(routeKey);
+    private boolean sendToBoundRoute(String routeKey, String message) {
+        SocketWorkerEndpoint endpoint = routeIndex.endpointForRoute(routeKey);
         if (endpoint == null || !endpoint.isActive()) {
             return false;
         }
@@ -92,38 +101,56 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
         }
     }
 
-    @Override
-    public boolean isRouteOnline(String routeKey) {
-        SocketWorkerEndpoint endpoint = endpointsByRouteKey.get(routeKey);
+    private boolean hasActiveRoute(String routeKey) {
+        SocketWorkerEndpoint endpoint = routeIndex.endpointForRoute(routeKey);
         return endpoint != null && endpoint.isActive();
     }
 
     @Override
     public boolean sendToAdapterRoute(String adapterId, String routeKey, String message) {
-        if (adapterId != null && !"socket".equalsIgnoreCase(adapterId.trim())) {
+        if (!matchesAdapter(adapterId)) {
             return false;
         }
-        return sendToRoute(routeKey, message);
+        return sendToBoundRoute(routeKey, message);
     }
 
     @Override
     public boolean isAdapterRouteOnline(String adapterId, String routeKey) {
-        if (adapterId != null && !"socket".equalsIgnoreCase(adapterId.trim())) {
+        if (!matchesAdapter(adapterId)) {
             return false;
         }
-        return isRouteOnline(routeKey);
+        return hasActiveRoute(routeKey);
     }
 
     @Override
     public int getActiveConnectionCount() {
-        return (int) endpointsByRouteKey.values().stream().filter(SocketWorkerEndpoint::isActive).count();
+        return (int) routeIndex.entries().stream()
+                .map(RouteEndpointIndex.Entry::endpoint)
+                .filter(SocketWorkerEndpoint::isActive)
+                .count();
     }
 
     @Override
     public synchronized void shutdown() {
-        List<SocketWorkerEndpoint> endpoints = new ArrayList<>(endpointsByRouteKey.values());
-        endpointsByRouteKey.clear();
-        routeBindingByEndpointId.clear();
+        List<RouteEndpointIndex.Entry<String, SocketWorkerEndpoint>> entries = routeIndex.entries();
+        List<SocketWorkerEndpoint> endpoints = entries.stream()
+                .map(RouteEndpointIndex.Entry::endpoint)
+                .toList();
+        for (RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> entry : entries) {
+            if (entry.endpoint().isActive()) {
+                workerPresenceStore.markOffline(
+                        entry.workerId(),
+                        adapterId,
+                        entry.routeKey(),
+                        entry.handle(),
+                        "socket adapter shutdown"
+                );
+                if (systemEventChannel != null) {
+                    systemEventChannel.publishWorkerOffline(entry.workerId(), "socket adapter shutdown", null);
+                }
+            }
+        }
+        routeIndex.clear();
         for (SocketWorkerEndpoint endpoint : endpoints) {
             closeQuietly(endpoint);
         }
@@ -132,21 +159,42 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
     @Override
     public List<WorkerEndpointSnapshot> listWorkerEndpoints() {
         List<WorkerEndpointSnapshot> snapshots = new ArrayList<>();
-        for (Map.Entry<String, SocketWorkerEndpoint> entry : endpointsByRouteKey.entrySet()) {
-            SocketWorkerEndpoint endpoint = entry.getValue();
+        for (RouteEndpointIndex.Entry<String, SocketWorkerEndpoint> entry : routeIndex.entries()) {
+            SocketWorkerEndpoint endpoint = entry.endpoint();
             snapshots.add(new WorkerEndpointSnapshot(
-                    entry.getKey(),
-                    endpoint != null ? endpoint.workerId() : entry.getKey(),
+                    entry.routeKey(),
+                    entry.workerId(),
                     endpoint != null && endpoint.isActive(),
                     endpoint != null ? endpoint.endpointId() : null,
-                    "socket"
+                    adapterId
             ));
         }
         return List.copyOf(snapshots);
     }
 
+    public String getAdapterId() {
+        return adapterId;
+    }
+
     public void setSystemEventChannel(WorkerSystemEventChannel systemEventChannel) {
         this.systemEventChannel = systemEventChannel;
+    }
+
+    public void setWorkerPresenceStore(WorkerPresenceStore workerPresenceStore) {
+        this.workerPresenceStore = workerPresenceStore != null
+                ? workerPresenceStore
+                : new InMemoryWorkerPresenceStore();
+    }
+
+    public void recordHeartbeat(String routeKey, String workerId, String endpointId, String reason, String traceId) {
+        workerPresenceStore.refreshHeartbeat(workerId, adapterId, routeKey, endpointId, reason);
+        if (systemEventChannel != null) {
+            systemEventChannel.publishWorkerHeartbeat(workerId, reason, traceId);
+        }
+    }
+
+    private boolean matchesAdapter(String adapterId) {
+        return adapterId == null || this.adapterId.equalsIgnoreCase(adapterId.trim());
     }
 
     private void closeQuietly(SocketWorkerEndpoint endpoint) {
@@ -160,10 +208,7 @@ public final class SocketSessionManager implements WorkerEndpointRegistry, Worke
         }
     }
 
-    private record RouteEndpointBinding(String routeKey, String workerId) {
-    }
-
-    private record SocketWorkerEndpoint(String routeKey, String workerId, String endpointId, Socket socket, BufferedWriter writer) {
+    private record SocketWorkerEndpoint(String endpointId, Socket socket, BufferedWriter writer) {
 
         boolean isActive() {
             return socket != null && socket.isConnected() && !socket.isClosed();

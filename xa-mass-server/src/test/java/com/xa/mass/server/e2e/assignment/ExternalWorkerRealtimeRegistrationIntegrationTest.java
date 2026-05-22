@@ -6,6 +6,7 @@ import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.auth.PrincipalContext;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -28,7 +29,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         properties = {
                 "sample.client.auto-start=false",
                 "mass.mock.data.workers=mock/test_mock_workers_empty.json",
-                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts_empty.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json",
                 "mass.socket.enabled=true"
@@ -36,7 +36,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
+@Tag("secondary-proof")
 class ExternalWorkerRealtimeRegistrationIntegrationTest extends AbstractSampleE2eTest {
+
+    /**
+     * Support-only adapter-ambiguity guard coverage.
+     *
+     * <p>This protects a public-route validation edge, but it is not a mainline
+     * parity or scheduling proof.
+     */
 
     private static final int WEBSOCKET_PORT = findFreePort();
     private static final String WORKER_ID = "realtime-worker-missing-adapter";
@@ -61,15 +69,16 @@ class ExternalWorkerRealtimeRegistrationIntegrationTest extends AbstractSampleE2
                 .eventScopes(List.of("crawler.fetch-page"))
                 .attributes(Map.of("workerId", WORKER_ID))
                 .build());
+        HttpHeaders workerHeaders = credentialHeaders(WORKER_KEY);
+        declareExternalWorkerGroup("realtime-crawler", "crawlerApp", "crawler.fetch-page", workerHeaders);
+        bindExternalAdapterNode("realtime-node", "realtime-crawler", workerHeaders);
 
-        Map<String, Object> registerResponse = exchange("/worker-api/workers/register", HttpMethod.POST, Map.of(
+        Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", WORKER_ID,
-                "transportHint", "realtime",
-                "eventBindings", List.of(Map.of(
-                        "eventCode", "crawler.fetch-page",
-                        "projectCodes", List.of("crawlerApp")
-                ))
-        ), sdkCredentialHeaders(WORKER_KEY));
+                "adapterNodeId", "realtime-node",
+                "workerGroupId", "realtime-crawler",
+                "transportHint", "realtime"
+        ), workerHeaders);
 
         assertApiError(registerResponse, 400);
         assertTrue(apiMsg(registerResponse).contains(
@@ -77,7 +86,7 @@ class ExternalWorkerRealtimeRegistrationIntegrationTest extends AbstractSampleE2
         assertFalse(app.getAllWorkers().stream().anyMatch(worker -> WORKER_ID.equals(worker.getWorkerId())));
     }
 
-    private HttpHeaders sdkCredentialHeaders(String credential) {
+    private HttpHeaders credentialHeaders(String credential) {
         HttpHeaders headers = new HttpHeaders();
         headers.add(SdkCredentialAuthSupport.API_KEY_HEADER, credential);
         return headers;

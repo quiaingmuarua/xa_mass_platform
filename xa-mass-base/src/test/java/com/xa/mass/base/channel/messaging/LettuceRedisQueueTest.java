@@ -1,25 +1,26 @@
 package com.xa.mass.base.channel.messaging;
 
 import com.xa.mass.base.channel.messaging.redis.LettuceRedisQueue;
+import com.xa.mass.base.channel.messaging.redis.RedisConnectionManager;
 import com.xa.mass.base.test.RedisTestSupport;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
 
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 public class LettuceRedisQueueTest {
-    private static final String QUEUE_KEY = "test-redis-queue";
-
     private LettuceRedisQueue<String> queue;
 
     @BeforeEach
-    public void setUp() {
+    public void setUp(TestInfo testInfo) {
         RedisTestSupport.initLocalRedisOrSkip();
-        queue = new LettuceRedisQueue<>(QUEUE_KEY, String.class);
-        drainQueue();
+        String queueKey = "test-redis-queue-" + sanitize(testInfo.getDisplayName()) + "-" + System.nanoTime();
+        queue = new LettuceRedisQueue<>(queueKey, String.class);
+        clearQueueKey();
     }
 
     @AfterEach
@@ -27,7 +28,7 @@ public class LettuceRedisQueueTest {
         if (queue == null) {
             return;
         }
-        drainQueue();
+        clearQueueKey();
     }
 
     @Test
@@ -57,13 +58,11 @@ public class LettuceRedisQueueTest {
         assertNull(result);
     }
 
-    private void drainQueue() {
-        while (!queue.isEmpty()) {
-            try {
-                queue.poll(1, TimeUnit.SECONDS);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-        }
+    private void clearQueueKey() {
+        RedisConnectionManager.getConnection().sync().del(queue.getQueueKey());
+    }
+
+    private String sanitize(String value) {
+        return value.replaceAll("[^A-Za-z0-9_-]", "_");
     }
 }

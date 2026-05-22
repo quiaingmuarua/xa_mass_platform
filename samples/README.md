@@ -30,8 +30,8 @@ For the dev Spring Boot shell there is now a sample supervisor script at
 
 - it bootstraps sample project/event/submitter catalog through `/sample-api/bootstrap/catalog`
 - it replaces runtime default rules through `/sample-api/bootstrap/rules`
-- it registers the curated sample worker set through `/worker-api/*`
-- it creates curated sample tasks through `POST /status/api/tasks`
+- it registers the curated sample worker set through `/worker-api/v1/**`
+- it creates curated sample tasks through `POST /api/v1/tasks` plus explicit item append
 - it starts the external sample worker processes
 - `XaMassServerApplication` can launch it automatically in `dev` profile
   when `sample.worker.auto-start=true`
@@ -43,6 +43,11 @@ Every sample should remain provable through an external-process black-box test:
 
 - control-plane registration alone does not mark a realtime worker online
 - worker becomes `ONLINE` only after transport presence is established
+- polling samples report capability at startup via `:report-capability` and
+  bounded worker state via `:report-state`; both go through the public
+  `/worker-api/v1` contract
+- polling samples can acknowledge operator-issued worker commands via
+  `/commands/{commandId}:ack`
 - engine scheduling still gates task dispatch; samples do not bypass task mainline
 - task result reaches `TERMINAL` through normal result ingest
 - output identifies the executing sample through `integrationProbe` and/or `workerProfile`

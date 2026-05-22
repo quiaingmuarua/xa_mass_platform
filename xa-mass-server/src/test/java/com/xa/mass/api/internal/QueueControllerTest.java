@@ -1,6 +1,6 @@
 package com.xa.mass.api.internal;
 
-import com.xa.mass.sdk.TransportOperations;
+import com.xa.mass.sdk.RuntimeDiagnosticsOperations;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,24 +20,24 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class QueueControllerTest {
 
     @Mock
-    private TransportOperations transportOperations;
+    private RuntimeDiagnosticsOperations runtimeDiagnostics;
 
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(new QueueController(transportOperations)).build();
+        mockMvc = MockMvcBuilders.standaloneSetup(new QueueController(runtimeDiagnostics)).build();
     }
 
     @Test
     void queueStatusUsesSdkTransportFacade() throws Exception {
-        when(transportOperations.getQueueDetail()).thenReturn(Map.of(
+        when(runtimeDiagnostics.getQueueDetail()).thenReturn(Map.of(
                 "inputQueueSize", 3,
                 "outputQueueSize", 7,
                 "transporterAvailable", true
         ));
 
-        mockMvc.perform(get("/api/queue/status"))
+        mockMvc.perform(get("/api/v1/runtime/queues"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.inputQueueSize").value(3))
@@ -46,7 +46,7 @@ class QueueControllerTest {
 
     @Test
     void queueDetailIncludesRuntimeDeliveryStats() throws Exception {
-        when(transportOperations.getQueueDetail()).thenReturn(Map.of(
+        when(runtimeDiagnostics.getQueueDetail()).thenReturn(Map.of(
                 "inputQueueSize", -1,
                 "outputQueueSize", -1,
                 "transporterAvailable", false,
@@ -97,7 +97,7 @@ class QueueControllerTest {
                 )
         ));
 
-        mockMvc.perform(get("/api/queue/detail"))
+        mockMvc.perform(get("/api/v1/runtime/queues"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.inputQueueSize").value(-1))

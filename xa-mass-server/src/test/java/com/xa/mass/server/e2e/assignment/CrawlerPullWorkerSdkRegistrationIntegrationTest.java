@@ -3,11 +3,16 @@ package com.xa.mass.server.e2e.assignment;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.storage.rule.RuleType;
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
+import com.xa.mass.server.e2e.support.ProjectionSampleE2eTest;
 import com.xa.mass.sdk.MassSdkApplication;
-import com.xa.mass.sdk.model.MassTaskRequest;
-import com.xa.mass.sdk.model.WorkerContextRegistration;
+import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
+import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
+import com.xa.mass.sdk.model.AdapterNodeRegistration;
+import com.xa.mass.sdk.model.NodeGroupBindingRegistration;
+import com.xa.mass.sdk.model.TaskExecutionOptions;
+import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.WorkerEventBinding;
+import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.transport.WorkerTransportHints;
@@ -22,7 +27,6 @@ import org.springframework.test.context.DynamicPropertySource;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -37,14 +41,13 @@ import static org.junit.jupiter.api.Assertions.*;
         properties = {
                 "sample.client.auto-start=false",
                 "mass.mock.data.workers=mock/test_mock_workers_empty.json",
-                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts_empty.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class CrawlerPullWorkerSdkRegistrationIntegrationTest extends AbstractSampleE2eTest {
+class CrawlerPullWorkerSdkRegistrationIntegrationTest extends ProjectionSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
 
@@ -61,44 +64,62 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends AbstractSampleE2eT
         String workerId = "crawler-worker-001";
         app.replaceDefaultRules(List.of(
                 rule("crawler-online-project", "isWorkerAvailable == true && isWorkerLocked == false && supportsProject == true"),
-                rule("crawler-context-routing", "isWorkerContextAllocatable == true && workerContextMatchesRoutingCode == true")
+                rule("crawler-scheduling-routing", "isWorkerSchedulingResourceAllocatable == true && workerSchedulingMatchesRoutingCode == true")
         ));
-        app.registerWorker(WorkerRegistration.builder()
-                .workerId(workerId)
-                .workerGroupId("crawler")
+        app.declareWorkerGroup(WorkerGroupDeclaration.builder()
+                .groupId("crawler")
                 .eventBindings(List.of(
                         WorkerEventBinding.builder()
                                 .eventCode("crawler.fetch-page")
                                 .projectCodes(List.of("crawlerApp"))
                                 .build()
                 ))
-                .transportHint(WorkerTransportHints.POLLING)
-                .attributes(Map.of("type", "crawler"))
                 .build());
-        app.registerWorkerContext(WorkerContextRegistration.builder()
-                .workerContextId("ctx-" + workerId)
+        app.registerAdapterNode(AdapterNodeRegistration.builder()
+                .adapterNodeId("crawler-polling-node")
+                .adapterType(WorkerTransportHints.POLLING)
+                .endpointId("crawler-polling")
+                .build());
+        app.bindNodeGroup(NodeGroupBindingRegistration.builder()
+                .adapterNodeId("crawler-polling-node")
+                .workerGroupId("crawler")
+                .build());
+        app.registerWorker(WorkerRegistration.builder()
                 .workerId(workerId)
-                .project("crawlerApp")
-                .routingTags(Set.of("web", "us"))
-                .attributes(Map.of("region", "us"))
+                .adapterNodeId("crawler-polling-node")
+                .workerGroupId("crawler")
+                .transportHint(WorkerTransportHints.POLLING)
+                .attributes(Map.of(
+                        "type", "crawler",
+                        "routingTags", "web,us",
+                        "country", "us",
+                        "region", "us"
+                ))
                 .build());
 
-        assertFalse(app.isWorkerOnline(workerId), "SDK registration must not mark a worker online");
+        assertFalse(app.isWorkerOnline(workerId), "SDK registration must not create transport presence");
 
         PullWorkerSession session = app.pullWorker(workerId);
         session.connect();
         try {
-            waitUntil(() -> app.isWorkerOnline(workerId), "pull session connect must mark the worker online");
+            waitUntil(() -> app.isWorkerOnline(workerId), "pull session connect must surface transport presence online");
+            TaskExecutionOptions executionSpec = new TaskExecutionOptions();
+            executionSpec.setBatchSize(1);
 
-            var task = app.createTask(MassTaskRequest.singleRun("crawlerApp", "crawler-fetch-page")
-                    .userId("crawler-agent")
-                    .eventCode("crawler.fetch-page")
-                    .sharedConfig(Map.of("routingCode", "us"))
-                    .jsonInputs(List.of(Map.of("url", "https://example.test/page-1")))
-                    .batchSize(1)
-                    .build());
+            TaskShellSnapshot task = createShellWithOptionalItems(
+                    MassTaskShellCreateRequest.builder()
+                            .userId("crawler-agent")
+                            .project("crawlerApp")
+                            .sourceRef("crawler-fetch-page")
+                            .sharedConfig(Map.of("routingCode", "us"))
+                            .executionSpec(executionSpec)
+                            .build(),
+                    "crawler.fetch-page",
+                    List.of(Map.of("url", "https://example.test/page-1")),
+                    false
+            );
 
-            assertTrue(app.approveTask(task.getTid()));
+            assertTrue(app.approveTask(task.getTaskId()));
 
             List<TaskDispatchItem> items = List.of();
             for (int attempt = 0; attempt < 20 && items.isEmpty(); attempt++) {
@@ -110,7 +131,7 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends AbstractSampleE2eT
             assertFalse(items.isEmpty(), "Expected crawler task dispatch via polling");
 
             TaskDispatchItem item = items.get(0);
-            assertEquals(task.getTid(), item.getTaskId());
+            assertEquals(task.getTaskId(), item.getTaskId());
             assertEquals(workerId, item.getWorkerId());
             assertEquals("https://example.test/page-1", item.getInput().get("url"));
 
@@ -121,7 +142,7 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends AbstractSampleE2eT
                     Map.of("url", "https://example.test/page-1", "statusCode", 200, "title", "Example Page")
             ));
 
-            TaskSnapshot terminal = waitForTerminalTask(task.getTid());
+            TaskSnapshot terminal = waitForTerminalTask(task.getTaskId());
             assertEquals("TERMINAL", terminal.task().get("status"));
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));
             assertEquals("SUCCESS", terminal.messages().get(0).get("status"));
@@ -135,7 +156,24 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends AbstractSampleE2eT
             session.disconnect();
         }
 
-        waitUntil(() -> !app.isWorkerOnline(workerId), "pull session disconnect must mark the worker offline");
+        waitUntil(() -> !app.isWorkerOnline(workerId), "pull session disconnect must converge transport presence offline");
+    }
+
+    private TaskShellSnapshot createShellWithOptionalItems(MassTaskShellCreateRequest request,
+                                                           String eventCode,
+                                                           List<Object> items,
+                                                           boolean keepIntakeOpen) {
+        TaskShellSnapshot task = app.createTaskShell(request);
+        if (items != null && !items.isEmpty()) {
+            app.appendTaskItems(task.getTaskId(), MassTaskItemBatchAppendRequest.builder()
+                    .eventCode(eventCode)
+                    .items(items)
+                    .build());
+        }
+        if (!keepIntakeOpen) {
+            assertTrue(app.sealTask(task.getTaskId()));
+        }
+        return task;
     }
 
     private RuleDefinition rule(String id, String content) {

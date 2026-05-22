@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -42,6 +43,12 @@ public class GlobalExceptionHandler {
                 ? mostSpecificCause.getMessage()
                 : "Request body is invalid";
         return ResponseEntity.badRequest().body(ApiResponse.error(400, msg));
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiResponse<?>> handleMethodNotAllowed(HttpRequestMethodNotSupportedException ex) {
+        String msg = ex.getMessage() != null ? ex.getMessage() : "Request method is not supported";
+        return ResponseEntity.status(405).body(ApiResponse.error(405, msg));
     }
 
     @ExceptionHandler(Exception.class)

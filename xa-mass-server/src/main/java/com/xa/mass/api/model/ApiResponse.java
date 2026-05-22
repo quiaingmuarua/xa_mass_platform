@@ -1,8 +1,14 @@
 package com.xa.mass.api.model;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
+@Schema(name = "ApiResponse", description = "Standard server response envelope. Success uses code=0 and msg=ok.")
 public class ApiResponse<T> {
+    @Schema(description = "Application response code. 0 means success; HTTP errors use matching non-zero codes.", example = "0")
     private int code;
+    @Schema(description = "Human-readable response message", example = "ok")
     private String msg;
+    @Schema(description = "Typed response body. Null for errors.")
     private T data;
 
     public ApiResponse() {
@@ -45,4 +51,4 @@ public class ApiResponse<T> {
     public void setData(T data) {
         this.data = data;
     }
-} 
+}

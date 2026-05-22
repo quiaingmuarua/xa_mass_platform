@@ -4,7 +4,7 @@ import com.xa.mass.api.internal.SdkCredentialAuthSupport;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.storage.rule.RuleType;
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
+import com.xa.mass.server.e2e.support.ProjectionSampleE2eTest;
 import com.xa.mass.server.e2e.support.ExternalNodeWorkerProcess;
 import com.xa.mass.sdk.MassSdkApplication;
 import org.junit.jupiter.api.Test;
@@ -32,14 +32,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         properties = {
                 "sample.client.auto-start=false",
                 "mass.mock.data.workers=mock/test_mock_workers_empty.json",
-                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts_empty.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class NodePollingWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
+class NodePollingWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
     private static final String WORKER_ID = "node-worker-api-001";
@@ -58,52 +57,47 @@ class NodePollingWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
     void externalNodePollingWorkerQuickstartScriptRegistersCapabilityAndCompletesTask() throws Exception {
         app.replaceDefaultRules(List.of(
                 rule("crawler-online-project", "isWorkerAvailable == true && isWorkerLocked == false && supportsProject == true"),
-                rule("crawler-context-routing", "isWorkerContextAllocatable == true && workerContextMatchesRoutingCode == true")
+                rule("crawler-scheduling-routing", "isWorkerSchedulingResourceAllocatable == true && workerSchedulingMatchesRoutingCode == true")
         ));
         String baseUrl = "http://127.0.0.1:" + port;
         try (ExternalNodeWorkerProcess workerProcess =
                      ExternalNodeWorkerProcess.startPollingSample(baseUrl, WORKER_ID, WORKER_KEY)) {
-            waitForWorkerStatus(
+            waitForWorkerPresenceOnline(
                     WORKER_ID,
-                    "ONLINE",
                     40,
                     250L,
-                    () -> workerProcess.assertAlive("External Node polling worker exited before reaching ONLINE"),
+                    () -> workerProcess.assertAlive("External Node polling worker exited before reaching transport-online state"),
                     workerProcess::capturedOutput
             );
-            assertSdkMetadataProjection(WORKER_ID);
+            assertWorkerStateProjection(WORKER_ID, "AVAILABLE");
+            assertCatalogCapabilityProjection(WORKER_ID);
 
             Map<String, Object> createBody = new LinkedHashMap<>();
-            createBody.put("taskName", "external-node-polling-worker");
             createBody.put("project", "crawlerApp");
             createBody.put("userId", "crawler-agent");
-            createBody.put("eventCode", "crawler.fetch-page");
             createBody.put("sharedConfig", Map.of("routingCode", "us"));
-            createBody.put("inputs", List.of(Map.of("url", baseUrl + "/sdk/meta/events/crawler.fetch-page")));
-            createBody.put("batchSize", 1);
+            createBody.put("executionSpec", Map.of("batchSize", 1));
 
-            Map<String, Object> createResponse = exchange(
-                    "/status/api/tasks",
-                    HttpMethod.POST,
-                    createBody,
-                    sdkCredentialHeaders(SUBMITTER_KEY)
-            );
+            Map<String, Object> createResponse = createTaskShell(createBody, submitterCredentialHeaders(SUBMITTER_KEY));
             assertApiOk(createResponse);
             String taskId = String.valueOf(responseData(createResponse).get("taskId"));
+            assertApiOk(appendTaskItems(taskId, "crawler.fetch-page",
+                    List.of(Map.of("url", baseUrl + "/api/v1/catalog/events/crawler.fetch-page"))));
+            assertApiOk(sealTask(taskId));
 
-            Map<String, Object> approveResponse = exchange(
-                    "/status/api/tasks/" + taskId + "/audit?approved=true&comment=node-polling-black-box",
-                    HttpMethod.POST,
-                    null
-            );
+            Map<String, Object> approveResponse = approveTask(taskId);
             assertApiOk(approveResponse);
 
-            TaskSnapshot terminal = waitForTerminalTask(taskId);
+            RuntimeTaskSnapshot terminal = waitForTerminalRuntimeTask(taskId);
             assertEquals("TERMINAL", terminal.task().get("status"));
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));
-            assertEquals(WORKER_ID, terminal.messages().get(0).get("latestAttemptWorkerId"));
+            assertEquals(1, terminal.stats().successCount());
+            assertEquals(1, terminal.stats().finalCount());
+            assertTrue(terminal.activeLeases().isEmpty());
 
-            Object outputObject = terminal.messages().get(0).get("output");
+            TaskSnapshot terminalView = fetchTaskSnapshot(taskId);
+            assertEquals(WORKER_ID, terminalView.messages().get(0).get("latestAttemptWorkerId"));
+            Object outputObject = terminalView.messages().get(0).get("output");
             assertInstanceOf(Map.class, outputObject);
             @SuppressWarnings("unchecked")
             Map<String, Object> output = (Map<String, Object>) outputObject;
@@ -117,9 +111,9 @@ class NodePollingWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
         waitForWorkerOffline(WORKER_ID, "external node polling worker should go offline after shutdown");
     }
 
-    private void assertSdkMetadataProjection(String workerId) {
-        Map<String, Object> workerCapabilityResponse = exchange("/sdk/meta/worker-capabilities", HttpMethod.GET, null);
-        Map<String, Object> eventCapabilityResponse = exchange("/sdk/meta/event-capabilities", HttpMethod.GET, null);
+    private void assertCatalogCapabilityProjection(String workerId) {
+        Map<String, Object> workerCapabilityResponse = exchange("/api/v1/catalog/worker-capabilities", HttpMethod.GET, null);
+        Map<String, Object> eventCapabilityResponse = exchange("/api/v1/catalog/event-capabilities", HttpMethod.GET, null);
         assertApiOk(workerCapabilityResponse);
         assertApiOk(eventCapabilityResponse);
         @SuppressWarnings("unchecked")
@@ -134,6 +128,7 @@ class NodePollingWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
         assertTrue(workerCapabilities.stream().anyMatch(item ->
                 workerId.equals(item.get("workerId"))
                         && List.of("crawler.fetch-page").equals(item.get("supportedEventCodes"))
+                        && hasEventBinding(item, "crawler.fetch-page", "crawlerApp")
                         && "polling".equals(item.get("transportHint"))
                         && Boolean.TRUE.equals(item.get("online"))
         ));
@@ -145,7 +140,41 @@ class NodePollingWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
         ));
     }
 
-    private HttpHeaders sdkCredentialHeaders(String credential) {
+    @SuppressWarnings("unchecked")
+    private boolean hasEventBinding(Map<String, Object> item, String eventCode, String projectCode) {
+        Object rawBindings = item.get("eventBindings");
+        if (!(rawBindings instanceof List<?> bindings)) {
+            return false;
+        }
+        return bindings.stream().anyMatch(binding -> {
+            if (!(binding instanceof Map<?, ?> map)) {
+                return false;
+            }
+            Object projectCodes = map.get("projectCodes");
+            return eventCode.equals(map.get("eventCode"))
+                    && projectCodes instanceof List<?>
+                    && ((List<Object>) projectCodes).contains(projectCode);
+        });
+    }
+
+    @SuppressWarnings("unchecked")
+    private void assertWorkerStateProjection(String workerId, String expectedState) throws InterruptedException {
+        for (int attempt = 0; attempt < 20; attempt++) {
+            Map<String, Object> response = exchange("/api/v1/runtime/workers/" + workerId + "/state", HttpMethod.GET, null);
+            assertApiOk(response);
+            Object data = response.get("data");
+            if (data instanceof Map<?, ?> map && expectedState.equals(map.get("state"))) {
+                return;
+            }
+            Thread.sleep(100L);
+        }
+        Map<String, Object> response = exchange("/api/v1/runtime/workers/" + workerId + "/state", HttpMethod.GET, null);
+        assertApiOk(response);
+        Map<String, Object> projection = (Map<String, Object>) response.get("data");
+        assertEquals(expectedState, projection.get("state"));
+    }
+
+    private HttpHeaders submitterCredentialHeaders(String credential) {
         HttpHeaders headers = new HttpHeaders();
         headers.add(SdkCredentialAuthSupport.API_KEY_HEADER, credential);
         return headers;

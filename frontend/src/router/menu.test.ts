@@ -14,8 +14,12 @@ describe('menu filtering', () => {
         const rootChildren = appRoutes[0].children ?? []
         const menu = buildMenuTree(rootChildren, '/')
         const system = menu.find((item) => item.title === 'System')
+        const resources = menu.find((item) => item.title === 'Resources')
 
         expect(menu.some((item) => item.title === 'Tasks')).toBe(true)
+        expect(
+            resources?.children.some((child) => child.title === 'Projects'),
+        ).toBe(true)
         expect(system?.children.some((child) => child.title === 'Users')).toBe(
             false,
         )
@@ -30,6 +34,7 @@ describe('menu filtering', () => {
         const rootChildren = appRoutes[0].children ?? []
         const menu = buildMenuTree(rootChildren, '/')
         const system = menu.find((item) => item.title === 'System')
+        const resources = menu.find((item) => item.title === 'Resources')
 
         expect(system?.children.some((child) => child.title === 'Users')).toBe(
             true,
@@ -37,5 +42,8 @@ describe('menu filtering', () => {
         expect(system?.children.some((child) => child.title === 'Roles')).toBe(
             true,
         )
+        expect(
+            resources?.children.some((child) => child.title === 'Projects'),
+        ).toBe(true)
     })
 })

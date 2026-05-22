@@ -43,7 +43,7 @@ class CompositeWorkerEndpointRegistryTest {
     }
 
     @Test
-    void sendToRouteUsesUniqueSnapshotOwnerWhenMultipleRegistriesExist() {
+    void adapterScopedOperationsRequireMatchingAdapter() {
         CompositeWorkerEndpointRegistry registry = new CompositeWorkerEndpointRegistry();
         TestRegistry websocket = new TestRegistry(
                 List.of(new WorkerEndpointSnapshot("route-a", "worker-a", true, "endpoint-a", "websocket")),
@@ -59,27 +59,10 @@ class CompositeWorkerEndpointRegistryTest {
         registry.register("websocket", websocket);
         registry.register("socket", socket);
 
-        assertTrue(registry.sendToRoute("route-a", "{\"hello\":1}"));
-        assertTrue(websocket.sendInvoked);
+        assertFalse(registry.sendToAdapterRoute("unknown", "route-a", "{\"hello\":1}"));
+        assertFalse(registry.isAdapterRouteOnline("unknown", "route-a"));
+        assertFalse(websocket.sendInvoked);
         assertFalse(socket.sendInvoked);
-    }
-
-    @Test
-    void routeOnlyLookupRejectsAmbiguousRouteAcrossAdapters() {
-        CompositeWorkerEndpointRegistry registry = new CompositeWorkerEndpointRegistry();
-        registry.register("websocket", new TestRegistry(
-                List.of(new WorkerEndpointSnapshot("dup-route", "worker-a", true, "endpoint-a", "websocket")),
-                true,
-                true
-        ));
-        registry.register("socket", new TestRegistry(
-                List.of(new WorkerEndpointSnapshot("dup-route", "worker-b", true, "endpoint-b", "socket")),
-                true,
-                true
-        ));
-
-        assertFalse(registry.sendToRoute("dup-route", "{\"hello\":1}"));
-        assertFalse(registry.isRouteOnline("dup-route"));
     }
 
     @Test
@@ -120,13 +103,13 @@ class CompositeWorkerEndpointRegistryTest {
         }
 
         @Override
-        public boolean sendToRoute(String routeKey, String message) {
+        public boolean sendToAdapterRoute(String adapterId, String routeKey, String message) {
             sendInvoked = true;
             return sendResult;
         }
 
         @Override
-        public boolean isRouteOnline(String routeKey) {
+        public boolean isAdapterRouteOnline(String adapterId, String routeKey) {
             return onlineResult;
         }
 

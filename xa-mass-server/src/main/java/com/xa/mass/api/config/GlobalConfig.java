@@ -1,6 +1,6 @@
 package com.xa.mass.api.config;
 
-import com.xa.mass.base.project.ProjectRegistry;
+import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -11,10 +11,18 @@ import java.util.List;
 @Component
 public class GlobalConfig {
 
+    private final ControlPlaneCatalog catalog;
+
+    public GlobalConfig(ControlPlaneCatalog catalog) {
+        this.catalog = catalog;
+    }
+
     /**
-     * Return all supported project codes.
+     * Return all registered control-plane project codes.
      */
     public List<String> getAllProjects() {
-        return ProjectRegistry.listProjectCodes();
+        return catalog.listProjects().stream()
+                .map(project -> project.getCode())
+                .toList();
     }
 }

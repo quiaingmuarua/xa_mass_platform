@@ -64,17 +64,29 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
     public static ExternalNodeWorkerProcess startPollingSample(String baseUrl,
                                                                String workerId,
                                                                String workerKey) throws Exception {
+        return startPollingSample(baseUrl, workerId, workerKey, null);
+    }
+
+    public static ExternalNodeWorkerProcess startPollingSample(String baseUrl,
+                                                               String workerId,
+                                                               String workerKey,
+                                                               String workerGroupId) throws Exception {
         Objects.requireNonNull(baseUrl, "baseUrl");
         Objects.requireNonNull(workerId, "workerId");
         Objects.requireNonNull(workerKey, "workerKey");
 
-        return startRepoScript("samples/worker-polling/node/worker.mjs", Map.of(
+        Map<String, String> environment = new LinkedHashMap<>(Map.of(
                 "MASS_BASE_URL", baseUrl,
                 "MASS_WORKER_ID", workerId,
                 "MASS_WORKER_KEY", workerKey,
                 "MASS_POLL_INTERVAL_MS", "200",
                 "MASS_HEARTBEAT_INTERVAL_MS", "1000"
-        ), () -> postWorkerOffline(baseUrl, workerId, workerKey));
+        ));
+        if (workerGroupId != null && !workerGroupId.isBlank()) {
+            environment.put("MASS_WORKER_GROUP_ID", workerGroupId);
+        }
+        return startRepoScript("samples/worker-polling/node/worker.mjs", environment,
+                () -> postWorkerOffline(baseUrl, workerId, workerKey));
     }
 
     public boolean isAlive() {
@@ -192,7 +204,7 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
                                           String workerKey) throws Exception {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(normalizeBaseUrl(baseUrl)
-                        + "/worker-api/workers/" + workerId + "/offline"))
+                        + "/worker-api/v1/workers/" + workerId + ":offline"))
                 .header("Content-Type", "application/json")
                 .header("X-Mass-Api-Key", workerKey)
                 .POST(HttpRequest.BodyPublishers.ofString("{\"reason\":\"external-node-process-close\"}"))

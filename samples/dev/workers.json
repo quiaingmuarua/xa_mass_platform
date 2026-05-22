@@ -2,22 +2,15 @@
   {
     "workerId": "node-worker-realtime-001",
     "workerKey": "node-worker-realtime-key",
-    "workerGroupId": "sample-websocket",
+    "workerGroupId": "sample-websocket-crawler",
+    "adapterNodeId": "sample-websocket-node",
     "adapterId": "websocket",
     "transportHint": "realtime",
     "attributes": {
       "lang": "node",
       "runtime": "node-websocket-worker",
-      "workerType": "crawler"
-    },
-    "context": {
-      "workerContextId": "ctx-node-worker-realtime-001",
-      "project": "crawlerApp",
-      "routingTags": ["us"],
-      "attributes": {
-        "region": "us",
-        "lane": "crawler"
-      }
+      "workerType": "crawler",
+      "routingTags": "web,us"
     },
     "eventBindings": [
       {
@@ -30,13 +23,15 @@
   {
     "workerId": "stock-ws-worker-001",
     "workerKey": "stock-ws-worker-key",
-    "workerGroupId": "sample-websocket",
+    "workerGroupId": "sample-websocket-stock",
+    "adapterNodeId": "sample-websocket-node",
     "adapterId": "websocket",
     "transportHint": "realtime",
     "attributes": {
       "lang": "node",
       "runtime": "node-websocket-worker",
-      "workerType": "stock-crawler"
+      "workerType": "stock-crawler",
+      "routingTags": "web,us"
     },
     "eventBindings": [
       {
@@ -44,15 +39,6 @@
         "projectCodes": ["crawlerApp"]
       }
     ],
-    "context": {
-      "workerContextId": "ctx-stock-ws-worker-001",
-      "project": "crawlerApp",
-      "routingTags": ["us", "stock"],
-      "attributes": {
-        "market": "NASDAQ",
-        "region": "us"
-      }
-    },
     "scriptPath": "samples/worker-websocket/node/worker.mjs"
   }
 ]

@@ -22,7 +22,7 @@ class AuthControllerTest {
 
     @Test
     void meReturnsViewerUserFromHeaders() throws Exception {
-        mockMvc.perform(get("/api/auth/me")
+        mockMvc.perform(get("/api/v1/auth/me")
                         .header(ApiAuthService.USER_MODE_HEADER, "viewer"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
@@ -32,7 +32,7 @@ class AuthControllerTest {
 
     @Test
     void meReturnsCustomOperatorPrincipalFromHeaders() throws Exception {
-        mockMvc.perform(get("/api/auth/me")
+        mockMvc.perform(get("/api/v1/auth/me")
                         .header(ApiAuthService.USER_MODE_HEADER, "custom")
                         .header(ApiAuthService.USER_ID_HEADER, "alice")
                         .header(ApiAuthService.USER_NAME_HEADER, "Alice Ops")
@@ -51,7 +51,7 @@ class AuthControllerTest {
 
     @Test
     void logoutAcknowledgesAuthenticatedUser() throws Exception {
-        mockMvc.perform(post("/api/auth/logout"))
+        mockMvc.perform(post("/api/v1/auth/logout"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.userId").value("ops-admin"));

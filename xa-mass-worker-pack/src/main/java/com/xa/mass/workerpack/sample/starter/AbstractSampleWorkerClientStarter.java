@@ -1,11 +1,12 @@
 package com.xa.mass.workerpack.sample.starter;
 
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.workerpack.sample.client.ClientSessionManager;
 import com.xa.mass.workerpack.sample.client.SampleWorkerClient;
 import com.xa.mass.workerpack.sample.command.fixture.SampleClientStateRegistry;
 import com.xa.mass.workerpack.sample.command.runtime.SampleCommandRuntime;
 import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.sdk.WorkerControlOperations;
+import com.xa.mass.sdk.model.WorkerSnapshot;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.MDC;
@@ -67,11 +68,14 @@ public abstract class AbstractSampleWorkerClientStarter {
             if (sampleClientStateRegistry != null) {
                 SampleCommandRuntime.registerService(SampleClientStateRegistry.class, sampleClientStateRegistry);
             }
+            if (runtimeApplication != null) {
+                SampleCommandRuntime.registerService(WorkerControlOperations.class, runtimeApplication);
+            }
 
             String baseUri = resolveBaseUri();
             log.info("{} target endpoint: {}", adapterDisplayName(), baseUri);
 
-            List<Worker> workers = loadWorkers();
+            List<WorkerSnapshot> workers = loadWorkers();
             if (workers == null || workers.isEmpty()) {
                 log.warn("No SDK-registered {} sample workers found, skipping client startup", adapterId());
                 started.set(false);
@@ -104,7 +108,7 @@ public abstract class AbstractSampleWorkerClientStarter {
      * open transport clients for workers whose concrete adapter identity matches
      * this starter.
      */
-    protected List<Worker> loadWorkers() {
+    protected List<WorkerSnapshot> loadWorkers() {
         if (runtimeApplication == null) {
             logger().warn("MassSdkApplication is not available; cannot discover sample clients");
             return List.of();
@@ -114,7 +118,7 @@ public abstract class AbstractSampleWorkerClientStarter {
                 .toList();
     }
 
-    protected boolean isClientWorker(Worker worker) {
+    protected boolean isClientWorker(WorkerSnapshot worker) {
         if (worker == null || worker.getWorkerId() == null || worker.getWorkerId().isBlank()) {
             return false;
         }
@@ -122,11 +126,11 @@ public abstract class AbstractSampleWorkerClientStarter {
         return workerAdapterId != null && adapterId().equalsIgnoreCase(workerAdapterId.trim());
     }
 
-    protected void establishConnections(List<Worker> workers, String baseUri) throws InterruptedException {
+    protected void establishConnections(List<WorkerSnapshot> workers, String baseUri) throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(workers.size());
         List<Future<?>> futures = new ArrayList<>();
 
-        for (Worker worker : workers) {
+        for (WorkerSnapshot worker : workers) {
             String workerId = worker.getWorkerId();
             Future<?> future = clientExecutor.submit(() -> {
                 try {
@@ -152,9 +156,10 @@ public abstract class AbstractSampleWorkerClientStarter {
 
     private void connectWorkerWithRetry(String workerId, String baseUri) {
         for (int attempt = 1; attempt <= retryAttempts; attempt++) {
+            SampleWorkerClient client = null;
             try {
                 URI uri = new URI(baseUri);
-                SampleWorkerClient client = createClient(uri, workerId, taskResultStatus);
+                client = createClient(uri, workerId, taskResultStatus);
                 clientSessionManager.addClient(client);
 
                 if (client.connectBlocking(connectionTimeout, TimeUnit.SECONDS)) {
@@ -170,6 +175,7 @@ public abstract class AbstractSampleWorkerClientStarter {
                         adapterDisplayName(), workerId, attempt, retryAttempts, e.getMessage());
             }
 
+            disconnectFailedClient(client);
             clientSessionManager.removeClient(workerId);
 
             if (attempt < retryAttempts) {
@@ -183,6 +189,18 @@ public abstract class AbstractSampleWorkerClientStarter {
         }
 
         logger().error("{} worker {} failed after {} retries", adapterDisplayName(), workerId, retryAttempts);
+    }
+
+    private void disconnectFailedClient(SampleWorkerClient client) {
+        if (client == null) {
+            return;
+        }
+        try {
+            client.disconnect();
+        } catch (Exception e) {
+            logger().warn("Failed to clean up unsuccessful {} worker {} connection: {}",
+                    adapterDisplayName(), client.getWorkerId(), e.getMessage());
+        }
     }
 
     public String getConnectionStats() {
@@ -238,4 +256,3 @@ public abstract class AbstractSampleWorkerClientStarter {
 
     protected abstract SampleWorkerClient createClient(URI baseUri, String workerId, String taskResultStatus);
 }
-

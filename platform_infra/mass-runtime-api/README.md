@@ -22,9 +22,9 @@ Status: current shared runtime contract module.
 - transport-specific payload/frame protocols
 - JDBC or control-plane persistence concerns
 
-## Current Phase-1 Truth
+## Current Truth
 
 - this module was extracted conservatively from `xa-mass-engine`
 - engine consumes this API directly and now requires runtime injection at `TaskManager` construction time
 - sdk/server bootstrap currently provide the default in-memory runtime implementation
-- this module is the correct place for future Redis runtime implementations to target
+- `mass-runtime-memory` and `mass-runtime-redis` both implement this contract; the default verified embedded path remains in-memory

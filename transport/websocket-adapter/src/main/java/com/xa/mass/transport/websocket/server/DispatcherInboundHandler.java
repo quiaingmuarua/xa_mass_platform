@@ -45,13 +45,10 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
                 return;
             }
 
-            String workerId = WebSocketStringValues.firstNonBlank(
-                    frameCodec.extractWorkerId(frame),
-                    sessionManager.getWorkerId(ctx.channel())
-            );
-            String messageId = frameCodec.extractMessageId(frame);
-            if (workerId == null || messageId == null) {
-                sendError(ctx, "MISSING_FIELDS", "workerId/messageId are required");
+            String workerId = resolveWorkerId(frame, ctx);
+            String routeKey = resolveRouteKey(frame, workerId, ctx);
+            if (workerId == null || routeKey == null) {
+                sendError(ctx, "MISSING_FIELDS", "workerId/routeKey are required");
                 return;
             }
             org.slf4j.MDC.put("event", "channelRead0");
@@ -60,7 +57,13 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
             if (eventCode != null) {
                 org.slf4j.MDC.put("eventCode", eventCode);
             }
-            org.slf4j.MDC.put("traceId", messageId);
+            String traceId = WebSocketStringValues.firstNonBlank(
+                    frameCodec.extractTraceId(frame),
+                    frameCodec.extractMessageId(frame)
+            );
+            if (traceId != null) {
+                org.slf4j.MDC.put("traceId", traceId);
+            }
             String project = frameCodec.extractProject(frame);
             if (project != null) {
                 org.slf4j.MDC.put("project", project);
@@ -70,10 +73,11 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
             } finally {
                 org.slf4j.MDC.clear();
             }
-            registerSessionIfNeeded(workerId, ctx);
+            registerSessionIfNeeded(routeKey, workerId, ctx);
             inboundMessageSink.accept(WebSocketInboundMessage.of(
                     raw,
                     workerId,
+                    routeKey,
                     ctx.channel().id().asShortText(),
                     frame
             ));
@@ -87,10 +91,15 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
     public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
         if (evt instanceof WebSocketServerProtocolHandler.HandshakeComplete handshakeComplete) {
             String workerId = extractWorkerIdFromRequestUri(handshakeComplete.requestUri());
+            String routeKey = extractRouteKeyFromRequestUri(handshakeComplete.requestUri());
             if (workerId == null) {
                 logger.warn("WebSocket handshake completed without workerId query parameter");
             } else {
-                registerSessionIfNeeded(workerId, ctx);
+                registerSessionIfNeeded(
+                        WebSocketStringValues.firstNonBlank(routeKey, workerId),
+                        workerId,
+                        ctx
+                );
             }
         }
         super.userEventTriggered(ctx, evt);
@@ -112,15 +121,18 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
         }
     }
 
-    private void registerSessionIfNeeded(String workerId, ChannelHandlerContext ctx) {
-        if (workerId == null || workerId.isBlank()) {
+    private void registerSessionIfNeeded(String routeKey, String workerId, ChannelHandlerContext ctx) {
+        if (routeKey == null || routeKey.isBlank() || workerId == null || workerId.isBlank()) {
             return;
         }
         String existingWorkerId = sessionManager.getWorkerId(ctx.channel());
-        if (workerId.equals(existingWorkerId) && sessionManager.getChannelContext(workerId) != null) {
+        String existingRouteKey = sessionManager.getRouteKey(ctx.channel());
+        if (workerId.equals(existingWorkerId)
+                && routeKey.equals(existingRouteKey)
+                && sessionManager.getChannelContext(routeKey) != null) {
             return;
         }
-        sessionManager.addSession(workerId, workerId, ctx.channel(), ctx);
+        sessionManager.addSession(routeKey, workerId, ctx.channel(), ctx);
     }
 
     private String extractWorkerIdFromRequestUri(String requestUri) {
@@ -129,6 +141,29 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
         }
         QueryStringDecoder decoder = new QueryStringDecoder(requestUri);
         return firstQueryValue(decoder, "workerId");
+    }
+
+    private String extractRouteKeyFromRequestUri(String requestUri) {
+        if (requestUri == null || requestUri.isBlank()) {
+            return null;
+        }
+        QueryStringDecoder decoder = new QueryStringDecoder(requestUri);
+        return firstQueryValue(decoder, "routeKey");
+    }
+
+    private String resolveWorkerId(JsonObject frame, ChannelHandlerContext ctx) {
+        return WebSocketStringValues.firstNonBlank(
+                frameCodec.extractWorkerId(frame),
+                sessionManager.getWorkerId(ctx.channel())
+        );
+    }
+
+    private String resolveRouteKey(JsonObject frame, String workerId, ChannelHandlerContext ctx) {
+        return WebSocketStringValues.firstNonBlank(
+                frameCodec.extractRouteKey(frame),
+                sessionManager.getRouteKey(ctx.channel()),
+                workerId
+        );
     }
 
     private String firstQueryValue(QueryStringDecoder decoder, String key) {

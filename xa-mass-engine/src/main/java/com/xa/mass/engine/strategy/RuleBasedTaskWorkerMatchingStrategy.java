@@ -4,14 +4,17 @@ import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.model.MatchedWorkerContext;
+import com.xa.mass.engine.worker.WorkerManager;
+import com.xa.mass.engine.worker.WorkerReachabilityState;
 import com.xa.mass.engine.model.RuleEvaluationDetail;
 import com.xa.mass.engine.model.WorkerMatchContext;
+import com.xa.mass.engine.model.WorkerSchedulingCandidate;
+import com.xa.mass.engine.model.WorkerSchedulingView;
+import com.xa.mass.engine.resource.DefaultWorkerDispatchResourcePolicy;
+import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
-import com.xa.mass.engine.service.AssignmentRecordService;
+import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
 import com.xa.mass.engine.util.TraceEventLogger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,27 +25,83 @@ import java.util.stream.Collectors;
 /**
  * Default matching strategy backed by the current rule engine.
  */
-public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingStrategy {
+public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingStrategy {
 
     private static final Logger log = LoggerFactory.getLogger(RuleBasedTaskWorkerMatchingStrategy.class);
+    static final int DEFAULT_STAGE_ONE_SAMPLE_MIN =
+            Integer.getInteger("xa.mass.engine.stageOneCandidateSampleMin", 512);
+    static final int DEFAULT_STAGE_ONE_SAMPLE_MAX =
+            Integer.getInteger("xa.mass.engine.stageOneCandidateSampleMax", 2_048);
+    static final int DEFAULT_STAGE_ONE_OVERSAMPLE_FACTOR =
+            Integer.getInteger("xa.mass.engine.stageOneCandidateOversampleFactor", 4);
 
     private final RuleManager<Map<String, Object>> ruleManager;
     private final WorkerManager workerManager;
-    private final AssignmentRecordService recordService;
+    private final AssignmentDiagnosticRecorder recordService;
+    private final TraceEventLogger traceEventLogger;
+    private final WorkerCandidateRanker candidateRanker;
+    private final WorkerDispatchResourcePolicy resourcePolicy;
+    private final WorkerSchedulingCandidateEnumerator candidateEnumerator;
+
+    RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
+                                        WorkerManager workerManager,
+                                        AssignmentDiagnosticRecorder recordService) {
+        this(ruleManager, workerManager, recordService, TraceEventLogger.noop());
+    }
 
     public RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
                                                WorkerManager workerManager,
-                                               AssignmentRecordService recordService) {
+                                               AssignmentDiagnosticRecorder recordService,
+                                               TraceEventLogger traceEventLogger) {
+        this(ruleManager, workerManager, recordService, traceEventLogger, new DefaultWorkerCandidateRanker());
+    }
+
+    RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
+                                        WorkerManager workerManager,
+                                        AssignmentDiagnosticRecorder recordService,
+                                        TraceEventLogger traceEventLogger,
+                                        WorkerCandidateRanker candidateRanker) {
+        this(ruleManager, workerManager, recordService, traceEventLogger, candidateRanker,
+                new DefaultWorkerDispatchResourcePolicy());
+    }
+
+    RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
+                                        WorkerManager workerManager,
+                                        AssignmentDiagnosticRecorder recordService,
+                                        TraceEventLogger traceEventLogger,
+                                        WorkerCandidateRanker candidateRanker,
+                                        WorkerDispatchResourcePolicy resourcePolicy) {
+        this(ruleManager, workerManager, recordService, traceEventLogger, candidateRanker,
+                resourcePolicy, null);
+    }
+
+    RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
+                                        WorkerManager workerManager,
+                                        AssignmentDiagnosticRecorder recordService,
+                                        TraceEventLogger traceEventLogger,
+                                        WorkerCandidateRanker candidateRanker,
+                                        WorkerDispatchResourcePolicy resourcePolicy,
+                                        WorkerSchedulingCandidateEnumerator candidateEnumerator) {
         this.ruleManager = ruleManager;
         this.workerManager = workerManager;
         this.recordService = recordService;
+        this.traceEventLogger = traceEventLogger;
+        this.candidateRanker = candidateRanker != null ? candidateRanker : new DefaultWorkerCandidateRanker();
+        this.resourcePolicy = resourcePolicy == null ? new DefaultWorkerDispatchResourcePolicy() : resourcePolicy;
+        this.candidateEnumerator = candidateEnumerator == null
+                ? new WorkerSchedulingCandidateEnumerator(workerManager)
+                : candidateEnumerator;
     }
 
     @Override
-    public List<MatchedWorkerContext> matchWorkers(Task task, int maxWorkerCount) {
-        List<MatchedWorkerContext> matchedWorkers = new ArrayList<>();
-        List<Worker> candidates = workerManager.findWorkerCandidates(task);
+    public List<WorkerSchedulingCandidate> matchWorkers(Task task, int maxWorkerCount) {
+        List<WorkerSchedulingCandidate> matchedWorkers = new ArrayList<>();
+        if (maxWorkerCount <= 0) {
+            return matchedWorkers;
+        }
+        List<Worker> candidates = workerManager.findWorkerCandidates(task, candidateAcquisitionLimit(task, maxWorkerCount));
         List<RuleDefinition> rules = ruleManager.getDefaultRules();
+        List<RulePassedCandidate> rulePassedCandidates = new ArrayList<>();
 
         log.info("[WorkerAssign] Matching workers for task {} (routingCode: {}, candidates: {}, rules: {})",
                 task.getTid(), TaskSharedConfig.routingCode(task), candidates.size(), rules.size());
@@ -53,294 +112,242 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
             }
         }
 
-        Map<String, List<WorkerContext>> contextsByWorkerId = workerManager.getAllWorkerContexts().stream()
-                .collect(Collectors.groupingBy(WorkerContext::getWorkerId));
+        List<WorkerSchedulingCandidate> schedulingCandidates = candidateEnumerator.enumerate(candidates);
+        Set<String> completedWorkerIds = new HashSet<>();
 
-        for (Worker worker : candidates) {
-            if (matchedWorkers.size() >= maxWorkerCount) {
-                log.info("[WorkerAssign] Max worker count {} reached for task {}, stopping matching",
-                        maxWorkerCount, task.getTid());
-                break;
+        for (WorkerSchedulingCandidate candidate : schedulingCandidates) {
+            Worker worker = candidate.getWorker();
+            if (completedWorkerIds.contains(worker.getWorkerId())) {
+                continue;
             }
 
-            List<WorkerContext> workerContexts = contextsByWorkerId.getOrDefault(worker.getWorkerId(), List.of());
-            if (workerContexts.isEmpty()) {
-                workerContexts = new ArrayList<>();
-                workerContexts.add(null);
+            PrefilterDecision prefilterDecision = prefilterCandidate(task, candidate);
+            if (!prefilterDecision.passed()) {
+                traceEventLogger.workerMatchRejected(task.getTid(), candidate, prefilterDecision.reason(),
+                        null, null);
+                recordService.recordWorkerAssignment(
+                        task, candidate, prefilterDecision.result(),
+                        prefilterDecision.reason(),
+                        new ArrayList<>(), prefilterDecision.contextSnapshot(),
+                        prefilterDecision.workerLocked()
+                );
+                log.debug("Worker candidate rejected before rule evaluation: {} ({})",
+                        worker.getWorkerId(),
+                        prefilterDecision.reason());
+                continue;
             }
 
-            for (WorkerContext workerContext : workerContexts) {
-                PrefilterDecision prefilterDecision = prefilterCandidate(task, worker, workerContext);
-                if (!prefilterDecision.passed()) {
-                    TraceEventLogger.workerMatchRejected(task.getTid(), worker, workerContext,
-                            prefilterDecision.reason());
-                    recordService.recordWorkerAssignment(
-                            task, worker, workerContext, prefilterDecision.result(),
-                            prefilterDecision.reason(),
-                            new ArrayList<>(), prefilterDecision.contextSnapshot(),
-                            prefilterDecision.workerLocked()
-                    );
-                    log.debug("Worker candidate rejected before rule evaluation: {} context {} ({})",
-                            worker.getWorkerId(),
-                            workerContext != null ? workerContext.getWorkerContextId() : "null",
-                            prefilterDecision.reason());
+            WorkerMatchContext matchContext = new WorkerMatchContext(candidate, task);
+
+            if (log.isDebugEnabled()) {
+                log.debug("[Debug] WorkerId={}, workerGroupId={}, status={}, locked={}, supportedProjects={}",
+                        worker.getWorkerId(),
+                        worker.getWorkerGroupId(),
+                        worker.getStatus(),
+                        workerManager.isLocked(worker.getWorkerId()),
+                        String.join(", ", candidate.getSchedulingView().supportedProjects())
+                );
+                log.debug("[Debug] WorkerMatchContext: {}", matchContext.getContext());
+            }
+
+            try {
+                List<RuleEvaluationDetail> ruleEvaluations = evaluateRulesWithDetails(matchContext, rules);
+                long hitCount = ruleEvaluations.stream().filter(RuleEvaluationDetail::isPassed).count();
+
+                log.debug("[WorkerAssign] Worker {} - Hit rules: {}/{}",
+                        worker.getWorkerId(),
+                        hitCount,
+                        rules.size());
+
+                if (hitCount == rules.size()) {
+                    rulePassedCandidates.add(new RulePassedCandidate(candidate, matchContext, ruleEvaluations));
+                    completedWorkerIds.add(worker.getWorkerId());
                     continue;
                 }
 
-                WorkerMatchContext matchContext = new WorkerMatchContext(worker, workerContext, task, workerManager);
+                String failedRules = ruleEvaluations.stream()
+                        .filter(r -> !r.isPassed())
+                        .map(RuleEvaluationDetail::getRuleId)
+                        .collect(Collectors.joining(", "));
+                traceEventLogger.workerMatchRejected(task.getTid(), candidate,
+                        "rule evaluation failed: " + failedRules, null, null);
+                recordService.recordWorkerAssignment(
+                        task, candidate, AssignmentResult.RULE_NOT_MATCH,
+                        "rule evaluation failed: " + failedRules,
+                        ruleEvaluations, matchContext.getContext(),
+                        workerManager.isLocked(worker.getWorkerId())
+                );
+                log.debug("Rule not matched: {} (failed rules: {})",
+                        worker.getWorkerId(),
+                        failedRules);
 
                 if (log.isDebugEnabled()) {
-                    log.debug("[Debug] WorkerId={}, workerGroupId={}, status={}, locked={}, supportedProjects={}, workerContextId={}, workerContextStatus={}, workerContextChannel={}",
-                            worker.getWorkerId(),
-                            worker.getWorkerGroupId(),
-                            worker.getStatus(),
-                            workerManager.isLocked(worker.getWorkerId()),
-                            String.join(", ", worker.getSupportedProjects()),
-                            workerContext != null ? workerContext.getWorkerContextId() : "null",
-                            workerContext != null ? workerContext.getStatus() : "null",
-                            workerContext != null ? workerContext.getRoutingTags() : "null"
-                    );
-                    log.debug("[Debug] WorkerMatchContext: {}", matchContext.getContext());
-                }
-
-                try {
-                    List<RuleEvaluationDetail> ruleEvaluations = evaluateRulesWithDetails(matchContext, rules);
-                    long hitCount = ruleEvaluations.stream().filter(RuleEvaluationDetail::isPassed).count();
-
-                    log.debug("[WorkerAssign] Worker {} context {} - Hit rules: {}/{}",
-                            worker.getWorkerId(),
-                            workerContext != null ? workerContext.getWorkerContextId() : "null",
-                            hitCount,
-                            rules.size());
-
-                    if (hitCount == rules.size()) {
-                        if (workerManager.tryLockWorker(worker.getWorkerId())) {
-                            TraceEventLogger.workerLockAcquired(task.getTid(), worker.getWorkerId(),
-                                    "TRY_LOCK_WORKER", "RuleBasedTaskWorkerMatchingStrategy",
-                                    "all rules matched");
-                            TraceEventLogger.workerMatchAccepted(task.getTid(), worker, workerContext,
-                                    "all rules matched and worker lock acquired");
-                            recordService.recordWorkerAssignment(
-                                    task, worker, workerContext, AssignmentResult.SUCCESS,
-                                    "all rules matched and worker lock acquired",
-                                    ruleEvaluations, matchContext.getContext(), true
-                            );
-                            matchedWorkers.add(new MatchedWorkerContext(worker, workerContext));
-                            log.info("Worker matched: {} with context {} for task {}",
-                                    worker.getWorkerId(),
-                                    workerContext != null ? workerContext.getWorkerContextId() : "null",
-                                    task.getTid());
-                        } else {
-                            TraceEventLogger.workerMatchRejected(task.getTid(), worker, workerContext,
-                                    "worker lock conflict after rules matched");
-                            recordService.recordWorkerAssignment(
-                                    task, worker, workerContext, AssignmentResult.CONFLICT,
-                                    "worker lock conflict after rules matched",
-                                    ruleEvaluations, matchContext.getContext(),
-                                    workerManager.isLocked(worker.getWorkerId())
-                            );
-                            log.debug("Worker locked: {}", worker.getWorkerId());
-                        }
-                        break;
-                    }
-
-                    String failedRules = ruleEvaluations.stream()
-                            .filter(r -> !r.isPassed())
-                            .map(RuleEvaluationDetail::getRuleId)
-                            .collect(Collectors.joining(", "));
-                    TraceEventLogger.workerMatchRejected(task.getTid(), worker, workerContext,
-                            "rule evaluation failed: " + failedRules);
-                    recordService.recordWorkerAssignment(
-                            task, worker, workerContext, AssignmentResult.RULE_NOT_MATCH,
-                            "rule evaluation failed: " + failedRules,
-                            ruleEvaluations, matchContext.getContext(),
-                            workerManager.isLocked(worker.getWorkerId())
-                    );
-                    log.debug("Rule not matched: {} context {} (failed rules: {})",
-                            worker.getWorkerId(),
-                            workerContext != null ? workerContext.getWorkerContextId() : "null",
-                            failedRules);
-
-                    if (log.isDebugEnabled()) {
-                        for (RuleEvaluationDetail detail : ruleEvaluations) {
-                            if (!detail.isPassed()) {
-                                log.debug("[WorkerAssign] Failed rule: {} - {} = {}",
-                                        detail.getRuleId(), detail.getRuleContent(), detail.getEvaluationResult());
-                            }
+                    for (RuleEvaluationDetail detail : ruleEvaluations) {
+                        if (!detail.isPassed()) {
+                            log.debug("[WorkerAssign] Failed rule: {} - {} = {}",
+                                    detail.getRuleId(), detail.getRuleContent(), detail.getEvaluationResult());
                         }
                     }
-                } catch (Exception e) {
-                    TraceEventLogger.workerMatchRejected(task.getTid(), worker, workerContext,
-                            "rule evaluation exception: " + e.getMessage());
-                    recordService.recordWorkerAssignment(
-                            task, worker, workerContext, AssignmentResult.FAILED,
-                            "rule evaluation exception: " + e.getMessage(),
-                            new ArrayList<>(), matchContext.getContext(),
-                            workerManager.isLocked(worker.getWorkerId())
-                    );
-                    log.error("Error evaluating rules for worker {} context {}: {}",
-                            worker.getWorkerId(),
-                            workerContext != null ? workerContext.getWorkerContextId() : "null",
-                            e.getMessage());
                 }
+            } catch (Exception e) {
+                traceEventLogger.workerMatchRejected(task.getTid(), candidate,
+                        "rule evaluation exception: " + e.getMessage(), null, null);
+                recordService.recordWorkerAssignment(
+                        task, candidate, AssignmentResult.FAILED,
+                        "rule evaluation exception: " + e.getMessage(),
+                        new ArrayList<>(), matchContext.getContext(),
+                        workerManager.isLocked(worker.getWorkerId())
+                );
+                log.error("Error evaluating rules for worker {}: {}",
+                        worker.getWorkerId(),
+                        e.getMessage());
             }
         }
 
-        log.info("[WorkerAssign] Total matched worker-context candidates: {} for task {}",
+        Map<WorkerMatchContext, RulePassedCandidate> passedByContext = new IdentityHashMap<>();
+        List<WorkerMatchContext> contextsToRank = new ArrayList<>();
+        for (RulePassedCandidate passedCandidate : rulePassedCandidates) {
+            contextsToRank.add(passedCandidate.matchContext());
+            passedByContext.put(passedCandidate.matchContext(), passedCandidate);
+        }
+        List<WorkerMatchContext> rankedContexts = candidateRanker.rank(contextsToRank, task);
+        int rank = 0;
+        for (WorkerMatchContext rankedContext : rankedContexts) {
+            RulePassedCandidate passedCandidate = passedByContext.get(rankedContext);
+            if (passedCandidate == null) {
+                continue;
+            }
+            rank++;
+            if (matchedWorkers.size() >= maxWorkerCount) {
+                log.info("[WorkerAssign] Max worker count {} reached for task {}, stopping ranked matching",
+                        maxWorkerCount, task.getTid());
+                break;
+            }
+            WorkerSchedulingCandidate candidate = passedCandidate.candidate();
+            Worker worker = candidate.getWorker();
+            double candidateScore = rankScore(rankedContext, task);
+            boolean exclusiveWorkerLock = resourcePolicy.usageForCandidate(task, candidate).exclusiveWorkerLock();
+            if (!workerManager.tryReserveWorkerCapacity(worker.getWorkerId(), task.getTid())) {
+                traceEventLogger.workerMatchRejected(task, candidate,
+                        "worker capacity unavailable after candidate ranking", rank, candidateScore,
+                        workerManager.getWorkerLoad(worker.getWorkerId()));
+                recordService.recordWorkerAssignment(
+                        task, candidate, AssignmentResult.QUOTA_EXCEEDED,
+                        "worker capacity unavailable after candidate ranking",
+                        passedCandidate.ruleEvaluations(), rankedContext.getContext(),
+                        workerManager.isLocked(worker.getWorkerId())
+                );
+                log.debug("Worker capacity unavailable after candidate ranking: {}", worker.getWorkerId());
+                continue;
+            }
+            if (!exclusiveWorkerLock) {
+                traceEventLogger.workerMatchAccepted(task, candidate,
+                        "all rules matched and worker capacity reserved after candidate ranking", rank, candidateScore,
+                        workerManager.getWorkerLoad(worker.getWorkerId()));
+                recordService.recordWorkerAssignment(
+                        task, candidate, AssignmentResult.SUCCESS,
+                        "all rules matched and worker capacity reserved after candidate ranking",
+                        passedCandidate.ruleEvaluations(), rankedContext.getContext(), false
+                );
+                matchedWorkers.add(candidate);
+                log.info("Worker matched without exclusive lock: {} for background task {} at rank {}",
+                        worker.getWorkerId(),
+                        task.getTid(),
+                        rank);
+                continue;
+            }
+            if (workerManager.tryLockWorker(worker.getWorkerId())) {
+                traceEventLogger.workerLockAcquired(task.getTid(), worker.getWorkerId(),
+                        "TRY_LOCK_WORKER", "RuleBasedTaskWorkerMatchingStrategy",
+                        "all rules matched after candidate ranking");
+                traceEventLogger.workerMatchAccepted(task, candidate,
+                        "all rules matched and worker lock acquired after candidate ranking", rank, candidateScore,
+                        workerManager.getWorkerLoad(worker.getWorkerId()));
+                recordService.recordWorkerAssignment(
+                        task, candidate, AssignmentResult.SUCCESS,
+                        "all rules matched and worker lock acquired after candidate ranking",
+                        passedCandidate.ruleEvaluations(), rankedContext.getContext(), true
+                );
+                matchedWorkers.add(candidate);
+                log.info("Worker matched: {} for task {} at rank {}",
+                        worker.getWorkerId(),
+                        task.getTid(),
+                        rank);
+            } else {
+                workerManager.releaseWorkerReservation(worker.getWorkerId(), task.getTid());
+                traceEventLogger.workerMatchRejected(task, candidate,
+                        "worker lock conflict after candidate ranking", rank, candidateScore,
+                        workerManager.getWorkerLoad(worker.getWorkerId()));
+                recordService.recordWorkerAssignment(
+                        task, candidate, AssignmentResult.CONFLICT,
+                        "worker lock conflict after candidate ranking",
+                        passedCandidate.ruleEvaluations(), rankedContext.getContext(),
+                        workerManager.isLocked(worker.getWorkerId())
+                );
+                log.debug("Worker locked after candidate ranking: {}", worker.getWorkerId());
+            }
+        }
+
+        log.info("[WorkerAssign] Total matched worker scheduling candidates: {} for task {}",
                 matchedWorkers.size(), task.getTid());
         return matchedWorkers;
     }
 
-    private PrefilterDecision prefilterCandidate(Task task, Worker worker, WorkerContext workerContext) {
-        if (!worker.isAvailable()) {
-            return PrefilterDecision.reject(AssignmentResult.RESOURCE_UNAVAILABLE,
-                    "worker unavailable", Map.of(), false);
+    private double rankScore(WorkerMatchContext context, Task task) {
+        if (candidateRanker instanceof DefaultWorkerCandidateRanker defaultRanker) {
+            return defaultRanker.score(context, task);
         }
-        boolean workerLocked = workerManager.isLocked(worker.getWorkerId());
+        return Double.NaN;
+    }
+
+    private int candidateAcquisitionLimit(Task task, int maxWorkerCount) {
+        if (TaskSharedConfig.targetWorkerId(task) != null) {
+            return 1;
+        }
+        int sampleMin = Math.max(1, DEFAULT_STAGE_ONE_SAMPLE_MIN);
+        int sampleMax = Math.max(sampleMin, DEFAULT_STAGE_ONE_SAMPLE_MAX);
+        int oversampleFactor = Math.max(1, DEFAULT_STAGE_ONE_OVERSAMPLE_FACTOR);
+        long desiredSample = Math.max(1L, (long) maxWorkerCount * oversampleFactor);
+        return (int) Math.min(sampleMax, Math.max(sampleMin, desiredSample));
+    }
+
+    private PrefilterDecision prefilterCandidate(Task task, WorkerSchedulingCandidate candidate) {
+        Worker worker = candidate.getWorker();
+        WorkerSchedulingView schedulingView = candidate.getSchedulingView();
+        WorkerReachabilityState reachability = schedulingView.reachability();
+        Map<String, Object> contextSnapshot = WorkerMatchContext.contextSnapshot(candidate, task);
+        if (!schedulingView.dispatchEnabled()) {
+            return PrefilterDecision.reject(AssignmentResult.RESOURCE_UNAVAILABLE,
+                    "worker unavailable", contextSnapshot, false);
+        }
+        if (reachability != WorkerReachabilityState.ONLINE) {
+            return PrefilterDecision.reject(AssignmentResult.RESOURCE_UNAVAILABLE,
+                    "worker transport unreachable", contextSnapshot, false);
+        }
+        boolean workerLocked = schedulingView.workerLocked();
         if (workerLocked) {
             return PrefilterDecision.reject(AssignmentResult.CONFLICT,
-                    "worker locked", Map.of(), true);
+                    "worker locked", contextSnapshot, true);
         }
-        Map<String, Object> contextSnapshot = buildPrefilterContextSnapshot(task, worker, workerContext, false);
-        String eventCode = TaskSharedConfig.sdkEventCode(task);
         String targetWorkerId = TaskSharedConfig.targetWorkerId(task);
         Map<String, String> targetWorkerAttributes = TaskSharedConfig.targetWorkerAttributes(task);
-        boolean sdkEventTask = eventCode != null && !eventCode.isBlank();
-        if (targetWorkerId != null && !targetWorkerId.equals(worker.getWorkerId())) {
+        if (targetWorkerId != null && !targetWorkerId.equals(schedulingView.workerId())) {
             return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
                     "target worker mismatch", contextSnapshot, false);
         }
         if (!targetWorkerAttributes.isEmpty()
-                && !workerAttributesMatch(worker.getAttributes(), targetWorkerAttributes)) {
+                && Boolean.FALSE.equals(contextSnapshot.get("matchesTargetWorkerAttributes"))) {
             return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
                     "target worker attributes mismatch", contextSnapshot, false);
-        }
-        if (!sdkEventTask && !worker.supportsProject(task.getProject())) {
-            return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
-                    "project not supported", contextSnapshot, false);
-        }
-        if (sdkEventTask && !worker.supportsEvent(eventCode)) {
-            return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
-                    "event not supported", contextSnapshot, false);
         }
 
         String routingCode = TaskSharedConfig.routingCode(task);
         boolean taskHasRoutingRequirement = routingCode != null && !routingCode.isBlank();
-        if (workerContext == null) {
-            if (taskHasRoutingRequirement) {
-                return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
-                        "routing code mismatch", contextSnapshot, false);
-            }
-            return PrefilterDecision.allow();
-        }
-        if (!workerContext.isAllocatable()) {
-            return PrefilterDecision.reject(AssignmentResult.RESOURCE_UNAVAILABLE,
-                    "workerContext not allocatable", contextSnapshot, false);
-        }
-        if (workerContext.getProject() != null && !workerContext.getProject().equals(task.getProject())) {
-            return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
-                    "workerContext project mismatch", contextSnapshot, false);
-        }
-        if (taskHasRoutingRequirement && !workerContext.getRoutingTags().contains(routingCode)) {
+        if (taskHasRoutingRequirement && !schedulingView.schedulingRoutingTagsContain(routingCode)) {
             return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
                     "routing code mismatch", contextSnapshot, false);
         }
         return PrefilterDecision.allow();
-    }
-
-    private Map<String, Object> buildPrefilterContextSnapshot(Task task,
-                                                              Worker worker,
-                                                              WorkerContext workerContext,
-                                                              boolean workerLocked) {
-        Map<String, Object> context = new LinkedHashMap<>();
-        String routingCode = TaskSharedConfig.routingCode(task);
-        String eventCode = TaskSharedConfig.sdkEventCode(task);
-        String targetWorkerId = TaskSharedConfig.targetWorkerId(task);
-        Map<String, String> targetWorkerAttributes = TaskSharedConfig.targetWorkerAttributes(task);
-        boolean sdkEventTask = eventCode != null && !eventCode.isBlank();
-        boolean taskHasRoutingRequirement = routingCode != null && !routingCode.isBlank();
-        Set<String> routingTags = workerContext != null ? workerContext.getRoutingTags() : Set.of();
-
-        context.put("workerId", worker.getWorkerId());
-        context.put("workerStatus", worker.getStatus().name());
-        context.put("workerGroupId", worker.getWorkerGroupId());
-        context.put("workerAttributes", worker.getAttributes());
-        context.put("agentVersion", worker.getAgentVersion());
-        context.put("supportedProjects", worker.getSupportedProjects());
-        context.put("supportedEventCodes", worker.getSupportedEventCodes());
-        context.put("isWorkerAvailable", worker.isAvailable());
-        context.put("isWorkerLocked", workerLocked);
-
-        context.put("taskId", task.getTid());
-        context.put("taskName", task.getTaskName());
-        context.put("taskProject", task.getProject());
-        context.put("taskEventCode", eventCode);
-        context.put("taskUsesEventCapability", sdkEventTask);
-        context.put("taskTargetWorkerId", targetWorkerId);
-        context.put("taskTargetWorkerAttributes", targetWorkerAttributes);
-        context.put("taskSharedConfig", task.getSharedConfig());
-        context.put("routingCode", routingCode);
-        context.put("taskHasRoutingRequirement", taskHasRoutingRequirement);
-        context.put("taskStatus", task.getStatus().name());
-        context.put("taskTargetNumber", task.getTaskTargetNumber());
-        context.put("batchSize", task.getBatchSize());
-        context.put("minRequiredWorkerCount", task.getMinRequiredWorkerCount());
-        context.put("appCount", worker.getSupportedProjects() != null ? worker.getSupportedProjects().size() : 0);
-        context.put("supportsProject", worker.supportsProject(task.getProject()));
-        context.put("supportsEvent", !sdkEventTask || worker.supportsEvent(eventCode));
-        context.put("matchesTargetWorkerId", targetWorkerId == null || targetWorkerId.equals(worker.getWorkerId()));
-        context.put("matchesTargetWorkerAttributes",
-                targetWorkerAttributes.isEmpty() || workerAttributesMatch(worker.getAttributes(), targetWorkerAttributes));
-
-        if (workerContext == null) {
-            context.put("hasWorkerContext", false);
-            context.put("workerContextId", null);
-            context.put("workerContextProject", null);
-            context.put("workerContextStatus", null);
-            context.put("workerContextRoutingTags", Set.of());
-            context.put("workerContextAttributes", Map.of());
-            context.put("isWorkerContextAllocatable", false);
-            context.put("isWorkerContextAvailable", false);
-            context.put("isWorkerContextUsable", false);
-            context.put("isWorkerContextReserved", false);
-            context.put("isWorkerContextOccupied", false);
-            context.put("workerContextProjectMatchesTaskProject", false);
-            context.put("workerContextMatchesRoutingCode", false);
-            return context;
-        }
-
-        context.put("hasWorkerContext", true);
-        context.put("workerContextId", workerContext.getWorkerContextId());
-        context.put("workerContextProject", workerContext.getProject());
-        context.put("workerContextStatus", workerContext.getStatus().name());
-        context.put("workerContextRoutingTags", routingTags);
-        context.put("workerContextAttributes", workerContext.getAttributes());
-        context.put("isWorkerContextAllocatable", workerContext.isAllocatable());
-        context.put("isWorkerContextAvailable", workerContext.isAvailable());
-        context.put("isWorkerContextUsable", workerContext.isUsable());
-        context.put("isWorkerContextReserved", workerContext.isReserved());
-        context.put("isWorkerContextOccupied", workerContext.isOccupied());
-        context.put("workerContextProjectMatchesTaskProject",
-                workerContext.getProject() != null && workerContext.getProject().equals(task.getProject()));
-        context.put("workerContextMatchesRoutingCode",
-                taskHasRoutingRequirement && routingTags.contains(routingCode));
-        return context;
-    }
-
-    private boolean workerAttributesMatch(Map<String, String> workerAttributes,
-                                          Map<String, String> requiredAttributes) {
-        if (requiredAttributes == null || requiredAttributes.isEmpty()) {
-            return true;
-        }
-        if (workerAttributes == null || workerAttributes.isEmpty()) {
-            return false;
-        }
-        for (Map.Entry<String, String> entry : requiredAttributes.entrySet()) {
-            if (!Objects.equals(workerAttributes.get(entry.getKey()), entry.getValue())) {
-                return false;
-            }
-        }
-        return true;
     }
 
     private List<RuleEvaluationDetail> evaluateRulesWithDetails(WorkerMatchContext matchContext, List<RuleDefinition> rules) {
@@ -374,6 +381,11 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
         }
 
         return evaluations;
+    }
+
+    private record RulePassedCandidate(WorkerSchedulingCandidate candidate,
+                                       WorkerMatchContext matchContext,
+                                       List<RuleEvaluationDetail> ruleEvaluations) {
     }
 
     private static final class PrefilterDecision {

@@ -14,10 +14,12 @@ import com.xa.mass.runtime.api.TaskWorkStats;
  */
 class TaskStateResolver {
 
-    private final TaskStateRuntimePort stateRuntime;
+    private final TaskManager taskManager;
+    private final TraceEventLogger traceEventLogger;
 
-    TaskStateResolver(TaskStateRuntimePort stateRuntime) {
-        this.stateRuntime = stateRuntime;
+    TaskStateResolver(TaskManager taskManager, TraceEventLogger traceEventLogger) {
+        this.taskManager = taskManager;
+        this.traceEventLogger = traceEventLogger;
     }
 
     void updateTaskProgress(String taskId) {
@@ -25,16 +27,16 @@ class TaskStateResolver {
     }
 
     TaskStateResolutionResult resolveTaskState(String taskId) {
-        Task task = stateRuntime.getTask(taskId);
+        Task task = taskManager.getTask(taskId);
         if (task == null) {
             return TaskStateResolutionResult.taskNotFound();
         }
 
-        TaskWorkStats stats = stateRuntime.getTaskWorkStats(taskId);
+        TaskWorkStats stats = taskManager.getTaskWorkStats(taskId);
         task.setTaskSuccessNumber((int) Math.min(stats.successCount(), Integer.MAX_VALUE));
 
         if (task.getStatus().isFinal()) {
-            stateRuntime.updateTask(task);
+            taskManager.updateTask(task);
             emitTaskProgressSnapshot(task, stats, "ALREADY_FINAL", false,
                     "RESOLVE_TASK_STATE", "TaskManager", "task already final");
             return TaskStateResolutionResult.alreadyFinal(
@@ -46,9 +48,9 @@ class TaskStateResolver {
             );
         }
 
-        TaskTerminalPolicyDecision decision = stateRuntime.evaluateTerminalPolicy(task, stats);
+        TaskTerminalPolicyDecision decision = taskManager.evaluateTerminalPolicy(task, stats);
         if (decision.getOutcome() != TaskTerminalPolicyDecision.Outcome.FINALIZE_TO_TERMINAL) {
-            stateRuntime.updateTask(task);
+            taskManager.updateTask(task);
             emitTaskProgressSnapshot(task, stats, "NOT_FINALIZED", false,
                     "RESOLVE_TASK_STATE", "TaskManager", "task remains non-final after progress evaluation");
             return TaskStateResolutionResult.notFinalized(
@@ -63,14 +65,15 @@ class TaskStateResolver {
         TaskStatus fromStatus = task.getStatus();
         boolean result = task.transitionTo(TaskStatus.TERMINAL, reason);
         if (result) {
-            TraceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
+            task.sealIntake();
+            traceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
                     "RESOLVE_TASK_STATE", "TaskManager", "all work items finalized");
-            TraceEventLogger.taskTerminalClosed(taskId, fromStatus, reason,
+            traceEventLogger.taskTerminalClosed(taskId, fromStatus, reason,
                     "RESOLVE_TASK_STATE", "TaskManager", "all work items finalized");
-            stateRuntime.updateTask(task);
+            taskManager.updateTask(task);
             emitTaskProgressSnapshot(task, stats, "FINALIZED_TO_TERMINAL", false,
                     "RESOLVE_TASK_STATE", "TaskManager", "all work items finalized");
-            stateRuntime.publishTaskTerminal(task);
+            taskManager.publishTaskTerminal(task);
             return TaskStateResolutionResult.finalizedToTerminal(
                     reason,
                     stats.totalCount(),
@@ -79,7 +82,7 @@ class TaskStateResolver {
             );
         }
 
-        stateRuntime.updateTask(task);
+        taskManager.updateTask(task);
         emitTaskProgressSnapshot(task, stats, "FINALIZE_REJECTED", true,
                 "RESOLVE_TASK_STATE", "TaskManager", "task terminal transition was rejected");
         return TaskStateResolutionResult.notFinalized(
@@ -97,7 +100,7 @@ class TaskStateResolver {
                                           String trigger,
                                           String source,
                                           String reason) {
-        TraceEventLogger.taskProgressSnapshot(
+        traceEventLogger.taskProgressSnapshot(
                 task,
                 stats,
                 resolutionOutcome,

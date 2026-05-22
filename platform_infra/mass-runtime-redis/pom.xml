@@ -15,8 +15,24 @@
     <dependencies>
         <dependency>
             <groupId>com.xa.mass</groupId>
+            <artifactId>mass-queue-primitives</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.xa.mass</groupId>
             <artifactId>mass-runtime-api</artifactId>
             <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.xa.mass</groupId>
+            <artifactId>mass-runtime-api</artifactId>
+            <version>${project.version}</version>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
         </dependency>
         <dependency>
             <groupId>io.lettuce</groupId>
@@ -25,6 +41,30 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.xa.mass</groupId>
+            <artifactId>xa-mass-engine</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.xa.mass</groupId>
+            <artifactId>xa-mass-base</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.xa.mass</groupId>
+            <artifactId>mass-storage-api</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.xa.mass</groupId>
+            <artifactId>mass-storage-memory</artifactId>
+            <version>${project.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

@@ -11,7 +11,7 @@ class TaskRuntimeRetryPolicyResolverTest {
     @Test
     void interactiveTaskUsesShorterAssignmentRetryAndInteractiveWorkRetryDelay() {
         Task task = new Task();
-        task.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
+        task.getExecutionSpec().setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
 
         TaskRuntimeRetryPolicyResolver resolver = new TaskRuntimeRetryPolicyResolver(
                 75L,
@@ -30,7 +30,7 @@ class TaskRuntimeRetryPolicyResolverTest {
     @Test
     void interactiveTaskDoesNotIncreaseAlreadySmallerAssignmentRetryDelay() {
         Task task = new Task();
-        task.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
+        task.getExecutionSpec().setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
 
         TaskRuntimeRetryPolicyResolver resolver = new TaskRuntimeRetryPolicyResolver(
                 100L,
@@ -48,7 +48,7 @@ class TaskRuntimeRetryPolicyResolverTest {
     @Test
     void bulkTaskKeepsDefaultAssignmentRetryAndBulkWorkRetryDelay() {
         Task task = new Task();
-        task.setWorkloadClass(TaskWorkloadClass.BULK);
+        task.getExecutionSpec().setWorkloadClass(TaskWorkloadClass.BULK);
 
         TaskRuntimeRetryPolicyResolver resolver = new TaskRuntimeRetryPolicyResolver(
                 50L,

@@ -1,6 +1,6 @@
 package com.xa.mass.workerpack.sample.starter;
 
-import com.xa.mass.base.model.Worker;
+import com.xa.mass.sdk.model.WorkerSnapshot;
 import com.xa.mass.workerpack.sample.client.ClientSessionManager;
 import com.xa.mass.workerpack.sample.config.SampleConfig;
 import org.junit.jupiter.api.Test;
@@ -83,21 +83,32 @@ class WebSocketClientStarterTest {
         assertFalse(starter.isWebSocketClientWorker(worker("worker-missing", null, "realtime")));
     }
 
-    private static Worker worker(String workerId) {
+    private static WorkerSnapshot worker(String workerId) {
         return worker(workerId, null, null);
     }
 
-    private static Worker worker(String workerId, String adapterId, String onlineStrategy) {
-        Worker w = new Worker();
-        w.setWorkerId(workerId);
-        w.setAdapterId(adapterId);
-        w.setOnlineStrategy(onlineStrategy);
-        return w;
+    private static WorkerSnapshot worker(String workerId, String adapterId, String onlineStrategy) {
+        return new WorkerSnapshot(
+                workerId,
+                null,
+                null,
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                null,
+                adapterId,
+                onlineStrategy,
+                1,
+                java.util.Map.of(),
+                null,
+                null
+        );
     }
 
     private static void setField(Object target, Class<?> declaringClass, String fieldName, Object value) {
         try {
-            var field = declaringClass.getDeclaredField(fieldName);
+            java.lang.reflect.Field field = declaringClass.getDeclaredField(fieldName);
             field.setAccessible(true);
             field.set(target, value);
         } catch (Exception e) {
@@ -106,21 +117,21 @@ class WebSocketClientStarterTest {
     }
 
     private static class TestWebSocketClientStarter extends WebSocketClientStarter {
-        private final List<Worker> workers;
+        private final List<WorkerSnapshot> workers;
         private int establishInvocations;
         private String baseUriUsed;
 
-        private TestWebSocketClientStarter(List<Worker> workers) {
+        private TestWebSocketClientStarter(List<WorkerSnapshot> workers) {
             this.workers = workers;
         }
 
         @Override
-        protected List<Worker> loadWorkers() {
+        protected List<WorkerSnapshot> loadWorkers() {
             return workers;
         }
 
         @Override
-        protected void establishConnections(List<Worker> workers, String baseUri) {
+        protected void establishConnections(List<WorkerSnapshot> workers, String baseUri) {
             establishInvocations++;
             baseUriUsed = baseUri;
         }

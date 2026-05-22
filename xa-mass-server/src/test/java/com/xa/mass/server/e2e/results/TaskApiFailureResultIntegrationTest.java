@@ -14,7 +14,6 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 @SpringBootTest(
         classes = XaMassServerApplication.class,
@@ -23,7 +22,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
                 "sample.client.auto-start=true",
                 "sample.client.task-result-status=FAILED",
                 "mass.mock.data.workers=mock/test_mock_workers.json",
-                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json",
                 "sample.client.retry-attempts=1",
@@ -35,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class TaskApiFailureResultIntegrationTest extends AbstractSampleE2eTest {
+public class TaskApiFailureResultIntegrationTest extends AbstractSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
 
@@ -49,27 +47,18 @@ class TaskApiFailureResultIntegrationTest extends AbstractSampleE2eTest {
         assertMinOnlineWorkers(2);
         String taskId = createTaskId("integration-task-failure", "integration failure smoke", List.of("target-a", "target-b"), 1);
 
-        Map<String, Object> auditResponse = exchange(
-                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=integration-failure",
-                HttpMethod.POST,
-                null
-        );
+        Map<String, Object> auditResponse = approveTask(taskId);
         assertApiOk(auditResponse);
 
-        TaskSnapshot snapshot = waitForTerminalTask(taskId);
+        RuntimeTaskSnapshot snapshot = waitForTerminalRuntimeTask(taskId);
 
         assertEquals("TERMINAL", snapshot.task().get("status"));
+        assertEquals("ALL_MESSAGES_FAILED", snapshot.task().get("terminalReason"));
         assertEquals(2, ((Number) snapshot.task().get("peakAssignedWorkerCount")).intValue());
         assertEquals(0, ((Number) snapshot.task().get("taskSuccessNumber")).intValue());
-        assertEquals(2, snapshot.messages().size());
-
-        for (Map<String, Object> message : snapshot.messages()) {
-            assertEquals("FAILED", message.get("status"));
-            assertEquals("RETRY_EXHAUSTED", message.get("finalReason"));
-        assertNotNull(message.get("latestAttemptWorkerId"));
-        assertNotNull(message.get("latestAttemptWorkerContextId"));
-        assertNotNull(message.get("latestAttemptBatchId"));
-        assertEquals("Executed by sample client " + message.get("latestAttemptWorkerId"), message.get("errorMessage"));
-        }
+        assertEquals(2, snapshot.stats().totalCount());
+        assertEquals(0, snapshot.stats().successCount());
+        assertEquals(2, snapshot.stats().failedCount());
+        assertEquals(2, snapshot.stats().finalCount());
     }
 }

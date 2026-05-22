@@ -7,6 +7,7 @@ import java.util.Objects;
  */
 public final class SocketAdapterConfig {
 
+    private String adapterId = com.xa.mass.transport.socket.worker.SocketRealtimeWorkerAdapter.DEFAULT_ADAPTER_ID;
     private boolean enabled = false;
     private boolean serverEnabled = false;
     private int serverPort = 18089;
@@ -18,11 +19,23 @@ public final class SocketAdapterConfig {
 
     public SocketAdapterConfig(SocketAdapterConfig source) {
         Objects.requireNonNull(source, "source");
+        this.adapterId = source.adapterId;
         this.enabled = source.enabled;
         this.serverEnabled = source.serverEnabled;
         this.serverPort = source.serverPort;
         this.maxConnections = source.maxConnections;
         this.bindHost = source.bindHost;
+    }
+
+    public String getAdapterId() {
+        return adapterId;
+    }
+
+    public void setAdapterId(String adapterId) {
+        if (adapterId == null || adapterId.isBlank()) {
+            throw new IllegalArgumentException("adapterId must not be blank");
+        }
+        this.adapterId = adapterId.trim().toLowerCase(java.util.Locale.ROOT);
     }
 
     public boolean isEnabled() {

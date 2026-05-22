@@ -44,7 +44,7 @@ describe('TasksListPage', () => {
         })
 
         await router.push(
-            '/?create=1&project=demoApp&taskName=Demo%20dispatch&eventCode=demo.dispatch',
+            '/?create=1&project=demoApp&eventCode=demo.dispatch',
         )
         await router.isReady()
 
@@ -70,11 +70,11 @@ describe('TasksListPage', () => {
                     createDialogVisible: boolean
                     starterEventCode: string
                     createForm: {
-                        taskName: string
                         project: string
+                        eventCode: string
                         batchSize: number
                         sharedConfigText: string
-                        inputsText: string
+                        itemsText: string
                     }
                     starterGuidance: string[]
                 }
@@ -83,13 +83,13 @@ describe('TasksListPage', () => {
 
         expect(setupState.createDialogVisible).toBe(true)
         expect(setupState.starterEventCode).toBe('demo.dispatch')
-        expect(setupState.createForm.taskName).toBe('Demo dispatch')
         expect(setupState.createForm.project).toBe('demoApp')
+        expect(setupState.createForm.eventCode).toBe('demo.dispatch')
         expect(setupState.createForm.batchSize).toBe(1)
         expect(setupState.createForm.sharedConfigText).toContain(
             'hello from demo.dispatch',
         )
-        expect(setupState.createForm.inputsText).toContain('"recipient":"alpha"')
+        expect(setupState.createForm.itemsText).toContain('"recipient":"alpha"')
         expect(setupState.starterGuidance.length).toBeGreaterThan(0)
     })
 })

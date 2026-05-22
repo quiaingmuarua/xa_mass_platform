@@ -21,7 +21,7 @@ export async function requestJson<T>(
     input: string,
     init?: RequestInit,
 ): Promise<T> {
-    const response = await fetch(`${getAppConfig().apiBaseUrl}${input}`, {
+    const response = await fetch(buildApiUrl(input), {
         ...init,
         headers: {
             'Content-Type': 'application/json',
@@ -53,6 +53,20 @@ export async function requestApiData<T>(
     }
 
     return payload.data
+}
+
+export function buildApiUrl(input: string): string {
+    return `${getAppConfig().apiBaseUrl}${input}`
+}
+
+export function triggerDownload(url: string): void {
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = ''
+    anchor.rel = 'noopener'
+    document.body.appendChild(anchor)
+    anchor.click()
+    document.body.removeChild(anchor)
 }
 
 function extractErrorMessage(payload: unknown, status: number): string {

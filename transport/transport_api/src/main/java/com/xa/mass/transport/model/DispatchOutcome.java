@@ -11,7 +11,7 @@ public final class DispatchOutcome {
     private final String deliveryId;
     private final String adapterId;
     private final String routeKey;
-    private final String correlationKey;
+    private final String attemptId;
     private final DispatchOutcomeStatus status;
     private final boolean retryable;
     private final String reason;
@@ -19,14 +19,14 @@ public final class DispatchOutcome {
     public DispatchOutcome(String deliveryId,
                            String adapterId,
                            String routeKey,
-                           String correlationKey,
+                           String attemptId,
                            DispatchOutcomeStatus status,
                            boolean retryable,
                            String reason) {
         this.deliveryId = normalizeText(deliveryId);
         this.adapterId = TransportDeliveryAddressing.normalizeAdapterId(adapterId);
         this.routeKey = TransportDeliveryAddressing.normalizeRouteKey(routeKey);
-        this.correlationKey = normalizeText(correlationKey);
+        this.attemptId = normalizeText(attemptId);
         this.status = Objects.requireNonNull(status, "status");
         this.retryable = retryable;
         this.reason = reason;
@@ -72,7 +72,7 @@ public final class DispatchOutcome {
                 envelope != null ? envelope.getDeliveryId() : null,
                 adapterId,
                 envelope != null ? envelope.getRouteKey() : null,
-                envelope != null ? envelope.getCorrelationKey() : null,
+                envelope != null ? envelope.getAttemptId() : null,
                 status,
                 retryable,
                 reason
@@ -91,8 +91,8 @@ public final class DispatchOutcome {
         return routeKey;
     }
 
-    public String getCorrelationKey() {
-        return correlationKey;
+    public String getAttemptId() {
+        return attemptId;
     }
 
     public DispatchOutcomeStatus getStatus() {

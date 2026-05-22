@@ -1,16 +1,17 @@
 package com.xa.mass.starter.builder;
 
-import com.xa.mass.engine.TaskManager;
-import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.rules.RuleManager;
-import com.xa.mass.engine.service.AssignmentRecordService;
-import com.xa.mass.engine.strategy.TaskScheduler;
+import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
+import com.xa.mass.engine.load.WorkerLoadView;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
+import com.xa.mass.runtime.api.TaskWorkRuntime;
+import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
+import com.xa.mass.storage.api.RuleStorage;
+import com.xa.mass.storage.api.TaskDetailStore;
+import com.xa.mass.storage.api.TaskStorage;
+import com.xa.mass.storage.api.WorkerStorage;
 import com.xa.mass.starter.MassEngine;
 import com.xa.mass.starter.config.EngineConfig;
-
-import java.util.Map;
 
 /**
  * Builder for {@link MassEngine}.
@@ -18,13 +19,16 @@ import java.util.Map;
 public class MassEngineBuilder {
     private EngineConfig config = new EngineConfig();
 
-    private TaskManager taskManager;
-    private WorkerManager workerManager;
-    private RuleManager<Map<String, Object>> ruleManager;
-    private TaskScheduler scheduler;
     private TaskWorkerMatchingStrategy matchingStrategy;
-    private AssignmentRecordService recordService;
+    private AssignmentDiagnosticRecorder recordService;
     private MassBootstrapDataProvider bootstrapDataProvider;
+    private TaskStorage taskStorage;
+    private TaskDetailStore taskDetailStore;
+    private TaskWorkRuntime taskWorkRuntime;
+    private TaskResultRuntime taskResultRuntime;
+    private WorkerStorage workerStorage;
+    private WorkerLoadView workerLoadView;
+    private RuleStorage ruleStorage;
 
     private Integer workerThreads;
     private Long taskMessageLeaseSeconds;
@@ -41,23 +45,43 @@ public class MassEngineBuilder {
         return this;
     }
 
-    public MassEngineBuilder taskManager(TaskManager taskManager) {
-        this.taskManager = taskManager;
+    public MassEngineBuilder taskStorage(TaskStorage taskStorage) {
+        this.taskStorage = taskStorage;
         return this;
     }
 
-    public MassEngineBuilder workerManager(WorkerManager workerManager) {
-        this.workerManager = workerManager;
+    /**
+     * Supplies the bounded compatibility projection store for task-message
+     * residue and attempt detail. This is not the engine's runtime truth or a
+     * public query-model ownership point.
+     */
+    public MassEngineBuilder taskDetailStore(TaskDetailStore taskDetailStore) {
+        this.taskDetailStore = taskDetailStore;
         return this;
     }
 
-    public MassEngineBuilder ruleManager(RuleManager<Map<String, Object>> ruleManager) {
-        this.ruleManager = ruleManager;
+    public MassEngineBuilder taskWorkRuntime(TaskWorkRuntime taskWorkRuntime) {
+        this.taskWorkRuntime = taskWorkRuntime;
         return this;
     }
 
-    public MassEngineBuilder scheduler(TaskScheduler scheduler) {
-        this.scheduler = scheduler;
+    public MassEngineBuilder taskResultRuntime(TaskResultRuntime taskResultRuntime) {
+        this.taskResultRuntime = taskResultRuntime;
+        return this;
+    }
+
+    public MassEngineBuilder workerStorage(WorkerStorage workerStorage) {
+        this.workerStorage = workerStorage;
+        return this;
+    }
+
+    public MassEngineBuilder workerLoadView(WorkerLoadView workerLoadView) {
+        this.workerLoadView = workerLoadView;
+        return this;
+    }
+
+    public MassEngineBuilder ruleStorage(RuleStorage ruleStorage) {
+        this.ruleStorage = ruleStorage;
         return this;
     }
 
@@ -66,7 +90,7 @@ public class MassEngineBuilder {
         return this;
     }
 
-    public MassEngineBuilder recordService(AssignmentRecordService recordService) {
+    public MassEngineBuilder recordService(AssignmentDiagnosticRecorder recordService) {
         this.recordService = recordService;
         return this;
     }
@@ -89,12 +113,15 @@ public class MassEngineBuilder {
     public MassEngine build() {
         if (workerThreads != null) config.setWorkerThreads(workerThreads);
         if (taskMessageLeaseSeconds != null) config.setTaskMessageLeaseSeconds(taskMessageLeaseSeconds);
-        if (scheduler != null) config.setScheduler(scheduler);
         if (matchingStrategy != null) config.setMatchingStrategy(matchingStrategy);
-        if (taskManager != null) config.setTaskManager(taskManager);
-        if (workerManager != null) config.setWorkerManager(workerManager);
+        if (taskStorage != null) config.setTaskStorage(taskStorage);
+        if (taskDetailStore != null) config.setTaskDetailStore(taskDetailStore);
+        if (taskWorkRuntime != null) config.setTaskWorkRuntime(taskWorkRuntime);
+        if (taskResultRuntime != null) config.setTaskResultRuntime(taskResultRuntime);
+        if (workerStorage != null) config.setWorkerStorage(workerStorage);
+        if (workerLoadView != null) config.setWorkerLoadView(workerLoadView);
+        if (ruleStorage != null) config.setRuleStorage(ruleStorage);
         if (recordService != null) config.setRecordService(recordService);
-        if (ruleManager != null) config.setRuleManager(ruleManager);
         if (bootstrapDataProvider != null) config.setBootstrapDataProvider(bootstrapDataProvider);
         return new MassEngine(config);
     }

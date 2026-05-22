@@ -1,9 +1,10 @@
 package com.xa.mass.transport.runtime;
 
-import com.xa.mass.engine.WorkerManager;
+import com.xa.mass.storage.api.WorkerLookupStore;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
+import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -19,14 +20,13 @@ class TransportRuntimeRegistryTest {
         IllegalArgumentException error = assertThrows(
                 IllegalArgumentException.class,
                 () -> new TransportRuntimeRegistry(
-                        mock(WorkerManager.class),
+                        mock(WorkerLookupStore.class),
                         mock(TaskResultIngestChannel.class),
                         mock(WorkerSystemEventChannel.class),
+                        new InMemoryWorkerPresenceStore(),
                         List.of(
-                                TransportBinding.builder(new StubWorkerAdapter("websocket", WorkerTransportHints.REALTIME))
-                                        .build(),
-                                TransportBinding.builder(new StubWorkerAdapter("websocket", WorkerTransportHints.REALTIME))
-                                        .build()
+                                workerIdRouteBinding(new StubWorkerAdapter("websocket", WorkerTransportHints.REALTIME)),
+                                workerIdRouteBinding(new StubWorkerAdapter("websocket", WorkerTransportHints.REALTIME))
                         )
                 )
         );
@@ -35,7 +35,13 @@ class TransportRuntimeRegistryTest {
                 error.getMessage());
     }
 
-    private static final class StubWorkerAdapter implements com.xa.mass.engine.worker.WorkerAdapter {
+    private static TransportBinding workerIdRouteBinding(com.xa.mass.transport.worker.WorkerAdapter adapter) {
+        return TransportBinding.builder(adapter)
+                .routeKeyResolver((dispatchBinding, routeContext) -> dispatchBinding != null ? dispatchBinding.workerId() : null)
+                .build();
+    }
+
+    private static final class StubWorkerAdapter implements com.xa.mass.transport.worker.WorkerAdapter {
         private final String protocol;
         private final String transportHint;
 

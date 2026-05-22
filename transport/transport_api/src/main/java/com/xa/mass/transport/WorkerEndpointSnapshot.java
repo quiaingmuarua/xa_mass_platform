@@ -11,18 +11,18 @@ public final class WorkerEndpointSnapshot {
     private final String workerId;
     private final boolean active;
     private final String endpointId;
-    private final String transport;
+    private final String adapterId;
 
     public WorkerEndpointSnapshot(String routeKey,
                                   String workerId,
                                   boolean active,
                                   String endpointId,
-                                  String transport) {
+                                  String adapterId) {
         this.routeKey = Objects.requireNonNull(routeKey, "routeKey");
         this.workerId = Objects.requireNonNull(workerId, "workerId");
         this.active = active;
         this.endpointId = endpointId;
-        this.transport = transport;
+        this.adapterId = adapterId;
     }
 
     public String getRouteKey() {
@@ -41,7 +41,7 @@ public final class WorkerEndpointSnapshot {
         return endpointId;
     }
 
-    public String getTransport() {
-        return transport;
+    public String getAdapterId() {
+        return adapterId;
     }
 }

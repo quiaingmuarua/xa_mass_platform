@@ -6,6 +6,9 @@ import java.util.List;
 
 /**
  * Pull-based task intake channel for polling workers.
+ *
+ * <p>Delivered items are worker-facing dispatch views, not the transport queue
+ * protocol itself.</p>
  */
 public interface TaskPullChannel {
 
@@ -13,5 +16,13 @@ public interface TaskPullChannel {
         return pollTaskMessages(workerId, maxMessages, 0L);
     }
 
-    List<TaskDispatchItem> pollTaskMessages(String workerId, int maxMessages, long timeoutMillis);
+    default List<TaskDispatchItem> pollTaskMessages(String workerId, int maxMessages, long timeoutMillis) {
+        return pollTaskMessagesResult(workerId, maxMessages, timeoutMillis).getDispatchViews();
+    }
+
+    default TaskPullResult pollTaskMessagesResult(String workerId, int maxMessages) {
+        return pollTaskMessagesResult(workerId, maxMessages, 0L);
+    }
+
+    TaskPullResult pollTaskMessagesResult(String workerId, int maxMessages, long timeoutMillis);
 }

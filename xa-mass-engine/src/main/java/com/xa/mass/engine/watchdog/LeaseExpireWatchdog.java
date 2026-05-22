@@ -17,10 +17,10 @@ import java.util.concurrent.TimeUnit;
  * Background watchdog that enforces two time-based policies:
  *
  * <ol>
- *   <li><b>Lease expiry</b>: any active {@code TaskMsgAttempt} whose
+ *   <li><b>Lease expiry</b>: any active leased work item whose
  *       {@code leaseExpireTime} has passed is expired via
- *       {@link TaskRuntimeMaintenancePort#expireTaskMessage}, which releases the worker
- *       context and re-queues the message (or finalizes it if retries are
+ *       {@link TaskRuntimeMaintenancePort#expireLeasedWork}, which releases the worker
+ *       context and re-queues the work item (or finalizes it if retries are
  *       exhausted).</li>
  *   <li><b>Max task runtime</b>: any non-terminal {@code Task} with
  *       {@code maxRuntimeSeconds > 0} that has been running longer than
@@ -86,7 +86,7 @@ public class LeaseExpireWatchdog {
         for (ActiveLeaseRecord lease : expiredLeases) {
             log.warn("[Watchdog] Expiring stale work lease {} for msg {} in task {} (lease expired at {})",
                     lease.leaseToken(), lease.messageId(), lease.taskId(), lease.leaseExpireAt());
-            maintenancePort.expireTaskMessage(lease.taskId(), lease.messageId());
+            maintenancePort.expireLeasedWork(lease.taskId(), lease.messageId());
         }
     }
 
@@ -94,7 +94,7 @@ public class LeaseExpireWatchdog {
         List<Task> expiredTasks = maintenancePort.pollExpiredMaxRuntimeTasks(now, EXPIRED_TASK_RUNTIME_SCAN_LIMIT);
         for (Task task : expiredTasks) {
             log.warn("[Watchdog] Task {} exceeded max runtime of {}s (started {}), terminating",
-                    task.getTid(), task.getMaxRuntimeSeconds(), task.getStartTime());
+                    task.getTid(), task.getExecutionSpec().getMaxRuntimeSeconds(), task.getStartTime());
             maintenancePort.terminateTask(task.getTid(), TaskTerminalReason.MAX_RUNTIME_REACHED);
         }
     }

@@ -4,6 +4,7 @@ import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TransportDispatchEnvelope;
+import com.xa.mass.transport.runtime.packet.TransportPacketFactory;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -45,8 +46,8 @@ class RuntimeDispatchOutcomesTest {
                 "demoApp",
                 "agent",
                 0,
+                "attempt-" + messageId,
                 workerId,
-                null,
                 "batch-1",
                 Map.of("target", "target-1"),
                 Map.of()
@@ -54,24 +55,24 @@ class RuntimeDispatchOutcomesTest {
     }
 
     private TransportDispatchEnvelope envelope(TaskDispatchItem item) {
+        return envelope("delivery-" + item.getMessageId(), "websocket", item.getWorkerId(), item.attemptId(), item);
+    }
+
+    private TransportDispatchEnvelope envelope(String deliveryId,
+                                              String adapterId,
+                                              String routeKey,
+                                              String traceId,
+                                              TaskDispatchItem item) {
         return new TransportDispatchEnvelope(
-                "delivery-" + item.getMessageId(),
-                "websocket",
-                item.getWorkerId(),
-                item.attemptId(),
-                item,
+                deliveryId,
+                new TransportPacketFactory(() -> deliveryId)
+                        .fromDispatchView(adapterId, routeKey, traceId, item),
                 1L
         );
     }
 
     private TransportDispatchEnvelope invalidEnvelope(TaskDispatchItem item) {
-        return new TransportDispatchEnvelope(
-                "delivery-" + item.getMessageId(),
-                "websocket",
-                " ",
-                item.attemptId(),
-                item,
-                1L
-        );
+        return envelope("delivery-" + item.getMessageId(), "websocket", " ", item.attemptId(), item);
     }
 }
+

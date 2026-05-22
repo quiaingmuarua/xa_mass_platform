@@ -1,5 +1,14 @@
 import {setRuntimeConfigOverrides} from '@/app/config'
-import {getTaskDetailReal, listTasksReal, terminateTaskReal,} from '@/api/tasks.real'
+import {
+    appendTaskItemsReal,
+    createTaskShellReal,
+    getTaskDetailReal,
+    getTaskReviewReal,
+    invokeSyncTaskDebugReal,
+    listTasksReal,
+    sealTaskReal,
+    terminateTaskReal,
+} from '@/api/tasks.real'
 
 function jsonResponse(body: unknown): Response {
     return new Response(JSON.stringify(body), {
@@ -41,92 +50,90 @@ describe('tasks.real', () => {
 
         const response = await listTasksReal({
             keyword: 'warm',
+            project: 'demoApp',
             status: 'RUNNING',
         })
 
         expect(fetchMock).toHaveBeenCalledWith(
-            '/backend/status/api/tasks?keyword=warm&status=RUNNING',
+            '/backend/api/v1/tasks?keyword=warm&project=demoApp&status=RUNNING',
             expect.any(Object),
         )
         expect(response.total).toBe(1)
         expect(response.items[0].id).toBe('task-001')
     })
 
-    it('merges task detail and message endpoints into the page shape', async () => {
-        const fetchMock = vi.fn((input: string) => {
-            if (input.includes('/messages')) {
-                return Promise.resolve(
-                    jsonResponse({
-                        code: 0,
-                        msg: 'ok',
-                        data: {
-                            total: 1,
-                            page: 1,
-                            size: 200,
-                            messages: [
-                                {
-                                    messageId: 'msg-001',
-                                    status: 'SUCCESS',
-                                    latestAttemptWorkerId: 'worker-us-01',
-                                    latestAttemptWorkerContextId: 'ctx-us-01',
-                                    latestAttemptBatchId: 'batch-001',
-                                    retryCount: 0,
-                                    maxRetryCount: 3,
-                                    finalReason: 'BUSINESS_SUCCESS',
-                                    input: { target: 'alpha' },
-                                    output: { result: 'ok' },
-                                    errorMessage: null,
-                                },
-                            ],
-                        },
-                    }),
-                )
-            }
-
-            return Promise.resolve(
-                jsonResponse({
-                    code: 0,
-                    msg: 'ok',
-                    data: {
-                        task: {
-                            tid: 'task-001',
-                            taskName: 'Warm worker pool',
-                            project: 'demoApp',
-                            status: 'RUNNING',
-                            terminalReason: null,
-                            batchSize: 2,
-                            sharedConfig: {},
-                            user: null,
-                            taskTargetNumber: 10,
-                            taskEligibleNumber: 10,
-                            taskSuccessNumber: 6,
-                            taskNonSuccessNumber: 4,
-                            peakAssignedWorkerCount: 4,
-                            createTime: [2026, 4, 21, 9, 0, 0],
-                            updateTime: [2026, 4, 21, 9, 30, 0],
-                        },
-                        items: [{ target: 'alpha' }],
-                        stateValidation: {
-                            valid: true,
-                            needsResolution: false,
-                            totalMessages: 10,
-                            successMessages: 6,
-                            failedMessages: 0,
-                            processingMessages: 4,
-                            violations: [],
-                        },
+    it('loads task detail from the v1 task detail endpoint only', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(
+            jsonResponse({
+                code: 0,
+                msg: 'ok',
+                data: {
+                    task: {
+                        tid: 'task-001',
+                        taskName: 'Warm worker pool',
+                        project: 'demoApp',
+                        status: 'RUNNING',
+                        terminalReason: null,
+                        batchSize: 2,
+                        sharedConfig: {},
+                        user: null,
+                        taskTargetNumber: 10,
+                        taskEligibleNumber: 10,
+                        taskSuccessNumber: 6,
+                        taskNonSuccessNumber: 4,
+                        peakAssignedWorkerCount: 4,
+                        createTime: [2026, 4, 21, 9, 0, 0],
+                        updateTime: [2026, 4, 21, 9, 30, 0],
                     },
-                }),
-            )
-        })
+                },
+            }),
+        )
         vi.stubGlobal('fetch', fetchMock)
 
         const detail = await getTaskDetailReal('task-001')
 
-        expect(fetchMock).toHaveBeenCalledTimes(2)
+        expect(fetchMock).toHaveBeenCalledTimes(1)
         expect(detail.task.user.name).toBe('-')
         expect(detail.task.createTime).toBe('2026-04-21 09:00:00')
-        expect(detail.messages[0].finalReason).toBe('BUSINESS_SUCCESS')
+    })
+
+    it('loads task review preview from the explicit review endpoint', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(
+            jsonResponse({
+                code: 0,
+                msg: 'ok',
+                data: {
+                    summary: {
+                        totalItems: 10,
+                        successItems: 6,
+                        failedItems: 1,
+                        expiredItems: 0,
+                        processingItems: 3,
+                        previewCount: 2,
+                        previewLimit: 12,
+                        hasMore: true,
+                    },
+                    seedPreview: [],
+                    resultPreview: [],
+                    exports: {
+                        seedUrl: '/api/v1/tasks/task-001/review/seed-export',
+                        resultUrl: '/api/v1/tasks/task-001/review/result-export',
+                    },
+                },
+            }),
+        )
+        vi.stubGlobal('fetch', fetchMock)
+
+        const review = await getTaskReviewReal('task-001')
+
+        expect(fetchMock).toHaveBeenCalledWith(
+            '/api/v1/tasks/task-001/review',
+            expect.any(Object),
+        )
+        expect(review.summary.totalItems).toBe(10)
+        expect(review.exports.resultUrl).toBe(
+            '/api/v1/tasks/task-001/review/result-export',
+        )
     })
 
     it('posts task terminate to the backend action endpoint', async () => {
@@ -147,11 +154,145 @@ describe('tasks.real', () => {
         const response = await terminateTaskReal('task-001')
 
         expect(fetchMock).toHaveBeenCalledWith(
-            '/backend/status/api/tasks/task-001/terminate',
+            '/backend/api/v1/tasks/task-001:terminate',
             expect.objectContaining({
                 method: 'POST',
             }),
         )
         expect(response.message).toBe('Task terminated')
+    })
+
+    it('creates a task shell through the v1 shell endpoint', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(
+            jsonResponse({
+                code: 0,
+                msg: 'ok',
+                data: {
+                    taskId: 'task-101',
+                    message: 'Task shell created',
+                },
+            }),
+        )
+        vi.stubGlobal('fetch', fetchMock)
+
+        const result = await createTaskShellReal({
+            userId: 'agent',
+            project: 'demoApp',
+            sharedConfig: { textContent: 'hello' },
+            executionSpec: {
+                batchSize: 2,
+                maxRuntimeSeconds: 0,
+            },
+        })
+
+        expect(fetchMock).toHaveBeenCalledWith(
+            '/api/v1/tasks',
+            expect.objectContaining({ method: 'POST' }),
+        )
+        expect(result.taskId).toBe('task-101')
+    })
+
+    it('appends items through the v1 item ingest endpoint', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(
+            jsonResponse({
+                code: 0,
+                msg: 'ok',
+                data: {
+                    added: 2,
+                },
+            }),
+        )
+        vi.stubGlobal('fetch', fetchMock)
+
+        const result = await appendTaskItemsReal('task-101', {
+            eventCode: 'mock.state.get',
+            items: [{ target: 'alpha' }, { target: 'beta' }],
+        })
+
+        expect(fetchMock).toHaveBeenCalledWith(
+            '/api/v1/tasks/task-101/items',
+            expect.objectContaining({ method: 'POST' }),
+        )
+        expect(result.added).toBe(2)
+    })
+
+    it('seals tasks through the v1 seal endpoint', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(
+            jsonResponse({
+                code: 0,
+                msg: 'ok',
+                data: {
+                    message: 'Task sealed',
+                },
+            }),
+        )
+        vi.stubGlobal('fetch', fetchMock)
+
+        const result = await sealTaskReal('task-101')
+
+        expect(fetchMock).toHaveBeenCalledWith(
+            '/api/v1/tasks/task-101:seal',
+            expect.objectContaining({ method: 'POST' }),
+        )
+        expect(result.message).toBe('Task sealed')
+    })
+
+    it('posts worker debug sync invocations to the internal v1 endpoint', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(
+            jsonResponse({
+                code: 0,
+                msg: 'ok',
+                data: {
+                    taskId: 'task-debug-001',
+                    messageId: 'msg-debug-001',
+                    synced: true,
+                    timedOut: false,
+                    status: 'SUCCESS',
+                    output: {},
+                    errorCode: '',
+                    errorMessage: '',
+                },
+            }),
+        )
+        vi.stubGlobal('fetch', fetchMock)
+
+        const result = await invokeSyncTaskDebugReal({
+            userId: 'ops-admin',
+            project: 'demoApp',
+            eventCode: 'mock.state.get',
+            sharedConfig: {
+                targetWorkerId: 'worker-us-01',
+            },
+            items: [
+                {
+                    includeRuntime: true,
+                },
+            ],
+            maxRuntimeSeconds: 60,
+        })
+
+        expect(fetchMock).toHaveBeenCalledWith(
+            '/internal/v1/debug/task-invocations:sync',
+            expect.objectContaining({
+                method: 'POST',
+                body: JSON.stringify({
+                    userId: 'ops-admin',
+                    project: 'demoApp',
+                    eventCode: 'mock.state.get',
+                    sharedConfig: {
+                        targetWorkerId: 'worker-us-01',
+                    },
+                    items: [
+                        {
+                            includeRuntime: true,
+                        },
+                    ],
+                    batchSize: 1,
+                    maxRuntimeSeconds: 60,
+                }),
+            }),
+        )
+        expect(result.taskId).toBe('task-debug-001')
+        expect(result.synced).toBe(true)
     })
 })

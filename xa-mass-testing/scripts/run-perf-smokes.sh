@@ -7,8 +7,8 @@ CLASSPATH_FILE="${REPO_ROOT}/xa-mass-testing/target/perf-smokes.classpath"
 
 cd "${REPO_ROOT}"
 
-./mvnw -q -pl xa-mass-testing -am -Dmaven.test.skip=true install
-./mvnw -q -f xa-mass-testing/pom.xml \
+./mvnw -q -pl xa-mass-testing -am -DskipTests install
+./mvnw -q -pl xa-mass-testing \
   dependency:build-classpath \
   -Dmdep.outputFile="${CLASSPATH_FILE}" \
   -Dmdep.pathSeparator=":"
@@ -45,6 +45,36 @@ RUNNERS=(
   "com.xa.mass.testing.perf.TaskWorkloadMixSmokeRunner"
   "com.xa.mass.testing.perf.TaskInteractiveRetryWakeupSmokeRunner"
 )
+
+FORBIDDEN_SMOKE_TOKENS=(
+  "TaskMessageProjection"
+  "TaskMessageAttemptProjection"
+  "getTaskMessage"
+  "TaskMessageStats"
+  "TaskMessageAttemptStats"
+  "ProjectionTestViews"
+  "CompatibilityMessageView"
+  "CompatibilityAttemptView"
+)
+
+echo "== Checking perf smoke source guardrails =="
+for runner in "${RUNNERS[@]}"; do
+  runner_path="${runner//.//}.java"
+  source_file="${REPO_ROOT}/xa-mass-testing/src/main/java/${runner_path}"
+  if [[ ! -f "${source_file}" ]]; then
+    echo "FAILED: perf smoke runner source not found: ${source_file}"
+    exit 1
+  fi
+  for token in "${FORBIDDEN_SMOKE_TOKENS[@]}"; do
+    if grep -nF "${token}" "${source_file}" >/tmp/xa-mass-perf-guard-match.txt; then
+      echo "FAILED: ${runner} must stay runtime/timing-first; forbidden token '${token}' found:"
+      cat /tmp/xa-mass-perf-guard-match.txt
+      rm -f /tmp/xa-mass-perf-guard-match.txt
+      exit 1
+    fi
+  done
+done
+rm -f /tmp/xa-mass-perf-guard-match.txt
 
 for runner in "${RUNNERS[@]}"; do
   echo "== Running ${runner} =="

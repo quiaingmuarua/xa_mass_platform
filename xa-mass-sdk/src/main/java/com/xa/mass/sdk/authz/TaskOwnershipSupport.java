@@ -1,8 +1,7 @@
 package com.xa.mass.sdk.authz;
 
 import com.xa.mass.sdk.auth.PrincipalContext;
-import com.xa.mass.sdk.model.MassTaskCreateRequest;
-import com.xa.mass.sdk.model.MassTaskRequest;
+import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 
 import java.util.Map;
 import java.util.Objects;
@@ -15,42 +14,16 @@ public final class TaskOwnershipSupport {
     private TaskOwnershipSupport() {
     }
 
-    public static MassTaskCreateRequest stamp(MassTaskCreateRequest request, PrincipalContext principal) {
+    public static MassTaskShellCreateRequest stamp(MassTaskShellCreateRequest request, PrincipalContext principal) {
         Objects.requireNonNull(request, "request");
         TaskOwnershipStamp stamp = TaskOwnershipStamp.fromPrincipal(Objects.requireNonNull(principal, "principal"));
-        return MassTaskCreateRequest.builder()
+        return MassTaskShellCreateRequest.builder()
                 .userId(request.getUserId())
+                .tenantId(request.getTenantId())
                 .project(request.getProject())
-                .taskName(request.getTaskName())
+                .contract(request.getContract())
                 .sharedConfig(applyStamp(request.getSharedConfig(), stamp))
-                .inputs(request.getInputs())
-                .batchSize(request.getBatchSize())
-                .defaultMsgMaxRetryCount(request.getDefaultMsgMaxRetryCount())
-                .openEnded(request.isOpenEnded())
-                .maxRuntimeSeconds(request.getMaxRuntimeSeconds())
-                .sourceType(request.getSourceType())
-                .workloadClass(request.getWorkloadClass())
-                .sourceRef(request.getSourceRef())
-                .build();
-    }
-
-    public static MassTaskRequest stamp(MassTaskRequest request, PrincipalContext principal) {
-        Objects.requireNonNull(request, "request");
-        TaskOwnershipStamp stamp = TaskOwnershipStamp.fromPrincipal(Objects.requireNonNull(principal, "principal"));
-        return MassTaskRequest.builder()
-                .userId(request.getUserId())
-                .project(request.getProject())
-                .taskName(request.getTaskName())
-                .eventCode(request.getEventCode())
-                .mode(request.getMode())
-                .payloadType(request.getPayloadType())
-                .sharedConfig(applyStamp(request.getSharedConfig(), stamp))
-                .inputs(request.getInputs())
-                .batchSize(request.getBatchSize())
-                .defaultMsgMaxRetryCount(request.getDefaultMsgMaxRetryCount())
-                .maxRuntimeSeconds(request.getMaxRuntimeSeconds())
-                .sourceType(request.getSourceType())
-                .workloadClass(request.getWorkloadClass())
+                .executionSpec(request.getExecutionSpec())
                 .sourceRef(request.getSourceRef())
                 .build();
     }

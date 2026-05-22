@@ -1,21 +1,29 @@
 package com.xa.mass.starter.config;
 
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
+import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
-import com.xa.mass.sdk.transport.DefaultWorkerTransportRuntimeFactory;
-import com.xa.mass.transport.polling.worker.PollingWorkerAdapter;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchHandoff;
+import com.xa.mass.transport.polling.runtime.DefaultWorkerTransportRuntimeFactory;
+import com.xa.mass.transport.runtime.RedisTaskResultIngestChannel;
+import com.xa.mass.transport.runtime.RedisTransportDispatchFailureChannel;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportRegistrationResolver;
 import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
-import com.xa.mass.transport.WorkerTransportHints;
+import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
+import com.xa.mass.transport.runtime.dispatch.InMemoryTaskDispatchHandoff;
+import com.xa.mass.transport.runtime.node.TransportNodeRegistry;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.model.TransportOutboundMessage;
+import com.xa.mass.transport.presence.WorkerPresenceStore;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
+import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
 import com.xa.mass.transport.socket.runtime.SocketTransportAdapterBootstrap;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
 import com.xa.mass.transport.websocket.runtime.WebSocketTransportAdapterBootstrap;
@@ -36,6 +44,8 @@ public class TransportRuntimeComposition {
 
     private static final String API_MODE_UNSUPPORTED_MESSAGE =
             "API-based transport is not implemented yet. Use queue/polling transport or provide a real transport adapter.";
+    private static final String DEFAULT_INPUT_QUEUE_NAME = "transport-input";
+    private static final String DEFAULT_OUTPUT_QUEUE_NAME = "transport-output";
 
     private final MessageTransporterFactory.TransporterType transporterType;
     private final MessageQueue<String> inputQueue;
@@ -44,18 +54,32 @@ public class TransportRuntimeComposition {
     private final WorkerEndpointRegistry workerEndpointRegistry;
     private final Supplier<WorkerEndpointRegistry> endpointRegistryFactory;
     private final Function<WorkerEndpointRegistry, WorkerSystemEventChannel> systemEventChannelResolver;
+    private final Supplier<WorkerPresenceStore> presenceStoreFactory;
     private final WebSocketAdapterConfig bundledWebSocketAdapterConfig;
     private final SocketAdapterConfig bundledSocketAdapterConfig;
+    private final List<WebSocketAdapterConfig> supplementalWebSocketAdapterConfigs;
+    private final List<SocketAdapterConfig> supplementalSocketAdapterConfigs;
     private final WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
-    private final TransportAdapterBootstrap<TransportOutboundMessage> primaryTransportAdapterBootstrap;
-    private final List<TransportAdapterBootstrap<TransportOutboundMessage>> supplementalTransportAdapterBootstraps;
+    private final Supplier<TransportDeliveryStore> deliveryStoreFactory;
+    private final Supplier<TaskDispatchHandoff> taskDispatchHandoffFactory;
+    private final Supplier<RedisTaskResultIngestChannel> taskResultInboxFactory;
+    private final Supplier<RedisTransportDispatchFailureChannel> dispatchFailureInboxFactory;
+    private final Supplier<TransportNodeRegistry> transportNodeRegistryFactory;
+    private final TransportAdapterBootstrap primaryTransportAdapterBootstrap;
+    private final List<TransportAdapterBootstrap> supplementalTransportAdapterBootstraps;
     private final int maxDeliveryQueuedItems;
+    private final int maxDeliveryItemsPerRoute;
     private final int transportRuntimeMaxPendingTasks;
     private final int eventRuntimeMaxPendingTasks;
     private final long eventHandlerTimeoutMillis;
+    private final long workerPresenceLeaseMillis;
+    private final TransportRuntimeRole runtimeRole;
+    private final String transportNodeId;
 
     private transient WorkerEndpointRegistry runtimeOwnedEndpointRegistry;
     private transient TransportRegistrationResolver registrationResolver;
+    private transient WorkerPresenceStore runtimeOwnedPresenceStore;
+    private transient TransportNodeRegistry runtimeOwnedTransportNodeRegistry;
 
     public TransportRuntimeComposition(TransportConfig source) {
         this.transporterType = source.getTransporterType();
@@ -65,15 +89,31 @@ public class TransportRuntimeComposition {
         this.workerEndpointRegistry = source.getWorkerEndpointRegistry();
         this.endpointRegistryFactory = source.endpointRegistryFactory();
         this.systemEventChannelResolver = source.systemEventChannelResolver();
+        this.presenceStoreFactory = source.presenceStoreFactory();
         this.bundledWebSocketAdapterConfig = new WebSocketAdapterConfig(source.getBundledWebSocketAdapterConfig());
         this.bundledSocketAdapterConfig = new SocketAdapterConfig(source.getBundledSocketAdapterConfig());
+        this.supplementalWebSocketAdapterConfigs = source.getSupplementalWebSocketAdapterConfigs().stream()
+                .map(WebSocketAdapterConfig::new)
+                .toList();
+        this.supplementalSocketAdapterConfigs = source.getSupplementalSocketAdapterConfigs().stream()
+                .map(SocketAdapterConfig::new)
+                .toList();
         this.workerTransportRuntimeFactory = source.getWorkerTransportRuntimeFactory();
+        this.deliveryStoreFactory = source.deliveryStoreFactory();
+        this.taskDispatchHandoffFactory = source.taskDispatchHandoffFactory();
+        this.taskResultInboxFactory = source.taskResultInboxFactory();
+        this.dispatchFailureInboxFactory = source.dispatchFailureInboxFactory();
+        this.transportNodeRegistryFactory = source.transportNodeRegistryFactory();
         this.primaryTransportAdapterBootstrap = source.getPrimaryTransportAdapterBootstrap();
         this.supplementalTransportAdapterBootstraps = List.copyOf(source.getSupplementalTransportAdapterBootstraps());
         this.maxDeliveryQueuedItems = source.getMaxDeliveryQueuedItems();
+        this.maxDeliveryItemsPerRoute = source.getMaxDeliveryItemsPerRoute();
         this.transportRuntimeMaxPendingTasks = source.getTransportRuntimeMaxPendingTasks();
         this.eventRuntimeMaxPendingTasks = source.getEventRuntimeMaxPendingTasks();
         this.eventHandlerTimeoutMillis = source.getEventHandlerTimeoutMillis();
+        this.workerPresenceLeaseMillis = source.getWorkerPresenceLeaseMillis();
+        this.runtimeRole = source.getRuntimeRole();
+        this.transportNodeId = source.getTransportNodeId();
     }
 
     public boolean isEnabled() {
@@ -81,18 +121,18 @@ public class TransportRuntimeComposition {
                 || bundledWebSocketAdapterConfig.isServerEnabled()
                 || bundledSocketAdapterConfig.isEnabled()
                 || bundledSocketAdapterConfig.isServerEnabled()
+                || hasAnyEnabledWebSocketConfig(supplementalWebSocketAdapterConfigs)
+                || hasAnyEnabledSocketConfig(supplementalSocketAdapterConfigs)
                 || primaryTransportAdapterBootstrap != null
                 || !supplementalTransportAdapterBootstraps.isEmpty();
     }
 
     public MessageTransporter<String, TransportOutboundMessage> createMessageTransporter() {
         return switch (transporterType) {
-            case QUEUE_BASED -> {
-                if (inputQueue == null || outputQueue == null) {
-                    throw new IllegalStateException("QUEUE_BASED transporter requires both inputQueue and outputQueue");
-                }
-                yield MessageTransporterFactory.createQueueBased(inputQueue, outputQueue);
-            }
+            case QUEUE_BASED -> MessageTransporterFactory.createQueueBased(
+                    resolveInputQueue(),
+                    resolveOutputQueue()
+            );
             case MULTI_LEVEL -> MessageTransporterFactory.createMultiLevel();
             case API_BASED -> throw new UnsupportedOperationException(API_MODE_UNSUPPORTED_MESSAGE);
         };
@@ -100,8 +140,8 @@ public class TransportRuntimeComposition {
 
     public MessageTransporter<String, TransportOutboundMessage> createMessageTransporterIfConfigured() {
         return switch (transporterType) {
-            case QUEUE_BASED -> (inputQueue != null && outputQueue != null)
-                    ? MessageTransporterFactory.createQueueBased(inputQueue, outputQueue)
+            case QUEUE_BASED -> (inputQueue != null || outputQueue != null || isEnabled())
+                    ? MessageTransporterFactory.createQueueBased(resolveInputQueue(), resolveOutputQueue())
                     : null;
             case MULTI_LEVEL -> MessageTransporterFactory.createMultiLevel();
             case API_BASED -> null;
@@ -114,6 +154,18 @@ public class TransportRuntimeComposition {
 
     public SocketAdapterConfig getBundledSocketAdapterConfig() {
         return new SocketAdapterConfig(bundledSocketAdapterConfig);
+    }
+
+    public List<WebSocketAdapterConfig> getSupplementalWebSocketAdapterConfigs() {
+        return supplementalWebSocketAdapterConfigs.stream()
+                .map(WebSocketAdapterConfig::new)
+                .toList();
+    }
+
+    public List<SocketAdapterConfig> getSupplementalSocketAdapterConfigs() {
+        return supplementalSocketAdapterConfigs.stream()
+                .map(SocketAdapterConfig::new)
+                .toList();
     }
 
     public WorkerEndpointRegistry resolveWorkerEndpointRegistry() {
@@ -149,23 +201,83 @@ public class TransportRuntimeComposition {
                 : new DefaultWorkerTransportRuntimeFactory();
     }
 
+    public TransportDeliveryStore resolveTransportDeliveryStore() {
+        return deliveryStoreFactory != null
+                ? deliveryStoreFactory.get()
+                : new InMemoryTransportDeliveryStore(maxDeliveryQueuedItems, maxDeliveryItemsPerRoute);
+    }
+
+    public TaskDispatchHandoff resolveTaskDispatchHandoff(int defaultCapacity) {
+        return taskDispatchHandoffFactory != null
+                ? taskDispatchHandoffFactory.get()
+                : new InMemoryTaskDispatchHandoff(defaultCapacity);
+    }
+
+    public RedisTaskResultIngestChannel resolveTaskResultInbox() {
+        if (taskResultInboxFactory == null) {
+            throw new IllegalStateException("Task result inbox is not configured for split transport runtime");
+        }
+        return taskResultInboxFactory.get();
+    }
+
+    public RedisTransportDispatchFailureChannel resolveDispatchFailureInbox() {
+        if (dispatchFailureInboxFactory == null) {
+            throw new IllegalStateException("Dispatch failure inbox is not configured for split transport runtime");
+        }
+        return dispatchFailureInboxFactory.get();
+    }
+
+    public TransportNodeRegistry resolveTransportNodeRegistry() {
+        if (transportNodeRegistryFactory == null) {
+            return null;
+        }
+        if (runtimeOwnedTransportNodeRegistry == null) {
+            runtimeOwnedTransportNodeRegistry = transportNodeRegistryFactory.get();
+        }
+        return runtimeOwnedTransportNodeRegistry;
+    }
+
+    public WorkerPresenceStore resolveWorkerPresenceStore() {
+        if (runtimeOwnedPresenceStore == null) {
+            runtimeOwnedPresenceStore = presenceStoreFactory != null
+                    ? presenceStoreFactory.get()
+                    : new InMemoryWorkerPresenceStore(workerPresenceLeaseMillis, transportNodeId);
+        }
+        return runtimeOwnedPresenceStore;
+    }
+
+    public String getTransportNodeId() {
+        return transportNodeId;
+    }
+
+    public java.util.Map<String, String> resolveAdapterTransportHintsById() {
+        java.util.LinkedHashMap<String, String> hintsByAdapterId = new java.util.LinkedHashMap<>();
+        for (TransportAdapterDescriptor descriptor : resolveRegistrationDescriptors()) {
+            if (descriptor != null && descriptor.getAdapterId() != null && descriptor.getTransportHint() != null) {
+                hintsByAdapterId.put(descriptor.getAdapterId(), descriptor.getTransportHint());
+            }
+        }
+        return java.util.Map.copyOf(hintsByAdapterId);
+    }
+
     public String resolveRegistrationAdapterId(String requestedAdapterId, String transportHint) {
-        if (!usesDefaultWorkerTransportRuntimeFactory()) {
+        if (!hasRegistrationDescriptors()) {
             if (requestedAdapterId != null && !requestedAdapterId.isBlank()) {
                 return requestedAdapterId.trim().toLowerCase(java.util.Locale.ROOT);
             }
             throw new IllegalStateException(
-                    "worker adapterId must be set before runtime start when a custom worker transport runtime factory is configured");
+                    "worker adapterId must be set before runtime start when transport registration metadata is unavailable");
         }
         return registrationResolver().resolveRegistrationAdapterId(requestedAdapterId, transportHint);
     }
 
-    public List<TransportAdapterBootstrap<TransportOutboundMessage>> resolveTransportAdapterBootstraps() {
-        List<TransportAdapterBootstrap<TransportOutboundMessage>> bootstraps = new ArrayList<>();
-        bootstraps.add(resolvePrimaryTransportAdapterBootstrap());
-        bootstraps.add(resolveBundledSocketTransportAdapterBootstrap());
-        bootstraps.addAll(supplementalTransportAdapterBootstraps);
-        return List.copyOf(bootstraps);
+    public List<TransportAdapterBootstrap> resolveTransportAdapterBootstraps() {
+        List<TransportAdapterBootstrap> bootstraps = bootstrapCandidates().stream()
+                .filter(BootstrapCandidate::runtimeIncluded)
+                .map(BootstrapCandidate::bootstrap)
+                .toList();
+        validateUniqueAdapterIds(bootstraps);
+        return bootstraps;
     }
 
     public int getMaxDeliveryQueuedItems() {
@@ -176,22 +288,44 @@ public class TransportRuntimeComposition {
         return eventHandlerTimeoutMillis;
     }
 
+    public int getMaxDeliveryItemsPerRoute() {
+        return maxDeliveryItemsPerRoute;
+    }
+
     public int getTransportRuntimeMaxPendingTasks() {
         return transportRuntimeMaxPendingTasks;
+    }
+
+    public TransportRuntimeRole getRuntimeRole() {
+        return runtimeRole;
     }
 
     public int getEventRuntimeMaxPendingTasks() {
         return eventRuntimeMaxPendingTasks;
     }
 
-    TransportAdapterBootstrap<TransportOutboundMessage> resolvePrimaryTransportAdapterBootstrap() {
+    TransportAdapterBootstrap resolvePrimaryTransportAdapterBootstrap() {
         return primaryTransportAdapterBootstrap != null
                 ? primaryTransportAdapterBootstrap
                 : new WebSocketTransportAdapterBootstrap(bundledWebSocketAdapterConfig);
     }
 
-    TransportAdapterBootstrap<TransportOutboundMessage> resolveBundledSocketTransportAdapterBootstrap() {
+    TransportAdapterBootstrap resolveBundledSocketTransportAdapterBootstrap() {
         return new SocketTransportAdapterBootstrap(bundledSocketAdapterConfig);
+    }
+
+    List<TransportAdapterBootstrap> resolveSupplementalBundledWebSocketTransportAdapterBootstraps() {
+        return supplementalWebSocketAdapterConfigs.stream()
+                .map(WebSocketTransportAdapterBootstrap::new)
+                .map(bootstrap -> (TransportAdapterBootstrap) bootstrap)
+                .toList();
+    }
+
+    List<TransportAdapterBootstrap> resolveSupplementalBundledSocketTransportAdapterBootstraps() {
+        return supplementalSocketAdapterConfigs.stream()
+                .map(SocketTransportAdapterBootstrap::new)
+                .map(bootstrap -> (TransportAdapterBootstrap) bootstrap)
+                .toList();
     }
 
     private TransportRegistrationResolver registrationResolver() {
@@ -203,40 +337,112 @@ public class TransportRuntimeComposition {
 
     private List<TransportAdapterDescriptor> resolveRegistrationDescriptors() {
         List<TransportAdapterDescriptor> descriptors = new ArrayList<>();
-        descriptors.add(new TransportAdapterDescriptor(
-                PollingWorkerAdapter.PROTOCOL,
-                WorkerTransportHints.POLLING
+        WorkerTransportRuntimeFactory runtimeFactory = workerTransportRuntimeFactory;
+        if (runtimeFactory == null) {
+            runtimeFactory = resolveWorkerTransportRuntimeFactory();
+        }
+        List<TransportAdapterDescriptor> runtimeDescriptors = runtimeFactory.registrationDescriptors();
+        if (runtimeDescriptors != null && !runtimeDescriptors.isEmpty()) {
+            descriptors.addAll(runtimeDescriptors);
+        }
+        for (BootstrapCandidate candidate : bootstrapCandidates()) {
+            if (!candidate.registrationIncluded()) {
+                continue;
+            }
+            TransportAdapterDescriptor descriptor = candidate.bootstrap().descriptor();
+            if (descriptor != null) {
+                descriptors.add(descriptor);
+            }
+        }
+        validateUniqueDescriptorIds(descriptors);
+        return List.copyOf(descriptors);
+    }
+
+    private boolean hasRegistrationDescriptors() {
+        return !resolveRegistrationDescriptors().isEmpty();
+    }
+
+    private List<BootstrapCandidate> bootstrapCandidates() {
+        List<BootstrapCandidate> candidates = new ArrayList<>();
+        candidates.add(new BootstrapCandidate(
+                resolvePrimaryTransportAdapterBootstrap(),
+                primaryTransportAdapterBootstrap != null
+                        || bundledWebSocketAdapterConfig.isEnabled()
+                        || bundledWebSocketAdapterConfig.isServerEnabled(),
+                primaryTransportAdapterBootstrap != null || bundledWebSocketAdapterConfig.isEnabled()
         ));
-        TransportAdapterBootstrap<TransportOutboundMessage> primaryBootstrap = resolvePrimaryTransportAdapterBootstrap();
-        if (primaryTransportAdapterBootstrap != null) {
-            TransportAdapterDescriptor primaryDescriptor = primaryBootstrap.descriptor();
-            if (primaryDescriptor != null) {
-                descriptors.add(primaryDescriptor);
-            }
-        } else if (bundledWebSocketAdapterConfig.isEnabled()) {
-            TransportAdapterDescriptor webSocketDescriptor = primaryBootstrap.descriptor();
-            if (webSocketDescriptor != null) {
-                descriptors.add(webSocketDescriptor);
-            }
+        candidates.add(new BootstrapCandidate(
+                resolveBundledSocketTransportAdapterBootstrap(),
+                bundledSocketAdapterConfig.isEnabled() || bundledSocketAdapterConfig.isServerEnabled(),
+                bundledSocketAdapterConfig.isEnabled()
+        ));
+        for (WebSocketAdapterConfig config : supplementalWebSocketAdapterConfigs) {
+            candidates.add(new BootstrapCandidate(
+                    new WebSocketTransportAdapterBootstrap(config),
+                    config.isEnabled() || config.isServerEnabled(),
+                    config.isEnabled()
+            ));
         }
-        if (bundledSocketAdapterConfig.isEnabled()) {
-            TransportAdapterDescriptor socketDescriptor = resolveBundledSocketTransportAdapterBootstrap().descriptor();
-            if (socketDescriptor != null) {
-                descriptors.add(socketDescriptor);
-            }
+        for (SocketAdapterConfig config : supplementalSocketAdapterConfigs) {
+            candidates.add(new BootstrapCandidate(
+                    new SocketTransportAdapterBootstrap(config),
+                    config.isEnabled() || config.isServerEnabled(),
+                    config.isEnabled()
+            ));
         }
-        for (TransportAdapterBootstrap<TransportOutboundMessage> bootstrap : supplementalTransportAdapterBootstraps) {
+        for (TransportAdapterBootstrap bootstrap : supplementalTransportAdapterBootstraps) {
+            candidates.add(new BootstrapCandidate(bootstrap, true, true));
+        }
+        return List.copyOf(candidates);
+    }
+
+    private static boolean hasAnyEnabledWebSocketConfig(List<WebSocketAdapterConfig> configs) {
+        return configs.stream().anyMatch(config -> config.isEnabled() || config.isServerEnabled());
+    }
+
+    private static boolean hasAnyEnabledSocketConfig(List<SocketAdapterConfig> configs) {
+        return configs.stream().anyMatch(config -> config.isEnabled() || config.isServerEnabled());
+    }
+
+    private MessageQueue<String> resolveInputQueue() {
+        return inputQueue != null
+                ? inputQueue
+                : new InMemoryMessageQueue<>(DEFAULT_INPUT_QUEUE_NAME, String.class);
+    }
+
+    private MessageQueue<TransportOutboundMessage> resolveOutputQueue() {
+        return outputQueue != null
+                ? outputQueue
+                : new InMemoryMessageQueue<>(DEFAULT_OUTPUT_QUEUE_NAME, TransportOutboundMessage.class);
+    }
+
+    private static void validateUniqueAdapterIds(List<TransportAdapterBootstrap> bootstraps) {
+        List<TransportAdapterDescriptor> descriptors = new ArrayList<>();
+        for (TransportAdapterBootstrap bootstrap : bootstraps) {
             TransportAdapterDescriptor descriptor = bootstrap.descriptor();
             if (descriptor != null) {
                 descriptors.add(descriptor);
             }
         }
-        return List.copyOf(descriptors);
+        validateUniqueDescriptorIds(descriptors);
     }
 
-    private boolean usesDefaultWorkerTransportRuntimeFactory() {
-        return workerTransportRuntimeFactory == null
-                || workerTransportRuntimeFactory instanceof DefaultWorkerTransportRuntimeFactory;
+    private static void validateUniqueDescriptorIds(List<TransportAdapterDescriptor> descriptors) {
+        java.util.Set<String> adapterIds = new java.util.LinkedHashSet<>();
+        for (TransportAdapterDescriptor descriptor : descriptors) {
+            if (descriptor == null || descriptor.getAdapterId() == null || descriptor.getAdapterId().isBlank()) {
+                continue;
+            }
+            String normalized = descriptor.getAdapterId().trim().toLowerCase(java.util.Locale.ROOT);
+            if (!adapterIds.add(normalized)) {
+                throw new IllegalStateException("Duplicate transport adapterId configured: " + normalized);
+            }
+        }
+    }
+
+    private record BootstrapCandidate(TransportAdapterBootstrap bootstrap,
+                                      boolean runtimeIncluded,
+                                      boolean registrationIncluded) {
     }
 }
 

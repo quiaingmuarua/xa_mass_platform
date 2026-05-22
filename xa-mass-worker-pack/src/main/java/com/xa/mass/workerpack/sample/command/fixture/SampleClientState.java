@@ -30,6 +30,8 @@ public class SampleClientState {
     private long taskResponseDelayMillis;
     private DropMode taskResponseDropMode = DropMode.OFF;
     private String taskResultStatusOverride;
+    private SampleWorkerFaultProfile faultProfile = SampleWorkerFaultProfile.disabled();
+    private boolean faultResultDropOnceConsumed;
 
     public synchronized long getTaskResponseDelayMillis() {
         return taskResponseDelayMillis;
@@ -63,6 +65,20 @@ public class SampleClientState {
         return taskResultStatusOverride == null ? defaultStatus : taskResultStatusOverride;
     }
 
+    public synchronized SampleWorkerFaultProfile getFaultProfile() {
+        return faultProfile;
+    }
+
+    public synchronized void setFaultProfile(SampleWorkerFaultProfile faultProfile) {
+        this.faultProfile = faultProfile == null ? SampleWorkerFaultProfile.disabled() : faultProfile;
+        this.faultResultDropOnceConsumed = false;
+    }
+
+    public synchronized void resetFaultProfile() {
+        this.faultProfile = SampleWorkerFaultProfile.disabled();
+        this.faultResultDropOnceConsumed = false;
+    }
+
     public synchronized boolean shouldDropTaskResponse() {
         if (taskResponseDropMode == DropMode.OFF) {
             return false;
@@ -74,10 +90,28 @@ public class SampleClientState {
         return true;
     }
 
+    public synchronized boolean shouldDropFaultProfileResult(String workerId,
+                                                            String taskId,
+                                                            String messageId,
+                                                            int attempt) {
+        if (!faultProfile.enabled()) {
+            return false;
+        }
+        if (faultProfile.resultDropMode() == SampleWorkerFaultProfile.ResultDropMode.ONCE) {
+            if (faultResultDropOnceConsumed) {
+                return false;
+            }
+            faultResultDropOnceConsumed = true;
+            return true;
+        }
+        return faultProfile.shouldDropResult(workerId, taskId, messageId, attempt);
+    }
+
     public synchronized void reset() {
         this.taskResponseDelayMillis = 0L;
         this.taskResponseDropMode = DropMode.OFF;
         this.taskResultStatusOverride = null;
+        resetFaultProfile();
     }
 
     public synchronized Map<String, Object> snapshot() {
@@ -85,7 +119,8 @@ public class SampleClientState {
         snapshot.put("taskResponseDelayMillis", taskResponseDelayMillis);
         snapshot.put("taskResponseDropMode", taskResponseDropMode.name());
         snapshot.put("taskResultStatusOverride", taskResultStatusOverride);
+        snapshot.put("faultProfile", faultProfile.toMap());
+        snapshot.put("faultResultDropOnceConsumed", faultResultDropOnceConsumed);
         return snapshot;
     }
 }
-

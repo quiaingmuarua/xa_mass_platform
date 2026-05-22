@@ -1,31 +1,47 @@
 import {getAppConfig} from '@/app/config'
 import {
     auditTaskMock,
+    appendTaskItemsMock,
     blockTaskMock,
-    createTaskMock,
+    createTaskShellMock,
     getTaskDetailMock,
+    getTaskReviewMock,
+    invokeSyncTaskDebugMock,
     listTasksMock,
     pauseTaskMock,
     resumeTaskMock,
+    sealTaskMock,
     terminateTaskMock,
+    downloadTaskResultExportMock,
+    downloadTaskSeedExportMock,
 } from '@/api/tasks.mock'
 import {
     auditTaskReal,
+    appendTaskItemsReal,
     blockTaskReal,
-    createTaskReal,
+    createTaskShellReal,
+    downloadTaskResultExportReal,
+    downloadTaskSeedExportReal,
     getTaskDetailReal,
+    getTaskReviewReal,
+    invokeSyncTaskDebugReal,
     listTasksReal,
     pauseTaskReal,
     resumeTaskReal,
+    sealTaskReal,
     terminateTaskReal,
 } from '@/api/tasks.real'
 import type {
     TaskActionResult,
-    TaskCreateRequest,
-    TaskCreateResult,
+    TaskDebugSyncRequest,
+    TaskDebugSyncResult,
     TaskDetailResponse,
+    TaskItemBatchAppendRequest,
     TaskListQuery,
     TaskListResponse,
+    TaskReviewResponse,
+    TaskShellCreateRequest,
+    TaskShellCreateResult,
 } from '@/types/tasks'
 
 export async function listTasks(
@@ -48,14 +64,55 @@ export async function getTaskDetail(
     return getTaskDetailReal(taskId)
 }
 
-export async function createTask(
-    request: TaskCreateRequest,
-): Promise<TaskCreateResult> {
+export async function getTaskReview(
+    taskId: string,
+): Promise<TaskReviewResponse> {
     if (getAppConfig().useMockApi) {
-        return createTaskMock(request)
+        return getTaskReviewMock(taskId)
     }
 
-    return createTaskReal(request)
+    return getTaskReviewReal(taskId)
+}
+
+export async function createTaskShell(
+    request: TaskShellCreateRequest,
+): Promise<TaskShellCreateResult> {
+    if (getAppConfig().useMockApi) {
+        return createTaskShellMock(request)
+    }
+
+    return createTaskShellReal(request)
+}
+
+export async function appendTaskItems(
+    taskId: string,
+    request: TaskItemBatchAppendRequest,
+): Promise<{ added: number }> {
+    if (getAppConfig().useMockApi) {
+        return appendTaskItemsMock(taskId, request)
+    }
+
+    return appendTaskItemsReal(taskId, request)
+}
+
+export async function sealTask(
+    taskId: string,
+): Promise<TaskActionResult> {
+    if (getAppConfig().useMockApi) {
+        return sealTaskMock(taskId)
+    }
+
+    return sealTaskReal(taskId)
+}
+
+export async function invokeSyncTaskDebug(
+    request: TaskDebugSyncRequest,
+): Promise<TaskDebugSyncResult> {
+    if (getAppConfig().useMockApi) {
+        return invokeSyncTaskDebugMock(request)
+    }
+
+    return invokeSyncTaskDebugReal(request)
 }
 
 export async function auditTask(
@@ -100,4 +157,22 @@ export async function terminateTask(taskId: string): Promise<TaskActionResult> {
     }
 
     return terminateTaskReal(taskId)
+}
+
+export function downloadTaskSeedExport(taskId: string): void {
+    if (getAppConfig().useMockApi) {
+        downloadTaskSeedExportMock(taskId)
+        return
+    }
+
+    downloadTaskSeedExportReal(taskId)
+}
+
+export function downloadTaskResultExport(taskId: string): void {
+    if (getAppConfig().useMockApi) {
+        downloadTaskResultExportMock(taskId)
+        return
+    }
+
+    downloadTaskResultExportReal(taskId)
 }

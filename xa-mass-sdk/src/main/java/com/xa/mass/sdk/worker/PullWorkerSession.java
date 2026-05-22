@@ -1,11 +1,13 @@
 package com.xa.mass.sdk.worker;
 
 import com.xa.mass.transport.channel.TaskPullChannel;
+import com.xa.mass.transport.channel.TaskPullResult;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.model.TransportResultEnvelope;
+import com.xa.mass.transport.presence.WorkerPresenceStore;
 
 import java.util.List;
 import java.util.Map;
@@ -14,6 +16,10 @@ import java.util.Objects;
 /**
  * SDK-facing pull worker session for crawlers, queue consumers, and other
  * executors that receive work by polling instead of server push.
+ *
+ * <p>This session exposes {@link TaskDispatchItem} as the worker-facing pull
+ * view. Transport runtime still owns packet/envelope assembly and canonical
+ * addressing underneath.</p>
  */
 public class PullWorkerSession {
 
@@ -22,6 +28,7 @@ public class PullWorkerSession {
     private final TaskPullChannel taskPullChannel;
     private final TaskResultIngestChannel taskResultIngestChannel;
     private final WorkerSystemEventChannel systemEventChannel;
+    private final WorkerPresenceStore workerPresenceStore;
     private final String transportHint;
 
     public PullWorkerSession(String workerId,
@@ -29,6 +36,7 @@ public class PullWorkerSession {
                              TaskPullChannel taskPullChannel,
                              TaskResultIngestChannel taskResultIngestChannel,
                              WorkerSystemEventChannel systemEventChannel,
+                             WorkerPresenceStore workerPresenceStore,
                              String transportHint) {
         if (workerId == null || workerId.isBlank()) {
             throw new IllegalArgumentException("workerId must not be blank");
@@ -38,6 +46,7 @@ public class PullWorkerSession {
         this.taskPullChannel = Objects.requireNonNull(taskPullChannel, "taskPullChannel");
         this.taskResultIngestChannel = Objects.requireNonNull(taskResultIngestChannel, "taskResultIngestChannel");
         this.systemEventChannel = Objects.requireNonNull(systemEventChannel, "systemEventChannel");
+        this.workerPresenceStore = Objects.requireNonNull(workerPresenceStore, "workerPresenceStore");
         this.transportHint = transportHint;
     }
 
@@ -58,7 +67,9 @@ public class PullWorkerSession {
     }
 
     public void connect(String reason) {
-        systemEventChannel.publishWorkerOnline(workerId, normalizeReason(reason, "pull-session-connect"), workerId);
+        String normalizedReason = normalizeReason(reason, "pull-session-connect");
+        workerPresenceStore.markOnline(workerId, adapterId, workerId, workerId, normalizedReason);
+        systemEventChannel.publishWorkerOnline(workerId, normalizedReason, workerId);
     }
 
     public void disconnect() {
@@ -66,7 +77,9 @@ public class PullWorkerSession {
     }
 
     public void disconnect(String reason) {
-        systemEventChannel.publishWorkerOffline(workerId, normalizeReason(reason, "pull-session-disconnect"), workerId);
+        String normalizedReason = normalizeReason(reason, "pull-session-disconnect");
+        workerPresenceStore.markOffline(workerId, adapterId, workerId, workerId, normalizedReason);
+        systemEventChannel.publishWorkerOffline(workerId, normalizedReason, workerId);
     }
 
     public void heartbeat() {
@@ -74,7 +87,9 @@ public class PullWorkerSession {
     }
 
     public void heartbeat(String reason) {
-        systemEventChannel.publishWorkerHeartbeat(workerId, normalizeReason(reason, "pull-session-heartbeat"), workerId);
+        String normalizedReason = normalizeReason(reason, "pull-session-heartbeat");
+        workerPresenceStore.refreshHeartbeat(workerId, adapterId, workerId, workerId, normalizedReason);
+        systemEventChannel.publishWorkerHeartbeat(workerId, normalizedReason, workerId);
     }
 
     public List<TaskDispatchItem> poll(int maxMessages) {
@@ -82,7 +97,15 @@ public class PullWorkerSession {
     }
 
     public List<TaskDispatchItem> poll(int maxMessages, long timeoutMillis) {
-        return taskPullChannel.pollTaskMessages(workerId, maxMessages, timeoutMillis);
+        return pollResult(maxMessages, timeoutMillis).getDispatchViews();
+    }
+
+    public TaskPullResult pollResult(int maxMessages) {
+        return pollResult(maxMessages, 0L);
+    }
+
+    public TaskPullResult pollResult(int maxMessages, long timeoutMillis) {
+        return taskPullChannel.pollTaskMessagesResult(workerId, maxMessages, timeoutMillis);
     }
 
     public boolean submitResult(TaskDispatchItem dispatchItem, boolean success, String detail) {
@@ -112,10 +135,12 @@ public class PullWorkerSession {
                 errorCode,
                 output
         );
-        return taskResultIngestChannel.ingest(TransportResultEnvelope.fromDispatchItem(
+        return taskResultIngestChannel.ingest(new TransportResultEnvelope(
                 adapterId,
-                workerId,
-                dispatchItem,
+                routeKeyForResult(dispatchItem),
+                dispatchItem.attemptId(),
+                null,
+                null,
                 report
         ));
     }
@@ -134,9 +159,8 @@ public class PullWorkerSession {
                 errorCode,
                 output
         );
-        return taskResultIngestChannel.ingest(TransportResultEnvelope.fromReport(
+        return taskResultIngestChannel.ingest(TransportResultEnvelope.addressed(
                 adapterId,
-                workerId,
                 workerId,
                 report
         ));
@@ -145,4 +169,12 @@ public class PullWorkerSession {
     private String normalizeReason(String reason, String defaultReason) {
         return reason == null || reason.isBlank() ? defaultReason : reason.trim();
     }
+
+    private String routeKeyForResult(TaskDispatchItem dispatchItem) {
+        if (dispatchItem.routeKey() != null && !dispatchItem.routeKey().isBlank()) {
+            return dispatchItem.routeKey();
+        }
+        return dispatchItem.getWorkerId();
+    }
 }
+

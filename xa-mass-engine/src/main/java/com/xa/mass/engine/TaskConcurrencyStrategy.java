@@ -3,7 +3,7 @@ package com.xa.mass.engine;
 import java.util.function.Supplier;
 
 /**
- * Pluggable concurrency strategy for task-level and message-level locking, and
+ * Pluggable concurrency strategy for task-level and work-item-level locking, and
  * for coalesced task-progress reconciliation.
  *
  * <p>The default {@link LocalTaskConcurrencyCoordinator} implements this contract
@@ -17,7 +17,7 @@ interface TaskConcurrencyStrategy {
 
     <T> T withTaskReadLock(String taskId, Supplier<T> action);
 
-    <T> T withTaskMessageReadLock(String taskId, String messageId, Supplier<T> action);
+    <T> T withTaskWorkReadLock(String taskId, String messageId, Supplier<T> action);
 
     void reconcileTaskProgress(String taskId, Runnable reconcileAction);
 }

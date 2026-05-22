@@ -1,5 +1,10 @@
 package com.xa.mass.sdk.event;
 
+import com.xa.mass.base.event.DeliveryAcknowledgementMode;
+import com.xa.mass.base.event.EventConvergenceMode;
+import com.xa.mass.base.event.PriorityClass;
+import com.xa.mass.base.event.ResponseMode;
+import com.xa.mass.base.event.TargetScope;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.TaskMode;
 
@@ -31,6 +36,11 @@ public final class EventDefinition {
     private final boolean enabled;
     private final String defaultRoutingCode;
     private final List<String> projectCodes;
+    private final PriorityClass priorityClass;
+    private final ResponseMode responseMode;
+    private final DeliveryAcknowledgementMode deliveryAcknowledgementMode;
+    private final EventConvergenceMode convergenceMode;
+    private final TargetScope targetScope;
     private final EventHandler handler;
 
     private EventDefinition(Builder builder) {
@@ -42,6 +52,15 @@ public final class EventDefinition {
         this.enabled = builder.enabled;
         this.defaultRoutingCode = blankToNull(builder.defaultRoutingCode);
         this.projectCodes = immutableProjectCodes(builder.projectCodes);
+        this.priorityClass = builder.priorityClass != null ? builder.priorityClass : PriorityClass.STANDARD;
+        this.responseMode = builder.responseMode != null ? builder.responseMode : ResponseMode.FINAL_RESULT;
+        this.deliveryAcknowledgementMode = builder.deliveryAcknowledgementMode != null
+                ? builder.deliveryAcknowledgementMode
+                : DeliveryAcknowledgementMode.fromResponseMode(this.responseMode);
+        this.convergenceMode = builder.convergenceMode != null
+                ? builder.convergenceMode
+                : EventConvergenceMode.fromResponseMode(this.responseMode);
+        this.targetScope = builder.targetScope != null ? builder.targetScope : TargetScope.WORKER;
         this.handler = builder.handler;
     }
 
@@ -83,6 +102,26 @@ public final class EventDefinition {
 
     public List<String> getProjectCodes() {
         return projectCodes;
+    }
+
+    public PriorityClass getPriorityClass() {
+        return priorityClass;
+    }
+
+    public ResponseMode getResponseMode() {
+        return responseMode;
+    }
+
+    public DeliveryAcknowledgementMode getDeliveryAcknowledgementMode() {
+        return deliveryAcknowledgementMode;
+    }
+
+    public EventConvergenceMode getConvergenceMode() {
+        return convergenceMode;
+    }
+
+    public TargetScope getTargetScope() {
+        return targetScope;
     }
 
     public EventHandler getHandler() {
@@ -146,6 +185,11 @@ public final class EventDefinition {
         private boolean enabled = true;
         private String defaultRoutingCode;
         private List<String> projectCodes = Collections.emptyList();
+        private PriorityClass priorityClass = PriorityClass.STANDARD;
+        private ResponseMode responseMode = ResponseMode.FINAL_RESULT;
+        private DeliveryAcknowledgementMode deliveryAcknowledgementMode;
+        private EventConvergenceMode convergenceMode;
+        private TargetScope targetScope = TargetScope.WORKER;
         private EventHandler handler;
 
         private Builder() {
@@ -188,6 +232,31 @@ public final class EventDefinition {
 
         public Builder projectCodes(List<String> projectCodes) {
             this.projectCodes = projectCodes != null ? projectCodes : Collections.emptyList();
+            return this;
+        }
+
+        public Builder priorityClass(PriorityClass priorityClass) {
+            this.priorityClass = priorityClass != null ? priorityClass : PriorityClass.STANDARD;
+            return this;
+        }
+
+        public Builder responseMode(ResponseMode responseMode) {
+            this.responseMode = responseMode != null ? responseMode : ResponseMode.FINAL_RESULT;
+            return this;
+        }
+
+        public Builder deliveryAcknowledgementMode(DeliveryAcknowledgementMode deliveryAcknowledgementMode) {
+            this.deliveryAcknowledgementMode = deliveryAcknowledgementMode;
+            return this;
+        }
+
+        public Builder convergenceMode(EventConvergenceMode convergenceMode) {
+            this.convergenceMode = convergenceMode;
+            return this;
+        }
+
+        public Builder targetScope(TargetScope targetScope) {
+            this.targetScope = targetScope != null ? targetScope : TargetScope.WORKER;
             return this;
         }
 

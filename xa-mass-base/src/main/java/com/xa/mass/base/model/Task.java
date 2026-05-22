@@ -1,13 +1,11 @@
 package com.xa.mass.base.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskHoldReason;
-import com.xa.mass.base.enums.task.TaskIngestStatus;
 import com.xa.mass.base.enums.task.TaskIntakeStatus;
-import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
-import com.xa.mass.base.enums.task.TaskWorkloadClass;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -25,7 +23,9 @@ import java.util.Objects;
  */
 public class Task {
     private String tid;
+    private String tenantId;
     private String taskName;
+    private TaskContract contract;
     private ProjectRef project;
     private TaskStatus status;
     private int taskTargetNumber;
@@ -36,9 +36,7 @@ public class Task {
     private int peakAssignedWorkerCount;
     private Map<String, Object> sharedConfig = new HashMap<>();
     private TaskHoldReason holdReason;
-    private TaskSourceType sourceType;
-    private TaskWorkloadClass workloadClass;
-    private TaskIngestStatus ingestStatus;
+    private TaskExecutionSpec executionSpec;
     private String sourceRef;
     private TaskIntakeStatus intakeStatus;
     private UserRef user;
@@ -46,17 +44,13 @@ public class Task {
     private LocalDateTime updateTime;
     private LocalDateTime startTime;
     private LocalDateTime endTime;
-    private int batchSize;
     private TaskTerminalReason terminalReason;
-    private int maxRuntimeSeconds; // 0 = unlimited; enforced by LeaseExpireWatchdog
 
     public Task() {
+        this.contract = TaskContract.BATCH;
         this.status = TaskStatus.NEW;
-        this.sourceType = TaskSourceType.BATCH;
-        this.workloadClass = TaskWorkloadClass.BULK;
-        this.ingestStatus = TaskIngestStatus.SEALED;
+        this.executionSpec = new TaskExecutionSpec();
         this.intakeStatus = TaskIntakeStatus.SEALED;
-        this.batchSize = 1;
         this.createTime = LocalDateTime.now();
         this.updateTime = LocalDateTime.now();
     }
@@ -83,12 +77,29 @@ public class Task {
         this.tid = tid;
     }
 
+    public String getTenantId() {
+        return tenantId;
+    }
+
+    public void setTenantId(String tenantId) {
+        this.tenantId = tenantId;
+    }
+
     public String getTaskName() {
         return taskName;
     }
 
     public void setTaskName(String taskName) {
         this.taskName = taskName;
+    }
+
+    public TaskContract getContract() {
+        return contractOrDefault();
+    }
+
+    public void setContract(TaskContract contract) {
+        this.contract = contract == null ? TaskContract.BATCH : contract;
+        this.updateTime = LocalDateTime.now();
     }
 
     public String getProject() {
@@ -189,28 +200,6 @@ public class Task {
         this.sharedConfig = sharedConfig == null ? new HashMap<>() : new HashMap<>(sharedConfig);
     }
 
-    /**
-     * Compatibility accessor for older API/demo payloads.
-     *
-     * <p>Runtime lifecycle truth lives in {@link #getIntakeStatus()}.
-     * Keep this accessor only so existing JSON/UI consumers can continue to
-     * read a boolean projection during the transition period.
-     */
-    public boolean isOpenEnded() {
-        return intakeStatus == TaskIntakeStatus.OPEN;
-    }
-
-    /**
-     * Compatibility setter for create/update binding.
-     *
-     * <p>Do not treat this as an independent persisted truth. It only maps the
-     * boolean compatibility flag onto the real lifecycle field
-     * {@link #intakeStatus}.
-     */
-    public void setOpenEnded(boolean openEnded) {
-        setIntakeStatus(openEnded ? TaskIntakeStatus.OPEN : TaskIntakeStatus.SEALED);
-    }
-
     public TaskHoldReason getHoldReason() {
         return holdReason;
     }
@@ -220,30 +209,12 @@ public class Task {
         this.updateTime = LocalDateTime.now();
     }
 
-    public TaskSourceType getSourceType() {
-        return sourceType;
+    public TaskExecutionSpec getExecutionSpec() {
+        return executionSpecOrDefault();
     }
 
-    public void setSourceType(TaskSourceType sourceType) {
-        this.sourceType = sourceType == null ? TaskSourceType.BATCH : sourceType;
-        this.updateTime = LocalDateTime.now();
-    }
-
-    public TaskWorkloadClass getWorkloadClass() {
-        return workloadClass;
-    }
-
-    public void setWorkloadClass(TaskWorkloadClass workloadClass) {
-        this.workloadClass = workloadClass == null ? TaskWorkloadClass.BULK : workloadClass;
-        this.updateTime = LocalDateTime.now();
-    }
-
-    public TaskIngestStatus getIngestStatus() {
-        return ingestStatus;
-    }
-
-    public void setIngestStatus(TaskIngestStatus ingestStatus) {
-        this.ingestStatus = ingestStatus == null ? TaskIngestStatus.SEALED : ingestStatus;
+    public void setExecutionSpec(TaskExecutionSpec executionSpec) {
+        this.executionSpec = TaskExecutionSpec.normalized(executionSpec);
         this.updateTime = LocalDateTime.now();
     }
 
@@ -260,9 +231,25 @@ public class Task {
         return intakeStatus;
     }
 
+    public boolean isIntakeOpen() {
+        return intakeStatus == TaskIntakeStatus.OPEN;
+    }
+
+    public boolean isIntakeSealed() {
+        return !isIntakeOpen();
+    }
+
     public void setIntakeStatus(TaskIntakeStatus intakeStatus) {
         this.intakeStatus = intakeStatus == null ? TaskIntakeStatus.SEALED : intakeStatus;
         this.updateTime = LocalDateTime.now();
+    }
+
+    public boolean sealIntake() {
+        if (isIntakeSealed()) {
+            return false;
+        }
+        setIntakeStatus(TaskIntakeStatus.SEALED);
+        return true;
     }
 
     public UserRef getUser() {
@@ -305,51 +292,12 @@ public class Task {
         this.endTime = endTime;
     }
 
-    public int getBatchSize() {
-        return batchSize;
-    }
-
-    public void setBatchSize(int batchSize) {
-        this.batchSize = Math.max(batchSize, 1);
-        this.updateTime = LocalDateTime.now();
-    }
-
     public TaskTerminalReason getTerminalReason() {
         return terminalReason;
     }
 
     public void setTerminalReason(TaskTerminalReason terminalReason) {
         this.terminalReason = terminalReason;
-    }
-
-    public int getMaxRuntimeSeconds() {
-        return maxRuntimeSeconds;
-    }
-
-    public void setMaxRuntimeSeconds(int maxRuntimeSeconds) {
-        this.maxRuntimeSeconds = maxRuntimeSeconds;
-    }
-
-    @JsonIgnore
-    public String getDisplayStatusLabel() {
-        if (status == null) {
-            return "-";
-        }
-        if (!status.isFinal()) {
-            return status.getDescription();
-        }
-        if (terminalReason == null) {
-            return status.getDescription();
-        }
-        return switch (terminalReason) {
-            case MANUAL_CANCELLED -> "Cancelled";
-            case ALL_MESSAGES_SUCCEEDED -> "Completed";
-            case ALL_MESSAGES_FAILED -> "Completed (Failed)";
-            case MIXED_MESSAGE_RESULTS -> "Completed (Mixed)";
-            case MAX_RUNTIME_REACHED -> "Stopped (Max Runtime)";
-            case SUCCESS_RATE_REACHED -> "Completed (Target Reached)";
-            case RETRY_BUDGET_EXHAUSTED -> "Stopped (Retry Exhausted)";
-        };
     }
 
     public boolean isSchedulable() {
@@ -410,6 +358,20 @@ public class Task {
         this.taskNonSuccessNumber = this.taskEligibleNumber - this.taskSuccessNumber;
     }
 
+    private TaskContract contractOrDefault() {
+        if (this.contract == null) {
+            this.contract = TaskContract.BATCH;
+        }
+        return this.contract;
+    }
+
+    private TaskExecutionSpec executionSpecOrDefault() {
+        if (this.executionSpec == null) {
+            this.executionSpec = new TaskExecutionSpec();
+        }
+        return this.executionSpec;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -427,12 +389,13 @@ public class Task {
     public String toString() {
         return "Task{" +
                 "tid='" + tid + '\'' +
+                ", tenantId='" + tenantId + '\'' +
                 ", taskName='" + taskName + '\'' +
+                ", contract=" + contract +
                 ", project='" + project + '\'' +
                 ", status=" + status +
-                ", sourceType=" + sourceType +
-                ", workloadClass=" + workloadClass +
-                ", ingestStatus=" + ingestStatus +
+                ", executionSpec=" + executionSpec +
+                ", intakeStatus=" + intakeStatus +
                 ", taskTargetNumber=" + taskTargetNumber +
                 ", taskEligibleNumber=" + taskEligibleNumber +
                 ", taskSuccessNumber=" + taskSuccessNumber +
@@ -440,7 +403,6 @@ public class Task {
                 ", minRequiredWorkerCount=" + minRequiredWorkerCount +
                 ", peakAssignedWorkerCount=" + peakAssignedWorkerCount +
                 ", progress=" + String.format("%.1f%%", getProgressPercentage()) +
-                ", batchSize=" + batchSize +
                 ", terminalReason=" + terminalReason +
                 '}';
     }

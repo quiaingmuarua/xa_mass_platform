@@ -3,22 +3,20 @@ export interface TaskStarterDraft {
     eventCode?: string
     taskName: string
     batchSize: number
-    defaultMsgMaxRetryCount: number
-    openEnded: boolean
+    keepIntakeOpen: boolean
     maxRuntimeSeconds: number
     sharedConfig: Record<string, unknown>
-    inputs: Array<Record<string, unknown>>
+    items: Array<Record<string, unknown>>
     guidance: string[]
 }
 
 interface TaskStarterOverride {
     taskName?: string
     batchSize?: number
-    defaultMsgMaxRetryCount?: number
-    openEnded?: boolean
+    keepIntakeOpen?: boolean
     maxRuntimeSeconds?: number
     sharedConfig?: Record<string, unknown>
-    inputs?: Array<Record<string, unknown>>
+    items?: Array<Record<string, unknown>>
     guidance?: string[]
 }
 
@@ -31,14 +29,13 @@ const taskStarterDefinitions: Record<string, TaskStarterDefinition> = {
         projectCode: 'demoApp',
         taskName: 'Run demo dispatch task',
         batchSize: 1,
-        defaultMsgMaxRetryCount: 3,
-        openEnded: false,
+        keepIntakeOpen: false,
         maxRuntimeSeconds: 0,
         sharedConfig: {
             textContent: 'hello from control console',
             objective: 'verify dispatch path',
         },
-        inputs: [
+        items: [
             { target: 'demo-target-001' },
             { target: 'demo-target-002' },
         ],
@@ -53,7 +50,7 @@ const taskStarterDefinitions: Record<string, TaskStarterDefinition> = {
                     textContent: 'hello from demo.dispatch',
                     objective: 'run generic dispatch payload',
                 },
-                inputs: [
+                items: [
                     { target: 'demo-target-001', recipient: 'alpha' },
                     { target: 'demo-target-002', recipient: 'beta' },
                 ],
@@ -64,7 +61,7 @@ const taskStarterDefinitions: Record<string, TaskStarterDefinition> = {
                     textContent: 'hello from demo.dispatch.gb',
                     objective: 'run gb demo dispatch payload',
                 },
-                inputs: [
+                items: [
                     {
                         target: 'demo-target-001',
                         recipient: 'gamma',
@@ -78,14 +75,13 @@ const taskStarterDefinitions: Record<string, TaskStarterDefinition> = {
         projectCode: 'testApp',
         taskName: 'Run smoke validation',
         batchSize: 1,
-        defaultMsgMaxRetryCount: 1,
-        openEnded: false,
+        keepIntakeOpen: false,
         maxRuntimeSeconds: 60,
         sharedConfig: {
             textContent: 'smoke',
             objective: 'local validation',
         },
-        inputs: [
+        items: [
             { target: 'smoke-target-001' },
             { target: 'smoke-target-002' },
         ],
@@ -95,7 +91,7 @@ const taskStarterDefinitions: Record<string, TaskStarterDefinition> = {
         eventOverrides: {
             'test.smoke': {
                 taskName: 'Run smoke event',
-                inputs: [{ target: 'smoke-target-001' }],
+                items: [{ target: 'smoke-target-001' }],
             },
         },
     },
@@ -103,13 +99,12 @@ const taskStarterDefinitions: Record<string, TaskStarterDefinition> = {
         projectCode: 'otherApp',
         taskName: 'Run other app dispatch task',
         batchSize: 1,
-        defaultMsgMaxRetryCount: 3,
-        openEnded: false,
+        keepIntakeOpen: false,
         maxRuntimeSeconds: 0,
         sharedConfig: {
             objective: 'validate secondary project flow',
         },
-        inputs: [{ target: 'other-target-001' }],
+        items: [{ target: 'other-target-001' }],
         guidance: [
             'Keep this starter generic unless the backend defines a stronger project contract.',
         ],
@@ -137,17 +132,15 @@ export function resolveTaskStarterDraft(
         eventCode,
         taskName: override?.taskName ?? definition.taskName,
         batchSize: override?.batchSize ?? definition.batchSize,
-        defaultMsgMaxRetryCount:
-            override?.defaultMsgMaxRetryCount ??
-            definition.defaultMsgMaxRetryCount,
-        openEnded: override?.openEnded ?? definition.openEnded,
+        keepIntakeOpen:
+            override?.keepIntakeOpen ?? definition.keepIntakeOpen,
         maxRuntimeSeconds:
             override?.maxRuntimeSeconds ?? definition.maxRuntimeSeconds,
         sharedConfig: {
             ...definition.sharedConfig,
             ...(override?.sharedConfig ?? {}),
         },
-        inputs: cloneInputs(override?.inputs ?? definition.inputs),
+        items: cloneItems(override?.items ?? definition.items),
         guidance: [
             ...definition.guidance,
             ...(override?.guidance ?? []),
@@ -155,10 +148,10 @@ export function resolveTaskStarterDraft(
     }
 }
 
-export function stringifyStarterInputs(
-    inputs: Array<Record<string, unknown>>,
+export function stringifyStarterItems(
+    items: Array<Record<string, unknown>>,
 ): string {
-    return inputs.map((item) => JSON.stringify(item)).join('\n')
+    return items.map((item) => JSON.stringify(item)).join('\n')
 }
 
 export function stringifyStarterSharedConfig(
@@ -174,19 +167,18 @@ function buildFallbackStarter(projectCode: string): TaskStarterDefinition {
         projectCode: resolvedProjectCode,
         taskName: `New ${resolvedProjectCode} task`,
         batchSize: 1,
-        defaultMsgMaxRetryCount: 3,
-        openEnded: false,
+        keepIntakeOpen: false,
         maxRuntimeSeconds: 0,
         sharedConfig: {},
-        inputs: [{ target: 'alpha' }, { target: 'beta' }],
+        items: [{ target: 'alpha' }, { target: 'beta' }],
         guidance: [
-            'This is a generic fallback starter. Replace sharedConfig and inputs with the real project contract before creating the task.',
+            'This is a generic fallback starter. Replace sharedConfig and items with the real project contract before creating the task.',
         ],
     }
 }
 
-function cloneInputs(
-    inputs: Array<Record<string, unknown>>,
+function cloneItems(
+    items: Array<Record<string, unknown>>,
 ): Array<Record<string, unknown>> {
-    return inputs.map((item) => ({ ...item }))
+    return items.map((item) => ({ ...item }))
 }

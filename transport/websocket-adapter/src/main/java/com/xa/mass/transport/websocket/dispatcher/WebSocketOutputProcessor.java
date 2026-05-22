@@ -1,6 +1,5 @@
 package com.xa.mass.transport.websocket.dispatcher;
 
-import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,15 +12,19 @@ import java.util.Objects;
 public final class WebSocketOutputProcessor {
     private static final Logger logger = LoggerFactory.getLogger(WebSocketOutputProcessor.class);
 
-    private final WebSocketDispatchRuntimeContext context;
+    private final WebSocketDispatcherContext context;
 
-    public WebSocketOutputProcessor(WebSocketDispatchRuntimeContext context) {
+    public WebSocketOutputProcessor(WebSocketDispatcherContext context) {
         this.context = Objects.requireNonNull(context, "context");
     }
 
     public boolean process(TransportOutboundMessage delivery) {
         try {
-            boolean sent = context.getEndpointRegistry().sendToRoute(delivery.getRouteKey(), delivery.getRawJson());
+            boolean sent = context.getEndpointRegistry().sendToAdapterRoute(
+                    context.getAdapterId(),
+                    delivery.getRouteKey(),
+                    delivery.getRawJson()
+            );
             if (sent) {
                 return true;
             }

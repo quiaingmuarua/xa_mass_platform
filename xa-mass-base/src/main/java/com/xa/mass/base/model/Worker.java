@@ -7,9 +7,11 @@ import java.time.LocalDateTime;
 import java.util.*;
 
 /**
- * Worker 实体
- * 仅负责维护自身物理/网络/版本等属性
- * 是否可调度由 Task/WorkerContext 筛选决定
+ * Worker execution identity and worker-local runtime metadata.
+ *
+ * <p>WorkerGroup owns scheduling capability truth. Worker-level supported
+ * project/event fields are compatibility read hints only and must not become a
+ * second capability source.</p>
  */
 public class Worker {
     private String workerId;
@@ -19,8 +21,10 @@ public class Worker {
     private List<String> supportedProjects;
     private List<String> supportedEventCodes;
     private String workerGroupId;
+    private String adapterNodeId;
     private String adapterId;
     private String onlineStrategy;
+    private int maxConcurrentWork = 1;
     private Map<String, String> attributes = Collections.emptyMap();
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
@@ -79,10 +83,7 @@ public class Worker {
     }
 
     /**
-     * Coarse worker grouping/filter hint only.
-     *
-     * <p>Capability truth for task-backed and direct-runtime events now lives
-     * on {@link #getSupportedEventCodes()}.
+     * Compatibility read hint only. Capability truth lives on WorkerGroup.
      */
     public void setSupportedProjects(List<String> supportedProjects) {
         if (supportedProjects == null || supportedProjects.isEmpty()) {
@@ -97,7 +98,7 @@ public class Worker {
     }
 
     /**
-     * Canonical runtime capability declarations keyed by global event code.
+     * Compatibility read hint only. Capability truth lives on WorkerGroup.
      */
     public void setSupportedEventCodes(List<String> supportedEventCodes) {
         if (supportedEventCodes == null || supportedEventCodes.isEmpty()) {
@@ -115,6 +116,14 @@ public class Worker {
         this.workerGroupId = workerGroupId;
     }
 
+    public String getAdapterNodeId() {
+        return adapterNodeId;
+    }
+
+    public void setAdapterNodeId(String adapterNodeId) {
+        this.adapterNodeId = adapterNodeId;
+    }
+
     public String getOnlineStrategy() {
         return onlineStrategy;
     }
@@ -129,6 +138,14 @@ public class Worker {
 
     public void setOnlineStrategy(String onlineStrategy) {
         this.onlineStrategy = onlineStrategy;
+    }
+
+    public int getMaxConcurrentWork() {
+        return Math.max(1, maxConcurrentWork);
+    }
+
+    public void setMaxConcurrentWork(int maxConcurrentWork) {
+        this.maxConcurrentWork = Math.max(1, maxConcurrentWork);
     }
 
     public Map<String, String> getAttributes() {
@@ -218,8 +235,10 @@ public class Worker {
                 ", supportedProjects=" + supportedProjects +
                 ", supportedEventCodes=" + supportedEventCodes +
                 ", workerGroupId='" + workerGroupId + '\'' +
+                ", adapterNodeId='" + adapterNodeId + '\'' +
                 ", adapterId='" + adapterId + '\'' +
                 ", onlineStrategy='" + onlineStrategy + '\'' +
+                ", maxConcurrentWork=" + getMaxConcurrentWork() +
                 ", attributes=" + attributes +
                 ", createTime=" + createTime +
                 ", updateTime=" + updateTime +

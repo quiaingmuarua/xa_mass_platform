@@ -1,7 +1,7 @@
 package com.xa.mass.api.internal;
 
 import com.xa.mass.api.model.ApiResponse;
-import com.xa.mass.sdk.TransportOperations;
+import com.xa.mass.sdk.RuntimeDiagnosticsOperations;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -12,25 +12,25 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/session")
+@RequestMapping("/api/v1/runtime")
 @Tag(name = "Session Status")
 public class SessionController {
 
-    private final TransportOperations transportOperations;
+    private final RuntimeDiagnosticsOperations runtimeDiagnostics;
 
-    public SessionController(TransportOperations transportOperations) {
-        this.transportOperations = transportOperations;
+    public SessionController(RuntimeDiagnosticsOperations runtimeDiagnostics) {
+        this.runtimeDiagnostics = runtimeDiagnostics;
     }
 
-    @GetMapping("/list")
+    @GetMapping("/sessions")
     @Operation(summary = "List all active worker sessions")
     public ApiResponse<List<Map<String, Object>>> listSessions() {
-        return ApiResponse.success(transportOperations.listSessions());
+        return ApiResponse.success(runtimeDiagnostics.listSessions());
     }
 
-    @GetMapping("/stats")
+    @GetMapping("/sessions:stats")
     @Operation(summary = "Get aggregate session statistics")
     public ApiResponse<Map<String, Object>> sessionStats() {
-        return ApiResponse.success(transportOperations.getSessionStats());
+        return ApiResponse.success(runtimeDiagnostics.getSessionStats());
     }
 }

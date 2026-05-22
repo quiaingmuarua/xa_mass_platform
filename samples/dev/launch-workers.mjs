@@ -35,9 +35,6 @@ async function main() {
   console.log(`[sample-launcher] registering and starting ${workerSpecs.length} sample workers`);
   for (const spec of workerSpecs) {
     await registerWorker(spec);
-    if (spec.context) {
-      await registerWorkerContext(spec);
-    }
     startWorker(spec);
   }
   for (const spec of workerSpecs) {
@@ -87,26 +84,54 @@ function startWorker(spec) {
 }
 
 async function registerWorker(spec) {
-  const response = await post("/worker-api/workers/register", spec.workerKey, {
-    workerId: spec.workerId,
+  const adapterNodeId = adapterNodeIdFor(spec);
+  const adapterType = spec.adapterId ?? "websocket";
+
+  const groupResponse = await post("/worker-api/v1/worker-groups", spec.workerKey, {
+    groupId: spec.workerGroupId,
+    eventBindings: spec.eventBindings,
+  });
+  console.log(`[sample-launcher] declared worker group ${spec.workerGroupId}: ${JSON.stringify(groupResponse.data)}`);
+
+  const adapterNodeResponse = await post("/worker-api/v1/adapter-nodes", spec.workerKey, {
+    adapterNodeId,
+    adapterType,
+    endpointId: adapterNodeId,
+    attributes: {
+      launcher: "samples/dev/launch-workers.mjs",
+      transport: adapterType,
+    },
+  });
+  console.log(`[sample-launcher] registered adapter node ${adapterNodeId}: ${JSON.stringify(adapterNodeResponse.data)}`);
+
+  const bindingResponse = await post("/worker-api/v1/node-group-bindings", spec.workerKey, {
+    adapterNodeId,
     workerGroupId: spec.workerGroupId,
-    adapterId: spec.adapterId ?? "websocket",
+    attributes: {
+      transport: adapterType,
+    },
+  });
+  console.log(`[sample-launcher] bound adapter node ${adapterNodeId} to group ${spec.workerGroupId}: ${JSON.stringify(bindingResponse.data)}`);
+
+  const response = await post("/worker-api/v1/workers", spec.workerKey, {
+    workerId: spec.workerId,
+    adapterNodeId,
+    workerGroupId: spec.workerGroupId,
+    adapterId: adapterType,
     transportHint: spec.transportHint ?? "realtime",
     attributes: spec.attributes,
-    eventBindings: spec.eventBindings,
   });
   console.log(`[sample-launcher] registered worker ${spec.workerId}: ${JSON.stringify(response.data)}`);
 }
 
-async function registerWorkerContext(spec) {
-  const response = await post("/worker-api/worker-contexts/register", spec.workerKey, {
-    workerContextId: spec.context.workerContextId,
-    workerId: spec.workerId,
-    project: spec.context.project,
-    routingTags: spec.context.routingTags,
-    attributes: spec.context.attributes,
-  });
-  console.log(`[sample-launcher] registered worker context ${spec.context.workerContextId}: ${JSON.stringify(response.data)}`);
+function adapterNodeIdFor(spec) {
+  if (typeof spec.adapterNodeId === "string" && spec.adapterNodeId.trim().length > 0) {
+    return spec.adapterNodeId.trim();
+  }
+  const adapterId = typeof spec.adapterId === "string" && spec.adapterId.trim().length > 0
+    ? spec.adapterId.trim()
+    : "websocket";
+  return `sample-${adapterId}-node`;
 }
 
 async function seedTasks(taskSpecs) {
@@ -119,14 +144,41 @@ async function seedTasks(taskSpecs) {
       MASS_BASE_URL: baseUrl,
       MASS_WS_URL: wsUrl,
     });
-    const createResponse = await post("/status/api/tasks", taskSubmitterKey, requestBody);
+    const shellRequest = {
+      userId: requestBody.userId,
+      project: requestBody.project,
+      sharedConfig: requestBody.sharedConfig,
+      executionSpec: requestBody.executionSpec ?? normalizeExecutionSpec(requestBody),
+      sourceType: requestBody.sourceType,
+      sourceRef: requestBody.sourceRef,
+    };
+    const createResponse = await post("/api/v1/tasks", taskSubmitterKey, {
+      ...shellRequest,
+    });
     const taskId = String(createResponse.data?.taskId ?? "");
-    console.log(`[sample-launcher] created seed task ${requestBody.taskName}: ${taskId}`);
+    console.log(
+      `[sample-launcher] created seed task project=${requestBody.project} event=${requestBody.eventCode ?? ""}: ${taskId}`,
+    );
+    if (Array.isArray(requestBody.items) && requestBody.items.length > 0) {
+      await post(`/api/v1/tasks/${encodeURIComponent(taskId)}/items`, taskSubmitterKey, {
+        eventCode: requestBody.eventCode,
+        items: requestBody.items,
+      });
+    }
+    if (!requestBody.keepIntakeOpen) {
+      await executeTaskCommand(taskId, "SEAL");
+    }
     if (taskSpec.approve && taskId) {
-      await post(`/status/api/tasks/${encodeURIComponent(taskId)}/audit?approved=true&comment=sample-launcher`, taskSubmitterKey, null);
-      console.log(`[sample-launcher] approved seed task ${requestBody.taskName}: ${taskId}`);
+      await executeTaskCommand(taskId, "APPROVE");
+      console.log(
+        `[sample-launcher] approved seed task project=${requestBody.project} event=${requestBody.eventCode ?? ""}: ${taskId}`,
+      );
     }
   }
+}
+
+async function executeTaskCommand(taskId, command) {
+  await post(`/api/v1/tasks/${encodeURIComponent(taskId)}/commands`, taskSubmitterKey, { command });
 }
 
 async function post(path, apiKey, body, headerName = "X-Mass-Api-Key") {
@@ -147,12 +199,12 @@ async function post(path, apiKey, body, headerName = "X-Mass-Api-Key") {
 
 async function waitForWorkerOnline(workerId) {
   for (let attempt = 0; attempt < 40; attempt += 1) {
-    const response = await fetch(`${baseUrl}/status/api/workers`);
+    const response = await fetch(`${baseUrl}/api/v1/catalog/worker-capabilities`);
     const json = await response.json().catch(() => ({}));
-    const items = json?.data?.items;
+    const items = json?.data;
     if (Array.isArray(items)) {
       const worker = items.find((item) => item?.workerId === workerId);
-      if (worker?.status === "ONLINE") {
+      if (worker?.online === true || worker?.transportOnline === true || worker?.status === "ONLINE") {
         console.log(`[sample-launcher] worker online ${workerId}`);
         return;
       }
@@ -184,6 +236,20 @@ function replacePlaceholders(value, replacements) {
     );
   }
   return value;
+}
+
+function normalizeExecutionSpec(requestBody) {
+  const spec = {};
+  if (Number.isInteger(requestBody.batchSize) && requestBody.batchSize > 0) {
+    spec.batchSize = requestBody.batchSize;
+  }
+  if (typeof requestBody.workloadClass === "string" && requestBody.workloadClass.length > 0) {
+    spec.workloadClass = requestBody.workloadClass;
+  }
+  if (Number.isInteger(requestBody.maxRuntimeSeconds) && requestBody.maxRuntimeSeconds >= 0) {
+    spec.maxRuntimeSeconds = requestBody.maxRuntimeSeconds;
+  }
+  return Object.keys(spec).length === 0 ? undefined : spec;
 }
 
 function forwardLogs(workerId, chunk) {

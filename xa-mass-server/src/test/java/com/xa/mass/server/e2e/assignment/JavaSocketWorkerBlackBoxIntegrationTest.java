@@ -2,7 +2,7 @@ package com.xa.mass.server.e2e.assignment;
 
 import com.xa.mass.api.internal.SdkCredentialAuthSupport;
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
+import com.xa.mass.server.e2e.support.ProjectionSampleE2eTest;
 import com.xa.mass.server.e2e.support.ExternalJavaWorkerProcess;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
@@ -25,6 +25,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(
         classes = XaMassServerApplication.class,
@@ -32,7 +33,6 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
         properties = {
                 "sample.client.auto-start=false",
                 "mass.mock.data.workers=mock/test_mock_workers_empty.json",
-                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts_empty.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json",
                 "mass.socket.enabled=true"
@@ -40,13 +40,15 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class JavaSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
+class JavaSocketWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
     private static final String SOCKET_WORKER_ID = "java-worker-socket-001";
     private static final String SOCKET_WORKER_KEY = "java-worker-socket-key";
+    private static final String SOCKET_ADAPTER_NODE_ID = "java-socket-node";
     private static final String WEBSOCKET_WORKER_ID = "java-worker-websocket-002";
     private static final String WEBSOCKET_WORKER_KEY = "java-worker-websocket-key";
+    private static final String WEBSOCKET_ADAPTER_NODE_ID = "java-websocket-coexist-node";
 
     @Autowired
     private MassSdkApplication app;
@@ -61,43 +63,40 @@ class JavaSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
     void externalJavaSocketWorkerCompletesTaskThroughExplicitSocketAdapterRegistration() throws Exception {
         registerExternalWorkerSubmitter(SOCKET_WORKER_ID, SOCKET_WORKER_KEY, List.of("crawler.fetch-page"));
 
-        HttpHeaders workerHeaders = sdkCredentialHeaders(SOCKET_WORKER_KEY);
-        Map<String, Object> registerResponse = exchange("/worker-api/workers/register", HttpMethod.POST, Map.of(
+        HttpHeaders workerHeaders = credentialHeaders(SOCKET_WORKER_KEY);
+        declareExternalWorkerGroup("java-socket-crawler", "crawlerApp", "crawler.fetch-page", workerHeaders);
+        bindExternalAdapterNode(SOCKET_ADAPTER_NODE_ID, "java-socket-crawler", workerHeaders);
+        Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", SOCKET_WORKER_ID,
+                "adapterNodeId", SOCKET_ADAPTER_NODE_ID,
+                "workerGroupId", "java-socket-crawler",
                 "adapterId", "socket",
                 "transportHint", "realtime",
-                "attributes", Map.of("lang", "java", "runtime", "java-socket-worker"),
-                "eventBindings", List.of(Map.of(
-                        "eventCode", "crawler.fetch-page",
-                        "projectCodes", List.of("crawlerApp")
-                ))
+                "attributes", Map.of("lang", "java", "runtime", "java-socket-worker")
         ), workerHeaders);
         assertApiOk(registerResponse);
         assertEquals("socket", responseData(registerResponse).get("adapterId"));
         assertEquals("realtime", responseData(registerResponse).get("transportHint"));
-        assertFalse(app.isWorkerOnline(SOCKET_WORKER_ID), "control-plane registration must not mark socket worker online");
+        assertFalse(app.isWorkerOnline(SOCKET_WORKER_ID), "control-plane registration must not create socket transport presence");
 
-        Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, Map.of(
+        Map<String, Object> createResponse = exchange("/api/v1/tasks", HttpMethod.POST, Map.of(
                 "project", "crawlerApp",
-                "taskName", "cross-language-java-socket-worker",
                 "userId", "crawler-agent",
-                "eventCode", "crawler.fetch-page",
-                "payloadType", "JSON",
-                "inputs", List.of(Map.of("url", "https://example.test/socket-java")),
-                "batchSize", 1
+                "sourceRef", "cross-language-java-socket-worker",
+                "executionSpec", Map.of("batchSize", 1)
         ));
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
+        assertApiOk(appendTaskItems(taskId, "crawler.fetch-page", List.of(Map.of("url", "https://example.test/socket-java"))));
+        assertApiOk(sealTask(taskId));
 
-        assertApiOk(exchange(
-                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=java-socket-black-box",
-                HttpMethod.POST,
-                null
-        ));
+        assertApiOk(approveTask(taskId));
 
-        TaskSnapshot readyWhileOffline = waitForTaskSnapshot(taskId, "READY", 10, 200L);
+        RuntimeTaskSnapshot readyWhileOffline = waitForRuntimeTaskSnapshot(taskId, "READY", 10, 200L);
         assertEquals("READY", readyWhileOffline.task().get("status"));
-        assertEquals(null, readyWhileOffline.messages().get(0).get("latestAttemptWorkerId"));
+        assertEquals(1, readyWhileOffline.stats().readyCount());
+        assertEquals(0, readyWhileOffline.stats().inflightCount());
+        assertTrue(readyWhileOffline.activeLeases().isEmpty());
 
         try (ExternalJavaWorkerProcess worker = ExternalJavaWorkerProcess.startSocketSample(
                 SOCKET_WORKER_ID,
@@ -108,20 +107,23 @@ class JavaSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
                         20,
                         100L
                 ))) {
-            waitForWorkerStatus(
+            waitForWorkerPresenceOnline(
                     SOCKET_WORKER_ID,
-                    "ONLINE",
                     20,
                     250L,
                     () -> worker.assertAlive("External Java worker exited before reaching status ONLINE"),
                     worker::capturedOutput
             );
-            TaskSnapshot terminal = waitForTerminalTask(taskId);
+            RuntimeTaskSnapshot terminal = waitForTerminalRuntimeTask(taskId);
             assertEquals("TERMINAL", terminal.task().get("status"));
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));
-            assertEquals(SOCKET_WORKER_ID, terminal.messages().get(0).get("latestAttemptWorkerId"));
+            assertEquals(1, terminal.stats().successCount());
+            assertEquals(1, terminal.stats().finalCount());
+            assertTrue(terminal.activeLeases().isEmpty());
 
-            Object outputObject = terminal.messages().get(0).get("output");
+            TaskSnapshot terminalView = fetchTaskSnapshot(taskId);
+            assertEquals(SOCKET_WORKER_ID, terminalView.messages().get(0).get("latestAttemptWorkerId"));
+            Object outputObject = terminalView.messages().get(0).get("output");
             assertInstanceOf(Map.class, outputObject);
             @SuppressWarnings("unchecked")
             Map<String, Object> output = (Map<String, Object>) outputObject;
@@ -141,28 +143,30 @@ class JavaSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
     void websocketAndSocketJavaSamplesCanCoexistWithoutCrossRouting() throws Exception {
         registerExternalWorkerSubmitter(WEBSOCKET_WORKER_ID, WEBSOCKET_WORKER_KEY, List.of("demo.dispatch"));
         registerExternalWorkerSubmitter(SOCKET_WORKER_ID, SOCKET_WORKER_KEY, List.of("crawler.fetch-page"));
+        HttpHeaders websocketHeaders = credentialHeaders(WEBSOCKET_WORKER_KEY);
+        HttpHeaders socketHeaders = credentialHeaders(SOCKET_WORKER_KEY);
+        declareExternalWorkerGroup("java-websocket-demo", "demoApp", "demo.dispatch", websocketHeaders);
+        declareExternalWorkerGroup("java-socket-crawler", "crawlerApp", "crawler.fetch-page", socketHeaders);
+        bindExternalAdapterNode(WEBSOCKET_ADAPTER_NODE_ID, "java-websocket-demo", websocketHeaders);
+        bindExternalAdapterNode(SOCKET_ADAPTER_NODE_ID, "java-socket-crawler", socketHeaders);
 
-        assertApiOk(exchange("/worker-api/workers/register", HttpMethod.POST, Map.of(
+        assertApiOk(exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", WEBSOCKET_WORKER_ID,
+                "adapterNodeId", WEBSOCKET_ADAPTER_NODE_ID,
+                "workerGroupId", "java-websocket-demo",
                 "adapterId", "websocket",
                 "transportHint", "realtime",
-                "attributes", Map.of("lang", "java", "runtime", "java-websocket-worker"),
-                "eventBindings", List.of(Map.of(
-                        "eventCode", "demo.dispatch",
-                        "projectCodes", List.of("demoApp")
-                ))
-        ), sdkCredentialHeaders(WEBSOCKET_WORKER_KEY)));
+                "attributes", Map.of("lang", "java", "runtime", "java-websocket-worker")
+        ), websocketHeaders));
 
-        assertApiOk(exchange("/worker-api/workers/register", HttpMethod.POST, Map.of(
+        assertApiOk(exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", SOCKET_WORKER_ID,
+                "adapterNodeId", SOCKET_ADAPTER_NODE_ID,
+                "workerGroupId", "java-socket-crawler",
                 "adapterId", "socket",
                 "transportHint", "realtime",
-                "attributes", Map.of("lang", "java", "runtime", "java-socket-worker"),
-                "eventBindings", List.of(Map.of(
-                        "eventCode", "crawler.fetch-page",
-                        "projectCodes", List.of("crawlerApp")
-                ))
-        ), sdkCredentialHeaders(SOCKET_WORKER_KEY)));
+                "attributes", Map.of("lang", "java", "runtime", "java-socket-worker")
+        ), socketHeaders));
 
         try (ExternalJavaWorkerProcess websocketWorker = ExternalJavaWorkerProcess.startWebSocketSample(
                 WEBSOCKET_WORKER_ID,
@@ -176,17 +180,15 @@ class JavaSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
                              20,
                              100L
                      ))) {
-            waitForWorkerStatus(
+            waitForWorkerPresenceOnline(
                     WEBSOCKET_WORKER_ID,
-                    "ONLINE",
                     20,
                     250L,
                     () -> websocketWorker.assertAlive("External Java worker exited before reaching status ONLINE"),
                     websocketWorker::capturedOutput
             );
-            waitForWorkerStatus(
+            waitForWorkerPresenceOnline(
                     SOCKET_WORKER_ID,
-                    "ONLINE",
                     20,
                     250L,
                     () -> socketWorker.assertAlive("External Java worker exited before reaching status ONLINE"),
@@ -196,8 +198,17 @@ class JavaSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
             String websocketTaskId = createAndApproveTask("demoApp", "demo.dispatch", Map.of("target", "socket-coexist-java-ws"));
             String socketTaskId = createAndApproveTask("crawlerApp", "crawler.fetch-page", Map.of("url", "https://example.test/socket-coexist-java"));
 
-            TaskSnapshot websocketTerminal = waitForTerminalTask(websocketTaskId);
-            TaskSnapshot socketTerminal = waitForTerminalTask(socketTaskId);
+            RuntimeTaskSnapshot websocketRuntimeTerminal = waitForTerminalRuntimeTask(websocketTaskId);
+            RuntimeTaskSnapshot socketRuntimeTerminal = waitForTerminalRuntimeTask(socketTaskId);
+            assertEquals("ALL_MESSAGES_SUCCEEDED", websocketRuntimeTerminal.task().get("terminalReason"));
+            assertEquals("ALL_MESSAGES_SUCCEEDED", socketRuntimeTerminal.task().get("terminalReason"));
+            assertEquals(1, websocketRuntimeTerminal.stats().successCount());
+            assertEquals(1, socketRuntimeTerminal.stats().successCount());
+            assertTrue(websocketRuntimeTerminal.activeLeases().isEmpty());
+            assertTrue(socketRuntimeTerminal.activeLeases().isEmpty());
+
+            TaskSnapshot websocketTerminal = fetchTaskSnapshot(websocketTaskId);
+            TaskSnapshot socketTerminal = fetchTaskSnapshot(socketTaskId);
 
             assertEquals(WEBSOCKET_WORKER_ID, websocketTerminal.messages().get(0).get("latestAttemptWorkerId"));
             assertEquals(SOCKET_WORKER_ID, socketTerminal.messages().get(0).get("latestAttemptWorkerId"));
@@ -228,24 +239,21 @@ class JavaSocketWorkerBlackBoxIntegrationTest extends AbstractSampleE2eTest {
     }
 
     private String createAndApproveTask(String project, String eventCode, Map<String, Object> input) {
-        Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, Map.of(
+        Map<String, Object> createResponse = exchange("/api/v1/tasks", HttpMethod.POST, Map.of(
                 "project", project,
-                "taskName", "task-" + eventCode,
                 "userId", "integration-agent",
-                "eventCode", eventCode,
-                "payloadType", "JSON",
-                "inputs", List.of(input),
-                "batchSize", 1
+                "sourceRef", "task-" + eventCode,
+                "executionSpec", Map.of("batchSize", 1)
         ));
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
-        assertApiOk(exchange("/status/api/tasks/" + taskId + "/audit?approved=true&comment=adapter-coexist",
-                HttpMethod.POST,
-                null));
+        assertApiOk(appendTaskItems(taskId, eventCode, List.of(input)));
+        assertApiOk(sealTask(taskId));
+        assertApiOk(approveTask(taskId));
         return taskId;
     }
 
-    private HttpHeaders sdkCredentialHeaders(String credential) {
+    private HttpHeaders credentialHeaders(String credential) {
         HttpHeaders headers = new HttpHeaders();
         headers.add(SdkCredentialAuthSupport.API_KEY_HEADER, credential);
         return headers;

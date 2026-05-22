@@ -3,14 +3,11 @@ package com.xa.mass.storage.jdbc;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
-import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.UserRef;
-import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.storage.api.TaskDetailStore;
+import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
+import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.storage.rule.RuleType;
 
@@ -23,9 +20,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -43,62 +38,42 @@ class JdbcStoragePostgresTest {
             Task task = new Task("task-1", "demo", "demoApp", 1, Map.of("k", "v"), UserRef.of("u1"));
             task.setStatus(TaskStatus.READY);
             task.setStartTime(LocalDateTime.now().minusSeconds(20));
-            task.setMaxRuntimeSeconds(1);
+            task.getExecutionSpec().setMaxRuntimeSeconds(1);
 
             storage.saveTask(task);
 
-            TaskMsg msg = new TaskMsg("msg-1", "task-1", Map.of("target", "x"));
-            storage.addTaskMessage("task-1", msg);
-
-            TaskMsgAttempt attempt = new TaskMsgAttempt("attempt-1", "task-1", "msg-1", 1);
-            storage.addTaskMessageAttempt("task-1", "msg-1", attempt);
+            storage.upsertTaskMessageProjection("task-1", new TaskDetailStore.TaskMessageProjection(
+                    "msg-1", "task-1", Map.of("target", "x"), null,
+                    TaskMessageProjectionStatus.INIT,
+                    null, null, null, null, null,
+                    0, 0, null, null, null, null,
+                    null, null, null
+            ));
+            storage.upsertTaskMessageAttemptProjection("task-1", "msg-1", new TaskDetailStore.TaskMessageAttemptProjection(
+                    "attempt-1", "task-1", "msg-1", 1,
+                    null, null,
+                    TaskMessageAttemptProjectionStatus.DISPATCHED,
+                    null, null, null, null
+            ));
 
             assertThat(storage.getTask("task-1")).isPresent();
             assertThat(storage.getTasksByStatus(TaskStatus.READY)).hasSize(1);
             assertThat(storage.getTasksByProject("demoApp")).hasSize(1);
             assertThat(storage.getSchedulableTasks()).hasSize(1);
             assertThat(storage.pollExpiredMaxRuntimeTasks(LocalDateTime.now(), 10)).hasSize(1);
-            assertThat(storage.countTaskMessages("task-1")).isEqualTo(1);
-            assertThat(storage.getTaskMessages("task-1", 1)).hasSize(1);
-            assertThat(storage.getNonFinalTaskMessages("task-1")).hasSize(1);
-            assertThat(storage.getLatestActiveTaskMessageAttempt("task-1", "msg-1")).isPresent();
+            assertThat(storage.getTaskMessageStats("task-1").getTotal()).isEqualTo(1);
+            assertThat(storage.getTaskMessageProjections("task-1", 1)).hasSize(1);
+            assertThat(storage.getTaskMessageProjections("task-1", 1))
+                    .allMatch(projection -> projection.status() == null || !projection.status().isFinal());
+            assertThat(storage.getLatestActiveTaskMessageAttemptProjection("task-1", "msg-1")).isPresent();
 
             JdbcTaskStorage restartedStorage = new JdbcTaskStorage(fixture.dataSource(), new PostgresJdbcDialect());
             assertThat(restartedStorage.getTask("task-1")).isPresent();
-            assertThat(restartedStorage.countTaskMessages("task-1")).isZero();
-            assertThat(restartedStorage.getTaskMessages("task-1")).isEmpty();
-            assertThat(restartedStorage.getTaskMessageAttempts("task-1", "msg-1")).isEmpty();
+            assertThat(restartedStorage.getTaskMessageStats("task-1").getTotal()).isZero();
+            assertThat(restartedStorage.getTaskMessageProjections("task-1", 1)).isEmpty();
+            assertThat(restartedStorage.getTaskMessageAttemptProjections("task-1", "msg-1")).isEmpty();
 
             assertThat(storage.deleteTask("task-1")).isTrue();
-        }
-    }
-
-    @Test
-    void workerStoragePersistsWorkersContextsAndLocks() {
-        try (StorageFixture fixture = postgresFixture("worker_storage")) {
-            JdbcWorkerStorage storage = new JdbcWorkerStorage(fixture.dataSource(), new PostgresJdbcDialect());
-            Worker worker = new Worker("worker-1", "1.0", List.of("demoApp"));
-            worker.setSupportedEventCodes(List.of("event.demo"));
-            worker.setWorkerGroupId("group-a");
-            worker.setStatus(WorkerStatus.ONLINE);
-            storage.addWorker(worker);
-
-            WorkerContext context = new WorkerContext("ctx-1", "worker-1", Set.of("tag-a"));
-            context.setProject("demoApp");
-            context.setStatus(WorkerContextStatus.IDLE);
-            storage.addWorkerContext(context);
-
-            assertThat(storage.getWorker("worker-1")).isPresent();
-            assertThat(storage.getWorkersByGroupId("group-a")).hasSize(1);
-            assertThat(storage.getWorkersBySupportedProject("demoApp")).hasSize(1);
-            assertThat(storage.getWorkersBySupportedEventCode("event.demo")).hasSize(1);
-            assertThat(storage.getWorkerContexts("worker-1")).hasSize(1);
-            assertThat(storage.getWorkerContextById("ctx-1")).isPresent();
-            assertThat(storage.tryLockWorker("worker-1")).isTrue();
-            assertThat(storage.tryLockWorker("worker-1")).isFalse();
-            assertThat(storage.isLocked("worker-1")).isTrue();
-            storage.unlockWorker("worker-1");
-            assertThat(storage.isLocked("worker-1")).isFalse();
         }
     }
 
