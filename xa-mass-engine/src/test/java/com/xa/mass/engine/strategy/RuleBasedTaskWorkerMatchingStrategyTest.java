@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import static com.xa.mass.engine.testutil.WorkerRegistrationTestSupport.registerWorker;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class RuleBasedTaskWorkerMatchingStrategyTest {
@@ -53,8 +54,8 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
 
         Worker matchingWorker = worker("worker-us", "pool-east", Map.of("routingTags", "shared,us", "country", "us"));
         Worker nonMatchingWorker = worker("worker-gb", "pool-west", Map.of("routingTags", "shared,gb", "country", "gb"));
-        workerManager.addWorker(matchingWorker);
-        workerManager.addWorker(nonMatchingWorker);
+        registerWorker(workerManager, matchingWorker);
+        registerWorker(workerManager, nonMatchingWorker);
 
         List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(task, 2);
 
@@ -91,8 +92,8 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
 
         Worker acceptedWorker = worker("worker-us", "pool-east", Map.of("routingTags", "shared,us", "country", "us"));
         Worker rejectedWorker = worker("worker-gb", "pool-west", Map.of("routingTags", "shared,gb", "country", "gb"));
-        workerManager.addWorker(acceptedWorker);
-        workerManager.addWorker(rejectedWorker);
+        registerWorker(workerManager, acceptedWorker);
+        registerWorker(workerManager, rejectedWorker);
 
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
             List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(task, 2);
@@ -133,7 +134,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         task.setStatus(TaskStatus.READY);
 
         Worker w = worker("worker-locked", "pool-east");
-        workerManager.addWorker(w);
+        registerWorker(workerManager, w);
         assertTrue(workerManager.tryLockWorker(w.getWorkerId()));
 
         List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(task, 1);
@@ -176,19 +177,19 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
 
         Worker offlineWorker = worker("worker-offline", "pool-a", Map.of("routingTags", "shared,us", "country", "us"));
         offlineWorker.setStatus(WorkerStatus.OFFLINE);
-        workerManager.addWorker(offlineWorker);
+        registerWorker(workerManager, offlineWorker);
 
         Worker unsupportedProjectWorker = worker("worker-unsupported", "pool-b",
                 Map.of("routingTags", "shared,us", "country", "us"));
         unsupportedProjectWorker.setSupportedProjects(List.of("otherApp"));
-        workerManager.addWorker(unsupportedProjectWorker);
+        registerWorker(workerManager, unsupportedProjectWorker);
 
         Worker routingMismatchWorker = worker("worker-routing-mismatch", "pool-c",
                 Map.of("routingTags", "shared,gb", "country", "gb"));
-        workerManager.addWorker(routingMismatchWorker);
+        registerWorker(workerManager, routingMismatchWorker);
 
         Worker acceptedWorker = worker("worker-us", "pool-d", Map.of("routingTags", "shared,us", "country", "us"));
-        workerManager.addWorker(acceptedWorker);
+        registerWorker(workerManager, acceptedWorker);
 
         List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(task, 2);
 
@@ -244,10 +245,10 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         task.setStatus(TaskStatus.READY);
 
         Worker staleWorker = worker("worker-stale", "pool-a");
-        workerManager.addWorker(staleWorker);
+        registerWorker(workerManager, staleWorker);
 
         Worker acceptedWorker = worker("worker-online", "pool-b");
-        workerManager.addWorker(acceptedWorker);
+        registerWorker(workerManager, acceptedWorker);
 
         List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(task, 2);
 
@@ -284,7 +285,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         task.setStatus(TaskStatus.READY);
 
         Worker worker = worker("worker-stateless", "pool-east");
-        workerManager.addWorker(worker);
+        registerWorker(workerManager, worker);
 
         List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(task, 1);
 
@@ -314,7 +315,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         task.setStatus(TaskStatus.READY);
 
         Worker worker = worker("worker-stateless", "pool-east");
-        workerManager.addWorker(worker);
+        registerWorker(workerManager, worker);
 
         List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(task, 2);
 
@@ -349,12 +350,12 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         Worker eventCapableWorker = worker("worker-event-capable", "pool-east");
         eventCapableWorker.setSupportedProjects(List.of("demoApp"));
         eventCapableWorker.setSupportedEventCodes(List.of("demo.dispatch"));
-        workerManager.addWorker(eventCapableWorker);
+        registerWorker(workerManager, eventCapableWorker);
 
         Worker projectOnlyWorker = worker("worker-project-only", "pool-west");
         projectOnlyWorker.setSupportedProjects(List.of("demoApp"));
         projectOnlyWorker.setSupportedEventCodes(List.of("crawler.fetch-page"));
-        workerManager.addWorker(projectOnlyWorker);
+        registerWorker(workerManager, projectOnlyWorker);
 
         List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(task, 2);
 
@@ -393,7 +394,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         worker.setWorkerId("worker-group-first");
         worker.setWorkerGroupId("group-first");
         worker.setStatus(WorkerStatus.ONLINE);
-        workerManager.addWorker(worker);
+        registerWorker(workerManager, worker);
 
         List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(task, 1);
 
@@ -426,8 +427,8 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
 
         Worker workerA = worker("worker-a", "pool-a");
         Worker workerB = worker("worker-b", "pool-b");
-        workerManager.addWorker(workerA);
-        workerManager.addWorker(workerB);
+        registerWorker(workerManager, workerA);
+        registerWorker(workerManager, workerB);
 
         List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(task, 2);
 
@@ -466,11 +467,11 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
 
         Worker matchingWorker = worker("worker-us-gold", "pool-a");
         matchingWorker.setAttributes(Map.of("region", "us", "tier", "gold"));
-        workerManager.addWorker(matchingWorker);
+        registerWorker(workerManager, matchingWorker);
 
         Worker nonMatchingWorker = worker("worker-us-silver", "pool-b");
         nonMatchingWorker.setAttributes(Map.of("region", "us", "tier", "silver"));
-        workerManager.addWorker(nonMatchingWorker);
+        registerWorker(workerManager, nonMatchingWorker);
 
         List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(task, 2);
 
@@ -517,8 +518,8 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
 
         Worker highLoadWorker = worker("worker-high-load", "pool-a");
         Worker lowLoadWorker = worker("worker-low-load", "pool-b");
-        workerManager.addWorker(highLoadWorker);
-        workerManager.addWorker(lowLoadWorker);
+        registerWorker(workerManager, highLoadWorker);
+        registerWorker(workerManager, lowLoadWorker);
 
         List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(task, 1);
 
@@ -555,7 +556,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         task.setProject("demoApp");
         task.setStatus(TaskStatus.READY);
 
-        workerManager.addWorker(worker("worker-at-capacity", "pool-a"));
+        registerWorker(workerManager, worker("worker-at-capacity", "pool-a"));
 
         List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(task, 1);
 
@@ -595,7 +596,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         task.setProject("demoApp");
         task.setStatus(TaskStatus.READY);
 
-        workerManager.addWorker(worker("worker-conflict", "pool-a"));
+        registerWorker(workerManager, worker("worker-conflict", "pool-a"));
 
         List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(task, 1);
 
@@ -626,7 +627,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
 
         Worker worker = worker("worker-shared", "pool-a");
         worker.setMaxConcurrentWork(2);
-        workerManager.addWorker(worker);
+        registerWorker(workerManager, worker);
 
         Task first = backgroundTask("task-background-1");
         Task second = backgroundTask("task-background-2");

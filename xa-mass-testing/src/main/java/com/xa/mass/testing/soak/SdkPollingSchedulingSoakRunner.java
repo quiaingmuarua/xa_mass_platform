@@ -11,10 +11,8 @@ import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.event.EventDefinition;
-import com.xa.mass.sdk.model.AdapterNodeRegistration;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
-import com.xa.mass.sdk.model.NodeGroupBindingRegistration;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.TaskStateSnapshot;
@@ -24,6 +22,9 @@ import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.testing.support.TestingPaths;
+import com.xa.mass.testing.support.WorkerRegistrationSpineSupport;
+import com.xa.mass.testing.workerfault.WorkerFaultReportMetadata;
+import com.xa.mass.testing.workerfault.WorkerFaultScenarioIndex;
 import com.xa.mass.trace.operator.TraceStatsRequest;
 import com.xa.mass.trace.operator.TraceStatsResponse;
 import com.xa.mass.trace.operator.TraceAnalyzeRequest;
@@ -259,16 +260,10 @@ public final class SdkPollingSchedulingSoakRunner {
         }
 
         private void registerWorkers(MassSdkApplication app) {
-            app.registerAdapterNode(AdapterNodeRegistration.builder()
-                    .adapterNodeId(ADAPTER_ID + "-node")
-                    .adapterType(WorkerTransportHints.POLLING)
-                    .endpointId(ADAPTER_ID + "-node")
-                    .build());
+            String adapterNodeId = ADAPTER_ID + "-node";
+            WorkerRegistrationSpineSupport.registerAdapterNode(app, adapterNodeId, WorkerTransportHints.POLLING);
             for (int groupIndex = 0; groupIndex < config.groupCount(); groupIndex++) {
-                app.bindNodeGroup(NodeGroupBindingRegistration.builder()
-                        .adapterNodeId(ADAPTER_ID + "-node")
-                        .workerGroupId(groupId(groupIndex))
-                        .build());
+                WorkerRegistrationSpineSupport.bindNodeGroup(app, adapterNodeId, groupId(groupIndex));
             }
             for (int i = 0; i < config.workerCount(); i++) {
                 int groupIndex = i % config.groupCount();
@@ -276,7 +271,7 @@ public final class SdkPollingSchedulingSoakRunner {
                 String workerId = workerId(i);
                 app.registerWorker(WorkerRegistration.builder()
                         .workerId(workerId)
-                        .adapterNodeId(ADAPTER_ID + "-node")
+                        .adapterNodeId(adapterNodeId)
                         .workerGroupId(groupId)
                         .transportHint(WorkerTransportHints.POLLING)
                         .adapterId(ADAPTER_ID)
@@ -596,6 +591,7 @@ public final class SdkPollingSchedulingSoakRunner {
                     workerLifecycle.toMap(),
                     deliveryDiagnostics,
                     traceProof,
+                    soakMatrixProfile(),
                     List.copyOf(failures)
             );
             Map<String, Object> report = new LinkedHashMap<>();
@@ -623,6 +619,16 @@ public final class SdkPollingSchedulingSoakRunner {
             report.put("activeLeasesAtEnd", workStats.activeLeasesAtEnd());
             report.put("proof", proof.toMap());
             return report;
+        }
+
+        private Map<String, Object> soakMatrixProfile() {
+            Map<String, Object> profile = new LinkedHashMap<>(WorkerFaultReportMetadata.topLevel(
+                    WorkerFaultScenarioIndex.Scenario.POLLING_SCHEDULING_SOAK));
+            profile.put("failureProfile", config.failureEveryNth() > 0 ? "every-" + config.failureEveryNth() : "none");
+            profile.put("lateWorkerProfile", config.requireLateWorkerWork() ? "required" : "optional");
+            profile.put("processingDelayMillis", config.processingDelayMillis());
+            profile.put("processingJitterMillis", config.processingJitterMillis());
+            return Map.copyOf(profile);
         }
 
         private SoakInvariantReport verifyInvariants(long submittedTasks,

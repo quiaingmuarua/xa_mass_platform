@@ -84,20 +84,54 @@ function startWorker(spec) {
 }
 
 async function registerWorker(spec) {
+  const adapterNodeId = adapterNodeIdFor(spec);
+  const adapterType = spec.adapterId ?? "websocket";
+
   const groupResponse = await post("/worker-api/v1/worker-groups", spec.workerKey, {
     groupId: spec.workerGroupId,
     eventBindings: spec.eventBindings,
   });
   console.log(`[sample-launcher] declared worker group ${spec.workerGroupId}: ${JSON.stringify(groupResponse.data)}`);
 
+  const adapterNodeResponse = await post("/worker-api/v1/adapter-nodes", spec.workerKey, {
+    adapterNodeId,
+    adapterType,
+    endpointId: adapterNodeId,
+    attributes: {
+      launcher: "samples/dev/launch-workers.mjs",
+      transport: adapterType,
+    },
+  });
+  console.log(`[sample-launcher] registered adapter node ${adapterNodeId}: ${JSON.stringify(adapterNodeResponse.data)}`);
+
+  const bindingResponse = await post("/worker-api/v1/node-group-bindings", spec.workerKey, {
+    adapterNodeId,
+    workerGroupId: spec.workerGroupId,
+    attributes: {
+      transport: adapterType,
+    },
+  });
+  console.log(`[sample-launcher] bound adapter node ${adapterNodeId} to group ${spec.workerGroupId}: ${JSON.stringify(bindingResponse.data)}`);
+
   const response = await post("/worker-api/v1/workers", spec.workerKey, {
     workerId: spec.workerId,
+    adapterNodeId,
     workerGroupId: spec.workerGroupId,
-    adapterId: spec.adapterId ?? "websocket",
+    adapterId: adapterType,
     transportHint: spec.transportHint ?? "realtime",
     attributes: spec.attributes,
   });
   console.log(`[sample-launcher] registered worker ${spec.workerId}: ${JSON.stringify(response.data)}`);
+}
+
+function adapterNodeIdFor(spec) {
+  if (typeof spec.adapterNodeId === "string" && spec.adapterNodeId.trim().length > 0) {
+    return spec.adapterNodeId.trim();
+  }
+  const adapterId = typeof spec.adapterId === "string" && spec.adapterId.trim().length > 0
+    ? spec.adapterId.trim()
+    : "websocket";
+  return `sample-${adapterId}-node`;
 }
 
 async function seedTasks(taskSpecs) {

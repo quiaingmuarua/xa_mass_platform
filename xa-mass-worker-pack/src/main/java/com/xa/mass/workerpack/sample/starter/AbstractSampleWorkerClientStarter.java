@@ -5,6 +5,7 @@ import com.xa.mass.workerpack.sample.client.SampleWorkerClient;
 import com.xa.mass.workerpack.sample.command.fixture.SampleClientStateRegistry;
 import com.xa.mass.workerpack.sample.command.runtime.SampleCommandRuntime;
 import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.sdk.WorkerControlOperations;
 import com.xa.mass.sdk.model.WorkerSnapshot;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -66,6 +67,9 @@ public abstract class AbstractSampleWorkerClientStarter {
             SampleCommandRuntime.registerService(ClientSessionManager.class, clientSessionManager);
             if (sampleClientStateRegistry != null) {
                 SampleCommandRuntime.registerService(SampleClientStateRegistry.class, sampleClientStateRegistry);
+            }
+            if (runtimeApplication != null) {
+                SampleCommandRuntime.registerService(WorkerControlOperations.class, runtimeApplication);
             }
 
             String baseUri = resolveBaseUri();

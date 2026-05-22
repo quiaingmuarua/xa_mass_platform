@@ -221,12 +221,12 @@ Approved routing attributes:
 
 - first slice approval is an explicit allow-list owned by
   `WorkerRoutingPolicy`
-- default first-slice allow-list is empty, so all workers route to `default`
-- later slices may add allow-listed keys such as `business`, `tenant`,
-  `region`, or `pool`
+- default first-slice allow-list is `business`, `tenant`, `region`, and
+  `pool`; tasks without approved route attributes route to `default`
+- later slices may change or externalize the allow-list, but that change must
+  update routing tests and diagnostics in the same change
 - `WorkerRoutingPolicy` must not read arbitrary worker or binding attributes
   as routing inputs
-- adding an approved key must update tests and diagnostics in the same change
 
 Rules:
 
@@ -242,22 +242,24 @@ Rules:
 
 ### WorkerRouteBucketOwner Boundary
 
-`WorkerRouteBucketOwner` owns route bucket state. It is not a listener bus.
+`WorkerRouteBucketOwner` owns route bucket state. It is not a listener bus, and
+the current first slice indexes relation candidates only.
 
 Owns:
 
 - `availableWorkersByGroupRouteBucket`
 - `workerRouteBucketKeysById`
 - bounded candidate acquisition
-- stale candidate marking and bounded lazy cleanup
+- stale candidate marking and bounded lazy cleanup when a later slice adds
+  explicit stale-entry mutation
 
 Callers:
 
 - `WorkerManager` calls it after owner mutations such as worker add/update,
-  node-group binding enable/disable/drain, adapter-node availability changes,
-  and capability snapshot changes
-- dispatch/admission calls it to acquire a bounded candidate batch and to mark
-  stale candidates after admission rejection
+  node-group relation changes, approved routing-attribute changes, and
+  capability snapshot changes
+- dispatch/admission calls it to acquire a bounded relation-candidate batch;
+  reachability, dispatch gate, load, and lock rejection remain Stage-2 truth
 
 Must not own:
 
@@ -276,6 +278,8 @@ First slice wiring:
 - `WorkerRoutingPolicy` is called by `WorkerRouteBucketOwner` when bucket
   membership is recomputed, and by candidate acquisition when resolving task
   route buckets
+- first-slice bucket membership is rebuilt from `WorkerRegistrySnapshot`; it
+  must not become a second owner for reachability, dispatch gates, or load
 - no broad event bus is introduced
 
 ## Runtime Metadata And Index Shape
@@ -570,16 +574,17 @@ Scope:
 
 - introduce an engine-owned candidate acquisition seam that accepts
   `groupId`, `routeBucketKey`, and a max candidate count
-- maintain `availableWorkersByGroupRouteBucket` from worker relation,
-  reachability, dispatch gate, and load/resource owner outcomes
+- maintain `availableWorkersByGroupRouteBucket` from group/worker relation and
+  approved route attributes; reachability, dispatch gate, load, and lock
+  admission remain Stage-2 owner truth in the first slice
 - keep `workerIdsByGroupId` and node/group relation indexes for ownership and
   diagnostics, not direct scheduling enumeration
 - `routeBucketKey` is resolved by `WorkerRoutingPolicy` from
   task/project/event and approved routing attributes
-- node-group drain/offline gates must remove or hide an entire node/group
-  route partition without per-worker fan-out
-- introduce `WorkerRouteBucketOwner` as the owner of bounded bucket mutation,
-  acquisition, stale candidate marking, and lazy cleanup
+- node-group drain/offline gates remain Stage-2 dispatch availability in the
+  first slice; later route-bucket pruning must not require per-worker fan-out
+- introduce `WorkerRouteBucketOwner` as the owner of bounded bucket acquisition
+  and later bounded stale-entry mutation
 - wire first-slice bucket updates through explicit `WorkerManager` calls after
   owner mutations, not through a generic event bus
 
@@ -591,10 +596,10 @@ Acceptance:
 - targeted tasks use singleton direct lookup and still pass group capability,
   node-group gate, reachability, dispatch gate, load, and lock admission
 - candidate acquisition returns a bounded batch for each group/route
-- draining one adapter node group excludes its route candidates without
-  rewriting every worker under that node
-- stale bucket entries are rejected by admission and cleaned up through a
-  bounded `WorkerRouteBucketOwner` path, not unbounded scheduler-side cleanup
+- draining one adapter node group is enforced by Stage-2 dispatch availability
+  and must not mutate WorkerGroup capability or worker route attributes
+- any later stale bucket cleanup must be bounded under `WorkerRouteBucketOwner`,
+  not unbounded scheduler-side cleanup
 - changing routing policy does not change WorkerGroup capability truth
 
 First slice:
@@ -609,6 +614,8 @@ First slice:
   out of scope for the first slice
 - keep `WorkerRegistrySnapshot` for capability lookup; only replace the
   post-group worker enumeration with bounded bucket acquisition
+- keep relation buckets separate from Stage-2 availability; do not push
+  reachability, dispatch gate, load, or lock truth into the first-slice bucket
 
 Implemented route-attribute slice:
 

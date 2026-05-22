@@ -104,9 +104,11 @@ class PostgresExternalWorkerPollingApiIntegrationTest extends ProjectionSampleE2
         HttpHeaders workerHeaders = credentialHeaders(workerCredential);
         HttpHeaders submitterHeaders = credentialHeaders(submitterCredential);
         declareExternalWorkerGroup("polling-postgres", "crawlerApp", "crawler.fetch-page", workerHeaders);
+        bindExternalAdapterNode("polling-postgres-node", "polling-postgres", workerHeaders);
 
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", workerId,
+                "adapterNodeId", "polling-postgres-node",
                 "workerGroupId", "polling-postgres",
                 "attributes", Map.of(
                         "runtime", "postgres-e2e",

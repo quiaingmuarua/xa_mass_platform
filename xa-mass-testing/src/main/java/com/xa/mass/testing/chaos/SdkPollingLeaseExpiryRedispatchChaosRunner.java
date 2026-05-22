@@ -1,17 +1,17 @@
 package com.xa.mass.testing.chaos;
 
 import com.xa.mass.sdk.model.TaskShellSnapshot;
-import com.xa.mass.runtime.api.RecentFinalWorkReceipt;
-import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.sdk.worker.PullWorkerSession;
+import com.xa.mass.testing.chaos.support.ChaosProofAssertions;
 import com.xa.mass.testing.chaos.support.ChaosTraceArtifacts;
 import com.xa.mass.testing.chaos.support.ChaosReportWriter;
 import com.xa.mass.testing.chaos.support.ChaosRuntimeHarness;
 import com.xa.mass.testing.chaos.support.ChaosSupport;
 import com.xa.mass.testing.chaos.support.TaskOutcomeSnapshot;
 import com.xa.mass.testing.chaos.support.TraceEventAssertions;
+import com.xa.mass.testing.workerfault.WorkerFaultReportMetadata;
+import com.xa.mass.testing.workerfault.WorkerFaultScenarioIndex;
 import com.xa.mass.trace.operator.TraceAnalyzeResponse;
-import com.xa.mass.trace.sink.ExecutionEventType;
 import com.xa.mass.transport.model.TaskDispatchItem;
 
 import java.nio.file.Path;
@@ -150,41 +150,17 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
                         "second attempt should appear after watchdog expiry and polling redispatch"
                 );
 
-                TaskOutcomeSnapshot outcome = runtime.waitForTerminalTask(
+                ChaosProofAssertions.TerminalRuntimeProof proof = ChaosProofAssertions.requireSuccessfulTerminalRuntime(
+                        runtime,
                         task.getTaskId(),
+                        messageId,
                         1,
                         config.timeoutSeconds(),
-                        "polling lease-expiry redispatch task must converge"
+                        "polling lease-expiry redispatch"
                 );
-                TaskWorkStats finalStats = runtime.waitForRuntimeStats(
-                        task.getTaskId(),
-                        1,
-                        1,
-                        0,
-                        0,
-                        config.timeoutSeconds(),
-                        "runtime should finalize the redispatched item as success"
-                );
-                ChaosSupport.require(finalStats.readyCount() == 0, "runtime ready queue should be drained");
-                ChaosSupport.require(finalStats.inflightCount() == 0, "runtime leases should be drained");
-                ChaosSupport.require(runtime.activeLeases(task.getTaskId()).isEmpty(),
-                        "runtime active leases should be empty after redispatch success");
-                RecentFinalWorkReceipt finalReceipt = runtime.recentFinalReceipt(task.getTaskId(), messageId).orElse(null);
-                ChaosSupport.require(finalReceipt != null, "runtime recent final receipt should exist after success");
-                ChaosSupport.require(finalReceipt.retryCount() == 1,
-                        "runtime final receipt should record one expiry-driven retry");
-                ChaosSupport.require("TERMINAL".equals(outcome.status()),
-                        "task should converge to TERMINAL");
-                ChaosSupport.require("ALL_MESSAGES_SUCCEEDED".equals(outcome.terminalReason()),
-                        "task terminal reason should be ALL_MESSAGES_SUCCEEDED");
-                TraceEventAssertions.of(traceArtifacts.captureSink())
-                        .forTask(task.getTaskId())
-                        .requireMinTotalEvents(5)
-                        .requireEventType(ExecutionEventType.LEASE_EXPIRED)
-                        .requireEventType(ExecutionEventType.TASK_WORK_RETRY_RESET)
-                        .requireEventType(ExecutionEventType.CALLBACK_ACCEPTED)
-                        .requireEventType(ExecutionEventType.TASK_TERMINAL_CLOSED)
-                        .requireTerminalReason("ALL_MESSAGES_SUCCEEDED");
+                TaskOutcomeSnapshot outcome = proof.outcome();
+                var finalReceipt = proof.finalReceipt();
+                ChaosProofAssertions.requireLeaseExpirySuccessTrace(traceArtifacts.captureSink(), task.getTaskId());
                 traceArtifacts.close();
                 List<TraceAnalyzeResponse> analyses = ChaosTraceAnalysisPlanner.analyze(
                         traceArtifacts.outputDir(),
@@ -193,7 +169,10 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
                 );
                 ChaosTraceAnalysisPlanner.requireAllOk(analyses);
 
-                Path reportPath = ChaosReportWriter.write("sdk-polling-lease-expiry-redispatch-chaos", Map.of(
+                Path reportPath = ChaosReportWriter.write("sdk-polling-lease-expiry-redispatch-chaos",
+                        WorkerFaultReportMetadata.merge(
+                                WorkerFaultScenarioIndex.Scenario.POLLING_LEASE_EXPIRY_REDISPATCH,
+                                Map.of(
                         "config", config.toMap(),
                         "runtime", Map.of(
                                 "transport", "polling",
@@ -217,7 +196,7 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
                                 "chaosWorker", chaosWorker.snapshot().toMap(),
                                 "steadyWorker", steadyWorker.snapshot().toMap()
                         )
-                ));
+                )));
 
                 return new ChaosReport(
                         task.getTaskId(),

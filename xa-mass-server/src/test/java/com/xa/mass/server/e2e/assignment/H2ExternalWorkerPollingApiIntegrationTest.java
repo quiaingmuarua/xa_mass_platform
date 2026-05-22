@@ -93,9 +93,11 @@ class H2ExternalWorkerPollingApiIntegrationTest extends ProjectionSampleE2eTest 
         HttpHeaders workerHeaders = credentialHeaders(workerCredential);
         HttpHeaders submitterHeaders = credentialHeaders(submitterCredential);
         declareExternalWorkerGroup("polling-jdbc", "crawlerApp", "crawler.fetch-page", workerHeaders);
+        bindExternalAdapterNode("polling-h2-node", "polling-jdbc", workerHeaders);
 
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", workerId,
+                "adapterNodeId", "polling-h2-node",
                 "workerGroupId", "polling-jdbc",
                 "attributes", Map.of(
                         "runtime", "jdbc-e2e",

@@ -5,6 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.xa.mass.command.model.CommandResponse;
 import com.xa.mass.workerpack.sample.command.fixture.SampleClientState;
+import com.xa.mass.workerpack.sample.command.fixture.SampleWorkerFaultProfile;
 import com.xa.mass.workerpack.sample.command.runtime.SampleCommandRuntime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -108,7 +109,38 @@ final class SampleWorkerTaskFrameHandler {
                     workerId, extractMessageId(taskMessage), state.snapshot());
             return null;
         }
-        return new TaskResponsePlan(GSON.toJson(response), extractMessageId(taskMessage), delayMillis, null);
+        if (state != null && state.getFaultProfile().shouldStallWithoutResult()) {
+            logger.info("[{}] Stalled sample task response for messageId={} due to fault profile {}",
+                    workerId, extractMessageId(taskMessage), state.getFaultProfile().toMap());
+            return null;
+        }
+        if (state != null && state.shouldDropFaultProfileResult(
+                workerId,
+                taskId,
+                extractMessageId(taskMessage),
+                retryCount == null ? 0 : retryCount
+        )) {
+            logger.info("[{}] Dropped sample task response for messageId={} due to fault profile {}",
+                    workerId, extractMessageId(taskMessage), state.getFaultProfile().toMap());
+            return null;
+        }
+        int duplicateCount = state == null ? 0 : state.getFaultProfile().duplicateResultCount();
+        long duplicateGapMillis = state == null ? 0L : state.getFaultProfile().duplicateResultGapMillis();
+        if (state != null) {
+            applyResultIdentityFault(response, state.getFaultProfile().resultIdentityKind());
+            applyMalformedFault(response, state.getFaultProfile().malformedResultKind());
+        }
+        return new TaskResponsePlan(
+                GSON.toJson(response),
+                extractMessageId(taskMessage),
+                delayMillis,
+                null,
+                duplicateCount,
+                duplicateGapMillis,
+                state == null || !state.getFaultProfile().enabled()
+                        ? SampleWorkerFaultProfile.DisconnectPhase.NONE
+                        : state.getFaultProfile().disconnectPhase()
+        );
     }
 
     private TaskResponsePlan prepareSampleCommandTaskResponse(JsonObject taskMessage,
@@ -162,7 +194,10 @@ final class SampleWorkerTaskFrameHandler {
                 GSON.toJson(response),
                 extractMessageId(taskMessage),
                 delayMillis,
-                resolveDisconnectWorkerId(commandResult)
+                resolveDisconnectWorkerId(commandResult),
+                0,
+                0L,
+                SampleWorkerFaultProfile.DisconnectPhase.NONE
         );
     }
 
@@ -173,7 +208,19 @@ final class SampleWorkerTaskFrameHandler {
                     "mock.drop.outbound",
                     "mock.task.result.status",
                     "mock.disconnect",
-                    "mock.reset" -> true;
+                    "mock.reset",
+                    "fault.state.get",
+                    "fault.execution.profile",
+                    "fault.execution.delay",
+                    "fault.execution.stall",
+                    "fault.result.drop",
+                    "fault.result.duplicate",
+                    "fault.result.late",
+                    "fault.result.malformed",
+                    "fault.result.identity",
+                    "fault.transport.disconnect",
+                    "fault.worker.state.flap",
+                    "fault.reset" -> true;
             default -> false;
         };
     }
@@ -278,7 +325,24 @@ final class SampleWorkerTaskFrameHandler {
         int stableHash = Objects.hash(workerId, extractMessageId(taskMessage), readString(taskMessage, "project"), stepCount);
         long jitter = Math.floorMod(stableHash, (int) DEFAULT_TASK_RESPONSE_JITTER_MS + 1);
         long failurePenalty = "FAILED".equals(taskStatus) ? 10L : 0L;
-        return DEFAULT_TASK_RESPONSE_BASE_DELAY_MS + jitter + Math.max(0, stepCount - 1) * 5L + failurePenalty;
+        long baseDelay = DEFAULT_TASK_RESPONSE_BASE_DELAY_MS
+                + jitter
+                + Math.max(0, stepCount - 1) * 5L
+                + failurePenalty;
+        if (state == null || !state.getFaultProfile().enabled()) {
+            return baseDelay;
+        }
+        Integer retryCount = readInt(taskMessage, "retryCount");
+        long faultDelay = state.getFaultProfile().resolveDelayMillis(
+                workerId,
+                readString(taskMessage, "taskId"),
+                extractMessageId(taskMessage),
+                retryCount == null ? 0 : retryCount
+        );
+        return baseDelay
+                + faultDelay
+                + state.getFaultProfile().resolveStallDelayMillis()
+                + state.getFaultProfile().lateResultDelayMillis();
     }
 
     boolean isTaskDispatchFrame(JsonObject taskMessage) {
@@ -393,7 +457,39 @@ final class SampleWorkerTaskFrameHandler {
         return "FAILED".equals(normalized) ? "FAILED" : "SUCCESS";
     }
 
-    record TaskResponsePlan(String responseJson, String messageId, long delayMillis, String disconnectWorkerId) {
+    private void applyMalformedFault(JsonObject response, SampleWorkerFaultProfile.MalformedResultKind malformedKind) {
+        if (malformedKind == null || malformedKind == SampleWorkerFaultProfile.MalformedResultKind.NONE) {
+            return;
+        }
+        switch (malformedKind) {
+            case MISSING_MESSAGE_ID -> response.remove("messageId");
+            case INVALID_STATUS -> response.add("success", new JsonObject());
+            case INVALID_PAYLOAD -> response.addProperty("output", "not-an-object");
+            case NONE -> {
+            }
+        }
+    }
+
+    private void applyResultIdentityFault(JsonObject response, SampleWorkerFaultProfile.ResultIdentityKind identityKind) {
+        if (identityKind == null || identityKind == SampleWorkerFaultProfile.ResultIdentityKind.NONE) {
+            return;
+        }
+        switch (identityKind) {
+            case WRONG_TASK -> response.addProperty("taskId", "wrong-" + readString(response, "taskId"));
+            case WRONG_MESSAGE -> response.addProperty("messageId", "wrong-" + readString(response, "messageId"));
+            case WRONG_WORKER -> response.addProperty("workerId", "wrong-" + readString(response, "workerId"));
+            case WRONG_LEASE -> response.addProperty("leaseId", "wrong-lease");
+            case NONE -> {
+            }
+        }
+    }
+
+    record TaskResponsePlan(String responseJson,
+                            String messageId,
+                            long delayMillis,
+                            String disconnectWorkerId,
+                            int duplicateCount,
+                            long duplicateGapMillis,
+                            SampleWorkerFaultProfile.DisconnectPhase disconnectPhase) {
     }
 }
-

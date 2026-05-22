@@ -38,7 +38,14 @@ public class ServerProofOwnershipGuardTest {
     private static final Set<String> RETIRED_TEST_SIMPLE_NAMES = Set.of(
             "PollingWorkerTaskFlowIntegrationTest",
             "TaskApiAssignmentTraceObservedIntegrationTest",
-            "TransportChannelWiringIntegrationTest"
+            "TransportChannelWiringIntegrationTest",
+            "TaskApiAllMessagesFailedIntegrationTest",
+            "TaskApiCallbackReplayIntegrationTest",
+            "TaskApiDelayedWorkerAvailabilityIntegrationTest",
+            "TaskApiMinimumWorkerGateIntegrationTest",
+            "TaskApiMixedResultsIntegrationTest",
+            "TaskApiSingleWorkerReuseIntegrationTest",
+            "TaskApiWorkerAttributeRoutingIntegrationTest"
     );
 
     private static final Path PROOF_REGISTRY = Path.of("..", "doc", "PROOF_REGISTRY.md");
@@ -137,6 +144,15 @@ public class ServerProofOwnershipGuardTest {
             if (containsWholeWord(serverReadme, retiredName)) {
                 violations.add("README.md still references retired test " + retiredName);
             }
+        }
+        try (Stream<Path> paths = Files.walk(SERVER_E2E_TEST_ROOT)) {
+            Set<String> retiredFileNames = RETIRED_TEST_SIMPLE_NAMES.stream()
+                    .map(name -> name + ".java")
+                    .collect(java.util.stream.Collectors.toSet());
+            paths.filter(Files::isRegularFile)
+                    .filter(path -> retiredFileNames.contains(path.getFileName().toString()))
+                    .map(Path::toString)
+                    .forEach(path -> violations.add("retired low-value test still exists: " + path));
         }
 
         assertTrue(violations.isEmpty(),

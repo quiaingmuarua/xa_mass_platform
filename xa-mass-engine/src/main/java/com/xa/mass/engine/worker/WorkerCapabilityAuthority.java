@@ -5,7 +5,10 @@ import com.xa.mass.base.model.Worker;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Owns effective worker capability composition for the scheduling candidate
@@ -26,7 +29,6 @@ public final class WorkerCapabilityAuthority {
 
     public synchronized WorkerRegistrySnapshot composeSnapshot(Collection<Worker> registrationRows,
                                                                Collection<WorkerGroupRecord> declaredGroups) {
-        List<Worker> effectiveWorkers = effectiveWorkers(registrationRows);
         LinkedHashMap<String, WorkerGroupRecord> groupsById = new LinkedHashMap<>();
         if (declaredGroups != null) {
             for (WorkerGroupRecord group : declaredGroups) {
@@ -35,7 +37,12 @@ public final class WorkerCapabilityAuthority {
                 }
             }
         }
-        return WorkerRegistrySnapshot.from(groupsById.values(), effectiveWorkers);
+        List<Worker> effectiveWorkers = effectiveWorkers(registrationRows, groupsById);
+        return WorkerRegistrySnapshot.from(
+                groupsById.values(),
+                effectiveWorkers,
+                workerEventKeysByWorkerId(registrationRows, groupsById)
+        );
     }
 
     public synchronized WorkerCapabilityReportResult applyReport(WorkerCapabilityReport report,
@@ -78,6 +85,11 @@ public final class WorkerCapabilityAuthority {
     }
 
     private List<Worker> effectiveWorkers(Collection<Worker> registrationRows) {
+        return effectiveWorkers(registrationRows, Map.of());
+    }
+
+    private List<Worker> effectiveWorkers(Collection<Worker> registrationRows,
+                                          Map<String, WorkerGroupRecord> groupsById) {
         if (registrationRows == null || registrationRows.isEmpty()) {
             return List.of();
         }
@@ -87,13 +99,18 @@ public final class WorkerCapabilityAuthority {
                 continue;
             }
             WorkerCapabilityReport report = reportsByWorkerId.get(worker.getWorkerId().trim());
-            effective.add(report == null ? worker : effectiveWorker(worker, report));
+            effective.add(report == null ? worker : effectiveWorker(worker, report, groupsById));
         }
         return effective;
     }
 
-    private Worker effectiveWorker(Worker worker, WorkerCapabilityReport report) {
+    private Worker effectiveWorker(Worker worker,
+                                   WorkerCapabilityReport report,
+                                   Map<String, WorkerGroupRecord> groupsById) {
         Worker effective = copyWorker(worker);
+        if (!report.availableEventCodes().isEmpty()) {
+            effective.setSupportedEventCodes(approvedEventCodes(worker, report, groupsById));
+        }
         if (!report.schedulingAttributes().isEmpty()) {
             LinkedHashMap<String, String> attributes = new LinkedHashMap<>();
             if (worker.getAttributes() != null) {
@@ -106,6 +123,72 @@ public final class WorkerCapabilityAuthority {
             effective.setAgentVersion(report.agentVersion());
         }
         return effective;
+    }
+
+    private static List<String> approvedEventCodes(Worker worker,
+                                                   WorkerCapabilityReport report,
+                                                   Map<String, WorkerGroupRecord> groupsById) {
+        WorkerGroupRecord group = groupFor(worker, groupsById);
+        if (group == null) {
+            return List.of();
+        }
+        Set<String> approved = group.eventCodes();
+        if (approved.isEmpty()) {
+            return List.of();
+        }
+        LinkedHashSet<String> effective = new LinkedHashSet<>();
+        for (String eventCode : report.availableEventCodes()) {
+            String normalized = normalizeNullable(eventCode);
+            if (normalized != null && approved.contains(normalized)) {
+                effective.add(normalized);
+            }
+        }
+        return effective.isEmpty() ? List.of() : List.copyOf(effective);
+    }
+
+    private static WorkerGroupRecord groupFor(Worker worker, Map<String, WorkerGroupRecord> groupsById) {
+        String groupId = worker == null ? null : normalizeNullable(worker.getWorkerGroupId());
+        return groupId == null || groupsById == null ? null : groupsById.get(groupId);
+    }
+
+    private Map<String, Set<EventKey>> workerEventKeysByWorkerId(Collection<Worker> registrationRows,
+                                                                  Map<String, WorkerGroupRecord> groupsById) {
+        if (reportsByWorkerId.isEmpty() || registrationRows == null || registrationRows.isEmpty()) {
+            return Map.of();
+        }
+        LinkedHashMap<String, Set<EventKey>> scopes = new LinkedHashMap<>();
+        for (Worker worker : registrationRows) {
+            String workerId = worker == null ? null : normalizeNullable(worker.getWorkerId());
+            if (workerId == null) {
+                continue;
+            }
+            WorkerCapabilityReport report = reportsByWorkerId.get(workerId);
+            if (report == null) {
+                continue;
+            }
+            scopes.put(workerId, approvedEventKeys(worker, report, groupsById));
+        }
+        return scopes.isEmpty() ? Map.of() : Map.copyOf(scopes);
+    }
+
+    private static Set<EventKey> approvedEventKeys(Worker worker,
+                                                   WorkerCapabilityReport report,
+                                                   Map<String, WorkerGroupRecord> groupsById) {
+        WorkerGroupRecord group = groupFor(worker, groupsById);
+        if (group == null || group.eventBindings().isEmpty()) {
+            return Set.of();
+        }
+        Set<String> approvedEventCodes = new LinkedHashSet<>(approvedEventCodes(worker, report, groupsById));
+        if (approvedEventCodes.isEmpty()) {
+            return Set.of();
+        }
+        LinkedHashSet<EventKey> eventKeys = new LinkedHashSet<>();
+        for (EventBinding binding : group.eventBindings()) {
+            if (approvedEventCodes.contains(binding.eventCode())) {
+                eventKeys.addAll(binding.eventKeys());
+            }
+        }
+        return eventKeys.isEmpty() ? Set.of() : Set.copyOf(eventKeys);
     }
 
     private static Worker registrationRow(String workerId, Collection<Worker> registrationRows) {

@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;
 
+import static com.xa.mass.engine.testutil.WorkerRegistrationTestSupport.registerWorker;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -30,7 +31,7 @@ public class WorkerCapabilityReportEventHandlerTest {
         Worker worker = worker("worker-crawler", "crawler");
         worker.setSupportedProjects(List.of("demoApp"));
         worker.setSupportedEventCodes(List.of("crawler.fetch", "crawler.parse"));
-        workerManager.addWorker(worker);
+        registerWorker(workerManager, worker);
         RecordingEventSink sink = new RecordingEventSink();
 
         InMemoryMassEventRuntime runtime = new InMemoryMassEventRuntime();
@@ -58,9 +59,9 @@ public class WorkerCapabilityReportEventHandlerTest {
         assertTrue(workerManager.findWorkerCandidates(task("demoApp", "crawler.fetch")).isEmpty());
         assertTrue(workerManager.findWorkerCandidates(task("demoApp", "not.approved")).isEmpty());
         assertEquals("us", workerManager.getWorkerRegistrySnapshot()
-                .group("crawler")
+                .worker("worker-crawler")
                 .orElseThrow()
-                .defaultAttributes()
+                .getAttributes()
                 .get("country"));
         assertTrue(sink.events().stream()
                 .anyMatch(event -> event.getEventType() == ExecutionEventType.WORKER_CAPABILITY_REPORT_APPLIED
@@ -74,7 +75,7 @@ public class WorkerCapabilityReportEventHandlerTest {
         Worker worker = worker("worker-crawler", "crawler");
         worker.setSupportedProjects(List.of("demoApp"));
         worker.setSupportedEventCodes(List.of("crawler.fetch", "crawler.parse"));
-        workerManager.addWorker(worker);
+        registerWorker(workerManager, worker);
         WorkerCapabilityReportEventHandler handler = new WorkerCapabilityReportEventHandler(
                 workerControlService(workerManager, TraceEventLogger.noop()));
 

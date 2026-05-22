@@ -1,5 +1,4 @@
 package com.xa.mass.server.e2e.lifecycle;
-
 import org.junit.platform.suite.api.SelectClasses;
 import org.junit.platform.suite.api.Suite;
 

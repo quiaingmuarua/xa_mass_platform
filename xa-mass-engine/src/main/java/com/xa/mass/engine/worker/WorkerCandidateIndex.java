@@ -79,7 +79,9 @@ public final class WorkerCandidateIndex {
                 break;
             }
             for (String workerId : routeBucketOwner.acquireForTask(groupId, task, remaining)) {
-                snapshot.worker(workerId).ifPresent(workers::add);
+                snapshot.worker(workerId)
+                        .filter(worker -> snapshot.workerSupportsEventKey(worker.getWorkerId(), eventKey))
+                        .ifPresent(workers::add);
             }
         }
         return List.copyOf(workers);

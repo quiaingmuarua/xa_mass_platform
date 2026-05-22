@@ -56,6 +56,10 @@ class TaskApiMinimumWorkerGateTraceObservedIntegrationTest extends AbstractTrace
         registerSdkWorkerWithContext(workerId, "us");
         assertFalse(app.isWorkerOnline(workerId),
                 "worker registration must not create transport presence");
+        String secondWorkerId = "min-gate-trace-worker-1";
+        registerSdkWorkerWithContext(secondWorkerId, "us");
+        assertFalse(app.isWorkerOnline(secondWorkerId),
+                "second worker registration must not create transport presence");
 
         String taskId = createTaskId("min-worker-gate-trace", "minimum worker gate trace observed", "target-a");
         Task task = taskStorage.getTask(taskId).orElseThrow();
@@ -70,6 +74,7 @@ class TaskApiMinimumWorkerGateTraceObservedIntegrationTest extends AbstractTrace
 
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         SampleWorkerWebSocketClient client = new SampleWorkerWebSocketClient(uri, workerId);
+        SampleWorkerWebSocketClient secondClient = new SampleWorkerWebSocketClient(uri, secondWorkerId);
         try {
             assertClientConnects(client, "minimum worker gate sample client failed to connect");
             waitUntil(() -> app.isWorkerOnline(workerId),
@@ -89,11 +94,23 @@ class TaskApiMinimumWorkerGateTraceObservedIntegrationTest extends AbstractTrace
                     "canonical trace must include ASSIGNMENT_SUMMARY for gate decision");
             assertTrue(response.eventTypeCounts().containsKey("DISPATCH_SKIPPED"),
                     "canonical trace must include DISPATCH_SKIPPED for minimum worker gate");
+
+            assertClientConnects(secondClient, "second minimum worker gate sample client failed to connect");
+            waitUntil(() -> app.isWorkerOnline(secondWorkerId),
+                    "second worker connect must surface transport presence online");
+
+            RuntimeTaskSnapshot terminalSnapshot = waitForRuntimeTaskSnapshot(taskId, "TERMINAL", 20, 500L);
+            assertEquals("ALL_MESSAGES_SUCCEEDED", terminalSnapshot.task().get("terminalReason"));
+            assertEquals(1, terminalSnapshot.stats().successCount());
+            assertEquals(1, ((Number) terminalSnapshot.task().get("peakAssignedWorkerCount")).intValue());
         } finally {
+            secondClient.disconnect();
             client.disconnect();
         }
         waitUntil(() -> !app.isWorkerOnline(workerId),
                 "worker disconnect must converge transport presence offline");
+        waitUntil(() -> !app.isWorkerOnline(secondWorkerId),
+                "second worker disconnect must converge transport presence offline");
     }
 
     private TraceAnalyzeResponse awaitTraceScenarioOk(TraceOperatorService traceOperator, String taskId)

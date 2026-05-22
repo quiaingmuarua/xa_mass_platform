@@ -24,8 +24,11 @@ public final class WorkerRegistrySnapshot {
     private final Map<String, Set<String>> workerIdsByAdapterNodeId;
     private final Map<AdapterNodeGroupKey, Set<String>> workerIdsByAdapterNodeGroup;
     private final Map<String, String> groupIdByWorkerId;
+    private final Map<String, Set<EventKey>> workerEventKeysByWorkerId;
 
-    private WorkerRegistrySnapshot(Map<String, WorkerGroupRecord> groupsById, Map<String, Worker> workersById) {
+    private WorkerRegistrySnapshot(Map<String, WorkerGroupRecord> groupsById,
+                                   Map<String, Worker> workersById,
+                                   Map<String, Set<EventKey>> workerEventKeysByWorkerId) {
         this.groupsById = immutableMap(groupsById);
         this.workersById = immutableMap(workersById);
         this.groupIdsByEventKey = indexGroupsByEventKey(groupsById.values());
@@ -34,26 +37,37 @@ public final class WorkerRegistrySnapshot {
         this.workerIdsByAdapterNodeId = indexWorkersByAdapterNodeId(workersById.values());
         this.workerIdsByAdapterNodeGroup = indexWorkersByAdapterNodeGroup(workersById.values());
         this.groupIdByWorkerId = indexGroupIdByWorkerId(workersById.values());
+        this.workerEventKeysByWorkerId = immutableEventKeySetMap(workerEventKeysByWorkerId);
     }
 
     public static WorkerRegistrySnapshot empty() {
-        return new WorkerRegistrySnapshot(Map.of(), Map.of());
+        return new WorkerRegistrySnapshot(Map.of(), Map.of(), Map.of());
     }
 
     public static WorkerRegistrySnapshot from(Collection<WorkerGroupRecord> groups, Collection<Worker> workers) {
-        return new WorkerRegistrySnapshot(normalizeGroups(groups), normalizeWorkers(workers));
+        return new WorkerRegistrySnapshot(normalizeGroups(groups), normalizeWorkers(workers), Map.of());
+    }
+
+    public static WorkerRegistrySnapshot from(Collection<WorkerGroupRecord> groups,
+                                              Collection<Worker> workers,
+                                              Map<String, Set<EventKey>> workerEventKeysByWorkerId) {
+        return new WorkerRegistrySnapshot(
+                normalizeGroups(groups),
+                normalizeWorkers(workers),
+                workerEventKeysByWorkerId
+        );
     }
 
     public WorkerRegistrySnapshot withGroup(WorkerGroupRecord group) {
         LinkedHashMap<String, WorkerGroupRecord> groups = new LinkedHashMap<>(groupsById);
         groups.put(group.groupId(), group);
-        return new WorkerRegistrySnapshot(groups, workersById);
+        return new WorkerRegistrySnapshot(groups, workersById, workerEventKeysByWorkerId);
     }
 
     public WorkerRegistrySnapshot withoutGroup(String groupId) {
         LinkedHashMap<String, WorkerGroupRecord> groups = new LinkedHashMap<>(groupsById);
         groups.remove(normalizeNullable(groupId));
-        return new WorkerRegistrySnapshot(groups, workersById);
+        return new WorkerRegistrySnapshot(groups, workersById, workerEventKeysByWorkerId);
     }
 
     public WorkerRegistrySnapshot withWorker(Worker worker) {
@@ -61,13 +75,13 @@ public final class WorkerRegistrySnapshot {
         if (worker != null && normalizeNullable(worker.getWorkerId()) != null) {
             workers.put(worker.getWorkerId().trim(), worker);
         }
-        return new WorkerRegistrySnapshot(groupsById, workers);
+        return new WorkerRegistrySnapshot(groupsById, workers, workerEventKeysByWorkerId);
     }
 
     public WorkerRegistrySnapshot withoutWorker(String workerId) {
         LinkedHashMap<String, Worker> workers = new LinkedHashMap<>(workersById);
         workers.remove(normalizeNullable(workerId));
-        return new WorkerRegistrySnapshot(groupsById, workers);
+        return new WorkerRegistrySnapshot(groupsById, workers, withoutWorkerEventKeys(workerId));
     }
 
     public Optional<WorkerGroupRecord> group(String groupId) {
@@ -107,6 +121,17 @@ public final class WorkerRegistrySnapshot {
     public Optional<String> groupIdByWorkerId(String workerId) {
         String normalized = normalizeNullable(workerId);
         return normalized == null ? Optional.empty() : Optional.ofNullable(groupIdByWorkerId.get(normalized));
+    }
+
+    public boolean workerSupportsEventKey(String workerId, EventKey eventKey) {
+        String normalizedWorkerId = normalizeNullable(workerId);
+        if (normalizedWorkerId == null || eventKey == null) {
+            return false;
+        }
+        if (!workerEventKeysByWorkerId.containsKey(normalizedWorkerId)) {
+            return true;
+        }
+        return workerEventKeysByWorkerId.getOrDefault(normalizedWorkerId, Set.of()).contains(eventKey);
     }
 
     public List<WorkerGroupRecord> groups() {
@@ -226,6 +251,22 @@ public final class WorkerRegistrySnapshot {
         return immutableMap(immutable);
     }
 
+    private static Map<String, Set<EventKey>> immutableEventKeySetMap(Map<String, Set<EventKey>> source) {
+        if (source == null || source.isEmpty()) {
+            return Map.of();
+        }
+        LinkedHashMap<String, Set<EventKey>> immutable = new LinkedHashMap<>();
+        for (Map.Entry<String, Set<EventKey>> entry : source.entrySet()) {
+            String workerId = normalizeNullable(entry.getKey());
+            if (workerId != null) {
+                immutable.put(workerId, entry.getValue() == null
+                        ? Set.of()
+                        : Collections.unmodifiableSet(new LinkedHashSet<>(entry.getValue())));
+            }
+        }
+        return immutable.isEmpty() ? Map.of() : Collections.unmodifiableMap(immutable);
+    }
+
     private static <K, V> Map<K, V> immutableMap(Map<K, V> source) {
         if (source.isEmpty()) {
             return Map.of();
@@ -235,6 +276,16 @@ public final class WorkerRegistrySnapshot {
 
     private static String normalizeNullable(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private Map<String, Set<EventKey>> withoutWorkerEventKeys(String workerId) {
+        String normalized = normalizeNullable(workerId);
+        if (normalized == null || !workerEventKeysByWorkerId.containsKey(normalized)) {
+            return workerEventKeysByWorkerId;
+        }
+        LinkedHashMap<String, Set<EventKey>> updated = new LinkedHashMap<>(workerEventKeysByWorkerId);
+        updated.remove(normalized);
+        return updated;
     }
 
     private record AdapterNodeGroupKey(String adapterNodeId, String groupId) {

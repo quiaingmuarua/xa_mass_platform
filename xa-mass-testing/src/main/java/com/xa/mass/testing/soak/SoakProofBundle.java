@@ -10,6 +10,7 @@ record SoakProofBundle(SoakInvariantReport runtimeInvariants,
                        Map<String, Object> workerLifecycle,
                        Map<String, Object> deliveryDiagnostics,
                        SoakTraceProof trace,
+                       Map<String, Object> matrixProfile,
                        List<String> failureSamples) {
 
     Map<String, Object> toMap() {
@@ -20,6 +21,7 @@ record SoakProofBundle(SoakInvariantReport runtimeInvariants,
         values.put("workerLifecycle", workerLifecycle);
         values.put("deliveryDiagnostics", deliveryDiagnostics);
         values.put("trace", trace.toMap());
+        values.put("matrixProfile", matrixProfile == null ? Map.of() : Map.copyOf(matrixProfile));
         values.put("failureSamples", List.copyOf(failureSamples));
         return values;
     }

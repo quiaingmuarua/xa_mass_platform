@@ -10,8 +10,6 @@ import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
-import com.xa.mass.sdk.model.AdapterNodeRegistration;
-import com.xa.mass.sdk.model.NodeGroupBindingRegistration;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.TaskStateSnapshot;
@@ -26,6 +24,7 @@ import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
+import com.xa.mass.testing.support.WorkerRegistrationSpineSupport;
 import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.TransportOutboundMessage;
@@ -283,15 +282,8 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                         .projectCodes(List.of(projectCode))
                         .build()))
                 .build());
-        app.registerAdapterNode(AdapterNodeRegistration.builder()
-                .adapterNodeId(adapterNodeId)
-                .adapterType(adapterType)
-                .endpointId(adapterNodeId)
-                .build());
-        app.bindNodeGroup(NodeGroupBindingRegistration.builder()
-                .adapterNodeId(adapterNodeId)
-                .workerGroupId(workerGroupId)
-                .build());
+        WorkerRegistrationSpineSupport.registerAdapterNode(app, adapterNodeId, adapterType);
+        WorkerRegistrationSpineSupport.bindNodeGroup(app, adapterNodeId, workerGroupId);
     }
 
     public PullWorkerSession pullWorker(String workerId) {

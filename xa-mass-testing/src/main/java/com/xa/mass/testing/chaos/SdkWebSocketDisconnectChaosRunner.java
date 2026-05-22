@@ -12,6 +12,8 @@ import com.xa.mass.testing.chaos.support.ChaosRuntimeHarness;
 import com.xa.mass.testing.chaos.support.ChaosSupport;
 import com.xa.mass.testing.chaos.support.TaskOutcomeSnapshot;
 import com.xa.mass.testing.chaos.support.TraceEventAssertions;
+import com.xa.mass.testing.workerfault.WorkerFaultReportMetadata;
+import com.xa.mass.testing.workerfault.WorkerFaultScenarioIndex;
 import com.xa.mass.trace.sink.ExecutionEventType;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
@@ -189,7 +191,10 @@ public final class SdkWebSocketDisconnectChaosRunner {
                         .requireEventType(ExecutionEventType.CALLBACK_ACCEPTED)
                         .requireTerminalReason("ALL_MESSAGES_SUCCEEDED");
 
-                Path reportPath = ChaosReportWriter.write("sdk-websocket-disconnect-chaos", Map.of(
+                Path reportPath = ChaosReportWriter.write("sdk-websocket-disconnect-chaos",
+                        WorkerFaultReportMetadata.merge(
+                                WorkerFaultScenarioIndex.Scenario.WEBSOCKET_DISCONNECT_RECONNECT,
+                                Map.of(
                         "config", config.toMap(),
                         "runtime", Map.of(
                                 "transport", "websocket",
@@ -211,7 +216,7 @@ public final class SdkWebSocketDisconnectChaosRunner {
                                 "chaosWorker", chaosWorker.snapshot().toMap(),
                                 "steadyWorker", steadyWorker.snapshot().toMap()
                         )
-                ));
+                )));
 
                 return new ChaosReport(
                         extractPort(runtime.serverUri(CHAOS_WORKER_ID)),

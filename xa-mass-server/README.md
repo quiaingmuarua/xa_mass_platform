@@ -218,6 +218,19 @@ Current command groups:
   - `mock.task.result.status`
   - `mock.disconnect`
   - `mock.reset`
+- `fault.*`: configure worker-fault profile state through the same sample command path
+  - `fault.state.get`
+  - `fault.execution.profile`
+  - `fault.execution.delay`
+  - `fault.execution.stall`
+  - `fault.result.drop`
+  - `fault.result.duplicate`
+  - `fault.result.late`
+  - `fault.result.malformed`
+  - `fault.result.identity`
+  - `fault.transport.disconnect`
+  - `fault.worker.state.flap`
+  - `fault.reset`
 - `tool.*`: lightweight utility commands for debugging and demos
   - `tool.time.now`
   - `tool.geo.lookup`
@@ -472,20 +485,15 @@ High-signal classes:
   - `TaskApiMinimumWorkerGateTraceObservedIntegrationTest`
   - `TaskApiDelayedWorkerAvailabilityTraceObservedIntegrationTest`
   - `TaskApiRetryRedispatchTraceObservedIntegrationTest`
-  - `TaskApiDelayedWorkerAvailabilityIntegrationTest`
-  - `TaskApiMinimumWorkerGateIntegrationTest`
   - `TaskApiSingleWorkerReuseTraceObservedIntegrationTest`
-  - `TaskApiWorkerAttributeRoutingIntegrationTest`
+  - `TaskApiWorkerAttributeRoutingTraceObservedIntegrationTest`
   - `TaskApiWorkerWithoutContextIntegrationTest`
-  - `TaskApiSingleWorkerReuseIntegrationTest`
   - `CrawlerPullWorkerSdkRegistrationIntegrationTest`
 - results and idempotence:
   - `TaskApiAllMessagesFailedTraceObservedIntegrationTest`
   - `TaskApiCallbackReplayTraceObservedIntegrationTest`
   - `TaskApiFailureResultIntegrationTest`
   - `TaskApiMixedResultsTraceObservedIntegrationTest`
-  - `TaskApiMixedResultsIntegrationTest`
-  - `TaskApiAllMessagesFailedIntegrationTest`
 - external worker black-box:
   - `ExternalWorkerParitySuite`
   - `ExternalWorkerPublicContractTraceObservedIntegrationTest`
@@ -515,7 +523,6 @@ High-signal classes:
 - explicit projection residue/audit:
   - `TaskApiMultiRoundDispatchIntegrationTest`
   - `TaskApiTerminateReuseIntegrationTest`
-  - `TaskApiCallbackReplayIntegrationTest`
   - `TaskApiStateValidationIntegrationTest`
 
 Fixture rules:

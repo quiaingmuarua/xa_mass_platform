@@ -8,6 +8,8 @@ import com.xa.mass.testing.chaos.support.ChaosRuntimeHarness;
 import com.xa.mass.testing.chaos.support.ChaosSupport;
 import com.xa.mass.testing.chaos.support.TaskOutcomeSnapshot;
 import com.xa.mass.testing.chaos.support.TraceEventAssertions;
+import com.xa.mass.testing.workerfault.WorkerFaultReportMetadata;
+import com.xa.mass.testing.workerfault.WorkerFaultScenarioIndex;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.trace.sink.ExecutionEventType;
 import com.xa.mass.transport.model.TaskDispatchItem;
@@ -178,7 +180,10 @@ public final class SdkPollingMessageRetryExhaustedChaosRunner {
                         .requireEventType(ExecutionEventType.TASK_WORK_RETRY_RESET)
                         .requireEventType(ExecutionEventType.CALLBACK_ACCEPTED);
 
-                Path reportPath = ChaosReportWriter.write("sdk-polling-retry-exhausted-chaos", Map.of(
+                Path reportPath = ChaosReportWriter.write("sdk-polling-retry-exhausted-chaos",
+                        WorkerFaultReportMetadata.merge(
+                                WorkerFaultScenarioIndex.Scenario.POLLING_RETRY_EXHAUSTED,
+                                Map.of(
                         "config", config.toMap(),
                         "runtime", Map.of("transport", "polling", "adapterId", "polling"),
                         "wallClock", Map.of("totalMillis",
@@ -192,7 +197,7 @@ public final class SdkPollingMessageRetryExhaustedChaosRunner {
                         "trace", TraceEventAssertions.of(traceSink).summaryMap(task.getTaskId()),
                         "task", outcome.toMap(),
                         "workers", Map.of("worker", worker.snapshot().toMap())
-                ));
+                )));
 
                 return new ChaosReport(
                         task.getTaskId(),
@@ -370,4 +375,3 @@ public final class SdkPollingMessageRetryExhaustedChaosRunner {
         }
     }
 }
-

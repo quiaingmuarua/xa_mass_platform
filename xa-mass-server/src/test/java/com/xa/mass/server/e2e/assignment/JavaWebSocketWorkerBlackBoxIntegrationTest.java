@@ -43,6 +43,7 @@ class JavaWebSocketWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest
     private static final int WEBSOCKET_PORT = findFreePort();
     private static final String WORKER_ID = "java-worker-realtime-001";
     private static final String WORKER_KEY = "java-worker-realtime-key";
+    private static final String ADAPTER_NODE_ID = "java-websocket-node";
 
     @Autowired
     private MassSdkApplication app;
@@ -65,8 +66,10 @@ class JavaWebSocketWorkerBlackBoxIntegrationTest extends ProjectionSampleE2eTest
 
         HttpHeaders workerHeaders = credentialHeaders(WORKER_KEY);
         declareExternalWorkerGroup("java-websocket-crawler", "crawlerApp", "crawler.fetch-page", workerHeaders);
+        bindExternalAdapterNode(ADAPTER_NODE_ID, "java-websocket-crawler", workerHeaders);
         Map<String, Object> registerResponse = exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", WORKER_ID,
+                "adapterNodeId", ADAPTER_NODE_ID,
                 "workerGroupId", "java-websocket-crawler",
                 "adapterId", "websocket",
                 "transportHint", "realtime",
