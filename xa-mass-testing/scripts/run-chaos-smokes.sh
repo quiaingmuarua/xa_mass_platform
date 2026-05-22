@@ -76,33 +76,11 @@ SMOKE_SCENARIOS=(
 )
 
 runner_source_for_scenario() {
-  case "$1" in
-    polling-all-failed-terminal-convergence)
-      echo "com.xa.mass.testing.chaos.SdkPollingAllMessagesFailedChaosRunner"
-      ;;
-    polling-mixed-result-terminal-convergence)
-      echo "com.xa.mass.testing.chaos.SdkPollingMixedResultsChaosRunner"
-      ;;
-    polling-retry-exhausted)
-      echo "com.xa.mass.testing.chaos.SdkPollingMessageRetryExhaustedChaosRunner"
-      ;;
-    polling-lease-expiry-redispatch)
-      echo "com.xa.mass.testing.chaos.SdkPollingLeaseExpiryRedispatchChaosRunner"
-      ;;
-    websocket-disconnect-reconnect)
-      echo "com.xa.mass.testing.chaos.SdkWebSocketDisconnectChaosRunner"
-      ;;
-    websocket-lease-expiry-redispatch)
-      echo "com.xa.mass.testing.chaos.SdkWebSocketLeaseExpiryRedispatchChaosRunner"
-      ;;
-    websocket-late-stale-result-replay)
-      echo "com.xa.mass.testing.chaos.SdkWebSocketLateResultAfterLeaseExpiryChaosRunner"
-      ;;
-    *)
-      echo "FAILED: no chaos runner source mapping for scenario $1" >&2
-      return 1
-      ;;
-  esac
+  java \
+    -cp "${RUNTIME_CLASSPATH}" \
+    "com.xa.mass.testing.workerfault.WorkerFaultScenarioCli" \
+    --runner-class \
+    "$1"
 }
 
 FORBIDDEN_MAINLINE_TOKENS=(

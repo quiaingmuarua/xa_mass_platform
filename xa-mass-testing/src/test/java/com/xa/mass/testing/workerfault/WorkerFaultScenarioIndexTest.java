@@ -74,4 +74,10 @@ class WorkerFaultScenarioIndexTest {
 
         assertEquals(WorkerFaultScenarioIndex.Scenario.POLLING_ALL_FAILED_TERMINAL_CONVERGENCE, scenario);
     }
+
+    @Test
+    void scenarioCliExposesRunnerClassFromJavaLedger() {
+        assertEquals("com.xa.mass.testing.chaos.SdkPollingAllMessagesFailedChaosRunner",
+                WorkerFaultScenarioCli.runnerClassName("polling-all-failed-terminal-convergence"));
+    }
 }

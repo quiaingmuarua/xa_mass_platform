@@ -11,12 +11,23 @@ public final class WorkerFaultScenarioCli {
     }
 
     public static void main(String[] args) throws Exception {
+        if (isRunnerClassQuery(args)) {
+            System.out.println(runnerClassName(args[1]));
+            return;
+        }
         WorkerFaultScenarioIndex.Scenario scenario = resolveScenario(args);
         System.setProperty(
                 "mass.sdk.chaos.forceExit",
                 System.getProperty("mass.sdk.chaos.forceExit", "false")
         );
         invokeMain(scenario.runnerFamily().mainClassName(), tailArgs(args));
+    }
+
+    static String runnerClassName(String scenarioId) {
+        return WorkerFaultScenarioIndex.scenarioForId(scenarioId)
+                .orElseThrow(() -> new IllegalArgumentException("unknown worker fault scenarioId: " + scenarioId))
+                .runnerFamily()
+                .mainClassName();
     }
 
     static WorkerFaultScenarioIndex.Scenario resolveScenario(String[] args) {
@@ -40,6 +51,12 @@ public final class WorkerFaultScenarioCli {
             throw new IllegalArgumentException("worker fault scenarioId is required before option " + first);
         }
         return first.toLowerCase(Locale.ROOT);
+    }
+
+    private static boolean isRunnerClassQuery(String[] args) {
+        return args != null
+                && args.length == 2
+                && "--runner-class".equals(args[0]);
     }
 
     private static String[] tailArgs(String[] args) {
