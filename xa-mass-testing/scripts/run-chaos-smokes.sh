@@ -66,11 +66,7 @@ PROCESSING_DELAY="${CHAOS_PROCESSING_DELAY:-10}"
 # Keep this list fast (< 15 s each). Add new proven-stable runners here after
 # they've been validated in at least one scheduled run.
 SMOKE_SCENARIOS=(
-  "polling-all-failed-terminal-convergence"
-  "polling-mixed-result-terminal-convergence"
-  "polling-retry-exhausted"
   "polling-lease-expiry-redispatch"
-  "websocket-disconnect-reconnect"
   "websocket-lease-expiry-redispatch"
   "websocket-late-stale-result-replay"
 )

@@ -16,7 +16,11 @@ import org.junit.platform.suite.api.Suite;
         CatalogApiIntegrationTest.class,
         DevSampleWorkerLauncherIntegrationTest.class,
         ExternalWorkerRealtimeRegistrationIntegrationTest.class,
+        TaskApiDelayedWorkerAvailabilityIntegrationTest.class,
+        TaskApiMinimumWorkerGateIntegrationTest.class,
+        TaskApiSingleWorkerReuseIntegrationTest.class,
         TaskApiTargetedWorkerDebugIntegrationTest.class,
+        TaskApiWorkerAttributeRoutingIntegrationTest.class,
 })
 class ServerSupportCoverageSuite {
 }

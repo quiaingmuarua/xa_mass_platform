@@ -82,7 +82,7 @@ Testing-policy note:
 | `chaos: polling all messages failed` | `com.xa.mass.testing.chaos.SdkPollingAllMessagesFailedChaosRunner` | polling worker always submits failure with no retries; all messages converge to FAILED and the task closes with ALL_MESSAGES_FAILED | `target/chaos-reports/` |
 | `chaos: polling mixed results` | `com.xa.mass.testing.chaos.SdkPollingMixedResultsChaosRunner` | multi-message task where some messages succeed and some fail (driven by per-message `shouldFail` input flag); task closes with MIXED_MESSAGE_RESULTS | `target/chaos-reports/` |
 | `chaos: polling message retry exhausted` | `com.xa.mass.testing.chaos.SdkPollingMessageRetryExhaustedChaosRunner` | polling worker always fails; each message has `maxRetryCount=2` and burns 3 total attempts before `RETRY_EXHAUSTED` finalization; task closes with ALL_MESSAGES_FAILED; `TASK_WORK_RETRY_RESET` events verified in trace | `target/chaos-reports/` |
-| `chaos smoke bundle (CI gate)` | `scripts/run-chaos-smokes.sh` | fast CI gate running seven scenario ids backed by the existing runtime/aggregate/trace-first probes; exits non-zero if any scenario fails; wired into `.github/workflows/maven.yml` `chaos-smokes` job | `target/chaos-reports/` |
+| `chaos smoke bundle (CI gate)` | `scripts/run-chaos-smokes.sh` | fast CI gate for the three distributed-edge runtime recovery probes: polling lease-expiry redispatch, websocket lease-expiry redispatch, and websocket late stale result replay | `target/chaos-reports/` |
 
 ## Commands
 
@@ -205,7 +205,7 @@ cd xa-mass-testing
 ..\mvnw.cmd -Dexec.classpathScope=compile -Dmaven.test.skip=true compile org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.chaos.SdkPollingMessageRetryExhaustedChaosRunner
 ```
 
-Chaos smoke bundle (all seven CI-gated scenario ids):
+Chaos smoke bundle (three PR-gated distributed-edge scenario ids):
 
 ```bash
 xa-mass-testing/scripts/run-chaos-smokes.sh
@@ -237,17 +237,20 @@ Use repo-level docs only for system-level policy:
 
 ## Current Chaos Focus
 
-Current chaos probes cover seven distinct scenario branches:
+Current PR-gated chaos probes cover three distributed-edge scenario branches:
 
-- disconnect, reconnect, then submit the delayed result on the original worker
 - disconnect without a result, let lease expiry trigger redispatch, and finish on a different worker
 - disconnect without a result, let lease expiry trigger redispatch and terminal success, then reconnect the original worker and replay a stale late result that must not mutate the already-final logical message
 - polling worker claims work, stalls without a result, goes offline, and a second polling worker takes over after lease expiry
+
+Additional scheduled/manual chaos probes cover support scenario branches:
+
+- disconnect, reconnect, then submit the delayed result on the original worker
 - all messages fail with no retries; runtime counters finalize all work as failed and task closes with `ALL_MESSAGES_FAILED`
 - multi-message task with partial success and partial failure; runtime counters prove the split and task closes with `MIXED_MESSAGE_RESULTS`
 - per-message retry budget exhaustion (`maxRetryCount=2`, 3 total attempts per message); runtime counters finalize all work as failed, task closes with `ALL_MESSAGES_FAILED`, and `TASK_WORK_RETRY_RESET` events are verified in trace
 
-The seven PR-gated probes (all-messages-failed, mixed-results, retry-exhausted, polling lease-expiry redispatch, websocket disconnect/reconnect, websocket lease-expiry redispatch, websocket late-result replay) are wired to the `chaos-smokes` CI job and gate every PR. Their main assertions are runtime/aggregate/trace-first; compatibility projection is kept in reports only for bounded diagnosis. The polling all-failed and mixed-result probes now dual-write canonical trace JSONL under `target/chaos-traces/` and run named analyzers `all-failed-terminal-convergence` and `mixed-result-terminal-convergence`. The lease-expiry redispatch and websocket late-result replay probes also dual-write canonical trace JSONL and run named analyzers through the chaos trace planner: `lease-expiry-redispatch` for the polling/websocket redispatch paths and `late-stale-result-replay` for the websocket stale replay path. `retry-exhausted` and websocket disconnect remain representative chaos probes until they can be reduced to one crisp mechanism invariant instead of a mixed behavior bundle. All seven probes still write report JSON under `target/chaos-reports/`.
+The PR-gated chaos probes are the three distributed-edge runtime recovery paths: polling lease-expiry redispatch, websocket lease-expiry redispatch, and websocket late-result replay. Their main assertions are runtime/aggregate/trace-first; compatibility projection is kept in reports only for bounded diagnosis. Result-shape probes such as all-failed, mixed-results, and retry-exhausted remain scheduled/manual support because their primary proof lives in the engine/server/trace convergence chain. Websocket disconnect/reconnect also remains a useful manual probe until it is reduced to one crisp mechanism invariant instead of a mixed behavior bundle. All chaos probes still write report JSON under `target/chaos-reports/`.
 
 `scripts/run-chaos-smokes.sh` enforces this source-level rule before running the probes: PR-gated chaos smoke runners must not import or call compatibility projection helpers or projection-derived stats such as `ProjectionTestViews`, `CompatibilityMessageView`, `CompatibilityAttemptView`, `TaskMessageStats`, `TaskMessageAttemptStats`, `getTaskMessage*`, `waitForSingleMessage`, or direct `taskDetailStore()` access. Report/audit helpers may still live under `chaos.support`, and non-gated runners may keep explicit diagnostic reads until they are promoted to the PR gate.
 

@@ -429,12 +429,11 @@ Proves:
 - hot-path regression signal
 - SDK transport composition behavior
 - degraded/recovery behavior around the scheduling mainline
-- PR-gated chaos smokes now cover polling all-failed, mixed-result,
-  retry-exhausted, polling lease-expiry redispatch, websocket lease-expiry
-  redispatch, websocket disconnect/reconnect, and websocket stale late-result
-  replay; these runners assert task aggregate, `TaskWorkRuntime` counters,
-  active-lease release, final receipts, and `ExecutionEvent` trace transitions
-  first
+- PR-gated chaos smokes now cover only distributed-edge runtime recovery:
+  polling lease-expiry redispatch, websocket lease-expiry redispatch, and
+  websocket stale late-result replay. Result-shape variants remain
+  scheduled/manual support because their primary proof lives in
+  engine/server/trace convergence lanes.
 
 Report-only support:
 

@@ -5,6 +5,7 @@ import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import com.xa.mass.server.testutil.WsFrameTestSupport;
 import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
@@ -50,6 +51,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
+@Tag("secondary-proof")
 public class TaskApiAllMessagesFailedIntegrationTest extends AbstractSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
@@ -159,5 +161,4 @@ public class TaskApiAllMessagesFailedIntegrationTest extends AbstractSampleE2eTe
         }
     }
 }
-
 

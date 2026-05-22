@@ -3,6 +3,7 @@ package com.xa.mass.server.e2e.assignment;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
@@ -28,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
+@Tag("secondary-proof")
 class TaskApiSingleWorkerReuseIntegrationTest extends AbstractSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
@@ -69,4 +71,3 @@ class TaskApiSingleWorkerReuseIntegrationTest extends AbstractSampleE2eTest {
         registerSdkWorkerWithContext(workerId, "us");
     }
 }
-

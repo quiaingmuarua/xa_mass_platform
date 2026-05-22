@@ -15,12 +15,8 @@ import org.junit.platform.suite.api.Suite;
         TaskApiCrossTaskWorkerFairnessTraceObservedIntegrationTest.class,
         TaskApiMinimumWorkerGateTraceObservedIntegrationTest.class,
         TaskApiDelayedWorkerAvailabilityTraceObservedIntegrationTest.class,
-        TaskApiMinimumWorkerGateIntegrationTest.class,
-        TaskApiDelayedWorkerAvailabilityIntegrationTest.class,
         TaskApiRetryRedispatchTraceObservedIntegrationTest.class,
         TaskApiSingleWorkerReuseTraceObservedIntegrationTest.class,
-        TaskApiSingleWorkerReuseIntegrationTest.class,
-        TaskApiWorkerAttributeRoutingIntegrationTest.class,
         TaskApiWorkerWithoutContextIntegrationTest.class,
 })
 class ServerSchedulingE2eSuite {

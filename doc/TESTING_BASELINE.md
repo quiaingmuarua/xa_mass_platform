@@ -144,20 +144,12 @@ Use with:
   transport does not redefine kernel semantics
 - `perf / chaos / distributed-readiness` proves degraded-condition resilience
   around the real scheduling path; it does not replace ordinary feature acceptance
-- current PR chaos smokes in `xa-mass-testing` are runtime/aggregate/trace-first:
-  polling all-failed, mixed-result, retry-exhausted, polling lease-expiry
-  redispatch, websocket disconnect/reconnect, websocket lease-expiry redispatch,
-  and websocket stale late-result runners assert `TaskWorkRuntime` counters,
-  active lease drain, final receipts, task terminal reason, and `ExecutionEvent`
-  transitions before any compatibility report payload; the polling all-failed
-  and mixed-result runners now bind canonical trace JSONL into
-  `all-failed-terminal-convergence` and
-  `mixed-result-terminal-convergence`; the lease-expiry redispatch runners bind
-  canonical trace JSONL into `lease-expiry-redispatch`, and the websocket
-  stale late-result runner binds canonical trace JSONL into
-  `late-stale-result-replay`. `retry-exhausted` and websocket disconnect remain
-  representative chaos probes until they can be mapped to one crisp
-  mechanism-level named proof without mixing ownership.
+- current PR chaos smokes in `xa-mass-testing` are runtime/aggregate/trace-first
+  distributed-edge probes only: polling lease-expiry redispatch, websocket
+  lease-expiry redispatch, and websocket stale late-result replay. Result-shape
+  variants such as all-failed, mixed-result, and retry-exhausted remain
+  scheduled/manual support because their primary proof is the engine/server/trace
+  convergence chain.
 
 For change-type specific minimum verification, use
 [TESTING_INDEX.md](./TESTING_INDEX.md).
