@@ -63,10 +63,28 @@ public abstract class WorkerStorageContractTest {
     }
 
     @Test
+    void updateWorker_movesWorkerBetweenGroupIndexes() {
+        storage.addWorker(worker("w1", "grp-a"));
+        Worker updated = storage.getWorker("w1").orElseThrow();
+        updated.setWorkerGroupId("grp-b");
+        assertThat(storage.updateWorker(updated)).isTrue();
+        assertThat(storage.getWorkersByGroupId("grp-a")).isEmpty();
+        assertThat(storage.getWorkersByGroupId("grp-b"))
+                .extracting(Worker::getWorkerId).containsExactly("w1");
+    }
+
+    @Test
     void deleteWorker_removesWorker() {
         storage.addWorker(worker("w1", "grp-a"));
         assertThat(storage.deleteWorker("w1")).isTrue();
         assertThat(storage.getWorker("w1")).isEmpty();
+    }
+
+    @Test
+    void deleteWorker_removesWorkerFromGroupIndex() {
+        storage.addWorker(worker("w1", "grp-a"));
+        assertThat(storage.deleteWorker("w1")).isTrue();
+        assertThat(storage.getWorkersByGroupId("grp-a")).isEmpty();
     }
 
     @Test

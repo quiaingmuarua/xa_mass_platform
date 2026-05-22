@@ -44,18 +44,30 @@ public final class ExternalJavaWorkerProcess implements AutoCloseable {
     public static ExternalJavaWorkerProcess startPollingSample(String baseUrl,
                                                                String workerId,
                                                                String workerKey) throws Exception {
+        return startPollingSample(baseUrl, workerId, workerKey, null);
+    }
+
+    public static ExternalJavaWorkerProcess startPollingSample(String baseUrl,
+                                                               String workerId,
+                                                               String workerKey,
+                                                               String workerGroupId) throws Exception {
         Objects.requireNonNull(baseUrl, "baseUrl");
         Objects.requireNonNull(workerId, "workerId");
         Objects.requireNonNull(workerKey, "workerKey");
 
         ensurePollingSampleBuilt();
-        return startJar(resolveRepoFile("samples/worker-polling/java/target/worker-polling-java-sample.jar"), Map.of(
+        Map<String, String> environment = new LinkedHashMap<>(Map.of(
                 "MASS_BASE_URL", baseUrl,
                 "MASS_WORKER_ID", workerId,
                 "MASS_WORKER_KEY", workerKey,
                 "MASS_POLL_INTERVAL_MS", "200",
                 "MASS_HEARTBEAT_INTERVAL_MS", "1000"
-        ), () -> postWorkerOffline(baseUrl, workerId, workerKey));
+        ));
+        if (workerGroupId != null && !workerGroupId.isBlank()) {
+            environment.put("MASS_WORKER_GROUP_ID", workerGroupId);
+        }
+        return startJar(resolveRepoFile("samples/worker-polling/java/target/worker-polling-java-sample.jar"),
+                environment, () -> postWorkerOffline(baseUrl, workerId, workerKey));
     }
 
     public static ExternalJavaWorkerProcess startWebSocketSample(String workerId, URI wsUri) throws Exception {

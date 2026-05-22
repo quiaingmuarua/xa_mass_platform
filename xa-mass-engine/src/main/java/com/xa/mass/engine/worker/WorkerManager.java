@@ -378,19 +378,18 @@ public class WorkerManager implements WorkerLookupStore {
     }
 
     public List<Worker> findWorkerCandidates(Task task) {
-        String eventCode = TaskSharedConfig.sdkEventCode(task);
+        return findWorkerCandidates(task, DEFAULT_STAGE_ONE_CANDIDATE_LIMIT);
+    }
+
+    public List<Worker> findWorkerCandidates(Task task, int maxCandidateCount) {
         String targetWorkerId = TaskSharedConfig.targetWorkerId(task);
-        String project = task != null ? task.getProject() : null;
-        if (targetWorkerId != null && !targetWorkerId.isBlank()) {
-            return getWorkerCandidateIndex().workersFor(task, 1);
+        if (targetWorkerId == null && maxCandidateCount <= 0) {
+            return List.of();
         }
-        if (eventCode != null && !eventCode.isBlank()) {
-            return getWorkerCandidateIndex().workersFor(task, DEFAULT_STAGE_ONE_CANDIDATE_LIMIT);
-        }
-        if (project != null && !project.isBlank()) {
-            return getWorkerCandidateIndex().workersFor(task, DEFAULT_STAGE_ONE_CANDIDATE_LIMIT);
-        }
-        return workerStorage.getAllWorkers();
+        int limit = targetWorkerId == null
+                ? Math.max(1, maxCandidateCount)
+                : 1;
+        return getWorkerCandidateIndex().workersFor(task, limit);
     }
 
     public WorkerRegistrySnapshot getWorkerRegistrySnapshot() {

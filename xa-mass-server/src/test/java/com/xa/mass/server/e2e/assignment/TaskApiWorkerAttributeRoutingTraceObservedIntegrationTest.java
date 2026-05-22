@@ -212,6 +212,7 @@ class TaskApiWorkerAttributeRoutingTraceObservedIntegrationTest extends Abstract
         Map<String, Object> sharedConfig = new java.util.LinkedHashMap<>();
         sharedConfig.put("textContent", textContent);
         sharedConfig.put(TaskSharedConfig.ROUTING_CODE, "us");
+        sharedConfig.put(TaskSharedConfig.WORKER_GROUP_IDS, List.of("pool-east", "pool-west"));
         sharedConfig.put(TaskSharedConfig.SDK_METADATA, Map.of(TaskSharedConfig.SDK_EVENT_CODE, "demo.dispatch"));
 
         Map<String, Object> createBody = new java.util.LinkedHashMap<>();
@@ -233,6 +234,7 @@ class TaskApiWorkerAttributeRoutingTraceObservedIntegrationTest extends Abstract
     private String createRouteAttributeTaskId(String sourceRef, String textContent, String target) {
         Map<String, Object> sharedConfig = new java.util.LinkedHashMap<>();
         sharedConfig.put("textContent", textContent);
+        sharedConfig.put(TaskSharedConfig.WORKER_GROUP_ID, "route-bucket-trace-group");
         sharedConfig.put(TaskSharedConfig.ROUTE_ATTRIBUTES, Map.of("region", "us"));
         sharedConfig.put(TaskSharedConfig.SDK_METADATA, Map.of(TaskSharedConfig.SDK_EVENT_CODE, "demo.dispatch"));
 

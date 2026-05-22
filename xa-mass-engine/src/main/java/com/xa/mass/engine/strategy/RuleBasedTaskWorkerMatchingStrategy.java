@@ -28,6 +28,12 @@ import java.util.stream.Collectors;
 public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingStrategy {
 
     private static final Logger log = LoggerFactory.getLogger(RuleBasedTaskWorkerMatchingStrategy.class);
+    static final int DEFAULT_STAGE_ONE_SAMPLE_MIN =
+            Integer.getInteger("xa.mass.engine.stageOneCandidateSampleMin", 512);
+    static final int DEFAULT_STAGE_ONE_SAMPLE_MAX =
+            Integer.getInteger("xa.mass.engine.stageOneCandidateSampleMax", 2_048);
+    static final int DEFAULT_STAGE_ONE_OVERSAMPLE_FACTOR =
+            Integer.getInteger("xa.mass.engine.stageOneCandidateOversampleFactor", 4);
 
     private final RuleManager<Map<String, Object>> ruleManager;
     private final WorkerManager workerManager;
@@ -93,7 +99,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
         if (maxWorkerCount <= 0) {
             return matchedWorkers;
         }
-        List<Worker> candidates = workerManager.findWorkerCandidates(task);
+        List<Worker> candidates = workerManager.findWorkerCandidates(task, candidateAcquisitionLimit(task, maxWorkerCount));
         List<RuleDefinition> rules = ruleManager.getDefaultRules();
         List<RulePassedCandidate> rulePassedCandidates = new ArrayList<>();
 
@@ -294,6 +300,17 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
         return Double.NaN;
     }
 
+    private int candidateAcquisitionLimit(Task task, int maxWorkerCount) {
+        if (TaskSharedConfig.targetWorkerId(task) != null) {
+            return 1;
+        }
+        int sampleMin = Math.max(1, DEFAULT_STAGE_ONE_SAMPLE_MIN);
+        int sampleMax = Math.max(sampleMin, DEFAULT_STAGE_ONE_SAMPLE_MAX);
+        int oversampleFactor = Math.max(1, DEFAULT_STAGE_ONE_OVERSAMPLE_FACTOR);
+        long desiredSample = Math.max(1L, (long) maxWorkerCount * oversampleFactor);
+        return (int) Math.min(sampleMax, Math.max(sampleMin, desiredSample));
+    }
+
     private PrefilterDecision prefilterCandidate(Task task, WorkerSchedulingCandidate candidate) {
         Worker worker = candidate.getWorker();
         WorkerSchedulingView schedulingView = candidate.getSchedulingView();
@@ -312,10 +329,8 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
             return PrefilterDecision.reject(AssignmentResult.CONFLICT,
                     "worker locked", contextSnapshot, true);
         }
-        String eventCode = TaskSharedConfig.sdkEventCode(task);
         String targetWorkerId = TaskSharedConfig.targetWorkerId(task);
         Map<String, String> targetWorkerAttributes = TaskSharedConfig.targetWorkerAttributes(task);
-        boolean sdkEventTask = eventCode != null && !eventCode.isBlank();
         if (targetWorkerId != null && !targetWorkerId.equals(schedulingView.workerId())) {
             return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
                     "target worker mismatch", contextSnapshot, false);
@@ -324,14 +339,6 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                 && Boolean.FALSE.equals(contextSnapshot.get("matchesTargetWorkerAttributes"))) {
             return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
                     "target worker attributes mismatch", contextSnapshot, false);
-        }
-        if (!sdkEventTask && !schedulingView.supportsProject(task.getProject())) {
-            return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
-                    "project not supported", contextSnapshot, false);
-        }
-        if (sdkEventTask && !schedulingView.supportsEvent(eventCode)) {
-            return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
-                    "event not supported", contextSnapshot, false);
         }
 
         String routingCode = TaskSharedConfig.routingCode(task);

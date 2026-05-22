@@ -19,11 +19,11 @@ class DefaultAssignmentAllocationPolicyTest {
     private final DefaultAssignmentAllocationPolicy policy = new DefaultAssignmentAllocationPolicy();
 
     @Test
-    void taskLevelEventCapabilityUsesBaselineForMatchAndDesiredWorkersForDispatchLimit() {
+    void planUsesBaselineForMatchAndDesiredWorkersForDispatchLimit() {
         Task task = task(10, 3, 4, TaskStatus.READY);
 
         AssignmentAllocationPlan plan = policy.plan(new AssignmentAllocationRequest(
-                task, TaskStatus.READY, 10, 20, 0, true));
+                task, TaskStatus.READY, 10, 0));
 
         assertEquals(4, plan.desiredDispatchWorkerCount());
         assertEquals(4, plan.requiredStartWorkerCount());
@@ -32,16 +32,16 @@ class DefaultAssignmentAllocationPolicyTest {
     }
 
     @Test
-    void nonTaskLevelCapabilityExpandsMatchRequestToKnownCandidateCount() {
+    void planDoesNotExpandMatchRequestFromCandidateCount() {
         Task task = task(3, 2, 1, TaskStatus.READY);
 
         AssignmentAllocationPlan plan = policy.plan(new AssignmentAllocationRequest(
-                task, TaskStatus.READY, 3, 5, 0, false));
+                task, TaskStatus.READY, 3, 0));
 
         assertEquals(2, plan.desiredDispatchWorkerCount());
         assertEquals(1, plan.requiredStartWorkerCount());
-        assertEquals(5, plan.requestedMatchCount());
-        assertEquals(DefaultWorkerBudgetPolicy.DEFAULT_BULK_MAX_WORKERS, plan.dispatchCandidateLimit());
+        assertEquals(2, plan.requestedMatchCount());
+        assertEquals(2, plan.dispatchCandidateLimit());
     }
 
     @Test
@@ -49,12 +49,12 @@ class DefaultAssignmentAllocationPolicyTest {
         Task task = task(6, 2, 1, TaskStatus.RUNNING);
 
         AssignmentAllocationPlan plan = policy.plan(new AssignmentAllocationRequest(
-                task, TaskStatus.RUNNING, 6, 4, 2, false));
+                task, TaskStatus.RUNNING, 6, 2));
 
         assertEquals(3, plan.rawDesiredDispatchWorkerCount());
         assertEquals(3, plan.desiredDispatchWorkerCount());
-        assertEquals(4, plan.requestedMatchCount());
-        assertEquals(DefaultWorkerBudgetPolicy.DEFAULT_BULK_MAX_WORKERS - 2, plan.dispatchCandidateLimit());
+        assertEquals(3, plan.requestedMatchCount());
+        assertEquals(3, plan.dispatchCandidateLimit());
         assertEquals(DefaultWorkerBudgetPolicy.DEFAULT_BULK_MAX_WORKERS, plan.workerBudget());
         assertEquals(2, plan.currentTaskWorkerCount());
         assertEquals(false, plan.budgetLimited());
@@ -65,7 +65,7 @@ class DefaultAssignmentAllocationPolicyTest {
         Task task = task(100, 1, 1, TaskStatus.READY);
 
         AssignmentAllocationPlan plan = policy.plan(new AssignmentAllocationRequest(
-                task, TaskStatus.READY, 100, 100, 0, false));
+                task, TaskStatus.READY, 100, 0));
 
         assertEquals(100, plan.rawDesiredDispatchWorkerCount());
         assertEquals(DefaultWorkerBudgetPolicy.DEFAULT_BULK_MAX_WORKERS, plan.desiredDispatchWorkerCount());
@@ -80,7 +80,7 @@ class DefaultAssignmentAllocationPolicyTest {
         task.getExecutionSpec().setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
 
         AssignmentAllocationPlan plan = policy.plan(new AssignmentAllocationRequest(
-                task, TaskStatus.READY, 50, 50, 0, false));
+                task, TaskStatus.READY, 50, 0));
 
         assertEquals(50, plan.rawDesiredDispatchWorkerCount());
         assertEquals(DefaultWorkerBudgetPolicy.DEFAULT_INTERACTIVE_MAX_WORKERS, plan.desiredDispatchWorkerCount());
@@ -97,9 +97,7 @@ class DefaultAssignmentAllocationPolicyTest {
                 task,
                 TaskStatus.RUNNING,
                 10,
-                10,
-                DefaultWorkerBudgetPolicy.DEFAULT_BULK_MAX_WORKERS,
-                false));
+                DefaultWorkerBudgetPolicy.DEFAULT_BULK_MAX_WORKERS));
         AssignmentAllocationDecision decision = policy.decide(plan, TaskStatus.RUNNING, List.of());
 
         assertEquals(0, plan.desiredDispatchWorkerCount());
@@ -117,7 +115,7 @@ class DefaultAssignmentAllocationPolicyTest {
         Task task = task(10, 2, 2, TaskStatus.READY);
 
         AssignmentAllocationPlan plan = cappedPolicy.plan(new AssignmentAllocationRequest(
-                task, TaskStatus.READY, 10, 10, 2, false));
+                task, TaskStatus.READY, 10, 2));
 
         assertEquals(5, plan.rawDesiredDispatchWorkerCount());
         assertEquals(1, plan.desiredDispatchWorkerCount());
@@ -134,7 +132,7 @@ class DefaultAssignmentAllocationPolicyTest {
         Task task = task(10, 10, 5, TaskStatus.RUNNING);
 
         AssignmentAllocationPlan plan = policy.plan(new AssignmentAllocationRequest(
-                task, TaskStatus.RUNNING, 1, 1, 0, false));
+                task, TaskStatus.RUNNING, 1, 0));
 
         assertEquals(1, plan.desiredDispatchWorkerCount());
         assertEquals(1, plan.requiredStartWorkerCount());
@@ -144,7 +142,7 @@ class DefaultAssignmentAllocationPolicyTest {
     @Test
     void readyTaskBelowMinimumWorkerGateSkipsDispatch() {
         AssignmentAllocationPlan plan = policy.plan(new AssignmentAllocationRequest(
-                task(1, 1, 2, TaskStatus.READY), TaskStatus.READY, 1, 1, 0, false));
+                task(1, 1, 2, TaskStatus.READY), TaskStatus.READY, 1, 0));
 
         AssignmentAllocationDecision decision = policy.decide(plan, TaskStatus.READY, List.of(matched("worker-1")));
 
@@ -155,7 +153,7 @@ class DefaultAssignmentAllocationPolicyTest {
     @Test
     void statusChangeDuringMatchingSkipsDispatch() {
         AssignmentAllocationPlan plan = policy.plan(new AssignmentAllocationRequest(
-                task(1, 1, 1, TaskStatus.READY), TaskStatus.READY, 1, 1, 0, false));
+                task(1, 1, 1, TaskStatus.READY), TaskStatus.READY, 1, 0));
 
         AssignmentAllocationDecision decision = policy.decide(plan, TaskStatus.PAUSED, List.of(matched("worker-1")));
 
@@ -166,7 +164,7 @@ class DefaultAssignmentAllocationPolicyTest {
     @Test
     void noMatchSkipsDispatch() {
         AssignmentAllocationPlan plan = policy.plan(new AssignmentAllocationRequest(
-                task(1, 1, 1, TaskStatus.READY), TaskStatus.READY, 1, 0, 0, false));
+                task(1, 1, 1, TaskStatus.READY), TaskStatus.READY, 1, 0));
 
         AssignmentAllocationDecision decision = policy.decide(plan, TaskStatus.READY, List.of());
 

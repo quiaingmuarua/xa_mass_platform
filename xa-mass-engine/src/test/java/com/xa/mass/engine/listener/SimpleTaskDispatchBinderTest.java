@@ -507,7 +507,7 @@ public class SimpleTaskDispatchBinderTest {
         TaskDispatchBinding binding = dispatched.getFirst();
         assertEquals("group-a", binding.workerGroupId());
         assertEquals("node-a", binding.adapterNodeId());
-        assertEquals("GROUP_PROJECT_INDEX", binding.workerCandidateSource());
+        assertEquals("GROUP_SELECTOR", binding.workerCandidateSource());
     }
 
     @Test
@@ -632,7 +632,11 @@ public class SimpleTaskDispatchBinderTest {
         TaskShellCreateRequestDto dto = new TaskShellCreateRequestDto();
         dto.setSourceRef("task");
         dto.setProject("demoApp");
-        dto.setSharedConfig(java.util.Map.of("textContent", "hello", "routingCode", "us"));
+        dto.setSharedConfig(java.util.Map.of(
+                "textContent", "hello",
+                "routingCode", "us",
+                TaskSharedConfig.WORKER_GROUP_ID, "group-a"
+        ));
         dto.setUserId("agent");
         TaskExecutionSpec spec = new TaskExecutionSpec();
         spec.setBatchSize(1);
@@ -806,6 +810,5 @@ public class SimpleTaskDispatchBinderTest {
         }
     }
 }
-
 
 

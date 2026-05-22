@@ -97,33 +97,32 @@ WorkerContext is not scheduling truth in the engine hot path. Runtime,
 transport, projection, SDK/API, server payloads, and canonical trace identity
 are worker-level.
 
-Current WorkerGroup roadmap baseline:
+Current WorkerGroup / group-selector scheduling baseline:
 
-- WG-0 candidate-source convergence is closed; WorkerGroup and
-  WorkerGroup snapshot index are implemented; WG-2 `WorkerCandidateIndex` is
-  implemented as a Stage-1 worker-row index; WG-3/WG-4 wire it as the active
-  source for target-worker, SDK event, and project-only tasks
+- WorkerGroup candidate-source convergence is closed; ordinary scheduling uses
+  explicit task `workerGroupId` / `workerGroupIds` selectors before worker rows
+  are acquired
 - worker access/read-view types live in `com.xa.mass.engine.worker`
 - `EventKey`, `EventBinding`, `WorkerGroupRecord`, and
   `WorkerRegistrySnapshot` are engine-internal worker package types
-- `WorkerCandidateIndex` consumes only `WorkerRegistrySnapshot` and narrows
-  `EventKey(projectCode,eventCode) -> groupIds -> workerIds`; it does not read
-  worker-level supported project/event compatibility fields and does not own
-  reachability, load, reservation, or resource policy
+- `WorkerCandidateIndex` consumes explicit group selectors and narrows
+  `workerGroupId(s) -> route/node bucket -> workerIds`; it does not derive
+  candidate groups from task eventCode/project and does not own reachability,
+  load, reservation, or resource policy
 - `WorkerManager` owns the active worker registry snapshot. SDK registration
   enters through `WorkerManager.addWorker(...)`, and manager add/update/delete
   refresh the active snapshot.
 - candidate source still enters through `WorkerManager.findWorkerCandidates(...)`
   and is materialized by the strategy-package
   `WorkerSchedulingCandidateEnumerator`
-- `targetWorkerId` uses direct indexed lookup plus group capability gate before
-  Stage 2 admission
-- event-code and project-only candidate narrowing read `WorkerCandidateIndex`;
-  the active scheduling candidate source does not call worker-level supported
-  project/event storage indexes
-- `WorkerRegistrySnapshot` indexes WorkerGroup `EventBinding` truth for the
-  candidate source; worker-level supported project/event fields are
-  compatibility read hints and diagnostics only, not matching truth
+- `targetWorkerId` is only a debug/manual narrowing shortcut inside an
+  explicit group selector; it cannot bypass group, reachability, dispatch gate,
+  load, lock, or rule checks
+- event-code-only and project-only tasks do not match workers in the kernel;
+  SDK/intake may resolve event metadata to `workerGroupId(s)` before assignment
+- `WorkerRegistrySnapshot` may retain WorkerGroup `EventBinding` read caches
+  for catalog/report-ceiling flows, but event bindings are not the scheduling
+  candidate-source key
 - Stage 2 scheduling capability evidence is materialized from
   `WorkerGroupRecord`, and explicit AdapterNode/NodeGroupBinding registration
   is required before adapter-node scoped worker registration

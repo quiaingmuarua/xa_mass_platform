@@ -433,7 +433,7 @@ class XaMassTraceCliIntegrationTest {
                             "candidateScore", "0.1",
                             "workerGroupId", "pool-east",
                             "eventBindingKey", "demoApp:demo.dispatch",
-                            "workerCandidateSource", "GROUP_INDEX",
+                            "workerCandidateSource", "GROUP_SELECTOR",
                             "workerSchedulingResourceId", "worker-group-east-01",
                             "workerSchedulingRoutingTags", "shared,us",
                             "workerSchedulingAttributes", Map.of("routingTag", "us", "country", "us"),

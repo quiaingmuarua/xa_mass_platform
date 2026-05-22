@@ -23,19 +23,31 @@ import java.util.Set;
 public final class WorkerRouteBucketOwner {
 
     private final WorkerRoutingPolicy routingPolicy;
+    private final WorkerRouteBucketSelectionPolicy selectionPolicy;
     private final Map<GroupRouteBucketKey, List<String>> workerIdsByGroupRouteBucket;
+    private final Map<NodeGroupRouteBucketKey, List<String>> workerIdsByNodeGroupRouteBucket;
     private final Map<String, Set<String>> routeBucketKeysByWorkerId;
 
     private WorkerRouteBucketOwner(WorkerRoutingPolicy routingPolicy,
+                                   WorkerRouteBucketSelectionPolicy selectionPolicy,
                                    Map<GroupRouteBucketKey, List<String>> workerIdsByGroupRouteBucket,
+                                   Map<NodeGroupRouteBucketKey, List<String>> workerIdsByNodeGroupRouteBucket,
                                    Map<String, Set<String>> routeBucketKeysByWorkerId) {
         this.routingPolicy = Objects.requireNonNull(routingPolicy, "routingPolicy");
+        this.selectionPolicy = Objects.requireNonNull(selectionPolicy, "selectionPolicy");
         this.workerIdsByGroupRouteBucket = immutableListMap(workerIdsByGroupRouteBucket);
+        this.workerIdsByNodeGroupRouteBucket = immutableListMap(workerIdsByNodeGroupRouteBucket);
         this.routeBucketKeysByWorkerId = immutableSetMap(routeBucketKeysByWorkerId);
     }
 
     public static WorkerRouteBucketOwner empty() {
-        return new WorkerRouteBucketOwner(WorkerRoutingPolicy.defaultPolicy(), Map.of(), Map.of());
+        return new WorkerRouteBucketOwner(
+                WorkerRoutingPolicy.defaultPolicy(),
+                RandomWorkerRouteBucketSelectionPolicy.defaultPolicy(),
+                Map.of(),
+                Map.of(),
+                Map.of()
+        );
     }
 
     public static WorkerRouteBucketOwner fromSnapshot(WorkerRegistrySnapshot snapshot) {
@@ -44,11 +56,21 @@ public final class WorkerRouteBucketOwner {
 
     public static WorkerRouteBucketOwner fromSnapshot(WorkerRegistrySnapshot snapshot,
                                                       WorkerRoutingPolicy routingPolicy) {
+        return fromSnapshot(snapshot, routingPolicy, RandomWorkerRouteBucketSelectionPolicy.defaultPolicy());
+    }
+
+    public static WorkerRouteBucketOwner fromSnapshot(WorkerRegistrySnapshot snapshot,
+                                                      WorkerRoutingPolicy routingPolicy,
+                                                      WorkerRouteBucketSelectionPolicy selectionPolicy) {
         if (snapshot == null) {
             return empty();
         }
         WorkerRoutingPolicy policy = routingPolicy != null ? routingPolicy : WorkerRoutingPolicy.defaultPolicy();
+        WorkerRouteBucketSelectionPolicy selector = selectionPolicy != null
+                ? selectionPolicy
+                : RandomWorkerRouteBucketSelectionPolicy.defaultPolicy();
         LinkedHashMap<GroupRouteBucketKey, List<String>> mutableBuckets = new LinkedHashMap<>();
+        LinkedHashMap<NodeGroupRouteBucketKey, List<String>> mutableNodeBuckets = new LinkedHashMap<>();
         LinkedHashMap<String, Set<String>> mutableWorkerBuckets = new LinkedHashMap<>();
         for (Worker worker : snapshot.workers()) {
             String workerId = normalizeNullable(worker.getWorkerId());
@@ -56,17 +78,27 @@ public final class WorkerRouteBucketOwner {
             if (workerId == null || groupId == null || snapshot.group(groupId).isEmpty()) {
                 continue;
             }
+            String adapterNodeId = normalizeNullable(worker.getAdapterNodeId());
             Set<String> routeBucketKeys = normalizeRouteKeys(policy.routeBucketKeysForWorker(worker));
             mutableWorkerBuckets.put(workerId, routeBucketKeys);
             for (String routeBucketKey : routeBucketKeys) {
                 GroupRouteBucketKey key = new GroupRouteBucketKey(groupId, routeBucketKey);
                 mutableBuckets.computeIfAbsent(key, ignored -> new ArrayList<>()).add(workerId);
+                if (adapterNodeId != null) {
+                    NodeGroupRouteBucketKey nodeKey =
+                            new NodeGroupRouteBucketKey(groupId, adapterNodeId, routeBucketKey);
+                    mutableNodeBuckets.computeIfAbsent(nodeKey, ignored -> new ArrayList<>()).add(workerId);
+                }
             }
         }
-        return new WorkerRouteBucketOwner(policy, mutableBuckets, mutableWorkerBuckets);
+        return new WorkerRouteBucketOwner(policy, selector, mutableBuckets, mutableNodeBuckets, mutableWorkerBuckets);
     }
 
     public List<String> acquireForTask(String groupId, Task task, int maxCandidateCount) {
+        return acquireForTask(groupId, null, task, maxCandidateCount);
+    }
+
+    public List<String> acquireForTask(String groupId, String adapterNodeId, Task task, int maxCandidateCount) {
         Set<String> routeBucketKeys = normalizeRouteKeys(routingPolicy.routeBucketKeysForTask(task));
         List<String> acquired = new ArrayList<>();
         for (String routeBucketKey : routeBucketKeys) {
@@ -74,25 +106,43 @@ public final class WorkerRouteBucketOwner {
             if (remaining <= 0) {
                 break;
             }
-            acquired.addAll(acquire(groupId, routeBucketKey, remaining));
+            acquired.addAll(acquire(groupId, adapterNodeId, routeBucketKey, remaining));
         }
         return List.copyOf(acquired);
     }
 
     public List<String> acquire(String groupId, String routeBucketKey, int maxCandidateCount) {
+        return acquire(groupId, null, routeBucketKey, maxCandidateCount);
+    }
+
+    public List<String> acquire(String groupId, String adapterNodeId, String routeBucketKey, int maxCandidateCount) {
         String normalizedGroupId = normalizeNullable(groupId);
+        String normalizedAdapterNodeId = normalizeNullable(adapterNodeId);
         String normalizedRouteBucketKey = normalizeNullable(routeBucketKey);
         if (normalizedGroupId == null || normalizedRouteBucketKey == null || maxCandidateCount <= 0) {
             return List.of();
         }
-        List<String> workerIds = workerIdsByGroupRouteBucket.getOrDefault(
-                new GroupRouteBucketKey(normalizedGroupId, normalizedRouteBucketKey),
-                List.of()
-        );
-        if (workerIds.size() <= maxCandidateCount) {
-            return workerIds;
+        List<String> workerIds;
+        if (normalizedAdapterNodeId == null) {
+            workerIds = workerIdsByGroupRouteBucket.getOrDefault(
+                    new GroupRouteBucketKey(normalizedGroupId, normalizedRouteBucketKey),
+                    List.of()
+            );
+        } else {
+            workerIds = workerIdsByNodeGroupRouteBucket.getOrDefault(
+                    new NodeGroupRouteBucketKey(normalizedGroupId, normalizedAdapterNodeId, normalizedRouteBucketKey),
+                    List.of()
+            );
         }
-        return List.copyOf(workerIds.subList(0, maxCandidateCount));
+        return selectionPolicy.select(
+                new WorkerRouteBucketSelectionContext(
+                        normalizedGroupId,
+                        normalizedAdapterNodeId,
+                        normalizedRouteBucketKey
+                ),
+                workerIds,
+                maxCandidateCount
+        );
     }
 
     public Set<String> routeBucketKeysByWorkerId(String workerId) {
@@ -120,13 +170,12 @@ public final class WorkerRouteBucketOwner {
         return Collections.unmodifiableSet(normalized);
     }
 
-    private static Map<GroupRouteBucketKey, List<String>> immutableListMap(
-            Map<GroupRouteBucketKey, List<String>> source) {
+    private static <K> Map<K, List<String>> immutableListMap(Map<K, List<String>> source) {
         if (source.isEmpty()) {
             return Map.of();
         }
-        LinkedHashMap<GroupRouteBucketKey, List<String>> immutable = new LinkedHashMap<>();
-        for (Map.Entry<GroupRouteBucketKey, List<String>> entry : source.entrySet()) {
+        LinkedHashMap<K, List<String>> immutable = new LinkedHashMap<>();
+        for (Map.Entry<K, List<String>> entry : source.entrySet()) {
             immutable.put(entry.getKey(), List.copyOf(entry.getValue()));
         }
         return Collections.unmodifiableMap(immutable);
@@ -148,5 +197,8 @@ public final class WorkerRouteBucketOwner {
     }
 
     private record GroupRouteBucketKey(String groupId, String routeBucketKey) {
+    }
+
+    private record NodeGroupRouteBucketKey(String groupId, String adapterNodeId, String routeBucketKey) {
     }
 }

@@ -899,9 +899,162 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "WorkerStorage must stay control-plane worker-row storage. Capability candidate "
-                        + "lookup belongs to WorkerRegistrySnapshot / WorkerCandidateIndex, not DB-backed "
-                        + "storage APIs:\n"
+                "WorkerStorage must stay runtime worker-registry storage. Capability candidate "
+                        + "lookup belongs to WorkerRegistrySnapshot / WorkerCandidateIndex, not control-plane "
+                + "storage APIs:\n"
+                + String.join("\n", violations));
+    }
+
+    @Test
+    void jdbcStorageDoesNotOwnWorkerRuntimeRegistry() throws IOException {
+        Path jdbcSourceRoot = repositoryRoot().resolve(
+                "platform_infra/mass-storage-jdbc/src/main/java/com/xa/mass/storage/jdbc");
+        Path migrationPath = repositoryRoot().resolve(
+                "platform_infra/mass-storage-jdbc/src/main/resources/db/migration/control-plane/V1__create_control_plane_tables.sql");
+
+        List<String> violations = new ArrayList<>();
+        if (Files.exists(jdbcSourceRoot.resolve("JdbcWorkerStorage.java"))) {
+            violations.add(jdbcSourceRoot.resolve("JdbcWorkerStorage.java")
+                    + " reintroduces DB-backed worker runtime storage");
+        }
+        if (Files.exists(jdbcSourceRoot.resolve("JdbcWorkerCompatibilityProjection.java"))) {
+            violations.add(jdbcSourceRoot.resolve("JdbcWorkerCompatibilityProjection.java")
+                    + " reintroduces a second worker runtime data structure under JDBC");
+        }
+        if (Files.exists(migrationPath)) {
+            String migration = Files.readString(migrationPath, StandardCharsets.UTF_8);
+            if (Pattern.compile("\\bxa_worker\\b").matcher(migration).find()) {
+                violations.add(migrationPath + " creates xa_worker; worker registry is runtime/trace truth, not DB CRUD");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "JDBC storage must not own worker runtime registry, worker locks, or worker attribute churn. "
+                        + "Use the shared runtime worker backend and persist historical query needs through "
+                        + "trace/audit ingestion:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void groupSelectorFirstCandidateSourceDoesNotUseEventOrAllWorkerFallback() throws IOException {
+        Path candidateIndexPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/worker/WorkerCandidateIndex.java");
+        Path workerManagerPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/worker/WorkerManager.java");
+        Path binderPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/listener/SimpleTaskDispatchBinder.java");
+        Path traceLoggerPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/util/TraceEventLogger.java");
+        Path ruleConfigPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/rules/RuleConfig.java");
+        Path assignmentListenerPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/listener/TaskWorkerAssignListener.java");
+        Path allocationRequestPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/assignment/AssignmentAllocationRequest.java");
+
+        String candidateIndex = Files.readString(candidateIndexPath, StandardCharsets.UTF_8);
+        String findWorkerCandidates = sourceMethod(
+                Files.readString(workerManagerPath, StandardCharsets.UTF_8),
+                "public List<Worker> findWorkerCandidates"
+        );
+        String binder = Files.readString(binderPath, StandardCharsets.UTF_8);
+        String traceLogger = Files.readString(traceLoggerPath, StandardCharsets.UTF_8);
+        String ruleConfig = Files.readString(ruleConfigPath, StandardCharsets.UTF_8);
+        String assignmentListener = Files.readString(assignmentListenerPath, StandardCharsets.UTF_8);
+        String allocationRequest = Files.readString(allocationRequestPath, StandardCharsets.UTF_8);
+
+        List<String> violations = new ArrayList<>();
+        if (Pattern.compile("\\bTaskSharedConfig\\.sdkEventCode\\s*\\(").matcher(candidateIndex).find()) {
+            violations.add(candidateIndexPath + " reads sdkEventCode in candidate-source lookup");
+        }
+        if (Pattern.compile("\\bgroupIdsByEventKey\\s*\\(").matcher(candidateIndex).find()) {
+            violations.add(candidateIndexPath + " reads groupIdsByEventKey in candidate-source lookup");
+        }
+        if (Pattern.compile("\\bgroupIdsByProjectCode\\s*\\(").matcher(candidateIndex).find()) {
+            violations.add(candidateIndexPath + " reads groupIdsByProjectCode in candidate-source lookup");
+        }
+        if (Pattern.compile("\\.getAllWorkers\\s*\\(").matcher(findWorkerCandidates).find()) {
+            violations.add(workerManagerPath + "#findWorkerCandidates falls back to all workers");
+        }
+        for (String oldSource : List.of("GROUP_INDEX", "GROUP_PROJECT_INDEX", "ALL_WORKERS_FALLBACK")) {
+            if (binder.contains(oldSource)) {
+                violations.add(binderPath + " can emit old workerCandidateSource " + oldSource);
+            }
+            if (traceLogger.contains(oldSource)) {
+                violations.add(traceLoggerPath + " can emit old workerCandidateSource " + oldSource);
+            }
+        }
+        if (ruleConfig.contains("worker_capability_check") || ruleConfig.contains("supportsEvent")) {
+            violations.add(ruleConfigPath + " keeps event/project capability as default eligibility truth");
+        }
+        if (assignmentListener.contains("usesTaskLevelEventCapability")
+                || assignmentListener.contains("TaskSharedConfig.sdkEventCode(task)")) {
+            violations.add(assignmentListenerPath + " uses task eventCode as assignment allocation truth");
+        }
+        if (Pattern.compile("\\bfindWorkerCandidates\\s*\\(").matcher(assignmentListener).find()) {
+            violations.add(assignmentListenerPath + " pre-fetches Stage-1 candidates before matching");
+        }
+        if (allocationRequest.contains("taskLevelEventCapability")) {
+            violations.add(allocationRequestPath + " exposes event capability allocation wording");
+        }
+        if (allocationRequest.contains("workerCandidateCount")
+                || allocationRequest.contains("groupSelectorCandidateSource")) {
+            violations.add(allocationRequestPath + " couples allocation planning to Stage-1 candidate source shape");
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Group-selector-first scheduling must not reintroduce event/project/all-worker "
+                        + "candidate-source fallbacks:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void workerRouteBucketOwnerStaysCandidateSourceOnly() throws IOException {
+        Path routeBucketOwnerPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/worker/WorkerRouteBucketOwner.java");
+        String source = Files.readString(routeBucketOwnerPath, StandardCharsets.UTF_8);
+
+        List<String> violations = new ArrayList<>();
+        for (String forbidden : List.of(
+                "WorkerReachabilityView",
+                "WorkerLoadView",
+                "WorkerDispatchAvailabilityOwner",
+                "TaskResult",
+                "TaskWorkRuntime",
+                "tryLockWorker",
+                "recordWorkClaimed",
+                "recordWorkFinal"
+        )) {
+            if (source.contains(forbidden)) {
+                violations.add(routeBucketOwnerPath + " reads scheduling admission/result owner: " + forbidden);
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "WorkerRouteBucketOwner is only a bounded Stage-1 candidate bucket. It must not "
+                        + "own reachability, dispatch gates, load, locks, or task result state:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void dispatchAvailabilityOwnerRequiresSourceScopedGateMutation() throws IOException {
+        Path availabilityOwnerPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/worker/WorkerDispatchAvailabilityOwner.java");
+        String source = Files.readString(availabilityOwnerPath, StandardCharsets.UTF_8);
+
+        List<String> violations = new ArrayList<>();
+        if (Pattern.compile("\\bboolean\\s+enable\\s*\\(").matcher(source).find()) {
+            violations.add(availabilityOwnerPath + " exposes all-source enable; use clearSource(source)");
+        }
+        if (Pattern.compile("\\bboolean\\s+disableForDraining\\s*\\(\\s*String\\s+workerId\\s*,\\s*String\\s+reason\\s*\\)")
+                .matcher(source)
+                .find()) {
+            violations.add(availabilityOwnerPath + " exposes source-implicit drain; require explicit source");
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Worker dispatch availability is source-scoped runtime truth. Node-group, command, "
+                        + "and worker-state gates must not clear or set each other implicitly:\n"
                         + String.join("\n", violations));
     }
 
@@ -1492,6 +1645,26 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         return methods;
+    }
+
+    private static String sourceMethod(String source, String methodPrefix) {
+        int start = source.indexOf(methodPrefix);
+        assertTrue(start >= 0, "method not found: " + methodPrefix);
+        int brace = source.indexOf('{', start);
+        assertTrue(brace >= 0, "method body not found: " + methodPrefix);
+        int depth = 0;
+        for (int i = brace; i < source.length(); i++) {
+            char ch = source.charAt(i);
+            if (ch == '{') {
+                depth++;
+            } else if (ch == '}') {
+                depth--;
+                if (depth == 0) {
+                    return source.substring(start, i + 1);
+                }
+            }
+        }
+        throw new AssertionError("method body did not close: " + methodPrefix);
     }
 
     private record GuardedSourceArea(List<Path> roots, Pattern forbiddenPattern) {

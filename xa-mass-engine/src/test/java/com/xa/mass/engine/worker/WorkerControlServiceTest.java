@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.xa.mass.engine.testutil.WorkerRegistrationTestSupport.registerWorker;
+import static com.xa.mass.engine.worker.WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.WORKER_STATE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -184,14 +185,22 @@ public class WorkerControlServiceTest {
             public void applyWorkerStateProjection(WorkerStateProjection projection,
                                                    WorkerDispatchAvailabilityOwner dispatchAvailabilityOwner) {
                 stateApplications.incrementAndGet();
-                dispatchAvailabilityOwner.disableForDraining(projection.workerId(), projection.reason());
+                dispatchAvailabilityOwner.disableForDraining(
+                        projection.workerId(),
+                        WORKER_STATE,
+                        projection.reason()
+                );
             }
 
             @Override
             public void applyWorkerCommandLifecycleResult(com.xa.mass.engine.command.WorkerCommandLifecycleResult result,
                                                           WorkerDispatchAvailabilityOwner dispatchAvailabilityOwner) {
                 commandApplications.incrementAndGet();
-                dispatchAvailabilityOwner.enable(result.record().workerId(), result.record().statusReason());
+                dispatchAvailabilityOwner.clearSource(
+                        result.record().workerId(),
+                        WORKER_STATE,
+                        result.record().statusReason()
+                );
             }
         };
         WorkerControlService service = new WorkerControlService(

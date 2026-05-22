@@ -2,7 +2,13 @@
 
 Last updated: 2026-05-22
 
-Status: active roadmap, not current implementation proof.
+Status: implemented mainline convergence record, not a substitute for current
+code verification.
+
+Implementation status: GFS-0 through GFS-6 are complete in the current
+mainline. Remaining references to old event-first terms are historical gap
+markers, archive material, report-ceiling/catalog tests, or runtime/trace
+evidence, not scheduling candidate-source truth.
 
 This document defines the next scheduling-kernel convergence line:
 
@@ -19,8 +25,9 @@ fleets.
 
 ## Summary
 
-Current scheduling already has a WorkerGroup-backed candidate index, but the
-mainline candidate source still starts from task event identity:
+Before this convergence, scheduling already had a WorkerGroup-backed candidate
+index, but the mainline candidate source still started from task event
+identity:
 
 ```text
 Task(project,eventCode)
@@ -58,11 +65,12 @@ not be the primary worker candidate-source key.
 4. Worker attributes are route/filter/rank inputs only when explicitly approved.
 5. No ordinary scheduling path may fall back to all-worker scans.
 6. A task without `workerGroupId` / `workerGroupIds` is not schedulable by the
-   kernel.
+   kernel, including `targetWorkerId` debug/manual dispatch.
 7. Catalog/intake may derive a worker group from event metadata, but the
    scheduling kernel must receive the resolved group selector.
-8. `targetWorkerId` remains a debug/manual shortcut and must not bypass group,
-   reachability, dispatch gate, load, lock, or rule checks.
+8. `targetWorkerId` remains a debug/manual narrowing shortcut inside an
+   explicit group selector. It must not bypass group, reachability, dispatch
+   gate, load, lock, or rule checks.
 
 ## Non-Goals
 
@@ -79,26 +87,28 @@ This roadmap does not do:
 8. No rewrite of task result convergence, lease expiry, or transport delivery
    semantics.
 
-## Current Implementation Gap
+## Converged Implementation Gaps
 
-Current code paths that still encode event-first scheduling truth:
+These were the event-first seams targeted by this roadmap. They are retained
+here as convergence history and guard targets; verify current behavior from code
+and tests before treating any item as active.
 
-- `WorkerCandidateIndex.workersFor(Task)` derives `EventKey` from
-  `TaskSharedConfig.sdkEventCode(task)` and `task.getProject()`.
-- `WorkerRegistrySnapshot` owns `groupIdsByEventKey`.
-- `WorkerCapabilityAuthority` composes worker-scoped event keys from worker
-  capability reports and WorkerGroup event bindings.
-- `WorkerManager.findWorkerCandidates(task)` asks the candidate index for
-  event-code and project-only narrowing.
-- `RuleBasedTaskWorkerMatchingStrategy.prefilterCandidate(...)` still checks
-  task event support from the scheduling view.
-- `SimpleTaskDispatchBinder.workerCandidateSource(...)` emits
+- `WorkerCandidateIndex.workersFor(Task)` no longer derives candidate groups
+  from `TaskSharedConfig.sdkEventCode(task)` or `task.getProject()`.
+- `WorkerRegistrySnapshot.groupIdsByEventKey` remains a read cache for
+  catalog/report-ceiling flows, not a scheduling hot-path source.
+- `WorkerCapabilityAuthority` still composes WorkerGroup-approved event binding
+  truth for report ceilings and catalog resolution, not candidate admission.
+- `WorkerManager.findWorkerCandidates(task)` no longer branches on event-code
+  or project-only narrowing.
+- `WorkerManager.findWorkerCandidates(task)` no longer falls back to
+  `workerStorage.getAllWorkers()` for ordinary scheduling.
+- `RuleBasedTaskWorkerMatchingStrategy.prefilterCandidate(...)` no longer
+  rejects candidates because task event support is missing.
+- `SimpleTaskDispatchBinder.workerCandidateSource(...)` no longer emits
   `GROUP_INDEX` / `GROUP_PROJECT_INDEX` based on task event/project fields.
-- `SCHEDULING_CORRECTNESS_MATRIX.md` currently says candidate narrowing must
-  use WorkerGroup event binding truth.
-
-These are not bugs in the current baseline. They are the exact seams to converge
-so scheduling has one candidate-source truth.
+- `SCHEDULING_CORRECTNESS_MATRIX.md` now describes explicit WorkerGroup
+  selector truth rather than event-derived candidate narrowing.
 
 ## Target Scheduling Contract
 
@@ -125,7 +135,9 @@ selector. Internally the kernel should normalize them into an ordered, de-duped
 ```text
 targetWorkerId
   -> direct worker lookup
-  -> verify worker belongs to one selected group when group selector exists
+  -> require workerGroupId(s)
+  -> verify worker belongs to one selected group
+  -> verify adapterNodeId placement when provided
   -> Stage-2 eligibility
 
 workerGroupId(s)
@@ -140,7 +152,37 @@ missing selector
 ```
 
 No eventCode fallback and no project-only fallback should remain in the
-scheduling kernel after this roadmap.
+scheduling kernel after this roadmap. `targetWorkerId` is not an exception to
+the group selector requirement; it only prevents scanning inside an already
+selected cohort.
+
+### EventCode To Group Selector Resolution
+
+This roadmap must choose the resolver direction before GFS-2 implementation.
+The selected direction is:
+
+```text
+catalog/intake wrapper resolves eventCode -> workerGroupId(s)
+kernel receives workerGroupId(s)
+kernel does not resolve eventCode
+```
+
+The resolver owner is outside `WorkerCandidateIndex`. The first implementation
+belongs in SDK/event-dispatch or task-intake assembly where task
+shell/sharedConfig is produced. WorkerGroup event bindings are a valid catalog
+source for the resolver, but the resolved selector must be materialized into
+task shared config before the task enters assignment.
+
+Rejected direction:
+
+```text
+every task caller must manually set workerGroupId
+```
+
+That would create broad caller churn and would make SDK event dispatch fragile.
+SDK/catalog surfaces should preserve event-based ergonomics by resolving the
+group selector before scheduling, while direct low-level task APIs may require
+explicit `workerGroupId(s)` for worker-backed tasks.
 
 ### EventCode Placement
 
@@ -213,8 +255,8 @@ The desired hot path is:
 WorkerCandidateIndex.workersFor(task)
   -> WorkerGroupSelector.from(task.sharedConfig)
   -> for each selected group
-       -> WorkerRouteBucketOwner.acquireForTask(groupId, task, limit)
        -> optional adapterNodeId filter
+       -> WorkerRouteBucketOwner.acquireForTask(groupId, adapterNodeId, task, limit)
        -> optional approved attribute filter
   -> bounded worker rows
 ```
@@ -272,16 +314,21 @@ Scope:
    source, prefilter, trace, and tests.
 2. Inventory all uses of `groupIdsByEventKey` and `workerSupportsEventKey`.
 3. Inventory project-only candidate fallback.
-4. Inventory `workerCandidateSource` values in trace analyzers and tests.
-5. Add a short architecture guard TODO or source scan note that the future
-   hot path must not call `sdkEventCode` from `WorkerCandidateIndex`.
+4. Inventory `workerStorage.getAllWorkers()` fallback from ordinary
+   scheduling.
+5. Inventory `workerCandidateSource` values in trace analyzers and tests.
+6. Add a real `EngineSchedulingCoreArchitectureGuardTest` source guard that
+   fails if the final GFS hot path reintroduces `sdkEventCode` into
+   `WorkerCandidateIndex`. If this guard is staged before the code change, mark
+   it against the new group-selector method rather than as a TODO comment.
 
 Acceptance:
 
 1. The event-first candidate-source blast radius is documented in this file or
    a follow-up implementation note.
 2. No behavior change.
-3. No new compatibility abstractions.
+3. Guard coverage exists as executable source-scan proof, not only a prose TODO.
+4. No new compatibility abstractions.
 
 ### GFS-1: Task Group Selector Contract
 
@@ -294,7 +341,10 @@ Scope:
 3. Add helper methods that normalize to an ordered group selector list.
 4. Keep `targetWorkerId` semantics unchanged.
 5. SDK/server task creation may pass group selector through shared config.
-6. Do not yet remove event-code candidate lookup.
+6. Implement the minimum SDK/catalog resolver that maps event dispatch metadata
+   to `workerGroupId(s)` before task assignment. This must be usable before
+   event-code candidate fallback is removed.
+7. Do not yet remove event-code candidate lookup.
 
 Acceptance:
 
@@ -302,7 +352,10 @@ Acceptance:
 2. A task can carry multiple worker group selectors in deterministic order.
 3. Empty or blank group selectors normalize to empty.
 4. `targetWorkerId` remains readable independently.
-5. No existing task result/runtime payload behavior changes.
+5. SDK/event-dispatch assembly produces task shared config containing resolved
+   `workerGroupId(s)` for event-backed worker tasks, even though old candidate
+   lookup still works during this slice.
+6. No existing task result/runtime payload behavior changes.
 
 ### GFS-2: Candidate Index Group-Selector Path
 
@@ -313,9 +366,16 @@ Scope:
 
 1. Add `WorkerCandidateIndex.workersForGroups(task, groupIds, limit)`.
 2. Route selected group ids through `WorkerRouteBucketOwner`.
-3. Support optional `adapterNodeId` placement filter.
-4. Preserve route bucket narrowing from `Task.sharedConfig.routeAttributes`.
-5. Keep event-code path temporarily only to support old tests during the
+3. Add `WorkerRouteBucketOwner.acquireForTask(groupId, adapterNodeId, task,
+   limit)` or an equivalent node-scoped acquisition path. Placement filtering
+   must live at the bucket/candidate-source boundary, not after unbounded
+   group enumeration.
+4. Support optional `adapterNodeId` placement filter.
+5. Update `WorkerCandidateIndex.workerForWorkerId(...)` so target-worker lookup
+   requires `workerGroupId(s)` and verifies that the target worker belongs to
+   one selected group.
+6. Preserve route bucket narrowing from `Task.sharedConfig.routeAttributes`.
+7. Keep event-code path temporarily only to support old tests during the
    slice, but do not extend it.
 
 Acceptance:
@@ -325,8 +385,12 @@ Acceptance:
    order.
 3. `workerGroupId + adapterNodeId` returns only workers under that
    `(adapterNodeId, groupId)` relation.
-4. route attributes narrow within selected groups.
-5. no all-worker fallback is used for group-selector tasks.
+4. node placement filtering is bounded before worker row materialization; it
+   must not acquire the full group then filter in memory.
+5. route attributes narrow within selected groups.
+6. target-worker lookup rejects a target that is outside the selected group.
+7. target-worker lookup without group selector returns no candidates.
+8. no all-worker fallback is used for group-selector tasks.
 
 ### GFS-3: Make Group Selector The Mainline
 
@@ -335,10 +399,13 @@ Goal: switch ordinary scheduling to explicit group selectors.
 Scope:
 
 1. Update `WorkerManager.findWorkerCandidates(task)` to prefer group selector.
-2. If no selector and no `targetWorkerId`, return no candidates.
+2. If no selector, return no candidates, including when `targetWorkerId` is
+   present.
 3. Remove project-only candidate fallback from the kernel.
 4. Remove eventCode candidate fallback from the kernel.
-5. Update assignment trace source naming.
+5. Remove the `workerStorage.getAllWorkers()` fallback from ordinary
+   scheduling.
+6. Update assignment trace source naming.
 
 Acceptance:
 
@@ -347,7 +414,10 @@ Acceptance:
 3. Task with project only does not scan or match workers.
 4. `workerCandidateSource` no longer emits `GROUP_INDEX` or
    `GROUP_PROJECT_INDEX` for new mainline tests.
-5. engine scheduling tests prove group selector as the candidate source.
+5. Ordinary scheduling has no all-worker fallback branch.
+6. Target-worker debug dispatch requires group selector and rejects mismatched
+   group.
+7. engine scheduling tests prove group selector as the candidate source.
 
 ### GFS-4: EventCode Demotion And Double-Truth Removal
 
@@ -360,7 +430,9 @@ Scope:
 3. Remove `workerSupportsEventKey` from candidate admission.
 4. Convert event binding tests to catalog/report-ceiling tests, not scheduling
    candidate tests.
-5. Update scheduling correctness docs.
+5. Remove `GROUP_INDEX` and `GROUP_PROJECT_INDEX` branches from
+   `SimpleTaskDispatchBinder.workerCandidateSource(...)`.
+6. Update scheduling correctness docs.
 
 Acceptance:
 
@@ -370,7 +442,9 @@ Acceptance:
    task eventCode is unsupported.
 4. Capability report still cannot expand beyond WorkerGroup-approved event
    bindings while event bindings remain in the model.
-5. Architecture guard fails if eventCode re-enters candidate-source lookup.
+5. `SimpleTaskDispatchBinder` cannot emit `GROUP_INDEX` or
+   `GROUP_PROJECT_INDEX`.
+6. Architecture guard fails if eventCode re-enters candidate-source lookup.
 
 ### GFS-5: External Contract Alignment
 
@@ -381,8 +455,8 @@ Scope:
 1. Update SDK task creation examples to include `workerGroupId` when scheduling
    a worker-backed task.
 2. Update external worker quickstart and black-box samples.
-3. Catalog/event dispatch wrappers may resolve eventCode to workerGroupId
-   before task enters scheduling.
+3. Align all public examples and black-box tests with the resolver implemented
+   in GFS-1.
 4. Keep eventCode in payload/result/trace for diagnosis.
 
 Acceptance:
@@ -397,8 +471,13 @@ task -> workerGroupId -> worker -> adapterNodeId -> transport -> result
 3. Realtime and polling workers use the same selector contract.
 4. Trace analyzer checks `workerGroupId` and `workerCandidateSource` rather
    than event-derived group evidence.
+5. SDK event dispatch remains ergonomic through the already-implemented
+   resolver: callers may specify eventCode, but the produced task carries
+   resolved `workerGroupId(s)` before scheduling.
 
 ### GFS-6: Index Runtime Hardening
+
+Status: implemented for the in-memory mainline.
 
 Goal: prepare the structure for large group sizes and Redis runtime parity.
 
@@ -418,10 +497,16 @@ reverse cleanup evidence
 
 Acceptance:
 
-1. Ordinary task scheduling does not enumerate all workers.
-2. Large group tests prove bounded acquisition.
-3. Attribute filters use approved keys only.
-4. Redis runtime plan can map each memory index to concrete key structures.
+1. Ordinary task scheduling does not enumerate all workers. Guard coverage
+   rejects `WorkerManager.findWorkerCandidates(...)` all-worker fallback.
+2. Large group tests prove bounded acquisition through
+   `WorkerRouteBucketOwner`.
+3. Attribute filters use approved keys only through `WorkerRoutingPolicy`.
+4. Worker update/delete tests prove old route bucket membership is removed by
+   snapshot republish.
+5. Node-scoped route bucket tests prove adapter-node placement does not acquire
+   the full group before filtering.
+6. Redis runtime plan can map each memory index to concrete key structures.
 
 ## Testing Plan
 
@@ -516,17 +601,17 @@ Mitigation:
 Retire event-first scheduling tests when group-selector proof replaces them.
 Keep event binding tests only where they prove catalog/report-ceiling behavior.
 
-## Recommended First Slice
+## Implementation Sequence Used
 
-Do not start by deleting eventCode paths. First make the new selector real and
-testable:
+This convergence used the following order to avoid keeping old and new
+scheduling truth alive as parallel tracks:
 
 1. GFS-1: add `TaskSharedConfig` group selector helpers.
 2. GFS-2: add group-selector candidate acquisition path and tests.
 3. Update one engine scheduling scenario and one server trace-observed scenario
    to set `workerGroupId`.
 
-Then converge:
+Then it converged the hot path:
 
 1. GFS-3: switch `WorkerManager.findWorkerCandidates` to group selector only.
 2. Rewrite tests and traces.

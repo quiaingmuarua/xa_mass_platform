@@ -180,7 +180,7 @@ class H2ExternalWorkerPollingApiIntegrationTest extends ProjectionSampleE2eTest 
         ), workerHeaders));
         waitUntil(() -> !app.isWorkerOnline(workerId), "worker transport presence should be offline after explicit disconnect");
 
-        assertJdbcProjection(taskId, workerId);
+        assertJdbcProjection(taskId);
     }
 
     private HttpHeaders credentialHeaders(String credential) {
@@ -230,7 +230,7 @@ class H2ExternalWorkerPollingApiIntegrationTest extends ProjectionSampleE2eTest 
                 .build());
     }
 
-    private void assertJdbcProjection(String taskId, String workerId) throws Exception {
+    private void assertJdbcProjection(String taskId) throws Exception {
         try (var conn = DriverManager.getConnection(JDBC_URL, "sa", "")) {
             try (var ps = conn.prepareStatement("""
                     SELECT status, project, schedulable, json
@@ -245,19 +245,6 @@ class H2ExternalWorkerPollingApiIntegrationTest extends ProjectionSampleE2eTest 
                     assertFalse(rs.getBoolean("schedulable"));
                     assertJsonContains(rs.getString("json"), "\"terminalReason\":\"ALL_MESSAGES_SUCCEEDED\"");
                     assertFalse(rs.next(), "task_id should remain unique");
-                }
-            }
-
-            try (var ps = conn.prepareStatement("""
-                    SELECT json
-                    FROM xa_worker
-                    WHERE worker_id = ?
-                    """)) {
-                ps.setString(1, workerId);
-                try (var rs = ps.executeQuery()) {
-                    assertTrue(rs.next(), "worker row should exist");
-                    assertJsonContains(rs.getString("json"), "\"status\":\"OFFLINE\"");
-                    assertFalse(rs.next(), "worker_id should remain unique");
                 }
             }
 
@@ -285,7 +272,7 @@ class H2ExternalWorkerPollingApiIntegrationTest extends ProjectionSampleE2eTest 
 
             try (var ps = conn.prepareStatement("""
                     SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
-                    WHERE TABLE_NAME IN ('xa_task_msg', 'xa_task_msg_attempt', 'xa_worker_lock')
+                    WHERE TABLE_NAME IN ('xa_task_msg', 'xa_task_msg_attempt', 'xa_worker_lock', 'xa_worker')
                     """)) {
                 try (var rs = ps.executeQuery()) {
                     assertTrue(rs.next());

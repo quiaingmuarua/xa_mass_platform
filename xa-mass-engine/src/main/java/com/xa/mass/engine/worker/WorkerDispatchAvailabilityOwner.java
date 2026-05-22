@@ -38,10 +38,6 @@ public final class WorkerDispatchAvailabilityOwner {
                 : DispatchAvailability.DRAINING_DISABLED;
     }
 
-    public synchronized boolean disableForDraining(String workerId, String reason) {
-        return disableForDraining(workerId, DispatchAvailabilitySource.WORKER_STATE, reason);
-    }
-
     public synchronized boolean disableForDraining(String workerId,
                                                    DispatchAvailabilitySource source,
                                                    String reason) {
@@ -52,11 +48,6 @@ public final class WorkerDispatchAvailabilityOwner {
                 ignored -> EnumSet.noneOf(DispatchAvailabilitySource.class)
         );
         return disabledSources.add(normalizedSource);
-    }
-
-    public synchronized boolean enable(String workerId, String reason) {
-        String normalizedWorkerId = requireWorkerId(workerId);
-        return disabledSourcesByWorkerId.remove(normalizedWorkerId) != null;
     }
 
     public synchronized boolean clearSource(String workerId,

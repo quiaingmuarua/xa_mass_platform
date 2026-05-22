@@ -4,10 +4,7 @@ interface JdbcDialect {
 
     String taskUpsertSql();
 
-    String workerUpsertSql();
-
     String ruleUpsertSql();
 
     String principalUpsertSql();
 }
-

@@ -36,16 +36,6 @@ public class RuleConfig {
         routingRule.setDescription("Routing code, when required, must match one of the worker scheduling routing tags");
         rules.add(routingRule);
 
-        RuleDefinition capabilityRule = new RuleDefinition();
-        capabilityRule.setId("worker_capability_check");
-        capabilityRule.setType(RuleType.QL_EXPRESS);
-        capabilityRule.setContent(
-                "((taskEventCode == null || taskEventCode == '') && supportsProject == true) "
-                        + "|| ((taskEventCode != null && taskEventCode != '') && supportsEvent == true)");
-        capabilityRule.setDescription(
-                "Project support gates non-SDK tasks; SDK event tasks are matched by explicit worker event capability");
-        rules.add(capabilityRule);
-
         RuleDefinition loadRule = new RuleDefinition();
         loadRule.setId("worker_load_check");
         loadRule.setType(RuleType.QL_EXPRESS);

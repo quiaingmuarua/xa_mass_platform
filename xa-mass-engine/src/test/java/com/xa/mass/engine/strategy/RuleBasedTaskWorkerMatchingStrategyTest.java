@@ -49,7 +49,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         Task task = new Task();
         task.setTid("task-1");
         task.setProject("demoApp");
-        task.setSharedConfig(Map.of("routingCode", "us"));
+        task.setSharedConfig(sharedConfig(Map.of("routingCode", "us"), "pool-east", "pool-west"));
         task.setStatus(TaskStatus.READY);
 
         Worker matchingWorker = worker("worker-us", "pool-east", Map.of("routingTags", "shared,us", "country", "us"));
@@ -87,7 +87,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         Task task = new Task();
         task.setTid("task-trace");
         task.setProject("demoApp");
-        task.setSharedConfig(Map.of("routingCode", "us"));
+        task.setSharedConfig(sharedConfig(Map.of("routingCode", "us"), "pool-east", "pool-west"));
         task.setStatus(TaskStatus.READY);
 
         Worker acceptedWorker = worker("worker-us", "pool-east", Map.of("routingTags", "shared,us", "country", "us"));
@@ -131,6 +131,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         Task task = new Task();
         task.setTid("task-locked");
         task.setProject("demoApp");
+        task.setSharedConfig(selector("pool-east"));
         task.setStatus(TaskStatus.READY);
 
         Worker w = worker("worker-locked", "pool-east");
@@ -172,7 +173,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         Task task = new Task();
         task.setTid("task-prefilter");
         task.setProject("demoApp");
-        task.setSharedConfig(Map.of("routingCode", "us"));
+        task.setSharedConfig(sharedConfig(Map.of("routingCode", "us"), "pool-a", "pool-c", "pool-d"));
         task.setStatus(TaskStatus.READY);
 
         Worker offlineWorker = worker("worker-offline", "pool-a", Map.of("routingTags", "shared,us", "country", "us"));
@@ -242,6 +243,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         Task task = new Task();
         task.setTid("task-stale-prefilter");
         task.setProject("demoApp");
+        task.setSharedConfig(selector("pool-a", "pool-b"));
         task.setStatus(TaskStatus.READY);
 
         Worker staleWorker = worker("worker-stale", "pool-a");
@@ -281,7 +283,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         Task task = new Task();
         task.setTid("task-no-context");
         task.setProject("demoApp");
-        task.setSharedConfig(Map.of());
+        task.setSharedConfig(selector("pool-east"));
         task.setStatus(TaskStatus.READY);
 
         Worker worker = worker("worker-stateless", "pool-east");
@@ -311,7 +313,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         Task task = new Task();
         task.setTid("task-no-context-routing");
         task.setProject("demoApp");
-        task.setSharedConfig(Map.of("routingCode", "us"));
+        task.setSharedConfig(sharedConfig(Map.of("routingCode", "us"), "pool-east"));
         task.setStatus(TaskStatus.READY);
 
         Worker worker = worker("worker-stateless", "pool-east");
@@ -344,7 +346,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         Task task = new Task();
         task.setTid("task-sdk-event");
         task.setProject("demoApp");
-        task.setSharedConfig(Map.of("_sdk", Map.of("eventCode", "demo.dispatch")));
+        task.setSharedConfig(sharedConfig(Map.of("_sdk", Map.of("eventCode", "demo.dispatch")), "pool-east"));
         task.setStatus(TaskStatus.READY);
 
         Worker eventCapableWorker = worker("worker-event-capable", "pool-east");
@@ -386,8 +388,8 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         Task task = new Task();
         task.setTid("task-group-first-event");
         task.setProject("demoApp");
-        task.setSharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
-                Map.of(TaskSharedConfig.SDK_EVENT_CODE, "demo.dispatch")));
+        task.setSharedConfig(sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
+                Map.of(TaskSharedConfig.SDK_EVENT_CODE, "demo.dispatch")), "group-first"));
         task.setStatus(TaskStatus.READY);
 
         Worker worker = new Worker();
@@ -422,7 +424,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         Task task = new Task();
         task.setTid("task-target-worker");
         task.setProject("demoApp");
-        task.setSharedConfig(Map.of(TaskSharedConfig.TARGET_WORKER_ID, "worker-b"));
+        task.setSharedConfig(sharedConfig(Map.of(TaskSharedConfig.TARGET_WORKER_ID, "worker-b"), "pool-b"));
         task.setStatus(TaskStatus.READY);
 
         Worker workerA = worker("worker-a", "pool-a");
@@ -459,10 +461,10 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         Task task = new Task();
         task.setTid("task-target-attrs");
         task.setProject("demoApp");
-        task.setSharedConfig(Map.of(
+        task.setSharedConfig(sharedConfig(Map.of(
                 TaskSharedConfig.TARGET_WORKER_ATTRIBUTES,
                 Map.of("region", "us", "tier", "gold")
-        ));
+        ), "pool-a", "pool-b"));
         task.setStatus(TaskStatus.READY);
 
         Worker matchingWorker = worker("worker-us-gold", "pool-a");
@@ -514,6 +516,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         Task task = new Task();
         task.setTid("task-load-aware");
         task.setProject("demoApp");
+        task.setSharedConfig(selector("pool-a", "pool-b"));
         task.setStatus(TaskStatus.READY);
 
         Worker highLoadWorker = worker("worker-high-load", "pool-a");
@@ -554,6 +557,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         Task task = new Task();
         task.setTid("task-capacity");
         task.setProject("demoApp");
+        task.setSharedConfig(selector("pool-a"));
         task.setStatus(TaskStatus.READY);
 
         registerWorker(workerManager, worker("worker-at-capacity", "pool-a"));
@@ -594,6 +598,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         Task task = new Task();
         task.setTid("task-lock-conflict");
         task.setProject("demoApp");
+        task.setSharedConfig(selector("pool-a"));
         task.setStatus(TaskStatus.READY);
 
         registerWorker(workerManager, worker("worker-conflict", "pool-a"));
@@ -653,6 +658,22 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         assertEquals("worker capacity unavailable after candidate ranking", rejectedRecord.getReason());
     }
 
+    @Test
+    void matchWorkersOversamplesStageOneCandidateAcquisitionBeforeDispatchLimit() {
+        Worker worker = worker("worker-sampled", "pool-a");
+        RecordingWorkerManager workerManager = new RecordingWorkerManager(List.of(worker));
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        AssignmentRecordService recordService = new AssignmentRecordService();
+        RuleBasedTaskWorkerMatchingStrategy strategy =
+                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+
+        List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(backgroundTask("task-sampled"), 1);
+
+        assertEquals(1, matched.size());
+        assertTrue(workerManager.lastMaxCandidateCount > 1);
+        assertTrue(workerManager.lastMaxCandidateCount >= RuleBasedTaskWorkerMatchingStrategy.DEFAULT_STAGE_ONE_SAMPLE_MIN);
+    }
+
     private RuleDefinition rule(String id, String content) {
         RuleDefinition rule = new RuleDefinition();
         rule.setId(id);
@@ -680,9 +701,23 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         Task task = new Task();
         task.setTid(taskId);
         task.setProject("demoApp");
+        task.setSharedConfig(selector("pool-a"));
         task.setStatus(TaskStatus.READY);
         task.getExecutionSpec().setForeground(false);
         return task;
+    }
+
+    private static Map<String, Object> selector(String... groupIds) {
+        return sharedConfig(Map.of(), groupIds);
+    }
+
+    private static Map<String, Object> sharedConfig(Map<String, Object> base, String... groupIds) {
+        java.util.LinkedHashMap<String, Object> sharedConfig = new java.util.LinkedHashMap<>();
+        if (base != null) {
+            sharedConfig.putAll(base);
+        }
+        sharedConfig.put(TaskSharedConfig.WORKER_GROUP_IDS, List.of(groupIds));
+        return Map.copyOf(sharedConfig);
     }
 
     private AssignmentRecord findRecord(AssignmentRecordService recordService, String taskId, String workerId) {
@@ -697,5 +732,21 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                 .filter(item -> workerId.equals(item.getWorkerId()))
                 .findFirst()
                 .orElse(null);
+    }
+
+    private static final class RecordingWorkerManager extends WorkerManager {
+        private final List<Worker> candidates;
+        private int lastMaxCandidateCount;
+
+        private RecordingWorkerManager(List<Worker> candidates) {
+            super(new InMemoryWorkerStorage(), workerId -> WorkerReachabilityState.ONLINE);
+            this.candidates = List.copyOf(candidates);
+        }
+
+        @Override
+        public List<Worker> findWorkerCandidates(Task task, int maxCandidateCount) {
+            lastMaxCandidateCount = maxCandidateCount;
+            return candidates;
+        }
     }
 }

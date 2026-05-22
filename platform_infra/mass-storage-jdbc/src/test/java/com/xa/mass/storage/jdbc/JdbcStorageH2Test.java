@@ -3,10 +3,8 @@ package com.xa.mass.storage.jdbc;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.UserRef;
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
 import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
@@ -16,7 +14,6 @@ import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -71,26 +68,6 @@ class JdbcStorageH2Test {
     }
 
     @Test
-    void workerStoragePersistsWorkersAndLocks() {
-        try (StorageFixture fixture = h2Fixture()) {
-            JdbcWorkerStorage storage = new JdbcWorkerStorage(fixture.dataSource(), new H2JdbcDialect());
-            Worker worker = new Worker("worker-1", "1.0", List.of("demoApp"));
-            worker.setSupportedEventCodes(List.of("event.demo"));
-            worker.setWorkerGroupId("group-a");
-            worker.setStatus(WorkerStatus.ONLINE);
-            storage.addWorker(worker);
-
-            assertThat(storage.getWorker("worker-1")).isPresent();
-            assertThat(storage.getWorkersByGroupId("group-a")).hasSize(1);
-            assertThat(storage.tryLockWorker("worker-1")).isTrue();
-            assertThat(storage.tryLockWorker("worker-1")).isFalse();
-            assertThat(storage.isLocked("worker-1")).isTrue();
-            storage.unlockWorker("worker-1");
-            assertThat(storage.isLocked("worker-1")).isFalse();
-        }
-    }
-
-    @Test
     void ruleStoragePersistsRulesButKeepsEvaluatorsInProcess() {
         try (StorageFixture fixture = h2Fixture()) {
             JdbcRuleStorage storage = new JdbcRuleStorage(fixture.dataSource(), new H2JdbcDialect());
@@ -102,30 +79,6 @@ class JdbcStorageH2Test {
             assertThat(storage.getRegisteredEvaluatorTypes()).contains(RuleType.QL_EXPRESS);
             assertThat(storage.deleteRule(rule.getId())).isTrue();
             assertThat(storage.getAllRules()).isEmpty();
-        }
-    }
-
-    @Test
-    void runtimeResidueRecoveryClearsLocksAndOnlineResidue() {
-        try (StorageFixture fixture = h2Fixture()) {
-            JdbcTaskStorage taskStorage = new JdbcTaskStorage(fixture.dataSource(), new H2JdbcDialect());
-            JdbcWorkerStorage workerStorage = new JdbcWorkerStorage(fixture.dataSource(), new H2JdbcDialect());
-
-            Worker worker = new Worker("worker-2", "1.0", List.of("demoApp"));
-            worker.setStatus(WorkerStatus.ONLINE);
-            workerStorage.addWorker(worker);
-
-            assertThat(workerStorage.tryLockWorker("worker-2")).isTrue();
-
-            Task task = new Task("task-residue", "demo", "demoApp", 1, Map.of(), UserRef.of("u2"));
-            task.setStatus(TaskStatus.RUNNING);
-            taskStorage.saveTask(task);
-
-            new JdbcRuntimeResidueRecovery().recover(workerStorage);
-
-            assertThat(workerStorage.getWorker("worker-2")).get().extracting(Worker::getStatus).isEqualTo(WorkerStatus.OFFLINE);
-            assertThat(workerStorage.isLocked("worker-2")).isFalse();
-            assertThat(taskStorage.getTask("task-residue")).get().extracting(Task::getStatus).isEqualTo(TaskStatus.RUNNING);
         }
     }
 
