@@ -483,18 +483,18 @@ class TraceOperatorServiceIntegrationTest {
     }
 
     @Test
-    void groupCapabilityRoutingScenarioFailsWithoutGroupIndexEvidence() throws Exception {
-        writeGroupCapabilityRoutingTrace(tempDir, "task-missing-group-index-evidence", false);
+    void groupCapabilityRoutingScenarioFailsWithoutGroupSelectorEvidence() throws Exception {
+        writeGroupCapabilityRoutingTrace(tempDir, "task-missing-group-selector-evidence", false);
         awaitJsonlFiles(tempDir, 1);
 
         TraceAnalyzeResponse response = operatorService.analyze(
                 new TraceAnalyzeRequest(tempDir.toString(),
                         "group-capability-routing",
-                        "task-missing-group-index-evidence"));
+                        "task-missing-group-selector-evidence"));
 
         assertFalse(response.ok());
         assertTrue(response.issues().stream()
-                .anyMatch(issue -> "MISSING_GROUP_INDEX_ACCEPTED_MATCH".equals(issue.code())));
+                .anyMatch(issue -> "MISSING_GROUP_SELECTOR_ACCEPTED_MATCH".equals(issue.code())));
     }
 
     @Test
@@ -1193,7 +1193,7 @@ class TraceOperatorServiceIntegrationTest {
             if (includeGroupIndexEvidence) {
                 matchAttrs.put("workerGroupId", "pool-east");
                 matchAttrs.put("eventBindingKey", "demoApp:demo.dispatch");
-                matchAttrs.put("workerCandidateSource", "GROUP_INDEX");
+                matchAttrs.put("workerCandidateSource", "GROUP_SELECTOR");
             }
             sink.emit(ExecutionEvent.builder()
                     .eventType(ExecutionEventType.WORKER_MATCH_ACCEPTED)
@@ -1281,7 +1281,7 @@ class TraceOperatorServiceIntegrationTest {
                             "candidateScore", "0.1",
                             "workerGroupId", "pool-late",
                             "eventBindingKey", "soakProject:soak.dispatch.0",
-                            "workerCandidateSource", "GROUP_INDEX",
+                            "workerCandidateSource", "GROUP_SELECTOR",
                             "workerSchedulingResourceId", lateWorkerId,
                             "workerReservedCount", 1,
                             "workerDeclaredCapacity", 1))

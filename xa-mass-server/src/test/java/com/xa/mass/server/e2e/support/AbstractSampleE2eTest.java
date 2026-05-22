@@ -1,6 +1,7 @@
 package com.xa.mass.server.e2e.support;
 
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.TaskWorkStats;
@@ -201,9 +202,13 @@ public abstract class AbstractSampleE2eTest {
                                   String workloadClass,
                                   Integer defaultMaxRetryCount) {
         String defaultRoutingCode = "us";
+        Map<String, Object> sharedConfig = new LinkedHashMap<>();
+        sharedConfig.put("textContent", textContent);
+        sharedConfig.put(TaskSharedConfig.ROUTING_CODE, defaultRoutingCode);
+        sharedConfig.put(TaskSharedConfig.WORKER_GROUP_ID, "us");
         Map<String, Object> createBody = new LinkedHashMap<>();
         createBody.put("project", "demoApp");
-        createBody.put("sharedConfig", java.util.Map.of("textContent", textContent, "routingCode", defaultRoutingCode));
+        createBody.put("sharedConfig", sharedConfig);
         createBody.put("userId", "itest");
         createBody.put("sourceRef", sourceRef);
         Map<String, Object> executionSpec = new LinkedHashMap<>();

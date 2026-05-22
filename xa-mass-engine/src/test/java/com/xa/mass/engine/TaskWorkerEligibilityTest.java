@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static com.xa.mass.engine.worker.WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.WORKER_STATE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -91,7 +92,7 @@ class TaskWorkerEligibilityTest {
         Task firstTask = harness.createReadyBatchTask("draining-first", List.of(harness.item("first")));
 
         harness.workerManager.getDispatchAvailabilityOwner()
-                .disableForDraining("worker-draining", "maintenance");
+                .disableForDraining("worker-draining", WORKER_STATE, "maintenance");
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(firstTask.getTid())));
 
@@ -102,7 +103,7 @@ class TaskWorkerEligibilityTest {
                 AssignmentResult.RESOURCE_UNAVAILABLE, "worker unavailable");
 
         harness.workerManager.getDispatchAvailabilityOwner()
-                .enable("worker-draining", "ready");
+                .clearSource("worker-draining", WORKER_STATE, "ready");
 
         Task secondTask = harness.createReadyBatchTask("draining-second", List.of(harness.item("second")));
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(secondTask.getTid())));

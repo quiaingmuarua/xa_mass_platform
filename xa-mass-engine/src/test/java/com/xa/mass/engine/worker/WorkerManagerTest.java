@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static com.xa.mass.engine.worker.WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.WORKER_STATE;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class WorkerManagerTest {
@@ -167,11 +168,11 @@ public class WorkerManagerTest {
         assertTrue(manager.isWorkerDispatchEnabled(worker));
 
         assertTrue(manager.getDispatchAvailabilityOwner()
-                .disableForDraining("worker-draining", "maintenance"));
+                .disableForDraining("worker-draining", WORKER_STATE, "maintenance"));
         assertFalse(manager.isWorkerDispatchEnabled(worker));
 
         assertTrue(manager.getDispatchAvailabilityOwner()
-                .enable("worker-draining", "ready"));
+                .clearSource("worker-draining", WORKER_STATE, "ready"));
         assertTrue(manager.isWorkerDispatchEnabled(worker));
     }
 

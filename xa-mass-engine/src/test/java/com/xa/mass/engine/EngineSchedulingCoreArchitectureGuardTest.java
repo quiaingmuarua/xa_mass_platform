@@ -1007,6 +1007,28 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void dispatchAvailabilityOwnerRequiresSourceScopedGateMutation() throws IOException {
+        Path availabilityOwnerPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/worker/WorkerDispatchAvailabilityOwner.java");
+        String source = Files.readString(availabilityOwnerPath, StandardCharsets.UTF_8);
+
+        List<String> violations = new ArrayList<>();
+        if (Pattern.compile("\\bboolean\\s+enable\\s*\\(").matcher(source).find()) {
+            violations.add(availabilityOwnerPath + " exposes all-source enable; use clearSource(source)");
+        }
+        if (Pattern.compile("\\bboolean\\s+disableForDraining\\s*\\(\\s*String\\s+workerId\\s*,\\s*String\\s+reason\\s*\\)")
+                .matcher(source)
+                .find()) {
+            violations.add(availabilityOwnerPath + " exposes source-implicit drain; require explicit source");
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Worker dispatch availability is source-scoped runtime truth. Node-group, command, "
+                        + "and worker-state gates must not clear or set each other implicitly:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void schedulingKernelDoesNotReadWorkerLevelCapabilityAsDecisionTruth() throws IOException {
         Map<Path, List<Pattern>> guardedFiles = Map.ofEntries(
                 Map.entry(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/model/WorkerSchedulingView.java"),

@@ -16,19 +16,35 @@ public class WorkerDispatchAvailabilityOwnerTest {
                 owner.availabilityOf("worker-1"));
         assertTrue(owner.isDispatchEnabled("worker-1"));
 
-        assertTrue(owner.disableForDraining("worker-1", "maintenance"));
+        assertTrue(owner.disableForDraining(
+                "worker-1",
+                WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.WORKER_STATE,
+                "maintenance"
+        ));
         assertFalse(owner.isDispatchEnabled("worker-1"));
         assertEquals(WorkerDispatchAvailabilityOwner.DispatchAvailability.DRAINING_DISABLED,
                 owner.availabilityOf("worker-1"));
 
-        assertFalse(owner.disableForDraining("worker-1", "duplicate"));
+        assertFalse(owner.disableForDraining(
+                "worker-1",
+                WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.WORKER_STATE,
+                "duplicate"
+        ));
 
-        assertTrue(owner.enable("worker-1", "ready"));
+        assertTrue(owner.clearSource(
+                "worker-1",
+                WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.WORKER_STATE,
+                "ready"
+        ));
         assertTrue(owner.isDispatchEnabled("worker-1"));
         assertEquals(WorkerDispatchAvailabilityOwner.DispatchAvailability.ENABLED,
                 owner.availabilityOf("worker-1"));
 
-        assertFalse(owner.enable("worker-1", "duplicate"));
+        assertFalse(owner.clearSource(
+                "worker-1",
+                WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.WORKER_STATE,
+                "duplicate"
+        ));
     }
 
     @Test

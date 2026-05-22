@@ -22,13 +22,13 @@ final class GroupCapabilityRoutingScenarioAnalyzer extends AbstractAssignmentSce
         List<TraceAssignmentRow> accepted = rows.stream()
                 .filter(row -> event(row, "WORKER_MATCH_ACCEPTED"))
                 .toList();
-        if (accepted.stream().noneMatch(this::isGroupIndexedAcceptedMatch)) {
-            issues.add(new TraceScenarioIssue("MISSING_GROUP_INDEX_ACCEPTED_MATCH",
-                    "Expected accepted worker match with group-index candidate source, workerGroupId, and eventBindingKey"));
+        if (accepted.stream().noneMatch(this::isGroupSelectorAcceptedMatch)) {
+            issues.add(new TraceScenarioIssue("MISSING_GROUP_SELECTOR_ACCEPTED_MATCH",
+                    "Expected accepted worker match with group-selector candidate source, workerGroupId, and eventBindingKey"));
         }
-        if (accepted.stream().anyMatch(row -> !isGroupIndexedAcceptedMatch(row))) {
+        if (accepted.stream().anyMatch(row -> !isGroupSelectorAcceptedMatch(row))) {
             issues.add(new TraceScenarioIssue("ACCEPTED_MATCH_MISSING_GROUP_ROUTING_EVIDENCE",
-                    "Every accepted worker match in this scenario must carry group-index routing evidence"));
+                    "Every accepted worker match in this scenario must carry group-selector routing evidence"));
         }
         if (accepted.stream().noneMatch(this::hasWorkerSchedulingEvidence)) {
             issues.add(new TraceScenarioIssue("MISSING_WORKER_SCHEDULING_EVIDENCE",
@@ -57,13 +57,19 @@ final class GroupCapabilityRoutingScenarioAnalyzer extends AbstractAssignmentSce
         }
     }
 
-    private boolean isGroupIndexedAcceptedMatch(TraceAssignmentRow row) {
+    private boolean isGroupSelectorAcceptedMatch(TraceAssignmentRow row) {
         return row != null
-                && "GROUP_INDEX".equals(row.workerCandidateSource())
+                && isGroupSelectorSource(row.workerCandidateSource())
                 && present(row.workerGroupId())
                 && present(row.eventBindingKey())
                 && row.eventBindingKey().contains(":")
                 && present(row.workerId());
+    }
+
+    private boolean isGroupSelectorSource(String source) {
+        return "GROUP_SELECTOR".equals(source)
+                || "GROUP_SELECTOR_WITH_NODE".equals(source)
+                || "TARGET_WORKER".equals(source);
     }
 
     private boolean hasWorkerSchedulingEvidence(TraceAssignmentRow row) {
