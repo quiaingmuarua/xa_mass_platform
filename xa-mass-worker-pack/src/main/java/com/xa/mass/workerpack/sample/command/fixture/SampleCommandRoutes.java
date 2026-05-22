@@ -6,10 +6,15 @@ import com.xa.mass.base.exception.ErrorCode;
 import com.xa.mass.command.core.CommandDefinition;
 import com.xa.mass.command.core.CommandRegistry;
 import com.xa.mass.command.model.CommandContext;
+import com.xa.mass.sdk.WorkerControlOperations;
+import com.xa.mass.sdk.model.WorkerStateReportRequest;
+import com.xa.mass.sdk.model.WorkerStateReportSnapshot;
 import com.xa.mass.workerpack.sample.client.ClientSessionManager;
 import com.xa.mass.workerpack.sample.client.SampleWorkerClient;
 
+import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 
 public final class SampleCommandRoutes {
@@ -126,6 +131,14 @@ public final class SampleCommandRoutes {
                 "fault.transport.disconnect",
                 SampleCommandRoutes::faultTransportDisconnect,
                 "Configure transport disconnect behavior for a sample worker.",
+                true,
+                "prepare", "trigger", "verify"
+        ));
+
+        registerIfAbsent(command(
+                "fault.worker.state.flap",
+                SampleCommandRoutes::faultWorkerStateFlap,
+                "Report a one-shot worker state flip through the worker-control owner surface.",
                 true,
                 "prepare", "trigger", "verify"
         ));
@@ -339,6 +352,29 @@ public final class SampleCommandRoutes {
         return buildStateResponse(workerId, state, "fault_transport_disconnect_updated");
     }
 
+    private static Map<String, Object> faultWorkerStateFlap(JsonObject request, CommandContext context) {
+        String workerId = requireWorkerId(request);
+        String reportedState = normalizeWorkerState(stringValue(request, "state", "DRAINING"));
+        long stateVersion = optionalPositiveLong(request, "stateVersion", System.currentTimeMillis());
+        WorkerStateReportSnapshot report = workerControl(context).reportWorkerState(new WorkerStateReportRequest(
+                workerId,
+                stateVersion,
+                reportedState,
+                "fault.worker.state.flap",
+                Instant.now(),
+                Map.of("faultEvent", "fault.worker.state.flap")
+        ));
+        Map<String, Object> result = buildStateResponse(
+                workerId,
+                stateRegistry(context).getOrCreate(workerId),
+                "fault_worker_state_flap_reported"
+        );
+        result.put("reportedState", reportedState);
+        result.put("stateVersion", stateVersion);
+        result.put("report", workerStateReportSnapshot(report));
+        return result;
+    }
+
     private static Map<String, Object> faultReset(JsonObject request, CommandContext context) {
         String scope = stringValue(request, "scope", "worker");
         SampleClientStateRegistry registry = stateRegistry(context);
@@ -374,6 +410,17 @@ public final class SampleCommandRoutes {
         return context.require(ClientSessionManager.class);
     }
 
+    private static WorkerControlOperations workerControl(CommandContext context) {
+        WorkerControlOperations workerControl = context.get(WorkerControlOperations.class);
+        if (workerControl == null) {
+            throw new CommandException(
+                    ErrorCode.INIT_ERROR,
+                    "fault.worker.state.flap requires WorkerControlOperations service"
+            );
+        }
+        return workerControl;
+    }
+
     private static String requireWorkerId(JsonObject request) {
         String workerId = stringValue(request, "workerId", "");
         if (workerId.isBlank()) {
@@ -401,6 +448,23 @@ public final class SampleCommandRoutes {
         }
     }
 
+    private static long optionalPositiveLong(JsonObject json, String field, long defaultValue) {
+        if (json == null || !json.has(field) || json.get(field).isJsonNull()) {
+            return defaultValue;
+        }
+        try {
+            long value = json.get(field).getAsLong();
+            if (value <= 0L) {
+                throw new CommandException(ErrorCode.PARSE_ERROR, field + " must be greater than 0");
+            }
+            return value;
+        } catch (CommandException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new CommandException(ErrorCode.PARSE_ERROR, field + " must be a number");
+        }
+    }
+
     private static int boundedInt(JsonObject json, String field, int defaultValue, int maxValue) {
         if (json == null || !json.has(field) || json.get(field).isJsonNull()) {
             return defaultValue;
@@ -411,6 +475,17 @@ public final class SampleCommandRoutes {
         } catch (Exception e) {
             throw new CommandException(ErrorCode.PARSE_ERROR, field + " must be a number");
         }
+    }
+
+    private static String normalizeWorkerState(String state) {
+        String normalized = state == null ? "" : state.trim().toUpperCase(Locale.ROOT);
+        return switch (normalized) {
+            case "AVAILABLE", "DEGRADED", "DRAINING", "OFFLINE" -> normalized;
+            default -> throw new CommandException(
+                    ErrorCode.PARSE_ERROR,
+                    "fault.worker.state.flap state must be AVAILABLE, DEGRADED, DRAINING, or OFFLINE"
+            );
+        };
     }
 
     private static SampleWorkerFaultProfile.DelayDistribution delayDistribution(String value) {
@@ -427,6 +502,30 @@ public final class SampleCommandRoutes {
         } catch (Exception e) {
             throw new CommandException(ErrorCode.PARSE_ERROR, "unsupported fault result drop mode: " + value);
         }
+    }
+
+    private static Map<String, Object> workerStateReportSnapshot(WorkerStateReportSnapshot report) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (report == null) {
+            return result;
+        }
+        result.put("status", report.status());
+        result.put("workerId", report.workerId());
+        result.put("stateVersion", report.stateVersion());
+        result.put("accepted", report.accepted());
+        result.put("projectionChanged", report.projectionChanged());
+        result.put("reason", report.reason());
+        if (report.projection() != null) {
+            Map<String, Object> projection = new LinkedHashMap<>();
+            projection.put("workerId", report.projection().workerId());
+            projection.put("stateVersion", report.projection().stateVersion());
+            projection.put("state", report.projection().state());
+            projection.put("reason", report.projection().reason());
+            projection.put("observedAt", String.valueOf(report.projection().observedAt()));
+            projection.put("acceptedAt", String.valueOf(report.projection().acceptedAt()));
+            result.put("projection", projection);
+        }
+        return result;
     }
 
     private static void registerIfAbsent(CommandDefinition<?, ?> definition) {

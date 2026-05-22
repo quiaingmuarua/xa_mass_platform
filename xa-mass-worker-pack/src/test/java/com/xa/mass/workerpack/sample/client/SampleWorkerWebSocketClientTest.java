@@ -1,6 +1,16 @@
 package com.xa.mass.workerpack.sample.client;
 
 import com.google.gson.JsonObject;
+import com.xa.mass.sdk.WorkerControlOperations;
+import com.xa.mass.sdk.model.WorkerCapabilityReportRequest;
+import com.xa.mass.sdk.model.WorkerCapabilityReportSnapshot;
+import com.xa.mass.sdk.model.WorkerCommandAcknowledgementRequest;
+import com.xa.mass.sdk.model.WorkerCommandResultSnapshot;
+import com.xa.mass.sdk.model.WorkerCommandSnapshot;
+import com.xa.mass.sdk.model.WorkerCommandSubmitRequest;
+import com.xa.mass.sdk.model.WorkerStateProjectionSnapshot;
+import com.xa.mass.sdk.model.WorkerStateReportRequest;
+import com.xa.mass.sdk.model.WorkerStateReportSnapshot;
 import com.xa.mass.workerpack.sample.command.fixture.SampleClientState;
 import com.xa.mass.workerpack.sample.command.fixture.SampleClientStateRegistry;
 import com.xa.mass.workerpack.sample.command.fixture.SampleWorkerFaultProfile;
@@ -10,6 +20,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -31,6 +42,7 @@ class SampleWorkerWebSocketClientTest {
         clientSessionManager = new ClientSessionManager();
         SampleCommandRuntime.registerService(SampleClientStateRegistry.class, stateRegistry);
         SampleCommandRuntime.registerService(ClientSessionManager.class, clientSessionManager);
+        SampleCommandRuntime.registerService(WorkerControlOperations.class, new CapturingWorkerControl());
     }
 
     @Test
@@ -406,6 +418,25 @@ class SampleWorkerWebSocketClientTest {
     }
 
     @Test
+    void faultWorkerStateFlapTaskReportsThroughWorkerControl() throws Exception {
+        CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
+        JsonObject input = new JsonObject();
+        input.addProperty("state", "offline");
+        input.addProperty("stateVersion", 456L);
+
+        client.onMessage(taskMessage("fault.worker.state.flap", input));
+
+        assertTrue(client.awaitSentCount(1, 1000L));
+        JsonObject output = WsFrameTestSupport.payload(WsFrameTestSupport.parse(client.sentMessages.get(0)));
+        assertEquals("fault.worker.state.flap", output.get("eventCode").getAsString());
+        assertEquals("fault_worker_state_flap_reported", output.get("action").getAsString());
+        assertEquals("OFFLINE", output.get("reportedState").getAsString());
+        JsonObject report = output.getAsJsonObject("report");
+        assertEquals("ACCEPTED", report.get("status").getAsString());
+        assertEquals("OFFLINE", report.getAsJsonObject("projection").get("state").getAsString());
+    }
+
+    @Test
     void sampleDisconnectTaskClosesClientAfterTaskResult() throws Exception {
         CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
         clientSessionManager.addClient(client);
@@ -500,6 +531,64 @@ class SampleWorkerWebSocketClientTest {
                 Thread.sleep(20L);
             }
             return closeInvoked.get();
+        }
+    }
+
+    private static final class CapturingWorkerControl implements WorkerControlOperations {
+        @Override
+        public WorkerCapabilityReportSnapshot reportWorkerCapability(WorkerCapabilityReportRequest request) {
+            throw new UnsupportedOperationException("not used");
+        }
+
+        @Override
+        public WorkerStateReportSnapshot reportWorkerState(WorkerStateReportRequest request) {
+            WorkerStateProjectionSnapshot projection = new WorkerStateProjectionSnapshot(
+                    request.workerId(),
+                    request.stateVersion(),
+                    request.state(),
+                    request.reason(),
+                    request.observedAt(),
+                    Instant.now()
+            );
+            return new WorkerStateReportSnapshot(
+                    "ACCEPTED",
+                    request.workerId(),
+                    request.stateVersion(),
+                    true,
+                    true,
+                    request.reason(),
+                    projection
+            );
+        }
+
+        @Override
+        public WorkerStateProjectionSnapshot getWorkerStateProjection(String workerId) {
+            return null;
+        }
+
+        @Override
+        public List<WorkerStateProjectionSnapshot> listWorkerStateProjections() {
+            return List.of();
+        }
+
+        @Override
+        public WorkerCommandResultSnapshot requestWorkerCommand(WorkerCommandSubmitRequest request) {
+            throw new UnsupportedOperationException("not used");
+        }
+
+        @Override
+        public WorkerCommandResultSnapshot acknowledgeWorkerCommand(WorkerCommandAcknowledgementRequest request) {
+            throw new UnsupportedOperationException("not used");
+        }
+
+        @Override
+        public WorkerCommandSnapshot getWorkerCommand(String commandId) {
+            return null;
+        }
+
+        @Override
+        public List<WorkerCommandSnapshot> listWorkerCommandsForWorker(String workerId) {
+            return List.of();
         }
     }
 }

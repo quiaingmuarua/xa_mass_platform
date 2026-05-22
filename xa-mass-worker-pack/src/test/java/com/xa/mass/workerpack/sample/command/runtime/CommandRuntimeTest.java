@@ -2,11 +2,23 @@ package com.xa.mass.workerpack.sample.command.runtime;
 
 import com.google.gson.JsonObject;
 import com.xa.mass.command.model.CommandResponse;
+import com.xa.mass.sdk.WorkerControlOperations;
+import com.xa.mass.sdk.model.WorkerCapabilityReportRequest;
+import com.xa.mass.sdk.model.WorkerCapabilityReportSnapshot;
+import com.xa.mass.sdk.model.WorkerCommandAcknowledgementRequest;
+import com.xa.mass.sdk.model.WorkerCommandResultSnapshot;
+import com.xa.mass.sdk.model.WorkerCommandSnapshot;
+import com.xa.mass.sdk.model.WorkerCommandSubmitRequest;
+import com.xa.mass.sdk.model.WorkerStateProjectionSnapshot;
+import com.xa.mass.sdk.model.WorkerStateReportRequest;
+import com.xa.mass.sdk.model.WorkerStateReportSnapshot;
 import com.xa.mass.workerpack.sample.client.ClientSessionManager;
 import com.xa.mass.workerpack.sample.command.fixture.SampleClientStateRegistry;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -17,6 +29,7 @@ class CommandRuntimeTest {
     static void setUpRuntime() {
         SampleCommandRuntime.registerService(SampleClientStateRegistry.class, new SampleClientStateRegistry());
         SampleCommandRuntime.registerService(ClientSessionManager.class, new ClientSessionManager());
+        SampleCommandRuntime.registerService(WorkerControlOperations.class, new CapturingWorkerControl());
     }
 
     @Test
@@ -180,6 +193,28 @@ class CommandRuntimeTest {
     }
 
     @Test
+    void shouldReportFaultWorkerStateFlapThroughWorkerControl() {
+        JsonObject stateFlapRequest = new JsonObject();
+        stateFlapRequest.addProperty("event", "fault.worker.state.flap");
+        stateFlapRequest.addProperty("workerId", "worker-fault-state");
+        stateFlapRequest.addProperty("state", "draining");
+        stateFlapRequest.addProperty("stateVersion", 123L);
+
+        CommandResponse<?> stateFlapResponse = SampleCommandRuntime.dispatch(stateFlapRequest);
+
+        assertTrue(stateFlapResponse.isSuccess());
+        Map<?, ?> data = (Map<?, ?>) stateFlapResponse.getData();
+        assertEquals("fault_worker_state_flap_reported", data.get("action"));
+        assertEquals("DRAINING", data.get("reportedState"));
+        assertEquals(123L, data.get("stateVersion"));
+        Map<?, ?> report = (Map<?, ?>) data.get("report");
+        assertEquals("ACCEPTED", report.get("status"));
+        assertEquals(true, report.get("accepted"));
+        Map<?, ?> projection = (Map<?, ?>) report.get("projection");
+        assertEquals("DRAINING", projection.get("state"));
+    }
+
+    @Test
     void shouldResetFaultProfilesWithoutClearingMockState() {
         JsonObject mockDelay = new JsonObject();
         mockDelay.addProperty("event", "mock.delay.response");
@@ -252,5 +287,63 @@ class CommandRuntimeTest {
         Map<?, ?> data = (Map<?, ?>) response.getData();
         assertTrue(data.get("context") instanceof Map);
         assertEquals("CNY", ((Map<?, ?>) data.get("context")).get("currency"));
+    }
+
+    private static final class CapturingWorkerControl implements WorkerControlOperations {
+        @Override
+        public WorkerCapabilityReportSnapshot reportWorkerCapability(WorkerCapabilityReportRequest request) {
+            throw new UnsupportedOperationException("not used");
+        }
+
+        @Override
+        public WorkerStateReportSnapshot reportWorkerState(WorkerStateReportRequest request) {
+            WorkerStateProjectionSnapshot projection = new WorkerStateProjectionSnapshot(
+                    request.workerId(),
+                    request.stateVersion(),
+                    request.state(),
+                    request.reason(),
+                    request.observedAt(),
+                    Instant.now()
+            );
+            return new WorkerStateReportSnapshot(
+                    "ACCEPTED",
+                    request.workerId(),
+                    request.stateVersion(),
+                    true,
+                    true,
+                    request.reason(),
+                    projection
+            );
+        }
+
+        @Override
+        public WorkerStateProjectionSnapshot getWorkerStateProjection(String workerId) {
+            return null;
+        }
+
+        @Override
+        public List<WorkerStateProjectionSnapshot> listWorkerStateProjections() {
+            return List.of();
+        }
+
+        @Override
+        public WorkerCommandResultSnapshot requestWorkerCommand(WorkerCommandSubmitRequest request) {
+            throw new UnsupportedOperationException("not used");
+        }
+
+        @Override
+        public WorkerCommandResultSnapshot acknowledgeWorkerCommand(WorkerCommandAcknowledgementRequest request) {
+            throw new UnsupportedOperationException("not used");
+        }
+
+        @Override
+        public WorkerCommandSnapshot getWorkerCommand(String commandId) {
+            return null;
+        }
+
+        @Override
+        public List<WorkerCommandSnapshot> listWorkerCommandsForWorker(String workerId) {
+            return List.of();
+        }
     }
 }

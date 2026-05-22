@@ -216,6 +216,7 @@ final class SampleWorkerTaskFrameHandler {
                     "fault.result.duplicate",
                     "fault.result.malformed",
                     "fault.transport.disconnect",
+                    "fault.worker.state.flap",
                     "fault.reset" -> true;
             default -> false;
         };

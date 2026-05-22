@@ -34,7 +34,8 @@ Current implemented surface:
   and disconnect phase.
 - `fault.state.get`, `fault.execution.profile`, `fault.execution.delay`,
   `fault.execution.stall`, `fault.result.drop`, `fault.result.duplicate`,
-  `fault.result.malformed`, `fault.transport.disconnect`, and `fault.reset` are registered as sample command routes through
+  `fault.result.malformed`, `fault.transport.disconnect`,
+  `fault.worker.state.flap`, and `fault.reset` are registered as sample command routes through
   `CommandRegistry`.
 - the first behavior-bearing slice applies fault profile delay, stall, and
   result-drop/duplicate/malformed/transport-disconnect settings when the sample
@@ -47,12 +48,18 @@ Current implemented surface:
   sees bad result evidence without changing engine or transport owners.
 - `fault.transport.disconnect(phase=before_receive|after_receive|before_result|after_result)`
   closes the sample worker connection around normal task result submission.
+- `fault.worker.state.flap(state=AVAILABLE|DEGRADED|DRAINING|OFFLINE)`
+  is a stateless one-shot command that reports through
+  `WorkerControlOperations.reportWorkerState`; repeated flap loops belong to the
+  harness, not the worker.
 - Default state is disabled and preserves stable worker behavior.
 
 Not yet implemented:
 
-- state flap and capacity flap behavior
-- applying fault profiles to worker state/capability report behavior
+- capacity flap behavior; current public capability report does not own
+  `maxConcurrentWork`, so this should wait for an explicit capacity owner
+  surface instead of faking it through attributes
+- applying fault profiles to capability report behavior
 - matrix runner selection by scenario id
 
 Those belong to the worker-fault roadmap and should be added through normal

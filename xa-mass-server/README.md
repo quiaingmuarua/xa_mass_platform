@@ -227,6 +227,7 @@ Current command groups:
   - `fault.result.duplicate`
   - `fault.result.malformed`
   - `fault.transport.disconnect`
+  - `fault.worker.state.flap`
   - `fault.reset`
 - `tool.*`: lightweight utility commands for debugging and demos
   - `tool.time.now`
