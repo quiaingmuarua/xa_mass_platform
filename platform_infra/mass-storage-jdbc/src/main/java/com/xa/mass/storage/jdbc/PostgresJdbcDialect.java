@@ -17,17 +17,6 @@ final class PostgresJdbcDialect implements JdbcDialect {
     }
 
     @Override
-    public String workerUpsertSql() {
-        return """
-                INSERT INTO xa_worker(worker_id, worker_group_id, json)
-                VALUES (?, ?, ?)
-                ON CONFLICT (worker_id) DO UPDATE SET
-                  worker_group_id = EXCLUDED.worker_group_id,
-                  json = EXCLUDED.json
-                """;
-    }
-
-    @Override
     public String ruleUpsertSql() {
         return """
                 INSERT INTO xa_rule(rule_id, rule_type, json)
@@ -54,4 +43,3 @@ final class PostgresJdbcDialect implements JdbcDialect {
                 """;
     }
 }
-

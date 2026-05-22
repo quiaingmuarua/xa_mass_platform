@@ -13,14 +13,17 @@ Current scope:
 - `InMemoryRuleStorage`
 - `QLExpressRuleEvaluator`
 
-These classes provide in-memory control-plane storage implementations shared by
-engine defaults, focused tests, and storage adapters that still need a
-process-local compatibility projection.
+These classes provide in-memory task/rule storage plus the current in-memory
+worker runtime registry used by engine defaults, focused tests, and storage
+adapters that still need a process-local compatibility projection.
 
 Current code truth:
 
-- `InMemoryTaskStorage` and `InMemoryWorkerStorage` are the real in-memory
-  control-plane defaults used by SDK/server embedding and focused tests
+- `InMemoryTaskStorage` is the real in-memory task control-plane default used
+  by SDK/server embedding and focused tests
+- `InMemoryWorkerStorage` is the current in-memory worker runtime registry; it
+  maintains primary worker identity and secondary group indexes in memory and
+  must not be treated as a DB row-store shape
 - `InMemoryRuleStorage` and `QLExpressRuleEvaluator` currently live here, so
   rule-evaluator ownership is infra-local in code today
 - SDK auth helpers such as `InMemorySubmitterRegistry` no longer live here; do

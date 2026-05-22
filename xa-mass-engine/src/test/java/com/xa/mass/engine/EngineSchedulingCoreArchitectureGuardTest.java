@@ -899,10 +899,40 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "WorkerStorage must stay control-plane worker-row storage. Capability candidate "
-                        + "lookup belongs to WorkerRegistrySnapshot / WorkerCandidateIndex, not DB-backed "
+                "WorkerStorage must stay runtime worker-registry storage. Capability candidate "
+                        + "lookup belongs to WorkerRegistrySnapshot / WorkerCandidateIndex, not control-plane "
                 + "storage APIs:\n"
                 + String.join("\n", violations));
+    }
+
+    @Test
+    void jdbcStorageDoesNotOwnWorkerRuntimeRegistry() throws IOException {
+        Path jdbcSourceRoot = repositoryRoot().resolve(
+                "platform_infra/mass-storage-jdbc/src/main/java/com/xa/mass/storage/jdbc");
+        Path migrationPath = repositoryRoot().resolve(
+                "platform_infra/mass-storage-jdbc/src/main/resources/db/migration/control-plane/V1__create_control_plane_tables.sql");
+
+        List<String> violations = new ArrayList<>();
+        if (Files.exists(jdbcSourceRoot.resolve("JdbcWorkerStorage.java"))) {
+            violations.add(jdbcSourceRoot.resolve("JdbcWorkerStorage.java")
+                    + " reintroduces DB-backed worker runtime storage");
+        }
+        if (Files.exists(jdbcSourceRoot.resolve("JdbcWorkerCompatibilityProjection.java"))) {
+            violations.add(jdbcSourceRoot.resolve("JdbcWorkerCompatibilityProjection.java")
+                    + " reintroduces a second worker runtime data structure under JDBC");
+        }
+        if (Files.exists(migrationPath)) {
+            String migration = Files.readString(migrationPath, StandardCharsets.UTF_8);
+            if (Pattern.compile("\\bxa_worker\\b").matcher(migration).find()) {
+                violations.add(migrationPath + " creates xa_worker; worker registry is runtime/trace truth, not DB CRUD");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "JDBC storage must not own worker runtime registry, worker locks, or worker attribute churn. "
+                        + "Use the shared runtime worker backend and persist historical query needs through "
+                        + "trace/audit ingestion:\n"
+                        + String.join("\n", violations));
     }
 
     @Test

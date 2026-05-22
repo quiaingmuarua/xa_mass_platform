@@ -6,10 +6,12 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Storage abstraction for worker state.
+ * Runtime registry abstraction for worker identity, indexes, and worker locks.
  *
  * <p>The active lock contract is intentionally worker-level: the lock protects
- * one active execution lane per worker in the current runtime model.
+ * one active execution lane per worker in the current runtime model. This is
+ * not a DB CRUD contract; durable worker history belongs in trace/audit
+ * projections.
  */
 public interface WorkerStorage extends WorkerLookupStore {
 

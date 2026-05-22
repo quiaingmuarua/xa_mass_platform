@@ -3,10 +3,8 @@ package com.xa.mass.storage.jdbc;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.UserRef;
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
 import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
@@ -22,7 +20,6 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -77,26 +74,6 @@ class JdbcStoragePostgresTest {
             assertThat(restartedStorage.getTaskMessageAttemptProjections("task-1", "msg-1")).isEmpty();
 
             assertThat(storage.deleteTask("task-1")).isTrue();
-        }
-    }
-
-    @Test
-    void workerStoragePersistsWorkersAndLocks() {
-        try (StorageFixture fixture = postgresFixture("worker_storage")) {
-            JdbcWorkerStorage storage = new JdbcWorkerStorage(fixture.dataSource(), new PostgresJdbcDialect());
-            Worker worker = new Worker("worker-1", "1.0", List.of("demoApp"));
-            worker.setSupportedEventCodes(List.of("event.demo"));
-            worker.setWorkerGroupId("group-a");
-            worker.setStatus(WorkerStatus.ONLINE);
-            storage.addWorker(worker);
-
-            assertThat(storage.getWorker("worker-1")).isPresent();
-            assertThat(storage.getWorkersByGroupId("group-a")).hasSize(1);
-            assertThat(storage.tryLockWorker("worker-1")).isTrue();
-            assertThat(storage.tryLockWorker("worker-1")).isFalse();
-            assertThat(storage.isLocked("worker-1")).isTrue();
-            storage.unlockWorker("worker-1");
-            assertThat(storage.isLocked("worker-1")).isFalse();
         }
     }
 

@@ -293,8 +293,7 @@ public class XaMassServerApplication {
                         engine.executionEventSink(executionEventSink);
                     }
                     if (jdbcStorageRuntime.isEnabled()) {
-                        engine.workerStorage(jdbcStorageRuntime.workerStorage())
-                                .ruleStorage(jdbcStorageRuntime.ruleStorage());
+                        engine.ruleStorage(jdbcStorageRuntime.ruleStorage());
                     }
                     MassBootstrapDataProvider provider = bootstrapDataProvider.getIfAvailable();
                     if (provider != null) {
@@ -311,9 +310,6 @@ public class XaMassServerApplication {
         return args -> {
             log.info("Starting embedded transport runtime + engine");
             try {
-                if (jdbcStorageRuntime.isEnabled()) {
-                    jdbcStorageRuntime.recoverRuntimeResidue();
-                }
                 app.start();
                 if (!app.isRunning()) {
                     throw new IllegalStateException("MassApplication failed to start properly");
