@@ -2,8 +2,12 @@
 
 Last updated: 2026-05-22
 
-Status: proposed convergence plan. Verify current code before implementing each
-phase.
+Status: superseded for phases WRO-0 through WRO-5 by
+[WORKER_SLOT_REGISTRY_ROADMAP.md](WORKER_SLOT_REGISTRY_ROADMAP.md).
+WRO-6 (Redis worker registry) is absorbed into WSR-6 of that roadmap.
+
+Do not execute this roadmap and WORKER_SLOT_REGISTRY_ROADMAP.md simultaneously.
+Retain this file as a record of the original occupancy convergence intent.
 
 ## Summary
 
