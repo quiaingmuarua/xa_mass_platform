@@ -1,10 +1,8 @@
 package com.xa.mass.testing.chaos;
 
 import com.google.gson.JsonObject;
-import com.xa.mass.runtime.api.RecentFinalWorkReceipt;
-import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
-import com.xa.mass.sdk.model.TaskStateSnapshot;
+import com.xa.mass.testing.chaos.support.ChaosProofAssertions;
 import com.xa.mass.testing.chaos.support.ChaosTraceArtifacts;
 import com.xa.mass.testing.chaos.support.ChaosReportWriter;
 import com.xa.mass.testing.chaos.support.ChaosRuntimeHarness;
@@ -14,7 +12,6 @@ import com.xa.mass.testing.chaos.support.TraceEventAssertions;
 import com.xa.mass.testing.workerfault.WorkerFaultReportMetadata;
 import com.xa.mass.testing.workerfault.WorkerFaultScenarioIndex;
 import com.xa.mass.trace.operator.TraceAnalyzeResponse;
-import com.xa.mass.trace.sink.ExecutionEventType;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 
@@ -169,35 +166,17 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                         "runtime should reopen the work after watchdog expiry and redispatch"
                 );
 
-                TaskOutcomeSnapshot terminalOutcome = runtime.waitForTerminalTask(
-                        task.getTaskId(),
-                        1,
-                        config.timeoutSeconds(),
-                        "lease-expiry redispatch task must converge"
-                );
-                TaskWorkStats terminalStats = runtime.waitForRuntimeStats(
-                        task.getTaskId(),
-                        1,
-                        1,
-                        0,
-                        0,
-                        config.timeoutSeconds(),
-                        "runtime should finalize the redispatched work as success"
-                );
-                ChaosSupport.require(terminalStats.readyCount() == 0, "runtime ready queue should be drained");
-                ChaosSupport.require(terminalStats.inflightCount() == 0, "runtime active leases should be drained");
-                ChaosSupport.require(runtime.activeLeases(task.getTaskId()).isEmpty(),
-                        "runtime active leases should be empty after terminal convergence");
-
-                RecentFinalWorkReceipt finalReceipt = runtime.recentFinalReceipt(task.getTaskId(), messageId).orElse(null);
-                ChaosSupport.require(finalReceipt != null, "runtime recent final receipt should exist");
-                ChaosSupport.require(finalReceipt.retryCount() == 1,
-                        "runtime final receipt should record one expiry-driven retry");
-                TaskStateSnapshot currentTaskState = runtime.app().getTaskState(task.getTaskId());
-                ChaosSupport.require(currentTaskState != null && "TERMINAL".equals(currentTaskState.getStatus()),
-                        "task should converge to TERMINAL");
-                ChaosSupport.require("ALL_MESSAGES_SUCCEEDED".equals(terminalOutcome.terminalReason()),
-                        "task terminal reason should be ALL_MESSAGES_SUCCEEDED");
+                ChaosProofAssertions.TerminalRuntimeProof terminalProof =
+                        ChaosProofAssertions.requireSuccessfulTerminalRuntime(
+                                runtime,
+                                task.getTaskId(),
+                                messageId,
+                                1,
+                                config.timeoutSeconds(),
+                                "websocket lease-expiry redispatch"
+                        );
+                TaskOutcomeSnapshot terminalOutcome = terminalProof.outcome();
+                var finalReceipt = terminalProof.finalReceipt();
                 ChaosSupport.require(chaosWorker.receivedDispatches() == 1,
                         "chaos worker should receive exactly one dispatch");
                 ChaosSupport.require(chaosWorker.disconnectCycles() == 1,
@@ -212,11 +191,8 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                 TraceEventAssertions.of(traceArtifacts.captureSink())
                         .forTask(task.getTaskId())
                         .requireMinTotalEvents(5)
-                        .requireEventType(ExecutionEventType.LEASE_EXPIRED)
-                        .requireEventType(ExecutionEventType.TASK_WORK_RETRY_RESET)
-                        .requireCallbackAccepted(messageId)
-                        .requireEventType(ExecutionEventType.TASK_TERMINAL_CLOSED)
-                        .requireTerminalReason("ALL_MESSAGES_SUCCEEDED");
+                        .requireCallbackAccepted(messageId);
+                ChaosProofAssertions.requireLeaseExpirySuccessTrace(traceArtifacts.captureSink(), task.getTaskId());
                 traceArtifacts.close();
                 List<TraceAnalyzeResponse> analyses = ChaosTraceAnalysisPlanner.analyze(
                         traceArtifacts.outputDir(),
