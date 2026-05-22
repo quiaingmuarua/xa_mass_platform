@@ -261,6 +261,10 @@ public abstract class AbstractSampleE2eTest {
         return createTaskId(sourceRef, textContent, List.of(target), 1);
     }
 
+    protected String createTaskId(String sourceRef, String textContent, String target, String workerGroupId) {
+        return createTaskId(sourceRef, textContent, List.of(target), 1, null, workerGroupId);
+    }
+
     protected String createTaskId(String sourceRef, String... targets) {
         return createTaskId(sourceRef, sourceRef + " integration", List.of(targets), 1);
     }

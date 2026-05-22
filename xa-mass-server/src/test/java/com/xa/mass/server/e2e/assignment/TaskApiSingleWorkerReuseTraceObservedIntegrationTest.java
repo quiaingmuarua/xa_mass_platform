@@ -36,6 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @DirtiesContext
 class TaskApiSingleWorkerReuseTraceObservedIntegrationTest extends AbstractTraceObservedE2eTest {
 
+    private static final String WORKER_GROUP_ID = "pool-reuse";
     private static final int WEBSOCKET_PORT = findFreePort();
     private static final Path TRACE_OUTPUT_DIR = traceOutputDir("single-worker-reuse-trace-observed");
 
@@ -50,7 +51,7 @@ class TaskApiSingleWorkerReuseTraceObservedIntegrationTest extends AbstractTrace
         String workerId = "reuse-trace-worker-0";
         registerSdkStatelessWorkerWithAttributes(
                 workerId,
-                "pool-reuse",
+                WORKER_GROUP_ID,
                 "demoApp",
                 java.util.Map.of("routingTags", "us", "country", "us")
         );
@@ -60,7 +61,12 @@ class TaskApiSingleWorkerReuseTraceObservedIntegrationTest extends AbstractTrace
         try {
             assertClientConnects(client, "single worker reuse trace client failed to connect");
 
-            String firstTaskId = createTaskId("reuse-trace-first", "single worker reuse trace first", "target-a");
+            String firstTaskId = createTaskId(
+                    "reuse-trace-first",
+                    "single worker reuse trace first",
+                    "target-a",
+                    WORKER_GROUP_ID
+            );
             assertApiOk(approveTask(firstTaskId));
             RuntimeTaskSnapshot firstTerminal = waitForTerminalRuntimeTask(firstTaskId);
             assertEquals("ALL_MESSAGES_SUCCEEDED", firstTerminal.task().get("terminalReason"));
@@ -76,7 +82,12 @@ class TaskApiSingleWorkerReuseTraceObservedIntegrationTest extends AbstractTrace
             assertTrue(cleanupTrace.eventTypeCounts().containsKey("RESOURCE_RELEASED"),
                     "canonical trace must include worker resource release before reuse");
 
-            String secondTaskId = createTaskId("reuse-trace-second", "single worker reuse trace second", "target-b");
+            String secondTaskId = createTaskId(
+                    "reuse-trace-second",
+                    "single worker reuse trace second",
+                    "target-b",
+                    WORKER_GROUP_ID
+            );
             assertApiOk(approveTask(secondTaskId));
             RuntimeTaskSnapshot secondTerminal = waitForTerminalRuntimeTask(secondTaskId);
             assertEquals("ALL_MESSAGES_SUCCEEDED", secondTerminal.task().get("terminalReason"));
