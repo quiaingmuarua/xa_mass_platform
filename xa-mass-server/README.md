@@ -485,20 +485,15 @@ High-signal classes:
   - `TaskApiMinimumWorkerGateTraceObservedIntegrationTest`
   - `TaskApiDelayedWorkerAvailabilityTraceObservedIntegrationTest`
   - `TaskApiRetryRedispatchTraceObservedIntegrationTest`
-  - `TaskApiDelayedWorkerAvailabilityIntegrationTest`
-  - `TaskApiMinimumWorkerGateIntegrationTest`
   - `TaskApiSingleWorkerReuseTraceObservedIntegrationTest`
-  - `TaskApiWorkerAttributeRoutingIntegrationTest`
+  - `TaskApiWorkerAttributeRoutingTraceObservedIntegrationTest`
   - `TaskApiWorkerWithoutContextIntegrationTest`
-  - `TaskApiSingleWorkerReuseIntegrationTest`
   - `CrawlerPullWorkerSdkRegistrationIntegrationTest`
 - results and idempotence:
   - `TaskApiAllMessagesFailedTraceObservedIntegrationTest`
   - `TaskApiCallbackReplayTraceObservedIntegrationTest`
   - `TaskApiFailureResultIntegrationTest`
   - `TaskApiMixedResultsTraceObservedIntegrationTest`
-  - `TaskApiMixedResultsIntegrationTest`
-  - `TaskApiAllMessagesFailedIntegrationTest`
 - external worker black-box:
   - `ExternalWorkerParitySuite`
   - `ExternalWorkerPublicContractTraceObservedIntegrationTest`
@@ -528,7 +523,6 @@ High-signal classes:
 - explicit projection residue/audit:
   - `TaskApiMultiRoundDispatchIntegrationTest`
   - `TaskApiTerminateReuseIntegrationTest`
-  - `TaskApiCallbackReplayIntegrationTest`
   - `TaskApiStateValidationIntegrationTest`
 
 Fixture rules:

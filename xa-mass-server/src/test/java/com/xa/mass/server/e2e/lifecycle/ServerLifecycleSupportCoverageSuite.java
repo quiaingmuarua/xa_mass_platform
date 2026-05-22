@@ -1,7 +1,4 @@
 package com.xa.mass.server.e2e.lifecycle;
-
-import com.xa.mass.server.e2e.results.TaskApiAllMessagesFailedIntegrationTest;
-import com.xa.mass.server.e2e.results.TaskApiMixedResultsIntegrationTest;
 import org.junit.platform.suite.api.SelectClasses;
 import org.junit.platform.suite.api.Suite;
 
@@ -14,9 +11,7 @@ import org.junit.platform.suite.api.Suite;
 @Suite
 @SelectClasses({
         SdkTaskApiIntegrationTest.class,
-        TaskApiIntegrationTest.class,
-        TaskApiAllMessagesFailedIntegrationTest.class,
-        TaskApiMixedResultsIntegrationTest.class
+        TaskApiIntegrationTest.class
 })
 class ServerLifecycleSupportCoverageSuite {
 }

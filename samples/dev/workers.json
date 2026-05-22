@@ -3,6 +3,7 @@
     "workerId": "node-worker-realtime-001",
     "workerKey": "node-worker-realtime-key",
     "workerGroupId": "sample-websocket-crawler",
+    "adapterNodeId": "sample-websocket-node",
     "adapterId": "websocket",
     "transportHint": "realtime",
     "attributes": {
@@ -23,6 +24,7 @@
     "workerId": "stock-ws-worker-001",
     "workerKey": "stock-ws-worker-key",
     "workerGroupId": "sample-websocket-stock",
+    "adapterNodeId": "sample-websocket-node",
     "adapterId": "websocket",
     "transportHint": "realtime",
     "attributes": {
