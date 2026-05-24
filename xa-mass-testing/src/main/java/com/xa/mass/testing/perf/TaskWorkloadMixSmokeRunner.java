@@ -18,13 +18,11 @@ import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.worker.WorkerManager;
-import com.xa.mass.engine.worker.WorkerReachabilityState;
 import com.xa.mass.engine.listener.SimpleTaskDispatchBinder;
 import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
-import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
@@ -342,13 +340,11 @@ public final class TaskWorkloadMixSmokeRunner {
                 if (!worker.isAvailable() || !worker.supportsProject(task.getProject())) {
                     continue;
                 }
-                if (!workerManager.tryLockWorker(worker.getWorkerId())) {
-                    continue;
+                WorkerSchedulingCandidate candidate =
+                        PerfWorkerMatchingSupport.tryReserveCandidate(workerManager, task, worker);
+                if (candidate != null) {
+                    matched.add(candidate);
                 }
-                matched.add(new WorkerSchedulingCandidate(
-                        worker,
-                        WorkerSchedulingView.from(worker, WorkerReachabilityState.ONLINE, true, true)
-                ));
             }
             return matched;
         }
@@ -681,4 +677,3 @@ public final class TaskWorkloadMixSmokeRunner {
                 .replace("\t", "\\t");
     }
 }
-
