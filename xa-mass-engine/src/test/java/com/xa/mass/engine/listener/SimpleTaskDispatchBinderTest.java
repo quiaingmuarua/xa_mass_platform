@@ -132,7 +132,7 @@ public class SimpleTaskDispatchBinderTest {
         verify(recordService, times(4)).recordMessageAssignment(
                 any(), any(), anyString(), anyString(), any(), anyString(), anyBoolean()
         );
-        verify(workerManager, times(4)).isLocked(anyString());
+        verify(workerManager, times(4)).hasWorkerExclusiveLease(anyString());
     }
 
     @Test
@@ -199,7 +199,7 @@ public class SimpleTaskDispatchBinderTest {
 
         assertEquals(1, dispatched.size());
         verify(workerManager).releaseWorkerReservation("d2", task.getTid());
-        verify(workerManager).unlockWorker("d2");
+        verify(workerManager).releaseWorkerExclusiveLease("d2");
     }
 
     @Test
@@ -221,7 +221,7 @@ public class SimpleTaskDispatchBinderTest {
         assertTrue(dispatched.isEmpty());
         verify(workerManager, times(2)).recordWorkClaimed("d1", task.getTid());
         verify(workerManager, times(2)).recordWorkFinal("d1", task.getTid());
-        verify(workerManager).unlockWorker("d1");
+        verify(workerManager).releaseWorkerExclusiveLease("d1");
     }
 
     @Test
@@ -243,7 +243,7 @@ public class SimpleTaskDispatchBinderTest {
         assertTrue(dispatched.isEmpty());
         verify(workerManager).recordWorkClaimed("d1", task.getTid());
         verify(workerManager).recordWorkFinal("d1", task.getTid());
-        verify(workerManager, never()).unlockWorker("d1");
+        verify(workerManager, never()).releaseWorkerExclusiveLease("d1");
     }
 
     @Test
@@ -265,7 +265,7 @@ public class SimpleTaskDispatchBinderTest {
         assertTrue(dispatched.isEmpty());
         verify(workerManager).recordWorkClaimed("d1", task.getTid());
         verify(workerManager).recordWorkFinal("d1", task.getTid());
-        verify(workerManager, never()).unlockWorker("d1");
+        verify(workerManager, never()).releaseWorkerExclusiveLease("d1");
     }
 
     @Test
@@ -433,7 +433,7 @@ public class SimpleTaskDispatchBinderTest {
         assertTrue(attempts.stream().allMatch(attempt -> attempt.finalReason()
                 == TaskMessageAttemptProjectionFinalReason.REVOKED_FOR_RETRY));
         assertTrue(attempts.stream().allMatch(attempt -> "DISPATCH_SUBMIT_FAILED".equals(attempt.errorCode())));
-        verify(workerManager).unlockWorker("d1");
+        verify(workerManager).releaseWorkerExclusiveLease("d1");
         assertEquals(2, taskManager.countDispatchReadyWork(task.getTid()));
 
         AtomicReference<List<TaskDispatchBinding>> recoveredDispatch = new AtomicReference<>();
@@ -579,7 +579,7 @@ public class SimpleTaskDispatchBinderTest {
                 any(), argThat(candidate -> candidate != null && candidate.getWorkerId() != null),
                 anyString(), anyString(), any(), anyString(), anyBoolean()
         );
-        verify(workerManager, times(2)).isLocked("d1");
+        verify(workerManager, times(2)).hasWorkerExclusiveLease("d1");
     }
 
     @Test
@@ -592,7 +592,7 @@ public class SimpleTaskDispatchBinderTest {
         assertEquals(TaskMessageProjectionStatus.INIT, stored.get(0).status());
         assertFalse(dispatched.getFirst().attemptId().contains("-na-"));
         verify(workerManager, never()).releaseWorkerReservation("d1", task.getTid());
-        verify(workerManager, never()).unlockWorker("d1");
+        verify(workerManager, never()).releaseWorkerExclusiveLease("d1");
     }
 
     @Test
@@ -610,7 +610,7 @@ public class SimpleTaskDispatchBinderTest {
         List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched("d1")));
 
         assertEquals(1, dispatched.size());
-        verify(workerManager, never()).unlockWorker("d1");
+        verify(workerManager, never()).releaseWorkerExclusiveLease("d1");
     }
 
     @Test

@@ -36,7 +36,7 @@ final class WorkerSchedulingCandidateEnumerator {
     private WorkerSchedulingCandidate toSchedulingCandidate(Worker worker) {
         WorkerReachabilityState reachability = workerManager.getWorkerReachability(worker.getWorkerId());
         boolean dispatchEnabled = workerManager.isWorkerDispatchEnabled(worker);
-        boolean workerLocked = workerManager.isLocked(worker.getWorkerId());
+        boolean workerLocked = workerManager.hasWorkerExclusiveLease(worker.getWorkerId());
         String workerGroupId = worker.getWorkerGroupId();
         WorkerGroupRecord workerGroup = workerGroupId == null || workerGroupId.isBlank()
                 ? null

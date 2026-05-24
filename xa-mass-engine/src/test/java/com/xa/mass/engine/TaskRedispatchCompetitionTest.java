@@ -37,7 +37,7 @@ class TaskRedispatchCompetitionTest {
         assertEquals(0, afterExpiryStats.inflightCount());
         assertEquals(0, afterExpiryStats.finalCount());
         assertTrue(harness.activeLeases(task.getTid()).isEmpty());
-        assertFalse(harness.workerManager.isLocked("worker-retry"));
+        assertFalse(harness.workerManager.hasWorkerExclusiveLease("worker-retry"));
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(task.getTid()).getStatus());
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
@@ -122,7 +122,7 @@ class TaskRedispatchCompetitionTest {
         ActiveLeaseRecord firstLease = harness.activeLeases(firstTask.getTid()).getFirst();
 
         assertTrue(harness.taskManager.expireLeasedWork(firstTask.getTid(), firstLease.messageId()));
-        assertFalse(harness.workerManager.isLocked("worker-shared"));
+        assertFalse(harness.workerManager.hasWorkerExclusiveLease("worker-shared"));
         assertEquals(1, harness.stats(firstTask.getTid()).readyCount());
         assertTrue(harness.activeLeases(firstTask.getTid()).isEmpty());
 
@@ -182,7 +182,7 @@ class TaskRedispatchCompetitionTest {
         ));
 
         assertEquals(TaskStatus.TERMINAL, harness.taskManager.getTask(competingTask.getTid()).getStatus());
-        assertFalse(harness.workerManager.isLocked("worker-shared"));
+        assertFalse(harness.workerManager.hasWorkerExclusiveLease("worker-shared"));
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(retryingTask.getTid())));
 
         List<ActiveLeaseRecord> retryingLeases = harness.activeLeases(retryingTask.getTid());
@@ -226,7 +226,7 @@ class TaskRedispatchCompetitionTest {
         assertEquals(1, finalizedStats.expiredCount());
         assertEquals(1, finalizedStats.finalCount());
         assertTrue(harness.activeLeases(exhaustedTask.getTid()).isEmpty());
-        assertFalse(harness.workerManager.isLocked("worker-shared"));
+        assertFalse(harness.workerManager.hasWorkerExclusiveLease("worker-shared"));
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(waitingTask.getTid())));
 

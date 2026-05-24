@@ -853,18 +853,18 @@ public class WorkerManagerTest {
     @Test
     void lockAndUnlockWorker() {
         manager.addWorker(worker("w6", "us"));
-        assertTrue(manager.tryLockWorker("w6"));
-        assertTrue(manager.isLocked("w6"));
+        assertTrue(manager.tryAcquireWorkerExclusiveLease("w6"));
+        assertTrue(manager.hasWorkerExclusiveLease("w6"));
 
-        manager.unlockWorker("w6");
-        assertFalse(manager.isLocked("w6"));
+        manager.releaseWorkerExclusiveLease("w6");
+        assertFalse(manager.hasWorkerExclusiveLease("w6"));
     }
 
     @Test
     void lockAlreadyLockedWorkerReturnsFalse() {
         manager.addWorker(worker("w7", "us"));
-        assertTrue(manager.tryLockWorker("w7"));
-        assertFalse(manager.tryLockWorker("w7"));
+        assertTrue(manager.tryAcquireWorkerExclusiveLease("w7"));
+        assertFalse(manager.tryAcquireWorkerExclusiveLease("w7"));
     }
 
     // ---- worker model status vs transport reachability ----

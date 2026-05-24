@@ -52,7 +52,7 @@ public class TaskResourceReleaseListenerTest {
         listener.onTaskTerminal(task);
 
         verify(workerManager).recordWorkFinal("worker-1", "task-1");
-        verify(workerManager).unlockWorker("worker-1");
+        verify(workerManager).releaseWorkerExclusiveLease("worker-1");
     }
 
     @Test
@@ -66,7 +66,7 @@ public class TaskResourceReleaseListenerTest {
         listener.onTaskTerminal(task);
 
         verify(workerManager).recordWorkFinal("worker-1", "task-1");
-        verify(workerManager, never()).unlockWorker("worker-1");
+        verify(workerManager, never()).releaseWorkerExclusiveLease("worker-1");
     }
 
     @Test
@@ -80,7 +80,7 @@ public class TaskResourceReleaseListenerTest {
         listener.onTaskTerminal(task);
 
         verify(workerManager).recordWorkFinal("worker-1", "task-1");
-        verify(workerManager, never()).unlockWorker("worker-1");
+        verify(workerManager, never()).releaseWorkerExclusiveLease("worker-1");
     }
 
     @Test
@@ -109,7 +109,7 @@ public class TaskResourceReleaseListenerTest {
 
         listener.onTaskTerminal(task);
 
-        verify(workerManager).unlockWorker("worker-1");
+        verify(workerManager).releaseWorkerExclusiveLease("worker-1");
     }
 
     @Test
@@ -127,7 +127,7 @@ public class TaskResourceReleaseListenerTest {
         listener.onTaskWorkAttemptClosed(task, closedAttempt);
 
         verify(workerManager).recordWorkFinal("worker-1", "task-1");
-        verify(workerManager).unlockWorker("worker-1");
+        verify(workerManager).releaseWorkerExclusiveLease("worker-1");
         verify(maintenancePort).requestTaskDispatch(same(task));
     }
 
@@ -145,7 +145,7 @@ public class TaskResourceReleaseListenerTest {
 
         listener.onTaskWorkAttemptClosed(task, closedAttempt);
 
-        verify(workerManager).unlockWorker("worker-1");
+        verify(workerManager).releaseWorkerExclusiveLease("worker-1");
         verify(maintenancePort).requestTaskDispatch(same(task));
     }
 
@@ -165,7 +165,7 @@ public class TaskResourceReleaseListenerTest {
         listener.onTaskWorkAttemptClosed(task, closedAttempt);
 
         verify(workerManager).recordWorkFinal("worker-1", "task-1");
-        verify(workerManager, never()).unlockWorker("worker-1");
+        verify(workerManager, never()).releaseWorkerExclusiveLease("worker-1");
         verify(maintenancePort).requestTaskDispatch(same(task));
     }
 
@@ -190,7 +190,7 @@ public class TaskResourceReleaseListenerTest {
         listener.onTaskWorkAttemptClosed(task, closedAttempt);
 
         verify(workerManager).recordWorkFinal("worker-1", "task-1");
-        verify(workerManager).unlockWorker("worker-1");
+        verify(workerManager).releaseWorkerExclusiveLease("worker-1");
         verify(maintenancePort, never()).hasDispatchReadyWork("task-1");
         verify(maintenancePort, never()).requestTaskDispatch(any());
     }
@@ -217,7 +217,7 @@ public class TaskResourceReleaseListenerTest {
         listener.onTaskWorkAttemptClosed(task, closedAttempt);
 
         verify(workerManager).recordWorkFinal("worker-1", "task-1");
-        verify(workerManager, never()).unlockWorker("worker-1");
+        verify(workerManager, never()).releaseWorkerExclusiveLease("worker-1");
     }
 
     @Test
@@ -248,7 +248,7 @@ public class TaskResourceReleaseListenerTest {
                 "TaskResourceReleaseListener",
                 "worker has no in-flight messages"
         );
-        verify(workerManager, never()).unlockWorker("worker-1");
+        verify(workerManager, never()).releaseWorkerExclusiveLease("worker-1");
     }
 
     @Test
@@ -264,7 +264,7 @@ public class TaskResourceReleaseListenerTest {
 
         listener.onTaskWorkAttemptClosed(task, closedAttempt);
 
-        verify(workerManager).unlockWorker("worker-1");
+        verify(workerManager).releaseWorkerExclusiveLease("worker-1");
         verify(maintenancePort, never()).hasDispatchReadyWork("task-1");
         verify(maintenancePort, never()).requestTaskDispatch(any());
     }
@@ -282,7 +282,7 @@ public class TaskResourceReleaseListenerTest {
 
         listener.onTaskWorkAttemptClosed(task, closedAttempt);
 
-        verify(workerManager, never()).unlockWorker("worker-1");
+        verify(workerManager, never()).releaseWorkerExclusiveLease("worker-1");
         verify(maintenancePort, never()).requestTaskDispatch(any());
     }
 
@@ -302,7 +302,7 @@ public class TaskResourceReleaseListenerTest {
                             && "WORKER_LOCK".equals(mdc.get("resourceKind")));
         }
 
-        verify(workerManager).unlockWorker("worker-1");
+        verify(workerManager).releaseWorkerExclusiveLease("worker-1");
     }
 
     private TaskWorkAttemptClosedEvent closedAttempt(String taskId,

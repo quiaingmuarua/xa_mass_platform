@@ -135,7 +135,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
 
         Worker w = worker("worker-locked", "pool-east");
         registerWorker(workerManager, w);
-        assertTrue(workerManager.tryLockWorker(w.getWorkerId()));
+        assertTrue(workerManager.tryAcquireWorkerExclusiveLease(w.getWorkerId()));
 
         List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(task, 1);
 
@@ -525,8 +525,8 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
 
         assertEquals(1, matched.size());
         assertEquals("worker-low-load", matched.getFirst().getWorkerId());
-        assertTrue(workerManager.isLocked("worker-low-load"));
-        assertFalse(workerManager.isLocked("worker-high-load"));
+        assertTrue(workerManager.hasWorkerExclusiveLease("worker-low-load"));
+        assertFalse(workerManager.hasWorkerExclusiveLease("worker-high-load"));
 
         AssignmentRecord acceptedRecord = findRecord(recordService, "task-load-aware", "worker-low-load");
         assertEquals(0, acceptedRecord.getContextSnapshot().get("workerActiveLeaseCount"));
@@ -560,7 +560,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(task, 1);
 
         assertTrue(matched.isEmpty());
-        assertFalse(workerManager.isLocked("worker-at-capacity"));
+        assertFalse(workerManager.hasWorkerExclusiveLease("worker-at-capacity"));
         assertEquals(0, workerManager.getWorkerLoad("worker-at-capacity").reservedCount());
         AssignmentRecord rejectedRecord = findRecord(recordService, "task-capacity", "worker-at-capacity");
         assertEquals(AssignmentResult.QUOTA_EXCEEDED, rejectedRecord.getResult());
@@ -574,7 +574,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                 workerId -> WorkerReachabilityState.ONLINE
         ) {
             @Override
-            public boolean tryLockWorker(String workerId) {
+            public boolean tryAcquireWorkerExclusiveLease(String workerId) {
                 return false;
             }
         };
@@ -636,7 +636,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         assertEquals(1, firstMatch.size());
         assertEquals(1, secondMatch.size());
         assertTrue(thirdMatch.isEmpty());
-        assertFalse(workerManager.isLocked("worker-shared"));
+        assertFalse(workerManager.hasWorkerExclusiveLease("worker-shared"));
         assertEquals(2, workerManager.getWorkerLoad("worker-shared").reservedCount());
 
         AssignmentRecord acceptedRecord = findRecord(recordService, "task-background-1", "worker-shared");

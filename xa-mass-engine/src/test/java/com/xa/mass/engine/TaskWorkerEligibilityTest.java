@@ -34,8 +34,8 @@ class TaskWorkerEligibilityTest {
         harness.addWorker("worker-occupied", "us");
         harness.addWorker("worker-routing-mismatch", "gb");
         harness.addWorker("worker-eligible", "us");
-        assertTrue(harness.workerManager.tryLockWorker("worker-locked"));
-        assertTrue(harness.workerManager.tryLockWorker("worker-occupied"));
+        assertTrue(harness.workerManager.tryAcquireWorkerExclusiveLease("worker-locked"));
+        assertTrue(harness.workerManager.tryAcquireWorkerExclusiveLease("worker-occupied"));
 
         Task task = harness.createReadyBatchTask("eligibility", List.of(harness.item("eligible")));
 
@@ -140,8 +140,8 @@ class TaskWorkerEligibilityTest {
         assertEquals(2, stats.readyCount());
         assertEquals(0, stats.inflightCount());
         assertTrue(harness.activeLeases(task.getTid()).isEmpty());
-        assertFalse(harness.workerManager.isLocked("worker-stable"));
-        assertFalse(harness.workerManager.isLocked("worker-dropped"));
+        assertFalse(harness.workerManager.hasWorkerExclusiveLease("worker-stable"));
+        assertFalse(harness.workerManager.hasWorkerExclusiveLease("worker-dropped"));
         assertRejected(harness, task.getTid(), "worker-dropped",
                 AssignmentResult.RESOURCE_UNAVAILABLE, "worker transport unreachable");
 

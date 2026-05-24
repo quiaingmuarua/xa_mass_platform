@@ -50,7 +50,7 @@ class TaskSchedulingContentionTest {
         assertEquals("worker locked", rejectedRecord.getReason());
         assertEquals(1, harness.successfulMessageAssignments(firstTask.getTid(), "worker-single"));
         assertEquals(0, harness.successfulMessageAssignments(secondTask.getTid(), "worker-single"));
-        assertTrue(harness.workerManager.isLocked("worker-single"));
+        assertTrue(harness.workerManager.hasWorkerExclusiveLease("worker-single"));
     }
 
     @Test
@@ -68,7 +68,7 @@ class TaskSchedulingContentionTest {
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(firstTask.getTid()).getStatus());
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(secondTask.getTid()).getStatus());
         assertEquals(TaskStatus.READY, harness.taskManager.getTask(thirdTask.getTid()).getStatus());
-        assertFalse(harness.workerManager.isLocked("worker-background"));
+        assertFalse(harness.workerManager.hasWorkerExclusiveLease("worker-background"));
         assertEquals(2, harness.workerManager.getWorkerLoad("worker-background").activeLeaseCount());
 
         List<ActiveLeaseRecord> firstLeases = harness.activeLeases(firstTask.getTid());
@@ -130,7 +130,7 @@ class TaskSchedulingContentionTest {
         ));
 
         assertEquals(TaskStatus.TERMINAL, harness.taskManager.getTask(firstTask.getTid()).getStatus());
-        assertFalse(harness.workerManager.isLocked(firstLease.workerId()));
+        assertFalse(harness.workerManager.hasWorkerExclusiveLease(firstLease.workerId()));
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(thirdTask.getTid())));
 
@@ -229,7 +229,7 @@ class TaskSchedulingContentionTest {
         ));
 
         assertEquals(TaskStatus.TERMINAL, harness.taskManager.getTask(runningTask.getTid()).getStatus());
-        assertFalse(harness.workerManager.isLocked("worker-shared"));
+        assertFalse(harness.workerManager.hasWorkerExclusiveLease("worker-shared"));
         assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(waitingTask.getTid())));
         assertEquals(TaskStatus.PAUSED, harness.taskManager.getTask(waitingTask.getTid()).getStatus());
         assertEquals(1, harness.stats(waitingTask.getTid()).readyCount());
@@ -268,7 +268,7 @@ class TaskSchedulingContentionTest {
         ));
 
         assertEquals(TaskStatus.TERMINAL, harness.taskManager.getTask(runningTask.getTid()).getStatus());
-        assertFalse(harness.workerManager.isLocked("worker-shared"));
+        assertFalse(harness.workerManager.hasWorkerExclusiveLease("worker-shared"));
         assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(blockedTask.getTid())));
         assertEquals(TaskStatus.BLOCKED, harness.taskManager.getTask(blockedTask.getTid()).getStatus());
         assertEquals(1, harness.stats(blockedTask.getTid()).readyCount());
@@ -282,7 +282,7 @@ class TaskSchedulingContentionTest {
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(nextReadyTask.getTid()).getStatus());
         assertEquals(0, harness.stats(nextReadyTask.getTid()).readyCount());
         assertEquals(1, harness.stats(nextReadyTask.getTid()).inflightCount());
-        assertTrue(harness.workerManager.isLocked("worker-shared"));
+        assertTrue(harness.workerManager.hasWorkerExclusiveLease("worker-shared"));
     }
 
     private Task createReadyBackgroundTask(TaskSchedulingTestHarness harness, String sourceRef, String target) {

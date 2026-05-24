@@ -105,7 +105,7 @@ public class DefaultRuntimeDiagnosticsOperations implements RuntimeDiagnosticsOp
         if (delegate.getEngine() == null || !delegate.getEngine().isRunning() || delegate.getEngine().getConfig() == null) {
             throw new IllegalStateException("MassEngine is not started");
         }
-        return delegate.getEngine().getConfig().getWorkerManager().isLocked(workerId.trim());
+        return delegate.getEngine().getConfig().getWorkerManager().hasWorkerExclusiveLease(workerId.trim());
     }
 
     protected final MassApplication runtimeApplication() {

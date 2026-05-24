@@ -186,7 +186,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
             recordService.recordMessageAssignment(
                     task, slot.candidate, work.messageId(), slot.batchId(),
                     AssignmentResult.SUCCESS, "message assigned",
-                    workerManager.isLocked(slot.worker().getWorkerId())
+                    workerManager.hasWorkerExclusiveLease(slot.worker().getWorkerId())
             );
         }
 

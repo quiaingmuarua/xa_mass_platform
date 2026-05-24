@@ -176,9 +176,9 @@ public class TaskWorkerAssignListenerTest {
         verify(workerManager).releaseWorkerReservation("worker-2", task.getTid());
         verify(workerManager).releaseWorkerReservation("worker-3", task.getTid());
         verify(workerManager).releaseWorkerReservation("worker-4", task.getTid());
-        verify(workerManager).unlockWorker("worker-2");
-        verify(workerManager).unlockWorker("worker-3");
-        verify(workerManager).unlockWorker("worker-4");
+        verify(workerManager).releaseWorkerExclusiveLease("worker-2");
+        verify(workerManager).releaseWorkerExclusiveLease("worker-3");
+        verify(workerManager).releaseWorkerExclusiveLease("worker-4");
     }
 
     @Test
@@ -236,7 +236,7 @@ public class TaskWorkerAssignListenerTest {
 
         assertFalse(listener.onTaskAssign(task));
 
-        verify(workerManager).unlockWorker("worker-1");
+        verify(workerManager).releaseWorkerExclusiveLease("worker-1");
         verify(assignmentRuntime, never()).updateTask(same(task));
     }
 
@@ -258,7 +258,7 @@ public class TaskWorkerAssignListenerTest {
         assertEquals(0, task.getPeakAssignedWorkerCount());
         verify(matchingStrategy).matchWorkers(same(task), eq(2));
         verify(workerManager).releaseWorkerReservation("worker-1", task.getTid());
-        verify(workerManager).unlockWorker("worker-1");
+        verify(workerManager).releaseWorkerExclusiveLease("worker-1");
         verify(assignmentRuntime, never()).updateTask(task);
         verifyNoInteractions(dispatchBinder);
     }
@@ -299,7 +299,7 @@ public class TaskWorkerAssignListenerTest {
         assertEquals(TaskStatus.READY, task.getStatus());
         assertEquals(0, task.getPeakAssignedWorkerCount());
         verify(matchingStrategy).matchWorkers(same(task), eq(2));
-        verify(workerManager).unlockWorker("worker-1");
+        verify(workerManager).releaseWorkerExclusiveLease("worker-1");
         verify(assignmentRuntime, never()).updateTask(task);
         verifyNoInteractions(dispatchBinder);
     }
@@ -361,8 +361,8 @@ public class TaskWorkerAssignListenerTest {
 
         verify(matchingStrategy).matchWorkers(same(task), eq(3));
         verify(dispatchBinder).bindDispatches(same(task), eq(List.of(first)));
-        verify(workerManager).unlockWorker("worker-2");
-        verify(workerManager).unlockWorker("worker-3");
+        verify(workerManager).releaseWorkerExclusiveLease("worker-2");
+        verify(workerManager).releaseWorkerExclusiveLease("worker-3");
     }
 
     @Test
@@ -389,7 +389,7 @@ public class TaskWorkerAssignListenerTest {
         assertTrue(listener.onTaskAssign(task));
 
         verify(workerManager).releaseWorkerReservation("worker-2", task.getTid());
-        verify(workerManager, never()).unlockWorker("worker-2");
+        verify(workerManager, never()).releaseWorkerExclusiveLease("worker-2");
     }
 
     @Test

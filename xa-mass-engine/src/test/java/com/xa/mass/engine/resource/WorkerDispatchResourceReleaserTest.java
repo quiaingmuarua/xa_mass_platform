@@ -50,7 +50,7 @@ class WorkerDispatchResourceReleaserTest {
         }
 
         verify(workerManager).releaseWorkerReservation("worker-1", "task-1");
-        verify(workerManager).unlockWorker("worker-1");
+        verify(workerManager).releaseWorkerExclusiveLease("worker-1");
     }
 
     @Test
@@ -73,7 +73,7 @@ class WorkerDispatchResourceReleaserTest {
         );
 
         verify(workerManager).releaseWorkerReservation("worker-1", "task-1");
-        verify(workerManager, never()).unlockWorker("worker-1");
+        verify(workerManager, never()).releaseWorkerExclusiveLease("worker-1");
     }
 
     @Test
@@ -96,7 +96,7 @@ class WorkerDispatchResourceReleaserTest {
         );
 
         verify(workerManager, never()).releaseWorkerReservation("worker-1", "task-1");
-        verify(workerManager).unlockWorker("worker-1");
+        verify(workerManager).releaseWorkerExclusiveLease("worker-1");
     }
 
     @Test
@@ -118,7 +118,7 @@ class WorkerDispatchResourceReleaserTest {
         );
 
         verify(workerManager, never()).releaseWorkerReservation("worker-1", "task-1");
-        verify(workerManager).unlockWorker("worker-1");
+        verify(workerManager).releaseWorkerExclusiveLease("worker-1");
     }
 
     @Test
@@ -139,7 +139,7 @@ class WorkerDispatchResourceReleaserTest {
                 "test attempt release"
         );
 
-        verify(workerManager, never()).unlockWorker("worker-1");
+        verify(workerManager, never()).releaseWorkerExclusiveLease("worker-1");
     }
 
     private Task task(String taskId) {

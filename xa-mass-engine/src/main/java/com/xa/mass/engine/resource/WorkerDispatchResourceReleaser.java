@@ -93,15 +93,15 @@ public final class WorkerDispatchResourceReleaser {
         if (task == null || workerId == null || workerId.isBlank() || !exclusiveWorkerLock) {
             return;
         }
-        unlockWorker(task, workerId, trigger, source, reason);
+        releaseWorkerExclusiveLease(task, workerId, trigger, source, reason);
     }
 
-    private void unlockWorker(Task task,
+    private void releaseWorkerExclusiveLease(Task task,
                               String workerId,
                               String trigger,
                               String source,
                               String reason) {
-        workerManager.unlockWorker(workerId);
+        workerManager.releaseWorkerExclusiveLease(workerId);
         traceEventLogger.workerLockReleased(task.getTid(), workerId, trigger, source, reason);
         traceEventLogger.resourceReleased(
                 task.getTid(),
@@ -124,7 +124,7 @@ public final class WorkerDispatchResourceReleaser {
         if (!resourcePolicy.usageForAttempt(task).exclusiveWorkerLock()) {
             return;
         }
-        unlockWorker(task, workerId, trigger, source, reason);
+        releaseWorkerExclusiveLease(task, workerId, trigger, source, reason);
     }
 
     private List<String> distinctWorkerIds(Collection<WorkerSchedulingCandidate> candidates) {

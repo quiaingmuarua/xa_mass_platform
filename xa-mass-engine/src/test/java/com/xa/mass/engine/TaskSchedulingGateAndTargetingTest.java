@@ -92,7 +92,7 @@ class TaskSchedulingGateAndTargetingTest {
         assertEquals(2, harness.stats(gatedTask.getTid()).readyCount());
         assertEquals(0, harness.stats(gatedTask.getTid()).inflightCount());
         assertTrue(harness.activeLeases(gatedTask.getTid()).isEmpty());
-        assertFalse(harness.workerManager.isLocked("worker-us"));
+        assertFalse(harness.workerManager.hasWorkerExclusiveLease("worker-us"));
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(competingTask.getTid())));
 
@@ -125,7 +125,7 @@ class TaskSchedulingGateAndTargetingTest {
                 "us",
                 Map.of("region", "us", "tier", "gold")
         );
-        assertTrue(harness.workerManager.tryLockWorker("worker-gold-locked"));
+        assertTrue(harness.workerManager.tryAcquireWorkerExclusiveLease("worker-gold-locked"));
         Task task = harness.createBatchTask(
                 "target-worker-attributes",
                 List.of(harness.item("targeted")),
@@ -205,7 +205,7 @@ class TaskSchedulingGateAndTargetingTest {
         assertEquals(1, waitingLeases.size());
         assertEquals("worker-target", waitingLeases.getFirst().workerId());
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(waitingTask.getTid()).getStatus());
-        assertTrue(harness.workerManager.isLocked("worker-target"));
-        assertFalse(harness.workerManager.isLocked("worker-backup"));
+        assertTrue(harness.workerManager.hasWorkerExclusiveLease("worker-target"));
+        assertFalse(harness.workerManager.hasWorkerExclusiveLease("worker-backup"));
     }
 }

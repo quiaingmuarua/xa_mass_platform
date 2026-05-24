@@ -144,7 +144,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                         worker.getWorkerId(),
                         worker.getWorkerGroupId(),
                         worker.getStatus(),
-                        workerManager.isLocked(worker.getWorkerId()),
+                        workerManager.hasWorkerExclusiveLease(worker.getWorkerId()),
                         String.join(", ", candidate.getSchedulingView().supportedProjects())
                 );
                 log.debug("[Debug] WorkerMatchContext: {}", matchContext.getContext());
@@ -175,7 +175,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                         task, candidate, AssignmentResult.RULE_NOT_MATCH,
                         "rule evaluation failed: " + failedRules,
                         ruleEvaluations, matchContext.getContext(),
-                        workerManager.isLocked(worker.getWorkerId())
+                        workerManager.hasWorkerExclusiveLease(worker.getWorkerId())
                 );
                 log.debug("Rule not matched: {} (failed rules: {})",
                         worker.getWorkerId(),
@@ -196,7 +196,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                         task, candidate, AssignmentResult.FAILED,
                         "rule evaluation exception: " + e.getMessage(),
                         new ArrayList<>(), matchContext.getContext(),
-                        workerManager.isLocked(worker.getWorkerId())
+                        workerManager.hasWorkerExclusiveLease(worker.getWorkerId())
                 );
                 log.error("Error evaluating rules for worker {}: {}",
                         worker.getWorkerId(),
@@ -235,7 +235,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                         task, candidate, AssignmentResult.QUOTA_EXCEEDED,
                         "worker capacity unavailable after candidate ranking",
                         passedCandidate.ruleEvaluations(), rankedContext.getContext(),
-                        workerManager.isLocked(worker.getWorkerId())
+                        workerManager.hasWorkerExclusiveLease(worker.getWorkerId())
                 );
                 log.debug("Worker capacity unavailable after candidate ranking: {}", worker.getWorkerId());
                 continue;
@@ -256,7 +256,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                         rank);
                 continue;
             }
-            if (workerManager.tryLockWorker(worker.getWorkerId())) {
+            if (workerManager.tryAcquireWorkerExclusiveLease(worker.getWorkerId())) {
                 traceEventLogger.workerLockAcquired(task.getTid(), worker.getWorkerId(),
                         "TRY_LOCK_WORKER", "RuleBasedTaskWorkerMatchingStrategy",
                         "all rules matched after candidate ranking");
@@ -282,7 +282,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                         task, candidate, AssignmentResult.CONFLICT,
                         "worker lock conflict after candidate ranking",
                         passedCandidate.ruleEvaluations(), rankedContext.getContext(),
-                        workerManager.isLocked(worker.getWorkerId())
+                        workerManager.hasWorkerExclusiveLease(worker.getWorkerId())
                 );
                 log.debug("Worker locked after candidate ranking: {}", worker.getWorkerId());
             }

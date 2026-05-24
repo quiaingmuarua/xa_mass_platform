@@ -43,7 +43,7 @@ class MassEngineStartRecoveryTest {
         workerManager.addWorker(worker);
 
         config.setMatchingStrategy((task, maxWorkerCount) -> {
-            if (!workerManager.tryLockWorker("worker-1")) {
+            if (!workerManager.tryAcquireWorkerExclusiveLease("worker-1")) {
                 return List.of();
             }
             return List.of(new WorkerSchedulingCandidate(
@@ -123,7 +123,7 @@ class MassEngineStartRecoveryTest {
             workerManager.addWorker(worker);
 
             config.setMatchingStrategy((task, maxWorkerCount) -> {
-                if (!workerManager.tryLockWorker("worker-1")) {
+                if (!workerManager.tryAcquireWorkerExclusiveLease("worker-1")) {
                     return List.of();
                 }
                 return List.of(new WorkerSchedulingCandidate(

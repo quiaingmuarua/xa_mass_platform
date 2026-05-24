@@ -78,7 +78,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
     void listenerOrchestrationDoesNotCallDispatchCleanupPrimitivesDirectly() throws IOException {
         Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
                 Map.entry("releaseWorkerReservation", Pattern.compile("\\breleaseWorkerReservation\\s*\\(")),
-                Map.entry("unlockWorker", Pattern.compile("\\bunlockWorker\\s*\\(")),
+                Map.entry("releaseWorkerExclusiveLease", Pattern.compile("\\breleaseWorkerExclusiveLease\\s*\\(")),
                 Map.entry("workerLockReleased", Pattern.compile("\\bworkerLockReleased\\s*\\("))
         );
 
@@ -1071,7 +1071,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "WorkerDispatchAvailabilityOwner",
                 "TaskResult",
                 "TaskWorkRuntime",
-                "tryLockWorker",
+                "tryAcquireWorkerExclusiveLease",
                 "recordWorkClaimed",
                 "recordWorkFinal"
         )) {
@@ -1128,7 +1128,15 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
         List<String> violations = new ArrayList<>();
         String workerStorage = Files.readString(workerStoragePath, StandardCharsets.UTF_8);
-        for (String forbidden : List.of("tryLockWorker", "unlockWorker", "isLocked", "getLockedWorkers")) {
+        for (String forbidden : List.of(
+                "tryLockWorker",
+                "unlockWorker",
+                "isLocked",
+                "getLockedWorkers",
+                "tryAcquireWorkerExclusiveLease",
+                "releaseWorkerExclusiveLease",
+                "hasWorkerExclusiveLease",
+                "getExclusiveLeaseWorkerIds")) {
             if (workerStorage.contains(forbidden)) {
                 violations.add(workerStoragePath + " exposes runtime exclusive lease method: " + forbidden);
             }

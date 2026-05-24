@@ -3,10 +3,13 @@
 Last updated: 2026-05-24
 
 Status: in progress. WSR-0 through WSR-6 have established the JVM
-`WorkerRegistry` foundation, moved production occupancy mutations to it, and
-retired storage-owned worker lock truth. The current slice is removing
-`WorkerLoadView` production wiring before Redis registry work. Verify current
-code before implementing each remaining phase.
+`WorkerRegistry` foundation, moved production occupancy mutations to it,
+retired storage-owned worker lock truth, removed `WorkerLoadView` production
+wiring, and renamed the `WorkerManager` exclusive-lease facade away from
+lock-owned terminology. The next major slice is Redis registry foundation, but
+that requires a module-boundary decision because the current `WorkerRegistry`
+contract lives in `xa-mass-engine`. Verify current code before implementing
+each remaining phase.
 
 ## Summary
 
@@ -85,7 +88,8 @@ Current stage-2 dynamic admission state
 
 Current exclusivity truth
   WorkerRegistry / WorkerSlot.exclusiveLeaseHeld
-  WorkerManager tryLockWorker / unlockWorker / isLocked facade
+  WorkerManager tryAcquireWorkerExclusiveLease /
+    releaseWorkerExclusiveLease / hasWorkerExclusiveLease facade
 ```
 
 Current caller classes to converge before replacement:
@@ -916,7 +920,7 @@ Scope:
 
 1. Remove `tryLockWorker`, `unlockWorker`, `isLocked`, and `getLockedWorkers`
    from `WorkerStorage`.
-2. Keep `WorkerManager` lock-named methods only as the current scheduler
+2. Keep `WorkerManager` exclusive-lease methods as the current scheduler
    facade; internally they must delegate to `WorkerRegistry` exclusive lease
    state on `WorkerSlot`.
 3. Treat the `WorkerSlot` exclusive lease as a foreground execution-lane
@@ -930,16 +934,14 @@ Scope:
 
 Out of scope:
 
-1. Rename all `tryLockWorker` / `unlockWorker` call sites in this slice.
-   The owner changes first; naming residue is removed after the behavior is
-   proven.
-2. Change foreground/background scheduling policy.
+1. Change foreground/background scheduling policy.
 
 Acceptance:
 
 1. No separate `WorkerStorage.lockedWorkers` truth remains.
 2. `WorkerStorage` no longer exposes worker lock methods.
-3. `WorkerManager` lock facade reads/writes `WorkerRegistry` exclusive lease.
+3. `WorkerManager` exclusive-lease facade reads/writes `WorkerRegistry`
+   exclusive lease.
 4. Add architecture guard against reintroducing storage lock methods.
 5. Foreground/background scheduling tests pass.
 6. Architecture guard fails if storage lock methods or `lockedWorkers` return.
@@ -1007,8 +1009,8 @@ Scope:
 2. Remove `WorkerRouteBucketOwner` membership ownership; keep only selection
    policy if it still has a role.
 3. Remove `WorkerLoadView` production wiring.
-4. Rename or remove the remaining `WorkerManager` lock-named facade after the
-   registry exclusive lease owner is proven.
+4. Rename or remove remaining lock-named diagnostics and trace terminology
+   after confirming they are not part of an external operator contract.
 5. Remove tests that only prove old CRUD/lock/snapshot behavior and are covered
    by registry contract or proof tests.
 6. Update architecture guards so old paths cannot be reintroduced.
