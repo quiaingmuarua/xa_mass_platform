@@ -1118,6 +1118,39 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void workerStorageDoesNotOwnRuntimeExclusiveLeaseTruth() throws IOException {
+        Path workerStoragePath = Path.of("..", "platform_infra", "mass-storage-api", "src", "main", "java",
+                "com", "xa", "mass", "storage", "api", "WorkerStorage.java");
+        Path memoryStoragePath = Path.of("..", "platform_infra", "mass-storage-memory", "src", "main", "java",
+                "com", "xa", "mass", "storage", "memory", "InMemoryWorkerStorage.java");
+        Path sdkDiagnosticsPath = Path.of("..", "xa-mass-sdk", "src", "main", "java",
+                "com", "xa", "mass", "sdk", "DefaultRuntimeDiagnosticsOperations.java");
+
+        List<String> violations = new ArrayList<>();
+        String workerStorage = Files.readString(workerStoragePath, StandardCharsets.UTF_8);
+        for (String forbidden : List.of("tryLockWorker", "unlockWorker", "isLocked", "getLockedWorkers")) {
+            if (workerStorage.contains(forbidden)) {
+                violations.add(workerStoragePath + " exposes runtime exclusive lease method: " + forbidden);
+            }
+        }
+
+        String memoryStorage = Files.readString(memoryStoragePath, StandardCharsets.UTF_8);
+        if (memoryStorage.contains("lockedWorkers")) {
+            violations.add(memoryStoragePath + " keeps a separate lockedWorkers truth");
+        }
+
+        String sdkDiagnostics = Files.readString(sdkDiagnosticsPath, StandardCharsets.UTF_8);
+        if (sdkDiagnostics.contains("getWorkerStorage().isLocked")) {
+            violations.add(sdkDiagnosticsPath + " reads lock truth from WorkerStorage");
+        }
+
+        assertTrue(violations.isEmpty(),
+                "WorkerStorage is control-plane worker row storage only. Runtime exclusive lease truth "
+                        + "must stay in WorkerRegistry/WorkerManager:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void workerManagerDoesNotWriteOccupancyThroughWorkerLoadView() throws IOException {
         Path workerManagerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker/WorkerManager.java");
         String source = Files.readString(workerManagerPath, StandardCharsets.UTF_8);

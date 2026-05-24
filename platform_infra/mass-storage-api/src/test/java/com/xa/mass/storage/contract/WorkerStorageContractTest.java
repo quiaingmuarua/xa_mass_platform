@@ -109,48 +109,6 @@ public abstract class WorkerStorageContractTest {
         assertThat(storage.getWorkersByGroupId("no-such-group")).isEmpty();
     }
 
-    @Test
-    void tryLockWorker_returnsTrueOnFirstCall() {
-        storage.addWorker(worker("w1", "grp"));
-        assertThat(storage.tryLockWorker("w1")).isTrue();
-    }
-
-    @Test
-    void tryLockWorker_isExclusive_secondCallReturnsFalse() {
-        storage.addWorker(worker("w1", "grp"));
-        storage.tryLockWorker("w1");
-        assertThat(storage.tryLockWorker("w1")).isFalse();
-    }
-
-    @Test
-    void isLocked_reflectsCurrentLockState() {
-        storage.addWorker(worker("w1", "grp"));
-        assertThat(storage.isLocked("w1")).isFalse();
-        storage.tryLockWorker("w1");
-        assertThat(storage.isLocked("w1")).isTrue();
-    }
-
-    @Test
-    void unlockWorker_releasesLock_andAllowsRelocking() {
-        storage.addWorker(worker("w1", "grp"));
-        storage.tryLockWorker("w1");
-        storage.unlockWorker("w1");
-        assertThat(storage.isLocked("w1")).isFalse();
-        assertThat(storage.tryLockWorker("w1")).isTrue();
-    }
-
-    @Test
-    void getLockedWorkers_reflectsCurrentLockState() {
-        storage.addWorker(worker("w1", "grp"));
-        storage.addWorker(worker("w2", "grp"));
-        storage.tryLockWorker("w1");
-        assertThat(storage.getLockedWorkers()).containsExactly("w1");
-        storage.tryLockWorker("w2");
-        assertThat(storage.getLockedWorkers()).containsExactlyInAnyOrder("w1", "w2");
-        storage.unlockWorker("w1");
-        assertThat(storage.getLockedWorkers()).containsExactly("w2");
-    }
-
     protected Worker worker(String workerId, String groupId) {
         Worker worker = new Worker(workerId, "1.0", List.of());
         worker.setWorkerGroupId(groupId);

@@ -92,6 +92,33 @@ public abstract class WorkerRegistryContractTest {
     }
 
     @Test
+    void exclusiveLeaseIsOwnedByRegistrySlot() {
+        WorkerRegistry registry = createRegistry();
+        registry.upsertSlot(meta("worker-1", "group-a"), 1, Set.of(eventKey()));
+
+        assertFalse(registry.hasExclusiveLease("worker-1"));
+        assertTrue(registry.tryAcquireExclusiveLease("group-a", "worker-1"));
+        assertFalse(registry.tryAcquireExclusiveLease("group-a", "worker-1"));
+        assertTrue(registry.hasExclusiveLease("worker-1"));
+        assertEquals(List.of("worker-1"), registry.exclusiveLeaseWorkerIds());
+
+        registry.releaseExclusiveLease("group-a", "worker-1");
+        assertFalse(registry.hasExclusiveLease("worker-1"));
+        assertTrue(registry.exclusiveLeaseWorkerIds().isEmpty());
+        assertTrue(registry.tryAcquireExclusiveLease("group-a", "worker-1"));
+    }
+
+    @Test
+    void removingSlotRejectsExclusiveLeaseAcquire() {
+        WorkerRegistry registry = createRegistry();
+        registry.upsertSlot(meta("worker-1", "group-a"), 1, Set.of(eventKey()));
+        assertTrue(registry.markSlotRemoving("group-a", "worker-1", "test"));
+
+        assertFalse(registry.tryAcquireExclusiveLease("group-a", "worker-1"));
+        assertFalse(registry.hasExclusiveLease("worker-1"));
+    }
+
+    @Test
     void clearingOneDispatchGateSourceDoesNotClearAnother() {
         WorkerRegistry registry = createRegistry();
         registry.upsertSlot(meta("worker-1", "group-a"), 1, Set.of(eventKey()));

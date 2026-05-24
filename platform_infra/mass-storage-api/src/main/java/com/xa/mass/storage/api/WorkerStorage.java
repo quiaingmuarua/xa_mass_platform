@@ -6,12 +6,12 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Runtime registry abstraction for worker identity, indexes, and worker locks.
+ * Control-plane worker row abstraction.
  *
- * <p>The active lock contract is intentionally worker-level: the lock protects
- * one active execution lane per worker in the current runtime model. This is
- * not a DB CRUD contract; durable worker history belongs in trace/audit
- * projections.
+ * <p>This is not runtime scheduling truth. Worker runtime occupancy,
+ * exclusivity, reachability, and dispatch gates are owned by the engine
+ * runtime registry. Durable worker history belongs in trace/audit
+ * projections, not this storage contract.
  */
 public interface WorkerStorage extends WorkerLookupStore {
 
@@ -31,12 +31,4 @@ public interface WorkerStorage extends WorkerLookupStore {
     List<Worker> getWorkersByGroupId(String workerGroupId);
 
     List<Worker> getAllWorkers();
-
-    boolean tryLockWorker(String workerId);
-
-    void unlockWorker(String workerId);
-
-    boolean isLocked(String workerId);
-
-    List<String> getLockedWorkers();
 }

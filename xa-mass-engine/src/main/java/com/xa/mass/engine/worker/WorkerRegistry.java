@@ -38,6 +38,14 @@ public interface WorkerRegistry {
 
     void recordWorkFinal(String groupId, String workerId, String taskId, int permits);
 
+    boolean tryAcquireExclusiveLease(String groupId, String workerId);
+
+    void releaseExclusiveLease(String groupId, String workerId);
+
+    boolean hasExclusiveLease(String workerId);
+
+    List<String> exclusiveLeaseWorkerIds();
+
     boolean disableDispatch(String groupId, String workerId, DispatchAvailabilitySource source);
 
     boolean clearDispatchDisable(String groupId, String workerId, DispatchAvailabilitySource source);

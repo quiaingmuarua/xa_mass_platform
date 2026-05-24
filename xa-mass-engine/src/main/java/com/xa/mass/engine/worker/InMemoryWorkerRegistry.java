@@ -2,6 +2,7 @@ package com.xa.mass.engine.worker;
 
 import com.xa.mass.engine.worker.WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.LinkedHashSet;
@@ -74,6 +75,7 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
                     current.reservedCount(),
                     current.activeLeaseCountByTask(),
                     current.disabledSources(),
+                    current.exclusiveLeaseHeld(),
                     current.removing(),
                     current.removingReason()
             );
@@ -102,6 +104,7 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
                     current.reservedCount(),
                     current.activeLeaseCountByTask(),
                     current.disabledSources(),
+                    current.exclusiveLeaseHeld(),
                     true,
                     reason
             );
@@ -216,6 +219,7 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
                     current.reservedCount() + normalizedPermits,
                     current.activeLeaseCountByTask(),
                     current.disabledSources(),
+                    current.exclusiveLeaseHeld(),
                     current.removing(),
                     current.removingReason()
             );
@@ -249,6 +253,7 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
                     current.reservedCount() - normalizedPermits,
                     activeByTask,
                     current.disabledSources(),
+                    current.exclusiveLeaseHeld(),
                     current.removing(),
                     current.removingReason()
             );
@@ -274,6 +279,7 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
                     Math.max(0, current.reservedCount() - normalizedPermits),
                     current.activeLeaseCountByTask(),
                     current.disabledSources(),
+                    current.exclusiveLeaseHeld(),
                     current.removing(),
                     current.removingReason()
             );
@@ -298,6 +304,7 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
                         current.reservedCount(),
                         incrementTaskCount(current.activeLeaseCountByTask(), taskId, normalizedPermits),
                         current.disabledSources(),
+                        current.exclusiveLeaseHeld(),
                         current.removing(),
                         current.removingReason()
                 );
@@ -330,6 +337,7 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
                         current.reservedCount(),
                         decrementTaskCount(current.activeLeaseCountByTask(), taskId, released),
                         current.disabledSources(),
+                        current.exclusiveLeaseHeld(),
                         current.removing(),
                         current.removingReason()
                 );
@@ -338,6 +346,76 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
                 decrementTaskProjection(taskId, workerId, normalizedPermits);
             }
         });
+    }
+
+    @Override
+    public boolean tryAcquireExclusiveLease(String groupId, String workerId) {
+        Optional<AtomicReference<WorkerSlot>> slotRef = slotRef(groupId, workerId);
+        if (slotRef.isEmpty()) {
+            return false;
+        }
+        boolean[] acquired = new boolean[1];
+        update(slotRef.orElseThrow(), current -> {
+            if (current == null || current.removing() || current.exclusiveLeaseHeld()) {
+                return current;
+            }
+            acquired[0] = true;
+            return new WorkerSlot(
+                    current.meta(),
+                    current.declaredCapacity(),
+                    current.eventBindingCeiling(),
+                    current.activeLeaseCount(),
+                    current.reservedCount(),
+                    current.activeLeaseCountByTask(),
+                    current.disabledSources(),
+                    true,
+                    current.removing(),
+                    current.removingReason()
+            );
+        });
+        return acquired[0];
+    }
+
+    @Override
+    public void releaseExclusiveLease(String groupId, String workerId) {
+        slotRef(groupId, workerId).ifPresent(ref -> update(ref, current -> {
+            if (current == null || !current.exclusiveLeaseHeld()) {
+                return current;
+            }
+            return new WorkerSlot(
+                    current.meta(),
+                    current.declaredCapacity(),
+                    current.eventBindingCeiling(),
+                    current.activeLeaseCount(),
+                    current.reservedCount(),
+                    current.activeLeaseCountByTask(),
+                    current.disabledSources(),
+                    false,
+                    current.removing(),
+                    current.removingReason()
+            );
+        }));
+    }
+
+    @Override
+    public boolean hasExclusiveLease(String workerId) {
+        return slotByWorkerId(workerId)
+                .map(WorkerSlot::exclusiveLeaseHeld)
+                .orElse(false);
+    }
+
+    @Override
+    public List<String> exclusiveLeaseWorkerIds() {
+        List<String> workerIds = new ArrayList<>();
+        for (ConcurrentMap<String, AtomicReference<WorkerSlot>> groupSlots : slotsByGroupId.values()) {
+            for (Map.Entry<String, AtomicReference<WorkerSlot>> entry : groupSlots.entrySet()) {
+                WorkerSlot slot = entry.getValue().get();
+                if (slot != null && slot.exclusiveLeaseHeld()) {
+                    workerIds.add(entry.getKey());
+                }
+            }
+        }
+        return List.copyOf(workerIds);
     }
 
     @Override
@@ -362,6 +440,7 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
                     current.reservedCount(),
                     current.activeLeaseCountByTask(),
                     sources,
+                    current.exclusiveLeaseHeld(),
                     current.removing(),
                     current.removingReason()
             );
@@ -391,6 +470,7 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
                     current.reservedCount(),
                     current.activeLeaseCountByTask(),
                     sources,
+                    current.exclusiveLeaseHeld(),
                     current.removing(),
                     current.removingReason()
             );
@@ -498,6 +578,7 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
                 0,
                 Map.of(),
                 Set.of(),
+                false,
                 false,
                 null
         );

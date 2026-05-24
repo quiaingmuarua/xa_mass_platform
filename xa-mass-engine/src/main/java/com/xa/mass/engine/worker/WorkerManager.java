@@ -220,15 +220,18 @@ public class WorkerManager implements WorkerLookupStore {
     }
 
     public boolean tryLockWorker(String workerId) {
-        return workerStorage.tryLockWorker(workerId);
+        return workerRegistry.slotByWorkerId(workerId)
+                .map(slot -> workerRegistry.tryAcquireExclusiveLease(slot.groupId(), slot.workerId()))
+                .orElse(false);
     }
 
     public void unlockWorker(String workerId) {
-        workerStorage.unlockWorker(workerId);
+        workerRegistry.slotByWorkerId(workerId)
+                .ifPresent(slot -> workerRegistry.releaseExclusiveLease(slot.groupId(), slot.workerId()));
     }
 
     public boolean isLocked(String workerId) {
-        return workerStorage.isLocked(workerId);
+        return workerRegistry.hasExclusiveLease(workerId);
     }
 
     public List<Worker> getAllWorkers() {
@@ -448,7 +451,7 @@ public class WorkerManager implements WorkerLookupStore {
     }
 
     public List<String> getLockedWorkers() {
-        return workerStorage.getLockedWorkers();
+        return workerRegistry.exclusiveLeaseWorkerIds();
     }
 
     /**

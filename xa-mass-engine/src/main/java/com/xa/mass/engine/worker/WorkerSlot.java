@@ -17,6 +17,7 @@ public record WorkerSlot(
         int reservedCount,
         Map<String, Integer> activeLeaseCountByTask,
         Set<DispatchAvailabilitySource> disabledSources,
+        boolean exclusiveLeaseHeld,
         boolean removing,
         String removingReason
 ) {

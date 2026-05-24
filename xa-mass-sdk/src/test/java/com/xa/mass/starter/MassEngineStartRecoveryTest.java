@@ -37,6 +37,7 @@ class MassEngineStartRecoveryTest {
 
         Worker worker = new Worker();
         worker.setWorkerId("worker-1");
+        worker.setWorkerGroupId("demo-workers");
         worker.setSupportedProjects(List.of("demoApp"));
         worker.updateHeartbeat();
         workerManager.addWorker(worker);
@@ -116,6 +117,7 @@ class MassEngineStartRecoveryTest {
 
             Worker worker = new Worker();
             worker.setWorkerId("worker-1");
+            worker.setWorkerGroupId("demo-workers");
             worker.setSupportedProjects(List.of("demoApp"));
             worker.updateHeartbeat();
             workerManager.addWorker(worker);
@@ -221,4 +223,3 @@ class MassEngineStartRecoveryTest {
         }
     }
 }
-

@@ -14,7 +14,6 @@ public class InMemoryWorkerStorage implements WorkerStorage {
     private final Map<String, Worker> workersById = new ConcurrentHashMap<>();
     private final Map<String, String> groupIdByWorkerId = new ConcurrentHashMap<>();
     private final Map<String, Set<String>> workerIdsByGroupId = new ConcurrentHashMap<>();
-    private final Set<String> lockedWorkers = ConcurrentHashMap.newKeySet();
 
     @Override
     public synchronized void addWorker(Worker worker) {
@@ -46,7 +45,6 @@ public class InMemoryWorkerStorage implements WorkerStorage {
         Worker removed = workersById.remove(workerId);
         if (removed != null) {
             unindexWorker(workerId);
-            lockedWorkers.remove(workerId);
         }
         return removed != null;
     }
@@ -73,26 +71,6 @@ public class InMemoryWorkerStorage implements WorkerStorage {
     @Override
     public List<Worker> getAllWorkers() {
         return new ArrayList<>(workersById.values());
-    }
-
-    @Override
-    public boolean tryLockWorker(String workerId) {
-        return lockedWorkers.add(workerId);
-    }
-
-    @Override
-    public void unlockWorker(String workerId) {
-        lockedWorkers.remove(workerId);
-    }
-
-    @Override
-    public boolean isLocked(String workerId) {
-        return lockedWorkers.contains(workerId);
-    }
-
-    @Override
-    public List<String> getLockedWorkers() {
-        return new ArrayList<>(lockedWorkers);
     }
 
     private static String requireWorkerId(Worker worker) {
