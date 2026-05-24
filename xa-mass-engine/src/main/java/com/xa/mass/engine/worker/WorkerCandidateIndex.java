@@ -33,6 +33,10 @@ public final class WorkerCandidateIndex {
         this(snapshot, routeBucketOwner, null);
     }
 
+    public WorkerCandidateIndex(WorkerRegistrySnapshot snapshot, WorkerRegistry workerRegistry) {
+        this(snapshot, null, workerRegistry);
+    }
+
     public WorkerCandidateIndex(WorkerRegistrySnapshot snapshot,
                                 WorkerRouteBucketOwner routeBucketOwner,
                                 WorkerRegistry workerRegistry) {

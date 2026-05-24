@@ -55,7 +55,6 @@ public class WorkerManager implements WorkerLookupStore {
     private final LinkedHashMap<String, LinkedHashSet<String>> groupIdsByAdapterNodeId = new LinkedHashMap<>();
     private final LinkedHashMap<String, LinkedHashSet<String>> adapterNodeIdsByGroupId = new LinkedHashMap<>();
     private volatile WorkerRegistrySnapshot workerRegistrySnapshot;
-    private volatile WorkerRouteBucketOwner workerRouteBucketOwner;
     private volatile Runnable dispatchWakeupCallback = () -> {
     };
 
@@ -413,7 +412,7 @@ public class WorkerManager implements WorkerLookupStore {
     }
 
     public WorkerCandidateIndex getWorkerCandidateIndex() {
-        return new WorkerCandidateIndex(workerRegistrySnapshot, workerRouteBucketOwner, workerRegistry);
+        return new WorkerCandidateIndex(workerRegistrySnapshot, workerRegistry);
     }
 
     public void refreshWorkerRegistrySnapshot() {
@@ -618,7 +617,6 @@ public class WorkerManager implements WorkerLookupStore {
     private void publishWorkerRegistrySnapshot(WorkerRegistrySnapshot snapshot) {
         WorkerRegistrySnapshot normalizedSnapshot = snapshot != null ? snapshot : WorkerRegistrySnapshot.empty();
         this.workerRegistrySnapshot = normalizedSnapshot;
-        this.workerRouteBucketOwner = WorkerRouteBucketOwner.fromSnapshot(normalizedSnapshot);
     }
 
     private WorkerRegistrySnapshot composeWorkerRegistrySnapshot() {

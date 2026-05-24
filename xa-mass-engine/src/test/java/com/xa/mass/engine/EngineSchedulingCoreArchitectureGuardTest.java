@@ -15,6 +15,7 @@ import java.util.Objects;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -859,6 +860,17 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "Strategy code may materialize WorkerGroup capability already selected by WorkerManager, "
                         + "but WorkerManager/WorkerCandidateIndex must own Stage-1 snapshot/index lookup:\n"
                         + String.join("\n", violations));
+    }
+
+    @Test
+    void workerManagerDoesNotOwnRouteBucketMembershipResidue() throws IOException {
+        Path workerManagerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker/WorkerManager.java");
+        String source = Files.readString(workerManagerPath, StandardCharsets.UTF_8);
+
+        assertFalse(source.contains("WorkerRouteBucketOwner"),
+                "WorkerManager must not keep a second route bucket membership owner. "
+                        + "Stage-1 candidate membership is owned by WorkerRegistry; "
+                        + "snapshot-backed route bucket code may only remain as isolated residue until removed.");
     }
 
     @Test
