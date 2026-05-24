@@ -562,6 +562,14 @@ Scope:
    mutation owner.
 6. Keep `WorkerStorage` only as a compatibility bootstrap/query layer until it
    is removed in a later phase.
+7. Evaluate and remove GFS-superseded indexes from `WorkerRegistrySnapshot`:
+   `groupIdsByEventKey` and `groupIdsByProjectCode`. With group-selector-first
+   scheduling, task candidate lookup starts from `workerGroupId(s)` in
+   `TaskSharedConfig`. Remove these indexes when no hot-path caller depends on
+   event-code-to-group resolution.
+8. Migrate `WorkerCapabilityAuthority` from `synchronized + LinkedHashMap` to
+   `ConcurrentHashMap`. Reads become lock-free; writes use map-level
+   compare-and-replace semantics.
 
 Acceptance:
 
@@ -571,6 +579,9 @@ Acceptance:
 4. No code path performs dual reserve/write against both `WorkerLoadView` and
    `WorkerRegistry`.
 5. Existing scheduling tests pass.
+6. `WorkerCapabilityAuthority` has no global lock on read paths.
+7. `groupIdsByEventKey` and `groupIdsByProjectCode` are either removed or
+   confirmed as non-hot-path indexes with a documented caller inventory.
 
 ### WSR-4: Occupancy And Gate Convergence
 
@@ -583,7 +594,14 @@ Scope:
 2. Wire confirm/release/final callbacks to registry occupancy operations.
 3. Store source-scoped gates in `WorkerSlot`.
 4. Remove `InMemoryWorkerLoadView` when no caller remains.
-5. Keep TaskWorkRuntime as work lease/finality owner.
+5. Migrate all release/final callers in `WorkerDispatchResourceReleaser` and
+   result/expiry/terminal paths to registry occupancy operations.
+6. Keep TaskWorkRuntime as work lease/finality owner.
+7. Note for follow-up: `WorkerMatchContext` assembles 30+ fields per candidate
+   including task-stable fields that are constant within a scheduling pass.
+   After occupancy convergence, consider splitting into a per-pass
+   `TaskMatchContext` (built once) and a per-candidate extension to reduce
+   allocation under concurrent scheduling.
 
 Acceptance:
 
