@@ -267,10 +267,10 @@ Keep these facts fixed unless the owning global baselines change:
 - `WorkerCandidateRanker` orders rule-passed scheduling candidates before lock
   acquisition; rules remain the eligibility gate, and the default ranker uses
   observed load plus routing affinity as preference signals
-- `WorkerLoadView` owns process-local load and reservation accounting:
-  matching reserves one unit of worker-declared capacity before lock
-  acquisition, and dispatch binding confirms or releases that reservation
-  around runtime claim outcomes
+- `WorkerRegistry` owns worker slot capacity, reservation, active lease, and
+  exclusive execution-lane evidence. Matching reserves one unit of
+  worker-declared capacity before exclusive lease acquisition, and dispatch
+  binding confirms or releases that reservation around runtime claim outcomes.
 - `WorkerBudgetPolicy` is the internal owner for task-level worker budget
   decisions consumed by `AssignmentAllocationPolicy`; the current default uses
   conservative workload-class caps without exposing a public scheduling option,
@@ -400,7 +400,7 @@ Current owner types:
 - `src/main/java/com/xa/mass/engine/model/WorkerSchedulingView.java`
 - `src/main/java/com/xa/mass/engine/model/WorkerMatchContext.java`
 - `src/main/java/com/xa/mass/engine/strategy/WorkerSchedulingCandidateEnumerator.java`
-- `src/main/java/com/xa/mass/engine/load/WorkerLoadView.java`
+- `src/main/java/com/xa/mass/engine/worker/WorkerRegistry.java`
 - `src/main/java/com/xa/mass/engine/rules/RuleConfig.java`
 
 Current default rule set:
@@ -429,9 +429,9 @@ Matching boundaries:
 - `WorkerSchedulingView` is the scheduling read surface; new matching code
   should read the view rather than treating `WorkerContext` as the matching
   subject
-- `WorkerLoadView` is a push-updated read view and process-local reservation
-  owner sourced from runtime claim/final lifecycle callbacks plus matching
-  reservation handoff
+- `WorkerRegistry` is the worker runtime slot owner for reservation and active
+  lease counters; `WorkerLoadSnapshot` is a read-side value derived from the
+  current slot, not a separate mutable owner
 - `Worker.status` and worker lock state are typed truth, not attributes
 - `Worker.status` is control-plane lifecycle truth, not transport reachability
 - dispatch eligibility must read transport reachability from

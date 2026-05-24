@@ -106,7 +106,7 @@ public class WorkerManagerTest {
     }
 
     @Test
-    void exposesObservedWorkerLoadView() {
+    void exposesObservedWorkerLoadFromWorkerRegistrySlot() {
         manager.addWorker(worker("worker-load", "us"));
 
         manager.recordWorkClaimed("worker-load", "task-1");
@@ -652,7 +652,6 @@ public class WorkerManagerTest {
                         .toList());
         WorkerManager registryBackedManager = new WorkerManager(
                 new InMemoryWorkerStorage(),
-                null,
                 null,
                 null,
                 null,

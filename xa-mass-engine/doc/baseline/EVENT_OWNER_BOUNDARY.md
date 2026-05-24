@@ -43,7 +43,7 @@ Metadata and system-event ingress are not runtime truth by themselves.
 | `TransportResultEnvelope` | transport ingress metadata | adapter/route/attempt context around task results | final result classification |
 | `WorkerSystemEventChannel` | transport ingress | current worker presence signals | command lifecycle, state projection, capability truth |
 | `WorkerReachabilityView` | transport-derived read model | dispatchability evidence | device state, load, command status |
-| `WorkerLoadView` | scheduling resource read model | active/reserved task-work capacity | reachability, device state, command lifecycle |
+| `WorkerRegistry` / `WorkerSlot` | scheduling resource owner | active/reserved task-work capacity and exclusive execution-lane evidence | reachability, device state, command lifecycle |
 | trace/audit plane | evidence | historical facts | current runtime truth |
 
 ## Current Metadata Boundary
@@ -176,8 +176,8 @@ task result, or scheduling lifecycle truth by itself.
   are rejected as no-ops, idempotent reports are accepted without projection
   change, and recent raw report evidence is bounded per worker.
 - Worker state projection must not mutate `WorkerReachabilityView`,
-  `WorkerLoadView`, `WorkerRegistrySnapshot`, `WorkerCandidateIndex`, matching,
-  or task-result convergence.
+  `WorkerRegistry`, `WorkerRegistrySnapshot`, `WorkerCandidateIndex`,
+  matching, or task-result convergence.
 - Task item stage evidence must not become public final result truth.
 - Current task item stage evidence ingress is:
 
@@ -231,7 +231,8 @@ task result, or scheduling lifecycle truth by itself.
   - event availability is intersected with registration-approved event codes
   - stale, conflicting, and unknown-worker reports are rejected as no-ops
 - `WorkerReachabilityView` stays presence evidence, not generic health.
-- `WorkerLoadView` stays task-work capacity evidence, not device state.
+- `WorkerRegistry` stays task-work capacity and exclusive execution-lane
+  evidence, not device state.
 - `WorkerSystemEventChannel` must not import engine scheduling packages or
   mutate engine lifecycle state.
 - A shared runtime envelope remains future-only until concrete owners exist and

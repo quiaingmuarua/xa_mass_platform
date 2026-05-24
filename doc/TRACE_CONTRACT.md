@@ -289,10 +289,9 @@ tables, or runtime queues. Schedule trace explains why the scheduler made or
 skipped a decision; it does not participate in runtime correctness, lease
 acceptance, retry budgeting, dispatch ownership, or terminal convergence.
 `workerReservedCount` is the canonical read-side evidence of the current
-process-local reservation foundation. It is not a distributed capacity lock and
-does not prove shared worker execution. `workerDeclaredCapacity` reflects the
-current worker declaration observed by the engine-local `WorkerLoadView`; the
-default is `1`.
+worker slot reservation state. It is not a distributed capacity lock and does
+not prove shared worker execution. `workerDeclaredCapacity` reflects the
+current worker declaration observed by `WorkerRegistry`; the default is `1`.
 `foreground` is the canonical read-side declaration of the task's current
 scheduling mode. It defaults to `true`. When `false`, current engine behavior
 skips the long-lived worker lock and relies on process-local capacity

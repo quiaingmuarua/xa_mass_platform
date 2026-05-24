@@ -342,7 +342,7 @@ Eligibility may compose these gates:
 - `Worker.enabled`
 - `WorkerReachabilityView`
 - `WorkerDispatchAvailabilityOwner`
-- `WorkerLoadView`
+- `WorkerRegistry` / `WorkerSlot`
 
 Recommended meaning:
 
@@ -352,7 +352,8 @@ Recommended meaning:
 3. `Worker.disabled` or dispatch-disabled blocks one worker.
 4. `WorkerReachabilityView.offline` blocks new dispatch but does not alter
    active leases.
-5. `WorkerLoadView` / lock / reservation failure remains resource admission.
+5. `WorkerRegistry` reservation / exclusive lease failure remains resource
+   admission.
 
 `NodeGroupBinding.draining` is not capability deletion. It only says one node
 is not taking new work for one group.
@@ -403,7 +404,7 @@ Not allowed:
 
 - raw state enters matching/ranking
 - raw state mutates `WorkerReachabilityView`
-- raw state mutates `WorkerLoadView`
+- raw state mutates `WorkerRegistry`
 
 ### Command acknowledgement
 
@@ -631,7 +632,7 @@ Add targeted guards as phases land:
 6. worker `deviceId` attributes must not create implicit device owner or lock
 7. transport adapters must not mutate `WorkerRegistrySnapshot`
 8. listeners, when added, must not mutate `TaskWorkRuntime`,
-   `TaskResultRuntime`, or `WorkerLoadView`
+   `TaskResultRuntime`, or `WorkerRegistry`
 9. `WorkerGroupRecord.adapterNodeId` and
    `WorkerRegistrySnapshot.groupIdsByAdapterNodeId(...)` must not be
    reintroduced

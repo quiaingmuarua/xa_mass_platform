@@ -2,10 +2,11 @@
 
 Last updated: 2026-05-24
 
-Status: in progress. WSR-0 through WSR-5 have established the JVM
-`WorkerRegistry` foundation and moved production occupancy mutations to it.
-WSR-6 is retiring storage-owned worker lock truth. Verify current code before
-implementing each remaining phase.
+Status: in progress. WSR-0 through WSR-6 have established the JVM
+`WorkerRegistry` foundation, moved production occupancy mutations to it, and
+retired storage-owned worker lock truth. The current slice is removing
+`WorkerLoadView` production wiring before Redis registry work. Verify current
+code before implementing each remaining phase.
 
 ## Summary
 
@@ -49,7 +50,6 @@ Derived read path
 
 Dynamic runtime state
   WorkerRegistry / WorkerSlot
-  WorkerLoadView residue
   WorkerDispatchAvailabilityOwner
   WorkerReachabilityView
 ```
@@ -79,7 +79,7 @@ Current candidate read cache
   WorkerRouteBucketOwner
 
 Current stage-2 dynamic admission state
-  WorkerLoadView / InMemoryWorkerLoadView
+  WorkerRegistry / WorkerSlot occupancy counters
   WorkerDispatchAvailabilityOwner
   WorkerReachabilityView
 
@@ -682,7 +682,7 @@ behavior.
 Scope:
 
 1. Inventory `WorkerStorage`, `WorkerManager.workerRegistryRows`,
-   `WorkerRegistrySnapshot`, `WorkerRouteBucketOwner`, `WorkerLoadView`,
+   `WorkerRegistrySnapshot`, `WorkerRouteBucketOwner`, historical `WorkerLoadView`,
    `WorkerDispatchAvailabilityOwner`, and `WorkerReachabilityView`.
 2. List every place that still treats `WorkerStorage` as scheduling truth.
 3. List every place that still depends on `tryLockWorker`, `unlockWorker`, or
@@ -714,9 +714,9 @@ Scope:
    admission owner.
 3. Mark `WorkerRouteBucketOwner` as current bucket owner that must either be
    retired or reduced to selection-only after registry migration.
-4. Mark `WorkerLoadView` and `WorkerStorage.lockedWorkers` as current
-   occupancy/exclusivity residues that will be removed after registry
-   occupancy convergence.
+4. Mark historical `WorkerLoadView` and `WorkerStorage.lockedWorkers` as
+   occupancy/exclusivity residues that must not remain live production wiring
+   after registry occupancy convergence.
 5. Classify current strategy-like code as mechanism or policy:
    - route key construction
    - route bucket sampling

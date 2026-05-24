@@ -1,7 +1,6 @@
 package com.xa.mass.starter.builder;
 
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
-import com.xa.mass.engine.load.WorkerLoadView;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskResultRuntime;
@@ -27,7 +26,6 @@ public class MassEngineBuilder {
     private TaskWorkRuntime taskWorkRuntime;
     private TaskResultRuntime taskResultRuntime;
     private WorkerStorage workerStorage;
-    private WorkerLoadView workerLoadView;
     private RuleStorage ruleStorage;
 
     private Integer workerThreads;
@@ -75,11 +73,6 @@ public class MassEngineBuilder {
         return this;
     }
 
-    public MassEngineBuilder workerLoadView(WorkerLoadView workerLoadView) {
-        this.workerLoadView = workerLoadView;
-        return this;
-    }
-
     public MassEngineBuilder ruleStorage(RuleStorage ruleStorage) {
         this.ruleStorage = ruleStorage;
         return this;
@@ -119,7 +112,6 @@ public class MassEngineBuilder {
         if (taskWorkRuntime != null) config.setTaskWorkRuntime(taskWorkRuntime);
         if (taskResultRuntime != null) config.setTaskResultRuntime(taskResultRuntime);
         if (workerStorage != null) config.setWorkerStorage(workerStorage);
-        if (workerLoadView != null) config.setWorkerLoadView(workerLoadView);
         if (ruleStorage != null) config.setRuleStorage(ruleStorage);
         if (recordService != null) config.setRecordService(recordService);
         if (bootstrapDataProvider != null) config.setBootstrapDataProvider(bootstrapDataProvider);

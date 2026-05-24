@@ -164,7 +164,8 @@ Hard boundary:
   command acknowledgement, transport presence, capability report, and normal
   result ingest
 - `fault.*` must not let tests mutate `TaskWorkRuntime`, `TaskResultRuntime`,
-  `WorkerRegistrySnapshot`, `WorkerLoadView`, or dispatch gates directly
+  `WorkerRegistrySnapshot`, `WorkerRegistry` / `WorkerSlot`, or dispatch gates
+  directly
 - production transport and engine paths must remain valid when the fault
   surface is absent
 

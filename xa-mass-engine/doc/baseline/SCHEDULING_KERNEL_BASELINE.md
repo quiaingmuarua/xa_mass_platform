@@ -71,7 +71,7 @@ Current worker scheduling evidence includes:
 - reachability from `WorkerReachabilityView`
 - dispatch-enabled and worker lock state
 - routing tags and scheduling attributes from worker-level facts
-- load/reservation facts from `WorkerLoadView`
+- load/reservation facts from `WorkerRegistry` / `WorkerSlot`
 - declared capacity and task-level active worker count
 
 Current matching and proof must use worker-level fields such as:
@@ -163,4 +163,3 @@ For any scheduling change, answer:
 6. Would a future fairness or capacity policy require rewriting this mechanism?
 
 If the last answer is yes, the seam is still weak.
-

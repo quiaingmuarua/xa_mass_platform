@@ -1151,11 +1151,14 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void workerManagerDoesNotWriteOccupancyThroughWorkerLoadView() throws IOException {
+    void productionDoesNotWireWorkerLoadViewAsRuntimeOccupancyOwner() throws IOException {
         Path workerManagerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker/WorkerManager.java");
         String source = Files.readString(workerManagerPath, StandardCharsets.UTF_8);
 
         List<String> violations = new ArrayList<>();
+        if (source.contains("WorkerLoadView") || source.contains("workerLoadView")) {
+            violations.add(workerManagerPath + " still wires WorkerLoadView");
+        }
         for (String forbidden : List.of(
                 ".tryReserveCapacity(",
                 ".confirmReservation(",
@@ -1168,10 +1171,30 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 violations.add(workerManagerPath + " writes occupancy through WorkerLoadView: " + forbidden);
             }
         }
+        Path workerLoadViewPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/load/WorkerLoadView.java");
+        Path inMemoryWorkerLoadViewPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/load/InMemoryWorkerLoadView.java");
+        if (Files.exists(workerLoadViewPath)) {
+            violations.add(workerLoadViewPath + " still exists as a mutable occupancy owner");
+        }
+        if (Files.exists(inMemoryWorkerLoadViewPath)) {
+            violations.add(inMemoryWorkerLoadViewPath + " still exists as a mutable occupancy owner");
+        }
+        for (Path sourcePath : List.of(
+                Path.of("..", "xa-mass-sdk", "src", "main", "java", "com", "xa", "mass", "starter", "config",
+                        "EngineConfig.java"),
+                Path.of("..", "xa-mass-sdk", "src", "main", "java", "com", "xa", "mass", "starter", "builder",
+                        "MassEngineBuilder.java")
+        )) {
+            String sdkSource = Files.readString(sourcePath, StandardCharsets.UTF_8);
+            if (sdkSource.contains("WorkerLoadView") || sdkSource.contains("workerLoadView")) {
+                violations.add(sourcePath + " still exposes WorkerLoadView production wiring");
+            }
+        }
 
         assertTrue(violations.isEmpty(),
-                "WorkerRegistry is the production worker occupancy mutation owner; WorkerLoadView "
-                        + "must not receive WorkerManager reservation/active writes:\n"
+                "WorkerRegistry is the production worker occupancy owner; WorkerLoadView "
+                        + "must not remain as live production wiring:\n"
                         + String.join("\n", violations));
     }
 

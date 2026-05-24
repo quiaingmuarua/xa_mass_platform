@@ -8,9 +8,7 @@ import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.engine.load.InMemoryWorkerLoadView;
 import com.xa.mass.engine.load.WorkerLoadSnapshot;
-import com.xa.mass.engine.load.WorkerLoadView;
 import com.xa.mass.storage.api.WorkerLookupStore;
 import com.xa.mass.storage.api.WorkerStorage;
 import org.slf4j.Logger;
@@ -41,7 +39,6 @@ public class WorkerManager implements WorkerLookupStore {
 
     private final WorkerStorage workerStorage;
     private final WorkerReachabilityView reachabilityView;
-    private final WorkerLoadView workerLoadView;
     private final WorkerDispatchAvailabilityOwner dispatchAvailabilityOwner;
     private final WorkerCapabilityAuthority capabilityAuthority;
     private final WorkerRegistry workerRegistry;
@@ -60,53 +57,40 @@ public class WorkerManager implements WorkerLookupStore {
     };
 
     public WorkerManager(WorkerStorage workerStorage) {
-        this(workerStorage, WorkerReachabilityView.permissive(), new InMemoryWorkerLoadView());
+        this(workerStorage, WorkerReachabilityView.permissive());
     }
 
     public WorkerManager(WorkerStorage workerStorage, WorkerReachabilityView reachabilityView) {
-        this(workerStorage, reachabilityView, new InMemoryWorkerLoadView());
+        this(workerStorage, reachabilityView, new WorkerCapabilityAuthority());
     }
 
     public WorkerManager(WorkerStorage workerStorage,
                          WorkerReachabilityView reachabilityView,
-                         WorkerLoadView workerLoadView) {
-        this(workerStorage, reachabilityView, workerLoadView, new WorkerCapabilityAuthority());
-    }
-
-    public WorkerManager(WorkerStorage workerStorage,
-                         WorkerReachabilityView reachabilityView,
-                         WorkerLoadView workerLoadView,
                          WorkerDispatchAvailabilityOwner dispatchAvailabilityOwner) {
-        this(workerStorage, reachabilityView, workerLoadView, new WorkerCapabilityAuthority(),
-                dispatchAvailabilityOwner);
+        this(workerStorage, reachabilityView, new WorkerCapabilityAuthority(), dispatchAvailabilityOwner);
     }
 
     WorkerManager(WorkerStorage workerStorage,
                   WorkerReachabilityView reachabilityView,
-                  WorkerLoadView workerLoadView,
                   WorkerCapabilityAuthority capabilityAuthority) {
-        this(workerStorage, reachabilityView, workerLoadView, capabilityAuthority,
-                new WorkerDispatchAvailabilityOwner());
+        this(workerStorage, reachabilityView, capabilityAuthority, new WorkerDispatchAvailabilityOwner());
     }
 
     WorkerManager(WorkerStorage workerStorage,
                   WorkerReachabilityView reachabilityView,
-                  WorkerLoadView workerLoadView,
                   WorkerCapabilityAuthority capabilityAuthority,
                   WorkerDispatchAvailabilityOwner dispatchAvailabilityOwner) {
-        this(workerStorage, reachabilityView, workerLoadView, capabilityAuthority, dispatchAvailabilityOwner,
+        this(workerStorage, reachabilityView, capabilityAuthority, dispatchAvailabilityOwner,
                 new InMemoryWorkerRegistry());
     }
 
     WorkerManager(WorkerStorage workerStorage,
                   WorkerReachabilityView reachabilityView,
-                  WorkerLoadView workerLoadView,
                   WorkerCapabilityAuthority capabilityAuthority,
                   WorkerDispatchAvailabilityOwner dispatchAvailabilityOwner,
                   WorkerRegistry workerRegistry) {
         this.workerStorage = workerStorage;
         this.reachabilityView = reachabilityView != null ? reachabilityView : WorkerReachabilityView.permissive();
-        this.workerLoadView = workerLoadView != null ? workerLoadView : new InMemoryWorkerLoadView();
         this.dispatchAvailabilityOwner = dispatchAvailabilityOwner != null
                 ? dispatchAvailabilityOwner
                 : new WorkerDispatchAvailabilityOwner();
@@ -122,7 +106,6 @@ public class WorkerManager implements WorkerLookupStore {
     public void addWorker(Worker worker) {
         Worker registrationRow = normalizeWorkerRegistrationRow(worker);
         workerStorage.addWorker(registrationRow);
-        syncWorkerCapacity(registrationRow);
         synchronized (workerRegistryLock) {
             putRegistryRow(registrationRow);
             upsertWorkerRegistrySlot(registrationRow);
@@ -145,7 +128,6 @@ public class WorkerManager implements WorkerLookupStore {
         Worker registrationRow = normalizeWorkerRegistrationRow(worker);
         boolean updated = workerStorage.updateWorker(registrationRow);
         if (updated) {
-            syncWorkerCapacity(registrationRow);
             synchronized (workerRegistryLock) {
                 putRegistryRow(registrationRow);
                 upsertWorkerRegistrySlot(registrationRow);
@@ -557,19 +539,6 @@ public class WorkerManager implements WorkerLookupStore {
     public void recordWorkFinal(String workerId, String taskId) {
         workerRegistry.slotByWorkerId(workerId)
                 .ifPresent(slot -> workerRegistry.recordWorkFinal(slot.groupId(), slot.workerId(), taskId, 1));
-    }
-
-    private void syncWorkerCapacity(String workerId) {
-        if (workerId == null || workerId.isBlank()) {
-            return;
-        }
-        syncWorkerCapacity(getWorker(workerId));
-    }
-
-    private void syncWorkerCapacity(Worker worker) {
-        if (worker == null) {
-            return;
-        }
     }
 
     private void putRegistryRow(Worker worker) {

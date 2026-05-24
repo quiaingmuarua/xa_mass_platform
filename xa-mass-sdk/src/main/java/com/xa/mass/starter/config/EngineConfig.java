@@ -19,8 +19,6 @@ import com.xa.mass.engine.worker.WorkerStateProjectionOwner;
 import com.xa.mass.engine.command.WorkerCommandLifecycleOwner;
 import com.xa.mass.engine.stage.TaskStageEvidenceOwner;
 import com.xa.mass.engine.stage.TaskStageEvidenceService;
-import com.xa.mass.engine.load.InMemoryWorkerLoadView;
-import com.xa.mass.engine.load.WorkerLoadView;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleManagerFactory;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
@@ -75,7 +73,6 @@ public class EngineConfig {
     private TaskResultRuntime taskResultRuntime = new InMemoryTaskResultRuntime();
     private TaskWorkerMatchingStrategy matchingStrategy;
     private WorkerReachabilityView workerReachabilityView = WorkerReachabilityView.permissive();
-    private WorkerLoadView workerLoadView = new InMemoryWorkerLoadView();
     private WorkerStorage workerStorage = new InMemoryWorkerStorage();
     private WorkerManager workerManager;
     private WorkerCommandLifecycleOwner workerCommandLifecycleOwner = new WorkerCommandLifecycleOwner();
@@ -123,7 +120,6 @@ public class EngineConfig {
         this.taskResultRuntime = source.taskResultRuntime;
         this.matchingStrategy = source.matchingStrategy;
         this.workerReachabilityView = source.workerReachabilityView;
-        this.workerLoadView = source.workerLoadView;
         this.workerStorage = source.workerStorage;
         this.workerManager = null;
         this.workerCommandLifecycleOwner = source.workerCommandLifecycleOwner;
@@ -295,7 +291,6 @@ public class EngineConfig {
             workerManager = new WorkerManager(
                     getWorkerStorage(),
                     workerReachabilityView,
-                    workerLoadView,
                     workerDispatchAvailabilityOwner
             );
         }
@@ -334,19 +329,6 @@ public class EngineConfig {
         this.workerReachabilityView = workerReachabilityView != null
                 ? workerReachabilityView
                 : WorkerReachabilityView.permissive();
-        this.workerManager = null;
-        this.workerControlService = null;
-    }
-
-    public WorkerLoadView getWorkerLoadView() {
-        return workerLoadView;
-    }
-
-    public void setWorkerLoadView(WorkerLoadView workerLoadView) {
-        if (workerLoadView == null) {
-            throw new IllegalArgumentException("workerLoadView must not be null");
-        }
-        this.workerLoadView = workerLoadView;
         this.workerManager = null;
         this.workerControlService = null;
     }
