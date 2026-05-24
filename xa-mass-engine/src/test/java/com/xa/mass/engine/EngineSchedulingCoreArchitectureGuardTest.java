@@ -921,6 +921,17 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void workerManagerDoesNotOwnSecondWorkerRowCopy() throws IOException {
+        Path workerManagerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker/WorkerManager.java");
+        String source = Files.readString(workerManagerPath, StandardCharsets.UTF_8);
+
+        assertFalse(source.contains("workerRegistryRows"),
+                "WorkerManager must not own a second mutable worker row map. "
+                        + "WorkerStorage remains the current control-plane row source and "
+                        + "WorkerRegistry owns runtime slot/index/admission truth.");
+    }
+
+    @Test
     void workerSchedulingCandidateEnumeratorStaysPackagePrivateImplementationDetail() throws IOException {
         Path enumeratorPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/strategy/WorkerSchedulingCandidateEnumerator.java");

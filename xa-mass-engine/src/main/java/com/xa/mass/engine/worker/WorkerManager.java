@@ -46,7 +46,6 @@ public class WorkerManager implements WorkerLookupStore {
     private final WorkerCapabilityAuthority capabilityAuthority;
     private final WorkerRegistry workerRegistry;
     private final Object workerRegistryLock = new Object();
-    private final LinkedHashMap<String, Worker> workerRegistryRows = new LinkedHashMap<>();
     private final LinkedHashMap<String, WorkerGroupRecord> workerGroupsById = new LinkedHashMap<>();
     private final Object adapterNodeRegistryLock = new Object();
     private final LinkedHashMap<String, AdapterNodeRecord> adapterNodesById = new LinkedHashMap<>();
@@ -106,7 +105,6 @@ public class WorkerManager implements WorkerLookupStore {
         this.capabilityAuthority = capabilityAuthority != null ? capabilityAuthority : new WorkerCapabilityAuthority();
         this.workerRegistry = workerRegistry != null ? workerRegistry : new InMemoryWorkerRegistry();
         for (Worker worker : workerStorage.getAllWorkers()) {
-            putRegistryRow(worker);
             upsertWorkerRegistrySlot(worker);
         }
         publishWorkerRegistrySnapshot(composeWorkerRegistrySnapshot());
@@ -116,7 +114,6 @@ public class WorkerManager implements WorkerLookupStore {
         Worker registrationRow = normalizeWorkerRegistrationRow(worker);
         workerStorage.addWorker(registrationRow);
         synchronized (workerRegistryLock) {
-            putRegistryRow(registrationRow);
             upsertWorkerRegistrySlot(registrationRow);
             publishWorkerRegistrySnapshot();
         }
@@ -138,7 +135,6 @@ public class WorkerManager implements WorkerLookupStore {
         boolean updated = workerStorage.updateWorker(registrationRow);
         if (updated) {
             synchronized (workerRegistryLock) {
-                putRegistryRow(registrationRow);
                 upsertWorkerRegistrySlot(registrationRow);
                 publishWorkerRegistrySnapshot();
             }
@@ -152,7 +148,6 @@ public class WorkerManager implements WorkerLookupStore {
         boolean deleted = workerStorage.deleteWorker(workerId);
         if (deleted) {
             synchronized (workerRegistryLock) {
-                workerRegistryRows.remove(normalizeNullable(workerId));
                 markWorkerRegistrySlotRemoving(existing, "worker deleted");
                 publishWorkerRegistrySnapshot();
             }
@@ -417,9 +412,7 @@ public class WorkerManager implements WorkerLookupStore {
 
     public void refreshWorkerRegistrySnapshot() {
         synchronized (workerRegistryLock) {
-            workerRegistryRows.clear();
             for (Worker worker : workerStorage.getAllWorkers()) {
-                putRegistryRow(worker);
                 upsertWorkerRegistrySlot(worker);
             }
             publishWorkerRegistrySnapshot();
@@ -430,7 +423,7 @@ public class WorkerManager implements WorkerLookupStore {
         synchronized (workerRegistryLock) {
             WorkerCapabilityReportResult result = capabilityAuthority.applyReport(
                     report,
-                    workerRegistryRows.values(),
+                    workerStorage.getAllWorkers(),
                     workerGroupsById.values()
             );
             if (result.snapshotChanged() && result.snapshot() != null) {
@@ -550,13 +543,6 @@ public class WorkerManager implements WorkerLookupStore {
                 .ifPresent(slot -> workerRegistry.recordWorkFinal(slot.groupId(), slot.workerId(), taskId, 1));
     }
 
-    private void putRegistryRow(Worker worker) {
-        String workerId = worker == null ? null : normalizeNullable(worker.getWorkerId());
-        if (workerId != null) {
-            workerRegistryRows.put(workerId, worker);
-        }
-    }
-
     private void syncWorkerRegistrySlots(Iterable<Worker> workers) {
         if (workers == null) {
             return;
@@ -620,7 +606,7 @@ public class WorkerManager implements WorkerLookupStore {
     }
 
     private WorkerRegistrySnapshot composeWorkerRegistrySnapshot() {
-        return capabilityAuthority.composeSnapshot(workerRegistryRows.values(), workerGroupsById.values());
+        return capabilityAuthority.composeSnapshot(workerStorage.getAllWorkers(), workerGroupsById.values());
     }
 
     private Worker normalizeWorkerRegistrationRow(Worker worker) {

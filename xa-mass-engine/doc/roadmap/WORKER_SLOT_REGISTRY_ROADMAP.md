@@ -43,14 +43,12 @@ WorkerStorage
   workerIdsByGroupId
 
 WorkerManager
-  workerRegistryRows
   workerGroupsById
   adapterNodesById
   nodeGroupBindingsByKey
 
 Derived read path
   WorkerRegistrySnapshot
-  WorkerRouteBucketOwner
 
 Dynamic runtime state
   WorkerRegistry / WorkerSlot
@@ -59,9 +57,9 @@ Dynamic runtime state
 ```
 
 That shape is workable for current JVM memory runtime, but it is not the target
-runtime structure for Redis or multi-JVM scheduling. It creates row-oriented
-storage, full snapshot rebuilds, duplicate identity truth, and separate load /
-lock / gate truth.
+runtime structure for Redis or multi-JVM scheduling. It still contains
+row-oriented control-plane storage and snapshot publication residue, while the
+runtime slot/index/admission truth has moved to `WorkerRegistry`.
 
 ## Current Runtime Truth Inventory
 
@@ -73,14 +71,9 @@ Worker identity / control-plane row
   InMemoryWorkerStorage.workersById
   InMemoryWorkerStorage.workerIdsByGroupId
 
-Current engine registration row copy
-  WorkerManager.workerRegistryRows
-  protected by WorkerManager.workerRegistryLock
-
 Current candidate read cache
   WorkerRegistrySnapshot
   WorkerCandidateIndex
-  WorkerRouteBucketOwner
 
 Current stage-2 dynamic admission state
   WorkerRegistry / WorkerSlot occupancy counters
@@ -1065,6 +1058,10 @@ Current status:
   no longer owns `workerId -> groupId`, `groupId -> workerIds`,
   `adapterNodeId -> workerIds`, or `(adapterNodeId, groupId) -> workerIds`
   indexes. It retains group capability indexes and diagnostic worker rows only.
+- completed for duplicate worker row removal inside `WorkerManager`:
+  `workerRegistryRows` has been removed. Current control-plane worker rows come
+  from `WorkerStorage`; runtime slot/index/admission truth comes from
+  `WorkerRegistry`.
 
 Scope:
 
