@@ -1057,6 +1057,10 @@ Current status:
   publishes a route bucket membership copy, `WorkerCandidateIndex` acquires
   candidates from `WorkerRegistry`, and the snapshot-backed
   `WorkerRouteBucketOwner` residue has been removed.
+- completed for worker membership indexes in production mutation paths: group
+  and adapter-node/group worker-id lookups now come from `WorkerRegistry`, so
+  node-group gates and group removal no longer read snapshot-owned worker
+  membership indexes.
 
 Scope:
 

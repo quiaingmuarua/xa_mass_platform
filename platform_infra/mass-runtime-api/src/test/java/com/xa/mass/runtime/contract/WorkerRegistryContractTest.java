@@ -49,6 +49,18 @@ public abstract class WorkerRegistryContractTest {
     }
 
     @Test
+    void slotMembershipQueriesComeFromRegistryTruth() {
+        WorkerRegistry registry = createRegistry();
+        registry.upsertSlot(meta("worker-a", "group-a"), 1, Set.of(eventKey()));
+        registry.upsertSlot(meta("worker-b", "group-a"), 1, Set.of(eventKey()));
+        registry.upsertSlot(meta("worker-c", "group-b"), 1, Set.of(eventKey()));
+
+        assertEquals(Set.of("worker-a", "worker-b"), registry.workerIdsByGroupId("group-a"));
+        assertEquals(Set.of("worker-a", "worker-b"), registry.workerIdsByAdapterNodeGroup("node-a", "group-a"));
+        assertEquals(Set.of(), registry.workerIdsByAdapterNodeGroup("node-b", "group-a"));
+    }
+
+    @Test
     void removingSlotRejectsNewReserveAndConfirmButKeepsCountersVisible() {
         WorkerRegistry registry = createRegistry();
         registry.upsertSlot(meta("worker-1", "group-a"), 1, Set.of(eventKey()));

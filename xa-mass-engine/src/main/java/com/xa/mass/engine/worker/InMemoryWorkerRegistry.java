@@ -173,6 +173,37 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
     }
 
     @Override
+    public Set<String> workerIdsByGroupId(String groupId) {
+        String normalizedGroupId = normalizeNullable(groupId);
+        if (normalizedGroupId == null) {
+            return Set.of();
+        }
+        ConcurrentMap<String, AtomicReference<WorkerSlot>> groupSlots = slotsByGroupId.get(normalizedGroupId);
+        return groupSlots == null ? Set.of() : Set.copyOf(groupSlots.keySet());
+    }
+
+    @Override
+    public Set<String> workerIdsByAdapterNodeGroup(String adapterNodeId, String groupId) {
+        String normalizedAdapterNodeId = normalizeNullable(adapterNodeId);
+        String normalizedGroupId = normalizeNullable(groupId);
+        if (normalizedAdapterNodeId == null || normalizedGroupId == null) {
+            return Set.of();
+        }
+        ConcurrentMap<String, AtomicReference<WorkerSlot>> groupSlots = slotsByGroupId.get(normalizedGroupId);
+        if (groupSlots == null || groupSlots.isEmpty()) {
+            return Set.of();
+        }
+        LinkedHashSet<String> workerIds = new LinkedHashSet<>();
+        for (AtomicReference<WorkerSlot> slotRef : groupSlots.values()) {
+            WorkerSlot slot = slotRef.get();
+            if (slot != null && normalizedAdapterNodeId.equals(slot.adapterNodeId())) {
+                workerIds.add(slot.workerId());
+            }
+        }
+        return Set.copyOf(workerIds);
+    }
+
+    @Override
     public List<String> acquireCandidates(String groupId, String routeBucketKey, int maxCandidateCount) {
         return acquireCandidates(groupId, null, routeBucketKey, maxCandidateCount);
     }

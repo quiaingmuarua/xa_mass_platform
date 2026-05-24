@@ -196,7 +196,7 @@ public class WorkerManager implements WorkerLookupStore {
         synchronized (workerRegistryLock) {
             WorkerGroupRecord removed = workerGroupsById.remove(normalizedGroupId);
             if (removed != null) {
-                for (String workerId : workerRegistrySnapshot.workerIdsByGroupId(normalizedGroupId)) {
+                for (String workerId : workerRegistry.workerIdsByGroupId(normalizedGroupId)) {
                     workerRegistry.markSlotRemoving(normalizedGroupId, workerId, "worker group deleted");
                 }
                 publishWorkerRegistrySnapshot();
@@ -702,7 +702,7 @@ public class WorkerManager implements WorkerLookupStore {
     }
 
     private void applyNodeGroupBindingDispatchGate(NodeGroupBindingRecord binding) {
-        Set<String> workerIds = workerRegistrySnapshot.workerIdsByAdapterNodeGroup(
+        Set<String> workerIds = workerRegistry.workerIdsByAdapterNodeGroup(
                 binding.adapterNodeId(),
                 binding.groupId()
         );
@@ -720,7 +720,7 @@ public class WorkerManager implements WorkerLookupStore {
     }
 
     private void applyNodeGroupBindingUnavailable(NodeGroupBindingRecord binding) {
-        Set<String> workerIds = workerRegistrySnapshot.workerIdsByAdapterNodeGroup(
+        Set<String> workerIds = workerRegistry.workerIdsByAdapterNodeGroup(
                 binding.adapterNodeId(),
                 binding.groupId()
         );

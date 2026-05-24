@@ -20,6 +20,10 @@ public interface WorkerRegistry {
 
     Optional<WorkerSlot> slotByWorkerId(String workerId);
 
+    Set<String> workerIdsByGroupId(String groupId);
+
+    Set<String> workerIdsByAdapterNodeGroup(String adapterNodeId, String groupId);
+
     List<String> acquireCandidates(String groupId, String routeBucketKey, int maxCandidateCount);
 
     List<String> acquireCandidates(String groupId,

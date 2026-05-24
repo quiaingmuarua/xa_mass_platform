@@ -239,6 +239,38 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     }
 
     @Override
+    public Set<String> workerIdsByGroupId(String groupId) {
+        String normalizedGroupId = normalizeNullable(groupId);
+        if (normalizedGroupId == null) {
+            return Set.of();
+        }
+        return Set.copyOf(commands.hkeys(keyspace.groupSlotsHash(normalizedGroupId)));
+    }
+
+    @Override
+    public Set<String> workerIdsByAdapterNodeGroup(String adapterNodeId, String groupId) {
+        String normalizedAdapterNodeId = normalizeNullable(adapterNodeId);
+        String normalizedGroupId = normalizeNullable(groupId);
+        if (normalizedAdapterNodeId == null || normalizedGroupId == null) {
+            return Set.of();
+        }
+        LinkedHashSet<String> workerIds = new LinkedHashSet<>();
+        for (String nodeRouteMember : commands.smembers(keyspace.groupNodeRoutesSet(normalizedGroupId))) {
+            try {
+                RedisWorkerRegistryKeyspace.NodeRouteMember parsed = keyspace.parseNodeRouteMember(nodeRouteMember);
+                if (normalizedAdapterNodeId.equals(parsed.adapterNodeId())) {
+                    workerIds.addAll(commands.smembers(
+                            keyspace.nodeRouteBucket(normalizedGroupId, parsed.adapterNodeId(), parsed.routeBucketKey())
+                    ));
+                }
+            } catch (IllegalArgumentException ignored) {
+                // Stale malformed diagnostic member; bounded cleanup can remove it later.
+            }
+        }
+        return Set.copyOf(workerIds);
+    }
+
+    @Override
     public List<String> acquireCandidates(String groupId, String routeBucketKey, int maxCandidateCount) {
         return acquireCandidates(groupId, null, routeBucketKey, maxCandidateCount);
     }
