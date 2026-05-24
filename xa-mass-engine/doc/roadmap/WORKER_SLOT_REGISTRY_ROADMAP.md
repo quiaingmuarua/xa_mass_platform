@@ -101,6 +101,9 @@ for each layer.
     and one test suite.
 12. Redis 7.4 hash field TTL may be used as an optimization, but correctness
     must not require it in the first Redis slice.
+13. Compensation is a crash-recovery fallback, not the normal consistency
+    mechanism. Normal request paths should avoid creating inconsistency through
+    narrow atomic writes, idempotent mutation methods, and Stage-2 validation.
 
 ## Non-Goals
 
@@ -112,6 +115,7 @@ for each layer.
 6. No public worker API contract change in the first slice.
 7. No global distributed lock for candidate acquisition.
 8. No requirement that indexes are immediately cleaned after worker disconnect.
+9. No standalone compensation service in the normal scheduling path.
 
 ## Worker Identity
 
@@ -183,6 +187,9 @@ Important rules:
   independent truth.
 - `lastHeartbeatMillis` may be stale. Stage-2 validates freshness before
   reserve.
+- `activeLeaseCountByTask` is not an independently mutated truth. It is updated
+  only by `WorkerRegistry` occupancy mutation methods, together with the
+  task-level active worker index.
 
 ## Redis Runtime Shape
 
@@ -194,6 +201,9 @@ First Redis slice:
 ```text
 {prefix}:worker:{groupId}:meta
   HASH workerId -> WorkerMetaPayload
+
+{prefix}:worker:group-by-id
+  HASH workerId -> groupId
 
 {prefix}:worker:{groupId}:capacity
   HASH workerId -> declaredCapacity
@@ -222,6 +232,11 @@ First Redis slice:
 {prefix}:task:{taskId}:worker-active-count
   HASH workerId -> activeLeaseCountForTask
 ```
+
+`worker:group-by-id` is required. The recommended `{groupId}-{randomId}` worker
+id prefix is only a routing convenience and diagnostic aid. It is not enough for
+correct lookup because external or historical worker ids may not follow the
+prefix convention.
 
 Redis 7.4 hash field TTL can later optimize presence or payload cleanup:
 
@@ -294,6 +309,12 @@ Stale is acceptable only when it is harmless:
 Stale is not acceptable after Stage-2 admission. A worker that fails current
 slot validation must not receive a new lease.
 
+Reachability is independent admission evidence. `WorkerReachabilityView` or its
+registry equivalent should be read during Stage-2 together with heartbeat
+freshness. It must not be folded into `disabledSources`; dispatch gates are
+operator/runtime controls such as worker state, worker command, and node-group
+drain.
+
 ## WorkerRegistry Contract
 
 ```text
@@ -331,7 +352,53 @@ WorkerRegistry
 ```
 
 `slotByWorkerId(workerId)` may derive `groupId` from the worker id prefix, but
-must validate it against stored metadata.
+must first consult the explicit `workerId -> groupId` reverse index when one is
+available and must validate the resolved group against stored metadata.
+
+Occupancy mutation ownership:
+
+```text
+tryReserve
+  increments reservedCount only
+
+confirmReservation
+  decrements reservedCount
+  increments activeLeaseCount
+  increments task active worker indexes
+
+releaseReservation
+  decrements reservedCount only
+  used when reserved capacity is not dispatched or not claimed
+
+recordWorkFinal
+  decrements activeLeaseCount
+  decrements task active worker indexes
+  used when result / expiry / terminal convergence closes active work
+```
+
+`WorkerRegistry` mutation methods are the only writers for worker active /
+reserved counters and task active worker indexes. Redis may store worker-level
+and task-level counters in separate keys, but reserve/confirm/release/final
+must update all affected keys atomically or treat task-level indexes as
+rebuildable visibility indexes that admission never relies on.
+
+`confirmReservation(...) == false` means the reservation was not confirmed. The
+caller should immediately call idempotent `releaseReservation(...)` from the
+same foreground path when it knows a reserve was not claimed or dispatched. This
+is local cleanup, not a separate compensation service.
+
+Background compensation exists only for abnormal interruption:
+
+```text
+process crash after reserve
+server restart before release/final
+Redis/client timeout after an ambiguous write
+transport disconnect during dispatch handoff
+```
+
+The background path must be bounded and best-effort. Correctness still depends
+on Stage-2 validation and idempotent reserve/release/final methods, not on a
+large reconciliation service running perfectly.
 
 ## Atomicity Boundary
 
@@ -369,6 +436,12 @@ lazy cleanup when stale members are observed
 watchdog cleanup from heartbeatDeadline ZSET
 ```
 
+Foreground mutation should leave as little work as possible for cleanup. Cleanup
+is for residual state after crash / restart / ambiguous network failure, not for
+routine scheduling progress. The cleanup executor can be an existing runtime
+maintenance/watchdog loop; it should not become a new always-required service
+that owns scheduling correctness.
+
 ## Phase Plan
 
 ### WSR-0: Current Runtime Inventory
@@ -384,7 +457,9 @@ Scope:
 2. List every place that still treats `WorkerStorage` as scheduling truth.
 3. List every place that still depends on `tryLockWorker`, `unlockWorker`, or
    `isLocked`.
-4. Add architecture notes that runtime worker data is not DB CRUD data.
+4. Classify `WorkerReachabilityView` as independent admission evidence, not a
+   dispatch gate source.
+5. Add architecture notes that runtime worker data is not DB CRUD data.
 
 Acceptance:
 
@@ -419,8 +494,12 @@ Contract tests:
 - duplicate candidates are harmless after de-duplication
 - concurrent reserve cannot exceed capacity
 - confirm moves reserved to active
-- release is idempotent
-- final is idempotent
+- confirm returns false when the slot disappears between reserve and confirm,
+  and the caller foreground cleanup path can safely call `releaseReservation`
+- release decrements reserved count only and is idempotent
+- final decrements active count only and is idempotent
+- confirm/final update worker-level counters and task-level active worker
+  indexes through the same registry mutation owner
 - clearing one gate source does not clear another
 - stale heartbeat blocks reserve
 - active worker count by task converges to zero after final
@@ -443,6 +522,7 @@ Scope:
 
 1. Implement grouped structures:
    - `slotsByGroupId`
+   - `workerIdToGroupId`
    - `routeBucketsByGroupId`
    - `nodeRouteBucketsByGroupId`
    - `heartbeatDeadlinesByGroupId`
@@ -460,6 +540,8 @@ Acceptance:
 3. Concurrent reserve on different workers does not block on a shared registry
    monitor.
 4. Stale bucket entries are correctness-neutral.
+5. `slotByWorkerId` works for non-prefix worker ids through `workerIdToGroupId`
+   and validates stored metadata.
 
 ### WSR-3: WorkerManager Identity / Index Convergence
 
@@ -473,8 +555,12 @@ Scope:
    still required for stable read views.
 3. Move `WorkerRouteBucketOwner` membership to registry-owned buckets. It may
    remain as a selection policy wrapper.
-4. Keep `WorkerLoadView` and `WorkerDispatchAvailabilityOwner` temporarily.
-5. Keep `WorkerStorage` only as a compatibility bootstrap/query layer until it
+4. Keep `WorkerLoadView` as the only admission truth in this phase. The
+   registry synchronizes identity and bucket membership only; reservation and
+   active counters must not be used by scheduling yet.
+5. Keep `WorkerDispatchAvailabilityOwner` temporarily as the dispatch gate
+   mutation owner.
+6. Keep `WorkerStorage` only as a compatibility bootstrap/query layer until it
    is removed in a later phase.
 
 Acceptance:
@@ -482,7 +568,9 @@ Acceptance:
 1. Worker registration updates registry group/route/node buckets.
 2. Candidate acquisition is registry-backed and bounded.
 3. `WorkerManager` no longer owns a second mutable worker row map.
-4. Existing scheduling tests pass.
+4. No code path performs dual reserve/write against both `WorkerLoadView` and
+   `WorkerRegistry`.
+5. Existing scheduling tests pass.
 
 ### WSR-4: Occupancy And Gate Convergence
 
@@ -610,17 +698,23 @@ lazy cleanup, and watchdog cleanup.
 Mitigation: keep scripts narrow. Only reserve/confirm/release/final require
 atomicity. Bucket cleanup and candidate reads do not.
 
-### Risk 3: Worker id prefix becomes hidden truth
+### Risk 3: Compensation service becomes a second runtime owner
+
+Mitigation: do not add a broad reconciliation owner in the main path. Keep
+foreground cleanup local and idempotent; keep background cleanup bounded to
+crash/restart/ambiguous-write residue.
+
+### Risk 4: Worker id prefix becomes hidden truth
 
 Mitigation: prefix is a routing convenience. Stored `WorkerMeta.groupId` remains
 explicit and must be validated.
 
-### Risk 4: Hash field TTL creates version lock-in
+### Risk 5: Hash field TTL creates version lock-in
 
 Mitigation: use heartbeat ZSET + Stage-2 heartbeat validation as correctness
 baseline. Redis 7.4 TTL is optional optimization.
 
-### Risk 5: Memory and Redis diverge
+### Risk 6: Memory and Redis diverge
 
 Mitigation: memory implementation mirrors group-partitioned logical structure
 and both implementations run the same contract tests.
