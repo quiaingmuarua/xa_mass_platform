@@ -2387,7 +2387,7 @@ class MassSdkTest {
         WorkerManager workerManager = config.getWorkerManager();
         Assertions.assertEquals(Set.of("crawler"), workerManager.getWorkerRegistrySnapshot()
                 .groupIdsByEventKey(new EventKey("crawlerApp", "crawler.fetch-page")));
-        Assertions.assertTrue(workerManager.getWorkerRegistrySnapshot().workerIdsByGroupId("crawler").isEmpty());
+        Assertions.assertNull(workerManager.getWorker("crawler-worker-001"));
         var group = workerManager.workerGroup("crawler").orElseThrow();
         Assertions.assertEquals(Map.of("source", "declared"), group.defaultAttributes());
         Assertions.assertEquals(3, group.defaultMaxConcurrentWork());
@@ -2400,8 +2400,8 @@ class MassSdkTest {
                 .transportHint("polling")
                 .build());
 
-        Assertions.assertEquals(Set.of("crawler-worker-001"),
-                workerManager.getWorkerRegistrySnapshot().workerIdsByGroupId("crawler"));
+        Worker registered = workerManager.getWorker("crawler-worker-001");
+        Assertions.assertEquals("crawler", registered.getWorkerGroupId());
     }
 
     @Test

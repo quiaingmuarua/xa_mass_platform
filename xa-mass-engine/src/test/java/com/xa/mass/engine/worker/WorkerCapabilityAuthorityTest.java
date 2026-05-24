@@ -33,7 +33,7 @@ public class WorkerCapabilityAuthorityTest {
         assertEquals(Map.of("source", "declared"), group.defaultAttributes());
         assertTrue(group.projectCodes().contains("demoApp"));
         assertTrue(group.eventBindings().contains(EventBinding.of("crawler.fetch", List.of("demoApp"))));
-        assertEquals(List.of("worker-crawler"), List.copyOf(snapshot.workerIdsByGroupId("crawler")));
+        assertTrue(snapshot.worker("worker-crawler").isPresent());
         assertEquals(List.of("crawler"), List.copyOf(snapshot.groupIdsByEventKey(
                 new EventKey("demoApp", "crawler.fetch"))));
     }
@@ -47,7 +47,7 @@ public class WorkerCapabilityAuthorityTest {
         WorkerRegistrySnapshot snapshot = authority.composeSnapshot(List.of(worker));
 
         assertTrue(snapshot.groups().isEmpty());
-        assertEquals(List.of("worker-crawler"), List.copyOf(snapshot.workerIdsByGroupId("crawler")));
+        assertTrue(snapshot.worker("worker-crawler").isPresent());
         assertTrue(snapshot.groupIdsByEventKey(new EventKey("legacyApp", "legacy.fetch")).isEmpty());
     }
 
@@ -61,7 +61,6 @@ public class WorkerCapabilityAuthorityTest {
 
         assertTrue(snapshot.worker("worker-stateless").isPresent());
         assertTrue(snapshot.groups().isEmpty());
-        assertTrue(snapshot.groupIdByWorkerId("worker-stateless").isEmpty());
         assertTrue(snapshot.groupIdsByEventKey(new EventKey("demoApp", "crawler.fetch")).isEmpty());
     }
 
@@ -82,10 +81,10 @@ public class WorkerCapabilityAuthorityTest {
 
         assertTrue(first.group("crawler").isPresent());
         assertTrue(first.group("export").isEmpty());
-        assertEquals(List.of("worker-crawler"), List.copyOf(first.workerIdsByGroupId("crawler")));
+        assertEquals("crawler", first.worker("worker-crawler").orElseThrow().getWorkerGroupId());
         assertTrue(second.group("export").isPresent());
         assertTrue(second.group("crawler").isEmpty());
-        assertEquals(List.of("worker-crawler"), List.copyOf(second.workerIdsByGroupId("export")));
+        assertEquals("export", second.worker("worker-crawler").orElseThrow().getWorkerGroupId());
     }
 
     @Test
@@ -117,9 +116,6 @@ public class WorkerCapabilityAuthorityTest {
         assertEquals(Map.of("region", "us", "loadClass", "warm"), effectiveWorker.getAttributes());
         assertEquals("agent-2", effectiveWorker.getAgentVersion());
         assertEquals("node-a", effectiveWorker.getAdapterNodeId());
-        assertEquals(List.of("worker-crawler"), List.copyOf(snapshot.workerIdsByAdapterNodeId("node-a")));
-        assertEquals(List.of("worker-crawler"),
-                List.copyOf(snapshot.workerIdsByAdapterNodeGroup("node-a", "crawler")));
     }
 
     @Test

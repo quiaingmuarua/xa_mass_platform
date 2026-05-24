@@ -898,6 +898,29 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void workerRegistrySnapshotDoesNotOwnWorkerMembershipIndexes() throws IOException {
+        Path snapshotPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker/WorkerRegistrySnapshot.java");
+        String source = Files.readString(snapshotPath, StandardCharsets.UTF_8);
+
+        List<String> violations = new ArrayList<>();
+        for (String forbidden : List.of(
+                "workerIdsByGroupId",
+                "workerIdsByAdapterNodeId",
+                "workerIdsByAdapterNodeGroup",
+                "groupIdByWorkerId",
+                "AdapterNodeGroupKey")) {
+            if (source.contains(forbidden)) {
+                violations.add(snapshotPath + " owns worker membership residue: " + forbidden);
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "WorkerRegistrySnapshot may retain group capability indexes and diagnostic worker rows, "
+                        + "but runtime worker membership belongs to WorkerRegistry:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void workerSchedulingCandidateEnumeratorStaysPackagePrivateImplementationDetail() throws IOException {
         Path enumeratorPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/strategy/WorkerSchedulingCandidateEnumerator.java");

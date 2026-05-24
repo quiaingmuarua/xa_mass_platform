@@ -21,10 +21,6 @@ public final class WorkerRegistrySnapshot {
     private final Map<String, Worker> workersById;
     private final Map<EventKey, Set<String>> groupIdsByEventKey;
     private final Map<String, Set<String>> groupIdsByProjectCode;
-    private final Map<String, Set<String>> workerIdsByGroupId;
-    private final Map<String, Set<String>> workerIdsByAdapterNodeId;
-    private final Map<AdapterNodeGroupKey, Set<String>> workerIdsByAdapterNodeGroup;
-    private final Map<String, String> groupIdByWorkerId;
     private final Map<String, Set<EventKey>> workerEventKeysByWorkerId;
 
     private WorkerRegistrySnapshot(Map<String, WorkerGroupRecord> groupsById,
@@ -34,10 +30,6 @@ public final class WorkerRegistrySnapshot {
         this.workersById = immutableMap(workersById);
         this.groupIdsByEventKey = indexGroupsByEventKey(groupsById.values());
         this.groupIdsByProjectCode = indexGroupsByProjectCode(groupsById.values());
-        this.workerIdsByGroupId = indexWorkersByGroupId(workersById.values());
-        this.workerIdsByAdapterNodeId = indexWorkersByAdapterNodeId(workersById.values());
-        this.workerIdsByAdapterNodeGroup = indexWorkersByAdapterNodeGroup(workersById.values());
-        this.groupIdByWorkerId = indexGroupIdByWorkerId(workersById.values());
         this.workerEventKeysByWorkerId = immutableEventKeySetMap(workerEventKeysByWorkerId);
     }
 
@@ -74,7 +66,7 @@ public final class WorkerRegistrySnapshot {
     public WorkerRegistrySnapshot withWorker(Worker worker) {
         LinkedHashMap<String, Worker> workers = new LinkedHashMap<>(workersById);
         if (worker != null && normalizeNullable(worker.getWorkerId()) != null) {
-            workers.put(worker.getWorkerId().trim(), worker);
+            workers.put(worker.getWorkerId().trim(), copyWorker(worker));
         }
         return new WorkerRegistrySnapshot(groupsById, workers, workerEventKeysByWorkerId);
     }
@@ -102,26 +94,6 @@ public final class WorkerRegistrySnapshot {
     public Set<String> groupIdsByProjectCode(String projectCode) {
         String normalized = normalizeNullable(projectCode);
         return normalized == null ? Set.of() : groupIdsByProjectCode.getOrDefault(normalized, Set.of());
-    }
-
-    public Set<String> workerIdsByGroupId(String groupId) {
-        String normalized = normalizeNullable(groupId);
-        return normalized == null ? Set.of() : workerIdsByGroupId.getOrDefault(normalized, Set.of());
-    }
-
-    public Set<String> workerIdsByAdapterNodeId(String adapterNodeId) {
-        String normalized = normalizeNullable(adapterNodeId);
-        return normalized == null ? Set.of() : workerIdsByAdapterNodeId.getOrDefault(normalized, Set.of());
-    }
-
-    public Set<String> workerIdsByAdapterNodeGroup(String adapterNodeId, String groupId) {
-        AdapterNodeGroupKey key = AdapterNodeGroupKey.fromNullable(adapterNodeId, groupId);
-        return key == null ? Set.of() : workerIdsByAdapterNodeGroup.getOrDefault(key, Set.of());
-    }
-
-    public Optional<String> groupIdByWorkerId(String workerId) {
-        String normalized = normalizeNullable(workerId);
-        return normalized == null ? Optional.empty() : Optional.ofNullable(groupIdByWorkerId.get(normalized));
     }
 
     public boolean workerSupportsEventKey(String workerId, EventKey eventKey) {
@@ -164,10 +136,29 @@ public final class WorkerRegistrySnapshot {
         for (Worker worker : workers) {
             String workerId = worker == null ? null : normalizeNullable(worker.getWorkerId());
             if (workerId != null) {
-                normalized.put(workerId, worker);
+                normalized.put(workerId, copyWorker(worker));
             }
         }
         return normalized;
+    }
+
+    private static Worker copyWorker(Worker source) {
+        Worker copy = new Worker();
+        copy.setWorkerId(source.getWorkerId());
+        copy.setStatus(source.getStatus());
+        copy.setAgentVersion(source.getAgentVersion());
+        copy.setLastHeartbeat(source.getLastHeartbeat());
+        // Compatibility worker-level capability hints are intentionally not
+        // copied into the snapshot; WorkerGroup remains candidate-source truth.
+        copy.setWorkerGroupId(source.getWorkerGroupId());
+        copy.setAdapterNodeId(source.getAdapterNodeId());
+        copy.setAdapterId(source.getAdapterId());
+        copy.setOnlineStrategy(source.getOnlineStrategy());
+        copy.setMaxConcurrentWork(source.getMaxConcurrentWork());
+        copy.setAttributes(source.getAttributes());
+        copy.setCreateTime(source.getCreateTime());
+        copy.setUpdateTime(source.getUpdateTime());
+        return copy;
     }
 
     private static Map<EventKey, Set<String>> indexGroupsByEventKey(Collection<WorkerGroupRecord> groups) {
@@ -188,57 +179,6 @@ public final class WorkerRegistrySnapshot {
             }
         }
         return immutableSetMap(mutableIndex);
-    }
-
-    private static Map<String, Set<String>> indexWorkersByGroupId(Collection<Worker> workers) {
-        LinkedHashMap<String, LinkedHashSet<String>> mutableIndex = new LinkedHashMap<>();
-        for (Worker worker : workers) {
-            String workerId = normalizeNullable(worker.getWorkerId());
-            String groupId = normalizeNullable(worker.getWorkerGroupId());
-            if (workerId != null && groupId != null) {
-                mutableIndex.computeIfAbsent(groupId, ignored -> new LinkedHashSet<>()).add(workerId);
-            }
-        }
-        return immutableSetMap(mutableIndex);
-    }
-
-    private static Map<String, Set<String>> indexWorkersByAdapterNodeId(Collection<Worker> workers) {
-        LinkedHashMap<String, LinkedHashSet<String>> mutableIndex = new LinkedHashMap<>();
-        for (Worker worker : workers) {
-            String workerId = normalizeNullable(worker.getWorkerId());
-            String adapterNodeId = normalizeNullable(worker.getAdapterNodeId());
-            if (workerId != null && adapterNodeId != null) {
-                mutableIndex.computeIfAbsent(adapterNodeId, ignored -> new LinkedHashSet<>()).add(workerId);
-            }
-        }
-        return immutableSetMap(mutableIndex);
-    }
-
-    private static Map<AdapterNodeGroupKey, Set<String>> indexWorkersByAdapterNodeGroup(Collection<Worker> workers) {
-        LinkedHashMap<AdapterNodeGroupKey, LinkedHashSet<String>> mutableIndex = new LinkedHashMap<>();
-        for (Worker worker : workers) {
-            String workerId = normalizeNullable(worker.getWorkerId());
-            AdapterNodeGroupKey key = AdapterNodeGroupKey.fromNullable(
-                    worker.getAdapterNodeId(),
-                    worker.getWorkerGroupId()
-            );
-            if (workerId != null && key != null) {
-                mutableIndex.computeIfAbsent(key, ignored -> new LinkedHashSet<>()).add(workerId);
-            }
-        }
-        return immutableSetMap(mutableIndex);
-    }
-
-    private static Map<String, String> indexGroupIdByWorkerId(Collection<Worker> workers) {
-        LinkedHashMap<String, String> index = new LinkedHashMap<>();
-        for (Worker worker : workers) {
-            String workerId = normalizeNullable(worker.getWorkerId());
-            String groupId = normalizeNullable(worker.getWorkerGroupId());
-            if (workerId != null && groupId != null) {
-                index.put(workerId, groupId);
-            }
-        }
-        return immutableMap(index);
     }
 
     private static <K> Map<K, Set<String>> immutableSetMap(Map<K, LinkedHashSet<String>> mutableIndex) {
@@ -289,15 +229,4 @@ public final class WorkerRegistrySnapshot {
         return updated;
     }
 
-    private record AdapterNodeGroupKey(String adapterNodeId, String groupId) {
-
-        private static AdapterNodeGroupKey fromNullable(String adapterNodeId, String groupId) {
-            String normalizedAdapterNodeId = normalizeNullable(adapterNodeId);
-            String normalizedGroupId = normalizeNullable(groupId);
-            if (normalizedAdapterNodeId == null || normalizedGroupId == null) {
-                return null;
-            }
-            return new AdapterNodeGroupKey(normalizedAdapterNodeId, normalizedGroupId);
-        }
-    }
 }

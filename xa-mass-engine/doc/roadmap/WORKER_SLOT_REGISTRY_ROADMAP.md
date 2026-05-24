@@ -1061,6 +1061,10 @@ Current status:
   and adapter-node/group worker-id lookups now come from `WorkerRegistry`, so
   node-group gates and group removal no longer read snapshot-owned worker
   membership indexes.
+- completed for `WorkerRegistrySnapshot` worker membership demotion: snapshot
+  no longer owns `workerId -> groupId`, `groupId -> workerIds`,
+  `adapterNodeId -> workerIds`, or `(adapterNodeId, groupId) -> workerIds`
+  indexes. It retains group capability indexes and diagnostic worker rows only.
 
 Scope:
 

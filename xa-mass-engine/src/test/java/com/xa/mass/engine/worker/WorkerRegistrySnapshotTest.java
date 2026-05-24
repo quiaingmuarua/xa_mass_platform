@@ -36,32 +36,22 @@ public class WorkerRegistrySnapshotTest {
     }
 
     @Test
-    void workerRegisterUpdateAndDeleteRebuildsWorkerIndexes() {
+    void workerRegisterUpdateAndDeleteMaintainsDiagnosticRowsOnly() {
         WorkerRegistrySnapshot snapshot = WorkerRegistrySnapshot.from(List.of(
                 group("crawler", EventBinding.of("crawler.fetch", List.of("demoApp"))),
                 group("export", EventBinding.of("report.export", List.of("reportApp")))
         ), List.of(worker("worker-1", "node-a", "crawler")));
 
-        assertEquals(Set.of("worker-1"), snapshot.workerIdsByGroupId("crawler"));
-        assertEquals(Set.of("worker-1"), snapshot.workerIdsByAdapterNodeId("node-a"));
-        assertEquals(Set.of("worker-1"), snapshot.workerIdsByAdapterNodeGroup("node-a", "crawler"));
-        assertEquals("crawler", snapshot.groupIdByWorkerId("worker-1").orElseThrow());
+        assertEquals("crawler", snapshot.worker("worker-1").orElseThrow().getWorkerGroupId());
 
         WorkerRegistrySnapshot moved = snapshot.withWorker(worker("worker-1", "node-b", "export"));
 
-        assertTrue(moved.workerIdsByGroupId("crawler").isEmpty());
-        assertTrue(moved.workerIdsByAdapterNodeGroup("node-a", "crawler").isEmpty());
-        assertEquals(Set.of("worker-1"), moved.workerIdsByGroupId("export"));
-        assertEquals(Set.of("worker-1"), moved.workerIdsByAdapterNodeId("node-b"));
-        assertEquals(Set.of("worker-1"), moved.workerIdsByAdapterNodeGroup("node-b", "export"));
-        assertEquals("export", moved.groupIdByWorkerId("worker-1").orElseThrow());
+        assertEquals("export", moved.worker("worker-1").orElseThrow().getWorkerGroupId());
+        assertEquals("node-b", moved.worker("worker-1").orElseThrow().getAdapterNodeId());
 
         WorkerRegistrySnapshot deleted = moved.withoutWorker("worker-1");
 
-        assertTrue(deleted.workerIdsByGroupId("export").isEmpty());
-        assertTrue(deleted.workerIdsByAdapterNodeId("node-b").isEmpty());
-        assertTrue(deleted.workerIdsByAdapterNodeGroup("node-b", "export").isEmpty());
-        assertTrue(deleted.groupIdByWorkerId("worker-1").isEmpty());
+        assertTrue(deleted.worker("worker-1").isEmpty());
     }
 
     @Test

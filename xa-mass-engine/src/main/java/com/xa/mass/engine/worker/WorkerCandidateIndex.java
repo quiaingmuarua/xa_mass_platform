@@ -4,6 +4,7 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.WorkerRegistry;
+import com.xa.mass.runtime.worker.WorkerSlot;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -84,15 +85,19 @@ public final class WorkerCandidateIndex {
             return Optional.empty();
         }
 
-        Optional<String> groupId = snapshot.groupIdByWorkerId(normalizedWorkerId);
-        if (groupId.isEmpty() || snapshot.group(groupId.orElseThrow()).isEmpty()) {
+        Optional<WorkerSlot> slot = workerRegistry.slotByWorkerId(normalizedWorkerId);
+        if (slot.isEmpty()) {
+            return Optional.empty();
+        }
+        String groupId = slot.orElseThrow().groupId();
+        if (snapshot.group(groupId).isEmpty()) {
             return Optional.empty();
         }
 
         if (!selectedGroupIds.stream()
                 .map(WorkerCandidateIndex::normalizeNullable)
                 .filter(Objects::nonNull)
-                .anyMatch(groupId.orElseThrow()::equals)) {
+                .anyMatch(groupId::equals)) {
             return Optional.empty();
         }
         String adapterNodeId = TaskSharedConfig.adapterNodeId(task);

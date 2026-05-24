@@ -55,7 +55,6 @@ public class WorkerManagerTest {
         assertEquals(List.of(group), manager.workerGroups());
         assertEquals(Set.of("crawler"), manager.getWorkerRegistrySnapshot()
                 .groupIdsByEventKey(new EventKey("demoApp", "crawler.fetch")));
-        assertTrue(manager.getWorkerRegistrySnapshot().workerIdsByGroupId("crawler").isEmpty());
     }
 
     @Test
@@ -74,7 +73,7 @@ public class WorkerManagerTest {
         assertTrue(manager.getWorkerRegistrySnapshot()
                 .groupIdsByEventKey(new EventKey("legacyApp", "legacy.fetch"))
                 .isEmpty());
-        assertEquals(Set.of("w-crawler"), manager.getWorkerRegistrySnapshot().workerIdsByGroupId("crawler"));
+        assertEquals("crawler", manager.getWorker("w-crawler").getWorkerGroupId());
     }
 
     @Test
@@ -302,10 +301,7 @@ public class WorkerManagerTest {
         manager.bindNodeGroup(binding("node-a", "crawler"));
         manager.addWorker(worker);
 
-        assertEquals(Set.of("w-explicit"),
-                manager.getWorkerRegistrySnapshot().workerIdsByAdapterNodeGroup("node-a", "crawler"));
-        assertEquals(Set.of("w-explicit"),
-                manager.getWorkerRegistrySnapshot().workerIdsByAdapterNodeId("node-a"));
+        assertEquals("node-a", manager.getWorker("w-explicit").getAdapterNodeId());
     }
 
     @Test
@@ -318,9 +314,6 @@ public class WorkerManagerTest {
         assertNull(manager.getWorker("w-legacy").getAdapterNodeId());
         assertTrue(manager.adapterNode("polling").isEmpty());
         assertTrue(manager.nodeGroupBinding("polling", "crawler").isEmpty());
-        assertTrue(manager.getWorkerRegistrySnapshot()
-                .workerIdsByAdapterNodeGroup("polling", "crawler")
-                .isEmpty());
     }
 
     @Test
@@ -694,12 +687,10 @@ public class WorkerManagerTest {
         assertNotSame(afterAdd, afterUpdate);
         assertTrue(afterAdd.group("crawler").isPresent());
         assertTrue(afterAdd.group("export").isPresent());
-        assertEquals(List.of("w-published-snapshot"), List.copyOf(afterAdd.workerIdsByGroupId("crawler")));
-        assertTrue(afterAdd.workerIdsByGroupId("export").isEmpty());
+        assertEquals("crawler", afterAdd.worker("w-published-snapshot").orElseThrow().getWorkerGroupId());
         assertTrue(afterUpdate.group("crawler").isPresent());
         assertTrue(afterUpdate.group("export").isPresent());
-        assertTrue(afterUpdate.workerIdsByGroupId("crawler").isEmpty());
-        assertEquals(List.of("w-published-snapshot"), List.copyOf(afterUpdate.workerIdsByGroupId("export")));
+        assertEquals("export", afterUpdate.worker("w-published-snapshot").orElseThrow().getWorkerGroupId());
     }
 
     @Test
