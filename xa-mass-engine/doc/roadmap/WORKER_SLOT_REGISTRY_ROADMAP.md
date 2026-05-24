@@ -1006,11 +1006,20 @@ Current verification:
 Goal: make memory and Redis runtime selectable and prove both through the same
 test lanes.
 
+Current status:
+
+- started: SDK/starter engine assembly can now accept an injected
+  `WorkerRegistry`, and server `mass.runtime.mode=redis` wires
+  `RedisWorkerRegistry` beside Redis task work/result runtime.
+- open: Redis stale-candidate and reconnect proofs still need server/E2E lanes.
+
 Scope:
 
 1. Add runtime config:
    - `memory`
    - `redis`
+   - Current server switch reuses `mass.runtime.mode`; `redis` wires task
+     work/result runtime plus worker registry runtime.
 2. Run shared contract tests against memory and Redis.
 3. Run scheduling integration tests against memory.
 4. Run selected Redis integration/proof tests:

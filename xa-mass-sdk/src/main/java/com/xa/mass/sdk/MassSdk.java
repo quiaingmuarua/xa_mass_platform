@@ -4,6 +4,7 @@ import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.engine.watchdog.PollingIdleBackoffPolicy;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskResultRuntime;
+import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.auth.SubmitterRegistry;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
@@ -433,6 +434,11 @@ public final class MassSdk {
 
         public EngineOptions workerStorage(WorkerStorage workerStorage) {
             delegate.workerStorage(workerStorage);
+            return this;
+        }
+
+        public EngineOptions workerRegistry(WorkerRegistry workerRegistry) {
+            delegate.workerRegistry(workerRegistry);
             return this;
         }
 

@@ -10,6 +10,7 @@ import com.xa.mass.engine.TaskManagerResultIngestFacade;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.engine.worker.WorkerManager;
+import com.xa.mass.engine.worker.InMemoryWorkerRegistry;
 import com.xa.mass.engine.worker.WorkerReachabilityView;
 import com.xa.mass.engine.worker.WorkerControlService;
 import com.xa.mass.engine.worker.WorkerDispatchAvailabilityOwner;
@@ -30,6 +31,7 @@ import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
+import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.TaskDetailStore;
@@ -74,6 +76,7 @@ public class EngineConfig {
     private TaskWorkerMatchingStrategy matchingStrategy;
     private WorkerReachabilityView workerReachabilityView = WorkerReachabilityView.permissive();
     private WorkerStorage workerStorage = new InMemoryWorkerStorage();
+    private WorkerRegistry workerRegistry;
     private WorkerManager workerManager;
     private WorkerCommandLifecycleOwner workerCommandLifecycleOwner = new WorkerCommandLifecycleOwner();
     private WorkerDispatchAvailabilityOwner workerDispatchAvailabilityOwner = new WorkerDispatchAvailabilityOwner();
@@ -121,6 +124,7 @@ public class EngineConfig {
         this.matchingStrategy = source.matchingStrategy;
         this.workerReachabilityView = source.workerReachabilityView;
         this.workerStorage = source.workerStorage;
+        this.workerRegistry = source.workerRegistry;
         this.workerManager = null;
         this.workerCommandLifecycleOwner = source.workerCommandLifecycleOwner;
         this.workerDispatchAvailabilityOwner = source.workerDispatchAvailabilityOwner;
@@ -291,7 +295,8 @@ public class EngineConfig {
             workerManager = new WorkerManager(
                     getWorkerStorage(),
                     workerReachabilityView,
-                    workerDispatchAvailabilityOwner
+                    workerDispatchAvailabilityOwner,
+                    getWorkerRegistry()
             );
         }
         return workerManager;
@@ -366,6 +371,24 @@ public class EngineConfig {
         }
         this.workerStorage = workerStorage;
         this.workerManager = null;
+        this.workerControlService = null;
+    }
+
+    public WorkerRegistry getWorkerRegistry() {
+        if (workerRegistry == null) {
+            workerRegistry = new InMemoryWorkerRegistry();
+        }
+        return workerRegistry;
+    }
+
+    public void setWorkerRegistry(WorkerRegistry workerRegistry) {
+        if (workerRegistry == null) {
+            throw new IllegalArgumentException("workerRegistry must not be null");
+        }
+        if (this.workerManager != null) {
+            throw new IllegalStateException("Cannot replace workerRegistry after workerManager has been configured");
+        }
+        this.workerRegistry = workerRegistry;
         this.workerControlService = null;
     }
 
@@ -487,6 +510,13 @@ public class EngineConfig {
     public void shutdownTaskRuntime() {
         if (taskManager != null) {
             taskManager.shutdown();
+        }
+        if (workerRegistry instanceof AutoCloseable closeable) {
+            try {
+                closeable.close();
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to close workerRegistry", e);
+            }
         }
     }
 

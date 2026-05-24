@@ -34,6 +34,7 @@ import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.model.TaskAppendReceipt;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
+import com.xa.mass.engine.worker.InMemoryWorkerRegistry;
 import com.xa.mass.runtime.worker.EventKey;
 import com.xa.mass.engine.watchdog.PollingIdleBackoffPolicy;
 import com.xa.mass.storage.api.RuleStorage;
@@ -1663,6 +1664,29 @@ class MassSdkTest {
 
         verify(replacement).addWorker(worker);
         assertNotNull(replacement.getWorker("worker-rebound").orElse(null));
+    }
+
+    @Test
+    void engineConfigUsesInjectedWorkerRegistryForWorkerManagerAssembly() {
+        EngineConfig config = new EngineConfig();
+        InMemoryWorkerRegistry registry = new InMemoryWorkerRegistry();
+        Worker worker = new Worker();
+        worker.setWorkerId("worker-registry-runtime");
+        worker.setWorkerGroupId("runtime-group");
+
+        config.setWorkerRegistry(registry);
+        config.getWorkerManager().addWorker(worker);
+
+        assertTrue(registry.slotByWorkerId("worker-registry-runtime").isPresent());
+    }
+
+    @Test
+    void engineConfigRejectsWorkerRegistryReplacementAfterWorkerManagerIsConfigured() {
+        EngineConfig config = new EngineConfig();
+        config.getWorkerManager();
+
+        assertThrows(IllegalStateException.class,
+                () -> config.setWorkerRegistry(new InMemoryWorkerRegistry()));
     }
 
     @Test

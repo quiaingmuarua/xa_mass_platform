@@ -4,8 +4,10 @@ import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
+import com.xa.mass.runtime.redis.RedisWorkerRegistry;
 import com.xa.mass.runtime.redis.RedisTaskResultRuntime;
 import com.xa.mass.runtime.redis.RedisTaskWorkRuntime;
+import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.transport.presence.WorkerPresenceStore;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
@@ -288,6 +290,10 @@ public class XaMassServerApplication {
                     engine.taskWorkRuntime(taskWorkRuntime);
                     TaskResultRuntime taskResultRuntime = taskResultRuntimeProvider.getIfAvailable(InMemoryTaskResultRuntime::new);
                     engine.taskResultRuntime(taskResultRuntime);
+                    WorkerRegistry workerRegistry = workerRegistry();
+                    if (workerRegistry != null) {
+                        engine.workerRegistry(workerRegistry);
+                    }
                     ExecutionEventSink executionEventSink = executionEventSinkProvider.getIfAvailable();
                     if (executionEventSink != null) {
                         engine.executionEventSink(executionEventSink);
@@ -301,6 +307,15 @@ public class XaMassServerApplication {
                     }
                 })
                 .build();
+    }
+
+    private WorkerRegistry workerRegistry() {
+        String normalizedMode = runtimeMode == null ? "memory" : runtimeMode.trim().toLowerCase(Locale.ROOT);
+        return switch (normalizedMode) {
+            case "", "memory" -> null;
+            case "redis" -> new RedisWorkerRegistry(redisUri(), runtimeRedisNamespace + ":worker");
+            default -> throw new IllegalArgumentException("Unsupported mass.runtime.mode: " + runtimeMode);
+        };
     }
 
     @Bean

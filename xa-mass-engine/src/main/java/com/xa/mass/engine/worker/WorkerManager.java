@@ -73,6 +73,13 @@ public class WorkerManager implements WorkerLookupStore {
         this(workerStorage, reachabilityView, new WorkerCapabilityAuthority(), dispatchAvailabilityOwner);
     }
 
+    public WorkerManager(WorkerStorage workerStorage,
+                         WorkerReachabilityView reachabilityView,
+                         WorkerDispatchAvailabilityOwner dispatchAvailabilityOwner,
+                         WorkerRegistry workerRegistry) {
+        this(workerStorage, reachabilityView, new WorkerCapabilityAuthority(), dispatchAvailabilityOwner, workerRegistry);
+    }
+
     WorkerManager(WorkerStorage workerStorage,
                   WorkerReachabilityView reachabilityView,
                   WorkerCapabilityAuthority capabilityAuthority) {

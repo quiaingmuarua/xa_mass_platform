@@ -3,9 +3,10 @@
 # Use with the runnable server profile, for example:
 #   -Dspring.profiles.active=dev,redis-runtime
 #
-# This keeps task work/result runtime, transport delivery queues, and transport
-# presence evidence in Redis. It is not a replacement for durable control-plane
-# storage; combine with h2/postgres if task shells must survive server restart.
+# This keeps task work/result runtime, worker registry runtime, transport
+# delivery queues, and transport presence evidence in Redis. It is not a
+# replacement for durable control-plane storage; combine with h2/postgres if
+# task shells must survive server restart.
 mass:
   runtime:
     mode: redis

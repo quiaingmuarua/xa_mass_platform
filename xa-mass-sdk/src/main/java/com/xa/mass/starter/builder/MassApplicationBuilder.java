@@ -5,6 +5,7 @@ import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
 import com.xa.mass.engine.watchdog.PollingIdleBackoffPolicy;
 import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
+import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.storage.api.RuleStorage;
@@ -606,6 +607,11 @@ public class MassApplicationBuilder {
 
         public EngineBuilder workerStorage(WorkerStorage workerStorage) {
             config.setWorkerStorage(workerStorage);
+            return this;
+        }
+
+        public EngineBuilder workerRegistry(WorkerRegistry workerRegistry) {
+            config.setWorkerRegistry(workerRegistry);
             return this;
         }
 
