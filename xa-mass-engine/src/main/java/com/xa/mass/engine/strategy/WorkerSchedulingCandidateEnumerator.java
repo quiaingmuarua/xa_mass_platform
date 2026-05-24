@@ -40,7 +40,7 @@ final class WorkerSchedulingCandidateEnumerator {
         String workerGroupId = worker.getWorkerGroupId();
         WorkerGroupRecord workerGroup = workerGroupId == null || workerGroupId.isBlank()
                 ? null
-                : workerManager.getWorkerRegistrySnapshot().group(workerGroupId).orElse(null);
+                : workerManager.workerGroupReadView(workerGroupId).orElse(null);
         return new WorkerSchedulingCandidate(
                 worker,
                 WorkerSchedulingView.from(

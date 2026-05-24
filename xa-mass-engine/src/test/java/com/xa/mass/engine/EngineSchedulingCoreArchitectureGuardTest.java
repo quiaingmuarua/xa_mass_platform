@@ -849,12 +849,14 @@ class EngineSchedulingCoreArchitectureGuardTest {
         Path strategyRoot = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/strategy");
         Pattern workerRegistrySnapshot = Pattern.compile("\\bWorkerRegistrySnapshot\\b");
         Pattern workerCandidateIndex = Pattern.compile("\\bWorkerCandidateIndex\\b");
+        Pattern directSnapshotAccessor = Pattern.compile("\\.getWorkerRegistrySnapshot\\s*\\(");
 
         List<String> violations = new ArrayList<>();
         for (Path path : javaSourceFiles(strategyRoot)) {
             String source = Files.readString(path, StandardCharsets.UTF_8);
             if (workerRegistrySnapshot.matcher(source).find()
-                    || workerCandidateIndex.matcher(source).find()) {
+                    || workerCandidateIndex.matcher(source).find()
+                    || directSnapshotAccessor.matcher(source).find()) {
                 violations.add(path + " owns WorkerGroup snapshot/index lookup");
             }
         }

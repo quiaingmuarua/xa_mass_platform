@@ -177,6 +177,11 @@ public class WorkerManager implements WorkerLookupStore {
         }
     }
 
+    public Optional<WorkerGroupRecord> workerGroupReadView(String groupId) {
+        WorkerRegistrySnapshot snapshot = workerRegistrySnapshot;
+        return snapshot == null ? Optional.empty() : snapshot.group(groupId);
+    }
+
     public List<WorkerGroupRecord> workerGroups() {
         synchronized (workerRegistryLock) {
             return List.copyOf(workerGroupsById.values());

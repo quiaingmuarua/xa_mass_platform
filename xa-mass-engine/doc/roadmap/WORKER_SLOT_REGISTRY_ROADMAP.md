@@ -1062,6 +1062,10 @@ Current status:
   `workerRegistryRows` has been removed. Current control-plane worker rows come
   from `WorkerStorage`; runtime slot/index/admission truth comes from
   `WorkerRegistry`.
+- completed for strategy snapshot boundary cleanup:
+  `WorkerSchedulingCandidateEnumerator` no longer calls
+  `getWorkerRegistrySnapshot()` directly. Worker group read-view materialization
+  stays behind `WorkerManager`.
 
 Scope:
 
