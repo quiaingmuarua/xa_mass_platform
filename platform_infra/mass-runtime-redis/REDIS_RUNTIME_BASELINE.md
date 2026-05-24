@@ -266,7 +266,7 @@ Global worker indexes:
 - `...:heartbeat:deadlines`
   - `ZSET`
   - member: encoded `groupId + workerId`
-  - score: `lastHeartbeatMillis`
+  - score: `lastHeartbeatMillis + heartbeatFreshnessMillis`
   - supports bounded cleanup of stale route bucket members
 - `...:exclusive-leases`
   - `SET`

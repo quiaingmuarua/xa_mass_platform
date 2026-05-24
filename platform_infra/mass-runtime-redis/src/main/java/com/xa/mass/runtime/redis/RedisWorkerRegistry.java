@@ -38,6 +38,7 @@ import java.util.function.Function;
 public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable {
 
     public static final String DEFAULT_ROUTE_BUCKET_KEY = "default";
+    public static final long DEFAULT_HEARTBEAT_FRESHNESS_MILLIS = 30_000L;
 
     private static final Gson GSON = new Gson();
     private static final int DEFAULT_WATCH_RETRIES = 32;
@@ -48,6 +49,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     private final RedisWorkerRegistryKeyspace keyspace;
     private final WorkerCandidateSamplingPolicy samplingPolicy;
     private final Function<WorkerMeta, Set<String>> routeBucketPolicy;
+    private final long heartbeatFreshnessMillis;
     private final boolean ownsClient;
 
     public RedisWorkerRegistry(String redisUri, String namespace) {
@@ -55,6 +57,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
                 new RedisWorkerRegistryKeyspace(namespace),
                 firstNPolicy(),
                 RedisWorkerRegistry::defaultRouteBucketKeys,
+                DEFAULT_HEARTBEAT_FRESHNESS_MILLIS,
                 true);
     }
 
@@ -64,10 +67,25 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
                                Function<WorkerMeta, Set<String>> routeBucketPolicy,
                                boolean ownsClient) {
         this(redisClient,
+                keyspace,
+                samplingPolicy,
+                routeBucketPolicy,
+                DEFAULT_HEARTBEAT_FRESHNESS_MILLIS,
+                ownsClient);
+    }
+
+    public RedisWorkerRegistry(RedisClient redisClient,
+                               RedisWorkerRegistryKeyspace keyspace,
+                               WorkerCandidateSamplingPolicy samplingPolicy,
+                               Function<WorkerMeta, Set<String>> routeBucketPolicy,
+                               long heartbeatFreshnessMillis,
+                               boolean ownsClient) {
+        this(redisClient,
                 Objects.requireNonNull(redisClient, "redisClient").connect(),
                 keyspace,
                 samplingPolicy,
                 routeBucketPolicy,
+                heartbeatFreshnessMillis,
                 ownsClient);
     }
 
@@ -75,7 +93,13 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
                                RedisWorkerRegistryKeyspace keyspace,
                                WorkerCandidateSamplingPolicy samplingPolicy,
                                Function<WorkerMeta, Set<String>> routeBucketPolicy) {
-        this(null, connection, keyspace, samplingPolicy, routeBucketPolicy, false);
+        this(null,
+                connection,
+                keyspace,
+                samplingPolicy,
+                routeBucketPolicy,
+                DEFAULT_HEARTBEAT_FRESHNESS_MILLIS,
+                false);
     }
 
     private RedisWorkerRegistry(RedisClient redisClient,
@@ -83,6 +107,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
                                 RedisWorkerRegistryKeyspace keyspace,
                                 WorkerCandidateSamplingPolicy samplingPolicy,
                                 Function<WorkerMeta, Set<String>> routeBucketPolicy,
+                                long heartbeatFreshnessMillis,
                                 boolean ownsClient) {
         this.redisClient = redisClient;
         this.connection = Objects.requireNonNull(connection, "connection");
@@ -92,6 +117,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         this.routeBucketPolicy = routeBucketPolicy != null
                 ? routeBucketPolicy
                 : RedisWorkerRegistry::defaultRouteBucketKeys;
+        this.heartbeatFreshnessMillis = Math.max(1L, heartbeatFreshnessMillis);
         this.ownsClient = ownsClient;
     }
 
@@ -123,7 +149,9 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
                     );
             return SlotUpdate.write(updated, tx -> {
                 tx.hset(keyspace.workerGroupHash(), workerId, groupId);
-                tx.zadd(keyspace.heartbeatDeadlinesZset(), meta.lastHeartbeatMillis(), keyspace.heartbeatMember(groupId, workerId));
+                tx.zadd(keyspace.heartbeatDeadlinesZset(),
+                        heartbeatDeadlineMillis(meta),
+                        keyspace.heartbeatMember(groupId, workerId));
             });
         });
         removeFromBuckets(groupId, workerId);
@@ -549,6 +577,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
             try {
                 RedisWorkerRegistryKeyspace.HeartbeatMember parsed = keyspace.parseHeartbeatMember(member);
                 removeFromBuckets(parsed.groupId(), parsed.workerId());
+                commands.zrem(keyspace.heartbeatDeadlinesZset(), member);
                 removed++;
             } catch (IllegalArgumentException ignored) {
                 skipped++;
@@ -660,7 +689,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         if (current.removing()) {
             return ReserveStatus.REMOVING_SLOT;
         }
-        if (current.meta().lastHeartbeatMillis() < nowMillis) {
+        if (heartbeatDeadlineMillis(current.meta()) < nowMillis) {
             return ReserveStatus.STALE_HEARTBEAT;
         }
         if (!current.dispatchEnabled()) {
@@ -705,6 +734,12 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         return routeBucketKeys == null || routeBucketKeys.isEmpty()
                 ? Set.of(DEFAULT_ROUTE_BUCKET_KEY)
                 : Set.copyOf(routeBucketKeys);
+    }
+
+    private long heartbeatDeadlineMillis(WorkerMeta meta) {
+        long lastHeartbeatMillis = Math.max(0L, meta.lastHeartbeatMillis());
+        long maxIncrement = Long.MAX_VALUE - lastHeartbeatMillis;
+        return lastHeartbeatMillis + Math.min(heartbeatFreshnessMillis, maxIncrement);
     }
 
     private static Set<String> defaultRouteBucketKeys(WorkerMeta meta) {

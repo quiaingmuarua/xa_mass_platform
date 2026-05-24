@@ -1,7 +1,11 @@
 package com.xa.mass.runtime.redis;
 
 import com.xa.mass.runtime.contract.WorkerRegistryContractTest;
+import com.xa.mass.runtime.worker.CleanupSummary;
+import com.xa.mass.runtime.worker.EventKey;
+import com.xa.mass.runtime.worker.ReserveStatus;
 import com.xa.mass.runtime.worker.WorkerCandidateSamplingPolicy;
+import com.xa.mass.runtime.worker.WorkerMeta;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
@@ -11,12 +15,14 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
@@ -156,5 +162,73 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
             otherRegistry.close();
             RedisRuntimeTestSupport.cleanupNamespace(commands, otherKeyspace.namespace());
         }
+    }
+
+    @Test
+    void staleHeartbeatCandidateIsRejectedThenCleanedFromRouteBucket() {
+        WorkerRegistry workerRegistry = createRegistry();
+        workerRegistry.upsertSlot(meta("worker-stale", "group-a", 1_000), 1, Set.of(eventKey()));
+
+        assertEquals(List.of("worker-stale"),
+                workerRegistry.acquireCandidates("group-a", RedisWorkerRegistry.DEFAULT_ROUTE_BUCKET_KEY, 10));
+        assertEquals(ReserveStatus.STALE_HEARTBEAT,
+                workerRegistry.tryReserve("group-a", "worker-stale", "task-1", 1, 31_001).status());
+
+        CleanupSummary cleanup = workerRegistry.cleanupExpiredHeartbeats(31_001, 10);
+
+        assertEquals(1, cleanup.scanned());
+        assertEquals(1, cleanup.removed());
+        assertTrue(workerRegistry.acquireCandidates(
+                "group-a",
+                RedisWorkerRegistry.DEFAULT_ROUTE_BUCKET_KEY,
+                10
+        ).isEmpty());
+    }
+
+    @Test
+    void workerReconnectRefreshesHeartbeatAndBecomesReservableAgain() {
+        WorkerRegistry workerRegistry = createRegistry();
+        workerRegistry.upsertSlot(meta("worker-reconnect", "group-a", 1_000), 1, Set.of(eventKey()));
+        assertEquals(ReserveStatus.STALE_HEARTBEAT,
+                workerRegistry.tryReserve("group-a", "worker-reconnect", "task-1", 1, 31_001).status());
+
+        workerRegistry.upsertSlot(meta("worker-reconnect", "group-a", 2_000), 1, Set.of(eventKey()));
+
+        assertTrue(workerRegistry.tryReserve("group-a", "worker-reconnect", "task-2", 1, 31_001).accepted());
+    }
+
+    @Test
+    void boundedStaleBucketCleanupRemovesMembersWithoutSlot() {
+        WorkerRegistry workerRegistry = createRegistry();
+        workerRegistry.upsertSlot(meta("worker-gone", "group-a"), 1, Set.of(eventKey()));
+        commands.hdel(keyspace.groupSlotsHash("group-a"), "worker-gone");
+
+        assertEquals(List.of("worker-gone"),
+                workerRegistry.acquireCandidates("group-a", RedisWorkerRegistry.DEFAULT_ROUTE_BUCKET_KEY, 10));
+
+        CleanupSummary cleanup = workerRegistry.cleanupStaleBucketMembers("group-a", 10);
+
+        assertEquals(1, cleanup.scanned());
+        assertEquals(1, cleanup.removed());
+        assertTrue(workerRegistry.acquireCandidates(
+                "group-a",
+                RedisWorkerRegistry.DEFAULT_ROUTE_BUCKET_KEY,
+                10
+        ).isEmpty());
+    }
+
+    private WorkerMeta meta(String workerId, String groupId, long lastHeartbeatMillis) {
+        return new WorkerMeta(
+                workerId,
+                groupId,
+                "node-a",
+                "polling",
+                "polling",
+                Map.of("region", "us"),
+                "agent-1",
+                "runtime-1",
+                lastHeartbeatMillis,
+                "AVAILABLE"
+        );
     }
 }

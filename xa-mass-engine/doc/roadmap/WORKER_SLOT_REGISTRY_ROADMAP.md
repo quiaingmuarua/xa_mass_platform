@@ -372,7 +372,7 @@ First Redis slice target:
   HASH workerId -> WorkerSlotPayload
 
 {prefix}:worker:heartbeat:deadlines
-  ZSET encoded(groupId,workerId) -> lastHeartbeatMillis
+  ZSET encoded(groupId,workerId) -> lastHeartbeatMillis + freshnessTtlMillis
 
 {prefix}:worker:group:{groupId}:route:{routeBucketKey}:workers
   SET/ZSET workerId
@@ -479,6 +479,9 @@ Do not create two liveness truths:
 ```text
 lastHeartbeatMillis
   freshness evidence from worker heartbeat/report
+
+heartbeatDeadline
+  derived Redis cleanup/admission deadline, not a second liveness truth
 
 WorkerReachabilityView
   transport presence evidence
@@ -1011,7 +1014,12 @@ Current status:
 - started: SDK/starter engine assembly can now accept an injected
   `WorkerRegistry`, and server `mass.runtime.mode=redis` wires
   `RedisWorkerRegistry` beside Redis task work/result runtime.
-- open: Redis stale-candidate and reconnect proofs still need server/E2E lanes.
+- completed at registry level: Redis stale heartbeat reject, stale route bucket
+  cleanup, reconnect heartbeat refresh, prefix isolation, and concurrent reserve
+  are covered by `RedisWorkerRegistryTest`.
+- completed at server E2E level: ready-task late-worker registration on Redis
+  runtime is covered by
+  `TaskApiDelayedWorkerAvailabilityRedisRuntimeIntegrationTest`.
 
 Scope:
 
@@ -1023,11 +1031,12 @@ Scope:
 2. Run shared contract tests against memory and Redis.
 3. Run scheduling integration tests against memory.
 4. Run selected Redis integration/proof tests:
-   - worker registers late while task is ready
-   - worker heartbeat expires and stale candidate is skipped
-   - worker reconnects and becomes eligible again
-   - route bucket stale member cleanup
-   - concurrent reserve against same worker
+   - worker registers late while task is ready: covered at server E2E level
+   - worker heartbeat expires and stale candidate is skipped: covered at
+     registry level
+   - worker reconnects and becomes eligible again: covered at registry level
+   - route bucket stale member cleanup: covered at registry level
+   - concurrent reserve against same worker: covered at registry level
 5. Update docs to describe runtime truth vs historical projection truth.
 
 Acceptance:
