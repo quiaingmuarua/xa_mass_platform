@@ -7,9 +7,10 @@ Status: in progress. WSR-0 through WSR-6 have established the JVM
 retired storage-owned worker lock truth, removed `WorkerLoadView` production
 wiring, renamed the `WorkerManager` exclusive-lease facade away from
 lock-owned terminology, and moved the shared `WorkerRegistry` contract/value
-types to `platform_infra/mass-runtime-api`. The next major slice is the Redis
-registry foundation. Verify current code before implementing each remaining
-phase.
+types to `platform_infra/mass-runtime-api`. WSR-7 now has a first-slice
+Redis-backed `WorkerRegistry` foundation under `mass-runtime-redis`; WSR-8
+runtime switching and distributed proof remain open. Verify current code before
+implementing each remaining phase.
 
 ## Summary
 
@@ -361,44 +362,37 @@ Important rules:
 The Redis target is group-partitioned, not one huge global worker table and not
 one DB-row key per worker.
 
-First Redis slice:
+First Redis slice target:
 
 ```text
-{prefix}:worker:{groupId}:meta
-  HASH workerId -> WorkerMetaPayload
-
-{prefix}:worker:group-by-id
+{prefix}:worker:group
   HASH workerId -> groupId
 
-{prefix}:worker:{groupId}:capacity
-  HASH workerId -> declaredCapacity
+{prefix}:worker:group:{groupId}:slots
+  HASH workerId -> WorkerSlotPayload
 
-{prefix}:worker:{groupId}:active
-  HASH workerId -> activeLeaseCount
+{prefix}:worker:heartbeat:deadlines
+  ZSET encoded(groupId,workerId) -> lastHeartbeatMillis
 
-{prefix}:worker:{groupId}:reserved
-  HASH workerId -> reservedCount
-
-{prefix}:worker:{groupId}:gates
-  HASH workerId -> disabledSourceBitmask
-
-{prefix}:worker:{groupId}:heartbeatDeadline
-  ZSET workerId -> expireAtMillis
-
-{prefix}:worker:{groupId}:route:{routeBucketKey}:{shard}
+{prefix}:worker:group:{groupId}:route:{routeBucketKey}:workers
   SET/ZSET workerId
 
-{prefix}:worker:{groupId}:node:{adapterNodeId}:route:{routeBucketKey}:{shard}
+{prefix}:worker:group:{groupId}:node:{adapterNodeId}:route:{routeBucketKey}:workers
   SET/ZSET workerId
 
-{prefix}:task:{taskId}:active-workers
+{prefix}:worker:task:{taskId}:active-workers
   SET workerId
 
-{prefix}:task:{taskId}:worker-active-count
+{prefix}:worker:task:{taskId}:worker-active-count
   HASH workerId -> activeLeaseCountForTask
 ```
 
-`worker:group-by-id` is required. The recommended `{groupId}-{randomId}` worker
+The first implementation stores one immutable `WorkerSlotPayload` per worker in
+the group-local slot hash. Splitting meta/capacity/active/reserved/gate into
+separate hashes is an allowed later optimization, not required for the first
+verified Redis registry slice.
+
+`worker:group` is required. The recommended `{groupId}-{randomId}` worker
 id prefix is only a routing convenience and diagnostic aid. It is not enough for
 correct lookup because external or historical worker ids may not follow the
 prefix convention.
@@ -406,7 +400,7 @@ prefix convention.
 Redis 7.4 hash field TTL can later optimize presence or payload cleanup:
 
 ```text
-{prefix}:worker:{groupId}:meta
+{prefix}:worker:group:{groupId}:slots
   HEXPIRE workerId ...
 ```
 
@@ -970,15 +964,24 @@ Prerequisite status:
 - completed: Redis can now depend on `mass-runtime-api` for `WorkerRegistry`,
   `WorkerSlot`, `WorkerMeta`, reserve outcomes, dispatch-gate sources, and the
   shared contract test package instead of depending on `xa-mass-engine`.
+- completed first slice: `RedisWorkerRegistry` now implements the shared
+  contract with group-local slot hashes, worker-id-to-group lookup,
+  group/node route buckets, heartbeat deadline index, task occupancy indexes,
+  and Redis `WATCH` / `MULTI` / `EXEC` over the group-local slot hash.
 
 Scope:
 
 1. Implement Redis key prefix as configuration.
-2. Implement group-local meta/capacity/active/reserved/gate hashes.
+2. Implement group-local worker slot payload hashes.
 3. Implement group-local route/node route buckets with bounded sampling.
 4. Implement heartbeat deadline ZSET and bounded cleanup.
 5. Implement atomic reserve/confirm/release/final with Lua or Redis atomic
    primitives.
+   - Current first slice uses Redis `WATCH` on the group-local slot hash, so it
+     proves correctness but has group-key conflict granularity.
+   - If same-group write contention becomes material, the next refinement is
+     Lua mutation over the specific hash field, not a separate worker-row key
+     design.
 6. Keep Redis 7.4 hash field TTL optional. Do not require it for correctness.
 7. `RedisWorkerRegistryTest` extends the same contract suite.
 
@@ -989,6 +992,14 @@ Acceptance:
 3. Over-reservation is impossible under concurrent Redis clients.
 4. Prefix isolation prevents test pollution.
 5. Redis implementation does not use one global worker hash.
+
+Current verification:
+
+- `RedisWorkerRegistryTest` passes the shared `WorkerRegistryContractTest`.
+- Redis prefix isolation and group-partitioned hash shape are covered by module
+  tests.
+- Concurrent reserve across independent Redis clients is covered and verifies
+  capacity is not exceeded.
 
 ### WSR-8: Runtime Switch And Proof
 

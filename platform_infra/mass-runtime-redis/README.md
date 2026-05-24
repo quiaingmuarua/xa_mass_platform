@@ -6,6 +6,7 @@ the default verified runtime mainline.
 ## Role
 
 - owns the Redis-backed `TaskWorkRuntime` implementation
+- owns the first-slice Redis-backed `WorkerRegistry` implementation
 - keeps Redis queue/lease/counter ownership under `platform_infra` instead of leaking back into engine or server shells
 - fixes Redis runtime keyspace/index ownership before a real implementation is
   spread across other modules
@@ -14,6 +15,8 @@ the default verified runtime mainline.
 
 - the active verified runtime mainline is still `mass-runtime-memory`
 - this module now provides a real Redis-backed `TaskWorkRuntime`
+- this module now provides a contract-tested Redis-backed `WorkerRegistry`
+  foundation using group-partitioned worker slot hashes and route buckets
 - dev/server shells can opt into it explicitly without changing engine constructors
 - this module is intentionally not the bootstrap default
 - the intended Redis keyspace and hot-path index model lives in
@@ -24,10 +27,16 @@ the default verified runtime mainline.
 - bounded delayed promotion and stats/query reads still use straightforward
   Redis commands around that hot-path truth; further fine-grained optimization
   remains future work, not a second runtime contract
+- Redis `WorkerRegistry` uses `WATCH` / `MULTI` / `EXEC` over the group-local
+  slot hash for first-slice reserve, confirm, release, final, gate, and lease
+  mutations; broader server/runtime switching and finer-grained Lua mutation
+  remain later roadmap phases
 
 ## Guardrails
 
 - do not add scan-heavy recovery or observability semantics here
 - preserve `TaskWorkRuntime` method-level queue/lease/result semantics
+- preserve `WorkerRegistry` group-partitioned key ownership; do not introduce
+  one global worker table or DB-row-style worker CRUD state here
 - keep Redis key/index ownership behind this module rather than spreading Redis-specific logic across engine, sdk, or server
 - do not silently replace the in-memory default; Redis remains explicit opt-in until broader runtime/perf verification says otherwise

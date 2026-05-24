@@ -13,6 +13,10 @@ Current implementation note:
   `discardTask`
 - delayed promotion and read-side visibility checks still use bounded command
   flows around the same keyspace truth
+- Redis-backed `WorkerRegistry` has a first-slice implementation using
+  group-partitioned slot hashes, group/node route buckets, heartbeat deadline
+  indexes, and `WATCH` / `MULTI` / `EXEC` over the group-local slot hash. It is
+  contract-tested but is not yet the default engine/server runtime switch.
 
 Use with:
 
@@ -237,3 +241,84 @@ Must stay bounded by task-owned indexes:
 - no task-detail query model
 - no storage extraction
 - no hidden fallback that scans Redis keys when an index is missing
+
+## 8. Worker Registry Keys
+
+Worker runtime registry state is runtime truth, not control-plane worker CRUD.
+The first Redis slice keeps worker slots group-partitioned and validates stale
+bucket candidates again at reservation time.
+
+Namespace:
+
+`{runtimePrefix}:worker`
+
+Owner class:
+
+- `com.xa.mass.runtime.redis.RedisWorkerRegistryKeyspace`
+
+Global worker indexes:
+
+- `...:worker:group`
+  - `HASH`
+  - field: `workerId`
+  - value: `groupId`
+  - supports `slotByWorkerId(workerId)` without relying on worker id prefix
+- `...:heartbeat:deadlines`
+  - `ZSET`
+  - member: encoded `groupId + workerId`
+  - score: `lastHeartbeatMillis`
+  - supports bounded cleanup of stale route bucket members
+- `...:exclusive-leases`
+  - `SET`
+  - member: `workerId`
+  - diagnostic/index mirror for exclusive worker lease ownership
+
+Per-group slot and route indexes:
+
+- `...:group:{groupId}:slots`
+  - `HASH`
+  - field: `workerId`
+  - value: encoded `WorkerSlot`
+  - canonical Redis worker slot payload for the first slice
+- `...:group:{groupId}:route:{routeBucketKey}:workers`
+  - `SET`
+  - member: `workerId`
+  - group-level candidate bucket
+- `...:group:{groupId}:routes`
+  - `SET`
+  - member: `routeBucketKey`
+  - bounded cleanup discovery for group buckets
+- `...:group:{groupId}:node:{adapterNodeId}:route:{routeBucketKey}:workers`
+  - `SET`
+  - member: `workerId`
+  - node-scoped placement candidate bucket
+- `...:group:{groupId}:node-routes`
+  - `SET`
+  - member: encoded `adapterNodeId + routeBucketKey`
+  - bounded cleanup discovery for node buckets
+
+Per-task worker occupancy indexes:
+
+- `...:task:{taskId}:active-workers`
+  - `SET`
+  - member: `workerId`
+  - supports `activeWorkerIdsByTask(taskId)` and
+    `activeWorkerCountForTask(taskId)`
+- `...:task:{taskId}:worker-active-count`
+  - `HASH`
+  - field: `workerId`
+  - value: active lease count for that task-worker pair
+
+First-slice constraints:
+
+- Redis 7.4 hash field TTL may optimize cleanup later but is not required for
+  correctness.
+- `WorkerRegistry.tryReserve(...)` re-validates slot existence, removing flag,
+  heartbeat freshness, dispatch gates, exclusive lease, and capacity inside the
+  Redis mutation path. The first slice uses `WATCH` on the group-local slot hash;
+  finer-grained Lua mutation is the next optimization if same-group contention
+  becomes material.
+- Candidate buckets may be briefly stale; stale candidates are rejected by
+  Stage-2 reservation and removed through bounded cleanup.
+- This implementation does not introduce a single global worker hash and does
+  not make Redis worker registry the server default.
