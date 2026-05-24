@@ -10,6 +10,7 @@ import com.xa.mass.runtime.worker.WorkerCandidateSamplingContext;
 import com.xa.mass.runtime.worker.WorkerCandidateSamplingPolicy;
 import com.xa.mass.runtime.worker.WorkerMeta;
 import com.xa.mass.runtime.worker.WorkerRegistry;
+import com.xa.mass.runtime.worker.WorkerRouteBucketPolicy;
 import com.xa.mass.runtime.worker.WorkerSlot;
 import io.lettuce.core.Range;
 import io.lettuce.core.RedisClient;
@@ -27,7 +28,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
-import java.util.function.Function;
 
 /**
  * Redis-backed WorkerRegistry using group-partitioned slot hashes and buckets.
@@ -37,7 +37,7 @@ import java.util.function.Function;
  */
 public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable {
 
-    public static final String DEFAULT_ROUTE_BUCKET_KEY = "default";
+    public static final String DEFAULT_ROUTE_BUCKET_KEY = WorkerRouteBucketPolicy.DEFAULT_ROUTE_BUCKET_KEY;
     public static final long DEFAULT_HEARTBEAT_FRESHNESS_MILLIS = 30_000L;
 
     private static final Gson GSON = new Gson();
@@ -48,7 +48,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     private final RedisCommands<String, String> commands;
     private final RedisWorkerRegistryKeyspace keyspace;
     private final WorkerCandidateSamplingPolicy samplingPolicy;
-    private final Function<WorkerMeta, Set<String>> routeBucketPolicy;
+    private final WorkerRouteBucketPolicy routeBucketPolicy;
     private final long heartbeatFreshnessMillis;
     private final boolean ownsClient;
 
@@ -64,7 +64,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     public RedisWorkerRegistry(RedisClient redisClient,
                                RedisWorkerRegistryKeyspace keyspace,
                                WorkerCandidateSamplingPolicy samplingPolicy,
-                               Function<WorkerMeta, Set<String>> routeBucketPolicy,
+                               WorkerRouteBucketPolicy routeBucketPolicy,
                                boolean ownsClient) {
         this(redisClient,
                 keyspace,
@@ -77,7 +77,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     public RedisWorkerRegistry(RedisClient redisClient,
                                RedisWorkerRegistryKeyspace keyspace,
                                WorkerCandidateSamplingPolicy samplingPolicy,
-                               Function<WorkerMeta, Set<String>> routeBucketPolicy,
+                               WorkerRouteBucketPolicy routeBucketPolicy,
                                long heartbeatFreshnessMillis,
                                boolean ownsClient) {
         this(redisClient,
@@ -92,7 +92,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     public RedisWorkerRegistry(StatefulRedisConnection<String, String> connection,
                                RedisWorkerRegistryKeyspace keyspace,
                                WorkerCandidateSamplingPolicy samplingPolicy,
-                               Function<WorkerMeta, Set<String>> routeBucketPolicy) {
+                               WorkerRouteBucketPolicy routeBucketPolicy) {
         this(null,
                 connection,
                 keyspace,
@@ -106,7 +106,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
                                 StatefulRedisConnection<String, String> connection,
                                 RedisWorkerRegistryKeyspace keyspace,
                                 WorkerCandidateSamplingPolicy samplingPolicy,
-                                Function<WorkerMeta, Set<String>> routeBucketPolicy,
+                                WorkerRouteBucketPolicy routeBucketPolicy,
                                 long heartbeatFreshnessMillis,
                                 boolean ownsClient) {
         this.redisClient = redisClient;
@@ -608,9 +608,14 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
             scanned++;
             try {
                 RedisWorkerRegistryKeyspace.HeartbeatMember parsed = keyspace.parseHeartbeatMember(member);
+                boolean changed = markSlotRemoving(parsed.groupId(), parsed.workerId(), "heartbeat expired");
                 removeFromBuckets(parsed.groupId(), parsed.workerId());
                 commands.zrem(keyspace.heartbeatDeadlinesZset(), member);
-                removed++;
+                if (changed) {
+                    removed++;
+                } else {
+                    skipped++;
+                }
             } catch (IllegalArgumentException ignored) {
                 skipped++;
             }
@@ -652,7 +657,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         }
     }
 
-    private MutationResult updateSlot(String groupId, String workerId, SlotMutation mutation) {
+    private synchronized MutationResult updateSlot(String groupId, String workerId, SlotMutation mutation) {
         String normalizedGroupId = normalizeNullable(groupId);
         String normalizedWorkerId = normalizeNullable(workerId);
         if (normalizedGroupId == null || normalizedWorkerId == null) {
@@ -762,7 +767,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     }
 
     private Set<String> routeBucketKeys(WorkerMeta meta) {
-        Set<String> routeBucketKeys = routeBucketPolicy.apply(meta);
+        Set<String> routeBucketKeys = routeBucketPolicy.routeBucketKeysForWorkerMeta(meta);
         return routeBucketKeys == null || routeBucketKeys.isEmpty()
                 ? Set.of(DEFAULT_ROUTE_BUCKET_KEY)
                 : Set.copyOf(routeBucketKeys);

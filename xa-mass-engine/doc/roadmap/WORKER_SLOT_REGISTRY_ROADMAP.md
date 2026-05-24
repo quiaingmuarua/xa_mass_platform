@@ -916,6 +916,15 @@ Acceptance:
    occupancy truth after this phase.
 7. Existing lifecycle, retry, fault, and trace-observed tests pass.
 
+Current status:
+
+- occupancy and exclusive-lease wiring are complete on the production path.
+- source-scoped dispatch gates are not fully migrated: `WorkerSlot` has
+  `disabledSources`, and `WorkerRegistry` exposes gate mutation methods, but
+  worker state / command / node-group gate policy still writes through
+  `WorkerDispatchAvailabilityOwner`. Finish this as a separate WSR-5 gate
+  convergence slice rather than mixing it into Redis registry correctness fixes.
+
 ### WSR-6: Retire WorkerStorage Lock Model
 
 Goal: remove worker lock as a separate occupancy truth.
@@ -964,6 +973,16 @@ Prerequisite status:
   contract with group-local slot hashes, worker-id-to-group lookup,
   group/node route buckets, heartbeat deadline index, task occupancy indexes,
   and Redis `WATCH` / `MULTI` / `EXEC` over the group-local slot hash.
+- completed correction: slot mutation on a single `RedisWorkerRegistry`
+  instance is serialized around the connection-scoped `WATCH` / `MULTI`
+  sequence. This keeps the current first slice safe for multi-threaded engine
+  use while preserving cross-instance Redis concurrency semantics.
+- completed correction: expired heartbeat cleanup now marks the slot removing
+  before removing route-bucket membership, so `cleanupRemovedSlots` can reclaim
+  the group slot instead of leaving a permanent stale slot payload.
+- completed correction: Redis worker route bucket indexing now depends on the
+  shared `WorkerRouteBucketPolicy` runtime-api seam instead of a raw
+  `Function<WorkerMeta, Set<String>>`.
 
 Scope:
 
@@ -996,6 +1015,10 @@ Current verification:
   tests.
 - Concurrent reserve across independent Redis clients is covered and verifies
   capacity is not exceeded.
+- Concurrent reserve through one shared `RedisWorkerRegistry` instance is
+  covered and verifies capacity is not exceeded.
+- Stale heartbeat cleanup marks slots removing and the removed-slot cleanup path
+  reclaims the slot payload.
 
 ### WSR-8: Runtime Switch And Proof
 

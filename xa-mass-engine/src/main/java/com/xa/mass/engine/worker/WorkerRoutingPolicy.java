@@ -4,6 +4,7 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.WorkerMeta;
+import com.xa.mass.runtime.worker.WorkerRouteBucketPolicy;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -20,16 +21,14 @@ import java.util.Set;
  * attributes and worker attributes. It does not read arbitrary attributes and
  * does not change WorkerGroup capability truth.</p>
  */
-public interface WorkerRoutingPolicy {
+public interface WorkerRoutingPolicy extends WorkerRouteBucketPolicy {
 
-    String DEFAULT_ROUTE_BUCKET_KEY = "default";
+    String DEFAULT_ROUTE_BUCKET_KEY = WorkerRouteBucketPolicy.DEFAULT_ROUTE_BUCKET_KEY;
     List<String> STANDARD_APPROVED_ROUTE_ATTRIBUTES = List.of("business", "tenant", "region", "pool");
 
     Set<String> routeBucketKeysForTask(Task task);
 
     Set<String> routeBucketKeysForWorker(Worker worker);
-
-    Set<String> routeBucketKeysForWorkerMeta(WorkerMeta meta);
 
     static WorkerRoutingPolicy defaultPolicy() {
         return ApprovedAttributeRoutingPolicy.DEFAULT;

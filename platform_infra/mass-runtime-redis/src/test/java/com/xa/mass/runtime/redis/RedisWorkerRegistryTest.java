@@ -7,6 +7,7 @@ import com.xa.mass.runtime.worker.ReserveStatus;
 import com.xa.mass.runtime.worker.WorkerCandidateSamplingPolicy;
 import com.xa.mass.runtime.worker.WorkerMeta;
 import com.xa.mass.runtime.worker.WorkerRegistry;
+import com.xa.mass.engine.worker.WorkerRoutingPolicy;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -141,6 +142,49 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
     }
 
     @Test
+    void concurrentReserveOnSharedRedisRegistryInstanceDoesNotExceedCapacity() throws InterruptedException {
+        WorkerRegistry workerRegistry = createRegistry();
+        workerRegistry.upsertSlot(meta("worker-1", "group-a"), 4, Set.of(eventKey()));
+        int contenders = 16;
+        CountDownLatch ready = new CountDownLatch(contenders);
+        CountDownLatch start = new CountDownLatch(1);
+        AtomicInteger accepted = new AtomicInteger();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        List<Thread> threads = new ArrayList<>();
+        for (int index = 0; index < contenders; index++) {
+            int taskIndex = index;
+            Thread thread = new Thread(() -> {
+                ready.countDown();
+                try {
+                    start.await();
+                    if (workerRegistry.tryReserve("group-a", "worker-1", "shared-task-" + taskIndex, 1, 1000)
+                            .accepted()) {
+                        accepted.incrementAndGet();
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } catch (Throwable t) {
+                    failure.compareAndSet(null, t);
+                }
+            });
+            threads.add(thread);
+            thread.start();
+        }
+
+        ready.await();
+        start.countDown();
+        for (Thread thread : threads) {
+            thread.join();
+        }
+
+        if (failure.get() != null) {
+            fail(failure.get());
+        }
+        assertEquals(4, accepted.get());
+        assertEquals(4, workerRegistry.slot("group-a", "worker-1").orElseThrow().reservedCount());
+    }
+
+    @Test
     void namespacePrefixIsolatesWorkerRegistryKeys() {
         WorkerRegistry workerRegistry = createRegistry();
         workerRegistry.upsertSlot(meta("worker-1", "group-a"), 1, Set.of(eventKey()));
@@ -165,6 +209,28 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
     }
 
     @Test
+    void acceptsSharedWorkerRouteBucketPolicySeam() {
+        createRegistry();
+        registry.close();
+        registry = new RedisWorkerRegistry(
+                redisClient,
+                keyspace,
+                (context, workerIds, maxCandidateCount) -> workerIds.stream().limit(maxCandidateCount).toList(),
+                WorkerRoutingPolicy.approvedAttributePolicy(List.of("region")),
+                false
+        );
+        registry.upsertSlot(
+                new WorkerMeta("worker-1", "group-a", null, null, null,
+                        Map.of("region", "us"), null, null, 1_000, "ONLINE"),
+                1,
+                Set.of(eventKey())
+        );
+
+        assertEquals(List.of("worker-1"), registry.acquireCandidates("group-a", "attr:region=us", 10));
+    }
+
+
+    @Test
     void staleHeartbeatCandidateIsRejectedThenCleanedFromRouteBucket() {
         WorkerRegistry workerRegistry = createRegistry();
         workerRegistry.upsertSlot(meta("worker-stale", "group-a", 1_000), 1, Set.of(eventKey()));
@@ -178,6 +244,9 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
 
         assertEquals(1, cleanup.scanned());
         assertEquals(1, cleanup.removed());
+        assertTrue(workerRegistry.slot("group-a", "worker-stale").orElseThrow().removing());
+        assertEquals(1, workerRegistry.cleanupRemovedSlots("group-a", 10).removed());
+        assertTrue(workerRegistry.slot("group-a", "worker-stale").isEmpty());
         assertTrue(workerRegistry.acquireCandidates(
                 "group-a",
                 RedisWorkerRegistry.DEFAULT_ROUTE_BUCKET_KEY,
