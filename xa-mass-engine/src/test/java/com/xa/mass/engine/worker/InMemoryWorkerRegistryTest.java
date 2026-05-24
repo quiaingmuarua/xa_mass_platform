@@ -1,5 +1,9 @@
 package com.xa.mass.engine.worker;
 
+import com.xa.mass.runtime.contract.WorkerRegistryContractTest;
+import com.xa.mass.runtime.worker.WorkerCandidateSamplingPolicy;
+import com.xa.mass.runtime.worker.WorkerRegistry;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;

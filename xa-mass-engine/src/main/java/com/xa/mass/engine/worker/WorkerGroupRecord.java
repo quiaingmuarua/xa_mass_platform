@@ -1,5 +1,7 @@
 package com.xa.mass.engine.worker;
 
+import com.xa.mass.runtime.worker.EventKey;
+
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;

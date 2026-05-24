@@ -1,6 +1,7 @@
 package com.xa.mass.engine.worker;
 
 import com.xa.mass.base.model.Worker;
+import com.xa.mass.runtime.worker.EventKey;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

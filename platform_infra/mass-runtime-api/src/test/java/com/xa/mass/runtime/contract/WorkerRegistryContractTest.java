@@ -1,4 +1,10 @@
-package com.xa.mass.engine.worker;
+package com.xa.mass.runtime.contract;
+
+import com.xa.mass.runtime.worker.EventKey;
+import com.xa.mass.runtime.worker.ReserveStatus;
+import com.xa.mass.runtime.worker.WorkerCandidateSamplingPolicy;
+import com.xa.mass.runtime.worker.WorkerMeta;
+import com.xa.mass.runtime.worker.WorkerRegistry;
 
 import org.junit.jupiter.api.Test;
 
@@ -6,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import static com.xa.mass.engine.worker.WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.WORKER_COMMAND;
+import static com.xa.mass.runtime.worker.DispatchAvailabilitySource.WORKER_COMMAND;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;

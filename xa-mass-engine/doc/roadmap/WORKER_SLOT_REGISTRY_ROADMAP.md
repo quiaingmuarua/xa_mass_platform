@@ -5,11 +5,11 @@ Last updated: 2026-05-24
 Status: in progress. WSR-0 through WSR-6 have established the JVM
 `WorkerRegistry` foundation, moved production occupancy mutations to it,
 retired storage-owned worker lock truth, removed `WorkerLoadView` production
-wiring, and renamed the `WorkerManager` exclusive-lease facade away from
-lock-owned terminology. The next major slice is Redis registry foundation, but
-that requires a module-boundary decision because the current `WorkerRegistry`
-contract lives in `xa-mass-engine`. Verify current code before implementing
-each remaining phase.
+wiring, renamed the `WorkerManager` exclusive-lease facade away from
+lock-owned terminology, and moved the shared `WorkerRegistry` contract/value
+types to `platform_infra/mass-runtime-api`. The next major slice is the Redis
+registry foundation. Verify current code before implementing each remaining
+phase.
 
 ## Summary
 
@@ -802,6 +802,14 @@ Acceptance:
 3. Contract explicitly allows stale candidate indexes.
 4. Registry contract contains no hard-coded route/ranking/cleanup strategy.
 
+Implementation status:
+
+- completed for the current JVM slice; the shared `WorkerRegistry` contract,
+  slot/meta/value types, sampling/admission/cleanup policy seams, and abstract
+  `WorkerRegistryContractTest` now live in `platform_infra/mass-runtime-api`
+  so Redis can implement the same contract without depending on engine main
+  sources.
+
 ### WSR-3: In-Memory Group-Partitioned Registry
 
 Goal: implement the contract in memory using the same logical structure as
@@ -831,6 +839,12 @@ Acceptance:
 4. Stale bucket entries are correctness-neutral.
 5. `slotByWorkerId` works for non-prefix worker ids through `workerIdToGroupId`
    and validates stored metadata.
+
+Implementation status:
+
+- completed for the current JVM slice; `InMemoryWorkerRegistry` remains the
+  engine-owned memory implementation while its contract is shared from
+  `mass-runtime-api`.
 
 ### WSR-4: WorkerManager Identity / Index Convergence
 
@@ -950,6 +964,12 @@ Acceptance:
 
 Goal: prove Redis runtime can implement the same contract with group-partitioned
 hashes/indexes.
+
+Prerequisite status:
+
+- completed: Redis can now depend on `mass-runtime-api` for `WorkerRegistry`,
+  `WorkerSlot`, `WorkerMeta`, reserve outcomes, dispatch-gate sources, and the
+  shared contract test package instead of depending on `xa-mass-engine`.
 
 Scope:
 

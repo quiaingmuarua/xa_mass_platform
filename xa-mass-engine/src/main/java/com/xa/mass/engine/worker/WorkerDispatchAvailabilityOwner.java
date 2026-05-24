@@ -1,5 +1,7 @@
 package com.xa.mass.engine.worker;
 
+import com.xa.mass.runtime.worker.DispatchAvailabilitySource;
+
 import java.util.EnumSet;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -15,12 +17,6 @@ public final class WorkerDispatchAvailabilityOwner {
     public enum DispatchAvailability {
         ENABLED,
         DRAINING_DISABLED
-    }
-
-    public enum DispatchAvailabilitySource {
-        WORKER_STATE,
-        WORKER_COMMAND,
-        NODE_GROUP_BINDING
     }
 
     private final ConcurrentHashMap<String, EnumSet<DispatchAvailabilitySource>> disabledSourcesByWorkerId =

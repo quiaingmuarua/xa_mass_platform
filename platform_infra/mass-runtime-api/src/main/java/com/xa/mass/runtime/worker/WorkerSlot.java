@@ -1,6 +1,5 @@
-package com.xa.mass.engine.worker;
+package com.xa.mass.runtime.worker;
 
-import com.xa.mass.engine.worker.WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource;
 
 import java.util.EnumSet;
 import java.util.Map;

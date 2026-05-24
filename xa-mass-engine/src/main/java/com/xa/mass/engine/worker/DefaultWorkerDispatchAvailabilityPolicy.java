@@ -5,8 +5,8 @@ import com.xa.mass.engine.command.WorkerCommandRecord;
 
 import java.util.Locale;
 
-import static com.xa.mass.engine.worker.WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.WORKER_COMMAND;
-import static com.xa.mass.engine.worker.WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.WORKER_STATE;
+import static com.xa.mass.runtime.worker.DispatchAvailabilitySource.WORKER_COMMAND;
+import static com.xa.mass.runtime.worker.DispatchAvailabilitySource.WORKER_STATE;
 
 /**
  * Current default policy that translates bounded worker control state into the

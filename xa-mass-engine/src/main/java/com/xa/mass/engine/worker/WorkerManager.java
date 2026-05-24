@@ -9,6 +9,9 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.load.WorkerLoadSnapshot;
+import com.xa.mass.runtime.worker.EventKey;
+import com.xa.mass.runtime.worker.WorkerMeta;
+import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.storage.api.WorkerLookupStore;
 import com.xa.mass.storage.api.WorkerStorage;
 import org.slf4j.Logger;
@@ -24,7 +27,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
-import static com.xa.mass.engine.worker.WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.NODE_GROUP_BINDING;
+import static com.xa.mass.runtime.worker.DispatchAvailabilitySource.NODE_GROUP_BINDING;
 
 /**
  * Worker access facade for the active engine runtime.

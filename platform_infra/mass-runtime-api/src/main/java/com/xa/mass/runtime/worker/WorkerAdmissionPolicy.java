@@ -1,4 +1,4 @@
-package com.xa.mass.engine.worker;
+package com.xa.mass.runtime.worker;
 
 /**
  * Interprets pre-read slot evidence before WorkerRegistry performs atomic reserve.

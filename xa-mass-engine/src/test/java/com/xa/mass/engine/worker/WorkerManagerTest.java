@@ -7,6 +7,7 @@ import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
+import com.xa.mass.runtime.worker.EventKey;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,7 +18,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static com.xa.mass.engine.worker.WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.WORKER_STATE;
+import static com.xa.mass.runtime.worker.DispatchAvailabilitySource.WORKER_STATE;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class WorkerManagerTest {
@@ -356,7 +357,7 @@ public class WorkerManagerTest {
 
         manager.getDispatchAvailabilityOwner().disableForDraining(
                 "w-node-a",
-                WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.WORKER_STATE,
+                WORKER_STATE,
                 "state draining"
         );
         manager.setNodeGroupBindingDraining("node-a", "crawler", true);
@@ -367,7 +368,7 @@ public class WorkerManagerTest {
         assertFalse(manager.isWorkerDispatchEnabled(worker));
         manager.getDispatchAvailabilityOwner().clearSource(
                 "w-node-a",
-                WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.WORKER_STATE,
+                WORKER_STATE,
                 "state available"
         );
         assertTrue(manager.isWorkerDispatchEnabled(worker));

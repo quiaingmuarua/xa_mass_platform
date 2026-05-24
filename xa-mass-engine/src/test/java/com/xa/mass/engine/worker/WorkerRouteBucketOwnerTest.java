@@ -3,6 +3,7 @@ package com.xa.mass.engine.worker;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
+import com.xa.mass.runtime.worker.WorkerMeta;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -125,6 +126,11 @@ public class WorkerRouteBucketOwnerTest {
 
             @Override
             public Set<String> routeBucketKeysForWorker(Worker worker) {
+                return Set.of("tenant-a", "tenant-b");
+            }
+
+            @Override
+            public Set<String> routeBucketKeysForWorkerMeta(WorkerMeta meta) {
                 return Set.of("tenant-a", "tenant-b");
             }
         };

@@ -15,8 +15,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static com.xa.mass.runtime.worker.DispatchAvailabilitySource.WORKER_COMMAND;
 import static com.xa.mass.engine.testutil.WorkerRegistrationTestSupport.registerWorker;
-import static com.xa.mass.engine.worker.WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.WORKER_STATE;
+import static com.xa.mass.runtime.worker.DispatchAvailabilitySource.WORKER_STATE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -122,7 +123,7 @@ public class WorkerControlServiceTest {
 
         assertTrue(workerManager.getDispatchAvailabilityOwner().clearSource(
                 "worker-2",
-                WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.WORKER_COMMAND,
+                WORKER_COMMAND,
                 "command cleared"
         ));
         assertTrue(workerManager.isWorkerDispatchEnabled(worker));

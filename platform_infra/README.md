@@ -42,7 +42,9 @@ Current truth for this conservative first slice:
 - `mass-runtime-api` owns the shared runtime contracts and related value types:
   `TaskWorkRuntime` for queue/lease/retry/apply truth and
   `TaskResultRuntime` for stable-final result-read truth, repair staging,
-  task-local result sequence, and barriers
+  task-local result sequence, and barriers; it also owns the shared
+  `WorkerRegistry` / `WorkerSlot` contract and worker-runtime value types used
+  by memory and future Redis worker registry implementations
 - `mass-runtime-memory` owns the current in-memory runtime implementations and
   their focused tests
 - `mass-runtime-redis` now owns the Redis-backed runtime implementations plus
@@ -52,7 +54,8 @@ Current truth for this conservative first slice:
 - `mass-storage-memory` owns in-memory control-plane task/worker/rule storage plus the default QLExpress rule evaluator used by the current embedded SDK/server path and focused tests
 - `mass-storage-jdbc` owns the JDBC control-plane storage implementation plus H2/PostgreSQL dialect wiring, migrations, and residue-recovery helpers; engine manager assembly stays outside this module
 - worker runtime indexes such as `WorkerRegistrySnapshot`, `AdapterNodeRecord`,
-  `NodeGroupBindingRecord`, dispatch availability, load, and reachability are
+  `NodeGroupBindingRecord`, dispatch availability, registry slots, and
+  reachability are
   runtime read models, not control-plane DB CRUD state; if they need durable
   history or operator query, emit trace/events and let an async pipeline persist
   them outside the hot path

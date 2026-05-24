@@ -2,6 +2,8 @@ package com.xa.mass.engine.worker;
 
 import org.junit.jupiter.api.Test;
 
+import static com.xa.mass.runtime.worker.DispatchAvailabilitySource.NODE_GROUP_BINDING;
+import static com.xa.mass.runtime.worker.DispatchAvailabilitySource.WORKER_STATE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -18,7 +20,7 @@ public class WorkerDispatchAvailabilityOwnerTest {
 
         assertTrue(owner.disableForDraining(
                 "worker-1",
-                WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.WORKER_STATE,
+                WORKER_STATE,
                 "maintenance"
         ));
         assertFalse(owner.isDispatchEnabled("worker-1"));
@@ -27,13 +29,13 @@ public class WorkerDispatchAvailabilityOwnerTest {
 
         assertFalse(owner.disableForDraining(
                 "worker-1",
-                WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.WORKER_STATE,
+                WORKER_STATE,
                 "duplicate"
         ));
 
         assertTrue(owner.clearSource(
                 "worker-1",
-                WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.WORKER_STATE,
+                WORKER_STATE,
                 "ready"
         ));
         assertTrue(owner.isDispatchEnabled("worker-1"));
@@ -42,7 +44,7 @@ public class WorkerDispatchAvailabilityOwnerTest {
 
         assertFalse(owner.clearSource(
                 "worker-1",
-                WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.WORKER_STATE,
+                WORKER_STATE,
                 "duplicate"
         ));
     }
@@ -53,19 +55,19 @@ public class WorkerDispatchAvailabilityOwnerTest {
 
         assertTrue(owner.disableForDraining(
                 "worker-1",
-                WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.WORKER_STATE,
+                WORKER_STATE,
                 "state draining"
         ));
         assertTrue(owner.disableForDraining(
                 "worker-1",
-                WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.NODE_GROUP_BINDING,
+                NODE_GROUP_BINDING,
                 "node draining"
         ));
         assertFalse(owner.isDispatchEnabled("worker-1"));
 
         assertTrue(owner.clearSource(
                 "worker-1",
-                WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.NODE_GROUP_BINDING,
+                NODE_GROUP_BINDING,
                 "node available"
         ));
 
@@ -75,7 +77,7 @@ public class WorkerDispatchAvailabilityOwnerTest {
 
         assertTrue(owner.clearSource(
                 "worker-1",
-                WorkerDispatchAvailabilityOwner.DispatchAvailabilitySource.WORKER_STATE,
+                WORKER_STATE,
                 "worker available"
         ));
         assertTrue(owner.isDispatchEnabled("worker-1"));
