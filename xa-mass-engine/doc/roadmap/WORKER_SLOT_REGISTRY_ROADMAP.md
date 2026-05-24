@@ -56,6 +56,81 @@ runtime structure for Redis or multi-JVM scheduling. It creates row-oriented
 storage, full snapshot rebuilds, duplicate identity truth, and separate load /
 lock / gate truth.
 
+## Current Runtime Truth Inventory
+
+Current implementation truth before this roadmap starts:
+
+```text
+Worker identity / control-plane row
+  WorkerStorage
+  InMemoryWorkerStorage.workersById
+  InMemoryWorkerStorage.workerIdsByGroupId
+
+Current engine registration row copy
+  WorkerManager.workerRegistryRows
+  protected by WorkerManager.workerRegistryLock
+
+Current candidate read cache
+  WorkerRegistrySnapshot
+  WorkerCandidateIndex
+  WorkerRouteBucketOwner
+
+Current stage-2 dynamic admission state
+  WorkerLoadView / InMemoryWorkerLoadView
+  WorkerDispatchAvailabilityOwner
+  WorkerReachabilityView
+
+Current exclusivity residue
+  WorkerStorage.tryLockWorker / unlockWorker / lockedWorkers
+```
+
+Current caller classes to converge before replacement:
+
+```text
+candidate-source reads
+  WorkerManager.findWorkerCandidates
+  WorkerCandidateIndex
+  WorkerSchedulingCandidateEnumerator
+
+Stage-2 admission reads/writes
+  RuleBasedTaskWorkerMatchingStrategy
+  WorkerManager.tryReserveWorkerCapacity
+  WorkerManager.confirmWorkerReservation
+  WorkerManager.releaseWorkerReservation
+  WorkerManager.recordWorkFinal
+
+release/final convergence
+  WorkerDispatchResourceReleaser
+  SimpleTaskDispatchBinder
+  TaskResourceReleaseListener
+
+connect / presence evidence
+  WorkerReachabilityView
+  WorkerManager.updateOnlineStatus
+```
+
+Current policy seams:
+
+```text
+route key policy
+  WorkerRoutingPolicy
+
+bounded bucket selection
+  WorkerRouteBucketSelectionPolicy
+  RandomWorkerRouteBucketSelectionPolicy
+  future WorkerCandidateSamplingPolicy should absorb this role
+
+post-admission ranking
+  WorkerCandidateRanker
+  DefaultWorkerCandidateRanker
+
+polling cleanup/backoff pacing
+  PollingIdleBackoffPolicy
+```
+
+Do not extend these current residues as long-term owners. They are listed so
+later phases can replace or delete them intentionally.
+
 The target is a `WorkerRegistry` that is:
 
 - group-partitioned
@@ -186,6 +261,18 @@ First-slice policies may be intentionally simple:
 These simple policies are acceptable only because they sit behind explicit
 seams. Do not bake random sampling, route-key construction, cleanup intervals,
 or future penalty logic into the registry data structure.
+
+`WorkerRegistry.acquireCandidates(...)` uses the registry-bound
+`WorkerCandidateSamplingPolicy`. The policy is injected when the registry is
+constructed, not passed on every hot-path call. This keeps the call surface
+small while preventing sampling strategy from being hard-coded into the
+registry data structure.
+
+Admission policy must not become a second admission owner. It may interpret a
+pre-read slot view and explain why a worker is likely eligible, but the atomic
+decision is always made by `WorkerRegistry.tryReserve(...)`. `tryReserve(...)`
+must re-read/re-validate the current slot at CAS/Lua time before incrementing
+reserved permits.
 
 ## Worker Identity
 
@@ -419,6 +506,7 @@ WorkerRegistry
     tryReserve(groupId, workerId, taskId, permits, nowMillis) -> ReserveResult
     confirmReservation(groupId, workerId, taskId, permits) -> boolean
     releaseReservation(groupId, workerId, taskId, permits) -> void
+    recordWorkClaimed(groupId, workerId, taskId, permits) -> void
     recordWorkFinal(groupId, workerId, taskId, permits) -> void
 
   gates
@@ -452,10 +540,17 @@ confirmReservation
   decrements reservedCount
   increments activeLeaseCount
   increments task active worker indexes
+  returns false for a removing slot
 
 releaseReservation
   decrements reservedCount only
   used when reserved capacity is not dispatched or not claimed
+
+recordWorkClaimed
+  increments activeLeaseCount
+  increments task active worker indexes
+  used only when runtime work was claimed without a confirmed reservation
+  must not be the normal reservation path
 
 recordWorkFinal
   decrements activeLeaseCount
@@ -506,6 +601,12 @@ cleanupRemovedSlots
 
 Do not physically delete a slot with active or reserved occupancy. Active work
 must converge through result / expiry / terminal finality first.
+
+`confirmReservation(...)` against a removing slot returns false. The caller must
+follow the same foreground cleanup path and call idempotent
+`releaseReservation(...)`. A removing slot may still be visible so existing
+reserved/active counters can drain, but it must not accept new reserve or
+promote reserved work to active.
 
 `confirmReservation(...) == false` means the reservation was not confirmed. The
 caller should immediately call idempotent `releaseReservation(...)` from the
@@ -655,7 +756,8 @@ Scope:
    - adapter-node mismatch
 5. Define policy seams without implementing mature strategy:
    - `WorkerRoutingPolicy`
-   - `WorkerCandidateSamplingPolicy`
+   - `WorkerCandidateSamplingPolicy`, injected into `WorkerRegistry` at
+     construction time and used by `acquireCandidates(...)`
    - `WorkerAdmissionPolicy`
    - `WorkerCleanupPolicy`
    - optional `WorkerRankingPolicy`
@@ -779,13 +881,13 @@ Scope:
 
 1. Wire `tryReserveWorkerCapacity` to `WorkerRegistry.tryReserve`.
 2. Wire `confirmWorkerReservation`, `releaseWorkerReservation`, and
-   `recordWorkFinal` to registry occupancy operations.
+   `recordWorkClaimed` / `recordWorkFinal` to registry occupancy operations.
 3. Migrate release/final callers that currently reach `InMemoryWorkerLoadView`
    through `WorkerManager`, including:
    - `WorkerDispatchResourceReleaser.releaseReservations`
    - `WorkerDispatchResourceReleaser.releaseReservationsAndLocks`
    - `WorkerDispatchResourceReleaser.releaseReservationAndLock`
-   - `SimpleTaskDispatchBinder` confirm/final paths
+   - `SimpleTaskDispatchBinder` confirm / fallback-claimed / final paths
    - `TaskResourceReleaseListener` result / expiry / terminal paths
 4. Store source-scoped gates in `WorkerSlot`.
 5. Remove `InMemoryWorkerLoadView` when no caller remains.

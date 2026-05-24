@@ -28,6 +28,8 @@ public interface WorkerRoutingPolicy {
 
     Set<String> routeBucketKeysForWorker(Worker worker);
 
+    Set<String> routeBucketKeysForWorkerMeta(WorkerMeta meta);
+
     static WorkerRoutingPolicy defaultPolicy() {
         return ApprovedAttributeRoutingPolicy.DEFAULT;
     }
@@ -58,6 +60,16 @@ public interface WorkerRoutingPolicy {
         @Override
         public Set<String> routeBucketKeysForWorker(Worker worker) {
             Map<String, String> workerAttributes = approvedAttributes(worker == null ? null : worker.getAttributes());
+            return routeBucketKeysForWorkerAttributes(workerAttributes);
+        }
+
+        @Override
+        public Set<String> routeBucketKeysForWorkerMeta(WorkerMeta meta) {
+            Map<String, String> workerAttributes = approvedAttributes(meta == null ? null : meta.attributes());
+            return routeBucketKeysForWorkerAttributes(workerAttributes);
+        }
+
+        private Set<String> routeBucketKeysForWorkerAttributes(Map<String, String> workerAttributes) {
             if (workerAttributes.isEmpty()) {
                 return Set.of(DEFAULT_ROUTE_BUCKET_KEY);
             }

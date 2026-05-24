@@ -107,6 +107,8 @@ public class WorkerManagerTest {
 
     @Test
     void exposesObservedWorkerLoadView() {
+        manager.addWorker(worker("worker-load", "us"));
+
         manager.recordWorkClaimed("worker-load", "task-1");
         manager.recordWorkClaimed("worker-load", "task-1");
 
@@ -120,6 +122,8 @@ public class WorkerManagerTest {
 
     @Test
     void exposesWorkerLoadReservationLifecycle() {
+        manager.addWorker(worker("worker-reserve", "us"));
+
         assertTrue(manager.tryReserveWorkerCapacity("worker-reserve", "task-1"));
         assertFalse(manager.tryReserveWorkerCapacity("worker-reserve", "task-2"));
         assertEquals(1, manager.getWorkerLoad("worker-reserve").reservedCount());
@@ -637,6 +641,34 @@ public class WorkerManagerTest {
                         .toList());
         assertEquals(3,
                 manager.getWorkerRegistrySnapshot().group("crawler").orElseThrow().defaultMaxConcurrentWork());
+    }
+
+    @Test
+    void findWorkerCandidatesAcquiresCandidateIdsFromWorkerRegistry() {
+        InMemoryWorkerRegistry registry = new InMemoryWorkerRegistry((context, workerIds, maxCandidateCount) ->
+                workerIds.stream()
+                        .filter("w-registry-selected"::equals)
+                        .limit(maxCandidateCount)
+                        .toList());
+        WorkerManager registryBackedManager = new WorkerManager(
+                new InMemoryWorkerStorage(),
+                null,
+                null,
+                null,
+                null,
+                registry
+        );
+        registryBackedManager.upsertWorkerGroup(WorkerGroupRecord.builder("pool-a")
+                .projectCodes(List.of("demoApp"))
+                .build());
+        registryBackedManager.addWorker(worker("w-snapshot-visible", "pool-a"));
+        registryBackedManager.addWorker(worker("w-registry-selected", "pool-a"));
+
+        assertEquals(List.of("w-registry-selected"),
+                registryBackedManager.findWorkerCandidates(task("demoApp", selector("pool-a")), 10)
+                        .stream()
+                        .map(Worker::getWorkerId)
+                        .toList());
     }
 
     @Test

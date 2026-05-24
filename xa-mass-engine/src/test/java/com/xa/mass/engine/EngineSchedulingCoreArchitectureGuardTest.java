@@ -786,8 +786,58 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "WorkerCandidateIndex is Stage-1 group-capability narrowing only. "
                 + "It must not read worker-level compatibility capability, WorkerManager, "
                 + "storage, unbounded group worker enumeration, full scans, "
-                + "or Stage-2 runtime admission state:\n"
+                        + "or Stage-2 runtime admission state:\n"
                 + String.join("\n", violations));
+    }
+
+    @Test
+    void workerStorageAllWorkerScanStaysOutOfSchedulingHotPath() throws IOException {
+        Path engineRoot = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine");
+        Path workerManagerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker/WorkerManager.java");
+        Pattern allWorkerScan = Pattern.compile("\\.getAllWorkers\\s*\\(");
+
+        List<String> violations = new ArrayList<>();
+        for (Path path : javaSourceFiles(engineRoot)) {
+            if (path.equals(workerManagerPath)) {
+                continue;
+            }
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            if (allWorkerScan.matcher(source).find()) {
+                violations.add(path + " calls WorkerStorage.getAllWorkers() outside WorkerManager convergence boundary");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "WorkerStorage.getAllWorkers() is a current bootstrap/refresh residue, not a scheduling hot-path "
+                        + "candidate source. New scheduling code must use WorkerManager/WorkerCandidateIndex "
+                        + "until WorkerRegistry owns bounded acquisition:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void workerManagerCandidateReadPathDoesNotEnterRegistryLock() throws IOException {
+        Path workerManagerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker/WorkerManager.java");
+        String source = Files.readString(workerManagerPath, StandardCharsets.UTF_8);
+        Map<String, String> guardedMethods = Map.of(
+                "findWorkerCandidates", "public List<Worker> findWorkerCandidates",
+                "getWorkerCandidateIndex", "public WorkerCandidateIndex getWorkerCandidateIndex"
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Map.Entry<String, String> method : guardedMethods.entrySet()) {
+            String body = sourceMethod(source, method.getValue());
+            if (Pattern.compile("\\bworkerRegistryLock\\b").matcher(body).find()) {
+                violations.add(workerManagerPath + "#" + method.getKey() + " enters workerRegistryLock");
+            }
+            if (Pattern.compile("\\bsynchronized\\s*\\(").matcher(body).find()) {
+                violations.add(workerManagerPath + "#" + method.getKey() + " enters synchronized block");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Worker candidate read path must not take WorkerManager's registry lock. "
+                        + "WSR convergence allows stale/bounded candidate indexes and validates at Stage-2:\n"
+                        + String.join("\n", violations));
     }
 
     @Test
@@ -1033,6 +1083,62 @@ class EngineSchedulingCoreArchitectureGuardTest {
         assertTrue(violations.isEmpty(),
                 "WorkerRouteBucketOwner is only a bounded Stage-1 candidate bucket. It must not "
                         + "own reachability, dispatch gates, load, locks, or task result state:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void workerRouteBucketOwnerKeepsRoutingAndSamplingBehindPolicySeams() throws IOException {
+        Path routeBucketOwnerPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/worker/WorkerRouteBucketOwner.java");
+        String source = Files.readString(routeBucketOwnerPath, StandardCharsets.UTF_8);
+
+        List<String> violations = new ArrayList<>();
+        if (!Pattern.compile("\\bWorkerRoutingPolicy\\b").matcher(source).find()) {
+            violations.add(routeBucketOwnerPath + " does not consume WorkerRoutingPolicy");
+        }
+        if (!Pattern.compile("\\bWorkerRouteBucketSelectionPolicy\\b").matcher(source).find()) {
+            violations.add(routeBucketOwnerPath + " does not consume WorkerRouteBucketSelectionPolicy");
+        }
+        for (String forbidden : List.of(
+                "ThreadLocalRandom",
+                "Random(",
+                "candidateScore",
+                "candidateRank",
+                "WorkerCandidateRanker"
+        )) {
+            if (source.contains(forbidden)) {
+                violations.add(routeBucketOwnerPath + " hard-codes route bucket policy detail: " + forbidden);
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Route bucket membership/acquisition may use simple policies, but routing, sampling, "
+                        + "and ranking strategy must stay behind explicit policy seams:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void workerManagerDoesNotWriteOccupancyThroughWorkerLoadView() throws IOException {
+        Path workerManagerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker/WorkerManager.java");
+        String source = Files.readString(workerManagerPath, StandardCharsets.UTF_8);
+
+        List<String> violations = new ArrayList<>();
+        for (String forbidden : List.of(
+                ".tryReserveCapacity(",
+                ".confirmReservation(",
+                ".releaseReservation(",
+                ".recordWorkClaimed(",
+                ".recordWorkFinal(",
+                ".recordDeclaredCapacity("
+        )) {
+            if (source.contains("workerLoadView" + forbidden)) {
+                violations.add(workerManagerPath + " writes occupancy through WorkerLoadView: " + forbidden);
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "WorkerRegistry is the production worker occupancy mutation owner; WorkerLoadView "
+                        + "must not receive WorkerManager reservation/active writes:\n"
                         + String.join("\n", violations));
     }
 

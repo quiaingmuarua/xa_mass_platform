@@ -17,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -43,6 +44,7 @@ public class WorkerManager implements WorkerLookupStore {
     private final WorkerLoadView workerLoadView;
     private final WorkerDispatchAvailabilityOwner dispatchAvailabilityOwner;
     private final WorkerCapabilityAuthority capabilityAuthority;
+    private final WorkerRegistry workerRegistry;
     private final Object workerRegistryLock = new Object();
     private final LinkedHashMap<String, Worker> workerRegistryRows = new LinkedHashMap<>();
     private final LinkedHashMap<String, WorkerGroupRecord> workerGroupsById = new LinkedHashMap<>();
@@ -92,6 +94,16 @@ public class WorkerManager implements WorkerLookupStore {
                   WorkerLoadView workerLoadView,
                   WorkerCapabilityAuthority capabilityAuthority,
                   WorkerDispatchAvailabilityOwner dispatchAvailabilityOwner) {
+        this(workerStorage, reachabilityView, workerLoadView, capabilityAuthority, dispatchAvailabilityOwner,
+                new InMemoryWorkerRegistry());
+    }
+
+    WorkerManager(WorkerStorage workerStorage,
+                  WorkerReachabilityView reachabilityView,
+                  WorkerLoadView workerLoadView,
+                  WorkerCapabilityAuthority capabilityAuthority,
+                  WorkerDispatchAvailabilityOwner dispatchAvailabilityOwner,
+                  WorkerRegistry workerRegistry) {
         this.workerStorage = workerStorage;
         this.reachabilityView = reachabilityView != null ? reachabilityView : WorkerReachabilityView.permissive();
         this.workerLoadView = workerLoadView != null ? workerLoadView : new InMemoryWorkerLoadView();
@@ -99,8 +111,10 @@ public class WorkerManager implements WorkerLookupStore {
                 ? dispatchAvailabilityOwner
                 : new WorkerDispatchAvailabilityOwner();
         this.capabilityAuthority = capabilityAuthority != null ? capabilityAuthority : new WorkerCapabilityAuthority();
+        this.workerRegistry = workerRegistry != null ? workerRegistry : new InMemoryWorkerRegistry();
         for (Worker worker : workerStorage.getAllWorkers()) {
             putRegistryRow(worker);
+            upsertWorkerRegistrySlot(worker);
         }
         publishWorkerRegistrySnapshot(composeWorkerRegistrySnapshot());
     }
@@ -111,6 +125,7 @@ public class WorkerManager implements WorkerLookupStore {
         syncWorkerCapacity(registrationRow);
         synchronized (workerRegistryLock) {
             putRegistryRow(registrationRow);
+            upsertWorkerRegistrySlot(registrationRow);
             publishWorkerRegistrySnapshot();
         }
         applyNodeGroupBindingDispatchGate(registrationRow);
@@ -133,6 +148,7 @@ public class WorkerManager implements WorkerLookupStore {
             syncWorkerCapacity(registrationRow);
             synchronized (workerRegistryLock) {
                 putRegistryRow(registrationRow);
+                upsertWorkerRegistrySlot(registrationRow);
                 publishWorkerRegistrySnapshot();
             }
             applyNodeGroupBindingDispatchGate(registrationRow);
@@ -141,10 +157,12 @@ public class WorkerManager implements WorkerLookupStore {
     }
 
     public boolean deleteWorker(String workerId) {
+        Worker existing = getWorker(workerId);
         boolean deleted = workerStorage.deleteWorker(workerId);
         if (deleted) {
             synchronized (workerRegistryLock) {
                 workerRegistryRows.remove(normalizeNullable(workerId));
+                markWorkerRegistrySlotRemoving(existing, "worker deleted");
                 publishWorkerRegistrySnapshot();
             }
         }
@@ -187,6 +205,9 @@ public class WorkerManager implements WorkerLookupStore {
         synchronized (workerRegistryLock) {
             WorkerGroupRecord removed = workerGroupsById.remove(normalizedGroupId);
             if (removed != null) {
+                for (String workerId : workerRegistrySnapshot.workerIdsByGroupId(normalizedGroupId)) {
+                    workerRegistry.markSlotRemoving(normalizedGroupId, workerId, "worker group deleted");
+                }
                 publishWorkerRegistrySnapshot();
                 return true;
             }
@@ -397,7 +418,7 @@ public class WorkerManager implements WorkerLookupStore {
     }
 
     public WorkerCandidateIndex getWorkerCandidateIndex() {
-        return new WorkerCandidateIndex(workerRegistrySnapshot, workerRouteBucketOwner);
+        return new WorkerCandidateIndex(workerRegistrySnapshot, workerRouteBucketOwner, workerRegistry);
     }
 
     public void refreshWorkerRegistrySnapshot() {
@@ -405,6 +426,7 @@ public class WorkerManager implements WorkerLookupStore {
             workerRegistryRows.clear();
             for (Worker worker : workerStorage.getAllWorkers()) {
                 putRegistryRow(worker);
+                upsertWorkerRegistrySlot(worker);
             }
             publishWorkerRegistrySnapshot();
         }
@@ -419,6 +441,7 @@ public class WorkerManager implements WorkerLookupStore {
             );
             if (result.snapshotChanged() && result.snapshot() != null) {
                 publishWorkerRegistrySnapshot(result.snapshot());
+                syncWorkerRegistrySlots(result.snapshot().workers());
             }
             return result;
         }
@@ -486,33 +509,51 @@ public class WorkerManager implements WorkerLookupStore {
     }
 
     public WorkerLoadSnapshot getWorkerLoad(String workerId) {
-        syncWorkerCapacity(workerId);
-        return workerLoadView.snapshot(workerId);
+        return workerRegistry.slotByWorkerId(workerId)
+                .map(slot -> new WorkerLoadSnapshot(
+                        slot.workerId(),
+                        slot.activeLeaseCount(),
+                        slot.reservedCount(),
+                        slot.declaredCapacity()
+                ))
+                .orElseGet(() -> WorkerLoadSnapshot.empty(workerId));
     }
 
     public int getActiveWorkerCountForTask(String taskId) {
-        return workerLoadView.getActiveWorkerCountForTask(taskId);
+        return workerRegistry.activeWorkerCountForTask(taskId);
     }
 
     public boolean tryReserveWorkerCapacity(String workerId, String taskId) {
-        syncWorkerCapacity(workerId);
-        return workerLoadView.tryReserveCapacity(workerId, taskId);
+        return workerRegistry.slotByWorkerId(workerId)
+                .map(slot -> workerRegistry.tryReserve(
+                        slot.groupId(),
+                        slot.workerId(),
+                        taskId,
+                        1,
+                        System.currentTimeMillis()
+                ).accepted())
+                .orElse(false);
     }
 
     public boolean confirmWorkerReservation(String workerId, String taskId) {
-        return workerLoadView.confirmReservation(workerId, taskId);
+        return workerRegistry.slotByWorkerId(workerId)
+                .map(slot -> workerRegistry.confirmReservation(slot.groupId(), slot.workerId(), taskId, 1))
+                .orElse(false);
     }
 
     public void releaseWorkerReservation(String workerId, String taskId) {
-        workerLoadView.releaseReservation(workerId, taskId);
+        workerRegistry.slotByWorkerId(workerId)
+                .ifPresent(slot -> workerRegistry.releaseReservation(slot.groupId(), slot.workerId(), taskId, 1));
     }
 
     public void recordWorkClaimed(String workerId, String taskId) {
-        workerLoadView.recordWorkClaimed(workerId, taskId);
+        workerRegistry.slotByWorkerId(workerId)
+                .ifPresent(slot -> workerRegistry.recordWorkClaimed(slot.groupId(), slot.workerId(), taskId, 1));
     }
 
     public void recordWorkFinal(String workerId, String taskId) {
-        workerLoadView.recordWorkFinal(workerId, taskId);
+        workerRegistry.slotByWorkerId(workerId)
+                .ifPresent(slot -> workerRegistry.recordWorkFinal(slot.groupId(), slot.workerId(), taskId, 1));
     }
 
     private void syncWorkerCapacity(String workerId) {
@@ -526,7 +567,6 @@ public class WorkerManager implements WorkerLookupStore {
         if (worker == null) {
             return;
         }
-        workerLoadView.recordDeclaredCapacity(worker.getWorkerId(), worker.getMaxConcurrentWork());
     }
 
     private void putRegistryRow(Worker worker) {
@@ -534,6 +574,59 @@ public class WorkerManager implements WorkerLookupStore {
         if (workerId != null) {
             workerRegistryRows.put(workerId, worker);
         }
+    }
+
+    private void syncWorkerRegistrySlots(Iterable<Worker> workers) {
+        if (workers == null) {
+            return;
+        }
+        for (Worker worker : workers) {
+            upsertWorkerRegistrySlot(worker);
+        }
+    }
+
+    private void upsertWorkerRegistrySlot(Worker worker) {
+        WorkerMeta meta = workerMeta(worker);
+        if (meta == null) {
+            return;
+        }
+        workerRegistry.upsertSlot(meta, worker.getMaxConcurrentWork(), eventBindingCeilingFor(meta.groupId()));
+    }
+
+    private void markWorkerRegistrySlotRemoving(Worker worker, String reason) {
+        WorkerMeta meta = workerMeta(worker);
+        if (meta == null) {
+            return;
+        }
+        workerRegistry.markSlotRemoving(meta.groupId(), meta.workerId(), reason);
+    }
+
+    private WorkerMeta workerMeta(Worker worker) {
+        String workerId = worker == null ? null : normalizeNullable(worker.getWorkerId());
+        String groupId = worker == null ? null : normalizeNullable(worker.getWorkerGroupId());
+        if (workerId == null || groupId == null) {
+            return null;
+        }
+        long lastHeartbeatMillis = worker.getLastHeartbeat() == null
+                ? 0L
+                : worker.getLastHeartbeat().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        return new WorkerMeta(
+                workerId,
+                groupId,
+                normalizeNullable(worker.getAdapterNodeId()),
+                normalizeNullable(worker.getAdapterId()),
+                normalizeNullable(worker.getOnlineStrategy()),
+                worker.getAttributes(),
+                normalizeNullable(worker.getAgentVersion()),
+                null,
+                lastHeartbeatMillis,
+                worker.getStatus() == null ? null : worker.getStatus().name()
+        );
+    }
+
+    private Set<EventKey> eventBindingCeilingFor(String groupId) {
+        WorkerGroupRecord group = workerGroupsById.get(normalizeNullable(groupId));
+        return group == null ? Set.of() : group.eventKeys();
     }
 
     private void publishWorkerRegistrySnapshot() {

@@ -10,7 +10,6 @@ import com.xa.mass.engine.worker.EventBinding;
 import com.xa.mass.engine.worker.WorkerGroupRecord;
 import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.engine.worker.WorkerReachabilityState;
-import com.xa.mass.engine.load.InMemoryWorkerLoadView;
 import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.storage.rule.RuleDefinition;
@@ -495,13 +494,9 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
 
     @Test
     void ranksRulePassedCandidatesByObservedLoadBeforeLockAcquisition() {
-        InMemoryWorkerLoadView loadView = new InMemoryWorkerLoadView();
-        loadView.recordWorkClaimed("worker-high-load", "existing-task-1");
-        loadView.recordWorkClaimed("worker-high-load", "existing-task-2");
         WorkerManager workerManager = new WorkerManager(
                 new InMemoryWorkerStorage(),
-                workerId -> WorkerReachabilityState.ONLINE,
-                loadView
+                workerId -> WorkerReachabilityState.ONLINE
         );
         RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
         AssignmentRecordService recordService = new AssignmentRecordService();
@@ -523,6 +518,8 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         Worker lowLoadWorker = worker("worker-low-load", "pool-b");
         registerWorker(workerManager, highLoadWorker);
         registerWorker(workerManager, lowLoadWorker);
+        workerManager.recordWorkClaimed("worker-high-load", "existing-task-1");
+        workerManager.recordWorkClaimed("worker-high-load", "existing-task-2");
 
         List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(task, 1);
 
@@ -537,12 +534,9 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
 
     @Test
     void rejectsRankedCandidateWhenWorkerCapacityCannotBeReserved() {
-        InMemoryWorkerLoadView loadView = new InMemoryWorkerLoadView();
-        loadView.recordWorkClaimed("worker-at-capacity", "existing-task");
         WorkerManager workerManager = new WorkerManager(
                 new InMemoryWorkerStorage(),
-                workerId -> WorkerReachabilityState.ONLINE,
-                loadView
+                workerId -> WorkerReachabilityState.ONLINE
         );
         RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
         AssignmentRecordService recordService = new AssignmentRecordService();
@@ -561,12 +555,13 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         task.setStatus(TaskStatus.READY);
 
         registerWorker(workerManager, worker("worker-at-capacity", "pool-a"));
+        workerManager.recordWorkClaimed("worker-at-capacity", "existing-task");
 
         List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(task, 1);
 
         assertTrue(matched.isEmpty());
         assertFalse(workerManager.isLocked("worker-at-capacity"));
-        assertEquals(0, loadView.getReservedCount("worker-at-capacity"));
+        assertEquals(0, workerManager.getWorkerLoad("worker-at-capacity").reservedCount());
         AssignmentRecord rejectedRecord = findRecord(recordService, "task-capacity", "worker-at-capacity");
         assertEquals(AssignmentResult.QUOTA_EXCEEDED, rejectedRecord.getResult());
         assertEquals("worker capacity unavailable after candidate ranking", rejectedRecord.getReason());
@@ -574,11 +569,9 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
 
     @Test
     void releasesReservationWhenLockConflictHappensAfterRanking() {
-        InMemoryWorkerLoadView loadView = new InMemoryWorkerLoadView();
         WorkerManager workerManager = new WorkerManager(
                 new InMemoryWorkerStorage(),
-                workerId -> WorkerReachabilityState.ONLINE,
-                loadView
+                workerId -> WorkerReachabilityState.ONLINE
         ) {
             @Override
             public boolean tryLockWorker(String workerId) {
@@ -606,7 +599,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(task, 1);
 
         assertTrue(matched.isEmpty());
-        assertEquals(0, loadView.getReservedCount("worker-conflict"));
+        assertEquals(0, workerManager.getWorkerLoad("worker-conflict").reservedCount());
         AssignmentRecord rejectedRecord = findRecord(recordService, "task-lock-conflict", "worker-conflict");
         assertEquals(AssignmentResult.CONFLICT, rejectedRecord.getResult());
         assertEquals("worker lock conflict after candidate ranking", rejectedRecord.getReason());
@@ -614,11 +607,9 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
 
     @Test
     void backgroundTaskReservesCapacityWithoutExclusiveWorkerLock() {
-        InMemoryWorkerLoadView loadView = new InMemoryWorkerLoadView();
         WorkerManager workerManager = new WorkerManager(
                 new InMemoryWorkerStorage(),
-                workerId -> WorkerReachabilityState.ONLINE,
-                loadView
+                workerId -> WorkerReachabilityState.ONLINE
         );
         RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
         AssignmentRecordService recordService = new AssignmentRecordService();
@@ -646,7 +637,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         assertEquals(1, secondMatch.size());
         assertTrue(thirdMatch.isEmpty());
         assertFalse(workerManager.isLocked("worker-shared"));
-        assertEquals(2, loadView.getReservedCount("worker-shared"));
+        assertEquals(2, workerManager.getWorkerLoad("worker-shared").reservedCount());
 
         AssignmentRecord acceptedRecord = findRecord(recordService, "task-background-1", "worker-shared");
         assertEquals(AssignmentResult.SUCCESS, acceptedRecord.getResult());
@@ -747,6 +738,11 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         public List<Worker> findWorkerCandidates(Task task, int maxCandidateCount) {
             lastMaxCandidateCount = maxCandidateCount;
             return candidates;
+        }
+
+        @Override
+        public boolean tryReserveWorkerCapacity(String workerId, String taskId) {
+            return true;
         }
     }
 }
