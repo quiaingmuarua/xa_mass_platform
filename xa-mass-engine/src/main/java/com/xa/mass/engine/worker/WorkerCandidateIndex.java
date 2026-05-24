@@ -22,29 +22,11 @@ import java.util.Set;
 public final class WorkerCandidateIndex {
 
     private final WorkerRegistrySnapshot snapshot;
-    private final WorkerRouteBucketOwner routeBucketOwner;
     private final WorkerRegistry workerRegistry;
 
-    public WorkerCandidateIndex(WorkerRegistrySnapshot snapshot) {
-        this(snapshot, WorkerRouteBucketOwner.fromSnapshot(snapshot));
-    }
-
-    public WorkerCandidateIndex(WorkerRegistrySnapshot snapshot, WorkerRouteBucketOwner routeBucketOwner) {
-        this(snapshot, routeBucketOwner, null);
-    }
-
     public WorkerCandidateIndex(WorkerRegistrySnapshot snapshot, WorkerRegistry workerRegistry) {
-        this(snapshot, null, workerRegistry);
-    }
-
-    public WorkerCandidateIndex(WorkerRegistrySnapshot snapshot,
-                                WorkerRouteBucketOwner routeBucketOwner,
-                                WorkerRegistry workerRegistry) {
         this.snapshot = Objects.requireNonNull(snapshot, "snapshot");
-        this.routeBucketOwner = routeBucketOwner != null
-                ? routeBucketOwner
-                : WorkerRouteBucketOwner.fromSnapshot(snapshot);
-        this.workerRegistry = workerRegistry;
+        this.workerRegistry = Objects.requireNonNull(workerRegistry, "workerRegistry");
     }
 
     public List<Worker> workersFor(Task task) {
@@ -122,9 +104,6 @@ public final class WorkerCandidateIndex {
     }
 
     private List<String> acquireWorkerIds(String groupId, String adapterNodeId, Task task, int maxCandidateCount) {
-        if (workerRegistry == null) {
-            return routeBucketOwner.acquireForTask(groupId, adapterNodeId, task, maxCandidateCount);
-        }
         Set<String> routeBucketKeys = WorkerRoutingPolicy.defaultPolicy().routeBucketKeysForTask(task);
         if (routeBucketKeys == null || routeBucketKeys.isEmpty()) {
             routeBucketKeys = Set.of(WorkerRoutingPolicy.DEFAULT_ROUTE_BUCKET_KEY);

@@ -1053,11 +1053,10 @@ Goal: delete old paths once the new registry is proven.
 
 Current status:
 
-- started: production `WorkerManager` no longer owns or publishes a
-  `WorkerRouteBucketOwner` membership copy; `WorkerCandidateIndex` acquires
-  candidates from `WorkerRegistry` in the mainline. `WorkerRouteBucketOwner`
-  remains as isolated snapshot-backed residue until its tests/callers are
-  retired.
+- completed for route membership: production `WorkerManager` no longer owns or
+  publishes a route bucket membership copy, `WorkerCandidateIndex` acquires
+  candidates from `WorkerRegistry`, and the snapshot-backed
+  `WorkerRouteBucketOwner` residue has been removed.
 
 Scope:
 

@@ -12,7 +12,6 @@ import com.xa.mass.engine.worker.WorkerControlServiceTest;
 import com.xa.mass.engine.worker.WorkerDispatchAvailabilityOwnerTest;
 import com.xa.mass.engine.worker.WorkerManagerTest;
 import com.xa.mass.engine.worker.WorkerRegistrySnapshotTest;
-import com.xa.mass.engine.worker.WorkerRouteBucketOwnerTest;
 import org.junit.platform.suite.api.SelectClasses;
 import org.junit.platform.suite.api.Suite;
 
@@ -32,7 +31,6 @@ import org.junit.platform.suite.api.Suite;
         WorkerManagerTest.class,
         WorkerDispatchAvailabilityOwnerTest.class,
         WorkerCandidateIndexTest.class,
-        WorkerRouteBucketOwnerTest.class,
         WorkerCapabilityAuthorityTest.class,
         WorkerControlServiceTest.class,
         WorkerRegistrySnapshotTest.class,

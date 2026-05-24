@@ -3,10 +3,12 @@ package com.xa.mass.engine.worker;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
+import com.xa.mass.runtime.worker.WorkerMeta;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -15,7 +17,7 @@ public class WorkerCandidateIndexTest {
 
     @Test
     void groupSelectorLookupReturnsWorkersFromMatchingGroupsOnly() {
-        WorkerCandidateIndex index = new WorkerCandidateIndex(WorkerRegistrySnapshot.from(List.of(
+        WorkerCandidateIndex index = index(WorkerRegistrySnapshot.from(List.of(
                 group("crawler-us", "node-a", EventBinding.of("crawler.fetch", List.of("demoApp"))),
                 group("crawler-eu", "node-a", EventBinding.of("crawler.fetch", List.of("euApp"))),
                 group("export", "node-b", EventBinding.of("report.export", List.of("demoApp")))
@@ -32,7 +34,7 @@ public class WorkerCandidateIndexTest {
 
     @Test
     void adapterNodeCanHostMultipleGroupsWithoutMergingCapabilities() {
-        WorkerCandidateIndex index = new WorkerCandidateIndex(WorkerRegistrySnapshot.from(List.of(
+        WorkerCandidateIndex index = index(WorkerRegistrySnapshot.from(List.of(
                 group("crawler", "adapter-node-1", EventBinding.of("crawler.fetch", List.of("demoApp"))),
                 group("export", "adapter-node-1", EventBinding.of("report.export", List.of("demoApp")))
         ), List.of(
@@ -48,7 +50,7 @@ public class WorkerCandidateIndexTest {
 
     @Test
     void targetWorkerLookupUsesDirectWorkerAndGroupCapabilityCheck() {
-        WorkerCandidateIndex index = new WorkerCandidateIndex(WorkerRegistrySnapshot.from(List.of(
+        WorkerCandidateIndex index = index(WorkerRegistrySnapshot.from(List.of(
                 group("crawler", "node-a", EventBinding.of("crawler.fetch", List.of("demoApp"))),
                 group("export", "node-b", EventBinding.of("report.export", List.of("demoApp")))
         ), List.of(
@@ -64,7 +66,7 @@ public class WorkerCandidateIndexTest {
 
     @Test
     void targetWorkerLookupStillRespectsAdapterNodePlacement() {
-        WorkerCandidateIndex index = new WorkerCandidateIndex(WorkerRegistrySnapshot.from(List.of(
+        WorkerCandidateIndex index = index(WorkerRegistrySnapshot.from(List.of(
                 group("crawler", "node-a", EventBinding.of("crawler.fetch", List.of("demoApp")))
         ), List.of(
                 worker("worker-node-a", "crawler", "node-a", Map.of()),
@@ -83,7 +85,7 @@ public class WorkerCandidateIndexTest {
 
     @Test
     void targetWorkerWithoutRegisteredGroupIsNotAStageOneCandidate() {
-        WorkerCandidateIndex index = new WorkerCandidateIndex(WorkerRegistrySnapshot.from(List.of(
+        WorkerCandidateIndex index = index(WorkerRegistrySnapshot.from(List.of(
                 group("crawler", "node-a", EventBinding.of("crawler.fetch", List.of("demoApp")))
         ), List.of(
                 worker("worker-without-group", null),
@@ -96,7 +98,7 @@ public class WorkerCandidateIndexTest {
 
     @Test
     void groupSelectorTasksUseSelectedGroup() {
-        WorkerCandidateIndex index = new WorkerCandidateIndex(WorkerRegistrySnapshot.from(List.of(
+        WorkerCandidateIndex index = index(WorkerRegistrySnapshot.from(List.of(
                 WorkerGroupRecord.builder("crawler")
                         .projectCodes(List.of("demoApp"))
                         .build(),
@@ -117,7 +119,7 @@ public class WorkerCandidateIndexTest {
 
     @Test
     void nonTargetedGroupLookupUsesBoundedRouteBucketAcquisition() {
-        WorkerCandidateIndex index = new WorkerCandidateIndex(WorkerRegistrySnapshot.from(List.of(
+        WorkerCandidateIndex index = index(WorkerRegistrySnapshot.from(List.of(
                 group("crawler", "node-a", EventBinding.of("crawler.fetch", List.of("demoApp")))
         ), List.of(
                 worker("worker-1", "crawler"),
@@ -132,7 +134,7 @@ public class WorkerCandidateIndexTest {
 
     @Test
     void targetWorkerLookupBypassesRouteBucketLimitButStillChecksGroupCapability() {
-        WorkerCandidateIndex index = new WorkerCandidateIndex(WorkerRegistrySnapshot.from(List.of(
+        WorkerCandidateIndex index = index(WorkerRegistrySnapshot.from(List.of(
                 group("crawler", "node-a", EventBinding.of("crawler.fetch", List.of("demoApp"))),
                 group("export", "node-a", EventBinding.of("report.export", List.of("demoApp")))
         ), List.of(
@@ -149,7 +151,7 @@ public class WorkerCandidateIndexTest {
 
     @Test
     void routeAttributesNarrowNonTargetedEventLookupThroughApprovedBucket() {
-        WorkerCandidateIndex index = new WorkerCandidateIndex(WorkerRegistrySnapshot.from(List.of(
+        WorkerCandidateIndex index = index(WorkerRegistrySnapshot.from(List.of(
                 group("crawler", "node-a", EventBinding.of("crawler.fetch", List.of("demoApp")))
         ), List.of(
                 worker("worker-us", "crawler", Map.of("region", "us")),
@@ -165,6 +167,28 @@ public class WorkerCandidateIndexTest {
 
     private static List<String> workerIds(List<Worker> workers) {
         return workers.stream().map(Worker::getWorkerId).toList();
+    }
+
+    private static WorkerCandidateIndex index(WorkerRegistrySnapshot snapshot) {
+        InMemoryWorkerRegistry registry = new InMemoryWorkerRegistry();
+        for (Worker worker : snapshot.workers()) {
+            if (worker.getWorkerGroupId() == null || snapshot.group(worker.getWorkerGroupId()).isEmpty()) {
+                continue;
+            }
+            registry.upsertSlot(new WorkerMeta(
+                    worker.getWorkerId(),
+                    worker.getWorkerGroupId(),
+                    worker.getAdapterNodeId(),
+                    worker.getAdapterId(),
+                    worker.getOnlineStrategy(),
+                    worker.getAttributes(),
+                    worker.getAgentVersion(),
+                    null,
+                    1_000L,
+                    worker.getStatus() == null ? null : worker.getStatus().name()
+            ), worker.getMaxConcurrentWork(), Set.of());
+        }
+        return new WorkerCandidateIndex(snapshot, registry);
     }
 
     private static Task task(String project, String eventCode, String targetWorkerId, String... groupIds) {

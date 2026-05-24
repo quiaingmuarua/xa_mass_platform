@@ -779,14 +779,17 @@ class EngineSchedulingCoreArchitectureGuardTest {
                         + forbiddenPattern.getKey());
             }
         }
-        if (!Pattern.compile("\\bWorkerRouteBucketOwner\\b").matcher(source).find()) {
-            violations.add(indexPath + " does not use WorkerRouteBucketOwner for bounded acquisition");
+        if (!Pattern.compile("\\bWorkerRegistry\\b").matcher(source).find()) {
+            violations.add(indexPath + " does not use WorkerRegistry for bounded acquisition");
+        }
+        if (Pattern.compile("\\bWorkerRouteBucketOwner\\b").matcher(source).find()) {
+            violations.add(indexPath + " still references removed WorkerRouteBucketOwner residue");
         }
 
         assertTrue(violations.isEmpty(),
                 "WorkerCandidateIndex is Stage-1 group-capability narrowing only. "
                 + "It must not read worker-level compatibility capability, WorkerManager, "
-                + "storage, unbounded group worker enumeration, full scans, "
+                + "storage, route-bucket residue, unbounded group worker enumeration, full scans, "
                         + "or Stage-2 runtime admission state:\n"
                 + String.join("\n", violations));
     }
@@ -1067,65 +1070,6 @@ class EngineSchedulingCoreArchitectureGuardTest {
         assertTrue(violations.isEmpty(),
                 "Group-selector-first scheduling must not reintroduce event/project/all-worker "
                         + "candidate-source fallbacks:\n"
-                        + String.join("\n", violations));
-    }
-
-    @Test
-    void workerRouteBucketOwnerStaysCandidateSourceOnly() throws IOException {
-        Path routeBucketOwnerPath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/worker/WorkerRouteBucketOwner.java");
-        String source = Files.readString(routeBucketOwnerPath, StandardCharsets.UTF_8);
-
-        List<String> violations = new ArrayList<>();
-        for (String forbidden : List.of(
-                "WorkerReachabilityView",
-                "WorkerLoadView",
-                "WorkerDispatchAvailabilityOwner",
-                "TaskResult",
-                "TaskWorkRuntime",
-                "tryAcquireWorkerExclusiveLease",
-                "recordWorkClaimed",
-                "recordWorkFinal"
-        )) {
-            if (source.contains(forbidden)) {
-                violations.add(routeBucketOwnerPath + " reads scheduling admission/result owner: " + forbidden);
-            }
-        }
-
-        assertTrue(violations.isEmpty(),
-                "WorkerRouteBucketOwner is only a bounded Stage-1 candidate bucket. It must not "
-                        + "own reachability, dispatch gates, load, locks, or task result state:\n"
-                        + String.join("\n", violations));
-    }
-
-    @Test
-    void workerRouteBucketOwnerKeepsRoutingAndSamplingBehindPolicySeams() throws IOException {
-        Path routeBucketOwnerPath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/worker/WorkerRouteBucketOwner.java");
-        String source = Files.readString(routeBucketOwnerPath, StandardCharsets.UTF_8);
-
-        List<String> violations = new ArrayList<>();
-        if (!Pattern.compile("\\bWorkerRoutingPolicy\\b").matcher(source).find()) {
-            violations.add(routeBucketOwnerPath + " does not consume WorkerRoutingPolicy");
-        }
-        if (!Pattern.compile("\\bWorkerRouteBucketSelectionPolicy\\b").matcher(source).find()) {
-            violations.add(routeBucketOwnerPath + " does not consume WorkerRouteBucketSelectionPolicy");
-        }
-        for (String forbidden : List.of(
-                "ThreadLocalRandom",
-                "Random(",
-                "candidateScore",
-                "candidateRank",
-                "WorkerCandidateRanker"
-        )) {
-            if (source.contains(forbidden)) {
-                violations.add(routeBucketOwnerPath + " hard-codes route bucket policy detail: " + forbidden);
-            }
-        }
-
-        assertTrue(violations.isEmpty(),
-                "Route bucket membership/acquisition may use simple policies, but routing, sampling, "
-                        + "and ranking strategy must stay behind explicit policy seams:\n"
                         + String.join("\n", violations));
     }
 
