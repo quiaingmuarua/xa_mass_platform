@@ -1066,6 +1066,9 @@ Current status:
   `WorkerSchedulingCandidateEnumerator` no longer calls
   `getWorkerRegistrySnapshot()` directly. Worker group read-view materialization
   stays behind `WorkerManager`.
+- completed for storage group-scan facade cleanup:
+  `WorkerManager.getWorkersByGroupId(...)` has been removed; runtime candidate
+  membership uses `WorkerRegistry`.
 
 Scope:
 

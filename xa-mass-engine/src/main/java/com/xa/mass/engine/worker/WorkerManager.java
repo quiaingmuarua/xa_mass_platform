@@ -206,10 +206,6 @@ public class WorkerManager implements WorkerLookupStore {
         }
     }
 
-    public List<Worker> getWorkersByGroupId(String workerGroupId) {
-        return workerStorage.getWorkersByGroupId(workerGroupId);
-    }
-
     public boolean tryAcquireWorkerExclusiveLease(String workerId) {
         return workerRegistry.slotByWorkerId(workerId)
                 .map(slot -> workerRegistry.tryAcquireExclusiveLease(slot.groupId(), slot.workerId()))

@@ -805,19 +805,6 @@ public class WorkerManagerTest {
                 "pool-a"))).isEmpty());
     }
 
-    // ---- filter by group ----
-
-    @Test
-    void getWorkersByGroupIdFiltersCorrectly() {
-        manager.addWorker(worker("us1", "us"));
-        manager.addWorker(worker("us2", "us"));
-        manager.addWorker(worker("gb1", "gb"));
-
-        List<Worker> us = manager.getWorkersByGroupId("us");
-        assertEquals(2, us.size());
-        assertTrue(us.stream().allMatch(w -> "us".equals(w.getWorkerGroupId())));
-    }
-
     // ---- update / delete ----
 
     @Test

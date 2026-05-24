@@ -931,6 +931,9 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "WorkerManager must not own a second mutable worker row map. "
                         + "WorkerStorage remains the current control-plane row source and "
                         + "WorkerRegistry owns runtime slot/index/admission truth.");
+        assertFalse(source.contains("getWorkersByGroupId("),
+                "WorkerManager must not expose storage-backed group worker scans. "
+                        + "Scheduling candidate membership belongs to WorkerRegistry.");
     }
 
     @Test
