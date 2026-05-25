@@ -13,8 +13,8 @@ import com.xa.mass.engine.command.WorkerCommandLifecycleResult;
 public interface WorkerDispatchAvailabilityPolicy {
 
     void applyWorkerStateProjection(WorkerStateProjection projection,
-                                    WorkerDispatchAvailabilityOwner dispatchAvailabilityOwner);
+                                    WorkerManager workerManager);
 
     void applyWorkerCommandLifecycleResult(WorkerCommandLifecycleResult result,
-                                           WorkerDispatchAvailabilityOwner dispatchAvailabilityOwner);
+                                           WorkerManager workerManager);
 }

@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Set;
 
 import static com.xa.mass.runtime.worker.DispatchAvailabilitySource.WORKER_COMMAND;
+import static com.xa.mass.runtime.worker.DispatchAvailabilitySource.WORKER_STATE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -142,9 +143,13 @@ public abstract class WorkerRegistryContractTest {
         registry.upsertSlot(meta("worker-1", "group-a"), 1, Set.of(eventKey()));
 
         assertTrue(registry.disableDispatch("group-a", "worker-1", WORKER_COMMAND));
+        assertTrue(registry.disableDispatch("group-a", "worker-1", WORKER_STATE));
         assertEquals(ReserveStatus.DISPATCH_DISABLED,
                 registry.tryReserve("group-a", "worker-1", "task-1", 1, 1000).status());
         assertTrue(registry.clearDispatchDisable("group-a", "worker-1", WORKER_COMMAND));
+        assertEquals(ReserveStatus.DISPATCH_DISABLED,
+                registry.tryReserve("group-a", "worker-1", "task-1", 1, 1000).status());
+        assertTrue(registry.clearDispatchDisable("group-a", "worker-1", WORKER_STATE));
         assertTrue(registry.tryReserve("group-a", "worker-1", "task-1", 1, 1000).accepted());
     }
 

@@ -9,6 +9,7 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.load.WorkerLoadSnapshot;
+import com.xa.mass.runtime.worker.DispatchAvailabilitySource;
 import com.xa.mass.runtime.worker.EventKey;
 import com.xa.mass.runtime.worker.WorkerMeta;
 import com.xa.mass.runtime.worker.WorkerRegistry;
@@ -42,7 +43,6 @@ public class WorkerManager implements WorkerLookupStore {
 
     private final WorkerStorage workerStorage;
     private final WorkerReachabilityView reachabilityView;
-    private final WorkerDispatchAvailabilityOwner dispatchAvailabilityOwner;
     private final WorkerCapabilityAuthority capabilityAuthority;
     private final WorkerRegistry workerRegistry;
     private final Object workerRegistryLock = new Object();
@@ -67,41 +67,22 @@ public class WorkerManager implements WorkerLookupStore {
 
     public WorkerManager(WorkerStorage workerStorage,
                          WorkerReachabilityView reachabilityView,
-                         WorkerDispatchAvailabilityOwner dispatchAvailabilityOwner) {
-        this(workerStorage, reachabilityView, new WorkerCapabilityAuthority(), dispatchAvailabilityOwner);
-    }
-
-    public WorkerManager(WorkerStorage workerStorage,
-                         WorkerReachabilityView reachabilityView,
-                         WorkerDispatchAvailabilityOwner dispatchAvailabilityOwner,
                          WorkerRegistry workerRegistry) {
-        this(workerStorage, reachabilityView, new WorkerCapabilityAuthority(), dispatchAvailabilityOwner, workerRegistry);
+        this(workerStorage, reachabilityView, new WorkerCapabilityAuthority(), workerRegistry);
     }
 
     WorkerManager(WorkerStorage workerStorage,
                   WorkerReachabilityView reachabilityView,
                   WorkerCapabilityAuthority capabilityAuthority) {
-        this(workerStorage, reachabilityView, capabilityAuthority, new WorkerDispatchAvailabilityOwner());
+        this(workerStorage, reachabilityView, capabilityAuthority, new InMemoryWorkerRegistry());
     }
 
     WorkerManager(WorkerStorage workerStorage,
                   WorkerReachabilityView reachabilityView,
                   WorkerCapabilityAuthority capabilityAuthority,
-                  WorkerDispatchAvailabilityOwner dispatchAvailabilityOwner) {
-        this(workerStorage, reachabilityView, capabilityAuthority, dispatchAvailabilityOwner,
-                new InMemoryWorkerRegistry());
-    }
-
-    WorkerManager(WorkerStorage workerStorage,
-                  WorkerReachabilityView reachabilityView,
-                  WorkerCapabilityAuthority capabilityAuthority,
-                  WorkerDispatchAvailabilityOwner dispatchAvailabilityOwner,
                   WorkerRegistry workerRegistry) {
         this.workerStorage = workerStorage;
         this.reachabilityView = reachabilityView != null ? reachabilityView : WorkerReachabilityView.permissive();
-        this.dispatchAvailabilityOwner = dispatchAvailabilityOwner != null
-                ? dispatchAvailabilityOwner
-                : new WorkerDispatchAvailabilityOwner();
         this.capabilityAuthority = capabilityAuthority != null ? capabilityAuthority : new WorkerCapabilityAuthority();
         this.workerRegistry = workerRegistry != null ? workerRegistry : new InMemoryWorkerRegistry();
         for (Worker worker : workerStorage.getAllWorkers()) {
@@ -483,12 +464,25 @@ public class WorkerManager implements WorkerLookupStore {
         if (worker == null || worker.getStatus() == null) {
             return false;
         }
-        return worker.getStatus() != WorkerStatus.EXPIRED
-                && dispatchAvailabilityOwner.isDispatchEnabled(worker.getWorkerId());
+        return worker.getStatus() != WorkerStatus.EXPIRED && isWorkerDispatchEnabled(worker.getWorkerId());
     }
 
-    public WorkerDispatchAvailabilityOwner getDispatchAvailabilityOwner() {
-        return dispatchAvailabilityOwner;
+    public boolean isWorkerDispatchEnabled(String workerId) {
+        return workerRegistry.slotByWorkerId(workerId)
+                .map(slot -> !slot.removing() && slot.dispatchEnabled())
+                .orElse(false);
+    }
+
+    public boolean disableWorkerDispatch(String workerId, DispatchAvailabilitySource source, String reason) {
+        return workerRegistry.slotByWorkerId(workerId)
+                .map(slot -> workerRegistry.disableDispatch(slot.groupId(), slot.workerId(), source))
+                .orElse(false);
+    }
+
+    public boolean clearWorkerDispatchDisable(String workerId, DispatchAvailabilitySource source, String reason) {
+        return workerRegistry.slotByWorkerId(workerId)
+                .map(slot -> workerRegistry.clearDispatchDisable(slot.groupId(), slot.workerId(), source))
+                .orElse(false);
     }
 
     public void setDispatchWakeupCallback(Runnable dispatchWakeupCallback) {
@@ -673,13 +667,13 @@ public class WorkerManager implements WorkerLookupStore {
         synchronized (adapterNodeRegistryLock) {
             NodeGroupBindingRecord binding = nodeGroupBindingsByKey.get(NodeGroupBindingKey.from(adapterNodeId, groupId));
             if (binding != null && (!binding.enabled() || binding.draining())) {
-                dispatchAvailabilityOwner.disableForDraining(
+                disableWorkerDispatch(
                         worker.getWorkerId(),
                         NODE_GROUP_BINDING,
                         "node group binding unavailable"
                 );
             } else if (binding != null) {
-                dispatchAvailabilityOwner.clearSource(
+                clearWorkerDispatchDisable(
                         worker.getWorkerId(),
                         NODE_GROUP_BINDING,
                         "node group binding available"
@@ -695,13 +689,13 @@ public class WorkerManager implements WorkerLookupStore {
         );
         for (String workerId : workerIds) {
             if (!binding.enabled() || binding.draining()) {
-                dispatchAvailabilityOwner.disableForDraining(
+                disableWorkerDispatch(
                         workerId,
                         NODE_GROUP_BINDING,
                         "node group binding unavailable"
                 );
             } else {
-                dispatchAvailabilityOwner.clearSource(workerId, NODE_GROUP_BINDING, "node group binding available");
+                clearWorkerDispatchDisable(workerId, NODE_GROUP_BINDING, "node group binding available");
             }
         }
     }
@@ -712,7 +706,7 @@ public class WorkerManager implements WorkerLookupStore {
                 binding.groupId()
         );
         for (String workerId : workerIds) {
-            dispatchAvailabilityOwner.disableForDraining(
+            disableWorkerDispatch(
                     workerId,
                     NODE_GROUP_BINDING,
                     "node group binding unavailable"

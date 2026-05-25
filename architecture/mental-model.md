@@ -97,8 +97,10 @@ Worker
   -> belongs to a group
 ```
 
-The scheduler first narrows candidates by `eventCode` and project, then applies
-reachability, rules, ranking, resource policy, and runtime admission.
+SDK/intake may resolve `eventCode` and project into explicit
+`workerGroupId(s)` before scheduling. The kernel candidate source starts from
+those group selectors, then applies reachability, rules, ranking, resource
+policy, and runtime admission.
 
 ### Transport
 
@@ -146,4 +148,3 @@ Avoid these interpretations:
 - Trace evidence is not lifecycle ownership.
 - A unified event language does not imply one mandatory event runtime or one
   generic event owner.
-

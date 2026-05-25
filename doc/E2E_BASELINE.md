@@ -111,7 +111,7 @@ Worker scheduling and compatibility:
 - SDK-created worker resources can register as `OFFLINE`, connect through pull transport, poll work, submit result output, and disconnect back to offline
 - external polling worker API can register a worker, mark it online, poll `TaskDispatchItem`, submit `TaskResultReport`, and return offline
 - the runnable Node polling worker example can join through `/worker-api/v1/**`, surface capability in `/api/v1/catalog/*`, complete task work, and exit cleanly
-- targeted worker debug runs through normal `create -> approve -> assign -> dispatch -> result -> terminal`, with fixed-worker selection carried by `Task.sharedConfig.targetWorkerId`
+- targeted worker debug runs through normal `create -> approve -> assign -> dispatch -> result -> terminal`, with fixed-worker selection carried by explicit `Task.sharedConfig.workerGroupId(s)` plus `Task.sharedConfig.targetWorkerId`
 - new E2E scheduling proof must not reintroduce WorkerContext compatibility
   setup or context-id assertions; use worker attributes, event bindings,
   transport presence, runtime load, and canonical trace evidence instead

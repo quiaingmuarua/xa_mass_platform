@@ -52,7 +52,6 @@ Derived read path
 
 Dynamic runtime state
   WorkerRegistry / WorkerSlot
-  WorkerDispatchAvailabilityOwner
   WorkerReachabilityView
 ```
 
@@ -77,7 +76,7 @@ Current candidate read cache
 
 Current stage-2 dynamic admission state
   WorkerRegistry / WorkerSlot occupancy counters
-  WorkerDispatchAvailabilityOwner
+  WorkerRegistry / WorkerSlot source-scoped dispatch gates
   WorkerReachabilityView
 
 Current exclusivity truth
@@ -291,13 +290,10 @@ telegram-send-v1-8f3a92
 crawler-fetch-v2-19aa07
 ```
 
-This is useful because Redis runtime can infer the natural group partition from
-`workerId` during diagnostics and cleanup. It must not be the only source of
-truth. `WorkerMeta.groupId` remains explicit and registration must validate:
-
-```text
-workerId prefix group == WorkerMeta.groupId
-```
+This is a readability convention only. It must not become public contract,
+kernel lookup truth, or a registration precondition. `WorkerMeta.groupId`
+remains explicit and registration must not infer group ownership from
+`workerId`.
 
 Changing a worker's group is treated as a new worker identity. Do not do
 in-place group migration for an active worker.
@@ -522,9 +518,10 @@ WorkerRegistry
     cleanupStaleBucketMembers(groupId, limit) -> CleanupSummary
 ```
 
-`slotByWorkerId(workerId)` may derive `groupId` from the worker id prefix, but
-must first consult the explicit `workerId -> groupId` reverse index when one is
-available and must validate the resolved group against stored metadata.
+`slotByWorkerId(workerId)` must resolve through explicit runtime metadata such
+as the `workerId -> groupId` reverse index and validate the resolved group
+against stored slot metadata. It must not infer group ownership from worker-id
+prefixes.
 
 Occupancy mutation ownership:
 
@@ -677,7 +674,7 @@ Scope:
 
 1. Inventory `WorkerStorage`, `WorkerManager.workerRegistryRows`,
    `WorkerRegistrySnapshot`, `WorkerRouteBucketOwner`, historical `WorkerLoadView`,
-   `WorkerDispatchAvailabilityOwner`, and `WorkerReachabilityView`.
+   registry-backed dispatch gates, and `WorkerReachabilityView`.
 2. List every place that still treats `WorkerStorage` as scheduling truth.
 3. List every place that still depends on `tryLockWorker`, `unlockWorker`, or
    `isLocked`.
@@ -858,8 +855,9 @@ Scope:
 5. Keep `WorkerLoadView` as the only admission truth in this phase. The
    registry synchronizes identity and bucket membership only; reservation and
    active counters must not be used by scheduling yet.
-6. Keep `WorkerDispatchAvailabilityOwner` temporarily as the dispatch gate
-   mutation owner.
+6. Dispatch gate mutation truth is source-scoped `WorkerRegistry.disabledSources`;
+   policy code may translate worker state / commands / node-group bindings into
+   gate writes, but it must not own an independent gate map.
 7. Keep `WorkerStorage` only as a compatibility bootstrap/query layer until it
    is removed in a later phase.
 8. Evaluate and remove GFS-superseded indexes from `WorkerRegistrySnapshot`:
@@ -918,12 +916,11 @@ Acceptance:
 
 Current status:
 
-- occupancy and exclusive-lease wiring are complete on the production path.
-- source-scoped dispatch gates are not fully migrated: `WorkerSlot` has
-  `disabledSources`, and `WorkerRegistry` exposes gate mutation methods, but
-  worker state / command / node-group gate policy still writes through
-  `WorkerDispatchAvailabilityOwner`. Finish this as a separate WSR-5 gate
-  convergence slice rather than mixing it into Redis registry correctness fixes.
+- occupancy, exclusive-lease wiring, and source-scoped dispatch gates are
+  complete on the production path.
+- worker state / command / node-group gate policy translates into
+  `WorkerManager -> WorkerRegistry` gate writes; no independent dispatch-gate
+  truth remains in production.
 
 ### WSR-6: Retire WorkerStorage Lock Model
 

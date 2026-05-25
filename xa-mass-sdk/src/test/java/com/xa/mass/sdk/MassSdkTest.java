@@ -11,6 +11,7 @@ import com.xa.mass.base.event.PriorityClass;
 import com.xa.mass.base.event.ResponseMode;
 import com.xa.mass.base.event.TargetScope;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
@@ -34,7 +35,9 @@ import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.model.TaskAppendReceipt;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
+import com.xa.mass.engine.worker.EventBinding;
 import com.xa.mass.engine.worker.InMemoryWorkerRegistry;
+import com.xa.mass.engine.worker.WorkerGroupRecord;
 import com.xa.mass.runtime.worker.EventKey;
 import com.xa.mass.engine.watchdog.PollingIdleBackoffPolicy;
 import com.xa.mass.storage.api.RuleStorage;
@@ -1762,6 +1765,125 @@ class MassSdkTest {
     }
 
     @Test
+    void appendTaskItemsResolvesEventCodeToSingleWorkerGroupSelector() {
+        MassApplication delegate = mock(MassApplication.class);
+        MassEngine engine = mock(MassEngine.class);
+        EngineConfig config = mock(EngineConfig.class);
+        TaskCommandService taskCommandService = mock(TaskCommandService.class);
+        TaskQueryService taskQueryService = mock(TaskQueryService.class);
+        WorkerManager workerManager = mock(WorkerManager.class);
+        Task task = new Task();
+        task.setTid("task-resolve-single");
+        task.setProject("crawlerApp");
+
+        when(delegate.getEngine()).thenReturn(engine);
+        when(engine.isRunning()).thenReturn(true);
+        when(engine.getConfig()).thenReturn(config);
+        when(config.getTaskCommandService()).thenReturn(taskCommandService);
+        when(config.getTaskQueryService()).thenReturn(taskQueryService);
+        when(config.getWorkerManager()).thenReturn(workerManager);
+        when(taskQueryService.getTask("task-resolve-single")).thenReturn(task);
+        when(workerManager.workerGroups()).thenReturn(List.of(group("crawler", "crawlerApp", "crawler.fetch-page")));
+        stubAppendReceipts(taskCommandService);
+
+        new MassSdkApplication(delegate).appendTaskItems("task-resolve-single",
+                MassTaskItemBatchAppendRequest.builder()
+                        .eventCode("crawler.fetch-page")
+                        .items(List.of(Map.of("url", "https://example.test")))
+                        .build());
+
+        var captor = org.mockito.ArgumentCaptor.forClass(Task.class);
+        verify(taskCommandService).updateTask(captor.capture());
+        Assertions.assertEquals("crawler",
+                captor.getValue().getSharedConfig().get(TaskSharedConfig.WORKER_GROUP_ID));
+        Assertions.assertFalse(captor.getValue().getSharedConfig().containsKey(TaskSharedConfig.WORKER_GROUP_IDS));
+    }
+
+    @Test
+    void appendTaskItemsResolvesEventCodeToOrderedWorkerGroupSelectors() {
+        MassApplication delegate = mock(MassApplication.class);
+        MassEngine engine = mock(MassEngine.class);
+        EngineConfig config = mock(EngineConfig.class);
+        TaskCommandService taskCommandService = mock(TaskCommandService.class);
+        TaskQueryService taskQueryService = mock(TaskQueryService.class);
+        WorkerManager workerManager = mock(WorkerManager.class);
+        Task task = new Task();
+        task.setTid("task-resolve-multi");
+        task.setProject("crawlerApp");
+
+        when(delegate.getEngine()).thenReturn(engine);
+        when(engine.isRunning()).thenReturn(true);
+        when(engine.getConfig()).thenReturn(config);
+        when(config.getTaskCommandService()).thenReturn(taskCommandService);
+        when(config.getTaskQueryService()).thenReturn(taskQueryService);
+        when(config.getWorkerManager()).thenReturn(workerManager);
+        when(taskQueryService.getTask("task-resolve-multi")).thenReturn(task);
+        when(workerManager.workerGroups()).thenReturn(List.of(
+                group("crawler-a", "crawlerApp", "crawler.fetch-page"),
+                group("crawler-b", "crawlerApp", "crawler.fetch-page")
+        ));
+        stubAppendReceipts(taskCommandService);
+
+        new MassSdkApplication(delegate).appendTaskItems("task-resolve-multi",
+                MassTaskItemBatchAppendRequest.builder()
+                        .eventCode("crawler.fetch-page")
+                        .items(List.of(Map.of("url", "https://example.test")))
+                        .build());
+
+        var captor = org.mockito.ArgumentCaptor.forClass(Task.class);
+        verify(taskCommandService).updateTask(captor.capture());
+        Assertions.assertEquals(List.of("crawler-a", "crawler-b"),
+                captor.getValue().getSharedConfig().get(TaskSharedConfig.WORKER_GROUP_IDS));
+        Assertions.assertFalse(captor.getValue().getSharedConfig().containsKey(TaskSharedConfig.WORKER_GROUP_ID));
+    }
+
+    @Test
+    void appendTaskItemsFailsWhenEventCodeCannotResolveWorkerGroupSelector() {
+        MassApplication delegate = mock(MassApplication.class);
+        MassEngine engine = mock(MassEngine.class);
+        EngineConfig config = mock(EngineConfig.class);
+        TaskCommandService taskCommandService = mock(TaskCommandService.class);
+        TaskQueryService taskQueryService = mock(TaskQueryService.class);
+        WorkerManager workerManager = mock(WorkerManager.class);
+        Task task = new Task();
+        task.setTid("task-resolve-none");
+        task.setProject("crawlerApp");
+
+        when(delegate.getEngine()).thenReturn(engine);
+        when(engine.isRunning()).thenReturn(true);
+        when(engine.getConfig()).thenReturn(config);
+        when(config.getTaskCommandService()).thenReturn(taskCommandService);
+        when(config.getTaskQueryService()).thenReturn(taskQueryService);
+        when(config.getWorkerManager()).thenReturn(workerManager);
+        when(taskQueryService.getTask("task-resolve-none")).thenReturn(task);
+        when(workerManager.workerGroups()).thenReturn(List.of());
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> new MassSdkApplication(delegate).appendTaskItems("task-resolve-none",
+                        MassTaskItemBatchAppendRequest.builder()
+                                .eventCode("crawler.fetch-page")
+                                .items(List.of(Map.of("url", "https://example.test")))
+                                .build()));
+        assertTrue(error.getMessage().contains("No worker group selector resolved"));
+        verify(taskCommandService, never()).appendTaskItemsWithReceipt(any(), any());
+    }
+
+    @Test
+    void targetWorkerIdRequiresExplicitWorkerGroupSelector() {
+        MassApplication delegate = mock(MassApplication.class);
+        MassEngine engine = mock(MassEngine.class);
+        when(delegate.getEngine()).thenReturn(engine);
+        when(engine.isRunning()).thenReturn(true);
+
+        MassSdkApplication app = new MassSdkApplication(delegate);
+
+        assertThrows(IllegalArgumentException.class, () -> app.createTaskShell(MassTaskShellCreateRequest.builder()
+                .project("demoApp")
+                .sharedConfig(Map.of(TaskSharedConfig.TARGET_WORKER_ID, "worker-1"))
+                .build()));
+    }
+
+    @Test
     void appendTaskItemsPassesMapPayloadThroughWithoutShellInspection() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
@@ -2206,12 +2328,23 @@ class MassSdkTest {
 
         try {
             app.start();
+            app.registerEventDefinition(EventDefinition.builder()
+                    .code("chatbot.reply")
+                    .name("Chatbot Reply")
+                    .description("custom chatbot reply")
+                    .payloadTypes(List.of(PayloadType.JSON))
+                    .taskModes(List.of(TaskMode.SINGLE_RUN))
+                    .build());
             app.registerProject(ProjectDefinition.builder()
                     .code("botAppExecutableTest")
                     .name("Bot App Executable Test")
                     .description("custom runtime project")
                     .eventCodes(List.of("chatbot.reply"))
                     .build());
+            declareSdkTestGroup(app, "bot-executable-workers", List.of(WorkerEventBinding.builder()
+                    .eventCode("chatbot.reply")
+                    .projectCodes(List.of("botAppExecutableTest"))
+                    .build()));
 
             TaskDetailSnapshot task = createShellWithOptionalItems(app, MassTaskShellCreateRequest.builder()
                     .userId("bot-agent")
@@ -2253,6 +2386,10 @@ class MassSdkTest {
                     .description("custom runtime project")
                     .eventCodes(List.of("bot.command"))
                     .build());
+            declareSdkTestGroup(app, "bot-catalog-workers", List.of(WorkerEventBinding.builder()
+                    .eventCode("bot.command")
+                    .projectCodes(List.of("botAppCatalogTest"))
+                    .build()));
 
             TaskDetailSnapshot task = createShellWithOptionalItems(app, MassTaskShellCreateRequest.builder()
                     .userId("bot-agent")
@@ -3332,6 +3469,12 @@ class MassSdkTest {
                 .groupId(workerGroupId)
                 .eventBindings(eventBindings)
                 .build());
+    }
+
+    private static WorkerGroupRecord group(String workerGroupId, String projectCode, String eventCode) {
+        return WorkerGroupRecord.builder(workerGroupId)
+                .eventBindings(List.of(EventBinding.of(eventCode, List.of(projectCode))))
+                .build();
     }
 
     private static TaskDetailSnapshot createShellWithOptionalItems(MassSdkApplication app,

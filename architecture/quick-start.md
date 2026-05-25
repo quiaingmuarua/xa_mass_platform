@@ -43,8 +43,9 @@ app.registerEventDefinition(EventDefinition.builder()
         .build());
 ```
 
-`eventCode` is the capability identity. A WorkerGroup will later declare that
-it can handle this event.
+`eventCode` is the worker-side handler identity. SDK/intake may use it to
+resolve an explicit worker-group selector, but the scheduling kernel dispatches
+from `workerGroupId(s)`, not from event metadata.
 
 ## 3. Register A Project
 

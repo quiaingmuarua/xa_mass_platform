@@ -636,11 +636,10 @@ Scope:
    - keep in-flight task dedupe
    - ensure duplicate wakeups are harmless
    - avoid relying on one scanner for correctness
-6. Identify WSR dispatch gate reads still owned by
-   `WorkerDispatchAvailabilityOwner`, especially
+6. Identify WSR dispatch gate reads that must remain registry-backed, especially
    `WorkerSchedulingCandidateEnumerator -> WorkerManager.isWorkerDispatchEnabled(...)`.
-   Document this as a cross-roadmap dependency requiring WSR-5 dispatch gate
-   convergence before TRS engine hot-path lock scope can be fully clean.
+   Document this as a cross-roadmap dependency on WSR-5 dispatch gate
+   convergence and prevent reintroducing an independent gate map.
 7. Add trace evidence for lock/wakeup decisions only if it does not add hot-path
    scans.
 

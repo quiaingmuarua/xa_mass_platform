@@ -339,7 +339,8 @@ Scope:
 1. Add `TaskSharedConfig.WORKER_GROUP_ID`.
 2. Add `TaskSharedConfig.WORKER_GROUP_IDS`.
 3. Add helper methods that normalize to an ordered group selector list.
-4. Keep `targetWorkerId` semantics unchanged.
+4. Keep `targetWorkerId` readable, but require explicit `workerGroupId(s)` for
+   it to produce scheduling candidates.
 5. SDK/server task creation may pass group selector through shared config.
 6. Implement the minimum SDK/catalog resolver that maps event dispatch metadata
    to `workerGroupId(s)` before task assignment. This must be usable before
@@ -351,7 +352,8 @@ Acceptance:
 1. A task can carry one worker group selector.
 2. A task can carry multiple worker group selectors in deterministic order.
 3. Empty or blank group selectors normalize to empty.
-4. `targetWorkerId` remains readable independently.
+4. `targetWorkerId` remains readable independently, but is not schedulable
+   without an explicit group selector.
 5. SDK/event-dispatch assembly produces task shared config containing resolved
    `workerGroupId(s)` for event-backed worker tasks, even though old candidate
    lookup still works during this slice.

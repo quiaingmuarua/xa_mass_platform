@@ -91,8 +91,7 @@ class TaskWorkerEligibilityTest {
         harness.addWorker("worker-backup", "us");
         Task firstTask = harness.createReadyBatchTask("draining-first", List.of(harness.item("first")));
 
-        harness.workerManager.getDispatchAvailabilityOwner()
-                .disableForDraining("worker-draining", WORKER_STATE, "maintenance");
+        harness.workerManager.disableWorkerDispatch("worker-draining", WORKER_STATE, "maintenance");
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(firstTask.getTid())));
 
@@ -102,8 +101,7 @@ class TaskWorkerEligibilityTest {
         assertRejected(harness, firstTask.getTid(), "worker-draining",
                 AssignmentResult.RESOURCE_UNAVAILABLE, "worker unavailable");
 
-        harness.workerManager.getDispatchAvailabilityOwner()
-                .clearSource("worker-draining", WORKER_STATE, "ready");
+        harness.workerManager.clearWorkerDispatchDisable("worker-draining", WORKER_STATE, "ready");
 
         Task secondTask = harness.createReadyBatchTask("draining-second", List.of(harness.item("second")));
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(secondTask.getTid())));

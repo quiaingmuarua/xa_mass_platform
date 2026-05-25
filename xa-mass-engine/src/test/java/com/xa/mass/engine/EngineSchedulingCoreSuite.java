@@ -9,7 +9,6 @@ import com.xa.mass.engine.strategy.WorkerSchedulingCandidateEnumeratorTest;
 import com.xa.mass.engine.worker.WorkerCandidateIndexTest;
 import com.xa.mass.engine.worker.WorkerCapabilityAuthorityTest;
 import com.xa.mass.engine.worker.WorkerControlServiceTest;
-import com.xa.mass.engine.worker.WorkerDispatchAvailabilityOwnerTest;
 import com.xa.mass.engine.worker.WorkerManagerTest;
 import com.xa.mass.engine.worker.WorkerRegistrySnapshotTest;
 import org.junit.platform.suite.api.SelectClasses;
@@ -29,7 +28,6 @@ import org.junit.platform.suite.api.Suite;
         TaskDelayedAvailabilitySchedulingTest.class,
         TaskRuntimeRecoveryPortTest.class,
         WorkerManagerTest.class,
-        WorkerDispatchAvailabilityOwnerTest.class,
         WorkerCandidateIndexTest.class,
         WorkerCapabilityAuthorityTest.class,
         WorkerControlServiceTest.class,

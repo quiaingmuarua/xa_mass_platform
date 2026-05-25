@@ -34,7 +34,7 @@ This roadmap converges worker resource occupancy toward:
 ```text
 TaskWorkRuntime lease = final work ownership truth
 WorkerLoadView capacity = dispatch admission truth
-WorkerDispatchAvailabilityOwner = new-dispatch gate truth
+WorkerRegistry / WorkerSlot.disabledSources = new-dispatch gate truth
 WorkerStorage = worker registry/index truth, not general lock owner
 ```
 
@@ -116,7 +116,7 @@ Concern:
 
 No direct concern. These are candidate indexes, not occupancy owners.
 
-### WorkerDispatchAvailabilityOwner
+### Registry-Backed Dispatch Gates
 
 Current role:
 
@@ -186,7 +186,7 @@ best-effort admission state, not final truth.
 
 1. `TaskWorkRuntime` owns active work leases.
 2. `WorkerLoadView` owns admission counters and capacity.
-3. `WorkerDispatchAvailabilityOwner` owns new-dispatch gates.
+3. `WorkerRegistry` owns source-scoped new-dispatch gates.
 4. `WorkerStorage` must not become a durable or DB-backed worker lock owner.
 5. Foreground exclusivity is a resource policy, not a separate lock model.
 6. A worker is not "busy" unless occupancy can be tied to reservation or active
@@ -253,7 +253,7 @@ Scope:
    allowed worker occupancy owners:
    - `TaskWorkRuntime`
    - `WorkerLoadView`
-   - `WorkerDispatchAvailabilityOwner`
+   - registry-backed source-scoped dispatch gates
    - temporary `WorkerStorage` exclusive lock seam
 2. Add a source scan guard that blocks JDBC worker lock/table reintroduction.
 3. Add a source scan note that scheduling strategies must not call

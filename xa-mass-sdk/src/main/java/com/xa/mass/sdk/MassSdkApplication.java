@@ -168,9 +168,9 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     @Override
     public TaskShellSnapshot createTaskShell(MassTaskShellCreateRequest request) {
         MassEngine engine = requireStartedEngine();
-        return toTaskShellSnapshot(engine.createTaskShell(SdkResourceMapper.toEngineRequest(
-                TaskOwnershipSupport.stamp(request, internalPrincipal(request.getUserId()))
-        )));
+        MassTaskShellCreateRequest stamped = TaskOwnershipSupport.stamp(request, internalPrincipal(request.getUserId()));
+        WorkerGroupSelectorResolver.requireExplicitTargetWorkerBinding(stamped.getSharedConfig());
+        return toTaskShellSnapshot(engine.createTaskShell(SdkResourceMapper.toEngineRequest(stamped)));
     }
 
     @Override
@@ -353,6 +353,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
             task.setProject(request.getProject());
         }
         if (request.getSharedConfig() != null) {
+            WorkerGroupSelectorResolver.requireExplicitTargetWorkerBinding(request.getSharedConfig());
             task.setSharedConfig(request.getSharedConfig());
         }
         if (request.getUserId() != null) {
@@ -1004,9 +1005,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     private void resolveWorkerGroupSelectorForAppend(String taskId, String eventCode) {
         String normalizedEventCode = blankToNull(eventCode);
-        if (normalizedEventCode == null) {
-            return;
-        }
         MassEngine engine = delegate.getEngine();
         if (engine == null || !engine.isRunning() || engine.getConfig() == null
                 || engine.getConfig().getTaskQueryService() == null
@@ -1015,44 +1013,21 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
             return;
         }
         Task task = engine.getConfig().getTaskQueryService().getTask(taskId);
-        if (task == null || !TaskSharedConfig.workerGroupSelector(task).isEmpty()) {
+        if (task == null) {
             return;
         }
-        String workerGroupId = resolveSingleWorkerGroupId(
-                engine.getConfig().getWorkerManager().workerGroups(),
+        WorkerGroupSelectorResolver.requireExplicitTargetWorkerBinding(task.getSharedConfig());
+        if (!TaskSharedConfig.workerGroupSelector(task).isEmpty() || normalizedEventCode == null) {
+            return;
+        }
+        Map<String, Object> sharedConfig = WorkerGroupSelectorResolver.resolveEventBackedSelector(
+                task.getSharedConfig(),
                 task.getProject(),
-                normalizedEventCode
+                normalizedEventCode,
+                engine.getConfig().getWorkerManager().workerGroups()
         );
-        if (workerGroupId == null) {
-            return;
-        }
-        Map<String, Object> sharedConfig = new LinkedHashMap<>(
-                task.getSharedConfig() == null ? Map.of() : task.getSharedConfig()
-        );
-        sharedConfig.put(TaskSharedConfig.WORKER_GROUP_ID, workerGroupId);
         task.setSharedConfig(sharedConfig);
         engine.getConfig().getTaskCommandService().updateTask(task);
-    }
-
-    private String resolveSingleWorkerGroupId(Collection<WorkerGroupRecord> workerGroups,
-                                             String projectCode,
-                                             String eventCode) {
-        String normalizedProjectCode = blankToNull(projectCode);
-        String normalizedEventCode = blankToNull(eventCode);
-        if (workerGroups == null || workerGroups.isEmpty()
-                || normalizedProjectCode == null || normalizedEventCode == null) {
-            return null;
-        }
-        LinkedHashSet<String> matches = new LinkedHashSet<>();
-        for (WorkerGroupRecord group : workerGroups) {
-            for (EventBinding binding : group.eventBindings()) {
-                if (normalizedEventCode.equals(binding.eventCode())
-                        && binding.projectCodes().contains(normalizedProjectCode)) {
-                    matches.add(group.groupId());
-                }
-            }
-        }
-        return matches.size() == 1 ? matches.iterator().next() : null;
     }
 
     private EventHandler resolveDefinitionHandler(EventDefinition definition) {

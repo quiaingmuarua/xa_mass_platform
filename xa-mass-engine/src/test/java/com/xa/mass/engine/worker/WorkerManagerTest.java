@@ -165,18 +165,16 @@ public class WorkerManagerTest {
     }
 
     @Test
-    void dispatchAvailabilityOwnerCanDisableAndReenableNewAssignments() {
+    void workerRegistryDispatchGateCanDisableAndReenableNewAssignments() {
         Worker worker = worker("worker-draining", "us");
         manager.addWorker(worker);
 
         assertTrue(manager.isWorkerDispatchEnabled(worker));
 
-        assertTrue(manager.getDispatchAvailabilityOwner()
-                .disableForDraining("worker-draining", WORKER_STATE, "maintenance"));
+        assertTrue(manager.disableWorkerDispatch("worker-draining", WORKER_STATE, "maintenance"));
         assertFalse(manager.isWorkerDispatchEnabled(worker));
 
-        assertTrue(manager.getDispatchAvailabilityOwner()
-                .clearSource("worker-draining", WORKER_STATE, "ready"));
+        assertTrue(manager.clearWorkerDispatchDisable("worker-draining", WORKER_STATE, "ready"));
         assertTrue(manager.isWorkerDispatchEnabled(worker));
     }
 
@@ -348,7 +346,7 @@ public class WorkerManagerTest {
         worker.setAdapterNodeId("node-a");
         manager.addWorker(worker);
 
-        manager.getDispatchAvailabilityOwner().disableForDraining(
+        manager.disableWorkerDispatch(
                 "w-node-a",
                 WORKER_STATE,
                 "state draining"
@@ -359,7 +357,7 @@ public class WorkerManagerTest {
         manager.setNodeGroupBindingDraining("node-a", "crawler", false);
 
         assertFalse(manager.isWorkerDispatchEnabled(worker));
-        manager.getDispatchAvailabilityOwner().clearSource(
+        manager.clearWorkerDispatchDisable(
                 "w-node-a",
                 WORKER_STATE,
                 "state available"
@@ -646,8 +644,6 @@ public class WorkerManagerTest {
                         .toList());
         WorkerManager registryBackedManager = new WorkerManager(
                 new InMemoryWorkerStorage(),
-                null,
-                null,
                 null,
                 registry
         );

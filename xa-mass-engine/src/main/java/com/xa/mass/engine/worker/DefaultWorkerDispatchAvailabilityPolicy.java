@@ -16,7 +16,7 @@ public final class DefaultWorkerDispatchAvailabilityPolicy implements WorkerDisp
 
     @Override
     public void applyWorkerStateProjection(WorkerStateProjection projection,
-                                           WorkerDispatchAvailabilityOwner dispatchAvailabilityOwner) {
+                                           WorkerManager workerManager) {
         if (projection == null) {
             return;
         }
@@ -26,17 +26,17 @@ public final class DefaultWorkerDispatchAvailabilityPolicy implements WorkerDisp
         }
         String normalizedState = state.trim().toUpperCase(Locale.ROOT);
         if ("DRAINING".equals(normalizedState)) {
-            dispatchAvailabilityOwner.disableForDraining(projection.workerId(), WORKER_STATE, projection.reason());
+            workerManager.disableWorkerDispatch(projection.workerId(), WORKER_STATE, projection.reason());
             return;
         }
         if ("AVAILABLE".equals(normalizedState)) {
-            dispatchAvailabilityOwner.clearSource(projection.workerId(), WORKER_STATE, projection.reason());
+            workerManager.clearWorkerDispatchDisable(projection.workerId(), WORKER_STATE, projection.reason());
         }
     }
 
     @Override
     public void applyWorkerCommandLifecycleResult(WorkerCommandLifecycleResult result,
-                                                  WorkerDispatchAvailabilityOwner dispatchAvailabilityOwner) {
+                                                  WorkerManager workerManager) {
         WorkerCommandRecord record = result != null ? result.record() : null;
         if (record == null) {
             return;
@@ -50,7 +50,7 @@ public final class DefaultWorkerDispatchAvailabilityPolicy implements WorkerDisp
         }
         switch (result.currentStatus()) {
             case DELIVERY_ACCEPTED, EXECUTION_ACCEPTED, SUCCEEDED ->
-                    dispatchAvailabilityOwner.disableForDraining(record.workerId(), WORKER_COMMAND, record.statusReason());
+                    workerManager.disableWorkerDispatch(record.workerId(), WORKER_COMMAND, record.statusReason());
             default -> {
             }
         }

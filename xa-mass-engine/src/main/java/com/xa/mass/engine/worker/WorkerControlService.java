@@ -28,7 +28,6 @@ public final class WorkerControlService {
     private final WorkerManager workerManager;
     private final WorkerCommandLifecycleOwner commandLifecycleOwner;
     private final WorkerStateProjectionOwner stateProjectionOwner;
-    private final WorkerDispatchAvailabilityOwner dispatchAvailabilityOwner;
     private final WorkerDispatchAvailabilityPolicy dispatchAvailabilityPolicy;
     private final TraceEventLogger traceEventLogger;
     private volatile Runnable dispatchWakeupCallback = () -> {
@@ -37,13 +36,11 @@ public final class WorkerControlService {
     public WorkerControlService(WorkerManager workerManager,
                                 WorkerCommandLifecycleOwner commandLifecycleOwner,
                                 WorkerStateProjectionOwner stateProjectionOwner,
-                                WorkerDispatchAvailabilityOwner dispatchAvailabilityOwner,
                                 WorkerDispatchAvailabilityPolicy dispatchAvailabilityPolicy,
                                 TraceEventLogger traceEventLogger) {
         this.workerManager = Objects.requireNonNull(workerManager, "workerManager");
         this.commandLifecycleOwner = Objects.requireNonNull(commandLifecycleOwner, "commandLifecycleOwner");
         this.stateProjectionOwner = Objects.requireNonNull(stateProjectionOwner, "stateProjectionOwner");
-        this.dispatchAvailabilityOwner = Objects.requireNonNull(dispatchAvailabilityOwner, "dispatchAvailabilityOwner");
         this.dispatchAvailabilityPolicy = dispatchAvailabilityPolicy != null
                 ? dispatchAvailabilityPolicy
                 : new DefaultWorkerDispatchAvailabilityPolicy();
@@ -53,26 +50,10 @@ public final class WorkerControlService {
     public WorkerControlService(WorkerManager workerManager,
                                 WorkerCommandLifecycleOwner commandLifecycleOwner,
                                 WorkerStateProjectionOwner stateProjectionOwner,
-                                WorkerDispatchAvailabilityOwner dispatchAvailabilityOwner,
                                 TraceEventLogger traceEventLogger) {
         this(workerManager,
                 commandLifecycleOwner,
                 stateProjectionOwner,
-                dispatchAvailabilityOwner,
-                new DefaultWorkerDispatchAvailabilityPolicy(),
-                traceEventLogger);
-    }
-
-    public WorkerControlService(WorkerManager workerManager,
-                                WorkerCommandLifecycleOwner commandLifecycleOwner,
-                                WorkerStateProjectionOwner stateProjectionOwner,
-                                TraceEventLogger traceEventLogger) {
-        this(workerManager,
-                commandLifecycleOwner,
-                stateProjectionOwner,
-                workerManager != null
-                        ? workerManager.getDispatchAvailabilityOwner()
-                        : new WorkerDispatchAvailabilityOwner(),
                 new DefaultWorkerDispatchAvailabilityPolicy(),
                 traceEventLogger);
     }
@@ -89,10 +70,10 @@ public final class WorkerControlService {
     public WorkerStateProjectionResult applyWorkerStateReport(WorkerStateReport report) {
         WorkerStateProjectionResult result = stateProjectionOwner.applyReport(report);
         if (result.success()) {
-            dispatchAvailabilityPolicy.applyWorkerStateProjection(result.projection(), dispatchAvailabilityOwner);
+            dispatchAvailabilityPolicy.applyWorkerStateProjection(result.projection(), workerManager);
             if (isAvailableState(result.projection())
                     && workerManager.getWorker(result.workerId()) != null
-                    && dispatchAvailabilityOwner.isDispatchEnabled(result.workerId())) {
+                    && workerManager.isWorkerDispatchEnabled(result.workerId())) {
                 notifyDispatchWakeup();
             }
         }
@@ -109,7 +90,7 @@ public final class WorkerControlService {
     public WorkerCommandLifecycleResult applyWorkerCommandAcknowledgement(WorkerCommandAcknowledgement acknowledgement) {
         WorkerCommandLifecycleResult result = commandLifecycleOwner.applyAcknowledgement(acknowledgement);
         if (result.success()) {
-            dispatchAvailabilityPolicy.applyWorkerCommandLifecycleResult(result, dispatchAvailabilityOwner);
+            dispatchAvailabilityPolicy.applyWorkerCommandLifecycleResult(result, workerManager);
         }
         traceEventLogger.workerCommandStatusTransition(result);
         return result;

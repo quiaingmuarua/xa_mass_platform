@@ -121,7 +121,7 @@ public class WorkerControlServiceTest {
                 .build()).success());
         assertFalse(workerManager.isWorkerDispatchEnabled(worker));
 
-        assertTrue(workerManager.getDispatchAvailabilityOwner().clearSource(
+        assertTrue(workerManager.clearWorkerDispatchDisable(
                 "worker-2",
                 WORKER_COMMAND,
                 "command cleared"
@@ -184,9 +184,9 @@ public class WorkerControlServiceTest {
         WorkerDispatchAvailabilityPolicy policy = new WorkerDispatchAvailabilityPolicy() {
             @Override
             public void applyWorkerStateProjection(WorkerStateProjection projection,
-                                                   WorkerDispatchAvailabilityOwner dispatchAvailabilityOwner) {
+                                                   WorkerManager workerManager) {
                 stateApplications.incrementAndGet();
-                dispatchAvailabilityOwner.disableForDraining(
+                workerManager.disableWorkerDispatch(
                         projection.workerId(),
                         WORKER_STATE,
                         projection.reason()
@@ -195,9 +195,9 @@ public class WorkerControlServiceTest {
 
             @Override
             public void applyWorkerCommandLifecycleResult(com.xa.mass.engine.command.WorkerCommandLifecycleResult result,
-                                                          WorkerDispatchAvailabilityOwner dispatchAvailabilityOwner) {
+                                                          WorkerManager workerManager) {
                 commandApplications.incrementAndGet();
-                dispatchAvailabilityOwner.clearSource(
+                workerManager.clearWorkerDispatchDisable(
                         result.record().workerId(),
                         WORKER_STATE,
                         result.record().statusReason()
@@ -208,7 +208,6 @@ public class WorkerControlServiceTest {
                 workerManager,
                 new WorkerCommandLifecycleOwner(),
                 new WorkerStateProjectionOwner(),
-                workerManager.getDispatchAvailabilityOwner(),
                 policy,
                 TraceEventLogger.noop());
 

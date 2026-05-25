@@ -1223,24 +1223,24 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void dispatchAvailabilityOwnerRequiresSourceScopedGateMutation() throws IOException {
-        Path availabilityOwnerPath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/worker/WorkerDispatchAvailabilityOwner.java");
-        String source = Files.readString(availabilityOwnerPath, StandardCharsets.UTF_8);
-
+    void dispatchAvailabilityGateTruthBelongsToWorkerRegistry() throws IOException {
         List<String> violations = new ArrayList<>();
-        if (Pattern.compile("\\bboolean\\s+enable\\s*\\(").matcher(source).find()) {
-            violations.add(availabilityOwnerPath + " exposes all-source enable; use clearSource(source)");
+        Path retiredOwnerPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/worker/WorkerDispatchAvailabilityOwner.java");
+        if (Files.exists(retiredOwnerPath)) {
+            violations.add(retiredOwnerPath + " reintroduces an independent dispatch gate owner");
         }
-        if (Pattern.compile("\\bboolean\\s+disableForDraining\\s*\\(\\s*String\\s+workerId\\s*,\\s*String\\s+reason\\s*\\)")
-                .matcher(source)
-                .find()) {
-            violations.add(availabilityOwnerPath + " exposes source-implicit drain; require explicit source");
+        String workerManagerSource = Files.readString(
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker/WorkerManager.java"),
+                StandardCharsets.UTF_8
+        );
+        if (!workerManagerSource.contains("workerRegistry.disableDispatch")
+                || !workerManagerSource.contains("workerRegistry.clearDispatchDisable")) {
+            violations.add("WorkerManager must route dispatch gate mutation to WorkerRegistry");
         }
 
         assertTrue(violations.isEmpty(),
-                "Worker dispatch availability is source-scoped runtime truth. Node-group, command, "
-                        + "and worker-state gates must not clear or set each other implicitly:\n"
+                "Worker dispatch gate truth belongs to WorkerRegistry/WorkerSlot.disabledSources:\n"
                         + String.join("\n", violations));
     }
 

@@ -13,7 +13,6 @@ import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.engine.worker.InMemoryWorkerRegistry;
 import com.xa.mass.engine.worker.WorkerReachabilityView;
 import com.xa.mass.engine.worker.WorkerControlService;
-import com.xa.mass.engine.worker.WorkerDispatchAvailabilityOwner;
 import com.xa.mass.engine.worker.WorkerDispatchAvailabilityPolicy;
 import com.xa.mass.engine.worker.DefaultWorkerDispatchAvailabilityPolicy;
 import com.xa.mass.engine.worker.WorkerStateProjectionOwner;
@@ -79,7 +78,6 @@ public class EngineConfig {
     private WorkerRegistry workerRegistry;
     private WorkerManager workerManager;
     private WorkerCommandLifecycleOwner workerCommandLifecycleOwner = new WorkerCommandLifecycleOwner();
-    private WorkerDispatchAvailabilityOwner workerDispatchAvailabilityOwner = new WorkerDispatchAvailabilityOwner();
     private WorkerDispatchAvailabilityPolicy workerDispatchAvailabilityPolicy =
             new DefaultWorkerDispatchAvailabilityPolicy();
     private WorkerStateProjectionOwner workerStateProjectionOwner = new WorkerStateProjectionOwner();
@@ -127,7 +125,6 @@ public class EngineConfig {
         this.workerRegistry = source.workerRegistry;
         this.workerManager = null;
         this.workerCommandLifecycleOwner = source.workerCommandLifecycleOwner;
-        this.workerDispatchAvailabilityOwner = source.workerDispatchAvailabilityOwner;
         this.workerDispatchAvailabilityPolicy = source.workerDispatchAvailabilityPolicy;
         this.workerStateProjectionOwner = source.workerStateProjectionOwner;
         this.workerControlService = null;
@@ -295,7 +292,6 @@ public class EngineConfig {
             workerManager = new WorkerManager(
                     getWorkerStorage(),
                     workerReachabilityView,
-                    workerDispatchAvailabilityOwner,
                     getWorkerRegistry()
             );
         }
@@ -308,7 +304,6 @@ public class EngineConfig {
                     getWorkerManager(),
                     workerCommandLifecycleOwner,
                     workerStateProjectionOwner,
-                    workerDispatchAvailabilityOwner,
                     workerDispatchAvailabilityPolicy,
                     getTraceEventLogger()
             );
@@ -334,18 +329,6 @@ public class EngineConfig {
         this.workerReachabilityView = workerReachabilityView != null
                 ? workerReachabilityView
                 : WorkerReachabilityView.permissive();
-        this.workerManager = null;
-        this.workerControlService = null;
-    }
-
-    public WorkerDispatchAvailabilityOwner getWorkerDispatchAvailabilityOwner() {
-        return workerDispatchAvailabilityOwner;
-    }
-
-    public void setWorkerDispatchAvailabilityOwner(WorkerDispatchAvailabilityOwner workerDispatchAvailabilityOwner) {
-        this.workerDispatchAvailabilityOwner = workerDispatchAvailabilityOwner != null
-                ? workerDispatchAvailabilityOwner
-                : new WorkerDispatchAvailabilityOwner();
         this.workerManager = null;
         this.workerControlService = null;
     }
