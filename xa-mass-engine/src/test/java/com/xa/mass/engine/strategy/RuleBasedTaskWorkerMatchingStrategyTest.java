@@ -744,5 +744,10 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         public boolean tryReserveWorkerCapacity(String workerId, String taskId) {
             return true;
         }
+
+        @Override
+        public boolean isWorkerDispatchEnabled(Worker worker) {
+            return true;
+        }
     }
 }
