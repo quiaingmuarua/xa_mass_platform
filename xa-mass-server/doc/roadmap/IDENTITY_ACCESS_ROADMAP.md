@@ -78,6 +78,10 @@ roadmap after access control is stable.
 11. SDK changes are allowed only when they reuse or tighten existing auth contracts such as `PrincipalContext`, `AuthorizationPolicy`, `SubmitterRegistration`, and `AuthProvider`.
 12. Dev operator login is a local permission-validation shell, not a production login product.
 13. API-key viewer sessions are submitter-scoped sessions, not operator sessions.
+14. `ApiKeyCredentialStore` owns API-key lifecycle state; `SubmitterRegistry` / `AuthProvider` are authentication projections or adapters, not a second credential owner.
+15. Disabling a human user disables that user's owned API keys unless the key is explicitly modeled as service-owned.
+16. Submitter viewer sessions add browser convenience only; they must not introduce new permission semantics beyond the source API-key `PrincipalContext`.
+17. Usage audit records authorization result and domain-accepted outcome; it must not count accepted units before the owning operation accepts the request.
 
 ## Goals
 
@@ -135,6 +139,22 @@ task ownership stamp
 
 New API-key work must extend this owner path. Do not create a second
 independent credential registry.
+
+Current implementation note:
+
+```text
+JdbcSubmitterRegistry already persists submitter principals and credential
+hashes for the existing AuthProvider path. IAM implementation must decide the
+lifecycle/projection boundary explicitly before adding new stores:
+
+ApiKeyCredentialStore:
+  lifecycle truth for application approval, status, revocation, display metadata
+
+SubmitterRegistry / AuthProvider:
+  authentication projection used by existing SDK/server credential resolution
+
+There must not be two independent create/revoke paths for the same credential.
+```
 
 ## Target Model
 
@@ -265,6 +285,7 @@ Rules:
 3. API keys receive explicit approved permissions and scopes
 4. engine must not import role or permission stores
 5. SDK/server authorization surfaces should consume permission names from the catalog
+6. ApiPermissionNames and ApiRouteAuthorizationCatalog must be extended before new API-key mutation routes are enabled
 ```
 
 ### ApiKeyApplicationRecord
@@ -286,6 +307,16 @@ record ApiKeyApplicationRecord(
     Instant createdAt,
     Instant reviewedAt
 ) {}
+```
+
+V1 application semantics:
+
+```text
+1. proxy/impersonated application is not supported
+2. requestedUserId must equal applicantUserId
+3. requestedPrincipalId is optional request metadata; final principalId is assigned or bound during operator create/approval
+4. requestedPermissions must be validated against the permission catalog at application-create time
+5. unknown permission strings are rejected
 ```
 
 Statuses:
@@ -313,6 +344,7 @@ record ApiKeyCredentialRecord(
     String applicationId,
     String createdBy,
     Instant createdAt,
+    Instant expiresAt,
     Instant revokedAt,
     String revokedBy,
     String revokeReason
@@ -336,6 +368,9 @@ Rules:
 3. authentication uses hash lookup
 4. keyPrefix is display/debug only
 5. revocation is immediate for subsequent authentication
+6. DISABLED createdForUserId blocks authentication unless the key is explicitly service-owned
+7. status changes must update the AuthProvider-visible projection through the same owner path
+8. expiresAt is nullable; null means no automatic expiry
 ```
 
 Relationship rules:
@@ -371,6 +406,15 @@ record ApiUsageLedgerRecord(
 ) {}
 ```
 
+Nullable fields:
+
+```text
+messageId:
+  null for task-level operations such as TASK_CREATE and TASK_ARCHIVE_DOWNLOAD
+  optional for aggregate TASK_RESULT_READ queries
+  present when usage is tied to one accepted work item
+```
+
 First-version operations:
 
 ```text
@@ -390,6 +434,11 @@ FAILED_AFTER_ACCEPT
 ```
 
 Usage ledger is audit material for API-key calls. It is not credit accounting.
+It should be written after the server can classify the request as accepted,
+rejected, or failed-after-accept by the owning API/runtime path. It should not
+pre-count accepted units before the domain owner accepts the operation.
+`FAILED_AFTER_ACCEPT` records are diagnostic evidence until a later accounting
+roadmap defines quota, refund, or backfill behavior.
 
 ### SubmitterViewerSessionRecord
 
@@ -414,6 +463,7 @@ Rules:
 4. cannot task control / govern through the viewer session
 5. can read only owner-scoped task/result/archive/usage resources
 6. expires quickly and is invalidated when the source key is revoked
+7. does not grant permissions that the source API key does not already have
 ```
 
 If a future API key scope allows task control, that must be a direct API-key API
@@ -534,6 +584,9 @@ Rules:
 5. use requestId/clientRequestId for idempotency when available
 6. operator console calls are not API-key usage
 7. usage records are proof for later accounting, but do not enforce balance
+8. accepted units are written only after the owning operation accepts the request
+9. rejected authorization records may be recorded for audit, but must carry zero accepted units
+10. duplicate requestId/clientRequestId must not double meter where idempotency is available
 ```
 
 ## Storage Contract
@@ -564,6 +617,16 @@ engine/runtime:
 The credential store should back or adapt the existing
 `SubmitterOperations` / `AuthProvider` credential truth.
 
+Credential owner rule:
+
+```text
+1. ApiKeyCredentialStore owns lifecycle state and metadata
+2. SubmitterRegistry/AuthProvider expose the authentication projection
+3. create/revoke/disable must update both lifecycle and auth projection through one owner path
+4. tests must prove revoked/disabled keys fail through the existing AuthProvider route
+5. implementation must not add a second route-specific credential registry
+```
+
 ## Phase Plan
 
 ### Phase IAM-0: Inventory And Boundary Lock
@@ -577,9 +640,11 @@ Scope:
 1. inventory DefaultOperatorPrincipalDirectory and header auth behavior
 2. inventory ApiPermissionNames and route authorization catalog
 3. inventory SubmitterRegistration / AuthProvider credential path
-4. inventory every server endpoint that accepts API-key submitter credentials
-5. inventory SDK auth contract touchpoints and decide whether each is reused, tightened, or removed
-6. document no-identity-or-usage-in-engine-or-transport boundary
+4. inventory JdbcSubmitterRegistry and decide lifecycle owner vs auth projection responsibilities
+5. inventory every server endpoint that accepts API-key submitter credentials
+6. inventory SDK auth contract touchpoints and decide whether each is reused, tightened, or removed
+7. inventory currently missing ApiPermissionNames for api-key:* and api-usage:view
+8. document no-identity-or-usage-in-engine-or-transport boundary
 ```
 
 Acceptance:
@@ -590,6 +655,7 @@ Acceptance:
 3. no new API routes
 4. no engine/runtime import changes
 5. clear owner path from key authentication to PrincipalContext
+6. clear decision that API-key lifecycle has one owner and AuthProvider has one projection path
 ```
 
 ### Phase IAM-1: User / Role / Permission Store
@@ -603,7 +669,10 @@ Scope:
 2. add memory UserRolePermissionStore
 3. adapt DefaultOperatorPrincipalDirectory to resolve roles from the store
 4. seed a small set of built-in users, including OPS_ADMIN and OPS_VIEWER
-5. expose read-only user / role / permission APIs
+5. extend ApiPermissionNames with api-key:* and api-usage:view names
+6. extend ApiRouteAuthorizationCatalog for read-only IAM endpoints only
+7. expose read-only user / role / permission APIs
+8. do not enable API-key mutation routes in this phase
 ```
 
 Acceptance:
@@ -614,6 +683,8 @@ Acceptance:
 3. existing route authorization tests still pass
 4. engine imports no user/role classes
 5. there is no public registration endpoint
+6. permission catalog contains API-key and usage permission names before IAM-2 routes use them
+7. IAM-1 exposes no API-key create/approve/revoke behavior
 ```
 
 ### Phase IAM-2: API-Key Application And Credential Lifecycle
@@ -632,6 +703,12 @@ Scope:
 7. store hash + prefix, never raw secret
 8. wire generated keys into existing submitter authentication path
 9. add list/revoke key APIs
+10. implement revocation/disable through the ApiKeyCredentialStore lifecycle owner and AuthProvider projection
+11. block authentication for keys whose owning user is DISABLED unless explicitly service-owned
+12. validate requestedPermissions against the permission catalog at application-create time
+13. verify PrincipalContext carries required keyId/principal/user/scope fields before route rollout
+14. verify AuthorizationPolicy remains the only route/action authorization bridge
+15. verify SubmitterRegistration / AuthProvider can host approved API keys
 ```
 
 Acceptance:
@@ -645,12 +722,55 @@ Acceptance:
 6. revoked/disabled keys cannot authenticate
 7. key permissions do not inherit full user permissions automatically
 8. list/detail APIs never expose raw secret or hash
+9. revocation is visible through the existing AuthProvider path without a parallel auth registry
+10. disabling a createdForUserId blocks that user's owned keys
+11. unknown requestedPermissions are rejected
+12. generated API keys authenticate through the existing AuthProvider path
+13. no engine/transport/runtime package changes are required
 ```
 
-### Phase IAM-3: Submitter Viewer Session
+### Phase IAM-3: API-Key Usage Audit
+
+Goal: record API-key usage without changing admission behavior.
+
+Scope:
+
+```text
+1. add ApiUsageLedgerRecord and store
+2. resolve authenticated keyId during API-key auth
+3. meter task create, append, sync append, result read, archive download
+4. record accepted/rejected/failure status
+5. add submitter/operator usage query APIs
+6. use requestId/clientRequestId as the usage idempotency key where available
+7. record accepted units only after the owning operation accepts the request
+```
+
+Acceptance:
+
+```text
+1. API-key task create creates a usage row
+2. API-key item append records accepted item count
+3. API-key sync append records one sync usage row
+4. operator console calls do not create API-key usage rows
+5. usage query is bounded and filtered by keyId/principal/project/time
+6. duplicate idempotent requests do not double count accepted units
+7. rejected authorization creates zero accepted units
+8. failed-after-accept records preserve the accepted operation evidence
+```
+
+### Phase IAM-4: Submitter Viewer Session
 
 Goal: allow an API key to create a restricted viewer session for its own
 task/result/usage resources without becoming an operator session.
+
+Phase placement:
+
+```text
+IAM-4 is optional for the first backend-only slice. It should start only after
+direct API-key task/result reads and usage audit are stable, because current
+API-key auth can already serve non-browser SDK callers. If no browser viewer is
+being built, defer IAM-4 behind IAM-6.
+```
 
 Scope:
 
@@ -663,6 +783,7 @@ Scope:
 6. deny user/role/API-key approval APIs
 7. expire sessions quickly and invalidate sessions for revoked keys
 8. audit submitter viewer session creation and logout
+9. do not add new authorization semantics beyond the source API-key permissions
 ```
 
 Acceptance:
@@ -672,48 +793,25 @@ Acceptance:
 2. viewer session can list tasks created by the key/principal
 3. viewer session can read own task results and archives
 4. viewer session cannot control/govern tasks
-5. viewer session can read own usage summary after IAM-4 usage audit exists
+5. viewer session can read own usage summary backed by IAM-3 usage audit
 6. viewer session cannot access /api/v1/users or approve/revoke API keys
 7. revoked key cannot create or continue viewer sessions
 8. viewer session does not create an operator session
+9. removing viewer-session support leaves direct API-key APIs fully usable
 ```
 
-### Phase IAM-4: API-Key Usage Audit
+### Phase IAM-5: SDK Auth Contract Cleanup
 
-Goal: record API-key usage without changing admission behavior.
+Goal: remove only genuinely stale server-side assumptions after IAM-2 has
+already proven the SDK/auth contracts can host API keys.
 
 Scope:
 
 ```text
-1. add ApiUsageLedgerRecord and store
-2. resolve authenticated keyId during API-key auth
-3. meter task create, append, sync append, result read, archive download
-4. record accepted/rejected/failure status
-5. add submitter/operator usage query APIs
-```
-
-Acceptance:
-
-```text
-1. API-key task create creates a usage row
-2. API-key item append records accepted item count
-3. API-key sync append records one sync usage row
-4. operator console calls do not create API-key usage rows
-5. usage query is bounded and filtered by keyId/principal/project/time
-```
-
-### Phase IAM-5: SDK Auth Contract Tightening
-
-Goal: reuse the existing SDK auth contracts and remove only genuinely stale server-side assumptions.
-
-Scope:
-
-```text
-1. verify PrincipalContext carries all fields needed by server IAM
-2. verify AuthorizationPolicy remains the only route/action authorization bridge
-3. verify SubmitterRegistration / AuthProvider can host approved API keys
-4. tighten or remove stale server auth helpers that duplicate SDK policy semantics
-5. keep all changes inside server and SDK auth surfaces
+1. remove stale server auth helpers that duplicate SDK policy semantics
+2. remove or rewrite tests that asserted pre-IAM credential assumptions
+3. keep all changes inside server and SDK auth surfaces
+4. do not change route behavior already verified by IAM-2
 ```
 
 Acceptance:
@@ -721,14 +819,15 @@ Acceptance:
 ```text
 1. existing submitter credential tests still pass
 2. route authorization still goes through AuthorizationPolicy
-3. generated API keys authenticate through the existing AuthProvider path
+3. IAM-2 API-key auth tests still pass
 4. no engine/transport/runtime package changes are required
 ```
 
 ### Phase IAM-6: User / Role Management APIs
 
-Goal: support operator-managed users and roles after API-key distribution and
-viewer sessions are stable.
+Goal: support operator-managed users and roles after API-key credential
+lifecycle is stable. Submitter viewer sessions do not block this phase if
+IAM-4 is deferred.
 
 Scope:
 
@@ -835,6 +934,8 @@ API key:
 6. revoked key returns 401
 7. key list/detail never exposes raw secret or hash
 8. rejected application cannot create a credential
+9. disabled createdForUserId blocks that user's owned keys
+10. revocation/disable is visible through the existing AuthProvider route
 ```
 
 Submitter viewer session:
@@ -846,7 +947,7 @@ Submitter viewer session:
 4. viewer session cannot call user/role APIs
 5. viewer session cannot approve/revoke API keys
 6. revoked key invalidates viewer session
-7. usage summary is available only after IAM-4 usage audit exists
+7. usage summary is backed by IAM-3 usage audit
 ```
 
 Usage audit:
@@ -858,6 +959,7 @@ Usage audit:
 4. operator console task create records no API-key usage
 5. failed authorization records no accepted units
 6. duplicate clientRequestId does not double meter when idempotency exists
+7. failed-after-accept keeps accepted operation evidence
 ```
 
 Server host-shell:
@@ -873,7 +975,8 @@ Server host-shell:
 
 ## Architecture Guards
 
-Add targeted guards after the corresponding packages exist:
+Add targeted guards after the corresponding packages exist. Guards 1-3 should
+be ArchUnit or equivalent source tests, not documentation-only rules.
 
 ```text
 1. engine packages must not import user/role/API-key/usage classes
@@ -885,6 +988,17 @@ Add targeted guards after the corresponding packages exist:
 7. worker callback and result convergence code must not write API-key usage
 8. submitter viewer sessions must not create operator sessions
 9. submitter viewer routes must stay owner-scoped
+10. API-key lifecycle code must not bypass SubmitterRegistry/AuthProvider projection
+11. API-key list/detail DTOs must not expose credentialHash
+```
+
+Minimum source guards:
+
+```text
+1. xa-mass-engine must not depend on server IAM store packages
+2. transport modules must not depend on server IAM store packages
+3. runtime/infra runtime modules must not depend on server IAM store packages
+4. API-key response DTOs outside create/approve responses must not expose rawSecret or credentialHash
 ```
 
 ## Risks And Mitigations
@@ -913,8 +1027,27 @@ Risk: credential registry split.
 Mitigation:
 
 ```text
-Approved API keys must feed the existing submitter credential authentication
-owner. Do not create a second independent auth provider path.
+ApiKeyCredentialStore owns lifecycle state. SubmitterRegistry/AuthProvider are
+the authentication projection. Create, revoke, disable, and user-disable flows
+must update that projection through one owner path.
+```
+
+Risk: disabled users leave active API keys behind.
+
+Mitigation:
+
+```text
+User DISABLED blocks owned API-key authentication by default. Service-owned keys
+must be explicit and tested as a separate credential class.
+```
+
+Risk: submitter viewer session becomes a second authorization surface.
+
+Mitigation:
+
+```text
+Viewer sessions resolve back to the source API-key PrincipalContext and add no
+new permissions. They can be deferred without breaking direct API-key APIs.
 ```
 
 Risk: runtime usage coupling.
@@ -971,6 +1104,15 @@ Quota enforcement belongs to a later accounting roadmap. Pair future accounting
 decisions with requestId or clientRequestId where available.
 ```
 
+Risk: usage ledger double-meters accepted units.
+
+Mitigation:
+
+```text
+Use requestId/clientRequestId where available and write accepted units only
+after the domain owner accepts the operation.
+```
+
 Risk: IAM work leaks into engine.
 
 Mitigation:
@@ -1011,8 +1153,9 @@ This makes API-key distribution useful before full user/role administration:
 ```text
 1. create or approve a scoped API key
 2. use it from SDK/API
-3. create a submitter viewer session
-4. inspect only that key/principal's own task/result resources
+3. create task-facing API usage evidence
+4. query key/principal usage without enabling quota or billing
+5. optionally continue to IAM-4 for browser viewer sessions
 ```
 
 Do not implement credits, worker earnings, quota enforcement, public

@@ -87,6 +87,11 @@ Current implementation has several different lock categories:
   ready cleanup paths.
 - `RedisTaskResultRuntime.commitVisibleFinal(...)` still has a JVM method lock
   even though final commit truth is Redis/Lua-owned.
+- Worker dispatch availability is already registry-backed through
+  `WorkerRegistry` slot state. `WorkerManager.isWorkerDispatchEnabled(...)`
+  reads `WorkerRegistry.slotByWorkerId(...)`, and source-scoped dispatch gate
+  mutations call `WorkerRegistry.disableDispatch(...)` /
+  `WorkerRegistry.clearDispatchDisable(...)`.
 
 This roadmap should reduce locks in the order that protects the mainline:
 
@@ -94,6 +99,21 @@ This roadmap should reduce locks in the order that protects the mainline:
 2. identify real hot-path locks
 3. shrink or remove only locks whose truth has moved into runtime atomic
    operations
+
+### Current Implementation Snapshot
+
+This section captures current code facts that implementation phases must not
+rediscover or accidentally reverse.
+
+| Area | Current fact | Roadmap consequence |
+| --- | --- | --- |
+| Shared contracts | `TaskWorkRuntimeContractTest` and `TaskResultRuntimeContractTest` are runtime-api contract bases with memory and Redis subclasses. | Extend these tests first; do not create backend-specific proof as the only correctness signal. |
+| Redis final commit | `RedisTaskResultRuntime.commitVisibleFinal(...)` is still method-level `synchronized` while delegating final commit to Lua. | `TRS-M1` is the first narrow lock-removal target. |
+| Worker dispatch gate | Dispatch disabled sources are stored in `WorkerRegistry` slot state; `WorkerManager` delegates disable/clear/read to registry. | Treat registry gate as current truth and add guards against reintroducing a separate gate map. |
+| Redis work keyspace | Current `RedisTaskWorkKeyspace` still exposes per-message work/lease/final receipt keys, task member/active sets, runtime stats, task-local delayed, and global ready/delayed/lease indexes. | `TRS-C2` must decide first-slice target keys before delayed/ready Lua work. |
+| Redis result keyspace | Current `RedisTaskResultKeyspace` includes staged draft keys, task stage sets, visible rows/zset, pending barrier zsets, and barrier token keys. | Treat staging/barrier keys as current-shape repair/finality support, not automatic mainline target keys. |
+| Redis worker registry | `RedisWorkerRegistry.updateSlot(...)` is synchronized because WATCH/MULTI is connection-scoped. | Do not fold worker-registry lock work into TRS; only consume its current contract. |
+| Engine worker registry snapshot | `WorkerManager` still maintains `WorkerRegistrySnapshot` alongside registry-backed slot operations. | TRS must not expand snapshot truth; any snapshot cleanup belongs to worker-runtime convergence unless task scheduling directly depends on it. |
 
 ## Mainline Data Structures To Stabilize First
 
@@ -226,7 +246,7 @@ after this roadmap. It is intentionally smaller than the current keyspace.
 | `rt:{ns}:ready-tasks` | ZSET | `TaskWorkRuntime` | discover tasks that may have ready work | Yes | Stale-tolerant scheduling discovery. Claim re-validates. |
 | `rt:{ns}:task:{taskId}:leases` | HASH | `TaskWorkRuntime` | `messageId -> active lease payload` | Yes | Active lease truth. Replaces per-message lease keys and task active set for mainline. |
 | `rt:{ns}:lease-expiry` | ZSET | `TaskWorkRuntime` | discover expired leases by due time | Yes | Global due index is required to avoid scanning task leases. |
-| `rt:{ns}:worker:{workerId}:active` | SET | `TaskWorkRuntime` / worker occupancy integration | active `taskId/messageId` refs for one worker | Conditional | Keep only while worker disconnect / expiry paths require this runtime view. If WorkerRegistry occupancy owns those reads after WSR-5, remove it from the TRS target. |
+| `rt:{ns}:worker:{workerId}:active` | SET | `TaskWorkRuntime` / worker occupancy integration | active `taskId/messageId` refs for one worker | Conditional | Keep only while worker disconnect / expiry paths require this runtime view. Worker dispatch gate truth is already registry-backed; this key must not become a second gate truth. |
 | `rt:{ns}:task:{taskId}:stats` | HASH | `TaskWorkRuntime` | task counters for progress/terminal policy | Yes | Mainline progress should not scan work/lease hashes. |
 | `rt:{ns}:task:{taskId}:final` | HASH | `TaskResultRuntime` | `messageId -> stable final row` | Yes | Stable final visibility by message. Replaces per-message visible row keys. |
 | `rt:{ns}:task:{taskId}:final-seq` | ZSET | `TaskResultRuntime` | result window order, member `messageId`, score `seq` | Yes | Needed for ordered result windows. |
@@ -286,34 +306,51 @@ Before implementation, answer these from current code and tests:
 
 ### Phase Ordering Decision
 
-Redis key convergence must not block the first lock-removal slice:
+This roadmap must follow the same execution rhythm as the worker-runtime
+convergence work:
 
-- `TRS-4` may run before Redis key convergence because
+```text
+Converge current truth
+  -> modify one atomic boundary at a time
+  -> delete residue only after the replacement path is proven
+```
+
+The phase names intentionally encode that rhythm:
+
+- `TRS-C*` phases converge facts, contracts, and proof boundaries. They should
+  not change runtime behavior.
+- `TRS-M*` phases modify one mechanism boundary at a time. Each phase must land
+  with its own verification and green CI.
+- `TRS-D*` phases delete residue after the replacement path is proven. They
+  must not leave two live runtime truth tracks.
+
+Redis key convergence must not block the first narrow lock-removal slice:
+
+- `TRS-M1` may run before Redis task-work key convergence because
   `RedisTaskResultRuntime.commitVisibleFinal(...)` already delegates final
   correctness to a Lua script.
-- `TRS-6` must not run before the Redis task-work key shape decision. Delayed
-  promotion and ready cleanup Lua depend directly on work/ready/lease key
-  layout; writing new Lua against a shape that will be replaced creates
-  avoidable review and rewrite cost.
+- `TRS-M4` must not run before the Redis task-work key shape decision in
+  `TRS-C2`. Delayed promotion and ready cleanup Lua depend directly on
+  work/ready/lease key layout; writing new Lua against a shape that will be
+  replaced creates avoidable review and rewrite cost.
 
 The intended order is:
 
 ```text
-TRS-0 inventory
-TRS-1 proof
-TRS-4 remove Redis final-commit JVM lock
-TRS-2 runtime/key-shape baseline decision
-TRS-3 engine lock scope review
-TRS-5 claim/dispatch proof
-TRS-6 delayed/ready Lua after key shape is settled
+TRS-C0 inventory / lock budget
+TRS-C1 shared runtime proof baseline
+TRS-C2 runtime structure and key-shape decision
+TRS-M1 Redis final-commit JVM lock removal
+TRS-M2 claim / dispatch mainline proof
+TRS-M3 engine scheduling lock-scope reduction
+TRS-M4 Redis delayed / ready atomicity
+TRS-D1 residue removal
+TRS-D2 runtime selection and performance proof
 ```
 
-`TRS-4` is a narrow exception to the "settle key shape before Redis rewrite"
-rule. It removes a Java method monitor from the current
-`RedisTaskResultRuntime.commitVisibleFinal(...)` path and must not redesign
-result keys in the same slice. Current repair/barrier index writes may remain
-inside the existing final-commit Lua only as current-shape behavior; they are
-not approval that barrier/pending keys belong in the minimal target.
+Current repair/barrier index writes may remain inside the existing final-commit
+Lua only as current-shape behavior. They are not approval that barrier/pending
+keys belong in the first mainline key target.
 
 ## Mechanism And Policy Boundary
 
@@ -363,8 +400,11 @@ reservation, or finality truth.
 13. Keep Lua small. Lua scripts may protect indivisible multi-key state
     transitions, but must not become hidden scheduling policy or large business
     workflows.
-14. Redis task-work key convergence is not required before `TRS-4`, but it must
-    be decided before `TRS-6` delayed/ready Lua work starts.
+14. Redis task-work key convergence is not required before `TRS-M1`, but it
+    must be decided before `TRS-M4` delayed/ready Lua work starts.
+15. Worker dispatch gate truth is registry-backed through `WorkerRegistry`.
+    Do not reintroduce an independent synchronized dispatch gate map in task
+    runtime lock-reduction work.
 
 ## Owner Review Position
 
@@ -476,7 +516,7 @@ Contract tests describe the transition semantics.
 If a script becomes difficult to explain as a small state transition, split the
 owner logic in Java first instead of expanding Lua.
 
-## Phase TRS-0: Inventory And Lock Budget
+## Phase TRS-C0: Inventory And Lock Budget
 
 Goal: make current lock and atomic boundaries explicit before changing behavior.
 
@@ -523,9 +563,11 @@ Exit:
 - one lock budget table exists
 - one runtime data structure table exists
 - one Redis key classification table exists
+- WorkerRegistry-backed dispatch gate reads are recorded as existing current
+  truth, not as a future WSR dependency
 - no behavior changes yet
 
-## Phase TRS-1: Mainline Runtime Contract Expansion
+## Phase TRS-C1: Shared Runtime Proof Baseline
 
 Goal: prove the task-worker mainline before reducing locks.
 
@@ -556,8 +598,10 @@ Exit:
 - memory and Redis pass the same contract suite
 - Redis has cross-client proof where JVM locks cannot hide bugs
 - engine mainline proof observes append -> claim -> result -> refill
+- proof failures expose duplicate claim, duplicate final, counter drift, stale
+  result, or wakeup lag instead of reporting only generic timeout/failure
 
-## Phase TRS-2: Runtime Structure Baseline
+## Phase TRS-C2: Runtime Structure And Key-Shape Decision
 
 Goal: align memory and Redis runtime structures before optimizing locks.
 
@@ -568,7 +612,8 @@ Scope:
 2. Ensure memory and Redis expose equivalent behavior for:
    - ready queue visibility
    - active lease lookup
-   - worker active lookup only if TRS still owns that view before WSR-5
+   - worker active lookup only if TRS still owns that view after the current
+     WorkerRegistry occupancy/gate contract is reviewed
    - task stats
    - recent final receipt lookup
 3. Define stale-tolerant read boundaries:
@@ -581,10 +626,10 @@ Scope:
    - barrier claim/mark methods
 5. Remove or demote tests that assert implementation-specific row layout rather
    than runtime contract semantics.
-6. Confirm Redis key convergence is postponed until after `TRS-4`, and document
+6. Confirm Redis key convergence is postponed until after `TRS-M1`, and document
    why the existing key shape does not block `commitVisibleFinal(...)`
    lock removal.
-7. Complete the Redis task-work key-shape decision before `TRS-6` starts.
+7. Complete the Redis task-work key-shape decision before `TRS-M4` starts.
    Delayed promotion / ready cleanup Lua must not be written against a key
    shape that is expected to be replaced.
 8. Define stats counter invariants that every Redis atomic mutation must
@@ -607,7 +652,73 @@ Exit:
   side effect of lock work
 - stats counter invariant tests are defined before any delayed/ready Lua rewrite
 
-## Phase TRS-3: Engine Scheduling Lock Scope Review
+## Phase TRS-M1: Redis Result Commit Lock Removal
+
+Goal: make Redis stable final commit rely on Redis atomicity, not a Java method
+monitor.
+
+Current target:
+
+- `RedisTaskResultRuntime.commitVisibleFinal(...)`
+
+Scope:
+
+1. Add concurrent final commit tests before removing the lock.
+2. Remove method-level `synchronized` from Redis result commit.
+3. Keep the Lua script as the only final commit owner:
+   - duplicate detection
+   - task-local sequence
+   - visible row write
+   - visible sequence index write
+   - current-shape repair/barrier index writes only if the existing script
+     already owns them
+4. Keep memory runtime synchronization until the memory lock-striping phase.
+5. Do not change Redis result key shape in this phase; key convergence is a
+   `TRS-C2` decision.
+6. Add a source guard that Redis result commit does not regain method-level
+   `synchronized`. The guard should be an ArchUnit or equivalent reflection
+   test that asserts `RedisTaskResultRuntime.commitVisibleFinal(...)` has no
+   `synchronized` modifier, paired with the concurrent Redis contract test.
+
+Exit:
+
+- same-message concurrent commit produces one committed row
+- duplicate commits return duplicate/stale-safe outcomes
+- different-message concurrent commit produces unique task-local sequence values
+- Redis final commit has no JVM monitor
+- CI can pass without depending on a later phase
+
+## Phase TRS-M2: Claim Path And Mainline Dispatch Proof
+
+Goal: prove the worker match -> reserve -> claim -> dispatch boundary under
+concurrency.
+
+Scope:
+
+1. Add proof that a large eligible worker pool with bounded match count does
+   not repeatedly select only the same first workers when random/bounded
+   sampling is enabled.
+2. Add proof that claim-ready work is bounded by:
+   - allocation policy
+   - worker reserved capacity
+   - runtime ready count
+   - per-worker claim capacity
+3. Add proof that duplicate assignment attempts for the same task do not
+   duplicate message dispatch.
+4. Add proof that a no-match attempt does not consume ready work.
+5. Add proof that result final / lease expiry releases worker occupancy and
+   a later refill attempt can claim remaining ready work.
+
+Exit:
+
+- mainline scheduling works under concurrent assignment attempts
+- runtime claim is the dispatch truth
+- worker reservation remains a pre-claim admission guard, not finality truth
+- critical duplicate-dispatch proofs use Redis cross-client setup, not only
+  shared-instance memory runtime tests
+- CI can pass without depending on a later phase
+
+## Phase TRS-M3: Engine Scheduling Lock Scope Reduction
 
 Goal: shrink engine-side locks only where runtime ownership already protects
 the mutation.
@@ -636,10 +747,10 @@ Scope:
    - keep in-flight task dedupe
    - ensure duplicate wakeups are harmless
    - avoid relying on one scanner for correctness
-6. Identify WSR dispatch gate reads that must remain registry-backed, especially
+6. Identify dispatch gate reads that must remain registry-backed, especially
    `WorkerSchedulingCandidateEnumerator -> WorkerManager.isWorkerDispatchEnabled(...)`.
-   Document this as a cross-roadmap dependency on WSR-5 dispatch gate
-   convergence and prevent reintroducing an independent gate map.
+   Add a guard or source scan that prevents reintroducing an independent
+   dispatch gate map outside `WorkerRegistry`.
 7. Add trace evidence for lock/wakeup decisions only if it does not add hot-path
    scans.
 
@@ -648,80 +759,17 @@ Exit:
 - task lifecycle locks remain correctness locks
 - runtime claim/result paths are not serialized by unnecessary task write locks
 - assignment retry / pump / wakeup paths are coalesced but not truth owners
-- WSR-owned dispatch gate synchronization is explicitly documented rather than
-  hidden inside TRS lock-reduction claims
+- WorkerRegistry-owned dispatch gate truth stays a registry concern, not a new
+  task-runtime map
+- CI can pass without depending on a later phase
 
-## Phase TRS-4: Redis Result Commit Lock Removal
-
-Goal: make Redis stable final commit rely on Redis atomicity, not a Java method
-monitor.
-
-Current target:
-
-- `RedisTaskResultRuntime.commitVisibleFinal(...)`
-
-Scope:
-
-1. Add concurrent final commit tests before removing the lock.
-2. Remove method-level `synchronized` from Redis result commit.
-3. Keep the Lua script as the only final commit owner:
-   - duplicate detection
-   - task-local sequence
-   - visible row write
-   - visible sequence index write
-   - current-shape repair/barrier index writes only if the existing script
-     already owns them
-4. Keep memory runtime synchronization until the memory lock-striping phase.
-5. Do not change Redis result key shape in this phase; key convergence is a
-   later TRS-2 decision.
-6. Add source guard that Redis result commit does not regain method-level
-   `synchronized`. The guard should be an ArchUnit or equivalent reflection
-   test that asserts `RedisTaskResultRuntime.commitVisibleFinal(...)` has no
-   `synchronized` modifier, paired with the concurrent Redis contract test.
-
-Exit:
-
-- same-message concurrent commit produces one committed row
-- duplicate commits return duplicate/stale-safe outcomes
-- different-message concurrent commit produces unique task-local sequence values
-- Redis final commit has no JVM monitor
-
-## Phase TRS-5: Claim Path And Mainline Dispatch Proof
-
-Goal: prove the worker match -> reserve -> claim -> dispatch boundary under
-concurrency.
-
-Scope:
-
-1. Add proof that a large eligible worker pool with bounded match count does
-   not repeatedly select only the same first workers when random/bounded
-   sampling is enabled.
-2. Add proof that claim-ready work is bounded by:
-   - allocation policy
-   - worker reserved capacity
-   - runtime ready count
-   - per-worker claim capacity
-3. Add proof that duplicate assignment attempts for the same task do not
-   duplicate message dispatch.
-4. Add proof that a no-match attempt does not consume ready work.
-5. Add proof that result final / lease expiry releases worker occupancy and
-   a later refill attempt can claim remaining ready work.
-
-Exit:
-
-- mainline scheduling works under concurrent assignment attempts
-- runtime claim is the dispatch truth
-- worker reservation remains a pre-claim admission guard, not finality truth
-- critical duplicate-dispatch proofs use Redis cross-client setup, not only
-  shared-instance memory runtime tests
-
-## Phase TRS-6: Redis Work Delayed / Ready Cleanup Atomicity
+## Phase TRS-M4: Redis Work Delayed / Ready Cleanup Atomicity
 
 Goal: make delayed promotion and ready-head cleanup safe under concurrent
 Redis clients.
 
-This is intentionally after the mainline proof. It is important, but it should
-not block the task-worker mainline structure work.
+This is intentionally after `TRS-C2` and `TRS-M2`. It is important, but it
+should not block the task-worker mainline proof.
 
 Current targets:
 
@@ -759,8 +807,107 @@ Exit:
 - counters remain stable under concurrent promotion / claim
 - readyTaskIds remains bounded and does not perform unbounded cleanup
 - Lua remains a small per-entry state transition, not a hidden batch scheduler
+- CI can pass without depending on a later phase
 
-## Phase TRS-7: Wakeup Hints Without Truth Drift
+## Phase TRS-D1: Residue Removal
+
+Goal: remove old key dependencies, implementation-shape tests, and stale docs
+after the proven path is live.
+
+Scope:
+
+1. Delete or demote tests that assert obsolete Redis key layout instead of
+   runtime semantics.
+2. Remove stale docs that describe WSR dispatch gate migration as incomplete.
+3. Remove old task-work keys only after `TRS-C2` target keys and `TRS-M4`
+   atomicity proof are in place.
+4. Remove duplicate repair/diagnostic hot-path structures unless a bounded
+   repair proof names them as required.
+5. Keep trace/audit as the place for historical or operator analytics; do not
+   keep runtime keys solely to make historical queries easier.
+
+Exit:
+
+- no two live runtime truth tracks remain for the same queue/lease/final fact
+- docs no longer describe old dependency states as current truth
+- cleanup residue does not drive scheduling correctness
+- CI can pass without depending on a later phase
+
+## Phase TRS-D2: Runtime Selection And Performance Proof
+
+Goal: prove high-performance scheduling behavior with memory and Redis runtime
+behind the same engine flow.
+
+Scope:
+
+1. Run the same scheduling E2E with memory and Redis runtime:
+   - many tasks
+   - many workers
+   - delayed retry
+   - lease expiry
+   - duplicate result callbacks
+   - worker disconnect/reconnect
+2. Add a Redis runtime throughput smoke:
+   - concurrent enqueue
+   - concurrent ready discovery
+   - concurrent claim
+   - concurrent result apply
+   - concurrent final commit
+3. Track:
+   - claimed messages per second
+   - duplicate claim count
+   - stale result count
+   - delayed promotion duplication
+   - counter drift
+   - scheduler wakeup lag
+   - Redis command/script latency
+4. Add source guards for:
+   - `RedisTaskResultRuntime.commitVisibleFinal(...)` has no method-level
+     `synchronized`
+   - dispatch gate reads remain registry-backed
+
+Exit:
+
+- Redis runtime proves correctness under real concurrent clients
+- memory runtime remains a correct embedded implementation
+- no task scheduling critical path is protected by a global JVM lock
+- proof output identifies whether failures are duplicate claim, stale result,
+  counter drift, wakeup lag, or lock regression
+
+## Phase Verification Matrix
+
+Each phase must be independently mergeable. A phase may add stronger tests than
+listed here, but it must not rely on a later phase to make its own behavior
+correct.
+
+| Phase | Required verification | Proof intent |
+| --- | --- | --- |
+| `TRS-C0` | `git diff --check` plus source-scan evidence in the roadmap/doc update | Inventory only; no runtime behavior change. |
+| `TRS-C1` | `./mvnw -q -pl platform_infra/mass-runtime-api,platform_infra/mass-runtime-memory,platform_infra/mass-runtime-redis -am test` | Shared contract proof covers memory and Redis, including Redis tests that cannot be masked by one JVM monitor. |
+| `TRS-C2` | Runtime contract tests plus backend-specific Redis key-shape tests only where key layout itself is the subject | Contract semantics stay backend-neutral while Redis key convergence decisions are explicit. |
+| `TRS-M1` | Redis result contract tests, Redis cross-client final commit test, and source guard for `commitVisibleFinal(...)` modifier | Stable final commit correctness comes from Redis/Lua, not a Java method monitor. |
+| `TRS-M2` | Engine scheduling proof tests plus runtime contract tests | Reserve/claim/dispatch/result/refill does not duplicate work under concurrent assignment attempts. |
+| `TRS-M3` | Engine lifecycle/scheduling tests plus source guard for registry-backed dispatch gate reads | Engine lock reduction does not weaken lifecycle locks or reintroduce an independent gate map. |
+| `TRS-M4` | Redis work runtime tests with concurrent promotion/claim/result and counter invariant checks | Delayed/ready cleanup is atomic and bounded under concurrent Redis clients. |
+| `TRS-D1` | Full touched-module test set plus source scans for removed old keys/docs | Residue removal does not leave two live runtime truth tracks. |
+| `TRS-D2` | Memory and Redis scheduling E2E/proof scripts with reported metrics | Runtime selection is proven by real concurrent flow, not happy-path startup. |
+
+Recommended local verification command for doc-only roadmap edits:
+
+```bash
+git diff --check
+```
+
+Recommended first code-change verification command:
+
+```bash
+./mvnw -q -pl platform_infra/mass-runtime-api,platform_infra/mass-runtime-memory,platform_infra/mass-runtime-redis -am test
+```
+
+If a phase touches engine scheduling or worker assignment, include the owning
+engine tests with `-am` rather than relying on runtime module tests alone.
+
+## Later Specialist Topic: Wakeup Hints Without Truth Drift
 
 Goal: reduce scheduling latency without moving truth into events.
 
@@ -785,7 +932,7 @@ Exit:
 - duplicate wakeup does not duplicate claim
 - stream/pubsub does not become queue truth
 
-## Phase TRS-8: Memory Runtime Lock Striping
+## Later Specialist Topic: Memory Runtime Lock Striping
 
 Goal: make memory runtime mirror the same logical owner model without one broad
 monitor around unrelated tasks.
@@ -822,7 +969,7 @@ Exit:
 - same task/message invariants remain protected
 - memory and Redis still pass the same contract tests
 
-## Phase TRS-9: Repair And Cleanup Specialist Pass
+## Later Specialist Topic: Repair And Cleanup Specialist Pass
 
 Goal: keep repair paths bounded without confusing them with normal scheduling.
 
@@ -842,41 +989,6 @@ Exit:
 - repair cleanup is idempotent
 - concurrent repair and final commit do not leave permanent index residue
 - scan cost is bounded and documented
-
-## Phase TRS-10: Runtime Selection And Performance Proof
-
-Goal: prove high-performance scheduling behavior with memory and Redis runtime
-behind the same engine flow.
-
-Scope:
-
-1. Run the same scheduling E2E with memory and Redis runtime:
-   - many tasks
-   - many workers
-   - delayed retry
-   - lease expiry
-   - duplicate result callbacks
-   - worker disconnect/reconnect
-2. Add a Redis runtime throughput smoke:
-   - concurrent enqueue
-   - concurrent ready discovery
-   - concurrent claim
-   - concurrent result apply
-   - concurrent final commit
-3. Track:
-   - claimed messages per second
-   - duplicate claim count
-   - stale result count
-   - delayed promotion duplication
-   - counter drift
-   - scheduler wakeup lag
-   - Redis command/script latency
-
-Exit:
-
-- Redis runtime proves correctness under real concurrent clients
-- memory runtime remains a correct embedded implementation
-- no task scheduling critical path is protected by a global JVM lock
 
 ## Non-Goals
 
@@ -902,7 +1014,7 @@ Exit:
 | hidden JVM lock dependency | same runtime instance only tests | Redis tests using independent clients |
 | assignment single-lane bottleneck | every wakeup routed through one lane | mainline proof with runtime ready pump and duplicate wakeups |
 | task write lock overreach | runtime mutation still wrapped by lifecycle lock | lock budget proof and targeted engine tests |
-| WSR gate still synchronized | WSR-5 dispatch gate migration deferred | hot-path global dispatch gate read remains visible as a cross-roadmap dependency |
+| dispatch gate truth drifts | independent gate map reintroduced outside `WorkerRegistry` | source guard plus scheduling candidate tests |
 | wakeup truth drift | stream/pubsub treated as queue truth | lost/duplicate wakeup tests |
 | repair scan overload | unbounded result/stage scans | bounded scan tests and metrics |
 | memory/Redis divergence | implementation-specific behavior | shared contract suite |
@@ -911,8 +1023,8 @@ Exit:
 
 Do this first:
 
-1. Complete `TRS-0` inventory.
-2. Add `TRS-1` mainline concurrency tests for:
+1. Complete `TRS-C0` inventory.
+2. Add `TRS-C1` mainline concurrency tests for:
    - concurrent claim uniqueness
    - concurrent final commit uniqueness
    - duplicate assignment attempts do not duplicate dispatch
@@ -920,14 +1032,16 @@ Do this first:
    only after the proof is in place.
 4. Add a targeted source guard for Redis result commit: ArchUnit or equivalent
    reflection test plus the concurrent Redis final-commit contract test.
-5. Re-run memory and Redis runtime contract tests.
+5. Add a targeted guard that dispatch gate reads remain registry-backed and no
+   independent task-runtime gate map is introduced.
+6. Re-run memory and Redis runtime contract tests.
 
 Do not start with delayed promotion Lua or stream wakeup. Those are valid, but
 they are not the narrowest proof that the task-worker mainline is structurally
 safe.
 
-Do not start `TRS-6` delayed/ready Lua until the Redis task-work key-shape
-decision from `TRS-2` is complete.
+Do not start `TRS-M4` delayed/ready Lua until the Redis task-work key-shape
+decision from `TRS-C2` is complete.
 
 ## Review Questions Before Implementation
 
