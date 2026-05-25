@@ -17,6 +17,15 @@ interface TaskDetailEnvelope {
     task: TaskDetailRecord
 }
 
+interface TaskCommandOutcome {
+    taskId: string
+    command: string
+    accepted: boolean
+    status?: TaskActionResult['newStatus']
+    terminalReason?: string
+    failureReason?: string
+}
+
 export async function listTasksReal(
     query: TaskListQuery = {},
 ): Promise<TaskListResponse> {
@@ -72,9 +81,7 @@ export async function appendTaskItemsReal(
 }
 
 export async function sealTaskReal(taskId: string): Promise<TaskActionResult> {
-    return requestApiData<TaskActionResult>(`/api/v1/tasks/${taskId}:seal`, {
-        method: 'POST',
-    })
+    return executeTaskCommandReal(taskId, 'SEAL')
 }
 
 export async function invokeSyncTaskDebugReal(
@@ -111,7 +118,7 @@ export async function getTaskDetailReal(
 export async function getTaskReviewReal(
     taskId: string,
 ): Promise<TaskReviewResponse> {
-    return requestApiData<TaskReviewResponse>(`/api/v1/tasks/${taskId}/review`)
+    return requestApiData<TaskReviewResponse>(`/internal/v1/review/tasks/${taskId}`)
 }
 
 export async function auditTaskReal(
@@ -119,20 +126,10 @@ export async function auditTaskReal(
     approved: boolean,
     comment = '',
 ): Promise<TaskActionResult> {
-    const params = new URLSearchParams({
-        approved: String(approved),
-    })
-    if (comment.trim().length > 0) {
-        params.set('comment', comment.trim())
-    }
-
-    return requestApiData<TaskActionResult>(
-        approved
-            ? `/api/v1/tasks/${taskId}:approve?${params.toString()}`
-            : `/api/v1/tasks/${taskId}:reject?${params.toString()}`,
-        {
-            method: 'POST',
-        },
+    return executeTaskCommandReal(
+        taskId,
+        approved ? 'APPROVE' : 'REJECT',
+        comment,
     )
 }
 
@@ -157,23 +154,43 @@ export async function terminateTaskReal(
 }
 
 export function downloadTaskSeedExportReal(taskId: string): void {
-    triggerDownload(buildApiUrl(`/api/v1/tasks/${taskId}/review/seed-export`))
+    triggerDownload(buildApiUrl(`/internal/v1/review/tasks/${taskId}/seed-export`))
 }
 
 export function downloadTaskResultExportReal(taskId: string): void {
-    triggerDownload(buildApiUrl(`/api/v1/tasks/${taskId}/review/result-export`))
+    triggerDownload(buildApiUrl(`/internal/v1/review/tasks/${taskId}/result-export`))
 }
 
 async function invokeTaskActionReal(
     taskId: string,
     action: 'pause' | 'resume' | 'block' | 'terminate',
 ): Promise<TaskActionResult> {
-    return requestApiData<TaskActionResult>(
-        `/api/v1/tasks/${taskId}:${action}`,
+    return executeTaskCommandReal(taskId, action.toUpperCase())
+}
+
+async function executeTaskCommandReal(
+    taskId: string,
+    command: string,
+    reason = '',
+): Promise<TaskActionResult> {
+    const outcome = await requestApiData<TaskCommandOutcome>(
+        `/api/v1/tasks/${taskId}/commands`,
         {
             method: 'POST',
+            body: JSON.stringify({
+                command,
+                reason: reason.trim() || undefined,
+            }),
         },
     )
+
+    return {
+        message: outcome.accepted
+            ? `Task command ${outcome.command} accepted`
+            : (outcome.failureReason ?? `Task command ${outcome.command} rejected`),
+        newStatus: outcome.status,
+        terminalReason: outcome.terminalReason,
+    }
 }
 
 function normalizeTaskRecord(task: TaskDetailRecord): TaskDetailRecord {

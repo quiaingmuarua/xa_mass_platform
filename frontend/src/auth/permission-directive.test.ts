@@ -16,7 +16,7 @@ describe('permission directive', () => {
                 template: `
           <div>
             <button v-permission="'task:view'" data-testid="allowed">Allowed</button>
-            <button v-permission="'task:terminate'" data-testid="blocked">Blocked</button>
+            <button v-permission="'task:control'" data-testid="blocked">Blocked</button>
           </div>
         `,
             },

@@ -16,7 +16,7 @@ const mockRules: RuleListResponse = {
             name: 'Worker attribute routing',
             type: 'QL_EXPRESS',
             content: "worker.attributes['routingTags'] != null",
-            description: 'Use worker-level scheduling attributes instead of legacy worker contexts.',
+            description: 'Use worker-level scheduling attributes without relying on retired context pools.',
             enabled: true,
             priority: 20,
         },

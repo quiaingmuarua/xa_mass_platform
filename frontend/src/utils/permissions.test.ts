@@ -28,14 +28,14 @@ describe('permission helpers', () => {
         setMockCurrentUser(mockViewerUser)
 
         expect(hasPermission('task:view')).toBe(true)
-        expect(hasPermission('task:terminate')).toBe(false)
+        expect(hasPermission('task:control')).toBe(false)
     })
 
     it('supports any-permission checks', () => {
         setMockCurrentUser(mockViewerUser)
 
-        expect(hasAnyPermission(['task:terminate', 'task:view'])).toBe(true)
-        expect(hasAnyPermission(['task:terminate', 'task:pause'])).toBe(false)
+        expect(hasAnyPermission(['task:control', 'task:view'])).toBe(true)
+        expect(hasAnyPermission(['task:control', 'task:govern'])).toBe(false)
     })
 
     it('allows routes without explicit permissions when authenticated', () => {

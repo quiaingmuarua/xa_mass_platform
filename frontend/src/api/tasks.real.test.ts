@@ -116,8 +116,8 @@ describe('tasks.real', () => {
                     seedPreview: [],
                     resultPreview: [],
                     exports: {
-                        seedUrl: '/api/v1/tasks/task-001/review/seed-export',
-                        resultUrl: '/api/v1/tasks/task-001/review/result-export',
+                        seedUrl: '/internal/v1/review/tasks/task-001/seed-export',
+                        resultUrl: '/internal/v1/review/tasks/task-001/result-export',
                     },
                 },
             }),
@@ -127,16 +127,16 @@ describe('tasks.real', () => {
         const review = await getTaskReviewReal('task-001')
 
         expect(fetchMock).toHaveBeenCalledWith(
-            '/api/v1/tasks/task-001/review',
+            '/internal/v1/review/tasks/task-001',
             expect.any(Object),
         )
         expect(review.summary.totalItems).toBe(10)
         expect(review.exports.resultUrl).toBe(
-            '/api/v1/tasks/task-001/review/result-export',
+            '/internal/v1/review/tasks/task-001/result-export',
         )
     })
 
-    it('posts task terminate to the backend action endpoint', async () => {
+    it('posts task terminate through the unified command endpoint', async () => {
         setRuntimeConfigOverrides({
             apiBaseUrl: '/backend',
         })
@@ -145,7 +145,11 @@ describe('tasks.real', () => {
                 code: 0,
                 msg: 'ok',
                 data: {
-                    message: 'Task terminated',
+                    taskId: 'task-001',
+                    command: 'TERMINATE',
+                    accepted: true,
+                    status: 'TERMINAL',
+                    terminalReason: 'MANUAL_CANCELLED',
                 },
             }),
         )
@@ -154,12 +158,17 @@ describe('tasks.real', () => {
         const response = await terminateTaskReal('task-001')
 
         expect(fetchMock).toHaveBeenCalledWith(
-            '/backend/api/v1/tasks/task-001:terminate',
+            '/backend/api/v1/tasks/task-001/commands',
             expect.objectContaining({
                 method: 'POST',
+                body: JSON.stringify({
+                    command: 'TERMINATE',
+                    reason: undefined,
+                }),
             }),
         )
-        expect(response.message).toBe('Task terminated')
+        expect(response.message).toBe('Task command TERMINATE accepted')
+        expect(response.newStatus).toBe('TERMINAL')
     })
 
     it('creates a task shell through the v1 shell endpoint', async () => {
@@ -216,13 +225,16 @@ describe('tasks.real', () => {
         expect(result.added).toBe(2)
     })
 
-    it('seals tasks through the v1 seal endpoint', async () => {
+    it('seals tasks through the unified command endpoint', async () => {
         const fetchMock = vi.fn().mockResolvedValue(
             jsonResponse({
                 code: 0,
                 msg: 'ok',
                 data: {
-                    message: 'Task sealed',
+                    taskId: 'task-101',
+                    command: 'SEAL',
+                    accepted: true,
+                    status: 'READY',
                 },
             }),
         )
@@ -231,10 +243,16 @@ describe('tasks.real', () => {
         const result = await sealTaskReal('task-101')
 
         expect(fetchMock).toHaveBeenCalledWith(
-            '/api/v1/tasks/task-101:seal',
-            expect.objectContaining({ method: 'POST' }),
+            '/api/v1/tasks/task-101/commands',
+            expect.objectContaining({
+                method: 'POST',
+                body: JSON.stringify({
+                    command: 'SEAL',
+                    reason: undefined,
+                }),
+            }),
         )
-        expect(result.message).toBe('Task sealed')
+        expect(result.message).toBe('Task command SEAL accepted')
     })
 
     it('posts worker debug sync invocations to the internal v1 endpoint', async () => {

@@ -58,6 +58,21 @@ What this module does not own:
 - current ownership stamp is intentionally minimal: `createdByPrincipalId` and `createdByPrincipalType`
 - default dev trust remains intentionally permissive in this phase; this change is framework convergence, not production trust tightening
 
+Direction note:
+
+- User, role, permission, API-key lifecycle, and API-key usage audit are planned in
+  [IDENTITY_ACCESS_ROADMAP.md](./doc/roadmap/IDENTITY_ACCESS_ROADMAP.md).
+  That roadmap keeps identity and API-key ownership in the server control-plane,
+  preserves `PrincipalContext + AuthorizationPolicy` as the authorization bridge,
+  and must not move IAM or usage-audit logic into engine scheduling, worker
+  callbacks, or result convergence. Credit, billing, and quota are intentionally
+  left for a later accounting roadmap.
+- The planned identity path does not include public user registration: early
+  users are built-in/operator-managed, mid-term Google/GitHub login maps to
+  approved users, and API keys remain the SDK-first programmatic credential.
+- API keys may later create a restricted submitter viewer session for their own
+  tasks/results/usage, but this must not become an operator console session.
+
 Current host security matrix:
 
 | Scenario | Principal surface | Resource/action | Current gate |

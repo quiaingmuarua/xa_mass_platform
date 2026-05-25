@@ -65,7 +65,6 @@ export interface TaskResultPreviewItem {
     retryCount: number
     maxRetryCount: number
     workerId: string | null
-    workerContextId: string | null
     batchId: string | null
     attemptId: string | null
     startTime: string

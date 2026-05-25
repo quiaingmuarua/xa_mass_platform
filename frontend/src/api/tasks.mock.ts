@@ -177,7 +177,6 @@ const mockTaskReviews: Record<string, TaskReviewResponse> = {
                 retryCount: 0,
                 maxRetryCount: 3,
                 workerId: 'worker-demo-01',
-                workerContextId: 'ctx-demo-us-01',
                 batchId: 'batch-101',
                 attemptId: 'attempt-101',
                 startTime: '2026-04-20 08:31:04',
@@ -195,7 +194,6 @@ const mockTaskReviews: Record<string, TaskReviewResponse> = {
                 retryCount: 0,
                 maxRetryCount: 3,
                 workerId: 'worker-demo-03',
-                workerContextId: 'ctx-demo-eu-02',
                 batchId: 'batch-102',
                 attemptId: 'attempt-102',
                 startTime: '2026-04-20 08:31:05',
@@ -213,7 +211,6 @@ const mockTaskReviews: Record<string, TaskReviewResponse> = {
                 retryCount: 1,
                 maxRetryCount: 3,
                 workerId: 'worker-demo-05',
-                workerContextId: 'ctx-demo-apac-01',
                 batchId: 'batch-109',
                 attemptId: 'attempt-109',
                 startTime: '2026-04-20 08:31:08',
@@ -225,8 +222,8 @@ const mockTaskReviews: Record<string, TaskReviewResponse> = {
             },
         ],
         exports: {
-            seedUrl: '/api/v1/tasks/task-001/review/seed-export',
-            resultUrl: '/api/v1/tasks/task-001/review/result-export',
+            seedUrl: '/internal/v1/review/tasks/task-001/seed-export',
+            resultUrl: '/internal/v1/review/tasks/task-001/result-export',
         },
     },
 }
@@ -345,8 +342,8 @@ export async function createTaskShellMock(
         seedPreview: [],
         resultPreview: [],
         exports: {
-            seedUrl: `/api/v1/tasks/${taskId}/review/seed-export`,
-            resultUrl: `/api/v1/tasks/${taskId}/review/result-export`,
+            seedUrl: `/internal/v1/review/tasks/${taskId}/seed-export`,
+            resultUrl: `/internal/v1/review/tasks/${taskId}/result-export`,
         },
     }
 
@@ -402,7 +399,6 @@ export async function appendTaskItemsMock(
             retryCount: 0,
             maxRetryCount: 3,
             workerId: null,
-            workerContextId: null,
             batchId: null,
             attemptId: null,
             startTime: '',

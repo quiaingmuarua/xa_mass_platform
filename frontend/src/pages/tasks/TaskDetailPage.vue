@@ -26,7 +26,7 @@
         </el-button>
         <el-button
           v-if="detail && detail.task.status === 'NEW'"
-          v-permission="'task:approve'"
+          v-permission="'task:govern'"
           :loading="actionLoading === 'approve'"
           type="success"
           plain
@@ -36,7 +36,7 @@
         </el-button>
         <el-button
           v-if="detail && detail.task.status === 'NEW'"
-          v-permission="'task:approve'"
+          v-permission="'task:govern'"
           :loading="actionLoading === 'reject'"
           type="warning"
           plain
@@ -46,7 +46,7 @@
         </el-button>
         <el-button
           v-if="detail && canPause(detail.task.status)"
-          v-permission="'task:pause'"
+          v-permission="'task:control'"
           :loading="actionLoading === 'pause'"
           type="warning"
           plain
@@ -66,7 +66,7 @@
         </el-button>
         <el-button
           v-if="detail && detail.task.status === 'PAUSED'"
-          v-permission="'task:resume'"
+          v-permission="'task:control'"
           :loading="actionLoading === 'resume'"
           type="success"
           plain
@@ -76,7 +76,7 @@
         </el-button>
         <el-button
           v-if="detail && detail.task.status !== 'TERMINAL'"
-          v-permission="'task:terminate'"
+          v-permission="'task:control'"
           :loading="actionLoading === 'terminate'"
           type="danger"
           plain
@@ -259,10 +259,9 @@
                   <pre class="json-block review-json">{{ formatJson(row.output) }}</pre>
                 </div>
                 <div>
-                  <div class="expand-label">Result residue</div>
+                  <div class="expand-label">Dispatch metadata</div>
                   <pre class="json-block review-json">{{ formatJson({
                     workerId: row.workerId,
-                    workerContextId: row.workerContextId,
                     batchId: row.batchId,
                     attemptId: row.attemptId,
                     errorCode: row.errorCode,
@@ -282,15 +281,6 @@
           <el-table-column prop="workerId" label="Worker" min-width="160">
             <template #default="{ row }">
               <span class="mono">{{ row.workerId || '-' }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column
-            prop="workerContextId"
-            label="Legacy context"
-            min-width="180"
-          >
-            <template #default="{ row }">
-              <span class="mono">{{ row.workerContextId || '-' }}</span>
             </template>
           </el-table-column>
           <el-table-column prop="updateTime" label="Updated" min-width="180" />
