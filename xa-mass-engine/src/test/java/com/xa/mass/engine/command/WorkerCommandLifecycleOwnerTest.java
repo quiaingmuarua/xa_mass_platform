@@ -129,6 +129,26 @@ public class WorkerCommandLifecycleOwnerTest {
     }
 
     @Test
+    void claimPendingCommandsUsesRequestedIntersectionAndSkipsHistoricalTerminalCommands() {
+        WorkerCommandLifecycleOwner owner = new WorkerCommandLifecycleOwner();
+        owner.requestCommand(request("cmd-terminal-1", "worker-1", "PING"));
+        owner.requestCommand(request("cmd-terminal-2", "worker-1", "PING"));
+        owner.markDeliveryAccepted("cmd-terminal-1", "delivered");
+        owner.markSucceeded("cmd-terminal-1", "already done");
+        owner.markFailed("cmd-terminal-2", "already closed");
+        owner.requestCommand(request("cmd-requested", "worker-1", "DRAIN"));
+        owner.requestCommand(request("cmd-other-worker", "worker-2", "DRAIN"));
+
+        List<WorkerCommandLifecycleResult> claimed =
+                owner.claimPendingCommandsForWorker("worker-1", 10, "pulled");
+
+        assertEquals(1, claimed.size());
+        assertEquals("cmd-requested", claimed.getFirst().record().commandId());
+        assertEquals(WorkerCommandStatus.DELIVERY_ACCEPTED, owner.command("cmd-requested").orElseThrow().status());
+        assertEquals(WorkerCommandStatus.REQUESTED, owner.command("cmd-other-worker").orElseThrow().status());
+    }
+
+    @Test
     void missingCommandTransitionIsNotFound() {
         WorkerCommandLifecycleOwner owner = new WorkerCommandLifecycleOwner();
 

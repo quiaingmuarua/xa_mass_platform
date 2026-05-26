@@ -123,6 +123,23 @@ Reasoning: a failed or expired delivery means the worker did not accept the
 drain request. Closing dispatch in that case would create a platform-side
 fiction and could silently remove a healthy worker from scheduling.
 
+Current recovery rule:
+
+```text
+DRAIN accepted
+  -> closes WORKER_COMMAND dispatch gate
+
+AVAILABLE state report
+  -> clears WORKER_STATE only
+  -> does not reopen WORKER_COMMAND
+
+worker disconnect + re-registration
+  -> current first-slice recovery path
+
+future RESUME command
+  -> owns explicit WORKER_COMMAND reopen path
+```
+
 Out of first scope:
 
 - `RESUME`
@@ -316,6 +333,9 @@ Scope:
 - route command envelope to the worker's active route owner
 - worker SDK/sample clients distinguish task dispatch from command delivery
 - acknowledgements still enter command-specific ack surface
+- first-slice sample clients acknowledge `SUCCEEDED` to prove the command frame
+  and acknowledgement channel; they are not a full `DRAIN` execution example
+  with `EXECUTION_ACCEPTED -> wait in-flight -> SUCCEEDED`
 - realtime handoff for a worker without a raw carrier returns `DEFERRED`, not
   `FAILED`, so polling workers can still pull `REQUESTED` commands
 - formal DTO/schema promotion is deferred until the frame shape is proven by

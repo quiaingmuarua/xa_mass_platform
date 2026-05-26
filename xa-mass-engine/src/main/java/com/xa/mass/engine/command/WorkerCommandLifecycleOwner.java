@@ -256,13 +256,30 @@ public final class WorkerCommandLifecycleOwner {
         if (limit <= 0) {
             return List.of();
         }
+        String normalizedWorkerId = normalizeNullable(workerId);
+        if (normalizedWorkerId == null) {
+            return List.of();
+        }
+        Set<String> workerCommandIds = commandIdsByWorkerId.get(normalizedWorkerId);
+        Set<String> requestedCommandIds = commandIdsByStatus.get(WorkerCommandStatus.REQUESTED);
+        if (workerCommandIds == null || workerCommandIds.isEmpty()
+                || requestedCommandIds == null || requestedCommandIds.isEmpty()) {
+            return List.of();
+        }
         ArrayList<WorkerCommandLifecycleResult> results = new ArrayList<>();
-        for (WorkerCommandRecord record : commandsForWorker(workerId)) {
+        Set<String> candidateCommandIds = workerCommandIds.size() <= requestedCommandIds.size()
+                ? workerCommandIds
+                : requestedCommandIds;
+        List<WorkerCommandRecord> pendingForWorker = candidateCommandIds.stream()
+                .map(recordsByCommandId::get)
+                .filter(Objects::nonNull)
+                .filter(record -> normalizedWorkerId.equals(record.workerId()))
+                .filter(record -> record.status() == WorkerCommandStatus.REQUESTED)
+                .sorted(java.util.Comparator.comparing(WorkerCommandRecord::createdAt))
+                .toList();
+        for (WorkerCommandRecord record : pendingForWorker) {
             if (results.size() >= limit) {
                 break;
-            }
-            if (record.status() != WorkerCommandStatus.REQUESTED) {
-                continue;
             }
             WorkerCommandLifecycleResult result = markDeliveryAccepted(record.commandId(), reason);
             if (result.success()) {

@@ -132,6 +132,11 @@ task result, or scheduling lifecycle truth by itself.
   `DELIVERY_ACCEPTED`, `EXECUTION_ACCEPTED`, and `SUCCEEDED` disable
   `DispatchAvailabilitySource.WORKER_COMMAND`; `FAILED` and `EXPIRED` do not
   create or clear a dispatch gate.
+- Current `DRAIN` recovery is intentionally not `AVAILABLE` state report.
+  `AVAILABLE` only clears `DispatchAvailabilitySource.WORKER_STATE`; it does
+  not reopen `DispatchAvailabilitySource.WORKER_COMMAND`. A drain-accepted
+  worker is expected to disconnect and re-register for the current first slice.
+  A future `RESUME` command must own any explicit command-gate reopen path.
 - Current worker command request ingress is:
 
   ```text
