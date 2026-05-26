@@ -78,6 +78,7 @@ import java.util.concurrent.atomic.LongAdder;
  * -Dmass.load.batchSize=8
  * -Dmass.load.callbackThreads=32
  * -Dmass.load.retryFailureEveryNth=7
+ * -Dmass.load.duplicateResultEveryNth=11
  * }</pre>
  */
 public final class TaskFlowLoadModelRunner {
@@ -167,6 +168,25 @@ public final class TaskFlowLoadModelRunner {
                                 if (!accepted) {
                                     callbackFailure.compareAndSet(null, new IllegalStateException(
                                             "callback rejected for message " + messageId));
+                                } else if (shouldSubmitDuplicateResult(config, logicalSeq, failFirstAttempt)) {
+                                    long duplicateStartNanos = System.nanoTime();
+                                    boolean duplicateAccepted = taskResultIngestFacade.ingestTaskResult(
+                                            taskId,
+                                            messageId,
+                                            true,
+                                            "synthetic duplicate callback",
+                                            null,
+                                            Map.of(
+                                                    "callbackAttempt", callbackAttemptId.incrementAndGet(),
+                                                    "logicalAttempt", attemptNo,
+                                                    "seq", logicalSeq,
+                                                    "duplicateResult", true
+                                            )
+                                    );
+                                    callbackMetrics.onDuplicateResultCallback(
+                                            System.nanoTime() - duplicateStartNanos,
+                                            duplicateAccepted
+                                    );
                                 }
                             } catch (Throwable t) {
                                 callbackFailure.compareAndSet(null, t);
@@ -277,6 +297,12 @@ public final class TaskFlowLoadModelRunner {
                             "runtime processing counters should not drift at terminal");
                     require(proofMetrics.resultCounterDrift() == 0,
                             "runtime result count should not drift from successful work count");
+                    if (config.duplicateResultEveryNth() > 0
+                            && config.messageCount() > 1
+                            && callbackMetrics.duplicateResultAttempts.sum() > 0) {
+                        require(proofMetrics.duplicateResultItems() > 0,
+                                "duplicate result proof should exercise runtime duplicate/late classification");
+                    }
                     require(finalTask.getTerminalReason() == TaskTerminalReason.ALL_MESSAGES_SUCCEEDED,
                             "task should converge with ALL_MESSAGES_SUCCEEDED");
 
@@ -326,6 +352,15 @@ public final class TaskFlowLoadModelRunner {
                     TaskSharedConfig.WORKER_GROUP_ID, WORKER_GROUP_ID
             ));
             return new TaskCreatePlan(shell, buildInputs(config.messageCount()), false);
+        }
+
+        private static boolean shouldSubmitDuplicateResult(LoadConfig config,
+                                                           int logicalSeq,
+                                                           boolean failFirstAttempt) {
+            return config.duplicateResultEveryNth() > 0
+                    && !failFirstAttempt
+                    && logicalSeq > 0
+                    && logicalSeq % config.duplicateResultEveryNth() == 0;
         }
 
         private static Task materializeTask(TaskCommandService taskCommands, TaskCreatePlan request) {
@@ -423,16 +458,20 @@ public final class TaskFlowLoadModelRunner {
                     "runtimeWorkItems", finalWorkStats.totalCount(),
                     "dispatchOverheadItems", Math.max(dispatchMetrics.totalDispatchItems.sum() - finalWorkStats.totalCount(), 0L)
             ));
-            report.put("callbacks", Map.of(
-                    "invocations", callbackMetrics.totalInvocations.sum(),
-                    "syntheticRetries", callbackMetrics.syntheticRetries.sum(),
-                    "acceptedInvocations", callbackMetrics.acceptedInvocations.sum(),
-                    "rejectedInvocations", callbackMetrics.rejectedInvocations.sum(),
-                    "maxConcurrentCallbacks", callbackMetrics.maxConcurrentCallbacks.get(),
-                    "totalCallbackMillis", nanosToMillis(callbackMetrics.totalCallbackNanos.sum()),
-                    "avgCallbackMillis", formatDecimal(safeDivide(callbackMetrics.totalCallbackNanos.sum(),
-                            callbackMetrics.totalInvocations.sum(), 1_000_000.0))
-            ));
+            Map<String, Object> callbacks = new LinkedHashMap<>();
+            callbacks.put("invocations", callbackMetrics.totalInvocations.sum());
+            callbacks.put("syntheticRetries", callbackMetrics.syntheticRetries.sum());
+            callbacks.put("duplicateResultAttempts", callbackMetrics.duplicateResultAttempts.sum());
+            callbacks.put("duplicateResultAccepted", callbackMetrics.duplicateResultAccepted.sum());
+            callbacks.put("duplicateResultRejected", callbackMetrics.duplicateResultRejected.sum());
+            callbacks.put("duplicateResultCallbackMillis", nanosToMillis(callbackMetrics.duplicateResultCallbackNanos.sum()));
+            callbacks.put("acceptedInvocations", callbackMetrics.acceptedInvocations.sum());
+            callbacks.put("rejectedInvocations", callbackMetrics.rejectedInvocations.sum());
+            callbacks.put("maxConcurrentCallbacks", callbackMetrics.maxConcurrentCallbacks.get());
+            callbacks.put("totalCallbackMillis", nanosToMillis(callbackMetrics.totalCallbackNanos.sum()));
+            callbacks.put("avgCallbackMillis", formatDecimal(safeDivide(callbackMetrics.totalCallbackNanos.sum(),
+                    callbackMetrics.totalInvocations.sum(), 1_000_000.0)));
+            report.put("callbacks", callbacks);
             report.put("release", Map.of(
                     "attemptClosedInvocations", releaseMetrics.attemptClosedInvocations.sum(),
                     "taskTerminalInvocations", releaseMetrics.taskTerminalInvocations.sum(),
@@ -534,6 +573,10 @@ public final class TaskFlowLoadModelRunner {
     private static final class CallbackMetrics {
         private final LongAdder totalInvocations = new LongAdder();
         private final LongAdder syntheticRetries = new LongAdder();
+        private final LongAdder duplicateResultAttempts = new LongAdder();
+        private final LongAdder duplicateResultAccepted = new LongAdder();
+        private final LongAdder duplicateResultRejected = new LongAdder();
+        private final LongAdder duplicateResultCallbackNanos = new LongAdder();
         private final LongAdder acceptedInvocations = new LongAdder();
         private final LongAdder rejectedInvocations = new LongAdder();
         private final LongAdder totalCallbackNanos = new LongAdder();
@@ -563,6 +606,16 @@ public final class TaskFlowLoadModelRunner {
 
         private void recordSyntheticRetry() {
             syntheticRetries.increment();
+        }
+
+        private void onDuplicateResultCallback(long elapsedNanos, boolean accepted) {
+            duplicateResultAttempts.increment();
+            duplicateResultCallbackNanos.add(elapsedNanos);
+            if (accepted) {
+                duplicateResultAccepted.increment();
+            } else {
+                duplicateResultRejected.increment();
+            }
         }
     }
 
@@ -672,6 +725,7 @@ public final class TaskFlowLoadModelRunner {
                               int maxRetryCount,
                               TaskWorkloadClass workloadClass,
                               int retryFailureEveryNth,
+                              int duplicateResultEveryNth,
                               long timeoutSeconds,
                               long assignmentRetryDelayMillis,
                               RuntimeBackend runtimeBackend,
@@ -691,6 +745,7 @@ public final class TaskFlowLoadModelRunner {
                     maxRetryCount,
                     workloadClassProperty("mass.load.workloadClass", TaskWorkloadClass.BULK),
                     retryFailureEveryNth,
+                    intProperty("mass.load.duplicateResultEveryNth", 0),
                     longProperty("mass.load.timeoutSeconds", 60L),
                     longProperty("mass.load.assignmentRetryDelayMillis", 25L),
                     runtimeBackend,
@@ -710,6 +765,7 @@ public final class TaskFlowLoadModelRunner {
             config.put("maxRetryCount", maxRetryCount);
             config.put("workloadClass", workloadClass.name());
             config.put("retryFailureEveryNth", retryFailureEveryNth);
+            config.put("duplicateResultEveryNth", duplicateResultEveryNth);
             config.put("timeoutSeconds", timeoutSeconds);
             config.put("assignmentRetryDelayMillis", assignmentRetryDelayMillis);
             config.put("runtimeBackend", runtimeBackend.name().toLowerCase(Locale.ROOT));

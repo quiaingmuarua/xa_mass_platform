@@ -111,6 +111,8 @@ if [[ -n "${MASS_PERF_TASK_FLOW_BACKENDS:-}" ]]; then
       "-Dmass.load.workers=${MASS_PERF_TASK_FLOW_WORKERS:-8}" \
       "-Dmass.load.batchSize=${MASS_PERF_TASK_FLOW_BATCH_SIZE:-4}" \
       "-Dmass.load.callbackThreads=${MASS_PERF_TASK_FLOW_CALLBACK_THREADS:-8}" \
+      "-Dmass.load.retryFailureEveryNth=${MASS_PERF_TASK_FLOW_RETRY_FAILURE_EVERY_NTH:-0}" \
+      "-Dmass.load.duplicateResultEveryNth=${MASS_PERF_TASK_FLOW_DUPLICATE_RESULT_EVERY_NTH:-0}" \
       "-Dmass.load.timeoutSeconds=${MASS_PERF_TASK_FLOW_TIMEOUT_SECONDS:-60}" \
       "-Dmass.load.redisUri=${MASS_PERF_TASK_FLOW_REDIS_URI:-redis://localhost:6379}" \
       -cp "${RUNTIME_CLASSPATH}" \

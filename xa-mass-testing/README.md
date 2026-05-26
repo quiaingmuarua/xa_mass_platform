@@ -132,6 +132,7 @@ Perf load model:
 ./mvnw -q -pl xa-mass-testing -am -DskipTests install
 ./mvnw -q -pl xa-mass-testing -Dexec.classpathScope=compile -Dmaven.test.skip=true org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.perf.TaskFlowLoadModelRunner -Dmass.load.runtimeBackend=memory
 ./mvnw -q -pl xa-mass-testing -Dexec.classpathScope=compile -Dmaven.test.skip=true org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.perf.TaskFlowLoadModelRunner -Dmass.load.runtimeBackend=redis -Dmass.load.redisUri=redis://localhost:6379
+./mvnw -q -pl xa-mass-testing -Dexec.classpathScope=compile -Dmaven.test.skip=true org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.perf.TaskFlowLoadModelRunner -Dmass.load.runtimeBackend=memory -Dmass.load.duplicateResultEveryNth=3
 ```
 
 `TaskFlowLoadModelRunner` is the shared runtime-selection proof for `TRS-D2`.
@@ -140,7 +141,11 @@ so BATCH refill is driven by `TaskWorkRuntime.readyTaskIds(...)`. The report
 includes `runtimeProof.finalResultCount`, `duplicateDispatchItems`,
 `duplicateResultItems`, `staleResultItems`, `expiredLeaseItems`,
 `processingCounterDrift`, `resultCounterDrift`, `firstDispatchLagMillis`, and
-`claimedMessagesPerSecond`.
+`claimedMessagesPerSecond`. Duplicate-result proof is opt-in through
+`mass.load.duplicateResultEveryNth` or
+`MASS_PERF_TASK_FLOW_DUPLICATE_RESULT_EVERY_NTH`; it submits an extra result
+callback after an accepted success and verifies stable-final convergence stays
+bounded.
 Redis runs use a safe default `xa:mass:perf:*` namespace and clean it before and
 after the run; override with `mass.load.redisNamespace` when a retained namespace
 is needed.
