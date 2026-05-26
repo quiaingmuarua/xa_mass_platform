@@ -171,6 +171,14 @@ public class ApiKeyCredentialService {
         return revoked;
     }
 
+    public List<ApiKeyCredentialRecord> disableCredentialsForUser(String userId, String disabledBy, String reason) {
+        List<ApiKeyCredentialRecord> disabled = credentialStore.disableByUserId(userId, disabledBy, reason);
+        for (ApiKeyCredentialRecord record : disabled) {
+            projectDisabledCredential(record);
+        }
+        return disabled;
+    }
+
     private void projectActiveCredential(ApiKeyCredentialRecord record, String rawSecret) {
         submitterOperations.registerSubmitter(SubmitterRegistration.builder()
                 .principalId(record.principalId())

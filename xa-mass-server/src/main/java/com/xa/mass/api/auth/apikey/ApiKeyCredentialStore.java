@@ -13,4 +13,6 @@ public interface ApiKeyCredentialStore {
     List<ApiKeyCredentialRecord> list();
 
     ApiKeyCredentialRecord revoke(String keyId, String revokedBy, String revokeReason);
+
+    List<ApiKeyCredentialRecord> disableByUserId(String userId, String disabledBy, String disableReason);
 }

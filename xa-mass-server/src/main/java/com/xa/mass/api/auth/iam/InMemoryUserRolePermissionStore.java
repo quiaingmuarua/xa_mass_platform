@@ -33,7 +33,7 @@ public class InMemoryUserRolePermissionStore implements UserRolePermissionStore 
                                            List<String> permissionNames) {
         this.usersById = copyByUserId(users);
         this.rolesById = copyByRoleId(roles);
-        this.bindings = List.copyOf(Objects.requireNonNullElse(bindings, List.of()));
+        this.bindings = new ArrayList<>(Objects.requireNonNullElse(bindings, List.of()));
         this.permissionNames = List.copyOf(Objects.requireNonNullElse(permissionNames, List.of()));
     }
 
@@ -42,14 +42,14 @@ public class InMemoryUserRolePermissionStore implements UserRolePermissionStore 
     }
 
     @Override
-    public List<UserRecord> listUsers() {
+    public synchronized List<UserRecord> listUsers() {
         return usersById.values().stream()
                 .sorted(Comparator.comparing(UserRecord::userId))
                 .toList();
     }
 
     @Override
-    public UserRecord getUser(String userId) {
+    public synchronized UserRecord getUser(String userId) {
         if (userId == null || userId.isBlank()) {
             return null;
         }
@@ -57,14 +57,36 @@ public class InMemoryUserRolePermissionStore implements UserRolePermissionStore 
     }
 
     @Override
-    public List<RoleRecord> listRoles() {
+    public synchronized UserRecord createUser(UserRecord user) {
+        UserRecord normalized = Objects.requireNonNull(user, "user");
+        String userId = requireNonBlank(normalized.userId(), "userId");
+        if (usersById.containsKey(userId)) {
+            throw new IllegalArgumentException("user already exists: " + userId);
+        }
+        usersById.put(userId, normalized);
+        return normalized;
+    }
+
+    @Override
+    public synchronized UserRecord updateUser(UserRecord user) {
+        UserRecord normalized = Objects.requireNonNull(user, "user");
+        String userId = requireNonBlank(normalized.userId(), "userId");
+        if (!usersById.containsKey(userId)) {
+            return null;
+        }
+        usersById.put(userId, normalized);
+        return normalized;
+    }
+
+    @Override
+    public synchronized List<RoleRecord> listRoles() {
         return rolesById.values().stream()
                 .sorted(Comparator.comparing(RoleRecord::roleId))
                 .toList();
     }
 
     @Override
-    public RoleRecord getRole(String roleId) {
+    public synchronized RoleRecord getRole(String roleId) {
         if (roleId == null || roleId.isBlank()) {
             return null;
         }
@@ -72,7 +94,7 @@ public class InMemoryUserRolePermissionStore implements UserRolePermissionStore 
     }
 
     @Override
-    public List<UserRoleBindingRecord> listRoleBindings(String userId) {
+    public synchronized List<UserRoleBindingRecord> listRoleBindings(String userId) {
         if (userId == null || userId.isBlank()) {
             return List.of();
         }
@@ -81,6 +103,34 @@ public class InMemoryUserRolePermissionStore implements UserRolePermissionStore 
                 .filter(binding -> normalizedUserId.equals(binding.userId()))
                 .sorted(Comparator.comparing(UserRoleBindingRecord::roleId))
                 .toList();
+    }
+
+    @Override
+    public synchronized UserRoleBindingRecord bindRole(UserRoleBindingRecord binding) {
+        UserRoleBindingRecord normalized = Objects.requireNonNull(binding, "binding");
+        String userId = requireNonBlank(normalized.userId(), "userId");
+        String roleId = requireNonBlank(normalized.roleId(), "roleId");
+        if (!usersById.containsKey(userId)) {
+            throw new IllegalArgumentException("user does not exist: " + userId);
+        }
+        if (!rolesById.containsKey(roleId)) {
+            throw new IllegalArgumentException("role does not exist: " + roleId);
+        }
+        for (UserRoleBindingRecord existing : bindings) {
+            if (userId.equals(existing.userId()) && roleId.equals(existing.roleId())) {
+                return existing;
+            }
+        }
+        bindings.add(normalized);
+        return normalized;
+    }
+
+    @Override
+    public synchronized boolean unbindRole(String userId, String roleId) {
+        String normalizedUserId = requireNonBlank(userId, "userId");
+        String normalizedRoleId = requireNonBlank(roleId, "roleId");
+        return bindings.removeIf(binding ->
+                normalizedUserId.equals(binding.userId()) && normalizedRoleId.equals(binding.roleId()));
     }
 
     @Override
@@ -95,7 +145,7 @@ public class InMemoryUserRolePermissionStore implements UserRolePermissionStore 
                 copy.put(user.userId().trim(), user);
             }
         }
-        return Map.copyOf(copy);
+        return copy;
     }
 
     private static Map<String, RoleRecord> copyByRoleId(List<RoleRecord> roles) {
@@ -105,7 +155,14 @@ public class InMemoryUserRolePermissionStore implements UserRolePermissionStore 
                 copy.put(role.roleId().trim(), role);
             }
         }
-        return Map.copyOf(copy);
+        return copy;
+    }
+
+    private String requireNonBlank(String value, String fieldName) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + " must not be blank");
+        }
+        return value.trim();
     }
 
     private static List<UserRecord> seedUsers() {

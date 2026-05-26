@@ -82,6 +82,44 @@ public class InMemoryApiKeyCredentialStore implements ApiKeyCredentialStore {
         return revoked;
     }
 
+    @Override
+    public synchronized List<ApiKeyCredentialRecord> disableByUserId(String userId, String disabledBy, String disableReason) {
+        String normalizedUserId = normalize(userId);
+        if (normalizedUserId == null) {
+            return List.of();
+        }
+        List<ApiKeyCredentialRecord> disabled = new ArrayList<>();
+        for (ApiKeyCredentialRecord existing : new ArrayList<>(byKeyId.values())) {
+            if (!normalizedUserId.equals(existing.createdForUserId())
+                    || existing.status() == ApiKeyCredentialStatus.REVOKED
+                    || existing.status() == ApiKeyCredentialStatus.DISABLED) {
+                continue;
+            }
+            ApiKeyCredentialRecord updated = new ApiKeyCredentialRecord(
+                    existing.keyId(),
+                    existing.principalId(),
+                    existing.createdForUserId(),
+                    existing.keyPrefix(),
+                    existing.credentialHash(),
+                    existing.projectScopes(),
+                    existing.eventScopes(),
+                    existing.permissions(),
+                    ApiKeyCredentialStatus.DISABLED,
+                    existing.applicationId(),
+                    existing.createdBy(),
+                    existing.createdAt(),
+                    existing.expiresAt(),
+                    Instant.now(),
+                    normalize(disabledBy),
+                    normalize(disableReason),
+                    existing.attributes()
+            );
+            byKeyId.put(updated.keyId(), updated);
+            disabled.add(updated);
+        }
+        return disabled;
+    }
+
     private String normalize(String value) {
         return value == null || value.isBlank() ? null : value.trim();
     }
