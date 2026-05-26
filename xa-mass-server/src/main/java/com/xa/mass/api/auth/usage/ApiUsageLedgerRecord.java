@@ -15,6 +15,8 @@ public record ApiUsageLedgerRecord(
         String requestId,
         long units,
         ApiUsageStatus status,
+        String failureReason,
+        Integer failureStatus,
         Instant createdAt
 ) {
 }

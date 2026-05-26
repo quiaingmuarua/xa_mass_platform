@@ -132,17 +132,30 @@ class ApiUsageControllerTest {
                 null,
                 "req-read"
         );
+        usageLedgerService.recordFailedAfterAccept(
+                principal,
+                ApiUsageOperation.TASK_ITEM_SYNC_APPEND,
+                "crawlerApp",
+                "crawler.fetch-page",
+                "task-003",
+                "msg-003",
+                "req-sync",
+                "IllegalStateException: bridge failed",
+                400
+        );
 
         mockMvc.perform(get("/api/v1/api-keys/ak-usage-1/usage")
-                        .param("operation", ApiUsageOperation.TASK_RESULT_READ.name())
-                        .param("status", ApiUsageStatus.REJECTED.name())
+                        .param("operation", ApiUsageOperation.TASK_ITEM_SYNC_APPEND.name())
+                        .param("status", ApiUsageStatus.FAILED_AFTER_ACCEPT.name())
                         .param("project", "crawlerApp")
                         .param("limit", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.total").value(1))
-                .andExpect(jsonPath("$.data.items[0].operation").value("TASK_RESULT_READ"))
-                .andExpect(jsonPath("$.data.items[0].status").value("REJECTED"))
-                .andExpect(jsonPath("$.data.items[0].taskId").value("task-002"));
+                .andExpect(jsonPath("$.data.items[0].operation").value("TASK_ITEM_SYNC_APPEND"))
+                .andExpect(jsonPath("$.data.items[0].status").value("FAILED_AFTER_ACCEPT"))
+                .andExpect(jsonPath("$.data.items[0].taskId").value("task-003"))
+                .andExpect(jsonPath("$.data.items[0].failureReason").value("IllegalStateException: bridge failed"))
+                .andExpect(jsonPath("$.data.items[0].failureStatus").value(400));
     }
 
     @Test

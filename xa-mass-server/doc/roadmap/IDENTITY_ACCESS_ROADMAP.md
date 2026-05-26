@@ -15,15 +15,15 @@ IAM-2:
   application create/approve/reject workflow, existing submitter-auth
   projection, list/detail without secret/hash, and revoke
 
-IAM-3 partial:
+IAM-3:
   implemented accepted API-key usage ledger for task create, item append,
   sync append, result read, archive download, plus submitter/operator usage
   query APIs; records rejected rows for authenticated API-key requests denied
-  by project scope or task ownership; usage queries support project,
-  operation, status, time-window, and limit filters
+  by project scope or task ownership; records failed-after-accept diagnostic
+  rows for accepted sync append and archive streaming failures; usage queries
+  support project, operation, status, time-window, and limit filters
 
 Not implemented yet:
-  failed-after-accept API-key usage rows
   submitter viewer session
   user/role mutation APIs
 ```
@@ -426,6 +426,8 @@ record ApiUsageLedgerRecord(
     String requestId,
     long units,
     ApiUsageStatus status,
+    String failureReason,
+    Integer failureStatus,
     Instant createdAt
 ) {}
 ```
@@ -463,6 +465,11 @@ rejected, or failed-after-accept by the owning API/runtime path. It should not
 pre-count accepted units before the domain owner accepts the operation.
 `FAILED_AFTER_ACCEPT` records are diagnostic evidence until a later accounting
 roadmap defines quota, refund, or backfill behavior.
+
+First version failed-after-accept rows use `units=0` and keep the original
+accepted operation row as the durable domain-accepted evidence. Usage ids include
+status so an accepted row and a failed-after-accept row can coexist for the same
+request id.
 
 ### SubmitterViewerSessionRecord
 

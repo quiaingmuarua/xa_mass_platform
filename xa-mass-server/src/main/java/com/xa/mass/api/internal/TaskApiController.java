@@ -287,7 +287,7 @@ public class TaskApiController {
                         toMassTaskShellCreateRequest(requestBody, submitterTaskCreate.project(), submitterTaskCreate.userId()),
                         submitterTaskCreate.principal()
                 ));
-                recordApiUsage(
+                ApiUsageAcceptedContext usage = recordApiUsage(
                         submitterTaskCreate.principal(),
                         ApiUsageOperation.TASK_CREATE,
                         submitterTaskCreate.project(),
@@ -297,12 +297,17 @@ public class TaskApiController {
                         null,
                         1
                 );
-                return ok(taskApiContractAssembler.toCreateOutcome(
-                        task,
-                        requestBody.getExecutionSpec(),
-                        submitterTaskCreate.principal().getPrincipalId(),
-                        "Task shell created"
-                ));
+                try {
+                    return ok(taskApiContractAssembler.toCreateOutcome(
+                            task,
+                            requestBody.getExecutionSpec(),
+                            submitterTaskCreate.principal().getPrincipalId(),
+                            "Task shell created"
+                    ));
+                } catch (RuntimeException e) {
+                    recordApiUsageFailure(usage, 400, e);
+                    throw e;
+                }
             }
 
             PrincipalContext operator = apiAuthService.requireAuthenticated(httpRequest);
@@ -390,7 +395,7 @@ public class TaskApiController {
                     .eventCode(requestBody.getEventCode())
                     .items(items)
                     .build());
-            recordApiUsage(
+            ApiUsageAcceptedContext usage = recordApiUsage(
                     appender,
                     ApiUsageOperation.TASK_ITEM_APPEND,
                     task.getProject(),
@@ -400,13 +405,18 @@ public class TaskApiController {
                     null,
                     added
             );
-            return ok(taskApiContractAssembler.toAppendOutcome(
-                    taskId,
-                    added,
-                    null,
-                    task.getIntakeStatus(),
-                    "Items appended"
-            ));
+            try {
+                return ok(taskApiContractAssembler.toAppendOutcome(
+                        taskId,
+                        added,
+                        null,
+                        task.getIntakeStatus(),
+                        "Items appended"
+                ));
+            } catch (RuntimeException e) {
+                recordApiUsageFailure(usage, 400, e);
+                throw e;
+            }
         });
     }
 
@@ -421,6 +431,7 @@ public class TaskApiController {
             @PathVariable String taskId,
             @RequestBody TaskItemSyncIngestApiRequest requestBody) {
         TaskSyncRequestSupervisor.SyncLease syncLease = null;
+        ApiUsageAcceptedContext usage = null;
         try {
             validateKnownFields(requestBody, "task sync append");
             TaskAccessSnapshot task = requireTaskAccess(taskId);
@@ -444,7 +455,7 @@ public class TaskApiController {
                     .items(items)
                     .build());
             String messageId = requireSingleMessageId(receipt);
-            recordApiUsage(
+            usage = recordApiUsage(
                     appender,
                     ApiUsageOperation.TASK_ITEM_SYNC_APPEND,
                     task.getProject(),
@@ -454,6 +465,7 @@ public class TaskApiController {
                     requestBody.getClientRequestId(),
                     1
             );
+            ApiUsageAcceptedContext acceptedUsage = usage;
             long timeoutMs = resolveSyncTimeoutMs(requestBody.getTimeoutMs());
             SyncTaskResultBridge bridge = requireSyncTaskResultBridge();
             CompletableFuture<TaskWorkFinalSnapshot> future = bridge.register(taskId, messageId);
@@ -490,6 +502,7 @@ public class TaskApiController {
 
             future.whenComplete((finalSnapshot, throwable) -> {
                 if (throwable != null) {
+                    recordApiUsageFailure(acceptedUsage, 400, throwable);
                     if (deferred.setResult(badRequest("Sync append failed: " + throwable.getMessage()))) {
                         acquiredLease.finish(TaskSyncRequestSupervisor.CompletionOutcome.FAILED);
                     }
@@ -508,21 +521,25 @@ public class TaskApiController {
         } catch (TaskSyncRequestSupervisor.SyncCapacityExceededException e) {
             return tooManyRequests(e.getMessage());
         } catch (TaskApiException e) {
+            recordApiUsageFailure(usage, e.statusCode, e);
             if (syncLease != null) {
                 syncLease.finish(TaskSyncRequestSupervisor.CompletionOutcome.FAILED);
             }
             return e.toResponse();
         } catch (SdkUnauthenticatedException e) {
+            recordApiUsageFailure(usage, 401, e);
             if (syncLease != null) {
                 syncLease.finish(TaskSyncRequestSupervisor.CompletionOutcome.FAILED);
             }
             return unauthorized(e.getMessage());
         } catch (SecurityException e) {
+            recordApiUsageFailure(usage, 403, e);
             if (syncLease != null) {
                 syncLease.finish(TaskSyncRequestSupervisor.CompletionOutcome.FAILED);
             }
             return forbidden(e.getMessage());
         } catch (Exception e) {
+            recordApiUsageFailure(usage, 400, e);
             if (syncLease != null) {
                 syncLease.finish(TaskSyncRequestSupervisor.CompletionOutcome.FAILED);
             }
@@ -587,7 +604,7 @@ public class TaskApiController {
             long nextAfterSeq = window.getNextAfterSeq();
             boolean taskTerminal = isTerminalTask(task);
             boolean archiveReady = resultQueries.getTaskResultArchiveManifest(taskId).isReady();
-            recordApiUsage(
+            ApiUsageAcceptedContext usage = recordApiUsage(
                     viewer,
                     ApiUsageOperation.TASK_RESULT_READ,
                     task.getProject(),
@@ -598,15 +615,20 @@ public class TaskApiController {
                     items.size()
             );
 
-            return ok(taskApiContractAssembler.toResultWindow(
-                    taskId,
-                    taskTerminal,
-                    archiveReady,
-                    items,
-                    nextAfterSeq,
-                    window.isHasMore(),
-                    archiveReady ? "/api/v1/tasks/" + taskId + "/results/archive" : null
-            ));
+            try {
+                return ok(taskApiContractAssembler.toResultWindow(
+                        taskId,
+                        taskTerminal,
+                        archiveReady,
+                        items,
+                        nextAfterSeq,
+                        window.isHasMore(),
+                        archiveReady ? "/api/v1/tasks/" + taskId + "/results/archive" : null
+                ));
+            } catch (RuntimeException e) {
+                recordApiUsageFailure(usage, 400, e);
+                throw e;
+            }
         });
     }
 
@@ -713,7 +735,7 @@ public class TaskApiController {
             if (!isTerminalTask(task) || !resultQueries.getTaskResultArchiveManifest(taskId).isReady()) {
                 throw conflictError("Task result archive is not ready");
             }
-            recordApiUsage(
+            ApiUsageAcceptedContext usage = recordApiUsage(
                     viewer,
                     ApiUsageOperation.TASK_ARCHIVE_DOWNLOAD,
                     task.getProject(),
@@ -723,7 +745,14 @@ public class TaskApiController {
                     null,
                     1
             );
-            StreamingResponseBody archive = outputStream -> resultQueries.writeTaskResultArchiveContent(taskId, outputStream);
+            StreamingResponseBody archive = outputStream -> {
+                try {
+                    resultQueries.writeTaskResultArchiveContent(taskId, outputStream);
+                } catch (RuntimeException e) {
+                    recordApiUsageFailure(usage, 500, e);
+                    throw e;
+                }
+            };
             return ResponseEntity.ok()
                     .contentType(NDJSON_MEDIA_TYPE)
                     .header(HttpHeaders.CONTENT_ENCODING, "gzip")
@@ -935,16 +964,16 @@ public class TaskApiController {
         return normalizedTaskName + "-results-" + task.getTaskId() + ".ndjson.gz";
     }
 
-    private void recordApiUsage(PrincipalContext principal,
-                                ApiUsageOperation operation,
-                                String project,
-                                String eventCode,
-                                String taskId,
-                                String messageId,
-                                String requestId,
-                                long units) {
+    private ApiUsageAcceptedContext recordApiUsage(PrincipalContext principal,
+                                                   ApiUsageOperation operation,
+                                                   String project,
+                                                   String eventCode,
+                                                   String taskId,
+                                                   String messageId,
+                                                   String requestId,
+                                                   long units) {
         if (apiUsageLedgerService == null) {
-            return;
+            return null;
         }
         apiUsageLedgerService.recordAccepted(
                 principal,
@@ -956,6 +985,39 @@ public class TaskApiController {
                 requestId,
                 units
         );
+        if (apiUsageLedgerService.apiKeyId(principal) == null) {
+            return null;
+        }
+        return new ApiUsageAcceptedContext(principal, operation, project, eventCode, taskId, messageId, requestId);
+    }
+
+    private void recordApiUsageFailure(ApiUsageAcceptedContext usage, int failureStatus, Throwable failure) {
+        if (apiUsageLedgerService == null || usage == null) {
+            return;
+        }
+        apiUsageLedgerService.recordFailedAfterAccept(
+                usage.principal(),
+                usage.operation(),
+                usage.project(),
+                usage.eventCode(),
+                usage.taskId(),
+                usage.messageId(),
+                usage.requestId(),
+                failureReason(failure),
+                failureStatus
+        );
+    }
+
+    private String failureReason(Throwable failure) {
+        if (failure == null) {
+            return null;
+        }
+        Throwable cause = failure instanceof java.util.concurrent.CompletionException && failure.getCause() != null
+                ? failure.getCause()
+                : failure;
+        String message = cause.getMessage();
+        String reason = cause.getClass().getSimpleName() + (message == null || message.isBlank() ? "" : ": " + message);
+        return reason.length() <= 500 ? reason : reason.substring(0, 500);
     }
 
     private String singleOrNull(List<String> values) {
@@ -1424,6 +1486,15 @@ public class TaskApiController {
     }
 
     private record TaskCommandAuthorization(PlatformAction action, String permission) {
+    }
+
+    private record ApiUsageAcceptedContext(PrincipalContext principal,
+                                           ApiUsageOperation operation,
+                                           String project,
+                                           String eventCode,
+                                           String taskId,
+                                           String messageId,
+                                           String requestId) {
     }
 
     private final class TaskApiException extends RuntimeException {

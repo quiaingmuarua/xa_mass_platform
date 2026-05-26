@@ -52,7 +52,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
+import java.io.ByteArrayOutputStream;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -62,10 +64,13 @@ import java.util.concurrent.CompletableFuture;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -106,6 +111,7 @@ class TaskApiControllerTest {
 
     private TaskSyncRequestSupervisor taskSyncRequestSupervisor;
     private InMemoryApiUsageLedgerStore usageStore;
+    private TaskApiController controller;
 
     private MockMvc mockMvc;
 
@@ -113,7 +119,7 @@ class TaskApiControllerTest {
     void setUp() {
         taskSyncRequestSupervisor = new TaskSyncRequestSupervisor(null, 500, 100, 20);
         usageStore = new InMemoryApiUsageLedgerStore();
-        TaskApiController controller = new TaskApiController(taskQueries, taskResultQueries, taskAdmin, createTaskCatalog(), taskDetailStore,
+        controller = new TaskApiController(taskQueries, taskResultQueries, taskAdmin, createTaskCatalog(), taskDetailStore,
                 authProvider, syncTaskResultBridge, taskSyncRequestSupervisor, taskStageEvidence);
         controller.setApiUsageLedgerService(new ApiUsageLedgerService(usageStore));
         mockMvc = MockMvcBuilders.standaloneSetup(
@@ -705,6 +711,107 @@ class TaskApiControllerTest {
     }
 
     @Test
+    void apiKeySyncAppendFailureAfterAcceptedRecordsFailedAfterAcceptUsage() throws Exception {
+        PrincipalContext apiKeyPrincipal = new PrincipalContext(
+                "agent",
+                null,
+                "demoApp",
+                List.of("task:create"),
+                List.of("demoApp"),
+                List.of("chatbot.reply"),
+                Map.of(ApiKeyCredentialService.ATTR_KEY_ID, "ak-sync-fail-1")
+        );
+        when(authProvider.authenticate("sync-fail-key")).thenReturn(apiKeyPrincipal);
+        when(taskQueries.getTaskAccess(TASK_ID)).thenReturn(taskAccessOwned("demoApp", "agent"));
+        when(taskQueries.getTaskState(TASK_ID)).thenReturn(taskState("RUNNING", "OPEN"));
+        when(taskAdmin.appendTaskItemsWithReceipt(any(), any(MassTaskItemBatchAppendRequest.class)))
+                .thenReturn(new TaskItemBatchAppendReceipt(TASK_ID, 1, List.of("msg-sync-fail")));
+        CompletableFuture<TaskWorkFinalSnapshot> future = new CompletableFuture<>();
+        when(syncTaskResultBridge.register(TASK_ID, "msg-sync-fail")).thenReturn(future);
+        when(syncTaskResultBridge.getExistingFinal(TASK_ID, "msg-sync-fail")).thenReturn(Optional.empty());
+
+        org.springframework.test.web.servlet.MvcResult mvcResult = mockMvc.perform(post("/api/v1/tasks/{taskId}/items:sync", TASK_ID)
+                        .header("X-Mass-Api-Key", "sync-fail-key")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "eventCode":"chatbot.reply",
+                                  "clientRequestId":"request-sync-fail",
+                                  "item":{"text":"hello"},
+                                  "timeoutMs":2000
+                                }
+                                """))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        future.completeExceptionally(new IllegalStateException("bridge failed"));
+        mvcResult.getAsyncResult(2000);
+
+        mockMvc.perform(asyncDispatch(mvcResult))
+                .andExpect(status().isBadRequest());
+
+        List<ApiUsageLedgerRecord> records = usageStore.listByKeyId("ak-sync-fail-1");
+        assertEquals(2, records.size());
+        assertTrue(records.stream().anyMatch(record ->
+                record.status() == ApiUsageStatus.ACCEPTED
+                        && record.operation() == ApiUsageOperation.TASK_ITEM_SYNC_APPEND
+                        && record.units() == 1));
+        ApiUsageLedgerRecord failed = records.stream()
+                .filter(record -> record.status() == ApiUsageStatus.FAILED_AFTER_ACCEPT)
+                .findFirst()
+                .orElseThrow();
+        assertEquals(ApiUsageOperation.TASK_ITEM_SYNC_APPEND, failed.operation());
+        assertEquals("msg-sync-fail", failed.messageId());
+        assertEquals("request-sync-fail", failed.requestId());
+        assertEquals(0, failed.units());
+        assertEquals(400, failed.failureStatus());
+        assertTrue(failed.failureReason().contains("bridge failed"));
+    }
+
+    @Test
+    void apiKeyArchiveStreamingFailureAfterAcceptedRecordsFailedAfterAcceptUsage() throws Exception {
+        PrincipalContext apiKeyPrincipal = new PrincipalContext(
+                "agent",
+                null,
+                "demoApp",
+                List.of("task:view"),
+                List.of("demoApp"),
+                List.of("*"),
+                Map.of(ApiKeyCredentialService.ATTR_KEY_ID, "ak-archive-fail-1")
+        );
+        when(authProvider.authenticate("archive-fail-key")).thenReturn(apiKeyPrincipal);
+        when(taskQueries.getTaskDetail(TASK_ID)).thenReturn(taskDetail("TERMINAL", "detail-task", "demoApp"));
+        when(taskResultQueries.getTaskResultArchiveManifest(TASK_ID)).thenReturn(new TaskResultArchiveSnapshot(
+                TASK_ID, true, "ndjson", "application/x-ndjson", "gzip", 10, null, null));
+        doThrow(new IllegalStateException("archive writer failed"))
+                .when(taskResultQueries).writeTaskResultArchiveContent(eq(TASK_ID), any());
+
+        org.springframework.http.ResponseEntity<?> response =
+                controller.downloadTaskResultsArchive("archive-fail-key", null, TASK_ID);
+        assertEquals(200, response.getStatusCode().value());
+        StreamingResponseBody body = (StreamingResponseBody) response.getBody();
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> body.writeTo(new ByteArrayOutputStream()));
+        assertEquals("archive writer failed", failure.getMessage());
+
+        List<ApiUsageLedgerRecord> records = usageStore.listByKeyId("ak-archive-fail-1");
+        assertEquals(2, records.size());
+        assertTrue(records.stream().anyMatch(record ->
+                record.status() == ApiUsageStatus.ACCEPTED
+                        && record.operation() == ApiUsageOperation.TASK_ARCHIVE_DOWNLOAD
+                        && record.units() == 1));
+        ApiUsageLedgerRecord failed = records.stream()
+                .filter(record -> record.status() == ApiUsageStatus.FAILED_AFTER_ACCEPT)
+                .findFirst()
+                .orElseThrow();
+        assertEquals(ApiUsageOperation.TASK_ARCHIVE_DOWNLOAD, failed.operation());
+        assertEquals(TASK_ID, failed.taskId());
+        assertEquals(0, failed.units());
+        assertEquals(500, failed.failureStatus());
+        assertTrue(failed.failureReason().contains("archive writer failed"));
+    }
+
+    @Test
     void appendTaskItemSyncRejectsNonActiveTaskState() throws Exception {
         when(taskQueries.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
         when(taskQueries.getTaskState(TASK_ID)).thenReturn(taskState("NEW", "OPEN"));
@@ -837,6 +944,18 @@ class TaskApiControllerTest {
 
     private TaskAccessSnapshot taskAccess(String project) {
         return new TaskAccessSnapshot(TASK_ID, project, Map.of(), "OPEN");
+    }
+
+    private TaskAccessSnapshot taskAccessOwned(String project, String userId) {
+        return new TaskAccessSnapshot(
+                TASK_ID,
+                project,
+                TaskOwnershipStamp.applyToSharedConfig(
+                        Map.of(),
+                        new TaskOwnershipStamp(userId, PrincipalType.SERVICE)
+                ),
+                "OPEN"
+        );
     }
 
     private TaskDetailStore.TaskMessageProjection projection(String messageId,

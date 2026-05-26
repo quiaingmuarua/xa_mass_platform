@@ -37,7 +37,7 @@ public class ApiUsageLedgerService {
         }
         long acceptedUnits = Math.max(0, units);
         return store.append(new ApiUsageLedgerRecord(
-                usageId(keyId, operation, taskId, messageId, requestId),
+                usageId(keyId, operation, ApiUsageStatus.ACCEPTED, taskId, messageId, requestId),
                 keyId,
                 principal.getPrincipalId(),
                 principal.getUserId(),
@@ -49,6 +49,8 @@ public class ApiUsageLedgerService {
                 normalize(requestId),
                 acceptedUnits,
                 ApiUsageStatus.ACCEPTED,
+                null,
+                null,
                 Instant.now()
         ));
     }
@@ -65,7 +67,7 @@ public class ApiUsageLedgerService {
             return null;
         }
         return store.append(new ApiUsageLedgerRecord(
-                usageId(keyId, operation, taskId, messageId, requestId),
+                usageId(keyId, operation, ApiUsageStatus.REJECTED, taskId, messageId, requestId),
                 keyId,
                 principal.getPrincipalId(),
                 principal.getUserId(),
@@ -77,6 +79,40 @@ public class ApiUsageLedgerService {
                 normalize(requestId),
                 0,
                 ApiUsageStatus.REJECTED,
+                null,
+                null,
+                Instant.now()
+        ));
+    }
+
+    public ApiUsageLedgerRecord recordFailedAfterAccept(PrincipalContext principal,
+                                                        ApiUsageOperation operation,
+                                                        String project,
+                                                        String eventCode,
+                                                        String taskId,
+                                                        String messageId,
+                                                        String requestId,
+                                                        String failureReason,
+                                                        Integer failureStatus) {
+        String keyId = apiKeyId(principal);
+        if (keyId == null) {
+            return null;
+        }
+        return store.append(new ApiUsageLedgerRecord(
+                usageId(keyId, operation, ApiUsageStatus.FAILED_AFTER_ACCEPT, taskId, messageId, requestId),
+                keyId,
+                principal.getPrincipalId(),
+                principal.getUserId(),
+                normalize(project),
+                normalize(eventCode),
+                Objects.requireNonNull(operation, "operation"),
+                normalize(taskId),
+                normalize(messageId),
+                normalize(requestId),
+                0,
+                ApiUsageStatus.FAILED_AFTER_ACCEPT,
+                normalize(failureReason),
+                failureStatus,
                 Instant.now()
         ));
     }
@@ -125,14 +161,15 @@ public class ApiUsageLedgerService {
 
     private String usageId(String keyId,
                            ApiUsageOperation operation,
+                           ApiUsageStatus status,
                            String taskId,
                            String messageId,
                            String requestId) {
         String normalizedRequestId = normalize(requestId);
         if (normalizedRequestId != null) {
-            return keyId + ":" + operation + ":" + normalizedRequestId;
+            return keyId + ":" + operation + ":" + status + ":" + normalizedRequestId;
         }
-        return keyId + ":" + operation + ":" + normalize(taskId) + ":" + normalize(messageId) + ":" + UUID.randomUUID();
+        return keyId + ":" + operation + ":" + status + ":" + normalize(taskId) + ":" + normalize(messageId) + ":" + UUID.randomUUID();
     }
 
     private String normalize(String value) {
