@@ -94,6 +94,26 @@ public class InMemoryUserRolePermissionStore implements UserRolePermissionStore 
     }
 
     @Override
+    public synchronized RoleRecord createRole(RoleRecord role) {
+        RoleRecord normalized = normalizeRole(Objects.requireNonNull(role, "role"));
+        if (rolesById.containsKey(normalized.roleId())) {
+            throw new IllegalArgumentException("role already exists: " + normalized.roleId());
+        }
+        rolesById.put(normalized.roleId(), normalized);
+        return normalized;
+    }
+
+    @Override
+    public synchronized RoleRecord updateRole(RoleRecord role) {
+        RoleRecord normalized = normalizeRole(Objects.requireNonNull(role, "role"));
+        if (!rolesById.containsKey(normalized.roleId())) {
+            return null;
+        }
+        rolesById.put(normalized.roleId(), normalized);
+        return normalized;
+    }
+
+    @Override
     public synchronized List<UserRoleBindingRecord> listRoleBindings(String userId) {
         if (userId == null || userId.isBlank()) {
             return List.of();
@@ -163,6 +183,34 @@ public class InMemoryUserRolePermissionStore implements UserRolePermissionStore 
             throw new IllegalArgumentException(fieldName + " must not be blank");
         }
         return value.trim();
+    }
+
+    private RoleRecord normalizeRole(RoleRecord role) {
+        String roleId = requireNonBlank(role.roleId(), "roleId");
+        String name = requireNonBlank(role.name(), "name");
+        Set<String> permissions = new LinkedHashSet<>();
+        for (String permission : Objects.requireNonNullElse(role.permissions(), Set.<String>of())) {
+            String normalized = requireNonBlank(permission, "permission");
+            if (!permissionNames.contains(normalized)) {
+                throw new IllegalArgumentException("unknown permission: " + normalized);
+            }
+            permissions.add(normalized);
+        }
+        if (permissions.isEmpty()) {
+            throw new IllegalArgumentException("permissions must not be empty");
+        }
+        return new RoleRecord(
+                roleId,
+                name,
+                normalizeOptional(role.description()),
+                permissions,
+                role.systemRole(),
+                role.updatedAt() == null ? Instant.now() : role.updatedAt()
+        );
+    }
+
+    private String normalizeOptional(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private static List<UserRecord> seedUsers() {

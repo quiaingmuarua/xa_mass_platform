@@ -23,9 +23,46 @@ IAM-3:
   rows for accepted sync append and archive streaming failures; usage queries
   support project, operation, status, time-window, and limit filters
 
+IAM-6a:
+  implemented operator-managed user create/update, role create/update, and
+  user-role bind/unbind APIs; disabling a user disables that user's owned
+  API-key authentication projection
+
 Not implemented yet:
   submitter viewer session
-  user/role mutation APIs
+  durable IAM audit store for user/role mutations
+```
+
+Current handoff checkpoint:
+
+```text
+2026-05-26 Windows session:
+  implemented IAM-6a server code for:
+    - POST /api/v1/users
+    - PATCH /api/v1/users/{userId}
+    - POST /api/v1/roles
+    - PATCH /api/v1/roles/{roleId}
+    - POST /api/v1/users/{userId}/roles/{roleId}
+    - DELETE /api/v1/users/{userId}/roles/{roleId}
+
+  key implementation files:
+    - xa-mass-server/src/main/java/com/xa/mass/api/internal/IdentityAccessController.java
+    - xa-mass-server/src/main/java/com/xa/mass/api/auth/ApiRouteAuthorizationCatalog.java
+    - xa-mass-server/src/main/java/com/xa/mass/api/auth/iam/UserRolePermissionStore.java
+    - xa-mass-server/src/main/java/com/xa/mass/api/auth/iam/InMemoryUserRolePermissionStore.java
+    - xa-mass-server/src/test/java/com/xa/mass/api/internal/IdentityAccessControllerTest.java
+
+  focused verification passed:
+    .\mvnw.cmd -q -pl xa-mass-server -am "-Dtest=IdentityAccessControllerTest,ApiKeyControllerTest,ApiKeyApplicationControllerTest,AuthControllerTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
+
+  full server reactor verification:
+    .\mvnw.cmd -q -pl xa-mass-server -am test
+    was started after IAM-6a role changes but intentionally stopped during
+    local handoff before final exit code. Re-run this on the next machine.
+
+  note:
+    Windows session did not complete frontend/browser computer-use validation.
+    Continue any console/browser verification from the Mac environment.
 ```
 
 ## Summary
@@ -859,6 +896,21 @@ Acceptance:
 Goal: support operator-managed users and roles after API-key credential
 lifecycle is stable. Submitter viewer sessions do not block this phase if
 IAM-4 is deferred.
+
+Current implemented slice:
+
+```text
+IAM-6a:
+  user create/update
+  role create/update
+  user-role bind/unbind
+  user disable -> owned API keys disabled through the existing submitter
+  authentication projection
+```
+
+Durable IAM audit entries remain later IAM-6 work. Do not introduce a second
+audit subsystem only for IAM mutations; wire this to the server audit owner once
+that owner exists.
 
 Scope:
 

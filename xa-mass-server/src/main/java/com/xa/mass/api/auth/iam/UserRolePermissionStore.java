@@ -16,6 +16,10 @@ public interface UserRolePermissionStore {
 
     RoleRecord getRole(String roleId);
 
+    RoleRecord createRole(RoleRecord role);
+
+    RoleRecord updateRole(RoleRecord role);
+
     List<UserRoleBindingRecord> listRoleBindings(String userId);
 
     UserRoleBindingRecord bindRole(UserRoleBindingRecord binding);

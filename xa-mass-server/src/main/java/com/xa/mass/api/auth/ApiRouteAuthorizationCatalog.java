@@ -125,17 +125,39 @@ public class ApiRouteAuthorizationCatalog {
                     ? route(PlatformResourceType.API_KEY, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
                     : null;
         }
-        if (uri.equals("/api/v1/users") && "GET".equals(method)) {
-            return route(PlatformResourceType.USER, PlatformAction.VIEW, ApiPermissionNames.USER_VIEW);
+        if (uri.equals("/api/v1/users")) {
+            return switch (method) {
+                case "GET" -> route(PlatformResourceType.USER, PlatformAction.VIEW, ApiPermissionNames.USER_VIEW);
+                case "POST" -> route(PlatformResourceType.USER, PlatformAction.CREATE, ApiPermissionNames.USER_EDIT);
+                default -> null;
+            };
         }
-        if (uri.matches("^/api/v1/users/[^/]+$") && "GET".equals(method)) {
-            return route(PlatformResourceType.USER, PlatformAction.VIEW, ApiPermissionNames.USER_VIEW);
+        if (uri.matches("^/api/v1/users/[^/]+$")) {
+            return switch (method) {
+                case "GET" -> route(PlatformResourceType.USER, PlatformAction.VIEW, ApiPermissionNames.USER_VIEW);
+                case "PATCH" -> route(PlatformResourceType.USER, PlatformAction.EDIT, ApiPermissionNames.USER_EDIT);
+                default -> null;
+            };
         }
-        if (uri.equals("/api/v1/roles") && "GET".equals(method)) {
-            return route(PlatformResourceType.ROLE, PlatformAction.VIEW, ApiPermissionNames.ROLE_VIEW);
+        if (uri.matches("^/api/v1/users/[^/]+/roles/[^/]+$")) {
+            return switch (method) {
+                case "POST", "DELETE" -> route(PlatformResourceType.USER, PlatformAction.EDIT, ApiPermissionNames.USER_EDIT);
+                default -> null;
+            };
         }
-        if (uri.matches("^/api/v1/roles/[^/]+$") && "GET".equals(method)) {
-            return route(PlatformResourceType.ROLE, PlatformAction.VIEW, ApiPermissionNames.ROLE_VIEW);
+        if (uri.equals("/api/v1/roles")) {
+            return switch (method) {
+                case "GET" -> route(PlatformResourceType.ROLE, PlatformAction.VIEW, ApiPermissionNames.ROLE_VIEW);
+                case "POST" -> route(PlatformResourceType.ROLE, PlatformAction.CREATE, ApiPermissionNames.ROLE_EDIT);
+                default -> null;
+            };
+        }
+        if (uri.matches("^/api/v1/roles/[^/]+$")) {
+            return switch (method) {
+                case "GET" -> route(PlatformResourceType.ROLE, PlatformAction.VIEW, ApiPermissionNames.ROLE_VIEW);
+                case "PATCH" -> route(PlatformResourceType.ROLE, PlatformAction.EDIT, ApiPermissionNames.ROLE_EDIT);
+                default -> null;
+            };
         }
         if (uri.equals("/api/v1/permissions") && "GET".equals(method)) {
             return route(PlatformResourceType.ROLE, PlatformAction.VIEW, ApiPermissionNames.ROLE_VIEW);
