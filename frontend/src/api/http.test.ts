@@ -100,4 +100,36 @@ describe('http API helpers', () => {
             }),
         )
     })
+
+    it('can send an explicit submitter credential without operator auth', async () => {
+        setRuntimeConfigOverrides({
+            apiBaseUrl: '/backend',
+            useMockAuth: false,
+        })
+        const fetchMock = vi.fn().mockResolvedValue(
+            jsonResponse({
+                code: 0,
+                msg: 'ok',
+                data: {},
+            }),
+        )
+        vi.stubGlobal('fetch', fetchMock)
+
+        await requestApiData('/api/v1/submitters/me', {
+            submitterCredential: 'mass_sess_secret',
+            includeOperatorAuth: false,
+        })
+
+        expect(fetchMock).toHaveBeenCalledWith(
+            '/backend/api/v1/submitters/me',
+            expect.objectContaining({
+                headers: expect.objectContaining({
+                    'X-Mass-Api-Key': 'mass_sess_secret',
+                }),
+            }),
+        )
+        expect(fetchMock.mock.calls[0][1].headers).not.toHaveProperty(
+            'X-Mass-User-Mode',
+        )
+    })
 })

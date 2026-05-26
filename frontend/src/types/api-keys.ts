@@ -71,3 +71,57 @@ export interface ApiKeyApplicationCreateRequest {
     purpose: string
     attributes?: Record<string, string>
 }
+
+export interface SubmitterViewerSessionView {
+    sessionId: string
+    keyId: string
+    principalId: string
+    createdForUserId: string
+    keyPrefix: string
+    permissions: string[]
+    projectScopes: string[]
+    eventScopes: string[]
+    attributes: Record<string, string>
+    createdAt: string
+    expiresAt: string
+    revokedAt: string | null
+}
+
+export interface SubmitterViewerSessionCreateResponse {
+    session: SubmitterViewerSessionView
+    rawSecret: string
+}
+
+export type ApiUsageOperation =
+    | 'TASK_CREATE'
+    | 'TASK_ITEM_APPEND'
+    | 'TASK_SYNC_APPEND'
+    | 'TASK_RESULT_READ'
+    | 'TASK_ARCHIVE_DOWNLOAD'
+
+export type ApiUsageStatus =
+    | 'ACCEPTED'
+    | 'REJECTED'
+    | 'FAILED_AFTER_ACCEPT'
+
+export interface ApiUsageLedgerRecord {
+    usageId: string
+    keyId: string
+    principalId: string
+    operation: ApiUsageOperation
+    status: ApiUsageStatus
+    project: string | null
+    eventCode: string | null
+    taskId: string | null
+    messageId: string | null
+    requestId: string | null
+    units: number
+    createdAt: string
+}
+
+export interface CurrentSubmitterUsageResponse {
+    keyId: string
+    principalId: string
+    items: ApiUsageLedgerRecord[]
+    total: number
+}

@@ -4,6 +4,7 @@ import {
     createApiKeyApplication,
     getApiKey,
     getApiKeyApplication,
+    listApiKeyUsage,
     listApiKeyApplications,
     listApiKeys,
     rejectApiKeyApplication,
@@ -37,12 +38,14 @@ describe('api-key API client', () => {
 
         await listApiKeys()
         await getApiKey('ak-1')
+        await listApiKeyUsage('ak-1')
         await listApiKeyApplications()
         await getApiKeyApplication('aka-1')
 
         expect(fetchMock.mock.calls.map(([input]) => input)).toEqual([
             '/backend/api/v1/api-keys',
             '/backend/api/v1/api-keys/ak-1',
+            '/backend/api/v1/api-keys/ak-1/usage',
             '/backend/api/v1/api-key-applications',
             '/backend/api/v1/api-key-applications/aka-1',
         ])

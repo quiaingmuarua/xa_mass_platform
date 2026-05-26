@@ -7,6 +7,11 @@ interface ApiResponseEnvelope<T> {
     data: T
 }
 
+export interface ApiRequestInit extends RequestInit {
+    submitterCredential?: string
+    includeOperatorAuth?: boolean
+}
+
 export class ApiError extends Error {
     public readonly status: number
     public readonly payload: unknown
@@ -20,14 +25,21 @@ export class ApiError extends Error {
 
 export async function requestJson<T>(
     input: string,
-    init?: RequestInit,
+    init?: ApiRequestInit,
 ): Promise<T> {
+    const {
+        submitterCredential,
+        includeOperatorAuth = true,
+        headers,
+        ...fetchInit
+    } = init ?? {}
     const response = await fetch(buildApiUrl(input), {
-        ...init,
+        ...fetchInit,
         headers: {
             'Content-Type': 'application/json',
-            ...operatorModeHeader(),
-            ...(init?.headers ?? {}),
+            ...(includeOperatorAuth ? operatorModeHeader() : {}),
+            ...submitterCredentialHeader(submitterCredential),
+            ...(headers ?? {}),
         },
     })
 
@@ -46,7 +58,7 @@ export async function requestJson<T>(
 
 export async function requestApiData<T>(
     input: string,
-    init?: RequestInit,
+    init?: ApiRequestInit,
 ): Promise<T> {
     const payload = await requestJson<ApiResponseEnvelope<T>>(input, init)
 
@@ -64,6 +76,19 @@ function operatorModeHeader(): Record<string, string> {
 
     return {
         'X-Mass-User-Mode': currentOperatorModeHeader(),
+    }
+}
+
+function submitterCredentialHeader(
+    credential: string | undefined,
+): Record<string, string> {
+    const normalized = credential?.trim()
+    if (!normalized) {
+        return {}
+    }
+
+    return {
+        'X-Mass-Api-Key': normalized,
     }
 }
 

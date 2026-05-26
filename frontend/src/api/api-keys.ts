@@ -2,6 +2,7 @@ import {requestApiData} from '@/api/http'
 import type {
     ApiKeyApplicationCreateRequest,
     ApiKeyApplicationRecord,
+    ApiUsageLedgerRecord,
     ApiKeyCreateRequest,
     ApiKeyCreateResponse,
     ApiKeyCredentialView,
@@ -98,5 +99,13 @@ export async function rejectApiKeyApplication(
                 reason: reason.trim() || undefined,
             }),
         },
+    )
+}
+
+export async function listApiKeyUsage(
+    keyId: string,
+): Promise<{ items: ApiUsageLedgerRecord[]; total: number }> {
+    return requestApiData<{ items: ApiUsageLedgerRecord[]; total: number }>(
+        `/api/v1/api-keys/${encodeURIComponent(keyId)}/usage`,
     )
 }

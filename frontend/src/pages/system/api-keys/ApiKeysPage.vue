@@ -83,6 +83,15 @@
                       />
                     </el-select>
                   </el-form-item>
+                  <el-form-item label="Expires at">
+                    <el-date-picker
+                      v-model="createForm.expiresAt"
+                      type="datetime"
+                      value-format="YYYY-MM-DDTHH:mm:ss[Z]"
+                      placeholder="Optional expiry"
+                      class="full-width"
+                    />
+                  </el-form-item>
                   <el-button
                     type="primary"
                     :disabled="!canApproveApiKeys"
@@ -117,6 +126,11 @@
                       </el-tag>
                     </template>
                   </el-table-column>
+                  <el-table-column prop="expiresAt" label="Expires" min-width="190">
+                    <template #default="{ row }">
+                      {{ row.expiresAt ?? 'never' }}
+                    </template>
+                  </el-table-column>
                   <el-table-column label="Scopes" min-width="260">
                     <template #default="{ row }">
                       <div class="row-secondary">
@@ -140,6 +154,14 @@
                         @click="showCredentialDetail(row)"
                       >
                         Detail
+                      </el-button>
+                      <el-button
+                        link
+                        type="primary"
+                        :disabled="!canViewUsage"
+                        @click="showCredentialUsage(row)"
+                      >
+                        Usage
                       </el-button>
                       <el-button
                         link
@@ -293,6 +315,31 @@
     <el-dialog v-model="detailDialogVisible" title="API key detail" width="720px">
       <pre class="detail-block">{{ detailPayload }}</pre>
     </el-dialog>
+
+    <el-dialog v-model="usageDialogVisible" title="API key usage" width="860px">
+      <PageEmptyState
+        v-if="usageRows.length === 0"
+        description="No usage rows are available for this key."
+      />
+      <el-table v-else :data="usageRows" row-key="usageId">
+        <el-table-column prop="operation" label="Operation" min-width="180" />
+        <el-table-column prop="status" label="Status" min-width="150">
+          <template #default="{ row }">
+            <el-tag :type="usageStatusTag(row.status)">
+              {{ row.status }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="project" label="Project" min-width="140" />
+        <el-table-column prop="taskId" label="Task" min-width="220">
+          <template #default="{ row }">
+            <span class="mono">{{ row.taskId ?? '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="units" label="Units" min-width="90" />
+        <el-table-column prop="createdAt" label="Created" min-width="220" />
+      </el-table>
+    </el-dialog>
   </section>
 </template>
 
@@ -304,6 +351,7 @@ import {
   createApiKeyApplication,
   getApiKey,
   getApiKeyApplication,
+  listApiKeyUsage,
   listApiKeyApplications,
   listApiKeys,
   rejectApiKeyApplication,
@@ -317,6 +365,8 @@ import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
 import type {
   ApiKeyApplicationRecord,
   ApiKeyApplicationStatus,
+  ApiUsageLedgerRecord,
+  ApiUsageStatus,
   ApiKeyCredentialStatus,
   ApiKeyCredentialView,
 } from '@/types/api-keys'
@@ -334,6 +384,8 @@ const secretDialogVisible = ref(false)
 const rawSecret = ref('')
 const detailDialogVisible = ref(false)
 const detailPayload = ref('')
+const usageDialogVisible = ref(false)
+const usageRows = ref<ApiUsageLedgerRecord[]>([])
 
 const createForm = reactive({
   principalId: 'crawler-api-key',
@@ -341,6 +393,7 @@ const createForm = reactive({
   projectScopes: 'crawlerApp',
   eventScopes: 'crawler.fetch-page',
   permissions: ['task:create', 'task:view'],
+  expiresAt: '',
 })
 
 const applicationForm = reactive({
@@ -361,6 +414,7 @@ const pendingApplicationCount = computed(
 const canApplyApiKeys = computed(() => hasPermission('api-key:apply'))
 const canApproveApiKeys = computed(() => hasPermission('api-key:approve'))
 const canRevokeApiKeys = computed(() => hasPermission('api-key:revoke'))
+const canViewUsage = computed(() => hasPermission('api-usage:view'))
 
 async function loadAll(): Promise<void> {
   loading.value = true
@@ -393,11 +447,22 @@ async function submitCreateCredential(): Promise<void> {
       projectScopes: csv(createForm.projectScopes),
       eventScopes: csv(createForm.eventScopes),
       permissions: createForm.permissions,
+      expiresAt: createForm.expiresAt || null,
     })
     showRawSecret(created.rawSecret)
     await loadAll()
   } catch (error) {
     errorMessage.value = toErrorMessage(error, 'Failed to create API key.')
+  }
+}
+
+async function showCredentialUsage(row: ApiKeyCredentialView): Promise<void> {
+  try {
+    const usage = await listApiKeyUsage(row.keyId)
+    usageRows.value = usage.items
+    usageDialogVisible.value = true
+  } catch (error) {
+    errorMessage.value = toErrorMessage(error, 'Failed to load API-key usage.')
   }
 }
 
@@ -523,6 +588,16 @@ function applicationStatusTag(
     return 'danger'
   }
   return 'info'
+}
+
+function usageStatusTag(status: ApiUsageStatus): 'success' | 'warning' | 'danger' {
+  if (status === 'ACCEPTED') {
+    return 'success'
+  }
+  if (status === 'FAILED_AFTER_ACCEPT') {
+    return 'warning'
+  }
+  return 'danger'
 }
 
 onMounted(() => {

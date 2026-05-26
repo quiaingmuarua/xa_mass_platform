@@ -5,7 +5,7 @@ export type OperatorMode = 'admin' | 'viewer'
 const STORAGE_KEY = 'xa.mass.operatorMode'
 
 function readStoredMode(): OperatorMode {
-    if (typeof window === 'undefined') {
+    if (typeof window === 'undefined' || !window.localStorage) {
         return 'admin'
     }
 
@@ -18,7 +18,7 @@ const operatorMode = ref<OperatorMode>(readStoredMode())
 export function useOperatorMode() {
     function setOperatorMode(mode: OperatorMode): void {
         operatorMode.value = mode
-        if (typeof window !== 'undefined') {
+        if (typeof window !== 'undefined' && window.localStorage) {
             window.localStorage.setItem(STORAGE_KEY, mode)
         }
     }
@@ -35,7 +35,7 @@ export function currentOperatorModeHeader(): OperatorMode {
 
 export function resetOperatorMode(): void {
     operatorMode.value = 'admin'
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && window.localStorage) {
         window.localStorage.removeItem(STORAGE_KEY)
     }
 }
