@@ -100,6 +100,14 @@ xa-mass-testing/scripts/run-perf-smokes.sh
 
 This script first refreshes sibling module artifacts with `-pl xa-mass-testing -am -Dmaven.test.skip=true install`, then runs the smoke mains through a direct runtime classpath. Use it when `xa-mass-engine` changed in the current workspace and you want one reliable perf-smoke entrypoint without being blocked by unrelated test-compilation drift in sibling modules.
 
+To include the task-flow runtime backend proof in the same script, opt in with
+the backend list:
+
+```bash
+MASS_PERF_TASK_FLOW_BACKENDS=memory xa-mass-testing/scripts/run-perf-smokes.sh
+MASS_PERF_TASK_FLOW_BACKENDS=memory,redis MASS_PERF_TASK_FLOW_REDIS_URI=redis://localhost:6379 xa-mass-testing/scripts/run-perf-smokes.sh
+```
+
 For the interactive retry wakeup smoke inside the bundle, the script also pins a more stable engine retry-delay JVM property by default:
 
 - `xa.mass.engine.interactiveWorkRetryDelayMillis=200`

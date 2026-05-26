@@ -5,6 +5,7 @@ import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
+import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
@@ -22,6 +23,7 @@ import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
+import com.xa.mass.engine.worker.WorkerGroupRecord;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
@@ -64,6 +66,9 @@ import java.util.concurrent.atomic.LongAdder;
  * whether the retry redispatch actually overlaps active bulk pressure.
  */
 public final class TaskInteractiveRetryWakeupSmokeRunner {
+
+    private static final String PROJECT_CODE = "demoApp";
+    private static final String WORKER_GROUP_ID = "retry-wakeup-workers";
 
     private TaskInteractiveRetryWakeupSmokeRunner() {
     }
@@ -295,10 +300,14 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
         private static TaskCreatePlan buildBulkRequest(SmokeConfig config) {
             TaskShellCreateRequestDto shell = new TaskShellCreateRequestDto();
             shell.setSourceRef("bulk-retry-wakeup-smoke");
-            shell.setProject("demoApp");
+            shell.setProject(PROJECT_CODE);
             shell.setUserId("retry-wakeup-smoke");
             shell.setExecutionSpec(taskExecutionSpec(TaskWorkloadClass.BULK, config.bulkBatchSize(), 3));
-            shell.setSharedConfig(Map.of("source", "TaskInteractiveRetryWakeupSmokeRunner", "workload", "bulk"));
+            shell.setSharedConfig(Map.of(
+                    "source", "TaskInteractiveRetryWakeupSmokeRunner",
+                    "workload", "bulk",
+                    TaskSharedConfig.WORKER_GROUP_ID, WORKER_GROUP_ID
+            ));
             return new TaskCreatePlan(shell, buildInputs("bulk", config.bulkMessages()), false);
         }
 
@@ -314,10 +323,14 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
         private static TaskCreatePlan buildInteractiveRequest(SmokeConfig config) {
             TaskShellCreateRequestDto shell = new TaskShellCreateRequestDto();
             shell.setSourceRef("interactive-retry-wakeup-smoke");
-            shell.setProject("demoApp");
+            shell.setProject(PROJECT_CODE);
             shell.setUserId("retry-wakeup-smoke");
             shell.setExecutionSpec(taskExecutionSpec(TaskWorkloadClass.INTERACTIVE, 1, 1));
-            shell.setSharedConfig(Map.of("source", "TaskInteractiveRetryWakeupSmokeRunner", "workload", "interactive"));
+            shell.setSharedConfig(Map.of(
+                    "source", "TaskInteractiveRetryWakeupSmokeRunner",
+                    "workload", "interactive",
+                    TaskSharedConfig.WORKER_GROUP_ID, WORKER_GROUP_ID
+            ));
             return new TaskCreatePlan(shell, buildInputs("interactive", 1), false);
         }
 
@@ -360,11 +373,15 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
         }
 
         private static void registerWorkers(WorkerManager workerManager, int workerCount) {
+            workerManager.upsertWorkerGroup(WorkerGroupRecord.builder(WORKER_GROUP_ID)
+                    .projectCodes(List.of(PROJECT_CODE))
+                    .build());
             for (int i = 0; i < workerCount; i++) {
                 Worker worker = new Worker();
                 worker.setWorkerId("retry-wakeup-worker-" + i);
                 worker.setAgentVersion("retry-wakeup-smoke");
-                worker.setSupportedProjects(List.of("demoApp"));
+                worker.setWorkerGroupId(WORKER_GROUP_ID);
+                worker.setSupportedProjects(List.of(PROJECT_CODE));
                 worker.setStatus(WorkerStatus.ONLINE);
                 worker.setLastHeartbeat(LocalDateTime.now());
                 workerManager.addWorker(worker);
@@ -397,6 +414,10 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
 
         @Override
         public List<WorkerSchedulingCandidate> matchWorkers(Task task, int maxWorkerCount) {
+            List<String> workerGroupSelector = TaskSharedConfig.workerGroupSelector(task);
+            if (workerGroupSelector.isEmpty()) {
+                return List.of();
+            }
             List<WorkerSchedulingCandidate> matched = new ArrayList<>();
             for (Worker worker : workerManager.getAllWorkers()) {
                 if (matched.size() >= maxWorkerCount) {
@@ -406,7 +427,9 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                         && isReservedInteractiveWorker(worker)) {
                     continue;
                 }
-                if (!worker.isAvailable() || !worker.supportsProject(task.getProject())) {
+                if (!worker.isAvailable()
+                        || !workerGroupSelector.contains(worker.getWorkerGroupId())
+                        || !worker.supportsProject(task.getProject())) {
                     continue;
                 }
                 WorkerSchedulingCandidate candidate =

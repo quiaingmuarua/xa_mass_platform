@@ -7,6 +7,7 @@ import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
+import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
@@ -17,16 +18,19 @@ import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
+import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.engine.listener.SimpleTaskDispatchBinder;
 import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
+import com.xa.mass.engine.worker.WorkerGroupRecord;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
+import com.xa.mass.engine.watchdog.RuntimeReadyDispatchPump;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.testing.support.TestingPaths;
@@ -60,6 +64,9 @@ import java.util.concurrent.atomic.LongAdder;
  */
 public final class TaskWorkloadMixSmokeRunner {
 
+    private static final String PROJECT_CODE = "demoApp";
+    private static final String WORKER_GROUP_ID = "workload-smoke-workers";
+
     private TaskWorkloadMixSmokeRunner() {
     }
 
@@ -85,6 +92,7 @@ public final class TaskWorkloadMixSmokeRunner {
             TaskResultIngestFacade taskResultIngestFacade = engineConfig.getTaskResultIngestFacade();
             TaskAssignmentRuntimePort assignmentRuntimePort = engineConfig.getTaskAssignmentRuntimePort();
             TaskRuntimeMaintenancePort maintenancePort = engineConfig.getTaskRuntimeMaintenancePort();
+            TaskRuntimeRecoveryPort recoveryPort = engineConfig.getTaskRuntimeRecoveryPort();
             WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
             AssignmentRecordService recordService = new AssignmentRecordService();
             WorkloadTiming timing = new WorkloadTiming();
@@ -129,6 +137,8 @@ public final class TaskWorkloadMixSmokeRunner {
                             taskEvents
                     );
             TaskAssignWorker assignWorker = new TaskAssignWorker(workerAssignListener, config.assignmentRetryDelayMillis());
+            RuntimeReadyDispatchPump runtimeReadyDispatchPump =
+                    new RuntimeReadyDispatchPump(recoveryPort, assignWorker::submit, 50L, 64);
             TaskResourceReleaseListener releaseListener =
                     new TaskResourceReleaseListener(maintenancePort, workerManager);
 
@@ -148,6 +158,7 @@ public final class TaskWorkloadMixSmokeRunner {
                     }
                 });
                 assignWorker.start();
+                runtimeReadyDispatchPump.start();
 
                 Task bulkTask = materializeTask(taskCommands, buildBulkRequest(config));
                 workloadByTaskId.put(bulkTask.getTid(), bulkTask.getExecutionSpec().getWorkloadClass());
@@ -186,6 +197,7 @@ public final class TaskWorkloadMixSmokeRunner {
                 Path reportPath = writeReport(config, observation);
                 return new SmokeReport(config, observation, reportPath);
             } finally {
+                runtimeReadyDispatchPump.stop();
                 assignWorker.stop();
                 callbackExecutor.shutdownNow();
             }
@@ -225,11 +237,15 @@ public final class TaskWorkloadMixSmokeRunner {
         private static TaskCreatePlan buildBulkRequest(SmokeConfig config) {
             TaskShellCreateRequestDto shell = new TaskShellCreateRequestDto();
             shell.setSourceRef("bulk-workload-smoke");
-            shell.setProject("demoApp");
+            shell.setProject(PROJECT_CODE);
             shell.setUserId("workload-smoke");
             shell.setContract(TaskContract.BATCH);
             shell.setExecutionSpec(taskExecutionSpec(TaskWorkloadClass.BULK, config.bulkBatchSize(), 3));
-            shell.setSharedConfig(Map.of("source", "TaskWorkloadMixSmokeRunner", "workload", "bulk"));
+            shell.setSharedConfig(Map.of(
+                    "source", "TaskWorkloadMixSmokeRunner",
+                    "workload", "bulk",
+                    TaskSharedConfig.WORKER_GROUP_ID, WORKER_GROUP_ID
+            ));
             return new TaskCreatePlan(shell, buildInputs("bulk", config.bulkMessages()), false);
         }
 
@@ -245,11 +261,15 @@ public final class TaskWorkloadMixSmokeRunner {
         private static TaskCreatePlan buildInteractiveRequest(SmokeConfig config) {
             TaskShellCreateRequestDto shell = new TaskShellCreateRequestDto();
             shell.setSourceRef("interactive-workload-smoke");
-            shell.setProject("demoApp");
+            shell.setProject(PROJECT_CODE);
             shell.setUserId("workload-smoke");
             shell.setContract(TaskContract.BATCH);
             shell.setExecutionSpec(taskExecutionSpec(TaskWorkloadClass.INTERACTIVE, config.interactiveBatchSize(), 3));
-            shell.setSharedConfig(Map.of("source", "TaskWorkloadMixSmokeRunner", "workload", "interactive"));
+            shell.setSharedConfig(Map.of(
+                    "source", "TaskWorkloadMixSmokeRunner",
+                    "workload", "interactive",
+                    TaskSharedConfig.WORKER_GROUP_ID, WORKER_GROUP_ID
+            ));
             return new TaskCreatePlan(shell, buildInputs("interactive", config.interactiveMessages()), false);
         }
 
@@ -291,11 +311,15 @@ public final class TaskWorkloadMixSmokeRunner {
         }
 
         private static void registerWorkers(WorkerManager workerManager, int workerCount) {
+            workerManager.upsertWorkerGroup(WorkerGroupRecord.builder(WORKER_GROUP_ID)
+                    .projectCodes(List.of(PROJECT_CODE))
+                    .build());
             for (int i = 0; i < workerCount; i++) {
                 Worker worker = new Worker();
                 worker.setWorkerId("workload-smoke-worker-" + i);
                 worker.setAgentVersion("workload-smoke");
-                worker.setSupportedProjects(List.of("demoApp"));
+                worker.setWorkerGroupId(WORKER_GROUP_ID);
+                worker.setSupportedProjects(List.of(PROJECT_CODE));
                 worker.setStatus(WorkerStatus.ONLINE);
                 worker.setLastHeartbeat(LocalDateTime.now());
                 workerManager.addWorker(worker);
@@ -328,6 +352,10 @@ public final class TaskWorkloadMixSmokeRunner {
 
         @Override
         public List<WorkerSchedulingCandidate> matchWorkers(Task task, int maxWorkerCount) {
+            List<String> workerGroupSelector = TaskSharedConfig.workerGroupSelector(task);
+            if (workerGroupSelector.isEmpty()) {
+                return List.of();
+            }
             List<WorkerSchedulingCandidate> matched = new ArrayList<>();
             for (Worker worker : workerManager.getAllWorkers()) {
                 if (matched.size() >= maxWorkerCount) {
@@ -337,7 +365,9 @@ public final class TaskWorkloadMixSmokeRunner {
                         && isReservedInteractiveWorker(worker)) {
                     continue;
                 }
-                if (!worker.isAvailable() || !worker.supportsProject(task.getProject())) {
+                if (!worker.isAvailable()
+                        || !workerGroupSelector.contains(worker.getWorkerGroupId())
+                        || !worker.supportsProject(task.getProject())) {
                     continue;
                 }
                 WorkerSchedulingCandidate candidate =

@@ -46,6 +46,11 @@ RUNNERS=(
   "com.xa.mass.testing.perf.TaskInteractiveRetryWakeupSmokeRunner"
 )
 
+GUARDED_RUNNERS=(
+  "${RUNNERS[@]}"
+  "com.xa.mass.testing.perf.TaskFlowLoadModelRunner"
+)
+
 FORBIDDEN_SMOKE_TOKENS=(
   "TaskMessageProjection"
   "TaskMessageAttemptProjection"
@@ -58,7 +63,7 @@ FORBIDDEN_SMOKE_TOKENS=(
 )
 
 echo "== Checking perf smoke source guardrails =="
-for runner in "${RUNNERS[@]}"; do
+for runner in "${GUARDED_RUNNERS[@]}"; do
   runner_path="${runner//.//}.java"
   source_file="${REPO_ROOT}/xa-mass-testing/src/main/java/${runner_path}"
   if [[ ! -f "${source_file}" ]]; then
@@ -85,5 +90,30 @@ for runner in "${RUNNERS[@]}"; do
       "-Dmass.retrywakeup.smoke.minRetryDispatchDelayMillis=${MASS_RETRYWAKEUP_SMOKE_MIN_DELAY_MILLIS:-80}"
     )
   fi
-  java "${JAVA_ARGS[@]}" -cp "${RUNTIME_CLASSPATH}" "${runner}"
+  if [[ ${#JAVA_ARGS[@]} -gt 0 ]]; then
+    java "${JAVA_ARGS[@]}" -cp "${RUNTIME_CLASSPATH}" "${runner}"
+  else
+    java -cp "${RUNTIME_CLASSPATH}" "${runner}"
+  fi
 done
+
+if [[ -n "${MASS_PERF_TASK_FLOW_BACKENDS:-}" ]]; then
+  IFS=',' read -r -a TASK_FLOW_BACKENDS <<< "${MASS_PERF_TASK_FLOW_BACKENDS}"
+  for backend in "${TASK_FLOW_BACKENDS[@]}"; do
+    backend="$(echo "${backend}" | xargs)"
+    if [[ -z "${backend}" ]]; then
+      continue
+    fi
+    echo "== Running TaskFlowLoadModelRunner backend=${backend} =="
+    java "$@" \
+      "-Dmass.load.runtimeBackend=${backend}" \
+      "-Dmass.load.messages=${MASS_PERF_TASK_FLOW_MESSAGES:-64}" \
+      "-Dmass.load.workers=${MASS_PERF_TASK_FLOW_WORKERS:-8}" \
+      "-Dmass.load.batchSize=${MASS_PERF_TASK_FLOW_BATCH_SIZE:-4}" \
+      "-Dmass.load.callbackThreads=${MASS_PERF_TASK_FLOW_CALLBACK_THREADS:-8}" \
+      "-Dmass.load.timeoutSeconds=${MASS_PERF_TASK_FLOW_TIMEOUT_SECONDS:-60}" \
+      "-Dmass.load.redisUri=${MASS_PERF_TASK_FLOW_REDIS_URI:-redis://localhost:6379}" \
+      -cp "${RUNTIME_CLASSPATH}" \
+      com.xa.mass.testing.perf.TaskFlowLoadModelRunner
+  done
+fi
