@@ -28,13 +28,31 @@ import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.engine.watchdog.RuntimeReadyDispatchPump;
+import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.runtime.api.BarrierClaim;
+import com.xa.mass.runtime.api.BarrierMarkResult;
+import com.xa.mass.runtime.api.ClaimedTaskWork;
+import com.xa.mass.runtime.api.CommitResult;
+import com.xa.mass.runtime.api.RecentFinalWorkReceipt;
+import com.xa.mass.runtime.api.RuntimeResultApplyContext;
 import com.xa.mass.runtime.api.TaskWorkRuntimeStats;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.api.TaskResultRuntime;
+import com.xa.mass.runtime.api.TaskResultCallbackDraft;
+import com.xa.mass.runtime.api.TaskResultFinalDraft;
+import com.xa.mass.runtime.api.TaskResultRepairCandidate;
+import com.xa.mass.runtime.api.TaskResultRuntimeRow;
+import com.xa.mass.runtime.api.TaskResultWindow;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
+import com.xa.mass.runtime.api.StageResult;
 import com.xa.mass.runtime.api.ResultApplyOutcome;
 import com.xa.mass.runtime.api.ResultApplyStatus;
+import com.xa.mass.runtime.api.TaskWorkClaimOptions;
+import com.xa.mass.runtime.api.TaskWorkEnvelope;
 import com.xa.mass.runtime.api.TaskWorkResult;
+import com.xa.mass.runtime.api.WorkEnqueueOptions;
+import com.xa.mass.runtime.api.WorkEnqueueOutcome;
+import com.xa.mass.runtime.api.WorkerClaimTarget;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.runtime.redis.RedisTaskResultRuntime;
@@ -59,6 +77,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -68,6 +87,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.LongAccumulator;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.function.Supplier;
 
 /**
  * Runnable load model focused on the engine hot path:
@@ -111,7 +131,8 @@ public final class TaskFlowLoadModelRunner {
 
         private LoadReport run() throws Exception {
             InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
-            RuntimeBundle runtimes = RuntimeBundle.create(config);
+            RuntimeOperationMetrics runtimeOperationMetrics = new RuntimeOperationMetrics();
+            RuntimeBundle runtimes = RuntimeBundle.create(config, runtimeOperationMetrics);
             try {
                 EngineConfig engineConfig = buildEngineConfig(taskStorage, runtimes.taskWorkRuntime(), runtimes.taskResultRuntime());
                 TaskCommandService taskCommands = engineConfig.getTaskCommandService();
@@ -355,7 +376,7 @@ public final class TaskFlowLoadModelRunner {
                             "task should converge with ALL_MESSAGES_SUCCEEDED");
 
                     Path reportPath = writeReport(config, finalTask, totalWallNanos, dispatchMetrics, callbackMetrics,
-                            releaseMetrics, finalWorkStats, proofMetrics);
+                            releaseMetrics, finalWorkStats, proofMetrics, runtimeOperationMetrics);
 
                     return new LoadReport(
                             config,
@@ -380,6 +401,7 @@ public final class TaskFlowLoadModelRunner {
                             nanosToMillis(releaseMetrics.totalTaskTerminalNanos.sum()),
                             FinalWorkStats.from(finalWorkStats),
                             proofMetrics,
+                            runtimeOperationMetrics,
                             reportPath
                     );
                 } finally {
@@ -504,7 +526,8 @@ public final class TaskFlowLoadModelRunner {
                                         CallbackMetrics callbackMetrics,
                                         ReleaseMetrics releaseMetrics,
                                         TaskWorkStats finalWorkStats,
-                                        RuntimeProofMetrics proofMetrics) throws Exception {
+                                        RuntimeProofMetrics proofMetrics,
+                                        RuntimeOperationMetrics runtimeOperationMetrics) throws Exception {
             Map<String, Object> report = new LinkedHashMap<>(WorkerFaultReportMetadata.topLevel(
                     WorkerFaultScenarioIndex.Scenario.TASK_FLOW_LOAD_MODEL));
             report.put("generatedAt", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
@@ -554,6 +577,7 @@ public final class TaskFlowLoadModelRunner {
             ));
             report.put("finalWorkStats", FinalWorkStats.from(finalWorkStats).toMap());
             report.put("runtimeProof", proofMetrics.toMap());
+            report.put("runtimeOperations", runtimeOperationMetrics.toMap());
 
             Path reportDir = TestingPaths.reportDir("perf-reports");
             Files.createDirectories(reportDir);
@@ -719,6 +743,272 @@ public final class TaskFlowLoadModelRunner {
         private final LongAdder totalTaskTerminalNanos = new LongAdder();
     }
 
+    private static final class RuntimeOperationMetrics {
+        private final Map<String, OperationMetric> operations = new ConcurrentHashMap<>();
+
+        private <T> T record(String operation, Supplier<T> action) {
+            long startNanos = System.nanoTime();
+            try {
+                return action.get();
+            } finally {
+                recordElapsed(operation, System.nanoTime() - startNanos);
+            }
+        }
+
+        private void recordVoid(String operation, Runnable action) {
+            long startNanos = System.nanoTime();
+            try {
+                action.run();
+            } finally {
+                recordElapsed(operation, System.nanoTime() - startNanos);
+            }
+        }
+
+        private void recordElapsed(String operation, long elapsedNanos) {
+            operations.computeIfAbsent(operation, ignored -> new OperationMetric()).record(elapsedNanos);
+        }
+
+        private Map<String, Object> toMap() {
+            Map<String, Object> values = new LinkedHashMap<>();
+            operations.entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey())
+                    .forEach(entry -> values.put(entry.getKey(), entry.getValue().toMap()));
+            return values;
+        }
+
+        private String slowestOperationSummary() {
+            return operations.entrySet().stream()
+                    .max((left, right) -> Long.compare(left.getValue().maxNanos(), right.getValue().maxNanos()))
+                    .map(entry -> entry.getKey() + ":" + nanosToMillis(entry.getValue().maxNanos()) + "ms")
+                    .orElse("none");
+        }
+    }
+
+    private static final class OperationMetric {
+        private final LongAdder calls = new LongAdder();
+        private final LongAdder totalNanos = new LongAdder();
+        private final LongAccumulator maxNanos = new LongAccumulator(Long::max, 0L);
+
+        private void record(long elapsedNanos) {
+            calls.increment();
+            totalNanos.add(elapsedNanos);
+            maxNanos.accumulate(elapsedNanos);
+        }
+
+        private Map<String, Object> toMap() {
+            long callCount = calls.sum();
+            long total = totalNanos.sum();
+            Map<String, Object> values = new LinkedHashMap<>();
+            values.put("calls", callCount);
+            values.put("totalMillis", nanosToMillis(total));
+            values.put("avgMillis", formatDecimal(safeDivide(total, callCount, 1_000_000.0)));
+            values.put("maxMillis", nanosToMillis(maxNanos.get()));
+            return values;
+        }
+
+        private long maxNanos() {
+            return maxNanos.get();
+        }
+    }
+
+    private static final class MeasuredTaskWorkRuntime implements TaskWorkRuntime {
+        private final TaskWorkRuntime delegate;
+        private final RuntimeOperationMetrics metrics;
+
+        private MeasuredTaskWorkRuntime(TaskWorkRuntime delegate, RuntimeOperationMetrics metrics) {
+            this.delegate = delegate;
+            this.metrics = metrics;
+        }
+
+        @Override
+        public WorkEnqueueOutcome enqueue(TaskWorkEnvelope item, WorkEnqueueOptions options) {
+            return metrics.record("work.enqueue", () -> delegate.enqueue(item, options));
+        }
+
+        @Override
+        public List<String> readyTaskIds(int limit) {
+            return metrics.record("work.readyTaskIds", () -> delegate.readyTaskIds(limit));
+        }
+
+        @Override
+        public List<ClaimedTaskWork> claimReady(String taskId,
+                                                List<WorkerClaimTarget> workers,
+                                                TaskWorkClaimOptions options) {
+            return metrics.record("work.claimReady", () -> delegate.claimReady(taskId, workers, options));
+        }
+
+        @Override
+        public ResultApplyOutcome applyResult(TaskWorkResult result) {
+            return metrics.record("work.applyResult", () -> delegate.applyResult(result));
+        }
+
+        @Override
+        public RuntimeResultApplyContext applyResultWithContext(TaskWorkResult result) {
+            return metrics.record("work.applyResultWithContext", () -> delegate.applyResultWithContext(result));
+        }
+
+        @Override
+        public List<ActiveLeaseRecord> pollExpiredLeases(int limit, java.time.Instant now) {
+            return metrics.record("work.pollExpiredLeases", () -> delegate.pollExpiredLeases(limit, now));
+        }
+
+        @Override
+        public List<ActiveLeaseRecord> activeLeases(String taskId) {
+            return metrics.record("work.activeLeases", () -> delegate.activeLeases(taskId));
+        }
+
+        @Override
+        public Optional<ActiveLeaseRecord> getActiveLease(String taskId, String messageId) {
+            return metrics.record("work.getActiveLease", () -> delegate.getActiveLease(taskId, messageId));
+        }
+
+        @Override
+        public Optional<TaskWorkEnvelope> getWork(String taskId, String messageId) {
+            return metrics.record("work.getWork", () -> delegate.getWork(taskId, messageId));
+        }
+
+        @Override
+        public Optional<RecentFinalWorkReceipt> getRecentFinalReceipt(String taskId, String messageId) {
+            return metrics.record("work.getRecentFinalReceipt", () -> delegate.getRecentFinalReceipt(taskId, messageId));
+        }
+
+        @Override
+        public boolean hasReadyWork(String taskId) {
+            return metrics.record("work.hasReadyWork", () -> delegate.hasReadyWork(taskId));
+        }
+
+        @Override
+        public boolean hasActiveLeaseForWorker(String taskId, String workerId) {
+            return metrics.record("work.hasActiveLeaseForWorker", () -> delegate.hasActiveLeaseForWorker(taskId, workerId));
+        }
+
+        @Override
+        public TaskWorkStats stats(String taskId) {
+            return metrics.record("work.stats.task", () -> delegate.stats(taskId));
+        }
+
+        @Override
+        public TaskWorkRuntimeStats stats() {
+            return metrics.record("work.stats.runtime", delegate::stats);
+        }
+
+        @Override
+        public long discardTask(String taskId) {
+            return metrics.record("work.discardTask", () -> delegate.discardTask(taskId));
+        }
+
+        @Override
+        public void shutdown() {
+            metrics.recordVoid("work.shutdown", delegate::shutdown);
+        }
+    }
+
+    private static final class MeasuredTaskResultRuntime implements TaskResultRuntime {
+        private final TaskResultRuntime delegate;
+        private final RuntimeOperationMetrics metrics;
+
+        private MeasuredTaskResultRuntime(TaskResultRuntime delegate, RuntimeOperationMetrics metrics) {
+            this.delegate = delegate;
+            this.metrics = metrics;
+        }
+
+        @Override
+        public StageResult stageCallback(TaskResultCallbackDraft draft) {
+            return metrics.record("result.stageCallback", () -> delegate.stageCallback(draft));
+        }
+
+        @Override
+        public boolean discardStagedCallback(String stageId) {
+            return metrics.record("result.discardStagedCallback", () -> delegate.discardStagedCallback(stageId));
+        }
+
+        @Override
+        public int discardStagedCallbacksForMessage(String taskId, String messageId) {
+            return metrics.record("result.discardStagedCallbacksForMessage",
+                    () -> delegate.discardStagedCallbacksForMessage(taskId, messageId));
+        }
+
+        @Override
+        public CommitResult commitVisibleFinal(TaskResultFinalDraft finalDraft) {
+            return metrics.record("result.commitVisibleFinal", () -> delegate.commitVisibleFinal(finalDraft));
+        }
+
+        @Override
+        public List<TaskResultRepairCandidate> scanRepairCandidates(int limit) {
+            return metrics.record("result.scanRepairCandidates", () -> delegate.scanRepairCandidates(limit));
+        }
+
+        @Override
+        public BarrierClaim claimAttemptClosedPublish(String taskId, String messageId, long finalSeq) {
+            return metrics.record("result.claimAttemptClosedPublish",
+                    () -> delegate.claimAttemptClosedPublish(taskId, messageId, finalSeq));
+        }
+
+        @Override
+        public BarrierMarkResult markAttemptClosedPublished(String taskId,
+                                                            String messageId,
+                                                            long finalSeq,
+                                                            String claimToken) {
+            return metrics.record("result.markAttemptClosedPublished",
+                    () -> delegate.markAttemptClosedPublished(taskId, messageId, finalSeq, claimToken));
+        }
+
+        @Override
+        public BarrierClaim claimLogicalFinalPublish(String taskId, String messageId, long finalSeq) {
+            return metrics.record("result.claimLogicalFinalPublish",
+                    () -> delegate.claimLogicalFinalPublish(taskId, messageId, finalSeq));
+        }
+
+        @Override
+        public BarrierMarkResult markLogicalFinalPublished(String taskId,
+                                                           String messageId,
+                                                           long finalSeq,
+                                                           String claimToken) {
+            return metrics.record("result.markLogicalFinalPublished",
+                    () -> delegate.markLogicalFinalPublished(taskId, messageId, finalSeq, claimToken));
+        }
+
+        @Override
+        public BarrierClaim claimProgressApply(String taskId, String messageId, long finalSeq) {
+            return metrics.record("result.claimProgressApply",
+                    () -> delegate.claimProgressApply(taskId, messageId, finalSeq));
+        }
+
+        @Override
+        public BarrierMarkResult markProgressApplied(String taskId,
+                                                     String messageId,
+                                                     long finalSeq,
+                                                     String claimToken) {
+            return metrics.record("result.markProgressApplied",
+                    () -> delegate.markProgressApplied(taskId, messageId, finalSeq, claimToken));
+        }
+
+        @Override
+        public TaskResultWindow readWindow(String taskId, long afterSeq, int limit) {
+            return metrics.record("result.readWindow", () -> delegate.readWindow(taskId, afterSeq, limit));
+        }
+
+        @Override
+        public long countVisibleResults(String taskId) {
+            return metrics.record("result.countVisibleResults", () -> delegate.countVisibleResults(taskId));
+        }
+
+        @Override
+        public Optional<TaskResultRuntimeRow> getVisibleByMessageId(String taskId, String messageId) {
+            return metrics.record("result.getVisibleByMessageId", () -> delegate.getVisibleByMessageId(taskId, messageId));
+        }
+
+        @Override
+        public long discardTask(String taskId) {
+            return metrics.record("result.discardTask", () -> delegate.discardTask(taskId));
+        }
+
+        @Override
+        public void shutdown() {
+            metrics.recordVoid("result.shutdown", delegate::shutdown);
+        }
+    }
+
     private enum RuntimeBackend {
         MEMORY,
         REDIS
@@ -730,26 +1020,32 @@ public final class TaskFlowLoadModelRunner {
                                  String redisUri,
                                  String redisNamespace,
                                  boolean cleanupRedisNamespace) {
-        private static RuntimeBundle create(LoadConfig config) {
+        private static RuntimeBundle create(LoadConfig config, RuntimeOperationMetrics metrics) {
             if (config.runtimeBackend() == RuntimeBackend.REDIS) {
                 TaskFlowLoadModelRunner.cleanupRedisNamespace(
                         config.redisUri(),
                         config.redisNamespace(),
                         config.redisCleanupNamespace()
                 );
+                RedisTaskWorkRuntime taskWorkRuntime =
+                        new RedisTaskWorkRuntime(config.redisUri(), config.redisNamespace(), config.maxQueuedItems());
+                RedisTaskResultRuntime taskResultRuntime =
+                        new RedisTaskResultRuntime(config.redisUri(), config.redisNamespace() + ":result");
                 return new RuntimeBundle(
                         RuntimeBackend.REDIS,
-                        new RedisTaskWorkRuntime(config.redisUri(), config.redisNamespace(), config.maxQueuedItems()),
-                        new RedisTaskResultRuntime(config.redisUri(), config.redisNamespace() + ":result"),
+                        new MeasuredTaskWorkRuntime(taskWorkRuntime, metrics),
+                        new MeasuredTaskResultRuntime(taskResultRuntime, metrics),
                         config.redisUri(),
                         config.redisNamespace(),
                         config.redisCleanupNamespace()
                 );
             }
+            InMemoryTaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
+            InMemoryTaskResultRuntime taskResultRuntime = new InMemoryTaskResultRuntime();
             return new RuntimeBundle(
                     RuntimeBackend.MEMORY,
-                    new InMemoryTaskWorkRuntime(),
-                    new InMemoryTaskResultRuntime(),
+                    new MeasuredTaskWorkRuntime(taskWorkRuntime, metrics),
+                    new MeasuredTaskResultRuntime(taskResultRuntime, metrics),
                     "",
                     "",
                     false
@@ -903,11 +1199,12 @@ public final class TaskFlowLoadModelRunner {
                               double taskTerminalMillis,
                               FinalWorkStats finalWorkStats,
                               RuntimeProofMetrics runtimeProofMetrics,
+                              RuntimeOperationMetrics runtimeOperationMetrics,
                               Path reportPath) {
 
         private String toConsoleSummary() {
             return String.format(Locale.ROOT,
-                    "TaskFlowLoadModel backend=%s taskId=%s status=%s terminalReason=%s wall=%.3fms dispatchCycles=%d dispatchItems=%d callbacks=%d syntheticRetries=%d syntheticLeaseExpiries=%d syntheticStaleResults=%d duplicateResultAttempts=%d maxConcurrentCallbacks=%d claimedPerSec=%.3f duplicateDispatch=%d duplicateResult=%d staleResult=%d expiredLeasePolls=%d resultDrift=%d report=%s",
+                    "TaskFlowLoadModel backend=%s taskId=%s status=%s terminalReason=%s wall=%.3fms dispatchCycles=%d dispatchItems=%d callbacks=%d syntheticRetries=%d syntheticLeaseExpiries=%d syntheticStaleResults=%d duplicateResultAttempts=%d maxConcurrentCallbacks=%d claimedPerSec=%.3f duplicateDispatch=%d duplicateResult=%d staleResult=%d expiredLeasePolls=%d resultDrift=%d slowestRuntimeOp=%s report=%s",
                     config.runtimeBackend().name().toLowerCase(Locale.ROOT),
                     taskId,
                     taskStatus,
@@ -927,6 +1224,7 @@ public final class TaskFlowLoadModelRunner {
                     runtimeProofMetrics.staleResultItems(),
                     runtimeProofMetrics.expiredLeaseItems(),
                     runtimeProofMetrics.resultCounterDrift(),
+                    runtimeOperationMetrics.slowestOperationSummary(),
                     reportPath);
         }
     }
