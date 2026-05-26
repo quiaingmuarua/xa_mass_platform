@@ -33,8 +33,8 @@
           <div class="metric-value">{{ totalSubmitterCount }}</div>
         </div>
         <div class="metric-tile">
-          <div class="metric-label">Project tasks</div>
-          <div class="metric-value">{{ tasks.length }}</div>
+          <div class="metric-label">WorkerGroups</div>
+          <div class="metric-value">{{ workerGroups.length }}</div>
         </div>
       </section>
 
@@ -75,9 +75,14 @@
               {{ row.submitterCount }}
             </template>
           </el-table-column>
-          <el-table-column label="Workers" min-width="100">
+          <el-table-column label="WorkerGroups" min-width="130">
             <template #default="{ row }">
-              {{ row.workerCount }}
+              {{ row.workerGroupCount }}
+            </template>
+          </el-table-column>
+          <el-table-column label="Online capacity" min-width="140">
+            <template #default="{ row }">
+              {{ row.dispatchEligibleCount }} / {{ row.workerCount }}
             </template>
           </el-table-column>
           <el-table-column label="Tasks" min-width="100">
@@ -112,6 +117,9 @@
 import {computed, onMounted, ref} from 'vue'
 import {useRouter} from 'vue-router'
 import {
+  listWorkerGroupCapabilities,
+} from '@/api/catalog'
+import {
   listProjects,
   listProjectSubmitters,
 } from '@/api/projects'
@@ -125,12 +133,15 @@ import type {
   ProjectSubmitterProfile,
 } from '@/types/projects'
 import type {TaskListItem} from '@/types/tasks'
+import type {WorkerGroupCapability} from '@/types/catalog'
 import type {WorkerListItem} from '@/types/workers'
 import {toErrorMessage} from '@/utils/errors'
 
 interface ProjectRow extends ProjectDefinition {
   eventCount: number
   submitterCount: number
+  workerGroupCount: number
+  dispatchEligibleCount: number
   workerCount: number
   taskCount: number
 }
@@ -142,6 +153,7 @@ const errorMessage = ref('')
 const projects = ref<ProjectDefinition[]>([])
 const tasks = ref<TaskListItem[]>([])
 const workers = ref<WorkerListItem[]>([])
+const workerGroups = ref<WorkerGroupCapability[]>([])
 const submittersByProject = ref<Record<string, ProjectSubmitterProfile[]>>({})
 
 const enabledProjectCount = computed(
@@ -159,6 +171,11 @@ const projectRows = computed<ProjectRow[]>(() =>
       ...project,
       eventCount: project.eventCodes.length,
       submitterCount: submittersForProject(project.code).length,
+      workerGroupCount: workerGroupsForProject(project).length,
+      dispatchEligibleCount: workerGroupsForProject(project).reduce(
+        (sum, group) => sum + group.dispatchEligibleCount,
+        0,
+      ),
       workerCount: workersForProject(project).length,
       taskCount: tasks.value.filter((task) => task.project === project.code).length,
     }))
@@ -169,10 +186,11 @@ async function loadProjects(): Promise<void> {
   loading.value = true
   errorMessage.value = ''
   try {
-    const [projectItems, workerResponse, taskResponse] = await Promise.all([
+    const [projectItems, workerResponse, taskResponse, workerGroupRows] = await Promise.all([
       listProjects(),
       listWorkers(),
       listTasks(),
+      listWorkerGroupCapabilities(),
     ])
     const submitterEntries = await Promise.all(
       projectItems.map(async (project) => [
@@ -182,17 +200,33 @@ async function loadProjects(): Promise<void> {
     )
     projects.value = projectItems
     workers.value = workerResponse.items
+    workerGroups.value = workerGroupRows
     tasks.value = taskResponse.items
     submittersByProject.value = Object.fromEntries(submitterEntries)
   } catch (error) {
     projects.value = []
     workers.value = []
+    workerGroups.value = []
     tasks.value = []
     submittersByProject.value = {}
     errorMessage.value = toErrorMessage(error, 'Failed to load projects.')
   } finally {
     loading.value = false
   }
+}
+
+function workerGroupsForProject(project: ProjectDefinition): WorkerGroupCapability[] {
+  const authorizedEventCodes = new Set(project.eventCodes)
+  return workerGroups.value.filter((group) => {
+    if (group.projectCodes.includes(project.code)) {
+      return true
+    }
+    return group.eventBindings.some(
+      (binding) =>
+        binding.projectCodes.includes(project.code) ||
+        authorizedEventCodes.has(binding.eventCode),
+    )
+  })
 }
 
 function submittersForProject(projectCode: string): ProjectSubmitterProfile[] {

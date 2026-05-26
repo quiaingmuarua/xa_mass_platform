@@ -8,7 +8,7 @@ export interface ConfigSummary {
 
 export async function listProjectCodes(): Promise<string[]> {
     if (getAppConfig().useMockApi) {
-        return ['demoApp', 'crawlerApp', 'testApp']
+        return ['publicProbe', 'deviceProbe', 'dataQualityProbe']
     }
 
     return requestApiData<string[]>('/api/v1/runtime/config/projects')

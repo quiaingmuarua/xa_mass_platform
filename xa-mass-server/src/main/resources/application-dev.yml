@@ -1,15 +1,15 @@
 # Development profile overrides for the verified server shell.
 mass:
-  demo:
-    bootstrap:
+  control-console:
+    scenario:
       enabled: true
-      worker-count: 36
-      task-count: 12
-      items-per-task: 1500
+      profile: dev-demo
+      worker-count: 115
+      task-count: 10
+      items-per-task: 120
       batch-size: 20
       default-max-retry-count: 1
-      auto-approve-tasks: true
-      routing-lanes: us,gb,de,fr,sg,jp
+      auto-approve-tasks: false
   runtime:
     event-handler-timeout-ms: 5000
     transport-max-pending-tasks: 10000

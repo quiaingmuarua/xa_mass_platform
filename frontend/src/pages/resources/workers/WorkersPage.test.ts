@@ -35,20 +35,27 @@ function stubWorkersApi() {
                 data: {
                     items: [
                         {
-                            workerId: 'worker-us-01',
+                            workerId: 'phone-device-probe-ws-sg-001',
                             status: 'ONLINE',
-                            workerGroupId: 'us-routing',
+                            transportReachability: 'ONLINE',
+                            transportOnline: true,
+                            workerGroupId: 'phone-device-probe',
+                            adapterNodeId: 'control-console-websocket',
+                            transportHint: 'realtime',
                             agentVersion: '1.4.0',
-                            supportedProjects: ['demoApp'],
-                            supportedEventCodes: ['demo.dispatch'],
+                            supportedProjects: ['deviceProbe'],
+                            supportedEventCodes: ['probe.phone.metadata'],
                             eventBindings: [
                                 {
-                                    eventCode: 'demo.dispatch',
+                                    eventCode: 'probe.phone.metadata',
                                     filterExpression: '',
                                     concurrency: 1,
                                 },
                             ],
-                            attributes: { region: 'us' },
+                            attributes: {
+                                country: 'SG',
+                                fingerprintProfile: 'fp-android-sg-a',
+                            },
                             lastHeartbeat: '2026-04-21 09:45:00',
                             locked: true,
                             updateTime: '2026-04-21 09:45:00',
@@ -88,9 +95,10 @@ describe('WorkersPage', () => {
 
         await flushPromises()
 
-        expect(wrapper.text()).toContain('worker-us-01')
+        expect(wrapper.text()).toContain('phone-device-probe-ws-sg-001')
         expect(wrapper.text()).toContain('ONLINE')
-        expect(wrapper.text()).toContain('demo.dispatch')
+        expect(wrapper.text()).toContain('probe.phone.metadata')
+        expect(wrapper.text()).toContain('fp-android-sg-a')
         expect(wrapper.text()).toContain('Open debug view')
         expect(wrapper.text()).not.toContain('Edit projects')
         expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -120,8 +128,8 @@ describe('WorkersPage', () => {
 
         await flushPromises()
 
-        expect(wrapper.text()).toContain('worker-us-01')
-        expect(wrapper.text()).toContain('demo.dispatch')
+        expect(wrapper.text()).toContain('phone-device-probe-ws-sg-001')
+        expect(wrapper.text()).toContain('probe.phone.metadata')
         expect(wrapper.text()).not.toContain('Edit projects')
         expect(fetchMock).toHaveBeenCalledTimes(1)
     })

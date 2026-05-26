@@ -2,6 +2,7 @@ import {requestApiData} from '@/api/http'
 import type {
     EventCapability,
     EventDefinition,
+    WorkerGroupCapability,
 } from '@/types/catalog'
 
 export async function listEventDefinitionsReal(): Promise<EventDefinition[]> {
@@ -10,6 +11,14 @@ export async function listEventDefinitionsReal(): Promise<EventDefinition[]> {
 
 export async function listEventCapabilitiesReal(): Promise<EventCapability[]> {
     return requestApiData<EventCapability[]>('/api/v1/catalog/event-capabilities')
+}
+
+export async function listWorkerGroupCapabilitiesReal(): Promise<
+    WorkerGroupCapability[]
+> {
+    return requestApiData<WorkerGroupCapability[]>(
+        '/api/v1/catalog/worker-group-capabilities',
+    )
 }
 
 export async function getEventDefinitionReal(

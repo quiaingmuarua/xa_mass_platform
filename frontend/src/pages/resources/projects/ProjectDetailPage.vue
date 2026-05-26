@@ -34,8 +34,8 @@
           <div class="metric-value">{{ submitters.length }}</div>
         </div>
         <div class="metric-tile">
-          <div class="metric-label">Worker coverage</div>
-          <div class="metric-value">{{ projectWorkers.length }}</div>
+          <div class="metric-label">WorkerGroups</div>
+          <div class="metric-value">{{ projectWorkerGroups.length }}</div>
         </div>
         <div class="metric-tile">
           <div class="metric-label">Tasks</div>
@@ -121,9 +121,10 @@
                 </div>
               </template>
             </el-table-column>
-            <el-table-column label="Online workers" min-width="120">
+            <el-table-column label="Online capacity" min-width="140">
               <template #default="{ row }">
-                {{ onlineWorkersForEvent(row.code) }}
+                {{ dispatchEligibleForEvent(row.code) }} /
+                {{ configuredWorkersForEvent(row.code) }}
               </template>
             </el-table-column>
             <el-table-column label="Actions" min-width="180" fixed="right">
@@ -173,35 +174,75 @@
           <el-col :span="12">
             <el-card class="page-card">
               <template #header>
-                <strong>Worker coverage</strong>
+                <strong>WorkerGroup coverage</strong>
               </template>
               <PageEmptyState
-                v-if="projectWorkers.length === 0"
-                description="No workers currently advertise project-compatible coverage."
+                v-if="projectWorkerGroups.length === 0"
+                description="No WorkerGroups currently cover this project."
               />
-              <el-table v-else :data="projectWorkers" row-key="workerId">
-                <el-table-column prop="workerId" label="Worker" min-width="220">
+              <el-table v-else :data="projectWorkerGroups" row-key="groupId">
+                <el-table-column prop="groupId" label="WorkerGroup" min-width="220">
                   <template #default="{ row }">
-                    <div class="row-primary mono">{{ row.workerId }}</div>
-                    <div class="row-secondary">{{ row.workerGroupId || 'no group' }}</div>
+                    <div class="row-primary mono">{{ row.groupId }}</div>
+                    <div class="row-secondary">
+                      {{ eventCodesForGroup(row).join(', ') || '-' }}
+                    </div>
                   </template>
                 </el-table-column>
-                <el-table-column label="Status" min-width="120">
+                <el-table-column label="Configured" min-width="120">
                   <template #default="{ row }">
-                    <el-tag :type="row.status === 'ONLINE' ? 'success' : 'info'">
-                      {{ row.status }}
-                    </el-tag>
+                    {{ row.workerCount }}
                   </template>
                 </el-table-column>
-                <el-table-column label="Events" min-width="220">
+                <el-table-column label="Dispatch eligible" min-width="140">
                   <template #default="{ row }">
-                    {{ matchingEventsForWorker(row).join(', ') || '-' }}
+                    {{ row.dispatchEligibleCount }}
+                  </template>
+                </el-table-column>
+                <el-table-column label="Transport online" min-width="160">
+                  <template #default="{ row }">
+                    {{ transportOnlineTotal(row) }}
                   </template>
                 </el-table-column>
               </el-table>
             </el-card>
           </el-col>
         </el-row>
+
+        <el-card class="page-card">
+          <template #header>
+            <strong>Worker instances</strong>
+          </template>
+          <PageEmptyState
+            v-if="projectWorkers.length === 0"
+            description="No workers currently advertise project-compatible coverage."
+          />
+          <el-table v-else :data="projectWorkers" row-key="workerId">
+            <el-table-column prop="workerId" label="Worker" min-width="220">
+              <template #default="{ row }">
+                <div class="row-primary mono">{{ row.workerId }}</div>
+                <div class="row-secondary">{{ row.workerGroupId || 'no group' }}</div>
+              </template>
+            </el-table-column>
+            <el-table-column label="Model status" min-width="120">
+              <template #default="{ row }">
+                <el-tag :type="row.status === 'ONLINE' ? 'success' : 'info'">
+                  {{ row.status }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="Transport" min-width="150">
+              <template #default="{ row }">
+                {{ row.transportReachability || (row.transportOnline ? 'ONLINE' : 'OFFLINE') }}
+              </template>
+            </el-table-column>
+            <el-table-column label="Events" min-width="220">
+              <template #default="{ row }">
+                {{ matchingEventsForWorker(row).join(', ') || '-' }}
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-card>
 
         <el-card class="page-card">
           <template #header>
@@ -247,6 +288,9 @@
 import {computed, onMounted, ref, watch} from 'vue'
 import {useRoute, useRouter} from 'vue-router'
 import {
+  listWorkerGroupCapabilities,
+} from '@/api/catalog'
+import {
   getProject,
   listProjectEventDefinitions,
   listProjectSubmitters,
@@ -258,6 +302,7 @@ import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
 import type {
   EventDefinition,
+  WorkerGroupCapability,
 } from '@/types/catalog'
 import type {
   ProjectDefinition,
@@ -276,6 +321,7 @@ const project = ref<ProjectDefinition | null>(null)
 const events = ref<EventDefinition[]>([])
 const submitters = ref<ProjectSubmitterProfile[]>([])
 const workers = ref<WorkerListItem[]>([])
+const workerGroups = ref<WorkerGroupCapability[]>([])
 const tasks = ref<TaskListItem[]>([])
 
 const projectCode = computed(() => String(route.params.projectCode ?? '').trim())
@@ -303,6 +349,22 @@ const projectWorkers = computed(() => {
     )
   })
 })
+const projectWorkerGroups = computed(() => {
+  if (!project.value) {
+    return []
+  }
+  const authorizedEventCodes = new Set(project.value.eventCodes)
+  return workerGroups.value.filter((group) => {
+    if (group.projectCodes.includes(project.value!.code)) {
+      return true
+    }
+    return group.eventBindings.some(
+      (binding) =>
+        binding.projectCodes.includes(project.value!.code) ||
+        authorizedEventCodes.has(binding.eventCode),
+    )
+  })
+})
 
 async function loadProject(): Promise<void> {
   if (!projectCode.value) {
@@ -312,24 +374,27 @@ async function loadProject(): Promise<void> {
   loading.value = true
   errorMessage.value = ''
   try {
-    const [projectDefinition, eventRows, submitterRows, workerResponse, taskResponse] =
+    const [projectDefinition, eventRows, submitterRows, workerResponse, workerGroupRows, taskResponse] =
       await Promise.all([
         getProject(projectCode.value),
         listProjectEventDefinitions(projectCode.value),
         listProjectSubmitters(projectCode.value),
         listWorkers(),
+        listWorkerGroupCapabilities(),
         listTasks({ project: projectCode.value }),
       ])
     project.value = projectDefinition
     events.value = eventRows
     submitters.value = submitterRows
     workers.value = workerResponse.items
+    workerGroups.value = workerGroupRows
     tasks.value = taskResponse.items
   } catch (error) {
     project.value = null
     events.value = []
     submitters.value = []
     workers.value = []
+    workerGroups.value = []
     tasks.value = []
     errorMessage.value = toErrorMessage(error, 'Failed to load project detail.')
   } finally {
@@ -347,12 +412,35 @@ function matchingEventsForWorker(worker: WorkerListItem): string[] {
   )
 }
 
-function onlineWorkersForEvent(eventCode: string): number {
-  return projectWorkers.value.filter(
-    (worker) =>
-      worker.status === 'ONLINE' &&
-      worker.supportedEventCodes.includes(eventCode),
-  ).length
+function groupsForEvent(eventCode: string): WorkerGroupCapability[] {
+  return projectWorkerGroups.value.filter((group) =>
+    group.eventBindings.some((binding) => binding.eventCode === eventCode),
+  )
+}
+
+function dispatchEligibleForEvent(eventCode: string): number {
+  return groupsForEvent(eventCode).reduce(
+    (sum, group) => sum + group.dispatchEligibleCount,
+    0,
+  )
+}
+
+function configuredWorkersForEvent(eventCode: string): number {
+  return groupsForEvent(eventCode).reduce(
+    (sum, group) => sum + group.workerCount,
+    0,
+  )
+}
+
+function eventCodesForGroup(group: WorkerGroupCapability): string[] {
+  return group.eventBindings.map((binding) => binding.eventCode)
+}
+
+function transportOnlineTotal(group: WorkerGroupCapability): number {
+  return Object.values(group.transportOnlineCounts).reduce(
+    (sum, count) => sum + count,
+    0,
+  )
 }
 
 function openTaskDraft(eventCode?: string): void {

@@ -101,6 +101,9 @@ Current gaps:
     semantics without a separate owner review.
 14. Old demo names do not need in-repo compatibility once the scenario is
     migrated.
+15. Public internet probe providers are dev/demo scenario inputs only. CI and
+    offline verification must use local, deterministic probe events and
+    fixtures.
 
 ## Owner Boundaries
 
@@ -117,6 +120,7 @@ Current gaps:
 | Stage-2 match evidence | engine match/rank/admission views and traces | WorkerGroup candidate-source truth |
 | online/capacity display | server read APIs + frontend pages | transport presence truth, worker model status truth, dispatch gate ownership |
 | expected probe outcome display | task item/result payload and console aggregation | task terminal policy, runtime result convergence |
+| public provider profile | server scenario bootstrap profile + worker item payload | CI availability, engine/runtime fallback behavior |
 | console aggregation | frontend pages and server read APIs | hot-path scheduling scans |
 
 ## Target Scenario
@@ -209,6 +213,35 @@ Before implementation, verify terms, rate limits, attribution, and availability.
 If a provider changes access model, replace the provider in the scenario rather
 than adding engine/runtime fallback logic.
 
+Provider activation profiles:
+
+```text
+dev/demo:
+  may include public internet probes:
+    probe.weather.current
+    probe.fx.latest
+    probe.market.daily-csv
+    probe.crypto.price
+    probe.ip.geo
+    probe.http.status
+    probe.url.dns with public hosts
+
+ci/test/offline:
+  must not require public internet availability
+  use local deterministic probes and fixtures:
+    probe.phone.metadata
+    probe.csv.validate
+    probe.json.schema
+    probe.url.dns with local fixtures or reserved invalid hostnames
+  expected failures are deterministic:
+    DNS_NXDOMAIN, SCHEMA_INVALID, CSV_INVALID, TIMEOUT fixture
+```
+
+CI must not fail because Open-Meteo, ExchangeRate, CoinGecko, Stooq, httpbin,
+ipify, or any other public provider is slow, rate-limited, blocked, or
+unavailable. Public provider checks belong to dev/demo browser verification or
+an explicitly opted-in network profile.
+
 Common workload envelope:
 
 Every default event item should support the same operational envelope. This
@@ -280,6 +313,8 @@ projects >= 2
 phoneDeviceWorkerGroupWorkers >= 30
 phoneDeviceFingerprintProfiles >= 10
 allItems include sleepMs / timeoutMs / expectedOutcome
+profile dev/demo may include public provider probes
+profile ci/test/offline uses local deterministic probe items only
 ```
 
 Focused tests may use smaller fixtures, but the default console data should not
@@ -494,10 +529,15 @@ Scope:
 - introduce the probe events listed in Target Scenario
 - map each event to one or more WorkerGroups and to one owning project
 - keep proof-only events visually separate from the default scenario
+- after the new probe catalog is ready, delete the default seed entries for
+  `demoApp`, `demoOps`, `demo.dispatch`, and `demo.dispatch.gb` in the same
+  change; do not run the old demo catalog and new probe catalog side by side
 
 Acceptance:
 
 - `/resources/projects` no longer depends on `demoApp` or `demoOps`
+- default seed data no longer creates `demoApp`, `demoOps`,
+  `demo.dispatch`, or `demo.dispatch.gb`
 - `/resources/projects` shows at least two real-looking projects with distinct
   event/task/item ownership
 - event names describe useful checks
@@ -510,9 +550,24 @@ Goal: make capability and coverage group-first in the console.
 This phase should happen before expanding the default fleet to 100+ workers.
 Otherwise the current raw worker-row view will only become noisier.
 
+Current API starting point:
+
+- `/api/v1/runtime/workers` already exposes worker model status, transport
+  reachability, transport-online boolean, active connection hints, lock state,
+  adapter id, and worker attributes.
+- `/api/v1/catalog/event-capabilities` already exposes event-level worker ids
+  and online worker ids based on transport reachability.
+- Dispatch eligibility is not the same fact as model status or transport
+  reachability. If the console needs a first-class eligibility count, add or
+  extend a server read model instead of calculating it from frontend rows.
+
 Scope:
 
 - add or surface a WorkerGroup inventory view when API support is available
+- define the server read contract used by the console for group coverage. It
+  may extend existing runtime/catalog endpoints or add a dedicated
+  WorkerGroup coverage read API, but it must expose the facts below as
+  separate fields instead of asking the frontend to infer them
 - update project detail to show event -> WorkerGroup coverage before worker
   instance rows
 - show configured coverage separately from online capacity
@@ -524,6 +579,9 @@ Scope:
 Acceptance:
 
 - a user can tell why an event maps to a WorkerGroup
+- the frontend has a server-owned source for transport reachability and event
+  online capacity rather than deriving those facts solely from worker model
+  `status`
 - project detail does not collapse coverage into a long worker id list
 - configured coverage and runtime online capacity are visibly different facts
 - Workers, Project Detail, and Discovery no longer disagree about online worker
@@ -543,11 +601,21 @@ Scope:
 - keep crawler/parser attributes sparse and operational
 - add/read match evidence where available: candidate count, matched count,
   selected worker, rejection/unavailable reason
+- add a server integration proof for fingerprint Stage-2 matching, reusing the
+  current task API and external worker registration path. The proof should
+  register at least two workers in the same WorkerGroup with different
+  fingerprint attributes, create/append/seal a task through the API path, and
+  verify that only the matching fingerprint worker receives the item
 
 Acceptance:
 
 - at least one local item batch proves group-first routing followed by
   fingerprint-based worker selection inside the selected group
+- the Stage-2 proof is enforced by a server-side integration test, not only by
+  console observation
+- the proof verifies both negative and positive cases: a worker in the selected
+  group with a non-matching fingerprint is not assigned, and a matching worker
+  is assigned
 - Stage-2 proof does not rely on fake global worker capability
 - the UI requires aggregation and drill-down rather than hand-reading every
   worker row
@@ -564,6 +632,8 @@ Scope:
 - append 1,000+ items across those shells
 - distribute item payloads across events, fingerprint profiles, and expected
   failure outcomes
+- select public-provider-backed items only in the dev/demo profile; CI,
+  test, and offline profiles must use local deterministic item sources
 - include `sleepMs`, `timeoutMs`, `expectedOutcome`, and `traceLabel` on every
   starter item
 - write expected probe failures as item/result outcome details that can be
@@ -609,6 +679,8 @@ Acceptance:
 - item payloads are understandable without reading source code
 - expected probe failures are visible as classified outcomes, not hidden as
   generic worker or platform errors
+- CI verification does not depend on public internet providers, DNS outside
+  controlled fixtures, third-party rate limits, or third-party terms
 - task terminal state remains governed by existing lifecycle/result rules while
   item-level probe outcomes explain business success or failure
 - result samples can show extracted values such as temperature, CNY/EUR rates,
@@ -622,8 +694,17 @@ Goal: keep the scenario useful without weakening kernel boundaries.
 Scope:
 
 - update server/controller/frontend tests that assert old demo names
+- remove old demo-name assertions in the same convergence path that removes
+  old default seed entries; do not leave compatibility assertions for
+  `demoApp`, `demoOps`, `demo.dispatch`, or `demo.dispatch.gb`
 - add focused coverage for API-key task creation and external worker
   registration paths used by the scenario
+- add or update a server integration test for fingerprint Stage-2 matching.
+  The test should be similar in intent to the existing worker attribute
+  routing proof, but use the new probe event and WorkerGroup/fingerprint
+  scenario instead of `demo.dispatch`
+- add CI-safe fixture coverage for local-only probe items and expected failure
+  classification without public network calls
 - add frontend tests for WorkerGroup-first project detail and worker instance
   views
 - browser-check backend-hosted pages
@@ -631,6 +712,9 @@ Scope:
 Acceptance:
 
 - focused tests pass
+- CI test profile runs without public internet access
+- server integration coverage proves non-matching fingerprint workers are not
+  assigned and matching fingerprint workers are assigned
 - console works at `http://localhost:8088/`
 - no engine/runtime contract docs are changed unless behavior actually changes
 - no ordinary scheduling path falls back to event/project/all-worker scans
@@ -673,6 +757,22 @@ Browser check:
   http://localhost:8088/resources/projects/{projectCode}
   http://localhost:8088/resources/workers
   http://localhost:8088/runtime/discovery
+```
+
+Profile expectations:
+
+```text
+dev/demo:
+  may seed public-provider probe items
+  may browser-check real public provider results
+  must keep generated tasks stopped until explicit approval/run
+
+ci/test/offline:
+  must not call public provider APIs
+  must use local deterministic item fixtures
+  must still prove API-key task creation, external worker registration,
+  WorkerGroup-first routing, fingerprint Stage-2 match, and expected-failure
+  result classification
 ```
 
 Use broader server E2E only when the change touches task creation, external

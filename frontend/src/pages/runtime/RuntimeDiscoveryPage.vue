@@ -719,7 +719,7 @@ const visibleWorkerRows = computed(() =>
       worker.visibleSupportedEventCodes.length > 0 ||
       worker.matchedProjects.length > 0
     const matchesAvailability =
-      !showOnlineOnly.value || worker.status === 'ONLINE'
+      !showOnlineOnly.value || worker.transportOnline === true
 
     return matchesProject && matchesAvailability
   }),
@@ -744,7 +744,7 @@ const selectedEventRows = computed<EventRow[]>(() =>
       const onlineWorkerIds = capability?.onlineWorkerIds ?? workers.value
           .filter(
             (worker) =>
-              worker.status === 'ONLINE' &&
+              worker.transportOnline === true &&
               worker.supportedEventCodes.includes(event.code),
           )
           .map((worker) => worker.workerId)
@@ -769,7 +769,7 @@ const enabledEventCount = computed(
   () => events.value.filter((event) => event.enabled).length,
 )
 const onlineWorkerCount = computed(
-  () => workers.value.filter((worker) => worker.status === 'ONLINE').length,
+  () => workers.value.filter((worker) => worker.transportOnline).length,
 )
 const coveredProjectCount = computed(
   () =>

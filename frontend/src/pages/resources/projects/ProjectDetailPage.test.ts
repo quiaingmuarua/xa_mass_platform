@@ -42,7 +42,7 @@ describe('ProjectDetailPage', () => {
             ],
         })
 
-        await router.push('/resources/projects/demoApp')
+        await router.push('/resources/projects/publicProbe')
         await router.isReady()
 
         const wrapper = mount(ProjectDetailPage, {
@@ -53,17 +53,17 @@ describe('ProjectDetailPage', () => {
 
         await waitForMockData()
 
-        expect(wrapper.text()).toContain('Demo App (demoApp)')
+        expect(wrapper.text()).toContain('Public Probe (publicProbe)')
         expect(wrapper.text()).toContain('Project summary')
         expect(wrapper.text()).toContain('Authorized events')
         expect(wrapper.text()).toContain('STANDARD')
         expect(wrapper.text()).toContain('FINAL_RESULT')
         expect(wrapper.text()).toContain('WORKER')
         expect(wrapper.text()).toContain('Scoped principals')
-        expect(wrapper.text()).toContain('Worker coverage')
+        expect(wrapper.text()).toContain('WorkerGroup coverage')
         expect(wrapper.text()).toContain('Project tasks')
-        expect(wrapper.text()).toContain('Warm worker pool')
-        expect(wrapper.text()).not.toContain('Daily worker session refresh')
+        expect(wrapper.text()).toContain('Public provider reachability batch')
+        expect(wrapper.text()).not.toContain('Local CSV and JSON validation batch')
 
         const startDraftButton = wrapper
             .findAll('button')
@@ -76,7 +76,7 @@ describe('ProjectDetailPage', () => {
 
         expect(router.currentRoute.value.name).toBe('tasks')
         expect(router.currentRoute.value.query.create).toBe('1')
-        expect(router.currentRoute.value.query.project).toBe('demoApp')
-        expect(router.currentRoute.value.query.eventCode).toBe('demo.dispatch')
+        expect(router.currentRoute.value.query.project).toBe('publicProbe')
+        expect(router.currentRoute.value.query.eventCode).toBe('probe.url.dns')
     })
 })

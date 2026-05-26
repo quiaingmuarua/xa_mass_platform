@@ -37,3 +37,46 @@ export interface EventCapability {
     hasOnlineWorkerCoverage: boolean
     ready: boolean
 }
+
+export interface WorkerGroupCapability {
+    groupId: string
+    eventBindings: WorkerGroupEventBinding[]
+    projectCodes: string[]
+    defaultAttributes: Record<string, string>
+    defaultMaxConcurrentWork: number
+    adapterNodes: AdapterNodeCapability[]
+    nodeGroupBindings: NodeGroupBindingCapability[]
+    workerCount: number
+    workerIds: string[]
+    transportCounts: Record<string, number>
+    transportOnlineCounts: Record<string, number>
+    modelStatusCounts: Record<string, number>
+    lockedCount: number
+    dispatchEligibleCount: number
+    fingerprintDistribution: Record<string, number>
+}
+
+export interface WorkerGroupEventBinding {
+    eventCode: string
+    projectCodes: string[]
+}
+
+export interface AdapterNodeCapability {
+    adapterNodeId: string
+    adapterType: string | null
+    adapterVersion: string | null
+    endpointId: string | null
+    enabled: boolean
+    online: boolean
+    attributes: Record<string, string>
+}
+
+export interface NodeGroupBindingCapability {
+    adapterNodeId: string
+    workerGroupId: string
+    pluginVersion: string | null
+    deploymentVersion: string | null
+    enabled: boolean
+    draining: boolean
+    attributes: Record<string, string>
+}

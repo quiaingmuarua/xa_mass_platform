@@ -3,13 +3,13 @@ import {resolveTaskStarterDraft, stringifyStarterItems, stringifyStarterSharedCo
 describe('task starter drafts', () => {
     it('resolves an explicit event starter for known projects', () => {
         const draft = resolveTaskStarterDraft({
-            projectCode: 'demoApp',
-            eventCode: 'demo.dispatch',
+            projectCode: 'publicProbe',
+            eventCode: 'probe.url.dns',
         })
 
-        expect(draft.taskName).toBe('Demo dispatch')
-        expect(draft.sharedConfig.objective).toBe('run generic dispatch payload')
-        expect(draft.items[0].recipient).toBe('alpha')
+        expect(draft.taskName).toBe('Inspect URL DNS batch')
+        expect(draft.sharedConfig.objective).toBe('classify DNS and URL reachability')
+        expect(draft.items[0].expectedOutcome).toBe('DNS_OK')
     })
 
     it('falls back to a generic starter for unknown projects', () => {
@@ -24,13 +24,13 @@ describe('task starter drafts', () => {
 
     it('formats starter JSON for the task create form', () => {
         const draft = resolveTaskStarterDraft({
-            projectCode: 'demoApp',
-            eventCode: 'demo.dispatch',
+            projectCode: 'publicProbe',
+            eventCode: 'probe.url.dns',
         })
 
         expect(stringifyStarterSharedConfig(draft.sharedConfig)).toContain(
-            'textContent',
+            'control-console-realistic',
         )
-        expect(stringifyStarterItems(draft.items)).toContain('recipient')
+        expect(stringifyStarterItems(draft.items)).toContain('traceLabel')
     })
 })

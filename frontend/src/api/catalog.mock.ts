@@ -1,5 +1,13 @@
-import {deriveMockEventCapabilities, mockEvents} from '@/api/mockCatalog'
-import type {EventCapability, EventDefinition} from '@/types/catalog'
+import {
+    deriveMockEventCapabilities,
+    mockEvents,
+    mockWorkerGroupCapabilities,
+} from '@/api/mockCatalog'
+import type {
+    EventCapability,
+    EventDefinition,
+    WorkerGroupCapability,
+} from '@/types/catalog'
 
 function delay<T>(value: T): Promise<T> {
     return new Promise((resolve) => {
@@ -13,6 +21,12 @@ export async function listEventDefinitionsMock(): Promise<EventDefinition[]> {
 
 export async function listEventCapabilitiesMock(): Promise<EventCapability[]> {
     return delay(deriveMockEventCapabilities())
+}
+
+export async function listWorkerGroupCapabilitiesMock(): Promise<
+    WorkerGroupCapability[]
+> {
+    return delay(mockWorkerGroupCapabilities)
 }
 
 export async function getEventDefinitionMock(

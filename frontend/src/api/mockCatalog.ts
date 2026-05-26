@@ -1,4 +1,10 @@
-import type {EventDefinition, EventCapability} from '@/types/catalog'
+import type {
+    AdapterNodeCapability,
+    EventDefinition,
+    EventCapability,
+    NodeGroupBindingCapability,
+    WorkerGroupCapability,
+} from '@/types/catalog'
 import type {
     ProjectDefinition,
     ProjectSubmitterProfile,
@@ -7,110 +13,101 @@ import type {
 export const mockProjects: ProjectDefinition[] = [
     {
         tenantId: 'default',
-        code: 'demoApp',
-        name: 'Demo App',
+        code: 'publicProbe',
+        name: 'Public Probe',
         description:
-            'General demo project used for orchestration smoke tests and worker readiness checks.',
+            'Public API probe project for weather, FX, URL DNS, HTTP status, and IP metadata checks.',
         enabled: true,
-        eventCodes: ['demo.dispatch', 'demo.dispatch.gb'],
-        ownerPrincipalId: 'demo-admin-submitter',
+        eventCodes: [
+            'probe.weather.current',
+            'probe.fx.latest',
+            'probe.url.dns',
+            'probe.http.status',
+        ],
+        ownerPrincipalId: 'public-probe-ops',
     },
     {
         tenantId: 'default',
-        code: 'crawlerApp',
-        name: 'Crawler App',
+        code: 'deviceProbe',
+        name: 'Device Probe',
         description:
-            'Crawler-oriented project used to validate generic fetch and parse workloads.',
+            'Phone and device metadata probe project for fingerprint-aware routing.',
         enabled: true,
-        eventCodes: ['crawler.fetch-page', 'crawler.parse-result'],
-        ownerPrincipalId: 'crawler-admin-submitter',
+        eventCodes: ['probe.phone.metadata'],
+        ownerPrincipalId: 'device-probe-runner',
     },
     {
         tenantId: 'default',
-        code: 'testApp',
-        name: 'Test Harness',
+        code: 'dataQualityProbe',
+        name: 'Data Quality Probe',
         description:
-            'Small project used by local and CI validation flows.',
+            'Deterministic CSV and JSON validation project for CI-safe probe items.',
         enabled: true,
-        eventCodes: ['test.smoke'],
-        ownerPrincipalId: 'test-admin-submitter',
+        eventCodes: ['probe.market.daily-csv', 'probe.csv.validate', 'probe.json.schema'],
+        ownerPrincipalId: 'data-quality-runner',
     },
 ]
 
 export const mockProjectSubmitters: Record<string, ProjectSubmitterProfile[]> = {
-    demoApp: [
+    publicProbe: [
         {
-            principalId: 'demo-app-submitter',
+            principalId: 'public-probe-runner',
             principalType: 'SERVICE',
-            keyPrefix: 'demo',
-            userId: 'demo-app-user',
-            projectScope: 'demoApp',
+            keyPrefix: 'pubp',
+            userId: 'public-probe-runner',
+            projectScope: 'publicProbe',
             permissions: ['task:create'],
-            projectScopes: ['demoApp'],
-            eventScopes: ['demo.dispatch', 'demo.dispatch.gb'],
+            projectScopes: ['publicProbe'],
+            eventScopes: ['probe.weather.current', 'probe.fx.latest', 'probe.url.dns', 'probe.http.status'],
             enabled: true,
             attributes: {
-                label: 'Demo App Submitter',
+                label: 'Public Probe Runner',
             },
         },
         {
-            principalId: 'demo-admin-submitter',
+            principalId: 'public-probe-ops',
             principalType: 'SERVICE',
-            keyPrefix: 'demo',
-            userId: 'demo-admin',
+            keyPrefix: 'pubo',
+            userId: 'public-probe-ops',
             projectScope: null,
             permissions: ['*'],
-            projectScopes: ['demoApp', 'crawlerApp', 'testApp'],
+            projectScopes: ['publicProbe', 'deviceProbe', 'dataQualityProbe'],
             eventScopes: ['*'],
             enabled: true,
             attributes: {
-                label: 'Demo Admin Submitter',
+                label: 'Public Probe Ops',
             },
         },
     ],
-    crawlerApp: [
+    deviceProbe: [
         {
-            principalId: 'crawler-submitter',
+            principalId: 'device-probe-runner',
             principalType: 'SERVICE',
-            keyPrefix: 'crawl',
-            userId: 'crawler-user',
-            projectScope: 'crawlerApp',
+            keyPrefix: 'devp',
+            userId: 'device-probe-runner',
+            projectScope: 'deviceProbe',
             permissions: ['task:create'],
-            projectScopes: ['crawlerApp'],
-            eventScopes: ['crawler.fetch-page', 'crawler.parse-result'],
+            projectScopes: ['deviceProbe'],
+            eventScopes: ['probe.phone.metadata'],
             enabled: true,
             attributes: {
-                label: 'Crawler Submitter',
-            },
-        },
-        {
-            principalId: 'demo-admin-submitter',
-            principalType: 'SERVICE',
-            keyPrefix: 'demo',
-            userId: 'demo-admin',
-            projectScope: null,
-            permissions: ['*'],
-            projectScopes: ['demoApp', 'crawlerApp', 'testApp'],
-            eventScopes: ['*'],
-            enabled: true,
-            attributes: {
-                label: 'Demo Admin Submitter',
+                label: 'Device Probe Runner',
             },
         },
     ],
-    testApp: [
+    dataQualityProbe: [
         {
-            principalId: 'test-admin-submitter',
+            principalId: 'data-quality-runner',
             principalType: 'SERVICE',
-            keyPrefix: 'test',
-            userId: 'test-user',
-            projectScope: 'testApp',
+            keyPrefix: 'data',
+            userId: 'data-quality-runner',
+            projectScope: 'dataQualityProbe',
             permissions: ['task:create'],
-            projectScopes: ['testApp'],
-            eventScopes: ['test.smoke'],
+            projectScopes: ['dataQualityProbe'],
+            eventScopes: ['probe.market.daily-csv', 'probe.csv.validate', 'probe.json.schema'],
             enabled: true,
             attributes: {
-                label: 'Test Submitter',
+                label: 'Data Quality Runner',
             },
         },
     ],
@@ -118,22 +115,10 @@ export const mockProjectSubmitters: Record<string, ProjectSubmitterProfile[]> = 
 
 export const mockEvents: EventDefinition[] = [
     {
-        code: 'demo.dispatch',
-        name: 'Demo dispatch',
+        code: 'probe.url.dns',
+        name: 'URL DNS Inspection',
         description:
-            'Dispatch a generic demo payload to an online worker.',
-        payloadTypes: ['JSON', 'TEXT'],
-        taskModes: ['SINGLE_RUN'],
-        enabled: true,
-        priorityClass: 'STANDARD',
-        responseMode: 'FINAL_RESULT',
-        targetScope: 'WORKER',
-    },
-    {
-        code: 'demo.dispatch.gb',
-        name: 'Demo dispatch (GB)',
-        description:
-            'Dispatch a generic demo payload to the GB demo lane.',
+            'Resolve a URL domain and classify reachable, NXDOMAIN, timeout, or malformed inputs.',
         payloadTypes: ['JSON'],
         taskModes: ['SINGLE_RUN'],
         enabled: true,
@@ -142,10 +127,10 @@ export const mockEvents: EventDefinition[] = [
         targetScope: 'WORKER',
     },
     {
-        code: 'crawler.fetch-page',
-        name: 'Fetch crawler page',
+        code: 'probe.weather.current',
+        name: 'Open-Meteo Current Weather',
         description:
-            'Fetch a page or URL seed for downstream processing.',
+            'Fetch current weather JSON and validate temperature, humidity, and wind fields.',
         payloadTypes: ['JSON'],
         taskModes: ['SINGLE_RUN'],
         enabled: true,
@@ -154,10 +139,10 @@ export const mockEvents: EventDefinition[] = [
         targetScope: 'WORKER',
     },
     {
-        code: 'crawler.parse-result',
-        name: 'Parse crawler result',
+        code: 'probe.fx.latest',
+        name: 'Exchange Rate Snapshot',
         description:
-            'Parse crawler output into structured downstream records.',
+            'Fetch latest exchange rates and validate required currency fields.',
         payloadTypes: ['JSON'],
         taskModes: ['SINGLE_RUN'],
         enabled: true,
@@ -166,10 +151,10 @@ export const mockEvents: EventDefinition[] = [
         targetScope: 'WORKER',
     },
     {
-        code: 'test.smoke',
-        name: 'Smoke test event',
+        code: 'probe.http.status',
+        name: 'HTTP Status Probe',
         description:
-            'Minimal event used to verify catalog registration and dispatch plumbing.',
+            'Verify expected HTTP status and latency threshold on test endpoints.',
         payloadTypes: ['JSON'],
         taskModes: ['SINGLE_RUN'],
         enabled: true,
@@ -178,16 +163,211 @@ export const mockEvents: EventDefinition[] = [
         targetScope: 'WORKER',
     },
     {
-        code: 'tool.country.capital.lookup',
-        name: 'Tool Country Capital Lookup',
+        code: 'probe.phone.metadata',
+        name: 'Phone Metadata Probe',
         description:
-            'Resolve a country code to a stable country and capital reference profile.',
+            'Validate phone metadata and carrier hints with fingerprint-matched device workers.',
         payloadTypes: ['JSON'],
-        taskModes: [],
+        taskModes: ['SINGLE_RUN'],
         enabled: true,
         priorityClass: 'STANDARD',
         responseMode: 'FINAL_RESULT',
         targetScope: 'WORKER',
+    },
+    {
+        code: 'probe.market.daily-csv',
+        name: 'Market Daily CSV',
+        description:
+            'Parse daily market CSV payloads and validate date, price, and volume columns.',
+        payloadTypes: ['JSON'],
+        taskModes: ['SINGLE_RUN'],
+        enabled: true,
+        priorityClass: 'STANDARD',
+        responseMode: 'FINAL_RESULT',
+        targetScope: 'WORKER',
+    },
+    {
+        code: 'probe.csv.validate',
+        name: 'CSV Validation',
+        description:
+            'Validate deterministic local CSV records and classify malformed rows.',
+        payloadTypes: ['JSON'],
+        taskModes: ['SINGLE_RUN'],
+        enabled: true,
+        priorityClass: 'STANDARD',
+        responseMode: 'FINAL_RESULT',
+        targetScope: 'WORKER',
+    },
+    {
+        code: 'probe.json.schema',
+        name: 'JSON Schema Validation',
+        description:
+            'Validate JSON documents against local schema fixtures.',
+        payloadTypes: ['JSON'],
+        taskModes: ['SINGLE_RUN'],
+        enabled: true,
+        priorityClass: 'STANDARD',
+        responseMode: 'FINAL_RESULT',
+        targetScope: 'WORKER',
+    },
+]
+
+const pollingAdapterNode: AdapterNodeCapability = {
+    adapterNodeId: 'control-console-polling',
+    adapterType: 'polling',
+    adapterVersion: null,
+    endpointId: 'polling',
+    enabled: true,
+    online: true,
+    attributes: {},
+}
+
+const websocketAdapterNode: AdapterNodeCapability = {
+    adapterNodeId: 'control-console-websocket',
+    adapterType: 'websocket',
+    adapterVersion: null,
+    endpointId: 'ws',
+    enabled: true,
+    online: true,
+    attributes: {},
+}
+
+function enabledBinding(
+    adapterNodeId: string,
+    workerGroupId: string,
+): NodeGroupBindingCapability {
+    return {
+        adapterNodeId,
+        workerGroupId,
+        pluginVersion: null,
+        deploymentVersion: null,
+        enabled: true,
+        draining: false,
+        attributes: {},
+    }
+}
+
+export const mockWorkerGroupCapabilities: WorkerGroupCapability[] = [
+    {
+        groupId: 'public-probe-http',
+        eventBindings: [
+            {eventCode: 'probe.weather.current', projectCodes: ['publicProbe']},
+            {eventCode: 'probe.fx.latest', projectCodes: ['publicProbe']},
+            {eventCode: 'probe.http.status', projectCodes: ['publicProbe']},
+        ],
+        projectCodes: ['publicProbe'],
+        defaultAttributes: {executionProfile: 'public-http'},
+        defaultMaxConcurrentWork: 4,
+        adapterNodes: [pollingAdapterNode, websocketAdapterNode],
+        nodeGroupBindings: [
+            enabledBinding('control-console-polling', 'public-probe-http'),
+            enabledBinding('control-console-websocket', 'public-probe-http'),
+        ],
+        workerCount: 80,
+        workerIds: ['public-probe-http-poll-use1-001', 'public-probe-http-ws-euw1-001'],
+        transportCounts: {polling: 60, realtime: 20},
+        transportOnlineCounts: {polling: 60, realtime: 20},
+        modelStatusCounts: {ONLINE: 80},
+        lockedCount: 2,
+        dispatchEligibleCount: 78,
+        fingerprintDistribution: {},
+    },
+    {
+        groupId: 'dns-url-inspector',
+        eventBindings: [
+            {eventCode: 'probe.url.dns', projectCodes: ['publicProbe']},
+        ],
+        projectCodes: ['publicProbe'],
+        defaultAttributes: {executionProfile: 'dns-url-inspector'},
+        defaultMaxConcurrentWork: 2,
+        adapterNodes: [pollingAdapterNode],
+        nodeGroupBindings: [
+            enabledBinding('control-console-polling', 'dns-url-inspector'),
+        ],
+        workerCount: 15,
+        workerIds: ['dns-url-inspector-poll-001'],
+        transportCounts: {polling: 10, realtime: 5},
+        transportOnlineCounts: {polling: 10, realtime: 5},
+        modelStatusCounts: {ONLINE: 15},
+        lockedCount: 0,
+        dispatchEligibleCount: 15,
+        fingerprintDistribution: {},
+    },
+    {
+        groupId: 'phone-device-probe',
+        eventBindings: [
+            {eventCode: 'probe.phone.metadata', projectCodes: ['deviceProbe']},
+        ],
+        projectCodes: ['deviceProbe'],
+        defaultAttributes: {executionProfile: 'phone-device', country: 'SG'},
+        defaultMaxConcurrentWork: 1,
+        adapterNodes: [pollingAdapterNode, websocketAdapterNode],
+        nodeGroupBindings: [
+            enabledBinding('control-console-polling', 'phone-device-probe'),
+            enabledBinding('control-console-websocket', 'phone-device-probe'),
+        ],
+        workerCount: 30,
+        workerIds: ['phone-device-probe-poll-sg-001', 'phone-device-probe-ws-sg-001'],
+        transportCounts: {polling: 20, realtime: 10},
+        transportOnlineCounts: {polling: 20, realtime: 10},
+        modelStatusCounts: {ONLINE: 30},
+        lockedCount: 1,
+        dispatchEligibleCount: 29,
+        fingerprintDistribution: {
+            'fp-android-sg-a': 3,
+            'fp-android-sg-b': 3,
+            'fp-android-sg-c': 3,
+            'fp-android-sg-d': 3,
+            'fp-android-sg-e': 3,
+            'fp-android-sg-f': 3,
+            'fp-android-sg-g': 3,
+            'fp-android-sg-h': 3,
+            'fp-android-sg-i': 3,
+            'fp-android-sg-j': 3,
+        },
+    },
+    {
+        groupId: 'market-csv-parser',
+        eventBindings: [
+            {eventCode: 'probe.market.daily-csv', projectCodes: ['dataQualityProbe']},
+            {eventCode: 'probe.csv.validate', projectCodes: ['dataQualityProbe']},
+        ],
+        projectCodes: ['dataQualityProbe'],
+        defaultAttributes: {executionProfile: 'csv-parser'},
+        defaultMaxConcurrentWork: 2,
+        adapterNodes: [pollingAdapterNode],
+        nodeGroupBindings: [
+            enabledBinding('control-console-polling', 'market-csv-parser'),
+        ],
+        workerCount: 10,
+        workerIds: ['market-csv-parser-poll-001'],
+        transportCounts: {polling: 10},
+        transportOnlineCounts: {polling: 10},
+        modelStatusCounts: {ONLINE: 10},
+        lockedCount: 0,
+        dispatchEligibleCount: 10,
+        fingerprintDistribution: {},
+    },
+    {
+        groupId: 'local-json-validator',
+        eventBindings: [
+            {eventCode: 'probe.json.schema', projectCodes: ['dataQualityProbe']},
+        ],
+        projectCodes: ['dataQualityProbe'],
+        defaultAttributes: {executionProfile: 'json-validator'},
+        defaultMaxConcurrentWork: 2,
+        adapterNodes: [pollingAdapterNode],
+        nodeGroupBindings: [
+            enabledBinding('control-console-polling', 'local-json-validator'),
+        ],
+        workerCount: 10,
+        workerIds: ['local-json-validator-poll-001'],
+        transportCounts: {polling: 10},
+        transportOnlineCounts: {polling: 10},
+        modelStatusCounts: {ONLINE: 10},
+        lockedCount: 0,
+        dispatchEligibleCount: 10,
+        fingerprintDistribution: {},
     },
 ]
 
@@ -207,8 +387,12 @@ export function deriveMockEventCapabilities(): EventCapability[] {
             targetScope: event.targetScope,
             invocationModel: directRuntime ? 'DIRECT_RUNTIME' : 'TASK_BACKED',
             projectCodes,
-            workerIds: directRuntime ? [] : ['mock-worker-1'],
-            onlineWorkerIds: directRuntime ? [] : ['mock-worker-1'],
+            workerIds: directRuntime ? [] : mockWorkerGroupCapabilities
+                .filter((group) => group.eventBindings.some((binding) => binding.eventCode === event.code))
+                .flatMap((group) => group.workerIds),
+            onlineWorkerIds: directRuntime ? [] : mockWorkerGroupCapabilities
+                .filter((group) => group.eventBindings.some((binding) => binding.eventCode === event.code))
+                .flatMap((group) => group.workerIds),
             hasDirectRuntimeHandler: directRuntime,
             hasOnlineWorkerCoverage: !directRuntime,
             ready: true,

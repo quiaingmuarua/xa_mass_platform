@@ -71,6 +71,7 @@ import java.util.zip.GZIPOutputStream;
  */
 public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOperations, TaskResultQueryOperations, TaskAdminOperations,
         WorkerInspectionOperations, WorkerQueryOperations, WorkerRegistryOperations,
+        WorkerTopologyOperations,
         WorkerClientOperations, WorkerAdminOperations,
         WorkerControlOperations, TaskStageEvidenceOperations,
         ResourceOperations, AuthProvider, PrincipalDirectory,
@@ -637,6 +638,30 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     public List<WorkerSnapshot> getAllWorkers() {
         return requireStartedWorkerStorage().getAllWorkers().stream()
                 .map(this::toWorkerSnapshot)
+                .toList();
+    }
+
+    @Override
+    public List<WorkerGroupSnapshot> listWorkerGroups() {
+        requireStartedEngine();
+        return delegate.getEngine().getConfig().getWorkerManager().workerGroups().stream()
+                .map(this::toWorkerGroupSnapshot)
+                .toList();
+    }
+
+    @Override
+    public List<AdapterNodeSnapshot> listAdapterNodes() {
+        requireStartedEngine();
+        return delegate.getEngine().getConfig().getWorkerManager().adapterNodes().stream()
+                .map(this::toAdapterNodeSnapshot)
+                .toList();
+    }
+
+    @Override
+    public List<NodeGroupBindingSnapshot> listNodeGroupBindings() {
+        requireStartedEngine();
+        return delegate.getEngine().getConfig().getWorkerManager().nodeGroupBindings().stream()
+                .map(this::toNodeGroupBindingSnapshot)
                 .toList();
     }
 
@@ -1791,6 +1816,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 supportedEventCodes,
                 eventBindings,
                 worker.getWorkerGroupId(),
+                worker.getAdapterNodeId(),
                 worker.getAdapterId(),
                 worker.getOnlineStrategy(),
                 worker.getMaxConcurrentWork(),
@@ -1798,6 +1824,48 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 worker.getCreateTime(),
                 worker.getUpdateTime()
         );
+    }
+
+    private WorkerGroupSnapshot toWorkerGroupSnapshot(WorkerGroupRecord group) {
+        return new WorkerGroupSnapshot(
+                group.groupId(),
+                toWorkerEventBindings(group),
+                List.copyOf(group.projectCodes()),
+                group.defaultAttributes(),
+                group.defaultMaxConcurrentWork()
+        );
+    }
+
+    private AdapterNodeSnapshot toAdapterNodeSnapshot(AdapterNodeRecord node) {
+        return new AdapterNodeSnapshot(
+                node.adapterNodeId(),
+                node.adapterType(),
+                node.adapterVersion(),
+                node.endpointId(),
+                node.enabled(),
+                node.online(),
+                instantString(node.registeredAt()),
+                instantString(node.lastSeenAt()),
+                node.attributes()
+        );
+    }
+
+    private NodeGroupBindingSnapshot toNodeGroupBindingSnapshot(NodeGroupBindingRecord binding) {
+        return new NodeGroupBindingSnapshot(
+                binding.adapterNodeId(),
+                binding.groupId(),
+                binding.pluginVersion(),
+                binding.deploymentVersion(),
+                binding.enabled(),
+                binding.draining(),
+                instantString(binding.registeredAt()),
+                instantString(binding.updatedAt()),
+                binding.attributes()
+        );
+    }
+
+    private String instantString(java.time.Instant value) {
+        return value == null ? null : value.toString();
     }
 
     private WorkerGroupRecord resolveWorkerGroup(String workerGroupId) {

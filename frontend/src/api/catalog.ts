@@ -3,15 +3,18 @@ import {
     getEventDefinitionMock,
     listEventCapabilitiesMock,
     listEventDefinitionsMock,
+    listWorkerGroupCapabilitiesMock,
 } from '@/api/catalog.mock'
 import {
     getEventDefinitionReal,
     listEventCapabilitiesReal,
     listEventDefinitionsReal,
+    listWorkerGroupCapabilitiesReal,
 } from '@/api/catalog.real'
 import type {
     EventCapability,
     EventDefinition,
+    WorkerGroupCapability,
 } from '@/types/catalog'
 
 export async function listEventDefinitions(): Promise<EventDefinition[]> {
@@ -28,6 +31,16 @@ export async function listEventCapabilities(): Promise<EventCapability[]> {
     }
 
     return listEventCapabilitiesReal()
+}
+
+export async function listWorkerGroupCapabilities(): Promise<
+    WorkerGroupCapability[]
+> {
+    if (getAppConfig().useMockApi) {
+        return listWorkerGroupCapabilitiesMock()
+    }
+
+    return listWorkerGroupCapabilitiesReal()
 }
 
 export async function getEventDefinition(

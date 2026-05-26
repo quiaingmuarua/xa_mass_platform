@@ -11,7 +11,7 @@ describe('tasks API facade', () => {
     it('creates a task shell through atomic mock adapters and exposes it in list and detail reads', async () => {
         const result = await createTaskShell({
             userId: 'ops-admin',
-            project: 'demoApp',
+            project: 'publicProbe',
             sharedConfig: {
                 textContent: 'hello',
             },
@@ -21,8 +21,11 @@ describe('tasks API facade', () => {
             },
         })
         await appendTaskItems(result.taskId, {
-            eventCode: 'mock.state.get',
-            items: [{ target: 'alpha' }, { target: 'beta' }],
+            eventCode: 'probe.url.dns',
+            items: [
+                { url: 'https://open-meteo.com/', expectedOutcome: 'DNS_OK' },
+                { url: 'https://does-not-exist.public-probe.invalid/', expectedOutcome: 'DNS_NXDOMAIN' },
+            ],
         })
         await sealTask(result.taskId)
 
@@ -32,22 +35,22 @@ describe('tasks API facade', () => {
         expect(list.items).toHaveLength(1)
         expect(list.items[0].id).toBe(result.taskId)
         expect(list.items[0].status).toBe('NEW')
-        expect(list.items[0].taskName).toBe(`demoApp-${result.taskId}`)
+        expect(list.items[0].taskName).toBe(`publicProbe-${result.taskId}`)
 
         const detail = await getTaskDetail(result.taskId)
-        expect(detail.task.taskName).toBe(`demoApp-${result.taskId}`)
+        expect(detail.task.taskName).toBe(`publicProbe-${result.taskId}`)
         expect(detail.task.taskEligibleNumber).toBe(2)
     })
 
     it('submits sync debug invocations through the mock adapter', async () => {
         const result = await invokeSyncTaskDebug({
             userId: 'ops-admin',
-            project: 'demoApp',
-            eventCode: 'mock.state.get',
+            project: 'publicProbe',
+            eventCode: 'probe.url.dns',
             sharedConfig: {
-                targetWorkerId: 'worker-us-01',
+                workerGroupId: 'dns-url-inspector',
             },
-            items: [{ includeRuntime: true }],
+            items: [{ url: 'https://open-meteo.com/', expectedOutcome: 'DNS_OK' }],
             maxRuntimeSeconds: 60,
         })
 

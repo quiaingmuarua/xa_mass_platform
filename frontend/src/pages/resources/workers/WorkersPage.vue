@@ -25,7 +25,7 @@
           <div class="metric-value">{{ workers.length }}</div>
         </div>
         <div class="metric-tile">
-          <div class="metric-label">Online</div>
+          <div class="metric-label">Transport online</div>
           <div class="metric-value">{{ onlineWorkerCount }}</div>
         </div>
         <div class="metric-tile">
@@ -54,13 +54,22 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="status" label="Status" min-width="120">
+        <el-table-column prop="status" label="Model status" min-width="120">
           <template #default="{ row }">
             <el-tag :type="tagForWorkerStatus(row.status)">
               {{ row.status }}
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="Transport" min-width="150">
+          <template #default="{ row }">
+            <el-tag :type="row.transportOnline ? 'success' : 'info'">
+              {{ row.transportReachability || (row.transportOnline ? 'ONLINE' : 'OFFLINE') }}
+            </el-tag>
+            <div class="row-secondary">{{ row.transportHint || '-' }}</div>
+          </template>
+        </el-table-column>
+        <el-table-column prop="adapterNodeId" label="Adapter node" min-width="160" />
         <el-table-column prop="agentVersion" label="Agent" min-width="120" />
         <el-table-column label="Projects" min-width="220">
           <template #default="{ row }">
@@ -148,7 +157,7 @@ const loading = ref(false)
 const workers = ref<WorkerListItem[]>([])
 const errorMessage = ref('')
 const onlineWorkerCount = computed(
-  () => workers.value.filter((worker) => worker.status === 'ONLINE').length,
+  () => workers.value.filter((worker) => worker.transportOnline).length,
 )
 const lockedWorkerCount = computed(
   () => workers.value.filter((worker) => worker.locked).length,

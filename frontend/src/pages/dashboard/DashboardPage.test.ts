@@ -32,9 +32,9 @@ describe('DashboardPage', () => {
                                 items: [
                                     {
                                         id: 'task-001',
-                                        taskName: 'Warm worker pool',
-                                        project: 'demoApp',
-                                        status: 'RUNNING',
+                                        taskName: 'Public provider reachability batch',
+                                        project: 'publicProbe',
+                                        status: 'NEW',
                                         terminalReason: null,
                                         successCount: 6,
                                         eligibleCount: 10,
@@ -55,12 +55,14 @@ describe('DashboardPage', () => {
                             data: {
                                 items: [
                                     {
-                                        workerId: 'worker-us-01',
+                                        workerId: 'public-probe-http-poll-use1-001',
                                         status: 'ONLINE',
-                                        workerGroupId: 'us-routing',
+                                        transportReachability: 'ONLINE',
+                                        transportOnline: true,
+                                        workerGroupId: 'public-probe-http',
                                         agentVersion: '1.4.0',
-                                        supportedProjects: ['demoApp'],
-                                        supportedEventCodes: ['demo.dispatch'],
+                                        supportedProjects: ['publicProbe'],
+                                        supportedEventCodes: ['probe.weather.current'],
                                         attributes: {},
                                         lastHeartbeat: '2026-04-21 09:45:00',
                                         locked: true,
@@ -105,7 +107,7 @@ describe('DashboardPage', () => {
         await flushPromises()
 
         expect(wrapper.text()).toContain('Backend')
-        expect(wrapper.text()).toContain('Warm worker pool')
+        expect(wrapper.text()).toContain('Public provider reachability batch')
         expect(wrapper.text()).toContain('Running tasks')
         expect(wrapper.text()).toContain('Online workers')
         expect(wrapper.text()).toContain('Capabilities')

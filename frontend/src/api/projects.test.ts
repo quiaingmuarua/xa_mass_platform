@@ -31,16 +31,16 @@ describe('projects API facade', () => {
         setRuntimeConfigOverrides({ useMockApi: true })
 
         const projects = await listProjects()
-        const demoProject = await getProject('demoApp')
-        const demoEvents = await listProjectEventDefinitions('demoApp')
-        const demoSubmitters = await listProjectSubmitters('demoApp')
+        const probeProject = await getProject('publicProbe')
+        const probeEvents = await listProjectEventDefinitions('publicProbe')
+        const probeSubmitters = await listProjectSubmitters('publicProbe')
 
-        expect(projects.some((project) => project.code === 'demoApp')).toBe(true)
-        expect(demoProject.code).toBe('demoApp')
-        expect(demoEvents.map((event) => event.code)).toContain('demo.dispatch')
+        expect(projects.some((project) => project.code === 'publicProbe')).toBe(true)
+        expect(probeProject.code).toBe('publicProbe')
+        expect(probeEvents.map((event) => event.code)).toContain('probe.url.dns')
         expect(
-            demoSubmitters.some(
-                (submitter) => submitter.principalId === 'demo-app-submitter',
+            probeSubmitters.some(
+                (submitter) => submitter.principalId === 'public-probe-runner',
             ),
         ).toBe(true)
     })
@@ -55,16 +55,16 @@ describe('projects.real', () => {
     it('calls backend project resource endpoints', async () => {
         setRuntimeConfigOverrides({ apiBaseUrl: '/backend' })
         const fetchMock = vi.fn((input: string) => {
-            if (input.endsWith('/api/v1/projects/demoApp/events')) {
+            if (input.endsWith('/api/v1/projects/publicProbe/events')) {
                 return Promise.resolve(
                     jsonResponse({
                         code: 0,
                         msg: 'ok',
                         data: [
                             {
-                                code: 'demo.dispatch',
-                                name: 'Demo dispatch',
-                                description: 'Run a demo dispatch.',
+                                code: 'probe.url.dns',
+                                name: 'URL DNS Inspection',
+                                description: 'Resolve URL domains.',
                                 payloadTypes: ['JSON'],
                                 taskModes: ['SINGLE_RUN'],
                                 enabled: true,
@@ -76,21 +76,21 @@ describe('projects.real', () => {
                     }),
                 )
             }
-            if (input.endsWith('/api/v1/projects/demoApp/submitters')) {
+            if (input.endsWith('/api/v1/projects/publicProbe/submitters')) {
                 return Promise.resolve(
                     jsonResponse({
                         code: 0,
                         msg: 'ok',
                         data: [
                             {
-                                principalId: 'demo-app-submitter',
+                                principalId: 'public-probe-runner',
                                 principalType: 'SERVICE',
-                                keyPrefix: 'demo',
-                                userId: 'demo-app-user',
-                                projectScope: 'demoApp',
+                                keyPrefix: 'pubp',
+                                userId: 'public-probe-runner',
+                                projectScope: 'publicProbe',
                                 permissions: ['task:create'],
-                                projectScopes: ['demoApp'],
-                                eventScopes: ['demo.dispatch'],
+                                projectScopes: ['publicProbe'],
+                                eventScopes: ['probe.url.dns'],
                                 enabled: true,
                                 attributes: {},
                             },
@@ -98,17 +98,17 @@ describe('projects.real', () => {
                     }),
                 )
             }
-            if (input.endsWith('/api/v1/projects/demoApp')) {
+            if (input.endsWith('/api/v1/projects/publicProbe')) {
                 return Promise.resolve(
                     jsonResponse({
                         code: 0,
                         msg: 'ok',
                         data: {
-                            code: 'demoApp',
-                            name: 'Demo App',
-                            description: 'Demo project.',
+                            code: 'publicProbe',
+                            name: 'Public Probe',
+                            description: 'Public probe project.',
                             enabled: true,
-                            eventCodes: ['demo.dispatch'],
+                            eventCodes: ['probe.url.dns'],
                         },
                     }),
                 )
@@ -120,11 +120,11 @@ describe('projects.real', () => {
                     msg: 'ok',
                     data: [
                         {
-                            code: 'demoApp',
-                            name: 'Demo App',
-                            description: 'Demo project.',
+                            code: 'publicProbe',
+                            name: 'Public Probe',
+                            description: 'Public probe project.',
                             enabled: true,
-                            eventCodes: ['demo.dispatch'],
+                            eventCodes: ['probe.url.dns'],
                         },
                     ],
                 }),
@@ -133,30 +133,30 @@ describe('projects.real', () => {
         vi.stubGlobal('fetch', fetchMock)
 
         const projects = await listProjectsReal()
-        const project = await getProjectReal('demoApp')
-        const events = await listProjectEventDefinitionsReal('demoApp')
-        const submitters = await listProjectSubmittersReal('demoApp')
+        const project = await getProjectReal('publicProbe')
+        const events = await listProjectEventDefinitionsReal('publicProbe')
+        const submitters = await listProjectSubmittersReal('publicProbe')
 
         expect(fetchMock).toHaveBeenCalledWith(
             '/backend/api/v1/projects',
             expect.any(Object),
         )
         expect(fetchMock).toHaveBeenCalledWith(
-            '/backend/api/v1/projects/demoApp',
+            '/backend/api/v1/projects/publicProbe',
             expect.any(Object),
         )
         expect(fetchMock).toHaveBeenCalledWith(
-            '/backend/api/v1/projects/demoApp/events',
+            '/backend/api/v1/projects/publicProbe/events',
             expect.any(Object),
         )
         expect(fetchMock).toHaveBeenCalledWith(
-            '/backend/api/v1/projects/demoApp/submitters',
+            '/backend/api/v1/projects/publicProbe/submitters',
             expect.any(Object),
         )
-        expect(projects[0].code).toBe('demoApp')
-        expect(project.code).toBe('demoApp')
-        expect(events[0].code).toBe('demo.dispatch')
+        expect(projects[0].code).toBe('publicProbe')
+        expect(project.code).toBe('publicProbe')
+        expect(events[0].code).toBe('probe.url.dns')
         expect(events[0].targetScope).toBe('WORKER')
-        expect(submitters[0].principalId).toBe('demo-app-submitter')
+        expect(submitters[0].principalId).toBe('public-probe-runner')
     })
 })

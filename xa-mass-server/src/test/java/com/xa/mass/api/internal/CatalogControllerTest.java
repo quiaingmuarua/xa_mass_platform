@@ -5,9 +5,14 @@ import com.xa.mass.base.event.ResponseMode;
 import com.xa.mass.base.event.TargetScope;
 import com.xa.mass.sdk.WorkerQueryOperations;
 import com.xa.mass.sdk.RuntimeDiagnosticsOperations;
+import com.xa.mass.sdk.WorkerTopologyOperations;
 import com.xa.mass.sdk.catalog.*;
 import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.event.EventDefinition;
+import com.xa.mass.sdk.model.AdapterNodeSnapshot;
+import com.xa.mass.sdk.model.NodeGroupBindingSnapshot;
+import com.xa.mass.sdk.model.WorkerEventBinding;
+import com.xa.mass.sdk.model.WorkerGroupSnapshot;
 import com.xa.mass.sdk.model.WorkerSnapshot;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,6 +31,7 @@ class CatalogControllerTest {
 
     private MockMvc mockMvc;
     private RuntimeDiagnosticsOperations runtimeDiagnostics;
+    private WorkerTopologyOperations workerTopology;
     @BeforeEach
     void setUp() {
         ProjectEventCatalogRegistry catalog = DefaultProjectEventCatalogFactory.createDefaultProjectRegistry();
@@ -93,8 +99,41 @@ class CatalogControllerTest {
                         ))
                 )
         ));
+        workerTopology = mock(WorkerTopologyOperations.class);
+        when(workerTopology.listWorkerGroups()).thenReturn(List.of(
+                new WorkerGroupSnapshot(
+                        "crawler",
+                        List.of(WorkerEventBinding.builder()
+                                .eventCode("crawler.fetch-page")
+                                .projectCodes(List.of("crawlerApp", "demoApp"))
+                                .build()),
+                        List.of("crawlerApp", "demoApp"),
+                        java.util.Map.of("category", "crawler"),
+                        2),
+                new WorkerGroupSnapshot(
+                        "chat",
+                        List.of(WorkerEventBinding.builder()
+                                .eventCode("chatbot.reply")
+                                .projectCodes(List.of("demoApp"))
+                                .build()),
+                        List.of("demoApp"),
+                        java.util.Map.of("category", "chat"),
+                        1)
+        ));
+        when(workerTopology.listAdapterNodes()).thenReturn(List.of(
+                new AdapterNodeSnapshot("node-crawler", "websocket", "1", "ws-crawler", true, true,
+                        null, null, java.util.Map.of()),
+                new AdapterNodeSnapshot("node-chat", "polling", "1", "poll-chat", true, true,
+                        null, null, java.util.Map.of())
+        ));
+        when(workerTopology.listNodeGroupBindings()).thenReturn(List.of(
+                new NodeGroupBindingSnapshot("node-crawler", "crawler", "1", "test",
+                        true, false, null, null, java.util.Map.of()),
+                new NodeGroupBindingSnapshot("node-chat", "chat", "1", "test",
+                        true, true, null, null, java.util.Map.of())
+        ));
         mockMvc = MockMvcBuilders.standaloneSetup(
-                new CatalogController(catalog, workerQueries, runtimeDiagnostics)
+                new CatalogController(catalog, workerQueries, workerTopology, runtimeDiagnostics)
         ).build();
     }
 
@@ -154,6 +193,23 @@ class CatalogControllerTest {
     }
 
     @Test
+    void workerGroupCapabilitiesExposeTopologyAndDispatchEligibility() throws Exception {
+        mockMvc.perform(get("/api/v1/catalog/worker-group-capabilities"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data[?(@.groupId=='crawler' && @.workerCount==1)]").exists())
+                .andExpect(jsonPath("$.data[?(@.groupId=='crawler' && @.projectCodes[0]=='crawlerApp')]").exists())
+                .andExpect(jsonPath("$.data[?(@.groupId=='crawler' && @.eventBindings[0].eventCode=='crawler.fetch-page')]").exists())
+                .andExpect(jsonPath("$.data[?(@.groupId=='crawler' && @.adapterNodes[0].adapterNodeId=='node-crawler')]").exists())
+                .andExpect(jsonPath("$.data[?(@.groupId=='crawler' && @.transportCounts.realtime==1)]").exists())
+                .andExpect(jsonPath("$.data[?(@.groupId=='crawler' && @.transportOnlineCounts.realtime==1)]").exists())
+                .andExpect(jsonPath("$.data[?(@.groupId=='crawler' && @.modelStatusCounts.ONLINE==1)]").exists())
+                .andExpect(jsonPath("$.data[?(@.groupId=='crawler' && @.lockedCount==0)]").exists())
+                .andExpect(jsonPath("$.data[?(@.groupId=='crawler' && @.dispatchEligibleCount==1)]").exists())
+                .andExpect(jsonPath("$.data[?(@.groupId=='chat' && @.dispatchEligibleCount==0)]").exists());
+    }
+
+    @Test
     void missingProjectOrEventReturnsNotFound() throws Exception {
         mockMvc.perform(get("/api/v1/catalog/events/missing"))
                 .andExpect(status().isNotFound())
@@ -181,7 +237,8 @@ class CatalogControllerTest {
                 supportedProjects,
                 supportedEventCodes,
                 List.of(),
-                null,
+                workerId.startsWith("crawler") ? "crawler" : workerId.startsWith("chat") ? "chat" : null,
+                workerId.startsWith("crawler") ? "node-crawler" : workerId.startsWith("chat") ? "node-chat" : null,
                 adapterId,
                 transportHint,
                 1,

@@ -16,6 +16,7 @@ public final class WorkerSnapshot {
     private final List<String> supportedEventCodes;
     private final List<WorkerEventBinding> eventBindings;
     private final String workerGroupId;
+    private final String adapterNodeId;
     private final String adapterId;
     private final String onlineStrategy;
     private final int maxConcurrentWork;
@@ -37,6 +38,26 @@ public final class WorkerSnapshot {
                           Map<String, String> attributes,
                           LocalDateTime createTime,
                           LocalDateTime updateTime) {
+        this(workerId, status, agentVersion, lastHeartbeat, supportedProjects, supportedEventCodes,
+                eventBindings, workerGroupId, null, adapterId, onlineStrategy, maxConcurrentWork,
+                attributes, createTime, updateTime);
+    }
+
+    public WorkerSnapshot(String workerId,
+                          String status,
+                          String agentVersion,
+                          LocalDateTime lastHeartbeat,
+                          List<String> supportedProjects,
+                          List<String> supportedEventCodes,
+                          List<WorkerEventBinding> eventBindings,
+                          String workerGroupId,
+                          String adapterNodeId,
+                          String adapterId,
+                          String onlineStrategy,
+                          int maxConcurrentWork,
+                          Map<String, String> attributes,
+                          LocalDateTime createTime,
+                          LocalDateTime updateTime) {
         this.workerId = workerId;
         this.status = status;
         this.agentVersion = agentVersion;
@@ -45,6 +66,7 @@ public final class WorkerSnapshot {
         this.supportedEventCodes = copyList(supportedEventCodes);
         this.eventBindings = copyBindingList(eventBindings);
         this.workerGroupId = workerGroupId;
+        this.adapterNodeId = adapterNodeId;
         this.adapterId = adapterId;
         this.onlineStrategy = onlineStrategy;
         this.maxConcurrentWork = Math.max(1, maxConcurrentWork);
@@ -83,6 +105,10 @@ public final class WorkerSnapshot {
 
     public String getWorkerGroupId() {
         return workerGroupId;
+    }
+
+    public String getAdapterNodeId() {
+        return adapterNodeId;
     }
 
     public String getAdapterId() {

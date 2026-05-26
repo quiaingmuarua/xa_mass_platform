@@ -92,6 +92,7 @@ public class WorkerApiController {
                     item.put("transportReachability", transportOnline ? "ONLINE" : "OFFLINE");
                     item.put("transportOnline", transportOnline);
                     item.put("workerGroupId", worker.getWorkerGroupId());
+                    item.put("adapterNodeId", worker.getAdapterNodeId());
                     item.put("agentVersion", worker.getAgentVersion());
                     item.put("supportedProjects", worker.getSupportedProjects());
                     item.put("supportedEventCodes", worker.getSupportedEventCodes());

@@ -46,10 +46,11 @@ describe('ProjectsPage', () => {
         await waitForMockData()
 
         expect(wrapper.text()).toContain('Projects')
-        expect(wrapper.text()).toContain('Demo App')
-        expect(wrapper.text()).toContain('Crawler App')
-        expect(wrapper.text()).toContain('demoApp')
-        expect(wrapper.text()).toContain('crawlerApp')
+        expect(wrapper.text()).toContain('Public Probe')
+        expect(wrapper.text()).toContain('Device Probe')
+        expect(wrapper.text()).toContain('publicProbe')
+        expect(wrapper.text()).toContain('deviceProbe')
+        expect(wrapper.text()).toContain('WorkerGroups')
         expect(wrapper.text()).toContain('Scoped principals')
 
         const openDetailButton = wrapper
@@ -62,6 +63,6 @@ describe('ProjectsPage', () => {
         await flushPromises()
 
         expect(router.currentRoute.value.name).toBe('project-detail')
-        expect(router.currentRoute.value.params.projectCode).toBe('crawlerApp')
+        expect(router.currentRoute.value.params.projectCode).toBe('dataQualityProbe')
     })
 })

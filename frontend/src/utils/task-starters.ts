@@ -25,89 +25,165 @@ interface TaskStarterDefinition extends TaskStarterDraft {
 }
 
 const taskStarterDefinitions: Record<string, TaskStarterDefinition> = {
-    demoApp: {
-        projectCode: 'demoApp',
-        taskName: 'Run demo dispatch task',
-        batchSize: 1,
+    publicProbe: {
+        projectCode: 'publicProbe',
+        taskName: 'Run public probe batch',
+        batchSize: 20,
         keepIntakeOpen: false,
-        maxRuntimeSeconds: 0,
+        maxRuntimeSeconds: 300,
         sharedConfig: {
-            textContent: 'hello from control console',
-            objective: 'verify dispatch path',
+            scenario: 'control-console-realistic',
+            objective: 'verify public probe providers and URL reachability',
         },
         items: [
-            { target: 'demo-target-001' },
-            { target: 'demo-target-002' },
+            {
+                url: 'https://api.open-meteo.com/v1/forecast?latitude=22.5431&longitude=114.0579&current=temperature_2m,relative_humidity_2m,wind_speed_10m',
+                provider: 'open-meteo',
+                sleepMs: 120,
+                timeoutMs: 5000,
+                expectedOutcome: 'VALID_WEATHER_JSON',
+                traceLabel: 'public-weather-shenzhen',
+            },
+            {
+                url: 'https://does-not-exist.public-probe.invalid/',
+                sleepMs: 120,
+                timeoutMs: 2500,
+                expectedOutcome: 'DNS_NXDOMAIN',
+                traceLabel: 'dns-nxdomain-fixture',
+            },
         ],
         guidance: [
-            'Use Task.sharedConfig only for task-level shared payload or options.',
-            'Keep per-work-item identity and execution hints inside inputs.',
+            'Tasks are sealed by default; approve explicitly when you want dispatch to begin.',
+            'Expected failures such as NXDOMAIN and timeout are valid probe classifications, not task terminal states.',
         ],
         eventOverrides: {
-            'demo.dispatch': {
-                taskName: 'Demo dispatch',
+            'probe.url.dns': {
+                taskName: 'Inspect URL DNS batch',
                 sharedConfig: {
-                    textContent: 'hello from demo.dispatch',
-                    objective: 'run generic dispatch payload',
-                },
-                items: [
-                    { target: 'demo-target-001', recipient: 'alpha' },
-                    { target: 'demo-target-002', recipient: 'beta' },
-                ],
-            },
-            'demo.dispatch.gb': {
-                taskName: 'Demo dispatch (GB)',
-                sharedConfig: {
-                    textContent: 'hello from demo.dispatch.gb',
-                    objective: 'run gb demo dispatch payload',
+                    scenario: 'control-console-realistic',
+                    objective: 'classify DNS and URL reachability',
                 },
                 items: [
                     {
-                        target: 'demo-target-001',
-                        recipient: 'gamma',
-                        region: 'gb',
+                        url: 'https://open-meteo.com/',
+                        sleepMs: 80,
+                        timeoutMs: 3000,
+                        expectedOutcome: 'DNS_OK',
+                        traceLabel: 'dns-open-meteo',
+                    },
+                    {
+                        url: 'https://does-not-exist.public-probe.invalid/',
+                        sleepMs: 80,
+                        timeoutMs: 3000,
+                        expectedOutcome: 'DNS_NXDOMAIN',
+                        traceLabel: 'dns-invalid-fixture',
+                    },
+                ],
+            },
+            'probe.http.status': {
+                taskName: 'Check HTTP status fixtures',
+                sharedConfig: {
+                    scenario: 'control-console-realistic',
+                    objective: 'verify status and latency classification',
+                },
+                items: [
+                    {
+                        url: 'https://httpbin.org/status/200',
+                        expectedStatus: 200,
+                        sleepMs: 100,
+                        timeoutMs: 5000,
+                        expectedOutcome: 'HTTP_STATUS_OK',
+                        traceLabel: 'httpbin-200',
                     },
                 ],
             },
         },
     },
-    testApp: {
-        projectCode: 'testApp',
-        taskName: 'Run smoke validation',
-        batchSize: 1,
+    deviceProbe: {
+        projectCode: 'deviceProbe',
+        taskName: 'Run phone metadata probe',
+        batchSize: 10,
         keepIntakeOpen: false,
-        maxRuntimeSeconds: 60,
+        maxRuntimeSeconds: 180,
         sharedConfig: {
-            textContent: 'smoke',
-            objective: 'local validation',
+            scenario: 'control-console-realistic',
+            objective: 'verify phone metadata with fingerprint-matched workers',
+            workerGroupId: 'phone-device-probe',
+            requiredFingerprintProfile: 'fp-android-sg-a',
         },
         items: [
-            { target: 'smoke-target-001' },
-            { target: 'smoke-target-002' },
+            {
+                phoneNumber: '+6591234567',
+                defaultRegion: 'SG',
+                sleepMs: 90,
+                timeoutMs: 3000,
+                expectedOutcome: 'VALID_E164',
+                traceLabel: 'phone-sg-valid',
+                requiredFingerprintProfile: 'fp-android-sg-a',
+            },
+            {
+                phoneNumber: 'not-a-phone',
+                defaultRegion: 'SG',
+                sleepMs: 90,
+                timeoutMs: 3000,
+                expectedOutcome: 'INVALID_PHONE',
+                traceLabel: 'phone-invalid-local',
+                requiredFingerprintProfile: 'fp-android-sg-a',
+            },
         ],
         guidance: [
-            'Use this starter for local or CI smoke validation against the verified test harness.',
+            'Fingerprint requirements stay in task/shared item payload; Stage-2 worker rules match worker attributes inside the selected group.',
         ],
         eventOverrides: {
-            'test.smoke': {
-                taskName: 'Run smoke event',
-                items: [{ target: 'smoke-target-001' }],
+            'probe.phone.metadata': {
+                taskName: 'Validate phone metadata',
             },
         },
     },
-    otherApp: {
-        projectCode: 'otherApp',
-        taskName: 'Run other app dispatch task',
-        batchSize: 1,
+    dataQualityProbe: {
+        projectCode: 'dataQualityProbe',
+        taskName: 'Run local data quality probes',
+        batchSize: 25,
         keepIntakeOpen: false,
-        maxRuntimeSeconds: 0,
+        maxRuntimeSeconds: 180,
         sharedConfig: {
-            objective: 'validate secondary project flow',
+            scenario: 'control-console-realistic',
+            objective: 'validate local CSV and JSON fixtures',
         },
-        items: [{ target: 'other-target-001' }],
-        guidance: [
-            'Keep this starter generic unless the backend defines a stronger project contract.',
+        items: [
+            {
+                csv: 'Date,Open,High,Low,Close,Volume\n2026-05-25,10,12,9,11,12000',
+                sleepMs: 60,
+                timeoutMs: 2000,
+                expectedOutcome: 'CSV_VALID',
+                traceLabel: 'csv-valid-local',
+            },
+            {
+                csv: 'Date,Open,High\nbad-row',
+                sleepMs: 60,
+                timeoutMs: 2000,
+                expectedOutcome: 'CSV_INVALID',
+                traceLabel: 'csv-invalid-local',
+            },
         ],
+        guidance: [
+            'These fixtures are CI-safe and do not depend on public provider availability.',
+        ],
+        eventOverrides: {
+            'probe.json.schema': {
+                taskName: 'Validate JSON schema fixtures',
+                items: [
+                    {
+                        document: {base: 'USD', rates: {CNY: 7.1, EUR: 0.9}},
+                        schemaRef: 'exchange-rate-basic',
+                        sleepMs: 50,
+                        timeoutMs: 2000,
+                        expectedOutcome: 'JSON_SCHEMA_VALID',
+                        traceLabel: 'json-rate-valid',
+                    },
+                ],
+            },
+        },
     },
 }
 

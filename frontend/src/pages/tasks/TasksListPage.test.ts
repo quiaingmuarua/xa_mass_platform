@@ -31,8 +31,8 @@ describe('TasksListPage', () => {
         await new Promise((resolve) => window.setTimeout(resolve, 100))
         await flushPromises()
 
-        expect(wrapper.text()).toContain('Warm worker pool')
-        expect(wrapper.text()).toContain('Review failed delivery backlog')
+        expect(wrapper.text()).toContain('Public provider reachability batch')
+        expect(wrapper.text()).toContain('Phone metadata fingerprint batch')
     })
 
     it('opens a starter task draft from route query context', async () => {
@@ -44,7 +44,7 @@ describe('TasksListPage', () => {
         })
 
         await router.push(
-            '/?create=1&project=demoApp&eventCode=demo.dispatch',
+            '/?create=1&project=publicProbe&eventCode=probe.url.dns',
         )
         await router.isReady()
 
@@ -82,14 +82,14 @@ describe('TasksListPage', () => {
         ).setupState
 
         expect(setupState.createDialogVisible).toBe(true)
-        expect(setupState.starterEventCode).toBe('demo.dispatch')
-        expect(setupState.createForm.project).toBe('demoApp')
-        expect(setupState.createForm.eventCode).toBe('demo.dispatch')
-        expect(setupState.createForm.batchSize).toBe(1)
+        expect(setupState.starterEventCode).toBe('probe.url.dns')
+        expect(setupState.createForm.project).toBe('publicProbe')
+        expect(setupState.createForm.eventCode).toBe('probe.url.dns')
+        expect(setupState.createForm.batchSize).toBe(20)
         expect(setupState.createForm.sharedConfigText).toContain(
-            'hello from demo.dispatch',
+            'control-console-realistic',
         )
-        expect(setupState.createForm.itemsText).toContain('"recipient":"alpha"')
+        expect(setupState.createForm.itemsText).toContain('"traceLabel":"dns-open-meteo"')
         expect(setupState.starterGuidance.length).toBeGreaterThan(0)
     })
 })

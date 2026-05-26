@@ -1,6 +1,7 @@
 package com.xa.mass.server.bootstrap;
 
 import com.xa.mass.sdk.MassRuntimeControl;
+import com.xa.mass.sdk.WorkerClientOperations;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.authz.TaskOwnershipStamp;
 import com.xa.mass.sdk.event.EventRequest;
@@ -25,65 +26,81 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertIterableEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class DevDemoBootstrapDataProviderTest {
+class ControlConsoleScenarioBootstrapDataProviderTest {
 
     @Test
-    void loadIntoGeneratesWorkersProjectsAndLifecycleMix() {
-        DevDemoBootstrapDataProvider provider = new DevDemoBootstrapDataProvider(
-                4,
-                12,
-                3,
+    void loadIntoGeneratesProbeWorkersProjectsAndStoppedTasks() {
+        ControlConsoleScenarioBootstrapDataProvider provider = new ControlConsoleScenarioBootstrapDataProvider(
+                ControlConsoleScenarioBootstrapDataProvider.PROFILE_LOCAL_ONLY,
+                100,
+                10,
+                120,
                 20,
                 1,
-                true,
-                List.of("us", "gb")
+                false
         );
         RecordingRuntime runtime = new RecordingRuntime();
 
         provider.loadInto(runtime);
 
-        assertEquals(4, runtime.workers.size());
-        assertEquals(12, runtime.createdTasks.size());
-        assertEquals(12, runtime.appendRequests.size());
-        assertEquals(12, runtime.sealedTaskIds.size());
+        assertTrue(runtime.workers.size() >= 100);
+        assertEquals(10, runtime.createdTasks.size());
+        assertEquals(10, runtime.appendRequests.size());
+        assertEquals(10, runtime.sealedTaskIds.size());
+        assertEquals(1200, runtime.appendRequests.stream().mapToInt(request -> request.getItems().size()).sum());
 
         Set<String> projects = runtime.createdTasks.stream()
                 .map(MassTaskShellCreateRequest::getProject)
                 .collect(java.util.stream.Collectors.toSet());
-        assertEquals(Set.of("demoApp", "demoOps"), projects);
+        assertEquals(Set.of("publicProbe", "deviceProbe", "dataQualityProbe"), projects);
 
-        assertIterableEquals(List.of("task-1", "task-2", "task-3", "task-4", "task-5", "task-6", "task-9", "task-10"),
-                runtime.approvedTaskIds);
-        assertIterableEquals(List.of("task-9", "task-10"), runtime.pausedTaskIds);
-        assertIterableEquals(List.of("task-11", "task-12"), runtime.rejectedTaskIds);
+        assertTrue(runtime.approvedTaskIds.isEmpty(), "default scenario tasks must not auto-run");
+        assertTrue(runtime.pausedTaskIds.isEmpty(), "default scenario should not create hidden active lifecycle");
+        assertTrue(runtime.rejectedTaskIds.isEmpty(), "default scenario should not reject generated tasks");
 
-        assertEquals("demo.dispatch", runtime.appendRequests.get(0).getEventCode());
-        assertEquals("demo.dispatch.gb", runtime.appendRequests.get(1).getEventCode());
-        assertEquals("demo.dispatch.gb", runtime.appendRequests.get(2).getEventCode());
-        assertEquals("demo.dispatch.gb", runtime.appendRequests.get(3).getEventCode());
+        Set<String> eventCodes = runtime.appendRequests.stream()
+                .map(MassTaskItemBatchAppendRequest::getEventCode)
+                .collect(java.util.stream.Collectors.toSet());
+        assertTrue(eventCodes.containsAll(List.of(
+                "probe.url.dns",
+                "probe.phone.metadata",
+                "probe.csv.validate",
+                "probe.json.schema"
+        )));
+        assertTrue(eventCodes.stream().noneMatch(event -> event.startsWith("demo.")));
 
         Map<String, Object> firstSharedConfig = runtime.createdTasks.get(0).getSharedConfig();
-        assertEquals("active", firstSharedConfig.get("demoScenario"));
-        assertEquals("demoApp", firstSharedConfig.get("demoProject"));
-        assertEquals("demo-app-submitter",
+        assertEquals("control-console-realistic", firstSharedConfig.get("scenario"));
+        assertEquals("local-only", firstSharedConfig.get("scenarioProfile"));
+        assertEquals("public-probe-runner",
                 TaskOwnershipStamp.fromSharedConfig(firstSharedConfig).getCreatedByPrincipalId());
 
-        Map<String, Object> secondSharedConfig = runtime.createdTasks.get(1).getSharedConfig();
-        assertEquals("demo-ops-submitter",
-                TaskOwnershipStamp.fromSharedConfig(secondSharedConfig).getCreatedByPrincipalId());
+        Map<String, Object> firstItem = (Map<String, Object>) runtime.appendRequests.get(0).getItems().get(0);
+        assertTrue(firstItem.containsKey("sleepMs"));
+        assertTrue(firstItem.containsKey("timeoutMs"));
+        assertTrue(firstItem.containsKey("expectedOutcome"));
+        assertTrue(firstItem.containsKey("traceLabel"));
 
-        assertEquals(2, runtime.workerGroups.size());
+        assertEquals(7, runtime.workerGroups.size());
         assertTrue(runtime.workerGroups.stream()
                 .flatMap(group -> group.getEventBindings().stream())
-                .allMatch(binding -> binding.getProjectCodes().containsAll(List.of("demoApp", "demoOps"))));
-        WorkerRegistration firstWorker = runtime.workers.get(0);
-        assertTrue(firstWorker.getAdapterNodeId() != null && !firstWorker.getAdapterNodeId().isBlank());
-        assertTrue(firstWorker.getWorkerGroupId() != null && !firstWorker.getWorkerGroupId().isBlank());
-        assertEquals("us", firstWorker.getAttributes().get("country"));
-        assertTrue(firstWorker.getAttributes().get("routingTags").contains("us"));
+                .noneMatch(binding -> binding.getEventCode().startsWith("demo.")));
+        assertTrue(runtime.workers.stream().anyMatch(worker ->
+                "polling".equals(worker.getTransportHint())));
+        assertTrue(runtime.workers.stream().anyMatch(worker ->
+                "realtime".equals(worker.getTransportHint())));
+        assertTrue(runtime.workers.stream()
+                .filter(worker -> "phone-device-probe".equals(worker.getWorkerGroupId()))
+                .count() >= 30);
+        assertTrue(runtime.workers.stream()
+                .filter(worker -> "phone-device-probe".equals(worker.getWorkerGroupId()))
+                .map(worker -> worker.getAttributes().get("fingerprintProfile"))
+                .distinct()
+                .count() >= 10);
+        assertTrue(runtime.onlineWorkerIds.stream().anyMatch(workerId -> workerId.startsWith("public-probe-http-poll-")));
     }
 
-    private static final class RecordingRuntime implements MassRuntimeControl {
+    private static final class RecordingRuntime implements MassRuntimeControl, WorkerClientOperations {
 
         private final List<WorkerRegistration> workers = new ArrayList<>();
         private final List<WorkerGroupDeclaration> workerGroups = new ArrayList<>();
@@ -93,6 +110,7 @@ class DevDemoBootstrapDataProviderTest {
         private final List<String> pausedTaskIds = new ArrayList<>();
         private final List<String> rejectedTaskIds = new ArrayList<>();
         private final List<String> sealedTaskIds = new ArrayList<>();
+        private final List<String> onlineWorkerIds = new ArrayList<>();
         private int nextTaskId = 1;
 
         @Override
@@ -199,6 +217,48 @@ class DevDemoBootstrapDataProviderTest {
         @Override
         public void registerWorker(WorkerRegistration request) {
             workers.add(request);
+        }
+
+        @Override
+        public String getWorkerAdapterId(String workerId) {
+            return "polling";
+        }
+
+        @Override
+        public String getWorkerTransportHint(String workerId) {
+            return "polling";
+        }
+
+        @Override
+        public com.xa.mass.sdk.worker.PullWorkerSession pullWorker(String workerId) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void workerOnline(String workerId, String reason) {
+            onlineWorkerIds.add(workerId);
+        }
+
+        @Override
+        public void workerHeartbeat(String workerId, String reason) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void workerOffline(String workerId, String reason) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public com.xa.mass.transport.channel.TaskPullResult pollTasksResult(String workerId,
+                                                                            int maxMessages,
+                                                                            long timeoutMillis) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public boolean submitResult(String workerId, com.xa.mass.transport.model.TaskResultReport report) {
+            throw new UnsupportedOperationException();
         }
 
         @Override

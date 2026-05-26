@@ -173,7 +173,7 @@
             <el-form-item label="Append event code" required>
               <el-input
                 v-model="createForm.eventCode"
-                placeholder="demo.dispatch"
+                placeholder="probe.url.dns"
               />
             </el-form-item>
           </el-col>

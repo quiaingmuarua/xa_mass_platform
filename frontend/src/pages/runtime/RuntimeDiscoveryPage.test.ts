@@ -34,30 +34,30 @@ function discoveryFetch(submitterResponse: Response): (input: string) => Promise
                     msg: 'ok',
                     data: [
                         {
-                            eventCode: 'demo.dispatch',
-                            eventName: 'Demo dispatch',
+                            eventCode: 'probe.url.dns',
+                            eventName: 'URL DNS Inspection',
                             enabled: true,
                             priorityClass: 'STANDARD',
                             responseMode: 'FINAL_RESULT',
                             targetScope: 'WORKER',
                             invocationModel: 'TASK_BACKED',
-                            projectCodes: ['demoApp'],
-                            workerIds: ['worker-us-01', 'worker-event-only'],
-                            onlineWorkerIds: ['worker-us-01', 'worker-event-only'],
+                            projectCodes: ['publicProbe'],
+                            workerIds: ['dns-url-inspector-poll-001', 'dns-url-inspector-ws-001'],
+                            onlineWorkerIds: ['dns-url-inspector-poll-001', 'dns-url-inspector-ws-001'],
                             hasDirectRuntimeHandler: false,
                             hasOnlineWorkerCoverage: true,
                             ready: true,
                         },
                         {
-                            eventCode: 'crawler.fetch-page',
-                            eventName: 'Fetch crawler page',
+                            eventCode: 'probe.phone.metadata',
+                            eventName: 'Phone Metadata Probe',
                             enabled: true,
                             priorityClass: 'STANDARD',
                             responseMode: 'FINAL_RESULT',
                             targetScope: 'WORKER',
                             invocationModel: 'TASK_BACKED',
-                            projectCodes: ['crawlerApp'],
-                            workerIds: ['worker-sg-01'],
+                            projectCodes: ['deviceProbe'],
+                            workerIds: ['phone-device-probe-ws-sg-001'],
                             onlineWorkerIds: [],
                             hasDirectRuntimeHandler: false,
                             hasOnlineWorkerCoverage: false,
@@ -89,18 +89,18 @@ function discoveryFetch(submitterResponse: Response): (input: string) => Promise
                     msg: 'ok',
                     data: [
                         {
-                            code: 'demoApp',
-                            name: 'Demo App',
-                            description: 'Demo project.',
+                            code: 'publicProbe',
+                            name: 'Public Probe',
+                            description: 'Public probe project.',
                             enabled: true,
-                            eventCodes: ['demo.dispatch'],
+                            eventCodes: ['probe.url.dns'],
                         },
                         {
-                            code: 'crawlerApp',
-                            name: 'Crawler App',
-                            description: 'Crawler project.',
+                            code: 'deviceProbe',
+                            name: 'Device Probe',
+                            description: 'Device probe project.',
                             enabled: true,
-                            eventCodes: ['crawler.fetch-page'],
+                            eventCodes: ['probe.phone.metadata'],
                         },
                     ],
                 }),
@@ -113,9 +113,9 @@ function discoveryFetch(submitterResponse: Response): (input: string) => Promise
                     msg: 'ok',
                     data: [
                         {
-                            code: 'demo.dispatch',
-                            name: 'Demo dispatch',
-                            description: 'Run a demo dispatch.',
+                            code: 'probe.url.dns',
+                            name: 'URL DNS Inspection',
+                            description: 'Resolve URL domains.',
                             payloadTypes: ['JSON'],
                             taskModes: ['SINGLE_RUN'],
                             enabled: true,
@@ -124,9 +124,9 @@ function discoveryFetch(submitterResponse: Response): (input: string) => Promise
                             targetScope: 'WORKER',
                         },
                         {
-                            code: 'crawler.fetch-page',
-                            name: 'Fetch crawler page',
-                            description: 'Fetch through a crawler worker.',
+                            code: 'probe.phone.metadata',
+                            name: 'Phone Metadata Probe',
+                            description: 'Validate phone metadata.',
                             payloadTypes: ['JSON'],
                             taskModes: ['SINGLE_RUN'],
                             enabled: true,
@@ -157,36 +157,46 @@ function discoveryFetch(submitterResponse: Response): (input: string) => Promise
                 data: {
                     items: [
                         {
-                            workerId: 'worker-us-01',
+                            workerId: 'dns-url-inspector-poll-001',
                             status: 'ONLINE',
-                            workerGroupId: 'us-routing',
+                            transportReachability: 'ONLINE',
+                            transportOnline: true,
+                            workerGroupId: 'dns-url-inspector',
+                            adapterNodeId: 'control-console-polling',
+                            transportHint: 'polling',
                             agentVersion: '1.4.0',
-                            supportedProjects: ['demoApp'],
-                            supportedEventCodes: ['demo.dispatch'],
+                            supportedProjects: ['publicProbe'],
+                            supportedEventCodes: ['probe.url.dns'],
                             attributes: {},
                             lastHeartbeat: '2026-04-21 09:45:00',
                             locked: false,
                             updateTime: '2026-04-21 09:45:00',
                         },
                         {
-                            workerId: 'worker-event-only',
+                            workerId: 'dns-url-inspector-ws-001',
                             status: 'ONLINE',
-                            workerGroupId: 'shared-pool',
+                            transportReachability: 'ONLINE',
+                            transportOnline: true,
+                            workerGroupId: 'dns-url-inspector',
+                            adapterNodeId: 'control-console-websocket',
+                            transportHint: 'realtime',
                             agentVersion: '1.4.1',
                             supportedProjects: [],
-                            supportedEventCodes: ['demo.dispatch'],
+                            supportedEventCodes: ['probe.url.dns'],
                             attributes: {},
                             lastHeartbeat: '2026-04-21 09:47:00',
                             locked: false,
                             updateTime: '2026-04-21 09:47:00',
                         },
                         {
-                            workerId: 'worker-sg-01',
-                            status: 'OFFLINE',
-                            workerGroupId: 'sg-routing',
+                            workerId: 'phone-device-probe-ws-sg-001',
+                            status: 'ONLINE',
+                            transportReachability: 'OFFLINE',
+                            transportOnline: false,
+                            workerGroupId: 'phone-device-probe',
                             agentVersion: '1.3.7',
-                            supportedProjects: ['crawlerApp'],
-                            supportedEventCodes: ['crawler.fetch-page'],
+                            supportedProjects: ['deviceProbe'],
+                            supportedEventCodes: ['probe.phone.metadata'],
                             attributes: {},
                             lastHeartbeat: '2026-04-21 08:45:00',
                             locked: false,
@@ -246,12 +256,12 @@ describe('RuntimeDiscoveryPage', () => {
                         code: 0,
                         msg: 'ok',
                         data: {
-                            principalId: 'crawler-agent',
-                            userId: 'crawler-user',
-                            projectScope: 'crawlerApp',
+                            principalId: 'public-probe-runner',
+                            userId: 'public-probe-runner',
+                            projectScope: 'publicProbe',
                             permissions: ['task:create', 'catalog:view'],
-                            projectScopes: ['crawlerApp'],
-                            eventScopes: ['crawler.fetch-page'],
+                            projectScopes: ['publicProbe'],
+                            eventScopes: ['probe.url.dns'],
                             attributes: {
                                 transport: 'polling',
                             },
@@ -268,21 +278,21 @@ describe('RuntimeDiscoveryPage', () => {
             'Project directory, event capability inventory, and live worker presence in one control-plane view',
         )
         expect(wrapper.text()).toContain('supportedEventCodes')
-        expect(wrapper.text()).toContain('Demo App')
-        expect(wrapper.text()).toContain('worker-us-01')
-        expect(wrapper.text()).toContain('worker-event-only')
-        expect(wrapper.text()).toContain('demo.dispatch')
+        expect(wrapper.text()).toContain('Public Probe')
+        expect(wrapper.text()).toContain('dns-url-inspector-poll-001')
+        expect(wrapper.text()).toContain('dns-url-inspector-ws-001')
+        expect(wrapper.text()).toContain('probe.url.dns')
         expect(wrapper.text()).toContain('STANDARD')
         expect(wrapper.text()).toContain('FINAL_RESULT')
         expect(wrapper.text()).toContain('WORKER')
         expect(wrapper.text()).toContain('1 / 2')
-        expect(wrapper.text()).not.toContain('worker-sg-01')
+        expect(wrapper.text()).not.toContain('phone-device-probe-ws-sg-001')
         expect(wrapper.text()).toContain('Start event draft')
         expect(wrapper.text()).toContain('Submitter credential access')
         expect(wrapper.text()).toContain('Credential resolved')
-        expect(wrapper.text()).toContain('crawler-agent')
+        expect(wrapper.text()).toContain('public-probe-runner')
         expect(wrapper.text()).toContain('task:create')
-        expect(wrapper.text()).toContain('crawler.fetch-page')
+        expect(wrapper.text()).toContain('probe.url.dns')
         expect(wrapper.text()).toContain('POST /api/v1/tasks')
 
         const inspectButtons = wrapper
@@ -296,9 +306,9 @@ describe('RuntimeDiscoveryPage', () => {
         expect(wrapper.text()).toContain(
             'Scoped by selected project events plus optional project hints',
         )
-        expect(wrapper.text()).toContain('worker-event-only')
-        expect(wrapper.text()).toContain('hello from demo.dispatch')
-        expect(wrapper.text()).toContain('"recipient":"alpha"')
+        expect(wrapper.text()).toContain('dns-url-inspector-ws-001')
+        expect(wrapper.text()).toContain('dns-open-meteo')
+        expect(wrapper.text()).toContain('DNS_NXDOMAIN')
 
         const startDraftButton = wrapper
             .findAll('button')
@@ -310,8 +320,8 @@ describe('RuntimeDiscoveryPage', () => {
 
         expect(router.currentRoute.value.name).toBe('tasks')
         expect(router.currentRoute.value.query.create).toBe('1')
-        expect(router.currentRoute.value.query.project).toBe('demoApp')
-        expect(router.currentRoute.value.query.eventCode).toBe('demo.dispatch')
+        expect(router.currentRoute.value.query.project).toBe('publicProbe')
+        expect(router.currentRoute.value.query.eventCode).toBe('probe.url.dns')
         expect(router.currentRoute.value.query.taskName).toBeUndefined()
     })
 

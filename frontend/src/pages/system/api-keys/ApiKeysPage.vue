@@ -58,7 +58,7 @@
                   <el-form-item label="Project scopes">
                     <el-input
                       v-model="createForm.projectScopes"
-                      placeholder="crawlerApp, demoApp"
+                      placeholder="publicProbe, deviceProbe"
                     />
                   </el-form-item>
                   <el-form-item label="Event scopes">
@@ -407,7 +407,7 @@ const usageRows = ref<ApiUsageLedgerRecord[]>([])
 const createForm = reactive({
   principalId: 'crawler-api-key',
   createdForUserId: 'ops-admin',
-  projectScopes: 'crawlerApp',
+  projectScopes: 'publicProbe',
   eventScopes: 'crawler.fetch-page',
   permissions: ['task:create', 'task:view'],
   expiresAt: '',
@@ -416,7 +416,7 @@ const createForm = reactive({
 const applicationForm = reactive({
   requestedPrincipalId: 'requested-crawler-key',
   requestedUserId: 'ops-admin',
-  requestedProjectScopes: 'crawlerApp',
+  requestedProjectScopes: 'publicProbe',
   requestedEventScopes: 'crawler.fetch-page',
   requestedPermissions: ['task:create', 'task:view'],
   purpose: 'SDK integration key',
