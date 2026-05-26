@@ -46,13 +46,29 @@ export const systemRoutes: AppRouteRecordRaw[] = [
                 },
             },
             {
+                path: 'api-keys',
+                name: 'api-keys',
+                component: () =>
+                    import('@/pages/system/api-keys/ApiKeysPage.vue'),
+                meta: {
+                    title: 'API Keys',
+                    icon: 'Tickets',
+                    order: 53,
+                    hidden: false,
+                    keepAlive: true,
+                    requiresAuth: true,
+                    permissions: ['api-key:view'],
+                    menuVisible: true,
+                },
+            },
+            {
                 path: 'audit',
                 name: 'audit',
                 component: () => import('@/pages/system/audit/AuditPage.vue'),
                 meta: {
                     title: 'Audit Logs',
                     icon: 'Notebook',
-                    order: 53,
+                    order: 54,
                     hidden: false,
                     keepAlive: true,
                     requiresAuth: true,

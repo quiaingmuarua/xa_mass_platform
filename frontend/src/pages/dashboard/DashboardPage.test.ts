@@ -109,10 +109,6 @@ describe('DashboardPage', () => {
         expect(wrapper.text()).toContain('Running tasks')
         expect(wrapper.text()).toContain('Online workers')
         expect(wrapper.text()).toContain('Capabilities')
-        expect(
-            fetchMock.mock.calls.some(([input]) =>
-                String(input).includes('/api/v1/runtime/worker-contexts'),
-            ),
-        ).toBe(false)
+        expect(fetchMock).toHaveBeenCalledTimes(3)
     })
 })

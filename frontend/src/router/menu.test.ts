@@ -26,6 +26,9 @@ describe('menu filtering', () => {
         expect(
             system?.children.some((child) => child.title === 'Audit Logs'),
         ).toBe(true)
+        expect(
+            system?.children.some((child) => child.title === 'API Keys'),
+        ).toBe(false)
     })
 
     it('shows admin routes when permissions are granted', () => {
@@ -42,6 +45,9 @@ describe('menu filtering', () => {
         expect(system?.children.some((child) => child.title === 'Roles')).toBe(
             true,
         )
+        expect(
+            system?.children.some((child) => child.title === 'API Keys'),
+        ).toBe(true)
         expect(
             resources?.children.some((child) => child.title === 'Projects'),
         ).toBe(true)

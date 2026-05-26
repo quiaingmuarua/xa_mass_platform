@@ -1,5 +1,6 @@
 import {setRuntimeConfigOverrides} from '@/app/config'
 import {ApiError, requestApiData, requestJson} from '@/api/http'
+import {useOperatorMode} from '@/auth/operator-mode'
 
 function jsonResponse(body: unknown, status = 200): Response {
     return new Response(JSON.stringify(body), {
@@ -70,5 +71,33 @@ describe('http API helpers', () => {
             message: 'Permission denied',
             status: 403,
         } satisfies Partial<ApiError>)
+    })
+
+    it('adds the selected backend operator mode header outside mock auth', async () => {
+        setRuntimeConfigOverrides({
+            apiBaseUrl: '/backend',
+            useMockAuth: false,
+        })
+        const { setOperatorMode } = useOperatorMode()
+        setOperatorMode('viewer')
+        const fetchMock = vi.fn().mockResolvedValue(
+            jsonResponse({
+                code: 0,
+                msg: 'ok',
+                data: [],
+            }),
+        )
+        vi.stubGlobal('fetch', fetchMock)
+
+        await requestApiData('/api/v1/users')
+
+        expect(fetchMock).toHaveBeenCalledWith(
+            '/backend/api/v1/users',
+            expect.objectContaining({
+                headers: expect.objectContaining({
+                    'X-Mass-User-Mode': 'viewer',
+                }),
+            }),
+        )
     })
 })

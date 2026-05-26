@@ -93,11 +93,7 @@ describe('WorkersPage', () => {
         expect(wrapper.text()).toContain('demo.dispatch')
         expect(wrapper.text()).toContain('Open debug view')
         expect(wrapper.text()).not.toContain('Edit projects')
-        expect(
-            fetchMock.mock.calls.some(([input]) =>
-                String(input).includes('/worker-contexts'),
-            ),
-        ).toBe(false)
+        expect(fetchMock).toHaveBeenCalledTimes(1)
     })
 
     it('hides edit actions for read-only users', async () => {
@@ -127,10 +123,6 @@ describe('WorkersPage', () => {
         expect(wrapper.text()).toContain('worker-us-01')
         expect(wrapper.text()).toContain('demo.dispatch')
         expect(wrapper.text()).not.toContain('Edit projects')
-        expect(
-            fetchMock.mock.calls.some(([input]) =>
-                String(input).includes('/worker-contexts'),
-            ),
-        ).toBe(false)
+        expect(fetchMock).toHaveBeenCalledTimes(1)
     })
 })

@@ -16,6 +16,11 @@ export const allPermissions = [
     'user:edit',
     'role:view',
     'role:edit',
+    'api-key:view',
+    'api-key:apply',
+    'api-key:approve',
+    'api-key:revoke',
+    'api-usage:view',
     'audit:view',
 ] as const
 

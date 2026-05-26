@@ -11,6 +11,16 @@
       </div>
     </div>
     <div class="header-user">
+      <el-select
+        v-if="!useMockAuth"
+        :model-value="operatorMode"
+        class="operator-select"
+        size="small"
+        @update:model-value="changeOperatorMode"
+      >
+        <el-option label="Ops Admin" value="admin" />
+        <el-option label="Ops Viewer" value="viewer" />
+      </el-select>
       <div>
         <div class="header-user-name">{{ user?.name ?? 'Guest' }}</div>
         <div class="header-user-meta">
@@ -26,10 +36,12 @@
 import {computed} from 'vue'
 import {useRoute} from 'vue-router'
 import {getAppConfig} from '@/app/config'
-import {useAuth} from '@/auth/use-auth'
+import {initializeAuth, useAuth} from '@/auth/use-auth'
+import {type OperatorMode, useOperatorMode} from '@/auth/operator-mode'
 
 const route = useRoute()
 const { user } = useAuth()
+const { operatorMode, setOperatorMode } = useOperatorMode()
 
 const currentTitle = computed(() => route.meta.title ?? 'Control Console')
 const integrationMode = computed(() =>
@@ -38,9 +50,15 @@ const integrationMode = computed(() =>
 const authMode = computed(() =>
   getAppConfig().useMockAuth ? 'Mock auth' : 'Backend auth',
 )
+const useMockAuth = computed(() => getAppConfig().useMockAuth)
 const modeBadgeClass = computed(() =>
   getAppConfig().useMockApi ? 'is-mock' : 'is-backend',
 )
+
+function changeOperatorMode(mode: OperatorMode): void {
+  setOperatorMode(mode)
+  void initializeAuth()
+}
 </script>
 
 <style scoped>
@@ -109,6 +127,10 @@ const modeBadgeClass = computed(() =>
   align-items: center;
   gap: 12px;
   text-align: right;
+}
+
+.operator-select {
+  width: 128px;
 }
 
 .header-user-name {

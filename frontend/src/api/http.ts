@@ -1,4 +1,5 @@
 import {getAppConfig} from '@/app/config'
+import {currentOperatorModeHeader} from '@/auth/operator-mode'
 
 interface ApiResponseEnvelope<T> {
     code: number
@@ -25,6 +26,7 @@ export async function requestJson<T>(
         ...init,
         headers: {
             'Content-Type': 'application/json',
+            ...operatorModeHeader(),
             ...(init?.headers ?? {}),
         },
     })
@@ -53,6 +55,16 @@ export async function requestApiData<T>(
     }
 
     return payload.data
+}
+
+function operatorModeHeader(): Record<string, string> {
+    if (getAppConfig().useMockAuth) {
+        return {}
+    }
+
+    return {
+        'X-Mass-User-Mode': currentOperatorModeHeader(),
+    }
 }
 
 export function buildApiUrl(input: string): string {
