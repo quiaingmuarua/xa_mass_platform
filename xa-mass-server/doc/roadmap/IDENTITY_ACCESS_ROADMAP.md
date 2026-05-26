@@ -23,13 +23,19 @@ IAM-3:
   rows for accepted sync append and archive streaming failures; usage queries
   support project, operation, status, time-window, and limit filters
 
+IAM-4:
+  implemented submitter viewer sessions backed by API-key credentials; session
+  tokens resolve to the source API-key PrincipalContext, can read owner-scoped
+  submitter/task/result/archive/usage resources through existing submitter
+  authorization paths, cannot create nested sessions, and stop authenticating
+  when logged out, expired, or when the source API key is revoked/disabled/expired
+
 IAM-6a:
   implemented operator-managed user create/update, role create/update, and
   user-role bind/unbind APIs; disabling a user disables that user's owned
   API-key authentication projection
 
 Not implemented yet:
-  submitter viewer session
   durable IAM audit store for user/role mutations
 ```
 
@@ -147,6 +153,7 @@ roadmap after access control is stable.
 15. Disabling a human user disables that user's owned API keys unless the key is explicitly modeled as service-owned.
 16. Submitter viewer sessions add browser convenience only; they must not introduce new permission semantics beyond the source API-key `PrincipalContext`.
 17. Usage audit records authorization result and domain-accepted outcome; it must not count accepted units before the owning operation accepts the request.
+18. Submitter viewer sessions are not external-worker credentials and must not authenticate worker callback, poll, result-submit, or report routes.
 
 ## Goals
 
@@ -172,7 +179,7 @@ This roadmap does not:
 5. Make worker ownership part of permission enforcement.
 6. Meter worker callback, dispatch attempt, retry, or repair as API-key usage.
 7. Change engine, transport, runtime, worker matching, or result kernel behavior.
-8. Add frontend pages or frontend permission routing in this roadmap.
+8. Let frontend define permission truth; frontend pages may consume server IAM APIs but must not own authorization semantics.
 9. Split `xa-mass-server` into a separate IAM service.
 10. Add a compatibility layer for retired internal auth paths.
 11. Expose raw credential material after creation.
@@ -520,6 +527,12 @@ record SubmitterViewerSessionRecord(
     String keyId,
     String principalId,
     String createdForUserId,
+    String credentialHash,
+    String keyPrefix,
+    List<String> permissions,
+    List<String> projectScopes,
+    List<String> eventScopes,
+    Map<String, String> attributes,
     Instant createdAt,
     Instant expiresAt,
     Instant revokedAt
@@ -530,12 +543,14 @@ Rules:
 
 ```text
 1. created from a valid ApiKeyCredential
-2. resolves to PrincipalContext(type=API_KEY), not an operator user session
+2. resolves to the source API-key PrincipalContext, not an operator user session
 3. cannot access user / role / API-key approval APIs
 4. cannot task control / govern through the viewer session
 5. can read only owner-scoped task/result/archive/usage resources
 6. expires quickly and is invalidated when the source key is revoked
 7. does not grant permissions that the source API key does not already have
+8. raw session secret is returned only on creation
+9. list/current responses expose keyPrefix only, never credentialHash or raw secret
 ```
 
 If a future API key scope allows task control, that must be a direct API-key API
@@ -838,10 +853,20 @@ task/result/usage resources without becoming an operator session.
 Phase placement:
 
 ```text
-IAM-4 is optional for the first backend-only slice. It should start only after
-direct API-key task/result reads and usage audit are stable, because current
-API-key auth can already serve non-browser SDK callers. If no browser viewer is
-being built, defer IAM-4 behind IAM-6.
+IAM-4 is implemented as a thin browser-convenience session layer. It does not
+replace direct API-key auth and does not create a second permission model.
+```
+
+Current implemented slice:
+
+```text
+IAM-4a:
+  SubmitterViewerSessionRecord / Store / Service
+  POST /api/v1/submitter-sessions
+  GET /api/v1/submitter-sessions/me
+  POST /api/v1/submitter-sessions:logout
+  session credential fallback in submitter auth resolution
+  source API-key revoke/disable/expiry invalidates session authentication
 ```
 
 Scope:
@@ -850,11 +875,11 @@ Scope:
 1. add SubmitterViewerSessionRecord and store
 2. add POST /api/v1/submitter-sessions
 3. validate API-key status and scopes before session creation
-4. resolve viewer session to PrincipalContext(type=API_KEY)
+4. resolve viewer session to the source API-key PrincipalContext
 5. allow owner-scoped task/result/archive reads
 6. deny user/role/API-key approval APIs
 7. expire sessions quickly and invalidate sessions for revoked keys
-8. audit submitter viewer session creation and logout
+8. capture createdAt/revokedAt lifecycle evidence on the session record
 9. do not add new authorization semantics beyond the source API-key permissions
 ```
 
@@ -898,8 +923,8 @@ Acceptance:
 ### Phase IAM-6: User / Role Management APIs
 
 Goal: support operator-managed users and roles after API-key credential
-lifecycle is stable. Submitter viewer sessions do not block this phase if
-IAM-4 is deferred.
+lifecycle is stable. Submitter viewer sessions are now a thin submitter-only
+viewer layer and do not own user/role authorization semantics.
 
 Current implemented slice:
 
@@ -924,7 +949,8 @@ Scope:
 1. add create/update user APIs
 2. add create/update role APIs
 3. add role bind/unbind APIs
-4. emit audit entries for role changes
+4. keep mutation timestamps/actors on control records where available; durable
+   mutation audit is deferred to the server audit owner
 5. keep permission catalog fixed in code for v1
 6. keep all user creation admin/operator-only
 ```
@@ -935,7 +961,7 @@ Acceptance:
 1. operator can create a user
 2. operator can assign and remove roles
 3. role changes affect /api/v1/auth/me permission snapshots
-4. role mutations are auditable
+4. role mutations do not introduce a second IAM-only audit subsystem
 5. anonymous callers cannot register users
 ```
 

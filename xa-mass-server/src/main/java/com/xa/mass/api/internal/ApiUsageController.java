@@ -4,9 +4,12 @@ import com.xa.mass.api.auth.usage.ApiUsageLedgerRecord;
 import com.xa.mass.api.auth.usage.ApiUsageLedgerService;
 import com.xa.mass.api.auth.usage.ApiUsageOperation;
 import com.xa.mass.api.auth.usage.ApiUsageStatus;
+import com.xa.mass.api.auth.apikey.ApiKeyCredentialService;
+import com.xa.mass.api.auth.session.SubmitterViewerSessionService;
 import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.PrincipalContext;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -28,11 +31,23 @@ public class ApiUsageController {
 
     private final ApiUsageLedgerService usageLedgerService;
     private final AuthProvider authProvider;
+    private final ApiKeyCredentialService apiKeyCredentialService;
+    private final SubmitterViewerSessionService submitterViewerSessionService;
 
     public ApiUsageController(ApiUsageLedgerService usageLedgerService,
                               AuthProvider authProvider) {
+        this(usageLedgerService, authProvider, null, null);
+    }
+
+    @Autowired
+    public ApiUsageController(ApiUsageLedgerService usageLedgerService,
+                              AuthProvider authProvider,
+                              ApiKeyCredentialService apiKeyCredentialService,
+                              SubmitterViewerSessionService submitterViewerSessionService) {
         this.usageLedgerService = usageLedgerService;
         this.authProvider = authProvider;
+        this.apiKeyCredentialService = apiKeyCredentialService;
+        this.submitterViewerSessionService = submitterViewerSessionService;
     }
 
     @GetMapping("/api-keys/{keyId}/usage")
@@ -68,7 +83,7 @@ public class ApiUsageController {
             @RequestParam(required = false) String from,
             @RequestParam(required = false) String to,
             @RequestParam(required = false) Integer limit) {
-        PrincipalContext submitter = SdkCredentialAuthSupport.authenticate(authProvider, apiKeyHeader, authorizationHeader);
+        PrincipalContext submitter = authenticateSubmitter(apiKeyHeader, authorizationHeader);
         if (submitter == null) {
             return ResponseEntity.status(401).body(ApiResponse.error(401, "Invalid or missing submitter credential"));
         }
@@ -126,5 +141,20 @@ public class ApiUsageController {
 
     private String normalize(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private PrincipalContext authenticateSubmitter(String apiKeyHeader, String authorizationHeader) {
+        String credential = SdkCredentialAuthSupport.extractCredential(apiKeyHeader, authorizationHeader);
+        if (credential == null) {
+            return null;
+        }
+        PrincipalContext principal = authProvider == null ? null : authProvider.authenticate(credential);
+        if (apiKeyCredentialService != null) {
+            principal = apiKeyCredentialService.validateAuthenticatedPrincipal(principal);
+        }
+        if (principal != null) {
+            return principal;
+        }
+        return submitterViewerSessionService == null ? null : submitterViewerSessionService.authenticate(credential);
     }
 }

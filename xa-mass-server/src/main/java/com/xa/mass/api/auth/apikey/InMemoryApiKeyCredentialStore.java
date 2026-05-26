@@ -120,6 +120,38 @@ public class InMemoryApiKeyCredentialStore implements ApiKeyCredentialStore {
         return disabled;
     }
 
+    @Override
+    public synchronized ApiKeyCredentialRecord expire(String keyId) {
+        ApiKeyCredentialRecord existing = byKeyId.get(keyId);
+        if (existing == null) {
+            return null;
+        }
+        if (existing.status() != ApiKeyCredentialStatus.ACTIVE) {
+            return existing;
+        }
+        ApiKeyCredentialRecord expired = new ApiKeyCredentialRecord(
+                existing.keyId(),
+                existing.principalId(),
+                existing.createdForUserId(),
+                existing.keyPrefix(),
+                existing.credentialHash(),
+                existing.projectScopes(),
+                existing.eventScopes(),
+                existing.permissions(),
+                ApiKeyCredentialStatus.EXPIRED,
+                existing.applicationId(),
+                existing.createdBy(),
+                existing.createdAt(),
+                existing.expiresAt(),
+                Instant.now(),
+                "system",
+                "expiresAt reached",
+                existing.attributes()
+        );
+        byKeyId.put(keyId, expired);
+        return expired;
+    }
+
     private String normalize(String value) {
         return value == null || value.isBlank() ? null : value.trim();
     }

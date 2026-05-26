@@ -1,6 +1,8 @@
 package com.xa.mass.api.auth;
 
 import com.xa.mass.api.internal.SdkCredentialAuthSupport;
+import com.xa.mass.api.auth.apikey.ApiKeyCredentialService;
+import com.xa.mass.api.auth.session.SubmitterViewerSessionService;
 import com.xa.mass.api.auth.usage.ApiUsageLedgerService;
 import com.xa.mass.api.auth.usage.ApiUsageOperation;
 import com.xa.mass.sdk.auth.AuthProvider;
@@ -31,6 +33,8 @@ public class ApiAuthorizationService {
     private final AuthProvider authProvider;
     private final AuthorizationPolicy authorizationPolicy;
     private ApiUsageLedgerService apiUsageLedgerService;
+    private ApiKeyCredentialService apiKeyCredentialService;
+    private SubmitterViewerSessionService submitterViewerSessionService;
 
     public ApiAuthorizationService() {
         this(null, new DefaultAuthorizationPolicy());
@@ -47,6 +51,16 @@ public class ApiAuthorizationService {
         this.apiUsageLedgerService = apiUsageLedgerService;
     }
 
+    @Autowired(required = false)
+    public void setApiKeyCredentialService(ApiKeyCredentialService apiKeyCredentialService) {
+        this.apiKeyCredentialService = apiKeyCredentialService;
+    }
+
+    @Autowired(required = false)
+    public void setSubmitterViewerSessionService(SubmitterViewerSessionService submitterViewerSessionService) {
+        this.submitterViewerSessionService = submitterViewerSessionService;
+    }
+
     public PrincipalContext resolveSubmitterPrincipal(String apiKeyHeader,
                                                 String authorizationHeader,
                                                 ApiSecurityScenario scenario,
@@ -54,8 +68,7 @@ public class ApiAuthorizationService {
         if (!SdkCredentialAuthSupport.hasCredentialAttempt(apiKeyHeader, authorizationHeader)) {
             return null;
         }
-        PrincipalContext submitter =
-                SdkCredentialAuthSupport.authenticate(authProvider, apiKeyHeader, authorizationHeader);
+        PrincipalContext submitter = authenticateSubmitter(apiKeyHeader, authorizationHeader);
         if (submitter == null) {
             logCredentialFailure(scenario.surface(), scenario.unauthenticatedMessage(), context);
             throw new ApiUnauthenticatedException(scenario.unauthenticatedMessage());
@@ -93,8 +106,7 @@ public class ApiAuthorizationService {
                                                             String authorizationHeader,
                                                             ApiSecurityScenario scenario,
                                                             Map<String, Object> context) {
-        PrincipalContext submitter =
-                SdkCredentialAuthSupport.authenticate(authProvider, apiKeyHeader, authorizationHeader);
+        PrincipalContext submitter = authenticateApiKeySubmitter(apiKeyHeader, authorizationHeader);
         if (submitter == null) {
             logCredentialFailure(scenario.surface(), scenario.unauthenticatedMessage(), context);
             throw new ApiUnauthenticatedException(scenario.unauthenticatedMessage());
@@ -295,6 +307,31 @@ public class ApiAuthorizationService {
                 .workerId(workerId)
                 .resourceAttributes(resourceAttributes)
                 .build());
+    }
+
+    private PrincipalContext authenticateSubmitter(String apiKeyHeader, String authorizationHeader) {
+        String credential = SdkCredentialAuthSupport.extractCredential(apiKeyHeader, authorizationHeader);
+        PrincipalContext principal = authenticateApiKeySubmitter(credential);
+        if (principal != null) {
+            return principal;
+        }
+        return submitterViewerSessionService == null ? null : submitterViewerSessionService.authenticate(credential);
+    }
+
+    private PrincipalContext authenticateApiKeySubmitter(String apiKeyHeader, String authorizationHeader) {
+        String credential = SdkCredentialAuthSupport.extractCredential(apiKeyHeader, authorizationHeader);
+        return authenticateApiKeySubmitter(credential);
+    }
+
+    private PrincipalContext authenticateApiKeySubmitter(String credential) {
+        if (credential == null) {
+            return null;
+        }
+        PrincipalContext principal = authProvider == null ? null : authProvider.authenticate(credential);
+        if (apiKeyCredentialService != null) {
+            principal = apiKeyCredentialService.validateAuthenticatedPrincipal(principal);
+        }
+        return principal;
     }
 
     private void logCredentialFailure(String surface, String reason, Map<String, Object> context) {

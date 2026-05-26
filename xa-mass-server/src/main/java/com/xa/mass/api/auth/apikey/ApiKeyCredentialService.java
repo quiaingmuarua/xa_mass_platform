@@ -7,6 +7,7 @@ import com.xa.mass.api.auth.iam.UserStatus;
 import com.xa.mass.sdk.SubmitterOperations;
 import com.xa.mass.sdk.auth.CredentialHashing;
 import com.xa.mass.sdk.auth.PrincipalType;
+import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
 import org.springframework.stereotype.Service;
 
@@ -177,6 +178,52 @@ public class ApiKeyCredentialService {
             projectDisabledCredential(record);
         }
         return disabled;
+    }
+
+    public PrincipalContext validateAuthenticatedPrincipal(PrincipalContext principal) {
+        if (principal == null) {
+            return null;
+        }
+        String keyId = apiKeyId(principal);
+        if (keyId == null) {
+            return principal;
+        }
+        ApiKeyCredentialRecord record = credentialStore.get(keyId);
+        if (record == null) {
+            return null;
+        }
+        ApiKeyCredentialRecord current = expireIfNeeded(record);
+        return current.status() == ApiKeyCredentialStatus.ACTIVE ? principal : null;
+    }
+
+    public boolean isCredentialActive(String keyId) {
+        ApiKeyCredentialRecord record = credentialStore.get(keyId);
+        if (record == null) {
+            return false;
+        }
+        return expireIfNeeded(record).status() == ApiKeyCredentialStatus.ACTIVE;
+    }
+
+    public String apiKeyId(PrincipalContext principal) {
+        if (principal == null || principal.getAttributes() == null) {
+            return null;
+        }
+        String keyId = principal.getAttributes().get(ATTR_KEY_ID);
+        return keyId == null || keyId.isBlank() ? null : keyId.trim();
+    }
+
+    private ApiKeyCredentialRecord expireIfNeeded(ApiKeyCredentialRecord record) {
+        if (record.status() != ApiKeyCredentialStatus.ACTIVE
+                || record.expiresAt() == null
+                || record.expiresAt().isAfter(Instant.now())) {
+            return record;
+        }
+        ApiKeyCredentialRecord expired = credentialStore.expire(record.keyId());
+        if (expired != null && expired.status() == ApiKeyCredentialStatus.EXPIRED) {
+            projectDisabledCredential(expired);
+            return expired;
+        }
+        return record;
     }
 
     private void projectActiveCredential(ApiKeyCredentialRecord record, String rawSecret) {

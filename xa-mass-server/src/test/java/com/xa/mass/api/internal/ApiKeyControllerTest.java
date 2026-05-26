@@ -17,6 +17,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -31,11 +32,12 @@ class ApiKeyControllerTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private MockMvc mockMvc;
+    private ApiKeyCredentialService service;
 
     @BeforeEach
     void setUp() {
         InMemorySubmitterOperations submitters = new InMemorySubmitterOperations();
-        ApiKeyCredentialService service = new ApiKeyCredentialService(
+        service = new ApiKeyCredentialService(
                 new com.xa.mass.api.auth.apikey.InMemoryApiKeyApplicationStore(),
                 new InMemoryApiKeyCredentialStore(),
                 InMemoryUserRolePermissionStore.bootstrapDefaults(),
@@ -49,7 +51,7 @@ class ApiKeyControllerTest {
         );
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new ApiKeyController(service),
-                        new CurrentSubmitterController(submitters))
+                        new CurrentSubmitterController(submitters, service, null))
                 .addInterceptors(interceptor)
                 .build();
     }
@@ -130,6 +132,33 @@ class ApiKeyControllerTest {
                         ))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.msg").value("unknown permission: not-a-real-permission"));
+    }
+
+    @Test
+    void expiredApiKeyStopsAuthenticatingAndMarksCredentialExpired() throws Exception {
+        MvcResult created = mockMvc.perform(post("/api/v1/api-keys")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "principalId", "short-lived-key",
+                                "createdForUserId", "ops-admin",
+                                "permissions", List.of(ApiPermissionNames.TASK_VIEW),
+                                "expiresAt", Instant.now().plusMillis(100).toString()
+                        ))))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode data = objectMapper.readTree(created.getResponse().getContentAsString()).get("data");
+        String rawSecret = data.get("rawSecret").asText();
+        String keyId = data.get("credential").get("keyId").asText();
+
+        Thread.sleep(250);
+
+        mockMvc.perform(get("/api/v1/submitters/me")
+                        .header(SdkCredentialAuthSupport.API_KEY_HEADER, rawSecret))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/v1/api-keys/" + keyId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("EXPIRED"));
     }
 
 }

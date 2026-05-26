@@ -125,6 +125,21 @@ public class ApiRouteAuthorizationCatalog {
                     ? route(PlatformResourceType.API_KEY, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
                     : null;
         }
+        if (uri.equals("/api/v1/submitter-sessions") && "POST".equals(method)) {
+            return sdkCredentialAttempt
+                    ? route(PlatformResourceType.API_KEY, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
+                    : null;
+        }
+        if (uri.equals("/api/v1/submitter-sessions/me") && "GET".equals(method)) {
+            return sdkCredentialAttempt
+                    ? route(PlatformResourceType.API_KEY, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
+                    : null;
+        }
+        if (uri.equals("/api/v1/submitter-sessions:logout") && "POST".equals(method)) {
+            return sdkCredentialAttempt
+                    ? route(PlatformResourceType.API_KEY, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
+                    : null;
+        }
         if (uri.equals("/api/v1/users")) {
             return switch (method) {
                 case "GET" -> route(PlatformResourceType.USER, PlatformAction.VIEW, ApiPermissionNames.USER_VIEW);

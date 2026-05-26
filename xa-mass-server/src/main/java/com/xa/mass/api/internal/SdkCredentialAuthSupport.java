@@ -17,10 +17,7 @@ public final class SdkCredentialAuthSupport {
         if (authProvider == null) {
             return null;
         }
-        String credential = firstNonBlank(apiKeyHeader);
-        if (credential == null && authorizationHeader != null && authorizationHeader.startsWith(BEARER_PREFIX)) {
-            credential = firstNonBlank(authorizationHeader.substring(BEARER_PREFIX.length()));
-        }
+        String credential = extractCredential(apiKeyHeader, authorizationHeader);
         if (credential == null) {
             return null;
         }
@@ -30,6 +27,14 @@ public final class SdkCredentialAuthSupport {
     public static boolean hasCredentialAttempt(String apiKeyHeader, String authorizationHeader) {
         return firstNonBlank(apiKeyHeader) != null
                 || (authorizationHeader != null && authorizationHeader.startsWith(BEARER_PREFIX));
+    }
+
+    public static String extractCredential(String apiKeyHeader, String authorizationHeader) {
+        String credential = firstNonBlank(apiKeyHeader);
+        if (credential == null && authorizationHeader != null && authorizationHeader.startsWith(BEARER_PREFIX)) {
+            credential = firstNonBlank(authorizationHeader.substring(BEARER_PREFIX.length()));
+        }
+        return credential;
     }
 
     public static String firstNonBlank(String value) {
