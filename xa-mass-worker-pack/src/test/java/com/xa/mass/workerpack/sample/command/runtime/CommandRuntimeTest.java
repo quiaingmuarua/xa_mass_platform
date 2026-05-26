@@ -369,6 +369,11 @@ class CommandRuntimeTest {
         }
 
         @Override
+        public List<WorkerCommandSnapshot> pullWorkerCommands(String workerId, int maxCommands) {
+            return List.of();
+        }
+
+        @Override
         public WorkerCommandSnapshot getWorkerCommand(String commandId) {
             return null;
         }

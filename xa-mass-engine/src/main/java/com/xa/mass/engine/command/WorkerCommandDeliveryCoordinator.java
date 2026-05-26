@@ -32,28 +32,69 @@ public final class WorkerCommandDeliveryCoordinator {
                     "command not found for delivery");
         }
         if (record.status() != WorkerCommandStatus.REQUESTED) {
-            WorkerCommandLifecycleResult lifecycleResult = lifecycleOwner.markDeliveryAccepted(
-                    record.commandId(), "command delivery already applied");
+            WorkerCommandLifecycleResult lifecycleResult = new WorkerCommandLifecycleResult(
+                    WorkerCommandLifecycleResultCode.IDEMPOTENT,
+                    record,
+                    record.status(),
+                    record.status(),
+                    "command delivery already applied"
+            );
             traceEventLogger.workerCommandStatusTransition(lifecycleResult);
             return lifecycleResult;
         }
 
-        WorkerCommandDeliveryResult deliveryResult;
+        WorkerCommandRecord attemptRecord = lifecycleOwner.beginDeliveryAttempt(
+                record.commandId(),
+                "command delivery attempt started"
+        );
+        if (attemptRecord == null || attemptRecord.status() != WorkerCommandStatus.REQUESTED) {
+            WorkerCommandRecord latest = lifecycleOwner.command(record.commandId()).orElse(record);
+            WorkerCommandLifecycleResult lifecycleResult = new WorkerCommandLifecycleResult(
+                    WorkerCommandLifecycleResultCode.IDEMPOTENT,
+                    latest,
+                    latest.status(),
+                    latest.status(),
+                    "command delivery already in flight or applied"
+            );
+            traceEventLogger.workerCommandStatusTransition(lifecycleResult);
+            return lifecycleResult;
+        }
+
         try {
-            deliveryResult = deliveryPort.deliver(record);
+            WorkerCommandDeliveryResult deliveryResult;
+            deliveryResult = deliveryPort.deliver(attemptRecord);
+            if (deliveryResult == null) {
+                deliveryResult = WorkerCommandDeliveryResult.failed("command delivery returned no result");
+            }
+            WorkerCommandLifecycleResult lifecycleResult;
+            if (deliveryResult.accepted()) {
+                lifecycleResult = lifecycleOwner.markDeliveryAccepted(attemptRecord.commandId(), deliveryResult.reason());
+            } else if (deliveryResult.deferred() || deliveryResult.workerUnavailable()) {
+                WorkerCommandRecord deferredRecord = lifecycleOwner.recordStatusReason(
+                        attemptRecord.commandId(),
+                        deliveryResult.reason()
+                );
+                lifecycleResult = new WorkerCommandLifecycleResult(
+                        WorkerCommandLifecycleResultCode.DEFERRED,
+                        deferredRecord != null ? deferredRecord : attemptRecord,
+                        attemptRecord.status(),
+                        attemptRecord.status(),
+                        deliveryResult.reason()
+                );
+            } else {
+                lifecycleResult = lifecycleOwner.markFailed(attemptRecord.commandId(), deliveryResult.reason());
+            }
+            traceEventLogger.workerCommandStatusTransition(lifecycleResult);
+            return lifecycleResult;
         } catch (RuntimeException e) {
-            deliveryResult = WorkerCommandDeliveryResult.failed("command delivery failed: " + e.getMessage());
+            WorkerCommandLifecycleResult lifecycleResult = lifecycleOwner.markFailed(
+                    attemptRecord.commandId(),
+                    "command delivery failed: " + e.getMessage()
+            );
+            traceEventLogger.workerCommandStatusTransition(lifecycleResult);
+            return lifecycleResult;
+        } finally {
+            lifecycleOwner.completeDeliveryAttempt(attemptRecord.commandId());
         }
-        if (deliveryResult == null) {
-            deliveryResult = WorkerCommandDeliveryResult.failed("command delivery returned no result");
-        }
-        WorkerCommandLifecycleResult lifecycleResult;
-        if (deliveryResult.accepted()) {
-            lifecycleResult = lifecycleOwner.markDeliveryAccepted(record.commandId(), deliveryResult.reason());
-        } else {
-            lifecycleResult = lifecycleOwner.markFailed(record.commandId(), deliveryResult.reason());
-        }
-        traceEventLogger.workerCommandStatusTransition(lifecycleResult);
-        return lifecycleResult;
     }
 }

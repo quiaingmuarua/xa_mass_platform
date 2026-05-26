@@ -31,7 +31,7 @@ public class WorkerCommandRequestEventHandlerTest {
                 workerControlService(owner, new TraceEventLogger(sink)));
         handler.register(new KernelEventHandlerRegistry(runtime));
 
-        CoreEventResponse response = runtime.dispatch(request("cmd-1", "worker-a", "RESTART"),
+        CoreEventResponse response = runtime.dispatch(request("cmd-1", "worker-a", "PING"),
                 new CoreEventPrincipal("operator-a", "operator"));
 
         assertTrue(response.isSuccess());
@@ -50,7 +50,7 @@ public class WorkerCommandRequestEventHandlerTest {
         WorkerCommandRequestEventHandler handler = new WorkerCommandRequestEventHandler(
                 workerControlService(owner, TraceEventLogger.noop()));
 
-        assertTrue(handler.handle(request("cmd-1", "worker-a", "RESTART"),
+        assertTrue(handler.handle(request("cmd-1", "worker-a", "PING"),
                 new CoreEventPrincipal("operator-a", "operator")).isSuccess());
 
         CoreEventResponse conflict = handler.handle(request("cmd-1", "worker-a", "DRAIN"),
@@ -58,7 +58,7 @@ public class WorkerCommandRequestEventHandlerTest {
 
         assertFalse(conflict.isSuccess());
         assertEquals(WorkerCommandLifecycleResultCode.CONFLICT.name(), conflict.getCode());
-        assertEquals("RESTART", owner.command("cmd-1").orElseThrow().commandType());
+        assertEquals("PING", owner.command("cmd-1").orElseThrow().commandType());
     }
 
     @Test

@@ -22,6 +22,7 @@ import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.engine.watchdog.LeaseExpireWatchdog;
 import com.xa.mass.engine.watchdog.RuntimeReadyDispatchPump;
+import com.xa.mass.engine.watchdog.WorkerCommandMaintenanceWatchdog;
 import com.xa.mass.starter.config.EngineConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -60,6 +61,7 @@ public class MassEngine {
     private TaskEventService taskEvents;
     private TaskAssignWorker assignWorker;
     private LeaseExpireWatchdog leaseWatchdog;
+    private WorkerCommandMaintenanceWatchdog workerCommandMaintenanceWatchdog;
     private RuntimeReadyDispatchPump runtimeReadyDispatchPump;
     private TaskResourceReleaseListener resourceReleaseListener;
     private EngineRuntimeBridge runtimeBridge;
@@ -146,6 +148,13 @@ public class MassEngine {
 
             leaseWatchdog = new LeaseExpireWatchdog(runtimeMaintenancePort, config.getLeaseWatchdogIntervalSeconds());
             leaseWatchdog.start();
+            workerCommandMaintenanceWatchdog = new WorkerCommandMaintenanceWatchdog(
+                    config.getWorkerControlService(),
+                    config.getWorkerCommandMaintenanceIntervalSeconds(),
+                    config.getWorkerCommandMaintenanceScanLimit(),
+                    config.getWorkerCommandDeliveryMaxAttempts()
+            );
+            workerCommandMaintenanceWatchdog.start();
 
             runtimeBridge.start(eventListeners, workerManager, dispatchWakeupCallback);
             running = true;
@@ -189,6 +198,10 @@ public class MassEngine {
             if (leaseWatchdog != null) {
                 leaseWatchdog.stop();
                 leaseWatchdog = null;
+            }
+            if (workerCommandMaintenanceWatchdog != null) {
+                workerCommandMaintenanceWatchdog.stop();
+                workerCommandMaintenanceWatchdog = null;
             }
             if (runtimeReadyDispatchPump != null) {
                 runtimeReadyDispatchPump.stop();

@@ -2,6 +2,8 @@ package com.xa.mass.engine.command;
 
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -13,20 +15,30 @@ public class WorkerCommandLifecycleOwnerTest {
     void recordsCommandRequestAndExposesReadView() {
         WorkerCommandLifecycleOwner owner = new WorkerCommandLifecycleOwner();
 
-        WorkerCommandLifecycleResult result = owner.requestCommand(request("cmd-1", "worker-1", "RESTART"));
+        WorkerCommandLifecycleResult result = owner.requestCommand(request("cmd-1", "worker-1", "PING"));
 
         assertEquals(WorkerCommandLifecycleResultCode.ACCEPTED, result.code());
         assertEquals(WorkerCommandStatus.REQUESTED, result.currentStatus());
         assertEquals("cmd-1", owner.command("cmd-1").orElseThrow().commandId());
         assertEquals("worker-1", owner.command("cmd-1").orElseThrow().workerId());
-        assertEquals("RESTART", owner.command("cmd-1").orElseThrow().commandType());
+        assertEquals("PING", owner.command("cmd-1").orElseThrow().commandType());
         assertEquals(1, owner.commandsForWorker("worker-1").size());
+    }
+
+    @Test
+    void rejectsUnknownCommandTypeBeforeRecordingTruth() {
+        WorkerCommandLifecycleOwner owner = new WorkerCommandLifecycleOwner();
+
+        WorkerCommandLifecycleResult result = owner.requestCommand(request("cmd-1", "worker-1", "RESTART"));
+
+        assertEquals(WorkerCommandLifecycleResultCode.REJECTED, result.code());
+        assertTrue(owner.command("cmd-1").isEmpty());
     }
 
     @Test
     void duplicateSameRequestIsIdempotentButDifferentPayloadConflicts() {
         WorkerCommandLifecycleOwner owner = new WorkerCommandLifecycleOwner();
-        WorkerCommandRequest request = request("cmd-1", "worker-1", "RESTART");
+        WorkerCommandRequest request = request("cmd-1", "worker-1", "PING");
 
         assertEquals(WorkerCommandLifecycleResultCode.ACCEPTED, owner.requestCommand(request).code());
         assertEquals(WorkerCommandLifecycleResultCode.IDEMPOTENT, owner.requestCommand(request).code());
@@ -36,13 +48,13 @@ public class WorkerCommandLifecycleOwnerTest {
                 .payload(Map.of("mode", "fast"))
                 .build();
         assertEquals(WorkerCommandLifecycleResultCode.CONFLICT, owner.requestCommand(conflicting).code());
-        assertEquals("RESTART", owner.command("cmd-1").orElseThrow().commandType());
+        assertEquals("PING", owner.command("cmd-1").orElseThrow().commandType());
     }
 
     @Test
     void ownsCommandStatusTransitionsWithoutTaskResultConvergence() {
         WorkerCommandLifecycleOwner owner = new WorkerCommandLifecycleOwner();
-        owner.requestCommand(request("cmd-1", "worker-1", "RESTART"));
+        owner.requestCommand(request("cmd-1", "worker-1", "PING"));
 
         WorkerCommandLifecycleResult delivered = owner.markDeliveryAccepted("cmd-1", "delivery accepted");
         assertEquals(WorkerCommandLifecycleResultCode.ACCEPTED, delivered.code());
@@ -65,7 +77,7 @@ public class WorkerCommandLifecycleOwnerTest {
     @Test
     void appliesOwnerLevelAcknowledgementsWithoutTaskResultRows() {
         WorkerCommandLifecycleOwner owner = new WorkerCommandLifecycleOwner();
-        owner.requestCommand(request("cmd-1", "worker-1", "RESTART"));
+        owner.requestCommand(request("cmd-1", "worker-1", "PING"));
 
         WorkerCommandLifecycleResult delivered = owner.applyAcknowledgement(
                 WorkerCommandAcknowledgement.deliveryAccepted("cmd-1", "delivery ack"));
@@ -82,6 +94,41 @@ public class WorkerCommandLifecycleOwnerTest {
     }
 
     @Test
+    void expiresDueNonTerminalCommandsWithBoundedScan() {
+        WorkerCommandLifecycleOwner owner = new WorkerCommandLifecycleOwner();
+        owner.requestCommand(request("cmd-1", "worker-1", "PING", 1_000L));
+        owner.requestCommand(request("cmd-2", "worker-1", "DRAIN", 1_001L));
+        owner.requestCommand(request("cmd-3", "worker-1", "PING", 10_000L));
+
+        List<WorkerCommandLifecycleResult> firstScan = owner.expireDueCommands(Instant.ofEpochMilli(2_000L), 1);
+        assertEquals(1, firstScan.size());
+        assertEquals(WorkerCommandStatus.EXPIRED, firstScan.getFirst().currentStatus());
+
+        List<WorkerCommandLifecycleResult> secondScan = owner.expireDueCommands(Instant.ofEpochMilli(2_000L), 10);
+        assertEquals(1, secondScan.size());
+        assertEquals("cmd-2", secondScan.getFirst().record().commandId());
+        assertEquals(WorkerCommandStatus.EXPIRED, owner.command("cmd-2").orElseThrow().status());
+        assertEquals(WorkerCommandStatus.REQUESTED, owner.command("cmd-3").orElseThrow().status());
+    }
+
+    @Test
+    void claimsPendingCommandsForWorkerByMovingThemToDeliveryAccepted() {
+        WorkerCommandLifecycleOwner owner = new WorkerCommandLifecycleOwner();
+        owner.requestCommand(request("cmd-1", "worker-1", "PING"));
+        owner.requestCommand(request("cmd-2", "worker-1", "DRAIN"));
+        owner.requestCommand(request("cmd-3", "worker-2", "PING"));
+
+        List<WorkerCommandLifecycleResult> claimed =
+                owner.claimPendingCommandsForWorker("worker-1", 1, "pulled");
+
+        assertEquals(1, claimed.size());
+        assertEquals("cmd-1", claimed.getFirst().record().commandId());
+        assertEquals(WorkerCommandStatus.DELIVERY_ACCEPTED, claimed.getFirst().currentStatus());
+        assertEquals(WorkerCommandStatus.REQUESTED, owner.command("cmd-2").orElseThrow().status());
+        assertEquals(WorkerCommandStatus.REQUESTED, owner.command("cmd-3").orElseThrow().status());
+    }
+
+    @Test
     void missingCommandTransitionIsNotFound() {
         WorkerCommandLifecycleOwner owner = new WorkerCommandLifecycleOwner();
 
@@ -92,11 +139,18 @@ public class WorkerCommandLifecycleOwnerTest {
     }
 
     private static WorkerCommandRequest request(String commandId, String workerId, String commandType) {
+        return request(commandId, workerId, commandType, 1_779_000_000_000L);
+    }
+
+    private static WorkerCommandRequest request(String commandId,
+                                                String workerId,
+                                                String commandType,
+                                                long deadlineEpochMillis) {
         return WorkerCommandRequest.builder(commandId, workerId, commandType)
                 .requester("operator-a")
                 .reason("test")
                 .idempotencyKey("idem-1")
-                .deadlineEpochMillis(1_779_000_000_000L)
+                .deadlineEpochMillis(deadlineEpochMillis)
                 .payload(Map.of("mode", "safe"))
                 .build();
     }

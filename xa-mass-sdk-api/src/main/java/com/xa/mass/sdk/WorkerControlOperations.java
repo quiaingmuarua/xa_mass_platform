@@ -29,6 +29,8 @@ public interface WorkerControlOperations {
 
     WorkerCommandResultSnapshot acknowledgeWorkerCommand(WorkerCommandAcknowledgementRequest request);
 
+    List<WorkerCommandSnapshot> pullWorkerCommands(String workerId, int maxCommands);
+
     WorkerCommandSnapshot getWorkerCommand(String commandId);
 
     List<WorkerCommandSnapshot> listWorkerCommandsForWorker(String workerId);

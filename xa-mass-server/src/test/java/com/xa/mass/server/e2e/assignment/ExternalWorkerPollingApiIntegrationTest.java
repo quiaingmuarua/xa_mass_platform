@@ -241,6 +241,20 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         assertNotNull(command);
         assertEquals("REQUESTED", command.get("status"));
 
+        Map<String, Object> commandPollResponse = exchange(
+                "/worker-api/v1/workers/" + workerId + "/commands:poll",
+                HttpMethod.POST,
+                Map.of("maxCommands", 5),
+                workerHeaders
+        );
+        assertApiOk(commandPollResponse);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> polledCommands =
+                (List<Map<String, Object>>) responseData(commandPollResponse).get("commands");
+        assertEquals(1, polledCommands.size());
+        assertEquals("cmd-node-worker-ack-001", polledCommands.getFirst().get("commandId"));
+        assertEquals("DELIVERY_ACCEPTED", polledCommands.getFirst().get("status"));
+
         Map<String, Object> ackResponse = exchange(
                 "/worker-api/v1/workers/" + workerId + "/commands/cmd-node-worker-ack-001:ack",
                 HttpMethod.POST,
@@ -259,7 +273,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         Map<String, Object> readCommand = (Map<String, Object>) readResponse.get("data");
         assertEquals(workerId, readCommand.get("workerId"));
         assertEquals("DELIVERY_ACCEPTED", readCommand.get("status"));
-        assertEquals("accepted", readCommand.get("statusReason"));
+        assertEquals("command pulled by worker", readCommand.get("statusReason"));
 
         String taskId = createReadyCrawlerTask(submitterHeaders);
         for (int attempt = 0; attempt < 4; attempt++) {

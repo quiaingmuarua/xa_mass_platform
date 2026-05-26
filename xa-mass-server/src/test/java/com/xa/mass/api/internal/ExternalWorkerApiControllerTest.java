@@ -433,6 +433,58 @@ class ExternalWorkerApiControllerTest {
     }
 
     @Test
+    void pollWorkerCommandsReturnsWorkerOwnedCommands() throws Exception {
+        WorkerCommandSnapshot command = new WorkerCommandSnapshot(
+                "cmd-poll-001",
+                "node-worker-1",
+                "PING",
+                "DELIVERY_ACCEPTED",
+                "operator",
+                "probe",
+                "idem-1",
+                1770000000000L,
+                Map.of("mode", "check"),
+                "command pulled by worker",
+                1,
+                Instant.parse("2026-05-20T10:00:00Z"),
+                Instant.parse("2026-05-20T10:00:00Z"),
+                Instant.parse("2026-05-20T10:00:01Z")
+        );
+        when(workerControl.pullWorkerCommands("node-worker-1", 2)).thenReturn(List.of(command));
+
+        mockMvc.perform(post("/worker-api/v1/workers/{workerId}/commands:poll", "node-worker-1")
+                        .contentType("application/json")
+                        .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
+                        .content("""
+                                {
+                                  "maxCommands": 2
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.count").value(1))
+                .andExpect(jsonPath("$.data.commands[0].commandId").value("cmd-poll-001"))
+                .andExpect(jsonPath("$.data.commands[0].status").value("DELIVERY_ACCEPTED"));
+
+        verify(workerControl).pullWorkerCommands("node-worker-1", 2);
+    }
+
+    @Test
+    void pollWorkerCommandsRejectsInvalidLimit() throws Exception {
+        mockMvc.perform(post("/worker-api/v1/workers/{workerId}/commands:poll", "node-worker-1")
+                        .contentType("application/json")
+                        .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
+                        .content("""
+                                {
+                                  "maxCommands": 0
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value("maxCommands must be greater than 0"));
+    }
+
+    @Test
     void pollTasksRejectsNegativeTimeout() throws Exception {
         mockMvc.perform(post("/worker-api/v1/workers/{workerId}:poll", "node-worker-1")
                         .contentType("application/json")
@@ -651,6 +703,8 @@ class ExternalWorkerApiControllerTest {
                 1770000000000L,
                 Map.of("mode", "soft"),
                 null,
+                0,
+                null,
                 Instant.parse("2026-05-20T10:00:00Z"),
                 Instant.parse("2026-05-20T10:00:00Z")
         );
@@ -688,6 +742,8 @@ class ExternalWorkerApiControllerTest {
                 "idem-1",
                 1770000000000L,
                 Map.of(),
+                null,
+                0,
                 null,
                 Instant.parse("2026-05-20T10:00:00Z"),
                 Instant.parse("2026-05-20T10:00:00Z")

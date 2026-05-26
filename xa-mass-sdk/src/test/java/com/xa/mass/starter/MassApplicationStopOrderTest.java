@@ -1,6 +1,10 @@
 package com.xa.mass.starter;
 
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
+import com.xa.mass.engine.command.WorkerCommandDeliveryResult;
+import com.xa.mass.engine.command.WorkerCommandDeliveryStatus;
+import com.xa.mass.engine.command.WorkerCommandRecord;
+import com.xa.mass.engine.command.WorkerCommandStatus;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
@@ -15,10 +19,12 @@ import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -171,6 +177,49 @@ class MassApplicationStopOrderTest {
     }
 
     @Test
+    void realtimeWorkerCommandDeliveryUsesResolvedRawRouteAndCommandFrame() throws Exception {
+        AtomicReference<String> sentJson = new AtomicReference<>();
+        RawWorkerMessageChannel channel = mock(RawWorkerMessageChannel.class);
+        TransportRuntimeRegistry registry = mock(TransportRuntimeRegistry.class);
+        WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class,
+                withSettings().extraInterfaces(WorkerEndpointInspector.class));
+        WorkerEndpointInspector inspector = (WorkerEndpointInspector) endpointRegistry;
+        when(registry.resolveWorkerAdapterId("worker-command-1")).thenReturn("websocket");
+        when(inspector.listWorkerEndpoints()).thenReturn(List.of(
+                new WorkerEndpointSnapshot("route-command", "worker-command-1", true, "endpoint-1", "websocket")
+        ));
+        when(channel.adapterId()).thenReturn("websocket");
+        doAnswer(inv -> {
+            sentJson.set(inv.getArgument(1, String.class));
+            return null;
+        }).when(channel).sendToAdapterRoute(eq("route-command"), anyString(), anyString());
+        MassApplication app = new MassApplication(null, enabledWebSocket(), disabledEngine());
+        inject(app, "rawWorkerMessageChannelsByAdapterId", rawChannels(channel));
+        inject(app, "transportRuntimeRegistry", registry);
+        inject(app, "endpointRegistry", endpointRegistry);
+
+        WorkerCommandDeliveryResult result = invokeRealtimeCommandDelivery(app, command("cmd-realtime", "worker-command-1"));
+
+        assertEquals(WorkerCommandDeliveryStatus.ACCEPTED, result.status());
+        verify(channel).sendToAdapterRoute(eq("route-command"), anyString(), eq("worker-command-cmd-realtime"));
+        assertTrue(sentJson.get().contains("\"type\":\"worker.command\""));
+        assertTrue(sentJson.get().contains("\"commandId\":\"cmd-realtime\""));
+        assertTrue(sentJson.get().contains("\"commandType\":\"PING\""));
+    }
+
+    @Test
+    void realtimeWorkerCommandDeliveryDefersWhenWorkerAdapterHasNoRawCarrier() throws Exception {
+        TransportRuntimeRegistry registry = mock(TransportRuntimeRegistry.class);
+        when(registry.resolveWorkerAdapterId("worker-polling-1")).thenReturn("polling");
+        MassApplication app = new MassApplication(null, enabledWebSocket(), disabledEngine());
+        inject(app, "transportRuntimeRegistry", registry);
+
+        WorkerCommandDeliveryResult result = invokeRealtimeCommandDelivery(app, command("cmd-polling", "worker-polling-1"));
+
+        assertEquals(WorkerCommandDeliveryStatus.DEFERRED, result.status());
+    }
+
+    @Test
     void startBootstrapsManagedAdapterEvenWhenBundledWebSocketIsDisabled() {
         ManagedTransportAdapter adapter = mock(ManagedTransportAdapter.class);
         when(adapter.isRunning()).thenReturn(true);
@@ -294,6 +343,37 @@ class MassApplicationStopOrderTest {
         return byAdapterId;
     }
 
+    private WorkerCommandDeliveryResult invokeRealtimeCommandDelivery(MassApplication app,
+                                                                      WorkerCommandRecord command) {
+        try {
+            var method = MassApplication.class.getDeclaredMethod("deliverRealtimeWorkerCommand", WorkerCommandRecord.class);
+            method.setAccessible(true);
+            return (WorkerCommandDeliveryResult) method.invoke(app, command);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private WorkerCommandRecord command(String commandId, String workerId) {
+        Instant now = Instant.parse("2026-05-26T00:00:00Z");
+        return new WorkerCommandRecord(
+                commandId,
+                workerId,
+                "PING",
+                WorkerCommandStatus.REQUESTED,
+                "operator",
+                "test",
+                null,
+                1_779_000_000_000L,
+                Map.of("mode", "safe"),
+                "test",
+                0,
+                null,
+                now,
+                now
+        );
+    }
+
     private static final class RecordingManagedTransportAdapter implements ManagedTransportAdapter {
         private final List<String> order;
         private final String name;
@@ -409,4 +489,3 @@ class MassApplicationStopOrderTest {
         }
     }
 }
-

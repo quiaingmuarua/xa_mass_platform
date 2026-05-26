@@ -16,6 +16,10 @@ public record WorkerCommandDeliveryResult(
         return new WorkerCommandDeliveryResult(WorkerCommandDeliveryStatus.ACCEPTED, reason);
     }
 
+    public static WorkerCommandDeliveryResult deferred(String reason) {
+        return new WorkerCommandDeliveryResult(WorkerCommandDeliveryStatus.DEFERRED, reason);
+    }
+
     public static WorkerCommandDeliveryResult workerUnavailable(String reason) {
         return new WorkerCommandDeliveryResult(WorkerCommandDeliveryStatus.WORKER_UNAVAILABLE, reason);
     }
@@ -30,5 +34,13 @@ public record WorkerCommandDeliveryResult(
 
     public boolean accepted() {
         return status == WorkerCommandDeliveryStatus.ACCEPTED;
+    }
+
+    public boolean deferred() {
+        return status == WorkerCommandDeliveryStatus.DEFERRED;
+    }
+
+    public boolean workerUnavailable() {
+        return status == WorkerCommandDeliveryStatus.WORKER_UNAVAILABLE;
     }
 }

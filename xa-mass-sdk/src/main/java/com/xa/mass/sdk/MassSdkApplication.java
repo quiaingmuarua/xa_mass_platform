@@ -540,6 +540,15 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
+    public List<WorkerCommandSnapshot> pullWorkerCommands(String workerId, int maxCommands) {
+        return requireStartedWorkerControlService()
+                .claimPendingWorkerCommands(requireWorkerId(workerId), Math.max(1, maxCommands))
+                .stream()
+                .map(this::toWorkerCommandSnapshot)
+                .toList();
+    }
+
+    @Override
     public WorkerCommandSnapshot getWorkerCommand(String commandId) {
         return toWorkerCommandSnapshot(requireStartedWorkerControlService()
                 .workerCommand(requireCommandId(commandId))
@@ -1758,6 +1767,8 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 record.deadlineEpochMillis(),
                 record.payload(),
                 record.statusReason(),
+                record.deliveryAttemptCount(),
+                record.lastDeliveryAttemptAt(),
                 record.createdAt(),
                 record.updatedAt()
         );

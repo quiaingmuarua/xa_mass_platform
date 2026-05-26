@@ -1,6 +1,8 @@
 # Worker Command Delivery Roadmap
 
-Status: proposed implementation roadmap.
+Status: implementation started; WCD-0 through WCD-6 first slice is implemented.
+WCD-7 read-surface slice is implemented for SDK/server command snapshots; no
+frontend console work has been added.
 
 This roadmap turns the existing worker-command lifecycle skeleton into a usable
 control path. It is engine-owned because command request/status truth already
@@ -48,16 +50,25 @@ Implemented:
 - `WorkerControlService.applyWorkerCommandAcknowledgement(...)`
 - SDK/server command request, acknowledgement, and read surfaces
 - dispatch gate translation for accepted `DRAIN` command lifecycle results
+- command catalog admission for first-slice `DRAIN` and `PING`
+- bounded command deadline expiry through engine worker-control maintenance
+- optional post-commit command delivery handoff seam in `WorkerControlService`
+- polling-worker command pull route under `/worker-api/v1/**`
+- realtime command push first slice through existing raw worker route carriers
+- sample websocket/socket workers distinguish `type=worker.command` from task
+  dispatch and acknowledge through `WorkerControlOperations`
+- bounded retry first slice for owner-indexed `REQUESTED` commands through
+  worker command maintenance
+- command delivery attempt count is tracked on command records
+- command read snapshots expose delivery attempt count and last attempt time
 
 Missing:
 
-- production `WorkerCommandDeliveryPort` implementation
-- automatic request-to-delivery handoff
-- worker-visible command delivery over polling or realtime transports
-- worker-side command acknowledgement ingress as a normal external-worker flow
-- deadline expiry for `REQUESTED`, `DELIVERY_ACCEPTED`, and
-  `EXECUTION_ACCEPTED`
-- delivery retry / unavailable policy
+- formal public worker command frame DTOs if the current JSON shape needs to
+  become stable external contract
+- richer command execution semantics beyond sample-worker immediate success ack
+- richer retry scheduling/backoff beyond bounded maintenance retry
+- frontend/operator console rendering, if a UI owner later needs it
 
 ## Owner Boundaries
 
@@ -234,12 +245,14 @@ Scope:
   - accepted handoff -> `DELIVERY_ACCEPTED`
   - unavailable/rejected/failed -> current baseline `FAILED`
 - do not implement retry yet
-- use an explicit no-op/unavailable delivery port in tests/config where
-  command delivery is disabled
+- do not install a default unavailable/no-op delivery port in production
+  runtime; polling workers must be able to pull `REQUESTED` commands instead
+  of having them failed before the worker asks for them
+- only configured coordinators participate in request-time handoff
 
 Acceptance:
 
-- production request path can invoke delivery coordinator
+- production request path can invoke a configured delivery coordinator
 - `requestWorkerCommand(...)` returns after command creation and delivery
   handoff submission, not after worker receipt
 - `WorkerControlService.requestWorkerCommand(...)` does not directly own
@@ -263,9 +276,11 @@ Scope:
   - the response includes enough command identity for later execution ack
   - worker execution ack later advances to `EXECUTION_ACCEPTED`, `SUCCEEDED`,
     or `FAILED`
-- if the HTTP response is lost after `DELIVERY_ACCEPTED`, deadline expiry is
-  the recovery path in Phase 1; do not add a second delivery-accepted ack round
-  trip just to hide that window
+- if the HTTP response is lost after `DELIVERY_ACCEPTED`, deadline expiry
+  closes command status in Phase 1; dispatch recovery still requires an
+  explicit worker/operator recovery path and must not silently clear
+  `WORKER_COMMAND`
+- do not add a second delivery-accepted ack round trip just to hide that window
 - add worker-facing command acknowledgement route if existing ack route is not
   sufficient for public polling worker contract
 - update external worker quickstart and samples only after API is wired
@@ -283,7 +298,8 @@ Acceptance:
 - polling worker can acknowledge execution/success/failure
 - `DRAIN` delivery acceptance or execution acknowledgement disables future
   dispatch through `WORKER_COMMAND`
-- dropped polling responses are recoverable by command deadline expiry
+- dropped polling responses converge command status by deadline expiry; they do
+  not silently clear command-driven dispatch gates
 - task result APIs are not involved
 
 ### WCD-5: Realtime Command Push
@@ -293,26 +309,33 @@ opening a second connection.
 
 Scope:
 
-- define worker-facing command DTOs in `xa-mass-sdk-api`
-- define the transport-neutral command outbound carrier envelope in
-  `transport_api`
-- add websocket/socket frame type distinct from task dispatch
+- first slice uses an explicit JSON worker frame with `type=worker.command`
+  over existing raw worker message carriers
+- do not put adapter-specific frame shapes into `transport_api`
+- keep the frame distinct from task dispatch and task result frames
 - route command envelope to the worker's active route owner
 - worker SDK/sample clients distinguish task dispatch from command delivery
 - acknowledgements still enter command-specific ack surface
+- realtime handoff for a worker without a raw carrier returns `DEFERRED`, not
+  `FAILED`, so polling workers can still pull `REQUESTED` commands
+- formal DTO/schema promotion is deferred until the frame shape is proven by
+  websocket/socket worker clients
 
 Out of scope:
 
 - command payload schema registry
 - generic unified event envelope runtime
 - task dispatch lease/result reuse
+- command execution policy beyond first-slice sample acknowledgement
 
 Acceptance:
 
 - realtime worker receives command without polling
 - task dispatch and command delivery frame types are distinguishable
 - engine command package does not own transport frame schema
-- missing/offline route reports unavailable/rejected handoff
+- missing/offline realtime route reports unavailable handoff when the adapter is
+  expected to be realtime
+- missing raw carrier reports deferred handoff so polling delivery can claim it
 - command lifecycle changes are visible through SDK/server read surfaces
 
 ### WCD-6: Retry And Unavailable Policy
@@ -321,20 +344,33 @@ Goal: add bounded retry after first delivery path works.
 
 Scope:
 
-- define retryable delivery statuses
-- extend `WorkerCommandMaintenanceService` from WCD-2 with retry scheduling
-- add retry schedule for commands whose delivery handoff failed in a retryable
-  way
+- first slice treats `WORKER_UNAVAILABLE` and `DEFERRED` delivery outcomes as
+  retryable by keeping the command in `REQUESTED`
+- `REJECTED`, delivery exceptions, and hard `FAILED` outcomes still close the
+  command as `FAILED`
+- extend command maintenance from WCD-2 with bounded retry of owner-indexed
+  `REQUESTED` commands
+- record delivery attempt count on the command record before each handoff
+- guard each command with an owner-local in-flight delivery attempt so
+  request-time handoff and maintenance retry do not push the same command
+  concurrently in the same runtime
 - cap attempts and stop at deadline
 - keep retry policy explicit and configurable
+- apply command-status-to-dispatch-gate policy after delivery coordinator
+  transitions, not only after worker ack/polling paths
 
 Acceptance:
 
 - transient unavailable worker can receive command after route becomes
   available
 - retry stops at deadline
+- retry stops after configured max attempts and closes the command as `FAILED`
 - non-retryable rejection closes command as `FAILED`
 - retry pump does not scan all workers or task rows
+- concurrent delivery attempts for the same command call the delivery port at
+  most once while the first attempt is in flight
+- accepted realtime `DRAIN` handoff applies `WORKER_COMMAND` dispatch gate
+  policy through `WorkerDispatchAvailabilityPolicy`
 
 ### WCD-7: Operator Read And Console Polish
 
@@ -342,6 +378,13 @@ Goal: expose command state without changing ownership.
 
 This phase can run after WCD-3, and does not need to wait for WCD-6 retry.
 It must remain read/control polish, not a lifecycle owner.
+
+Implemented first slice:
+
+- existing SDK/server list/detail command reads expose command status,
+  deadline, worker id, command type, last reason, delivery attempt count, and
+  last delivery attempt time
+- no frontend console change is included in this roadmap implementation slice
 
 Scope:
 

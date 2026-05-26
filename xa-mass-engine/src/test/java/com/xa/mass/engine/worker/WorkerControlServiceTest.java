@@ -2,6 +2,8 @@ package com.xa.mass.engine.worker;
 
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.command.WorkerCommandAcknowledgement;
+import com.xa.mass.engine.command.WorkerCommandDeliveryCoordinator;
+import com.xa.mass.engine.command.WorkerCommandDeliveryResult;
 import com.xa.mass.engine.command.WorkerCommandLifecycleOwner;
 import com.xa.mass.engine.command.WorkerCommandRequest;
 import com.xa.mass.engine.command.WorkerCommandStatus;
@@ -11,9 +13,11 @@ import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.trace.sink.ExecutionEventType;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static com.xa.mass.runtime.worker.DispatchAvailabilitySource.WORKER_COMMAND;
 import static com.xa.mass.engine.testutil.WorkerRegistrationTestSupport.registerWorker;
@@ -225,5 +229,193 @@ public class WorkerControlServiceTest {
                 WorkerCommandAcknowledgement.deliveryAccepted("cmd-3", "custom-policy-enable")).success());
         assertEquals(1, commandApplications.get());
         assertTrue(workerManager.isWorkerDispatchEnabled(worker));
+    }
+
+    @Test
+    void unknownCommandTypeIsRejectedAtWorkerControlBoundary() {
+        WorkerControlService service = new WorkerControlService(
+                new WorkerManager(new InMemoryWorkerStorage()),
+                new WorkerCommandLifecycleOwner(),
+                new WorkerStateProjectionOwner(),
+                TraceEventLogger.noop());
+
+        assertFalse(service.requestWorkerCommand(WorkerCommandRequest.builder(
+                        "cmd-unknown", "worker-unknown", "RESTART")
+                .requester("operator")
+                .build()).success());
+        assertTrue(service.workerCommand("cmd-unknown").isEmpty());
+    }
+
+    @Test
+    void expiredDrainCommandDoesNotCreateOrClearCommandDispatchGate() {
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        Worker worker = new Worker();
+        worker.setWorkerId("worker-expiry");
+        worker.setWorkerGroupId("group-expiry");
+        registerWorker(workerManager, worker);
+        WorkerControlService service = new WorkerControlService(
+                workerManager,
+                new WorkerCommandLifecycleOwner(),
+                new WorkerStateProjectionOwner(),
+                TraceEventLogger.noop());
+
+        assertTrue(service.requestWorkerCommand(WorkerCommandRequest.builder(
+                        "cmd-expired", "worker-expiry", "DRAIN")
+                .deadlineEpochMillis(1_000L)
+                .build()).success());
+
+        assertEquals(1, service.expireDueWorkerCommands(Instant.ofEpochMilli(2_000L), 10).size());
+        assertTrue(workerManager.isWorkerDispatchEnabled(worker));
+
+        assertTrue(service.requestWorkerCommand(WorkerCommandRequest.builder(
+                        "cmd-drain", "worker-expiry", "DRAIN")
+                .deadlineEpochMillis(3_000L)
+                .build()).success());
+        assertTrue(service.applyWorkerCommandAcknowledgement(
+                WorkerCommandAcknowledgement.deliveryAccepted("cmd-drain", "accepted")).success());
+        assertFalse(workerManager.isWorkerDispatchEnabled(worker));
+
+        assertEquals(1, service.expireDueWorkerCommands(Instant.ofEpochMilli(4_000L), 10).size());
+        assertFalse(workerManager.isWorkerDispatchEnabled(worker));
+    }
+
+    @Test
+    void requestCommandCanHandoffToConfiguredDeliveryCoordinatorAfterRecordingTruth() {
+        WorkerCommandLifecycleOwner commandOwner = new WorkerCommandLifecycleOwner();
+        WorkerControlService service = new WorkerControlService(
+                new WorkerManager(new InMemoryWorkerStorage()),
+                commandOwner,
+                new WorkerStateProjectionOwner(),
+                TraceEventLogger.noop());
+        AtomicReference<String> deliveredCommandId = new AtomicReference<>();
+        service.setCommandDeliveryCoordinator(new WorkerCommandDeliveryCoordinator(
+                        commandOwner,
+                        command -> {
+                            deliveredCommandId.set(command.commandId());
+                            return WorkerCommandDeliveryResult.accepted("queued");
+                        },
+                        TraceEventLogger.noop()),
+                Runnable::run);
+
+        assertTrue(service.requestWorkerCommand(WorkerCommandRequest.builder(
+                        "cmd-handoff", "worker-handoff", "PING")
+                .build()).success());
+
+        assertEquals("cmd-handoff", deliveredCommandId.get());
+        assertEquals(WorkerCommandStatus.DELIVERY_ACCEPTED,
+                service.workerCommand("cmd-handoff").orElseThrow().status());
+    }
+
+    @Test
+    void acceptedRealtimeDrainHandoffAppliesCommandGatePolicy() {
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        Worker worker = new Worker();
+        worker.setWorkerId("worker-realtime-drain");
+        worker.setWorkerGroupId("group-realtime-drain");
+        registerWorker(workerManager, worker);
+        WorkerCommandLifecycleOwner commandOwner = new WorkerCommandLifecycleOwner();
+        WorkerControlService service = new WorkerControlService(
+                workerManager,
+                commandOwner,
+                new WorkerStateProjectionOwner(),
+                TraceEventLogger.noop());
+        service.setCommandDeliveryCoordinator(new WorkerCommandDeliveryCoordinator(
+                        commandOwner,
+                        command -> WorkerCommandDeliveryResult.accepted("queued"),
+                        TraceEventLogger.noop()),
+                Runnable::run);
+
+        assertTrue(service.requestWorkerCommand(WorkerCommandRequest.builder(
+                        "cmd-realtime-drain", "worker-realtime-drain", "DRAIN")
+                .build()).success());
+
+        assertEquals(WorkerCommandStatus.DELIVERY_ACCEPTED,
+                service.workerCommand("cmd-realtime-drain").orElseThrow().status());
+        assertFalse(workerManager.isWorkerDispatchEnabled(worker));
+    }
+
+    @Test
+    void maintenanceRetryAttemptsIndexedRequestedCommandsUntilDeliveryAccepted() {
+        WorkerCommandLifecycleOwner commandOwner = new WorkerCommandLifecycleOwner();
+        WorkerControlService service = new WorkerControlService(
+                new WorkerManager(new InMemoryWorkerStorage()),
+                commandOwner,
+                new WorkerStateProjectionOwner(),
+                TraceEventLogger.noop());
+        AtomicInteger attempts = new AtomicInteger();
+        service.setCommandDeliveryCoordinator(new WorkerCommandDeliveryCoordinator(
+                        commandOwner,
+                        command -> attempts.incrementAndGet() == 1
+                                ? WorkerCommandDeliveryResult.workerUnavailable("route unavailable")
+                                : WorkerCommandDeliveryResult.accepted("route restored"),
+                        TraceEventLogger.noop()),
+                Runnable::run);
+
+        assertTrue(service.requestWorkerCommand(WorkerCommandRequest.builder(
+                        "cmd-retry", "worker-retry", "PING")
+                .build()).success());
+        assertEquals(WorkerCommandStatus.REQUESTED,
+                service.workerCommand("cmd-retry").orElseThrow().status());
+
+        List<com.xa.mass.engine.command.WorkerCommandLifecycleResult> retryResults =
+                service.retryPendingWorkerCommandDeliveries(10, 3);
+
+        assertEquals(1, retryResults.size());
+        assertEquals(WorkerCommandStatus.DELIVERY_ACCEPTED,
+                service.workerCommand("cmd-retry").orElseThrow().status());
+        assertEquals(2, service.workerCommand("cmd-retry").orElseThrow().deliveryAttemptCount());
+    }
+
+    @Test
+    void maintenanceRetryClosesRequestedCommandAfterConfiguredMaxAttempts() {
+        WorkerCommandLifecycleOwner commandOwner = new WorkerCommandLifecycleOwner();
+        WorkerControlService service = new WorkerControlService(
+                new WorkerManager(new InMemoryWorkerStorage()),
+                commandOwner,
+                new WorkerStateProjectionOwner(),
+                TraceEventLogger.noop());
+        service.setCommandDeliveryCoordinator(new WorkerCommandDeliveryCoordinator(
+                        commandOwner,
+                        command -> WorkerCommandDeliveryResult.workerUnavailable("route unavailable"),
+                        TraceEventLogger.noop()),
+                Runnable::run);
+
+        assertTrue(service.requestWorkerCommand(WorkerCommandRequest.builder(
+                        "cmd-max-attempts", "worker-retry", "PING")
+                .build()).success());
+
+        List<com.xa.mass.engine.command.WorkerCommandLifecycleResult> retryResults =
+                service.retryPendingWorkerCommandDeliveries(10, 1);
+
+        assertEquals(1, retryResults.size());
+        assertEquals(WorkerCommandStatus.FAILED,
+                service.workerCommand("cmd-max-attempts").orElseThrow().status());
+        assertEquals("worker command delivery attempts exhausted",
+                service.workerCommand("cmd-max-attempts").orElseThrow().statusReason());
+    }
+
+    @Test
+    void pollingClaimMarksDrainDeliveredAndDisablesCommandGate() {
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        Worker worker = new Worker();
+        worker.setWorkerId("worker-command-poll");
+        worker.setWorkerGroupId("group-command-poll");
+        registerWorker(workerManager, worker);
+        WorkerControlService service = new WorkerControlService(
+                workerManager,
+                new WorkerCommandLifecycleOwner(),
+                new WorkerStateProjectionOwner(),
+                TraceEventLogger.noop());
+
+        assertTrue(service.requestWorkerCommand(WorkerCommandRequest.builder(
+                        "cmd-poll", "worker-command-poll", "DRAIN")
+                .build()).success());
+
+        List<com.xa.mass.engine.command.WorkerCommandRecord> commands =
+                service.claimPendingWorkerCommands("worker-command-poll", 10);
+
+        assertEquals(1, commands.size());
+        assertEquals(WorkerCommandStatus.DELIVERY_ACCEPTED, commands.getFirst().status());
+        assertFalse(workerManager.isWorkerDispatchEnabled(worker));
     }
 }

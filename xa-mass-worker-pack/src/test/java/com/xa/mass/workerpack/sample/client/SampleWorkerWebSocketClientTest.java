@@ -35,14 +35,16 @@ class SampleWorkerWebSocketClientTest {
 
     private SampleClientStateRegistry stateRegistry;
     private ClientSessionManager clientSessionManager;
+    private CapturingWorkerControl workerControl;
 
     @BeforeEach
     void setUp() {
         stateRegistry = new SampleClientStateRegistry();
         clientSessionManager = new ClientSessionManager();
+        workerControl = new CapturingWorkerControl();
         SampleCommandRuntime.registerService(SampleClientStateRegistry.class, stateRegistry);
         SampleCommandRuntime.registerService(ClientSessionManager.class, clientSessionManager);
-        SampleCommandRuntime.registerService(WorkerControlOperations.class, new CapturingWorkerControl());
+        SampleCommandRuntime.registerService(WorkerControlOperations.class, workerControl);
     }
 
     @Test
@@ -351,6 +353,31 @@ class SampleWorkerWebSocketClientTest {
     }
 
     @Test
+    void realtimeWorkerCommandFrameAcknowledgesThroughWorkerControl() {
+        CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
+        JsonObject frame = workerCommandFrame("cmd-1", "worker-test", "PING");
+
+        client.onMessage(frame.toString());
+
+        assertTrue(client.sentMessages.isEmpty());
+        assertEquals(1, workerControl.commandAcknowledgements.size());
+        WorkerCommandAcknowledgementRequest acknowledgement = workerControl.commandAcknowledgements.get(0);
+        assertEquals("cmd-1", acknowledgement.commandId());
+        assertEquals("SUCCEEDED", acknowledgement.status());
+    }
+
+    @Test
+    void realtimeWorkerCommandFrameForDifferentWorkerIsIgnored() {
+        CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
+        JsonObject frame = workerCommandFrame("cmd-1", "other-worker", "PING");
+
+        client.onMessage(frame.toString());
+
+        assertTrue(client.sentMessages.isEmpty());
+        assertTrue(workerControl.commandAcknowledgements.isEmpty());
+    }
+
+    @Test
     void sampleStateGetTaskReturnsStateSnapshotInTaskOutput() throws Exception {
         CapturingSampleWorkerClient client = new CapturingSampleWorkerClient("worker-test");
         stateRegistry.getOrCreate("worker-test").setTaskResponseDelayMillis(275L);
@@ -555,6 +582,16 @@ class SampleWorkerWebSocketClientTest {
         return WsFrameTestSupport.buildTaskResult("msg-1", "demoApp", "worker-test", "task-1", "SUCCESS", "prebuilt");
     }
 
+    private JsonObject workerCommandFrame(String commandId, String workerId, String commandType) {
+        JsonObject frame = new JsonObject();
+        frame.addProperty("type", "worker.command");
+        frame.addProperty("commandId", commandId);
+        frame.addProperty("workerId", workerId);
+        frame.addProperty("commandType", commandType);
+        frame.add("payload", new JsonObject());
+        return frame;
+    }
+
     private static class CapturingSampleWorkerClient extends SampleWorkerWebSocketClient {
         private final List<String> sentMessages = new ArrayList<>();
         private final AtomicBoolean open = new AtomicBoolean(true);
@@ -651,7 +688,13 @@ class SampleWorkerWebSocketClientTest {
 
         @Override
         public WorkerCommandResultSnapshot acknowledgeWorkerCommand(WorkerCommandAcknowledgementRequest request) {
-            throw new UnsupportedOperationException("not used");
+            commandAcknowledgements.add(request);
+            return null;
+        }
+
+        @Override
+        public List<WorkerCommandSnapshot> pullWorkerCommands(String workerId, int maxCommands) {
+            return List.of();
         }
 
         @Override
@@ -663,5 +706,7 @@ class SampleWorkerWebSocketClientTest {
         public List<WorkerCommandSnapshot> listWorkerCommandsForWorker(String workerId) {
             return List.of();
         }
+
+        private final List<WorkerCommandAcknowledgementRequest> commandAcknowledgements = new ArrayList<>();
     }
 }

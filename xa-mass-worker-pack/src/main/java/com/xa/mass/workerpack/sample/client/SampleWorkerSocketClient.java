@@ -39,6 +39,7 @@ public class SampleWorkerSocketClient implements SampleWorkerClient {
     private final SocketTransportFrameCodec frameCodec = new SocketTransportFrameCodec();
     private final SampleWorkerTaskFrameHandler taskFrameHandler =
             new SampleWorkerTaskFrameHandler("socket", "realtime", "sample-socket-client");
+    private final SampleWorkerCommandFrameHandler commandFrameHandler = new SampleWorkerCommandFrameHandler();
     private final ScheduledExecutorService reconnectScheduler;
     private final ScheduledExecutorService taskResponseScheduler;
     private final AtomicInteger reconnectAttempts = new AtomicInteger(0);
@@ -154,6 +155,10 @@ public class SampleWorkerSocketClient implements SampleWorkerClient {
         }
         if (taskFrameHandler.isTaskResultFrame(frame)) {
             logger.debug("[{}] Ignoring inbound canonical socket task result frame {}", workerId, frame.get("messageId"));
+            return;
+        }
+        if (commandFrameHandler.isWorkerCommandFrame(frame)) {
+            commandFrameHandler.handleCommandFrame(frame, workerId);
             return;
         }
         logger.warn("[{}] Ignoring unsupported socket worker frame", workerId);

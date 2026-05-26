@@ -14,6 +14,8 @@ public record WorkerCommandSnapshot(
         Long deadlineEpochMillis,
         Map<String, Object> payload,
         String statusReason,
+        int deliveryAttemptCount,
+        Instant lastDeliveryAttemptAt,
         Instant createdAt,
         Instant updatedAt
 ) {

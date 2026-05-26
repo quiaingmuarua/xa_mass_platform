@@ -334,6 +334,29 @@ public class ExternalWorkerApiController {
             ));
     }
 
+    @PostMapping("/workers/{workerId}/commands:poll")
+    @Operation(summary = "Poll worker commands", description = "Returns owner-backed worker commands for polling workers.")
+    public ApiResponse<Map<String, Object>> pollWorkerCommands(
+            @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+            @PathVariable String workerId,
+            @RequestBody(required = false) ExternalWorkerCommandPollApiRequest requestBody) {
+        validateCommandPollRequest(requestBody);
+        PrincipalContext submitter = requireAuthorizedWorkerSubmitter(
+                apiKeyHeader, authorizationHeader, ApiSecurityScenario.WORKER_POLL, workerId, null, null);
+        String boundWorkerId = requireBoundWorkerId(submitter, workerId);
+        requirePollingWorker(boundWorkerId, "pollCommand");
+        int maxCommands = requestBody == null || requestBody.getMaxCommands() == null
+                ? 10
+                : requestBody.getMaxCommands();
+        List<WorkerCommandSnapshot> commands = requireWorkerControl().pullWorkerCommands(boundWorkerId, maxCommands);
+        return ApiResponse.success(Map.of(
+                "workerId", boundWorkerId,
+                "commands", commands,
+                "count", commands.size()
+        ));
+    }
+
     @PostMapping("/workers/{workerId}:report-capability")
     @Operation(summary = "Report worker capability", description = "Reports a polling worker capability snapshot through the owner-backed worker control surface.")
     public ApiResponse<WorkerCapabilityReportSnapshot> reportWorkerCapability(
@@ -534,6 +557,16 @@ public class ExternalWorkerApiController {
                     + String.join(", ", requestBody.getUnknownFieldNames()));
         }
         requireNonBlank(requestBody.getStatus(), "status");
+    }
+
+    private void validateCommandPollRequest(ExternalWorkerCommandPollApiRequest requestBody) {
+        if (requestBody != null && requestBody.hasUnknownFields()) {
+            throw new IllegalArgumentException("Unsupported worker command poll fields: "
+                    + String.join(", ", requestBody.getUnknownFieldNames()));
+        }
+        if (requestBody != null && requestBody.getMaxCommands() != null && requestBody.getMaxCommands() <= 0) {
+            throw new IllegalArgumentException("maxCommands must be greater than 0");
+        }
     }
 
     private String resolveSupportedTransportHint(String requestedTransportHint) {

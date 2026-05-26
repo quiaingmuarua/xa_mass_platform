@@ -1,6 +1,6 @@
 # Event Owner Boundary
 
-Last updated: 2026-05-18
+Last updated: 2026-05-26
 
 Status: current event-like surface and system-event owner baseline.
 
@@ -28,7 +28,7 @@ Metadata and system-event ingress are not runtime truth by themselves.
 | `KernelEventHandlerRegistry` | engine route registration | kernel-targeted handler registration for `TASK_ENGINE` / `WORKER_MANAGER` descriptors | task result, worker command, worker state, capability mutation, presence ownership |
 | `WorkerControlService` | owner-backed worker-control service surface | direct entry/read handoff for worker command, capability report, and worker state projection plus canonical trace emission | command/state/capability lifecycle truth, event payload parsing, transport delivery |
 | `WorkerCommandRequestEventHandler` | worker command event handler | parse kernel-targeted command requests and delegate to `WorkerControlService` | command lifecycle truth, delivery, ack/status ingress, task result |
-| `WorkerCommandLifecycleOwner` | worker command lifecycle owner | command request/status truth, owner-decided acknowledgement/status ingest, and read view | task result convergence, task-work dispatch, transport lifecycle state |
+| `WorkerCommandLifecycleOwner` | worker command lifecycle owner | command request/status truth, approved command catalog admission, deadline expiry, owner-decided acknowledgement/status ingest, and read view | task result convergence, task-work dispatch, transport lifecycle state |
 | `WorkerCommandDeliveryCoordinator` / `WorkerCommandDeliveryPort` | worker command delivery handoff | command-specific delivery attempt coordination and handoff result mapping back into command lifecycle | task-work dispatch, task result convergence, transport lifecycle state |
 | `WorkerCapabilityReportEventHandler` | worker capability event handler | parse kernel-targeted capability reports and delegate to `WorkerControlService` | capability composition, matching, result convergence, presence ownership |
 | `WorkerCapabilityAuthority` | worker capability composition owner | report version/idempotency/conflict rules and effective capability composition into immutable `WorkerRegistrySnapshot` | event routing, matching/ranking decisions, transport presence |
@@ -125,6 +125,13 @@ task result, or scheduling lifecycle truth by itself.
 ## Hard Boundaries
 
 - Worker command ack/status must not enter `TaskResultRuntime`.
+- Worker command catalog truth is deliberately small in the current baseline:
+  only `DRAIN` and `PING` command requests are accepted by
+  `WorkerCommandLifecycleOwner`.
+- `DRAIN` command effects are policy-derived from command lifecycle status:
+  `DELIVERY_ACCEPTED`, `EXECUTION_ACCEPTED`, and `SUCCEEDED` disable
+  `DispatchAvailabilitySource.WORKER_COMMAND`; `FAILED` and `EXPIRED` do not
+  create or clear a dispatch gate.
 - Current worker command request ingress is:
 
   ```text
@@ -149,12 +156,52 @@ task result, or scheduling lifecycle truth by itself.
     -> command read view + WORKER_COMMAND_STATUS_TRANSITION trace
   ```
 
-- The first delivery slice does not wire a transport adapter. It proves the
-  owner seam and status transitions only.
+- The first request-time delivery handoff slice is optional/configured. The
+  runtime must not install a default unavailable delivery port that fails
+  polling-worker commands before workers can pull them.
+- Polling worker command delivery is worker-facing and command-specific:
+
+  ```text
+  POST /worker-api/v1/workers/{workerId}/commands:poll
+    -> WorkerControlOperations.pullWorkerCommands(...)
+    -> WorkerControlService
+    -> WorkerCommandLifecycleOwner claim
+    -> REQUESTED -> DELIVERY_ACCEPTED
+  ```
+
+- Polling command pull is not task dispatch and does not use task-work leases
+  or task-result convergence.
+- Realtime worker command delivery is worker-facing and command-specific:
+
+  ```text
+  WorkerCommandDeliveryPort
+    -> current worker route owner / raw worker carrier
+    -> type=worker.command frame
+    -> worker command-specific acknowledgement surface
+    -> WorkerCommandLifecycleOwner
+  ```
+
+- Realtime command frames are not task dispatch frames and do not create
+  task-work leases or task-result rows.
+- A realtime handoff without a raw carrier is deferred, not failed, so polling
+  workers can still claim the same `REQUESTED` command through the polling
+  command route.
+- `WORKER_UNAVAILABLE` realtime delivery is retryable in the current baseline:
+  the command remains `REQUESTED`, delivery attempt count is recorded on the
+  command record, and bounded worker-command maintenance may retry it until
+  deadline or max attempts.
 - Command delivery success moves the command to `DELIVERY_ACCEPTED`.
-- Command delivery rejection, worker unavailability, or handoff failure closes
-  the command as `FAILED` in the current baseline because retry/expiry
-  scheduling is not implemented yet.
+- Command delivery rejection, hard failure, or delivery-port exception closes
+  the command as `FAILED` when a configured delivery coordinator reports that
+  outcome.
+- Worker command deadline expiry is a bounded maintenance path through
+  `WorkerControlService.expireDueWorkerCommands(...)` and
+  `WorkerCommandLifecycleOwner.markExpired(...)`; it does not use task-work
+  lease expiry or task-result convergence.
+- Worker command deadline expiry closes command status only. It must not
+  silently clear `WORKER_COMMAND` dispatch gates for a `DRAIN` command that was
+  previously delivery/execution accepted; recovery requires an explicit
+  worker/operator path.
 - Worker command acknowledgement/status ingress is command-specific
   `WorkerCommandAcknowledgement` input to `WorkerCommandLifecycleOwner`, not a
   task result row.

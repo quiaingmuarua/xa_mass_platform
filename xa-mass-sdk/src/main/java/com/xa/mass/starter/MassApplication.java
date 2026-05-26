@@ -1,5 +1,6 @@
 package com.xa.mass.starter;
 
+import com.google.gson.Gson;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.base.runtime.dispatch.NodeTargetedTaskDispatchHandoff;
@@ -12,6 +13,8 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.command.event.BoundedMassEventRuntime;
 import com.xa.mass.command.event.InMemoryMassEventRuntime;
 import com.xa.mass.command.event.MassEventRuntime;
+import com.xa.mass.engine.command.WorkerCommandDeliveryResult;
+import com.xa.mass.engine.command.WorkerCommandRecord;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.transport.model.TransportOutboundMessage;
@@ -70,6 +73,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class MassApplication {
 
     private static final Logger logger = LoggerFactory.getLogger(MassApplication.class);
+    private static final Gson TRANSPORT_JSON = new Gson();
     private static final int DEFAULT_DISPATCH_HANDOFF_CAPACITY =
             Integer.getInteger("xa.mass.engine.dispatchHandoffCapacity", 10_000);
 
@@ -336,6 +340,7 @@ public class MassApplication {
                         deliveryService,
                         adapterBindings
                 );
+                configureRealtimeWorkerCommandDelivery();
             }
             if (runtimeRole == TransportRuntimeRole.TRANSPORT_CONSUMER) {
                 startTransportNodeHeartbeat(adapterBindings);
@@ -735,6 +740,75 @@ public class MassApplication {
         return true;
     }
 
+    private void configureRealtimeWorkerCommandDelivery() {
+        if (!engineConfig.isEnabled()
+                || transportRuntimeComposition.getRuntimeRole() == TransportRuntimeRole.TRANSPORT_CONSUMER
+                || rawWorkerMessageChannelsByAdapterId.isEmpty()) {
+            return;
+        }
+        engineConfig.getWorkerControlService().setCommandDeliveryPort(
+                this::deliverRealtimeWorkerCommand,
+                task -> {
+                    if (transportRuntimeTaskExecutor == null) {
+                        task.run();
+                    } else {
+                        transportRuntimeTaskExecutor.submit(task);
+                    }
+                }
+        );
+    }
+
+    private WorkerCommandDeliveryResult deliverRealtimeWorkerCommand(WorkerCommandRecord command) {
+        if (command == null || command.workerId() == null || command.workerId().isBlank()) {
+            return WorkerCommandDeliveryResult.rejected("worker command missing workerId");
+        }
+        String normalizedWorkerId = command.workerId().trim();
+        RawWorkerMessageChannel rawWorkerMessageChannel;
+        try {
+            rawWorkerMessageChannel = resolveRawWorkerMessageChannel(normalizedWorkerId);
+        } catch (RuntimeException e) {
+            return WorkerCommandDeliveryResult.workerUnavailable("worker command route resolution failed: " + e.getMessage());
+        }
+        if (rawWorkerMessageChannel == null) {
+            return WorkerCommandDeliveryResult.deferred("worker has no realtime command carrier");
+        }
+        boolean sent = sendRawTransportMessage(
+                normalizedWorkerId,
+                encodeWorkerCommandFrame(command),
+                "worker-command-" + command.commandId()
+        );
+        return sent
+                ? WorkerCommandDeliveryResult.accepted("command sent to realtime worker route")
+                : WorkerCommandDeliveryResult.workerUnavailable("worker realtime route unavailable for command delivery");
+    }
+
+    private RawWorkerMessageChannel resolveRawWorkerMessageChannel(String workerId) {
+        if (transportRuntimeRegistry == null || workerId == null || workerId.isBlank()) {
+            return null;
+        }
+        String workerAdapterId = transportRuntimeRegistry.resolveWorkerAdapterId(workerId.trim());
+        if (workerAdapterId == null || workerAdapterId.isBlank()) {
+            return null;
+        }
+        return rawWorkerMessageChannelsByAdapterId.get(workerAdapterId.trim().toLowerCase(java.util.Locale.ROOT));
+    }
+
+    private String encodeWorkerCommandFrame(WorkerCommandRecord command) {
+        Map<String, Object> frame = new LinkedHashMap<>();
+        frame.put("type", "worker.command");
+        frame.put("commandId", command.commandId());
+        frame.put("workerId", command.workerId());
+        frame.put("commandType", command.commandType());
+        frame.put("payload", command.payload());
+        if (command.deadlineEpochMillis() != null) {
+            frame.put("deadlineEpochMillis", command.deadlineEpochMillis());
+        }
+        if (command.createdAt() != null) {
+            frame.put("requestedAt", command.createdAt().toString());
+        }
+        return TRANSPORT_JSON.toJson(frame);
+    }
+
     private String resolveRawMessageRouteKey(String workerId, String adapterId) {
         WorkerEndpointInspector inspector = endpointRegistry instanceof WorkerEndpointInspector endpointInspector
                 ? endpointInspector
@@ -840,4 +914,3 @@ public class MassApplication {
     }
 
 }
-

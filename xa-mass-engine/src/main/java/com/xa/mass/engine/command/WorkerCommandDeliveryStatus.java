@@ -2,6 +2,7 @@ package com.xa.mass.engine.command;
 
 public enum WorkerCommandDeliveryStatus {
     ACCEPTED("command delivery accepted"),
+    DEFERRED("command delivery deferred"),
     WORKER_UNAVAILABLE("worker unavailable for command delivery"),
     REJECTED("command delivery rejected"),
     FAILED("command delivery failed");

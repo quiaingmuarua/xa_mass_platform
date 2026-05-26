@@ -19,7 +19,7 @@ public final class WorkerCommandRequest {
     private WorkerCommandRequest(Builder builder) {
         this.commandId = requireNonBlank(builder.commandId, "commandId");
         this.workerId = requireNonBlank(builder.workerId, "workerId");
-        this.commandType = requireNonBlank(builder.commandType, "commandType");
+        this.commandType = requireApprovedCommandType(builder.commandType);
         this.requester = normalizeNullable(builder.requester);
         this.reason = normalizeNullable(builder.reason);
         this.idempotencyKey = normalizeNullable(builder.idempotencyKey);
@@ -88,6 +88,14 @@ public final class WorkerCommandRequest {
         String normalized = normalizeNullable(value);
         if (normalized == null) {
             throw new IllegalArgumentException(fieldName + " must not be blank");
+        }
+        return normalized;
+    }
+
+    private static String requireApprovedCommandType(String value) {
+        String normalized = WorkerCommandCatalog.normalize(value);
+        if (normalized == null) {
+            throw new IllegalArgumentException("commandType must not be blank");
         }
         return normalized;
     }

@@ -31,6 +31,7 @@ public class SampleWorkerWebSocketClient extends WebSocketClient implements Samp
     private final AtomicInteger reconnectAttempts = new AtomicInteger(0);
     private final String workerId;
     private final SampleWorkerTaskFrameHandler taskFrameHandler = new SampleWorkerTaskFrameHandler();
+    private final SampleWorkerCommandFrameHandler commandFrameHandler = new SampleWorkerCommandFrameHandler();
     private final String taskResultStatus;
 
     private boolean intentionalClose = false;
@@ -87,6 +88,10 @@ public class SampleWorkerWebSocketClient extends WebSocketClient implements Samp
             }
             if (taskFrameHandler.isTaskResultFrame(frame)) {
                 logger.debug("[{}] Ignoring inbound canonical task result frame {}", workerId, readString(frame, "messageId"));
+                return;
+            }
+            if (commandFrameHandler.isWorkerCommandFrame(frame)) {
+                commandFrameHandler.handleCommandFrame(frame, workerId);
                 return;
             }
             logger.warn("[{}] Ignoring unsupported worker frame shape", workerId);

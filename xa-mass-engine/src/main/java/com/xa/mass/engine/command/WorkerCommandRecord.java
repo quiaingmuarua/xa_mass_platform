@@ -14,6 +14,8 @@ public record WorkerCommandRecord(
         Long deadlineEpochMillis,
         Map<String, Object> payload,
         String statusReason,
+        int deliveryAttemptCount,
+        Instant lastDeliveryAttemptAt,
         Instant createdAt,
         Instant updatedAt
 ) {
@@ -30,6 +32,8 @@ public record WorkerCommandRecord(
                 request.deadlineEpochMillis(),
                 request.payload(),
                 request.reason(),
+                0,
+                null,
                 now,
                 now
         );
@@ -47,6 +51,46 @@ public record WorkerCommandRecord(
                 deadlineEpochMillis,
                 payload,
                 nextReason,
+                deliveryAttemptCount,
+                lastDeliveryAttemptAt,
+                createdAt,
+                now
+        );
+    }
+
+    WorkerCommandRecord withDeliveryAttempt(String attemptReason, Instant now) {
+        return new WorkerCommandRecord(
+                commandId,
+                workerId,
+                commandType,
+                status,
+                requester,
+                reason,
+                idempotencyKey,
+                deadlineEpochMillis,
+                payload,
+                attemptReason,
+                deliveryAttemptCount + 1,
+                now,
+                createdAt,
+                now
+        );
+    }
+
+    WorkerCommandRecord withStatusReason(String nextStatusReason, Instant now) {
+        return new WorkerCommandRecord(
+                commandId,
+                workerId,
+                commandType,
+                status,
+                requester,
+                reason,
+                idempotencyKey,
+                deadlineEpochMillis,
+                payload,
+                nextStatusReason,
+                deliveryAttemptCount,
+                lastDeliveryAttemptAt,
                 createdAt,
                 now
         );

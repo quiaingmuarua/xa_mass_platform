@@ -218,6 +218,8 @@ class WorkerApiControllerTest {
                 1770000000000L,
                 Map.of("mode", "soft"),
                 null,
+                0,
+                null,
                 now,
                 now
         );

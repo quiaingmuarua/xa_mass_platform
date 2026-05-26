@@ -92,6 +92,9 @@ public class EngineConfig {
     private MassBootstrapDataProvider bootstrapDataProvider;
     private long assignmentRetryDelayMillis = 1000L;
     private long leaseWatchdogIntervalSeconds = 30L;
+    private long workerCommandMaintenanceIntervalSeconds = 30L;
+    private int workerCommandMaintenanceScanLimit = 1000;
+    private int workerCommandDeliveryMaxAttempts = 3;
     private long runtimeReadyDispatchIntervalMillis = 250L;
     private long runtimeReadyDispatchIdleBackoffMaxMillis = 30_000L;
     private PollingIdleBackoffPolicy runtimeReadyDispatchIdleBackoffPolicy =
@@ -138,6 +141,9 @@ public class EngineConfig {
         this.bootstrapDataProvider = source.bootstrapDataProvider;
         this.assignmentRetryDelayMillis = source.assignmentRetryDelayMillis;
         this.leaseWatchdogIntervalSeconds = source.leaseWatchdogIntervalSeconds;
+        this.workerCommandMaintenanceIntervalSeconds = source.workerCommandMaintenanceIntervalSeconds;
+        this.workerCommandMaintenanceScanLimit = source.workerCommandMaintenanceScanLimit;
+        this.workerCommandDeliveryMaxAttempts = source.workerCommandDeliveryMaxAttempts;
         this.runtimeReadyDispatchIntervalMillis = source.runtimeReadyDispatchIntervalMillis;
         this.runtimeReadyDispatchIdleBackoffMaxMillis = source.runtimeReadyDispatchIdleBackoffMaxMillis;
         this.runtimeReadyDispatchIdleBackoffPolicy = source.runtimeReadyDispatchIdleBackoffPolicy;
@@ -450,6 +456,30 @@ public class EngineConfig {
 
     public void setLeaseWatchdogIntervalSeconds(long leaseWatchdogIntervalSeconds) {
         this.leaseWatchdogIntervalSeconds = leaseWatchdogIntervalSeconds;
+    }
+
+    public long getWorkerCommandMaintenanceIntervalSeconds() {
+        return workerCommandMaintenanceIntervalSeconds;
+    }
+
+    public void setWorkerCommandMaintenanceIntervalSeconds(long workerCommandMaintenanceIntervalSeconds) {
+        this.workerCommandMaintenanceIntervalSeconds = workerCommandMaintenanceIntervalSeconds;
+    }
+
+    public int getWorkerCommandMaintenanceScanLimit() {
+        return workerCommandMaintenanceScanLimit;
+    }
+
+    public void setWorkerCommandMaintenanceScanLimit(int workerCommandMaintenanceScanLimit) {
+        this.workerCommandMaintenanceScanLimit = workerCommandMaintenanceScanLimit;
+    }
+
+    public int getWorkerCommandDeliveryMaxAttempts() {
+        return workerCommandDeliveryMaxAttempts;
+    }
+
+    public void setWorkerCommandDeliveryMaxAttempts(int workerCommandDeliveryMaxAttempts) {
+        this.workerCommandDeliveryMaxAttempts = workerCommandDeliveryMaxAttempts;
     }
 
     public long getRuntimeReadyDispatchIntervalMillis() {
