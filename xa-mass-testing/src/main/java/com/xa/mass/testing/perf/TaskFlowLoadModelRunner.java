@@ -78,6 +78,7 @@ import java.util.concurrent.atomic.LongAdder;
  * -Dmass.load.batchSize=8
  * -Dmass.load.callbackThreads=32
  * -Dmass.load.retryFailureEveryNth=7
+ * -Dmass.load.expireFirstAttemptEveryNth=9
  * -Dmass.load.duplicateResultEveryNth=11
  * -Dmass.load.duplicateWakeupsOnApprove=4
  * }</pre>
@@ -145,6 +146,20 @@ public final class TaskFlowLoadModelRunner {
                                 int attemptNo = messageDeliveryAttempts
                                         .computeIfAbsent(messageId, ignored -> new AtomicInteger())
                                         .incrementAndGet();
+                                boolean expireFirstAttempt = shouldExpireFirstAttempt(config, logicalSeq, attemptNo);
+                                if (expireFirstAttempt) {
+                                    long expiryStartNanos = System.nanoTime();
+                                    boolean expired = maintenancePort.expireLeasedWork(taskId, messageId);
+                                    callbackMetrics.onSyntheticLeaseExpiry(
+                                            System.nanoTime() - expiryStartNanos,
+                                            expired
+                                    );
+                                    if (!expired) {
+                                        callbackFailure.compareAndSet(null, new IllegalStateException(
+                                                "synthetic lease expiry rejected for message " + messageId));
+                                    }
+                                    return;
+                                }
                                 boolean failFirstAttempt = config.retryFailureEveryNth() > 0
                                         && logicalSeq > 0
                                         && logicalSeq % config.retryFailureEveryNth() == 0
@@ -301,7 +316,7 @@ public final class TaskFlowLoadModelRunner {
                             "runtime processing counters should not drift at terminal");
                     require(proofMetrics.resultCounterDrift() == 0,
                             "runtime result count should not drift from successful work count");
-                    if (config.retryFailureEveryNth() == 0) {
+                    if (config.retryFailureEveryNth() == 0 && config.expireFirstAttemptEveryNth() == 0) {
                         require(proofMetrics.duplicateDispatchItems() == 0,
                                 "duplicate wakeups should not duplicate runtime dispatch claims");
                     }
@@ -369,6 +384,15 @@ public final class TaskFlowLoadModelRunner {
                     && !failFirstAttempt
                     && logicalSeq > 0
                     && logicalSeq % config.duplicateResultEveryNth() == 0;
+        }
+
+        private static boolean shouldExpireFirstAttempt(LoadConfig config,
+                                                        int logicalSeq,
+                                                        int attemptNo) {
+            return config.expireFirstAttemptEveryNth() > 0
+                    && attemptNo == 1
+                    && logicalSeq > 0
+                    && logicalSeq % config.expireFirstAttemptEveryNth() == 0;
         }
 
         private static Task materializeTask(TaskCommandService taskCommands, TaskCreatePlan request) {
@@ -470,6 +494,8 @@ public final class TaskFlowLoadModelRunner {
             Map<String, Object> callbacks = new LinkedHashMap<>();
             callbacks.put("invocations", callbackMetrics.totalInvocations.sum());
             callbacks.put("syntheticRetries", callbackMetrics.syntheticRetries.sum());
+            callbacks.put("syntheticLeaseExpiries", callbackMetrics.syntheticLeaseExpiries.sum());
+            callbacks.put("syntheticLeaseExpiryRejected", callbackMetrics.syntheticLeaseExpiryRejected.sum());
             callbacks.put("duplicateResultAttempts", callbackMetrics.duplicateResultAttempts.sum());
             callbacks.put("duplicateResultAccepted", callbackMetrics.duplicateResultAccepted.sum());
             callbacks.put("duplicateResultRejected", callbackMetrics.duplicateResultRejected.sum());
@@ -582,6 +608,8 @@ public final class TaskFlowLoadModelRunner {
     private static final class CallbackMetrics {
         private final LongAdder totalInvocations = new LongAdder();
         private final LongAdder syntheticRetries = new LongAdder();
+        private final LongAdder syntheticLeaseExpiries = new LongAdder();
+        private final LongAdder syntheticLeaseExpiryRejected = new LongAdder();
         private final LongAdder duplicateResultAttempts = new LongAdder();
         private final LongAdder duplicateResultAccepted = new LongAdder();
         private final LongAdder duplicateResultRejected = new LongAdder();
@@ -615,6 +643,14 @@ public final class TaskFlowLoadModelRunner {
 
         private void recordSyntheticRetry() {
             syntheticRetries.increment();
+        }
+
+        private void onSyntheticLeaseExpiry(long elapsedNanos, boolean accepted) {
+            syntheticLeaseExpiries.increment();
+            totalCallbackNanos.add(elapsedNanos);
+            if (!accepted) {
+                syntheticLeaseExpiryRejected.increment();
+            }
         }
 
         private void onDuplicateResultCallback(long elapsedNanos, boolean accepted) {
@@ -734,6 +770,7 @@ public final class TaskFlowLoadModelRunner {
                               int maxRetryCount,
                               TaskWorkloadClass workloadClass,
                               int retryFailureEveryNth,
+                              int expireFirstAttemptEveryNth,
                               int duplicateResultEveryNth,
                               int duplicateWakeupsOnApprove,
                               long timeoutSeconds,
@@ -745,7 +782,9 @@ public final class TaskFlowLoadModelRunner {
                               boolean redisCleanupNamespace) {
         private static LoadConfig fromSystemProperties() {
             int retryFailureEveryNth = intProperty("mass.load.retryFailureEveryNth", 0);
-            int maxRetryCount = Math.max(intProperty("mass.load.maxRetryCount", retryFailureEveryNth > 0 ? 1 : 0), 0);
+            int expireFirstAttemptEveryNth = intProperty("mass.load.expireFirstAttemptEveryNth", 0);
+            int defaultMaxRetryCount = retryFailureEveryNth > 0 || expireFirstAttemptEveryNth > 0 ? 1 : 0;
+            int maxRetryCount = Math.max(intProperty("mass.load.maxRetryCount", defaultMaxRetryCount), 0);
             RuntimeBackend runtimeBackend = enumProperty("mass.load.runtimeBackend", RuntimeBackend.MEMORY);
             return new LoadConfig(
                     intProperty("mass.load.messages", 256),
@@ -755,6 +794,7 @@ public final class TaskFlowLoadModelRunner {
                     maxRetryCount,
                     workloadClassProperty("mass.load.workloadClass", TaskWorkloadClass.BULK),
                     retryFailureEveryNth,
+                    expireFirstAttemptEveryNth,
                     intProperty("mass.load.duplicateResultEveryNth", 0),
                     intProperty("mass.load.duplicateWakeupsOnApprove", 0),
                     longProperty("mass.load.timeoutSeconds", 60L),
@@ -776,6 +816,7 @@ public final class TaskFlowLoadModelRunner {
             config.put("maxRetryCount", maxRetryCount);
             config.put("workloadClass", workloadClass.name());
             config.put("retryFailureEveryNth", retryFailureEveryNth);
+            config.put("expireFirstAttemptEveryNth", expireFirstAttemptEveryNth);
             config.put("duplicateResultEveryNth", duplicateResultEveryNth);
             config.put("duplicateWakeupsOnApprove", duplicateWakeupsOnApprove);
             config.put("timeoutSeconds", timeoutSeconds);
