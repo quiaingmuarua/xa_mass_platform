@@ -68,7 +68,7 @@ Testing-policy note:
 
 | Surface | Main runner / entry | Primary risk | Artifact |
 | --- | --- | --- | --- |
-| `perf` | `com.xa.mass.testing.perf.TaskFlowLoadModelRunner` | callback cost, progress recompute, release cost, storage scan pressure | `target/perf-reports/` |
+| `perf` | `com.xa.mass.testing.perf.TaskFlowLoadModelRunner` | callback cost, progress recompute, release/refill cost, runtime backend selection, counter drift | `target/perf-reports/` |
 | `perf smoke bundle` | `scripts/run-perf-smokes.sh` | current workspace perf smoke fast path for workload mix plus delayed interactive retry wakeup | `target/perf-reports/` |
 | `perf smoke: workload mix` | `com.xa.mass.testing.perf.TaskWorkloadMixSmokeRunner` | interactive assignment latency under bulk background pressure; the runner reserves an interactive lane worker so the smoke measures lane isolation instead of bulk worker starvation | `target/perf-reports/` |
 | `perf smoke: interactive retry wakeup` | `com.xa.mass.testing.perf.TaskInteractiveRetryWakeupSmokeRunner` | delayed interactive retry visibility and redispatch observability under bulk background pressure; the runner starts the runtime ready pump so delayed retry truth is consumed from `TaskWorkRuntime` rather than inferred from projection | `target/perf-reports/` |
@@ -110,7 +110,7 @@ Override them with environment variables:
 - `XA_MASS_INTERACTIVE_RETRY_DELAY_MILLIS`
 - `MASS_RETRYWAKEUP_SMOKE_MIN_DELAY_MILLIS`
 
-`scripts/run-perf-smokes.sh` also enforces that perf smoke runners stay runtime/timing-first. The smoke runners must not read compatibility message/attempt projection or message stats as their proof surface. Full load reports such as `TaskFlowLoadModelRunner` use `TaskWorkRuntime` final counters for pass/fail; storage/projection metrics are not part of the perf smoke lane.
+`scripts/run-perf-smokes.sh` also enforces that perf smoke runners stay runtime/timing-first. The smoke runners must not read compatibility message/attempt projection or message stats as their proof surface. Full load reports such as `TaskFlowLoadModelRunner` use `TaskWorkRuntime` final counters plus `TaskResultRuntime` stable-final result count for pass/fail; storage/projection metrics are not part of the perf smoke lane.
 
 Current perf smoke modeling:
 
@@ -121,8 +121,19 @@ Current perf smoke modeling:
 Perf load model:
 
 ```bash
-./mvnw -pl xa-mass-testing -am -Dexec.classpathScope=compile -Dmaven.test.skip=true compile org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.perf.TaskFlowLoadModelRunner -Dmass.load.workloadClass=INTERACTIVE
+./mvnw -q -pl xa-mass-testing -am -DskipTests install
+./mvnw -q -pl xa-mass-testing -Dexec.classpathScope=compile -Dmaven.test.skip=true org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.perf.TaskFlowLoadModelRunner -Dmass.load.runtimeBackend=memory
+./mvnw -q -pl xa-mass-testing -Dexec.classpathScope=compile -Dmaven.test.skip=true org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.perf.TaskFlowLoadModelRunner -Dmass.load.runtimeBackend=redis -Dmass.load.redisUri=redis://localhost:6379
 ```
+
+`TaskFlowLoadModelRunner` is the shared runtime-selection proof for `TRS-D2`.
+It uses explicit WorkerGroup selector truth and starts `RuntimeReadyDispatchPump`,
+so BATCH refill is driven by `TaskWorkRuntime.readyTaskIds(...)`. The report
+includes `runtimeProof.finalResultCount`, `duplicateDispatchItems`,
+`processingCounterDrift`, `resultCounterDrift`, and `claimedMessagesPerSecond`.
+Redis runs use a safe default `xa:mass:perf:*` namespace and clean it before and
+after the run; override with `mass.load.redisNamespace` when a retained namespace
+is needed.
 
 Mixed workload perf smoke:
 

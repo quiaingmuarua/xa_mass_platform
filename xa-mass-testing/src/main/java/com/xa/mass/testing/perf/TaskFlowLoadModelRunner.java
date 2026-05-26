@@ -5,6 +5,7 @@ import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
+import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
@@ -14,22 +15,34 @@ import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
+import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.engine.listener.SimpleTaskDispatchBinder;
 import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
+import com.xa.mass.engine.worker.WorkerGroupRecord;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
+import com.xa.mass.engine.watchdog.RuntimeReadyDispatchPump;
 import com.xa.mass.runtime.api.TaskWorkStats;
+import com.xa.mass.runtime.api.TaskResultRuntime;
+import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
+import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
+import com.xa.mass.runtime.redis.RedisTaskResultRuntime;
+import com.xa.mass.runtime.redis.RedisTaskWorkRuntime;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.testing.support.TestingPaths;
 import com.xa.mass.testing.workerfault.WorkerFaultReportMetadata;
 import com.xa.mass.testing.workerfault.WorkerFaultScenarioIndex;
+import io.lettuce.core.KeyScanCursor;
+import io.lettuce.core.RedisClient;
+import io.lettuce.core.ScanArgs;
+import io.lettuce.core.api.StatefulRedisConnection;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -68,6 +81,9 @@ import java.util.concurrent.atomic.LongAdder;
  */
 public final class TaskFlowLoadModelRunner {
 
+    private static final String PROJECT_CODE = "demoApp";
+    private static final String WORKER_GROUP_ID = "load-workers";
+
     private TaskFlowLoadModelRunner() {
     }
 
@@ -87,188 +103,224 @@ public final class TaskFlowLoadModelRunner {
 
         private LoadReport run() throws Exception {
             InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
-            InMemoryTaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
-            EngineConfig engineConfig = buildEngineConfig(taskStorage, taskWorkRuntime);
-            TaskCommandService taskCommands = engineConfig.getTaskCommandService();
-            TaskEventService taskEvents = engineConfig.getTaskEventService();
-            TaskResultIngestFacade taskResultIngestFacade = engineConfig.getTaskResultIngestFacade();
-            TaskAssignmentRuntimePort assignmentRuntimePort = engineConfig.getTaskAssignmentRuntimePort();
-            TaskRuntimeMaintenancePort maintenancePort = engineConfig.getTaskRuntimeMaintenancePort();
-            WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
-            AssignmentRecordService recordService = new AssignmentRecordService();
-            CallbackMetrics callbackMetrics = new CallbackMetrics();
-            ReleaseMetrics releaseMetrics = new ReleaseMetrics();
-            DispatchMetrics dispatchMetrics = new DispatchMetrics();
-            ExecutorService callbackExecutor = Executors.newFixedThreadPool(config.callbackThreads(), r -> {
-                Thread thread = new Thread(r, "TaskFlowLoadModel-callback");
-                thread.setDaemon(true);
-                return thread;
-            });
-
-            AtomicReference<Task> terminalTask = new AtomicReference<>();
-            CountDownLatch terminalLatch = new CountDownLatch(1);
-            AtomicReference<Throwable> callbackFailure = new AtomicReference<>();
-            AtomicInteger callbackAttemptId = new AtomicInteger();
-            AtomicReference<String> taskIdRef = new AtomicReference<>();
-            Map<String, AtomicInteger> messageDeliveryAttempts = new ConcurrentHashMap<>();
-
-            TaskDispatchBatchListener dispatchListener = (task, dispatchBindings) -> {
-                dispatchMetrics.recordDispatchCycle(dispatchBindings);
-                for (TaskDispatchBinding binding : dispatchBindings) {
-                    callbackExecutor.submit(() -> {
-                        int active = callbackMetrics.onCallbackStart();
-                        try {
-                            String taskId = task.taskId();
-                            String messageId = binding.messageId();
-                            int logicalSeq = ((Number) binding.payload().get("seq")).intValue();
-                            int attemptNo = messageDeliveryAttempts
-                                    .computeIfAbsent(messageId, ignored -> new AtomicInteger())
-                                    .incrementAndGet();
-                            boolean failFirstAttempt = config.retryFailureEveryNth() > 0
-                                    && logicalSeq > 0
-                                    && logicalSeq % config.retryFailureEveryNth() == 0
-                                    && attemptNo == 1;
-                            if (failFirstAttempt) {
-                                callbackMetrics.recordSyntheticRetry();
-                            }
-                            long startNanos = System.nanoTime();
-                            boolean accepted = taskResultIngestFacade.ingestTaskResult(
-                                    taskId,
-                                    messageId,
-                                    !failFirstAttempt,
-                                    failFirstAttempt ? "synthetic retryable failure" : "ok",
-                                    failFirstAttempt ? "SYNTHETIC_RETRY" : null,
-                                    Map.of(
-                                            "callbackAttempt", callbackAttemptId.incrementAndGet(),
-                                            "logicalAttempt", attemptNo,
-                                            "seq", logicalSeq
-                                    )
-                            );
-                            callbackMetrics.onCallbackComplete(System.nanoTime() - startNanos, accepted, active);
-                            if (!accepted) {
-                                callbackFailure.compareAndSet(null, new IllegalStateException(
-                                        "callback rejected for message " + messageId));
-                            }
-                        } catch (Throwable t) {
-                            callbackFailure.compareAndSet(null, t);
-                        } finally {
-                            callbackMetrics.onCallbackFinish();
-                        }
-                    });
-                }
-            };
-
-            TaskWorkerMatchingStrategy matchingStrategy = new DeterministicMatchingStrategy(workerManager);
-            SimpleTaskDispatchBinder dispatchBinder =
-                    new SimpleTaskDispatchBinder(
-                            assignmentRuntimePort,
-                            workerManager,
-                            recordService,
-                            dispatchListener
-                    );
-            TaskWorkerAssignListener workerAssignListener =
-                    new TaskWorkerAssignListener(
-                            matchingStrategy,
-                            workerManager,
-                            dispatchBinder,
-                            assignmentRuntimePort,
-                            taskEvents
-                    );
-            TaskAssignWorker assignWorker = new TaskAssignWorker(workerAssignListener, config.assignmentRetryDelayMillis());
-            MeasuredTaskResourceReleaseListener releaseListener =
-                    new MeasuredTaskResourceReleaseListener(
-                            maintenancePort,
-                            workerManager,
-                            releaseMetrics
-                    );
-
+            RuntimeBundle runtimes = RuntimeBundle.create(config);
             try {
-                registerWorkers(workerManager, config);
-
-                taskEvents.addTaskReadyListener(assignWorker::submit);
-                taskEvents.addTaskDispatchListener(assignWorker::submit);
-                taskEvents.addTaskWorkAttemptClosedListener(releaseListener::onTaskWorkAttemptClosed);
-                taskEvents.addTaskTerminalListener(releaseListener::onTaskTerminal);
-                taskEvents.addTaskTerminalListener(task -> {
-                    if (Objects.equals(taskIdRef.get(), task.getTid())) {
-                        terminalTask.compareAndSet(null, task);
-                        terminalLatch.countDown();
-                    }
+                EngineConfig engineConfig = buildEngineConfig(taskStorage, runtimes.taskWorkRuntime(), runtimes.taskResultRuntime());
+                TaskCommandService taskCommands = engineConfig.getTaskCommandService();
+                TaskEventService taskEvents = engineConfig.getTaskEventService();
+                TaskResultIngestFacade taskResultIngestFacade = engineConfig.getTaskResultIngestFacade();
+                TaskAssignmentRuntimePort assignmentRuntimePort = engineConfig.getTaskAssignmentRuntimePort();
+                TaskRuntimeMaintenancePort maintenancePort = engineConfig.getTaskRuntimeMaintenancePort();
+                TaskRuntimeRecoveryPort recoveryPort = engineConfig.getTaskRuntimeRecoveryPort();
+                WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+                AssignmentRecordService recordService = new AssignmentRecordService();
+                CallbackMetrics callbackMetrics = new CallbackMetrics();
+                ReleaseMetrics releaseMetrics = new ReleaseMetrics();
+                DispatchMetrics dispatchMetrics = new DispatchMetrics();
+                ExecutorService callbackExecutor = Executors.newFixedThreadPool(config.callbackThreads(), r -> {
+                    Thread thread = new Thread(r, "TaskFlowLoadModel-callback");
+                    thread.setDaemon(true);
+                    return thread;
                 });
 
-                assignWorker.start();
+                AtomicReference<Task> terminalTask = new AtomicReference<>();
+                CountDownLatch terminalLatch = new CountDownLatch(1);
+                AtomicReference<Throwable> callbackFailure = new AtomicReference<>();
+                AtomicInteger callbackAttemptId = new AtomicInteger();
+                AtomicReference<String> taskIdRef = new AtomicReference<>();
+                Map<String, AtomicInteger> messageDeliveryAttempts = new ConcurrentHashMap<>();
 
-                Task task = materializeTask(taskCommands, buildRequest(config));
-                taskIdRef.set(task.getTid());
-                long wallStartNanos = System.nanoTime();
-                require(taskCommands.approveTask(task.getTid()), "task should move NEW -> READY");
+                TaskDispatchBatchListener dispatchListener = (task, dispatchBindings) -> {
+                    dispatchMetrics.recordDispatchCycle(dispatchBindings);
+                    for (TaskDispatchBinding binding : dispatchBindings) {
+                        callbackExecutor.submit(() -> {
+                            int active = callbackMetrics.onCallbackStart();
+                            try {
+                                String taskId = task.taskId();
+                                String messageId = binding.messageId();
+                                int logicalSeq = ((Number) binding.payload().get("seq")).intValue();
+                                int attemptNo = messageDeliveryAttempts
+                                        .computeIfAbsent(messageId, ignored -> new AtomicInteger())
+                                        .incrementAndGet();
+                                boolean failFirstAttempt = config.retryFailureEveryNth() > 0
+                                        && logicalSeq > 0
+                                        && logicalSeq % config.retryFailureEveryNth() == 0
+                                        && attemptNo == 1;
+                                if (failFirstAttempt) {
+                                    callbackMetrics.recordSyntheticRetry();
+                                }
+                                long startNanos = System.nanoTime();
+                                boolean accepted = taskResultIngestFacade.ingestTaskResult(
+                                        taskId,
+                                        messageId,
+                                        !failFirstAttempt,
+                                        failFirstAttempt ? "synthetic retryable failure" : "ok",
+                                        failFirstAttempt ? "SYNTHETIC_RETRY" : null,
+                                        Map.of(
+                                                "callbackAttempt", callbackAttemptId.incrementAndGet(),
+                                                "logicalAttempt", attemptNo,
+                                                "seq", logicalSeq
+                                        )
+                                );
+                                callbackMetrics.onCallbackComplete(System.nanoTime() - startNanos, accepted, active);
+                                if (!accepted) {
+                                    callbackFailure.compareAndSet(null, new IllegalStateException(
+                                            "callback rejected for message " + messageId));
+                                }
+                            } catch (Throwable t) {
+                                callbackFailure.compareAndSet(null, t);
+                            } finally {
+                                callbackMetrics.onCallbackFinish();
+                            }
+                        });
+                    }
+                };
 
-                require(terminalLatch.await(config.timeoutSeconds(), TimeUnit.SECONDS),
-                        "load model timed out before task reached TERMINAL");
+                TaskWorkerMatchingStrategy matchingStrategy = new DeterministicMatchingStrategy(workerManager);
+                SimpleTaskDispatchBinder dispatchBinder =
+                        new SimpleTaskDispatchBinder(
+                                assignmentRuntimePort,
+                                workerManager,
+                                recordService,
+                                dispatchListener
+                        );
+                TaskWorkerAssignListener workerAssignListener =
+                        new TaskWorkerAssignListener(
+                                matchingStrategy,
+                                workerManager,
+                                dispatchBinder,
+                                assignmentRuntimePort,
+                                taskEvents
+                        );
+                TaskAssignWorker assignWorker = new TaskAssignWorker(workerAssignListener, config.assignmentRetryDelayMillis());
+                RuntimeReadyDispatchPump runtimeReadyDispatchPump =
+                        new RuntimeReadyDispatchPump(recoveryPort, assignWorker::submit, 50L, 64);
+                MeasuredTaskResourceReleaseListener releaseListener =
+                        new MeasuredTaskResourceReleaseListener(
+                                maintenancePort,
+                                workerManager,
+                                releaseMetrics
+                        );
 
-                if (callbackFailure.get() != null) {
-                    throw new IllegalStateException("callback execution failed", callbackFailure.get());
+                try {
+                    registerWorkers(workerManager, config);
+
+                    taskEvents.addTaskReadyListener(assignWorker::submit);
+                    taskEvents.addTaskDispatchListener(assignWorker::submit);
+                    taskEvents.addTaskWorkAttemptClosedListener(releaseListener::onTaskWorkAttemptClosed);
+                    taskEvents.addTaskTerminalListener(releaseListener::onTaskTerminal);
+                    taskEvents.addTaskTerminalListener(task -> {
+                        if (Objects.equals(taskIdRef.get(), task.getTid())) {
+                            terminalTask.compareAndSet(null, task);
+                            terminalLatch.countDown();
+                        }
+                    });
+
+                    assignWorker.start();
+                    runtimeReadyDispatchPump.start();
+
+                    Task task = materializeTask(taskCommands, buildRequest(config));
+                    taskIdRef.set(task.getTid());
+                    long wallStartNanos = System.nanoTime();
+                    require(taskCommands.approveTask(task.getTid()), "task should move NEW -> READY");
+
+                    if (!terminalLatch.await(config.timeoutSeconds(), TimeUnit.SECONDS)) {
+                        Task currentTask = taskStorage.getTask(task.getTid()).orElse(task);
+                        TaskWorkStats currentStats = runtimes.taskWorkRuntime().stats(task.getTid());
+                        throw new IllegalStateException("load model timed out before task reached TERMINAL"
+                                + " status=" + currentTask.getStatus()
+                                + " terminalReason=" + currentTask.getTerminalReason()
+                                + " dispatchCycles=" + dispatchMetrics.dispatchCycles.sum()
+                                + " dispatchItems=" + dispatchMetrics.totalDispatchItems.sum()
+                                + " callbacks=" + callbackMetrics.totalInvocations.sum()
+                                + " acceptedCallbacks=" + callbackMetrics.acceptedInvocations.sum()
+                                + " workStats=" + currentStats);
+                    }
+
+                    if (callbackFailure.get() != null) {
+                        throw new IllegalStateException("callback execution failed", callbackFailure.get());
+                    }
+
+                    assignWorker.stop();
+                    callbackExecutor.shutdown();
+                    require(callbackExecutor.awaitTermination(10, TimeUnit.SECONDS),
+                            "callback executor did not terminate");
+
+                    Task finalTask = terminalTask.get();
+                    require(finalTask != null, "task should be captured on terminal transition");
+
+                    long totalWallNanos = System.nanoTime() - wallStartNanos;
+                    TaskWorkStats finalWorkStats = runtimes.taskWorkRuntime().stats(task.getTid());
+                    long finalResultCount = runtimes.taskResultRuntime().countVisibleResults(task.getTid());
+                    RuntimeProofMetrics proofMetrics = RuntimeProofMetrics.from(
+                            finalWorkStats,
+                            finalResultCount,
+                            dispatchMetrics.totalDispatchItems.sum(),
+                            totalWallNanos
+                    );
+
+                    require(finalWorkStats.totalCount() == config.messageCount(),
+                            "unexpected final runtime work count");
+                    require(finalWorkStats.successCount() == config.messageCount(),
+                            "all runtime work should converge to success in the default model");
+                    require(finalWorkStats.failedCount() == 0 && finalWorkStats.expiredCount() == 0,
+                            "default model should not leave failed or expired runtime work");
+                    require(finalWorkStats.pendingCount() == 0 && finalWorkStats.inflightCount() == 0,
+                            "default model should not leave pending or in-flight runtime work");
+                    require(finalResultCount == config.messageCount(),
+                            "stable-final result count should match logical work count");
+                    require(proofMetrics.processingCounterDrift() == 0,
+                            "runtime processing counters should not drift at terminal");
+                    require(proofMetrics.resultCounterDrift() == 0,
+                            "runtime result count should not drift from successful work count");
+                    require(finalTask.getTerminalReason() == TaskTerminalReason.ALL_MESSAGES_SUCCEEDED,
+                            "task should converge with ALL_MESSAGES_SUCCEEDED");
+
+                    Path reportPath = writeReport(config, finalTask, totalWallNanos, dispatchMetrics, callbackMetrics,
+                            releaseMetrics, finalWorkStats, proofMetrics);
+
+                    return new LoadReport(
+                            config,
+                            finalTask.getTid(),
+                            finalTask.getStatus().name(),
+                            finalTask.getTerminalReason() != null ? finalTask.getTerminalReason().name() : "",
+                            nanosToMillis(totalWallNanos),
+                            dispatchMetrics.dispatchCycles.sum(),
+                            dispatchMetrics.totalDispatchItems.sum(),
+                            callbackMetrics.totalInvocations.sum(),
+                            callbackMetrics.syntheticRetries.sum(),
+                            callbackMetrics.acceptedInvocations.sum(),
+                            callbackMetrics.rejectedInvocations.sum(),
+                            nanosToMillis(callbackMetrics.totalCallbackNanos.sum()),
+                            callbackMetrics.maxConcurrentCallbacks.get(),
+                            releaseMetrics.attemptClosedInvocations.sum(),
+                            releaseMetrics.taskTerminalInvocations.sum(),
+                            nanosToMillis(releaseMetrics.totalAttemptClosedNanos.sum()),
+                            nanosToMillis(releaseMetrics.totalTaskTerminalNanos.sum()),
+                            FinalWorkStats.from(finalWorkStats),
+                            proofMetrics,
+                            reportPath
+                    );
+                } finally {
+                    runtimeReadyDispatchPump.stop();
+                    assignWorker.stop();
+                    callbackExecutor.shutdownNow();
                 }
-
-                assignWorker.stop();
-                callbackExecutor.shutdown();
-                require(callbackExecutor.awaitTermination(10, TimeUnit.SECONDS),
-                        "callback executor did not terminate");
-
-                Task finalTask = terminalTask.get();
-                require(finalTask != null, "task should be captured on terminal transition");
-
-                long totalWallNanos = System.nanoTime() - wallStartNanos;
-                TaskWorkStats finalWorkStats = taskWorkRuntime.stats(task.getTid());
-
-                require(finalWorkStats.totalCount() == config.messageCount(),
-                        "unexpected final runtime work count");
-                require(finalWorkStats.successCount() == config.messageCount(),
-                        "all runtime work should converge to success in the default model");
-                require(finalWorkStats.failedCount() == 0 && finalWorkStats.expiredCount() == 0,
-                        "default model should not leave failed or expired runtime work");
-                require(finalWorkStats.pendingCount() == 0 && finalWorkStats.inflightCount() == 0,
-                        "default model should not leave pending or in-flight runtime work");
-                require(finalTask.getTerminalReason() == TaskTerminalReason.ALL_MESSAGES_SUCCEEDED,
-                        "task should converge with ALL_MESSAGES_SUCCEEDED");
-
-                Path reportPath = writeReport(config, finalTask, totalWallNanos, dispatchMetrics, callbackMetrics,
-                        releaseMetrics, finalWorkStats);
-
-                return new LoadReport(
-                        config,
-                        finalTask.getTid(),
-                        finalTask.getStatus().name(),
-                        finalTask.getTerminalReason() != null ? finalTask.getTerminalReason().name() : "",
-                        nanosToMillis(totalWallNanos),
-                        dispatchMetrics.dispatchCycles.sum(),
-                        dispatchMetrics.totalDispatchItems.sum(),
-                        callbackMetrics.totalInvocations.sum(),
-                        callbackMetrics.syntheticRetries.sum(),
-                        callbackMetrics.acceptedInvocations.sum(),
-                        callbackMetrics.rejectedInvocations.sum(),
-                        nanosToMillis(callbackMetrics.totalCallbackNanos.sum()),
-                        callbackMetrics.maxConcurrentCallbacks.get(),
-                        releaseMetrics.attemptClosedInvocations.sum(),
-                        releaseMetrics.taskTerminalInvocations.sum(),
-                        nanosToMillis(releaseMetrics.totalAttemptClosedNanos.sum()),
-                        nanosToMillis(releaseMetrics.totalTaskTerminalNanos.sum()),
-                        FinalWorkStats.from(finalWorkStats),
-                        reportPath
-                );
             } finally {
-                assignWorker.stop();
-                callbackExecutor.shutdownNow();
+                runtimes.shutdown();
             }
         }
 
         private static TaskCreatePlan buildRequest(LoadConfig config) {
             TaskShellCreateRequestDto shell = new TaskShellCreateRequestDto();
             shell.setSourceRef("task-flow-load-model");
-            shell.setProject("demoApp");
+            shell.setProject(PROJECT_CODE);
             shell.setUserId("load-model");
             shell.setExecutionSpec(taskExecutionSpec(config.workloadClass(), config.batchSize(), config.maxRetryCount()));
-            shell.setSharedConfig(Map.of("source", "TaskFlowLoadModelRunner"));
+            shell.setSharedConfig(Map.of(
+                    "source", "TaskFlowLoadModelRunner",
+                    TaskSharedConfig.WORKER_GROUP_ID, WORKER_GROUP_ID
+            ));
             return new TaskCreatePlan(shell, buildInputs(config.messageCount()), false);
         }
 
@@ -299,11 +351,13 @@ public final class TaskFlowLoadModelRunner {
         }
 
         private static EngineConfig buildEngineConfig(InMemoryTaskStorage taskStorage,
-                                                      InMemoryTaskWorkRuntime taskWorkRuntime) {
+                                                      TaskWorkRuntime taskWorkRuntime,
+                                                      TaskResultRuntime taskResultRuntime) {
             EngineConfig engineConfig = new EngineConfig();
             engineConfig.setTaskStorage(taskStorage);
             engineConfig.setTaskDetailStore(taskStorage);
             engineConfig.setTaskWorkRuntime(taskWorkRuntime);
+            engineConfig.setTaskResultRuntime(taskResultRuntime);
             return engineConfig;
         }
 
@@ -319,11 +373,16 @@ public final class TaskFlowLoadModelRunner {
         }
 
         private static void registerWorkers(WorkerManager workerManager, LoadConfig config) {
+            workerManager.upsertWorkerGroup(WorkerGroupRecord.builder(WORKER_GROUP_ID)
+                    .projectCodes(List.of(PROJECT_CODE))
+                    .defaultMaxConcurrentWork(config.batchSize())
+                    .build());
             for (int i = 0; i < config.workerCount(); i++) {
                 Worker worker = new Worker();
                 worker.setWorkerId("load-worker-" + i);
                 worker.setAgentVersion("load-model");
-                worker.setSupportedProjects(List.of("demoApp"));
+                worker.setWorkerGroupId(WORKER_GROUP_ID);
+                worker.setSupportedProjects(List.of(PROJECT_CODE));
                 worker.setStatus(WorkerStatus.ONLINE);
                 worker.setLastHeartbeat(LocalDateTime.now());
                 workerManager.addWorker(worker);
@@ -336,7 +395,8 @@ public final class TaskFlowLoadModelRunner {
                                         DispatchMetrics dispatchMetrics,
                                         CallbackMetrics callbackMetrics,
                                         ReleaseMetrics releaseMetrics,
-                                        TaskWorkStats finalWorkStats) throws Exception {
+                                        TaskWorkStats finalWorkStats,
+                                        RuntimeProofMetrics proofMetrics) throws Exception {
             Map<String, Object> report = new LinkedHashMap<>(WorkerFaultReportMetadata.topLevel(
                     WorkerFaultScenarioIndex.Scenario.TASK_FLOW_LOAD_MODEL));
             report.put("generatedAt", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
@@ -376,6 +436,7 @@ public final class TaskFlowLoadModelRunner {
                     "taskTerminalMillis", nanosToMillis(releaseMetrics.totalTaskTerminalNanos.sum())
             ));
             report.put("finalWorkStats", FinalWorkStats.from(finalWorkStats).toMap());
+            report.put("runtimeProof", proofMetrics.toMap());
 
             Path reportDir = TestingPaths.reportDir("perf-reports");
             Files.createDirectories(reportDir);
@@ -395,12 +456,18 @@ public final class TaskFlowLoadModelRunner {
 
         @Override
         public List<WorkerSchedulingCandidate> matchWorkers(Task task, int maxWorkerCount) {
+            List<String> workerGroupSelector = TaskSharedConfig.workerGroupSelector(task);
+            if (workerGroupSelector.isEmpty()) {
+                return List.of();
+            }
             List<WorkerSchedulingCandidate> matched = new ArrayList<>();
             for (Worker worker : workerManager.getAllWorkers()) {
                 if (matched.size() >= maxWorkerCount) {
                     break;
                 }
-                if (!worker.isAvailable() || !worker.supportsProject(task.getProject())) {
+                if (!worker.isAvailable()
+                        || !workerGroupSelector.contains(worker.getWorkerGroupId())
+                        || !worker.supportsProject(task.getProject())) {
                     continue;
                 }
                 WorkerSchedulingCandidate candidate =
@@ -492,6 +559,84 @@ public final class TaskFlowLoadModelRunner {
         private final LongAdder totalTaskTerminalNanos = new LongAdder();
     }
 
+    private enum RuntimeBackend {
+        MEMORY,
+        REDIS
+    }
+
+    private record RuntimeBundle(RuntimeBackend backend,
+                                 TaskWorkRuntime taskWorkRuntime,
+                                 TaskResultRuntime taskResultRuntime,
+                                 String redisUri,
+                                 String redisNamespace,
+                                 boolean cleanupRedisNamespace) {
+        private static RuntimeBundle create(LoadConfig config) {
+            if (config.runtimeBackend() == RuntimeBackend.REDIS) {
+                TaskFlowLoadModelRunner.cleanupRedisNamespace(
+                        config.redisUri(),
+                        config.redisNamespace(),
+                        config.redisCleanupNamespace()
+                );
+                return new RuntimeBundle(
+                        RuntimeBackend.REDIS,
+                        new RedisTaskWorkRuntime(config.redisUri(), config.redisNamespace(), config.maxQueuedItems()),
+                        new RedisTaskResultRuntime(config.redisUri(), config.redisNamespace() + ":result"),
+                        config.redisUri(),
+                        config.redisNamespace(),
+                        config.redisCleanupNamespace()
+                );
+            }
+            return new RuntimeBundle(
+                    RuntimeBackend.MEMORY,
+                    new InMemoryTaskWorkRuntime(),
+                    new InMemoryTaskResultRuntime(),
+                    "",
+                    "",
+                    false
+            );
+        }
+
+        private void shutdown() {
+            taskWorkRuntime.shutdown();
+            taskResultRuntime.shutdown();
+            if (backend == RuntimeBackend.REDIS) {
+                TaskFlowLoadModelRunner.cleanupRedisNamespace(redisUri, redisNamespace, cleanupRedisNamespace);
+            }
+        }
+    }
+
+    private record RuntimeProofMetrics(long finalResultCount,
+                                       long duplicateDispatchItems,
+                                       long processingCounterDrift,
+                                       long resultCounterDrift,
+                                       double claimedMessagesPerSecond) {
+        private static RuntimeProofMetrics from(TaskWorkStats stats,
+                                                long finalResultCount,
+                                                long totalDispatchItems,
+                                                long totalWallNanos) {
+            long processingCounterDrift = Math.abs(stats.pendingCount() - stats.processingCount());
+            long resultCounterDrift = Math.abs(stats.successCount() - finalResultCount);
+            double seconds = Math.max(totalWallNanos / 1_000_000_000.0, 0.001);
+            return new RuntimeProofMetrics(
+                    finalResultCount,
+                    Math.max(totalDispatchItems - stats.totalCount(), 0L),
+                    processingCounterDrift,
+                    resultCounterDrift,
+                    stats.totalCount() / seconds
+            );
+        }
+
+        private Map<String, Object> toMap() {
+            Map<String, Object> values = new LinkedHashMap<>();
+            values.put("finalResultCount", finalResultCount);
+            values.put("duplicateDispatchItems", duplicateDispatchItems);
+            values.put("processingCounterDrift", processingCounterDrift);
+            values.put("resultCounterDrift", resultCounterDrift);
+            values.put("claimedMessagesPerSecond", claimedMessagesPerSecond);
+            return values;
+        }
+    }
+
     private record LoadConfig(int messageCount,
                               int workerCount,
                               int batchSize,
@@ -500,10 +645,16 @@ public final class TaskFlowLoadModelRunner {
                               TaskWorkloadClass workloadClass,
                               int retryFailureEveryNth,
                               long timeoutSeconds,
-                              long assignmentRetryDelayMillis) {
+                              long assignmentRetryDelayMillis,
+                              RuntimeBackend runtimeBackend,
+                              String redisUri,
+                              String redisNamespace,
+                              int maxQueuedItems,
+                              boolean redisCleanupNamespace) {
         private static LoadConfig fromSystemProperties() {
             int retryFailureEveryNth = intProperty("mass.load.retryFailureEveryNth", 0);
             int maxRetryCount = Math.max(intProperty("mass.load.maxRetryCount", retryFailureEveryNth > 0 ? 1 : 0), 0);
+            RuntimeBackend runtimeBackend = enumProperty("mass.load.runtimeBackend", RuntimeBackend.MEMORY);
             return new LoadConfig(
                     intProperty("mass.load.messages", 256),
                     intProperty("mass.load.workers", 8),
@@ -513,7 +664,12 @@ public final class TaskFlowLoadModelRunner {
                     workloadClassProperty("mass.load.workloadClass", TaskWorkloadClass.BULK),
                     retryFailureEveryNth,
                     longProperty("mass.load.timeoutSeconds", 60L),
-                    longProperty("mass.load.assignmentRetryDelayMillis", 25L)
+                    longProperty("mass.load.assignmentRetryDelayMillis", 25L),
+                    runtimeBackend,
+                    stringProperty("mass.load.redisUri", "redis://localhost:6379"),
+                    stringProperty("mass.load.redisNamespace", defaultRedisNamespace()),
+                    intProperty("mass.load.maxQueuedItems", 10_000),
+                    booleanProperty("mass.load.redisCleanupNamespace", true)
             );
         }
 
@@ -528,6 +684,11 @@ public final class TaskFlowLoadModelRunner {
             config.put("retryFailureEveryNth", retryFailureEveryNth);
             config.put("timeoutSeconds", timeoutSeconds);
             config.put("assignmentRetryDelayMillis", assignmentRetryDelayMillis);
+            config.put("runtimeBackend", runtimeBackend.name().toLowerCase(Locale.ROOT));
+            config.put("redisUri", runtimeBackend == RuntimeBackend.REDIS ? redisUri : "");
+            config.put("redisNamespace", runtimeBackend == RuntimeBackend.REDIS ? redisNamespace : "");
+            config.put("maxQueuedItems", maxQueuedItems);
+            config.put("redisCleanupNamespace", redisCleanupNamespace);
             return config;
         }
     }
@@ -550,11 +711,13 @@ public final class TaskFlowLoadModelRunner {
                               double attemptClosedMillis,
                               double taskTerminalMillis,
                               FinalWorkStats finalWorkStats,
+                              RuntimeProofMetrics runtimeProofMetrics,
                               Path reportPath) {
 
         private String toConsoleSummary() {
             return String.format(Locale.ROOT,
-                    "TaskFlowLoadModel taskId=%s status=%s terminalReason=%s wall=%.3fms dispatchCycles=%d dispatchItems=%d callbacks=%d syntheticRetries=%d maxConcurrentCallbacks=%d report=%s",
+                    "TaskFlowLoadModel backend=%s taskId=%s status=%s terminalReason=%s wall=%.3fms dispatchCycles=%d dispatchItems=%d callbacks=%d syntheticRetries=%d maxConcurrentCallbacks=%d claimedPerSec=%.3f resultDrift=%d report=%s",
+                    config.runtimeBackend().name().toLowerCase(Locale.ROOT),
                     taskId,
                     taskStatus,
                     terminalReason,
@@ -564,6 +727,8 @@ public final class TaskFlowLoadModelRunner {
                     callbackInvocations,
                     syntheticRetries,
                     maxConcurrentCallbacks,
+                    runtimeProofMetrics.claimedMessagesPerSecond(),
+                    runtimeProofMetrics.resultCounterDrift(),
                     reportPath);
         }
     }
@@ -615,11 +780,54 @@ public final class TaskFlowLoadModelRunner {
     }
 
     private static TaskWorkloadClass workloadClassProperty(String key, TaskWorkloadClass defaultValue) {
+        return enumProperty(key, defaultValue);
+    }
+
+    private static <T extends Enum<T>> T enumProperty(String key, T defaultValue) {
         String raw = System.getProperty(key);
         if (raw == null || raw.isBlank()) {
             return defaultValue;
         }
-        return TaskWorkloadClass.valueOf(raw.trim().toUpperCase(Locale.ROOT));
+        return Enum.valueOf(defaultValue.getDeclaringClass(), raw.trim().toUpperCase(Locale.ROOT));
+    }
+
+    private static String stringProperty(String key, String defaultValue) {
+        String raw = System.getProperty(key);
+        if (raw == null || raw.isBlank()) {
+            return defaultValue;
+        }
+        return raw.trim();
+    }
+
+    private static boolean booleanProperty(String key, boolean defaultValue) {
+        return Boolean.parseBoolean(System.getProperty(key, Boolean.toString(defaultValue)));
+    }
+
+    private static String defaultRedisNamespace() {
+        return "xa:mass:perf:" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
+    }
+
+    private static void cleanupRedisNamespace(String redisUri, String redisNamespace, boolean enabled) {
+        if (!enabled || redisUri == null || redisUri.isBlank() || redisNamespace == null || redisNamespace.isBlank()) {
+            return;
+        }
+        if (!redisNamespace.startsWith("xa:mass:perf:")) {
+            return;
+        }
+        RedisClient client = RedisClient.create(redisUri);
+        try (StatefulRedisConnection<String, String> connection = client.connect()) {
+            KeyScanCursor<String> cursor = null;
+            do {
+                cursor = cursor == null
+                        ? connection.sync().scan(ScanArgs.Builder.matches(redisNamespace + "*").limit(500))
+                        : connection.sync().scan(cursor, ScanArgs.Builder.matches(redisNamespace + "*").limit(500));
+                if (!cursor.getKeys().isEmpty()) {
+                    connection.sync().del(cursor.getKeys().toArray(String[]::new));
+                }
+            } while (!cursor.isFinished());
+        } finally {
+            client.shutdown();
+        }
     }
 
     private static double nanosToMillis(long nanos) {
