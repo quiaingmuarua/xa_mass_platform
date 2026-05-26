@@ -5,6 +5,8 @@ import com.xa.mass.api.auth.ApiAuthorizationService;
 import com.xa.mass.api.auth.ApiSecurityScenario;
 import com.xa.mass.api.auth.ApiPermissionNames;
 import com.xa.mass.api.auth.TaskSecurityViewSupport;
+import com.xa.mass.api.auth.usage.ApiUsageLedgerService;
+import com.xa.mass.api.auth.usage.ApiUsageOperation;
 import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.api.model.task.TaskApiContracts.ApiTask;
 import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskAppendOutcome;
@@ -89,6 +91,7 @@ public class TaskApiController {
     private final SyncTaskResultBridge syncTaskResultBridge;
     private final TaskSyncRequestSupervisor taskSyncRequestSupervisor;
     private final TaskStageEvidenceOperations taskStageEvidence;
+    private ApiUsageLedgerService apiUsageLedgerService;
 
     public TaskApiController(TaskQueryOperations taskQueries,
                              TaskAdminOperations taskAdmin) {
@@ -220,6 +223,12 @@ public class TaskApiController {
         this.taskStageEvidence = taskStageEvidence;
     }
 
+    @Autowired(required = false)
+    public void setApiUsageLedgerService(ApiUsageLedgerService apiUsageLedgerService) {
+        this.apiUsageLedgerService = apiUsageLedgerService;
+        this.apiAuthorizationService.setApiUsageLedgerService(apiUsageLedgerService);
+    }
+
     @GetMapping("")
     @Operation(
             summary = "List tasks",
@@ -278,6 +287,16 @@ public class TaskApiController {
                         toMassTaskShellCreateRequest(requestBody, submitterTaskCreate.project(), submitterTaskCreate.userId()),
                         submitterTaskCreate.principal()
                 ));
+                recordApiUsage(
+                        submitterTaskCreate.principal(),
+                        ApiUsageOperation.TASK_CREATE,
+                        submitterTaskCreate.project(),
+                        null,
+                        task.getTaskId(),
+                        null,
+                        null,
+                        1
+                );
                 return ok(taskApiContractAssembler.toCreateOutcome(
                         task,
                         requestBody.getExecutionSpec(),
@@ -365,12 +384,22 @@ public class TaskApiController {
             for (String eventCode : eventCodes) {
                 validateProjectAndEvent(task.getProject(), eventCode);
             }
-            resolveTaskAppender(apiKeyHeader, authorizationHeader, task.getTaskId(), task.getProject(),
-                    task.getSharedConfig(), eventCodes);
+            PrincipalContext appender = resolveTaskAppender(apiKeyHeader, authorizationHeader, task.getTaskId(), task.getProject(),
+                    task.getSharedConfig(), eventCodes, ApiUsageOperation.TASK_ITEM_APPEND, null);
             int added = taskAdmin.appendTaskItems(taskId, MassTaskItemBatchAppendRequest.builder()
                     .eventCode(requestBody.getEventCode())
                     .items(items)
                     .build());
+            recordApiUsage(
+                    appender,
+                    ApiUsageOperation.TASK_ITEM_APPEND,
+                    task.getProject(),
+                    singleOrNull(eventCodes),
+                    taskId,
+                    null,
+                    null,
+                    added
+            );
             return ok(taskApiContractAssembler.toAppendOutcome(
                     taskId,
                     added,
@@ -404,8 +433,9 @@ public class TaskApiController {
 
             String eventCode = resolveSingleSyncEventCode(requestBody, item);
             validateProjectAndEvent(task.getProject(), eventCode);
-            resolveTaskAppender(apiKeyHeader, authorizationHeader, task.getTaskId(), task.getProject(),
-                    task.getSharedConfig(), List.of(eventCode));
+            PrincipalContext appender = resolveTaskAppender(apiKeyHeader, authorizationHeader, task.getTaskId(), task.getProject(),
+                    task.getSharedConfig(), List.of(eventCode), ApiUsageOperation.TASK_ITEM_SYNC_APPEND,
+                    requestBody.getClientRequestId());
             syncLease = taskSyncRequestSupervisor.acquire(task.getProject(), taskId);
             TaskSyncRequestSupervisor.SyncLease acquiredLease = syncLease;
 
@@ -414,6 +444,16 @@ public class TaskApiController {
                     .items(items)
                     .build());
             String messageId = requireSingleMessageId(receipt);
+            recordApiUsage(
+                    appender,
+                    ApiUsageOperation.TASK_ITEM_SYNC_APPEND,
+                    task.getProject(),
+                    eventCode,
+                    taskId,
+                    messageId,
+                    requestBody.getClientRequestId(),
+                    1
+            );
             long timeoutMs = resolveSyncTimeoutMs(requestBody.getTimeoutMs());
             SyncTaskResultBridge bridge = requireSyncTaskResultBridge();
             CompletableFuture<TaskWorkFinalSnapshot> future = bridge.register(taskId, messageId);
@@ -535,7 +575,9 @@ public class TaskApiController {
             if (afterSeq < 0) {
                 throw badRequestError("afterSeq must be greater than or equal to 0");
             }
-            TaskDetailSnapshot task = requireAuthorizedTaskDetail(apiKeyHeader, authorizationHeader, taskId);
+            TaskDetailSnapshot task = requireTaskDetail(taskId);
+            PrincipalContext viewer = resolveTaskViewer(apiKeyHeader, authorizationHeader, task.getTaskId(),
+                    task.getProject(), task.getSharedConfig(), ApiUsageOperation.TASK_RESULT_READ, null);
             TaskResultQueryOperations resultQueries = requireTaskResultQueries();
             int resolvedLimit = resolveResultWindow(limit);
             TaskResultWindowSnapshot window = resultQueries.readTaskResults(taskId, afterSeq, resolvedLimit);
@@ -545,6 +587,16 @@ public class TaskApiController {
             long nextAfterSeq = window.getNextAfterSeq();
             boolean taskTerminal = isTerminalTask(task);
             boolean archiveReady = resultQueries.getTaskResultArchiveManifest(taskId).isReady();
+            recordApiUsage(
+                    viewer,
+                    ApiUsageOperation.TASK_RESULT_READ,
+                    task.getProject(),
+                    null,
+                    taskId,
+                    null,
+                    null,
+                    items.size()
+            );
 
             return ok(taskApiContractAssembler.toResultWindow(
                     taskId,
@@ -654,11 +706,23 @@ public class TaskApiController {
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
             @PathVariable String taskId) {
         return executeRawApi("Task result archive download failed", () -> {
-            TaskDetailSnapshot task = requireAuthorizedTaskDetail(apiKeyHeader, authorizationHeader, taskId);
+            TaskDetailSnapshot task = requireTaskDetail(taskId);
+            PrincipalContext viewer = resolveTaskViewer(apiKeyHeader, authorizationHeader, task.getTaskId(),
+                    task.getProject(), task.getSharedConfig(), ApiUsageOperation.TASK_ARCHIVE_DOWNLOAD, null);
             TaskResultQueryOperations resultQueries = requireTaskResultQueries();
             if (!isTerminalTask(task) || !resultQueries.getTaskResultArchiveManifest(taskId).isReady()) {
                 throw conflictError("Task result archive is not ready");
             }
+            recordApiUsage(
+                    viewer,
+                    ApiUsageOperation.TASK_ARCHIVE_DOWNLOAD,
+                    task.getProject(),
+                    null,
+                    taskId,
+                    null,
+                    null,
+                    1
+            );
             StreamingResponseBody archive = outputStream -> resultQueries.writeTaskResultArchiveContent(taskId, outputStream);
             return ResponseEntity.ok()
                     .contentType(NDJSON_MEDIA_TYPE)
@@ -871,6 +935,36 @@ public class TaskApiController {
         return normalizedTaskName + "-results-" + task.getTaskId() + ".ndjson.gz";
     }
 
+    private void recordApiUsage(PrincipalContext principal,
+                                ApiUsageOperation operation,
+                                String project,
+                                String eventCode,
+                                String taskId,
+                                String messageId,
+                                String requestId,
+                                long units) {
+        if (apiUsageLedgerService == null) {
+            return;
+        }
+        apiUsageLedgerService.recordAccepted(
+                principal,
+                operation,
+                project,
+                eventCode,
+                taskId,
+                messageId,
+                requestId,
+                units
+        );
+    }
+
+    private String singleOrNull(List<String> values) {
+        if (values == null || values.size() != 1) {
+            return null;
+        }
+        return values.get(0);
+    }
+
     private void requireBusinessBindings(String project, String userId) {
         requireProjectCode(project);
         requireUserId(userId);
@@ -889,6 +983,7 @@ public class TaskApiController {
                     Map.of(
                         "executionProfile", requestBody != null && requestBody.getExecutionSpec() != null
                                 ? String.valueOf(requestBody.getExecutionSpec().getProfile()) : "",
+                        ApiUsageLedgerService.CONTEXT_USAGE_OPERATION, ApiUsageOperation.TASK_CREATE,
                         "scenario", ApiSecurityScenario.SUBMITTER_TASK_CREATE.name()
                     )
             );
@@ -902,17 +997,33 @@ public class TaskApiController {
                                                String taskId,
                                                String project,
                                                Map<String, Object> sharedConfig) {
+        return resolveTaskViewer(apiKeyHeader, authorizationHeader, taskId, project, sharedConfig, null, null);
+    }
+
+    private PrincipalContext resolveTaskViewer(String apiKeyHeader,
+                                               String authorizationHeader,
+                                               String taskId,
+                                               String project,
+                                               Map<String, Object> sharedConfig,
+                                               ApiUsageOperation usageOperation,
+                                               String requestId) {
         try {
+            Map<String, Object> context = new LinkedHashMap<>();
+            context.put("taskId", taskId != null ? taskId : "");
+            context.put("scenario", ApiSecurityScenario.SUBMITTER_TASK_VIEW.name());
+            if (usageOperation != null) {
+                context.put(ApiUsageLedgerService.CONTEXT_USAGE_OPERATION, usageOperation);
+            }
+            if (requestId != null && !requestId.isBlank()) {
+                context.put(ApiUsageLedgerService.CONTEXT_USAGE_REQUEST_ID, requestId);
+            }
             return apiAuthorizationService.resolveAuthorizedTaskViewer(
                     apiKeyHeader,
                     authorizationHeader,
                     taskId,
                     project,
                     sharedConfig,
-                    Map.of(
-                            "taskId", taskId != null ? taskId : "",
-                            "scenario", ApiSecurityScenario.SUBMITTER_TASK_VIEW.name()
-                    )
+                    Map.copyOf(context)
             );
         } catch (com.xa.mass.api.auth.ApiForbiddenException ex) {
             throw new SecurityException(ex.getMessage());
@@ -951,7 +1062,29 @@ public class TaskApiController {
                                                  String project,
                                                  Map<String, Object> sharedConfig,
                                                  List<String> eventCodes) {
+        return resolveTaskAppender(apiKeyHeader, authorizationHeader, taskId, project, sharedConfig, eventCodes, null, null);
+    }
+
+    private PrincipalContext resolveTaskAppender(String apiKeyHeader,
+                                                 String authorizationHeader,
+                                                 String taskId,
+                                                 String project,
+                                                 Map<String, Object> sharedConfig,
+                                                 List<String> eventCodes,
+                                                 ApiUsageOperation usageOperation,
+                                                 String requestId) {
         try {
+            Map<String, Object> context = new LinkedHashMap<>();
+            context.put("taskId", taskId != null ? taskId : "");
+            context.put("project", project != null ? project : "");
+            context.put("eventCodes", eventCodes == null ? List.of() : eventCodes);
+            context.put("scenario", ApiSecurityScenario.SUBMITTER_TASK_APPEND.name());
+            if (usageOperation != null) {
+                context.put(ApiUsageLedgerService.CONTEXT_USAGE_OPERATION, usageOperation);
+            }
+            if (requestId != null && !requestId.isBlank()) {
+                context.put(ApiUsageLedgerService.CONTEXT_USAGE_REQUEST_ID, requestId);
+            }
             return apiAuthorizationService.resolveAuthorizedTaskAppender(
                     apiKeyHeader,
                     authorizationHeader,
@@ -959,12 +1092,7 @@ public class TaskApiController {
                     project,
                     sharedConfig,
                     eventCodes,
-                    Map.of(
-                            "taskId", taskId != null ? taskId : "",
-                            "project", project != null ? project : "",
-                            "eventCodes", eventCodes == null ? List.of() : eventCodes,
-                            "scenario", ApiSecurityScenario.SUBMITTER_TASK_APPEND.name()
-                    )
+                    Map.copyOf(context)
             );
         } catch (com.xa.mass.api.auth.ApiForbiddenException ex) {
             throw new SecurityException(ex.getMessage());

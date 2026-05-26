@@ -58,6 +58,40 @@ class ServerMainSourceArchitectureGuardTest {
                 "ExternalWorkerApiController must not reintroduce WorkerContext compatibility routes");
     }
 
+    @Test
+    void kernelAndTransportDoNotImportServerIamStores() throws IOException {
+        Path repoRoot = Path.of("..").toAbsolutePath().normalize();
+        List<Path> scannedRoots = List.of(
+                repoRoot.resolve("xa-mass-engine/src/main/java"),
+                repoRoot.resolve("transport"),
+                repoRoot.resolve("platform_infra")
+        );
+        List<String> violations = new ArrayList<>();
+        for (Path root : scannedRoots) {
+            if (!Files.exists(root)) {
+                continue;
+            }
+            try (Stream<Path> paths = Files.walk(root)) {
+                paths.filter(Files::isRegularFile)
+                        .filter(path -> path.toString().endsWith(".java"))
+                        .forEach(path -> {
+                            try {
+                                String source = Files.readString(path, StandardCharsets.UTF_8);
+                                if (source.contains("import com.xa.mass.api.auth.")) {
+                                    violations.add(repoRoot.relativize(path) + " imports server IAM/auth store package");
+                                }
+                            } catch (IOException e) {
+                                violations.add(path + " could not be read: " + e.getMessage());
+                            }
+                        });
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "IAM/auth stores must stay in server control-plane, not kernel/runtime/transport:\n"
+                        + String.join("\n", violations));
+    }
+
     private static void collectViolations(Path path, List<String> violations) {
         String source;
         try {

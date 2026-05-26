@@ -50,6 +50,8 @@ class TaskApiTargetedWorkerDebugIntegrationTest extends ProjectionSampleE2eTest 
     private static final String STATE_WORKER_ID = "it-worker-0";
     private static final String DISCONNECT_WORKER_ID = "it-worker-1";
     private static final String TARGET_WORKER_ID_KEY = "targetWorkerId";
+    private static final String WORKER_GROUP_ID_KEY = "workerGroupId";
+    private static final String MOCK_WORKER_GROUP_ID = "us";
 
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {
@@ -132,7 +134,10 @@ class TaskApiTargetedWorkerDebugIntegrationTest extends ProjectionSampleE2eTest 
         Map<String, Object> createBody = new LinkedHashMap<>();
         createBody.put("project", "demoApp");
         createBody.put("userId", "itest");
-        createBody.put("sharedConfig", Map.of(TARGET_WORKER_ID_KEY, workerId));
+        createBody.put("sharedConfig", Map.of(
+                TARGET_WORKER_ID_KEY, workerId,
+                WORKER_GROUP_ID_KEY, MOCK_WORKER_GROUP_ID
+        ));
         createBody.put("sourceRef", taskName);
         createBody.put("executionSpec", Map.of("batchSize", 1));
 

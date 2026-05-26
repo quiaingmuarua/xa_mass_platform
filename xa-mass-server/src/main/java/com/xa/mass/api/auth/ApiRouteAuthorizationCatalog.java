@@ -39,13 +39,17 @@ public class ApiRouteAuthorizationCatalog {
         }
         if (uri.matches("^/api/v1/tasks/[^/:]+/items$")) {
             return switch (method) {
-                case "POST" -> route(PlatformResourceType.TASK, PlatformAction.EDIT, ApiPermissionNames.TASK_EDIT);
+                case "POST" -> sdkCredentialAttempt
+                        ? route(PlatformResourceType.TASK, PlatformAction.EDIT, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
+                        : route(PlatformResourceType.TASK, PlatformAction.EDIT, ApiPermissionNames.TASK_EDIT);
                 default -> null;
             };
         }
         if (uri.matches("^/api/v1/tasks/[^/:]+/items:sync$")) {
             return switch (method) {
-                case "POST" -> route(PlatformResourceType.TASK, PlatformAction.EDIT, ApiPermissionNames.TASK_EDIT);
+                case "POST" -> sdkCredentialAttempt
+                        ? route(PlatformResourceType.TASK, PlatformAction.EDIT, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
+                        : route(PlatformResourceType.TASK, PlatformAction.EDIT, ApiPermissionNames.TASK_EDIT);
                 default -> null;
             };
         }
@@ -116,6 +120,11 @@ public class ApiRouteAuthorizationCatalog {
                     ? route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
                     : route(PlatformResourceType.TASK, PlatformAction.VIEW, ApiPermissionNames.TASK_VIEW);
         }
+        if (uri.equals("/api/v1/submitters/me/usage") && "GET".equals(method)) {
+            return sdkCredentialAttempt
+                    ? route(PlatformResourceType.API_KEY, PlatformAction.VIEW, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
+                    : null;
+        }
         if (uri.equals("/api/v1/users") && "GET".equals(method)) {
             return route(PlatformResourceType.USER, PlatformAction.VIEW, ApiPermissionNames.USER_VIEW);
         }
@@ -140,6 +149,9 @@ public class ApiRouteAuthorizationCatalog {
         }
         if (uri.matches("^/api/v1/api-keys/[^/:]+$") && "GET".equals(method)) {
             return route(PlatformResourceType.API_KEY, PlatformAction.VIEW, ApiPermissionNames.API_KEY_VIEW);
+        }
+        if (uri.matches("^/api/v1/api-keys/[^/:]+/usage$") && "GET".equals(method)) {
+            return route(PlatformResourceType.API_KEY, PlatformAction.VIEW, ApiPermissionNames.API_USAGE_VIEW);
         }
         if (uri.matches("^/api/v1/api-keys/[^/:]+:revoke$") && "POST".equals(method)) {
             return route(PlatformResourceType.API_KEY, PlatformAction.EDIT, ApiPermissionNames.API_KEY_REVOKE);

@@ -189,6 +189,35 @@ class ApiAuthInterceptorTest {
     }
 
     @Test
+    void sdkCredentialAttemptCanReachTaskAppendRoutesWithoutOperatorPermission() throws Exception {
+        mockMvc.perform(post("/api/v1/tasks/task-001/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(ApiAuthService.USER_MODE_HEADER, "anonymous")
+                        .header("X-Mass-Api-Key", "sdk-key")
+                        .content("""
+                                {
+                                  "eventCode":"demo.dispatch",
+                                  "items":[{"id":"item-1"}]
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true));
+
+        mockMvc.perform(post("/api/v1/tasks/task-001/items:sync")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(ApiAuthService.USER_MODE_HEADER, "anonymous")
+                        .header("X-Mass-Api-Key", "sdk-key")
+                        .content("""
+                                {
+                                  "eventCode":"demo.dispatch",
+                                  "item":{"id":"item-1"}
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true));
+    }
+
+    @Test
     void sdkCredentialAttemptCanReachTaskStageEvidenceRoutesWithoutOperatorPermission() throws Exception {
         mockMvc.perform(post("/api/v1/tasks/task-001/items/msg-001/stages/FETCH/evidence")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -331,6 +360,20 @@ class ApiAuthInterceptorTest {
         @ResponseBody
         public Map<String, Object> taskDetail(@PathVariable String taskId) {
             return Map.of("ok", true, "taskId", taskId);
+        }
+
+        @PostMapping("/api/v1/tasks/{taskId}/items")
+        @ResponseBody
+        public Map<String, Object> appendTaskItems(@PathVariable String taskId,
+                                                   @RequestBody Map<String, Object> body) {
+            return Map.of("ok", true, "taskId", taskId, "body", body);
+        }
+
+        @PostMapping("/api/v1/tasks/{taskId}/items:sync")
+        @ResponseBody
+        public Map<String, Object> appendTaskItemSync(@PathVariable String taskId,
+                                                      @RequestBody Map<String, Object> body) {
+            return Map.of("ok", true, "taskId", taskId, "body", body);
         }
 
         @GetMapping("/api/v1/projects")

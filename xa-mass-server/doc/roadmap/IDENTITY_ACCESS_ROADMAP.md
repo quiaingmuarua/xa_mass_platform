@@ -10,13 +10,20 @@ Implementation progress:
 IAM-1:
   implemented read-only User / Role / Permission store and APIs
 
-IAM-2 partial:
+IAM-2:
   implemented operator-created API keys with one-time raw secret response,
-  existing submitter-auth projection, list/detail without secret/hash, and revoke
+  application create/approve/reject workflow, existing submitter-auth
+  projection, list/detail without secret/hash, and revoke
+
+IAM-3 partial:
+  implemented accepted API-key usage ledger for task create, item append,
+  sync append, result read, archive download, plus submitter/operator usage
+  query APIs; records rejected rows for authenticated API-key requests denied
+  by project scope or task ownership; usage queries support project,
+  operation, status, time-window, and limit filters
 
 Not implemented yet:
-  API-key application create/approve/reject workflow
-  API-key usage ledger
+  failed-after-accept API-key usage rows
   submitter viewer session
   user/role mutation APIs
 ```

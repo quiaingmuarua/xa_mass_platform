@@ -1,6 +1,12 @@
 package com.xa.mass.api.internal;
 
 import com.xa.mass.api.auth.ApiAuthInterceptor;
+import com.xa.mass.api.auth.apikey.ApiKeyCredentialService;
+import com.xa.mass.api.auth.usage.ApiUsageLedgerRecord;
+import com.xa.mass.api.auth.usage.ApiUsageLedgerService;
+import com.xa.mass.api.auth.usage.ApiUsageOperation;
+import com.xa.mass.api.auth.usage.ApiUsageStatus;
+import com.xa.mass.api.auth.usage.InMemoryApiUsageLedgerStore;
 import com.xa.mass.api.sync.SyncTaskResultBridge;
 import com.xa.mass.api.sync.TaskSyncRequestSupervisor;
 import com.xa.mass.sdk.TaskAdminOperations;
@@ -57,6 +63,8 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -97,15 +105,19 @@ class TaskApiControllerTest {
     private TaskStageEvidenceOperations taskStageEvidence;
 
     private TaskSyncRequestSupervisor taskSyncRequestSupervisor;
+    private InMemoryApiUsageLedgerStore usageStore;
 
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         taskSyncRequestSupervisor = new TaskSyncRequestSupervisor(null, 500, 100, 20);
+        usageStore = new InMemoryApiUsageLedgerStore();
+        TaskApiController controller = new TaskApiController(taskQueries, taskResultQueries, taskAdmin, createTaskCatalog(), taskDetailStore,
+                authProvider, syncTaskResultBridge, taskSyncRequestSupervisor, taskStageEvidence);
+        controller.setApiUsageLedgerService(new ApiUsageLedgerService(usageStore));
         mockMvc = MockMvcBuilders.standaloneSetup(
-                new TaskApiController(taskQueries, taskResultQueries, taskAdmin, createTaskCatalog(), taskDetailStore,
-                        authProvider, syncTaskResultBridge, taskSyncRequestSupervisor, taskStageEvidence),
+                controller,
                 new InternalTaskReviewController(taskQueries, taskDetailStore)
         ).build();
     }
@@ -207,6 +219,122 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.data.taskId").value("task-sdk-001"))
                 .andExpect(jsonPath("$.data.project").value("crawlerApp"))
                 .andExpect(jsonPath("$.data.userId").value("crawler-agent"));
+    }
+
+    @Test
+    void apiKeyTaskCreateAndResultReadRecordAcceptedUsage() throws Exception {
+        PrincipalContext apiKeyPrincipal = new PrincipalContext(
+                "agent",
+                null,
+                "crawlerApp",
+                List.of("task:create", "task:view"),
+                List.of("crawlerApp"),
+                List.of("crawler.fetch-page"),
+                Map.of(ApiKeyCredentialService.ATTR_KEY_ID, "ak-usage-1")
+        );
+        when(authProvider.authenticate("usage-key")).thenReturn(apiKeyPrincipal);
+        when(taskAdmin.createTaskShell(any(MassTaskShellCreateRequest.class)))
+                .thenReturn(taskShell(TASK_ID, "crawlerApp", "agent"));
+
+        mockMvc.perform(post("/api/v1/tasks")
+                        .header("X-Mass-Api-Key", "usage-key")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "sharedConfig":{"eventCode":"crawler.fetch-page"}
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        List<ApiUsageLedgerRecord> afterCreate = usageStore.listByKeyId("ak-usage-1");
+        assertEquals(1, afterCreate.size());
+        assertEquals(ApiUsageOperation.TASK_CREATE, afterCreate.get(0).operation());
+        assertEquals(1, afterCreate.get(0).units());
+        assertEquals(TASK_ID, afterCreate.get(0).taskId());
+
+        when(taskQueries.getTaskDetail(TASK_ID)).thenReturn(taskDetail("RUNNING", "detail-task", "crawlerApp"));
+        when(taskResultQueries.readTaskResults(TASK_ID, 0, 200)).thenReturn(new TaskResultWindowSnapshot(
+                TASK_ID,
+                List.of(
+                        resultRow(1, "msg-001", "SUCCESS", "worker-001"),
+                        resultRow(2, "msg-002", "SUCCESS", "worker-002")
+                ),
+                2,
+                false,
+                2
+        ));
+        when(taskResultQueries.getTaskResultArchiveManifest(TASK_ID)).thenReturn(new TaskResultArchiveSnapshot(
+                TASK_ID, false, "ndjson", "application/x-ndjson", "gzip", 0, null, null));
+
+        mockMvc.perform(get("/api/v1/tasks/{taskId}/results", TASK_ID)
+                        .header("X-Mass-Api-Key", "usage-key"))
+                .andExpect(status().isOk());
+
+        List<ApiUsageLedgerRecord> afterRead = usageStore.listByKeyId("ak-usage-1");
+        assertEquals(2, afterRead.size());
+        assertEquals(ApiUsageOperation.TASK_RESULT_READ, afterRead.get(1).operation());
+        assertEquals(2, afterRead.get(1).units());
+        assertEquals(TASK_ID, afterRead.get(1).taskId());
+    }
+
+    @Test
+    void apiKeyTaskCreateScopeDenialRecordsRejectedUsage() throws Exception {
+        PrincipalContext apiKeyPrincipal = new PrincipalContext(
+                "agent",
+                null,
+                "crawlerApp",
+                List.of("task:create"),
+                List.of("crawlerApp"),
+                List.of("crawler.fetch-page"),
+                Map.of(ApiKeyCredentialService.ATTR_KEY_ID, "ak-reject-1")
+        );
+        when(authProvider.authenticate("denied-key")).thenReturn(apiKeyPrincipal);
+
+        mockMvc.perform(post("/api/v1/tasks")
+                        .header("X-Mass-Api-Key", "denied-key")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "project":"demoApp",
+                                  "userId":"agent"
+                                }
+                                """))
+                .andExpect(status().isForbidden());
+
+        List<ApiUsageLedgerRecord> records = usageStore.listByKeyId("ak-reject-1");
+        assertEquals(1, records.size());
+        assertEquals(ApiUsageOperation.TASK_CREATE, records.get(0).operation());
+        assertEquals(ApiUsageStatus.REJECTED, records.get(0).status());
+        assertEquals("demoApp", records.get(0).project());
+        assertEquals(0, records.get(0).units());
+        verify(taskAdmin, never()).createTaskShell(any(MassTaskShellCreateRequest.class));
+    }
+
+    @Test
+    void apiKeyTaskResultOwnerMismatchRecordsRejectedUsage() throws Exception {
+        PrincipalContext apiKeyPrincipal = new PrincipalContext(
+                "other-agent",
+                null,
+                "crawlerApp",
+                List.of("task:view"),
+                List.of("crawlerApp"),
+                List.of("crawler.fetch-page"),
+                Map.of(ApiKeyCredentialService.ATTR_KEY_ID, "ak-reject-2")
+        );
+        when(authProvider.authenticate("viewer-key")).thenReturn(apiKeyPrincipal);
+        when(taskQueries.getTaskDetail(TASK_ID)).thenReturn(taskDetail("RUNNING", "detail-task", "crawlerApp"));
+
+        mockMvc.perform(get("/api/v1/tasks/{taskId}/results", TASK_ID)
+                        .header("X-Mass-Api-Key", "viewer-key"))
+                .andExpect(status().isForbidden());
+
+        List<ApiUsageLedgerRecord> records = usageStore.listByKeyId("ak-reject-2");
+        assertEquals(1, records.size());
+        assertEquals(ApiUsageOperation.TASK_RESULT_READ, records.get(0).operation());
+        assertEquals(ApiUsageStatus.REJECTED, records.get(0).status());
+        assertEquals(TASK_ID, records.get(0).taskId());
+        assertEquals(0, records.get(0).units());
+        verify(taskResultQueries, never()).readTaskResults(any(), anyLong(), anyInt());
     }
 
     @Test

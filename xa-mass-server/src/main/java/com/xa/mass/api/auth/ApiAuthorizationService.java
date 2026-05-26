@@ -1,6 +1,8 @@
 package com.xa.mass.api.auth;
 
 import com.xa.mass.api.internal.SdkCredentialAuthSupport;
+import com.xa.mass.api.auth.usage.ApiUsageLedgerService;
+import com.xa.mass.api.auth.usage.ApiUsageOperation;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.authz.AuthorizationDecision;
@@ -28,6 +30,7 @@ public class ApiAuthorizationService {
 
     private final AuthProvider authProvider;
     private final AuthorizationPolicy authorizationPolicy;
+    private ApiUsageLedgerService apiUsageLedgerService;
 
     public ApiAuthorizationService() {
         this(null, new DefaultAuthorizationPolicy());
@@ -37,6 +40,11 @@ public class ApiAuthorizationService {
     public ApiAuthorizationService(AuthProvider authProvider, AuthorizationPolicy authorizationPolicy) {
         this.authProvider = authProvider;
         this.authorizationPolicy = authorizationPolicy == null ? new DefaultAuthorizationPolicy() : authorizationPolicy;
+    }
+
+    @Autowired(required = false)
+    public void setApiUsageLedgerService(ApiUsageLedgerService apiUsageLedgerService) {
+        this.apiUsageLedgerService = apiUsageLedgerService;
     }
 
     public PrincipalContext resolveSubmitterPrincipal(String apiKeyHeader,
@@ -206,6 +214,7 @@ public class ApiAuthorizationService {
         if (!decision.isAllowed()) {
             logDenied(scenario.surface(), principal, scenario.resourceType(), scenario.action(),
                     project, eventCode, null, resourceAttributes, decision.getReasonCode(), decision.getReason(), context);
+            recordRejectedUsage(principal, context, project, eventCode);
             throw new SecurityException(scenario.deniedMessage(decision));
         }
     }
@@ -257,6 +266,7 @@ public class ApiAuthorizationService {
                     decision.getReasonCode(),
                     decision.getReason(),
                     context);
+            recordRejectedUsage(principal, context, project, null);
             throw new ApiForbiddenException(scenario.deniedMessage(decision));
         }
     }
@@ -324,6 +334,28 @@ public class ApiAuthorizationService {
             return Map.of();
         }
         return Map.copyOf(context);
+    }
+
+    private void recordRejectedUsage(PrincipalContext principal,
+                                     Map<String, Object> context,
+                                     String project,
+                                     String eventCode) {
+        if (apiUsageLedgerService == null) {
+            return;
+        }
+        ApiUsageOperation operation = apiUsageLedgerService.operationFromContext(context);
+        if (operation == null) {
+            return;
+        }
+        apiUsageLedgerService.recordRejected(
+                principal,
+                operation,
+                project,
+                eventCode,
+                apiUsageLedgerService.stringFromContext(context, "taskId"),
+                apiUsageLedgerService.stringFromContext(context, ApiUsageLedgerService.CONTEXT_USAGE_MESSAGE_ID),
+                apiUsageLedgerService.stringFromContext(context, ApiUsageLedgerService.CONTEXT_USAGE_REQUEST_ID)
+        );
     }
 
     private Map<String, Object> taskOwnershipAttributes(String taskId,
