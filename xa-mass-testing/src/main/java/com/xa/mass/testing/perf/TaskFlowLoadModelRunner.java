@@ -79,6 +79,7 @@ import java.util.concurrent.atomic.LongAdder;
  * -Dmass.load.callbackThreads=32
  * -Dmass.load.retryFailureEveryNth=7
  * -Dmass.load.duplicateResultEveryNth=11
+ * -Dmass.load.duplicateWakeupsOnApprove=4
  * }</pre>
  */
 public final class TaskFlowLoadModelRunner {
@@ -244,6 +245,9 @@ public final class TaskFlowLoadModelRunner {
                     taskIdRef.set(task.getTid());
                     long wallStartNanos = System.nanoTime();
                     require(taskCommands.approveTask(task.getTid()), "task should move NEW -> READY");
+                    for (int i = 0; i < config.duplicateWakeupsOnApprove(); i++) {
+                        assignWorker.submit(task);
+                    }
 
                     if (!terminalLatch.await(config.timeoutSeconds(), TimeUnit.SECONDS)) {
                         Task currentTask = taskStorage.getTask(task.getTid()).orElse(task);
@@ -297,6 +301,10 @@ public final class TaskFlowLoadModelRunner {
                             "runtime processing counters should not drift at terminal");
                     require(proofMetrics.resultCounterDrift() == 0,
                             "runtime result count should not drift from successful work count");
+                    if (config.retryFailureEveryNth() == 0) {
+                        require(proofMetrics.duplicateDispatchItems() == 0,
+                                "duplicate wakeups should not duplicate runtime dispatch claims");
+                    }
                     if (config.duplicateResultEveryNth() > 0
                             && config.messageCount() > 1
                             && callbackMetrics.duplicateResultAttempts.sum() > 0) {
@@ -454,6 +462,7 @@ public final class TaskFlowLoadModelRunner {
                     "totalMillis", nanosToMillis(totalWallNanos),
                     "dispatchCycles", dispatchMetrics.dispatchCycles.sum(),
                     "redispatchCycles", Math.max(dispatchMetrics.dispatchCycles.sum() - 1, 0L),
+                    "syntheticDuplicateWakeups", config.duplicateWakeupsOnApprove(),
                     "totalDispatchItems", dispatchMetrics.totalDispatchItems.sum(),
                     "runtimeWorkItems", finalWorkStats.totalCount(),
                     "dispatchOverheadItems", Math.max(dispatchMetrics.totalDispatchItems.sum() - finalWorkStats.totalCount(), 0L)
@@ -726,6 +735,7 @@ public final class TaskFlowLoadModelRunner {
                               TaskWorkloadClass workloadClass,
                               int retryFailureEveryNth,
                               int duplicateResultEveryNth,
+                              int duplicateWakeupsOnApprove,
                               long timeoutSeconds,
                               long assignmentRetryDelayMillis,
                               RuntimeBackend runtimeBackend,
@@ -746,6 +756,7 @@ public final class TaskFlowLoadModelRunner {
                     workloadClassProperty("mass.load.workloadClass", TaskWorkloadClass.BULK),
                     retryFailureEveryNth,
                     intProperty("mass.load.duplicateResultEveryNth", 0),
+                    intProperty("mass.load.duplicateWakeupsOnApprove", 0),
                     longProperty("mass.load.timeoutSeconds", 60L),
                     longProperty("mass.load.assignmentRetryDelayMillis", 25L),
                     runtimeBackend,
@@ -766,6 +777,7 @@ public final class TaskFlowLoadModelRunner {
             config.put("workloadClass", workloadClass.name());
             config.put("retryFailureEveryNth", retryFailureEveryNth);
             config.put("duplicateResultEveryNth", duplicateResultEveryNth);
+            config.put("duplicateWakeupsOnApprove", duplicateWakeupsOnApprove);
             config.put("timeoutSeconds", timeoutSeconds);
             config.put("assignmentRetryDelayMillis", assignmentRetryDelayMillis);
             config.put("runtimeBackend", runtimeBackend.name().toLowerCase(Locale.ROOT));
