@@ -473,7 +473,8 @@ each other.
 
 Scope:
 
-- replace single worker-level availability bit with source-scoped gates
+- replace single worker-level availability bit with source-scoped gates stored
+  on the `WorkerRegistry` slot
 - minimum sources:
   - `WORKER_STATE`
   - `WORKER_COMMAND`
@@ -483,10 +484,8 @@ Scope:
   `WORKER_STATE` and `WORKER_COMMAND`
 - update `WorkerManager` node-group drain/enable handling to write only
   `NODE_GROUP_BINDING`
-- update callers of `dispatchAvailabilityOwner.enable(...)` so relation
-  recovery clears only the relevant source gate, for example
-  `clearSource(NODE_GROUP_BINDING, workerId)`, instead of clearing all worker
-  dispatch gates
+- update relation-recovery callers so they clear only the relevant
+  `WorkerRegistry` source gate instead of clearing all worker dispatch gates
 
 Acceptance:
 
