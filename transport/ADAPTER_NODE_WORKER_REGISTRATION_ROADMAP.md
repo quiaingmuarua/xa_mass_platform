@@ -341,7 +341,7 @@ Eligibility may compose these gates:
 - `NodeGroupBinding.draining`
 - `Worker.enabled`
 - `WorkerReachabilityView`
-- `WorkerDispatchAvailabilityOwner`
+- `WorkerRegistry` / `WorkerSlot.disabledSources`
 - `WorkerRegistry` / `WorkerSlot`
 
 Recommended meaning:
@@ -359,8 +359,9 @@ Recommended meaning:
 is not taking new work for one group.
 
 Raw binding state should not be read directly by matching. Convert node-local
-availability through a policy/read-model path into dispatch availability, then
-let scheduling continue to consume stable availability truth.
+availability through a policy/read-model path into `WorkerRegistry`
+dispatch-disabled sources, then let scheduling continue to consume stable
+availability truth.
 
 ## Worker Reports
 
@@ -397,7 +398,7 @@ Current accepted shape should remain:
 WorkerStateReport
   -> WorkerStateProjectionOwner
   -> WorkerDispatchAvailabilityPolicy
-  -> WorkerDispatchAvailabilityOwner
+  -> WorkerRegistry / WorkerSlot.disabledSources
 ```
 
 Not allowed:
@@ -414,7 +415,7 @@ Current accepted shape should remain:
 WorkerCommandAcknowledgement
   -> WorkerCommandLifecycleOwner
   -> WorkerDispatchAvailabilityPolicy when command outcome affects dispatch
-  -> WorkerDispatchAvailabilityOwner
+  -> WorkerRegistry / WorkerSlot.disabledSources
 ```
 
 Not allowed:
@@ -793,7 +794,7 @@ Worker attributes
 WorkerReachabilityView
   -> transport-derived reachability truth
 
-WorkerDispatchAvailabilityOwner
+WorkerRegistry / WorkerSlot.disabledSources
   -> dispatch gate truth
 
 WorkerCandidateIndex

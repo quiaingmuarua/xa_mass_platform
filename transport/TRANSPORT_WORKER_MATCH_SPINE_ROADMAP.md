@@ -59,13 +59,15 @@ Current code already has several pieces:
   worker-group declaration surface before worker registration
 - `WorkerRegistrySnapshot` indexes `groupId -> workerIds`,
   `adapterNodeId -> workerIds`, and `(adapterNodeId, groupId) -> workerIds`
-- `WorkerCandidateIndex` is the candidate-source path for event/group matching
+- `WorkerCandidateIndex` is the candidate-source path for explicit
+  group-selector matching
 - `WorkerControlService` can wake runtime-ready polling on accepted capability
   report and `AVAILABLE` state report
 - `WorkerManager` relationship mutations can wake runtime-ready polling after
   owner apply
-- `WorkerDispatchAvailabilityOwner` uses source-scoped gates for worker state,
-  worker command, and node-group binding availability
+- `WorkerRegistry` / `WorkerSlot.disabledSources` carries source-scoped
+  dispatch gates for worker state, worker command, and node-group binding
+  availability
 - external/SDK registration has explicit AdapterNode and NodeGroupBinding
   registration surfaces, and worker registration requires `adapterNodeId` when
   joining a WorkerGroup

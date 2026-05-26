@@ -103,7 +103,7 @@ final class ExternalWorkerPublicContractSuccessScenarioAnalyzer implements Trace
                 .anyMatch(row -> present(row.workerGroupId())
                         && present(row.adapterNodeId())
                         && present(row.workerCandidateSource())
-                        && !"ALL_WORKERS_FALLBACK".equals(row.workerCandidateSource()));
+                        && isGroupFirstCandidateSource(row.workerCandidateSource()));
         boolean hasDispatchEventBindingEvidence = rows.stream()
                 .filter(row -> "TASK_WORK_ATTEMPT_STATUS_TRANSITION".equals(row.eventType()))
                 .filter(row -> target.workerId().equals(row.workerId()))
@@ -111,7 +111,7 @@ final class ExternalWorkerPublicContractSuccessScenarioAnalyzer implements Trace
                         && present(row.adapterNodeId())
                         && present(row.eventBindingKey())
                         && present(row.workerCandidateSource())
-                        && !"ALL_WORKERS_FALLBACK".equals(row.workerCandidateSource()));
+                        && isGroupFirstCandidateSource(row.workerCandidateSource()));
         if (!hasGroupFirstEvidence || !hasDispatchEventBindingEvidence) {
             issues.add(new TraceScenarioIssue(
                     "MISSING_GROUP_FIRST_DISPATCH_EVIDENCE",
@@ -139,6 +139,12 @@ final class ExternalWorkerPublicContractSuccessScenarioAnalyzer implements Trace
                     "MISSING_WORKER_CONTRACT_EVIDENCE",
                     "Expected worker presence or worker-control trace evidence for workerId=" + target.workerId()));
         }
+    }
+
+    private static boolean isGroupFirstCandidateSource(String source) {
+        return "GROUP_SELECTOR".equals(source)
+                || "GROUP_SELECTOR_WITH_NODE".equals(source)
+                || "TARGET_WORKER".equals(source);
     }
 
     private void requireEvent(List<TraceTimelineRow> rows,

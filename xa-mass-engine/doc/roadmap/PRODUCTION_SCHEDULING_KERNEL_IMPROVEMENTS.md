@@ -30,8 +30,8 @@ Completed convergence that should be treated as current baseline:
   and backed by `WorkerCandidateIndex`
 - ranking, allocation, budget, resource usage, release, and refill each have
   explicit owners
-- worker load and capacity are push-updated read views, not live queries inside
-  matching loops
+- worker occupancy, capacity, and dispatch gates are owned by `WorkerRegistry`
+  slot state, not by storage locks or live queries inside matching loops
 - event owner surfaces now route through owner-backed services and SDK
   contracts rather than event handlers or concrete owner internals
 - server is a validation shell / SDK adapter; it must not redefine engine
@@ -215,28 +215,29 @@ Suggested first slice:
 - implement command deadline expiry before delivery retry
 - then add one minimal delivery implementation and ack path
 
-### 5. Worker Load View Contention
+### 5. Worker Registry Contention
 
-`InMemoryWorkerLoadView` currently uses a global monitor for capacity mutation.
-That keeps behavior simple but serializes reservation/claim/final updates for
-all workers.
+`WorkerRegistry` is now the worker occupancy owner. The old `WorkerLoadView`
+global-monitor issue is retired from production wiring; future contention work
+must target registry implementations directly.
 
 Current bottleneck:
 
-- `tryReserveCapacity(...)`
-- `confirmReservation(...)`
-- `releaseReservation(...)`
-- `recordWorkClaimed(...)`
-- `recordWorkFinal(...)`
+- per-worker reserve / confirm / release / final mutation
+- Redis registry mutation that still relies on connection-scoped
+  `WATCH` / `MULTI` protection
+- candidate bucket cleanup under large group/route membership
 
-all synchronize on the load view instance.
+These are mechanism-level concerns. Do not reintroduce a separate load view,
+storage lock set, or dispatch gate map to solve them.
 
 Future direction:
 
 ```text
-ConcurrentMap<workerId, WorkerLoadCell>
-WorkerLoadCell owns per-worker active/reserved mutation
-task-level active worker counts remain separately bounded
+WorkerRegistry
+  -> per-worker slot CAS / small Redis Lua mutation
+  -> bounded candidate sampling
+  -> task-level active worker indexes
 ```
 
 Boundary rules:
@@ -244,20 +245,21 @@ Boundary rules:
 - no behavior change
 - no live runtime queries in matching
 - preserve task-level active worker count semantics
-- keep `WorkerLoadView` as the scheduling read surface
+- keep `WorkerRegistry` as the only worker occupancy/admission truth
 
 Suggested first slice:
 
-- replace global synchronization with per-worker cells
-- add high-contention tests proving independent workers mutate concurrently and
-  same-worker capacity remains correct
+- replace Redis registry `WATCH` / `MULTI` mutation with small Lua only where
+  multiple keys must update atomically
+- add high-contention tests proving independent workers mutate concurrently,
+  same-worker capacity remains correct, and stale bucket candidates are rejected
 
 ## Suggested Priority
 
 | Priority | Work | Reason |
 | --- | --- | --- |
 | P0 | Time execution kernel baseline | shared prerequisite for command expiry, stage SLA, and active timeout behavior |
-| P0.5 | `InMemoryWorkerLoadView` per-worker locking | small, behavior-preserving, removes a known scalability bottleneck |
+| P0.5 | `WorkerRegistry` mutation contention | keeps worker admission scalable without adding a second occupancy truth |
 | P1 | Worker command delivery and acknowledgement | turns command lifecycle from owner skeleton into usable control path |
 | P1 | Cross-task fairness owner | prevents same-lane starvation and protects production scheduling correctness |
 | P2 | Feedback-driven ranking | improves dispatch quality after core timeout/fairness mechanics are stable |
@@ -290,4 +292,3 @@ drive the scheduling kernel mainline:
 - trace-query behavior feeding synchronous scheduling decisions
 - server DTOs becoming engine decision input
 - compatibility adapters for removed internal paths
-

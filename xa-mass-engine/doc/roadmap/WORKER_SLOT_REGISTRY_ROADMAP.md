@@ -851,9 +851,10 @@ Scope:
 4. Move `WorkerRouteBucketOwner` membership to registry-owned buckets. After
    migration it must not own membership. Selection belongs to
    `WorkerCandidateSamplingPolicy`, not to a second route-bucket owner.
-5. Keep `WorkerLoadView` as the only admission truth in this phase. The
-   registry synchronizes identity and bucket membership only; reservation and
-   active counters must not be used by scheduling yet.
+5. At the original WSR-4 boundary, `WorkerLoadView` remained the admission
+   truth while registry synchronized identity and bucket membership only.
+   This is historical phase context; current production occupancy has moved to
+   `WorkerRegistry`.
 6. Dispatch gate mutation truth is source-scoped `WorkerRegistry.disabledSources`;
    policy code may translate worker state / commands / node-group bindings into
    gate writes, but it must not own an independent gate map.

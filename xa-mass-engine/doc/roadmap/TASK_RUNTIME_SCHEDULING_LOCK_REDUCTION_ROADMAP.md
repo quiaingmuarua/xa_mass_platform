@@ -127,6 +127,7 @@ claiming later phases are complete.
 | `TRS-M2` | Implemented first slice | `WorkerCandidateSamplingPolicy` now has a shared random bounded implementation used by memory and Redis registry defaults. `WorkerManagerTest` proves bounded sampling happens before worker row materialization, `SimpleTaskDispatchBinderTest` covers concurrent assignment rounds for the same task, `TaskRedispatchCompetitionTest` covers result-release/refill on the mainline, and `TaskApiDelayedWorkerAvailabilityRedisRuntimeIntegrationTest` covers Redis-backed multi-round refill through the server/transport/runtime path. Deeper Redis concurrent engine duplicate-dispatch soak remains `TRS-D2` proof, not a `TRS-M2` blocker. |
 | `TRS-M3` | Started | `EngineSchedulingCoreArchitectureGuardTest.taskWriteLockRemainsLifecycleAndProgressOnly` locks the current boundary: task write locks are allowed for lifecycle, intake, progress, and audit paths only; runtime claim must stay task-lock free. |
 | `TRS-M4` | Implemented first slice | Redis delayed promotion and ready-head cleanup use small per-entry Lua transitions. `RedisTaskWorkRuntimeTest` covers competing runtime instances promoting one delayed item once and bounded cleanup of stale ready-head entries without counter drift. |
+| `TRS-D1` | Started | Trace proof now accepts only explicit group-first candidate sources, stale worker-dispatch-gate docs point to `WorkerRegistry` slot disabled sources, and the superseded worker-resource-occupancy roadmap has been removed. |
 
 ## Mainline Data Structures To Stabilize First
 
