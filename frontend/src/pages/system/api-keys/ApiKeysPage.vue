@@ -5,7 +5,8 @@
         <h2 class="page-title">API Keys</h2>
         <p class="page-subtitle">
           Scoped programmatic credentials for SDK-first task submission and
-          result reads. Raw secrets are shown once after create or approval.
+          result reads. Key IDs are safe to display; secrets are shown once and
+          work like passwords.
         </p>
       </div>
       <el-button @click="loadAll">Refresh</el-button>
@@ -304,8 +305,23 @@
       <el-alert
         type="warning"
         :closable="false"
-        title="Copy this secret now. It is shown only once and is not stored in the browser."
+        title="Copy this secret now. The server will not return it again."
       />
+      <el-descriptions v-if="rawSecretCredential" class="secret-meta" :column="1" border>
+        <el-descriptions-item label="Key ID">
+          <span class="mono">{{ rawSecretCredential.keyId }}</span>
+        </el-descriptions-item>
+        <el-descriptions-item label="Secret prefix">
+          <span class="mono">{{ rawSecretCredential.keyPrefix }}</span>
+        </el-descriptions-item>
+        <el-descriptions-item label="Principal">
+          {{ rawSecretCredential.principalId }}
+        </el-descriptions-item>
+      </el-descriptions>
+      <div class="field-hint">
+        Save the Key ID for identification. Save the Secret like a password; it
+        is required for SDK/API calls and is never shown again.
+      </div>
       <pre class="secret-block">{{ rawSecret }}</pre>
       <template #footer>
         <el-button type="primary" @click="closeSecretDialog">I copied it</el-button>
@@ -382,6 +398,7 @@ const applications = ref<ApiKeyApplicationRecord[]>([])
 const permissions = ref<string[]>([])
 const secretDialogVisible = ref(false)
 const rawSecret = ref('')
+const rawSecretCredential = ref<ApiKeyCredentialView | null>(null)
 const detailDialogVisible = ref(false)
 const detailPayload = ref('')
 const usageDialogVisible = ref(false)
@@ -449,7 +466,7 @@ async function submitCreateCredential(): Promise<void> {
       permissions: createForm.permissions,
       expiresAt: createForm.expiresAt || null,
     })
-    showRawSecret(created.rawSecret)
+    showRawSecret(created.credential, created.rawSecret)
     await loadAll()
   } catch (error) {
     errorMessage.value = toErrorMessage(error, 'Failed to create API key.')
@@ -516,7 +533,7 @@ async function submitApproveApplication(
 ): Promise<void> {
   try {
     const approved = await approveApiKeyApplication(row.applicationId, 'approved from console')
-    showRawSecret(approved.rawSecret)
+    showRawSecret(approved.credential, approved.rawSecret)
     await loadAll()
   } catch (error) {
     errorMessage.value = toErrorMessage(error, 'Failed to approve application.')
@@ -534,7 +551,8 @@ async function submitRejectApplication(
   }
 }
 
-function showRawSecret(secret: string): void {
+function showRawSecret(credential: ApiKeyCredentialView, secret: string): void {
+  rawSecretCredential.value = credential
   rawSecret.value = secret
   secretDialogVisible.value = true
 }
@@ -542,6 +560,7 @@ function showRawSecret(secret: string): void {
 function closeSecretDialog(): void {
   secretDialogVisible.value = false
   rawSecret.value = ''
+  rawSecretCredential.value = null
 }
 
 function showDetail(detail: ApiKeyCredentialView | ApiKeyApplicationRecord): void {
@@ -616,6 +635,16 @@ onMounted(() => {
 
 .full-width {
   width: 100%;
+}
+
+.secret-meta {
+  margin-top: 16px;
+}
+
+.field-hint {
+  margin-top: 14px;
+  color: #667085;
+  line-height: 1.5;
 }
 
 .secret-block {

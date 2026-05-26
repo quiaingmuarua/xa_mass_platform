@@ -2,13 +2,13 @@
   <section class="app-page submitter-viewer-page">
     <header class="page-header">
       <div>
-        <h2 class="page-title">Submitter Viewer</h2>
+        <h2 class="page-title">API Key Viewer</h2>
         <p class="page-subtitle">
-          API-key backed browser session for owner-scoped task, result, archive,
-          and usage reads. It is separate from operator console auth.
+          Enter an API key secret to inspect that key's submitter profile and
+          usage. The secret is used once and is not stored in this browser.
         </p>
       </div>
-      <el-button :disabled="!sessionCredential" @click="refreshSession">
+      <el-button :disabled="!viewerCredential" @click="refreshViewer">
         Refresh
       </el-button>
     </header>
@@ -18,96 +18,79 @@
       class="page-alert"
       type="warning"
       :closable="false"
-      title="Backend API mode is required for submitter viewer sessions."
+      title="Backend API mode is required for API-key viewer."
     />
 
     <PageErrorState
       v-if="errorMessage"
       :message="errorMessage"
-      @retry="refreshSession"
+      @retry="refreshViewer"
     />
 
     <section class="viewer-grid">
       <el-card class="page-card credential-card">
         <template #header>
-          <strong>Create or attach session</strong>
+          <strong>Open viewer</strong>
         </template>
         <el-form label-position="top">
-          <el-form-item label="Source API key">
+          <el-form-item label="API Key Secret">
             <el-input
-              v-model="sourceApiKey"
+              v-model="apiKeySecret"
               type="password"
               show-password
               placeholder="mass_sk_..."
               autocomplete="off"
             />
+            <div class="field-hint">
+              The secret works like a password. It is exchanged for a short-lived
+              browser credential and is never stored locally.
+            </div>
           </el-form-item>
           <el-button
             type="primary"
-            :disabled="!sourceApiKey.trim()"
-            @click="createSession"
+            :disabled="!apiKeySecret.trim()"
+            @click="openViewer"
           >
-            Create viewer session
+            View API key usage
           </el-button>
         </el-form>
-
-        <el-divider />
-
-        <el-form label-position="top">
-          <el-form-item label="Existing session token">
-            <el-input
-              v-model="sessionCredentialInput"
-              type="password"
-              show-password
-              placeholder="mass_sess_..."
-              autocomplete="off"
-            />
-          </el-form-item>
-          <div class="action-row">
-            <el-button
-              :disabled="!sessionCredentialInput.trim()"
-              @click="attachSession"
-            >
-              Attach
-            </el-button>
-            <el-button
-              type="danger"
-              plain
-              :disabled="!sessionCredential"
-              @click="logoutSession"
-            >
-              Logout
-            </el-button>
-          </div>
-        </el-form>
+        <el-button
+          class="exit-button"
+          type="danger"
+          plain
+          :disabled="!viewerCredential"
+          @click="exitViewer"
+        >
+          Exit viewer
+        </el-button>
       </el-card>
 
       <el-card class="page-card">
         <template #header>
-          <strong>Current submitter session</strong>
+          <strong>Current API key</strong>
         </template>
         <PageEmptyState
-          v-if="!session"
-          description="Create or attach a viewer session to inspect submitter-owned resources."
+          v-if="!viewer"
+          description="Enter an API key secret to inspect key-owned resources."
         />
         <el-descriptions v-else :column="1" border>
-          <el-descriptions-item label="Session">
-            <span class="mono">{{ session.sessionId }}</span>
-          </el-descriptions-item>
           <el-descriptions-item label="Principal">
-            {{ session.principalId }}
+            {{ viewer.principalId }}
           </el-descriptions-item>
-          <el-descriptions-item label="Source key">
-            <span class="mono">{{ session.keyId }}</span>
+          <el-descriptions-item label="Key ID">
+            <span class="mono">{{ viewer.keyId }}</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="Owner user">
+            {{ viewer.createdForUserId }}
           </el-descriptions-item>
           <el-descriptions-item label="Permissions">
-            {{ session.permissions.join(', ') || '-' }}
+            {{ viewer.permissions.join(', ') || '-' }}
           </el-descriptions-item>
           <el-descriptions-item label="Projects">
-            {{ session.projectScopes.join(', ') || 'all' }}
+            {{ viewer.projectScopes.join(', ') || 'all' }}
           </el-descriptions-item>
-          <el-descriptions-item label="Expires">
-            {{ session.expiresAt }}
+          <el-descriptions-item label="Events">
+            {{ viewer.eventScopes.join(', ') || 'all' }}
           </el-descriptions-item>
         </el-descriptions>
       </el-card>
@@ -127,7 +110,7 @@
       <div class="metric-tile">
         <div class="metric-label">Key</div>
         <div class="metric-value compact-value">
-          {{ usage?.keyId ?? session?.keyId ?? '-' }}
+          {{ usage?.keyId ?? viewer?.keyId ?? '-' }}
         </div>
       </div>
     </section>
@@ -160,24 +143,6 @@
         <el-table-column prop="createdAt" label="Created" min-width="220" />
       </el-table>
     </el-card>
-
-    <el-dialog
-      v-model="createdSecretVisible"
-      title="Viewer session token"
-      width="640px"
-    >
-      <el-alert
-        type="warning"
-        :closable="false"
-        title="Copy this session token now. It is stored only in this browser session."
-      />
-      <pre class="secret-block">{{ createdSecret }}</pre>
-      <template #footer>
-        <el-button type="primary" @click="closeCreatedSecret">
-          I copied it
-        </el-button>
-      </template>
-    </el-dialog>
   </section>
 </template>
 
@@ -202,96 +167,81 @@ import type {
 import type {CurrentSubmitterProfile} from '@/types/current-submitter'
 import {toErrorMessage} from '@/utils/errors'
 
-const SESSION_STORAGE_KEY = 'xa.mass.submitterViewerSession'
+const VIEWER_STORAGE_KEY = 'xa.mass.apiKeyViewerCredential'
 
-const sourceApiKey = ref('')
-const sessionCredentialInput = ref('')
-const sessionCredential = ref('')
-const session = ref<SubmitterViewerSessionView | null>(null)
+const apiKeySecret = ref('')
+const viewerCredential = ref('')
+const viewer = ref<SubmitterViewerSessionView | null>(null)
 const profile = ref<CurrentSubmitterProfile | null>(null)
 const usage = ref<CurrentSubmitterUsageResponse | null>(null)
 const errorMessage = ref('')
 const loading = ref(false)
-const createdSecretVisible = ref(false)
-const createdSecret = ref('')
 
 const useMockApi = computed(() => getAppConfig().useMockApi)
 
-async function createSession(): Promise<void> {
+async function openViewer(): Promise<void> {
   errorMessage.value = ''
   try {
-    const created = await createSubmitterViewerSession(sourceApiKey.value)
-    sourceApiKey.value = ''
-    createdSecret.value = created.rawSecret
-    createdSecretVisible.value = true
-    setSessionCredential(created.rawSecret)
-    await refreshSession()
+    const created = await createSubmitterViewerSession(apiKeySecret.value)
+    apiKeySecret.value = ''
+    setViewerCredential(created.rawSecret)
+    viewer.value = created.session
+    await refreshViewer()
   } catch (error) {
-    errorMessage.value = toErrorMessage(error, 'Failed to create session.')
+    errorMessage.value = toErrorMessage(error, 'Failed to open API-key viewer.')
   }
 }
 
-async function attachSession(): Promise<void> {
-  setSessionCredential(sessionCredentialInput.value)
-  sessionCredentialInput.value = ''
-  await refreshSession()
-}
-
-async function refreshSession(): Promise<void> {
-  if (!sessionCredential.value) {
+async function refreshViewer(): Promise<void> {
+  if (!viewerCredential.value) {
     return
   }
   loading.value = true
   errorMessage.value = ''
   try {
-    const [sessionRow, profileRow, usageRow] = await Promise.all([
-      getCurrentSubmitterViewerSession(sessionCredential.value),
-      getSubmitterProfileWithCredential(sessionCredential.value),
-      getSubmitterUsageWithCredential(sessionCredential.value),
+    const [viewerRow, profileRow, usageRow] = await Promise.all([
+      getCurrentSubmitterViewerSession(viewerCredential.value),
+      getSubmitterProfileWithCredential(viewerCredential.value),
+      getSubmitterUsageWithCredential(viewerCredential.value),
     ])
-    session.value = sessionRow
+    viewer.value = viewerRow
     profile.value = profileRow
     usage.value = usageRow
   } catch (error) {
-    clearSession()
-    errorMessage.value = toErrorMessage(error, 'Failed to load submitter session.')
+    clearViewer()
+    errorMessage.value = toErrorMessage(error, 'Failed to load API-key viewer.')
   } finally {
     loading.value = false
   }
 }
 
-async function logoutSession(): Promise<void> {
-  if (!sessionCredential.value) {
+async function exitViewer(): Promise<void> {
+  if (!viewerCredential.value) {
     return
   }
   try {
-    await logoutSubmitterViewerSession(sessionCredential.value)
+    await logoutSubmitterViewerSession(viewerCredential.value)
   } catch {
     // Local cleanup is still correct if the server already invalidated it.
   } finally {
-    clearSession()
+    clearViewer()
   }
 }
 
-function setSessionCredential(credential: string): void {
+function setViewerCredential(credential: string): void {
   const normalized = credential.trim()
-  sessionCredential.value = normalized
+  viewerCredential.value = normalized
   if (normalized) {
-    window.sessionStorage.setItem(SESSION_STORAGE_KEY, normalized)
+    window.sessionStorage.setItem(VIEWER_STORAGE_KEY, normalized)
   }
 }
 
-function clearSession(): void {
-  sessionCredential.value = ''
-  session.value = null
+function clearViewer(): void {
+  viewerCredential.value = ''
+  viewer.value = null
   profile.value = null
   usage.value = null
-  window.sessionStorage.removeItem(SESSION_STORAGE_KEY)
-}
-
-function closeCreatedSecret(): void {
-  createdSecretVisible.value = false
-  createdSecret.value = ''
+  window.sessionStorage.removeItem(VIEWER_STORAGE_KEY)
 }
 
 function usageStatusTag(status: ApiUsageStatus): 'success' | 'warning' | 'danger' {
@@ -305,10 +255,10 @@ function usageStatusTag(status: ApiUsageStatus): 'success' | 'warning' | 'danger
 }
 
 onMounted(() => {
-  const stored = window.sessionStorage.getItem(SESSION_STORAGE_KEY)
+  const stored = window.sessionStorage.getItem(VIEWER_STORAGE_KEY)
   if (stored) {
-    sessionCredential.value = stored
-    void refreshSession()
+    viewerCredential.value = stored
+    void refreshViewer()
   }
 })
 </script>
@@ -329,9 +279,15 @@ onMounted(() => {
   height: fit-content;
 }
 
-.action-row {
-  display: flex;
-  gap: 10px;
+.field-hint {
+  margin-top: 8px;
+  color: #667085;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.exit-button {
+  margin-top: 12px;
 }
 
 .compact-value {
@@ -339,16 +295,6 @@ onMounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.secret-block {
-  margin: 16px 0 0;
-  padding: 14px;
-  border-radius: 14px;
-  background: #101828;
-  color: #ecfdf3;
-  white-space: pre-wrap;
-  word-break: break-all;
 }
 
 @media (max-width: 980px) {

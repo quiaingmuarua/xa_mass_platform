@@ -74,6 +74,11 @@ Direction note:
   approved users, and API keys remain the SDK-first programmatic credential.
 - API keys may later create a restricted submitter viewer session for their own
   tasks/results/usage, but this must not become an operator console session.
+- The backend-hosted control console is also converging from early dev/demo
+  vocabulary toward a more realistic platform scenario. Keep that work in
+  [CONTROL_CONSOLE_REALISTIC_SCENARIO_ROADMAP.md](./doc/roadmap/CONTROL_CONSOLE_REALISTIC_SCENARIO_ROADMAP.md)
+  so project, event, worker, submitter, and task demo shape evolves without
+  redefining engine/runtime ownership.
 
 Current host security matrix:
 

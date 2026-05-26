@@ -16,7 +16,7 @@ command request
   -> WorkerCommandLifecycleOwner records REQUESTED
   -> no automatic production delivery to worker
   -> worker may only ack if an external caller already knows the command
-  -> dispatch gate policy reacts to accepted DRAIN acknowledgements
+  -> dispatch gate policy reacts to accepted DRAIN lifecycle results
 ```
 
 Target mainline:
@@ -68,6 +68,8 @@ Missing:
 | command ack/status ingress | `WorkerCommandLifecycleOwner` via `WorkerControlService` | task result convergence |
 | dispatch gate effect | `WorkerDispatchAvailabilityPolicy` + `WorkerRegistry` disabled sources | command status truth |
 | transport delivery mechanics | transport runtime/adapters | command lifecycle truth, retry/deadline policy |
+| worker-facing command DTOs | `xa-mass-sdk-api` | transport carrier/session ownership, lifecycle truth |
+| command transport carrier envelope | `transport_api` | command lifecycle truth, command effect policy |
 | HTTP/operator surface | server controllers through SDK operations | engine owner internals |
 
 Hard rules:
@@ -80,6 +82,10 @@ Hard rules:
 - server DTOs and frontend actions must not become command lifecycle truth
 - `DRAIN` command effects must mutate dispatch gate through
   `DispatchAvailabilitySource.WORKER_COMMAND`, not a side map
+- `DRAIN` delivery `FAILED` / `EXPIRED` must not disable dispatch; the worker
+  has not accepted the drain command
+- public SDK/server command contracts must not expose transport-specific frame
+  shapes
 
 ## Command Catalog
 
@@ -91,6 +97,20 @@ First supported command catalog should stay deliberately small.
 | --- | --- | --- |
 | `DRAIN` | stop future dispatches to the worker while preserving in-flight work | accepted delivery/execution/success disables `WORKER_COMMAND` source |
 | `PING` | ask worker to acknowledge command reachability / liveness | no dispatch gate effect |
+
+`DRAIN` gate effect rule:
+
+```text
+DELIVERY_ACCEPTED / EXECUTION_ACCEPTED / SUCCEEDED
+  -> disable WORKER_COMMAND dispatch gate source
+
+FAILED / EXPIRED
+  -> no dispatch gate mutation
+```
+
+Reasoning: a failed or expired delivery means the worker did not accept the
+drain request. Closing dispatch in that case would create a platform-side
+fiction and could silently remove a healthy worker from scheduling.
 
 Out of first scope:
 
@@ -174,7 +194,10 @@ retry semantics yet.
 
 Scope:
 
-- add bounded command deadline scan owned by engine startup/watchdog wiring
+- introduce a bounded `WorkerCommandMaintenanceService` scan owned by engine
+  startup/watchdog wiring
+- first slice implements expiry only; WCD-6 may extend the same maintenance
+  loop with retry logic
 - expire command records whose `deadlineEpochMillis` has passed while in:
   - `REQUESTED`
   - `DELIVERY_ACCEPTED`
@@ -188,6 +211,7 @@ Acceptance:
 - command with expired deadline moves to `EXPIRED`
 - command without deadline is not expired by the scan
 - expired `DRAIN` does not clear an existing dispatch gate disable
+- expired or failed `DRAIN` does not create a new dispatch gate disable
 - scan is bounded and configurable
 
 ### WCD-3: Automatic Request-To-Delivery Handoff
@@ -196,8 +220,16 @@ Goal: connect request creation to the existing coordinator seam.
 
 Scope:
 
-- introduce a command delivery starter/pump that observes newly requested
-  commands and invokes `WorkerCommandDeliveryCoordinator.deliver(commandId)`
+- introduce a post-commit async delivery handoff:
+  - `WorkerCommandLifecycleOwner` records `REQUESTED`
+  - after the command record is accepted, request path enqueues `commandId`
+    into a bounded command-delivery executor/inbox
+  - the delivery worker invokes
+    `WorkerCommandDeliveryCoordinator.deliver(commandId)`
+- `requestWorkerCommand(...)` must not wait for real transport delivery
+  completion
+- enqueue failure must not lose the command record; the maintenance scan can
+  later expire it, and WCD-6 can add retry
 - keep delivery result semantics current:
   - accepted handoff -> `DELIVERY_ACCEPTED`
   - unavailable/rejected/failed -> current baseline `FAILED`
@@ -208,6 +240,8 @@ Scope:
 Acceptance:
 
 - production request path can invoke delivery coordinator
+- `requestWorkerCommand(...)` returns after command creation and delivery
+  handoff submission, not after worker receipt
 - `WorkerControlService.requestWorkerCommand(...)` does not directly own
   transport delivery
 - delivery handoff failure produces a lifecycle status transition and trace
@@ -222,8 +256,16 @@ Scope:
 - add worker-facing command pull route under `/worker-api/v1/**`, not
   operator `/api/v1/**`
 - return pending commands for the authenticated `workerId`
-- command pull must mark delivery accepted only through
-  `WorkerCommandDeliveryCoordinator` or equivalent owner-backed handoff
+- command pull is the polling carrier handoff:
+  - selecting a command for the polling worker and returning it must atomically
+    advance `REQUESTED -> DELIVERY_ACCEPTED` through
+    `WorkerCommandLifecycleOwner` / coordinator-owned semantics
+  - the response includes enough command identity for later execution ack
+  - worker execution ack later advances to `EXECUTION_ACCEPTED`, `SUCCEEDED`,
+    or `FAILED`
+- if the HTTP response is lost after `DELIVERY_ACCEPTED`, deadline expiry is
+  the recovery path in Phase 1; do not add a second delivery-accepted ack round
+  trip just to hide that window
 - add worker-facing command acknowledgement route if existing ack route is not
   sufficient for public polling worker contract
 - update external worker quickstart and samples only after API is wired
@@ -237,8 +279,11 @@ Out of scope:
 Acceptance:
 
 - polling worker can fetch a `DRAIN` or `PING` command
-- polling worker can acknowledge delivery/execution/success/failure
-- `DRAIN` acknowledgement disables future dispatch through `WORKER_COMMAND`
+- polling fetch atomically marks returned command as `DELIVERY_ACCEPTED`
+- polling worker can acknowledge execution/success/failure
+- `DRAIN` delivery acceptance or execution acknowledgement disables future
+  dispatch through `WORKER_COMMAND`
+- dropped polling responses are recoverable by command deadline expiry
 - task result APIs are not involved
 
 ### WCD-5: Realtime Command Push
@@ -248,7 +293,9 @@ opening a second connection.
 
 Scope:
 
-- define transport-neutral worker-command outbound envelope
+- define worker-facing command DTOs in `xa-mass-sdk-api`
+- define the transport-neutral command outbound carrier envelope in
+  `transport_api`
 - add websocket/socket frame type distinct from task dispatch
 - route command envelope to the worker's active route owner
 - worker SDK/sample clients distinguish task dispatch from command delivery
@@ -264,6 +311,7 @@ Acceptance:
 
 - realtime worker receives command without polling
 - task dispatch and command delivery frame types are distinguishable
+- engine command package does not own transport frame schema
 - missing/offline route reports unavailable/rejected handoff
 - command lifecycle changes are visible through SDK/server read surfaces
 
@@ -274,8 +322,9 @@ Goal: add bounded retry after first delivery path works.
 Scope:
 
 - define retryable delivery statuses
-- add retry schedule for `REQUESTED` commands whose delivery handoff failed in
-  a retryable way
+- extend `WorkerCommandMaintenanceService` from WCD-2 with retry scheduling
+- add retry schedule for commands whose delivery handoff failed in a retryable
+  way
 - cap attempts and stop at deadline
 - keep retry policy explicit and configurable
 
@@ -290,6 +339,9 @@ Acceptance:
 ### WCD-7: Operator Read And Console Polish
 
 Goal: expose command state without changing ownership.
+
+This phase can run after WCD-3, and does not need to wait for WCD-6 retry.
+It must remain read/control polish, not a lifecycle owner.
 
 Scope:
 
