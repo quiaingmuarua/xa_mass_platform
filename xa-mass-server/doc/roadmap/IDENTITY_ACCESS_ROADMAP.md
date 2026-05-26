@@ -1,8 +1,25 @@
 # Identity And Access Roadmap
 
-Last updated: 2026-05-25
+Last updated: 2026-05-26
 
 Status: direction roadmap for `xa-mass-server`.
+
+Implementation progress:
+
+```text
+IAM-1:
+  implemented read-only User / Role / Permission store and APIs
+
+IAM-2 partial:
+  implemented operator-created API keys with one-time raw secret response,
+  existing submitter-auth projection, list/detail without secret/hash, and revoke
+
+Not implemented yet:
+  API-key application create/approve/reject workflow
+  API-key usage ledger
+  submitter viewer session
+  user/role mutation APIs
+```
 
 ## Summary
 

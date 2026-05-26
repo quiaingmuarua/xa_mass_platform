@@ -1,13 +1,23 @@
 package com.xa.mass.api.auth;
 
+import com.xa.mass.api.auth.iam.RoleRecord;
+import com.xa.mass.api.auth.iam.UserRecord;
+import com.xa.mass.api.auth.iam.UserRoleBindingRecord;
+import com.xa.mass.api.auth.iam.UserRolePermissionStore;
+import com.xa.mass.api.auth.iam.UserStatus;
+import com.xa.mass.api.auth.iam.InMemoryUserRolePermissionStore;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.auth.PrincipalDirectory;
 import com.xa.mass.sdk.auth.PrincipalType;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Component
 public class DefaultOperatorPrincipalDirectory implements PrincipalDirectory {
@@ -16,45 +26,15 @@ public class DefaultOperatorPrincipalDirectory implements PrincipalDirectory {
     private static final String ATTR_EMAIL = "email";
     private static final String ATTR_ROLES = "roles";
 
-    private final Map<String, PrincipalContext> principalsById;
+    private final UserRolePermissionStore store;
 
     public DefaultOperatorPrincipalDirectory() {
-        Map<String, PrincipalContext> principals = new LinkedHashMap<>();
-        PrincipalContext admin = PrincipalContext.builder()
-                .principalId("ops-admin")
-                .principalType(PrincipalType.OPERATOR)
-                .userId("ops-admin")
-                .permissions(ApiPermissionNames.ALL)
-                .attributes(Map.of(
-                        ATTR_DISPLAY_NAME, "Ops Admin",
-                        ATTR_EMAIL, "ops-admin@example.internal",
-                        ATTR_ROLES, "OPS_ADMIN"
-                ))
-                .projectScopes(List.of(PrincipalContext.WILDCARD_SCOPE))
-                .eventScopes(List.of(PrincipalContext.WILDCARD_SCOPE))
-                .build();
-        PrincipalContext viewer = PrincipalContext.builder()
-                .principalId("ops-viewer")
-                .principalType(PrincipalType.OPERATOR)
-                .userId("ops-viewer")
-                .permissions(List.of(
-                        ApiPermissionNames.TASK_VIEW,
-                        ApiPermissionNames.WORKER_VIEW,
-                        ApiPermissionNames.RULE_VIEW,
-                        ApiPermissionNames.CONFIG_VIEW,
-                        ApiPermissionNames.AUDIT_VIEW
-                ))
-                .attributes(Map.of(
-                        ATTR_DISPLAY_NAME, "Ops Viewer",
-                        ATTR_EMAIL, "ops-viewer@example.internal",
-                        ATTR_ROLES, "OPS_VIEWER"
-                ))
-                .projectScopes(List.of(PrincipalContext.WILDCARD_SCOPE))
-                .eventScopes(List.of(PrincipalContext.WILDCARD_SCOPE))
-                .build();
-        principals.put(admin.getPrincipalId(), admin);
-        principals.put(viewer.getPrincipalId(), viewer);
-        this.principalsById = Map.copyOf(principals);
+        this(InMemoryUserRolePermissionStore.bootstrapDefaults());
+    }
+
+    @Autowired
+    public DefaultOperatorPrincipalDirectory(UserRolePermissionStore store) {
+        this.store = Objects.requireNonNull(store, "store");
     }
 
     @Override
@@ -62,7 +42,36 @@ public class DefaultOperatorPrincipalDirectory implements PrincipalDirectory {
         if (principalId == null || principalId.isBlank()) {
             return null;
         }
-        return principalsById.get(principalId.trim());
+        UserRecord user = store.getUser(principalId.trim());
+        if (user == null || user.status() != UserStatus.ACTIVE) {
+            return null;
+        }
+        List<UserRoleBindingRecord> bindings = store.listRoleBindings(user.userId());
+        Set<String> permissions = new LinkedHashSet<>();
+        List<String> roleIds = bindings.stream()
+                .map(UserRoleBindingRecord::roleId)
+                .filter(roleId -> roleId != null && !roleId.isBlank())
+                .distinct()
+                .toList();
+        for (String roleId : roleIds) {
+            RoleRecord role = store.getRole(roleId);
+            if (role != null) {
+                permissions.addAll(role.permissions());
+            }
+        }
+        return PrincipalContext.builder()
+                .principalId(user.userId())
+                .principalType(PrincipalType.OPERATOR)
+                .userId(user.userId())
+                .permissions(List.copyOf(permissions))
+                .attributes(Map.of(
+                        ATTR_DISPLAY_NAME, defaultIfBlank(user.displayName(), user.userId()),
+                        ATTR_EMAIL, defaultIfBlank(user.email(), user.userId() + "@example.internal"),
+                        ATTR_ROLES, roleIds.stream().collect(Collectors.joining(","))
+                ))
+                .projectScopes(List.of(PrincipalContext.WILDCARD_SCOPE))
+                .eventScopes(List.of(PrincipalContext.WILDCARD_SCOPE))
+                .build();
     }
 
     public PrincipalContext requirePrincipal(String principalId) {
@@ -71,5 +80,9 @@ public class DefaultOperatorPrincipalDirectory implements PrincipalDirectory {
             throw new IllegalArgumentException("Unknown operator principal: " + principalId);
         }
         return principal;
+    }
+
+    private String defaultIfBlank(String value, String defaultValue) {
+        return value == null || value.isBlank() ? defaultValue : value;
     }
 }

@@ -19,6 +19,11 @@ public final class ApiPermissionNames {
     public static final String USER_EDIT = "user:edit";
     public static final String ROLE_VIEW = "role:view";
     public static final String ROLE_EDIT = "role:edit";
+    public static final String API_KEY_VIEW = "api-key:view";
+    public static final String API_KEY_APPLY = "api-key:apply";
+    public static final String API_KEY_APPROVE = "api-key:approve";
+    public static final String API_KEY_REVOKE = "api-key:revoke";
+    public static final String API_USAGE_VIEW = "api-usage:view";
     public static final String AUDIT_VIEW = "audit:view";
 
     public static final List<String> ALL = List.of(
@@ -37,6 +42,11 @@ public final class ApiPermissionNames {
             USER_EDIT,
             ROLE_VIEW,
             ROLE_EDIT,
+            API_KEY_VIEW,
+            API_KEY_APPLY,
+            API_KEY_APPROVE,
+            API_KEY_REVOKE,
+            API_USAGE_VIEW,
             AUDIT_VIEW
     );
 

@@ -7,5 +7,9 @@ public enum PlatformResourceType {
     TASK,
     WORKER,
     RULE,
-    SUBMITTER
+    SUBMITTER,
+    USER,
+    ROLE,
+    API_KEY,
+    API_USAGE
 }
