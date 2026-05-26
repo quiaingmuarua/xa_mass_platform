@@ -1277,11 +1277,18 @@ class EngineSchedulingCoreArchitectureGuardTest {
             violations.add(taskManagerPath + " uses task write lock outside lifecycle/intake/progress/audit methods");
         }
 
-        String claimReady = sourceMethod(source, "public List<ClaimedTaskWork> claimReady");
-        for (String forbidden : List.of("withTaskLock(", "withTaskWorkReadLock(", "withTaskWriteLock(")) {
-            if (claimReady.contains(forbidden)) {
-                violations.add(taskManagerPath + " claimReady must stay runtime-owned and not take task locks: "
-                        + forbidden);
+        Map<String, String> runtimeOwnedMethods = Map.of(
+                "claimReady",
+                sourceMethod(source, "public List<ClaimedTaskWork> claimReady"),
+                "applyTaskWorkResultWithContext",
+                sourceMethod(source, "RuntimeResultApplyContext applyTaskWorkResultWithContext")
+        );
+        for (Map.Entry<String, String> runtimeOwnedMethod : runtimeOwnedMethods.entrySet()) {
+            for (String forbidden : List.of("withTaskLock(", "withTaskWorkReadLock(", "withTaskWriteLock(")) {
+                if (runtimeOwnedMethod.getValue().contains(forbidden)) {
+                    violations.add(taskManagerPath + " " + runtimeOwnedMethod.getKey()
+                            + " must stay runtime-owned and not take task locks: " + forbidden);
+                }
             }
         }
 
