@@ -75,6 +75,7 @@ class FrontendConsoleControllerTest {
                 "/resources/projects",
                 "/resources/projects/demoApp",
                 "/runtime/discovery",
+                "/submitter-viewer",
                 "/system/api-keys")) {
             mockMvc.perform(get(path))
                     .andExpect(status().isOk())

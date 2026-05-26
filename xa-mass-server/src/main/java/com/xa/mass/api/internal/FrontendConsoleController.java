@@ -49,6 +49,7 @@ public class FrontendConsoleController {
             "/resources/configs",
             "/runtime/discovery",
             "/runtime/diagnostics",
+            "/submitter-viewer",
             "/system/users",
             "/system/roles",
             "/system/api-keys",
