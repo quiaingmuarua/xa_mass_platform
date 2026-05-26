@@ -28,6 +28,7 @@ import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.engine.watchdog.RuntimeReadyDispatchPump;
+import com.xa.mass.runtime.api.TaskWorkRuntimeStats;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
@@ -251,11 +252,14 @@ public final class TaskFlowLoadModelRunner {
 
                     long totalWallNanos = System.nanoTime() - wallStartNanos;
                     TaskWorkStats finalWorkStats = runtimes.taskWorkRuntime().stats(task.getTid());
+                    TaskWorkRuntimeStats finalRuntimeStats = runtimes.taskWorkRuntime().stats();
                     long finalResultCount = runtimes.taskResultRuntime().countVisibleResults(task.getTid());
                     RuntimeProofMetrics proofMetrics = RuntimeProofMetrics.from(
                             finalWorkStats,
+                            finalRuntimeStats,
                             finalResultCount,
                             dispatchMetrics.totalDispatchItems.sum(),
+                            dispatchMetrics.firstDispatchLagNanos(wallStartNanos),
                             totalWallNanos
                     );
 
@@ -510,10 +514,20 @@ public final class TaskFlowLoadModelRunner {
     private static final class DispatchMetrics {
         private final LongAdder dispatchCycles = new LongAdder();
         private final LongAdder totalDispatchItems = new LongAdder();
+        private final AtomicReference<Long> firstDispatchAtNanos = new AtomicReference<>();
 
         private void recordDispatchCycle(List<TaskDispatchBinding> dispatchBindings) {
+            firstDispatchAtNanos.compareAndSet(null, System.nanoTime());
             dispatchCycles.increment();
             totalDispatchItems.add(dispatchBindings.size());
+        }
+
+        private long firstDispatchLagNanos(long wallStartNanos) {
+            Long firstDispatch = firstDispatchAtNanos.get();
+            if (firstDispatch == null || wallStartNanos <= 0L || firstDispatch < wallStartNanos) {
+                return -1L;
+            }
+            return firstDispatch - wallStartNanos;
         }
     }
 
@@ -607,12 +621,18 @@ public final class TaskFlowLoadModelRunner {
 
     private record RuntimeProofMetrics(long finalResultCount,
                                        long duplicateDispatchItems,
+                                       long duplicateResultItems,
+                                       long staleResultItems,
+                                       long expiredLeaseItems,
                                        long processingCounterDrift,
                                        long resultCounterDrift,
+                                       double firstDispatchLagMillis,
                                        double claimedMessagesPerSecond) {
         private static RuntimeProofMetrics from(TaskWorkStats stats,
+                                                TaskWorkRuntimeStats runtimeStats,
                                                 long finalResultCount,
                                                 long totalDispatchItems,
+                                                long firstDispatchLagNanos,
                                                 long totalWallNanos) {
             long processingCounterDrift = Math.abs(stats.pendingCount() - stats.processingCount());
             long resultCounterDrift = Math.abs(stats.successCount() - finalResultCount);
@@ -620,8 +640,12 @@ public final class TaskFlowLoadModelRunner {
             return new RuntimeProofMetrics(
                     finalResultCount,
                     Math.max(totalDispatchItems - stats.totalCount(), 0L),
+                    runtimeStats.duplicateResultItems(),
+                    runtimeStats.staleResultItems(),
+                    runtimeStats.expiredLeaseItems(),
                     processingCounterDrift,
                     resultCounterDrift,
+                    firstDispatchLagNanos < 0L ? -1.0 : nanosToMillis(firstDispatchLagNanos),
                     stats.totalCount() / seconds
             );
         }
@@ -630,8 +654,12 @@ public final class TaskFlowLoadModelRunner {
             Map<String, Object> values = new LinkedHashMap<>();
             values.put("finalResultCount", finalResultCount);
             values.put("duplicateDispatchItems", duplicateDispatchItems);
+            values.put("duplicateResultItems", duplicateResultItems);
+            values.put("staleResultItems", staleResultItems);
+            values.put("expiredLeaseItems", expiredLeaseItems);
             values.put("processingCounterDrift", processingCounterDrift);
             values.put("resultCounterDrift", resultCounterDrift);
+            values.put("firstDispatchLagMillis", firstDispatchLagMillis);
             values.put("claimedMessagesPerSecond", claimedMessagesPerSecond);
             return values;
         }

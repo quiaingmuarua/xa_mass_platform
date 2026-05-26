@@ -130,7 +130,9 @@ Perf load model:
 It uses explicit WorkerGroup selector truth and starts `RuntimeReadyDispatchPump`,
 so BATCH refill is driven by `TaskWorkRuntime.readyTaskIds(...)`. The report
 includes `runtimeProof.finalResultCount`, `duplicateDispatchItems`,
-`processingCounterDrift`, `resultCounterDrift`, and `claimedMessagesPerSecond`.
+`duplicateResultItems`, `staleResultItems`, `expiredLeaseItems`,
+`processingCounterDrift`, `resultCounterDrift`, `firstDispatchLagMillis`, and
+`claimedMessagesPerSecond`.
 Redis runs use a safe default `xa:mass:perf:*` namespace and clean it before and
 after the run; override with `mass.load.redisNamespace` when a retained namespace
 is needed.
