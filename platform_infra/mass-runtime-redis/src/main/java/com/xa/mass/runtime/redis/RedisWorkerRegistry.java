@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.xa.mass.runtime.worker.CleanupSummary;
 import com.xa.mass.runtime.worker.DispatchAvailabilitySource;
 import com.xa.mass.runtime.worker.EventKey;
+import com.xa.mass.runtime.worker.RandomWorkerCandidateSamplingPolicy;
 import com.xa.mass.runtime.worker.ReserveResult;
 import com.xa.mass.runtime.worker.ReserveStatus;
 import com.xa.mass.runtime.worker.WorkerCandidateSamplingContext;
@@ -55,7 +56,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     public RedisWorkerRegistry(String redisUri, String namespace) {
         this(RedisClient.create(Objects.requireNonNull(redisUri, "redisUri")),
                 new RedisWorkerRegistryKeyspace(namespace),
-                firstNPolicy(),
+                RandomWorkerCandidateSamplingPolicy.defaultPolicy(),
                 RedisWorkerRegistry::defaultRouteBucketKeys,
                 DEFAULT_HEARTBEAT_FRESHNESS_MILLIS,
                 true);
@@ -113,7 +114,9 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         this.connection = Objects.requireNonNull(connection, "connection");
         this.commands = connection.sync();
         this.keyspace = keyspace != null ? keyspace : new RedisWorkerRegistryKeyspace();
-        this.samplingPolicy = samplingPolicy != null ? samplingPolicy : firstNPolicy();
+        this.samplingPolicy = samplingPolicy != null
+                ? samplingPolicy
+                : RandomWorkerCandidateSamplingPolicy.defaultPolicy();
         this.routeBucketPolicy = routeBucketPolicy != null
                 ? routeBucketPolicy
                 : RedisWorkerRegistry::defaultRouteBucketKeys;
@@ -781,13 +784,6 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
 
     private static Set<String> defaultRouteBucketKeys(WorkerMeta meta) {
         return Set.of(DEFAULT_ROUTE_BUCKET_KEY);
-    }
-
-    private static WorkerCandidateSamplingPolicy firstNPolicy() {
-        return (context, workerIds, maxCandidateCount) ->
-                workerIds == null || maxCandidateCount <= 0
-                        ? List.of()
-                        : workerIds.stream().limit(maxCandidateCount).toList();
     }
 
     private void incrementTaskProjection(RedisCommands<String, String> tx, String taskId, String workerId, int permits) {

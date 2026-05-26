@@ -172,25 +172,27 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
             "  local messageId = ARGV[argCursor]",
             "  local member = ARGV[argCursor + 1]",
             "  argCursor = argCursor + 2",
-            "  redis.call('ZREM', taskDelayed, messageId)",
-            "  redis.call('ZREM', delayedWork, member)",
-            "  local workHash = taskPrefix .. ':work:' .. messageId",
-            "  local leaseHash = taskPrefix .. ':lease:' .. messageId",
-            "  if redis.call('EXISTS', workHash) == 1 and redis.call('EXISTS', leaseHash) == 0 then",
-            "    local nextVisibleAtMillis = tonumber(redis.call('HGET', workHash, 'nextVisibleAtMillis') or '0')",
-            "    if nextVisibleAtMillis > nowMillis then",
-            "      redis.call('ZADD', taskDelayed, nextVisibleAtMillis, messageId)",
-            "      redis.call('ZADD', delayedWork, nextVisibleAtMillis, member)",
-            "    else",
-            "      redis.call('RPUSH', readyQueue, messageId)",
-            "      decr_non_negative(taskStats, 'delayedCount', 1)",
-            "      decr_non_negative(runtimeStats, 'delayedCount', 1)",
-            "      redis.call('HINCRBY', taskStats, 'readyCount', 1)",
-            "      redis.call('HINCRBY', runtimeStats, 'readyCount', 1)",
-            "      local createdAtMillis = tonumber(redis.call('HGET', workHash, 'createdAtMillis') or '0')",
-            "      local existing = redis.call('ZSCORE', readyTasks, taskId)",
-            "      if (not existing) or tonumber(existing) > createdAtMillis then",
-            "        redis.call('ZADD', readyTasks, createdAtMillis, taskId)",
+            "  local removedTask = redis.call('ZREM', taskDelayed, messageId)",
+            "  local removedGlobal = redis.call('ZREM', delayedWork, member)",
+            "  if removedTask > 0 or removedGlobal > 0 then",
+            "    local workHash = taskPrefix .. ':work:' .. messageId",
+            "    local leaseHash = taskPrefix .. ':lease:' .. messageId",
+            "    if redis.call('EXISTS', workHash) == 1 and redis.call('EXISTS', leaseHash) == 0 then",
+            "      local nextVisibleAtMillis = tonumber(redis.call('HGET', workHash, 'nextVisibleAtMillis') or '0')",
+            "      if nextVisibleAtMillis > nowMillis then",
+            "        redis.call('ZADD', taskDelayed, nextVisibleAtMillis, messageId)",
+            "        redis.call('ZADD', delayedWork, nextVisibleAtMillis, member)",
+            "      else",
+            "        redis.call('RPUSH', readyQueue, messageId)",
+            "        decr_non_negative(taskStats, 'delayedCount', 1)",
+            "        decr_non_negative(runtimeStats, 'delayedCount', 1)",
+            "        redis.call('HINCRBY', taskStats, 'readyCount', 1)",
+            "        redis.call('HINCRBY', runtimeStats, 'readyCount', 1)",
+            "        local createdAtMillis = tonumber(redis.call('HGET', workHash, 'createdAtMillis') or '0')",
+            "        local existing = redis.call('ZSCORE', readyTasks, taskId)",
+            "        if (not existing) or tonumber(existing) > createdAtMillis then",
+            "          redis.call('ZADD', readyTasks, createdAtMillis, taskId)",
+            "        end",
             "      end",
             "    end",
             "  end",
@@ -256,6 +258,91 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
             "end",
             "maybe_upsert_ready_score()",
             "return claimed"
+    );
+
+    private static final String PROMOTE_DELAYED_MEMBER_SCRIPT = String.join("\n",
+            "local delayedWork = KEYS[1]",
+            "local taskDelayed = KEYS[2]",
+            "local workHash = KEYS[3]",
+            "local leaseHash = KEYS[4]",
+            "local readyQueue = KEYS[5]",
+            "local readyTasks = KEYS[6]",
+            "local taskStats = KEYS[7]",
+            "local runtimeStats = KEYS[8]",
+            "local taskId = ARGV[1]",
+            "local messageId = ARGV[2]",
+            "local workMember = ARGV[3]",
+            "local nowMillis = tonumber(ARGV[4])",
+            "local function decr_non_negative(hashKey, field, delta)",
+            "  local current = tonumber(redis.call('HGET', hashKey, field) or '0')",
+            "  local next = current - delta",
+            "  if next < 0 then next = 0 end",
+            "  redis.call('HSET', hashKey, field, tostring(next))",
+            "end",
+            "local removedGlobal = redis.call('ZREM', delayedWork, workMember)",
+            "local removedTask = redis.call('ZREM', taskDelayed, messageId)",
+            "if removedGlobal == 0 and removedTask == 0 then",
+            "  return 'MISSING_DELAYED'",
+            "end",
+            "if redis.call('EXISTS', workHash) == 0 or redis.call('EXISTS', leaseHash) == 1 then",
+            "  return 'STALE'",
+            "end",
+            "local nextVisibleAtMillis = tonumber(redis.call('HGET', workHash, 'nextVisibleAtMillis') or '0')",
+            "if nextVisibleAtMillis > nowMillis then",
+            "  redis.call('ZADD', delayedWork, nextVisibleAtMillis, workMember)",
+            "  redis.call('ZADD', taskDelayed, nextVisibleAtMillis, messageId)",
+            "  return 'FUTURE'",
+            "end",
+            "redis.call('RPUSH', readyQueue, messageId)",
+            "decr_non_negative(taskStats, 'delayedCount', 1)",
+            "decr_non_negative(runtimeStats, 'delayedCount', 1)",
+            "redis.call('HINCRBY', taskStats, 'readyCount', 1)",
+            "redis.call('HINCRBY', runtimeStats, 'readyCount', 1)",
+            "local createdAtMillis = tonumber(redis.call('HGET', workHash, 'createdAtMillis') or '0')",
+            "local existing = redis.call('ZSCORE', readyTasks, taskId)",
+            "if (not existing) or tonumber(existing) > createdAtMillis then",
+            "  redis.call('ZADD', readyTasks, createdAtMillis, taskId)",
+            "end",
+            "return 'PROMOTED'"
+    );
+
+    private static final String CLEAN_READY_HEAD_SCRIPT = String.join("\n",
+            "local readyQueue = KEYS[1]",
+            "local readyTasks = KEYS[2]",
+            "local taskStats = KEYS[3]",
+            "local runtimeStats = KEYS[4]",
+            "local taskId = ARGV[1]",
+            "local taskPrefix = ARGV[2]",
+            "local maxSteps = tonumber(ARGV[3])",
+            "local function decr_non_negative(hashKey, field, delta)",
+            "  local current = tonumber(redis.call('HGET', hashKey, field) or '0')",
+            "  local next = current - delta",
+            "  if next < 0 then next = 0 end",
+            "  redis.call('HSET', hashKey, field, tostring(next))",
+            "end",
+            "local steps = 0",
+            "while steps < maxSteps do",
+            "  local messageId = redis.call('LINDEX', readyQueue, 0)",
+            "  if not messageId then",
+            "    redis.call('ZREM', readyTasks, taskId)",
+            "    return 'EMPTY'",
+            "  end",
+            "  local workHash = taskPrefix .. ':work:' .. messageId",
+            "  local leaseHash = taskPrefix .. ':lease:' .. messageId",
+            "  if redis.call('EXISTS', workHash) == 1 and redis.call('EXISTS', leaseHash) == 0 then",
+            "    local createdAtMillis = tonumber(redis.call('HGET', workHash, 'createdAtMillis') or '0')",
+            "    local existing = redis.call('ZSCORE', readyTasks, taskId)",
+            "    if (not existing) or tonumber(existing) > createdAtMillis then",
+            "      redis.call('ZADD', readyTasks, createdAtMillis, taskId)",
+            "    end",
+            "    return 'VISIBLE'",
+            "  end",
+            "  redis.call('LPOP', readyQueue)",
+            "  decr_non_negative(taskStats, 'readyCount', 1)",
+            "  decr_non_negative(runtimeStats, 'readyCount', 1)",
+            "  steps = steps + 1",
+            "end",
+            "return 'BOUNDED'"
     );
 
     private static final String APPLY_RESULT_SCRIPT = String.join("\n",
@@ -1196,24 +1283,27 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
     }
 
     private boolean promoteDelayedMember(String taskId, String messageId, String workMember, Instant now) {
-        TaskWorkEnvelope item = loadWork(taskId, messageId);
-        commands.zrem(keyspace.delayedWorkZset(), workMember);
-        commands.zrem(keyspace.taskDelayedZset(taskId), messageId);
-        if (item == null || leaseExists(taskId, messageId)) {
-            return false;
-        }
-        if (item.nextVisibleAt() != null && item.nextVisibleAt().isAfter(now)) {
-            commands.zadd(keyspace.delayedWorkZset(), toScore(item.nextVisibleAt()), workMember);
-            commands.zadd(keyspace.taskDelayedZset(taskId), toScore(item.nextVisibleAt()), messageId);
-            return false;
-        }
-        decrementTaskCounter(taskId, RedisTaskWorkKeyspace.COUNTER_DELAYED_COUNT, 1L);
-        decrementRuntimeCounter(RedisTaskWorkKeyspace.COUNTER_DELAYED_COUNT, 1L);
-        commands.rpush(keyspace.taskReadyQueue(taskId), messageId);
-        upsertReadyTaskScore(taskId, item.createdAt());
-        incrementTaskCounter(taskId, RedisTaskWorkKeyspace.COUNTER_READY_COUNT, 1L);
-        incrementRuntimeCounter(RedisTaskWorkKeyspace.COUNTER_READY_COUNT, 1L);
-        return true;
+        Object outcome = commands.eval(
+                PROMOTE_DELAYED_MEMBER_SCRIPT,
+                ScriptOutputType.VALUE,
+                keys(
+                        keyspace.delayedWorkZset(),
+                        keyspace.taskDelayedZset(taskId),
+                        keyspace.taskWorkHash(taskId, messageId),
+                        keyspace.taskLeaseHash(taskId, messageId),
+                        keyspace.taskReadyQueue(taskId),
+                        keyspace.readyTasksZset(),
+                        keyspace.taskStatsHash(taskId),
+                        keyspace.runtimeStatsHash()
+                ),
+                values(
+                        taskId,
+                        messageId,
+                        workMember,
+                        Long.toString(now.toEpochMilli())
+                )
+        );
+        return "PROMOTED".equals(stringValue(outcome));
     }
 
     private List<String> loadReadyTaskIds(int limit) {
@@ -1230,24 +1320,22 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
     }
 
     private boolean ensureReadyQueueVisible(String taskId) {
-        while (commands.llen(keyspace.taskReadyQueue(taskId)) > 0) {
-            String messageId = commands.lindex(keyspace.taskReadyQueue(taskId), 0);
-            if (isBlank(messageId)) {
-                break;
-            }
-            if (workExists(taskId, messageId) && !leaseExists(taskId, messageId)) {
-                TaskWorkEnvelope item = loadWork(taskId, messageId);
-                if (item != null) {
-                    upsertReadyTaskScore(taskId, item.createdAt());
-                    return true;
-                }
-            }
-            commands.lpop(keyspace.taskReadyQueue(taskId));
-            decrementTaskCounter(taskId, RedisTaskWorkKeyspace.COUNTER_READY_COUNT, 1L);
-            decrementRuntimeCounter(RedisTaskWorkKeyspace.COUNTER_READY_COUNT, 1L);
-        }
-        commands.zrem(keyspace.readyTasksZset(), taskId);
-        return false;
+        Object outcome = commands.eval(
+                CLEAN_READY_HEAD_SCRIPT,
+                ScriptOutputType.VALUE,
+                keys(
+                        keyspace.taskReadyQueue(taskId),
+                        keyspace.readyTasksZset(),
+                        keyspace.taskStatsHash(taskId),
+                        keyspace.runtimeStatsHash()
+                ),
+                values(
+                        taskId,
+                        keyspace.taskPrefix(taskId),
+                        "256"
+                )
+        );
+        return "VISIBLE".equals(stringValue(outcome));
     }
 
     private void trimRecentFinalReceipts() {
@@ -1347,28 +1435,6 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         }
     }
 
-    private void incrementTaskCounter(String taskId, String counter, long delta) {
-        if (delta != 0L) {
-            commands.hincrby(keyspace.taskStatsHash(taskId), counter, delta);
-        }
-    }
-
-    private void decrementRuntimeCounter(String counter, long delta) {
-        if (delta <= 0L) {
-            return;
-        }
-        long current = parseLong(commands.hget(keyspace.runtimeStatsHash(), counter));
-        commands.hset(keyspace.runtimeStatsHash(), counter, Long.toString(Math.max(0L, current - delta)));
-    }
-
-    private void decrementTaskCounter(String taskId, String counter, long delta) {
-        if (delta <= 0L) {
-            return;
-        }
-        long current = parseLong(commands.hget(keyspace.taskStatsHash(taskId), counter));
-        commands.hset(keyspace.taskStatsHash(taskId), counter, Long.toString(Math.max(0L, current - delta)));
-    }
-
     private long oldestReadyAgeMillis() {
         List<String> readyTasks = commands.zrange(keyspace.readyTasksZset(), 0, 0);
         if (readyTasks.isEmpty()) {
@@ -1380,22 +1446,6 @@ public final class RedisTaskWorkRuntime implements TaskWorkRuntime {
         }
         long oldestCreatedAt = Math.max(0L, score.longValue());
         return Math.max(0L, Duration.between(Instant.ofEpochMilli(oldestCreatedAt), clock.get()).toMillis());
-    }
-
-    private void upsertReadyTaskScore(String taskId, Instant createdAt) {
-        double createdScore = toScore(createdAt);
-        Double existing = commands.zscore(keyspace.readyTasksZset(), taskId);
-        if (existing == null || createdScore < existing) {
-            commands.zadd(keyspace.readyTasksZset(), createdScore, taskId);
-        }
-    }
-
-    private boolean workExists(String taskId, String messageId) {
-        return commands.exists(keyspace.taskWorkHash(taskId, messageId)) > 0;
-    }
-
-    private boolean leaseExists(String taskId, String messageId) {
-        return commands.exists(keyspace.taskLeaseHash(taskId, messageId)) > 0;
     }
 
     private TaskWorkRuntimeStats emptyRuntimeStats() {

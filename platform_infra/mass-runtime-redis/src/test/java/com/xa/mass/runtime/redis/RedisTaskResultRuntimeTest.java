@@ -3,6 +3,7 @@ package com.xa.mass.runtime.redis;
 import com.xa.mass.runtime.api.BarrierClaim;
 import com.xa.mass.runtime.api.BarrierClaimStatus;
 import com.xa.mass.runtime.api.BarrierMarkStatus;
+import com.xa.mass.runtime.api.CommitResult;
 import com.xa.mass.runtime.api.CommitResultStatus;
 import com.xa.mass.runtime.api.TaskResultFinalDraft;
 import io.lettuce.core.RedisClient;
@@ -12,8 +13,17 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Modifier;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -131,6 +141,112 @@ class RedisTaskResultRuntimeTest {
             }
             RedisRuntimeTestSupport.cleanupNamespace(commands, otherKeyspace.namespace());
         }
+    }
+
+    @Test
+    void commitVisibleFinal_doesNotUseMethodLevelJvmMonitor() throws Exception {
+        assertThat(Modifier.isSynchronized(RedisTaskResultRuntime.class
+                .getMethod("commitVisibleFinal", TaskResultFinalDraft.class)
+                .getModifiers()))
+                .isFalse();
+    }
+
+    @Test
+    void concurrentCommitAcrossRedisConnections_sameMessageProducesOneVisibleRow() throws Exception {
+        int contenders = 12;
+        List<StatefulRedisConnection<String, String>> connections = new ArrayList<>();
+        List<RedisTaskResultRuntime> runtimes = new ArrayList<>();
+        for (int i = 0; i < contenders; i++) {
+            StatefulRedisConnection<String, String> contenderConnection = redisClient.connect();
+            connections.add(contenderConnection);
+            runtimes.add(new RedisTaskResultRuntime(contenderConnection, keyspace, Instant::now));
+        }
+
+        try {
+            List<CommitResult> results = runConcurrently(contenders,
+                    index -> runtimes.get(index).commitVisibleFinal(
+                            finalDraft("cross-client-task", "msg-1", "SUCCESS")));
+
+            assertThat(results).filteredOn(result -> result.status() == CommitResultStatus.COMMITTED)
+                    .hasSize(1);
+            assertThat(results).filteredOn(result -> result.status() == CommitResultStatus.DUPLICATE)
+                    .hasSize(contenders - 1);
+            assertThat(runtime.countVisibleResults("cross-client-task")).isEqualTo(1);
+            assertThat(runtime.getVisibleByMessageId("cross-client-task", "msg-1")).get()
+                    .satisfies(row -> assertThat(row.seq()).isEqualTo(1L));
+        } finally {
+            runtimes.forEach(RedisTaskResultRuntime::shutdown);
+            connections.stream()
+                    .filter(StatefulRedisConnection::isOpen)
+                    .forEach(StatefulRedisConnection::close);
+        }
+    }
+
+    @Test
+    void concurrentCommitAcrossRedisConnections_differentMessagesAllocateUniqueSeq() throws Exception {
+        int contenders = 24;
+        List<StatefulRedisConnection<String, String>> connections = new ArrayList<>();
+        List<RedisTaskResultRuntime> runtimes = new ArrayList<>();
+        for (int i = 0; i < contenders; i++) {
+            StatefulRedisConnection<String, String> contenderConnection = redisClient.connect();
+            connections.add(contenderConnection);
+            runtimes.add(new RedisTaskResultRuntime(contenderConnection, keyspace, Instant::now));
+        }
+
+        try {
+            List<CommitResult> results = runConcurrently(contenders,
+                    index -> runtimes.get(index).commitVisibleFinal(
+                            finalDraft("cross-client-many", "msg-" + index, "SUCCESS")));
+
+            assertThat(results).allSatisfy(result ->
+                    assertThat(result.status()).isEqualTo(CommitResultStatus.COMMITTED));
+            assertThat(results).extracting(result -> result.row().seq())
+                    .containsExactlyInAnyOrderElementsOf(java.util.stream.LongStream.rangeClosed(1, contenders)
+                            .boxed()
+                            .toList());
+            assertThat(runtime.countVisibleResults("cross-client-many")).isEqualTo(contenders);
+        } finally {
+            runtimes.forEach(RedisTaskResultRuntime::shutdown);
+            connections.stream()
+                    .filter(StatefulRedisConnection::isOpen)
+                    .forEach(StatefulRedisConnection::close);
+        }
+    }
+
+    private List<CommitResult> runConcurrently(int contenders, ConcurrentCommit commit) throws Exception {
+        ExecutorService executor = Executors.newFixedThreadPool(contenders);
+        CountDownLatch ready = new CountDownLatch(contenders);
+        CountDownLatch start = new CountDownLatch(1);
+        List<Future<CommitResult>> futures = new ArrayList<>(contenders);
+        try {
+            for (int i = 0; i < contenders; i++) {
+                final int index = i;
+                futures.add(executor.submit(new Callable<>() {
+                    @Override
+                    public CommitResult call() throws Exception {
+                        ready.countDown();
+                        if (!start.await(5, TimeUnit.SECONDS)) {
+                            throw new AssertionError("concurrent commit start latch timed out");
+                        }
+                        return commit.apply(index);
+                    }
+                }));
+            }
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            List<CommitResult> results = new ArrayList<>(contenders);
+            for (Future<CommitResult> future : futures) {
+                results.add(future.get(10, TimeUnit.SECONDS));
+            }
+            return results;
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @FunctionalInterface
+    private interface ConcurrentCommit {
+        CommitResult apply(int index) throws Exception;
     }
 
     private TaskResultFinalDraft finalDraft(String taskId, String messageId, String status) {

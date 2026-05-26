@@ -30,8 +30,14 @@ import org.junit.jupiter.api.Test;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -531,6 +537,45 @@ public class SimpleTaskDispatchBinderTest {
     }
 
     @Test
+    void concurrentAssignmentRoundsClaimEachReadyMessageAtMostOnce() throws Exception {
+        Task task = createTask(6);
+        task.getExecutionSpec().setBatchSize(6);
+        List<WorkerSchedulingCandidate> candidates = List.of(matched("d1"), matched("d2"), matched("d3"));
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            List<Future<List<TaskDispatchBinding>>> futures = List.of(
+                    executor.submit(() -> {
+                        start.await(2, TimeUnit.SECONDS);
+                        return listener.bindDispatches(task, candidates);
+                    }),
+                    executor.submit(() -> {
+                        start.await(2, TimeUnit.SECONDS);
+                        return listener.bindDispatches(task, candidates);
+                    })
+            );
+
+            start.countDown();
+
+            List<TaskDispatchBinding> dispatched = new ArrayList<>();
+            for (Future<List<TaskDispatchBinding>> future : futures) {
+                dispatched.addAll(future.get(5, TimeUnit.SECONDS));
+            }
+
+            assertEquals(6, dispatched.size());
+            Set<String> messageIds = dispatched.stream()
+                    .map(TaskDispatchBinding::messageId)
+                    .collect(Collectors.toCollection(HashSet::new));
+            assertEquals(6, messageIds.size(), "concurrent assignment rounds must not duplicate a claimed message");
+            assertEquals(0, taskManager.countDispatchReadyWork(task.getTid()));
+            assertTrue(projectedMessages(task.getTid()).stream()
+                    .allMatch(msg -> msg.status() == TaskMessageProjectionStatus.ASSIGNED));
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
     void singleWorkerDoesNotExceedBatchSizeWithinOneDispatchRound() {
         Task task = createTask(4);
         task.getExecutionSpec().setBatchSize(2);
@@ -810,5 +855,3 @@ public class SimpleTaskDispatchBinderTest {
         }
     }
 }
-
-

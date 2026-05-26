@@ -3,6 +3,7 @@ package com.xa.mass.runtime.contract;
 import com.xa.mass.runtime.api.BarrierClaimStatus;
 import com.xa.mass.runtime.api.BarrierClaim;
 import com.xa.mass.runtime.api.BarrierMarkStatus;
+import com.xa.mass.runtime.api.CommitResult;
 import com.xa.mass.runtime.api.CommitResultStatus;
 import com.xa.mass.runtime.api.StageResultStatus;
 import com.xa.mass.runtime.api.TaskResultCallbackDraft;
@@ -15,9 +16,17 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -69,6 +78,49 @@ public abstract class TaskResultRuntimeContractTest {
                 .isEqualTo(2L);
         assertThat(runtime.commitVisibleFinal(finalDraft("task-2", "msg-1", "SUCCESS")).row().seq())
                 .isEqualTo(1L);
+    }
+
+    @Test
+    void concurrentVisibleFinalCommit_sameMessageProducesOneVisibleRow() throws Exception {
+        int contenders = 16;
+        List<CommitResult> results = runConcurrently(contenders,
+                index -> runtime.commitVisibleFinal(finalDraft("task-concurrent-same", "msg-1", "SUCCESS")));
+
+        assertThat(results).hasSize(contenders);
+        assertThat(results).filteredOn(result -> result.status() == CommitResultStatus.COMMITTED)
+                .hasSize(1);
+        assertThat(results).filteredOn(result -> result.status() == CommitResultStatus.DUPLICATE)
+                .hasSize(contenders - 1);
+        assertThat(runtime.countVisibleResults("task-concurrent-same")).isEqualTo(1);
+        assertThat(runtime.getVisibleByMessageId("task-concurrent-same", "msg-1")).get()
+                .satisfies(row -> {
+                    assertThat(row.seq()).isEqualTo(1L);
+                    assertThat(row.messageId()).isEqualTo("msg-1");
+                });
+    }
+
+    @Test
+    void concurrentVisibleFinalCommit_differentMessagesAllocateUniqueTaskLocalSeq() throws Exception {
+        int total = 32;
+        List<CommitResult> results = runConcurrently(total,
+                index -> runtime.commitVisibleFinal(finalDraft(
+                        "task-concurrent-many",
+                        "msg-" + index,
+                        index % 2 == 0 ? "SUCCESS" : "FAILED")));
+
+        assertThat(results).hasSize(total);
+        assertThat(results).allSatisfy(result ->
+                assertThat(result.status()).isEqualTo(CommitResultStatus.COMMITTED));
+        assertThat(results).extracting(result -> result.row().seq())
+                .containsExactlyInAnyOrderElementsOf(java.util.stream.LongStream.rangeClosed(1, total)
+                        .boxed()
+                        .toList());
+        assertThat(runtime.countVisibleResults("task-concurrent-many")).isEqualTo(total);
+        assertThat(runtime.readWindow("task-concurrent-many", 0, total).items())
+                .extracting(row -> row.seq())
+                .containsExactlyElementsOf(java.util.stream.LongStream.rangeClosed(1, total)
+                        .boxed()
+                        .toList());
     }
 
     @Test
@@ -333,6 +385,42 @@ public abstract class TaskResultRuntimeContractTest {
             Thread.currentThread().interrupt();
             throw new AssertionError("sleep interrupted", e);
         }
+    }
+
+    private List<CommitResult> runConcurrently(int contenders, ConcurrentCommit commit) throws Exception {
+        ExecutorService executor = Executors.newFixedThreadPool(contenders);
+        CountDownLatch ready = new CountDownLatch(contenders);
+        CountDownLatch start = new CountDownLatch(1);
+        List<Future<CommitResult>> futures = new ArrayList<>(contenders);
+        try {
+            for (int i = 0; i < contenders; i++) {
+                final int index = i;
+                futures.add(executor.submit(new Callable<>() {
+                    @Override
+                    public CommitResult call() throws Exception {
+                        ready.countDown();
+                        if (!start.await(5, TimeUnit.SECONDS)) {
+                            throw new AssertionError("concurrent commit start latch timed out");
+                        }
+                        return commit.apply(index);
+                    }
+                }));
+            }
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            List<CommitResult> results = new ArrayList<>(contenders);
+            for (Future<CommitResult> future : futures) {
+                results.add(future.get(10, TimeUnit.SECONDS));
+            }
+            return results;
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @FunctionalInterface
+    private interface ConcurrentCommit {
+        CommitResult apply(int index) throws Exception;
     }
 
     private TaskResultCallbackDraft draft(String taskId, String messageId, String digest) {

@@ -117,9 +117,8 @@ route key policy
   WorkerRoutingPolicy
 
 bounded bucket selection
-  WorkerRouteBucketSelectionPolicy
-  RandomWorkerRouteBucketSelectionPolicy
-  future WorkerCandidateSamplingPolicy should absorb this role
+  WorkerCandidateSamplingPolicy
+  RandomWorkerCandidateSamplingPolicy
 
 post-admission ranking
   WorkerCandidateRanker
@@ -850,8 +849,8 @@ Scope:
    stable read cache. It must not be admission truth, candidate-source truth, or
    a full-scan rebuild of worker identity.
 4. Move `WorkerRouteBucketOwner` membership to registry-owned buckets. After
-   migration it must not own membership. Either retire it or rename it to a
-   selection-only role such as `WorkerRouteBucketSelectionPolicy`.
+   migration it must not own membership. Selection belongs to
+   `WorkerCandidateSamplingPolicy`, not to a second route-bucket owner.
 5. Keep `WorkerLoadView` as the only admission truth in this phase. The
    registry synchronizes identity and bucket membership only; reservation and
    active counters must not be used by scheduling yet.

@@ -8,6 +8,7 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.EventKey;
+import com.xa.mass.runtime.worker.RandomWorkerCandidateSamplingPolicy;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -655,6 +656,30 @@ public class WorkerManagerTest {
 
         assertEquals(List.of("w-registry-selected"),
                 registryBackedManager.findWorkerCandidates(task("demoApp", selector("pool-a")), 10)
+                        .stream()
+                        .map(Worker::getWorkerId)
+                        .toList());
+    }
+
+    @Test
+    void findWorkerCandidatesUsesBoundedSamplingBeforeWorkerRowsAreMaterialized() {
+        InMemoryWorkerRegistry registry = new InMemoryWorkerRegistry(
+                new RandomWorkerCandidateSamplingPolicy(bound -> bound - 1)
+        );
+        WorkerManager registryBackedManager = new WorkerManager(
+                new InMemoryWorkerStorage(),
+                null,
+                registry
+        );
+        registryBackedManager.upsertWorkerGroup(WorkerGroupRecord.builder("pool-a")
+                .projectCodes(List.of("demoApp"))
+                .build());
+        for (int index = 0; index < 10; index++) {
+            registryBackedManager.addWorker(worker("w-sampled-" + index, "pool-a"));
+        }
+
+        assertEquals(List.of("w-sampled-7", "w-sampled-8", "w-sampled-9"),
+                registryBackedManager.findWorkerCandidates(task("demoApp", selector("pool-a")), 3)
                         .stream()
                         .map(Worker::getWorkerId)
                         .toList());

@@ -315,7 +315,7 @@ public final class RedisTaskResultRuntime implements TaskResultRuntime {
     }
 
     @Override
-    public synchronized CommitResult commitVisibleFinal(TaskResultFinalDraft finalDraft) {
+    public CommitResult commitVisibleFinal(TaskResultFinalDraft finalDraft) {
         if (!running.get()) {
             return CommitResult.unavailable("result runtime is stopped");
         }

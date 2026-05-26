@@ -1245,6 +1245,53 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void taskWriteLockRemainsLifecycleAndProgressOnly() throws IOException {
+        Path taskManagerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/TaskManager.java");
+        String source = Files.readString(taskManagerPath, StandardCharsets.UTF_8);
+
+        List<String> approvedTaskWriteLockMethods = List.of(
+                "public boolean deleteTask(String taskId)",
+                "public boolean approveTask(String taskId)",
+                "public boolean rejectTask(String taskId)",
+                "public boolean blockTask(String taskId)",
+                "public boolean pauseTask(String taskId)",
+                "public TaskResumeResult resumeTaskDetailed(String taskId)",
+                "public boolean cancelTask(String taskId)",
+                "public boolean terminateTask(String taskId, TaskTerminalReason reason)",
+                "public TaskAppendReceipt appendTaskItemsWithReceipt(String taskId, List<java.util.Map<String, Object>> items)",
+                "public boolean sealTask(String taskId)",
+                "public TaskStateResolutionResult resolveTaskState(String taskId)",
+                "public TaskStateValidationResult validateTaskState(String taskId)",
+                "TaskStateValidationResult auditTaskProjectionState(String taskId)",
+                "<T> T withTaskLock(String taskId, Supplier<T> action)",
+                "void withTaskLock(String taskId, Runnable action)"
+        );
+        String unapprovedSource = source;
+        for (String methodPrefix : approvedTaskWriteLockMethods) {
+            unapprovedSource = unapprovedSource.replace(sourceMethod(source, methodPrefix), "");
+        }
+
+        List<String> violations = new ArrayList<>();
+        if (unapprovedSource.contains("withTaskLock(")
+                || unapprovedSource.contains("withTaskWriteLock(")) {
+            violations.add(taskManagerPath + " uses task write lock outside lifecycle/intake/progress/audit methods");
+        }
+
+        String claimReady = sourceMethod(source, "public List<ClaimedTaskWork> claimReady");
+        for (String forbidden : List.of("withTaskLock(", "withTaskWorkReadLock(", "withTaskWriteLock(")) {
+            if (claimReady.contains(forbidden)) {
+                violations.add(taskManagerPath + " claimReady must stay runtime-owned and not take task locks: "
+                        + forbidden);
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Runtime claim/result paths must not be serialized by task write locks. "
+                        + "Task write locks are reserved for lifecycle, intake, progress, and audit boundaries:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void schedulingKernelDoesNotReadWorkerLevelCapabilityAsDecisionTruth() throws IOException {
         Map<Path, List<Pattern>> guardedFiles = Map.ofEntries(
                 Map.entry(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/model/WorkerSchedulingView.java"),

@@ -1,4 +1,4 @@
-package com.xa.mass.engine.worker;
+package com.xa.mass.runtime.worker;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -9,29 +9,28 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.IntUnaryOperator;
 
 /**
- * Random bounded sampler for large route buckets.
+ * Random bounded sampler for large worker candidate buckets.
  *
- * <p>This avoids fixed-prefix hot spots without turning Stage-1 acquisition
- * into a full scheduling decision. Stage-2 policies still own eligibility,
- * ranking, capacity admission, and locking.</p>
+ * <p>This is a Stage-1 acquisition policy only. Stage-2 still owns rule
+ * evaluation, ranking, capacity admission, and dispatch locks.</p>
  */
-public final class RandomWorkerRouteBucketSelectionPolicy implements WorkerRouteBucketSelectionPolicy {
+public final class RandomWorkerCandidateSamplingPolicy implements WorkerCandidateSamplingPolicy {
 
-    private static final RandomWorkerRouteBucketSelectionPolicy DEFAULT =
-            new RandomWorkerRouteBucketSelectionPolicy(bound -> ThreadLocalRandom.current().nextInt(bound));
+    private static final RandomWorkerCandidateSamplingPolicy DEFAULT =
+            new RandomWorkerCandidateSamplingPolicy(bound -> ThreadLocalRandom.current().nextInt(bound));
 
     private final IntUnaryOperator randomIndex;
 
-    public RandomWorkerRouteBucketSelectionPolicy(IntUnaryOperator randomIndex) {
+    public RandomWorkerCandidateSamplingPolicy(IntUnaryOperator randomIndex) {
         this.randomIndex = Objects.requireNonNull(randomIndex, "randomIndex");
     }
 
-    public static RandomWorkerRouteBucketSelectionPolicy defaultPolicy() {
+    public static RandomWorkerCandidateSamplingPolicy defaultPolicy() {
         return DEFAULT;
     }
 
     @Override
-    public List<String> select(WorkerRouteBucketSelectionContext context,
+    public List<String> sample(WorkerCandidateSamplingContext context,
                                List<String> workerIds,
                                int maxCandidateCount) {
         if (workerIds == null || workerIds.isEmpty() || maxCandidateCount <= 0) {
@@ -41,9 +40,9 @@ public final class RandomWorkerRouteBucketSelectionPolicy implements WorkerRoute
             return List.copyOf(workerIds);
         }
 
-        Set<Integer> selectedIndexes = new LinkedHashSet<>();
         int bucketSize = workerIds.size();
         int sampleSize = Math.min(maxCandidateCount, bucketSize);
+        Set<Integer> selectedIndexes = new LinkedHashSet<>();
         for (int cursor = bucketSize - sampleSize; cursor < bucketSize; cursor++) {
             int candidateIndex = Math.floorMod(randomIndex.applyAsInt(cursor + 1), cursor + 1);
             if (!selectedIndexes.add(candidateIndex)) {

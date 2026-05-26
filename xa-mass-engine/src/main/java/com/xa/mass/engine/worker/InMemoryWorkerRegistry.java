@@ -5,6 +5,7 @@ import com.xa.mass.runtime.worker.DispatchAvailabilitySource;
 import com.xa.mass.runtime.worker.EventKey;
 import com.xa.mass.runtime.worker.ReserveResult;
 import com.xa.mass.runtime.worker.ReserveStatus;
+import com.xa.mass.runtime.worker.RandomWorkerCandidateSamplingPolicy;
 import com.xa.mass.runtime.worker.WorkerCandidateSamplingContext;
 import com.xa.mass.runtime.worker.WorkerCandidateSamplingPolicy;
 import com.xa.mass.runtime.worker.WorkerMeta;
@@ -40,7 +41,7 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
     private final ConcurrentMap<String, ConcurrentMap<String, Integer>> taskWorkerActiveCounts = new ConcurrentHashMap<>();
 
     public InMemoryWorkerRegistry() {
-        this(WorkerRoutingPolicy.defaultPolicy(), firstNPolicy());
+        this(WorkerRoutingPolicy.defaultPolicy(), RandomWorkerCandidateSamplingPolicy.defaultPolicy());
     }
 
     public InMemoryWorkerRegistry(WorkerCandidateSamplingPolicy samplingPolicy) {
@@ -49,7 +50,9 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
 
     public InMemoryWorkerRegistry(WorkerRoutingPolicy routingPolicy, WorkerCandidateSamplingPolicy samplingPolicy) {
         this.routingPolicy = routingPolicy != null ? routingPolicy : WorkerRoutingPolicy.defaultPolicy();
-        this.samplingPolicy = samplingPolicy != null ? samplingPolicy : firstNPolicy();
+        this.samplingPolicy = samplingPolicy != null
+                ? samplingPolicy
+                : RandomWorkerCandidateSamplingPolicy.defaultPolicy();
     }
 
     @Override
@@ -690,13 +693,6 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
         synchronized (workerIds) {
             return List.copyOf(workerIds);
         }
-    }
-
-    private static WorkerCandidateSamplingPolicy firstNPolicy() {
-        return (context, workerIds, maxCandidateCount) ->
-                workerIds == null || maxCandidateCount <= 0
-                        ? List.of()
-                        : workerIds.stream().limit(maxCandidateCount).toList();
     }
 
     private static WorkerSlot update(AtomicReference<WorkerSlot> ref, SlotUpdater updater) {

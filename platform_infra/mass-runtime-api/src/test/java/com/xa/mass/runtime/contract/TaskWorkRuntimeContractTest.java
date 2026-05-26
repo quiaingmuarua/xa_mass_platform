@@ -1,5 +1,6 @@
 package com.xa.mass.runtime.contract;
 
+import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.ResultApplyOutcome;
 import com.xa.mass.runtime.api.ResultApplyStatus;
@@ -16,9 +17,17 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -174,6 +183,49 @@ public abstract class TaskWorkRuntimeContractTest {
     }
 
     @Test
+    void concurrentClaimReady_claimsOneMessageOnce() throws Exception {
+        runtime.enqueue(item("claim-race", "m1"), WorkEnqueueOptions.DEFAULT);
+
+        List<List<ClaimedTaskWork>> attempts = runConcurrently(16,
+                index -> runtime.claimReady("claim-race", targets("w" + index), 1, 30));
+        List<ClaimedTaskWork> claimed = attempts.stream()
+                .flatMap(List::stream)
+                .toList();
+
+        assertThat(claimed).hasSize(1);
+        assertThat(claimed.get(0).messageId()).isEqualTo("m1");
+        assertThat(runtime.stats("claim-race").readyCount()).isZero();
+        assertThat(runtime.stats("claim-race").inflightCount()).isEqualTo(1);
+    }
+
+    @Test
+    void concurrentClaimReady_manyMessagesRemainUniqueAndCountersStable() throws Exception {
+        int totalMessages = 40;
+        int contenders = 8;
+        for (int i = 0; i < totalMessages; i++) {
+            runtime.enqueue(item("claim-bulk", "m" + i), WorkEnqueueOptions.DEFAULT);
+        }
+
+        List<List<ClaimedTaskWork>> attempts = runConcurrently(contenders,
+                index -> runtime.claimReady(
+                        "claim-bulk",
+                        List.of(WorkerClaimTarget.workerLevel("w" + index, "batch-" + index, 10)),
+                        10,
+                        30));
+        List<ClaimedTaskWork> claimed = attempts.stream()
+                .flatMap(List::stream)
+                .toList();
+
+        assertThat(claimed).hasSize(totalMessages);
+        assertThat(new HashSet<>(claimed.stream().map(ClaimedTaskWork::messageId).toList()))
+                .hasSize(totalMessages);
+        TaskWorkStats stats = runtime.stats("claim-bulk");
+        assertThat(stats.readyCount()).isZero();
+        assertThat(stats.inflightCount()).isEqualTo(totalMessages);
+        assertThat(stats.totalCount()).isEqualTo(totalMessages);
+    }
+
+    @Test
     void readyTaskIds_returnsMultipleReadyTasks_withoutScanningOneTaskPerItem() {
         runtime.enqueue(item("t1", "m1"), WorkEnqueueOptions.DEFAULT);
         runtime.enqueue(item("t2", "m2"), WorkEnqueueOptions.DEFAULT);
@@ -204,6 +256,27 @@ public abstract class TaskWorkRuntimeContractTest {
         assertThat(runtime.applyResult(
                 TaskWorkResult.success("t1", "m1", work.leaseToken(), "done2", Map.of())).status())
                 .isEqualTo(ResultApplyStatus.NO_ACTIVE_LEASE);
+    }
+
+    @Test
+    void concurrentApplyResult_sameLeaseAppliesOnce() throws Exception {
+        runtime.enqueue(item("apply-race", "m1"), WorkEnqueueOptions.DEFAULT);
+        ClaimedTaskWork work = runtime.claimReady("apply-race", targets("w1"), 1, 30).get(0);
+
+        List<ResultApplyOutcome> outcomes = runConcurrently(12,
+                index -> runtime.applyResult(TaskWorkResult.success(
+                        "apply-race",
+                        "m1",
+                        work.leaseToken(),
+                        "done-" + index,
+                        Map.of())));
+
+        assertThat(outcomes).filteredOn(outcome -> outcome.status() == ResultApplyStatus.SUCCESS_APPLIED)
+                .hasSize(1);
+        assertThat(outcomes).filteredOn(outcome -> outcome.status() == ResultApplyStatus.NO_ACTIVE_LEASE)
+                .hasSize(11);
+        assertThat(runtime.stats("apply-race").successCount()).isEqualTo(1);
+        assertThat(runtime.stats("apply-race").inflightCount()).isZero();
     }
 
     @Test
@@ -447,6 +520,30 @@ public abstract class TaskWorkRuntimeContractTest {
                 .extracting(l -> l.leaseToken()).containsExactly(work.leaseToken());
     }
 
+    @Test
+    void concurrentPollExpiredLeases_reportsEachLeaseOnce() throws Exception {
+        int totalMessages = 12;
+        for (int i = 0; i < totalMessages; i++) {
+            runtime.enqueue(item("expiry-race", "m" + i), WorkEnqueueOptions.DEFAULT);
+        }
+        List<WorkerClaimTarget> workers = new ArrayList<>();
+        for (int i = 0; i < totalMessages; i++) {
+            workers.add(WorkerClaimTarget.workerLevel("w" + i, "batch-" + i, 1));
+        }
+        List<ClaimedTaskWork> claimed = runtime.claimReady("expiry-race", workers, totalMessages, 10);
+        assertThat(claimed).hasSize(totalMessages);
+
+        List<List<ActiveLeaseRecord>> attempts = runConcurrently(4,
+                index -> runtime.pollExpiredLeases(totalMessages, clock.get().plusSeconds(11)));
+        List<ActiveLeaseRecord> expired = attempts.stream()
+                .flatMap(List::stream)
+                .toList();
+
+        assertThat(expired).hasSize(totalMessages);
+        assertThat(new HashSet<>(expired.stream().map(ActiveLeaseRecord::leaseToken).toList()))
+                .hasSize(totalMessages);
+    }
+
     // ── stats ─────────────────────────────────────────────────────────────────
 
     @Test
@@ -585,5 +682,41 @@ public abstract class TaskWorkRuntimeContractTest {
 
     protected List<WorkerClaimTarget> targets(String workerId) {
         return List.of(WorkerClaimTarget.workerLevel(workerId, "batch-1", 1));
+    }
+
+    private <T> List<T> runConcurrently(int contenders, ConcurrentAction<T> action) throws Exception {
+        ExecutorService executor = Executors.newFixedThreadPool(contenders);
+        CountDownLatch ready = new CountDownLatch(contenders);
+        CountDownLatch start = new CountDownLatch(1);
+        List<Future<T>> futures = new ArrayList<>(contenders);
+        try {
+            for (int i = 0; i < contenders; i++) {
+                final int index = i;
+                futures.add(executor.submit(new Callable<>() {
+                    @Override
+                    public T call() throws Exception {
+                        ready.countDown();
+                        if (!start.await(5, TimeUnit.SECONDS)) {
+                            throw new AssertionError("concurrent runtime action start latch timed out");
+                        }
+                        return action.apply(index);
+                    }
+                }));
+            }
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            List<T> results = new ArrayList<>(contenders);
+            for (Future<T> future : futures) {
+                results.add(future.get(10, TimeUnit.SECONDS));
+            }
+            return results;
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @FunctionalInterface
+    private interface ConcurrentAction<T> {
+        T apply(int index) throws Exception;
     }
 }

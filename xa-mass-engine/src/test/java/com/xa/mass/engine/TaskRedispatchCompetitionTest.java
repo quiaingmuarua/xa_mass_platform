@@ -138,6 +138,49 @@ class TaskRedispatchCompetitionTest {
     }
 
     @Test
+    void successfulResultReleasesWorkerAndLaterRefillClaimsRemainingReadyWork() {
+        TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
+        harness.addWorker("worker-refill", "us");
+        Task task = harness.createBatchTask(
+                "result-release-refill",
+                List.of(harness.item("first"), harness.item("second"), harness.item("third")),
+                0,
+                1
+        );
+        assertTrue(harness.taskManager.approveTask(task.getTid()));
+
+        assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
+        ActiveLeaseRecord firstLease = harness.activeLeases(task.getTid()).getFirst();
+        assertEquals("worker-refill", firstLease.workerId());
+        assertEquals(2, harness.stats(task.getTid()).readyCount());
+        assertEquals(1, harness.stats(task.getTid()).inflightCount());
+
+        assertTrue(harness.taskManager.ingestTaskResult(
+                task.getTid(),
+                firstLease.messageId(),
+                true,
+                "first done",
+                null,
+                java.util.Map.of("source", "result-release-refill")
+        ));
+
+        assertFalse(harness.workerManager.hasWorkerExclusiveLease("worker-refill"));
+        assertTrue(harness.activeLeases(task.getTid()).isEmpty());
+        assertEquals(2, harness.stats(task.getTid()).readyCount());
+        assertEquals(1, harness.stats(task.getTid()).finalCount());
+        assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(task.getTid()).getStatus());
+
+        assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
+        List<ActiveLeaseRecord> refillLeases = harness.activeLeases(task.getTid());
+        assertEquals(1, refillLeases.size());
+        assertEquals("worker-refill", refillLeases.getFirst().workerId());
+        assertFalse(firstLease.messageId().equals(refillLeases.getFirst().messageId()));
+        assertEquals(1, harness.stats(task.getTid()).readyCount());
+        assertEquals(1, harness.stats(task.getTid()).inflightCount());
+        assertEquals(1, harness.stats(task.getTid()).finalCount());
+    }
+
+    @Test
     void expiredWorkWaitsUnderCompetitionAndRedispatchesAfterWorkerRelease() {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
         harness.addWorker("worker-shared", "us");

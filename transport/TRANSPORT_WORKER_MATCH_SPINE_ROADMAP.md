@@ -249,7 +249,7 @@ Owns:
 
 - `availableWorkersByGroupRouteBucket`
 - `workerRouteBucketKeysById`
-- bounded candidate acquisition through `WorkerRouteBucketSelectionPolicy`
+- bounded candidate acquisition through `WorkerCandidateSamplingPolicy`
 - stale candidate marking and bounded lazy cleanup when a later slice adds
   explicit stale-entry mutation
 

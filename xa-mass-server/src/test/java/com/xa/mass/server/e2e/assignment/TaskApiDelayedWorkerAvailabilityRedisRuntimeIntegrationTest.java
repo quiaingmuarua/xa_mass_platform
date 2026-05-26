@@ -103,6 +103,40 @@ class TaskApiDelayedWorkerAvailabilityRedisRuntimeIntegrationTest extends Abstra
                 "late worker disconnect must converge transport presence offline");
     }
 
+    @Test
+    void redisRuntimeRefillsSingleWorkerTaskAcrossMultipleDispatchRounds() throws Exception {
+        String workerId = "redis-refill-worker-0";
+        registerSdkWorkerWithContext(workerId, "us");
+
+        URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
+        SampleWorkerWebSocketClient client = new SampleWorkerWebSocketClient(uri, workerId);
+        try {
+            assertClientConnects(client, "redis refill worker client failed to connect");
+            waitUntil(() -> app.isWorkerOnline(workerId),
+                    "redis refill worker connect must surface transport presence online");
+
+            String taskId = createTaskId(
+                    "redis-refill-single-worker",
+                    "redis runtime refill proof",
+                    List.of("target-a", "target-b", "target-c"),
+                    1
+            );
+            assertApiOk(approveTask(taskId));
+
+            RuntimeTaskSnapshot terminalSnapshot = waitForRuntimeTaskSnapshot(taskId, "TERMINAL", 30, 500L);
+            assertEquals("ALL_MESSAGES_SUCCEEDED", terminalSnapshot.task().get("terminalReason"));
+            assertEquals(3, terminalSnapshot.stats().successCount());
+            assertEquals(3, terminalSnapshot.stats().finalCount());
+            assertEquals(0, terminalSnapshot.stats().readyCount());
+            assertEquals(0, terminalSnapshot.stats().inflightCount());
+            assertTrue(terminalSnapshot.activeLeases().isEmpty());
+        } finally {
+            client.disconnect();
+        }
+        waitUntil(() -> !app.isWorkerOnline(workerId),
+                "redis refill worker disconnect must converge transport presence offline");
+    }
+
     private void waitUntil(BooleanSupplier condition, String failureMessage) throws InterruptedException {
         for (int attempt = 0; attempt < 20; attempt++) {
             if (condition.getAsBoolean()) {

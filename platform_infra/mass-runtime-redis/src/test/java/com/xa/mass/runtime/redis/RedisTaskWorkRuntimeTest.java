@@ -101,6 +101,71 @@ class RedisTaskWorkRuntimeTest {
     }
 
     @Test
+    void competingRuntimeInstancesPromoteDelayedWorkOnlyOnce() throws Exception {
+        runtime.enqueue(delayedItem("task-delay-race", "msg-1", now.get().plusSeconds(1)), WorkEnqueueOptions.DEFAULT);
+        now.set(now.get().plusSeconds(2));
+
+        StatefulRedisConnection<String, String> contenderConnection = redisClient.connect();
+        RedisTaskWorkRuntime contender = new RedisTaskWorkRuntime(contenderConnection, keyspace, 1024, now::get);
+        try {
+            CountDownLatch ready = new CountDownLatch(2);
+            CountDownLatch start = new CountDownLatch(1);
+            AtomicReference<List<String>> firstReadyTasks = new AtomicReference<>(List.of());
+            AtomicReference<List<String>> secondReadyTasks = new AtomicReference<>(List.of());
+            AtomicReference<Throwable> failure = new AtomicReference<>();
+
+            Thread first = new Thread(
+                    () -> runReadyTaskIds(runtime, ready, start, firstReadyTasks, failure),
+                    "redis-ready-first"
+            );
+            Thread second = new Thread(
+                    () -> runReadyTaskIds(contender, ready, start, secondReadyTasks, failure),
+                    "redis-ready-second"
+            );
+            first.start();
+            second.start();
+
+            assertTrue(ready.await(5, TimeUnit.SECONDS), "ready scanners did not become ready");
+            start.countDown();
+            first.join(5000);
+            second.join(5000);
+
+            if (failure.get() != null) {
+                fail(failure.get());
+            }
+
+            assertTrue(firstReadyTasks.get().contains("task-delay-race")
+                    || secondReadyTasks.get().contains("task-delay-race"));
+            assertEquals(List.of("msg-1"), commands.lrange(keyspace.taskReadyQueue("task-delay-race"), 0, -1));
+            assertTrue(commands.zrange(keyspace.delayedWorkZset(), 0, -1).isEmpty());
+            assertTrue(commands.zrange(keyspace.taskDelayedZset("task-delay-race"), 0, -1).isEmpty());
+            assertEquals(1L, runtime.stats("task-delay-race").readyCount());
+            assertEquals(0L, runtime.stats("task-delay-race").delayedCount());
+            assertEquals(1L, runtime.stats().readyItems());
+            assertEquals(0L, runtime.stats().delayedItems());
+        } finally {
+            contender.shutdown();
+            if (contenderConnection.isOpen()) {
+                contenderConnection.close();
+            }
+        }
+    }
+
+    @Test
+    void readyTaskIdsCleansStaleReadyHeadWithBoundedLuaStep() {
+        runtime.enqueue(item("task-stale-ready", "msg-valid"), WorkEnqueueOptions.DEFAULT);
+        commands.lpush(keyspace.taskReadyQueue("task-stale-ready"), "ghost-msg");
+        commands.hincrby(keyspace.taskStatsHash("task-stale-ready"), RedisTaskWorkKeyspace.COUNTER_READY_COUNT, 1);
+        commands.hincrby(keyspace.runtimeStatsHash(), RedisTaskWorkKeyspace.COUNTER_READY_COUNT, 1);
+
+        assertEquals(List.of("task-stale-ready"), runtime.readyTaskIds(10));
+
+        assertEquals(List.of("msg-valid"), commands.lrange(keyspace.taskReadyQueue("task-stale-ready"), 0, -1));
+        assertEquals(1L, runtime.stats("task-stale-ready").readyCount());
+        assertEquals(1L, runtime.stats().readyItems());
+    }
+
+    @Test
     void claimCreatesLeaseAndWorkerIndexesAndApplySuccessRemovesThem() {
         runtime.enqueue(item("task-lease", "msg-1"), WorkEnqueueOptions.DEFAULT);
 
@@ -378,6 +443,20 @@ class RedisTaskWorkRuntimeTest {
                     1,
                     30
             ));
+        } catch (Throwable throwable) {
+            failure.compareAndSet(null, throwable);
+        }
+    }
+
+    private void runReadyTaskIds(RedisTaskWorkRuntime runtime,
+                                 CountDownLatch ready,
+                                 CountDownLatch start,
+                                 AtomicReference<List<String>> readyTasksHolder,
+                                 AtomicReference<Throwable> failure) {
+        ready.countDown();
+        try {
+            assertTrue(start.await(5, TimeUnit.SECONDS));
+            readyTasksHolder.set(runtime.readyTaskIds(10));
         } catch (Throwable throwable) {
             failure.compareAndSet(null, throwable);
         }
