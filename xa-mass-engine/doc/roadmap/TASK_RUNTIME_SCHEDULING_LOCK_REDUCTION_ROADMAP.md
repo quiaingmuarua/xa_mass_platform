@@ -82,11 +82,10 @@ Current implementation has several different lock categories:
   dedupe while dispatching attempts on virtual threads.
 - `InMemoryTaskWorkRuntime` and `InMemoryTaskResultRuntime` use broad
   method-level `synchronized`.
-- `RedisTaskWorkRuntime` already uses Lua for enqueue, claim, result apply,
-  lease expiry polling, and discard, but still has multi-command delayed /
-  ready cleanup paths.
-- `RedisTaskResultRuntime.commitVisibleFinal(...)` still has a JVM method lock
-  even though final commit truth is Redis/Lua-owned.
+- `RedisTaskWorkRuntime` uses Lua for enqueue, claim, result apply, lease
+  expiry polling, discard, delayed promotion, and ready-head cleanup.
+- `RedisTaskResultRuntime.commitVisibleFinal(...)` is Lua-owned and no longer
+  has a JVM method lock.
 - Worker dispatch availability is already registry-backed through
   `WorkerRegistry` slot state. `WorkerManager.isWorkerDispatchEnabled(...)`
   reads `WorkerRegistry.slotByWorkerId(...)`, and source-scoped dispatch gate
@@ -123,6 +122,7 @@ claiming later phases are complete.
 | Phase | Status | Landed evidence |
 | --- | --- | --- |
 | `TRS-C1` | Partial | Shared runtime contract proof now covers concurrent claim uniqueness, multi-worker claim counters, same-lease result apply idempotence, lease-expiry polling uniqueness, same-message final commit uniqueness, and different-message final sequence uniqueness for memory and Redis subclasses. |
+| `TRS-C2` | Started | The Redis runtime key minimalism review now records the candidate target key set and separates mainline truth from cleanup/repair/diagnostic structures. Current-code review has confirmed that staging keys, recent-final receipts, task active sets, worker active sets, task delayed zsets, runtime stats, and barrier indexes cannot be deleted in the current slice without replacement proof. |
 | `TRS-M1` | Implemented first slice | `RedisTaskResultRuntime.commitVisibleFinal(...)` no longer has a method-level JVM monitor; Redis tests include a reflection guard and cross-connection concurrent final commit proof. |
 | `TRS-M2` | Implemented first slice | `WorkerCandidateSamplingPolicy` now has a shared random bounded implementation used by memory and Redis registry defaults. `WorkerManagerTest` proves bounded sampling happens before worker row materialization, `SimpleTaskDispatchBinderTest` covers concurrent assignment rounds for the same task, `TaskRedispatchCompetitionTest` covers result-release/refill on the mainline, and `TaskApiDelayedWorkerAvailabilityRedisRuntimeIntegrationTest` covers Redis-backed multi-round refill through the server/transport/runtime path. Deeper Redis concurrent engine duplicate-dispatch soak remains `TRS-D2` proof, not a `TRS-M2` blocker. |
 | `TRS-M3` | Started | `EngineSchedulingCoreArchitectureGuardTest.taskWriteLockRemainsLifecycleAndProgressOnly` locks the current boundary: task write locks are allowed for lifecycle, intake, progress, and audit paths only; runtime claim must stay task-lock free. |
@@ -318,6 +318,36 @@ Before implementation, answer these from current code and tests:
 5. Is task-local delayed lookup required by a mainline operation, or only by
    diagnostics/cleanup?
 6. Which counters are needed by terminal policy versus metrics only?
+
+### TRS-C2 Decision Ledger
+
+This ledger records current-code-backed decisions for the next implementation
+slice. It should be updated when a replacement proof lands.
+
+| Structure | Current code fact | Decision for this roadmap |
+| --- | --- | --- |
+| `task:{taskId}:work:{messageId}` | `RedisTaskWorkRuntime.loadWork(...)`, claim, result apply, delayed promotion, and discard still address per-message work hashes. | Keep current shape. Converging to `task:{taskId}:work` HASH is a future key-shape migration, not part of the current lock-reduction slice. |
+| `task:{taskId}:lease:{messageId}` | Active lease lookup, result apply, delayed promotion validation, and expiry all read per-message lease hashes. | Keep current shape. A task-local `leases` HASH can replace it only with shared contract proof for claim, result, expiry, and active lease reads. |
+| `task:{taskId}:active` | `activeLeases(taskId)` currently enumerates this set and then loads each lease. Terminal resource release depends on this bounded task-level active view. | Keep until `activeLeases(taskId)` can enumerate a task-local lease hash with equivalent memory/Redis proof. Do not delete as residue yet. |
+| `worker:{workerId}:active` | Result apply and resource release use this as worker-active evidence; WorkerRegistry owns dispatch gate and occupancy, but not every lease reference lookup. | Conditional keep. It must not become dispatch gate truth. Removal belongs to a worker-disconnect/resource-release proof, not TRS-C2 documentation cleanup. |
+| `task:{taskId}:members` | `discardTaskAtomic(...)` uses it to find per-message work/lease/recent-final keys. | Keep while work/lease/recent-final are per-message keys. Remove only after task-local hash migration. |
+| `task registry set` | `discardTaskAtomic(...)` removes the task from this set; no scheduling hot path should require scanning it. | Freeze as cleanup residue. Do not add new production reads. Remove after discard no longer needs namespace-level task membership. |
+| `task:{taskId}:delayed` | `promoteDueDelayedForTaskLocked(...)` still reads task-local delayed entries; global delayed index is also present. | Keep current shape but do not expand it. Review whether task-local delayed lookup is still required before any key migration. |
+| `recent-final` global/task/message keys | `TaskResultService.recentFinalMessage(...)` reads `TaskWorkRuntime.getRecentFinalReceipt(...)` for duplicate/late callback classification after work/lease rows are gone. | Keep as current recovery truth. Replacing it with stable final rows requires an explicit duplicate/late callback proof that avoids compatibility projection fallback. |
+| staged callback keys and stage sets | `TaskResultService` stages callbacks before runtime result apply and discards stages on duplicate/reject/final paths. | Keep current shape. Staging is result-recovery support, not scheduling truth; do not fold staging cleanup into task scheduling locks. |
+| visible result row/zset/seq | `TaskResultRuntime.commitVisibleFinal(...)`, `readWindow(...)`, and `countVisibleResults(...)` use these as stable final truth. | Keep as mainline result truth. A task-local final HASH/ZSET migration is allowed only if result window and duplicate commit contracts stay shared across memory and Redis. |
+| pending barrier zsets and barrier token keys | Repair/publish/progress barrier APIs depend on these Redis-owned claims. | Conditional keep. They are repair/finality side structures, not scheduling truth. Do not remove until barrier proof is separated from the dispatch mainline. |
+| runtime stats hash | `TaskWorkRuntime.stats()` reports global counters, while task terminal/progress uses task stats. | Metrics only for scheduling. Keep for diagnostics but do not let runtime stats drive matching or finality decisions. |
+
+Immediate `TRS-C2` outcome:
+
+1. Do not start Redis key migration in the current lock-reduction slice.
+2. Treat current key shape as stable enough for `TRS-M3` result-ingest lock
+   review because the hot atomic boundaries are already owned by runtime APIs.
+3. Start residue deletion only where there is no production caller and no
+   shared contract depends on the structure.
+4. If a key is only cleanup/repair evidence, add proof before deletion; do not
+   delete it because it is absent from the minimal target table.
 
 ### Phase Ordering Decision
 
