@@ -1248,6 +1248,9 @@ class EngineSchedulingCoreArchitectureGuardTest {
     void taskWriteLockRemainsLifecycleAndProgressOnly() throws IOException {
         Path taskManagerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/TaskManager.java");
         String source = Files.readString(taskManagerPath, StandardCharsets.UTF_8);
+        Path concurrencyCoordinatorPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/LocalTaskConcurrencyCoordinator.java");
+        String concurrencyCoordinatorSource = Files.readString(concurrencyCoordinatorPath, StandardCharsets.UTF_8);
 
         List<String> approvedTaskWriteLockMethods = List.of(
                 "public boolean deleteTask(String taskId)",
@@ -1290,6 +1293,15 @@ class EngineSchedulingCoreArchitectureGuardTest {
                             + " must stay runtime-owned and not take task locks: " + forbidden);
                 }
             }
+        }
+
+        String workReadLock = sourceMethod(
+                concurrencyCoordinatorSource,
+                "public <T> T withTaskWorkReadLock"
+        );
+        if (workReadLock.contains("writeLock()") || workReadLock.contains("withTaskWriteLock(")) {
+            violations.add(concurrencyCoordinatorPath
+                    + " withTaskWorkReadLock must remain a task read/message guard, not a task write lock");
         }
 
         assertTrue(violations.isEmpty(),
