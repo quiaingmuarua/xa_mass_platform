@@ -132,7 +132,7 @@ Perf load model:
 ./mvnw -q -pl xa-mass-testing -am -DskipTests install
 ./mvnw -q -pl xa-mass-testing -Dexec.classpathScope=compile -Dmaven.test.skip=true org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.perf.TaskFlowLoadModelRunner -Dmass.load.runtimeBackend=memory
 ./mvnw -q -pl xa-mass-testing -Dexec.classpathScope=compile -Dmaven.test.skip=true org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.perf.TaskFlowLoadModelRunner -Dmass.load.runtimeBackend=redis -Dmass.load.redisUri=redis://localhost:6379
-./mvnw -q -pl xa-mass-testing -Dexec.classpathScope=compile -Dmaven.test.skip=true org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.perf.TaskFlowLoadModelRunner -Dmass.load.runtimeBackend=memory -Dmass.load.expireFirstAttemptEveryNth=5 -Dmass.load.duplicateResultEveryNth=3 -Dmass.load.duplicateWakeupsOnApprove=4
+./mvnw -q -pl xa-mass-testing -Dexec.classpathScope=compile -Dmaven.test.skip=true org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.perf.TaskFlowLoadModelRunner -Dmass.load.runtimeBackend=memory -Dmass.load.expireFirstAttemptEveryNth=5 -Dmass.load.staleResultEveryNth=7 -Dmass.load.duplicateResultEveryNth=3 -Dmass.load.duplicateWakeupsOnApprove=4
 ```
 
 `TaskFlowLoadModelRunner` is the shared runtime-selection proof for `TRS-D2`.
@@ -153,7 +153,10 @@ retry faults are disabled. Lease-expiry/refill proof is opt-in through
 `mass.load.expireFirstAttemptEveryNth` or
 `MASS_PERF_TASK_FLOW_EXPIRE_FIRST_ATTEMPT_EVERY_NTH`; it expires selected
 first-attempt leases through `TaskRuntimeMaintenancePort` and requires the
-normal retry/refill path to converge.
+normal retry/refill path to converge. Stale-result proof is opt-in through
+`mass.load.staleResultEveryNth` or `MASS_PERF_TASK_FLOW_STALE_RESULT_EVERY_NTH`;
+it submits a wrong-token runtime result before the real callback and requires
+the runtime stale counter to move without changing final convergence.
 Redis runs use a safe default `xa:mass:perf:*` namespace and clean it before and
 after the run; override with `mass.load.redisNamespace` when a retained namespace
 is needed.

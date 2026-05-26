@@ -32,6 +32,9 @@ import com.xa.mass.runtime.api.TaskWorkRuntimeStats;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
+import com.xa.mass.runtime.api.ResultApplyOutcome;
+import com.xa.mass.runtime.api.ResultApplyStatus;
+import com.xa.mass.runtime.api.TaskWorkResult;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.runtime.redis.RedisTaskResultRuntime;
@@ -79,6 +82,7 @@ import java.util.concurrent.atomic.LongAdder;
  * -Dmass.load.callbackThreads=32
  * -Dmass.load.retryFailureEveryNth=7
  * -Dmass.load.expireFirstAttemptEveryNth=9
+ * -Dmass.load.staleResultEveryNth=13
  * -Dmass.load.duplicateResultEveryNth=11
  * -Dmass.load.duplicateWakeupsOnApprove=4
  * }</pre>
@@ -164,6 +168,23 @@ public final class TaskFlowLoadModelRunner {
                                         && logicalSeq > 0
                                         && logicalSeq % config.retryFailureEveryNth() == 0
                                         && attemptNo == 1;
+                                if (shouldSubmitStaleRuntimeResult(config, logicalSeq, failFirstAttempt)) {
+                                    ResultApplyOutcome staleOutcome = runtimes.taskWorkRuntime().applyResult(
+                                            TaskWorkResult.success(
+                                                    taskId,
+                                                    messageId,
+                                                    "synthetic-stale-token-" + attemptNo,
+                                                    "synthetic stale result",
+                                                    Map.of("seq", logicalSeq, "staleResult", true)
+                                            )
+                                    );
+                                    callbackMetrics.onSyntheticStaleResult(staleOutcome.status());
+                                    if (staleOutcome.status() != ResultApplyStatus.STALE_LEASE) {
+                                        callbackFailure.compareAndSet(null, new IllegalStateException(
+                                                "synthetic stale result returned " + staleOutcome.status()
+                                                        + " for message " + messageId));
+                                    }
+                                }
                                 if (failFirstAttempt) {
                                     callbackMetrics.recordSyntheticRetry();
                                 }
@@ -316,6 +337,10 @@ public final class TaskFlowLoadModelRunner {
                             "runtime processing counters should not drift at terminal");
                     require(proofMetrics.resultCounterDrift() == 0,
                             "runtime result count should not drift from successful work count");
+                    if (config.staleResultEveryNth() > 0 && callbackMetrics.syntheticStaleResults.sum() > 0) {
+                        require(proofMetrics.staleResultItems() > 0,
+                                "stale result proof should exercise runtime stale-lease classification");
+                    }
                     if (config.retryFailureEveryNth() == 0 && config.expireFirstAttemptEveryNth() == 0) {
                         require(proofMetrics.duplicateDispatchItems() == 0,
                                 "duplicate wakeups should not duplicate runtime dispatch claims");
@@ -393,6 +418,15 @@ public final class TaskFlowLoadModelRunner {
                     && attemptNo == 1
                     && logicalSeq > 0
                     && logicalSeq % config.expireFirstAttemptEveryNth() == 0;
+        }
+
+        private static boolean shouldSubmitStaleRuntimeResult(LoadConfig config,
+                                                              int logicalSeq,
+                                                              boolean failFirstAttempt) {
+            return config.staleResultEveryNth() > 0
+                    && !failFirstAttempt
+                    && logicalSeq > 0
+                    && logicalSeq % config.staleResultEveryNth() == 0;
         }
 
         private static Task materializeTask(TaskCommandService taskCommands, TaskCreatePlan request) {
@@ -496,6 +530,8 @@ public final class TaskFlowLoadModelRunner {
             callbacks.put("syntheticRetries", callbackMetrics.syntheticRetries.sum());
             callbacks.put("syntheticLeaseExpiries", callbackMetrics.syntheticLeaseExpiries.sum());
             callbacks.put("syntheticLeaseExpiryRejected", callbackMetrics.syntheticLeaseExpiryRejected.sum());
+            callbacks.put("syntheticStaleResults", callbackMetrics.syntheticStaleResults.sum());
+            callbacks.put("syntheticStaleResultRejected", callbackMetrics.syntheticStaleResultRejected.sum());
             callbacks.put("duplicateResultAttempts", callbackMetrics.duplicateResultAttempts.sum());
             callbacks.put("duplicateResultAccepted", callbackMetrics.duplicateResultAccepted.sum());
             callbacks.put("duplicateResultRejected", callbackMetrics.duplicateResultRejected.sum());
@@ -610,6 +646,8 @@ public final class TaskFlowLoadModelRunner {
         private final LongAdder syntheticRetries = new LongAdder();
         private final LongAdder syntheticLeaseExpiries = new LongAdder();
         private final LongAdder syntheticLeaseExpiryRejected = new LongAdder();
+        private final LongAdder syntheticStaleResults = new LongAdder();
+        private final LongAdder syntheticStaleResultRejected = new LongAdder();
         private final LongAdder duplicateResultAttempts = new LongAdder();
         private final LongAdder duplicateResultAccepted = new LongAdder();
         private final LongAdder duplicateResultRejected = new LongAdder();
@@ -650,6 +688,13 @@ public final class TaskFlowLoadModelRunner {
             totalCallbackNanos.add(elapsedNanos);
             if (!accepted) {
                 syntheticLeaseExpiryRejected.increment();
+            }
+        }
+
+        private void onSyntheticStaleResult(ResultApplyStatus status) {
+            syntheticStaleResults.increment();
+            if (status != ResultApplyStatus.STALE_LEASE) {
+                syntheticStaleResultRejected.increment();
             }
         }
 
@@ -771,6 +816,7 @@ public final class TaskFlowLoadModelRunner {
                               TaskWorkloadClass workloadClass,
                               int retryFailureEveryNth,
                               int expireFirstAttemptEveryNth,
+                              int staleResultEveryNth,
                               int duplicateResultEveryNth,
                               int duplicateWakeupsOnApprove,
                               long timeoutSeconds,
@@ -795,6 +841,7 @@ public final class TaskFlowLoadModelRunner {
                     workloadClassProperty("mass.load.workloadClass", TaskWorkloadClass.BULK),
                     retryFailureEveryNth,
                     expireFirstAttemptEveryNth,
+                    intProperty("mass.load.staleResultEveryNth", 0),
                     intProperty("mass.load.duplicateResultEveryNth", 0),
                     intProperty("mass.load.duplicateWakeupsOnApprove", 0),
                     longProperty("mass.load.timeoutSeconds", 60L),
@@ -817,6 +864,7 @@ public final class TaskFlowLoadModelRunner {
             config.put("workloadClass", workloadClass.name());
             config.put("retryFailureEveryNth", retryFailureEveryNth);
             config.put("expireFirstAttemptEveryNth", expireFirstAttemptEveryNth);
+            config.put("staleResultEveryNth", staleResultEveryNth);
             config.put("duplicateResultEveryNth", duplicateResultEveryNth);
             config.put("duplicateWakeupsOnApprove", duplicateWakeupsOnApprove);
             config.put("timeoutSeconds", timeoutSeconds);
