@@ -121,7 +121,7 @@ claiming later phases are complete.
 
 | Phase | Status | Landed evidence |
 | --- | --- | --- |
-| `TRS-C1` | Partial | Shared runtime contract proof now covers concurrent claim uniqueness, multi-worker claim counters, same-lease result apply idempotence, lease-expiry polling uniqueness, same-message final commit uniqueness, and different-message final sequence uniqueness for memory and Redis subclasses. |
+| `TRS-C1` | Implemented first slice | Shared runtime contract proof now covers concurrent enqueue idempotence, concurrent claim uniqueness, multi-worker claim counters, same-lease result apply idempotence, lease-expiry polling uniqueness, same-message final commit uniqueness, and different-message final sequence uniqueness for memory and Redis subclasses. |
 | `TRS-C2` | Implemented decision slice | The Redis runtime key minimalism review now records the candidate target key set and separates mainline truth from cleanup/repair/diagnostic structures. Current-code review has confirmed that staging keys, recent-final receipts, task active sets, worker active sets, task delayed zsets, runtime stats, and barrier indexes cannot be deleted in the current slice without replacement proof. |
 | `TRS-M1` | Implemented first slice | `RedisTaskResultRuntime.commitVisibleFinal(...)` no longer has a method-level JVM monitor; Redis tests include a reflection guard and cross-connection concurrent final commit proof. |
 | `TRS-M2` | Implemented first slice | `WorkerCandidateSamplingPolicy` now has a shared random bounded implementation used by memory and Redis registry defaults. `WorkerManagerTest` proves bounded sampling happens before worker row materialization, `SimpleTaskDispatchBinderTest` covers concurrent assignment rounds for the same task, `TaskRedispatchCompetitionTest` covers result-release/refill on the mainline, and `TaskApiDelayedWorkerAvailabilityRedisRuntimeIntegrationTest` covers Redis-backed multi-round refill through the server/transport/runtime path. Deeper Redis concurrent engine duplicate-dispatch soak remains `TRS-D2` proof, not a `TRS-M2` blocker. |
@@ -1087,6 +1087,7 @@ Completed first-slice work:
 1. `TRS-C0` inventory and lock/key classification are captured in this
    roadmap.
 2. `TRS-C1` mainline concurrency tests cover:
+   - concurrent enqueue idempotence for the same task/message
    - concurrent claim uniqueness
    - concurrent final commit uniqueness
    - duplicate assignment attempts do not duplicate dispatch

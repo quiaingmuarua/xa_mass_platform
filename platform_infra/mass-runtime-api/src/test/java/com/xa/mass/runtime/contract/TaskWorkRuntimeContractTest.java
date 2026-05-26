@@ -9,6 +9,7 @@ import com.xa.mass.runtime.api.TaskWorkEnvelope;
 import com.xa.mass.runtime.api.TaskWorkResult;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskWorkStats;
+import com.xa.mass.runtime.api.WorkEnqueueOutcome;
 import com.xa.mass.runtime.api.WorkEnqueueOptions;
 import com.xa.mass.runtime.api.WorkEnqueueStatus;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
@@ -83,6 +84,23 @@ public abstract class TaskWorkRuntimeContractTest {
         runtime.enqueue(item("t1", "m1"), WorkEnqueueOptions.DEFAULT);
         assertThat(runtime.enqueue(item("t1", "m1"), WorkEnqueueOptions.DEFAULT).status())
                 .isEqualTo(WorkEnqueueStatus.DUPLICATE);
+    }
+
+    @Test
+    void concurrentEnqueue_sameMessageIsIdempotentAndCountersStayStable() throws Exception {
+        int contenders = 16;
+        List<WorkEnqueueOutcome> outcomes = runConcurrently(contenders,
+                index -> runtime.enqueue(item("enqueue-race", "m1"), WorkEnqueueOptions.DEFAULT));
+
+        assertThat(outcomes).filteredOn(outcome -> outcome.status() == WorkEnqueueStatus.ENQUEUED)
+                .hasSize(1);
+        assertThat(outcomes).filteredOn(outcome -> outcome.status() == WorkEnqueueStatus.DUPLICATE)
+                .hasSize(contenders - 1);
+        TaskWorkStats stats = runtime.stats("enqueue-race");
+        assertThat(stats.totalCount()).isEqualTo(1);
+        assertThat(stats.readyCount()).isEqualTo(1);
+        assertThat(runtime.stats().readyItems()).isEqualTo(1);
+        assertThat(runtime.readyTaskIds(10)).containsExactly("enqueue-race");
     }
 
     @Test
