@@ -66,6 +66,24 @@ class FrontendConsoleControllerTest {
     }
 
     @Test
+    void currentConsoleRoutesServeLocalIndexWhenBuildExists() throws Exception {
+        Path distDir = createLocalDist();
+        configureRoutingService(distDir);
+        mockMvc = MockMvcBuilders.standaloneSetup(new FrontendConsoleController(routingService)).build();
+
+        for (String path : java.util.List.of(
+                "/resources/projects",
+                "/resources/projects/demoApp",
+                "/runtime/discovery",
+                "/system/api-keys")) {
+            mockMvc.perform(get(path))
+                    .andExpect(status().isOk())
+                    .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML))
+                    .andExpect(content().string(org.hamcrest.Matchers.containsString("local")));
+        }
+    }
+
+    @Test
     void legacyConfigPageRedirectsToConfigsRouteWhenLocalBuildExists() throws Exception {
         Path distDir = createLocalDist();
         configureRoutingService(distDir);

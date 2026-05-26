@@ -41,13 +41,17 @@ public class FrontendConsoleController {
             "/forbidden",
             "/tasks",
             "/tasks/{taskId}",
+            "/resources/projects",
+            "/resources/projects/{projectCode}",
             "/resources/workers",
             "/resources/workers/{workerId}",
             "/resources/rules",
             "/resources/configs",
+            "/runtime/discovery",
             "/runtime/diagnostics",
             "/system/users",
             "/system/roles",
+            "/system/api-keys",
             "/system/audit"
     })
     @ResponseBody
