@@ -26,7 +26,9 @@ flows, commands, and module-local inventories.
 - result convergence is runtime-first, but the active owner split must be
   verified from `RESULT_BOUNDARY_BASELINE.md` plus current engine/runtime code
 - runtime seams are transport-neutral: task dispatch, result ingest, and system events
-- runtime entry is SDK-first; demo HTTP/UI surfaces validate the kernel but do not redefine it
+- runtime entry is SDK-first; server HTTP/UI surfaces form a lightweight
+  backend product shell and validation host, but they do not redefine kernel
+  ownership
 - observability belongs in logs, traces, counters, and bounded diagnostics, not scan-heavy hot-path projections
 - canonical trace write-path ownership stays in `platform_infra/mass-trace-sink`;
   operator trace read/query ownership stays in `xa-mass-trace`
@@ -37,9 +39,10 @@ SDK-first boundary rules:
 - the stable integration boundary for workers, embedding clients, and external
   automation is the SDK contract surface, not server DTOs and not engine/base
   aggregates
-- `xa-mass-server` is the reference host and validation shell; host auth,
-  project, tenant, user, and console requirements may shape server APIs, but
-  they must not redefine kernel owner semantics
+- `xa-mass-server` is the reference host and lightweight backend product
+  skeleton; host auth, IAM, API-key, project, tenant, user, and console
+  requirements may shape server APIs, but they must not redefine kernel owner
+  semantics
 - `xa-mass-base` and `xa-mass-engine` models may evolve quickly; public
   compatibility is preserved through SDK request models and SDK snapshot
   read-models instead of freezing internal `Task` / `Worker` / runtime types
@@ -198,10 +201,11 @@ Lifecycle and trace detail live in:
 - `Task.sharedConfig` plus runtime item payload / `payloadRef` are the main
   payload boundaries
 - `Task.project` and `Task.user` are first-class task truth; do not push them back into bags or free-form attributes
-- worker capability truth is moving to `WorkerGroup.eventBindings`; worker
-  registration still carries compatibility event bindings during convergence,
-  but scheduling decisions must consume group capability, worker scheduling
-  facts, and runtime load/capacity facts, not `WorkerContext`
+- worker capability truth is `WorkerGroup.eventBindings`; worker registration
+  declares execution identity and group/node membership. Scheduling decisions
+  must consume explicit group selectors, group capability, worker scheduling
+  facts, and runtime load/capacity facts, not worker-level capability overrides
+  and not `WorkerContext`
 - `WorkerMatchContext` plus rule evaluation is current matching input, but it
   must stay a scheduling-context object and must not become a replacement
   worker-resource owner

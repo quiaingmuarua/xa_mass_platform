@@ -16,7 +16,8 @@ Fast entry only. Use module owner READMEs and `doc/` contracts for detail.
   verified from `doc/RESULT_BOUNDARY_BASELINE.md` plus current engine/runtime
   code rather than inferred from historical `TaskWorkRuntime` wording alone
 - Transport is three explicit channels: task dispatch, result ingest, and system events.
-- Runtime entry is SDK-first; HTTP pages and demo APIs are validation shells.
+- Runtime entry is SDK-first; server HTTP/UI surfaces provide a lightweight
+  backend product shell and validation host without redefining kernel ownership.
 - Infra truth is three-layered: control-plane storage, runtime state, and trace/audit stream.
 - Core acceptance is `perf + concurrency + Boot-shell E2E`.
 

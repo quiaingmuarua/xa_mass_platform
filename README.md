@@ -58,16 +58,18 @@ The shared kernel is:
 - `stateful worker + capability/routing match + per-item result tracking + task-level convergence`
 - stable kernel truth: `Task`, assignment, result, audit, and terminal policy
 - transport-neutral runtime seams: task dispatch, result ingest, and system events
-- SDK-first runtime entry; HTTP pages and demo APIs are validation shells
+- SDK-first runtime entry; server provides a lightweight backend product shell
+  for HTTP APIs, auth/IAM, API-key operations, and the control console without
+  redefining kernel ownership
 - hot-path observability through logs, traces, and bounded diagnostics rather than scan-heavy projections
 
 Current integration boundary rule:
 
 - `xa-mass-sdk` is the stable integration boundary for workers, embedding
   clients, and external automation
-- `xa-mass-server` is the reference host, demo console backend, and validation
-  shell; it may evolve its HTTP/auth/project/tenant/user surfaces without
-  redefining engine-kernel semantics
+- `xa-mass-server` is the reference host and lightweight backend product
+  skeleton for HTTP/auth/project/tenant/user/API-key/console surfaces; it may
+  evolve those host surfaces without redefining engine-kernel semantics
 - `xa-mass-base` and `xa-mass-engine` models are allowed to evolve quickly;
   public compatibility is preserved through SDK request models and SDK snapshot
   read models rather than by freezing internal `Task` / `Worker` / runtime
@@ -114,7 +116,8 @@ Current integration boundary rule:
 - `xa-mass-sdk`: embedding entry and runtime composition for JVM callers
 - `xa-mass-testing`: acceptance tooling, load harnesses, and chaos probes
 - `xa-mass-worker-pack`: official builtin/sample/dev worker capabilities, sample clients, launchers, and worker-side command runtime
-- `xa-mass-server`: Boot validation shell, HTTP controllers, backend-hosted control console, and frontend shell
+- `xa-mass-server`: Boot reference host, HTTP controllers, lightweight backend
+  product skeleton, backend-hosted control console, and frontend shell
 
 Module truth comes from the root `pom.xml`. Do not treat removed historical modules or top-level directories outside the reactor as current mainline.
 

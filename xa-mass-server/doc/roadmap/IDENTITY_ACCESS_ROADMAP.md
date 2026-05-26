@@ -37,42 +37,24 @@ IAM-6a:
 
 Not implemented yet:
   durable IAM audit store for user/role mutations
+  durable SubmitterViewerSession store; current session store is in-memory,
+  so server restart invalidates submitter viewer sessions
 ```
 
-Current handoff checkpoint:
+Recommended verification profile:
 
 ```text
-2026-05-26 Windows session:
-  implemented IAM-6a server code for:
-    - POST /api/v1/users
-    - PATCH /api/v1/users/{userId}
-    - POST /api/v1/roles
-    - PATCH /api/v1/roles/{roleId}
-    - POST /api/v1/users/{userId}/roles/{roleId}
-    - DELETE /api/v1/users/{userId}/roles/{roleId}
+Normal IAM/controller edits:
+  .\mvnw.cmd -q -pl xa-mass-server -am "-Dtest=IdentityAccessControllerTest,ApiKeyControllerTest,ApiKeyApplicationControllerTest,ApiUsageControllerTest,SubmitterViewerSessionControllerTest,AuthControllerTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
+  .\mvnw.cmd -q -pl xa-mass-server -am -DskipTests compile
 
-  key implementation files:
-    - xa-mass-server/src/main/java/com/xa/mass/api/internal/IdentityAccessController.java
-    - xa-mass-server/src/main/java/com/xa/mass/api/auth/ApiRouteAuthorizationCatalog.java
-    - xa-mass-server/src/main/java/com/xa/mass/api/auth/iam/UserRolePermissionStore.java
-    - xa-mass-server/src/main/java/com/xa/mass/api/auth/iam/InMemoryUserRolePermissionStore.java
-    - xa-mass-server/src/test/java/com/xa/mass/api/internal/IdentityAccessControllerTest.java
+Merge-gate or broad route-auth edits:
+  .\mvnw.cmd -q -pl xa-mass-server -am test
 
-  focused verification passed:
-    .\mvnw.cmd -q -pl xa-mass-server -am "-Dtest=IdentityAccessControllerTest,ApiKeyControllerTest,ApiKeyApplicationControllerTest,AuthControllerTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
-
-  full server reactor verification:
-    .\mvnw.cmd -q -pl xa-mass-server -am test
-    was started after IAM-6a role changes but intentionally stopped during
-    local handoff before final exit code. This command is too heavy for every
-    small IAM controller slice because it exercises unrelated server E2E and
-    transport black-box lanes. Prefer focused IAM/auth tests plus compile for
-    normal IAM edits; reserve full server reactor or E2E suites for merge-gate
-    confidence, broad auth-route changes, or suspected integration regressions.
-
-  note:
-    Windows session did not complete frontend/browser computer-use validation.
-    Continue any console/browser verification from the Mac environment.
+Use the full server reactor when route authorization, interceptors, E2E wiring,
+or cross-controller behavior changes. For narrow IAM controller/store edits,
+prefer the focused IAM/auth suite plus compile to avoid spending minutes in
+unrelated transport and black-box lanes.
 ```
 
 ## Summary
@@ -154,6 +136,7 @@ roadmap after access control is stable.
 16. Submitter viewer sessions add browser convenience only; they must not introduce new permission semantics beyond the source API-key `PrincipalContext`.
 17. Usage audit records authorization result and domain-accepted outcome; it must not count accepted units before the owning operation accepts the request.
 18. Submitter viewer sessions are not external-worker credentials and must not authenticate worker callback, poll, result-submit, or report routes.
+19. Submitter viewer session reads are query-only for IAM-3 usage by default; viewing usage must not create another API-key usage row unless a later accounting roadmap explicitly opts into session-origin read metering.
 
 ## Goals
 
@@ -547,15 +530,22 @@ Rules:
 3. cannot access user / role / API-key approval APIs
 4. cannot task control / govern through the viewer session
 5. can read only owner-scoped task/result/archive/usage resources
-6. expires quickly and is invalidated when the source key is revoked
+6. expires after the configured/default session TTL and is invalidated when the source key is revoked
 7. does not grant permissions that the source API key does not already have
 8. raw session secret is returned only on creation
 9. list/current responses expose keyPrefix only, never credentialHash or raw secret
+10. first implementation uses an in-memory store; restart invalidates sessions
+11. session credentials must not authenticate `/worker-api/v1/**`
+12. session credentials must not access user/role APIs, API-key approval/revoke APIs, or task control/govern APIs
 ```
 
 If a future API key scope allows task control, that must be a direct API-key API
 call with explicit authorization. It must not be smuggled through submitter
 viewer sessions.
+
+Current default TTL is eight hours. If production deployment needs longer-lived
+browser viewer sessions, make the TTL configurable before treating sessions as
+durable product credentials.
 
 ## HTTP Surface
 
@@ -635,6 +625,8 @@ Rules:
 3. session can use owner-scoped task/result/archive/usage APIs
 4. session cannot call operator-only user/role/API-key approval APIs
 5. revoked API keys cannot create or continue submitter viewer sessions
+6. session credential cannot authenticate `/worker-api/v1/**`
+7. session usage reads are query-only and do not create recursive usage rows
 ```
 
 ## Usage Audit Rules
@@ -855,6 +847,8 @@ Phase placement:
 ```text
 IAM-4 is implemented as a thin browser-convenience session layer. It does not
 replace direct API-key auth and does not create a second permission model.
+The current store is in-memory, so sessions are intentionally invalidated by
+server restart until a durable store is added.
 ```
 
 Current implemented slice:
@@ -881,6 +875,7 @@ Scope:
 7. expire sessions quickly and invalidate sessions for revoked keys
 8. capture createdAt/revokedAt lifecycle evidence on the session record
 9. do not add new authorization semantics beyond the source API-key permissions
+10. do not meter session-origin usage reads as new API-key usage rows
 ```
 
 Acceptance:
@@ -895,6 +890,9 @@ Acceptance:
 7. revoked key cannot create or continue viewer sessions
 8. viewer session does not create an operator session
 9. removing viewer-session support leaves direct API-key APIs fully usable
+10. viewer session cannot authenticate worker callback, poll, result-submit, or report routes
+11. viewer session cannot call task control/govern APIs
+12. session current/list responses never expose credentialHash or raw secret
 ```
 
 ### Phase IAM-5: SDK Auth Contract Cleanup

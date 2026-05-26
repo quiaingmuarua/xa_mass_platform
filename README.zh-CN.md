@@ -64,7 +64,7 @@ XA Mass Platform 是一个通用的分布式任务调度平台。
   - 推荐的 JVM 集成入口
   - 面向 embedding app、worker、自动化脚本和宿主应用
 - `xa-mass-server`
-  - Spring Boot 参考宿主、HTTP shell、控制台后端、验证入口
+  - Spring Boot 参考宿主、轻量后台产品骨架、HTTP/API、IAM/API key、控制台后端、验证入口
 - `xa-mass-worker-pack`
   - 内置/示例 worker 能力和调试 worker
 - `xa-mass-trace`
@@ -92,7 +92,7 @@ Task shell
 1. 先创建一个 task shell。
 2. 再往 task 里 append work items。
 3. 每个 item 携带 `eventCode`。
-4. engine 根据 `eventCode`、project、worker capability、reachability、rules 和资源状态选择 worker。
+4. SDK/intake 可把 `eventCode`、project 解析成显式 worker group selector；engine 再根据 group capability、reachability、rules 和资源状态选择 worker。
 5. transport 把已经 assignment 的 work 送给 worker。
 6. worker 按 `eventCode` 执行本地 handler。
 7. worker 提交 result。
@@ -190,7 +190,8 @@ public `/results`、SDK result query、archive 的 truth。
 ```text
 register event
   -> register project
-  -> register worker with eventBindings
+  -> 声明 WorkerGroup 的 eventBindings
+  -> 将 worker 注册到该 group
   -> create task shell
   -> append items with eventCode
   -> worker executes by eventCode
@@ -198,7 +199,7 @@ register event
   -> read runtime final results
 ```
 
-这条线同时适用于 SDK 嵌入和 Boot shell / HTTP 验证，只是入口形式不同。
+这条线同时适用于 SDK 嵌入和 server / HTTP / 控制台产品壳，只是入口形式不同。
 
 ## 模块地图
 
@@ -220,7 +221,7 @@ register event
 | `xa-mass-engine` | lifecycle、assignment、result handling、policy seams |
 | `xa-mass-sdk-api` | stable SDK-facing auth/catalog/event/model contracts |
 | `xa-mass-sdk` | SDK embedding/runtime composition |
-| `xa-mass-server` | Boot validation shell、HTTP controllers、console backend |
+| `xa-mass-server` | Boot reference host、轻量后台产品骨架、HTTP controllers、IAM/API key、console backend |
 | `xa-mass-testing` | perf、chaos、acceptance harness |
 | `xa-mass-worker-pack` | sample/dev worker capabilities |
 | `xa-mass-trace` | DuckDB-backed trace operator CLI |
@@ -264,4 +265,3 @@ XA Mass Platform 可以理解成一个面向“批量任务 + 会话任务”的
 - 正确处理 dispatch、lease、retry、timeout、result callback
 - 正确释放资源
 - 正确收敛 item 和 task 的最终状态
-

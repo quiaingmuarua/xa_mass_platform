@@ -30,7 +30,8 @@ more implemented than another.
 | Concern | Canonical layer | Why | Current allowed temporary placement | Must not drift into |
 | --- | --- | --- | --- | --- |
 | task shell truth (`Task` id/project/status/sharedConfig/terminal reason) | control-plane storage | restart recovery and operator task truth depend on it | none beyond caches | trace-only logs or hot queue state |
-| worker registration | control-plane storage | stable worker identity and declared scheduling capability truth | runtime cache/projection for lookup speed | transient transport events or active scheduling truth |
+| worker registration | control-plane storage | stable worker identity plus explicit group/node membership | runtime cache/projection for lookup speed | transient transport events or active scheduling truth |
+| worker group capability | control-plane storage | `WorkerGroup.eventBindings` is the declared capability truth used to build candidate-source views | immutable runtime snapshot/index for lookup speed | worker registration rows, transport events, or active scheduling state |
 | worker runtime route-owner view | runtime state | volatile online/reachability truth owned by transport adapters and nodes | Redis/in-memory presence records with lease expiry | control-plane worker registration or dispatch queues |
 | rule definitions | control-plane storage | stable policy input | in-process evaluator cache | engine-only hidden defaults inside storage modules |
 | principal / submitter credential truth | control-plane storage | stable auth binding truth | in-process auth cache | infra module exporting SDK surface |

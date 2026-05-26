@@ -78,10 +78,11 @@ queue placement, result finality, worker state, or command lifecycle.
 ### Worker
 
 A worker is a runtime execution unit. Worker registration declares identity,
-transport routing hints, attributes, and capability bindings.
+group/node membership, transport routing hints, and attributes.
 
-Registration does not mean the worker is online. Online truth belongs to the
-transport presence plane.
+Registration does not mean the worker is online, and worker registration does
+not own event capability. Capability is declared on `WorkerGroup.eventBindings`;
+online truth belongs to the transport presence plane.
 
 ### WorkerGroup
 

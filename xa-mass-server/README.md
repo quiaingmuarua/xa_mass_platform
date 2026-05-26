@@ -2,7 +2,8 @@
 
 Status: current server owner README.
 
-`xa-mass-server` is the verified runnable entry module for the current repository mainline.
+`xa-mass-server` is the verified runnable entry module and lightweight backend
+product skeleton for the current repository mainline.
 
 Use this module for end-to-end validation of:
 
@@ -13,15 +14,15 @@ Use this module for end-to-end validation of:
 Repository-level startup instructions in [`../doc/VERIFIED_RUNBOOK.md`](../doc/VERIFIED_RUNBOOK.md) are the source of truth.
 
 For current test-layer truth, minimum verification, and CI gate truth, start
-with [`../doc/TESTING_INDEX.md`](../doc/TESTING_INDEX.md). This README only
-covers server-owned Boot-shell E2E, black-box, and host-shell validation
-assets.
+with [`../doc/TESTING_INDEX.md`](../doc/TESTING_INDEX.md). This README covers
+server-owned HTTP/control-console/IAM host behavior plus Boot-shell E2E,
+black-box, and host-shell validation assets.
 
 ## Current Role
 
 - real Spring Boot entrypoint: `com.xa.mass.server.XaMassServerApplication`
-- starts runtime through `xa-mass-sdk` and directly owns the backend-hosted control console, JSON APIs, and frontend shell under `com.xa.mass.api`
-- acts as a reference host and validation shell; server HTTP/auth/project/tenant/user surfaces may evolve for host needs, but they must not redefine engine-kernel semantics or replace SDK contracts as the stable integration boundary
+- starts runtime through `xa-mass-sdk` and directly owns the backend-hosted control console, JSON APIs, IAM/API-key/submitter-viewer host surfaces, and frontend shell under `com.xa.mass.api`
+- acts as a reference host and lightweight backend product skeleton; server HTTP/auth/IAM/API-key/project/tenant/user surfaces may evolve for host needs, but they must not redefine engine-kernel semantics or replace SDK contracts as the stable integration boundary
 - acts as the HTTP/security host adapter: request headers and routes resolve to `PrincipalContext` plus `AuthorizationRequest`, while authorization truth lives in `xa-mass-sdk-api` / `xa-mass-sdk`
 - worker, task, and rule resources are created through the embedded SDK runtime
 - owner-backed worker control and task-stage evidence HTTP routes adapt to SDK
@@ -32,6 +33,7 @@ Controller/console ownership now includes:
 
 - REST controller layer
 - DTO / request-response boundary
+- host-side auth/IAM/API-key/session surfaces
 - backend-hosted control console shell
 - frontend route serving from built `frontend/dist`
 
@@ -80,7 +82,7 @@ Current host security matrix:
 | `SUBMITTER_TASK_CREATE` | submitter credential | `TASK / CREATE` | `task:create` + project/user scope |
 | `SUBMITTER_TASK_VIEW` | submitter credential | `TASK / VIEW` | ownership match against the internal task ownership stamp |
 | `SUBMITTER_TASK_APPEND` | submitter credential | `TASK / EDIT` | ownership match + `task:create` + project/event scope |
-| `WORKER_REGISTER` | external worker credential | `WORKER / REGISTER` | `worker:poll` + worker binding for worker registration; event/project scope for worker group declaration and compatibility worker event bindings |
+| `WORKER_REGISTER` | external worker credential | `WORKER / REGISTER` | `worker:poll` + worker binding for worker registration; event/project scope for WorkerGroup declaration; legacy worker event-binding request fields are compatibility input only |
 | `WORKER_ONLINE` / `WORKER_HEARTBEAT` / `WORKER_OFFLINE` / `WORKER_POLL` | external worker credential | `WORKER / POLL` | `worker:poll` + worker binding |
 | `WORKER_SUBMIT_RESULT` | external worker credential | `WORKER / REPORT_RESULT` | `worker:poll` + worker binding |
 | `WORKER_REPORT_CAPABILITY` / `WORKER_REPORT_STATE` / `WORKER_ACK_COMMAND` | external worker credential | `WORKER / POLL` | `worker:poll` + worker binding, plus capability event scope on capability reports |
@@ -429,7 +431,7 @@ Mainline stance:
 What this module proves:
 
 - real Spring Boot host wiring and HTTP contracts
-- mainline boundary behavior for `project / submitter / worker / workerContext`
+- mainline boundary behavior for `project / submitter / worker / auth/IAM`
 - full-chain task shell -> item append -> dispatch -> result ingest ->
   convergence behavior
 - public result reads and archive endpoints use SDK `TaskResultQueryOperations`

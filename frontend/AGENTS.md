@@ -14,7 +14,9 @@ This frontend is a lightweight control console for the orchestration platform. K
 - Keep runtime flags in `src/app/config.ts`. Do not read `import.meta.env` throughout the app.
 - When an API needs mock support, split it into `*.mock.ts`, `*.real.ts`, and a thin public module that selects the implementation.
 - SDK/platform discovery catalog must go through `src/api/catalog.ts`; do not duplicate project/event catalogs in pages.
-- Treat `Worker.supportedEventCodes` as runtime capability truth for event handling. `supportedProjects` is only a coarse grouping/filter hint in the UI.
+- Treat `Worker.eventBindings` as the capability truth exposed to the UI.
+  `supportedEventCodes` and `supportedProjects` are derived convenience fields
+  for filtering/display, not separate capability owners.
 - Task-create starter examples live in `src/utils/task-starters.ts`. Extend them with explicit project/event cases; do not replace them with a schema-driven form engine.
 - Keep page-level view logic inside page SFCs. Do not introduce schema-driven page DSLs or generic CRUD wrappers.
 - Extract reusable UI into `src/components` only after repetition is clear.

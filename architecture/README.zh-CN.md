@@ -47,7 +47,8 @@ task shell
 ```text
 register event
   -> register project
-  -> register worker with eventBindings
+  -> 声明 WorkerGroup 的 eventBindings
+  -> 将 worker 注册到该 group
   -> create task shell
   -> append task items
   -> worker pulls or receives work
@@ -75,8 +76,11 @@ project 是业务容器。它说明某个业务域允许哪些 event。
 
 ### 3. Worker
 
-worker 是真实执行单元。它通过 `eventBindings` 声明自己能处理哪些
+WorkerGroup 通过 `eventBindings` 声明一组 worker 能处理哪些
 `eventCode`，以及在哪些 project 下可用。
+
+worker 是真实执行单元。它绑定到某个 WorkerGroup，并携带自己的
+runtime identity、transport identity 和属性。
 
 注册 worker 不等于在线。在线和路由归 transport presence 管。
 
@@ -127,4 +131,3 @@ policy 收敛状态。
 
 - [`../xa-mass-trace/README.md`](../xa-mass-trace/README.md)
 - [`../doc/TRACE_CONTRACT.md`](../doc/TRACE_CONTRACT.md)
-

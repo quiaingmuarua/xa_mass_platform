@@ -184,7 +184,8 @@ not active resource ownership truth.
 
 Current engine scheduling and resource lifecycle truth comes from:
 
-- worker registration and event-binding capability facts
+- worker registration identity plus group/node membership
+- `WorkerGroup.eventBindings` capability facts
 - worker scheduling attributes / routing tags
 - process-local reachability and runtime load/capacity views
 - active worker locks when the selected workload mode requires them

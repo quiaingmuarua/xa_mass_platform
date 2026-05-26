@@ -224,9 +224,9 @@ Worker scheduling truth:
 - worker lock truth is runtime/resource state and must stay out of the
   control-plane DB. The server JDBC adapter intentionally keeps lock churn
   process-local instead of persisting it in durable storage.
-- worker capability truth comes from worker registration and event bindings.
-  Routing uses worker scheduling attributes/tags and runtime reachability/load
-  facts.
+- worker capability truth comes from `WorkerGroup.eventBindings`. Worker
+  registration owns worker identity plus group/node membership; routing also
+  uses worker scheduling attributes/tags and runtime reachability/load facts.
 - `WorkerContext` model/storage/API surfaces are retired. It is not engine
   scheduling truth, and new verification should not depend on context-specific
   routing or context-id evidence.

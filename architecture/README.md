@@ -59,7 +59,8 @@ and task-level terminal policy.
 Use the SDK first:
 
 - `xa-mass-sdk` is the recommended JVM embedding surface.
-- `xa-mass-server` is the reference Boot host and HTTP validation shell.
+- `xa-mass-server` is the reference Boot host and lightweight backend product
+  skeleton for HTTP APIs, auth/IAM, API keys, and the control console.
 - `xa-mass-engine` is the runtime kernel owner, not a CRUD backend API.
 - `transport/` owns worker delivery and result-ingest data-plane mechanics.
 
@@ -68,7 +69,8 @@ For most new users, the first useful path is:
 ```text
 register event
   -> register project
-  -> register worker with eventBindings
+  -> declare WorkerGroup eventBindings
+  -> register worker into the group
   -> create task shell
   -> append task items
   -> worker pulls or receives work

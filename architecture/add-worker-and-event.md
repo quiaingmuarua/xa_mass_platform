@@ -10,7 +10,8 @@ capability.
 ```text
 define event
   -> bind event to project
-  -> register worker with eventBindings
+  -> declare WorkerGroup eventBindings
+  -> register worker into the group
   -> start worker presence / client session
   -> append items with eventCode
   -> worker handles eventCode
@@ -177,8 +178,8 @@ Before a new worker capability is ready:
 
 - event registered with a stable `eventCode`
 - project allows the event
+- WorkerGroup declaration has `eventBindings`
 - worker registration has `workerGroupId`
-- worker registration has `eventBindings`
 - worker transport identity is explicit enough for the chosen adapter
 - worker can become reachable through its transport path
 - appended items use the same `eventCode`
