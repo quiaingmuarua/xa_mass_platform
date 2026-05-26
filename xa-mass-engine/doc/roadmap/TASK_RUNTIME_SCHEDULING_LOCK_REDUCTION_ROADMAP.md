@@ -122,10 +122,10 @@ claiming later phases are complete.
 | Phase | Status | Landed evidence |
 | --- | --- | --- |
 | `TRS-C1` | Partial | Shared runtime contract proof now covers concurrent claim uniqueness, multi-worker claim counters, same-lease result apply idempotence, lease-expiry polling uniqueness, same-message final commit uniqueness, and different-message final sequence uniqueness for memory and Redis subclasses. |
-| `TRS-C2` | Started | The Redis runtime key minimalism review now records the candidate target key set and separates mainline truth from cleanup/repair/diagnostic structures. Current-code review has confirmed that staging keys, recent-final receipts, task active sets, worker active sets, task delayed zsets, runtime stats, and barrier indexes cannot be deleted in the current slice without replacement proof. |
+| `TRS-C2` | Implemented decision slice | The Redis runtime key minimalism review now records the candidate target key set and separates mainline truth from cleanup/repair/diagnostic structures. Current-code review has confirmed that staging keys, recent-final receipts, task active sets, worker active sets, task delayed zsets, runtime stats, and barrier indexes cannot be deleted in the current slice without replacement proof. |
 | `TRS-M1` | Implemented first slice | `RedisTaskResultRuntime.commitVisibleFinal(...)` no longer has a method-level JVM monitor; Redis tests include a reflection guard and cross-connection concurrent final commit proof. |
 | `TRS-M2` | Implemented first slice | `WorkerCandidateSamplingPolicy` now has a shared random bounded implementation used by memory and Redis registry defaults. `WorkerManagerTest` proves bounded sampling happens before worker row materialization, `SimpleTaskDispatchBinderTest` covers concurrent assignment rounds for the same task, `TaskRedispatchCompetitionTest` covers result-release/refill on the mainline, and `TaskApiDelayedWorkerAvailabilityRedisRuntimeIntegrationTest` covers Redis-backed multi-round refill through the server/transport/runtime path. Deeper Redis concurrent engine duplicate-dispatch soak remains `TRS-D2` proof, not a `TRS-M2` blocker. |
-| `TRS-M3` | Started | `EngineSchedulingCoreArchitectureGuardTest.taskWriteLockRemainsLifecycleAndProgressOnly` locks the current boundary: task write locks are allowed for lifecycle, intake, progress, and audit paths only; runtime claim and internal runtime result apply must stay task-lock free. `TaskResultConcurrencyConvergenceTest.successCallbacksForDifferentMessagesDoNotSerializeAtTaskLevel` proves same-task different-message results can enter runtime apply concurrently under the current read/message guard. |
+| `TRS-M3` | Implemented first slice | `EngineSchedulingCoreArchitectureGuardTest.taskWriteLockRemainsLifecycleAndProgressOnly` locks the current boundary: task write locks are allowed for lifecycle, intake, progress, and audit paths only; runtime claim and internal runtime result apply must stay task-lock free. `TaskResultConcurrencyConvergenceTest.successCallbacksForDifferentMessagesDoNotSerializeAtTaskLevel` proves same-task different-message results can enter runtime apply concurrently under the current read/message guard. |
 | `TRS-M4` | Implemented first slice | Redis delayed promotion and ready-head cleanup use small per-entry Lua transitions. `RedisTaskWorkRuntimeTest` covers competing runtime instances promoting one delayed item once and bounded cleanup of stale ready-head entries without counter drift. |
 | `TRS-D1` | Started | Trace proof now accepts only explicit group-first candidate sources, stale worker-dispatch-gate docs point to `WorkerRegistry` slot disabled sources, and the superseded worker-resource-occupancy roadmap has been removed. |
 | `TRS-D2` | Implemented proof slice | `TaskFlowLoadModelRunner` can run the same task append -> runtime enqueue -> runtime-ready pump -> match/reserve -> dispatch -> result -> release/refill -> terminal flow against memory or Redis runtime. The report now includes backend, stable-final result count, duplicate/stale/expired runtime counters, processing counter drift, result counter drift, first-dispatch lag, and claimed messages/sec. It also has opt-in lease-expiry/refill proof (`mass.load.expireFirstAttemptEveryNth`), stale-result proof (`mass.load.staleResultEveryNth`), duplicate-result callback proof (`mass.load.duplicateResultEveryNth`), and duplicate-wakeup proof (`mass.load.duplicateWakeupsOnApprove`) without changing the default smoke path. `run-perf-smokes.sh` can opt into backend and fault/wakeup proof, and existing perf smokes have been converged to explicit WorkerGroup selector setup. Remaining D2 work is Redis command/script latency instrumentation and broader distributed worker disconnect/reconnect proof; those should not block the current task-runtime lock-reduction slice. |
@@ -1099,11 +1099,18 @@ Completed first-slice work:
 6. Memory and Redis runtime contract tests are the verification baseline.
 7. Redis delayed promotion and ready-head cleanup now use small bounded Lua
    transitions instead of Java multi-command mutation loops.
+8. `TRS-C2` records the current Redis runtime key/structure keep-delete
+   decisions; no Redis key migration is part of the current lock-reduction
+   slice.
+9. `TRS-M3` now guards both runtime claim and internal runtime result apply
+   against task locks, and the existing result concurrency proof verifies
+   same-task different-message callbacks can overlap at runtime apply.
 
 Next implementation slice:
 
-1. Continue `TRS-M3` only with explicit race proof for any result-ingest
-   task-read-lock reduction.
+1. Continue `TRS-M3` only if a concrete race proof is added for public
+   result-ingest task-read-lock reduction. The current slice intentionally
+   keeps the conservative read/message guard.
 2. Do not remove lifecycle task write locks for approve/reject/pause/resume,
    intake append/seal, terminal transition, or progress reconciliation.
 3. Start `TRS-D1` residue removal only after verifying no tests still assert
