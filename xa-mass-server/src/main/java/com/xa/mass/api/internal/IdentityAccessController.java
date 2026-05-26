@@ -189,6 +189,9 @@ public class IdentityAccessController {
             if (existing == null) {
                 return ResponseEntity.status(404).body(ApiResponse.error(404, "Role not found: " + roleId));
             }
+            if (existing.systemRole()) {
+                return ResponseEntity.badRequest().body(ApiResponse.error(400, "system roles cannot be updated"));
+            }
             RoleRecord updated = store.updateRole(new RoleRecord(
                     existing.roleId(),
                     request.name() == null ? existing.name() : requireNonBlank(request.name(), "name"),

@@ -58,7 +58,11 @@ Current handoff checkpoint:
   full server reactor verification:
     .\mvnw.cmd -q -pl xa-mass-server -am test
     was started after IAM-6a role changes but intentionally stopped during
-    local handoff before final exit code. Re-run this on the next machine.
+    local handoff before final exit code. This command is too heavy for every
+    small IAM controller slice because it exercises unrelated server E2E and
+    transport black-box lanes. Prefer focused IAM/auth tests plus compile for
+    normal IAM edits; reserve full server reactor or E2E suites for merge-gate
+    confidence, broad auth-route changes, or suspected integration regressions.
 
   note:
     Windows session did not complete frontend/browser computer-use validation.
@@ -906,6 +910,8 @@ IAM-6a:
   user-role bind/unbind
   user disable -> owned API keys disabled through the existing submitter
   authentication projection
+  system roles are read-only through the role update API; create custom roles
+  for mutable permission bundles
 ```
 
 Durable IAM audit entries remain later IAM-6 work. Do not introduce a second

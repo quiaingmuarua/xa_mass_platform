@@ -271,6 +271,18 @@ class IdentityAccessControllerTest {
     }
 
     @Test
+    void systemRoleCannotBeUpdated() throws Exception {
+        mockMvc.perform(patch("/api/v1/roles/OPS_VIEWER")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "name", "Broken Viewer",
+                                "permissions", List.of(ApiPermissionNames.TASK_CREATE)
+                        ))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.msg").value("system roles cannot be updated"));
+    }
+
+    @Test
     void disablingUserDisablesOwnedApiKeysThroughSubmitterProjection() throws Exception {
         ApiKeyCredentialService.CreatedApiKey created = apiKeyCredentialService.createOperatorKey(
                 new ApiKeyCredentialService.CreateApiKeyCommand(
