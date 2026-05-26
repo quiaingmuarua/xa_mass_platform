@@ -357,12 +357,47 @@ function summarizeRecord(value: Record<string, unknown> | null): string {
     return '-'
   }
 
-  const prioritizedKeys = ['target', 'url', 'text', 'status', 'value', 'detail']
+  const prioritizedKeys = [
+    'phoneNumber',
+    'defaultRegion',
+    'countryIso2',
+    'requiredFingerprintProfile',
+    'requiredNetworkOperatorMccMnc',
+    'url',
+    'hostname',
+    'expectedStatus',
+    'actualFixtureStatus',
+    'symbol',
+    'baseCurrency',
+    'quoteCurrencies',
+    'assets',
+    'ip',
+    'fixtureName',
+    'schemaRef',
+    'expectedOutcome',
+    'traceLabel',
+    'target',
+    'text',
+    'status',
+    'value',
+    'detail',
+  ]
+  const summaryParts: string[] = []
   for (const key of prioritizedKeys) {
     const candidate = value[key]
     if (typeof candidate === 'string' && candidate.trim().length > 0) {
-      return compactText(candidate)
+      summaryParts.push(`${key}=${candidate}`)
+    } else if (typeof candidate === 'number' || typeof candidate === 'boolean') {
+      summaryParts.push(`${key}=${String(candidate)}`)
+    } else if (Array.isArray(candidate) && candidate.length > 0) {
+      summaryParts.push(`${key}=${candidate.slice(0, 3).join(',')}`)
     }
+    if (summaryParts.length >= 5) {
+      break
+    }
+  }
+  if (summaryParts.length > 0) {
+    return compactText(summaryParts.join(' | '))
   }
 
   return compactText(JSON.stringify(value))

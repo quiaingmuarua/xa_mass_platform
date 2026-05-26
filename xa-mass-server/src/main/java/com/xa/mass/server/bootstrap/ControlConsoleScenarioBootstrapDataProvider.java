@@ -14,6 +14,8 @@ import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
+import net.datafaker.Faker;
+import net.datafaker.service.RandomService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,6 +26,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Random;
 
 /**
  * Dev-only generated bootstrap data for the backend-hosted control-console scenario.
@@ -45,9 +48,10 @@ public final class ControlConsoleScenarioBootstrapDataProvider implements MassBo
     private static final List<String> REGIONS = List.of("us", "gb", "de", "fr", "sg", "jp");
     private static final List<ProbeTaskScenario> SCENARIO_CYCLE = List.of(
             new ProbeTaskScenario("publicProbe", "probe.url.dns", "dns-url-inspector", true),
-            new ProbeTaskScenario("publicProbe", "probe.http.status", "public-probe-http", true),
+            new ProbeTaskScenario("publicProbe", "probe.http.status", "public-probe-http", false),
             new ProbeTaskScenario("publicProbe", "probe.weather.current", "public-probe-http", false),
             new ProbeTaskScenario("publicProbe", "probe.fx.latest", "public-probe-http", false),
+            new ProbeTaskScenario("publicProbe", "probe.crypto.price", "public-probe-http", false),
             new ProbeTaskScenario("deviceProbe", "probe.phone.metadata", "phone-device-probe", true),
             new ProbeTaskScenario("deviceProbe", "probe.phone.metadata", "phone-metadata-probe", true),
             new ProbeTaskScenario("dataQualityProbe", "probe.csv.validate", "local-json-validator", true),
@@ -66,6 +70,43 @@ public final class ControlConsoleScenarioBootstrapDataProvider implements MassBo
             "fp-android-sg-h",
             "fp-android-sg-i",
             "fp-android-sg-j"
+    );
+    private static final long FAKER_SEED = 2026052601L;
+    private static final List<PhoneCountryTemplate> PHONE_COUNTRIES = List.of(
+            new PhoneCountryTemplate("US", "1", 10, "310260", "T-Mobile US"),
+            new PhoneCountryTemplate("GB", "44", 10, "23415", "Vodafone UK"),
+            new PhoneCountryTemplate("SG", "65", 8, "52501", "Singtel"),
+            new PhoneCountryTemplate("JP", "81", 10, "44010", "NTT Docomo"),
+            new PhoneCountryTemplate("IN", "91", 10, "40445", "Airtel India"),
+            new PhoneCountryTemplate("AU", "61", 9, "50501", "Telstra"),
+            new PhoneCountryTemplate("FR", "33", 9, "20801", "Orange France"),
+            new PhoneCountryTemplate("DE", "49", 11, "26201", "Telekom DE"),
+            new PhoneCountryTemplate("BR", "55", 11, "72405", "Claro BR"),
+            new PhoneCountryTemplate("CA", "1", 10, "302720", "Rogers")
+    );
+    private static final List<WeatherLocationTemplate> WEATHER_LOCATIONS = List.of(
+            new WeatherLocationTemplate("shenzhen-cn", 22.5431, 114.0579, "Asia/Shanghai"),
+            new WeatherLocationTemplate("singapore-sg", 1.3521, 103.8198, "Asia/Singapore"),
+            new WeatherLocationTemplate("london-gb", 51.5072, -0.1276, "Europe/London"),
+            new WeatherLocationTemplate("tokyo-jp", 35.6762, 139.6503, "Asia/Tokyo"),
+            new WeatherLocationTemplate("san-francisco-us", 37.7749, -122.4194, "America/Los_Angeles")
+    );
+    private static final List<FxFixture> FX_FIXTURES = List.of(
+            new FxFixture("USD", List.of("CNY", "EUR", "GBP")),
+            new FxFixture("EUR", List.of("USD", "CNY", "JPY")),
+            new FxFixture("SGD", List.of("USD", "CNY", "JPY")),
+            new FxFixture("JPY", List.of("USD", "CNY", "SGD"))
+    );
+    private static final List<CryptoFixture> CRYPTO_FIXTURES = List.of(
+            new CryptoFixture(List.of("bitcoin", "ethereum"), List.of("usd", "cny")),
+            new CryptoFixture(List.of("solana", "chainlink"), List.of("usd", "eur")),
+            new CryptoFixture(List.of("bitcoin", "dogecoin"), List.of("usd", "sgd"))
+    );
+    private static final List<IpFixture> IP_FIXTURES = List.of(
+            new IpFixture("8.8.8.8", "US", "Google DNS"),
+            new IpFixture("1.1.1.1", "US", "Cloudflare DNS"),
+            new IpFixture("9.9.9.9", "US", "Quad9 DNS"),
+            new IpFixture("208.67.222.222", "US", "OpenDNS")
     );
 
     private final String profile;
@@ -394,64 +435,178 @@ public final class ControlConsoleScenarioBootstrapDataProvider implements MassBo
     }
 
     private void applyEventPayload(Map<String, Object> item, ProbeTaskScenario scenario, int itemIndex) {
+        Faker faker = fakerFor(scenario, itemIndex);
+        item.put("fixtureId", faker.idNumber().valid());
+        item.put("requesterName", faker.name().fullName());
+        item.put("requesterEmail", faker.internet().safeEmailAddress());
         switch (scenario.eventCode()) {
             case "probe.weather.current" -> {
-                item.put("latitude", 22.5431);
-                item.put("longitude", 114.0579);
+                WeatherLocationTemplate fixture = WEATHER_LOCATIONS.get(itemIndex % WEATHER_LOCATIONS.size());
+                item.put("locationId", fixture.locationId());
+                item.put("latitude", fixture.latitude());
+                item.put("longitude", fixture.longitude());
+                item.put("timezone", fixture.timezone());
+                item.put("displayName", faker.address().cityName());
                 item.put("provider", "open-meteo");
-                item.put("expected", Map.of("temperature_2m", "exists", "range", "-60..60"));
+                item.put("query", Map.of(
+                        "current", List.of("temperature_2m", "relative_humidity_2m", "wind_speed_10m"),
+                        "temperatureRangeCelsius", "-60..60"));
+                item.put("expected", Map.of(
+                        "temperature_2m", "exists",
+                        "relative_humidity_2m", "exists",
+                        "wind_speed_10m", "exists",
+                        "temperatureRangeCelsius", "-60..60"));
             }
             case "probe.fx.latest" -> {
-                item.put("baseCurrency", "USD");
-                item.put("quoteCurrencies", List.of("CNY", "EUR"));
+                FxFixture fixture = FX_FIXTURES.get(itemIndex % FX_FIXTURES.size());
+                item.put("baseCurrency", fixture.baseCurrency());
+                item.put("quoteCurrencies", fixture.quoteCurrencies());
+                item.put("portfolioRef", "fx-" + faker.finance().bic());
                 item.put("provider", "open.er-api.com");
+                item.put("endpoint", "https://open.er-api.com/v6/latest/" + fixture.baseCurrency());
+                item.put("expected", Map.of("ratesPresent", fixture.quoteCurrencies(), "ratesPositive", true));
             }
             case "probe.crypto.price" -> {
-                item.put("assets", List.of("bitcoin", "ethereum"));
-                item.put("vsCurrencies", List.of("usd", "cny"));
+                CryptoFixture fixture = CRYPTO_FIXTURES.get(itemIndex % CRYPTO_FIXTURES.size());
+                item.put("assets", fixture.assets());
+                item.put("vsCurrencies", fixture.vsCurrencies());
+                item.put("watchlistName", "watch-" + faker.number().digits(12));
                 item.put("provider", "coingecko");
+                item.put("endpoint", "https://api.coingecko.com/api/v3/simple/price");
+                item.put("expected", Map.of("assetPricesPresent", fixture.assets(), "vsCurrenciesPresent", fixture.vsCurrencies()));
             }
             case "probe.ip.geo" -> {
-                item.put("ip", itemIndex % 2 == 0 ? "8.8.8.8" : "1.1.1.1");
+                IpFixture fixture = IP_FIXTURES.get(itemIndex % IP_FIXTURES.size());
+                item.put("ip", fixture.ip());
                 item.put("provider", "ipwho.is");
+                item.put("probeOwner", faker.company().name());
+                item.put("expectedCountry", fixture.expectedCountry());
+                item.put("expectedOwnerHint", fixture.expectedOwnerHint());
             }
             case "probe.http.status" -> {
                 int status = itemIndex % 9 == 0 ? 503 : itemIndex % 7 == 0 ? 429 : 200;
                 item.put("url", "https://httpbin.org/status/" + status);
-                item.put("expectedStatus", status);
+                item.put("method", "GET");
+                item.put("expectedStatus", 200);
+                item.put("fixtureStatus", status);
+                item.put("expectedContentType", "text/html");
+                item.put("latencyThresholdMs", 2500);
+                item.put("correlationId", faker.internet().uuid());
             }
             case "probe.url.dns" -> {
                 if (itemIndex % 5 == 0) {
                     item.put("url", "https://does-not-exist.public-probe.invalid/");
+                    item.put("hostname", "does-not-exist.public-probe.invalid");
+                    item.put("recordTypes", List.of("A", "AAAA"));
                     item.put("expected", Map.of("dnsOutcome", "DNS_NXDOMAIN", "httpRequestSkipped", true));
                 } else {
-                    item.put("url", PROFILE_LOCAL_ONLY.equals(profile) ? "https://fixture.local.test/" : "https://example.com/");
+                    String hostname = PROFILE_LOCAL_ONLY.equals(profile) ? "fixture.local.test" : hostnameFor(itemIndex);
+                    item.put("url", "https://" + hostname + "/");
+                    item.put("hostname", hostname);
+                    item.put("recordTypes", List.of("A", "AAAA"));
+                    item.put("requestedBy", faker.internet().username());
                     item.put("expected", Map.of("hostname", "exists", "dnsOutcome", "RESOLVED"));
                 }
             }
             case "probe.phone.metadata" -> {
                 String requiredProfile = FINGERPRINT_PROFILES.get(itemIndex % FINGERPRINT_PROFILES.size());
-                item.put("phoneNumber", itemIndex % 2 == 0 ? "+14155552671" : "+6581234567");
-                item.put("defaultRegion", itemIndex % 2 == 0 ? "US" : "SG");
+                PhoneFixture fixture = phoneFixture(faker, itemIndex);
+                item.put("phoneNumber", fixture.phoneNumber());
+                item.put("defaultRegion", fixture.defaultRegion());
+                item.put("countryIso2", fixture.countryIso2());
+                item.put("syntheticFixture", true);
+                item.put("subscriberName", faker.name().fullName());
+                item.put("deviceSessionId", faker.internet().uuid());
                 item.put("requiredFingerprintProfile", requiredProfile);
-                item.put("requiredNetworkOperatorMccMnc", itemIndex % 2 == 0 ? "52501" : "52505");
-                item.put("expected", Map.of("e164", "exists", "possible", true));
+                item.put("requiredNetworkOperatorMccMnc", fixture.mccMnc());
+                item.put("expectedCarrier", fixture.carrier());
+                item.put("expected", Map.of(
+                        "classification", fixture.expectedOutcome(),
+                        "e164", fixture.expectedOutcome().equals("VALID_E164") ? fixture.phoneNumber() : "invalid",
+                        "countryIso2", fixture.countryIso2()));
             }
             case "probe.market.daily-csv" -> {
                 item.put("symbol", itemIndex % 2 == 0 ? "aapl.us" : "%5Espx");
                 item.put("provider", "stooq");
+                item.put("endpoint", "https://stooq.com/q/d/l/");
+                item.put("interval", "d");
+                item.put("fromDate", "2026-01-01");
+                item.put("portfolioId", "portfolio-" + faker.number().digits(8));
                 item.put("requiredColumns", List.of("Date", "Open", "High", "Low", "Close", "Volume"));
+                item.put("sampleCsv", "Date,Open,High,Low,Close,Volume\n2026-05-25,10,12,9,11,12000");
             }
             case "probe.csv.validate" -> {
                 item.put("fixtureName", itemIndex % 11 == 0 ? "orders-invalid-missing-total.csv" : "orders-valid.csv");
                 item.put("requiredColumns", List.of("orderId", "country", "total"));
+                String orderId = "ORD-" + faker.number().digits(8);
+                item.put("csv", itemIndex % 11 == 0
+                        ? "orderId,country\n" + orderId + "," + faker.address().countryCode()
+                        : "orderId,country,total\n" + orderId + "," + faker.address().countryCode()
+                                + "," + faker.commerce().price());
+                item.put("delimiter", ",");
+                item.put("schemaVersion", "orders-v1");
             }
             case "probe.json.schema" -> {
                 item.put("fixtureName", itemIndex % 13 == 0 ? "profile-invalid.json" : "profile-valid.json");
                 item.put("requiredFields", List.of("id", "name", "country"));
+                item.put("schemaRef", "profile-v1");
+                item.put("document", itemIndex % 13 == 0
+                        ? Map.of("id", "profile-" + faker.number().digits(8), "country", faker.address().countryCode())
+                        : Map.of("id", "profile-" + faker.number().digits(8),
+                                "name", faker.name().fullName(),
+                                "country", faker.address().countryCode(),
+                                "company", faker.company().name()));
             }
             default -> item.put("payload", "control-console probe payload");
         }
+    }
+
+    private Faker fakerFor(ProbeTaskScenario scenario, int itemIndex) {
+        long seed = FAKER_SEED
+                + Math.abs(Objects.hash(profile, scenario.projectCode(), scenario.eventCode(), scenario.workerGroupId())) * 31L
+                + itemIndex;
+        return new Faker(Locale.ENGLISH, new RandomService(new Random(seed)));
+    }
+
+    private PhoneFixture phoneFixture(Faker faker, int itemIndex) {
+        if (itemIndex % 17 == 0) {
+            return new PhoneFixture(
+                    "not-a-phone-" + faker.number().digits(6),
+                    "US",
+                    "ZZ",
+                    "00000",
+                    "invalid",
+                    "INVALID_PHONE"
+            );
+        }
+        PhoneCountryTemplate country = PHONE_COUNTRIES.get(itemIndex % PHONE_COUNTRIES.size());
+        return new PhoneFixture(
+                "+" + country.countryCallingCode() + subscriberDigits(faker, country.nationalSignificantNumberLength()),
+                country.defaultRegion(),
+                country.defaultRegion(),
+                country.mccMnc(),
+                country.carrier(),
+                "VALID_E164"
+        );
+    }
+
+    private String subscriberDigits(Faker faker, int length) {
+        StringBuilder digits = new StringBuilder(length);
+        digits.append(faker.number().numberBetween(2, 10));
+        while (digits.length() < length) {
+            digits.append(faker.number().numberBetween(0, 10));
+        }
+        return digits.toString();
+    }
+
+    private String hostnameFor(int itemIndex) {
+        return switch (itemIndex % 5) {
+            case 0 -> "open-meteo.com";
+            case 1 -> "open.er-api.com";
+            case 2 -> "api.coingecko.com";
+            case 3 -> "stooq.com";
+            default -> "example.com";
+        };
     }
 
     private int sleepMs(int itemIndex) {
@@ -477,6 +632,9 @@ public final class ControlConsoleScenarioBootstrapDataProvider implements MassBo
         }
         if ("probe.json.schema".equals(scenario.eventCode()) && itemIndex % 13 == 0) {
             return "SCHEMA_INVALID";
+        }
+        if ("probe.phone.metadata".equals(scenario.eventCode())) {
+            return itemIndex % 17 == 0 ? "INVALID_PHONE" : "VALID_E164";
         }
         return "SUCCESS";
     }
@@ -514,5 +672,32 @@ public final class ControlConsoleScenarioBootstrapDataProvider implements MassBo
                                      String eventCode,
                                      String workerGroupId,
                                      boolean localOnlySafe) {
+    }
+
+    private record PhoneCountryTemplate(String defaultRegion,
+                                        String countryCallingCode,
+                                        int nationalSignificantNumberLength,
+                                        String mccMnc,
+                                        String carrier) {
+    }
+
+    private record PhoneFixture(String phoneNumber,
+                                String defaultRegion,
+                                String countryIso2,
+                                String mccMnc,
+                                String carrier,
+                                String expectedOutcome) {
+    }
+
+    private record WeatherLocationTemplate(String locationId, double latitude, double longitude, String timezone) {
+    }
+
+    private record FxFixture(String baseCurrency, List<String> quoteCurrencies) {
+    }
+
+    private record CryptoFixture(List<String> assets, List<String> vsCurrencies) {
+    }
+
+    private record IpFixture(String ip, String expectedCountry, String expectedOwnerHint) {
     }
 }

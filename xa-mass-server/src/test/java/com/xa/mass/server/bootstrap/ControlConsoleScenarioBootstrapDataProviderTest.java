@@ -80,6 +80,36 @@ class ControlConsoleScenarioBootstrapDataProviderTest {
         assertTrue(firstItem.containsKey("timeoutMs"));
         assertTrue(firstItem.containsKey("expectedOutcome"));
         assertTrue(firstItem.containsKey("traceLabel"));
+        List<Map<String, Object>> phoneItems = runtime.appendRequests.stream()
+                .filter(request -> "probe.phone.metadata".equals(request.getEventCode()))
+                .flatMap(request -> request.getItems().stream())
+                .map(item -> (Map<String, Object>) item)
+                .toList();
+        assertTrue(phoneItems.stream().allMatch(item -> String.valueOf(item.get("phoneNumber")).startsWith("+")
+                        || "INVALID_PHONE".equals(item.get("expectedOutcome"))),
+                "phone probe items must carry complete E.164-style numbers or explicit invalid fixtures");
+        assertTrue(phoneItems.stream()
+                .map(item -> String.valueOf(item.get("countryIso2")))
+                .collect(java.util.stream.Collectors.toSet())
+                .size() >= 5,
+                "phone probe seed should cover multiple country fixtures");
+        assertTrue(phoneItems.stream()
+                .map(item -> String.valueOf(item.get("phoneNumber")))
+                .distinct()
+                .count() >= 50,
+                "phone probe seed should generate varied synthetic phone numbers");
+        assertTrue(phoneItems.stream().allMatch(item -> item.containsKey("requiredFingerprintProfile")
+                && item.containsKey("requiredNetworkOperatorMccMnc")));
+        assertTrue(phoneItems.stream().allMatch(item -> item.containsKey("subscriberName")
+                && item.containsKey("deviceSessionId")));
+        assertTrue(runtime.appendRequests.stream()
+                .flatMap(request -> request.getItems().stream())
+                .map(item -> (Map<String, Object>) item)
+                .allMatch(item -> item.size() > 10
+                        && item.containsKey("fixtureId")
+                        && item.containsKey("requesterName")
+                        && item.containsKey("requesterEmail")),
+                "probe items should be executable payloads, not event-only rows");
 
         assertEquals(7, runtime.workerGroups.size());
         assertTrue(runtime.workerGroups.stream()

@@ -51,7 +51,7 @@ public class ControlConsoleScenarioBootstrapConfiguration {
     @Value("${mass.control-console.scenario.worker-count:115}")
     private int workerCount;
 
-    @Value("${mass.control-console.scenario.task-count:10}")
+    @Value("${mass.control-console.scenario.task-count:12}")
     private int taskCount;
 
     @Value("${mass.control-console.scenario.items-per-task:120}")

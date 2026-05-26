@@ -44,10 +44,17 @@ record RuntimeTaskIngressItem(String taskId,
     }
 
     Map<String, Object> projectedInput() {
-        if (eventCode == null) {
-            return Map.of();
+        LinkedHashMap<String, Object> projected = new LinkedHashMap<>();
+        if (eventCode != null) {
+            projected.put(EVENT_CODE_KEY, eventCode);
         }
-        return Map.of(EVENT_CODE_KEY, eventCode);
+        if (inlinePayload != null && !inlinePayload.isEmpty()) {
+            projected.putAll(inlinePayload);
+        }
+        if (payloadRef != null) {
+            projected.put(PAYLOAD_REF_KEY, payloadRef);
+        }
+        return projected.isEmpty() ? Map.of() : Map.copyOf(projected);
     }
 
     private static String extractPayloadRef(Map<String, Object> input) {
