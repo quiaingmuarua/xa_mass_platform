@@ -11,6 +11,7 @@ import com.xa.mass.runtime.worker.EventKey;
 import com.xa.mass.runtime.worker.RandomWorkerCandidateSamplingPolicy;
 import com.xa.mass.runtime.worker.WorkerCandidateBatch;
 import com.xa.mass.runtime.worker.WorkerCandidateRow;
+import com.xa.mass.runtime.worker.WorkerCapabilityReport;
 import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;
 import com.xa.mass.runtime.worker.WorkerCapabilityReportStatus;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;

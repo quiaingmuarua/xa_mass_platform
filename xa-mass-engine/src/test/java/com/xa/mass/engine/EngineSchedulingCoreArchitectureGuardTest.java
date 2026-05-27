@@ -1095,25 +1095,24 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void workerCapabilityReportResultLivesInRuntimeApiWithoutSnapshotLeak() throws IOException {
+    void workerCapabilityReportDtosLiveInRuntimeApiWithoutSnapshotLeak() throws IOException {
         Path repo = repositoryRoot();
-        Path engineResultPath = repo.resolve(
-                "xa-mass-engine/src/main/java/com/xa/mass/engine/worker/WorkerCapabilityReportResult.java");
-        Path engineStatusPath = repo.resolve(
-                "xa-mass-engine/src/main/java/com/xa/mass/engine/worker/WorkerCapabilityReportStatus.java");
-        Path runtimeResultPath = repo.resolve(
-                "platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/WorkerCapabilityReportResult.java");
-        Path runtimeStatusPath = repo.resolve(
-                "platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/WorkerCapabilityReportStatus.java");
+        Path engineWorkerPackage = repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/worker");
+        List<String> typeNames = List.of(
+                "WorkerCapabilityReport",
+                "WorkerCapabilityReportResult",
+                "WorkerCapabilityReportStatus",
+                "WorkerReportRuntime"
+        );
 
         List<String> violations = new ArrayList<>();
-        if (Files.exists(engineResultPath)) {
-            violations.add(engineResultPath + " reintroduces capability report result inside engine");
-        }
-        if (Files.exists(engineStatusPath)) {
-            violations.add(engineStatusPath + " reintroduces capability report status inside engine");
-        }
-        for (Path runtimePath : List.of(runtimeResultPath, runtimeStatusPath)) {
+        for (String typeName : typeNames) {
+            Path enginePath = engineWorkerPackage.resolve(typeName + ".java");
+            Path runtimePath = repo.resolve(
+                    "platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/" + typeName + ".java");
+            if (Files.exists(enginePath)) {
+                violations.add(enginePath + " reintroduces capability report DTO/contract inside engine");
+            }
             if (!Files.isRegularFile(runtimePath)) {
                 violations.add(runtimePath + " is missing");
                 continue;
@@ -1131,7 +1130,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "Capability report status/result are runtime-facing report DTOs. "
+                "Capability report DTOs and report runtime contract are runtime-facing surfaces. "
                         + "Do not leak engine WorkerRegistrySnapshot through them:\n"
                         + String.join("\n", violations));
     }

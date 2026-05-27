@@ -2,6 +2,7 @@ package com.xa.mass.engine.worker;
 
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.EventKey;
+import com.xa.mass.runtime.worker.WorkerCapabilityReport;
 import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;
 import com.xa.mass.runtime.worker.WorkerCapabilityReportStatus;
 

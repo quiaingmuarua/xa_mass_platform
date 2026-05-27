@@ -21,7 +21,7 @@ Current first-slice contract split:
 | `WorkerCandidateRuntime` | `WorkerManager` | Runtime-api candidate acquisition returning worker candidate rows |
 | `WorkerSchedulingViewRuntime` | `WorkerManager` | Read evidence used to build engine scheduling candidates |
 | `WorkerAdmissionRuntime` | `WorkerManager` | Runtime-api contract for reserve, confirm, release, final occupancy, exclusive lease, and load reads |
-| `WorkerReportRuntime` | `WorkerManager` | Capability report mutation currently owned by `WorkerCapabilityAuthority` via `WorkerManager` |
+| `WorkerReportRuntime` | `WorkerManager` | Runtime-api report contract for capability report mutation currently owned by `WorkerCapabilityAuthority` via `WorkerManager` |
 | `WorkerLookupStore` | `WorkerManager` | Storage-edge single-worker lookup seam; disposition still open |
 
 `WorkerCandidateRuntime` now accepts runtime-neutral `WorkerTaskSelector`, not
@@ -38,8 +38,8 @@ types: `WorkerTaskSelector`,
 `WorkerCandidateBatch<T>`, `WorkerCandidateRow`,
 `WorkerCandidateRuntime`, `WorkerGroupCapabilityView`,
 `WorkerSchedulingViewRuntime`, `WorkerAdmissionRuntime`, `WorkerLoadSnapshot`,
-`WorkerReachabilityState`, `WorkerCapabilityReportStatus`, and
-`WorkerCapabilityReportResult`, plus worker state report/projection DTOs
+`WorkerReachabilityState`, `WorkerCapabilityReport`, `WorkerReportRuntime`,
+`WorkerCapabilityReportStatus`, and `WorkerCapabilityReportResult`, plus worker state report/projection DTOs
 (`WorkerStateReport`, `WorkerStateProjection`, `WorkerStateProjectionResult`,
 `WorkerStateProjectionStatus`). Engine-owned scheduling DTOs still adapt those
 runtime values into `WorkerSchedulingView` and `WorkerMatchContext` locally.
@@ -72,7 +72,7 @@ owners while callers converge.
 | Candidate index diagnostics | `getWorkerCandidateIndex` | tests and indexed source diagnostics | `WorkerCandidateSourceOwner` / diagnostics residue | runtime read model residue | Kept off `WorkerCandidateRuntime` so the candidate contract does not expose Stage-1 implementation types |
 | Warm hints | `recordWarmCandidate` | `TaskWorkerAssignListener`, strategy tests | `WorkerCandidateSourceOwner` / future warm hint write contract | runtime state | Kept off `WorkerCandidateRuntime`; engine triggers after useful assignment evidence, runtime owns hint storage/revalidation |
 | Snapshot maintenance | `refreshWorkerRegistrySnapshot`, `getWorkerRegistrySnapshot` | tests, diagnostics, capability report path | candidate/resource read model residue | runtime read model residue | Delete or narrow after runtime DTOs replace snapshot callers |
-| Capability report | `applyWorkerCapabilityReport` | `WorkerControlService`, event handlers, SDK | `WorkerReportOwner` through `WorkerReportRuntime` | resource mutation plus runtime projection | Runtime-api result/status; package-local application carries any `WorkerRegistrySnapshot` refresh |
+| Capability report | `applyWorkerCapabilityReport` | `WorkerControlService`, event handlers, SDK | `WorkerReportOwner` through `WorkerReportRuntime` | resource mutation plus runtime projection | Runtime-api report/result/status contract; package-local application carries any `WorkerRegistrySnapshot` refresh |
 | State report projection | `applyWorkerStateReport` / `WorkerStateProjectionOwner.applyReport` | `WorkerControlService`, event handlers, tests | `WorkerStateProjectionOwner` | bounded runtime diagnostic projection | Runtime-api report/projection/result DTOs; owner implementation remains engine-local |
 | Online model status | `updateOnlineStatus`, `isWorkerOnline` | legacy event bridge, tests | compatibility/resource status path | control-plane row plus transport reachability residue | Transport presence remains reachability owner |
 | Reachability read | `getWorkerReachability` | scheduling candidate enumeration, tests | `WorkerSchedulingViewRuntime` | transport evidence consumed as runtime read evidence | Returns runtime-neutral `WorkerReachabilityState`; must not turn transport session into scheduling truth |

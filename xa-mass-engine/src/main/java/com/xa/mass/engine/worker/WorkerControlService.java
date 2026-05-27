@@ -10,6 +10,7 @@ import com.xa.mass.engine.command.WorkerCommandRecord;
 import com.xa.mass.engine.command.WorkerCommandRequest;
 import com.xa.mass.engine.command.WorkerCommandStatus;
 import com.xa.mass.engine.util.TraceEventLogger;
+import com.xa.mass.runtime.worker.WorkerCapabilityReport;
 import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;
 import com.xa.mass.runtime.worker.WorkerStateProjection;
 import com.xa.mass.runtime.worker.WorkerStateProjectionResult;

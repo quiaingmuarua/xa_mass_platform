@@ -1,5 +1,6 @@
 package com.xa.mass.engine.worker;
 
+import com.xa.mass.runtime.worker.WorkerCapabilityReport;
 import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;
 
 /**
