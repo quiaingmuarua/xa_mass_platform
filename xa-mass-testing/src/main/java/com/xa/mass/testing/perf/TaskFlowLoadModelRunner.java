@@ -43,6 +43,7 @@ import com.xa.mass.runtime.worker.WorkerGroupRecord;
 import com.xa.mass.runtime.worker.WorkerResourceRecord;
 import com.xa.mass.runtime.worker.WorkerResourceRuntime;
 import com.xa.mass.runtime.worker.WorkerSchedulingViewRuntime;
+import com.xa.mass.runtime.worker.WorkerWarmHintRuntime;
 import com.xa.mass.runtime.api.TaskResultCallbackDraft;
 import com.xa.mass.runtime.api.TaskResultFinalDraft;
 import com.xa.mass.runtime.api.TaskResultRepairCandidate;
@@ -147,6 +148,10 @@ public final class TaskFlowLoadModelRunner {
                 TaskRuntimeMaintenancePort maintenancePort = engineConfig.getTaskRuntimeMaintenancePort();
                 TaskRuntimeRecoveryPort recoveryPort = engineConfig.getTaskRuntimeRecoveryPort();
                 WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
+                WorkerResourceRuntime workerResourceRuntime = workerManager;
+                WorkerAdmissionRuntime workerAdmissionRuntime = workerManager;
+                WorkerSchedulingViewRuntime workerSchedulingViewRuntime = workerManager;
+                WorkerWarmHintRuntime workerWarmHintRuntime = workerManager;
                 AssignmentRecordService recordService = new AssignmentRecordService();
                 CallbackMetrics callbackMetrics = new CallbackMetrics();
                 ReleaseMetrics releaseMetrics = new ReleaseMetrics();
@@ -260,19 +265,22 @@ public final class TaskFlowLoadModelRunner {
                     }
                 };
 
-                TaskWorkerMatchingStrategy matchingStrategy = new DeterministicMatchingStrategy(workerManager);
+                TaskWorkerMatchingStrategy matchingStrategy = new DeterministicMatchingStrategy(
+                        workerResourceRuntime,
+                        workerAdmissionRuntime,
+                        workerSchedulingViewRuntime);
                 SimpleTaskDispatchBinder dispatchBinder =
                         new SimpleTaskDispatchBinder(
                                 assignmentRuntimePort,
-                                workerManager,
+                                workerAdmissionRuntime,
                                 recordService,
                                 dispatchListener
                         );
                 TaskWorkerAssignListener workerAssignListener =
                         new TaskWorkerAssignListener(
                                 matchingStrategy,
-                                workerManager,
-                                workerManager,
+                                workerAdmissionRuntime,
+                                workerWarmHintRuntime,
                                 dispatchBinder,
                                 assignmentRuntimePort,
                                 taskEvents
@@ -283,12 +291,12 @@ public final class TaskFlowLoadModelRunner {
                 MeasuredTaskResourceReleaseListener releaseListener =
                         new MeasuredTaskResourceReleaseListener(
                                 maintenancePort,
-                                workerManager,
+                                workerAdmissionRuntime,
                                 releaseMetrics
                         );
 
                 try {
-                    registerWorkers(workerManager, config);
+                    registerWorkers(workerResourceRuntime, config);
 
                     taskEvents.addTaskReadyListener(assignWorker::submit);
                     taskEvents.addTaskDispatchListener(assignWorker::submit);
@@ -508,13 +516,13 @@ public final class TaskFlowLoadModelRunner {
             return inputs;
         }
 
-        private static void registerWorkers(WorkerManager workerManager, LoadConfig config) {
-            workerManager.upsertWorkerGroup(WorkerGroupRecord.builder(WORKER_GROUP_ID)
+        private static void registerWorkers(WorkerResourceRuntime workerResourceRuntime, LoadConfig config) {
+            workerResourceRuntime.upsertWorkerGroup(WorkerGroupRecord.builder(WORKER_GROUP_ID)
                     .projectCodes(List.of(PROJECT_CODE))
                     .defaultMaxConcurrentWork(config.batchSize())
                     .build());
             for (int i = 0; i < config.workerCount(); i++) {
-                workerManager.addWorker(new WorkerResourceRecord(
+                workerResourceRuntime.addWorker(new WorkerResourceRecord(
                         "load-worker-" + i,
                         WorkerStatus.ONLINE.name(),
                         "load-model",
@@ -607,10 +615,13 @@ public final class TaskFlowLoadModelRunner {
         private final WorkerAdmissionRuntime workerAdmissionRuntime;
         private final WorkerSchedulingViewRuntime workerSchedulingViewRuntime;
 
-        private DeterministicMatchingStrategy(WorkerManager workerManager) {
-            this.workerResourceRuntime = workerManager;
-            this.workerAdmissionRuntime = workerManager;
-            this.workerSchedulingViewRuntime = workerManager;
+        private DeterministicMatchingStrategy(WorkerResourceRuntime workerResourceRuntime,
+                                              WorkerAdmissionRuntime workerAdmissionRuntime,
+                                              WorkerSchedulingViewRuntime workerSchedulingViewRuntime) {
+            this.workerResourceRuntime = Objects.requireNonNull(workerResourceRuntime, "workerResourceRuntime");
+            this.workerAdmissionRuntime = Objects.requireNonNull(workerAdmissionRuntime, "workerAdmissionRuntime");
+            this.workerSchedulingViewRuntime = Objects.requireNonNull(workerSchedulingViewRuntime,
+                    "workerSchedulingViewRuntime");
         }
 
         @Override
@@ -647,9 +658,9 @@ public final class TaskFlowLoadModelRunner {
         private final ReleaseMetrics metrics;
 
         private MeasuredTaskResourceReleaseListener(TaskRuntimeMaintenancePort maintenancePort,
-                                                    WorkerManager workerManager,
+                                                    WorkerAdmissionRuntime workerAdmissionRuntime,
                                                     ReleaseMetrics metrics) {
-            super(maintenancePort, workerManager);
+            super(maintenancePort, workerAdmissionRuntime);
             this.metrics = metrics;
         }
 

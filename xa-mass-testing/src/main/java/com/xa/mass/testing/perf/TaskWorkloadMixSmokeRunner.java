@@ -37,6 +37,7 @@ import com.xa.mass.runtime.worker.WorkerGroupRecord;
 import com.xa.mass.runtime.worker.WorkerResourceRecord;
 import com.xa.mass.runtime.worker.WorkerResourceRuntime;
 import com.xa.mass.runtime.worker.WorkerSchedulingViewRuntime;
+import com.xa.mass.runtime.worker.WorkerWarmHintRuntime;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.testing.support.TestingPaths;
 import com.xa.mass.testing.workerfault.WorkerFaultReportMetadata;
@@ -52,6 +53,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -99,6 +101,10 @@ public final class TaskWorkloadMixSmokeRunner {
             TaskRuntimeMaintenancePort maintenancePort = engineConfig.getTaskRuntimeMaintenancePort();
             TaskRuntimeRecoveryPort recoveryPort = engineConfig.getTaskRuntimeRecoveryPort();
             WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
+            WorkerResourceRuntime workerResourceRuntime = workerManager;
+            WorkerAdmissionRuntime workerAdmissionRuntime = workerManager;
+            WorkerSchedulingViewRuntime workerSchedulingViewRuntime = workerManager;
+            WorkerWarmHintRuntime workerWarmHintRuntime = workerManager;
             AssignmentRecordService recordService = new AssignmentRecordService();
             WorkloadTiming timing = new WorkloadTiming();
             ExecutorService callbackExecutor = Executors.newFixedThreadPool(config.callbackThreads(), r -> {
@@ -125,19 +131,23 @@ public final class TaskWorkloadMixSmokeRunner {
             };
 
             TaskWorkerMatchingStrategy matchingStrategy =
-                    new LaneAwareMatchingStrategy(workerManager, config.reservedInteractiveWorkers());
+                    new LaneAwareMatchingStrategy(
+                            workerResourceRuntime,
+                            workerAdmissionRuntime,
+                            workerSchedulingViewRuntime,
+                            config.reservedInteractiveWorkers());
             SimpleTaskDispatchBinder dispatchBinder =
                     new SimpleTaskDispatchBinder(
                             assignmentRuntimePort,
-                            workerManager,
+                            workerAdmissionRuntime,
                             recordService,
                             dispatchListener
                     );
             TaskWorkerAssignListener workerAssignListener =
                     new TaskWorkerAssignListener(
                             matchingStrategy,
-                            workerManager,
-                            workerManager,
+                            workerAdmissionRuntime,
+                            workerWarmHintRuntime,
                             dispatchBinder,
                             assignmentRuntimePort,
                             taskEvents
@@ -146,10 +156,10 @@ public final class TaskWorkloadMixSmokeRunner {
             RuntimeReadyDispatchPump runtimeReadyDispatchPump =
                     new RuntimeReadyDispatchPump(recoveryPort, assignWorker::submit, 50L, 64);
             TaskResourceReleaseListener releaseListener =
-                    new TaskResourceReleaseListener(maintenancePort, workerManager);
+                    new TaskResourceReleaseListener(maintenancePort, workerAdmissionRuntime);
 
             try {
-                registerWorkers(workerManager, config.workerCount());
+                registerWorkers(workerResourceRuntime, config.workerCount());
                 taskEvents.addTaskReadyListener(assignWorker::submit);
                 taskEvents.addTaskDispatchListener(assignWorker::submit);
                 taskEvents.addTaskWorkAttemptClosedListener(releaseListener::onTaskWorkAttemptClosed);
@@ -316,12 +326,12 @@ public final class TaskWorkloadMixSmokeRunner {
             return inputs;
         }
 
-        private static void registerWorkers(WorkerManager workerManager, int workerCount) {
-            workerManager.upsertWorkerGroup(WorkerGroupRecord.builder(WORKER_GROUP_ID)
+        private static void registerWorkers(WorkerResourceRuntime workerResourceRuntime, int workerCount) {
+            workerResourceRuntime.upsertWorkerGroup(WorkerGroupRecord.builder(WORKER_GROUP_ID)
                     .projectCodes(List.of(PROJECT_CODE))
                     .build());
             for (int i = 0; i < workerCount; i++) {
-                workerManager.addWorker(new WorkerResourceRecord(
+                workerResourceRuntime.addWorker(new WorkerResourceRecord(
                         "workload-smoke-worker-" + i,
                         WorkerStatus.ONLINE.name(),
                         "workload-smoke",
@@ -361,10 +371,14 @@ public final class TaskWorkloadMixSmokeRunner {
         private final WorkerSchedulingViewRuntime workerSchedulingViewRuntime;
         private final int reservedInteractiveWorkers;
 
-        private LaneAwareMatchingStrategy(WorkerManager workerManager, int reservedInteractiveWorkers) {
-            this.workerResourceRuntime = workerManager;
-            this.workerAdmissionRuntime = workerManager;
-            this.workerSchedulingViewRuntime = workerManager;
+        private LaneAwareMatchingStrategy(WorkerResourceRuntime workerResourceRuntime,
+                                          WorkerAdmissionRuntime workerAdmissionRuntime,
+                                          WorkerSchedulingViewRuntime workerSchedulingViewRuntime,
+                                          int reservedInteractiveWorkers) {
+            this.workerResourceRuntime = Objects.requireNonNull(workerResourceRuntime, "workerResourceRuntime");
+            this.workerAdmissionRuntime = Objects.requireNonNull(workerAdmissionRuntime, "workerAdmissionRuntime");
+            this.workerSchedulingViewRuntime = Objects.requireNonNull(workerSchedulingViewRuntime,
+                    "workerSchedulingViewRuntime");
             this.reservedInteractiveWorkers = Math.max(reservedInteractiveWorkers, 0);
         }
 
