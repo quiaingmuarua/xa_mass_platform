@@ -486,7 +486,7 @@ public class WorkerManagerTest {
         manager.addWorker(worker("a", "us"));
         manager.addWorker(worker("b", "gb"));
         manager.addWorker(worker("c", "us"));
-        assertEquals(3, manager.getAllWorkers().size());
+        assertEquals(3, manager.workers().size());
     }
 
     @Test

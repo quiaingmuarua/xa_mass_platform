@@ -697,6 +697,9 @@ Progress:
 - The old `isWorkerDispatchEnabled(Worker)` model-shaped read helper has been
   deleted; dispatch gate reads now use worker id through
   `WorkerSchedulingViewRuntime` / `WorkerDispatchGateRuntime`.
+- The old `WorkerManager.getAllWorkers()` model-list helper has been deleted;
+  external resource scans use runtime-neutral `workers()` while storage-owned
+  row scans stay behind the worker resource owner.
 - Engine still assembles those owners through `WorkerManager`; match strategy
   and event handler parsing residue stays in engine for later slices.
 - SDK shell runtime bridge now accepts `WorkerResourceRuntime` for legacy

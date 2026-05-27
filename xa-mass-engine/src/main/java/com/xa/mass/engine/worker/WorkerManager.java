@@ -201,10 +201,6 @@ public class WorkerManager implements WorkerResourceRuntime,
         return admissionOwner.hasWorkerExclusiveLease(workerId);
     }
 
-    public List<Worker> getAllWorkers() {
-        return resourceOwner.getAllWorkers();
-    }
-
     @Override
     public List<WorkerResourceRecord> workers() {
         return resourceOwner.getAllWorkers().stream()
