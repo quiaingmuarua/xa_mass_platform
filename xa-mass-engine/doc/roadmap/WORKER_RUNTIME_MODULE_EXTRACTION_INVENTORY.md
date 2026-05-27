@@ -92,8 +92,8 @@ owners while callers converge.
 ```text
 SDK/server shell
   -> MassSdkApplication
-  -> EngineConfig.getWorkerManager()
-  -> WorkerManager resource/report methods
+  -> EngineConfig worker runtime accessors
+  -> WorkerResourceRuntime / WorkerAdmissionRuntime methods
 
 transport runtime tests
   -> WorkerManager for routing setup and read-model proof
@@ -110,11 +110,11 @@ engine assignment
 
 worker control
   -> WorkerControlService
-  -> WorkerManager.applyWorkerCapabilityReport
+  -> WorkerReportRuntime.applyWorkerCapabilityReport
   -> WorkerReportOwner
   -> WorkerStateProjectionOwner
   -> WorkerDispatchAvailabilityPolicy
-  -> WorkerManager dispatch-gate methods
+  -> WorkerDispatchGateRuntime dispatch-gate methods
 
 worker relationship resources
   -> WorkerManager resource-compatible methods

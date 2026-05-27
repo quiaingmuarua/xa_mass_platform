@@ -1545,6 +1545,29 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void sdkApplicationUsesWorkerRuntimeAccessorsForWorkerShellOperations() throws IOException {
+        Path sdkApplicationPath = Path.of("..", "xa-mass-sdk", "src", "main", "java",
+                "com", "xa", "mass", "sdk", "MassSdkApplication.java");
+        Path diagnosticsPath = Path.of("..", "xa-mass-sdk", "src", "main", "java",
+                "com", "xa", "mass", "sdk", "DefaultRuntimeDiagnosticsOperations.java");
+        String sdkSource = Files.readString(sdkApplicationPath, StandardCharsets.UTF_8);
+        String diagnosticsSource = Files.readString(diagnosticsPath, StandardCharsets.UTF_8);
+
+        List<String> violations = new ArrayList<>();
+        if (sdkSource.contains("getWorkerManager()")) {
+            violations.add(sdkApplicationPath + " calls EngineConfig.getWorkerManager()");
+        }
+        if (diagnosticsSource.contains("getWorkerManager()")) {
+            violations.add(diagnosticsPath + " calls EngineConfig.getWorkerManager()");
+        }
+
+        assertTrue(violations.isEmpty(),
+                "SDK worker shell operations should use EngineConfig's narrow worker runtime "
+                        + "accessors instead of full WorkerManager:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void taskWriteLockRemainsLifecycleAndProgressOnly() throws IOException {
         Path taskManagerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/TaskManager.java");
         String source = Files.readString(taskManagerPath, StandardCharsets.UTF_8);

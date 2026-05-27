@@ -15,6 +15,7 @@ import com.xa.mass.engine.worker.WorkerReachabilityView;
 import com.xa.mass.engine.worker.WorkerControlService;
 import com.xa.mass.engine.worker.WorkerDispatchAvailabilityPolicy;
 import com.xa.mass.engine.worker.DefaultWorkerDispatchAvailabilityPolicy;
+import com.xa.mass.engine.worker.WorkerResourceRuntime;
 import com.xa.mass.engine.worker.WorkerStateProjectionOwner;
 import com.xa.mass.engine.command.WorkerCommandLifecycleOwner;
 import com.xa.mass.engine.stage.TaskStageEvidenceOwner;
@@ -30,7 +31,12 @@ import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
+import com.xa.mass.runtime.worker.WorkerAdmissionRuntime;
+import com.xa.mass.runtime.worker.WorkerCandidateRuntime;
+import com.xa.mass.runtime.worker.WorkerDispatchGateRuntime;
 import com.xa.mass.runtime.worker.WorkerRegistry;
+import com.xa.mass.runtime.worker.WorkerReportRuntime;
+import com.xa.mass.runtime.worker.WorkerSchedulingViewRuntime;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.TaskDetailStore;
@@ -302,6 +308,30 @@ public class EngineConfig {
             );
         }
         return workerManager;
+    }
+
+    public WorkerResourceRuntime getWorkerResourceRuntime() {
+        return getWorkerManager();
+    }
+
+    public WorkerCandidateRuntime getWorkerCandidateRuntime() {
+        return getWorkerManager();
+    }
+
+    public WorkerSchedulingViewRuntime getWorkerSchedulingViewRuntime() {
+        return getWorkerManager();
+    }
+
+    public WorkerAdmissionRuntime getWorkerAdmissionRuntime() {
+        return getWorkerManager();
+    }
+
+    public WorkerDispatchGateRuntime getWorkerDispatchGateRuntime() {
+        return getWorkerManager();
+    }
+
+    public WorkerReportRuntime getWorkerReportRuntime() {
+        return getWorkerManager();
     }
 
     public WorkerControlService getWorkerControlService() {

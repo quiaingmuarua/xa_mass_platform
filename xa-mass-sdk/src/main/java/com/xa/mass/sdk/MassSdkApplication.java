@@ -407,7 +407,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     public void registerAdapterNode(AdapterNodeRegistration request) {
         MassEngine engine = requireStartedEngine();
         Objects.requireNonNull(request, "request");
-        engine.getConfig().getWorkerManager().registerAdapterNode(new AdapterNodeRecord(
+        engine.getConfig().getWorkerResourceRuntime().registerAdapterNode(new AdapterNodeRecord(
                 request.getAdapterNodeId(),
                 request.getAdapterType(),
                 request.getAdapterVersion(),
@@ -424,7 +424,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     public void bindNodeGroup(NodeGroupBindingRegistration request) {
         MassEngine engine = requireStartedEngine();
         Objects.requireNonNull(request, "request");
-        engine.getConfig().getWorkerManager().bindNodeGroup(new NodeGroupBindingRecord(
+        engine.getConfig().getWorkerResourceRuntime().bindNodeGroup(new NodeGroupBindingRecord(
                 request.getAdapterNodeId(),
                 request.getWorkerGroupId(),
                 request.getPluginVersion(),
@@ -440,7 +440,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     @Override
     public void declareWorkerGroup(WorkerGroupDeclaration request) {
         MassEngine engine = requireStartedEngine();
-        engine.getConfig().getWorkerManager().upsertWorkerGroup(toWorkerGroupRecord(
+        engine.getConfig().getWorkerResourceRuntime().upsertWorkerGroup(toWorkerGroupRecord(
                 Objects.requireNonNull(request, "request")
         ));
     }
@@ -449,7 +449,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     public void registerWorker(WorkerRegistration request) {
         requireStartedEngine();
         WorkerRegistration registration = normalizeWorkerRegistration(request);
-        requireStartedEngine().getConfig().getWorkerManager().addWorker(SdkResourceMapper.toWorker(registration));
+        requireStartedEngine().getConfig().getWorkerResourceRuntime().addWorker(SdkResourceMapper.toWorker(registration));
     }
 
     @Override
@@ -653,7 +653,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     @Override
     public List<WorkerGroupSnapshot> listWorkerGroups() {
         requireStartedEngine();
-        return delegate.getEngine().getConfig().getWorkerManager().workerGroups().stream()
+        return delegate.getEngine().getConfig().getWorkerResourceRuntime().workerGroups().stream()
                 .map(this::toWorkerGroupSnapshot)
                 .toList();
     }
@@ -661,7 +661,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     @Override
     public List<AdapterNodeSnapshot> listAdapterNodes() {
         requireStartedEngine();
-        return delegate.getEngine().getConfig().getWorkerManager().adapterNodes().stream()
+        return delegate.getEngine().getConfig().getWorkerResourceRuntime().adapterNodes().stream()
                 .map(this::toAdapterNodeSnapshot)
                 .toList();
     }
@@ -669,7 +669,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     @Override
     public List<NodeGroupBindingSnapshot> listNodeGroupBindings() {
         requireStartedEngine();
-        return delegate.getEngine().getConfig().getWorkerManager().nodeGroupBindings().stream()
+        return delegate.getEngine().getConfig().getWorkerResourceRuntime().nodeGroupBindings().stream()
                 .map(this::toNodeGroupBindingSnapshot)
                 .toList();
     }
@@ -1040,13 +1040,14 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     private void resolveWorkerGroupSelectorForAppend(String taskId, String eventCode) {
         String normalizedEventCode = blankToNull(eventCode);
         MassEngine engine = delegate.getEngine();
-        if (engine == null || !engine.isRunning() || engine.getConfig() == null
-                || engine.getConfig().getTaskQueryService() == null
-                || engine.getConfig().getTaskCommandService() == null
-                || engine.getConfig().getWorkerManager() == null) {
+        var config = engine == null ? null : engine.getConfig();
+        if (engine == null || !engine.isRunning() || config == null
+                || config.getTaskQueryService() == null
+                || config.getTaskCommandService() == null
+                || config.getWorkerResourceRuntime() == null) {
             return;
         }
-        Task task = engine.getConfig().getTaskQueryService().getTask(taskId);
+        Task task = config.getTaskQueryService().getTask(taskId);
         if (task == null) {
             return;
         }
@@ -1058,10 +1059,10 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 task.getSharedConfig(),
                 task.getProject(),
                 normalizedEventCode,
-                engine.getConfig().getWorkerManager().workerGroups()
+                config.getWorkerResourceRuntime().workerGroups()
         );
         task.setSharedConfig(sharedConfig);
-        engine.getConfig().getTaskCommandService().updateTask(task);
+        config.getTaskCommandService().updateTask(task);
     }
 
     private EventHandler resolveDefinitionHandler(EventDefinition definition) {
@@ -1885,7 +1886,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         }
         return requireStartedEngine()
                 .getConfig()
-                .getWorkerManager()
+                .getWorkerResourceRuntime()
                 .workerGroup(workerGroupId)
                 .orElse(null);
     }

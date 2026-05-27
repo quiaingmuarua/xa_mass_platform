@@ -1781,7 +1781,7 @@ class MassSdkTest {
         when(engine.getConfig()).thenReturn(config);
         when(config.getTaskCommandService()).thenReturn(taskCommandService);
         when(config.getTaskQueryService()).thenReturn(taskQueryService);
-        when(config.getWorkerManager()).thenReturn(workerManager);
+        when(config.getWorkerResourceRuntime()).thenReturn(workerManager);
         when(taskQueryService.getTask("task-resolve-single")).thenReturn(task);
         when(workerManager.workerGroups()).thenReturn(List.of(group("crawler", "crawlerApp", "crawler.fetch-page")));
         stubAppendReceipts(taskCommandService);
@@ -1816,7 +1816,7 @@ class MassSdkTest {
         when(engine.getConfig()).thenReturn(config);
         when(config.getTaskCommandService()).thenReturn(taskCommandService);
         when(config.getTaskQueryService()).thenReturn(taskQueryService);
-        when(config.getWorkerManager()).thenReturn(workerManager);
+        when(config.getWorkerResourceRuntime()).thenReturn(workerManager);
         when(taskQueryService.getTask("task-resolve-multi")).thenReturn(task);
         when(workerManager.workerGroups()).thenReturn(List.of(
                 group("crawler-a", "crawlerApp", "crawler.fetch-page"),
@@ -1854,7 +1854,7 @@ class MassSdkTest {
         when(engine.getConfig()).thenReturn(config);
         when(config.getTaskCommandService()).thenReturn(taskCommandService);
         when(config.getTaskQueryService()).thenReturn(taskQueryService);
-        when(config.getWorkerManager()).thenReturn(workerManager);
+        when(config.getWorkerResourceRuntime()).thenReturn(workerManager);
         when(taskQueryService.getTask("task-resolve-none")).thenReturn(task);
         when(workerManager.workerGroups()).thenReturn(List.of());
 
