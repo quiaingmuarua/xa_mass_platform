@@ -2,6 +2,8 @@ package com.xa.mass.engine.worker;
 
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.EventKey;
+import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;
+import com.xa.mass.runtime.worker.WorkerCapabilityReportStatus;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -60,28 +62,28 @@ public final class WorkerCapabilityAuthority {
 
         Worker registrationRow = registrationRow(report.workerId(), registrationRows);
         if (registrationRow == null) {
-            return result(WorkerCapabilityReportStatus.UNKNOWN_WORKER, report, false, null,
+            return result(WorkerCapabilityReportStatus.UNKNOWN_WORKER, report, false,
                     "worker is not registered");
         }
 
         WorkerCapabilityReport existing = reportsByWorkerId.get(report.workerId());
         if (existing != null) {
             if (report.capabilityVersion() < existing.capabilityVersion()) {
-                return result(WorkerCapabilityReportStatus.STALE, report, false, null,
+                return result(WorkerCapabilityReportStatus.STALE, report, false,
                         "capability version is stale");
             }
             if (report.capabilityVersion() == existing.capabilityVersion()) {
                 if (existing.equals(report)) {
-                    return result(WorkerCapabilityReportStatus.IDEMPOTENT, report, false, null,
+                    return result(WorkerCapabilityReportStatus.IDEMPOTENT, report, false,
                             "capability report already applied");
                 }
-                return result(WorkerCapabilityReportStatus.CONFLICT, report, false, null,
+                return result(WorkerCapabilityReportStatus.CONFLICT, report, false,
                         "same capability version has different payload");
             }
         }
 
         reportsByWorkerId.put(report.workerId(), report);
-        return result(WorkerCapabilityReportStatus.ACCEPTED, report, true, composeSnapshot(registrationRows, declaredGroups),
+        return result(WorkerCapabilityReportStatus.ACCEPTED, report, true,
                 "capability report accepted");
     }
 
@@ -208,10 +210,9 @@ public final class WorkerCapabilityAuthority {
     private static WorkerCapabilityReportResult result(WorkerCapabilityReportStatus status,
                                                        WorkerCapabilityReport report,
                                                        boolean snapshotChanged,
-                                                       WorkerRegistrySnapshot snapshot,
                                                        String reason) {
         return new WorkerCapabilityReportResult(status, report.workerId(), report.capabilityVersion(),
-                snapshotChanged, snapshot, reason);
+                snapshotChanged, reason);
     }
 
     private static Worker copyWorker(Worker source) {

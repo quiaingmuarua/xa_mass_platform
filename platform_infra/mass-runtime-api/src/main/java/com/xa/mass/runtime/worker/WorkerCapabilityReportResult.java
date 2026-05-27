@@ -1,11 +1,10 @@
-package com.xa.mass.engine.worker;
+package com.xa.mass.runtime.worker;
 
 public record WorkerCapabilityReportResult(
         WorkerCapabilityReportStatus status,
         String workerId,
         long capabilityVersion,
         boolean snapshotChanged,
-        WorkerRegistrySnapshot snapshot,
         String reason
 ) {
 

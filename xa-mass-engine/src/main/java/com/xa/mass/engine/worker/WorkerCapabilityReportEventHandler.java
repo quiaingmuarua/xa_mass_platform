@@ -3,6 +3,7 @@ package com.xa.mass.engine.worker;
 import com.xa.mass.command.event.CoreEventRequest;
 import com.xa.mass.command.event.CoreEventResponse;
 import com.xa.mass.engine.event.KernelEventHandlerRegistry;
+import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;

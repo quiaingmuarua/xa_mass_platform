@@ -2,6 +2,8 @@ package com.xa.mass.engine.worker;
 
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.EventKey;
+import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;
+import com.xa.mass.runtime.worker.WorkerCapabilityReportStatus;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -107,7 +109,7 @@ public class WorkerCapabilityAuthorityTest {
         );
 
         assertEquals(WorkerCapabilityReportStatus.ACCEPTED, result.status());
-        WorkerRegistrySnapshot snapshot = result.snapshot();
+        WorkerRegistrySnapshot snapshot = authority.composeSnapshot(List.of(worker), List.of(declaredGroup));
         assertEquals(List.of("crawler"), List.copyOf(snapshot.groupIdsByEventKey(
                 new EventKey("demoApp", "crawler.fetch"))));
         assertTrue(snapshot.groupIdsByEventKey(new EventKey("demoApp", "crawler.parse")).isEmpty());

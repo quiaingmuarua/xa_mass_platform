@@ -10,6 +10,7 @@ import com.xa.mass.engine.command.WorkerCommandRecord;
 import com.xa.mass.engine.command.WorkerCommandRequest;
 import com.xa.mass.engine.command.WorkerCommandStatus;
 import com.xa.mass.engine.util.TraceEventLogger;
+import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

@@ -1095,6 +1095,48 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void workerCapabilityReportResultLivesInRuntimeApiWithoutSnapshotLeak() throws IOException {
+        Path repo = repositoryRoot();
+        Path engineResultPath = repo.resolve(
+                "xa-mass-engine/src/main/java/com/xa/mass/engine/worker/WorkerCapabilityReportResult.java");
+        Path engineStatusPath = repo.resolve(
+                "xa-mass-engine/src/main/java/com/xa/mass/engine/worker/WorkerCapabilityReportStatus.java");
+        Path runtimeResultPath = repo.resolve(
+                "platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/WorkerCapabilityReportResult.java");
+        Path runtimeStatusPath = repo.resolve(
+                "platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/WorkerCapabilityReportStatus.java");
+
+        List<String> violations = new ArrayList<>();
+        if (Files.exists(engineResultPath)) {
+            violations.add(engineResultPath + " reintroduces capability report result inside engine");
+        }
+        if (Files.exists(engineStatusPath)) {
+            violations.add(engineStatusPath + " reintroduces capability report status inside engine");
+        }
+        for (Path runtimePath : List.of(runtimeResultPath, runtimeStatusPath)) {
+            if (!Files.isRegularFile(runtimePath)) {
+                violations.add(runtimePath + " is missing");
+                continue;
+            }
+            String source = Files.readString(runtimePath, StandardCharsets.UTF_8);
+            if (source.contains("com.xa.mass.engine")) {
+                violations.add(runtimePath + " depends on xa-mass-engine");
+            }
+            if (source.contains("com.xa.mass.base")) {
+                violations.add(runtimePath + " depends on xa-mass-base");
+            }
+            if (source.contains("WorkerRegistrySnapshot")) {
+                violations.add(runtimePath + " exposes WorkerRegistrySnapshot");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Capability report status/result are runtime-facing report DTOs. "
+                        + "Do not leak engine WorkerRegistrySnapshot through them:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void workerCandidateRuntimeContractDoesNotExposeDiagnosticsOrWarmWrites() throws IOException {
         Path candidateRuntimePath = Path.of("../platform_infra/mass-runtime-api/src/main/java")
                 .resolve("com/xa/mass/runtime/worker/WorkerCandidateRuntime.java");

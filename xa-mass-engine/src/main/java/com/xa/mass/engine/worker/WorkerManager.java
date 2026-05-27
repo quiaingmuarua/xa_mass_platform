@@ -13,6 +13,7 @@ import com.xa.mass.runtime.worker.WorkerAdmissionRuntime;
 import com.xa.mass.runtime.worker.WorkerCandidateBatch;
 import com.xa.mass.runtime.worker.WorkerCandidateRow;
 import com.xa.mass.runtime.worker.WorkerCandidateRuntime;
+import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;
 import com.xa.mass.runtime.worker.WorkerGroupCapabilityView;
 import com.xa.mass.runtime.worker.WorkerLoadSnapshot;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;
@@ -274,9 +275,10 @@ public class WorkerManager implements WorkerLookupStore,
     }
 
     public WorkerCapabilityReportResult applyWorkerCapabilityReport(WorkerCapabilityReport report) {
-        WorkerCapabilityReportResult result = reportOwner.applyWorkerCapabilityReport(report);
-        if (result.snapshotChanged() && result.snapshot() != null) {
-            publishWorkerRegistrySnapshot(result.snapshot());
+        WorkerCapabilityReportApplication application = reportOwner.applyWorkerCapabilityReport(report);
+        WorkerCapabilityReportResult result = application.result();
+        if (result.snapshotChanged() && application.snapshot() != null) {
+            publishWorkerRegistrySnapshot(application.snapshot());
         }
         return result;
     }

@@ -1,5 +1,7 @@
 package com.xa.mass.engine.worker;
 
+import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;
+
 /**
  * Worker-originated report surface that may update runtime projections.
  */

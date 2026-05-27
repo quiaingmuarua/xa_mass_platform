@@ -331,6 +331,10 @@ interface WorkerReportRuntime {
 }
 ```
 
+`WorkerCapabilityReportResult` is runtime-facing result evidence only. It must
+not carry `WorkerRegistrySnapshot`; snapshot refresh is an engine/runtime
+application detail while the implementation still lives in engine.
+
 `WorkerAdmissionResult` must be structured, not boolean. It must preserve at
 least:
 

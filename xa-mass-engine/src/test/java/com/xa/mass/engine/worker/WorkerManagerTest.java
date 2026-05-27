@@ -11,6 +11,8 @@ import com.xa.mass.runtime.worker.EventKey;
 import com.xa.mass.runtime.worker.RandomWorkerCandidateSamplingPolicy;
 import com.xa.mass.runtime.worker.WorkerCandidateBatch;
 import com.xa.mass.runtime.worker.WorkerCandidateRow;
+import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;
+import com.xa.mass.runtime.worker.WorkerCapabilityReportStatus;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import org.junit.jupiter.api.BeforeEach;
@@ -112,9 +114,9 @@ public class WorkerManagerTest {
         );
 
         assertEquals(WorkerCapabilityReportStatus.ACCEPTED, result.status());
-        assertEquals(Set.of("crawler"), result.snapshot()
+        assertEquals(Set.of("crawler"), manager.getWorkerRegistrySnapshot()
                 .groupIdsByEventKey(new EventKey("demoApp", "crawler.fetch")));
-        assertTrue(result.snapshot()
+        assertTrue(manager.getWorkerRegistrySnapshot()
                 .groupIdsByEventKey(new EventKey("legacyApp", "legacy.fetch"))
                 .isEmpty());
     }
@@ -837,7 +839,7 @@ public class WorkerManagerTest {
                 .stream()
                 .map(Worker::getWorkerId)
                 .toList());
-        assertFalse(result.snapshot().workerSupportsEventKey(
+        assertFalse(manager.getWorkerRegistrySnapshot().workerSupportsEventKey(
                 "w-report-capability",
                 new EventKey("demoApp", "crawler.parse")
         ));
