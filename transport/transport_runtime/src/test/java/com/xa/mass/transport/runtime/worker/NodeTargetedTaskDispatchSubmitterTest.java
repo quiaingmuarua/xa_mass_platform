@@ -7,6 +7,7 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchBatch;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.engine.worker.WorkerManager;
+import com.xa.mass.runtime.worker.WorkerResourceRecord;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.runtime.node.InMemoryTransportNodeRegistry;
@@ -128,10 +129,29 @@ class NodeTargetedTaskDispatchSubmitterTest {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
         if (workers != null) {
             for (Worker worker : workers) {
-                workerManager.addWorker(worker);
+                workerManager.addWorker(workerResource(worker));
             }
         }
         return workerManager;
+    }
+
+    private static WorkerResourceRecord workerResource(Worker worker) {
+        return new WorkerResourceRecord(
+                worker.getWorkerId(),
+                worker.getStatus() == null ? null : worker.getStatus().name(),
+                worker.getAgentVersion(),
+                worker.getLastHeartbeat(),
+                worker.getSupportedProjects(),
+                worker.getSupportedEventCodes(),
+                worker.getWorkerGroupId(),
+                worker.getAdapterNodeId(),
+                worker.getAdapterId(),
+                worker.getOnlineStrategy(),
+                worker.getMaxConcurrentWork(),
+                worker.getAttributes(),
+                worker.getCreateTime(),
+                worker.getUpdateTime()
+        );
     }
 
     private static List<String> messages(TaskDispatchBatch batch) {

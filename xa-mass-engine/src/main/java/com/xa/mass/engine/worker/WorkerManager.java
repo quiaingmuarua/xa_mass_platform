@@ -112,19 +112,11 @@ public class WorkerManager implements WorkerResourceRuntime,
         publishWorkerRegistrySnapshot(composeWorkerRegistrySnapshot());
     }
 
-    public void addWorker(Worker worker) {
-        resourceOwner.addWorker(worker);
-        publishWorkerRegistrySnapshot();
-        notifyDispatchWakeup("worker registered");
-    }
-
     @Override
     public void addWorker(WorkerResourceRecord worker) {
-        addWorker(toWorker(worker));
-    }
-
-    public Worker getWorker(String workerId) {
-        return resourceOwner.getWorker(workerId).orElse(null);
+        resourceOwner.addWorker(toWorker(worker));
+        publishWorkerRegistrySnapshot();
+        notifyDispatchWakeup("worker registered");
     }
 
     @Override
@@ -132,15 +124,11 @@ public class WorkerManager implements WorkerResourceRuntime,
         return resourceOwner.getWorker(workerId).map(WorkerManager::toWorkerResourceRecord);
     }
 
-    public boolean updateWorker(Worker worker) {
-        Optional<Worker> updated = resourceOwner.updateWorker(worker);
-        updated.ifPresent(ignored -> publishWorkerRegistrySnapshot());
-        return updated.isPresent();
-    }
-
     @Override
     public boolean updateWorker(WorkerResourceRecord worker) {
-        return updateWorker(toWorker(worker));
+        Optional<Worker> updated = resourceOwner.updateWorker(toWorker(worker));
+        updated.ifPresent(ignored -> publishWorkerRegistrySnapshot());
+        return updated.isPresent();
     }
 
     public boolean deleteWorker(String workerId) {

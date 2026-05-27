@@ -20,6 +20,7 @@ import com.xa.mass.runtime.worker.WorkerCapabilityReport;
 import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;
 import com.xa.mass.runtime.worker.WorkerCapabilityReportStatus;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;
+import com.xa.mass.runtime.worker.WorkerResourceRecord;
 import com.xa.mass.runtime.worker.WorkerTaskSelector;
 import com.xa.mass.engine.TestWorkerCandidateRows;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
@@ -53,8 +54,8 @@ public class WorkerManagerTest {
     @Test
     void addAndRetrieveWorker() {
         Worker w = worker("w1", "us");
-        manager.addWorker(w);
-        Worker found = manager.getWorker("w1");
+        addWorker(w);
+        Worker found = workerModel("w1");
         assertNotNull(found);
         assertEquals("w1", found.getWorkerId());
     }
@@ -66,9 +67,9 @@ public class WorkerManagerTest {
         worker.setWorkerGroupId("us");
         worker.setStatus(WorkerStatus.ONLINE);
 
-        manager.addWorker(worker);
+        addWorker(worker);
 
-        Worker found = manager.getWorker("w-no-heartbeat");
+        Worker found = workerModel("w-no-heartbeat");
         assertNotNull(found);
         assertNotNull(found.getLastHeartbeat());
     }
@@ -94,7 +95,7 @@ public class WorkerManagerTest {
         Worker worker = worker("w-crawler", "crawler");
         worker.setSupportedProjects(List.of("legacyApp"));
         worker.setSupportedEventCodes(List.of("legacy.fetch"));
-        manager.addWorker(worker);
+        addWorker(worker);
 
         manager.upsertWorkerGroup(WorkerGroupRecord.builder("crawler")
                 .eventBindings(List.of(EventBinding.of("crawler.fetch", List.of("demoApp"))))
@@ -105,7 +106,7 @@ public class WorkerManagerTest {
         assertTrue(manager.getWorkerRegistrySnapshot()
                 .groupIdsByEventKey(new EventKey("legacyApp", "legacy.fetch"))
                 .isEmpty());
-        assertEquals("crawler", manager.getWorker("w-crawler").getWorkerGroupId());
+        assertEquals("crawler", workerModel("w-crawler").getWorkerGroupId());
     }
 
     @Test
@@ -113,7 +114,7 @@ public class WorkerManagerTest {
         Worker worker = worker("w-crawler", "crawler");
         worker.setSupportedProjects(List.of("legacyApp"));
         worker.setSupportedEventCodes(List.of("legacy.fetch", "crawler.fetch"));
-        manager.addWorker(worker);
+        addWorker(worker);
         manager.upsertWorkerGroup(WorkerGroupRecord.builder("crawler")
                 .eventBindings(List.of(EventBinding.of("crawler.fetch", List.of("demoApp"))))
                 .build());
@@ -134,12 +135,12 @@ public class WorkerManagerTest {
 
     @Test
     void getWorkerReturnsNullWhenNotFound() {
-        assertNull(manager.getWorker("nonexistent"));
+        assertNull(workerModel("nonexistent"));
     }
 
     @Test
     void exposesObservedWorkerLoadFromWorkerRegistrySlot() {
-        manager.addWorker(worker("worker-load", "us"));
+        addWorker(worker("worker-load", "us"));
 
         manager.recordWorkClaimed("worker-load", "task-1");
         manager.recordWorkClaimed("worker-load", "task-1");
@@ -154,7 +155,7 @@ public class WorkerManagerTest {
 
     @Test
     void exposesWorkerLoadReservationLifecycle() {
-        manager.addWorker(worker("worker-reserve", "us"));
+        addWorker(worker("worker-reserve", "us"));
 
         assertTrue(manager.reserveWorkerCapacity("worker-reserve", "task-1").accepted());
         assertFalse(manager.reserveWorkerCapacity("worker-reserve", "task-2").accepted());
@@ -174,7 +175,7 @@ public class WorkerManagerTest {
         Worker worker = worker("worker-capacity", "us");
         worker.setMaxConcurrentWork(3);
 
-        manager.addWorker(worker);
+        addWorker(worker);
 
         assertEquals(3, manager.getWorkerLoad("worker-capacity").declaredCapacity());
         assertTrue(manager.reserveWorkerCapacity("worker-capacity", "task-1").accepted());
@@ -187,11 +188,11 @@ public class WorkerManagerTest {
     void updateWorkerRefreshesDeclaredCapacityInLoadView() {
         Worker worker = worker("worker-capacity-update", "us");
         worker.setMaxConcurrentWork(2);
-        manager.addWorker(worker);
+        addWorker(worker);
 
         Worker updated = worker("worker-capacity-update", "us");
         updated.setMaxConcurrentWork(4);
-        assertTrue(manager.updateWorker(updated));
+        assertTrue(updateWorker(updated));
 
         assertEquals(4, manager.getWorkerLoad("worker-capacity-update").declaredCapacity());
     }
@@ -199,7 +200,7 @@ public class WorkerManagerTest {
     @Test
     void workerRegistryDispatchGateCanDisableAndReenableNewAssignments() {
         Worker worker = worker("worker-draining", "us");
-        manager.addWorker(worker);
+        addWorker(worker);
 
         assertTrue(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
 
@@ -284,7 +285,7 @@ public class WorkerManagerTest {
         manager.bindNodeGroup(binding("node-a", "crawler"));
         Worker worker = worker("w-binding", "crawler");
         worker.setAdapterNodeId("node-a");
-        manager.addWorker(worker);
+        addWorker(worker);
         manager.setNodeGroupBindingDraining("node-a", "crawler", true);
 
         int beforeDrainClear = wakeups.get();
@@ -301,7 +302,7 @@ public class WorkerManagerTest {
         manager.bindNodeGroup(binding("node-a", "crawler"));
         Worker worker = worker("w-binding", "crawler");
         worker.setAdapterNodeId("node-a");
-        manager.addWorker(worker);
+        addWorker(worker);
 
         NodeGroupBindingRecord disabled = manager.setNodeGroupBindingEnabled("node-a", "crawler", false);
         NodeGroupBindingRecord draining = manager.setNodeGroupBindingDraining("node-a", "crawler", true);
@@ -321,13 +322,13 @@ public class WorkerManagerTest {
         worker.setAdapterNodeId("node-a");
 
         IllegalArgumentException missingBinding = assertThrows(IllegalArgumentException.class,
-                () -> manager.addWorker(worker));
+                () -> addWorker(worker));
         assertTrue(missingBinding.getMessage().contains("node group binding is not registered"));
 
         manager.bindNodeGroup(binding("node-a", "crawler"));
-        manager.addWorker(worker);
+        addWorker(worker);
 
-        assertEquals("node-a", manager.getWorker("w-explicit").getAdapterNodeId());
+        assertEquals("node-a", workerModel("w-explicit").getAdapterNodeId());
     }
 
     @Test
@@ -335,9 +336,9 @@ public class WorkerManagerTest {
         Worker worker = worker("w-legacy", "crawler");
         worker.setAdapterId("polling");
 
-        manager.addWorker(worker);
+        addWorker(worker);
 
-        assertNull(manager.getWorker("w-legacy").getAdapterNodeId());
+        assertNull(workerModel("w-legacy").getAdapterNodeId());
         assertTrue(manager.adapterNode("polling").isEmpty());
         assertTrue(manager.nodeGroupBinding("polling", "crawler").isEmpty());
     }
@@ -352,8 +353,8 @@ public class WorkerManagerTest {
         workerA.setAdapterNodeId("node-a");
         Worker workerB = worker("w-node-b", "crawler");
         workerB.setAdapterNodeId("node-b");
-        manager.addWorker(workerA);
-        manager.addWorker(workerB);
+        addWorker(workerA);
+        addWorker(workerB);
 
         manager.setNodeGroupBindingDraining("node-a", "crawler", true);
 
@@ -372,7 +373,7 @@ public class WorkerManagerTest {
         manager.bindNodeGroup(binding("node-a", "crawler"));
         Worker worker = worker("w-node-a", "crawler");
         worker.setAdapterNodeId("node-a");
-        manager.addWorker(worker);
+        addWorker(worker);
 
         manager.disableWorkerDispatch(
                 "w-node-a",
@@ -399,7 +400,7 @@ public class WorkerManagerTest {
         manager.bindNodeGroup(binding("node-a", "crawler"));
         Worker worker = worker("w-node-a", "crawler");
         worker.setAdapterNodeId("node-a");
-        manager.addWorker(worker);
+        addWorker(worker);
         assertTrue(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
 
         manager.bindNodeGroup(new NodeGroupBindingRecord(
@@ -423,7 +424,7 @@ public class WorkerManagerTest {
         manager.bindNodeGroup(binding("node-a", "crawler"));
         Worker worker = worker("w-node-a", "crawler");
         worker.setAdapterNodeId("node-a");
-        manager.addWorker(worker);
+        addWorker(worker);
         assertTrue(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
 
         assertTrue(manager.unbindNodeGroup("node-a", "crawler"));
@@ -483,9 +484,9 @@ public class WorkerManagerTest {
 
     @Test
     void getAllWorkersReturnsAllAdded() {
-        manager.addWorker(worker("a", "us"));
-        manager.addWorker(worker("b", "gb"));
-        manager.addWorker(worker("c", "us"));
+        addWorker(worker("a", "us"));
+        addWorker(worker("b", "gb"));
+        addWorker(worker("c", "us"));
         assertEquals(3, manager.workers().size());
     }
 
@@ -495,8 +496,8 @@ public class WorkerManagerTest {
         declareProjectGroup("pool-b", "testApp");
         Worker demoWorker = worker("w-demo", "pool-a");
         Worker otherWorker = worker("w-other", "pool-b");
-        manager.addWorker(demoWorker);
-        manager.addWorker(otherWorker);
+        addWorker(demoWorker);
+        addWorker(otherWorker);
 
         Task task = task("demoApp", selector("pool-a"));
 
@@ -510,8 +511,8 @@ public class WorkerManagerTest {
         declareEventGroup("pool-b", "demoApp", "other.event");
         Worker eventWorker = worker("w-event", "pool-a");
         Worker projectOnlyWorker = worker("w-project", "pool-b");
-        manager.addWorker(eventWorker);
-        manager.addWorker(projectOnlyWorker);
+        addWorker(eventWorker);
+        addWorker(projectOnlyWorker);
 
         Task task = task("demoApp", sharedConfig(
                 Map.of(TaskSharedConfig.SDK_METADATA, Map.of(TaskSharedConfig.SDK_EVENT_CODE, "demo.dispatch")),
@@ -527,8 +528,8 @@ public class WorkerManagerTest {
         declareEventGroup("pool-b", "demoApp", "demo.dispatch");
         Worker targetWorker = worker("w-target", "pool-a");
         Worker indexedWorker = worker("w-indexed", "pool-b");
-        manager.addWorker(targetWorker);
-        manager.addWorker(indexedWorker);
+        addWorker(targetWorker);
+        addWorker(indexedWorker);
 
         Task task = task("demoApp", Map.of(
                 TaskSharedConfig.TARGET_WORKER_ID, "w-target",
@@ -552,7 +553,7 @@ public class WorkerManagerTest {
     void findWorkerCandidatesDoesNotFallbackWhenTargetWorkerIsMissing() {
         declareEventGroup("pool-b", "demoApp", "demo.dispatch");
         Worker indexedWorker = worker("w-indexed", "pool-b");
-        manager.addWorker(indexedWorker);
+        addWorker(indexedWorker);
 
         Task task = task("demoApp", Map.of(
                 TaskSharedConfig.TARGET_WORKER_ID, "missing-worker",
@@ -565,8 +566,8 @@ public class WorkerManagerTest {
 
     @Test
     void findWorkerCandidatesDoesNotFallbackToAllWorkersWithoutSelector() {
-        manager.addWorker(worker("w-a", "pool-a"));
-        manager.addWorker(worker("w-b", "pool-b"));
+        addWorker(worker("w-a", "pool-a"));
+        addWorker(worker("w-b", "pool-b"));
 
         Task task = task(null, Map.of());
 
@@ -578,10 +579,10 @@ public class WorkerManagerTest {
         declareProjectGroup("pool-a", "demoApp");
         declareProjectGroup("pool-b", "testApp");
         Worker worker = worker("w-reindex", "pool-a");
-        manager.addWorker(worker);
+        addWorker(worker);
 
         Worker updated = worker("w-reindex", "pool-b");
-        assertTrue(manager.updateWorker(updated));
+        assertTrue(updateWorker(updated));
 
         assertTrue(candidateRows(task("demoApp", selector("pool-a"))).isEmpty());
         assertEquals(List.of("w-reindex"),
@@ -593,7 +594,7 @@ public class WorkerManagerTest {
         declareProjectGroup("pool-a", "demoApp");
         Worker worker = worker("w-route-reindex", "pool-a");
         worker.setAttributes(Map.of("region", "us"));
-        manager.addWorker(worker);
+        addWorker(worker);
 
         assertEquals(List.of("w-route-reindex"),
                 candidateIds(task("demoApp", sharedConfig(
@@ -602,7 +603,7 @@ public class WorkerManagerTest {
 
         Worker updated = worker("w-route-reindex", "pool-a");
         updated.setAttributes(Map.of("region", "eu"));
-        assertTrue(manager.updateWorker(updated));
+        assertTrue(updateWorker(updated));
 
         assertTrue(candidateRows(task("demoApp", sharedConfig(
                 Map.of(TaskSharedConfig.ROUTE_ATTRIBUTES, Map.of("region", "us")),
@@ -618,11 +619,11 @@ public class WorkerManagerTest {
         declareEventGroup("pool-a", "demoApp", "demo.dispatch");
         declareProjectGroup("pool-b", "testApp");
         Worker worker = worker("w-mutable-reindex", "pool-a");
-        manager.addWorker(worker);
+        addWorker(worker);
 
-        Worker stored = manager.getWorker("w-mutable-reindex");
+        Worker stored = workerModel("w-mutable-reindex");
         stored.setWorkerGroupId("pool-b");
-        assertTrue(manager.updateWorker(stored));
+        assertTrue(updateWorker(stored));
 
         assertTrue(candidateRows(task("demoApp", selector("pool-a"))).isEmpty());
         assertTrue(candidateRows(task("demoApp", sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
@@ -640,7 +641,7 @@ public class WorkerManagerTest {
         Worker worker = worker("w-indexed-group", "crawler");
         worker.setAdapterId("adapter-a");
         worker.setMaxConcurrentWork(3);
-        manager.addWorker(worker);
+        addWorker(worker);
 
         assertEquals(List.of("w-indexed-group"),
                 candidateIndexIds(task("demoApp", sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
@@ -664,8 +665,8 @@ public class WorkerManagerTest {
         registryBackedManager.upsertWorkerGroup(WorkerGroupRecord.builder("pool-a")
                 .projectCodes(List.of("demoApp"))
                 .build());
-        registryBackedManager.addWorker(worker("w-snapshot-visible", "pool-a"));
-        registryBackedManager.addWorker(worker("w-registry-selected", "pool-a"));
+        addWorker(registryBackedManager, worker("w-snapshot-visible", "pool-a"));
+        addWorker(registryBackedManager, worker("w-registry-selected", "pool-a"));
 
         assertEquals(List.of("w-registry-selected"),
                 candidateIds(registryBackedManager, task("demoApp", selector("pool-a")), 10));
@@ -685,7 +686,7 @@ public class WorkerManagerTest {
                 .projectCodes(List.of("demoApp"))
                 .build());
         for (int index = 0; index < 10; index++) {
-            registryBackedManager.addWorker(worker("w-sampled-" + index, "pool-a"));
+            addWorker(registryBackedManager, worker("w-sampled-" + index, "pool-a"));
         }
 
         assertEquals(List.of("w-sampled-7", "w-sampled-8", "w-sampled-9"),
@@ -697,8 +698,8 @@ public class WorkerManagerTest {
         declareProjectGroup("pool-a", "demoApp");
         Worker coldFirst = worker("w-cold-first", "pool-a");
         Worker warm = worker("w-warm", "pool-a");
-        manager.addWorker(coldFirst);
-        manager.addWorker(warm);
+        addWorker(coldFirst);
+        addWorker(warm);
         Task task = task("demoApp", selector("pool-a"));
 
         manager.recordWarmCandidate(workerTaskSelector(task), TestWorkerCandidateRows.from(warm));
@@ -719,8 +720,8 @@ public class WorkerManagerTest {
         declareProjectGroup("pool-a", "demoApp");
         Worker target = worker("w-target-warm-suppressed", "pool-a");
         Worker warm = worker("w-warm-suppressed", "pool-a");
-        manager.addWorker(target);
-        manager.addWorker(warm);
+        addWorker(target);
+        addWorker(warm);
         Task task = task("demoApp", selector("pool-a"));
         manager.recordWarmCandidate(workerTaskSelector(task), TestWorkerCandidateRows.from(warm));
         task.setSharedConfig(sharedConfig(Map.of(
@@ -743,8 +744,8 @@ public class WorkerManagerTest {
         stable.setAttributes(Map.of("region", "us"));
         Worker staleWarm = worker("w-stale-warm-route", "pool-a");
         staleWarm.setAttributes(Map.of("region", "us"));
-        manager.addWorker(stable);
-        manager.addWorker(staleWarm);
+        addWorker(stable);
+        addWorker(staleWarm);
         Task task = task("demoApp", sharedConfig(
                 Map.of(TaskSharedConfig.ROUTE_ATTRIBUTES, Map.of("region", "us")),
                 "pool-a"));
@@ -752,7 +753,7 @@ public class WorkerManagerTest {
 
         Worker moved = worker("w-stale-warm-route", "pool-a");
         moved.setAttributes(Map.of("region", "eu"));
-        assertTrue(manager.updateWorker(moved));
+        assertTrue(updateWorker(moved));
         WorkerCandidateBatch<WorkerCandidateRow> batch = manager.findWorkerCandidateBatch(workerTaskSelector(task), 1);
 
         assertEquals(List.of("w-stable-route"),
@@ -772,7 +773,7 @@ public class WorkerManagerTest {
         declareEventGroup("export", "testApp", "report.export");
 
         Worker worker = worker("w-published-snapshot", "crawler");
-        manager.addWorker(worker);
+        addWorker(worker);
         WorkerRegistrySnapshot afterAdd = manager.getWorkerRegistrySnapshot();
 
         assertNotSame(before, afterAdd);
@@ -782,7 +783,7 @@ public class WorkerManagerTest {
                 afterAdd.workers().stream().map(Worker::getWorkerId).toList());
 
         Worker updated = worker("w-published-snapshot", "export");
-        assertTrue(manager.updateWorker(updated));
+        assertTrue(updateWorker(updated));
         WorkerRegistrySnapshot afterUpdate = manager.getWorkerRegistrySnapshot();
 
         assertNotSame(afterAdd, afterUpdate);
@@ -799,10 +800,10 @@ public class WorkerManagerTest {
         declareEventGroup("crawler", "demoApp", "crawler.fetch");
         declareEventGroup("parser", "testApp", "crawler.parse");
         Worker worker = worker("w-snapshot-update", "crawler");
-        manager.addWorker(worker);
+        addWorker(worker);
 
         Worker updated = worker("w-snapshot-update", "parser");
-        assertTrue(manager.updateWorker(updated));
+        assertTrue(updateWorker(updated));
 
         assertTrue(manager.getWorkerCandidateIndex()
                 .workersFor(workerTaskSelector(task("demoApp", sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
@@ -817,7 +818,7 @@ public class WorkerManagerTest {
     void workerCapabilityReportRefreshesCandidateIndexThroughPublishedSnapshot() {
         declareEventGroup("crawler", "demoApp", "crawler.fetch");
         Worker worker = worker("w-report-capability", "crawler");
-        manager.addWorker(worker);
+        addWorker(worker);
 
         WorkerCapabilityReportResult result = manager.applyWorkerCapabilityReport(
                 WorkerCapabilityReport.builder("w-report-capability", 1)
@@ -840,7 +841,7 @@ public class WorkerManagerTest {
     void deleteWorkerRefreshesWorkerRegistrySnapshot() {
         declareEventGroup("crawler", "demoApp", "crawler.fetch");
         Worker worker = worker("w-snapshot-delete", "crawler");
-        manager.addWorker(worker);
+        addWorker(worker);
 
         assertTrue(manager.deleteWorker("w-snapshot-delete"));
 
@@ -878,7 +879,7 @@ public class WorkerManagerTest {
         declareEventGroup("pool-a", "demoApp", "demo.dispatch");
         Worker worker = worker("w-delete-index", "pool-a");
         worker.setAttributes(Map.of("region", "us"));
-        manager.addWorker(worker);
+        addWorker(worker);
 
         assertTrue(manager.deleteWorker("w-delete-index"));
 
@@ -895,16 +896,16 @@ public class WorkerManagerTest {
     @Test
     void updateWorkerReturnsTrue() {
         Worker w = worker("w2", "us");
-        manager.addWorker(w);
+        addWorker(w);
         w.setStatus(WorkerStatus.OFFLINE);
-        assertTrue(manager.updateWorker(w));
+        assertTrue(updateWorker(w));
     }
 
     @Test
     void deleteWorkerRemovesIt() {
-        manager.addWorker(worker("w3", "us"));
+        addWorker(worker("w3", "us"));
         assertTrue(manager.deleteWorker("w3"));
-        assertNull(manager.getWorker("w3"));
+        assertNull(workerModel("w3"));
     }
 
     @Test
@@ -916,7 +917,7 @@ public class WorkerManagerTest {
 
     @Test
     void lockAndUnlockWorker() {
-        manager.addWorker(worker("w6", "us"));
+        addWorker(worker("w6", "us"));
         assertTrue(manager.tryAcquireWorkerExclusiveLease("w6"));
         assertTrue(manager.hasWorkerExclusiveLease("w6"));
 
@@ -926,7 +927,7 @@ public class WorkerManagerTest {
 
     @Test
     void lockAlreadyLockedWorkerReturnsFalse() {
-        manager.addWorker(worker("w7", "us"));
+        addWorker(worker("w7", "us"));
         assertTrue(manager.tryAcquireWorkerExclusiveLease("w7"));
         assertFalse(manager.tryAcquireWorkerExclusiveLease("w7"));
     }
@@ -940,15 +941,15 @@ public class WorkerManagerTest {
                 new WorkerStatusEventListener(manager, wakeups::incrementAndGet);
         Worker worker = worker("w9", "us");
         worker.setStatus(WorkerStatus.OFFLINE);
-        manager.addWorker(worker);
+        addWorker(worker);
 
         listener.onWorkerOnline(new WorkerOnlineEvent("w9", "connected", null));
-        assertNotNull(manager.getWorker("w9").getLastHeartbeat());
-        assertEquals(WorkerStatus.OFFLINE, manager.getWorker("w9").getStatus());
+        assertNotNull(workerModel("w9").getLastHeartbeat());
+        assertEquals(WorkerStatus.OFFLINE, workerModel("w9").getStatus());
         assertEquals(1, wakeups.get());
 
         listener.onWorkerOffline(new WorkerOfflineEvent("w9", "disconnected", null));
-        assertEquals(WorkerStatus.OFFLINE, manager.getWorker("w9").getStatus());
+        assertEquals(WorkerStatus.OFFLINE, workerModel("w9").getStatus());
         assertEquals(1, wakeups.get());
     }
 
@@ -959,12 +960,12 @@ public class WorkerManagerTest {
                 new WorkerStatusEventListener(manager, wakeups::incrementAndGet);
         Worker worker = worker("w10", "us");
         worker.setStatus(WorkerStatus.OFFLINE);
-        manager.addWorker(worker);
+        addWorker(worker);
 
         listener.onWorkerHeartbeat(new WorkerHeartbeatEvent("w10", "heartbeat", null));
 
-        assertNotNull(manager.getWorker("w10").getLastHeartbeat());
-        assertEquals(WorkerStatus.OFFLINE, manager.getWorker("w10").getStatus());
+        assertNotNull(workerModel("w10").getLastHeartbeat());
+        assertEquals(WorkerStatus.OFFLINE, workerModel("w10").getStatus());
         assertEquals(0, wakeups.get());
     }
 
@@ -986,9 +987,9 @@ public class WorkerManagerTest {
         staleModelWorker.setStatus(WorkerStatus.ONLINE);
         Worker offlineModelWorker = worker("w-offline", "us");
         offlineModelWorker.setStatus(WorkerStatus.ONLINE);
-        reachabilityAwareManager.addWorker(onlineModelWorker);
-        reachabilityAwareManager.addWorker(staleModelWorker);
-        reachabilityAwareManager.addWorker(offlineModelWorker);
+        addWorker(reachabilityAwareManager, onlineModelWorker);
+        addWorker(reachabilityAwareManager, staleModelWorker);
+        addWorker(reachabilityAwareManager, offlineModelWorker);
 
         assertEquals(WorkerReachabilityState.ONLINE, reachabilityAwareManager.getWorkerReachability("w-online"));
         assertEquals(WorkerReachabilityState.STALE, reachabilityAwareManager.getWorkerReachability("w-stale"));
@@ -996,7 +997,7 @@ public class WorkerManagerTest {
         assertEquals(WorkerReachabilityState.UNKNOWN, reachabilityAwareManager.getWorkerReachability("missing"));
 
         // Worker model status can still say ONLINE while transport reachability has already converged to STALE.
-        assertEquals(WorkerStatus.ONLINE, reachabilityAwareManager.getWorker("w-stale").getStatus());
+        assertEquals(WorkerStatus.ONLINE, workerModel(reachabilityAwareManager, "w-stale").getStatus());
         assertTrue(reachabilityAwareManager.isWorkerDispatchEnabled(staleModelWorker.getWorkerId()));
     }
 
@@ -1060,6 +1061,67 @@ public class WorkerManagerTest {
         w.setStatus(WorkerStatus.ONLINE);
         w.setLastHeartbeat(LocalDateTime.now());
         return w;
+    }
+
+    private void addWorker(Worker worker) {
+        addWorker(manager, worker);
+    }
+
+    private static void addWorker(WorkerManager workerManager, Worker worker) {
+        workerManager.addWorker(workerResource(worker));
+    }
+
+    private boolean updateWorker(Worker worker) {
+        return manager.updateWorker(workerResource(worker));
+    }
+
+    private Worker workerModel(String workerId) {
+        return workerModel(manager, workerId);
+    }
+
+    private static Worker workerModel(WorkerManager workerManager, String workerId) {
+        return toWorker(workerManager.worker(workerId).orElse(null));
+    }
+
+    private static WorkerResourceRecord workerResource(Worker worker) {
+        return new WorkerResourceRecord(
+                worker.getWorkerId(),
+                worker.getStatus() == null ? null : worker.getStatus().name(),
+                worker.getAgentVersion(),
+                worker.getLastHeartbeat(),
+                worker.getSupportedProjects(),
+                worker.getSupportedEventCodes(),
+                worker.getWorkerGroupId(),
+                worker.getAdapterNodeId(),
+                worker.getAdapterId(),
+                worker.getOnlineStrategy(),
+                worker.getMaxConcurrentWork(),
+                worker.getAttributes(),
+                worker.getCreateTime(),
+                worker.getUpdateTime()
+        );
+    }
+
+    private static Worker toWorker(WorkerResourceRecord record) {
+        if (record == null) {
+            return null;
+        }
+        Worker worker = new Worker();
+        worker.setWorkerId(record.workerId());
+        worker.setStatus(record.statusName() == null ? null : WorkerStatus.valueOf(record.statusName()));
+        worker.setAgentVersion(record.agentVersion());
+        worker.setLastHeartbeat(record.lastHeartbeat());
+        worker.setSupportedProjects(record.supportedProjects());
+        worker.setSupportedEventCodes(record.supportedEventCodes());
+        worker.setWorkerGroupId(record.workerGroupId());
+        worker.setAdapterNodeId(record.adapterNodeId());
+        worker.setAdapterId(record.adapterId());
+        worker.setOnlineStrategy(record.onlineStrategy());
+        worker.setMaxConcurrentWork(record.maxConcurrentWork());
+        worker.setAttributes(record.attributes());
+        worker.setCreateTime(record.createTime());
+        worker.setUpdateTime(record.updateTime());
+        return worker;
     }
 
     private Task task(String project, Map<String, Object> sharedConfig) {

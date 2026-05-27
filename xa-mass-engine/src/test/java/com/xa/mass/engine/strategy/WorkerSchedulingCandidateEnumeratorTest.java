@@ -7,6 +7,7 @@ import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.TestWorkerCandidateRows;
 import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
+import com.xa.mass.runtime.worker.WorkerResourceRecord;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import org.junit.jupiter.api.Test;
 
@@ -22,7 +23,7 @@ public class WorkerSchedulingCandidateEnumeratorTest {
     void createsWorkerLevelCandidateFromRoutingAttributes() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
         Worker worker = worker("worker-stateless", Map.of("routingTags", "shared,us", "country", "us"));
-        workerManager.addWorker(worker);
+        workerManager.addWorker(workerResource(worker));
 
         WorkerSchedulingCandidateEnumerator enumerator = new WorkerSchedulingCandidateEnumerator(workerManager);
 
@@ -40,7 +41,7 @@ public class WorkerSchedulingCandidateEnumeratorTest {
     void enumerationBuildsWorkerLevelCandidateFromWorkerAttributes() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
         Worker worker = worker("worker-attribute-backed", Map.of("country", "worker-level"));
-        workerManager.addWorker(worker);
+        workerManager.addWorker(workerResource(worker));
 
         WorkerSchedulingCandidateEnumerator enumerator = new WorkerSchedulingCandidateEnumerator(workerManager);
 
@@ -60,6 +61,25 @@ public class WorkerSchedulingCandidateEnumeratorTest {
         worker.setSupportedProjects(List.of("demoApp"));
         worker.setAttributes(attributes);
         return worker;
+    }
+
+    private WorkerResourceRecord workerResource(Worker worker) {
+        return new WorkerResourceRecord(
+                worker.getWorkerId(),
+                worker.getStatus() == null ? null : worker.getStatus().name(),
+                worker.getAgentVersion(),
+                worker.getLastHeartbeat(),
+                worker.getSupportedProjects(),
+                worker.getSupportedEventCodes(),
+                worker.getWorkerGroupId(),
+                worker.getAdapterNodeId(),
+                worker.getAdapterId(),
+                worker.getOnlineStrategy(),
+                worker.getMaxConcurrentWork(),
+                worker.getAttributes(),
+                worker.getCreateTime(),
+                worker.getUpdateTime()
+        );
     }
 
 }

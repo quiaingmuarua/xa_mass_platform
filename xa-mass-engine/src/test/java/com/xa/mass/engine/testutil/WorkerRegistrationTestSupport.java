@@ -5,6 +5,7 @@ import com.xa.mass.runtime.worker.AdapterNodeRecord;
 import com.xa.mass.runtime.worker.EventBinding;
 import com.xa.mass.runtime.worker.NodeGroupBindingRecord;
 import com.xa.mass.runtime.worker.WorkerGroupRecord;
+import com.xa.mass.runtime.worker.WorkerResourceRecord;
 import com.xa.mass.engine.worker.WorkerManager;
 
 import java.util.LinkedHashSet;
@@ -31,8 +32,27 @@ public final class WorkerRegistrationTestSupport {
         workerManager.bindNodeGroup(binding(adapterNodeId, groupId));
         worker.setWorkerGroupId(groupId);
         worker.setAdapterNodeId(adapterNodeId);
-        workerManager.addWorker(worker);
+        workerManager.addWorker(workerResource(worker));
         return worker;
+    }
+
+    private static WorkerResourceRecord workerResource(Worker worker) {
+        return new WorkerResourceRecord(
+                worker.getWorkerId(),
+                worker.getStatus() == null ? null : worker.getStatus().name(),
+                worker.getAgentVersion(),
+                worker.getLastHeartbeat(),
+                worker.getSupportedProjects(),
+                worker.getSupportedEventCodes(),
+                worker.getWorkerGroupId(),
+                worker.getAdapterNodeId(),
+                worker.getAdapterId(),
+                worker.getOnlineStrategy(),
+                worker.getMaxConcurrentWork(),
+                worker.getAttributes(),
+                worker.getCreateTime(),
+                worker.getUpdateTime()
+        );
     }
 
     public static void ensureWorkerRegistrationSpine(WorkerManager workerManager,

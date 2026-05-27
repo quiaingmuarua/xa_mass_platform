@@ -48,12 +48,12 @@ class TransportRoutingTaskDispatchListenerTest {
         webSocketWorker.setWorkerId("ws-worker");
         webSocketWorker.setAdapterId("websocket");
         webSocketWorker.setOnlineStrategy(WorkerTransportHints.REALTIME);
-        workerManager.addWorker(webSocketWorker);
+        addWorker(workerManager, webSocketWorker);
 
         Worker pollingWorker = new Worker();
         pollingWorker.setWorkerId("poll-worker");
         pollingWorker.setOnlineStrategy(WorkerTransportHints.POLLING);
-        workerManager.addWorker(pollingWorker);
+        addWorker(workerManager, pollingWorker);
 
         RecordingAdapter webSocketAdapter = new RecordingAdapter("websocket", WorkerTransportHints.REALTIME);
         RecordingAdapter pollingAdapter = new RecordingAdapter(WorkerTransportHints.POLLING);
@@ -84,7 +84,7 @@ class TransportRoutingTaskDispatchListenerTest {
         worker.setWorkerId("ws-worker");
         worker.setAdapterId("websocket-v2");
         worker.setOnlineStrategy(WorkerTransportHints.REALTIME);
-        workerManager.addWorker(worker);
+        addWorker(workerManager, worker);
 
         RecordingAdapter realtimeAdapter = new RecordingAdapter("websocket-v2", WorkerTransportHints.REALTIME);
         TransportRoutingTaskDispatchListener listener = new TransportRoutingTaskDispatchListener(
@@ -108,7 +108,7 @@ class TransportRoutingTaskDispatchListenerTest {
 
         Worker worker = new Worker();
         worker.setWorkerId("missing-transport-worker");
-        workerManager.addWorker(worker);
+        addWorker(workerManager, worker);
 
         RecordingAdapter webSocketAdapter = new RecordingAdapter("websocket", WorkerTransportHints.REALTIME);
         TransportRoutingTaskDispatchListener listener = new TransportRoutingTaskDispatchListener(
@@ -136,7 +136,7 @@ class TransportRoutingTaskDispatchListenerTest {
         Worker worker = new Worker();
         worker.setWorkerId("unsupported-transport-worker");
         worker.setOnlineStrategy("grpc");
-        workerManager.addWorker(worker);
+        addWorker(workerManager, worker);
 
         RecordingAdapter pollingAdapter = new RecordingAdapter(WorkerTransportHints.POLLING);
         TransportRoutingTaskDispatchListener listener = new TransportRoutingTaskDispatchListener(
@@ -164,7 +164,7 @@ class TransportRoutingTaskDispatchListenerTest {
         Worker worker = new Worker();
         worker.setWorkerId("poll-worker");
         worker.setOnlineStrategy(WorkerTransportHints.POLLING);
-        workerManager.addWorker(worker);
+        addWorker(workerManager, worker);
 
         RecordingAdapter pollingAdapter = new RecordingAdapter(WorkerTransportHints.POLLING);
         pollingAdapter.overrideStatus = DispatchOutcomeStatus.BACKPRESSURE_REJECTED;
@@ -191,7 +191,7 @@ class TransportRoutingTaskDispatchListenerTest {
         Worker worker = new Worker();
         worker.setWorkerId("poll-worker");
         worker.setOnlineStrategy(WorkerTransportHints.POLLING);
-        workerManager.addWorker(worker);
+        addWorker(workerManager, worker);
 
         RecordingAdapter pollingAdapter = new RecordingAdapter(WorkerTransportHints.POLLING);
         pollingAdapter.overrideStatus = DispatchOutcomeStatus.ENDPOINT_OFFLINE;
@@ -225,7 +225,7 @@ class TransportRoutingTaskDispatchListenerTest {
         Worker worker = new Worker();
         worker.setWorkerId("poll-worker");
         worker.setOnlineStrategy(WorkerTransportHints.POLLING);
-        workerManager.addWorker(worker);
+        addWorker(workerManager, worker);
 
         RecordingAdapter pollingAdapter = new RecordingAdapter(WorkerTransportHints.POLLING);
         AtomicLong now = new AtomicLong(123456789L);
@@ -254,7 +254,7 @@ class TransportRoutingTaskDispatchListenerTest {
         Worker worker = new Worker();
         worker.setWorkerId("poll-worker");
         worker.setOnlineStrategy(WorkerTransportHints.POLLING);
-        workerManager.addWorker(worker);
+        addWorker(workerManager, worker);
 
         RecordingAdapter pollingAdapter = new RecordingAdapter(WorkerTransportHints.POLLING);
         TransportBinding binding = TransportBinding.builder(pollingAdapter)
@@ -312,8 +312,8 @@ class TransportRoutingTaskDispatchListenerTest {
     @Test
     void dispatchesAdapterGroupsConcurrentlyWhenRuntimeExecutorIsAvailable() throws Exception {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
-        workerManager.addWorker(worker("ws-worker", "websocket", WorkerTransportHints.REALTIME));
-        workerManager.addWorker(worker("poll-worker", null, WorkerTransportHints.POLLING));
+        addWorker(workerManager, worker("ws-worker", "websocket", WorkerTransportHints.REALTIME));
+        addWorker(workerManager, worker("poll-worker", null, WorkerTransportHints.POLLING));
 
         AtomicInteger activeDispatches = new AtomicInteger();
         AtomicInteger maxConcurrentDispatches = new AtomicInteger();
@@ -356,8 +356,8 @@ class TransportRoutingTaskDispatchListenerTest {
     @Test
     void adapterDispatchFailureBecomesRetryableOutcomeWithoutBlockingOtherGroups() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
-        workerManager.addWorker(worker("ws-worker", "websocket", WorkerTransportHints.REALTIME));
-        workerManager.addWorker(worker("poll-worker", null, WorkerTransportHints.POLLING));
+        addWorker(workerManager, worker("ws-worker", "websocket", WorkerTransportHints.REALTIME));
+        addWorker(workerManager, worker("poll-worker", null, WorkerTransportHints.POLLING));
 
         ThrowingAdapter realtimeAdapter = new ThrowingAdapter("websocket", WorkerTransportHints.REALTIME);
         RecordingAdapter pollingAdapter = new RecordingAdapter(WorkerTransportHints.POLLING);
@@ -507,6 +507,25 @@ class TransportRoutingTaskDispatchListenerTest {
         return worker;
     }
 
+    private static void addWorker(WorkerManager workerManager, Worker worker) {
+        workerManager.addWorker(new WorkerResourceRecord(
+                worker.getWorkerId(),
+                worker.getStatus() == null ? null : worker.getStatus().name(),
+                worker.getAgentVersion(),
+                worker.getLastHeartbeat(),
+                worker.getSupportedProjects(),
+                worker.getSupportedEventCodes(),
+                worker.getWorkerGroupId(),
+                worker.getAdapterNodeId(),
+                worker.getAdapterId(),
+                worker.getOnlineStrategy(),
+                worker.getMaxConcurrentWork(),
+                worker.getAttributes(),
+                worker.getCreateTime(),
+                worker.getUpdateTime()
+        ));
+    }
+
     private static TransportBinding workerIdRouteBinding(WorkerAdapter adapter) {
         return TransportBinding.builder(adapter)
                 .routeKeyResolver((dispatchBinding, routeContext) -> {
@@ -564,7 +583,7 @@ class TransportRoutingTaskDispatchListenerTest {
 
         private CountingWorkerResourceRuntime(Worker worker) {
             super(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
-            addWorker(worker);
+            TransportRoutingTaskDispatchListenerTest.addWorker(this, worker);
         }
 
         @Override

@@ -24,6 +24,7 @@ import com.xa.mass.runtime.worker.NodeGroupBindingRecord;
 import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.runtime.worker.WorkerGroupRecord;
 import com.xa.mass.runtime.worker.WorkerReachabilityView;
+import com.xa.mass.runtime.worker.WorkerResourceRecord;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
@@ -78,6 +79,8 @@ final class TaskSchedulingTestHarness {
         );
         RuleBasedTaskWorkerMatchingStrategy matchingStrategy = new RuleBasedTaskWorkerMatchingStrategy(
                 ruleManager,
+                workerManager,
+                workerManager,
                 workerManager,
                 assignmentRecords,
                 com.xa.mass.engine.util.TraceEventLogger.noop()
@@ -176,7 +179,7 @@ final class TaskSchedulingTestHarness {
     Worker addStatelessWorker(String workerId, int maxConcurrentWork) {
         Worker worker = worker(workerId);
         worker.setMaxConcurrentWork(maxConcurrentWork);
-        workerManager.addWorker(worker);
+        workerManager.addWorker(workerResource(worker));
         return worker;
     }
 
@@ -185,8 +188,27 @@ final class TaskSchedulingTestHarness {
                      Map<String, String> attributes) {
         Worker worker = worker(workerId);
         worker.setAttributes(workerAttributes(routingCode, attributes));
-        workerManager.addWorker(worker);
+        workerManager.addWorker(workerResource(worker));
         return worker;
+    }
+
+    private static WorkerResourceRecord workerResource(Worker worker) {
+        return new WorkerResourceRecord(
+                worker.getWorkerId(),
+                worker.getStatus() == null ? null : worker.getStatus().name(),
+                worker.getAgentVersion(),
+                worker.getLastHeartbeat(),
+                worker.getSupportedProjects(),
+                worker.getSupportedEventCodes(),
+                worker.getWorkerGroupId(),
+                worker.getAdapterNodeId(),
+                worker.getAdapterId(),
+                worker.getOnlineStrategy(),
+                worker.getMaxConcurrentWork(),
+                worker.getAttributes(),
+                worker.getCreateTime(),
+                worker.getUpdateTime()
+        );
     }
 
     TaskWorkStats stats(String taskId) {

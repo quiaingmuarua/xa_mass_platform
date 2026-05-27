@@ -1313,6 +1313,15 @@ class EngineSchedulingCoreArchitectureGuardTest {
         String source = Files.readString(workerManagerPath, StandardCharsets.UTF_8);
 
         List<String> violations = new ArrayList<>();
+        if (Pattern.compile("public\\s+void\\s+addWorker\\s*\\(\\s*Worker\\s+").matcher(source).find()) {
+            violations.add(workerManagerPath + " exposes Worker-shaped resource registration");
+        }
+        if (Pattern.compile("public\\s+Worker\\s+getWorker\\s*\\(").matcher(source).find()) {
+            violations.add(workerManagerPath + " exposes Worker-shaped resource lookup");
+        }
+        if (Pattern.compile("public\\s+boolean\\s+updateWorker\\s*\\(\\s*Worker\\s+").matcher(source).find()) {
+            violations.add(workerManagerPath + " exposes Worker-shaped resource update");
+        }
         if (Pattern.compile("\\bfindWorkerCandidateBatch\\s*\\(\\s*Task\\b").matcher(source).find()) {
             violations.add(workerManagerPath + " exposes Task-shaped candidate acquisition");
         }
@@ -1324,8 +1333,9 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "WorkerManager is still assembly, but candidate acquisition and warm-hint entrypoints "
-                        + "must stay on runtime-neutral WorkerTaskSelector / WorkerCandidateRow shapes:\n"
+                "WorkerManager is still assembly, but resource, candidate acquisition, and warm-hint "
+                        + "entrypoints must stay on runtime-neutral WorkerResourceRecord / "
+                        + "WorkerTaskSelector / WorkerCandidateRow shapes:\n"
                         + String.join("\n", violations));
     }
 
