@@ -1,30 +1,26 @@
-package com.xa.mass.engine.worker;
+package com.xa.mass.worker.runtime;
 
 import com.xa.mass.runtime.worker.WorkerCapabilityReport;
 import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;
-import com.xa.mass.worker.runtime.WorkerCapabilityAuthority;
-import com.xa.mass.worker.runtime.WorkerGroupOwner;
-import com.xa.mass.worker.runtime.WorkerRegistrySnapshot;
-import com.xa.mass.worker.runtime.WorkerResourceOwner;
 
 /**
- * Package-local owner for worker-originated capability report projection.
+ * Runtime owner for worker-originated capability report projection.
  */
-final class WorkerReportOwner {
+public final class WorkerReportOwner {
 
     private final WorkerCapabilityAuthority capabilityAuthority;
     private final WorkerResourceOwner resourceOwner;
     private final WorkerGroupOwner groupOwner;
 
-    WorkerReportOwner(WorkerCapabilityAuthority capabilityAuthority,
-                      WorkerResourceOwner resourceOwner,
-                      WorkerGroupOwner groupOwner) {
+    public WorkerReportOwner(WorkerCapabilityAuthority capabilityAuthority,
+                             WorkerResourceOwner resourceOwner,
+                             WorkerGroupOwner groupOwner) {
         this.capabilityAuthority = capabilityAuthority != null ? capabilityAuthority : new WorkerCapabilityAuthority();
         this.resourceOwner = resourceOwner;
         this.groupOwner = groupOwner;
     }
 
-    WorkerCapabilityReportApplication applyWorkerCapabilityReport(WorkerCapabilityReport report) {
+    public WorkerCapabilityReportApplication applyWorkerCapabilityReport(WorkerCapabilityReport report) {
         WorkerCapabilityReportResult result = capabilityAuthority.applyReport(
                 report,
                 resourceOwner.getAllWorkers(),
@@ -38,7 +34,7 @@ final class WorkerReportOwner {
         return new WorkerCapabilityReportApplication(result, snapshot);
     }
 
-    WorkerRegistrySnapshot composeWorkerRegistrySnapshot() {
+    public WorkerRegistrySnapshot composeWorkerRegistrySnapshot() {
         return capabilityAuthority.composeSnapshot(resourceOwner.getAllWorkers(), groupOwner.workerGroups());
     }
 }

@@ -662,8 +662,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
     @Test
     void workerManagerPublishesRegistrySnapshotThroughCapabilityAuthority() throws IOException {
-        Path workerReportOwnerPath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/worker/WorkerReportOwner.java");
+        Path workerReportOwnerPath = repositoryRoot().resolve(
+                "xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/WorkerReportOwner.java");
         String source = Files.readString(workerReportOwnerPath, StandardCharsets.UTF_8);
 
         List<String> violations = new ArrayList<>();
@@ -824,8 +824,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
     void workerStorageAllWorkerScanStaysOutOfSchedulingHotPath() throws IOException {
         Path engineRoot = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine");
         Path workerManagerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker/WorkerManager.java");
-        Path workerReportOwnerPath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/worker/WorkerReportOwner.java");
+        Path workerReportOwnerPath = repositoryRoot().resolve(
+                "xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/WorkerReportOwner.java");
         Pattern allWorkerScan = Pattern.compile("\\.getAllWorkers\\s*\\(");
 
         List<String> violations = new ArrayList<>();

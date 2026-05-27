@@ -1,9 +1,8 @@
-package com.xa.mass.engine.worker;
+package com.xa.mass.worker.runtime;
 
 import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;
-import com.xa.mass.worker.runtime.WorkerRegistrySnapshot;
 
-record WorkerCapabilityReportApplication(
+public record WorkerCapabilityReportApplication(
         WorkerCapabilityReportResult result,
         WorkerRegistrySnapshot snapshot) {
 }

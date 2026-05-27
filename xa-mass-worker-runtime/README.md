@@ -14,6 +14,7 @@ Current scope:
 - Worker admission, occupancy, and exclusive lease owner.
 - Task-local warm candidate hint storage.
 - Worker capability composition and registry snapshot read model.
+- Worker capability report application owner.
 - Stage-1 worker candidate index and source guard.
 - Stage-1 candidate source orchestration and warm/cold merge.
 

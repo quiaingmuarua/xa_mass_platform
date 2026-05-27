@@ -70,12 +70,10 @@ Worker row mutation and registry slot projection are owned by
 owned by `WorkerGroupOwner`; AdapterNode and WorkerGroup binding relationships
 are owned by `WorkerRelationshipOwner`; bounded worker state report projection
 is owned by `WorkerStateProjectionOwner`; worker runtime admission, exclusive
-lease, and occupancy reads are owned by `WorkerAdmissionOwner`.
-Worker-originated capability report projection is still engine-local in
-`WorkerReportOwner` because it composes the current engine
-`WorkerRegistrySnapshot` residue. `WorkerManager` and `WorkerControlService`
-still implement the external contracts and delegate to these owners while
-callers converge.
+lease, and occupancy reads are owned by `WorkerAdmissionOwner`;
+worker-originated capability report projection is owned by `WorkerReportOwner`.
+`WorkerManager` and `WorkerControlService` still implement the external
+contracts and delegate to these owners while callers converge.
 
 ## Public Method Inventory
 
@@ -94,7 +92,7 @@ callers converge.
 | Candidate index diagnostics | `getWorkerCandidateIndex` | tests and indexed source diagnostics | `WorkerCandidateIndex` in `xa-mass-worker-runtime` plus engine-local diagnostic exposure | runtime read model residue | Kept off `WorkerCandidateRuntime` so the candidate contract does not expose Stage-1 implementation types |
 | Warm hints | `recordWarmCandidate` | `TaskWorkerAssignListener`, strategy tests | `TaskCandidateWarmPool` in `xa-mass-worker-runtime` plus engine-side write timing | runtime state | Kept off `WorkerCandidateRuntime`; engine triggers after useful assignment evidence, runtime owns bounded hint storage |
 | Snapshot maintenance | `refreshWorkerRegistrySnapshot`, `getWorkerRegistrySnapshot` | tests, diagnostics, capability report path | `WorkerRegistrySnapshot` in `xa-mass-worker-runtime` plus engine publication residue | runtime read model residue | Delete or narrow public snapshot access after runtime DTOs replace snapshot callers |
-| Capability report | `applyWorkerCapabilityReport` | `WorkerControlService`, event handlers, SDK | `WorkerCapabilityAuthority` in `xa-mass-worker-runtime` plus engine-local report application | resource mutation plus runtime projection | Runtime-api report/result/status contract; engine-local application still carries snapshot refresh into `WorkerManager` |
+| Capability report | `applyWorkerCapabilityReport` | `WorkerControlService`, event handlers, SDK | `WorkerReportOwner` / `WorkerCapabilityAuthority` in `xa-mass-worker-runtime` | resource mutation plus runtime projection | Runtime-api report/result/status contract; engine still publishes the returned snapshot through `WorkerManager` |
 | State report projection | `applyWorkerStateReport` / `WorkerStateProjectionOwner.applyReport` | `WorkerControlService`, event handlers, tests | `WorkerStateProjectionOwner` in `xa-mass-worker-runtime` | bounded runtime diagnostic projection | Runtime-api report/projection/result DTOs; engine callers consume the moved owner through `WorkerManager` assembly |
 | Online model status | `updateOnlineStatus`, `isWorkerOnline` | legacy event bridge, tests | compatibility/resource status path | control-plane row plus transport reachability residue | Transport presence remains reachability owner |
 | Reachability read | `getWorkerReachability` | scheduling candidate enumeration, tests | `WorkerSchedulingViewRuntime` | transport evidence consumed as runtime read evidence | Returns runtime-neutral `WorkerReachabilityState`; must not turn transport session into scheduling truth |
