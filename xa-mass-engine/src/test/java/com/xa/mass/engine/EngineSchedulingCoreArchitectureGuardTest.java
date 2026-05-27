@@ -1730,7 +1730,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 .find()) {
             violations.add(engineConfigPath + " exposes WorkerManager as public starter config surface");
         }
-        if (!engineConfigSource.contains("WorkerControlRuntime getWorkerControlService()")) {
+        if (!engineConfigSource.contains("WorkerControlRuntime getWorkerControlRuntime()")) {
             violations.add(engineConfigPath + " does not expose worker control through WorkerControlRuntime");
         }
         if (massEngineSource.contains("com.xa.mass.engine.worker.WorkerManager")

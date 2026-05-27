@@ -1671,7 +1671,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     private WorkerControlRuntime requireStartedWorkerControlService() {
-        WorkerControlRuntime service = requireStartedEngine().getConfig().getWorkerControlService();
+        WorkerControlRuntime service = requireStartedEngine().getConfig().getWorkerControlRuntime();
         if (service == null) {
             throw new IllegalStateException("Worker control service is unavailable for this SDK application");
         }

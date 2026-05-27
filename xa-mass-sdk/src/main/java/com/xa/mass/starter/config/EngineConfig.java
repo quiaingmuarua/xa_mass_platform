@@ -346,7 +346,7 @@ public class EngineConfig {
         return workerManager();
     }
 
-    public WorkerControlRuntime getWorkerControlService() {
+    public WorkerControlRuntime getWorkerControlRuntime() {
         if (workerControlRuntime == null) {
             workerControlRuntime = new WorkerControlService(
                     getWorkerReportRuntime(),

@@ -746,7 +746,7 @@ public class MassApplication {
                 || rawWorkerMessageChannelsByAdapterId.isEmpty()) {
             return;
         }
-        engineConfig.getWorkerControlService().setCommandDeliveryPort(
+        engineConfig.getWorkerControlRuntime().setCommandDeliveryPort(
                 this::deliverRealtimeWorkerCommand,
                 task -> {
                     if (transportRuntimeTaskExecutor == null) {

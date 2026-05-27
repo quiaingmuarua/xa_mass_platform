@@ -142,7 +142,7 @@ public class MassEngine {
             TaskDispatchWakeupBridge dispatchWakeupBridge =
                     new TaskDispatchWakeupBridge(assignWorker, runtimeReadyDispatchPump);
             Runnable dispatchWakeupCallback = dispatchWakeupBridge.callback("worker availability changed");
-            config.getWorkerControlService().setDispatchWakeupCallback(dispatchWakeupCallback);
+            config.getWorkerControlRuntime().setDispatchWakeupCallback(dispatchWakeupCallback);
             workerAvailabilityWakeupRuntime.setDispatchWakeupCallback(dispatchWakeupCallback);
             runtimeReadyDispatchPump.start();
 
@@ -171,7 +171,7 @@ public class MassEngine {
             leaseWatchdog = new LeaseExpireWatchdog(runtimeMaintenancePort, config.getLeaseWatchdogIntervalSeconds());
             leaseWatchdog.start();
             workerCommandMaintenanceWatchdog = new WorkerCommandMaintenanceWatchdog(
-                    config.getWorkerControlService(),
+                    config.getWorkerControlRuntime(),
                     config.getWorkerCommandMaintenanceIntervalSeconds(),
                     config.getWorkerCommandMaintenanceScanLimit(),
                     config.getWorkerCommandDeliveryMaxAttempts()
@@ -216,7 +216,7 @@ public class MassEngine {
                 runtimeBridge.stop();
                 runtimeBridge = null;
             }
-            config.getWorkerControlService().setDispatchWakeupCallback(null);
+            config.getWorkerControlRuntime().setDispatchWakeupCallback(null);
             config.getWorkerAvailabilityWakeupRuntime().setDispatchWakeupCallback(null);
             if (leaseWatchdog != null) {
                 leaseWatchdog.stop();
