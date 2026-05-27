@@ -1,7 +1,7 @@
 package com.xa.mass.engine.watchdog;
 
 import com.xa.mass.engine.command.WorkerCommandLifecycleResult;
-import com.xa.mass.engine.worker.WorkerControlService;
+import com.xa.mass.engine.WorkerControlRuntime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,20 +18,20 @@ public final class WorkerCommandMaintenanceWatchdog {
 
     private static final Logger log = LoggerFactory.getLogger(WorkerCommandMaintenanceWatchdog.class);
 
-    private final WorkerControlService workerControlService;
+    private final WorkerControlRuntime workerControlRuntime;
     private final long intervalSeconds;
     private final int scanLimit;
     private final int maxDeliveryAttempts;
     private ScheduledExecutorService scheduler;
 
-    public WorkerCommandMaintenanceWatchdog(WorkerControlService workerControlService,
+    public WorkerCommandMaintenanceWatchdog(WorkerControlRuntime workerControlRuntime,
                                             long intervalSeconds,
                                             int scanLimit,
                                             int maxDeliveryAttempts) {
-        if (workerControlService == null) {
-            throw new IllegalArgumentException("workerControlService must not be null");
+        if (workerControlRuntime == null) {
+            throw new IllegalArgumentException("workerControlRuntime must not be null");
         }
-        this.workerControlService = workerControlService;
+        this.workerControlRuntime = workerControlRuntime;
         this.intervalSeconds = Math.max(1L, intervalSeconds);
         this.scanLimit = Math.max(1, scanLimit);
         this.maxDeliveryAttempts = Math.max(1, maxDeliveryAttempts);
@@ -66,14 +66,14 @@ public final class WorkerCommandMaintenanceWatchdog {
     void scan() {
         try {
             List<WorkerCommandLifecycleResult> results =
-                    workerControlService.expireDueWorkerCommands(Instant.now(), scanLimit);
+                    workerControlRuntime.expireDueWorkerCommands(Instant.now(), scanLimit);
             if (!results.isEmpty()) {
                 log.info("Expired {} worker commands", results.size());
             }
             int remainingLimit = Math.max(0, scanLimit - results.size());
             if (remainingLimit > 0) {
                 List<WorkerCommandLifecycleResult> retryResults =
-                        workerControlService.retryPendingWorkerCommandDeliveries(remainingLimit, maxDeliveryAttempts);
+                        workerControlRuntime.retryPendingWorkerCommandDeliveries(remainingLimit, maxDeliveryAttempts);
                 if (!retryResults.isEmpty()) {
                     log.info("Retried {} pending worker command deliveries", retryResults.size());
                 }

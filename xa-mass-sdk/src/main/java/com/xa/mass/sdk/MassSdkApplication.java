@@ -22,8 +22,8 @@ import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.stage.TaskStageEvidenceResult;
 import com.xa.mass.engine.stage.TaskStageEvidenceService;
 import com.xa.mass.engine.stage.TaskStageProjection;
+import com.xa.mass.engine.WorkerControlRuntime;
 import com.xa.mass.runtime.worker.EventBinding;
-import com.xa.mass.engine.worker.WorkerControlService;
 import com.xa.mass.runtime.worker.WorkerGroupRecord;
 import com.xa.mass.runtime.worker.AdapterNodeRecord;
 import com.xa.mass.runtime.worker.NodeGroupBindingRecord;
@@ -1670,8 +1670,8 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return ruleStorage;
     }
 
-    private WorkerControlService requireStartedWorkerControlService() {
-        WorkerControlService service = requireStartedEngine().getConfig().getWorkerControlService();
+    private WorkerControlRuntime requireStartedWorkerControlService() {
+        WorkerControlRuntime service = requireStartedEngine().getConfig().getWorkerControlService();
         if (service == null) {
             throw new IllegalStateException("Worker control service is unavailable for this SDK application");
         }

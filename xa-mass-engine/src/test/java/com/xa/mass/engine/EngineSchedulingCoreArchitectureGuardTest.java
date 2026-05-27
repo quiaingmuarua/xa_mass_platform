@@ -1715,6 +1715,10 @@ class EngineSchedulingCoreArchitectureGuardTest {
         if (!sdkSource.contains("WorkerResourceRuntime")) {
             violations.add(sdkApplicationPath + " does not use WorkerResourceRuntime");
         }
+        if (sdkSource.contains("com.xa.mass.engine.worker.WorkerControlService")
+                || Pattern.compile("\\bWorkerControlService\\b").matcher(sdkSource).find()) {
+            violations.add(sdkApplicationPath + " imports WorkerControlService instead of WorkerControlRuntime");
+        }
         if (diagnosticsSource.contains("getWorkerManager()")) {
             violations.add(diagnosticsPath + " calls EngineConfig.getWorkerManager()");
         }
@@ -1725,6 +1729,9 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 .matcher(engineConfigSource)
                 .find()) {
             violations.add(engineConfigPath + " exposes WorkerManager as public starter config surface");
+        }
+        if (!engineConfigSource.contains("WorkerControlRuntime getWorkerControlService()")) {
+            violations.add(engineConfigPath + " does not expose worker control through WorkerControlRuntime");
         }
         if (massEngineSource.contains("com.xa.mass.engine.worker.WorkerManager")
                 || Pattern.compile("\\bWorkerManager\\b").matcher(massEngineSource).find()) {

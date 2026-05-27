@@ -9,6 +9,7 @@ import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.TaskManagerResultIngestFacade;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
+import com.xa.mass.engine.WorkerControlRuntime;
 import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.runtime.worker.WorkerReachabilityView;
 import com.xa.mass.engine.worker.WorkerControlService;
@@ -90,7 +91,7 @@ public class EngineConfig {
     private WorkerDispatchAvailabilityPolicy workerDispatchAvailabilityPolicy =
             new DefaultWorkerDispatchAvailabilityPolicy();
     private WorkerStateProjectionRuntime workerStateProjectionRuntime = new WorkerStateProjectionOwner();
-    private WorkerControlService workerControlService;
+    private WorkerControlRuntime workerControlRuntime;
     private TaskStageEvidenceOwner taskStageEvidenceOwner = new TaskStageEvidenceOwner();
     private TaskStageEvidenceService taskStageEvidenceService;
     private AssignmentDiagnosticRecorder recordService = new AssignmentRecordService();
@@ -139,7 +140,7 @@ public class EngineConfig {
         this.workerCommandLifecycleOwner = source.workerCommandLifecycleOwner;
         this.workerDispatchAvailabilityPolicy = source.workerDispatchAvailabilityPolicy;
         this.workerStateProjectionRuntime = source.workerStateProjectionRuntime;
-        this.workerControlService = null;
+        this.workerControlRuntime = null;
         this.taskStageEvidenceOwner = source.taskStageEvidenceOwner;
         this.taskStageEvidenceService = null;
         this.recordService = source.recordService;
@@ -345,9 +346,9 @@ public class EngineConfig {
         return workerManager();
     }
 
-    public WorkerControlService getWorkerControlService() {
-        if (workerControlService == null) {
-            workerControlService = new WorkerControlService(
+    public WorkerControlRuntime getWorkerControlService() {
+        if (workerControlRuntime == null) {
+            workerControlRuntime = new WorkerControlService(
                     getWorkerReportRuntime(),
                     getWorkerResourceRuntime(),
                     getWorkerDispatchGateRuntime(),
@@ -357,7 +358,7 @@ public class EngineConfig {
                     getTraceEventLogger()
             );
         }
-        return workerControlService;
+        return workerControlRuntime;
     }
 
     public TaskStageEvidenceService getTaskStageEvidenceService() {
@@ -379,7 +380,7 @@ public class EngineConfig {
                 ? workerReachabilityView
                 : WorkerReachabilityView.permissive();
         this.workerManager = null;
-        this.workerControlService = null;
+        this.workerControlRuntime = null;
     }
 
     public WorkerDispatchAvailabilityPolicy getWorkerDispatchAvailabilityPolicy() {
@@ -390,7 +391,7 @@ public class EngineConfig {
         this.workerDispatchAvailabilityPolicy = workerDispatchAvailabilityPolicy != null
                 ? workerDispatchAvailabilityPolicy
                 : new DefaultWorkerDispatchAvailabilityPolicy();
-        this.workerControlService = null;
+        this.workerControlRuntime = null;
     }
 
     public WorkerStorage getWorkerStorage() {
@@ -403,7 +404,7 @@ public class EngineConfig {
         }
         this.workerStorage = workerStorage;
         this.workerManager = null;
-        this.workerControlService = null;
+        this.workerControlRuntime = null;
     }
 
     public WorkerRegistry getWorkerRegistry() {
@@ -421,7 +422,7 @@ public class EngineConfig {
             throw new IllegalStateException("Cannot replace workerRegistry after workerManager has been configured");
         }
         this.workerRegistry = workerRegistry;
-        this.workerControlService = null;
+        this.workerControlRuntime = null;
     }
 
     public AssignmentDiagnosticRecorder getRecordService() {
@@ -462,7 +463,7 @@ public class EngineConfig {
         }
         this.executionEventSink = executionEventSink;
         this.traceEventLogger = null;
-        this.workerControlService = null;
+        this.workerControlRuntime = null;
         this.taskStageEvidenceService = null;
     }
 

@@ -668,6 +668,9 @@ Progress:
   worker state dispatch-gate effects, state projection, and resource reads
   remain behaviorally unchanged, but worker-control ingress no longer has a
   constructor path back to the god object.
+- SDK and lifecycle callers now consume the engine-root `WorkerControlRuntime`
+  surface; `WorkerControlService` remains the engine worker implementation
+  behind `EngineConfig` assembly.
 - `MassEngine` now wires resource-side availability wakeups through
   `WorkerAvailabilityWakeupRuntime` instead of importing `WorkerManager`
   directly. This keeps assignment retry / ready-scan wakeup wiring as lifecycle

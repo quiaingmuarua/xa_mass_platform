@@ -79,7 +79,8 @@ lease, and occupancy reads are owned by `WorkerAdmissionOwner`;
 worker-originated capability report projection is owned by `WorkerReportOwner`.
 `WorkerManager` still implements the runtime contracts and delegates to these
 owners while module movement is pending, but it is no longer exposed through
-public SDK/starter configuration. `WorkerControlService` now consumes
+public SDK/starter configuration. `WorkerControlService` implements the narrow
+external `WorkerControlRuntime` caller surface and consumes
 `WorkerReportRuntime`, `WorkerResourceRuntime`, `WorkerDispatchGateRuntime`,
 and `WorkerStateProjectionRuntime` instead of accepting the full
 `WorkerManager` assembly surface or concrete projection owner.
@@ -129,8 +130,8 @@ local scenario assembly, but registration setup and matching loops now consume
 | Candidate index diagnostics | `getWorkerCandidateIndex` | engine package tests and indexed source diagnostics | `WorkerCandidateIndex` in `xa-mass-worker-runtime` plus engine-local diagnostic exposure | runtime read model residue | Package-private only; kept off `WorkerCandidateRuntime` so the candidate contract does not expose Stage-1 implementation types |
 | Warm hints | `recordWarmCandidate` | `TaskWorkerAssignListener`, strategy tests | `TaskCandidateWarmPool` in `xa-mass-worker-runtime` plus engine-side write timing | runtime state | Kept off `WorkerCandidateRuntime`; public entrypoint uses `WorkerTaskSelector` and `WorkerCandidateRow`; engine triggers after useful assignment evidence, runtime owns bounded hint storage |
 | Snapshot maintenance | `refreshWorkerRegistrySnapshot`, `getWorkerRegistrySnapshot` | engine package tests, diagnostics, capability report path | `WorkerRegistrySnapshot` in `xa-mass-worker-runtime` plus engine publication residue | runtime read model residue | Package-private only; public callers must use runtime/resource contracts instead of snapshot/index internals |
-| Capability report | `applyWorkerCapabilityReport` | `WorkerControlService`, event handlers, SDK | `WorkerReportOwner` / `WorkerCapabilityAuthority` in `xa-mass-worker-runtime` | resource mutation plus runtime projection | Runtime-api report/result/status contract; engine still publishes the returned snapshot through `WorkerManager` |
-| State report projection | `applyWorkerStateReport` / `WorkerStateProjectionRuntime.applyReport` | `WorkerControlService`, event handlers, tests | `WorkerStateProjectionOwner` in `xa-mass-worker-runtime` through `WorkerStateProjectionRuntime` | bounded runtime diagnostic projection | Runtime-api report/projection/result DTOs plus projection contract; engine control service no longer depends on the concrete owner |
+| Capability report | `applyWorkerCapabilityReport` | `WorkerControlRuntime`, event handlers, SDK | `WorkerReportOwner` / `WorkerCapabilityAuthority` in `xa-mass-worker-runtime` | resource mutation plus runtime projection | Runtime-api report/result/status contract; engine still publishes the returned snapshot through `WorkerManager` |
+| State report projection | `applyWorkerStateReport` / `WorkerStateProjectionRuntime.applyReport` | `WorkerControlRuntime`, event handlers, tests | `WorkerStateProjectionOwner` in `xa-mass-worker-runtime` through `WorkerStateProjectionRuntime` | bounded runtime diagnostic projection | Runtime-api report/projection/result DTOs plus projection contract; engine control service no longer depends on the concrete owner |
 | Online model status | deleted from `WorkerManager` | legacy event bridge reads/writes resource rows only for heartbeat evidence | transport presence / resource row owner | transport presence plus control-plane heartbeat evidence | SDK/server online queries use transport presence; the legacy worker event listener does not own model online truth |
 | Reachability read | `getWorkerReachability` | scheduling candidate enumeration, tests | `WorkerSchedulingViewRuntime` | transport evidence consumed as runtime read evidence | Returns runtime-neutral `WorkerReachabilityState`; must not turn transport session into scheduling truth |
 | Dispatch gate read | `isWorkerDispatchEnabled` | scheduling candidate enumeration, tests | `WorkerSchedulingViewRuntime` / `WorkerDispatchGateRuntime` | runtime state | Derived from source-scoped gates; scheduling consumes read evidence, control policies consume gate contract; the old `Worker`-shaped overload has been deleted |
@@ -167,7 +168,8 @@ engine assignment
      -> WorkerWarmHintRuntime for task-local warm hint writes
 
 worker control
-  -> WorkerControlService
+  -> WorkerControlRuntime
+  -> WorkerControlService implementation
   -> WorkerReportRuntime.applyWorkerCapabilityReport
   -> WorkerReportOwner
   -> WorkerStateProjectionRuntime.applyReport

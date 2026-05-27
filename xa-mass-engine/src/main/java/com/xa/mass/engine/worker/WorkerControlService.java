@@ -9,6 +9,7 @@ import com.xa.mass.engine.command.WorkerCommandLifecycleResultCode;
 import com.xa.mass.engine.command.WorkerCommandRecord;
 import com.xa.mass.engine.command.WorkerCommandRequest;
 import com.xa.mass.engine.command.WorkerCommandStatus;
+import com.xa.mass.engine.WorkerControlRuntime;
 import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.runtime.worker.WorkerCapabilityReport;
 import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;
@@ -37,7 +38,7 @@ import java.util.concurrent.Executor;
  * entry/read handoff plus canonical trace emission. Event handlers should parse
  * event payloads and call this service instead of owning mutation themselves.</p>
  */
-public final class WorkerControlService {
+public final class WorkerControlService implements WorkerControlRuntime {
     private static final Logger log = LoggerFactory.getLogger(WorkerControlService.class);
 
     private final WorkerReportRuntime workerReportRuntime;
@@ -85,6 +86,7 @@ public final class WorkerControlService {
                 traceEventLogger);
     }
 
+    @Override
     public WorkerCapabilityReportResult applyWorkerCapabilityReport(WorkerCapabilityReport report) {
         WorkerCapabilityReportResult result = workerReportRuntime.applyWorkerCapabilityReport(report);
         if (result.success() && result.snapshotChanged()) {
@@ -94,6 +96,7 @@ public final class WorkerControlService {
         return result;
     }
 
+    @Override
     public WorkerStateProjectionResult applyWorkerStateReport(WorkerStateReport report) {
         WorkerStateProjectionResult result = stateProjectionRuntime.applyReport(report);
         if (result.success()) {
@@ -108,6 +111,7 @@ public final class WorkerControlService {
         return result;
     }
 
+    @Override
     public WorkerCommandLifecycleResult requestWorkerCommand(WorkerCommandRequest request) {
         WorkerCommandLifecycleResult result = commandLifecycleOwner.requestCommand(request);
         traceEventLogger.workerCommandStatusTransition(result);
@@ -117,6 +121,7 @@ public final class WorkerControlService {
         return result;
     }
 
+    @Override
     public WorkerCommandLifecycleResult applyWorkerCommandAcknowledgement(WorkerCommandAcknowledgement acknowledgement) {
         WorkerCommandLifecycleResult result = commandLifecycleOwner.applyAcknowledgement(acknowledgement);
         if (result.success()) {
@@ -126,6 +131,7 @@ public final class WorkerControlService {
         return result;
     }
 
+    @Override
     public List<WorkerCommandLifecycleResult> expireDueWorkerCommands(Instant now, int limit) {
         List<WorkerCommandLifecycleResult> results = commandLifecycleOwner.expireDueCommands(now, limit);
         for (WorkerCommandLifecycleResult result : results) {
@@ -134,6 +140,7 @@ public final class WorkerControlService {
         return results;
     }
 
+    @Override
     public List<WorkerCommandLifecycleResult> retryPendingWorkerCommandDeliveries(int limit, int maxAttempts) {
         if (limit <= 0 || commandDeliveryCoordinator == null) {
             return List.of();
@@ -146,6 +153,7 @@ public final class WorkerControlService {
                 .toList();
     }
 
+    @Override
     public List<WorkerCommandRecord> claimPendingWorkerCommands(String workerId, int limit) {
         List<WorkerCommandLifecycleResult> results = commandLifecycleOwner.claimPendingCommandsForWorker(
                 workerId,
@@ -161,22 +169,27 @@ public final class WorkerControlService {
                 .toList();
     }
 
+    @Override
     public Optional<WorkerCommandRecord> workerCommand(String commandId) {
         return commandLifecycleOwner.command(commandId);
     }
 
+    @Override
     public List<WorkerCommandRecord> workerCommandsForWorker(String workerId) {
         return commandLifecycleOwner.commandsForWorker(workerId);
     }
 
+    @Override
     public Optional<WorkerStateProjection> workerStateProjection(String workerId) {
         return stateProjectionRuntime.projection(workerId);
     }
 
+    @Override
     public List<WorkerStateProjection> workerStateProjections() {
         return stateProjectionRuntime.projections();
     }
 
+    @Override
     public void setDispatchWakeupCallback(Runnable dispatchWakeupCallback) {
         this.dispatchWakeupCallback = dispatchWakeupCallback != null ? dispatchWakeupCallback : () -> {
         };
@@ -188,6 +201,7 @@ public final class WorkerControlService {
         this.commandDeliveryExecutor = commandDeliveryExecutor != null ? commandDeliveryExecutor : Runnable::run;
     }
 
+    @Override
     public void setCommandDeliveryPort(WorkerCommandDeliveryPort commandDeliveryPort,
                                        Executor commandDeliveryExecutor) {
         this.commandDeliveryCoordinator = commandDeliveryPort == null
