@@ -111,6 +111,12 @@ worker relationship resources
   -> WorkerRegistry source-scoped dispatch gates for binding availability
 ```
 
+`RuleBasedTaskWorkerMatchingStrategy` now receives candidate acquisition,
+admission, and scheduling-view runtimes as explicit constructor dependencies.
+Production assembly still passes `WorkerManager` for all three while the
+implementation remains inside engine, but candidate acquisition no longer
+implicitly requires the same object to also implement scheduling-view reads.
+
 ## Disposition Notes
 
 ### `WorkerLookupStore`

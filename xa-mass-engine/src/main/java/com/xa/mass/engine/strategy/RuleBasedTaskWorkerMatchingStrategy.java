@@ -91,13 +91,14 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                                         WorkerCandidateRanker candidateRanker,
                                         WorkerDispatchResourcePolicy resourcePolicy,
                                         WorkerSchedulingCandidateEnumerator candidateEnumerator) {
-        this(ruleManager, workerManager, workerManager, recordService, traceEventLogger,
+        this(ruleManager, workerManager, workerManager, workerManager, recordService, traceEventLogger,
                 candidateRanker, resourcePolicy, candidateEnumerator);
     }
 
     RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
                                         WorkerCandidateRuntime candidateRuntime,
                                         WorkerAdmissionRuntime admissionRuntime,
+                                        WorkerSchedulingViewRuntime schedulingViewRuntime,
                                         AssignmentDiagnosticRecorder recordService,
                                         TraceEventLogger traceEventLogger,
                                         WorkerCandidateRanker candidateRanker,
@@ -110,11 +111,10 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
         this.traceEventLogger = traceEventLogger;
         this.candidateRanker = candidateRanker != null ? candidateRanker : new DefaultWorkerCandidateRanker();
         this.resourcePolicy = resourcePolicy == null ? new DefaultWorkerDispatchResourcePolicy() : resourcePolicy;
-        WorkerSchedulingViewRuntime schedulingViewRuntime = candidateRuntime instanceof WorkerSchedulingViewRuntime runtime
-                ? runtime
-                : requireSchedulingViewRuntime(candidateRuntime);
+        WorkerSchedulingViewRuntime schedulingRuntime =
+                Objects.requireNonNull(schedulingViewRuntime, "schedulingViewRuntime");
         this.candidateEnumerator = candidateEnumerator == null
-                ? new WorkerSchedulingCandidateEnumerator(schedulingViewRuntime)
+                ? new WorkerSchedulingCandidateEnumerator(schedulingRuntime)
                 : candidateEnumerator;
     }
 
@@ -385,13 +385,6 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
             snapshot.put("workerCandidateWarmRejectedCount", candidateBatch.warmSourceGuardRejectedCount());
         }
         return Collections.unmodifiableMap(snapshot);
-    }
-
-    private static WorkerSchedulingViewRuntime requireSchedulingViewRuntime(WorkerCandidateRuntime candidateRuntime) {
-        if (candidateRuntime instanceof WorkerSchedulingViewRuntime runtime) {
-            return runtime;
-        }
-        throw new IllegalArgumentException("candidateRuntime must also implement WorkerSchedulingViewRuntime");
     }
 
     private PrefilterDecision prefilterCandidate(Task task, WorkerSchedulingCandidate candidate) {
