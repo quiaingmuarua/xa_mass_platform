@@ -5,7 +5,6 @@ import com.xa.mass.command.event.CoreEventResponse;
 import com.xa.mass.engine.event.KernelEventHandlerRegistry;
 import com.xa.mass.runtime.worker.WorkerCapabilityReport;
 import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;
-import com.xa.mass.worker.runtime.WorkerCapabilityAuthority;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -16,8 +15,7 @@ import java.util.Objects;
  * Kernel-targeted event handler for worker capability self-report.
  *
  * <p>The event runtime owns routing only. This handler translates event payload
- * into a typed report and delegates mutation to {@link WorkerManager} /
- * {@link WorkerCapabilityAuthority}.</p>
+ * into a typed report and delegates mutation to {@link WorkerControlService}.</p>
  */
 public final class WorkerCapabilityReportEventHandler {
 
@@ -30,7 +28,7 @@ public final class WorkerCapabilityReportEventHandler {
     }
 
     public void register(KernelEventHandlerRegistry registry) {
-        Objects.requireNonNull(registry, "registry").registerWorkerManagerEvent(EVENT_CODE, this::handle);
+        Objects.requireNonNull(registry, "registry").registerWorkerControlEvent(EVENT_CODE, this::handle);
     }
 
     public CoreEventResponse handle(CoreEventRequest request, com.xa.mass.command.event.CoreEventPrincipal principal) {

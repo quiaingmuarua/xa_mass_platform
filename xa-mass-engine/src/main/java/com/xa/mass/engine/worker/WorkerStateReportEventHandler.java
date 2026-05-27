@@ -30,7 +30,7 @@ public final class WorkerStateReportEventHandler {
     }
 
     public void register(KernelEventHandlerRegistry registry) {
-        Objects.requireNonNull(registry, "registry").registerWorkerManagerEvent(EVENT_CODE, this::handle);
+        Objects.requireNonNull(registry, "registry").registerWorkerControlEvent(EVENT_CODE, this::handle);
     }
 
     public CoreEventResponse handle(CoreEventRequest request, com.xa.mass.command.event.CoreEventPrincipal principal) {

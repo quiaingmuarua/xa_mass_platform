@@ -28,7 +28,7 @@ public final class WorkerCommandRequestEventHandler {
     }
 
     public void register(KernelEventHandlerRegistry registry) {
-        Objects.requireNonNull(registry, "registry").registerWorkerManagerEvent(EVENT_CODE, this::handle);
+        Objects.requireNonNull(registry, "registry").registerWorkerControlEvent(EVENT_CODE, this::handle);
     }
 
     public CoreEventResponse handle(CoreEventRequest request, CoreEventPrincipal principal) {

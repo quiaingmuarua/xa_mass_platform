@@ -1699,6 +1699,29 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void workerControlKernelEventsDoNotUseWorkerManagerEntryNames() throws IOException {
+        List<Path> workerControlEventPaths = List.of(
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/event/KernelEventHandlerRegistry.java"),
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/command/WorkerCommandRequestEventHandler.java"),
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker/WorkerCapabilityReportEventHandler.java"),
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker/WorkerStateReportEventHandler.java")
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Path path : workerControlEventPaths) {
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            if (source.contains("registerWorkerManagerEvent")
+                    || source.contains("registerOrReplaceWorkerManagerEvent")) {
+                violations.add(path + " uses WorkerManager event registration naming");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Kernel worker-control event registration must not name WorkerManager as the owner:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void workerResourceRuntimeContractIsRuntimeNeutral() throws IOException {
         Path engineContractPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/worker/WorkerResourceRuntime.java");

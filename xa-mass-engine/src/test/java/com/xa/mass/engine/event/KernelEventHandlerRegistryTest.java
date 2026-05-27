@@ -84,18 +84,18 @@ class KernelEventHandlerRegistryTest {
     }
 
     @Test
-    void registersWorkerManagerEventWithoutExposingTargetScopeToConcreteOwner() {
+    void registersWorkerControlEventWithoutExposingTargetScopeToConcreteOwner() {
         InMemoryMassEventRuntime runtime = new InMemoryMassEventRuntime();
         KernelEventHandlerRegistry registry = new KernelEventHandlerRegistry(runtime);
 
-        registry.registerWorkerManagerEvent("kernel.worker.manager.probe",
+        registry.registerWorkerControlEvent("kernel.worker.control.probe",
                 (request, principal) -> CoreEventResponse.success(request.getEvent(), request.getRequestId()));
 
         assertEquals(TargetScope.WORKER_MANAGER,
-                runtime.getDescriptor("kernel.worker.manager.probe").getTargetScope());
-        assertEquals("kernel.worker.manager.probe",
+                runtime.getDescriptor("kernel.worker.control.probe").getTargetScope());
+        assertEquals("kernel.worker.control.probe",
                 runtime.dispatch(CoreEventRequest.builder()
-                                .event("kernel.worker.manager.probe")
+                                .event("kernel.worker.control.probe")
                                 .requestId("probe")
                                 .build(),
                         new CoreEventPrincipal("worker", "test"))

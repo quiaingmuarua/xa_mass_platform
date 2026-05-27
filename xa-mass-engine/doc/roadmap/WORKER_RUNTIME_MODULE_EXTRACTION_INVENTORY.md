@@ -97,6 +97,9 @@ transition, dispatch binding, and refill timing stay in engine.
 `MassEngine` now wires resource-side worker availability wakeups through
 `WorkerAvailabilityWakeupRuntime` instead of directly importing
 `WorkerManager`; startup/shutdown lifecycle wiring remains SDK assembly.
+Kernel worker report/state/command event registration now uses worker-control
+entry naming instead of WorkerManager owner naming; `TargetScope.WORKER_MANAGER`
+remains the historical event-routing target, not the mutation owner.
 
 ## Public Method Inventory
 

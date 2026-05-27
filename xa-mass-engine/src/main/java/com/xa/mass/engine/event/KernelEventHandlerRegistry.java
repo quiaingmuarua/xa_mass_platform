@@ -38,7 +38,7 @@ public final class KernelEventHandlerRegistry {
         eventRuntime.registerOrReplace(normalized, Objects.requireNonNull(handler, "handler"));
     }
 
-    public void registerWorkerManagerEvent(String event, MassEventHandler handler) {
+    public void registerWorkerControlEvent(String event, MassEventHandler handler) {
         register(CoreEventDescriptor.builder()
                 .event(event)
                 .targetScope(TargetScope.WORKER_MANAGER)
@@ -52,7 +52,7 @@ public final class KernelEventHandlerRegistry {
                 .build(), handler);
     }
 
-    public void registerOrReplaceWorkerManagerEvent(String event, MassEventHandler handler) {
+    public void registerOrReplaceWorkerControlEvent(String event, MassEventHandler handler) {
         registerOrReplace(CoreEventDescriptor.builder()
                 .event(event)
                 .targetScope(TargetScope.WORKER_MANAGER)
