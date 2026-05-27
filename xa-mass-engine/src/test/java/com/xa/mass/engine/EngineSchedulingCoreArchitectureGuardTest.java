@@ -1412,6 +1412,34 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void serverAndTransportDoNotImportEngineWorkerInternals() throws IOException {
+        Path repo = repositoryRoot();
+        List<Path> guardedRoots = List.of(
+                repo.resolve("xa-mass-server/src/main/java"),
+                repo.resolve("transport/transport_runtime/src/main/java"),
+                repo.resolve("transport/polling-adapter/src/main/java"),
+                repo.resolve("transport/socket-adapter/src/main/java"),
+                repo.resolve("transport/websocket-adapter/src/main/java")
+        );
+        Pattern engineWorkerImport = Pattern.compile("\\bimport\\s+com\\.xa\\.mass\\.engine\\.worker\\.");
+
+        List<String> violations = new ArrayList<>();
+        for (Path root : guardedRoots) {
+            for (Path sourcePath : javaSourceFiles(root)) {
+                String source = Files.readString(sourcePath, StandardCharsets.UTF_8);
+                if (engineWorkerImport.matcher(source).find()) {
+                    violations.add(sourcePath + " imports engine worker internals");
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Server and transport runtime code must use SDK/runtime contracts, "
+                        + "not engine worker internals:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void workerManagerDoesNotUseWorkerLevelEventStorageIndexForEventCandidateSource() throws IOException {
         Path workerManagerPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/worker/WorkerManager.java");

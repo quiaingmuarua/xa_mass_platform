@@ -794,6 +794,12 @@ Acceptance:
 
 Goal: remove old paths after module move is proven.
 
+Progress:
+
+- Architecture guards now prevent server and transport runtime/adapter source
+  from importing engine worker internals. Those shells must cross worker state
+  through SDK/runtime contracts instead of `com.xa.mass.engine.worker.*`.
+
 Scope:
 
 1. Delete engine-local duplicate worker runtime classes.
