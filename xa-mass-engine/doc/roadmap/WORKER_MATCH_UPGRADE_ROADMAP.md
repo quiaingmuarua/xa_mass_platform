@@ -101,8 +101,9 @@ Hard boundary:
 
 ## Current Code Observations
 
-- Candidate source enters through `WorkerManager.findWorkerCandidates(...)` and
-  `WorkerCandidateIndex`, then calls `WorkerRegistry.acquireCandidates(...)`.
+- Candidate source enters through `WorkerManager.findWorkerCandidateBatch(...)`
+  or its list-only `findWorkerCandidates(...)` helper, then through
+  `WorkerCandidateIndex` and `WorkerRegistry.acquireCandidates(...)`.
 - Stage-1 sample size is currently `requestedMatchCount * 4`, clamped by
   JVM-configurable min/max defaults of 512 and 2048.
 - Route buckets use approved attribute powersets. With four standard route
