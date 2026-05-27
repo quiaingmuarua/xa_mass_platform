@@ -44,17 +44,8 @@ record RuntimeTaskIngressItem(String taskId,
     }
 
     Map<String, Object> projectedInput() {
-        LinkedHashMap<String, Object> projected = new LinkedHashMap<>();
-        if (eventCode != null) {
-            projected.put(EVENT_CODE_KEY, eventCode);
-        }
-        if (inlinePayload != null && !inlinePayload.isEmpty()) {
-            projected.putAll(inlinePayload);
-        }
-        if (payloadRef != null) {
-            projected.put(PAYLOAD_REF_KEY, payloadRef);
-        }
-        return projected.isEmpty() ? Map.of() : Map.copyOf(projected);
+        // Runtime payload stays on the runtime envelope; compatibility projection stores status residue only.
+        return Map.of();
     }
 
     private static String extractPayloadRef(Map<String, Object> input) {

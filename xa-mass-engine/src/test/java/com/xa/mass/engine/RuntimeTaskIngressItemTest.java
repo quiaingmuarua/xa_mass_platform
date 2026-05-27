@@ -5,11 +5,12 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RuntimeTaskIngressItemTest {
 
     @Test
-    void projectedInputKeepsEventCodeAndInlinePayloadForReviewReadModel() {
+    void projectedInputDoesNotPersistRuntimePayloadInCompatibilityReadModel() {
         RuntimeTaskIngressItem item = RuntimeTaskIngressItem.fromInput(
                 "task-1",
                 "message-1",
@@ -25,10 +26,11 @@ class RuntimeTaskIngressItemTest {
 
         Map<String, Object> projected = item.projectedInput();
 
-        assertEquals("probe.phone.metadata", projected.get("eventCode"));
-        assertEquals("+447700900123", projected.get("phoneNumber"));
-        assertEquals("GB", projected.get("countryIso2"));
-        assertEquals("fp-android-sg-b", projected.get("requiredFingerprintProfile"));
-        assertEquals("VALID_E164", projected.get("expectedOutcome"));
+        assertTrue(projected.isEmpty());
+        assertEquals("probe.phone.metadata", item.eventCode());
+        assertEquals("+447700900123", item.inlinePayload().get("phoneNumber"));
+        assertEquals("GB", item.inlinePayload().get("countryIso2"));
+        assertEquals("fp-android-sg-b", item.inlinePayload().get("requiredFingerprintProfile"));
+        assertEquals("VALID_E164", item.inlinePayload().get("expectedOutcome"));
     }
 }
