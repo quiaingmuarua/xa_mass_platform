@@ -341,6 +341,10 @@ interface WorkerAdmissionRuntime {
     void releaseExclusiveLease(String workerId);
 }
 
+interface WorkerAvailabilityWakeupRuntime {
+    void setDispatchWakeupCallback(Runnable dispatchWakeupCallback);
+}
+
 interface WorkerWarmHintRuntime {
     void recordWarmCandidate(WorkerTaskSelector selector, WorkerCandidateRow candidate);
 }
@@ -664,6 +668,10 @@ Progress:
   dispatch-gate effects, and resource reads remain behaviorally unchanged, but
   worker-control ingress no longer has a constructor path back to the god
   object.
+- `MassEngine` now wires resource-side availability wakeups through
+  `WorkerAvailabilityWakeupRuntime` instead of importing `WorkerManager`
+  directly. This keeps assignment retry / ready-scan wakeup wiring as lifecycle
+  assembly, not scheduling truth.
 - Engine still assembles those owners through `WorkerManager`; match strategy
   and event handler parsing residue stays in engine for later slices.
 - SDK shell runtime bridge now accepts `WorkerResourceRuntime` for legacy

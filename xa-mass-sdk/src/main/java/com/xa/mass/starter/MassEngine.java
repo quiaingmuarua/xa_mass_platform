@@ -12,7 +12,6 @@ import com.xa.mass.engine.TaskEventListenerRegistrar;
 import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
-import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.engine.listener.SimpleTaskDispatchBinder;
 import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
@@ -99,8 +98,8 @@ public class MassEngine {
             taskEvents = config.getTaskEventService();
             eventListeners = taskEvents;
             runtimeBridge = config.getRuntimeBridge();
-            WorkerManager workerManager = config.getWorkerManager();
             var workerAdmissionRuntime = config.getWorkerAdmissionRuntime();
+            var workerAvailabilityWakeupRuntime = config.getWorkerAvailabilityWakeupRuntime();
             var workerWarmHintRuntime = config.getWorkerWarmHintRuntime();
             AssignmentDiagnosticRecorder recordService = config.getRecordService();
             var ruleManager = config.getRuleManager();
@@ -144,7 +143,7 @@ public class MassEngine {
                     new TaskDispatchWakeupBridge(assignWorker, runtimeReadyDispatchPump);
             Runnable dispatchWakeupCallback = dispatchWakeupBridge.callback("worker availability changed");
             config.getWorkerControlService().setDispatchWakeupCallback(dispatchWakeupCallback);
-            workerManager.setDispatchWakeupCallback(dispatchWakeupCallback);
+            workerAvailabilityWakeupRuntime.setDispatchWakeupCallback(dispatchWakeupCallback);
             runtimeReadyDispatchPump.start();
 
             resourceReleaseListener = new TaskResourceReleaseListener(
@@ -218,7 +217,7 @@ public class MassEngine {
                 runtimeBridge = null;
             }
             config.getWorkerControlService().setDispatchWakeupCallback(null);
-            config.getWorkerManager().setDispatchWakeupCallback(null);
+            config.getWorkerAvailabilityWakeupRuntime().setDispatchWakeupCallback(null);
             if (leaseWatchdog != null) {
                 leaseWatchdog.stop();
                 leaseWatchdog = null;

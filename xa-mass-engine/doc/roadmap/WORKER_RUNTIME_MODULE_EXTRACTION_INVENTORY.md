@@ -21,6 +21,7 @@ Current first-slice contract split:
 | `WorkerCandidateRuntime` | `WorkerManager` | Runtime-api candidate acquisition returning worker candidate rows |
 | `WorkerSchedulingViewRuntime` | `WorkerManager` | Read evidence used to build engine scheduling candidates |
 | `WorkerAdmissionRuntime` | `WorkerManager` | Runtime-api contract for reserve, confirm, release, final occupancy, exclusive lease, and load reads |
+| `WorkerAvailabilityWakeupRuntime` | `WorkerManager` | Runtime-api lifecycle hook for worker availability evidence that can wake assignment retry / ready-scan paths |
 | `WorkerDispatchGateRuntime` | `WorkerManager` | Runtime-api contract for source-scoped dispatch gate reads and mutations |
 | `WorkerReportRuntime` | `WorkerManager` | Runtime-api report contract for capability report mutation currently owned by `WorkerCapabilityAuthority` via `WorkerManager` |
 | `WorkerWarmHintRuntime` | `WorkerManager` | Runtime-api contract for task-local warm candidate hint mutation |
@@ -57,8 +58,9 @@ runtime-neutral `mass-runtime-api` types: `WorkerTaskSelector`,
 `WorkerCandidateBatch<T>`, `WorkerCandidateRow`, `WorkerResourceRecord`,
 `WorkerCandidateRuntime`, `WorkerGroupCapabilityView`,
 `WorkerSchedulingViewRuntime`, `WorkerAdmissionRuntime`, `WorkerResourceRuntime`,
-`WorkerDispatchGateRuntime`, `WorkerWarmHintRuntime`, `WorkerLoadSnapshot`,
-`WorkerReachabilityState`, `WorkerCapabilityReport`, `WorkerReportRuntime`,
+`WorkerDispatchGateRuntime`, `WorkerAvailabilityWakeupRuntime`,
+`WorkerWarmHintRuntime`, `WorkerLoadSnapshot`, `WorkerReachabilityState`,
+`WorkerCapabilityReport`, `WorkerReportRuntime`,
 `WorkerCapabilityReportStatus`, and `WorkerCapabilityReportResult`, plus worker state report/projection DTOs
 (`WorkerStateReport`, `WorkerStateProjection`, `WorkerStateProjectionResult`,
 `WorkerStateProjectionStatus`) and resource declaration records
@@ -92,6 +94,9 @@ terminal handling, and refill decisions remain engine-owned.
 occupancy reads and `WorkerWarmHintRuntime` for useful-candidate hint writes.
 It no longer needs the full `WorkerManager`; assignment allocation, status
 transition, dispatch binding, and refill timing stay in engine.
+`MassEngine` now wires resource-side worker availability wakeups through
+`WorkerAvailabilityWakeupRuntime` instead of directly importing
+`WorkerManager`; startup/shutdown lifecycle wiring remains SDK assembly.
 
 ## Public Method Inventory
 
@@ -116,7 +121,7 @@ transition, dispatch binding, and refill timing stay in engine.
 | Reachability read | `getWorkerReachability` | scheduling candidate enumeration, tests | `WorkerSchedulingViewRuntime` | transport evidence consumed as runtime read evidence | Returns runtime-neutral `WorkerReachabilityState`; must not turn transport session into scheduling truth |
 | Dispatch gate read | `isWorkerDispatchEnabled` | scheduling candidate enumeration, tests | `WorkerSchedulingViewRuntime` / `WorkerDispatchGateRuntime` | runtime state | Derived from source-scoped gates; scheduling consumes read evidence, control policies consume gate contract |
 | Dispatch gate mutation | `disableWorkerDispatch`, `clearWorkerDispatchDisable` | worker state report policy, node-group binding policy, tests | `WorkerDispatchGateRuntime` | runtime state | Source-scoped gate mutation; state/command policies no longer need the full `WorkerManager` surface |
-| Wakeup callback | `setDispatchWakeupCallback` | SDK engine assembly | assembly residue | lifecycle wiring | Keep as assembly wiring until owner split decides final home |
+| Wakeup callback | `setDispatchWakeupCallback` | SDK engine assembly through `WorkerAvailabilityWakeupRuntime` | assembly residue | lifecycle wiring | Narrow runtime-api hook for availability evidence; not candidate truth or dispatch-gate truth |
 | Admission / occupancy | `reserveWorkerCapacity`, `confirmWorkerReservation`, `releaseWorkerReservation`, `recordWorkClaimed`, `recordWorkFinal` | match strategy, dispatch binder, resource releaser, result/resource listeners | `WorkerAdmissionOwner` through `WorkerAdmissionRuntime` | runtime state | Structured reserve is the strategy path; boolean reserve remains a `WorkerManager`-only internal helper |
 | Exclusive lease | `tryAcquireWorkerExclusiveLease`, `releaseWorkerExclusiveLease`, `hasWorkerExclusiveLease`, `getExclusiveLeaseWorkerIds` | match strategy, resource releaser, diagnostics, tests | `WorkerAdmissionOwner` through `WorkerAdmissionRuntime` | runtime state | Rename away from lock vocabulary only when owner move requires it |
 | Load / occupancy read | `getWorkerLoad`, `getActiveWorkerCountForTask` | match strategy, allocation policy caller, tests | `WorkerAdmissionOwner` / scheduling view runtime | runtime state | `WorkerLoadSnapshot` lives in `mass-runtime-api`; runtime load evidence, not control-plane truth |
@@ -127,7 +132,7 @@ transition, dispatch binding, and refill timing stay in engine.
 SDK/server shell
   -> MassSdkApplication
   -> EngineConfig worker runtime accessors
-  -> WorkerResourceRuntime / WorkerAdmissionRuntime methods
+  -> WorkerResourceRuntime / WorkerAdmissionRuntime / WorkerAvailabilityWakeupRuntime methods
 
 transport runtime tests
   -> WorkerManager for routing setup and read-model proof

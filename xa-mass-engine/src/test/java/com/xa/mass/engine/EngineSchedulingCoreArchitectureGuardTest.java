@@ -1640,8 +1640,11 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "com", "xa", "mass", "sdk", "MassSdkApplication.java");
         Path diagnosticsPath = Path.of("..", "xa-mass-sdk", "src", "main", "java",
                 "com", "xa", "mass", "sdk", "DefaultRuntimeDiagnosticsOperations.java");
+        Path massEnginePath = Path.of("..", "xa-mass-sdk", "src", "main", "java",
+                "com", "xa", "mass", "starter", "MassEngine.java");
         String sdkSource = Files.readString(sdkApplicationPath, StandardCharsets.UTF_8);
         String diagnosticsSource = Files.readString(diagnosticsPath, StandardCharsets.UTF_8);
+        String massEngineSource = Files.readString(massEnginePath, StandardCharsets.UTF_8);
 
         List<String> violations = new ArrayList<>();
         if (sdkSource.contains("getWorkerManager()")) {
@@ -1649,6 +1652,17 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
         if (diagnosticsSource.contains("getWorkerManager()")) {
             violations.add(diagnosticsPath + " calls EngineConfig.getWorkerManager()");
+        }
+        if (massEngineSource.contains("getWorkerManager()")) {
+            violations.add(massEnginePath + " calls EngineConfig.getWorkerManager()");
+        }
+        if (massEngineSource.contains("com.xa.mass.engine.worker.WorkerManager")
+                || Pattern.compile("\\bWorkerManager\\b").matcher(massEngineSource).find()) {
+            violations.add(massEnginePath + " depends on full WorkerManager");
+        }
+        if (!massEngineSource.contains("WorkerAvailabilityWakeupRuntime")
+                && !massEngineSource.contains("getWorkerAvailabilityWakeupRuntime()")) {
+            violations.add(massEnginePath + " does not use WorkerAvailabilityWakeupRuntime");
         }
 
         assertTrue(violations.isEmpty(),

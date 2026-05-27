@@ -31,6 +31,7 @@ import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.runtime.worker.WorkerAdmissionRuntime;
+import com.xa.mass.runtime.worker.WorkerAvailabilityWakeupRuntime;
 import com.xa.mass.runtime.worker.WorkerCandidateRuntime;
 import com.xa.mass.runtime.worker.WorkerDispatchGateRuntime;
 import com.xa.mass.runtime.worker.WorkerRegistry;
@@ -324,6 +325,10 @@ public class EngineConfig {
     }
 
     public WorkerAdmissionRuntime getWorkerAdmissionRuntime() {
+        return getWorkerManager();
+    }
+
+    public WorkerAvailabilityWakeupRuntime getWorkerAvailabilityWakeupRuntime() {
         return getWorkerManager();
     }
 
