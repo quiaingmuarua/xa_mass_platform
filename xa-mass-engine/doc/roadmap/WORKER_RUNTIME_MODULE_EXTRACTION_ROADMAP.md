@@ -522,7 +522,8 @@ Goal: reduce `WorkerManager` from god object to assembly owner.
 
 Scope:
 
-1. Extract package-private owners inside `com.xa.mass.engine.worker`:
+1. Extract package-private owners next to the current worker-runtime assembly
+   before module movement:
    - worker resource owner
    - adapter node / binding owner
    - worker report owner
@@ -816,6 +817,12 @@ Progress:
 - Architecture guards now prevent server and transport runtime/adapter source
   from importing engine worker internals. Those shells must cross worker state
   through SDK/runtime contracts instead of `com.xa.mass.engine.worker.*`.
+- Worker-control tests now live under `com.xa.mass.engine.control` with the
+  control ingress owner they verify; the old engine-worker test package is not
+  used as a worker runtime residue bucket.
+- Engine and transport boundary docs now describe current worker-runtime
+  ownership through runtime contracts and `xa-mass-worker-runtime`, not stale
+  engine-local worker runtime paths.
 
 Scope:
 

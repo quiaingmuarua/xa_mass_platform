@@ -102,17 +102,21 @@ Current WorkerGroup / group-selector scheduling baseline:
 - WorkerGroup candidate-source convergence is closed; ordinary scheduling uses
   explicit task `workerGroupId` / `workerGroupIds` selectors before worker rows
   are acquired
-- worker access/read-view types live in `com.xa.mass.engine.worker`
+- worker runtime contracts and read-view DTOs live in
+  `platform_infra/mass-runtime-api`; higher-level worker runtime owners live in
+  `xa-mass-worker-runtime`
 - `EventKey`, `EventBinding`, `WorkerGroupRecord`, and
-  `WorkerRegistrySnapshot` are engine-internal worker package types
+  worker candidate/resource DTOs are runtime-neutral worker runtime API types;
+  `WorkerRegistrySnapshot` is worker-runtime package-local implementation
+  evidence, not an engine public surface
 - `WorkerCandidateIndex` consumes explicit group selectors and narrows
   `workerGroupId(s) -> route/node bucket -> workerIds`; it does not derive
   candidate groups from task eventCode/project and does not own reachability,
   load, reservation, or resource policy
-- `WorkerManager` owns the active worker registry snapshot. SDK registration
-  enters through `WorkerManager.addWorker(...)`, and manager add/update/delete
-  refresh the active snapshot.
-- candidate source enters through `WorkerManager.findWorkerCandidateBatch(...)`
+- `WorkerManager` lives in `xa-mass-worker-runtime` as private runtime assembly.
+  SDK/server registration crosses `WorkerResourceRuntime`; accepted resource
+  mutations refresh the derived runtime projection.
+- candidate source enters through `WorkerCandidateRuntime.findWorkerCandidateBatch(...)`
   and is materialized by the strategy-package
   `WorkerSchedulingCandidateEnumerator`
 - `targetWorkerId` is only a debug/manual narrowing shortcut inside an
@@ -193,7 +197,8 @@ Start with these classes before changing behavior:
 - `src/test/java/com/xa/mass/engine/TaskCompatibilityProjectionAccess.java`
   only when you are intentionally working on test-only bounded projection
   overlays or residue audit helpers
-- `src/main/java/com/xa/mass/engine/worker/WorkerManager.java`
+- `../xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/WorkerManager.java`
+  only when you are intentionally working on worker-runtime owner assembly
 - `src/main/java/com/xa/mass/engine/rules/RuleManager.java`
 
 Runtime-facing glue should prefer narrow engine ports and facades such as:
@@ -383,11 +388,13 @@ Infra ownership:
   dependency on `../transport/transport_api`
 - SDK/server bootstrap owns concrete wiring
 - primary SDK/server builders should wire `TaskStorage`, `TaskDetailStore`,
-  `TaskWorkRuntime`, `WorkerStorage`, and `RuleStorage` rather than
-  constructing `TaskManager` / `WorkerManager` in outer modules
-- starter assembly should treat `WorkerManager` and `RuleManager` as derived
-  helpers over storage contracts, not as parallel config truth carried beside
-  `WorkerStorage` / `RuleStorage`
+  `TaskWorkRuntime`, `WorkerStorage`, worker runtime contracts, and
+  `RuleStorage` rather than exposing full `TaskManager` / `WorkerManager`
+  configuration surfaces in outer modules
+- starter assembly should treat the private worker-runtime `WorkerManager`
+  assembly and `RuleManager` as derived helpers over storage/runtime contracts,
+  not as parallel public config truth carried beside `WorkerStorage` /
+  `RuleStorage`
 
 ## Rule-Matching Surface
 
@@ -400,7 +407,9 @@ Current owner types:
 - `src/main/java/com/xa/mass/engine/model/WorkerSchedulingView.java`
 - `src/main/java/com/xa/mass/engine/model/WorkerMatchContext.java`
 - `src/main/java/com/xa/mass/engine/strategy/WorkerSchedulingCandidateEnumerator.java`
-- `src/main/java/com/xa/mass/engine/worker/WorkerRegistry.java`
+- `../platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/WorkerCandidateRuntime.java`
+- `../platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/WorkerSchedulingViewRuntime.java`
+- `../platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/WorkerAdmissionRuntime.java`
 - `src/main/java/com/xa/mass/engine/rules/RuleConfig.java`
 
 Current default rule set:

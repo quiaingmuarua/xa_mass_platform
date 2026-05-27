@@ -1,4 +1,4 @@
-package com.xa.mass.engine.worker;
+package com.xa.mass.engine.control;
 
 import com.xa.mass.worker.runtime.WorkerStateProjectionOwner;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
@@ -11,8 +11,6 @@ import com.xa.mass.engine.command.WorkerCommandDeliveryResult;
 import com.xa.mass.engine.command.WorkerCommandLifecycleOwner;
 import com.xa.mass.engine.command.WorkerCommandRequest;
 import com.xa.mass.engine.command.WorkerCommandStatus;
-import com.xa.mass.engine.control.WorkerControlService;
-import com.xa.mass.engine.control.WorkerDispatchAvailabilityPolicy;
 import com.xa.mass.engine.strategy.WorkerTaskSelectorFactory;
 import com.xa.mass.engine.testutil.RecordingEventSink;
 import com.xa.mass.engine.util.TraceEventLogger;

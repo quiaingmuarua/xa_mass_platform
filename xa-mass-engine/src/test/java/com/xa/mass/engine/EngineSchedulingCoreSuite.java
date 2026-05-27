@@ -6,7 +6,7 @@ import com.xa.mass.engine.listener.TaskWorkerAssignListenerTest;
 import com.xa.mass.engine.model.WorkerMatchContextTest;
 import com.xa.mass.engine.strategy.RuleBasedTaskWorkerMatchingStrategyTest;
 import com.xa.mass.engine.strategy.WorkerSchedulingCandidateEnumeratorTest;
-import com.xa.mass.engine.worker.WorkerControlServiceTest;
+import com.xa.mass.engine.control.WorkerControlServiceTest;
 import org.junit.platform.suite.api.SelectClasses;
 import org.junit.platform.suite.api.Suite;
 

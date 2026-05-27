@@ -109,8 +109,8 @@ lifecycle state.
   this seam; engine submits immutable `TaskDispatchContext +
   List<TaskDispatchBinding>` batches into handoff, and transport drains the same
   batch shape without rewrapping through an older listener API
-- worker transport-binding resolution from registered worker truth via storage
-  lookup contracts rather than the broader engine worker facade
+- worker transport-binding resolution from registered worker truth through
+  `WorkerResourceRuntime`, not direct storage lookup or engine worker internals
 - consumption of shared dispatch-ready/result-ingest seams from neutral runtime
   contracts rather than direct engine listener/package ownership
 
