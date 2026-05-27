@@ -1,4 +1,4 @@
-package com.xa.mass.engine.worker;
+package com.xa.mass.runtime.worker;
 
 import java.util.List;
 import java.util.Set;
@@ -37,14 +37,14 @@ public record WorkerTaskSelector(String taskId,
 
     private static Set<String> normalizeRouteBucketKeys(Set<String> values) {
         if (values == null || values.isEmpty()) {
-            return Set.of(WorkerRoutingPolicy.DEFAULT_ROUTE_BUCKET_KEY);
+            return Set.of(WorkerRouteBucketPolicy.DEFAULT_ROUTE_BUCKET_KEY);
         }
         Set<String> normalized = values.stream()
                 .map(WorkerTaskSelector::normalizeNullable)
                 .filter(value -> value != null)
                 .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
         return normalized.isEmpty()
-                ? Set.of(WorkerRoutingPolicy.DEFAULT_ROUTE_BUCKET_KEY)
+                ? Set.of(WorkerRouteBucketPolicy.DEFAULT_ROUTE_BUCKET_KEY)
                 : java.util.Collections.unmodifiableSet(normalized);
     }
 

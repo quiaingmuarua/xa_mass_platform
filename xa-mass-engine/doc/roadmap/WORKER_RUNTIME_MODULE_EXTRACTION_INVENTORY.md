@@ -24,17 +24,18 @@ Current first-slice contract split inside `com.xa.mass.engine.worker`:
 | `WorkerReportRuntime` | `WorkerManager` | Capability report mutation currently owned by `WorkerCapabilityAuthority` via `WorkerManager` |
 | `WorkerLookupStore` | `WorkerManager` | Storage-edge single-worker lookup seam; disposition still open |
 
-`WorkerCandidateRuntime` now accepts `WorkerTaskSelector`, not `Task`. The
-engine adapts `Task.sharedConfig` to selector evidence through
+`WorkerCandidateRuntime` now accepts runtime-neutral `WorkerTaskSelector`, not
+`Task`. The engine adapts `Task.sharedConfig` to selector evidence through
 `WorkerTaskSelectorFactory` before crossing the candidate-source contract.
 Candidate acquisition and task-local warm hints are now package-owned by
 `WorkerCandidateSourceOwner`; `WorkerManager` delegates to it while the module
 boundary is still inside engine.
 
-Worker load and transport reachability evidence now use runtime-neutral
-`mass-runtime-api` value types: `WorkerLoadSnapshot` and
-`WorkerReachabilityState`. Engine-owned scheduling DTOs still adapt those
-runtime values into `WorkerSchedulingView` and `WorkerMatchContext` locally.
+Task selector, worker load, and transport reachability evidence now use
+runtime-neutral `mass-runtime-api` value types: `WorkerTaskSelector`,
+`WorkerLoadSnapshot`, and `WorkerReachabilityState`. Engine-owned scheduling
+DTOs still adapt those runtime values into `WorkerSchedulingView` and
+`WorkerMatchContext` locally.
 
 Worker row mutation and registry slot projection are now package-owned by
 `WorkerResourceOwner`; WorkerGroup declaration state is package-owned by
@@ -165,10 +166,10 @@ WorkerTaskSelector
   routeBucketKeys
 ```
 
-`Task.sharedConfig` parsing remains on the engine side through
-`WorkerTaskSelectorFactory`. Worker runtime contracts should keep consuming this
-selector shape and must not grow a dependency on `Task`, `WorkerMatchContext`,
-or rule-evaluation DTOs.
+`WorkerTaskSelector` lives in `mass-runtime-api`. `Task.sharedConfig` parsing
+remains on the engine side through `WorkerTaskSelectorFactory`. Worker runtime
+contracts should keep consuming this selector shape and must not grow a
+dependency on `Task`, `WorkerMatchContext`, or rule-evaluation DTOs.
 
 ### Warm Hint Boundary
 
@@ -195,8 +196,8 @@ Do not make worker runtime depend on `Task`.
 - `WorkerSchedulingView` and `WorkerMatchContext` are engine strategy DTOs; they
   must not move into runtime contracts.
 - `WorkerCandidateBatch` is now top-level, but still engine-owned until M1.
-- `WorkerLoadSnapshot` and `WorkerReachabilityState` already live in
-  `mass-runtime-api`.
+- `WorkerTaskSelector`, `WorkerLoadSnapshot`, and `WorkerReachabilityState`
+  already live in `mass-runtime-api`.
 - `WorkerManager` still owns both resource maps and runtime slot synchronization.
 - `WorkerStateProjectionOwner` and command-gate effects need a resource/report
   owner split before moving.

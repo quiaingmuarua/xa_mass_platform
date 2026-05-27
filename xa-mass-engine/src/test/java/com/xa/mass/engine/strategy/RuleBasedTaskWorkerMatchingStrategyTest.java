@@ -11,7 +11,7 @@ import com.xa.mass.engine.worker.WorkerCandidateBatch;
 import com.xa.mass.engine.worker.WorkerGroupRecord;
 import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;
-import com.xa.mass.engine.worker.WorkerTaskSelector;
+import com.xa.mass.runtime.worker.WorkerTaskSelector;
 import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.storage.rule.RuleDefinition;

@@ -4,6 +4,7 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.runtime.worker.WorkerSlot;
+import com.xa.mass.runtime.worker.WorkerTaskSelector;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;

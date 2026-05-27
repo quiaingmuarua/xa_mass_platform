@@ -2,6 +2,7 @@ package com.xa.mass.engine.worker;
 
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
+import com.xa.mass.runtime.worker.WorkerTaskSelector;
 
 import java.util.Set;
 
