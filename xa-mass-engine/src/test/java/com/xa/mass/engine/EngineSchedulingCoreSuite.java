@@ -7,10 +7,8 @@ import com.xa.mass.engine.model.WorkerMatchContextTest;
 import com.xa.mass.engine.strategy.RuleBasedTaskWorkerMatchingStrategyTest;
 import com.xa.mass.engine.strategy.WorkerSchedulingCandidateEnumeratorTest;
 import com.xa.mass.engine.worker.WorkerCandidateIndexTest;
-import com.xa.mass.engine.worker.WorkerCapabilityAuthorityTest;
 import com.xa.mass.engine.worker.WorkerControlServiceTest;
 import com.xa.mass.engine.worker.WorkerManagerTest;
-import com.xa.mass.engine.worker.WorkerRegistrySnapshotTest;
 import org.junit.platform.suite.api.SelectClasses;
 import org.junit.platform.suite.api.Suite;
 
@@ -29,9 +27,7 @@ import org.junit.platform.suite.api.Suite;
         TaskRuntimeRecoveryPortTest.class,
         WorkerManagerTest.class,
         WorkerCandidateIndexTest.class,
-        WorkerCapabilityAuthorityTest.class,
         WorkerControlServiceTest.class,
-        WorkerRegistrySnapshotTest.class,
         TaskResourceReleaseListenerTest.class,
         TaskAssignWorkerTest.class,
         TaskWorkerAssignListenerTest.class,

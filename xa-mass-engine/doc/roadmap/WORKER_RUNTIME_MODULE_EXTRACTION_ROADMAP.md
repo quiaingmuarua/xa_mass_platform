@@ -621,9 +621,11 @@ Progress:
 - Task-local warm candidate hint storage has moved out of engine source; engine
   still owns the timing decision for when assignment evidence is useful enough
   to write a hint.
-- Engine still assembles those owners through `WorkerManager`; report,
-  candidate-source, and match strategy residue stays in engine for later
-  slices.
+- Worker capability composition and registry snapshot read model have moved out
+  of engine source.
+- Engine still assembles those owners through `WorkerManager`; report
+  application, candidate-source, and match strategy residue stays in engine for
+  later slices.
 
 Scope:
 

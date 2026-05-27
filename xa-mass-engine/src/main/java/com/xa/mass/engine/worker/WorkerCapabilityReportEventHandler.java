@@ -5,6 +5,7 @@ import com.xa.mass.command.event.CoreEventResponse;
 import com.xa.mass.engine.event.KernelEventHandlerRegistry;
 import com.xa.mass.runtime.worker.WorkerCapabilityReport;
 import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;
+import com.xa.mass.worker.runtime.WorkerCapabilityAuthority;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;

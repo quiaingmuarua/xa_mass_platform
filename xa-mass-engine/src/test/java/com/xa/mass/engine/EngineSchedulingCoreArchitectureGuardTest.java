@@ -636,8 +636,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
     @Test
     void workerGroupSnapshotDoesNotReadWorkerLevelCapabilityTruth() throws IOException {
-        Path snapshotPath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/worker/WorkerRegistrySnapshot.java");
+        Path snapshotPath = repositoryRoot().resolve(
+                "xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/WorkerRegistrySnapshot.java");
         String source = Files.readString(snapshotPath, StandardCharsets.UTF_8);
 
         Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
@@ -746,11 +746,12 @@ class EngineSchedulingCoreArchitectureGuardTest {
     void workerGroupAdapterNodeRelationTruthIsRemoved() throws IOException {
         Path repo = repositoryRoot();
         Path engineWorkerPackage = repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/worker");
+        Path workerRuntimePackage = repo.resolve("xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime");
         Path runtimeWorkerPackage = repo.resolve("platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker");
         Map<Path, Pattern> forbiddenPatterns = Map.of(
                 runtimeWorkerPackage.resolve("WorkerGroupRecord.java"),
                 Pattern.compile("\\badapterNodeId\\b"),
-                engineWorkerPackage.resolve("WorkerRegistrySnapshot.java"),
+                workerRuntimePackage.resolve("WorkerRegistrySnapshot.java"),
                 Pattern.compile("\\bgroupIdsByAdapterNodeId\\b")
         );
 
@@ -982,7 +983,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
     @Test
     void workerRegistrySnapshotDoesNotOwnWorkerMembershipIndexes() throws IOException {
-        Path snapshotPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker/WorkerRegistrySnapshot.java");
+        Path snapshotPath = repositoryRoot().resolve(
+                "xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/WorkerRegistrySnapshot.java");
         String source = Files.readString(snapshotPath, StandardCharsets.UTF_8);
 
         List<String> violations = new ArrayList<>();

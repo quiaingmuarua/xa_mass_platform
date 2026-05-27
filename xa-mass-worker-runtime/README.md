@@ -13,6 +13,7 @@ Current scope:
 - Worker state report bounded projection owner.
 - Worker admission, occupancy, and exclusive lease owner.
 - Task-local warm candidate hint storage.
+- Worker capability composition and registry snapshot read model.
 
 Boundaries:
 

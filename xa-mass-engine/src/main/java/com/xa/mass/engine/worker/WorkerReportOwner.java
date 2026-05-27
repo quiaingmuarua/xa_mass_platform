@@ -2,7 +2,9 @@ package com.xa.mass.engine.worker;
 
 import com.xa.mass.runtime.worker.WorkerCapabilityReport;
 import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;
+import com.xa.mass.worker.runtime.WorkerCapabilityAuthority;
 import com.xa.mass.worker.runtime.WorkerGroupOwner;
+import com.xa.mass.worker.runtime.WorkerRegistrySnapshot;
 import com.xa.mass.worker.runtime.WorkerResourceOwner;
 
 /**

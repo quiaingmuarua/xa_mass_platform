@@ -32,9 +32,12 @@ import com.xa.mass.runtime.worker.WorkerTaskSelector;
 import com.xa.mass.storage.api.WorkerLookupStore;
 import com.xa.mass.storage.api.WorkerStorage;
 import com.xa.mass.worker.runtime.WorkerAdmissionOwner;
+import com.xa.mass.worker.runtime.WorkerCapabilityAuthority;
 import com.xa.mass.worker.runtime.WorkerGroupOwner;
 import com.xa.mass.worker.runtime.WorkerRelationshipOwner;
 import com.xa.mass.worker.runtime.WorkerResourceOwner;
+import com.xa.mass.worker.runtime.WorkerRegistrySnapshot;
+import com.xa.mass.worker.runtime.WorkerStateProjectionOwner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

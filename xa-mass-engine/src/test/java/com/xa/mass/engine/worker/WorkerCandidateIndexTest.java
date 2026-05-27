@@ -8,6 +8,7 @@ import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.runtime.worker.WorkerMeta;
+import com.xa.mass.worker.runtime.WorkerRegistrySnapshot;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

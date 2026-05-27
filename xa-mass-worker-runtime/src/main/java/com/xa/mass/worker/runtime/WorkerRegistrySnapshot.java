@@ -1,4 +1,4 @@
-package com.xa.mass.engine.worker;
+package com.xa.mass.worker.runtime;
 
 import com.xa.mass.runtime.worker.WorkerGroupRecord;
 
