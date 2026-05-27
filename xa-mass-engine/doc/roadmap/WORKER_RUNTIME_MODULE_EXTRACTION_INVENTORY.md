@@ -31,7 +31,8 @@ Candidate acquisition and task-local warm hints are now package-owned by
 `WorkerCandidateSourceOwner`; `WorkerManager` delegates to it while the module
 boundary is still inside engine.
 
-Worker runtime admission, exclusive lease, and occupancy reads are now
+WorkerGroup declaration state is now package-owned by `WorkerGroupOwner`;
+worker runtime admission, exclusive lease, and occupancy reads are
 package-owned by `WorkerAdmissionOwner`; AdapterNode and WorkerGroup binding
 relationships are package-owned by `WorkerRelationshipOwner`. `WorkerManager`
 still implements the external contracts and delegates to these owners while
@@ -43,8 +44,8 @@ callers converge.
 | --- | --- | --- | --- | --- | --- |
 | Worker row mutation | `addWorker`, `updateWorker`, `deleteWorker` | SDK registration, tests, server bootstrap through SDK | worker resource write path | control-plane storage plus derived runtime projection | Registration row is stable resource truth; `WorkerMeta` slot projection is runtime truth |
 | Worker row lookup | `getWorker`, `findWorker`, `getAllWorkers` | SDK diagnostics, storage-edge lookup, tests | resource read path or replacement read contract | control-plane storage read | `findWorker` exists because `WorkerLookupStore` is still active |
-| WorkerGroup mutation | `upsertWorkerGroup`, `deleteWorkerGroup` | SDK declaration, bootstrap, tests | worker resource write path | control-plane storage plus runtime candidate projection | WorkerGroup is capability declaration truth, not match strategy state |
-| WorkerGroup read | `workerGroup`, `workerGroupReadView`, `workerGroups` | SDK read APIs, candidate enumeration, tests | resource read path / scheduling-view runtime | control-plane read plus runtime read model | `workerGroupReadView` is used by scheduling candidate enumeration |
+| WorkerGroup mutation | `upsertWorkerGroup`, `deleteWorkerGroup` | SDK declaration, bootstrap, tests | `WorkerGroupOwner` through resource runtime | control-plane storage plus runtime candidate projection | WorkerGroup is capability declaration truth, not match strategy state |
+| WorkerGroup read | `workerGroup`, `workerGroupReadView`, `workerGroups` | SDK read APIs, candidate enumeration, tests | `WorkerGroupOwner` / scheduling-view runtime | control-plane read plus runtime read model | `workerGroupReadView` is used by scheduling candidate enumeration |
 | AdapterNode mutation | `registerAdapterNode`, `deleteAdapterNode` | SDK declaration, tests | `WorkerRelationshipOwner` through resource runtime | control-plane storage plus runtime projection | AdapterNode is endpoint/runtime-node declaration truth |
 | AdapterNode read | `adapterNode`, `adapterNodes` | SDK read APIs, tests | `WorkerRelationshipOwner` through resource runtime | control-plane read | Not scheduling policy |
 | NodeGroupBinding mutation | `bindNodeGroup`, `unbindNodeGroup`, `setNodeGroupBindingEnabled`, `setNodeGroupBindingDraining` | SDK declaration/control, tests | `WorkerRelationshipOwner` through resource runtime | control-plane declaration plus runtime dispatch gate | Enabled/draining effects mutate source-scoped dispatch gates in `WorkerRegistry` |
@@ -92,6 +93,7 @@ worker control
 
 worker relationship resources
   -> WorkerManager resource-compatible methods
+  -> WorkerGroupOwner for WorkerGroup declarations
   -> WorkerRelationshipOwner
   -> WorkerRegistry source-scoped dispatch gates for binding availability
 ```

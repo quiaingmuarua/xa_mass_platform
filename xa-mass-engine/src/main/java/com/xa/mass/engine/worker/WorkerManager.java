@@ -19,7 +19,6 @@ import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -44,11 +43,11 @@ public class WorkerManager implements WorkerLookupStore,
     private final WorkerReachabilityView reachabilityView;
     private final WorkerCapabilityAuthority capabilityAuthority;
     private final WorkerRegistry workerRegistry;
+    private final WorkerGroupOwner groupOwner;
     private final WorkerCandidateSourceOwner candidateSourceOwner;
     private final WorkerAdmissionOwner admissionOwner;
     private final WorkerRelationshipOwner relationshipOwner;
     private final Object workerRegistryLock = new Object();
-    private final LinkedHashMap<String, WorkerGroupRecord> workerGroupsById = new LinkedHashMap<>();
     private volatile WorkerRegistrySnapshot workerRegistrySnapshot;
     private volatile Runnable dispatchWakeupCallback = () -> {
     };
@@ -81,11 +80,12 @@ public class WorkerManager implements WorkerLookupStore,
         this.reachabilityView = reachabilityView != null ? reachabilityView : WorkerReachabilityView.permissive();
         this.capabilityAuthority = capabilityAuthority != null ? capabilityAuthority : new WorkerCapabilityAuthority();
         this.workerRegistry = workerRegistry != null ? workerRegistry : new InMemoryWorkerRegistry();
+        this.groupOwner = new WorkerGroupOwner(this.workerRegistry);
         this.candidateSourceOwner = new WorkerCandidateSourceOwner(this::getWorkerCandidateIndex);
         this.admissionOwner = new WorkerAdmissionOwner(this.workerRegistry);
         this.relationshipOwner = new WorkerRelationshipOwner(
                 this.workerRegistry,
-                this::hasDeclaredWorkerGroup,
+                this.groupOwner::hasWorkerGroup,
                 this::notifyDispatchWakeup
         );
         for (Worker worker : workerStorage.getAllWorkers()) {
@@ -140,25 +140,14 @@ public class WorkerManager implements WorkerLookupStore,
     }
 
     public WorkerGroupRecord upsertWorkerGroup(WorkerGroupRecord group) {
-        if (group == null) {
-            throw new IllegalArgumentException("worker group must not be null");
-        }
-        synchronized (workerRegistryLock) {
-            workerGroupsById.put(group.groupId(), group);
-            publishWorkerRegistrySnapshot();
-        }
+        WorkerGroupRecord record = groupOwner.upsertWorkerGroup(group);
+        publishWorkerRegistrySnapshot();
         notifyDispatchWakeup("worker group declared");
-        return group;
+        return record;
     }
 
     public Optional<WorkerGroupRecord> workerGroup(String groupId) {
-        String normalizedGroupId = normalizeNullable(groupId);
-        if (normalizedGroupId == null) {
-            return Optional.empty();
-        }
-        synchronized (workerRegistryLock) {
-            return Optional.ofNullable(workerGroupsById.get(normalizedGroupId));
-        }
+        return groupOwner.workerGroup(groupId);
     }
 
     public Optional<WorkerGroupRecord> workerGroupReadView(String groupId) {
@@ -167,27 +156,15 @@ public class WorkerManager implements WorkerLookupStore,
     }
 
     public List<WorkerGroupRecord> workerGroups() {
-        synchronized (workerRegistryLock) {
-            return List.copyOf(workerGroupsById.values());
-        }
+        return groupOwner.workerGroups();
     }
 
     public boolean deleteWorkerGroup(String groupId) {
-        String normalizedGroupId = normalizeNullable(groupId);
-        if (normalizedGroupId == null) {
-            return false;
+        boolean deleted = groupOwner.deleteWorkerGroup(groupId);
+        if (deleted) {
+            publishWorkerRegistrySnapshot();
         }
-        synchronized (workerRegistryLock) {
-            WorkerGroupRecord removed = workerGroupsById.remove(normalizedGroupId);
-            if (removed != null) {
-                for (String workerId : workerRegistry.workerIdsByGroupId(normalizedGroupId)) {
-                    workerRegistry.markSlotRemoving(normalizedGroupId, workerId, "worker group deleted");
-                }
-                publishWorkerRegistrySnapshot();
-                return true;
-            }
-            return false;
-        }
+        return deleted;
     }
 
     public boolean tryAcquireWorkerExclusiveLease(String workerId) {
@@ -316,7 +293,7 @@ public class WorkerManager implements WorkerLookupStore,
             WorkerCapabilityReportResult result = capabilityAuthority.applyReport(
                     report,
                     workerStorage.getAllWorkers(),
-                    workerGroupsById.values()
+                    groupOwner.workerGroups()
             );
             if (result.snapshotChanged() && result.snapshot() != null) {
                 publishWorkerRegistrySnapshot(result.snapshot());
@@ -477,8 +454,7 @@ public class WorkerManager implements WorkerLookupStore,
     }
 
     private Set<EventKey> eventBindingCeilingFor(String groupId) {
-        WorkerGroupRecord group = workerGroupsById.get(normalizeNullable(groupId));
-        return group == null ? Set.of() : group.eventKeys();
+        return groupOwner.eventBindingCeilingFor(groupId);
     }
 
     private void publishWorkerRegistrySnapshot() {
@@ -491,7 +467,7 @@ public class WorkerManager implements WorkerLookupStore,
     }
 
     private WorkerRegistrySnapshot composeWorkerRegistrySnapshot() {
-        return capabilityAuthority.composeSnapshot(workerStorage.getAllWorkers(), workerGroupsById.values());
+        return capabilityAuthority.composeSnapshot(workerStorage.getAllWorkers(), groupOwner.workerGroups());
     }
 
     private Worker normalizeWorkerRegistrationRow(Worker worker) {
@@ -516,12 +492,6 @@ public class WorkerManager implements WorkerLookupStore,
             worker.setLastHeartbeat(LocalDateTime.now());
         }
         return worker;
-    }
-
-    private boolean hasDeclaredWorkerGroup(String groupId) {
-        synchronized (workerRegistryLock) {
-            return workerGroupsById.containsKey(groupId);
-        }
     }
 
     private void applyNodeGroupBindingDispatchGate(Worker worker) {
