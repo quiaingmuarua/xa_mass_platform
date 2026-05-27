@@ -36,10 +36,10 @@ public class WorkerManager implements WorkerLookupStore,
     static final int DEFAULT_DIAGNOSTIC_CANDIDATE_LIMIT = 512;
 
     private final WorkerReachabilityView reachabilityView;
-    private final WorkerCapabilityAuthority capabilityAuthority;
     private final WorkerRegistry workerRegistry;
     private final WorkerGroupOwner groupOwner;
     private final WorkerResourceOwner resourceOwner;
+    private final WorkerReportOwner reportOwner;
     private final WorkerCandidateSourceOwner candidateSourceOwner;
     private final WorkerAdmissionOwner admissionOwner;
     private final WorkerRelationshipOwner relationshipOwner;
@@ -72,7 +72,6 @@ public class WorkerManager implements WorkerLookupStore,
                   WorkerCapabilityAuthority capabilityAuthority,
                   WorkerRegistry workerRegistry) {
         this.reachabilityView = reachabilityView != null ? reachabilityView : WorkerReachabilityView.permissive();
-        this.capabilityAuthority = capabilityAuthority != null ? capabilityAuthority : new WorkerCapabilityAuthority();
         this.workerRegistry = workerRegistry != null ? workerRegistry : new InMemoryWorkerRegistry();
         this.groupOwner = new WorkerGroupOwner(this.workerRegistry);
         this.candidateSourceOwner = new WorkerCandidateSourceOwner(this::getWorkerCandidateIndex);
@@ -89,6 +88,7 @@ public class WorkerManager implements WorkerLookupStore,
                 this.relationshipOwner
         );
         this.resourceOwner.syncWorkerRegistrySlots(this.resourceOwner.getAllWorkers());
+        this.reportOwner = new WorkerReportOwner(capabilityAuthority, this.resourceOwner, this.groupOwner);
         publishWorkerRegistrySnapshot(composeWorkerRegistrySnapshot());
     }
 
@@ -267,14 +267,9 @@ public class WorkerManager implements WorkerLookupStore,
     }
 
     public WorkerCapabilityReportResult applyWorkerCapabilityReport(WorkerCapabilityReport report) {
-        WorkerCapabilityReportResult result = capabilityAuthority.applyReport(
-                report,
-                resourceOwner.getAllWorkers(),
-                groupOwner.workerGroups()
-        );
+        WorkerCapabilityReportResult result = reportOwner.applyWorkerCapabilityReport(report);
         if (result.snapshotChanged() && result.snapshot() != null) {
             publishWorkerRegistrySnapshot(result.snapshot());
-            resourceOwner.syncWorkerRegistrySlots(result.snapshot().workers());
         }
         return result;
     }
@@ -391,7 +386,7 @@ public class WorkerManager implements WorkerLookupStore,
     }
 
     private WorkerRegistrySnapshot composeWorkerRegistrySnapshot() {
-        return capabilityAuthority.composeSnapshot(resourceOwner.getAllWorkers(), groupOwner.workerGroups());
+        return reportOwner.composeWorkerRegistrySnapshot();
     }
 
     private static String normalizeNullable(String value) {

@@ -33,9 +33,10 @@ boundary is still inside engine.
 
 Worker row mutation and registry slot projection are now package-owned by
 `WorkerResourceOwner`; WorkerGroup declaration state is package-owned by
-`WorkerGroupOwner`; worker runtime admission, exclusive lease, and occupancy
-reads are package-owned by `WorkerAdmissionOwner`; AdapterNode and WorkerGroup
-binding relationships are package-owned by `WorkerRelationshipOwner`.
+`WorkerGroupOwner`; worker-originated capability report projection is
+package-owned by `WorkerReportOwner`; worker runtime admission, exclusive lease,
+and occupancy reads are package-owned by `WorkerAdmissionOwner`; AdapterNode and
+WorkerGroup binding relationships are package-owned by `WorkerRelationshipOwner`.
 `WorkerManager` still implements the external contracts and delegates to these
 owners while callers converge.
 
@@ -54,7 +55,7 @@ owners while callers converge.
 | Candidate source | `findWorkerCandidates`, `findWorkerCandidateBatch`, `getWorkerCandidateIndex` | `RuleBasedTaskWorkerMatchingStrategy`, tests | `WorkerCandidateRuntime` | runtime state | Must start from resolved WorkerGroup selector; no all-worker candidate scan |
 | Warm hints | `recordWarmCandidate` | `TaskWorkerAssignListener`, strategy tests | `WorkerCandidateSourceOwner` through `WorkerCandidateRuntime` | runtime state | Engine triggers after useful assignment evidence; runtime owns hint storage/revalidation |
 | Snapshot maintenance | `refreshWorkerRegistrySnapshot`, `getWorkerRegistrySnapshot` | tests, diagnostics, capability report path | candidate/resource read model residue | runtime read model residue | Delete or narrow after runtime DTOs replace snapshot callers |
-| Capability report | `applyWorkerCapabilityReport` | `WorkerControlService`, event handlers, SDK | `WorkerReportRuntime` | resource mutation plus runtime projection | Capability truth materializes into WorkerGroup/snapshot evidence |
+| Capability report | `applyWorkerCapabilityReport` | `WorkerControlService`, event handlers, SDK | `WorkerReportOwner` through `WorkerReportRuntime` | resource mutation plus runtime projection | Capability truth materializes into WorkerGroup/snapshot evidence |
 | Online model status | `updateOnlineStatus`, `isWorkerOnline` | legacy event bridge, tests | compatibility/resource status path | control-plane row plus transport reachability residue | Transport presence remains reachability owner |
 | Reachability read | `getWorkerReachability` | scheduling candidate enumeration, tests | `WorkerSchedulingViewRuntime` | transport evidence consumed as runtime read evidence | Must not turn transport session into scheduling truth |
 | Dispatch gate read | `isWorkerDispatchEnabled` | scheduling candidate enumeration, tests | `WorkerSchedulingViewRuntime` | runtime state | Derived from source-scoped gates |
@@ -88,6 +89,7 @@ engine assignment
 worker control
   -> WorkerControlService
   -> WorkerManager.applyWorkerCapabilityReport
+  -> WorkerReportOwner
   -> WorkerStateProjectionOwner
   -> WorkerDispatchAvailabilityPolicy
   -> WorkerManager dispatch-gate methods

@@ -662,21 +662,21 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
     @Test
     void workerManagerPublishesRegistrySnapshotThroughCapabilityAuthority() throws IOException {
-        Path workerManagerPath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/worker/WorkerManager.java");
-        String source = Files.readString(workerManagerPath, StandardCharsets.UTF_8);
+        Path workerReportOwnerPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/worker/WorkerReportOwner.java");
+        String source = Files.readString(workerReportOwnerPath, StandardCharsets.UTF_8);
 
         List<String> violations = new ArrayList<>();
         if (!Pattern.compile("\\bWorkerCapabilityAuthority\\b").matcher(source).find()) {
-            violations.add(workerManagerPath + " does not hold the WorkerCapabilityAuthority owner");
+            violations.add(workerReportOwnerPath + " does not hold the WorkerCapabilityAuthority owner");
         }
         if (!Pattern.compile("\\bcapabilityAuthority\\.composeSnapshot\\s*\\(").matcher(source).find()) {
-            violations.add(workerManagerPath + " does not publish snapshots through WorkerCapabilityAuthority");
+            violations.add(workerReportOwnerPath + " does not compose snapshots through WorkerCapabilityAuthority");
         }
 
         assertTrue(violations.isEmpty(),
-                "WorkerManager owns active snapshot publication, but effective capability composition "
-                        + "must flow through WorkerCapabilityAuthority:\n"
+                "WorkerReportOwner owns effective capability composition. WorkerManager may publish "
+                        + "the active snapshot, but composition must flow through WorkerCapabilityAuthority:\n"
                         + String.join("\n", violations));
     }
 
@@ -803,11 +803,14 @@ class EngineSchedulingCoreArchitectureGuardTest {
         Path workerManagerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker/WorkerManager.java");
         Path workerResourceOwnerPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/worker/WorkerResourceOwner.java");
+        Path workerReportOwnerPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/worker/WorkerReportOwner.java");
         Pattern allWorkerScan = Pattern.compile("\\.getAllWorkers\\s*\\(");
 
         List<String> violations = new ArrayList<>();
         for (Path path : javaSourceFiles(engineRoot)) {
-            if (path.equals(workerManagerPath) || path.equals(workerResourceOwnerPath)) {
+            if (path.equals(workerManagerPath) || path.equals(workerResourceOwnerPath)
+                    || path.equals(workerReportOwnerPath)) {
                 continue;
             }
             String source = Files.readString(path, StandardCharsets.UTF_8);
