@@ -1,4 +1,4 @@
-package com.xa.mass.engine.worker;
+package com.xa.mass.engine.control;
 
 import com.xa.mass.command.event.CoreEventRequest;
 import com.xa.mass.command.event.CoreEventResponse;

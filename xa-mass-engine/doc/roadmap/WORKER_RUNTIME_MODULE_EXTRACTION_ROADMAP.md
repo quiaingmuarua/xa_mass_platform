@@ -678,6 +678,9 @@ Progress:
   `WorkerControlRuntime` instead of the concrete `WorkerControlService`, so
   event parsing ingress no longer couples to worker-control implementation
   assembly.
+- Capability/state report event parsers now live in the engine control ingress
+  package rather than `engine.worker`; the worker package keeps only assembly
+  and dispatch-gate policy residue.
 - `MassEngine` now wires resource-side availability wakeups through
   `WorkerAvailabilityWakeupRuntime` instead of importing `WorkerManager`
   directly. This keeps assignment retry / ready-scan wakeup wiring as lifecycle
@@ -731,9 +734,9 @@ Progress:
   EngineConfig keeps WorkerManager as private assembly and exposes only narrow
   worker runtime contracts to callers.
 - Engine still assembles those owners through `WorkerManager`; match strategy
-  stays in engine for later slices. Worker-control event handlers now parse
-  event payloads against `WorkerControlRuntime`, but the parser classes still
-  live in engine.
+  stays in engine for later slices. Worker-control event handlers parse event
+  payloads against `WorkerControlRuntime` from engine ingress code, not the
+  worker-runtime owner package.
 - SDK shell runtime bridge now accepts `WorkerResourceRuntime` for legacy
   runtime event-bus heartbeat refresh instead of full `WorkerManager`; the
   legacy worker-status listener is SDK shell code, not an engine worker owner.

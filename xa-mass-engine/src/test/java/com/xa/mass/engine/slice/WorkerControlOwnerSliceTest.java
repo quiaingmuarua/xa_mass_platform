@@ -14,7 +14,7 @@ import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.engine.worker.WorkerControlService;
 import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.worker.runtime.WorkerStateProjectionOwner;
-import com.xa.mass.engine.worker.WorkerStateReportEventHandler;
+import com.xa.mass.engine.control.WorkerStateReportEventHandler;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.trace.sink.ExecutionEventType;
 import org.junit.jupiter.api.Test;

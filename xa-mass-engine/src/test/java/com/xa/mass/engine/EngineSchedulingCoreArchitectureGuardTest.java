@@ -1843,8 +1843,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
         Path registryPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/event/KernelEventHandlerRegistry.java");
         List<Path> workerControlHandlerPaths = List.of(
                 MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/command/WorkerCommandRequestEventHandler.java"),
-                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker/WorkerCapabilityReportEventHandler.java"),
-                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker/WorkerStateReportEventHandler.java")
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/control/WorkerCapabilityReportEventHandler.java"),
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/control/WorkerStateReportEventHandler.java")
         );
         List<Path> workerControlEventPaths = new ArrayList<>();
         workerControlEventPaths.add(registryPath);
@@ -2531,9 +2531,9 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void workerCapabilityReportHandlerStaysInWorkerOwnerBoundary() throws IOException {
+    void workerCapabilityReportHandlerStaysInWorkerControlEventBoundary() throws IOException {
         Path handlerPath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/worker/WorkerCapabilityReportEventHandler.java");
+                "com/xa/mass/engine/control/WorkerCapabilityReportEventHandler.java");
         String source = Files.readString(handlerPath, StandardCharsets.UTF_8);
 
         Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
@@ -2555,7 +2555,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
         assertTrue(violations.isEmpty(),
                 "Worker capability report event handling may parse an event payload and delegate "
-                        + "to WorkerManager / WorkerCapabilityAuthority only. It must not become "
+                        + "to WorkerControlRuntime only. It must not become "
                         + "transport presence, task result, matching, reachability, or load ownership:\n"
                         + String.join("\n", violations));
     }
