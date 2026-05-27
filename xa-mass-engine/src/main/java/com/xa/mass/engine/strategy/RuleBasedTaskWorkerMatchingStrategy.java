@@ -40,6 +40,9 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
             Integer.getInteger("xa.mass.engine.stageOneCandidateSampleMax", 2_048);
     static final int DEFAULT_STAGE_ONE_OVERSAMPLE_FACTOR =
             Integer.getInteger("xa.mass.engine.stageOneCandidateOversampleFactor", 4);
+    private static final String REJECTION_OWNER_STAGE2_POLICY = "STAGE2_POLICY";
+    private static final String REJECTION_OWNER_RESERVE = "RESERVE";
+    private static final String REJECTION_OWNER_DISPATCH_GATE = "DISPATCH_GATE";
 
     private final RuleManager<Map<String, Object>> ruleManager;
     private final WorkerCandidateRuntime candidateRuntime;
@@ -126,7 +129,8 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                 recordService.recordWorkerAssignment(
                         task, candidate, prefilterDecision.result(),
                         prefilterDecision.reason(),
-                        new ArrayList<>(), withCandidateSourceStats(prefilterDecision.contextSnapshot(), candidateBatch),
+                        new ArrayList<>(), withCandidateSourceStats(
+                                prefilterDecision.contextSnapshot(), candidateBatch, prefilterDecision.rejectionOwner()),
                         prefilterDecision.workerLocked()
                 );
                 log.debug("Worker candidate rejected before rule evaluation: {} ({})",
@@ -172,7 +176,8 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                 recordService.recordWorkerAssignment(
                         task, candidate, AssignmentResult.RULE_NOT_MATCH,
                         "rule evaluation failed: " + failedRules,
-                        ruleEvaluations, withCandidateSourceStats(matchContext.getContext(), candidateBatch),
+                        ruleEvaluations, withCandidateSourceStats(
+                                matchContext.getContext(), candidateBatch, REJECTION_OWNER_STAGE2_POLICY),
                         admissionRuntime.hasWorkerExclusiveLease(worker.workerId())
                 );
                 log.debug("Rule not matched: {} (failed rules: {})",
@@ -193,7 +198,8 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                 recordService.recordWorkerAssignment(
                         task, candidate, AssignmentResult.FAILED,
                         "rule evaluation exception: " + e.getMessage(),
-                        new ArrayList<>(), withCandidateSourceStats(matchContext.getContext(), candidateBatch),
+                        new ArrayList<>(), withCandidateSourceStats(
+                                matchContext.getContext(), candidateBatch, REJECTION_OWNER_STAGE2_POLICY),
                         admissionRuntime.hasWorkerExclusiveLease(worker.workerId())
                 );
                 log.error("Error evaluating rules for worker {}: {}",
@@ -234,7 +240,8 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                 recordService.recordWorkerAssignment(
                         task, candidate, reserveAssignmentResult(reserveResult),
                         reserveRejectionReason,
-                        passedCandidate.ruleEvaluations(), withCandidateSourceStats(rankedContext.getContext(), candidateBatch),
+                        passedCandidate.ruleEvaluations(), withCandidateSourceStats(
+                                rankedContext.getContext(), candidateBatch, REJECTION_OWNER_RESERVE),
                         admissionRuntime.hasWorkerExclusiveLease(worker.workerId())
                 );
                 log.debug("Worker reserve rejected after candidate ranking: worker={}, status={}, reason={}",
@@ -284,7 +291,8 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                 recordService.recordWorkerAssignment(
                         task, candidate, AssignmentResult.CONFLICT,
                         "worker lock conflict after candidate ranking",
-                        passedCandidate.ruleEvaluations(), withCandidateSourceStats(rankedContext.getContext(), candidateBatch),
+                        passedCandidate.ruleEvaluations(), withCandidateSourceStats(
+                                rankedContext.getContext(), candidateBatch, REJECTION_OWNER_RESERVE),
                         admissionRuntime.hasWorkerExclusiveLease(worker.workerId())
                 );
                 log.debug("Worker locked after candidate ranking: {}", worker.workerId());
@@ -340,6 +348,12 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
 
     private Map<String, Object> withCandidateSourceStats(Map<String, Object> context,
                                                          WorkerCandidateBatch<WorkerCandidateRow> candidateBatch) {
+        return withCandidateSourceStats(context, candidateBatch, null);
+    }
+
+    private Map<String, Object> withCandidateSourceStats(Map<String, Object> context,
+                                                         WorkerCandidateBatch<WorkerCandidateRow> candidateBatch,
+                                                         String rejectionOwner) {
         LinkedHashMap<String, Object> snapshot = new LinkedHashMap<>();
         if (context != null) {
             snapshot.putAll(context);
@@ -348,6 +362,10 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
             snapshot.put("workerCandidateWarmCount", candidateBatch.warmCandidateCount());
             snapshot.put("workerCandidateColdCount", candidateBatch.coldCandidateCount());
             snapshot.put("workerCandidateWarmRejectedCount", candidateBatch.warmSourceGuardRejectedCount());
+            snapshot.put("workerCandidateDuplicateCount", candidateBatch.duplicateCandidateCount());
+        }
+        if (rejectionOwner != null && !rejectionOwner.isBlank()) {
+            snapshot.put("workerAssignmentRejectionOwner", rejectionOwner);
         }
         return Collections.unmodifiableMap(snapshot);
     }
@@ -358,34 +376,34 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
         Map<String, Object> contextSnapshot = WorkerMatchContext.contextSnapshot(candidate, task);
         if (!schedulingView.dispatchEnabled()) {
             return PrefilterDecision.reject(AssignmentResult.RESOURCE_UNAVAILABLE,
-                    "worker unavailable", contextSnapshot, false);
+                    "worker unavailable", contextSnapshot, false, REJECTION_OWNER_DISPATCH_GATE);
         }
         if (reachability != WorkerReachabilityState.ONLINE) {
             return PrefilterDecision.reject(AssignmentResult.RESOURCE_UNAVAILABLE,
-                    "worker transport unreachable", contextSnapshot, false);
+                    "worker transport unreachable", contextSnapshot, false, REJECTION_OWNER_STAGE2_POLICY);
         }
         boolean workerLocked = schedulingView.workerLocked();
         if (workerLocked) {
             return PrefilterDecision.reject(AssignmentResult.CONFLICT,
-                    "worker locked", contextSnapshot, true);
+                    "worker locked", contextSnapshot, true, REJECTION_OWNER_RESERVE);
         }
         String targetWorkerId = TaskSharedConfig.targetWorkerId(task);
         Map<String, String> targetWorkerAttributes = TaskSharedConfig.targetWorkerAttributes(task);
         if (targetWorkerId != null && !targetWorkerId.equals(schedulingView.workerId())) {
             return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
-                    "target worker mismatch", contextSnapshot, false);
+                    "target worker mismatch", contextSnapshot, false, REJECTION_OWNER_STAGE2_POLICY);
         }
         if (!targetWorkerAttributes.isEmpty()
                 && Boolean.FALSE.equals(contextSnapshot.get("matchesTargetWorkerAttributes"))) {
             return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
-                    "target worker attributes mismatch", contextSnapshot, false);
+                    "target worker attributes mismatch", contextSnapshot, false, REJECTION_OWNER_STAGE2_POLICY);
         }
 
         String routingCode = TaskSharedConfig.routingCode(task);
         boolean taskHasRoutingRequirement = routingCode != null && !routingCode.isBlank();
         if (taskHasRoutingRequirement && !schedulingView.schedulingRoutingTagsContain(routingCode)) {
             return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
-                    "routing code mismatch", contextSnapshot, false);
+                    "routing code mismatch", contextSnapshot, false, REJECTION_OWNER_STAGE2_POLICY);
         }
         return PrefilterDecision.allow();
     }
@@ -434,28 +452,32 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
         private final String reason;
         private final Map<String, Object> contextSnapshot;
         private final boolean workerLocked;
+        private final String rejectionOwner;
 
         private PrefilterDecision(boolean passed,
                                   AssignmentResult result,
                                   String reason,
                                   Map<String, Object> contextSnapshot,
-                                  boolean workerLocked) {
+                                  boolean workerLocked,
+                                  String rejectionOwner) {
             this.passed = passed;
             this.result = result;
             this.reason = reason;
             this.contextSnapshot = contextSnapshot;
             this.workerLocked = workerLocked;
+            this.rejectionOwner = rejectionOwner;
         }
 
         private static PrefilterDecision allow() {
-            return new PrefilterDecision(true, null, null, Map.of(), false);
+            return new PrefilterDecision(true, null, null, Map.of(), false, null);
         }
 
         private static PrefilterDecision reject(AssignmentResult result,
                                                 String reason,
                                                 Map<String, Object> contextSnapshot,
-                                                boolean workerLocked) {
-            return new PrefilterDecision(false, result, reason, contextSnapshot, workerLocked);
+                                                boolean workerLocked,
+                                                String rejectionOwner) {
+            return new PrefilterDecision(false, result, reason, contextSnapshot, workerLocked, rejectionOwner);
         }
 
         private boolean passed() {
@@ -476,6 +498,10 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
 
         private boolean workerLocked() {
             return workerLocked;
+        }
+
+        private String rejectionOwner() {
+            return rejectionOwner;
         }
     }
 }

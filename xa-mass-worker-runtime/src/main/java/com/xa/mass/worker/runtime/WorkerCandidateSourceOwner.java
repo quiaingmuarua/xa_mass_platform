@@ -45,35 +45,21 @@ public final class WorkerCandidateSourceOwner {
         WorkerCandidateIndex candidateIndex = candidateIndexSupplier.get();
         if (selector.targetsWorker()) {
             List<Worker> targetCandidates = candidateIndex.workersFor(selector, limit);
-            return new WorkerCandidateBatch<>(toCandidateRows(targetCandidates), 0, targetCandidates.size(), 0);
+            CandidateMerge targetMerge = mergeWarmAndCold(List.of(), targetCandidates, limit);
+            return new WorkerCandidateBatch<>(targetMerge.candidates(), 0, targetCandidates.size(), 0,
+                    targetMerge.duplicateCandidateCount());
         }
         WarmCandidateSelection warmSelection = warmCandidatesFor(selector, candidateIndex, limit);
         List<WorkerCandidateRow> warmCandidates = warmSelection.candidates();
         List<Worker> coldCandidates = candidateIndex.workersFor(selector, limit);
         if (warmCandidates.isEmpty()) {
-            return new WorkerCandidateBatch<>(toCandidateRows(coldCandidates), 0, coldCandidates.size(),
-                    warmSelection.sourceGuardRejectedCount());
+            CandidateMerge coldMerge = mergeWarmAndCold(List.of(), coldCandidates, limit);
+            return new WorkerCandidateBatch<>(coldMerge.candidates(), 0, coldCandidates.size(),
+                    warmSelection.sourceGuardRejectedCount(), coldMerge.duplicateCandidateCount());
         }
-        LinkedHashMap<String, WorkerCandidateRow> deduped = new LinkedHashMap<>();
-        for (WorkerCandidateRow candidate : warmCandidates) {
-            if (candidate != null && candidate.workerId() != null) {
-                deduped.put(candidate.workerId(), candidate);
-            }
-            if (deduped.size() >= limit) {
-                return new WorkerCandidateBatch<>(List.copyOf(deduped.values()), warmCandidates.size(),
-                        coldCandidates.size(), warmSelection.sourceGuardRejectedCount());
-            }
-        }
-        for (Worker worker : coldCandidates) {
-            if (worker != null && worker.getWorkerId() != null) {
-                deduped.putIfAbsent(worker.getWorkerId(), toCandidateRow(worker));
-            }
-            if (deduped.size() >= limit) {
-                break;
-            }
-        }
-        return new WorkerCandidateBatch<>(List.copyOf(deduped.values()), warmCandidates.size(),
-                coldCandidates.size(), warmSelection.sourceGuardRejectedCount());
+        CandidateMerge merge = mergeWarmAndCold(warmCandidates, coldCandidates, limit);
+        return new WorkerCandidateBatch<>(merge.candidates(), warmCandidates.size(),
+                coldCandidates.size(), warmSelection.sourceGuardRejectedCount(), merge.duplicateCandidateCount());
     }
 
     public void recordWarmCandidate(WorkerTaskSelector selector, WorkerCandidateRow candidate) {
@@ -134,15 +120,38 @@ public final class WorkerCandidateSourceOwner {
         return new WarmCandidateSelection(List.copyOf(workers), rejected);
     }
 
-    private static List<WorkerCandidateRow> toCandidateRows(List<Worker> workers) {
-        if (workers == null || workers.isEmpty()) {
-            return List.of();
+    private static CandidateMerge mergeWarmAndCold(List<WorkerCandidateRow> warmCandidates,
+                                                   List<Worker> coldCandidates,
+                                                   int limit) {
+        LinkedHashMap<String, WorkerCandidateRow> deduped = new LinkedHashMap<>();
+        int duplicateCount = 0;
+        if (warmCandidates != null) {
+            for (WorkerCandidateRow candidate : warmCandidates) {
+                if (candidate != null && candidate.workerId() != null) {
+                    WorkerCandidateRow previous = deduped.putIfAbsent(candidate.workerId(), candidate);
+                    if (previous != null) {
+                        duplicateCount++;
+                    }
+                }
+                if (deduped.size() >= limit) {
+                    return new CandidateMerge(List.copyOf(deduped.values()), duplicateCount);
+                }
+            }
         }
-        List<WorkerCandidateRow> rows = new ArrayList<>(workers.size());
-        for (Worker worker : workers) {
-            rows.add(toCandidateRow(worker));
+        if (coldCandidates != null) {
+            for (Worker worker : coldCandidates) {
+                if (worker != null && worker.getWorkerId() != null) {
+                    WorkerCandidateRow previous = deduped.putIfAbsent(worker.getWorkerId(), toCandidateRow(worker));
+                    if (previous != null) {
+                        duplicateCount++;
+                    }
+                }
+                if (deduped.size() >= limit) {
+                    break;
+                }
+            }
         }
-        return List.copyOf(rows);
+        return new CandidateMerge(List.copyOf(deduped.values()), duplicateCount);
     }
 
     private static WorkerCandidateRow toCandidateRow(Worker worker) {
@@ -181,6 +190,13 @@ public final class WorkerCandidateSourceOwner {
 
         static WarmCandidateSelection empty() {
             return new WarmCandidateSelection(List.of(), 0);
+        }
+    }
+
+    private record CandidateMerge(List<WorkerCandidateRow> candidates, int duplicateCandidateCount) {
+        private CandidateMerge {
+            candidates = candidates == null ? List.of() : List.copyOf(candidates);
+            duplicateCandidateCount = Math.max(0, duplicateCandidateCount);
         }
     }
 }

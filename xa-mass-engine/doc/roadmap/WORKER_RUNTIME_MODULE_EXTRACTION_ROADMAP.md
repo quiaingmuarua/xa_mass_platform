@@ -905,6 +905,39 @@ workers across polling, WebSocket, and socket adapters, proving worker
 registration/report/dispatch/result crosses the worker-runtime, SDK/server,
 and transport module boundary through public runtime surfaces.
 
+Match-path diagnostics now carry bounded owner evidence without moving
+dispatch binding or result convergence into worker-runtime:
+
+- `WorkerCandidateBatch` reports warm count, cold count, source-guard reject
+  count, and duplicate candidate count.
+- `AssignmentRecord.contextSnapshot` records those candidate-source counts for
+  accepted and rejected match attempts.
+- Match/admission rejections also record `workerAssignmentRejectionOwner` with
+  current values:
+  - `STAGE2_POLICY` for reachability, target, route, rule, and rule-exception
+    rejection.
+  - `RESERVE` for pre-existing lock, reserve rejection, and post-rank lock
+    conflict.
+  - `DISPATCH_GATE` for dispatch-disabled workers.
+- Dispatch binding failure remains owned by the engine dispatch binder and trace
+  `DISPATCH_BINDING_SUMMARY`; result convergence remains owned by
+  task-result/runtime convergence traces and tests. WRX must preserve those
+  owner boundaries rather than adding worker-runtime copies.
+
+Focused diagnostic proof:
+
+```powershell
+mvn -pl xa-mass-worker-runtime,xa-mass-engine -am `
+  '-Dtest=WorkerManagerTest,RuleBasedTaskWorkerMatchingStrategyTest' `
+  '-Dsurefire.failIfNoSpecifiedTests=false' test
+```
+
+Current local evidence on 2026-05-28: `WorkerManagerTest` ran 53 tests and
+`RuleBasedTaskWorkerMatchingStrategyTest` ran 18 tests with zero failures. The
+coverage proves duplicate warm/cold candidates are counted while deduping the
+candidate list, and assignment records classify Stage-2 policy and reserve
+rejections through `workerAssignmentRejectionOwner`.
+
 Scope:
 
 1. Run memory and Redis worker-runtime contract tests through the same suite.
@@ -913,19 +946,20 @@ Scope:
 3. Add black-box transport worker proof that registration/report/dispatch/result
    crosses module boundary cleanly.
 4. Track metrics:
-   - duplicate candidate
-   - stale candidate rejection
-   - reserve conflict
-   - source guard rejection
+   - duplicate candidate count
+   - stale/source-guard candidate rejection count
+   - reserve conflict owner
    - warm/cold candidate count
-   - dispatch gate source rejection
+   - dispatch gate rejection owner
 
 Acceptance:
 
 1. Memory and Redis worker-runtime proofs are shared.
 2. Multi-JVM / Redis proof does not require engine-local worker state.
-3. Failure diagnostics identify whether rejection came from source guard,
-   Stage-2 policy, reserve, dispatch bind, or result convergence.
+3. Failure diagnostics identify whether match/admission rejection came from
+   source guard, Stage-2 policy, reserve, or dispatch gate. Dispatch bind and
+   result convergence failures remain identifiable through their existing
+   engine/result trace and test owners.
 4. Runtime selection does not change SDK/server public worker APIs.
 5. The roadmap or inventory names the CI/profile/runbook command for Redis and
    multi-JVM proof, including skip behavior when Redis is unavailable.

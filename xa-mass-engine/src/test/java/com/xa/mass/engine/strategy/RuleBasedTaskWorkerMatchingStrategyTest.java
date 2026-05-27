@@ -157,6 +157,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                 .orElseThrow();
         assertTrue(record.getWorkerSnapshot().isWorkerLocked());
         assertEquals("worker locked", record.getReason());
+        assertEquals("RESERVE", record.getContextSnapshot().get("workerAssignmentRejectionOwner"));
         assertEquals(0, record.getRuleEvaluations().size());
     }
 
@@ -211,6 +212,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         AssignmentRecord offlineRecord = findRecord(recordService, "task-prefilter", "worker-offline");
         assertEquals("worker transport unreachable", offlineRecord.getReason());
         assertEquals(AssignmentResult.RESOURCE_UNAVAILABLE, offlineRecord.getResult());
+        assertEquals("STAGE2_POLICY", offlineRecord.getContextSnapshot().get("workerAssignmentRejectionOwner"));
         assertEquals(0, offlineRecord.getRuleEvaluations().size());
 
         assertNull(findRecordOrNull(recordService, "task-prefilter", "worker-unsupported"));
@@ -218,6 +220,8 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         AssignmentRecord routingMismatchRecord = findRecord(recordService, "task-prefilter", "worker-routing-mismatch");
         assertEquals("routing code mismatch", routingMismatchRecord.getReason());
         assertEquals(AssignmentResult.RULE_NOT_MATCH, routingMismatchRecord.getResult());
+        assertEquals("STAGE2_POLICY",
+                routingMismatchRecord.getContextSnapshot().get("workerAssignmentRejectionOwner"));
         assertEquals(0, routingMismatchRecord.getRuleEvaluations().size());
         assertEquals("worker-routing-mismatch",
                 routingMismatchRecord.getContextSnapshot().get("workerSchedulingResourceId"));
@@ -581,6 +585,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         AssignmentRecord rejectedRecord = findRecord(recordService, "task-capacity", "worker-at-capacity");
         assertEquals(AssignmentResult.QUOTA_EXCEEDED, rejectedRecord.getResult());
         assertEquals("worker capacity unavailable after candidate ranking", rejectedRecord.getReason());
+        assertEquals("RESERVE", rejectedRecord.getContextSnapshot().get("workerAssignmentRejectionOwner"));
     }
 
     @Test
@@ -620,6 +625,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         assertEquals(AssignmentResult.RESOURCE_UNAVAILABLE, rejectedRecord.getResult());
         assertEquals("worker reserve rejected after candidate ranking: worker heartbeat stale",
                 rejectedRecord.getReason());
+        assertEquals("RESERVE", rejectedRecord.getContextSnapshot().get("workerAssignmentRejectionOwner"));
     }
 
     @Test
@@ -659,6 +665,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         AssignmentRecord rejectedRecord = findRecord(recordService, "task-lock-conflict", "worker-conflict");
         assertEquals(AssignmentResult.CONFLICT, rejectedRecord.getResult());
         assertEquals("worker lock conflict after candidate ranking", rejectedRecord.getReason());
+        assertEquals("RESERVE", rejectedRecord.getContextSnapshot().get("workerAssignmentRejectionOwner"));
     }
 
     @Test
@@ -704,6 +711,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         AssignmentRecord rejectedRecord = findRecord(recordService, "task-background-3", "worker-shared");
         assertEquals(AssignmentResult.QUOTA_EXCEEDED, rejectedRecord.getResult());
         assertEquals("worker capacity unavailable after candidate ranking", rejectedRecord.getReason());
+        assertEquals("RESERVE", rejectedRecord.getContextSnapshot().get("workerAssignmentRejectionOwner"));
     }
 
     @Test
@@ -738,7 +746,9 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                         && Integer.valueOf(1).equals(record.getContextSnapshot()
                         .get("workerCandidateColdCount"))
                         && Integer.valueOf(0).equals(record.getContextSnapshot()
-                        .get("workerCandidateWarmRejectedCount"))));
+                        .get("workerCandidateWarmRejectedCount"))
+                        && Integer.valueOf(1).equals(record.getContextSnapshot()
+                        .get("workerCandidateDuplicateCount"))));
     }
 
     @Test

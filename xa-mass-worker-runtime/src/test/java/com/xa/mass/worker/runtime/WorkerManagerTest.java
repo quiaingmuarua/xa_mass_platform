@@ -707,7 +707,28 @@ public class WorkerManagerTest {
         assertEquals(1, batch.warmCandidateCount());
         assertEquals(1, batch.coldCandidateCount());
         assertEquals(0, batch.warmSourceGuardRejectedCount());
+        assertEquals(0, batch.duplicateCandidateCount());
         assertEquals(1, manager.warmCandidateCount(task.getTid()));
+    }
+
+    @Test
+    void duplicateWarmAndColdCandidateIsReportedAndDeduped() {
+        declareProjectGroup("pool-a", "demoApp");
+        Worker duplicate = worker("w-duplicate", "pool-a");
+        addWorker(duplicate);
+        Task task = task("demoApp", selector("pool-a"));
+
+        manager.recordWarmCandidate(workerTaskSelector(task), workerCandidateRow(duplicate));
+        WorkerCandidateBatch<WorkerCandidateRow> batch = manager.findWorkerCandidateBatch(workerTaskSelector(task), 2);
+
+        assertEquals(List.of("w-duplicate"),
+                batch.candidates().stream()
+                        .map(WorkerCandidateRow::workerId)
+                        .toList());
+        assertEquals(1, batch.warmCandidateCount());
+        assertEquals(1, batch.coldCandidateCount());
+        assertEquals(0, batch.warmSourceGuardRejectedCount());
+        assertEquals(1, batch.duplicateCandidateCount());
     }
 
     @Test
@@ -730,6 +751,7 @@ public class WorkerManagerTest {
                         .toList());
         assertEquals(0, batch.warmCandidateCount());
         assertEquals(1, batch.coldCandidateCount());
+        assertEquals(0, batch.duplicateCandidateCount());
     }
 
     @Test
@@ -758,6 +780,7 @@ public class WorkerManagerTest {
         assertEquals(0, batch.warmCandidateCount());
         assertEquals(1, batch.coldCandidateCount());
         assertEquals(1, batch.warmSourceGuardRejectedCount());
+        assertEquals(0, batch.duplicateCandidateCount());
         assertEquals(0, manager.warmCandidateCount(task.getTid()));
     }
 
