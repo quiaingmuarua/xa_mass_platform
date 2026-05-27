@@ -31,8 +31,9 @@ Candidate acquisition and task-local warm hints are now package-owned by
 `WorkerCandidateSourceOwner`; `WorkerManager` delegates to it while the module
 boundary is still inside engine.
 
-Task selector, worker load, and transport reachability evidence now use
-runtime-neutral `mass-runtime-api` value types: `WorkerTaskSelector`,
+Task selector, candidate batch shape, worker load, and transport reachability
+evidence now use runtime-neutral `mass-runtime-api` value types:
+`WorkerTaskSelector`, generic `WorkerCandidateBatch<T>`,
 `WorkerLoadSnapshot`, and `WorkerReachabilityState`. Engine-owned scheduling
 DTOs still adapt those runtime values into `WorkerSchedulingView` and
 `WorkerMatchContext` locally.
@@ -58,7 +59,7 @@ owners while callers converge.
 | AdapterNode read | `adapterNode`, `adapterNodes` | SDK read APIs, tests | `WorkerRelationshipOwner` through resource runtime | control-plane read | Not scheduling policy |
 | NodeGroupBinding mutation | `bindNodeGroup`, `unbindNodeGroup`, `setNodeGroupBindingEnabled`, `setNodeGroupBindingDraining` | SDK declaration/control, tests | `WorkerRelationshipOwner` through resource runtime | control-plane declaration plus runtime dispatch gate | Enabled/draining effects mutate source-scoped dispatch gates in `WorkerRegistry` |
 | NodeGroupBinding read | `nodeGroupBinding`, `nodeGroupBindings`, `groupIdsByAdapterNodeId`, `adapterNodeIdsByGroupId` | SDK read APIs, tests, routing diagnostics | `WorkerRelationshipOwner` through resource runtime | control-plane read / runtime read model | Candidate source may consume relation evidence but not own declaration truth |
-| Candidate source | `findWorkerCandidates`, `findWorkerCandidateBatch`, `getWorkerCandidateIndex` | `RuleBasedTaskWorkerMatchingStrategy`, tests | `WorkerCandidateRuntime` | runtime state | Must start from resolved WorkerGroup selector; no all-worker candidate scan |
+| Candidate source | `findWorkerCandidates`, `findWorkerCandidateBatch`, `getWorkerCandidateIndex` | `RuleBasedTaskWorkerMatchingStrategy`, tests | `WorkerCandidateRuntime` | runtime state | Uses runtime-neutral `WorkerCandidateBatch<Worker>`; must start from resolved WorkerGroup selector; no all-worker candidate scan |
 | Warm hints | `recordWarmCandidate` | `TaskWorkerAssignListener`, strategy tests | `WorkerCandidateSourceOwner` through `WorkerCandidateRuntime` | runtime state | Engine triggers after useful assignment evidence; runtime owns hint storage/revalidation |
 | Snapshot maintenance | `refreshWorkerRegistrySnapshot`, `getWorkerRegistrySnapshot` | tests, diagnostics, capability report path | candidate/resource read model residue | runtime read model residue | Delete or narrow after runtime DTOs replace snapshot callers |
 | Capability report | `applyWorkerCapabilityReport` | `WorkerControlService`, event handlers, SDK | `WorkerReportOwner` through `WorkerReportRuntime` | resource mutation plus runtime projection | Capability truth materializes into WorkerGroup/snapshot evidence |
@@ -122,11 +123,13 @@ a worker-runtime/resource read contract.
 
 ### `WorkerCandidateBatch`
 
-Current disposition: top-level engine worker value type.
+Current disposition: generic runtime-api value type.
 
 Reason: it was formerly `WorkerManager.WorkerCandidateBatch`, which forced
-callers to depend on the god object type. It is now top-level so later M1/M2
-movement can happen without preserving a nested compatibility alias.
+callers to depend on the god object type. It now lives in `mass-runtime-api` as
+`WorkerCandidateBatch<T>` so the batch metadata is runtime-neutral while engine
+candidate acquisition can still carry `Worker` rows as
+`WorkerCandidateBatch<Worker>` until a worker-row DTO exists.
 
 ### Admission Signature
 
@@ -195,9 +198,8 @@ Do not make worker runtime depend on `Task`.
 
 - `WorkerSchedulingView` and `WorkerMatchContext` are engine strategy DTOs; they
   must not move into runtime contracts.
-- `WorkerCandidateBatch` is now top-level, but still engine-owned until M1.
-- `WorkerTaskSelector`, `WorkerLoadSnapshot`, and `WorkerReachabilityState`
-  already live in `mass-runtime-api`.
+- `WorkerCandidateBatch<T>`, `WorkerTaskSelector`, `WorkerLoadSnapshot`, and
+  `WorkerReachabilityState` already live in `mass-runtime-api`.
 - `WorkerManager` still owns both resource maps and runtime slot synchronization.
 - `WorkerStateProjectionOwner` and command-gate effects need a resource/report
   owner split before moving.

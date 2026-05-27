@@ -1,6 +1,7 @@
 package com.xa.mass.engine.worker;
 
 import com.xa.mass.base.model.Worker;
+import com.xa.mass.runtime.worker.WorkerCandidateBatch;
 import com.xa.mass.runtime.worker.WorkerTaskSelector;
 
 import java.util.ArrayList;
@@ -32,7 +33,7 @@ final class WorkerCandidateSourceOwner {
         return findWorkerCandidateBatch(selector, maxCandidateCount).candidates();
     }
 
-    WorkerCandidateBatch findWorkerCandidateBatch(WorkerTaskSelector selector, int maxCandidateCount) {
+    WorkerCandidateBatch<Worker> findWorkerCandidateBatch(WorkerTaskSelector selector, int maxCandidateCount) {
         if (selector == null) {
             return WorkerCandidateBatch.empty();
         }
@@ -45,13 +46,13 @@ final class WorkerCandidateSourceOwner {
         WorkerCandidateIndex candidateIndex = candidateIndexSupplier.get();
         if (selector.targetsWorker()) {
             List<Worker> targetCandidates = candidateIndex.workersFor(selector, limit);
-            return new WorkerCandidateBatch(targetCandidates, 0, targetCandidates.size(), 0);
+            return new WorkerCandidateBatch<>(targetCandidates, 0, targetCandidates.size(), 0);
         }
         WarmCandidateSelection warmSelection = warmCandidatesFor(selector, candidateIndex, limit);
         List<Worker> warmCandidates = warmSelection.candidates();
         List<Worker> coldCandidates = candidateIndex.workersFor(selector, limit);
         if (warmCandidates.isEmpty()) {
-            return new WorkerCandidateBatch(coldCandidates, 0, coldCandidates.size(),
+            return new WorkerCandidateBatch<>(coldCandidates, 0, coldCandidates.size(),
                     warmSelection.sourceGuardRejectedCount());
         }
         LinkedHashMap<String, Worker> deduped = new LinkedHashMap<>();
@@ -60,7 +61,7 @@ final class WorkerCandidateSourceOwner {
                 deduped.put(worker.getWorkerId(), worker);
             }
             if (deduped.size() >= limit) {
-                return new WorkerCandidateBatch(List.copyOf(deduped.values()), warmCandidates.size(),
+                return new WorkerCandidateBatch<>(List.copyOf(deduped.values()), warmCandidates.size(),
                         coldCandidates.size(), warmSelection.sourceGuardRejectedCount());
             }
         }
@@ -72,7 +73,7 @@ final class WorkerCandidateSourceOwner {
                 break;
             }
         }
-        return new WorkerCandidateBatch(List.copyOf(deduped.values()), warmCandidates.size(),
+        return new WorkerCandidateBatch<>(List.copyOf(deduped.values()), warmCandidates.size(),
                 coldCandidates.size(), warmSelection.sourceGuardRejectedCount());
     }
 

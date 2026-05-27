@@ -1,16 +1,14 @@
-package com.xa.mass.engine.worker;
-
-import com.xa.mass.base.model.Worker;
+package com.xa.mass.runtime.worker;
 
 import java.util.List;
 
 /**
  * Bounded candidate-source batch with warm/cold diagnostic counts.
  */
-public record WorkerCandidateBatch(List<Worker> candidates,
-                                   int warmCandidateCount,
-                                   int coldCandidateCount,
-                                   int warmSourceGuardRejectedCount) {
+public record WorkerCandidateBatch<T>(List<T> candidates,
+                                      int warmCandidateCount,
+                                      int coldCandidateCount,
+                                      int warmSourceGuardRejectedCount) {
 
     public WorkerCandidateBatch {
         candidates = candidates == null ? List.of() : List.copyOf(candidates);
@@ -19,7 +17,7 @@ public record WorkerCandidateBatch(List<Worker> candidates,
         warmSourceGuardRejectedCount = Math.max(0, warmSourceGuardRejectedCount);
     }
 
-    static WorkerCandidateBatch empty() {
-        return new WorkerCandidateBatch(List.of(), 0, 0, 0);
+    public static <T> WorkerCandidateBatch<T> empty() {
+        return new WorkerCandidateBatch<>(List.of(), 0, 0, 0);
     }
 }

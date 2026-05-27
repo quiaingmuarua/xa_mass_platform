@@ -9,6 +9,7 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.DispatchAvailabilitySource;
 import com.xa.mass.runtime.worker.ReserveResult;
+import com.xa.mass.runtime.worker.WorkerCandidateBatch;
 import com.xa.mass.runtime.worker.WorkerLoadSnapshot;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;
 import com.xa.mass.runtime.worker.WorkerRegistry;
@@ -236,11 +237,11 @@ public class WorkerManager implements WorkerLookupStore,
         return candidateSourceOwner.findWorkerCandidates(selector, maxCandidateCount);
     }
 
-    public WorkerCandidateBatch findWorkerCandidateBatch(Task task, int maxCandidateCount) {
+    public WorkerCandidateBatch<Worker> findWorkerCandidateBatch(Task task, int maxCandidateCount) {
         return findWorkerCandidateBatch(WorkerTaskSelectorFactory.fromTask(task), maxCandidateCount);
     }
 
-    public WorkerCandidateBatch findWorkerCandidateBatch(WorkerTaskSelector selector, int maxCandidateCount) {
+    public WorkerCandidateBatch<Worker> findWorkerCandidateBatch(WorkerTaskSelector selector, int maxCandidateCount) {
         return candidateSourceOwner.findWorkerCandidateBatch(selector, maxCandidateCount);
     }
 

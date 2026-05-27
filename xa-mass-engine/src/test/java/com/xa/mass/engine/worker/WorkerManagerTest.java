@@ -9,6 +9,7 @@ import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.EventKey;
 import com.xa.mass.runtime.worker.RandomWorkerCandidateSamplingPolicy;
+import com.xa.mass.runtime.worker.WorkerCandidateBatch;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import org.junit.jupiter.api.BeforeEach;
@@ -711,7 +712,7 @@ public class WorkerManagerTest {
         Task task = task("demoApp", selector("pool-a"));
 
         manager.recordWarmCandidate(task, warm);
-        WorkerCandidateBatch batch = manager.findWorkerCandidateBatch(task, 1);
+        WorkerCandidateBatch<Worker> batch = manager.findWorkerCandidateBatch(task, 1);
 
         assertEquals(List.of("w-warm"),
                 batch.candidates().stream()
@@ -735,7 +736,7 @@ public class WorkerManagerTest {
         task.setSharedConfig(sharedConfig(Map.of(
                 TaskSharedConfig.TARGET_WORKER_ID, "w-target-warm-suppressed"
         ), "pool-a"));
-        WorkerCandidateBatch batch = manager.findWorkerCandidateBatch(task, 1);
+        WorkerCandidateBatch<Worker> batch = manager.findWorkerCandidateBatch(task, 1);
 
         assertEquals(List.of("w-target-warm-suppressed"),
                 batch.candidates().stream()
@@ -762,7 +763,7 @@ public class WorkerManagerTest {
         Worker moved = worker("w-stale-warm-route", "pool-a");
         moved.setAttributes(Map.of("region", "eu"));
         assertTrue(manager.updateWorker(moved));
-        WorkerCandidateBatch batch = manager.findWorkerCandidateBatch(task, 1);
+        WorkerCandidateBatch<Worker> batch = manager.findWorkerCandidateBatch(task, 1);
 
         assertEquals(List.of("w-stable-route"),
                 batch.candidates().stream()

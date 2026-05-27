@@ -5,9 +5,9 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.worker.WorkerAdmissionRuntime;
-import com.xa.mass.engine.worker.WorkerCandidateBatch;
 import com.xa.mass.engine.worker.WorkerCandidateRuntime;
 import com.xa.mass.engine.worker.WorkerManager;
+import com.xa.mass.runtime.worker.WorkerCandidateBatch;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;
 import com.xa.mass.engine.worker.WorkerSchedulingViewRuntime;
 import com.xa.mass.engine.worker.WorkerTaskSelectorFactory;
@@ -125,7 +125,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
             return matchedWorkers;
         }
         WorkerTaskSelector selector = WorkerTaskSelectorFactory.fromTask(task);
-        WorkerCandidateBatch candidateBatch = candidateRuntime.findWorkerCandidateBatch(
+        WorkerCandidateBatch<Worker> candidateBatch = candidateRuntime.findWorkerCandidateBatch(
                 selector,
                 candidateAcquisitionLimit(task, maxWorkerCount)
         );
@@ -374,7 +374,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
     }
 
     private Map<String, Object> withCandidateSourceStats(Map<String, Object> context,
-                                                         WorkerCandidateBatch candidateBatch) {
+                                                         WorkerCandidateBatch<Worker> candidateBatch) {
         LinkedHashMap<String, Object> snapshot = new LinkedHashMap<>();
         if (context != null) {
             snapshot.putAll(context);
