@@ -688,9 +688,10 @@ Progress:
   `WorkerResourceRuntime`, `WorkerAdmissionRuntime`, and
   `WorkerSchedulingViewRuntime` instead of the old model-shaped
   `WorkerManager` helper methods. The runners still use `WorkerManager` for
-  local assembly, but their matching loops no longer depend on
-  `getAllWorkers()`, boolean reserve shortcuts, or `Worker`-shaped dispatch
-  gate reads.
+  local assembly, but their registration setup and matching loops now use
+  runtime-neutral `WorkerResourceRecord` / `workers()` evidence instead of
+  `Worker` model registration, `getAllWorkers()`, boolean reserve shortcuts,
+  or `Worker`-shaped dispatch gate reads.
 - The old `tryReserveWorkerCapacity` boolean helper has been deleted from the
   worker admission owner and `WorkerManager`; all callers now inspect
   structured `ReserveResult` evidence.

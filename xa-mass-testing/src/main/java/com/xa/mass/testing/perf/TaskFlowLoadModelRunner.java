@@ -8,7 +8,6 @@ import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskSharedConfig;
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
@@ -515,14 +514,22 @@ public final class TaskFlowLoadModelRunner {
                     .defaultMaxConcurrentWork(config.batchSize())
                     .build());
             for (int i = 0; i < config.workerCount(); i++) {
-                Worker worker = new Worker();
-                worker.setWorkerId("load-worker-" + i);
-                worker.setAgentVersion("load-model");
-                worker.setWorkerGroupId(WORKER_GROUP_ID);
-                worker.setSupportedProjects(List.of(PROJECT_CODE));
-                worker.setStatus(WorkerStatus.ONLINE);
-                worker.setLastHeartbeat(LocalDateTime.now());
-                workerManager.addWorker(worker);
+                workerManager.addWorker(new WorkerResourceRecord(
+                        "load-worker-" + i,
+                        WorkerStatus.ONLINE.name(),
+                        "load-model",
+                        LocalDateTime.now(),
+                        List.of(PROJECT_CODE),
+                        List.of(),
+                        WORKER_GROUP_ID,
+                        null,
+                        null,
+                        null,
+                        config.batchSize(),
+                        Map.of(),
+                        null,
+                        null
+                ));
             }
         }
 

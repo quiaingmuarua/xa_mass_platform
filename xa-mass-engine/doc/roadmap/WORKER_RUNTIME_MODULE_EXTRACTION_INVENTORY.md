@@ -105,11 +105,11 @@ Transport runtime dispatch routing now consumes `WorkerResourceRuntime` and
 runtime-neutral `WorkerResourceRecord` instead of `WorkerLookupStore` or
 mutable base `Worker` rows.
 Perf runner deterministic matching support still uses `WorkerManager` for
-local scenario assembly, but matching loops now consume
-`WorkerResourceRuntime`, `WorkerAdmissionRuntime`, and
+local scenario assembly, but registration setup and matching loops now consume
+`WorkerResourceRecord`, `WorkerResourceRuntime`, `WorkerAdmissionRuntime`, and
 `WorkerSchedulingViewRuntime`. They no longer use the old model-shaped
-`getAllWorkers()`, boolean reserve shortcut, or `Worker`-shaped dispatch gate
-read paths.
+`Worker` registration setup, `getAllWorkers()`, boolean reserve shortcut, or
+`Worker`-shaped dispatch gate read paths.
 
 ## Public Method Inventory
 

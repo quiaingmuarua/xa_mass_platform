@@ -10,7 +10,6 @@ import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskSharedConfig;
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
@@ -322,14 +321,22 @@ public final class TaskWorkloadMixSmokeRunner {
                     .projectCodes(List.of(PROJECT_CODE))
                     .build());
             for (int i = 0; i < workerCount; i++) {
-                Worker worker = new Worker();
-                worker.setWorkerId("workload-smoke-worker-" + i);
-                worker.setAgentVersion("workload-smoke");
-                worker.setWorkerGroupId(WORKER_GROUP_ID);
-                worker.setSupportedProjects(List.of(PROJECT_CODE));
-                worker.setStatus(WorkerStatus.ONLINE);
-                worker.setLastHeartbeat(LocalDateTime.now());
-                workerManager.addWorker(worker);
+                workerManager.addWorker(new WorkerResourceRecord(
+                        "workload-smoke-worker-" + i,
+                        WorkerStatus.ONLINE.name(),
+                        "workload-smoke",
+                        LocalDateTime.now(),
+                        List.of(PROJECT_CODE),
+                        List.of(),
+                        WORKER_GROUP_ID,
+                        null,
+                        null,
+                        null,
+                        1,
+                        Map.of(),
+                        null,
+                        null
+                ));
             }
         }
 
