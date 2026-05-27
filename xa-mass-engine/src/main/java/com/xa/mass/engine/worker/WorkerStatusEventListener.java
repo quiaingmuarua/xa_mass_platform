@@ -4,11 +4,13 @@ import com.xa.mass.base.channel.eventbus.core.MassSubscribe;
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerHeartbeatEvent;
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerOfflineEvent;
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerOnlineEvent;
-import com.xa.mass.base.model.Worker;
+import com.xa.mass.runtime.worker.WorkerResourceRecord;
+import com.xa.mass.runtime.worker.WorkerResourceRuntime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
+import java.util.Objects;
 
 /**
  * Legacy observer for runtime worker system events.
@@ -20,15 +22,15 @@ import java.time.LocalDateTime;
 public final class WorkerStatusEventListener {
     private static final Logger log = LoggerFactory.getLogger(WorkerStatusEventListener.class);
 
-    private final WorkerManager workerManager;
+    private final WorkerResourceRuntime workerResourceRuntime;
     private final Runnable dispatchWakeupCallback;
 
-    public WorkerStatusEventListener(WorkerManager workerManager) {
-        this(workerManager, null);
+    public WorkerStatusEventListener(WorkerResourceRuntime workerResourceRuntime) {
+        this(workerResourceRuntime, null);
     }
 
-    public WorkerStatusEventListener(WorkerManager workerManager, Runnable dispatchWakeupCallback) {
-        this.workerManager = workerManager;
+    public WorkerStatusEventListener(WorkerResourceRuntime workerResourceRuntime, Runnable dispatchWakeupCallback) {
+        this.workerResourceRuntime = Objects.requireNonNull(workerResourceRuntime, "workerResourceRuntime");
         this.dispatchWakeupCallback = dispatchWakeupCallback != null ? dispatchWakeupCallback : () -> {
         };
     }
@@ -51,14 +53,32 @@ public final class WorkerStatusEventListener {
     }
 
     private boolean recordHeartbeat(String workerId) {
-        Worker worker = workerManager.getWorker(workerId);
+        WorkerResourceRecord worker = workerResourceRuntime.worker(workerId).orElse(null);
         if (worker == null) {
             log.debug("Ignoring heartbeat for unregistered worker {}", workerId);
             return false;
         }
-        worker.setLastHeartbeat(LocalDateTime.now());
-        workerManager.updateWorker(worker);
+        workerResourceRuntime.updateWorker(withHeartbeat(worker, LocalDateTime.now()));
         return true;
+    }
+
+    private static WorkerResourceRecord withHeartbeat(WorkerResourceRecord worker, LocalDateTime lastHeartbeat) {
+        return new WorkerResourceRecord(
+                worker.workerId(),
+                worker.statusName(),
+                worker.agentVersion(),
+                lastHeartbeat,
+                worker.supportedProjects(),
+                worker.supportedEventCodes(),
+                worker.workerGroupId(),
+                worker.adapterNodeId(),
+                worker.adapterId(),
+                worker.onlineStrategy(),
+                worker.maxConcurrentWork(),
+                worker.attributes(),
+                worker.createTime(),
+                worker.updateTime()
+        );
     }
 
     private void notifyDispatchWakeup() {

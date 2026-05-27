@@ -534,6 +534,9 @@ Progress:
 - Legacy runtime event-bus worker status listener was lifted out of
   `WorkerManager` into a top-level engine worker listener. It remains engine
   bridge wiring and does not create worker-runtime truth.
+- The lifted listener now depends on `WorkerResourceRuntime` instead of full
+  `WorkerManager`, keeping legacy heartbeat refresh behind a narrow resource
+  contract.
 
 Acceptance:
 
