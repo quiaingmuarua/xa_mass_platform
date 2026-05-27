@@ -1090,6 +1090,27 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void ruleBasedMatchingDoesNotInferSchedulingViewRuntimeFromCandidateRuntime() throws IOException {
+        Path strategyPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/strategy/RuleBasedTaskWorkerMatchingStrategy.java");
+        String source = Files.readString(strategyPath, StandardCharsets.UTF_8);
+
+        List<String> violations = new ArrayList<>();
+        if (source.contains("candidateRuntime instanceof WorkerSchedulingViewRuntime")) {
+            violations.add(strategyPath + " infers scheduling-view runtime from candidate runtime");
+        }
+        if (source.contains("must also implement WorkerSchedulingViewRuntime")) {
+            violations.add(strategyPath + " requires candidate runtime to also implement scheduling-view runtime");
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Candidate acquisition and scheduling-view reads are separate worker runtime surfaces. "
+                        + "Production may assemble both through WorkerManager, but the strategy must not "
+                        + "make one contract imply the other:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void workerManagerDoesNotUseWorkerLevelEventStorageIndexForEventCandidateSource() throws IOException {
         Path workerManagerPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/worker/WorkerManager.java");
