@@ -297,10 +297,6 @@ public class WorkerManager implements WorkerResourceRuntime,
         return result;
     }
 
-    public List<String> getExclusiveLeaseWorkerIds() {
-        return admissionOwner.getExclusiveLeaseWorkerIds();
-    }
-
     /**
      * Updates the engine-owned worker model status only.
      *

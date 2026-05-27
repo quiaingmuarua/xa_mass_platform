@@ -700,6 +700,9 @@ Progress:
 - The old `WorkerManager.getAllWorkers()` model-list helper has been deleted;
   external resource scans use runtime-neutral `workers()` while storage-owned
   row scans stay behind the worker resource owner.
+- The unused `getExclusiveLeaseWorkerIds()` forwarding helper has been deleted
+  from `WorkerAdmissionRuntime` and the engine assembly surface; lease
+  diagnostics remain owned by the worker admission owner.
 - Engine still assembles those owners through `WorkerManager`; match strategy
   and event handler parsing residue stays in engine for later slices.
 - SDK shell runtime bridge now accepts `WorkerResourceRuntime` for legacy
