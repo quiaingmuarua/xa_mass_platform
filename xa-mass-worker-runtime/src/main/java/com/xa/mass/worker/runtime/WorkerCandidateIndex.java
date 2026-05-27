@@ -1,10 +1,11 @@
-package com.xa.mass.engine.worker;
+package com.xa.mass.worker.runtime;
 
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.WorkerRegistry;
+import com.xa.mass.runtime.worker.WorkerRouteBucketPolicies;
+import com.xa.mass.runtime.worker.WorkerRouteBucketPolicy;
 import com.xa.mass.runtime.worker.WorkerSlot;
 import com.xa.mass.runtime.worker.WorkerTaskSelector;
-import com.xa.mass.worker.runtime.WorkerRegistrySnapshot;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -135,7 +136,7 @@ public final class WorkerCandidateIndex {
         if (routeBucketKey == null) {
             return SourceGuardResult.rejected(SourceGuardRejectionReason.ROUTE_MISMATCH);
         }
-        Set<String> currentWorkerRouteKeys = WorkerRoutingPolicy.defaultPolicy()
+        Set<String> currentWorkerRouteKeys = WorkerRouteBucketPolicies.defaultPolicy()
                 .routeBucketKeysForWorkerMeta(currentSlot.meta());
         if (!currentWorkerRouteKeys.contains(routeBucketKey)) {
             return SourceGuardResult.rejected(SourceGuardRejectionReason.ROUTE_MISMATCH);
@@ -194,7 +195,7 @@ public final class WorkerCandidateIndex {
     }
 
     private Set<String> taskRouteBucketKeys(WorkerTaskSelector selector) {
-        return selector == null ? Set.of(WorkerRoutingPolicy.DEFAULT_ROUTE_BUCKET_KEY) : selector.routeBucketKeys();
+        return selector == null ? Set.of(WorkerRouteBucketPolicy.DEFAULT_ROUTE_BUCKET_KEY) : selector.routeBucketKeys();
     }
 
     private static int sourceBudget(int remainingCandidateBudget, int remainingSourceCount) {

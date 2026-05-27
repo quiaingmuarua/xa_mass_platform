@@ -623,9 +623,12 @@ Progress:
   to write a hint.
 - Worker capability composition and registry snapshot read model have moved out
   of engine source.
+- Stage-1 worker candidate index and source guard have moved out of engine
+  source; engine still owns Task-to-WorkerTaskSelector adaptation and match
+  strategy.
 - Engine still assembles those owners through `WorkerManager`; report
-  application, candidate-source, and match strategy residue stays in engine for
-  later slices.
+  application, candidate-source orchestration, and match strategy residue stays
+  in engine for later slices.
 
 Scope:
 

@@ -779,8 +779,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
     @Test
     void workerCandidateIndexStaysOnGroupCapabilityTruth() throws IOException {
-        Path indexPath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/worker/WorkerCandidateIndex.java");
+        Path indexPath = repositoryRoot().resolve(
+                "xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/WorkerCandidateIndex.java");
         String source = Files.readString(indexPath, StandardCharsets.UTF_8);
 
         Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
@@ -1355,8 +1355,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
     @Test
     void groupSelectorFirstCandidateSourceDoesNotUseEventOrAllWorkerFallback() throws IOException {
-        Path candidateIndexPath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/worker/WorkerCandidateIndex.java");
+        Path candidateIndexPath = repositoryRoot().resolve(
+                "xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/WorkerCandidateIndex.java");
         Path workerManagerPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/worker/WorkerManager.java");
         Path binderPath = MAIN_SOURCE_ROOT.resolve(

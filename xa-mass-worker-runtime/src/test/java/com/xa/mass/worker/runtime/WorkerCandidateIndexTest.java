@@ -1,15 +1,13 @@
-package com.xa.mass.engine.worker;
+package com.xa.mass.worker.runtime;
 
 import com.xa.mass.runtime.worker.EventBinding;
+import com.xa.mass.runtime.worker.WorkerRouteBucketPolicies;
+import com.xa.mass.runtime.worker.WorkerRouteBucketPolicy;
 import com.xa.mass.runtime.worker.WorkerGroupRecord;
-
-import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.runtime.worker.WorkerMeta;
 import com.xa.mass.runtime.worker.WorkerTaskSelector;
-import com.xa.mass.worker.runtime.WorkerRegistrySnapshot;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -80,14 +78,12 @@ public class WorkerCandidateIndexTest {
                 worker("worker-node-b", "crawler", "node-b", Map.of())
         )));
 
-        Task task = mutableTask("demoApp", "crawler.fetch", "worker-node-b", "crawler");
-        task.setSharedConfig(new java.util.LinkedHashMap<>(task.getSharedConfig()));
-        task.getSharedConfig().put(TaskSharedConfig.ADAPTER_NODE_ID, "node-a");
+        WorkerTaskSelector selector = taskWithAdapterNode("node-a", "worker-node-b", "crawler");
 
-        assertTrue(index.workersFor(selector(task)).isEmpty());
+        assertTrue(index.workersFor(selector).isEmpty());
 
-        task.getSharedConfig().put(TaskSharedConfig.TARGET_WORKER_ID, "worker-node-a");
-        assertEquals(List.of("worker-node-a"), workerIds(index.workersFor(selector(task))));
+        selector = taskWithAdapterNode("node-a", "worker-node-a", "crawler");
+        assertEquals(List.of("worker-node-a"), workerIds(index.workersFor(selector)));
     }
 
     @Test
@@ -117,11 +113,7 @@ public class WorkerCandidateIndexTest {
                 worker("worker-2", "export")
         )));
 
-        Task task = new Task();
-        task.setProject("demoApp");
-        task.setSharedConfig(Map.of(TaskSharedConfig.WORKER_GROUP_ID, "crawler"));
-
-        assertEquals(List.of("worker-1"), workerIds(index.workersFor(selector(task))));
+        assertEquals(List.of("worker-1"), workerIds(index.workersFor(task("demoApp", null, null, "crawler"))));
     }
 
     @Test
@@ -187,11 +179,9 @@ public class WorkerCandidateIndexTest {
                 worker("worker-eu", "crawler", Map.of("region", "eu"))
         )));
 
-        Task task = mutableTask("demoApp", "crawler.fetch", null, "crawler");
-        task.setSharedConfig(new java.util.LinkedHashMap<>(task.getSharedConfig()));
-        task.getSharedConfig().put(TaskSharedConfig.ROUTE_ATTRIBUTES, Map.of("region", "us"));
+        WorkerTaskSelector selector = taskWithRouteAttributes(Map.of("region", "us"), "crawler");
 
-        assertEquals(List.of("worker-us"), workerIds(index.workersFor(selector(task), 10)));
+        assertEquals(List.of("worker-us"), workerIds(index.workersFor(selector, 10)));
     }
 
     @Test
@@ -201,16 +191,11 @@ public class WorkerCandidateIndexTest {
         ), List.of(
                 worker("worker-eu", "crawler", Map.of("region", "eu"))
         )));
-        Task task = mutableTask("demoApp", "crawler.fetch", null, "crawler");
-        task.setSharedConfig(new java.util.LinkedHashMap<>(task.getSharedConfig()));
-        task.getSharedConfig().put(TaskSharedConfig.ROUTE_ATTRIBUTES, Map.of("region", "us"));
-        String observedRouteBucket = WorkerRoutingPolicy.defaultPolicy()
-                .routeBucketKeysForTask(task)
-                .iterator()
-                .next();
+        WorkerTaskSelector selector = taskWithRouteAttributes(Map.of("region", "us"), "crawler");
+        String observedRouteBucket = selector.routeBucketKeys().iterator().next();
 
         WorkerCandidateIndex.SourceGuardResult result =
-                index.sourceGuard(selector(task), "crawler", null, observedRouteBucket, "worker-eu");
+                index.sourceGuard(selector, "crawler", null, observedRouteBucket, "worker-eu");
 
         assertFalse(result.accepted());
         assertEquals(WorkerCandidateIndex.SourceGuardRejectionReason.ROUTE_MISMATCH, result.rejectionReason());
@@ -228,7 +213,7 @@ public class WorkerCandidateIndexTest {
                 index.sourceGuard(task("demoApp", "crawler.fetch", null, "crawler"),
                         "crawler",
                         "node-a",
-                        WorkerRoutingPolicy.DEFAULT_ROUTE_BUCKET_KEY,
+                        WorkerRouteBucketPolicy.DEFAULT_ROUTE_BUCKET_KEY,
                         "worker-node-b");
 
         assertFalse(result.accepted());
@@ -262,30 +247,43 @@ public class WorkerCandidateIndexTest {
     }
 
     private static WorkerTaskSelector task(String project, String eventCode, String targetWorkerId, String... groupIds) {
-        return selector(mutableTask(project, eventCode, targetWorkerId, groupIds));
+        return new WorkerTaskSelector(
+                "task-" + project,
+                groupIdList(groupIds),
+                null,
+                targetWorkerId,
+                Set.of(WorkerRouteBucketPolicy.DEFAULT_ROUTE_BUCKET_KEY)
+        );
     }
 
-    private static WorkerTaskSelector selector(Task task) {
-        return WorkerTaskSelectorFactory.fromTask(task);
+    private static WorkerTaskSelector taskWithAdapterNode(String adapterNodeId,
+                                                          String targetWorkerId,
+                                                          String... groupIds) {
+        return new WorkerTaskSelector(
+                "task-adapter",
+                groupIdList(groupIds),
+                adapterNodeId,
+                targetWorkerId,
+                Set.of(WorkerRouteBucketPolicy.DEFAULT_ROUTE_BUCKET_KEY)
+        );
     }
 
-    private static Task mutableTask(String project, String eventCode, String targetWorkerId, String... groupIds) {
-        Task task = new Task();
-        task.setProject(project);
-        Map<String, Object> sharedConfig = new java.util.LinkedHashMap<>();
-        if (groupIds != null && groupIds.length == 1) {
-            sharedConfig.put(TaskSharedConfig.WORKER_GROUP_ID, groupIds[0]);
-        } else if (groupIds != null && groupIds.length > 1) {
-            sharedConfig.put(TaskSharedConfig.WORKER_GROUP_IDS, List.of(groupIds));
-        }
-        if (eventCode != null) {
-            sharedConfig.put(TaskSharedConfig.SDK_METADATA, Map.of(TaskSharedConfig.SDK_EVENT_CODE, eventCode));
-        }
-        if (targetWorkerId != null) {
-            sharedConfig.put(TaskSharedConfig.TARGET_WORKER_ID, targetWorkerId);
-        }
-        task.setSharedConfig(sharedConfig);
-        return task;
+    private static WorkerTaskSelector taskWithRouteAttributes(Map<String, String> routeAttributes,
+                                                              String... groupIds) {
+        String routeBucketKey = WorkerRouteBucketPolicies.approvedAttributePolicy(
+                        WorkerRouteBucketPolicies.STANDARD_APPROVED_ROUTE_ATTRIBUTES)
+                .exactRouteBucketKeyForAttributes(routeAttributes);
+        return new WorkerTaskSelector(
+                "task-routed",
+                groupIdList(groupIds),
+                null,
+                null,
+                Set.of(routeBucketKey)
+        );
+    }
+
+    private static List<String> groupIdList(String... groupIds) {
+        return groupIds == null ? List.of() : List.of(groupIds);
     }
 
     private static WorkerGroupRecord group(String groupId, String adapterNodeId, EventBinding binding) {
