@@ -1,8 +1,7 @@
-package com.xa.mass.engine.worker;
-
-import com.xa.mass.runtime.worker.WorkerGroupRecord;
+package com.xa.mass.worker.runtime;
 
 import com.xa.mass.runtime.worker.EventKey;
+import com.xa.mass.runtime.worker.WorkerGroupRecord;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 
 import java.util.LinkedHashMap;
@@ -11,19 +10,19 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Package-local owner for WorkerGroup declaration state.
+ * Worker runtime owner for WorkerGroup declaration state.
  */
-final class WorkerGroupOwner {
+public final class WorkerGroupOwner {
 
     private final Object lock = new Object();
     private final LinkedHashMap<String, WorkerGroupRecord> workerGroupsById = new LinkedHashMap<>();
     private final WorkerRegistry workerRegistry;
 
-    WorkerGroupOwner(WorkerRegistry workerRegistry) {
+    public WorkerGroupOwner(WorkerRegistry workerRegistry) {
         this.workerRegistry = workerRegistry;
     }
 
-    WorkerGroupRecord upsertWorkerGroup(WorkerGroupRecord group) {
+    public WorkerGroupRecord upsertWorkerGroup(WorkerGroupRecord group) {
         if (group == null) {
             throw new IllegalArgumentException("worker group must not be null");
         }
@@ -33,7 +32,7 @@ final class WorkerGroupOwner {
         return group;
     }
 
-    Optional<WorkerGroupRecord> workerGroup(String groupId) {
+    public Optional<WorkerGroupRecord> workerGroup(String groupId) {
         String normalizedGroupId = normalizeNullable(groupId);
         if (normalizedGroupId == null) {
             return Optional.empty();
@@ -43,13 +42,13 @@ final class WorkerGroupOwner {
         }
     }
 
-    List<WorkerGroupRecord> workerGroups() {
+    public List<WorkerGroupRecord> workerGroups() {
         synchronized (lock) {
             return List.copyOf(workerGroupsById.values());
         }
     }
 
-    boolean deleteWorkerGroup(String groupId) {
+    public boolean deleteWorkerGroup(String groupId) {
         String normalizedGroupId = normalizeNullable(groupId);
         if (normalizedGroupId == null) {
             return false;
@@ -66,7 +65,7 @@ final class WorkerGroupOwner {
         }
     }
 
-    boolean hasWorkerGroup(String groupId) {
+    public boolean hasWorkerGroup(String groupId) {
         String normalizedGroupId = normalizeNullable(groupId);
         if (normalizedGroupId == null) {
             return false;
@@ -76,7 +75,7 @@ final class WorkerGroupOwner {
         }
     }
 
-    Set<EventKey> eventBindingCeilingFor(String groupId) {
+    public Set<EventKey> eventBindingCeilingFor(String groupId) {
         synchronized (lock) {
             WorkerGroupRecord group = workerGroupsById.get(normalizeNullable(groupId));
             return group == null ? Set.of() : group.eventKeys();

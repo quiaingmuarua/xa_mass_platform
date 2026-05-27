@@ -1,9 +1,8 @@
-package com.xa.mass.engine.worker;
-
-import com.xa.mass.runtime.worker.AdapterNodeRecord;
-import com.xa.mass.runtime.worker.NodeGroupBindingRecord;
+package com.xa.mass.worker.runtime;
 
 import com.xa.mass.base.model.Worker;
+import com.xa.mass.runtime.worker.AdapterNodeRecord;
+import com.xa.mass.runtime.worker.NodeGroupBindingRecord;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 
 import java.time.Instant;
@@ -20,9 +19,9 @@ import java.util.function.Predicate;
 import static com.xa.mass.runtime.worker.DispatchAvailabilitySource.NODE_GROUP_BINDING;
 
 /**
- * Package-local owner for adapter-node and WorkerGroup relationship state.
+ * Worker runtime owner for adapter-node and WorkerGroup relationship state.
  */
-final class WorkerRelationshipOwner {
+public final class WorkerRelationshipOwner {
 
     private final Object lock = new Object();
     private final LinkedHashMap<String, AdapterNodeRecord> adapterNodesById = new LinkedHashMap<>();
@@ -34,16 +33,16 @@ final class WorkerRelationshipOwner {
     private final Predicate<String> workerGroupDeclared;
     private final Consumer<String> dispatchWakeupNotifier;
 
-    WorkerRelationshipOwner(WorkerRegistry workerRegistry,
-                            Predicate<String> workerGroupDeclared,
-                            Consumer<String> dispatchWakeupNotifier) {
+    public WorkerRelationshipOwner(WorkerRegistry workerRegistry,
+                                   Predicate<String> workerGroupDeclared,
+                                   Consumer<String> dispatchWakeupNotifier) {
         this.workerRegistry = workerRegistry;
         this.workerGroupDeclared = workerGroupDeclared == null ? ignored -> false : workerGroupDeclared;
         this.dispatchWakeupNotifier = dispatchWakeupNotifier == null ? ignored -> {
         } : dispatchWakeupNotifier;
     }
 
-    AdapterNodeRecord registerAdapterNode(AdapterNodeRecord adapterNode) {
+    public AdapterNodeRecord registerAdapterNode(AdapterNodeRecord adapterNode) {
         AdapterNodeRecord record = requireAdapterNode(adapterNode);
         AdapterNodeRecord normalized;
         synchronized (lock) {
@@ -60,7 +59,7 @@ final class WorkerRelationshipOwner {
         return normalized;
     }
 
-    Optional<AdapterNodeRecord> adapterNode(String adapterNodeId) {
+    public Optional<AdapterNodeRecord> adapterNode(String adapterNodeId) {
         String normalized = normalizeNullable(adapterNodeId);
         if (normalized == null) {
             return Optional.empty();
@@ -70,13 +69,13 @@ final class WorkerRelationshipOwner {
         }
     }
 
-    List<AdapterNodeRecord> adapterNodes() {
+    public List<AdapterNodeRecord> adapterNodes() {
         synchronized (lock) {
             return List.copyOf(adapterNodesById.values());
         }
     }
 
-    boolean deleteAdapterNode(String adapterNodeId) {
+    public boolean deleteAdapterNode(String adapterNodeId) {
         String normalized = normalizeNullable(adapterNodeId);
         if (normalized == null) {
             return false;
@@ -96,7 +95,7 @@ final class WorkerRelationshipOwner {
         }
     }
 
-    NodeGroupBindingRecord bindNodeGroup(NodeGroupBindingRecord binding) {
+    public NodeGroupBindingRecord bindNodeGroup(NodeGroupBindingRecord binding) {
         NodeGroupBindingRecord record = requireNodeGroupBinding(binding);
         NodeGroupBindingRecord normalized;
         validateAdapterNodeRegistered(record.adapterNodeId());
@@ -124,7 +123,7 @@ final class WorkerRelationshipOwner {
         return normalized;
     }
 
-    Optional<NodeGroupBindingRecord> nodeGroupBinding(String adapterNodeId, String groupId) {
+    public Optional<NodeGroupBindingRecord> nodeGroupBinding(String adapterNodeId, String groupId) {
         NodeGroupBindingKey key = NodeGroupBindingKey.fromNullable(adapterNodeId, groupId);
         if (key == null) {
             return Optional.empty();
@@ -134,13 +133,13 @@ final class WorkerRelationshipOwner {
         }
     }
 
-    List<NodeGroupBindingRecord> nodeGroupBindings() {
+    public List<NodeGroupBindingRecord> nodeGroupBindings() {
         synchronized (lock) {
             return List.copyOf(nodeGroupBindingsByKey.values());
         }
     }
 
-    boolean unbindNodeGroup(String adapterNodeId, String groupId) {
+    public boolean unbindNodeGroup(String adapterNodeId, String groupId) {
         NodeGroupBindingKey key = NodeGroupBindingKey.fromNullable(adapterNodeId, groupId);
         if (key == null) {
             return false;
@@ -150,7 +149,7 @@ final class WorkerRelationshipOwner {
         }
     }
 
-    Set<String> groupIdsByAdapterNodeId(String adapterNodeId) {
+    public Set<String> groupIdsByAdapterNodeId(String adapterNodeId) {
         String normalized = normalizeNullable(adapterNodeId);
         if (normalized == null) {
             return Set.of();
@@ -160,7 +159,7 @@ final class WorkerRelationshipOwner {
         }
     }
 
-    Set<String> adapterNodeIdsByGroupId(String groupId) {
+    public Set<String> adapterNodeIdsByGroupId(String groupId) {
         String normalized = normalizeNullable(groupId);
         if (normalized == null) {
             return Set.of();
@@ -170,9 +169,9 @@ final class WorkerRelationshipOwner {
         }
     }
 
-    NodeGroupBindingRecord setNodeGroupBindingEnabled(String adapterNodeId,
-                                                      String groupId,
-                                                      boolean enabled) {
+    public NodeGroupBindingRecord setNodeGroupBindingEnabled(String adapterNodeId,
+                                                             String groupId,
+                                                             boolean enabled) {
         NodeGroupBindingRecord updated;
         boolean becameAvailable;
         synchronized (lock) {
@@ -188,9 +187,9 @@ final class WorkerRelationshipOwner {
         return updated;
     }
 
-    NodeGroupBindingRecord setNodeGroupBindingDraining(String adapterNodeId,
-                                                       String groupId,
-                                                       boolean draining) {
+    public NodeGroupBindingRecord setNodeGroupBindingDraining(String adapterNodeId,
+                                                              String groupId,
+                                                              boolean draining) {
         NodeGroupBindingRecord updated;
         boolean becameAvailable;
         synchronized (lock) {
@@ -206,7 +205,7 @@ final class WorkerRelationshipOwner {
         return updated;
     }
 
-    void validateExplicitWorkerNodeGroupMembership(String adapterNodeId, String groupId) {
+    public void validateExplicitWorkerNodeGroupMembership(String adapterNodeId, String groupId) {
         if (groupId == null) {
             throw new IllegalArgumentException("workerGroupId must not be blank when adapterNodeId is provided");
         }
@@ -223,7 +222,7 @@ final class WorkerRelationshipOwner {
         requireDeclaredWorkerGroup(groupId);
     }
 
-    void applyNodeGroupBindingDispatchGate(Worker worker) {
+    public void applyNodeGroupBindingDispatchGate(Worker worker) {
         String adapterNodeId = normalizeNullable(worker.getAdapterNodeId());
         String groupId = normalizeNullable(worker.getWorkerGroupId());
         if (adapterNodeId == null || groupId == null) {

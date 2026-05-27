@@ -107,8 +107,12 @@ platform_infra/mass-runtime-redis
 platform_infra/mass-runtime-memory
   InMemoryWorkerRegistry
 
+xa-mass-worker-runtime
+  higher-level resource / relationship owner services above mass-runtime-api
+
 xa-mass-engine
-  WorkerManager assembly and worker owner residue
+  WorkerManager assembly, report/admission/candidate owner residue, and match
+  strategy
 ```
 
 Extraction must converge these existing pieces instead of introducing a second
@@ -604,6 +608,16 @@ Acceptance:
 
 Goal: move remaining worker owner services without moving stable truth to the
 wrong layer.
+
+Progress:
+
+- `xa-mass-worker-runtime` exists as the higher-level worker runtime owner
+  module.
+- WorkerGroup, AdapterNode / NodeGroupBinding, and Worker registration row to
+  runtime slot projection owners have moved out of engine source.
+- Engine still assembles those owners through `WorkerManager`; report,
+  admission, candidate-source, and match strategy residue stays in engine for
+  later slices.
 
 Scope:
 

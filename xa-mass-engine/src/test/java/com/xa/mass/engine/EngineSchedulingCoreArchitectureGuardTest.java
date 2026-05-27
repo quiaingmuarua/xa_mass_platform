@@ -823,16 +823,13 @@ class EngineSchedulingCoreArchitectureGuardTest {
     void workerStorageAllWorkerScanStaysOutOfSchedulingHotPath() throws IOException {
         Path engineRoot = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine");
         Path workerManagerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker/WorkerManager.java");
-        Path workerResourceOwnerPath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/worker/WorkerResourceOwner.java");
         Path workerReportOwnerPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/worker/WorkerReportOwner.java");
         Pattern allWorkerScan = Pattern.compile("\\.getAllWorkers\\s*\\(");
 
         List<String> violations = new ArrayList<>();
         for (Path path : javaSourceFiles(engineRoot)) {
-            if (path.equals(workerManagerPath) || path.equals(workerResourceOwnerPath)
-                    || path.equals(workerReportOwnerPath)) {
+            if (path.equals(workerManagerPath) || path.equals(workerReportOwnerPath)) {
                 continue;
             }
             String source = Files.readString(path, StandardCharsets.UTF_8);
@@ -845,6 +842,28 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "WorkerStorage.getAllWorkers() is a current bootstrap/refresh residue, not a scheduling hot-path "
                         + "candidate source. New scheduling code must use WorkerManager/WorkerCandidateIndex "
                         + "until WorkerRegistry owns bounded acquisition:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void workerRuntimeOwnerModuleDoesNotDependOnEngine() throws IOException {
+        Path runtimeRoot = repositoryRoot().resolve("xa-mass-worker-runtime/src/main/java");
+        if (!Files.isDirectory(runtimeRoot)) {
+            return;
+        }
+        Pattern engineImport = Pattern.compile("\\bcom\\.xa\\.mass\\.engine\\.");
+
+        List<String> violations = new ArrayList<>();
+        for (Path path : javaSourceFiles(runtimeRoot)) {
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            if (engineImport.matcher(source).find()) {
+                violations.add(path + " imports engine code");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "xa-mass-worker-runtime is an owner module below engine strategy and must not "
+                        + "depend on engine internals:\n"
                         + String.join("\n", violations));
     }
 

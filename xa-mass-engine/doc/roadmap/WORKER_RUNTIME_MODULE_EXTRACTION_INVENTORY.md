@@ -39,6 +39,12 @@ memory implementation.
 Memory and Redis worker registries both consume runtime-api route-bucket policy
 helpers; Redis tests no longer depend on engine `WorkerRoutingPolicy`.
 
+`xa-mass-worker-runtime` now exists as the higher-level worker runtime owner
+module. It owns WorkerGroup declaration state, AdapterNode / NodeGroupBinding
+relationship state, and Worker registration row to runtime slot projection.
+Engine still assembles these owners through `WorkerManager`, but the owner
+implementations are no longer engine-local source.
+
 Task selector, candidate batch shape, candidate rows, Worker resource row,
 WorkerGroup capability read view, scheduling-view contract, admission contract, worker load, resource
 declaration records, and transport reachability evidence now use
@@ -57,14 +63,15 @@ into `WorkerSchedulingView` and `WorkerMatchContext` locally.
 Capability report application keeps `WorkerRegistrySnapshot` package-local so
 external/report DTOs do not expose engine candidate snapshot truth.
 
-Worker row mutation and registry slot projection are now package-owned by
-`WorkerResourceOwner`; WorkerGroup declaration state is package-owned by
-`WorkerGroupOwner`; worker-originated capability report projection is
-package-owned by `WorkerReportOwner`; worker runtime admission, exclusive lease,
-and occupancy reads are package-owned by `WorkerAdmissionOwner`; AdapterNode and
-WorkerGroup binding relationships are package-owned by `WorkerRelationshipOwner`.
-`WorkerManager` still implements the external contracts and delegates to these
-owners while callers converge.
+Worker row mutation and registry slot projection are now owned by
+`xa-mass-worker-runtime` `WorkerResourceOwner`; WorkerGroup declaration state is
+owned by `WorkerGroupOwner`; AdapterNode and WorkerGroup binding relationships
+are owned by `WorkerRelationshipOwner`. Worker-originated capability report
+projection is still engine-local in `WorkerReportOwner` because it composes the
+current engine `WorkerRegistrySnapshot` residue. Worker runtime admission,
+exclusive lease, and occupancy reads are still engine-local in
+`WorkerAdmissionOwner`. `WorkerManager` still implements the external contracts
+and delegates to these owners while callers converge.
 
 ## Public Method Inventory
 
@@ -125,9 +132,9 @@ worker control
 
 worker relationship resources
   -> WorkerManager resource-compatible methods
-  -> WorkerResourceOwner for Worker rows and slot projection
-  -> WorkerGroupOwner for WorkerGroup declarations
-  -> WorkerRelationshipOwner
+  -> xa-mass-worker-runtime WorkerResourceOwner for Worker rows and slot projection
+  -> xa-mass-worker-runtime WorkerGroupOwner for WorkerGroup declarations
+  -> xa-mass-worker-runtime WorkerRelationshipOwner
   -> WorkerRegistry source-scoped dispatch gates for binding availability
 ```
 

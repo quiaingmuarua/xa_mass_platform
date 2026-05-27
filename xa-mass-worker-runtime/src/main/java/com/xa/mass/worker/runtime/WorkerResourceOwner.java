@@ -1,4 +1,4 @@
-package com.xa.mass.engine.worker;
+package com.xa.mass.worker.runtime;
 
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Worker;
@@ -12,9 +12,9 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Package-local owner for worker registration rows and registry slot projection.
+ * Worker runtime owner for worker registration rows and registry slot projection.
  */
-final class WorkerResourceOwner {
+public final class WorkerResourceOwner {
 
     private final Object lock = new Object();
     private final WorkerStorage workerStorage;
@@ -22,17 +22,17 @@ final class WorkerResourceOwner {
     private final WorkerGroupOwner groupOwner;
     private final WorkerRelationshipOwner relationshipOwner;
 
-    WorkerResourceOwner(WorkerStorage workerStorage,
-                        WorkerRegistry workerRegistry,
-                        WorkerGroupOwner groupOwner,
-                        WorkerRelationshipOwner relationshipOwner) {
+    public WorkerResourceOwner(WorkerStorage workerStorage,
+                               WorkerRegistry workerRegistry,
+                               WorkerGroupOwner groupOwner,
+                               WorkerRelationshipOwner relationshipOwner) {
         this.workerStorage = workerStorage;
         this.workerRegistry = workerRegistry;
         this.groupOwner = groupOwner;
         this.relationshipOwner = relationshipOwner;
     }
 
-    Worker addWorker(Worker worker) {
+    public Worker addWorker(Worker worker) {
         Worker registrationRow = normalizeWorkerRegistrationRow(worker);
         workerStorage.addWorker(registrationRow);
         synchronized (lock) {
@@ -42,15 +42,15 @@ final class WorkerResourceOwner {
         return registrationRow;
     }
 
-    Optional<Worker> getWorker(String workerId) {
+    public Optional<Worker> getWorker(String workerId) {
         return workerStorage.getWorker(workerId);
     }
 
-    List<Worker> getAllWorkers() {
+    public List<Worker> getAllWorkers() {
         return workerStorage.getAllWorkers();
     }
 
-    Optional<Worker> updateWorker(Worker worker) {
+    public Optional<Worker> updateWorker(Worker worker) {
         Worker registrationRow = normalizeWorkerRegistrationRow(worker);
         boolean updated = workerStorage.updateWorker(registrationRow);
         if (updated) {
@@ -63,7 +63,7 @@ final class WorkerResourceOwner {
         return Optional.empty();
     }
 
-    boolean deleteWorker(String workerId) {
+    public boolean deleteWorker(String workerId) {
         Worker existing = getWorker(workerId).orElse(null);
         boolean deleted = workerStorage.deleteWorker(workerId);
         if (deleted) {
@@ -74,7 +74,7 @@ final class WorkerResourceOwner {
         return deleted;
     }
 
-    void syncWorkerRegistrySlots(Iterable<Worker> workers) {
+    public void syncWorkerRegistrySlots(Iterable<Worker> workers) {
         if (workers == null) {
             return;
         }
