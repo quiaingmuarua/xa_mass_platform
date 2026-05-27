@@ -801,16 +801,18 @@ class EngineSchedulingCoreArchitectureGuardTest {
     void workerStorageAllWorkerScanStaysOutOfSchedulingHotPath() throws IOException {
         Path engineRoot = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine");
         Path workerManagerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker/WorkerManager.java");
+        Path workerResourceOwnerPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/worker/WorkerResourceOwner.java");
         Pattern allWorkerScan = Pattern.compile("\\.getAllWorkers\\s*\\(");
 
         List<String> violations = new ArrayList<>();
         for (Path path : javaSourceFiles(engineRoot)) {
-            if (path.equals(workerManagerPath)) {
+            if (path.equals(workerManagerPath) || path.equals(workerResourceOwnerPath)) {
                 continue;
             }
             String source = Files.readString(path, StandardCharsets.UTF_8);
             if (allWorkerScan.matcher(source).find()) {
-                violations.add(path + " calls WorkerStorage.getAllWorkers() outside WorkerManager convergence boundary");
+                violations.add(path + " calls WorkerStorage.getAllWorkers() outside worker resource convergence boundary");
             }
         }
 

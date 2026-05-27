@@ -31,19 +31,20 @@ Candidate acquisition and task-local warm hints are now package-owned by
 `WorkerCandidateSourceOwner`; `WorkerManager` delegates to it while the module
 boundary is still inside engine.
 
-WorkerGroup declaration state is now package-owned by `WorkerGroupOwner`;
-worker runtime admission, exclusive lease, and occupancy reads are
-package-owned by `WorkerAdmissionOwner`; AdapterNode and WorkerGroup binding
-relationships are package-owned by `WorkerRelationshipOwner`. `WorkerManager`
-still implements the external contracts and delegates to these owners while
-callers converge.
+Worker row mutation and registry slot projection are now package-owned by
+`WorkerResourceOwner`; WorkerGroup declaration state is package-owned by
+`WorkerGroupOwner`; worker runtime admission, exclusive lease, and occupancy
+reads are package-owned by `WorkerAdmissionOwner`; AdapterNode and WorkerGroup
+binding relationships are package-owned by `WorkerRelationshipOwner`.
+`WorkerManager` still implements the external contracts and delegates to these
+owners while callers converge.
 
 ## Public Method Inventory
 
 | Method group | Methods | Current callers | Target owner | Truth layer | Notes |
 | --- | --- | --- | --- | --- | --- |
-| Worker row mutation | `addWorker`, `updateWorker`, `deleteWorker` | SDK registration, tests, server bootstrap through SDK | worker resource write path | control-plane storage plus derived runtime projection | Registration row is stable resource truth; `WorkerMeta` slot projection is runtime truth |
-| Worker row lookup | `getWorker`, `findWorker`, `getAllWorkers` | SDK diagnostics, storage-edge lookup, tests | resource read path or replacement read contract | control-plane storage read | `findWorker` exists because `WorkerLookupStore` is still active |
+| Worker row mutation | `addWorker`, `updateWorker`, `deleteWorker` | SDK registration, tests, server bootstrap through SDK | `WorkerResourceOwner` through resource runtime | control-plane storage plus derived runtime projection | Registration row is stable resource truth; `WorkerMeta` slot projection is runtime truth |
+| Worker row lookup | `getWorker`, `findWorker`, `getAllWorkers` | SDK diagnostics, storage-edge lookup, tests | `WorkerResourceOwner` / replacement read contract | control-plane storage read | `findWorker` exists because `WorkerLookupStore` is still active |
 | WorkerGroup mutation | `upsertWorkerGroup`, `deleteWorkerGroup` | SDK declaration, bootstrap, tests | `WorkerGroupOwner` through resource runtime | control-plane storage plus runtime candidate projection | WorkerGroup is capability declaration truth, not match strategy state |
 | WorkerGroup read | `workerGroup`, `workerGroupReadView`, `workerGroups` | SDK read APIs, candidate enumeration, tests | `WorkerGroupOwner` / scheduling-view runtime | control-plane read plus runtime read model | `workerGroupReadView` is used by scheduling candidate enumeration |
 | AdapterNode mutation | `registerAdapterNode`, `deleteAdapterNode` | SDK declaration, tests | `WorkerRelationshipOwner` through resource runtime | control-plane storage plus runtime projection | AdapterNode is endpoint/runtime-node declaration truth |
@@ -93,6 +94,7 @@ worker control
 
 worker relationship resources
   -> WorkerManager resource-compatible methods
+  -> WorkerResourceOwner for Worker rows and slot projection
   -> WorkerGroupOwner for WorkerGroup declarations
   -> WorkerRelationshipOwner
   -> WorkerRegistry source-scoped dispatch gates for binding availability

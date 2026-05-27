@@ -9,16 +9,12 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.load.WorkerLoadSnapshot;
 import com.xa.mass.runtime.worker.DispatchAvailabilitySource;
-import com.xa.mass.runtime.worker.EventKey;
-import com.xa.mass.runtime.worker.WorkerMeta;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.storage.api.WorkerLookupStore;
 import com.xa.mass.storage.api.WorkerStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -39,15 +35,14 @@ public class WorkerManager implements WorkerLookupStore,
     private static final Logger log = LoggerFactory.getLogger(WorkerManager.class);
     static final int DEFAULT_DIAGNOSTIC_CANDIDATE_LIMIT = 512;
 
-    private final WorkerStorage workerStorage;
     private final WorkerReachabilityView reachabilityView;
     private final WorkerCapabilityAuthority capabilityAuthority;
     private final WorkerRegistry workerRegistry;
     private final WorkerGroupOwner groupOwner;
+    private final WorkerResourceOwner resourceOwner;
     private final WorkerCandidateSourceOwner candidateSourceOwner;
     private final WorkerAdmissionOwner admissionOwner;
     private final WorkerRelationshipOwner relationshipOwner;
-    private final Object workerRegistryLock = new Object();
     private volatile WorkerRegistrySnapshot workerRegistrySnapshot;
     private volatile Runnable dispatchWakeupCallback = () -> {
     };
@@ -76,7 +71,6 @@ public class WorkerManager implements WorkerLookupStore,
                   WorkerReachabilityView reachabilityView,
                   WorkerCapabilityAuthority capabilityAuthority,
                   WorkerRegistry workerRegistry) {
-        this.workerStorage = workerStorage;
         this.reachabilityView = reachabilityView != null ? reachabilityView : WorkerReachabilityView.permissive();
         this.capabilityAuthority = capabilityAuthority != null ? capabilityAuthority : new WorkerCapabilityAuthority();
         this.workerRegistry = workerRegistry != null ? workerRegistry : new InMemoryWorkerRegistry();
@@ -88,25 +82,24 @@ public class WorkerManager implements WorkerLookupStore,
                 this.groupOwner::hasWorkerGroup,
                 this::notifyDispatchWakeup
         );
-        for (Worker worker : workerStorage.getAllWorkers()) {
-            upsertWorkerRegistrySlot(worker);
-        }
+        this.resourceOwner = new WorkerResourceOwner(
+                workerStorage,
+                this.workerRegistry,
+                this.groupOwner,
+                this.relationshipOwner
+        );
+        this.resourceOwner.syncWorkerRegistrySlots(this.resourceOwner.getAllWorkers());
         publishWorkerRegistrySnapshot(composeWorkerRegistrySnapshot());
     }
 
     public void addWorker(Worker worker) {
-        Worker registrationRow = normalizeWorkerRegistrationRow(worker);
-        workerStorage.addWorker(registrationRow);
-        synchronized (workerRegistryLock) {
-            upsertWorkerRegistrySlot(registrationRow);
-            publishWorkerRegistrySnapshot();
-        }
-        applyNodeGroupBindingDispatchGate(registrationRow);
+        resourceOwner.addWorker(worker);
+        publishWorkerRegistrySnapshot();
         notifyDispatchWakeup("worker registered");
     }
 
     public Worker getWorker(String workerId) {
-        return workerStorage.getWorker(workerId).orElse(null);
+        return resourceOwner.getWorker(workerId).orElse(null);
     }
 
     @Override
@@ -115,26 +108,15 @@ public class WorkerManager implements WorkerLookupStore,
     }
 
     public boolean updateWorker(Worker worker) {
-        Worker registrationRow = normalizeWorkerRegistrationRow(worker);
-        boolean updated = workerStorage.updateWorker(registrationRow);
-        if (updated) {
-            synchronized (workerRegistryLock) {
-                upsertWorkerRegistrySlot(registrationRow);
-                publishWorkerRegistrySnapshot();
-            }
-            applyNodeGroupBindingDispatchGate(registrationRow);
-        }
-        return updated;
+        Optional<Worker> updated = resourceOwner.updateWorker(worker);
+        updated.ifPresent(ignored -> publishWorkerRegistrySnapshot());
+        return updated.isPresent();
     }
 
     public boolean deleteWorker(String workerId) {
-        Worker existing = getWorker(workerId);
-        boolean deleted = workerStorage.deleteWorker(workerId);
+        boolean deleted = resourceOwner.deleteWorker(workerId);
         if (deleted) {
-            synchronized (workerRegistryLock) {
-                markWorkerRegistrySlotRemoving(existing, "worker deleted");
-                publishWorkerRegistrySnapshot();
-            }
+            publishWorkerRegistrySnapshot();
         }
         return deleted;
     }
@@ -180,7 +162,7 @@ public class WorkerManager implements WorkerLookupStore,
     }
 
     public List<Worker> getAllWorkers() {
-        return workerStorage.getAllWorkers();
+        return resourceOwner.getAllWorkers();
     }
 
     public AdapterNodeRecord registerAdapterNode(AdapterNodeRecord adapterNode) {
@@ -280,27 +262,21 @@ public class WorkerManager implements WorkerLookupStore,
     }
 
     public void refreshWorkerRegistrySnapshot() {
-        synchronized (workerRegistryLock) {
-            for (Worker worker : workerStorage.getAllWorkers()) {
-                upsertWorkerRegistrySlot(worker);
-            }
-            publishWorkerRegistrySnapshot();
-        }
+        resourceOwner.syncWorkerRegistrySlots(resourceOwner.getAllWorkers());
+        publishWorkerRegistrySnapshot();
     }
 
     public WorkerCapabilityReportResult applyWorkerCapabilityReport(WorkerCapabilityReport report) {
-        synchronized (workerRegistryLock) {
-            WorkerCapabilityReportResult result = capabilityAuthority.applyReport(
-                    report,
-                    workerStorage.getAllWorkers(),
-                    groupOwner.workerGroups()
-            );
-            if (result.snapshotChanged() && result.snapshot() != null) {
-                publishWorkerRegistrySnapshot(result.snapshot());
-                syncWorkerRegistrySlots(result.snapshot().workers());
-            }
-            return result;
+        WorkerCapabilityReportResult result = capabilityAuthority.applyReport(
+                report,
+                resourceOwner.getAllWorkers(),
+                groupOwner.workerGroups()
+        );
+        if (result.snapshotChanged() && result.snapshot() != null) {
+            publishWorkerRegistrySnapshot(result.snapshot());
+            resourceOwner.syncWorkerRegistrySlots(result.snapshot().workers());
         }
+        return result;
     }
 
     public List<String> getExclusiveLeaseWorkerIds() {
@@ -405,58 +381,6 @@ public class WorkerManager implements WorkerLookupStore,
         admissionOwner.recordWorkFinal(workerId, taskId);
     }
 
-    private void syncWorkerRegistrySlots(Iterable<Worker> workers) {
-        if (workers == null) {
-            return;
-        }
-        for (Worker worker : workers) {
-            upsertWorkerRegistrySlot(worker);
-        }
-    }
-
-    private void upsertWorkerRegistrySlot(Worker worker) {
-        WorkerMeta meta = workerMeta(worker);
-        if (meta == null) {
-            return;
-        }
-        workerRegistry.upsertSlot(meta, worker.getMaxConcurrentWork(), eventBindingCeilingFor(meta.groupId()));
-    }
-
-    private void markWorkerRegistrySlotRemoving(Worker worker, String reason) {
-        WorkerMeta meta = workerMeta(worker);
-        if (meta == null) {
-            return;
-        }
-        workerRegistry.markSlotRemoving(meta.groupId(), meta.workerId(), reason);
-    }
-
-    private WorkerMeta workerMeta(Worker worker) {
-        String workerId = worker == null ? null : normalizeNullable(worker.getWorkerId());
-        String groupId = worker == null ? null : normalizeNullable(worker.getWorkerGroupId());
-        if (workerId == null || groupId == null) {
-            return null;
-        }
-        long lastHeartbeatMillis = worker.getLastHeartbeat() == null
-                ? 0L
-                : worker.getLastHeartbeat().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
-        return new WorkerMeta(
-                workerId,
-                groupId,
-                normalizeNullable(worker.getAdapterNodeId()),
-                normalizeNullable(worker.getAdapterId()),
-                normalizeNullable(worker.getOnlineStrategy()),
-                worker.getAttributes(),
-                normalizeNullable(worker.getAgentVersion()),
-                null,
-                lastHeartbeatMillis,
-                worker.getStatus() == null ? null : worker.getStatus().name()
-        );
-    }
-
-    private Set<EventKey> eventBindingCeilingFor(String groupId) {
-        return groupOwner.eventBindingCeilingFor(groupId);
-    }
-
     private void publishWorkerRegistrySnapshot() {
         publishWorkerRegistrySnapshot(composeWorkerRegistrySnapshot());
     }
@@ -467,37 +391,7 @@ public class WorkerManager implements WorkerLookupStore,
     }
 
     private WorkerRegistrySnapshot composeWorkerRegistrySnapshot() {
-        return capabilityAuthority.composeSnapshot(workerStorage.getAllWorkers(), groupOwner.workerGroups());
-    }
-
-    private Worker normalizeWorkerRegistrationRow(Worker worker) {
-        if (worker == null) {
-            throw new IllegalArgumentException("worker must not be null");
-        }
-        String workerId = normalizeNullable(worker.getWorkerId());
-        if (workerId == null) {
-            throw new IllegalArgumentException("workerId must not be blank");
-        }
-        worker.setWorkerId(workerId);
-        String groupId = normalizeNullable(worker.getWorkerGroupId());
-        if (groupId != null) {
-            worker.setWorkerGroupId(groupId);
-        }
-        String adapterNodeId = normalizeNullable(worker.getAdapterNodeId());
-        if (adapterNodeId != null) {
-            relationshipOwner.validateExplicitWorkerNodeGroupMembership(adapterNodeId, groupId);
-            worker.setAdapterNodeId(adapterNodeId);
-        }
-        if (worker.getStatus() == WorkerStatus.ONLINE && worker.getLastHeartbeat() == null) {
-            worker.setLastHeartbeat(LocalDateTime.now());
-        }
-        return worker;
-    }
-
-    private void applyNodeGroupBindingDispatchGate(Worker worker) {
-        if (worker != null) {
-            relationshipOwner.applyNodeGroupBindingDispatchGate(worker);
-        }
+        return capabilityAuthority.composeSnapshot(resourceOwner.getAllWorkers(), groupOwner.workerGroups());
     }
 
     private static String normalizeNullable(String value) {
