@@ -215,26 +215,33 @@ Scope:
    Each registry computes heartbeat deadline internally from stored heartbeat
    state and freshness policy.
 3. Make in-memory heartbeat freshness behavior match Redis behavior:
-   `heartbeatDeadlineMillis = lastHeartbeatMillis + heartbeatFreshnessMillis`,
-   and reserve rejects slots whose deadline has passed.
-4. Add tests proving stale heartbeat cleanup removes candidates from route
+   `heartbeatDeadlineMillis = lastHeartbeatMillis + heartbeatFreshnessMillis`.
+4. Make `tryReserve(...)` heartbeat admission consistent across registries.
+   Redis already rejects stale slots with `STALE_HEARTBEAT`; in-memory must
+   reject the same stale slot even when cleanup has not run yet.
+5. Add tests proving stale heartbeat cleanup removes candidates from route
    buckets and prevents new reserve.
-5. Replace broad route-bucket removal scans with worker-to-bucket membership.
+6. Replace broad route-bucket removal scans with worker-to-bucket membership.
    `removeFromBuckets` must remove only the bucket keys indexed for the worker
    being removed.
-6. Add or identify an engine-side dispatch wakeup bridge that wires worker
+7. Add or identify an engine-side dispatch wakeup bridge that wires worker
    availability callbacks to both relevant dispatch recovery paths:
-   lane/task-signal redispatch through `requestTaskDispatch(...)`, and
+   lane/task-signal redispatch through `requestTaskDispatch(...)` for tasks
+   already waiting in `TaskAssignWorker` retry/backoff, and
    runtime-driven batch admission through
-   `RuntimeReadyDispatchPump.wakeIdleAdmissions()`. Worker/transport owners
-   must call only the bridge callback, not the pump directly.
-7. Fix or explicitly accept the READY-state dedupe window in `TaskAssignWorker`.
+   `RuntimeReadyDispatchPump.wakeIdleAdmissions()`. Current wiring that only
+   wakes the runtime-ready pump is incomplete for lane retry latency.
+   Worker/transport owners must call only the bridge callback, not the pump
+   directly.
+8. Fix or explicitly accept the READY-state dedupe window in `TaskAssignWorker`.
 
 Acceptance:
 
 1. In-memory and Redis registries keep `cleanupExpiredHeartbeats(nowMillis, limit)`
    as a current-time API and agree on internal heartbeat-deadline semantics.
-2. Stale heartbeat candidates cannot be newly reserved.
+2. Both in-memory and Redis `tryReserve(...)` return the same stale-heartbeat
+   rejection for a slot whose heartbeat deadline has passed, whether or not
+   cleanup has already removed the candidate from route buckets.
 3. Worker unregister / group move / route-attribute update removes only known
    bucket memberships from the worker-to-bucket reverse index.
 4. Worker registration, online, capability, and AVAILABLE-state transitions call
@@ -300,8 +307,10 @@ Scope:
    sample limits. The first policy can be round-robin or proportional, but it
    must be explicit.
 4. Review sample min/max defaults for interactive and bulk tasks.
-5. Remove, demote, or document `WorkerManager.DEFAULT_STAGE_ONE_CANDIDATE_LIMIT`
-   if Slice-2 diagnostics confirm it is not on the hot matching path.
+5. Remove `WorkerManager.DEFAULT_STAGE_ONE_CANDIDATE_LIMIT` from the hot-path
+   narrative if the no-limit `findWorkerCandidates(task)` overload remains
+   unused by matching. If a non-hot diagnostic caller still needs a default,
+   rename it to make clear it is not the production Stage-1 sample policy.
 6. Add source-count trace fields:
    - selected group count
    - selected route key count
@@ -352,8 +361,10 @@ Goal: understand and reduce matching throughput bottlenecks without moving
 truth into the wrong owner.
 
 This is a diagnostic / measurement slice first. Its deliverable is a short
-measurement note, committed with or linked from this roadmap, before any
-throughput-changing implementation PR.
+measurement note at `doc/measurements/MATCH_THROUGHPUT_NOTE.md`, before any
+throughput-changing implementation PR. If the measurement note is deliberately
+kept inside this file instead, add it under `## Slice 4 Measurement Record` and
+link to the commit or run artifact that produced the numbers.
 
 Scope:
 
@@ -398,16 +409,22 @@ Scope:
 
 1. Add `TaskCandidateWarmPool` as bounded task-local hint state.
 2. Use per-task and global entry caps.
-3. Use TTL and source-guard pruning only.
+3. Use TTL and source-guard pruning only; do not add dependency-key
+   invalidation in the first slice.
 4. Do not add worker version fields.
 5. Disable warm sampling for `targetWorkerId` tasks in the first slice.
 6. Rehydrate warm ids through current WorkerGroup-first source guard before
    Stage-2 sees them.
-7. Cold-fill through the normal candidate source after warm rehydration.
-8. Dedupe warm and cold candidates before Stage-2.
-9. Insert only unreserved candidates, or reserved-but-not-dispatched candidates
+7. Route-bucket source guard is explicit: fetch current worker meta and
+   recompute the current route bucket keys with the same routing policy used by
+   `WorkerRegistry` registration; reject a warm entry when
+   `observedRouteBucketKey` is no longer in that current set. TTL alone is not
+   enough to prove route-bucket validity.
+8. Cold-fill through the normal candidate source after warm rehydration.
+9. Dedupe warm and cold candidates before Stage-2.
+10. Insert only unreserved candidates, or reserved-but-not-dispatched candidates
    after successful release.
-10. Keep dependency-key invalidation as a later optional slice.
+11. Keep dependency-key invalidation as a later optional slice.
 
 Acceptance:
 
