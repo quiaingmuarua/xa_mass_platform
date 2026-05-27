@@ -466,6 +466,8 @@ Landed first slice:
 
 ## Slice 3: Stage-2 Policy Review
 
+Status: rule-evaluation diagnostic first slice implemented.
+
 Goal: keep Stage-2 as current-state admission, while making policy choices
 visible and adjustable.
 
@@ -491,6 +493,14 @@ Acceptance:
 4. Interactive and bulk rank behavior can diverge later without a broad rewrite.
 5. Rank policy configuration owner is explicit and does not depend on mutable
    worker reports or per-task business payload.
+
+Landed first slice:
+
+1. `AssignmentRecord` captures per-attempt `ruleEvaluationCount` and
+   `ruleEvaluationTotalTimeMs`.
+2. `AssignmentRecordService` derives these fields from bounded rule evaluation
+   details in the matching hot path.
+3. Existing matching behavior and rank order are unchanged.
 
 ## Slice 4: Dispatch Signal And Throughput Review
 

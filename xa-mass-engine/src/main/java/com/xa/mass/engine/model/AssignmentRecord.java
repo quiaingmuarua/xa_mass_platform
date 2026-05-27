@@ -26,6 +26,8 @@ public class AssignmentRecord {
     private LocalDateTime assignTime;
     private String reason;
     private List<RuleEvaluationDetail> ruleEvaluations;
+    private int ruleEvaluationCount;
+    private long ruleEvaluationTotalTimeMs;
     private Map<String, Object> contextSnapshot;
     private String conflictInfo;
     private Integer priority;
@@ -66,6 +68,16 @@ public class AssignmentRecord {
 
     public List<RuleEvaluationDetail> getRuleEvaluations() { return ruleEvaluations; }
     public void setRuleEvaluations(List<RuleEvaluationDetail> ruleEvaluations) { this.ruleEvaluations = ruleEvaluations; }
+
+    public int getRuleEvaluationCount() { return ruleEvaluationCount; }
+    public void setRuleEvaluationCount(int ruleEvaluationCount) {
+        this.ruleEvaluationCount = Math.max(0, ruleEvaluationCount);
+    }
+
+    public long getRuleEvaluationTotalTimeMs() { return ruleEvaluationTotalTimeMs; }
+    public void setRuleEvaluationTotalTimeMs(long ruleEvaluationTotalTimeMs) {
+        this.ruleEvaluationTotalTimeMs = Math.max(0L, ruleEvaluationTotalTimeMs);
+    }
 
     public Map<String, Object> getContextSnapshot() { return contextSnapshot; }
     public void setContextSnapshot(Map<String, Object> contextSnapshot) { this.contextSnapshot = contextSnapshot; }

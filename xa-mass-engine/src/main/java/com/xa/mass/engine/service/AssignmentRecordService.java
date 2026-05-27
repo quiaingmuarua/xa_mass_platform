@@ -47,6 +47,13 @@ public class AssignmentRecordService implements AssignmentDiagnosticRecorder, As
         record.setResult(result);
         record.setReason(reason);
         record.setRuleEvaluations(ruleEvaluations);
+        record.setRuleEvaluationCount(ruleEvaluations == null ? 0 : ruleEvaluations.size());
+        record.setRuleEvaluationTotalTimeMs(ruleEvaluations == null
+                ? 0L
+                : ruleEvaluations.stream()
+                .mapToLong(RuleEvaluationDetail::getEvaluationTimeMs)
+                .filter(value -> value > 0L)
+                .sum());
         record.setContextSnapshot(contextSnapshot);
 
         record.setTaskSnapshot(createTaskSnapshot(task));
@@ -107,6 +114,8 @@ public class AssignmentRecordService implements AssignmentDiagnosticRecorder, As
                     .map(r -> r.getRuleId() + ":" + (r.isPassed() ? "PASS" : "FAIL"))
                     .collect(Collectors.joining(", "));
             logMsg.append(ruleDetails).append("]");
+            logMsg.append(", RuleEvalCount=").append(record.getRuleEvaluationCount());
+            logMsg.append(", RuleEvalTimeMs=").append(record.getRuleEvaluationTotalTimeMs());
         }
 
         log.info(logMsg.toString());

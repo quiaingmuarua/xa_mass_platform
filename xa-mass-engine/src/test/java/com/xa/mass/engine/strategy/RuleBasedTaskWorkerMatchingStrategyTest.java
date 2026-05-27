@@ -66,6 +66,8 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                 .findFirst()
                 .orElseThrow();
         assertTrue(record.getWorkerSnapshot().isWorkerLocked());
+        assertEquals(4, record.getRuleEvaluationCount());
+        assertTrue(record.getRuleEvaluationTotalTimeMs() >= 0L);
         assertEquals("us", ((Map<?, ?>) record.getContextSnapshot()
                 .get("workerSchedulingAttributes")).get("country"));
     }
