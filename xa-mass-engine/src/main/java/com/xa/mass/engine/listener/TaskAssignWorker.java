@@ -250,19 +250,21 @@ public class TaskAssignWorker {
 
     private void drainLane(LaneState laneState) {
         while (running) {
-            Task task = null;
+                Task task = null;
             try {
                 TaskAssignmentSignal signal = laneState.take();
                 task = signal.task();
                 String taskId = task != null ? task.getTid() : null;
                 TaskStatus initialStatus = task != null ? task.getStatus() : null;
                 if (initialStatus == TaskStatus.READY || initialStatus == TaskStatus.RUNNING) {
+                    long assignmentStartedNanos = System.nanoTime();
                     boolean assigned = workerAssignListener.onTaskAssign(task);
+                    long assignmentDurationMillis = elapsedMillis(assignmentStartedNanos);
                     if (running && !assigned && task.getStatus() == initialStatus) {
-                        scheduleRetry(task, initialStatus, laneState);
+                        scheduleRetry(task, initialStatus, laneState, assignmentDurationMillis);
                     } else if (!enqueueDeferredRequeueIfRequested(task)) {
                         releaseTrackedTask(taskId);
-                        notifyAssignmentProcessed(task, laneState);
+                        notifyAssignmentProcessed(task, laneState, assignmentDurationMillis);
                     } else {
                         emitQueueSnapshot(task, task.getStatus(), laneState, "REQUEUE_ENQUEUED", null,
                                 "deferred requeue requested while assignment was still processing", "SUCCESS");
@@ -292,6 +294,17 @@ public class TaskAssignWorker {
                                    Long retryDelayMillis,
                                    String reason,
                                    String result) {
+        emitQueueSnapshot(task, taskStatus, laneState, queueAction, retryDelayMillis, null, reason, result);
+    }
+
+    private void emitQueueSnapshot(Task task,
+                                   TaskStatus taskStatus,
+                                   LaneState laneState,
+                                   String queueAction,
+                                   Long retryDelayMillis,
+                                   Long assignmentDurationMillis,
+                                   String reason,
+                                   String result) {
         traceEventLogger.assignmentQueueSnapshot(
                 task,
                 taskStatus,
@@ -301,6 +314,7 @@ public class TaskAssignWorker {
                 laneState != null ? laneState.scheduledRetryCount.get() : totalScheduledRetryCount(),
                 queueAction,
                 retryDelayMillis,
+                assignmentDurationMillis,
                 queueAction,
                 "TaskAssignWorker",
                 reason,
@@ -415,6 +429,13 @@ public class TaskAssignWorker {
     }
 
     private void scheduleRetry(Task task, TaskStatus expectedStatus, LaneState laneState) {
+        scheduleRetry(task, expectedStatus, laneState, null);
+    }
+
+    private void scheduleRetry(Task task,
+                               TaskStatus expectedStatus,
+                               LaneState laneState,
+                               Long assignmentDurationMillis) {
         if (laneState == null || laneState.retryExecutor == null) {
             return;
         }
@@ -435,6 +456,7 @@ public class TaskAssignWorker {
                 resolvedRetryDelayMillis
         );
         emitQueueSnapshot(task, expectedStatus, laneState, "RETRY_SCHEDULED", resolvedRetryDelayMillis,
+                assignmentDurationMillis,
                 "task remained eligible after assignment attempt", "SCHEDULED");
         ScheduledFuture<?> future = laneState.retryExecutor.schedule(
                 () -> runWaitingRetry(waitingRetry, false, "delayed retry reached due time"),
@@ -495,9 +517,14 @@ public class TaskAssignWorker {
     }
 
     private void notifyAssignmentProcessed(Task task, LaneState laneState) {
+        notifyAssignmentProcessed(task, laneState, null);
+    }
+
+    private void notifyAssignmentProcessed(Task task, LaneState laneState, Long assignmentDurationMillis) {
         int previous = pendingTasks.getAndUpdate(current -> current > 0 ? current - 1 : 0);
         int remaining = previous > 0 ? previous - 1 : 0;
         emitQueueSnapshot(task, task != null ? task.getStatus() : null, laneState, "PROCESSED", null,
+                assignmentDurationMillis,
                 "assignment attempt finished processing", "SUCCESS");
         listeners.forEach(l -> l.onTaskAssignmentProcessed(task));
 
@@ -612,6 +639,10 @@ public class TaskAssignWorker {
 
     private static String normalizeReason(String reason) {
         return reason == null || reason.isBlank() ? "unspecified" : reason.trim();
+    }
+
+    private static long elapsedMillis(long startedNanos) {
+        return TimeUnit.NANOSECONDS.toMillis(Math.max(0L, System.nanoTime() - startedNanos));
     }
 
     private static final class WaitingRetry {

@@ -506,6 +506,8 @@ Landed first slice:
 
 ## Slice 4: Dispatch Signal And Throughput Review
 
+Status: assignment-lane measurement first slice implemented.
+
 Goal: understand and reduce matching throughput bottlenecks without moving
 truth into the wrong owner.
 
@@ -533,6 +535,14 @@ Acceptance:
 3. READY/RUNNING redispatch coalescing behavior is documented and tested.
 4. Any future parallelism preserves reserve correctness through
    `WorkerRegistry`.
+
+Landed first slice:
+
+1. `TaskAssignWorker` records assignment duration on `ASSIGNMENT_QUEUE_SNAPSHOT`
+   for processed attempts and no-match retry scheduling.
+2. The measurement note lives at
+   [`doc/measurements/MATCH_THROUGHPUT_NOTE.md`](../../../doc/measurements/MATCH_THROUGHPUT_NOTE.md).
+3. No lane parallelism or dispatch concurrency behavior changed in this slice.
 
 ## Slice 5: Warm Candidate Hints
 

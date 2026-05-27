@@ -815,6 +815,34 @@ public final class TraceEventLogger {
                                         String source,
                                         String reason,
                                         String result) {
+        assignmentQueueSnapshot(task,
+                taskStatus,
+                dispatchLane,
+                queueDepth,
+                trackedBatchPendingCount,
+                scheduledRetryCount,
+                queueAction,
+                retryDelayMillis,
+                null,
+                trigger,
+                source,
+                reason,
+                result);
+    }
+
+    public void assignmentQueueSnapshot(Task task,
+                                        TaskStatus taskStatus,
+                                        String dispatchLane,
+                                        int queueDepth,
+                                        int trackedBatchPendingCount,
+                                        int scheduledRetryCount,
+                                        String queueAction,
+                                        Long retryDelayMillis,
+                                        Long assignmentDurationMillis,
+                                        String trigger,
+                                        String source,
+                                        String reason,
+                                        String result) {
         Map<String, Object> attrs = attrs(
                 "trigger", trigger,
                 "source", source,
@@ -826,7 +854,8 @@ public final class TraceEventLogger {
                 "trackedBatchPendingCount", trackedBatchPendingCount,
                 "scheduledRetryCount", scheduledRetryCount,
                 "queueAction", queueAction,
-                "retryDelayMillis", retryDelayMillis
+                "retryDelayMillis", retryDelayMillis,
+                "assignmentDurationMillis", assignmentDurationMillis
         );
         putTaskRuntimeProfile(attrs, task);
         emit(event(ExecutionEventType.ASSIGNMENT_QUEUE_SNAPSHOT)

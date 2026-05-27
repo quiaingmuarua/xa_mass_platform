@@ -85,6 +85,7 @@ public class TaskAssignWorkerTest {
             capture.assertHasEvent("ASSIGNMENT_QUEUE_SNAPSHOT", mdc ->
                     "t1".equals(mdc.get("taskId"))
                             && "PROCESSED".equals(mdc.get("queueAction"))
+                            && mdc.get("assignmentDurationMillis") != null
                             && "TaskAssignWorker".equals(mdc.get("source")));
         }
     }
@@ -120,7 +121,8 @@ public class TaskAssignWorkerTest {
         assertTrue(awaitCondition(() -> hasRetryDelayEvent(sink, "retry", 50L)),
                 "retry scheduling trace should be captured before assertions run");
         assertTrue(awaitCondition(() -> hasQueueSnapshotEvent(sink, "retry", "RETRY_SCHEDULED",
-                attrs -> Integer.valueOf(1).equals(attrs.get("scheduledRetryCount")))),
+                attrs -> Integer.valueOf(1).equals(attrs.get("scheduledRetryCount"))
+                        && attrs.get("assignmentDurationMillis") instanceof Long)),
                 "retry-scheduled queue snapshot should be captured before assertions run");
         assertTrue(awaitCondition(() -> hasQueueSnapshotEvent(sink, "retry", "RETRY_ENQUEUED",
                 attrs -> "TaskAssignWorker".equals(attrs.get("source")))),
