@@ -7,7 +7,7 @@ import com.xa.mass.runtime.worker.ReserveStatus;
 import com.xa.mass.runtime.worker.WorkerCandidateSamplingPolicy;
 import com.xa.mass.runtime.worker.WorkerMeta;
 import com.xa.mass.runtime.worker.WorkerRegistry;
-import com.xa.mass.engine.worker.WorkerRoutingPolicy;
+import com.xa.mass.runtime.worker.WorkerRouteBucketPolicies;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -44,7 +44,7 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
                 redisClient,
                 keyspace,
                 samplingPolicy,
-                meta -> Set.of(RedisWorkerRegistry.DEFAULT_ROUTE_BUCKET_KEY),
+                WorkerRouteBucketPolicies.defaultPolicy(),
                 false
         );
         return registry;
@@ -96,7 +96,7 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
                         redisClient,
                         keyspace,
                         (context, workerIds, maxCandidateCount) -> workerIds.stream().limit(maxCandidateCount).toList(),
-                        meta -> Set.of(RedisWorkerRegistry.DEFAULT_ROUTE_BUCKET_KEY),
+                        WorkerRouteBucketPolicies.defaultPolicy(),
                         false
                 ));
             }
@@ -194,7 +194,7 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
                 redisClient,
                 otherKeyspace,
                 (context, workerIds, maxCandidateCount) -> workerIds.stream().limit(maxCandidateCount).toList(),
-                meta -> Set.of(RedisWorkerRegistry.DEFAULT_ROUTE_BUCKET_KEY),
+                WorkerRouteBucketPolicies.defaultPolicy(),
                 false
         );
         try {
@@ -216,7 +216,7 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
                 redisClient,
                 keyspace,
                 (context, workerIds, maxCandidateCount) -> workerIds.stream().limit(maxCandidateCount).toList(),
-                WorkerRoutingPolicy.approvedAttributePolicy(List.of("region")),
+                WorkerRouteBucketPolicies.approvedAttributePolicy(List.of("region")),
                 false
         );
         registry.upsertSlot(
@@ -237,7 +237,7 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
                 redisClient,
                 keyspace,
                 (context, workerIds, maxCandidateCount) -> workerIds.stream().limit(maxCandidateCount).toList(),
-                WorkerRoutingPolicy.approvedAttributePolicy(List.of("region")),
+                WorkerRouteBucketPolicies.approvedAttributePolicy(List.of("region")),
                 false
         );
         registry.upsertSlot(metaWithRegion("worker-1", "group-a", "us"), 1, Set.of(eventKey()));
@@ -302,13 +302,14 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
 
         CleanupSummary cleanup = workerRegistry.cleanupStaleBucketMembers("group-a", 10);
 
-        assertEquals(1, cleanup.scanned());
-        assertEquals(1, cleanup.removed());
+        assertEquals(2, cleanup.scanned());
+        assertEquals(2, cleanup.removed());
         assertTrue(workerRegistry.acquireCandidates(
                 "group-a",
                 RedisWorkerRegistry.DEFAULT_ROUTE_BUCKET_KEY,
                 10
         ).isEmpty());
+        assertTrue(workerRegistry.acquireCandidates("group-a", "attr:region=us", 10).isEmpty());
     }
 
     private WorkerMeta meta(String workerId, String groupId, long lastHeartbeatMillis) {

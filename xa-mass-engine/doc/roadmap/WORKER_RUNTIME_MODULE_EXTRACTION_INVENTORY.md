@@ -36,6 +36,8 @@ boundary is still inside engine.
 Engine still assembles it as the default embedded `WorkerRegistry`, but the
 slot/index/admission implementation source no longer lives in
 `com.xa.mass.engine.worker`.
+Memory and Redis worker registries both consume runtime-api route-bucket policy
+helpers; Redis tests no longer depend on engine `WorkerRoutingPolicy`.
 
 Task selector, candidate batch shape, candidate rows, Worker resource row,
 WorkerGroup capability read view, scheduling-view contract, admission contract, worker load, resource

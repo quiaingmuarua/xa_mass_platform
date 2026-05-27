@@ -31,6 +31,9 @@ the default verified runtime mainline.
   slot hash for first-slice reserve, confirm, release, final, gate, and lease
   mutations; broader server/runtime switching and finer-grained Lua mutation
   remain later roadmap phases
+- Redis and memory worker registries share the same runtime-api route-bucket
+  default policy; workers with approved route attributes are indexed into both
+  `default` and attribute buckets.
 
 ## Guardrails
 

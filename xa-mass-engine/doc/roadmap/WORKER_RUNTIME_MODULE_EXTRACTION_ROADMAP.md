@@ -578,6 +578,8 @@ Progress:
   `platform_infra/mass-runtime-memory`.
 - Worker route-bucket encoding shared by engine task selector and worker slot
   indexing lives in `mass-runtime-api` as runtime-neutral policy helpers.
+- Redis and memory worker registries now use the same runtime-api default
+  route-bucket policy and shared worker registry contract tests.
 - Engine still assembles the memory implementation for the embedded default
   path; that assembly dependency is expected until D1 cleanup.
 

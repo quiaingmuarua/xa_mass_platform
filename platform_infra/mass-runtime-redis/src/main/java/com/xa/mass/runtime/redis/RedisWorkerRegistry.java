@@ -11,6 +11,7 @@ import com.xa.mass.runtime.worker.WorkerCandidateSamplingContext;
 import com.xa.mass.runtime.worker.WorkerCandidateSamplingPolicy;
 import com.xa.mass.runtime.worker.WorkerMeta;
 import com.xa.mass.runtime.worker.WorkerRegistry;
+import com.xa.mass.runtime.worker.WorkerRouteBucketPolicies;
 import com.xa.mass.runtime.worker.WorkerRouteBucketPolicy;
 import com.xa.mass.runtime.worker.WorkerSlot;
 import io.lettuce.core.Range;
@@ -57,7 +58,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         this(RedisClient.create(Objects.requireNonNull(redisUri, "redisUri")),
                 new RedisWorkerRegistryKeyspace(namespace),
                 RandomWorkerCandidateSamplingPolicy.defaultPolicy(),
-                RedisWorkerRegistry::defaultRouteBucketKeys,
+                WorkerRouteBucketPolicies.defaultPolicy(),
                 DEFAULT_HEARTBEAT_FRESHNESS_MILLIS,
                 true);
     }
@@ -119,7 +120,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
                 : RandomWorkerCandidateSamplingPolicy.defaultPolicy();
         this.routeBucketPolicy = routeBucketPolicy != null
                 ? routeBucketPolicy
-                : RedisWorkerRegistry::defaultRouteBucketKeys;
+                : WorkerRouteBucketPolicies.defaultPolicy();
         this.heartbeatFreshnessMillis = Math.max(1L, heartbeatFreshnessMillis);
         this.ownsClient = ownsClient;
     }
@@ -783,10 +784,6 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         long lastHeartbeatMillis = Math.max(0L, meta.lastHeartbeatMillis());
         long maxIncrement = Long.MAX_VALUE - lastHeartbeatMillis;
         return lastHeartbeatMillis + Math.min(heartbeatFreshnessMillis, maxIncrement);
-    }
-
-    private static Set<String> defaultRouteBucketKeys(WorkerMeta meta) {
-        return Set.of(DEFAULT_ROUTE_BUCKET_KEY);
     }
 
     private void incrementTaskProjection(RedisCommands<String, String> tx, String taskId, String workerId, int permits) {

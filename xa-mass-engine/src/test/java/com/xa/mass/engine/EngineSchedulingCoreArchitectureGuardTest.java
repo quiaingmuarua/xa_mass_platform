@@ -1625,6 +1625,33 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void workerRegistryImplementationsDoNotImportEngineWorkerPolicy() throws IOException {
+        Path repo = repositoryRoot();
+        List<Path> roots = List.of(
+                repo.resolve("platform_infra/mass-runtime-memory/src/main/java"),
+                repo.resolve("platform_infra/mass-runtime-memory/src/test/java"),
+                repo.resolve("platform_infra/mass-runtime-redis/src/main/java"),
+                repo.resolve("platform_infra/mass-runtime-redis/src/test/java")
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Path root : roots) {
+            for (Path path : javaSourceFiles(root)) {
+                String source = Files.readString(path, StandardCharsets.UTF_8);
+                if (source.contains("com.xa.mass.engine.worker")
+                        || Pattern.compile("\\bWorkerRoutingPolicy\\b").matcher(source).find()) {
+                    violations.add(path + " imports or references engine worker routing policy");
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "WorkerRegistry implementations must consume runtime-api route-bucket policy, "
+                        + "not engine worker policy:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void taskWriteLockRemainsLifecycleAndProgressOnly() throws IOException {
         Path taskManagerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/TaskManager.java");
         String source = Files.readString(taskManagerPath, StandardCharsets.UTF_8);
