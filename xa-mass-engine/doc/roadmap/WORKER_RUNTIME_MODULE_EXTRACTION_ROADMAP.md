@@ -891,6 +891,20 @@ evidence. The Redis branch uses `mass.redis.test.uri` defaulting to
 JUnit assumption and the memory branch remains the default unit/integration
 proof.
 
+Transport worker black-box proof remains suite-owned by server E2E:
+
+```powershell
+mvn -pl xa-mass-server -am `
+  '-Dtest=ExternalWorkerParitySuite' `
+  '-Dsurefire.failIfNoSpecifiedTests=false' test
+```
+
+Current local evidence on 2026-05-28: `ExternalWorkerParitySuite` passed. The
+suite covers the external-worker public contract trace proof plus Node and Java
+workers across polling, WebSocket, and socket adapters, proving worker
+registration/report/dispatch/result crosses the worker-runtime, SDK/server,
+and transport module boundary through public runtime surfaces.
+
 Scope:
 
 1. Run memory and Redis worker-runtime contract tests through the same suite.
