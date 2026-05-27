@@ -822,6 +822,24 @@ Acceptance:
 
 Goal: prove the extracted module works as runtime infrastructure.
 
+Progress:
+
+- Memory and Redis worker registry implementations now have a shared
+  worker-runtime contract proof command:
+
+```powershell
+mvn -pl platform_infra/mass-runtime-memory,platform_infra/mass-runtime-redis -am `
+  '-Dtest=InMemoryWorkerRegistryTest,RedisWorkerRegistryTest' `
+  '-Dsurefire.failIfNoSpecifiedTests=false' test
+```
+
+  Current local evidence on 2026-05-28: `InMemoryWorkerRegistryTest` ran 14
+  tests and `RedisWorkerRegistryTest` ran 19 tests with zero failures and zero
+  skips against `mass.redis.test.uri` defaulting to `redis://127.0.0.1:6379/0`.
+  If Redis is unavailable, `RedisRuntimeTestSupport.createClientOrSkip(...)`
+  marks Redis tests skipped through JUnit assumptions; CI must treat that as
+  the memory-only lane unless a Redis service/profile is explicitly provided.
+
 Redis and multi-JVM proof are environment-dependent. The default CI unit lane
 may run memory/runtime contract proofs only. Redis-backed and multi-JVM proofs
 must be explicitly classified as one of:
