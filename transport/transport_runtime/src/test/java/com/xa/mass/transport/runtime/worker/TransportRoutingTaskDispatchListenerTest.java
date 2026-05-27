@@ -8,7 +8,7 @@ import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
-import com.xa.mass.engine.worker.WorkerManager;
+import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.transport.worker.WorkerAdapter;
 import com.xa.mass.transport.runtime.TransportBinding;
