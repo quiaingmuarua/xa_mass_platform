@@ -4,6 +4,7 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
+import com.xa.mass.engine.TestWorkerCandidateRows;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;
 import com.xa.mass.runtime.worker.WorkerLoadSnapshot;
 import com.xa.mass.engine.worker.EventBinding;
@@ -214,13 +215,14 @@ public class WorkerMatchContextTest {
         task.setSharedConfig(Map.of());
         task.setStatus(TaskStatus.READY);
 
-        WorkerSchedulingView schedulingView = WorkerSchedulingView.from(worker, WorkerReachabilityState.ONLINE,
+        WorkerSchedulingView schedulingView = WorkerSchedulingView.from(TestWorkerCandidateRows.from(worker),
+                WorkerReachabilityState.ONLINE,
                 true,
                 false,
                 new WorkerLoadSnapshot("worker-5", 3, 1, 2)
         );
         WorkerMatchContext context = new WorkerMatchContext(
-                new WorkerSchedulingCandidate(worker, schedulingView),
+                new WorkerSchedulingCandidate(TestWorkerCandidateRows.from(worker), schedulingView),
                 task
         );
 
@@ -235,8 +237,9 @@ public class WorkerMatchContextTest {
     private WorkerSchedulingCandidate candidate(Worker worker) {
         WorkerGroupRecord group = groupFromWorker(worker);
         return new WorkerSchedulingCandidate(
-                worker,
-                WorkerSchedulingView.from(worker, group, WorkerReachabilityState.ONLINE, true, false,
+                TestWorkerCandidateRows.from(worker),
+                WorkerSchedulingView.from(TestWorkerCandidateRows.from(worker), group, WorkerReachabilityState.ONLINE,
+                        true, false,
                         WorkerLoadSnapshot.empty(worker.getWorkerId()))
         );
     }

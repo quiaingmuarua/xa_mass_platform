@@ -4,7 +4,6 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.TaskWorkProjectionState.AttemptFinalReason;
 import com.xa.mass.engine.TaskWorkProjectionState.AttemptStatus;
 import com.xa.mass.engine.TaskWorkProjectionState.MessageFinalReason;
@@ -284,7 +283,7 @@ public final class TraceEventLogger {
             return;
         }
         emitWorkerMatchEvent(ExecutionEventType.WORKER_MATCH_ACCEPTED, task, taskId,
-                candidate.getWorker(), reason, "SUCCESS",
+                candidate.getWorkerId(), reason, "SUCCESS",
                 workerSchedulingRankAttrs(task, candidate.getSchedulingView(), workerLoadSnapshot, candidateRank, candidateScore));
     }
 
@@ -326,18 +325,18 @@ public final class TraceEventLogger {
             return;
         }
         emitWorkerMatchEvent(ExecutionEventType.WORKER_MATCH_REJECTED, task, taskId,
-                candidate.getWorker(), reason, "REJECTED",
+                candidate.getWorkerId(), reason, "REJECTED",
                 workerSchedulingRankAttrs(task, candidate.getSchedulingView(), workerLoadSnapshot, candidateRank, candidateScore));
     }
 
     private void emitWorkerMatchEvent(ExecutionEventType eventType,
                                       Task task,
                                       String taskId,
-                                      Worker worker,
+                                      String workerId,
                                       String reason,
                                       String result,
                                       Map<String, Object> extraAttrs) {
-        if (worker == null) {
+        if (workerId == null || workerId.isBlank()) {
             return;
         }
         Map<String, Object> values = attrs(
@@ -352,7 +351,7 @@ public final class TraceEventLogger {
         emit(event(eventType)
                 .identity(identity -> identity
                         .taskId(taskId)
-                        .workerId(worker.getWorkerId()))
+                        .workerId(workerId))
                 .outcome(eventType == ExecutionEventType.WORKER_MATCH_ACCEPTED, null, reason)
                 .attrs(values)
                 .build());

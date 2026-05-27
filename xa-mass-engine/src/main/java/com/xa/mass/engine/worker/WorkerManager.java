@@ -11,6 +11,8 @@ import com.xa.mass.runtime.worker.DispatchAvailabilitySource;
 import com.xa.mass.runtime.worker.ReserveResult;
 import com.xa.mass.runtime.worker.WorkerAdmissionRuntime;
 import com.xa.mass.runtime.worker.WorkerCandidateBatch;
+import com.xa.mass.runtime.worker.WorkerCandidateRow;
+import com.xa.mass.runtime.worker.WorkerCandidateRuntime;
 import com.xa.mass.runtime.worker.WorkerLoadSnapshot;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;
 import com.xa.mass.runtime.worker.WorkerRegistry;
@@ -227,7 +229,7 @@ public class WorkerManager implements WorkerLookupStore,
     }
 
     public List<Worker> findWorkerCandidates(Task task, int maxCandidateCount) {
-        return findWorkerCandidateBatch(WorkerTaskSelectorFactory.fromTask(task), maxCandidateCount).candidates();
+        return findWorkerCandidates(WorkerTaskSelectorFactory.fromTask(task), maxCandidateCount);
     }
 
     public List<Worker> findWorkerCandidates(WorkerTaskSelector selector) {
@@ -238,11 +240,13 @@ public class WorkerManager implements WorkerLookupStore,
         return candidateSourceOwner.findWorkerCandidates(selector, maxCandidateCount);
     }
 
-    public WorkerCandidateBatch<Worker> findWorkerCandidateBatch(Task task, int maxCandidateCount) {
+    public WorkerCandidateBatch<WorkerCandidateRow> findWorkerCandidateBatch(Task task, int maxCandidateCount) {
         return findWorkerCandidateBatch(WorkerTaskSelectorFactory.fromTask(task), maxCandidateCount);
     }
 
-    public WorkerCandidateBatch<Worker> findWorkerCandidateBatch(WorkerTaskSelector selector, int maxCandidateCount) {
+    @Override
+    public WorkerCandidateBatch<WorkerCandidateRow> findWorkerCandidateBatch(WorkerTaskSelector selector,
+                                                                             int maxCandidateCount) {
         return candidateSourceOwner.findWorkerCandidateBatch(selector, maxCandidateCount);
     }
 
@@ -260,6 +264,10 @@ public class WorkerManager implements WorkerLookupStore,
 
     public void recordWarmCandidate(WorkerTaskSelector selector, Worker worker) {
         candidateSourceOwner.recordWarmCandidate(selector, worker);
+    }
+
+    public void recordWarmCandidate(WorkerTaskSelector selector, WorkerCandidateRow candidate) {
+        candidateSourceOwner.recordWarmCandidate(selector, candidate);
     }
 
     int warmCandidateCount(String taskId) {

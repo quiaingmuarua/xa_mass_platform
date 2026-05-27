@@ -2,6 +2,7 @@ package com.xa.mass.engine.strategy;
 
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Worker;
+import com.xa.mass.engine.TestWorkerCandidateRows;
 import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
@@ -12,7 +13,6 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertSame;
 
 public class WorkerSchedulingCandidateEnumeratorTest {
 
@@ -24,11 +24,11 @@ public class WorkerSchedulingCandidateEnumeratorTest {
 
         WorkerSchedulingCandidateEnumerator enumerator = new WorkerSchedulingCandidateEnumerator(workerManager);
 
-        List<WorkerSchedulingCandidate> candidates = enumerator.enumerate(List.of(worker));
+        List<WorkerSchedulingCandidate> candidates = enumerator.enumerate(List.of(TestWorkerCandidateRows.from(worker)));
 
         assertEquals(1, candidates.size());
         WorkerSchedulingCandidate candidate = candidates.getFirst();
-        assertSame(worker, candidate.getWorker());
+        assertEquals("worker-stateless", candidate.getWorkerId());
         assertEquals("worker-stateless", candidate.getSchedulingView().schedulingResourceId());
         assertEquals(Set.of("shared", "us"), candidate.getSchedulingView().schedulingRoutingTags());
         assertEquals("us", candidate.getSchedulingView().schedulingAttributes().get("country"));
@@ -42,11 +42,11 @@ public class WorkerSchedulingCandidateEnumeratorTest {
 
         WorkerSchedulingCandidateEnumerator enumerator = new WorkerSchedulingCandidateEnumerator(workerManager);
 
-        List<WorkerSchedulingCandidate> candidates = enumerator.enumerate(List.of(worker));
+        List<WorkerSchedulingCandidate> candidates = enumerator.enumerate(List.of(TestWorkerCandidateRows.from(worker)));
 
         assertEquals(1, candidates.size());
         WorkerSchedulingCandidate candidate = candidates.getFirst();
-        assertSame(worker, candidate.getWorker());
+        assertEquals("worker-attribute-backed", candidate.getWorkerId());
         assertEquals("worker-attribute-backed", candidate.getSchedulingView().schedulingResourceId());
         assertEquals("worker-level", candidate.getSchedulingView().schedulingAttributes().get("country"));
     }

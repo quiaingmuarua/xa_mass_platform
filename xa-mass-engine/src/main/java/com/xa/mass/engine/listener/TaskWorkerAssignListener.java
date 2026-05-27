@@ -305,7 +305,7 @@ public class TaskWorkerAssignListener {
                 continue;
             }
             if (usedWorkerIds.contains(candidate.getWorkerId()) && recordedWorkerIds.add(candidate.getWorkerId())) {
-                workerManager.recordWarmCandidate(WorkerTaskSelectorFactory.fromTask(task), candidate.getWorker());
+                workerManager.recordWarmCandidate(WorkerTaskSelectorFactory.fromTask(task), candidate.getCandidateRow());
             }
         }
     }

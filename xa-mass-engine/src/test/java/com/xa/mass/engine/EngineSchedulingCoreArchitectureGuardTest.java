@@ -1063,11 +1063,17 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
     @Test
     void workerCandidateRuntimeContractDoesNotExposeDiagnosticsOrWarmWrites() throws IOException {
-        Path candidateRuntimePath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/worker/WorkerCandidateRuntime.java");
+        Path candidateRuntimePath = Path.of("../platform_infra/mass-runtime-api/src/main/java")
+                .resolve("com/xa/mass/runtime/worker/WorkerCandidateRuntime.java");
         String source = Files.readString(candidateRuntimePath, StandardCharsets.UTF_8);
 
         List<String> violations = new ArrayList<>();
+        if (source.contains("com.xa.mass.engine")) {
+            violations.add(candidateRuntimePath + " depends on xa-mass-engine");
+        }
+        if (source.contains("com.xa.mass.base")) {
+            violations.add(candidateRuntimePath + " depends on xa-mass-base");
+        }
         Map<String, Pattern> forbiddenMethods = Map.ofEntries(
                 Map.entry("findWorkerCandidates", Pattern.compile("\\bfindWorkerCandidates\\s*\\(")),
                 Map.entry("getWorkerCandidateIndex", Pattern.compile("\\bgetWorkerCandidateIndex\\s*\\(")),

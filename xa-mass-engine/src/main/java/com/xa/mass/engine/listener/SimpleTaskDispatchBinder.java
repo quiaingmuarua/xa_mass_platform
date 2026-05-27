@@ -3,7 +3,6 @@ package com.xa.mass.engine.listener;
 import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
@@ -157,7 +156,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
 
         List<WorkerClaimTarget> claimTargets = dispatchSlots.stream()
                 .map(slot -> WorkerClaimTarget.workerLevel(
-                        slot.worker().getWorkerId(),
+                        slot.workerId(),
                         slot.batchId(),
                         perWorkerBatchLimit,
                         supportedEventCodes(slot.candidate)
@@ -186,7 +185,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
             recordService.recordMessageAssignment(
                     task, slot.candidate, work.messageId(), slot.batchId(),
                     AssignmentResult.SUCCESS, "message assigned",
-                    workerManager.hasWorkerExclusiveLease(slot.worker().getWorkerId())
+                    workerManager.hasWorkerExclusiveLease(slot.workerId())
             );
         }
 
@@ -276,8 +275,8 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
             this.candidate = candidate;
         }
 
-        private Worker worker() {
-            return candidate.getWorker();
+        private String workerId() {
+            return candidate.getWorkerId();
         }
 
         private String batchId() {
@@ -295,7 +294,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
 
     private DispatchSlot findSlot(List<DispatchSlot> dispatchSlots, String workerId, String batchId) {
         for (DispatchSlot slot : dispatchSlots) {
-            if (slot.worker().getWorkerId().equals(workerId) && slot.batchId().equals(batchId)) {
+            if (slot.workerId().equals(workerId) && slot.batchId().equals(batchId)) {
                 return slot;
             }
         }

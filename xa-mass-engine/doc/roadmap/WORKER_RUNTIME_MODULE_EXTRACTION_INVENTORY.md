@@ -18,7 +18,7 @@ Current first-slice contract split:
 | Contract | Current implementer | Purpose |
 | --- | --- | --- |
 | `WorkerResourceRuntime` | `WorkerManager` | Worker, WorkerGroup, AdapterNode, and NodeGroupBinding resource writes |
-| `WorkerCandidateRuntime` | `WorkerManager` | Bounded candidate acquisition and warm hint writes |
+| `WorkerCandidateRuntime` | `WorkerManager` | Runtime-api candidate acquisition returning worker candidate rows |
 | `WorkerSchedulingViewRuntime` | `WorkerManager` | Read evidence used to build engine scheduling candidates |
 | `WorkerAdmissionRuntime` | `WorkerManager` | Runtime-api contract for reserve, confirm, release, final occupancy, exclusive lease, and load reads |
 | `WorkerReportRuntime` | `WorkerManager` | Capability report mutation currently owned by `WorkerCapabilityAuthority` via `WorkerManager` |
@@ -31,12 +31,14 @@ Candidate acquisition and task-local warm hints are now package-owned by
 `WorkerCandidateSourceOwner`; `WorkerManager` delegates to it while the module
 boundary is still inside engine.
 
-Task selector, candidate batch shape, admission contract, worker load, and
-transport reachability evidence now use runtime-neutral `mass-runtime-api`
-types: `WorkerTaskSelector`, generic `WorkerCandidateBatch<T>`,
-`WorkerAdmissionRuntime`, `WorkerLoadSnapshot`, and
-`WorkerReachabilityState`. Engine-owned scheduling DTOs still adapt those
-runtime values into `WorkerSchedulingView` and `WorkerMatchContext` locally.
+Task selector, candidate batch shape, candidate rows, admission contract,
+worker load, and transport reachability evidence now use runtime-neutral
+`mass-runtime-api` types: `WorkerTaskSelector`,
+`WorkerCandidateBatch<T>`, `WorkerCandidateRow`,
+`WorkerCandidateRuntime`, `WorkerAdmissionRuntime`,
+`WorkerLoadSnapshot`, and `WorkerReachabilityState`. Engine-owned scheduling
+DTOs still adapt those runtime values into `WorkerSchedulingView` and
+`WorkerMatchContext` locally.
 
 Worker row mutation and registry slot projection are now package-owned by
 `WorkerResourceOwner`; WorkerGroup declaration state is package-owned by
@@ -59,7 +61,7 @@ owners while callers converge.
 | AdapterNode read | `adapterNode`, `adapterNodes` | SDK read APIs, tests | `WorkerRelationshipOwner` through resource runtime | control-plane read | Not scheduling policy |
 | NodeGroupBinding mutation | `bindNodeGroup`, `unbindNodeGroup`, `setNodeGroupBindingEnabled`, `setNodeGroupBindingDraining` | SDK declaration/control, tests | `WorkerRelationshipOwner` through resource runtime | control-plane declaration plus runtime dispatch gate | Enabled/draining effects mutate source-scoped dispatch gates in `WorkerRegistry` |
 | NodeGroupBinding read | `nodeGroupBinding`, `nodeGroupBindings`, `groupIdsByAdapterNodeId`, `adapterNodeIdsByGroupId` | SDK read APIs, tests, routing diagnostics | `WorkerRelationshipOwner` through resource runtime | control-plane read / runtime read model | Candidate source may consume relation evidence but not own declaration truth |
-| Candidate source | `findWorkerCandidateBatch` | `RuleBasedTaskWorkerMatchingStrategy`, tests | `WorkerCandidateRuntime` | runtime state | Uses runtime-neutral `WorkerCandidateBatch<Worker>`; must start from resolved WorkerGroup selector; no all-worker candidate scan |
+| Candidate source | `findWorkerCandidateBatch` | `RuleBasedTaskWorkerMatchingStrategy`, tests | `WorkerCandidateRuntime` | runtime state | Uses runtime-neutral `WorkerCandidateBatch<WorkerCandidateRow>`; must start from resolved WorkerGroup selector; no all-worker candidate scan |
 | Candidate diagnostics | `findWorkerCandidates` | tests and diagnostics | `WorkerCandidateSourceOwner` / diagnostics residue | runtime read model residue | Kept off `WorkerCandidateRuntime`; batch metadata is the strategy-facing contract |
 | Candidate index diagnostics | `getWorkerCandidateIndex` | tests and indexed source diagnostics | `WorkerCandidateSourceOwner` / diagnostics residue | runtime read model residue | Kept off `WorkerCandidateRuntime` so the candidate contract does not expose Stage-1 implementation types |
 | Warm hints | `recordWarmCandidate` | `TaskWorkerAssignListener`, strategy tests | `WorkerCandidateSourceOwner` / future warm hint write contract | runtime state | Kept off `WorkerCandidateRuntime`; engine triggers after useful assignment evidence, runtime owns hint storage/revalidation |
@@ -88,7 +90,7 @@ transport runtime tests
 engine assignment
   -> TaskWorkerAssignListener
   -> RuleBasedTaskWorkerMatchingStrategy
-     -> WorkerCandidateRuntime
+     -> WorkerCandidateRuntime from `mass-runtime-api`
      -> WorkerSchedulingViewRuntime through WorkerSchedulingCandidateEnumerator
      -> WorkerAdmissionRuntime
   -> SimpleTaskDispatchBinder / WorkerDispatchResourceReleaser
@@ -129,15 +131,25 @@ contracts, but deleting it now would be rename churn before owner split. WRX-C1
 must keep the overlap visible; WRX-D1 should either delete it or replace it with
 a worker-runtime/resource read contract.
 
+### `WorkerCandidateRuntime` and Candidate Rows
+
+Current disposition: runtime-api contract plus runtime-neutral row value.
+
+Reason: the strategy-facing Stage-1 contract no longer carries the mutable
+`base.model.Worker` entity. `WorkerCandidateRuntime` lives in
+`mass-runtime-api` and returns `WorkerCandidateBatch<WorkerCandidateRow>`.
+Engine-owned code still materializes `WorkerSchedulingView` and
+`WorkerMatchContext`, but the candidate-source protocol is no longer tied to
+the control-plane worker model.
+
 ### `WorkerCandidateBatch`
 
 Current disposition: generic runtime-api value type.
 
 Reason: it was formerly `WorkerManager.WorkerCandidateBatch`, which forced
 callers to depend on the god object type. It now lives in `mass-runtime-api` as
-`WorkerCandidateBatch<T>` so the batch metadata is runtime-neutral while engine
-candidate acquisition can still carry `Worker` rows as
-`WorkerCandidateBatch<Worker>` until a worker-row DTO exists.
+`WorkerCandidateBatch<T>` so the batch metadata is runtime-neutral. The active
+candidate-source batch type is `WorkerCandidateBatch<WorkerCandidateRow>`.
 
 ### Admission Signature
 
@@ -189,7 +201,7 @@ Current put path:
 ```text
 TaskWorkerAssignListener
   -> recordWarmCandidatesForBoundWorkers(...)
-  -> WorkerManager.recordWarmCandidate(task, worker)
+  -> WorkerManager.recordWarmCandidate(selector, workerCandidateRow)
   -> TaskCandidateWarmPool
 ```
 
@@ -197,7 +209,7 @@ Target path should be engine-triggered but runtime-owned:
 
 ```text
 engine assignment success evidence
-  -> worker runtime warm hint put(taskId, selector/source evidence, worker evidence)
+  -> worker runtime warm hint put(taskId, selector/source evidence, worker candidate row)
 ```
 
 Do not make worker runtime depend on `Task`.

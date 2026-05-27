@@ -1,6 +1,5 @@
 package com.xa.mass.engine.worker;
 
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.WorkerLoadSnapshot;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;
 
@@ -15,7 +14,7 @@ public interface WorkerSchedulingViewRuntime {
 
     WorkerReachabilityState getWorkerReachability(String workerId);
 
-    boolean isWorkerDispatchEnabled(Worker worker);
+    boolean isWorkerDispatchEnabled(String workerId);
 
     boolean hasWorkerExclusiveLease(String workerId);
 

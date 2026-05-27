@@ -1,9 +1,8 @@
 package com.xa.mass.engine.model;
 
-import com.xa.mass.base.enums.worker.WorkerStatus;
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;
 import com.xa.mass.runtime.worker.WorkerLoadSnapshot;
+import com.xa.mass.runtime.worker.WorkerCandidateRow;
 import com.xa.mass.engine.worker.WorkerGroupRecord;
 
 import java.util.Collections;
@@ -22,7 +21,7 @@ import java.util.Set;
  */
 public final class WorkerSchedulingView {
     private final String workerId;
-    private final WorkerStatus workerStatus;
+    private final String workerStatusName;
     private final String workerGroupId;
     private final String adapterNodeId;
     private final String agentVersion;
@@ -39,28 +38,28 @@ public final class WorkerSchedulingView {
     private final Set<String> schedulingRoutingTags;
     private final Map<String, String> schedulingAttributes;
 
-    private WorkerSchedulingView(Worker worker,
+    private WorkerSchedulingView(WorkerCandidateRow candidateRow,
                                  WorkerGroupRecord workerGroup,
                                  WorkerReachabilityState reachability,
                                  boolean dispatchEnabled,
                                  boolean workerLocked,
                                  WorkerLoadSnapshot workerLoad) {
-        this.workerId = worker.getWorkerId();
-        this.workerStatus = worker.getStatus();
-        this.workerGroupId = worker.getWorkerGroupId();
-        this.adapterNodeId = worker.getAdapterNodeId();
-        this.agentVersion = worker.getAgentVersion();
+        this.workerId = candidateRow.workerId();
+        this.workerStatusName = candidateRow.statusName();
+        this.workerGroupId = candidateRow.workerGroupId();
+        this.adapterNodeId = candidateRow.adapterNodeId();
+        this.agentVersion = candidateRow.agentVersion();
         this.supportedProjects = workerGroup == null
-                ? List.of()
+                ? List.copyOf(candidateRow.supportedProjects())
                 : List.copyOf(workerGroup.projectCodes());
         this.supportedEventCodes = workerGroup == null
-                ? List.of()
+                ? List.copyOf(candidateRow.supportedEventCodes())
                 : List.copyOf(workerGroup.eventCodes());
-        this.workerAttributes = copyMap(worker.getAttributes());
+        this.workerAttributes = copyMap(candidateRow.attributes());
         this.reachability = reachability == null ? WorkerReachabilityState.UNKNOWN : reachability;
         this.dispatchEnabled = dispatchEnabled;
         this.workerLocked = workerLocked;
-        this.workerLoad = workerLoad != null ? workerLoad : WorkerLoadSnapshot.empty(worker.getWorkerId());
+        this.workerLoad = workerLoad != null ? workerLoad : WorkerLoadSnapshot.empty(candidateRow.workerId());
 
         this.schedulingResourceId = workerId;
         this.schedulingProject = null;
@@ -68,50 +67,48 @@ public final class WorkerSchedulingView {
         this.schedulingAttributes = workerAttributes;
     }
 
-    public static WorkerSchedulingView from(Worker worker,
-                                            WorkerReachabilityState reachability,
-                                            boolean dispatchEnabled,
-                                            boolean workerLocked) {
-        if (worker == null) {
-            throw new IllegalArgumentException("worker must not be null");
-        }
-        return new WorkerSchedulingView(worker, null, reachability, dispatchEnabled, workerLocked,
-                WorkerLoadSnapshot.empty(worker.getWorkerId()));
-    }
-
-    public static WorkerSchedulingView from(Worker worker,
-                                            WorkerReachabilityState reachability,
-                                            boolean dispatchEnabled,
-                                            boolean workerLocked,
-                                            WorkerLoadSnapshot workerLoad) {
-        if (worker == null) {
-            throw new IllegalArgumentException("worker must not be null");
-        }
-        return new WorkerSchedulingView(worker, null, reachability, dispatchEnabled, workerLocked, workerLoad);
-    }
-
-    public static WorkerSchedulingView from(Worker worker,
+    public static WorkerSchedulingView from(WorkerCandidateRow candidateRow,
                                             WorkerGroupRecord workerGroup,
                                             WorkerReachabilityState reachability,
                                             boolean dispatchEnabled,
                                             boolean workerLocked,
                                             WorkerLoadSnapshot workerLoad) {
-        if (worker == null) {
-            throw new IllegalArgumentException("worker must not be null");
+        if (candidateRow == null) {
+            throw new IllegalArgumentException("candidateRow must not be null");
         }
-        return new WorkerSchedulingView(worker, workerGroup, reachability, dispatchEnabled, workerLocked, workerLoad);
+        return new WorkerSchedulingView(candidateRow, workerGroup, reachability, dispatchEnabled, workerLocked,
+                workerLoad);
+    }
+
+    public static WorkerSchedulingView from(WorkerCandidateRow candidateRow,
+                                            WorkerReachabilityState reachability,
+                                            boolean dispatchEnabled,
+                                            boolean workerLocked,
+                                            WorkerLoadSnapshot workerLoad) {
+        if (candidateRow == null) {
+            throw new IllegalArgumentException("candidateRow must not be null");
+        }
+        return new WorkerSchedulingView(candidateRow, null, reachability, dispatchEnabled, workerLocked,
+                workerLoad);
+    }
+
+    public static WorkerSchedulingView from(WorkerCandidateRow candidateRow,
+                                            WorkerReachabilityState reachability,
+                                            boolean dispatchEnabled,
+                                            boolean workerLocked) {
+        if (candidateRow == null) {
+            throw new IllegalArgumentException("candidateRow must not be null");
+        }
+        return new WorkerSchedulingView(candidateRow, null, reachability, dispatchEnabled, workerLocked,
+                WorkerLoadSnapshot.empty(candidateRow.workerId()));
     }
 
     public String workerId() {
         return workerId;
     }
 
-    public WorkerStatus workerStatus() {
-        return workerStatus;
-    }
-
     public String workerStatusName() {
-        return workerStatus != null ? workerStatus.name() : null;
+        return workerStatusName;
     }
 
     public String workerGroupId() {
@@ -249,4 +246,5 @@ public final class WorkerSchedulingView {
             }
         }
     }
+
 }

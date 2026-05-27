@@ -1,6 +1,6 @@
 package com.xa.mass.engine.model;
 
-import com.xa.mass.base.model.Worker;
+import com.xa.mass.runtime.worker.WorkerCandidateRow;
 
 import java.util.Objects;
 
@@ -12,21 +12,21 @@ import java.util.Objects;
  */
 public final class WorkerSchedulingCandidate {
 
-    private final Worker worker;
+    private final WorkerCandidateRow candidateRow;
     private final WorkerSchedulingView schedulingView;
 
-    public WorkerSchedulingCandidate(Worker worker,
+    public WorkerSchedulingCandidate(WorkerCandidateRow candidateRow,
                                      WorkerSchedulingView schedulingView) {
-        this.worker = Objects.requireNonNull(worker, "worker");
+        this.candidateRow = Objects.requireNonNull(candidateRow, "candidateRow");
         this.schedulingView = Objects.requireNonNull(schedulingView, "schedulingView");
     }
 
-    public Worker getWorker() {
-        return worker;
+    public WorkerCandidateRow getCandidateRow() {
+        return candidateRow;
     }
 
     public String getWorkerId() {
-        return worker.getWorkerId();
+        return candidateRow.workerId();
     }
 
     public WorkerSchedulingView getSchedulingView() {

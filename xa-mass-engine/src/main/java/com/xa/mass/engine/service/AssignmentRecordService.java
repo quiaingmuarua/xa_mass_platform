@@ -4,7 +4,6 @@ import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.enums.assignment.AssignmentType;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.engine.model.RuleEvaluationDetail;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
@@ -12,6 +11,7 @@ import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.engine.monkey.snapshot.TaskSnapshot;
 import com.xa.mass.engine.monkey.snapshot.WorkerSchedulingSnapshot;
 import com.xa.mass.engine.monkey.snapshot.WorkerSnapshot;
+import com.xa.mass.runtime.worker.WorkerCandidateRow;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,12 +37,12 @@ public class AssignmentRecordService implements AssignmentDiagnosticRecorder, As
                                                    List<RuleEvaluationDetail> ruleEvaluations,
                                                    Map<String, Object> contextSnapshot,
                                                    boolean workerLocked) {
-        Worker worker = candidate.getWorker();
+        WorkerCandidateRow worker = candidate.getCandidateRow();
         AssignmentRecord record = new AssignmentRecord();
         record.setRecordId(UUID.randomUUID().toString());
         record.setType(AssignmentType.WORKER_ASSIGN);
         record.setTaskId(task.getTid());
-        record.setWorkerId(worker.getWorkerId());
+        record.setWorkerId(worker.workerId());
         record.setBatchId("batch-" + System.currentTimeMillis());
         record.setResult(result);
         record.setReason(reason);
@@ -73,12 +73,12 @@ public class AssignmentRecordService implements AssignmentDiagnosticRecorder, As
                                                     String messageId, String batchId,
                                                     AssignmentResult result, String reason,
                                                     boolean workerLocked) {
-        Worker worker = candidate.getWorker();
+        WorkerCandidateRow worker = candidate.getCandidateRow();
         AssignmentRecord record = new AssignmentRecord();
         record.setRecordId(UUID.randomUUID().toString());
         record.setType(AssignmentType.MSG_ASSIGN);
         record.setTaskId(task.getTid());
-        record.setWorkerId(worker.getWorkerId());
+        record.setWorkerId(worker.workerId());
         record.setMessageId(messageId);
         record.setBatchId(batchId);
         record.setResult(result);
@@ -140,20 +140,20 @@ public class AssignmentRecordService implements AssignmentDiagnosticRecorder, As
         return snapshot;
     }
 
-    private WorkerSnapshot createWorkerSnapshot(Worker worker, boolean workerLocked) {
+    private WorkerSnapshot createWorkerSnapshot(WorkerCandidateRow worker, boolean workerLocked) {
         WorkerSnapshot snapshot = new WorkerSnapshot();
-        snapshot.setWorkerId(worker.getWorkerId());
-        snapshot.setWorkerStatus(worker.getStatus().name());
-        snapshot.setAgentVersion(worker.getAgentVersion());
-        snapshot.setLastHeartbeat(worker.getLastHeartbeat());
-        snapshot.setSupportedProjects(worker.getSupportedProjects());
-        snapshot.setWorkerGroupId(worker.getWorkerGroupId());
-        snapshot.setOnlineStrategy(worker.getOnlineStrategy());
-        snapshot.setAttributes(worker.getAttributes());
-        snapshot.setCreateTime(worker.getCreateTime());
-        snapshot.setUpdateTime(worker.getUpdateTime());
-        snapshot.setAppCount(worker.getSupportedProjects() != null ? worker.getSupportedProjects().size() : 0);
-        snapshot.setWorkerAvailable(worker.isAvailable());
+        snapshot.setWorkerId(worker.workerId());
+        snapshot.setWorkerStatus(worker.statusName());
+        snapshot.setAgentVersion(worker.agentVersion());
+        snapshot.setLastHeartbeat(worker.lastHeartbeat());
+        snapshot.setSupportedProjects(worker.supportedProjects());
+        snapshot.setWorkerGroupId(worker.workerGroupId());
+        snapshot.setOnlineStrategy(worker.onlineStrategy());
+        snapshot.setAttributes(worker.attributes());
+        snapshot.setCreateTime(worker.createTime());
+        snapshot.setUpdateTime(worker.updateTime());
+        snapshot.setAppCount(worker.supportedProjects() != null ? worker.supportedProjects().size() : 0);
+        snapshot.setWorkerAvailable(worker.available());
         snapshot.setWorkerLocked(workerLocked);
         return snapshot;
     }

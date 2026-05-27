@@ -2,6 +2,7 @@ package com.xa.mass.engine.resource;
 
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
+import com.xa.mass.engine.TestWorkerCandidateRows;
 import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
@@ -152,8 +153,9 @@ class WorkerDispatchResourceReleaserTest {
         Worker worker = new Worker();
         worker.setWorkerId(workerId);
         return new WorkerSchedulingCandidate(
-                worker,
-                WorkerSchedulingView.from(worker, WorkerReachabilityState.ONLINE, true, false)
+                TestWorkerCandidateRows.from(worker),
+                WorkerSchedulingView.from(TestWorkerCandidateRows.from(worker), WorkerReachabilityState.ONLINE,
+                        true, false)
         );
     }
 

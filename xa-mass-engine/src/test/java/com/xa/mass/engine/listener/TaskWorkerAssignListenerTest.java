@@ -8,8 +8,10 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.TaskAssignmentEventSink;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskEventPublisher;
+import com.xa.mass.engine.TestWorkerCandidateRows;
 import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;
+import com.xa.mass.runtime.worker.WorkerCandidateRow;
 import com.xa.mass.runtime.worker.WorkerTaskSelector;
 import com.xa.mass.engine.assignment.AssignmentAllocationDecision;
 import com.xa.mass.engine.assignment.AssignmentAllocationOutcome;
@@ -85,7 +87,7 @@ public class TaskWorkerAssignListenerTest {
         verify(dispatchBinder).bindDispatches(same(task), eq(List.of(matchedWorker)));
         verify(workerManager).recordWarmCandidate(
                 argThat((WorkerTaskSelector selector) -> "task-1".equals(selector.taskId())),
-                same(worker));
+                argThat((WorkerCandidateRow row) -> "worker-1".equals(row.workerId())));
     }
 
     @Test
@@ -455,8 +457,9 @@ public class TaskWorkerAssignListenerTest {
 
     private WorkerSchedulingCandidate matched(Worker worker) {
         return new WorkerSchedulingCandidate(
-                worker,
-                WorkerSchedulingView.from(worker, WorkerReachabilityState.ONLINE, true, false)
+                TestWorkerCandidateRows.from(worker),
+                WorkerSchedulingView.from(TestWorkerCandidateRows.from(worker), WorkerReachabilityState.ONLINE,
+                        true, false)
         );
     }
 

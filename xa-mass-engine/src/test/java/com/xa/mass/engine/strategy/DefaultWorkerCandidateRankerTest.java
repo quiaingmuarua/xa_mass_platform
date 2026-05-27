@@ -4,6 +4,7 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
+import com.xa.mass.engine.TestWorkerCandidateRows;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;
 import com.xa.mass.runtime.worker.WorkerLoadSnapshot;
 import com.xa.mass.engine.model.WorkerMatchContext;
@@ -30,8 +31,8 @@ class DefaultWorkerCandidateRankerTest {
 
         List<WorkerMatchContext> ranked = ranker.rank(input, task);
 
-        assertEquals("worker-low", ranked.get(0).getWorker().getWorkerId());
-        assertEquals("worker-high", ranked.get(1).getWorker().getWorkerId());
+        assertEquals("worker-low", ranked.get(0).getCandidateRow().workerId());
+        assertEquals("worker-high", ranked.get(1).getCandidateRow().workerId());
         assertNotSame(input, ranked);
     }
 
@@ -44,8 +45,8 @@ class DefaultWorkerCandidateRankerTest {
 
         List<WorkerMatchContext> ranked = ranker.rank(List.of(partialAffinity, exactAffinity), task);
 
-        assertEquals("worker-exact", ranked.get(0).getWorker().getWorkerId());
-        assertEquals("worker-partial", ranked.get(1).getWorker().getWorkerId());
+        assertEquals("worker-exact", ranked.get(0).getCandidateRow().workerId());
+        assertEquals("worker-partial", ranked.get(1).getCandidateRow().workerId());
     }
 
     @Test
@@ -58,8 +59,8 @@ class DefaultWorkerCandidateRankerTest {
 
         List<WorkerMatchContext> ranked = ranker.rank(List.of(lowLoadNoAffinity, highLoadExactAffinity), task);
 
-        assertEquals("worker-exact", ranked.get(0).getWorker().getWorkerId());
-        assertEquals("worker-low-load", ranked.get(1).getWorker().getWorkerId());
+        assertEquals("worker-exact", ranked.get(0).getCandidateRow().workerId());
+        assertEquals("worker-low-load", ranked.get(1).getCandidateRow().workerId());
     }
 
     private WorkerMatchContext context(String workerId,
@@ -74,12 +75,14 @@ class DefaultWorkerCandidateRankerTest {
         if (routingTags != null) {
             worker.setAttributes(Map.of("routingTags", String.join(",", routingTags)));
         }
-        WorkerSchedulingView view = WorkerSchedulingView.from(worker, WorkerReachabilityState.ONLINE,
+        WorkerSchedulingView view = WorkerSchedulingView.from(TestWorkerCandidateRows.from(worker),
+                WorkerReachabilityState.ONLINE,
                 true,
                 false,
                 new WorkerLoadSnapshot(workerId, activeLeaseCount, 0, declaredCapacity)
         );
-        return new WorkerMatchContext(new WorkerSchedulingCandidate(worker, view), task("task", null));
+        return new WorkerMatchContext(new WorkerSchedulingCandidate(TestWorkerCandidateRows.from(worker), view),
+                task("task", null));
     }
 
     private Task task(String taskId, String routingCode) {

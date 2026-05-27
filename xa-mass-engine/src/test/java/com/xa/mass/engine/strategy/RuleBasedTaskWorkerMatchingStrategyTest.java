@@ -6,12 +6,14 @@ import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
+import com.xa.mass.engine.TestWorkerCandidateRows;
 import com.xa.mass.engine.worker.EventBinding;
 import com.xa.mass.engine.worker.WorkerGroupRecord;
 import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;
 import com.xa.mass.runtime.worker.WorkerTaskSelector;
 import com.xa.mass.runtime.worker.WorkerCandidateBatch;
+import com.xa.mass.runtime.worker.WorkerCandidateRow;
 import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.storage.rule.RuleDefinition;
@@ -822,9 +824,12 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         }
 
         @Override
-        public WorkerCandidateBatch<Worker> findWorkerCandidateBatch(WorkerTaskSelector selector, int maxCandidateCount) {
+        public WorkerCandidateBatch<WorkerCandidateRow> findWorkerCandidateBatch(WorkerTaskSelector selector,
+                                                                                 int maxCandidateCount) {
             lastMaxCandidateCount = maxCandidateCount;
-            return new WorkerCandidateBatch<>(candidates, 0, candidates.size(), 0);
+            return new WorkerCandidateBatch<>(candidates.stream()
+                    .map(TestWorkerCandidateRows::from)
+                    .toList(), 0, candidates.size(), 0);
         }
 
         @Override
@@ -838,7 +843,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         }
 
         @Override
-        public boolean isWorkerDispatchEnabled(Worker worker) {
+        public boolean isWorkerDispatchEnabled(String workerId) {
             return true;
         }
     }

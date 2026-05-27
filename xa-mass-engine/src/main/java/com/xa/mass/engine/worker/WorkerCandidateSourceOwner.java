@@ -2,6 +2,7 @@ package com.xa.mass.engine.worker;
 
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.WorkerCandidateBatch;
+import com.xa.mass.runtime.worker.WorkerCandidateRow;
 import com.xa.mass.runtime.worker.WorkerTaskSelector;
 
 import java.util.ArrayList;
@@ -30,10 +31,20 @@ final class WorkerCandidateSourceOwner {
     }
 
     List<Worker> findWorkerCandidates(WorkerTaskSelector selector, int maxCandidateCount) {
-        return findWorkerCandidateBatch(selector, maxCandidateCount).candidates();
+        if (selector == null) {
+            return List.of();
+        }
+        if (!selector.targetsWorker() && maxCandidateCount <= 0) {
+            return List.of();
+        }
+        int limit = !selector.targetsWorker()
+                ? Math.max(1, maxCandidateCount)
+                : 1;
+        return candidateIndexSupplier.get().workersFor(selector, limit);
     }
 
-    WorkerCandidateBatch<Worker> findWorkerCandidateBatch(WorkerTaskSelector selector, int maxCandidateCount) {
+    WorkerCandidateBatch<WorkerCandidateRow> findWorkerCandidateBatch(WorkerTaskSelector selector,
+                                                                      int maxCandidateCount) {
         if (selector == null) {
             return WorkerCandidateBatch.empty();
         }
@@ -46,19 +57,19 @@ final class WorkerCandidateSourceOwner {
         WorkerCandidateIndex candidateIndex = candidateIndexSupplier.get();
         if (selector.targetsWorker()) {
             List<Worker> targetCandidates = candidateIndex.workersFor(selector, limit);
-            return new WorkerCandidateBatch<>(targetCandidates, 0, targetCandidates.size(), 0);
+            return new WorkerCandidateBatch<>(toCandidateRows(targetCandidates), 0, targetCandidates.size(), 0);
         }
         WarmCandidateSelection warmSelection = warmCandidatesFor(selector, candidateIndex, limit);
-        List<Worker> warmCandidates = warmSelection.candidates();
+        List<WorkerCandidateRow> warmCandidates = warmSelection.candidates();
         List<Worker> coldCandidates = candidateIndex.workersFor(selector, limit);
         if (warmCandidates.isEmpty()) {
-            return new WorkerCandidateBatch<>(coldCandidates, 0, coldCandidates.size(),
+            return new WorkerCandidateBatch<>(toCandidateRows(coldCandidates), 0, coldCandidates.size(),
                     warmSelection.sourceGuardRejectedCount());
         }
-        LinkedHashMap<String, Worker> deduped = new LinkedHashMap<>();
-        for (Worker worker : warmCandidates) {
-            if (worker != null && worker.getWorkerId() != null) {
-                deduped.put(worker.getWorkerId(), worker);
+        LinkedHashMap<String, WorkerCandidateRow> deduped = new LinkedHashMap<>();
+        for (WorkerCandidateRow candidate : warmCandidates) {
+            if (candidate != null && candidate.workerId() != null) {
+                deduped.put(candidate.workerId(), candidate);
             }
             if (deduped.size() >= limit) {
                 return new WorkerCandidateBatch<>(List.copyOf(deduped.values()), warmCandidates.size(),
@@ -67,7 +78,7 @@ final class WorkerCandidateSourceOwner {
         }
         for (Worker worker : coldCandidates) {
             if (worker != null && worker.getWorkerId() != null) {
-                deduped.putIfAbsent(worker.getWorkerId(), worker);
+                deduped.putIfAbsent(worker.getWorkerId(), toCandidateRow(worker));
             }
             if (deduped.size() >= limit) {
                 break;
@@ -100,6 +111,29 @@ final class WorkerCandidateSourceOwner {
         }
     }
 
+    void recordWarmCandidate(WorkerTaskSelector selector, WorkerCandidateRow candidate) {
+        String taskId = selector == null ? null : normalizeNullable(selector.taskId());
+        String workerId = candidate == null ? null : normalizeNullable(candidate.workerId());
+        String groupId = candidate == null ? null : normalizeNullable(candidate.workerGroupId());
+        if (taskId == null || workerId == null || groupId == null) {
+            return;
+        }
+        if (selector.targetsWorker()) {
+            return;
+        }
+        long nowMillis = System.currentTimeMillis();
+        for (String routeBucketKey : routeBucketKeysForTask(selector)) {
+            taskCandidateWarmPool.put(new TaskCandidateWarmPool.Entry(
+                    taskId,
+                    workerId,
+                    groupId,
+                    normalizeNullable(candidate.adapterNodeId()),
+                    routeBucketKey,
+                    nowMillis
+            ));
+        }
+    }
+
     int warmCandidateCount(String taskId) {
         return taskCandidateWarmPool.sizeForTask(taskId);
     }
@@ -111,7 +145,7 @@ final class WorkerCandidateSourceOwner {
         if (taskId == null || limit <= 0) {
             return WarmCandidateSelection.empty();
         }
-        List<Worker> workers = new ArrayList<>();
+        List<WorkerCandidateRow> workers = new ArrayList<>();
         int rejected = 0;
         for (TaskCandidateWarmPool.Entry entry : taskCandidateWarmPool.sample(
                 taskId,
@@ -126,13 +160,44 @@ final class WorkerCandidateSourceOwner {
                     entry.workerId()
             );
             if (guardResult.accepted()) {
-                guardResult.worker().ifPresent(workers::add);
+                guardResult.worker().map(WorkerCandidateSourceOwner::toCandidateRow).ifPresent(workers::add);
             } else {
                 rejected++;
                 taskCandidateWarmPool.remove(entry);
             }
         }
         return new WarmCandidateSelection(List.copyOf(workers), rejected);
+    }
+
+    private static List<WorkerCandidateRow> toCandidateRows(List<Worker> workers) {
+        if (workers == null || workers.isEmpty()) {
+            return List.of();
+        }
+        List<WorkerCandidateRow> rows = new ArrayList<>(workers.size());
+        for (Worker worker : workers) {
+            rows.add(toCandidateRow(worker));
+        }
+        return List.copyOf(rows);
+    }
+
+    private static WorkerCandidateRow toCandidateRow(Worker worker) {
+        return new WorkerCandidateRow(
+                worker.getWorkerId(),
+                worker.getStatus() == null ? null : worker.getStatus().name(),
+                worker.getAgentVersion(),
+                worker.getLastHeartbeat(),
+                worker.getSupportedProjects(),
+                worker.getSupportedEventCodes(),
+                worker.getWorkerGroupId(),
+                worker.getAdapterNodeId(),
+                worker.getAdapterId(),
+                worker.getOnlineStrategy(),
+                worker.getMaxConcurrentWork(),
+                worker.getAttributes(),
+                worker.getCreateTime(),
+                worker.getUpdateTime(),
+                worker.isAvailable()
+        );
     }
 
     private Set<String> routeBucketKeysForTask(WorkerTaskSelector selector) {
@@ -143,7 +208,7 @@ final class WorkerCandidateSourceOwner {
         return value == null || value.isBlank() ? null : value.trim();
     }
 
-    private record WarmCandidateSelection(List<Worker> candidates, int sourceGuardRejectedCount) {
+    private record WarmCandidateSelection(List<WorkerCandidateRow> candidates, int sourceGuardRejectedCount) {
         private WarmCandidateSelection {
             candidates = candidates == null ? List.of() : List.copyOf(candidates);
             sourceGuardRejectedCount = Math.max(0, sourceGuardRejectedCount);

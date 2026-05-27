@@ -6,6 +6,7 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.ProjectionAwareTaskManager;
 import com.xa.mass.engine.TaskQueryService;
+import com.xa.mass.engine.TestWorkerCandidateRows;
 import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
@@ -767,8 +768,9 @@ public class SimpleTaskDispatchBinderTest {
 
     private WorkerSchedulingCandidate matched(Worker worker) {
         return new WorkerSchedulingCandidate(
-                worker,
-                WorkerSchedulingView.from(worker, WorkerReachabilityState.ONLINE, true, false)
+                TestWorkerCandidateRows.from(worker),
+                WorkerSchedulingView.from(TestWorkerCandidateRows.from(worker), WorkerReachabilityState.ONLINE,
+                        true, false)
         );
     }
 

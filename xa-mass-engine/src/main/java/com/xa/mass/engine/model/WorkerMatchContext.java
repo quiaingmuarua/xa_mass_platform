@@ -2,7 +2,7 @@ package com.xa.mass.engine.model;
 
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
-import com.xa.mass.base.model.Worker;
+import com.xa.mass.runtime.worker.WorkerCandidateRow;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -16,14 +16,14 @@ import java.util.Objects;
  * diagnostic signal.
  */
 public class WorkerMatchContext {
-    private final Worker worker;
+    private final WorkerCandidateRow candidateRow;
     private final Task task;
     private final WorkerSchedulingView schedulingView;
     private final Map<String, Object> context;
 
     public WorkerMatchContext(WorkerSchedulingCandidate candidate, Task task) {
         Objects.requireNonNull(candidate, "candidate");
-        this.worker = candidate.getWorker();
+        this.candidateRow = candidate.getCandidateRow();
         this.task = task;
         this.schedulingView = candidate.getSchedulingView();
         this.context = buildContext(candidate, task);
@@ -81,8 +81,8 @@ public class WorkerMatchContext {
         return ctx;
     }
 
-    public Worker getWorker() {
-        return worker;
+    public WorkerCandidateRow getCandidateRow() {
+        return candidateRow;
     }
 
     public Task getTask() {
@@ -147,7 +147,7 @@ public class WorkerMatchContext {
     @Override
     public String toString() {
         return "WorkerMatchContext{" +
-                "workerId='" + worker.getWorkerId() + '\'' +
+                "workerId='" + candidateRow.workerId() + '\'' +
                 ", taskId='" + task.getTid() + '\'' +
                 ", supportsProject=" + context.get("supportsProject") +
                 ", supportsEvent=" + context.get("supportsEvent") +

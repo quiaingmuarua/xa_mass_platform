@@ -301,8 +301,10 @@ interface WorkerResourceRuntime {
 }
 
 interface WorkerCandidateRuntime {
-    WorkerCandidateBatch acquireCandidates(WorkerTaskSelector selector, int max);
-    SourceGuardResult sourceGuard(WorkerSourceEvidence evidence);
+    WorkerCandidateBatch<WorkerCandidateRow> findWorkerCandidateBatch(
+        WorkerTaskSelector selector,
+        int maxCandidateCount
+    );
 }
 
 interface WorkerSchedulingViewRuntime {
@@ -458,6 +460,7 @@ Scope:
 1. Define runtime-neutral equivalents for:
    - task selector input
    - candidate batch
+   - candidate row
    - source evidence/result
    - scheduling view
    - load snapshot
@@ -468,14 +471,14 @@ Scope:
 4. Ensure target contracts do not reference `Task`, `WorkerSchedulingView`,
    `WorkerMatchContext`, `RuleManager`, or transport adapter classes.
 5. Promote movable value types that are currently nested inside owner classes
-   into top-level classes before module movement, including
-   `WorkerManager.WorkerCandidateBatch`.
+   into top-level classes before module movement.
 
 Acceptance:
 
 1. New runtime-neutral DTOs can compile without `xa-mass-engine`.
 2. Engine adapts runtime DTOs into `WorkerMatchContext` locally.
-3. `WorkerCandidateBatch` and other moved DTOs are top-level types before M1.
+3. `WorkerCandidateBatch`, `WorkerCandidateRow`, and other moved DTOs are
+   top-level types before M1.
 4. No rule/rank policy moves into runtime DTOs.
 
 ### WRX-C2: Split WorkerManager Internals By Owner

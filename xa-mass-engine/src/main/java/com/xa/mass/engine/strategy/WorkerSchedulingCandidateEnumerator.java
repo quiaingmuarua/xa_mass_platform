@@ -1,7 +1,7 @@
 package com.xa.mass.engine.strategy;
 
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;
+import com.xa.mass.runtime.worker.WorkerCandidateRow;
 import com.xa.mass.engine.worker.WorkerGroupRecord;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.model.WorkerSchedulingView;
@@ -22,34 +22,34 @@ final class WorkerSchedulingCandidateEnumerator {
         this.schedulingViewRuntime = Objects.requireNonNull(schedulingViewRuntime, "schedulingViewRuntime");
     }
 
-    List<WorkerSchedulingCandidate> enumerate(List<Worker> workers) {
-        if (workers == null || workers.isEmpty()) {
+    List<WorkerSchedulingCandidate> enumerate(List<WorkerCandidateRow> candidateRows) {
+        if (candidateRows == null || candidateRows.isEmpty()) {
             return List.of();
         }
         List<WorkerSchedulingCandidate> candidates = new ArrayList<>();
-        for (Worker worker : workers) {
-            candidates.add(toSchedulingCandidate(worker));
+        for (WorkerCandidateRow candidateRow : candidateRows) {
+            candidates.add(toSchedulingCandidate(candidateRow));
         }
         return candidates;
     }
 
-    private WorkerSchedulingCandidate toSchedulingCandidate(Worker worker) {
-        WorkerReachabilityState reachability = schedulingViewRuntime.getWorkerReachability(worker.getWorkerId());
-        boolean dispatchEnabled = schedulingViewRuntime.isWorkerDispatchEnabled(worker);
-        boolean workerLocked = schedulingViewRuntime.hasWorkerExclusiveLease(worker.getWorkerId());
-        String workerGroupId = worker.getWorkerGroupId();
+    private WorkerSchedulingCandidate toSchedulingCandidate(WorkerCandidateRow candidateRow) {
+        WorkerReachabilityState reachability = schedulingViewRuntime.getWorkerReachability(candidateRow.workerId());
+        boolean dispatchEnabled = schedulingViewRuntime.isWorkerDispatchEnabled(candidateRow.workerId());
+        boolean workerLocked = schedulingViewRuntime.hasWorkerExclusiveLease(candidateRow.workerId());
+        String workerGroupId = candidateRow.workerGroupId();
         WorkerGroupRecord workerGroup = workerGroupId == null || workerGroupId.isBlank()
                 ? null
                 : schedulingViewRuntime.workerGroupReadView(workerGroupId).orElse(null);
         return new WorkerSchedulingCandidate(
-                worker,
+                candidateRow,
                 WorkerSchedulingView.from(
-                        worker,
+                        candidateRow,
                         workerGroup,
                         reachability,
                         dispatchEnabled,
                         workerLocked,
-                        schedulingViewRuntime.getWorkerLoad(worker.getWorkerId())
+                        schedulingViewRuntime.getWorkerLoad(candidateRow.workerId())
                 )
         );
     }

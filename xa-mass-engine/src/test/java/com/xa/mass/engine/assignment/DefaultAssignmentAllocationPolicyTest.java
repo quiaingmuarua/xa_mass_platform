@@ -4,6 +4,7 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
+import com.xa.mass.engine.TestWorkerCandidateRows;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.model.WorkerSchedulingView;
@@ -200,8 +201,9 @@ class DefaultAssignmentAllocationPolicyTest {
         Worker worker = new Worker();
         worker.setWorkerId(workerId);
         return new WorkerSchedulingCandidate(
-                worker,
-                WorkerSchedulingView.from(worker, WorkerReachabilityState.ONLINE, true, false)
+                TestWorkerCandidateRows.from(worker),
+                WorkerSchedulingView.from(TestWorkerCandidateRows.from(worker), WorkerReachabilityState.ONLINE,
+                        true, false)
         );
     }
 }
