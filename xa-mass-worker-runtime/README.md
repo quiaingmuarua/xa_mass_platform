@@ -10,6 +10,7 @@ Current scope:
 - WorkerGroup declaration owner.
 - AdapterNode and NodeGroupBinding relationship owner.
 - Worker registration row to runtime slot projection owner.
+- Worker state report bounded projection owner.
 
 Boundaries:
 

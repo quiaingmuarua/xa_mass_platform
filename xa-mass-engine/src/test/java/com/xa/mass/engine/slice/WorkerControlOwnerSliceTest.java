@@ -1,6 +1,5 @@
 package com.xa.mass.engine.slice;
 
-
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.command.event.CoreEventPrincipal;
 import com.xa.mass.command.event.CoreEventRequest;
@@ -14,7 +13,7 @@ import com.xa.mass.engine.testutil.RecordingEventSink;
 import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.engine.worker.WorkerControlService;
 import com.xa.mass.engine.worker.WorkerManager;
-import com.xa.mass.engine.worker.WorkerStateProjectionOwner;
+import com.xa.mass.worker.runtime.WorkerStateProjectionOwner;
 import com.xa.mass.engine.worker.WorkerStateReportEventHandler;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.trace.sink.ExecutionEventType;

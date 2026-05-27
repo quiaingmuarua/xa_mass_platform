@@ -1,6 +1,6 @@
 package com.xa.mass.engine.worker;
 
-
+import com.xa.mass.worker.runtime.WorkerStateProjectionOwner;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.command.WorkerCommandAcknowledgement;

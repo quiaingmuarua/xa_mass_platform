@@ -41,8 +41,9 @@ helpers; Redis tests no longer depend on engine `WorkerRoutingPolicy`.
 
 `xa-mass-worker-runtime` now exists as the higher-level worker runtime owner
 module. It owns WorkerGroup declaration state, AdapterNode / NodeGroupBinding
-relationship state, and Worker registration row to runtime slot projection.
-Engine still assembles these owners through `WorkerManager`, but the owner
+relationship state, Worker registration row to runtime slot projection, and
+bounded worker state report projection. Engine still assembles these owners
+through `WorkerManager` / `WorkerControlService`, but those owner
 implementations are no longer engine-local source.
 
 Task selector, candidate batch shape, candidate rows, Worker resource row,
@@ -63,15 +64,17 @@ into `WorkerSchedulingView` and `WorkerMatchContext` locally.
 Capability report application keeps `WorkerRegistrySnapshot` package-local so
 external/report DTOs do not expose engine candidate snapshot truth.
 
-Worker row mutation and registry slot projection are now owned by
+Worker row mutation and registry slot projection are owned by
 `xa-mass-worker-runtime` `WorkerResourceOwner`; WorkerGroup declaration state is
 owned by `WorkerGroupOwner`; AdapterNode and WorkerGroup binding relationships
-are owned by `WorkerRelationshipOwner`. Worker-originated capability report
+are owned by `WorkerRelationshipOwner`; bounded worker state report projection
+is owned by `WorkerStateProjectionOwner`. Worker-originated capability report
 projection is still engine-local in `WorkerReportOwner` because it composes the
 current engine `WorkerRegistrySnapshot` residue. Worker runtime admission,
 exclusive lease, and occupancy reads are still engine-local in
-`WorkerAdmissionOwner`. `WorkerManager` still implements the external contracts
-and delegates to these owners while callers converge.
+`WorkerAdmissionOwner`. `WorkerManager` and `WorkerControlService` still
+implement the external contracts and delegate to these owners while callers
+converge.
 
 ## Public Method Inventory
 

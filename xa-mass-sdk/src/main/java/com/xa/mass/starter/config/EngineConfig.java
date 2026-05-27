@@ -14,7 +14,7 @@ import com.xa.mass.engine.worker.WorkerReachabilityView;
 import com.xa.mass.engine.worker.WorkerControlService;
 import com.xa.mass.engine.worker.WorkerDispatchAvailabilityPolicy;
 import com.xa.mass.engine.worker.DefaultWorkerDispatchAvailabilityPolicy;
-import com.xa.mass.engine.worker.WorkerStateProjectionOwner;
+import com.xa.mass.worker.runtime.WorkerStateProjectionOwner;
 import com.xa.mass.engine.command.WorkerCommandLifecycleOwner;
 import com.xa.mass.engine.stage.TaskStageEvidenceOwner;
 import com.xa.mass.engine.stage.TaskStageEvidenceService;

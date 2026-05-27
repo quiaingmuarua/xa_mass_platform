@@ -1,5 +1,6 @@
 package com.xa.mass.engine.worker;
 
+import com.xa.mass.worker.runtime.WorkerStateProjectionOwner;
 import com.xa.mass.engine.command.WorkerCommandAcknowledgement;
 import com.xa.mass.engine.command.WorkerCommandDeliveryCoordinator;
 import com.xa.mass.engine.command.WorkerCommandDeliveryPort;
