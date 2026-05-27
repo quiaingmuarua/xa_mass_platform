@@ -40,7 +40,7 @@ import static com.xa.mass.runtime.worker.DispatchAvailabilitySource.NODE_GROUP_B
 public class WorkerManager implements WorkerLookupStore {
 
     private static final Logger log = LoggerFactory.getLogger(WorkerManager.class);
-    static final int DEFAULT_STAGE_ONE_CANDIDATE_LIMIT = 512;
+    static final int DEFAULT_DIAGNOSTIC_CANDIDATE_LIMIT = 512;
 
     private final WorkerStorage workerStorage;
     private final WorkerReachabilityView reachabilityView;
@@ -372,7 +372,7 @@ public class WorkerManager implements WorkerLookupStore {
     }
 
     public List<Worker> findWorkerCandidates(Task task) {
-        return findWorkerCandidates(task, DEFAULT_STAGE_ONE_CANDIDATE_LIMIT);
+        return findWorkerCandidates(task, DEFAULT_DIAGNOSTIC_CANDIDATE_LIMIT);
     }
 
     public List<Worker> findWorkerCandidates(Task task, int maxCandidateCount) {

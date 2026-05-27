@@ -465,6 +465,10 @@ Landed first slice:
    across remaining source buckets instead of allowing the first large group to
    consume the whole sample.
 3. Source guard still validates every sampled worker before Stage-2.
+4. The no-limit helper default is named
+   `WorkerManager.DEFAULT_DIAGNOSTIC_CANDIDATE_LIMIT` so it is not confused
+   with the production Stage-1 sample policy owned by
+   `RuleBasedTaskWorkerMatchingStrategy`.
 
 ## Slice 3: Stage-2 Policy Review
 
@@ -554,10 +558,11 @@ cleanup work are stable.
 Status: first slice implemented. `TaskCandidateWarmPool` is bounded task-local
 hint state only. `WorkerManager` rehydrates warm entries through
 `WorkerCandidateIndex.sourceGuard(...)`, dedupes warm and cold candidates, and
-falls back to the normal cold candidate source. The matching strategy records
-warm hints only after a candidate has passed Stage-2 policy and reserve/lock
-admission. `targetWorkerId` tasks skip warm sampling. Assignment context
-records warm, cold, and warm source-guard rejection counts as diagnostics only.
+falls back to the normal cold candidate source. The assignment listener records
+warm hints only for workers that produced bound dispatch work; matching strategy
+code does not write warm hints. `targetWorkerId` tasks skip warm sampling.
+Assignment context records warm, cold, and warm source-guard rejection counts as
+diagnostics only.
 
 Warm pool is a pre-Stage-2 candidate priority hint. It can prefer candidates
 that recently passed this task's source/admission path, but it is not a new
@@ -595,8 +600,9 @@ Scope:
    enough to prove route-bucket validity.
 8. Cold-fill through the normal candidate source after warm rehydration.
 9. Dedupe warm and cold candidates before Stage-2.
-10. Insert only unreserved candidates, or reserved-but-not-dispatched candidates
-   after successful release.
+10. Insert warm entries only after dispatch binding proves the worker actually
+   received work for the task. A Stage-2 pass, reserve, lock, or later release
+   is not enough by itself to create a warm hint.
 11. Keep dependency-key invalidation as a later optional slice.
 
 Acceptance:
@@ -611,6 +617,8 @@ Acceptance:
 7. Runtime dispatch pump and lane-driven assignment can touch warm state safely.
 8. Source guard is exposed through a match/source owner API; matching code does
    not directly inspect route-bucket storage.
+9. Matching strategy code does not write warm hints; dispatch/assignment code
+   records them only after bound work exists.
 
 ## Testing Plan
 

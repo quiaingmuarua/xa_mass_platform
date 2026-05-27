@@ -81,6 +81,7 @@ public class TaskWorkerAssignListenerTest {
         verify(matchingStrategy).matchWorkers(same(task), eq(2));
         verify(assignmentRuntime).updateTask(same(task));
         verify(dispatchBinder).bindDispatches(same(task), eq(List.of(matchedWorker)));
+        verify(workerManager).recordWarmCandidate(same(task), same(worker));
     }
 
     @Test
@@ -237,6 +238,7 @@ public class TaskWorkerAssignListenerTest {
         assertFalse(listener.onTaskAssign(task));
 
         verify(workerManager).releaseWorkerExclusiveLease("worker-1");
+        verify(workerManager, never()).recordWarmCandidate(same(task), same(worker));
         verify(assignmentRuntime, never()).updateTask(same(task));
     }
 

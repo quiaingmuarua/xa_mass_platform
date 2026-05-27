@@ -257,7 +257,6 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                         passedCandidate.ruleEvaluations(), withCandidateSourceStats(rankedContext.getContext(), candidateBatch),
                         false
                 );
-                workerManager.recordWarmCandidate(task, worker);
                 matchedWorkers.add(candidate);
                 log.info("Worker matched without exclusive lock: {} for background task {} at rank {}",
                         worker.getWorkerId(),
@@ -278,7 +277,6 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                         passedCandidate.ruleEvaluations(), withCandidateSourceStats(rankedContext.getContext(), candidateBatch),
                         true
                 );
-                workerManager.recordWarmCandidate(task, worker);
                 matchedWorkers.add(candidate);
                 log.info("Worker matched: {} for task {} at rank {}",
                         worker.getWorkerId(),

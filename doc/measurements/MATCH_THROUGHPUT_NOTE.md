@@ -1,6 +1,6 @@
 # Match Throughput Note
 
-Status: first measurement baseline.
+Status: instrumentation baseline; no throughput-changing implementation yet.
 
 Scope:
 
@@ -8,7 +8,7 @@ Scope:
 - Worker availability retry wakeup behavior.
 - Stage-1 bounded candidate acquisition and Stage-2 rule/rank/reserve path.
 
-Current evidence:
+Current instrumentation:
 
 - `TaskAssignWorker` emits `ASSIGNMENT_QUEUE_SNAPSHOT` with lane, queue depth,
   scheduled retry count, retry delay, and assignment duration.
@@ -16,6 +16,21 @@ Current evidence:
   time for worker assignment attempts.
 - `WorkerCandidateIndex` performs bounded source-bucket acquisition before
   Stage-2 and source-guard validation before worker materialization.
+
+Local validation record:
+
+- Date: 2026-05-27.
+- Command:
+
+```bash
+mvn -q -pl platform_infra/mass-runtime-api,platform_infra/mass-runtime-redis,xa-mass-engine,xa-mass-sdk -am '-Dtest=WorkerRegistryContractTest,InMemoryWorkerRegistryTest,RedisWorkerRegistryTest,WorkerCandidateIndexTest,TaskCandidateWarmPoolTest,WorkerManagerTest,DefaultWorkerCandidateRankerTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskWorkerAssignListenerTest,TaskAssignWorkerTest,TaskDispatchWakeupBridgeTest,EngineSchedulingCoreArchitectureGuardTest' '-Dsurefire.failIfNoSpecifiedTests=false' test
+```
+
+- Result: passed.
+- What this proves: instrumentation and correctness gates compile and execute
+  together.
+- What this does not prove: this is not a load benchmark and does not establish
+  a measured lane-throughput ceiling.
 
 Decision:
 
@@ -26,8 +41,12 @@ Decision:
   queue depth, runtime-ready pump wakeups, and reserve rejection reasons before
   changing concurrency.
 
-Validation:
+Next measurement record must include:
 
-```bash
-./mvnw -q -pl platform_infra/mass-runtime-api,platform_infra/mass-runtime-redis,xa-mass-engine,xa-mass-sdk -am -Dtest=WorkerRegistryContractTest,InMemoryWorkerRegistryTest,RedisWorkerRegistryTest,WorkerCandidateIndexTest,DefaultWorkerCandidateRankerTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskAssignWorkerTest,TaskDispatchWakeupBridgeTest,EngineSchedulingCoreArchitectureGuardTest -Dsurefire.failIfNoSpecifiedTests=false test
-```
+- workload size and worker count
+- lane queue depth range
+- assignment duration p50 / p95 / max
+- retry count by reason
+- runtime-ready pump wakeup count
+- reserve rejection reasons
+- bottleneck decision and whether lane parallelism remains deferred

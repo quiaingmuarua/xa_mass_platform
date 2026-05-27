@@ -24,8 +24,10 @@ import com.xa.mass.engine.util.TraceEventLogger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Listens for task assignment events and delegates worker matching to a pluggable strategy.
@@ -261,6 +263,7 @@ public class TaskWorkerAssignListener {
                     "matched workers dispatched"
             );
         }
+        recordWarmCandidatesForBoundWorkers(task, dispatchCandidates, dispatchedBindings);
         emitAssignmentSummary(task, initialStatus, readyWorkCount, allocationPlan,
                 matched.size(), dispatchCandidates.size(), dispatchedBindings.size(), (int) usedWorkerCount,
                 "matched workers dispatched", "SUCCESS");
@@ -277,6 +280,33 @@ public class TaskWorkerAssignListener {
     private void releaseReservedAndUnlockWorkers(Task task, List<WorkerSchedulingCandidate> workers) {
         resourceReleaser.releaseReservationsAndLocks(task, workers,
                 "UNLOCK_WORKER", "TaskWorkerAssignListener", "surplus or skipped dispatch candidate");
+    }
+
+    private void recordWarmCandidatesForBoundWorkers(Task task,
+                                                     List<WorkerSchedulingCandidate> dispatchCandidates,
+                                                     List<TaskDispatchBinding> dispatchedBindings) {
+        if (task == null || dispatchCandidates == null || dispatchCandidates.isEmpty()
+                || dispatchedBindings == null || dispatchedBindings.isEmpty()) {
+            return;
+        }
+        Set<String> usedWorkerIds = new LinkedHashSet<>();
+        for (TaskDispatchBinding binding : dispatchedBindings) {
+            if (binding != null && binding.workerId() != null && !binding.workerId().isBlank()) {
+                usedWorkerIds.add(binding.workerId());
+            }
+        }
+        if (usedWorkerIds.isEmpty()) {
+            return;
+        }
+        Set<String> recordedWorkerIds = new LinkedHashSet<>();
+        for (WorkerSchedulingCandidate candidate : dispatchCandidates) {
+            if (candidate == null || candidate.getWorkerId() == null || candidate.getWorkerId().isBlank()) {
+                continue;
+            }
+            if (usedWorkerIds.contains(candidate.getWorkerId()) && recordedWorkerIds.add(candidate.getWorkerId())) {
+                workerManager.recordWarmCandidate(task, candidate.getWorker());
+            }
+        }
     }
 
     private void emitAssignmentSummary(Task task,

@@ -654,7 +654,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
     }
 
     @Test
-    void assignmentContextRecordsWarmCandidateSourceStats() {
+    void assignmentContextRecordsWarmCandidateSourceStatsFromCandidateBatch() {
         WorkerManager workerManager = new WorkerManager(
                 new InMemoryWorkerStorage(),
                 workerId -> WorkerReachabilityState.ONLINE
@@ -674,7 +674,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         registerWorker(workerManager, worker);
 
         Task task = backgroundTask("task-warm-diagnostics");
-        assertEquals(1, strategy.matchWorkers(task, 1).size());
+        workerManager.recordWarmCandidate(task, worker);
         assertEquals(1, strategy.matchWorkers(task, 1).size());
 
         assertTrue(recordService.getRecordsByTaskId("task-warm-diagnostics").stream()
