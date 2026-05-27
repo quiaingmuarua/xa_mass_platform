@@ -29,8 +29,8 @@ Active or future direction only. Completed convergence records are archived
 below and must not stay in this list.
 
 - [PRODUCTION_SCHEDULING_KERNEL_IMPROVEMENTS.md](roadmap/PRODUCTION_SCHEDULING_KERNEL_IMPROVEMENTS.md)
-- [TASK_CANDIDATE_WARM_POOL_ROADMAP.md](roadmap/TASK_CANDIDATE_WARM_POOL_ROADMAP.md)
 - [TASK_RUNTIME_PROFILE_DESIGN.md](roadmap/TASK_RUNTIME_PROFILE_DESIGN.md)
+- [WORKER_MATCH_UPGRADE_ROADMAP.md](roadmap/WORKER_MATCH_UPGRADE_ROADMAP.md)
 - [WORKER_SLOT_REGISTRY_ROADMAP.md](roadmap/WORKER_SLOT_REGISTRY_ROADMAP.md)
 
 ## Historical Archive
