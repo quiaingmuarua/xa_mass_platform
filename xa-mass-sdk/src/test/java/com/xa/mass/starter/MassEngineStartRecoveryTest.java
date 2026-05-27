@@ -4,13 +4,14 @@ import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskQueryService;
-import com.xa.mass.engine.worker.WorkerManager;
+import com.xa.mass.runtime.worker.WorkerAdmissionRuntime;
 import com.xa.mass.runtime.worker.WorkerCandidateRow;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;
+import com.xa.mass.runtime.worker.WorkerResourceRecord;
+import com.xa.mass.runtime.worker.WorkerResourceRuntime;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
@@ -34,20 +35,15 @@ class MassEngineStartRecoveryTest {
         EngineConfig config = new EngineConfig();
         TaskCommandService taskCommands = config.getTaskCommandService();
         TaskQueryService taskQueries = config.getTaskQueryService();
-        WorkerManager workerManager = config.getWorkerManager();
-
-        Worker worker = new Worker();
-        worker.setWorkerId("worker-1");
-        worker.setWorkerGroupId("demo-workers");
-        worker.setSupportedProjects(List.of("demoApp"));
-        worker.updateHeartbeat();
-        workerManager.addWorker(worker);
+        WorkerResourceRuntime workerResources = config.getWorkerResourceRuntime();
+        WorkerAdmissionRuntime workerAdmission = config.getWorkerAdmissionRuntime();
+        workerResources.addWorker(workerResource("worker-1", "demo-workers"));
 
         config.setMatchingStrategy((task, maxWorkerCount) -> {
-            if (!workerManager.tryAcquireWorkerExclusiveLease("worker-1")) {
+            if (!workerAdmission.tryAcquireWorkerExclusiveLease("worker-1")) {
                 return List.of();
             }
-            Worker candidateWorker = workerManager.getWorker("worker-1");
+            WorkerResourceRecord candidateWorker = workerResources.worker("worker-1").orElseThrow();
             WorkerCandidateRow candidateRow = candidateRow(candidateWorker);
             return List.of(new WorkerSchedulingCandidate(
                     candidateRow,
@@ -116,20 +112,15 @@ class MassEngineStartRecoveryTest {
             TaskCommandService taskCommands = config.getTaskCommandService();
             TaskQueryService taskQueries = config.getTaskQueryService();
             TaskResultIngestFacade resultIngestFacade = config.getTaskResultIngestFacade();
-            WorkerManager workerManager = config.getWorkerManager();
-
-            Worker worker = new Worker();
-            worker.setWorkerId("worker-1");
-            worker.setWorkerGroupId("demo-workers");
-            worker.setSupportedProjects(List.of("demoApp"));
-            worker.updateHeartbeat();
-            workerManager.addWorker(worker);
+            WorkerResourceRuntime workerResources = config.getWorkerResourceRuntime();
+            WorkerAdmissionRuntime workerAdmission = config.getWorkerAdmissionRuntime();
+            workerResources.addWorker(workerResource("worker-1", "demo-workers"));
 
             config.setMatchingStrategy((task, maxWorkerCount) -> {
-                if (!workerManager.tryAcquireWorkerExclusiveLease("worker-1")) {
+                if (!workerAdmission.tryAcquireWorkerExclusiveLease("worker-1")) {
                     return List.of();
                 }
-                Worker candidateWorker = workerManager.getWorker("worker-1");
+                WorkerResourceRecord candidateWorker = workerResources.worker("worker-1").orElseThrow();
                 WorkerCandidateRow candidateRow = candidateRow(candidateWorker);
                 return List.of(new WorkerSchedulingCandidate(
                         candidateRow,
@@ -213,23 +204,42 @@ class MassEngineStartRecoveryTest {
         }
     }
 
-    private static WorkerCandidateRow candidateRow(Worker worker) {
+    private static WorkerResourceRecord workerResource(String workerId, String workerGroupId) {
+        return new WorkerResourceRecord(
+                workerId,
+                "ONLINE",
+                null,
+                java.time.LocalDateTime.now(),
+                List.of("demoApp"),
+                List.of(),
+                workerGroupId,
+                null,
+                null,
+                null,
+                1,
+                Map.of(),
+                null,
+                null
+        );
+    }
+
+    private static WorkerCandidateRow candidateRow(WorkerResourceRecord worker) {
         return new WorkerCandidateRow(
-                worker.getWorkerId(),
-                worker.getStatus() == null ? null : worker.getStatus().name(),
-                worker.getAgentVersion(),
-                worker.getLastHeartbeat(),
-                worker.getSupportedProjects(),
-                worker.getSupportedEventCodes(),
-                worker.getWorkerGroupId(),
-                worker.getAdapterNodeId(),
-                worker.getAdapterId(),
-                worker.getOnlineStrategy(),
-                worker.getMaxConcurrentWork(),
-                worker.getAttributes(),
-                worker.getCreateTime(),
-                worker.getUpdateTime(),
-                worker.isAvailable()
+                worker.workerId(),
+                worker.statusName(),
+                worker.agentVersion(),
+                worker.lastHeartbeat(),
+                worker.supportedProjects(),
+                worker.supportedEventCodes(),
+                worker.workerGroupId(),
+                worker.adapterNodeId(),
+                worker.adapterId(),
+                worker.onlineStrategy(),
+                worker.maxConcurrentWork(),
+                worker.attributes(),
+                worker.createTime(),
+                worker.updateTime(),
+                true
         );
     }
 

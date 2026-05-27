@@ -76,8 +76,9 @@ are owned by `WorkerRelationshipOwner`; bounded worker state report projection
 is owned by `WorkerStateProjectionOwner`; worker runtime admission, exclusive
 lease, and occupancy reads are owned by `WorkerAdmissionOwner`;
 worker-originated capability report projection is owned by `WorkerReportOwner`.
-`WorkerManager` still implements the external runtime contracts and delegates
-to these owners while callers converge. `WorkerControlService` now consumes
+`WorkerManager` still implements the runtime contracts and delegates to these
+owners while module movement is pending, but it is no longer exposed through
+public SDK/starter configuration. `WorkerControlService` now consumes
 `WorkerReportRuntime`, `WorkerResourceRuntime`, and
 `WorkerDispatchGateRuntime` instead of accepting the full `WorkerManager`
 assembly surface.

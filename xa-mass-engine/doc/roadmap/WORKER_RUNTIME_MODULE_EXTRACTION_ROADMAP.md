@@ -707,6 +707,9 @@ Progress:
   helpers have been deleted from the engine assembly surface. Transport
   presence remains the online source for SDK/server queries; the legacy worker
   event listener only refreshes heartbeat evidence through `WorkerResourceRuntime`.
+- `EngineConfig.getWorkerManager()` is no longer a public SDK/starter surface.
+  EngineConfig keeps WorkerManager as private assembly and exposes only narrow
+  worker runtime contracts to callers.
 - Engine still assembles those owners through `WorkerManager`; match strategy
   and event handler parsing residue stays in engine for later slices.
 - SDK shell runtime bridge now accepts `WorkerResourceRuntime` for legacy

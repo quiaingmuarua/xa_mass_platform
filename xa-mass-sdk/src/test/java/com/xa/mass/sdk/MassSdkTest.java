@@ -37,7 +37,7 @@ import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.runtime.worker.EventBinding;
 import com.xa.mass.runtime.worker.WorkerGroupRecord;
-import com.xa.mass.runtime.worker.EventKey;
+import com.xa.mass.runtime.worker.WorkerResourceRecord;
 import com.xa.mass.engine.watchdog.PollingIdleBackoffPolicy;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.runtime.worker.WorkerResourceRuntime;
@@ -1650,43 +1650,38 @@ class MassSdkTest {
     }
 
     @Test
-    void engineConfigDerivesWorkerManagerFromCurrentWorkerStorage() {
+    void engineConfigDerivesWorkerRuntimeFromCurrentWorkerStorage() {
         EngineConfig config = new EngineConfig();
-        WorkerManager initial = config.getWorkerManager();
-        assertSame(initial, config.getWorkerManager());
+        WorkerResourceRuntime initial = config.getWorkerResourceRuntime();
+        assertSame(initial, config.getWorkerResourceRuntime());
         WorkerStorage replacement = spy(new com.xa.mass.storage.memory.InMemoryWorkerStorage());
-        Worker worker = new Worker();
-        worker.setWorkerId("worker-rebound");
 
         config.setWorkerStorage(replacement);
 
-        WorkerManager rebound = config.getWorkerManager();
+        WorkerResourceRuntime rebound = config.getWorkerResourceRuntime();
         assertNotSame(initial, rebound);
-        assertSame(rebound, config.getWorkerManager());
-        rebound.addWorker(worker);
+        assertSame(rebound, config.getWorkerResourceRuntime());
+        rebound.addWorker(workerResource("worker-rebound", "runtime-group"));
 
-        verify(replacement).addWorker(worker);
+        verify(replacement).addWorker(argThat(worker -> "worker-rebound".equals(worker.getWorkerId())));
         assertNotNull(replacement.getWorker("worker-rebound").orElse(null));
     }
 
     @Test
-    void engineConfigUsesInjectedWorkerRegistryForWorkerManagerAssembly() {
+    void engineConfigUsesInjectedWorkerRegistryForWorkerRuntimeAssembly() {
         EngineConfig config = new EngineConfig();
         InMemoryWorkerRegistry registry = new InMemoryWorkerRegistry();
-        Worker worker = new Worker();
-        worker.setWorkerId("worker-registry-runtime");
-        worker.setWorkerGroupId("runtime-group");
 
         config.setWorkerRegistry(registry);
-        config.getWorkerManager().addWorker(worker);
+        config.getWorkerResourceRuntime().addWorker(workerResource("worker-registry-runtime", "runtime-group"));
 
         assertTrue(registry.slotByWorkerId("worker-registry-runtime").isPresent());
     }
 
     @Test
-    void engineConfigRejectsWorkerRegistryReplacementAfterWorkerManagerIsConfigured() {
+    void engineConfigRejectsWorkerRegistryReplacementAfterWorkerRuntimeIsConfigured() {
         EngineConfig config = new EngineConfig();
-        config.getWorkerManager();
+        config.getWorkerResourceRuntime();
 
         assertThrows(IllegalStateException.class,
                 () -> config.setWorkerRegistry(new InMemoryWorkerRegistry()));
@@ -1771,7 +1766,7 @@ class MassSdkTest {
         EngineConfig config = mock(EngineConfig.class);
         TaskCommandService taskCommandService = mock(TaskCommandService.class);
         TaskQueryService taskQueryService = mock(TaskQueryService.class);
-        WorkerManager workerManager = mock(WorkerManager.class);
+        WorkerResourceRuntime workerManager = mock(WorkerResourceRuntime.class);
         Task task = new Task();
         task.setTid("task-resolve-single");
         task.setProject("crawlerApp");
@@ -1806,7 +1801,7 @@ class MassSdkTest {
         EngineConfig config = mock(EngineConfig.class);
         TaskCommandService taskCommandService = mock(TaskCommandService.class);
         TaskQueryService taskQueryService = mock(TaskQueryService.class);
-        WorkerManager workerManager = mock(WorkerManager.class);
+        WorkerResourceRuntime workerManager = mock(WorkerResourceRuntime.class);
         Task task = new Task();
         task.setTid("task-resolve-multi");
         task.setProject("crawlerApp");
@@ -1844,7 +1839,7 @@ class MassSdkTest {
         EngineConfig config = mock(EngineConfig.class);
         TaskCommandService taskCommandService = mock(TaskCommandService.class);
         TaskQueryService taskQueryService = mock(TaskQueryService.class);
-        WorkerManager workerManager = mock(WorkerManager.class);
+        WorkerResourceRuntime workerManager = mock(WorkerResourceRuntime.class);
         Task task = new Task();
         task.setTid("task-resolve-none");
         task.setProject("crawlerApp");
@@ -2521,11 +2516,13 @@ class MassSdkTest {
                 .defaultMaxConcurrentWork(3)
                 .build());
 
-        WorkerManager workerManager = config.getWorkerManager();
-        Assertions.assertEquals(Set.of("crawler"), workerManager.getWorkerRegistrySnapshot()
-                .groupIdsByEventKey(new EventKey("crawlerApp", "crawler.fetch-page")));
-        Assertions.assertNull(workerManager.getWorker("crawler-worker-001"));
-        var group = workerManager.workerGroup("crawler").orElseThrow();
+        WorkerResourceRuntime workerRuntime = config.getWorkerResourceRuntime();
+        Assertions.assertTrue(workerRuntime.workerGroups().stream()
+                .flatMap(group -> group.eventBindings().stream())
+                .anyMatch(binding -> "crawler.fetch-page".equals(binding.eventCode())
+                        && binding.projectCodes().contains("crawlerApp")));
+        Assertions.assertTrue(workerRuntime.worker("crawler-worker-001").isEmpty());
+        var group = workerRuntime.workerGroup("crawler").orElseThrow();
         Assertions.assertEquals(Map.of("source", "declared"), group.defaultAttributes());
         Assertions.assertEquals(3, group.defaultMaxConcurrentWork());
 
@@ -2537,8 +2534,8 @@ class MassSdkTest {
                 .transportHint("polling")
                 .build());
 
-        Worker registered = workerManager.getWorker("crawler-worker-001");
-        Assertions.assertEquals("crawler", registered.getWorkerGroupId());
+        WorkerResourceRecord registered = workerRuntime.worker("crawler-worker-001").orElseThrow();
+        Assertions.assertEquals("crawler", registered.workerGroupId());
     }
 
     @Test
@@ -3189,6 +3186,7 @@ class MassSdkTest {
         assertMissingMethod(MassEngine.class, "getTaskManager");
         assertMissingMethod(MassEngine.class, "getWorkerManager");
         assertMissingMethod(MassEngine.class, "publishTaskEvents");
+        assertMissingMethod(EngineConfig.class, "getWorkerManager");
         assertMissingMethod(EngineConfig.class, "setWorkerManager", WorkerManager.class);
         assertMissingMethod(EngineConfig.class, "setRuleManager", com.xa.mass.engine.rules.RuleManager.class);
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.sdk.TaskOperations"));
@@ -3475,6 +3473,25 @@ class MassSdkTest {
         return WorkerGroupRecord.builder(workerGroupId)
                 .eventBindings(List.of(EventBinding.of(eventCode, List.of(projectCode))))
                 .build();
+    }
+
+    private static WorkerResourceRecord workerResource(String workerId, String workerGroupId) {
+        return new WorkerResourceRecord(
+                workerId,
+                WorkerStatus.ONLINE.name(),
+                null,
+                null,
+                List.of("demoApp"),
+                List.of(),
+                workerGroupId,
+                null,
+                null,
+                null,
+                1,
+                Map.of(),
+                null,
+                null
+        );
     }
 
     private static TaskDetailSnapshot createShellWithOptionalItems(MassSdkApplication app,

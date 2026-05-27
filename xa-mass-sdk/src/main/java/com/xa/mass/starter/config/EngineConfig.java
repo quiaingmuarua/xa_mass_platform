@@ -301,7 +301,7 @@ public class EngineConfig {
         this.taskDetailStore = taskDetailStore;
     }
 
-    public WorkerManager getWorkerManager() {
+    private WorkerManager workerManager() {
         if (workerManager == null) {
             workerManager = new WorkerManager(
                     getWorkerStorage(),
@@ -313,35 +313,35 @@ public class EngineConfig {
     }
 
     public WorkerResourceRuntime getWorkerResourceRuntime() {
-        return getWorkerManager();
+        return workerManager();
     }
 
     public WorkerCandidateRuntime getWorkerCandidateRuntime() {
-        return getWorkerManager();
+        return workerManager();
     }
 
     public WorkerSchedulingViewRuntime getWorkerSchedulingViewRuntime() {
-        return getWorkerManager();
+        return workerManager();
     }
 
     public WorkerAdmissionRuntime getWorkerAdmissionRuntime() {
-        return getWorkerManager();
+        return workerManager();
     }
 
     public WorkerAvailabilityWakeupRuntime getWorkerAvailabilityWakeupRuntime() {
-        return getWorkerManager();
+        return workerManager();
     }
 
     public WorkerDispatchGateRuntime getWorkerDispatchGateRuntime() {
-        return getWorkerManager();
+        return workerManager();
     }
 
     public WorkerReportRuntime getWorkerReportRuntime() {
-        return getWorkerManager();
+        return workerManager();
     }
 
     public WorkerWarmHintRuntime getWorkerWarmHintRuntime() {
-        return getWorkerManager();
+        return workerManager();
     }
 
     public WorkerControlService getWorkerControlService() {
