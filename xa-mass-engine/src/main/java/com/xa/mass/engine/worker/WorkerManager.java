@@ -19,6 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -749,6 +750,9 @@ public class WorkerManager implements WorkerLookupStore {
         if (adapterNodeId != null) {
             validateExplicitWorkerNodeGroupMembership(adapterNodeId, groupId);
             worker.setAdapterNodeId(adapterNodeId);
+        }
+        if (worker.getStatus() == WorkerStatus.ONLINE && worker.getLastHeartbeat() == null) {
+            worker.setLastHeartbeat(LocalDateTime.now());
         }
         return worker;
     }

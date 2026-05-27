@@ -44,6 +44,20 @@ public class WorkerManagerTest {
     }
 
     @Test
+    void addOnlineWorkerWithoutExplicitHeartbeatSeedsRegistrationHeartbeat() {
+        Worker worker = new Worker();
+        worker.setWorkerId("w-no-heartbeat");
+        worker.setWorkerGroupId("us");
+        worker.setStatus(WorkerStatus.ONLINE);
+
+        manager.addWorker(worker);
+
+        Worker found = manager.getWorker("w-no-heartbeat");
+        assertNotNull(found);
+        assertNotNull(found.getLastHeartbeat());
+    }
+
+    @Test
     void declaredWorkerGroupCanIndexCapabilityBeforeWorkerRegistration() {
         WorkerGroupRecord group = WorkerGroupRecord.builder("crawler")
                 .eventBindings(List.of(EventBinding.of("crawler.fetch", List.of("demoApp"))))
