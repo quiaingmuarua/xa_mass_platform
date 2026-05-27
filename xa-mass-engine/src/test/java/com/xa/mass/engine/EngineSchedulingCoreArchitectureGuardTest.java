@@ -1706,9 +1706,9 @@ class EngineSchedulingCoreArchitectureGuardTest {
     @Test
     void dispatchAvailabilityPolicyConsumesOnlyDispatchGateRuntime() throws IOException {
         Path policyPath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/worker/WorkerDispatchAvailabilityPolicy.java");
+                "com/xa/mass/engine/control/WorkerDispatchAvailabilityPolicy.java");
         Path defaultPolicyPath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/worker/DefaultWorkerDispatchAvailabilityPolicy.java");
+                "com/xa/mass/engine/control/DefaultWorkerDispatchAvailabilityPolicy.java");
         Path controlServicePath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/worker/WorkerControlService.java");
         String policySource = Files.readString(policyPath, StandardCharsets.UTF_8)
