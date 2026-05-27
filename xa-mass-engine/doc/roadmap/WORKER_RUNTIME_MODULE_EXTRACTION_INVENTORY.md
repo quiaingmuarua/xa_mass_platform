@@ -75,8 +75,11 @@ are owned by `WorkerRelationshipOwner`; bounded worker state report projection
 is owned by `WorkerStateProjectionOwner`; worker runtime admission, exclusive
 lease, and occupancy reads are owned by `WorkerAdmissionOwner`;
 worker-originated capability report projection is owned by `WorkerReportOwner`.
-`WorkerManager` and `WorkerControlService` still implement the external
-contracts and delegate to these owners while callers converge.
+`WorkerManager` still implements the external runtime contracts and delegates
+to these owners while callers converge. `WorkerControlService` now consumes
+`WorkerReportRuntime`, `WorkerResourceRuntime`, and
+`WorkerDispatchGateRuntime` instead of accepting the full `WorkerManager`
+assembly surface.
 The SDK process-local runtime event bridge now depends on
 `WorkerResourceRuntime` for legacy heartbeat refresh and no longer receives a
 full `WorkerManager`.
@@ -151,6 +154,7 @@ worker control
   -> WorkerStateProjectionOwner
   -> WorkerDispatchAvailabilityPolicy
   -> WorkerDispatchGateRuntime dispatch-gate methods
+  -> WorkerResourceRuntime.worker(...) for worker resource presence checks
 
 worker relationship resources
   -> WorkerManager resource-compatible methods

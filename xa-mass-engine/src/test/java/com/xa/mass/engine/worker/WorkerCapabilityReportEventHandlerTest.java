@@ -135,6 +135,8 @@ public class WorkerCapabilityReportEventHandlerTest {
                                                              TraceEventLogger traceEventLogger) {
         return new WorkerControlService(
                 workerManager,
+                workerManager,
+                workerManager,
                 new WorkerCommandLifecycleOwner(),
                 new WorkerStateProjectionOwner(),
                 traceEventLogger);

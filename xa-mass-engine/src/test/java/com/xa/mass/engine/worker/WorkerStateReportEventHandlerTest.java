@@ -95,8 +95,11 @@ public class WorkerStateReportEventHandlerTest {
 
     private static WorkerControlService workerControlService(WorkerStateProjectionOwner owner,
                                                              TraceEventLogger traceEventLogger) {
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
         return new WorkerControlService(
-                new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry()),
+                workerManager,
+                workerManager,
+                workerManager,
                 new WorkerCommandLifecycleOwner(),
                 owner,
                 traceEventLogger);

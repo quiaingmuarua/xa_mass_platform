@@ -342,7 +342,9 @@ public class EngineConfig {
     public WorkerControlService getWorkerControlService() {
         if (workerControlService == null) {
             workerControlService = new WorkerControlService(
-                    getWorkerManager(),
+                    getWorkerReportRuntime(),
+                    getWorkerResourceRuntime(),
+                    getWorkerDispatchGateRuntime(),
                     workerCommandLifecycleOwner,
                     workerStateProjectionOwner,
                     workerDispatchAvailabilityPolicy,

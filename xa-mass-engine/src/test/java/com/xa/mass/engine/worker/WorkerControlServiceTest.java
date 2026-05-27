@@ -46,7 +46,7 @@ public class WorkerControlServiceTest {
         WorkerCommandLifecycleOwner commandOwner = new WorkerCommandLifecycleOwner();
         WorkerStateProjectionOwner stateOwner = new WorkerStateProjectionOwner();
         RecordingEventSink sink = new RecordingEventSink();
-        WorkerControlService service = new WorkerControlService(
+        WorkerControlService service = workerControlService(
                 workerManager,
                 commandOwner,
                 stateOwner,
@@ -103,7 +103,7 @@ public class WorkerControlServiceTest {
         worker.setWorkerId("worker-2");
         worker.setWorkerGroupId("group-2");
         registerWorker(workerManager, worker);
-        WorkerControlService service = new WorkerControlService(
+        WorkerControlService service = workerControlService(
                 workerManager,
                 new WorkerCommandLifecycleOwner(),
                 new WorkerStateProjectionOwner(),
@@ -148,7 +148,7 @@ public class WorkerControlServiceTest {
         worker.setSupportedProjects(List.of("demoApp"));
         worker.setSupportedEventCodes(List.of("crawler.fetch"));
         registerWorker(workerManager, worker);
-        WorkerControlService service = new WorkerControlService(
+        WorkerControlService service = workerControlService(
                 workerManager,
                 new WorkerCommandLifecycleOwner(),
                 new WorkerStateProjectionOwner(),
@@ -214,7 +214,7 @@ public class WorkerControlServiceTest {
                 );
             }
         };
-        WorkerControlService service = new WorkerControlService(
+        WorkerControlService service = workerControlService(
                 workerManager,
                 new WorkerCommandLifecycleOwner(),
                 new WorkerStateProjectionOwner(),
@@ -239,7 +239,7 @@ public class WorkerControlServiceTest {
 
     @Test
     void unknownCommandTypeIsRejectedAtWorkerControlBoundary() {
-        WorkerControlService service = new WorkerControlService(
+        WorkerControlService service = workerControlService(
                 new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry()),
                 new WorkerCommandLifecycleOwner(),
                 new WorkerStateProjectionOwner(),
@@ -259,7 +259,7 @@ public class WorkerControlServiceTest {
         worker.setWorkerId("worker-expiry");
         worker.setWorkerGroupId("group-expiry");
         registerWorker(workerManager, worker);
-        WorkerControlService service = new WorkerControlService(
+        WorkerControlService service = workerControlService(
                 workerManager,
                 new WorkerCommandLifecycleOwner(),
                 new WorkerStateProjectionOwner(),
@@ -288,7 +288,7 @@ public class WorkerControlServiceTest {
     @Test
     void requestCommandCanHandoffToConfiguredDeliveryCoordinatorAfterRecordingTruth() {
         WorkerCommandLifecycleOwner commandOwner = new WorkerCommandLifecycleOwner();
-        WorkerControlService service = new WorkerControlService(
+        WorkerControlService service = workerControlService(
                 new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry()),
                 commandOwner,
                 new WorkerStateProjectionOwner(),
@@ -320,7 +320,7 @@ public class WorkerControlServiceTest {
         worker.setWorkerGroupId("group-realtime-drain");
         registerWorker(workerManager, worker);
         WorkerCommandLifecycleOwner commandOwner = new WorkerCommandLifecycleOwner();
-        WorkerControlService service = new WorkerControlService(
+        WorkerControlService service = workerControlService(
                 workerManager,
                 commandOwner,
                 new WorkerStateProjectionOwner(),
@@ -343,7 +343,7 @@ public class WorkerControlServiceTest {
     @Test
     void maintenanceRetryAttemptsIndexedRequestedCommandsUntilDeliveryAccepted() {
         WorkerCommandLifecycleOwner commandOwner = new WorkerCommandLifecycleOwner();
-        WorkerControlService service = new WorkerControlService(
+        WorkerControlService service = workerControlService(
                 new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry()),
                 commandOwner,
                 new WorkerStateProjectionOwner(),
@@ -375,7 +375,7 @@ public class WorkerControlServiceTest {
     @Test
     void maintenanceRetryClosesRequestedCommandAfterConfiguredMaxAttempts() {
         WorkerCommandLifecycleOwner commandOwner = new WorkerCommandLifecycleOwner();
-        WorkerControlService service = new WorkerControlService(
+        WorkerControlService service = workerControlService(
                 new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry()),
                 commandOwner,
                 new WorkerStateProjectionOwner(),
@@ -407,7 +407,7 @@ public class WorkerControlServiceTest {
         worker.setWorkerId("worker-command-poll");
         worker.setWorkerGroupId("group-command-poll");
         registerWorker(workerManager, worker);
-        WorkerControlService service = new WorkerControlService(
+        WorkerControlService service = workerControlService(
                 workerManager,
                 new WorkerCommandLifecycleOwner(),
                 new WorkerStateProjectionOwner(),
@@ -423,5 +423,33 @@ public class WorkerControlServiceTest {
         assertEquals(1, commands.size());
         assertEquals(WorkerCommandStatus.DELIVERY_ACCEPTED, commands.getFirst().status());
         assertFalse(workerManager.isWorkerDispatchEnabled(worker));
+    }
+
+    private static WorkerControlService workerControlService(WorkerManager workerManager,
+                                                             WorkerCommandLifecycleOwner commandOwner,
+                                                             WorkerStateProjectionOwner stateOwner,
+                                                             TraceEventLogger traceEventLogger) {
+        return new WorkerControlService(
+                workerManager,
+                workerManager,
+                workerManager,
+                commandOwner,
+                stateOwner,
+                traceEventLogger);
+    }
+
+    private static WorkerControlService workerControlService(WorkerManager workerManager,
+                                                             WorkerCommandLifecycleOwner commandOwner,
+                                                             WorkerStateProjectionOwner stateOwner,
+                                                             WorkerDispatchAvailabilityPolicy policy,
+                                                             TraceEventLogger traceEventLogger) {
+        return new WorkerControlService(
+                workerManager,
+                workerManager,
+                workerManager,
+                commandOwner,
+                stateOwner,
+                policy,
+                traceEventLogger);
     }
 }

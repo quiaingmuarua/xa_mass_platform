@@ -33,8 +33,11 @@ public class WorkerControlOwnerSliceTest {
         WorkerStateProjectionOwner stateOwner = new WorkerStateProjectionOwner();
         RecordingEventSink sink = new RecordingEventSink();
         TraceEventLogger trace = new TraceEventLogger(sink);
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
         WorkerControlService workerControlService = new WorkerControlService(
-                new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry()),
+                workerManager,
+                workerManager,
+                workerManager,
                 commandOwner,
                 stateOwner,
                 trace);

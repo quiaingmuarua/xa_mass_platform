@@ -1616,8 +1616,16 @@ class EngineSchedulingCoreArchitectureGuardTest {
         if (!policySource.contains("WorkerDispatchGateRuntime")) {
             violations.add("dispatch availability policy does not consume WorkerDispatchGateRuntime");
         }
-        if (Pattern.compile("private\\s+final\\s+WorkerManager\\b").matcher(controlServiceSource).find()) {
-            violations.add("WorkerControlService stores full WorkerManager instead of narrow runtime contracts");
+        if (Pattern.compile("\\bWorkerManager\\b").matcher(controlServiceSource).find()) {
+            violations.add("WorkerControlService depends on full WorkerManager instead of narrow runtime contracts");
+        }
+        for (String requiredContract : List.of(
+                "WorkerReportRuntime",
+                "WorkerResourceRuntime",
+                "WorkerDispatchGateRuntime")) {
+            if (!controlServiceSource.contains(requiredContract)) {
+                violations.add("WorkerControlService does not consume " + requiredContract);
+            }
         }
 
         assertTrue(violations.isEmpty(),

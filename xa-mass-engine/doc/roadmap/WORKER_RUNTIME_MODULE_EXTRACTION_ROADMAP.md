@@ -658,6 +658,12 @@ Progress:
 - `RuleBasedTaskWorkerMatchingStrategy` now exposes only runtime-contract
   constructors for candidate acquisition, admission, and scheduling-view reads;
   the previous `WorkerManager` convenience constructor path has been removed.
+- `WorkerControlService` now consumes `WorkerReportRuntime`,
+  `WorkerResourceRuntime`, and `WorkerDispatchGateRuntime` instead of accepting
+  the full `WorkerManager` assembly surface. Capability reports, worker state
+  dispatch-gate effects, and resource reads remain behaviorally unchanged, but
+  worker-control ingress no longer has a constructor path back to the god
+  object.
 - Engine still assembles those owners through `WorkerManager`; match strategy
   and event handler parsing residue stays in engine for later slices.
 - SDK shell runtime bridge now accepts `WorkerResourceRuntime` for legacy

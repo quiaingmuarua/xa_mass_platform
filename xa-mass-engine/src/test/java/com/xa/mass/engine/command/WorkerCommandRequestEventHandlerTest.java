@@ -99,8 +99,11 @@ public class WorkerCommandRequestEventHandlerTest {
 
     private static WorkerControlService workerControlService(WorkerCommandLifecycleOwner owner,
                                                              TraceEventLogger traceEventLogger) {
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
         return new WorkerControlService(
-                new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry()),
+                workerManager,
+                workerManager,
+                workerManager,
                 owner,
                 new WorkerStateProjectionOwner(),
                 traceEventLogger);

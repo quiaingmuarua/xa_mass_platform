@@ -52,27 +52,13 @@ public final class WorkerControlService {
     private volatile WorkerCommandDeliveryCoordinator commandDeliveryCoordinator;
     private volatile Executor commandDeliveryExecutor = Runnable::run;
 
-    public WorkerControlService(WorkerManager workerManager,
+    public WorkerControlService(WorkerReportRuntime workerReportRuntime,
+                                WorkerResourceRuntime workerResourceRuntime,
+                                WorkerDispatchGateRuntime dispatchGateRuntime,
                                 WorkerCommandLifecycleOwner commandLifecycleOwner,
                                 WorkerStateProjectionOwner stateProjectionOwner,
                                 WorkerDispatchAvailabilityPolicy dispatchAvailabilityPolicy,
                                 TraceEventLogger traceEventLogger) {
-        this(workerManager,
-                workerManager,
-                workerManager,
-                commandLifecycleOwner,
-                stateProjectionOwner,
-                dispatchAvailabilityPolicy,
-                traceEventLogger);
-    }
-
-    WorkerControlService(WorkerReportRuntime workerReportRuntime,
-                         WorkerResourceRuntime workerResourceRuntime,
-                         WorkerDispatchGateRuntime dispatchGateRuntime,
-                         WorkerCommandLifecycleOwner commandLifecycleOwner,
-                         WorkerStateProjectionOwner stateProjectionOwner,
-                         WorkerDispatchAvailabilityPolicy dispatchAvailabilityPolicy,
-                         TraceEventLogger traceEventLogger) {
         this.workerReportRuntime = Objects.requireNonNull(workerReportRuntime, "workerReportRuntime");
         this.workerResourceRuntime = Objects.requireNonNull(workerResourceRuntime, "workerResourceRuntime");
         this.dispatchGateRuntime = Objects.requireNonNull(dispatchGateRuntime, "dispatchGateRuntime");
@@ -84,11 +70,15 @@ public final class WorkerControlService {
         this.traceEventLogger = traceEventLogger != null ? traceEventLogger : TraceEventLogger.noop();
     }
 
-    public WorkerControlService(WorkerManager workerManager,
+    public WorkerControlService(WorkerReportRuntime workerReportRuntime,
+                                WorkerResourceRuntime workerResourceRuntime,
+                                WorkerDispatchGateRuntime dispatchGateRuntime,
                                 WorkerCommandLifecycleOwner commandLifecycleOwner,
                                 WorkerStateProjectionOwner stateProjectionOwner,
                                 TraceEventLogger traceEventLogger) {
-        this(workerManager,
+        this(workerReportRuntime,
+                workerResourceRuntime,
+                dispatchGateRuntime,
                 commandLifecycleOwner,
                 stateProjectionOwner,
                 new DefaultWorkerDispatchAvailabilityPolicy(),
