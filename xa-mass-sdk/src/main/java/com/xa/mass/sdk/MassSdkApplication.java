@@ -457,7 +457,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     @Override
     public WorkerCapabilityReportSnapshot reportWorkerCapability(WorkerCapabilityReportRequest request) {
         Objects.requireNonNull(request, "request");
-        WorkerCapabilityReportResult result = requireStartedWorkerControlService()
+        WorkerCapabilityReportResult result = requireStartedWorkerControlRuntime()
                 .applyWorkerCapabilityReport(WorkerCapabilityReport.builder(
                                 request.workerId(),
                                 request.capabilityVersion())
@@ -478,7 +478,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     @Override
     public WorkerStateReportSnapshot reportWorkerState(WorkerStateReportRequest request) {
         Objects.requireNonNull(request, "request");
-        WorkerStateProjectionResult result = requireStartedWorkerControlService()
+        WorkerStateProjectionResult result = requireStartedWorkerControlRuntime()
                 .applyWorkerStateReport(WorkerStateReport.builder(
                                 request.workerId(),
                                 request.stateVersion(),
@@ -500,14 +500,14 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     @Override
     public WorkerStateProjectionSnapshot getWorkerStateProjection(String workerId) {
-        return toWorkerStateProjectionSnapshot(requireStartedWorkerControlService()
+        return toWorkerStateProjectionSnapshot(requireStartedWorkerControlRuntime()
                 .workerStateProjection(requireWorkerId(workerId))
                 .orElse(null));
     }
 
     @Override
     public List<WorkerStateProjectionSnapshot> listWorkerStateProjections() {
-        return requireStartedWorkerControlService().workerStateProjections().stream()
+        return requireStartedWorkerControlRuntime().workerStateProjections().stream()
                 .map(this::toWorkerStateProjectionSnapshot)
                 .toList();
     }
@@ -515,7 +515,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     @Override
     public WorkerCommandResultSnapshot requestWorkerCommand(WorkerCommandSubmitRequest request) {
         Objects.requireNonNull(request, "request");
-        WorkerCommandLifecycleResult result = requireStartedWorkerControlService()
+        WorkerCommandLifecycleResult result = requireStartedWorkerControlRuntime()
                 .requestWorkerCommand(WorkerCommandRequest.builder(
                                 request.commandId(),
                                 request.workerId(),
@@ -532,7 +532,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     @Override
     public WorkerCommandResultSnapshot acknowledgeWorkerCommand(WorkerCommandAcknowledgementRequest request) {
         Objects.requireNonNull(request, "request");
-        WorkerCommandLifecycleResult result = requireStartedWorkerControlService()
+        WorkerCommandLifecycleResult result = requireStartedWorkerControlRuntime()
                 .applyWorkerCommandAcknowledgement(new WorkerCommandAcknowledgement(
                         request.commandId(),
                         parseWorkerCommandStatus(request.status()),
@@ -543,7 +543,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     @Override
     public List<WorkerCommandSnapshot> pullWorkerCommands(String workerId, int maxCommands) {
-        return requireStartedWorkerControlService()
+        return requireStartedWorkerControlRuntime()
                 .claimPendingWorkerCommands(requireWorkerId(workerId), Math.max(1, maxCommands))
                 .stream()
                 .map(this::toWorkerCommandSnapshot)
@@ -552,14 +552,14 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     @Override
     public WorkerCommandSnapshot getWorkerCommand(String commandId) {
-        return toWorkerCommandSnapshot(requireStartedWorkerControlService()
+        return toWorkerCommandSnapshot(requireStartedWorkerControlRuntime()
                 .workerCommand(requireCommandId(commandId))
                 .orElse(null));
     }
 
     @Override
     public List<WorkerCommandSnapshot> listWorkerCommandsForWorker(String workerId) {
-        return requireStartedWorkerControlService()
+        return requireStartedWorkerControlRuntime()
                 .workerCommandsForWorker(requireWorkerId(workerId))
                 .stream()
                 .map(this::toWorkerCommandSnapshot)
@@ -1670,12 +1670,12 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return ruleStorage;
     }
 
-    private WorkerControlRuntime requireStartedWorkerControlService() {
-        WorkerControlRuntime service = requireStartedEngine().getConfig().getWorkerControlRuntime();
-        if (service == null) {
-            throw new IllegalStateException("Worker control service is unavailable for this SDK application");
+    private WorkerControlRuntime requireStartedWorkerControlRuntime() {
+        WorkerControlRuntime runtime = requireStartedEngine().getConfig().getWorkerControlRuntime();
+        if (runtime == null) {
+            throw new IllegalStateException("Worker control runtime is unavailable for this SDK application");
         }
-        return service;
+        return runtime;
     }
 
     private TaskStageEvidenceService requireStartedTaskStageEvidenceService() {

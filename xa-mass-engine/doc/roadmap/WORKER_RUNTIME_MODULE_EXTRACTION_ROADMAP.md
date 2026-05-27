@@ -671,6 +671,9 @@ Progress:
 - SDK and lifecycle callers now consume the engine-root `WorkerControlRuntime`
   surface; `WorkerControlService` remains the engine worker implementation
   behind `EngineConfig` assembly.
+- SDK application helper naming now refers to worker-control runtime instead of
+  worker-control service, keeping the SDK shell aligned with the public runtime
+  surface.
 - Worker command/capability/state event handlers now consume
   `WorkerControlRuntime` instead of the concrete `WorkerControlService`, so
   event parsing ingress no longer couples to worker-control implementation

@@ -1779,6 +1779,9 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 || Pattern.compile("\\bWorkerControlService\\b").matcher(sdkSource).find()) {
             violations.add(sdkApplicationPath + " imports WorkerControlService instead of WorkerControlRuntime");
         }
+        if (sdkSource.contains("requireStartedWorkerControlService")) {
+            violations.add(sdkApplicationPath + " names WorkerControlRuntime access as service");
+        }
         if (diagnosticsSource.contains("getWorkerManager()")) {
             violations.add(diagnosticsPath + " calls EngineConfig.getWorkerManager()");
         }
