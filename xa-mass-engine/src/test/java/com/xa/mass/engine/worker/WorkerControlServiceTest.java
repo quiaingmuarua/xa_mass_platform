@@ -9,6 +9,7 @@ import com.xa.mass.engine.command.WorkerCommandDeliveryResult;
 import com.xa.mass.engine.command.WorkerCommandLifecycleOwner;
 import com.xa.mass.engine.command.WorkerCommandRequest;
 import com.xa.mass.engine.command.WorkerCommandStatus;
+import com.xa.mass.engine.control.WorkerControlService;
 import com.xa.mass.engine.control.WorkerDispatchAvailabilityPolicy;
 import com.xa.mass.engine.testutil.RecordingEventSink;
 import com.xa.mass.engine.util.TraceEventLogger;

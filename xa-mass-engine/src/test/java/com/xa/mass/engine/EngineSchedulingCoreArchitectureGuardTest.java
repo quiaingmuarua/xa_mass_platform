@@ -1710,7 +1710,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         Path defaultPolicyPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/control/DefaultWorkerDispatchAvailabilityPolicy.java");
         Path controlServicePath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/worker/WorkerControlService.java");
+                "com/xa/mass/engine/control/WorkerControlService.java");
         String policySource = Files.readString(policyPath, StandardCharsets.UTF_8)
                 + "\n"
                 + Files.readString(defaultPolicyPath, StandardCharsets.UTF_8);

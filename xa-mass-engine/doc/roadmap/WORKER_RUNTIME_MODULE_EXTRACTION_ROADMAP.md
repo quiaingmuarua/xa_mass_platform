@@ -681,9 +681,9 @@ Progress:
 - Capability/state report event parsers now live in the engine control ingress
   package rather than `engine.worker`; the worker package keeps only assembly
   residue.
-- Worker-control dispatch availability policy also lives in engine control
-  code; `engine.worker` now contains only `WorkerManager` assembly and
-  `WorkerControlService` worker-control implementation residue.
+- Worker-control service and dispatch availability policy now live in engine
+  control code; `engine.worker` now contains only `WorkerManager` assembly
+  residue.
 - `MassEngine` now wires resource-side availability wakeups through
   `WorkerAvailabilityWakeupRuntime` instead of importing `WorkerManager`
   directly. This keeps assignment retry / ready-scan wakeup wiring as lifecycle

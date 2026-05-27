@@ -49,8 +49,9 @@ bounded worker state report projection. It also owns worker admission,
 occupancy, exclusive lease operations, worker capability report application,
 registry snapshot composition, Stage-1 candidate indexing/source orchestration,
 and task-local warm candidate hints over `WorkerRegistry`. Engine still
-assembles these owners through `WorkerManager` / `WorkerControlService`, but
-those owner implementations are no longer engine-local source.
+assembles these owners through `WorkerManager`, while worker-control ingress
+is implemented by engine control code. Those owner implementations are no
+longer engine-local source.
 
 Task selector, candidate batch shape, candidate rows, Worker resource row,
 WorkerGroup capability read view, scheduling-view contract, admission contract, worker load, resource
@@ -81,7 +82,7 @@ worker-originated capability report projection is owned by `WorkerReportOwner`.
 `WorkerManager` still implements the runtime contracts and delegates to these
 owners while module movement is pending, but it is no longer exposed through
 public SDK/starter configuration.
-`WorkerControlService` implements the narrow
+`engine.control.WorkerControlService` implements the narrow
 external `WorkerControlRuntime` caller surface and consumes
 `WorkerReportRuntime`, `WorkerResourceRuntime`, `WorkerDispatchGateRuntime`,
 and `WorkerStateProjectionRuntime` instead of accepting the full
@@ -171,7 +172,7 @@ engine assignment
 
 worker control
   -> WorkerControlRuntime
-  -> WorkerControlService implementation
+  -> engine.control.WorkerControlService implementation
   -> WorkerReportRuntime.applyWorkerCapabilityReport
   -> WorkerReportOwner
   -> WorkerStateProjectionRuntime.applyReport

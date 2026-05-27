@@ -1,4 +1,4 @@
-package com.xa.mass.engine.worker;
+package com.xa.mass.engine.control;
 
 import com.xa.mass.engine.command.WorkerCommandAcknowledgement;
 import com.xa.mass.engine.command.WorkerCommandDeliveryCoordinator;
@@ -10,8 +10,6 @@ import com.xa.mass.engine.command.WorkerCommandRecord;
 import com.xa.mass.engine.command.WorkerCommandRequest;
 import com.xa.mass.engine.command.WorkerCommandStatus;
 import com.xa.mass.engine.WorkerControlRuntime;
-import com.xa.mass.engine.control.DefaultWorkerDispatchAvailabilityPolicy;
-import com.xa.mass.engine.control.WorkerDispatchAvailabilityPolicy;
 import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.runtime.worker.WorkerCapabilityReport;
 import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;

@@ -8,7 +8,7 @@ import com.xa.mass.command.event.InMemoryMassEventRuntime;
 import com.xa.mass.engine.event.KernelEventHandlerRegistry;
 import com.xa.mass.engine.testutil.RecordingEventSink;
 import com.xa.mass.engine.util.TraceEventLogger;
-import com.xa.mass.engine.worker.WorkerControlService;
+import com.xa.mass.engine.control.WorkerControlService;
 import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.worker.runtime.WorkerStateProjectionOwner;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
