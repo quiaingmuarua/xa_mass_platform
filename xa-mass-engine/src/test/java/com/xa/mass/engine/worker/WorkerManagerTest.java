@@ -934,37 +934,20 @@ public class WorkerManagerTest {
     // ---- worker model status vs transport reachability ----
 
     @Test
-    void updateOnlineStatusTracksWorkerModelAvailabilityOnly() {
-        manager.addWorker(worker("w8", "us"));
-        manager.updateOnlineStatus("w8", false);
-        assertFalse(manager.isWorkerOnline("w8"));
-        assertEquals(WorkerStatus.OFFLINE, manager.getWorker("w8").getStatus());
-
-        manager.updateOnlineStatus("w8", true);
-        assertTrue(manager.isWorkerOnline("w8"));
-        assertEquals(WorkerStatus.ONLINE, manager.getWorker("w8").getStatus());
-
-        manager.updateOnlineStatus("w8", false);
-        assertFalse(manager.isWorkerOnline("w8"));
-        assertEquals(WorkerStatus.OFFLINE, manager.getWorker("w8").getStatus());
-    }
-
-    @Test
     void workerStatusEventListenerOnlyRefreshesHeartbeatAndLeavesModelStatusUntouched() {
         AtomicInteger wakeups = new AtomicInteger();
         WorkerStatusEventListener listener =
                 new WorkerStatusEventListener(manager, wakeups::incrementAndGet);
-        manager.addWorker(worker("w9", "us"));
-        manager.updateOnlineStatus("w9", false);
+        Worker worker = worker("w9", "us");
+        worker.setStatus(WorkerStatus.OFFLINE);
+        manager.addWorker(worker);
 
         listener.onWorkerOnline(new WorkerOnlineEvent("w9", "connected", null));
-        assertFalse(manager.isWorkerOnline("w9"));
         assertNotNull(manager.getWorker("w9").getLastHeartbeat());
         assertEquals(WorkerStatus.OFFLINE, manager.getWorker("w9").getStatus());
         assertEquals(1, wakeups.get());
 
         listener.onWorkerOffline(new WorkerOfflineEvent("w9", "disconnected", null));
-        assertFalse(manager.isWorkerOnline("w9"));
         assertEquals(WorkerStatus.OFFLINE, manager.getWorker("w9").getStatus());
         assertEquals(1, wakeups.get());
     }
@@ -974,12 +957,12 @@ public class WorkerManagerTest {
         AtomicInteger wakeups = new AtomicInteger();
         WorkerStatusEventListener listener =
                 new WorkerStatusEventListener(manager, wakeups::incrementAndGet);
-        manager.addWorker(worker("w10", "us"));
-        manager.updateOnlineStatus("w10", false);
+        Worker worker = worker("w10", "us");
+        worker.setStatus(WorkerStatus.OFFLINE);
+        manager.addWorker(worker);
 
         listener.onWorkerHeartbeat(new WorkerHeartbeatEvent("w10", "heartbeat", null));
 
-        assertFalse(manager.isWorkerOnline("w10"));
         assertNotNull(manager.getWorker("w10").getLastHeartbeat());
         assertEquals(WorkerStatus.OFFLINE, manager.getWorker("w10").getStatus());
         assertEquals(0, wakeups.get());
@@ -1013,7 +996,7 @@ public class WorkerManagerTest {
         assertEquals(WorkerReachabilityState.UNKNOWN, reachabilityAwareManager.getWorkerReachability("missing"));
 
         // Worker model status can still say ONLINE while transport reachability has already converged to STALE.
-        assertTrue(reachabilityAwareManager.isWorkerOnline("w-stale"));
+        assertEquals(WorkerStatus.ONLINE, reachabilityAwareManager.getWorker("w-stale").getStatus());
         assertTrue(reachabilityAwareManager.isWorkerDispatchEnabled(staleModelWorker.getWorkerId()));
     }
 

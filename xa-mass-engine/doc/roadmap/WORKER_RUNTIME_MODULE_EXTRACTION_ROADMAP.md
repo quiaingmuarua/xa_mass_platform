@@ -703,6 +703,10 @@ Progress:
 - The unused `getExclusiveLeaseWorkerIds()` forwarding helper has been deleted
   from `WorkerAdmissionRuntime` and the engine assembly surface; lease
   diagnostics remain owned by the worker admission owner.
+- The legacy `WorkerManager.updateOnlineStatus` / `isWorkerOnline` model-status
+  helpers have been deleted from the engine assembly surface. Transport
+  presence remains the online source for SDK/server queries; the legacy worker
+  event listener only refreshes heartbeat evidence through `WorkerResourceRuntime`.
 - Engine still assembles those owners through `WorkerManager`; match strategy
   and event handler parsing residue stays in engine for later slices.
 - SDK shell runtime bridge now accepts `WorkerResourceRuntime` for legacy
