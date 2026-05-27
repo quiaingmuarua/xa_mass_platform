@@ -1302,8 +1302,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
         assertTrue(violations.isEmpty(),
                 "WorkerCandidateRuntime is the strategy-facing candidate acquisition contract. "
-                        + "Keep diagnostics and warm hint writes on WorkerManager/owner surfaces until "
-                        + "a separate runtime write contract exists:\n"
+                        + "Keep diagnostics and warm hint writes off candidate acquisition; warm hints "
+                        + "belong on WorkerWarmHintRuntime:\n"
                         + String.join("\n", violations));
     }
 
@@ -1314,6 +1314,10 @@ class EngineSchedulingCoreArchitectureGuardTest {
         String source = Files.readString(strategyPath, StandardCharsets.UTF_8);
 
         List<String> violations = new ArrayList<>();
+        if (source.contains("com.xa.mass.engine.worker.WorkerManager")
+                || Pattern.compile("\\bWorkerManager\\b").matcher(source).find()) {
+            violations.add(strategyPath + " depends on full WorkerManager");
+        }
         if (source.contains("candidateRuntime instanceof WorkerSchedulingViewRuntime")) {
             violations.add(strategyPath + " infers scheduling-view runtime from candidate runtime");
         }
@@ -1323,8 +1327,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
         assertTrue(violations.isEmpty(),
                 "Candidate acquisition and scheduling-view reads are separate worker runtime surfaces. "
-                        + "Production may assemble both through WorkerManager, but the strategy must not "
-                        + "make one contract imply the other:\n"
+                        + "The strategy must consume explicit runtime contracts and must not depend on "
+                        + "the WorkerManager assembly surface:\n"
                         + String.join("\n", violations));
     }
 

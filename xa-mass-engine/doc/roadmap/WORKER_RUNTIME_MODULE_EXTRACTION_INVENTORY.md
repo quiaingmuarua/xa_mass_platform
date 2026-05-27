@@ -162,9 +162,10 @@ worker relationship resources
 
 `RuleBasedTaskWorkerMatchingStrategy` now receives candidate acquisition,
 admission, and scheduling-view runtimes as explicit constructor dependencies.
-Production assembly still passes `WorkerManager` for all three while the
-implementation remains inside engine, but candidate acquisition no longer
-implicitly requires the same object to also implement scheduling-view reads.
+Production assembly passes explicit runtime contracts from `EngineConfig`; the
+strategy no longer has a `WorkerManager` constructor path and candidate
+acquisition no longer implicitly requires the same object to also implement
+scheduling-view reads.
 
 ## Disposition Notes
 
@@ -248,7 +249,7 @@ Current put path:
 ```text
 TaskWorkerAssignListener
   -> recordWarmCandidatesForBoundWorkers(...)
-  -> WorkerManager.recordWarmCandidate(selector, workerCandidateRow)
+  -> WorkerWarmHintRuntime.recordWarmCandidate(selector, workerCandidateRow)
   -> TaskCandidateWarmPool in xa-mass-worker-runtime
 ```
 

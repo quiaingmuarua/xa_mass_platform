@@ -45,7 +45,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
-                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+                strategy(ruleManager, workerManager, recordService);
 
         ruleManager.addDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
@@ -86,7 +86,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
-                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+                strategy(ruleManager, workerManager, recordService);
 
         ruleManager.addDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
@@ -130,7 +130,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
-                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+                strategy(ruleManager, workerManager, recordService);
 
         ruleManager.addDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
@@ -172,7 +172,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
-                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+                strategy(ruleManager, workerManager, recordService);
 
         ruleManager.addDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
@@ -245,7 +245,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
-                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+                strategy(ruleManager, workerManager, recordService);
 
         ruleManager.addDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
@@ -283,7 +283,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
-                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+                strategy(ruleManager, workerManager, recordService);
 
         ruleManager.addDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
@@ -313,7 +313,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
-                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+                strategy(ruleManager, workerManager, recordService);
 
         ruleManager.addDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
@@ -346,7 +346,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
-                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+                strategy(ruleManager, workerManager, recordService);
 
         ruleManager.addDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
@@ -385,7 +385,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
-                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+                strategy(ruleManager, workerManager, recordService);
 
         ruleManager.addDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
@@ -426,7 +426,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
-                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+                strategy(ruleManager, workerManager, recordService);
 
         ruleManager.addDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
@@ -463,7 +463,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
-                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+                strategy(ruleManager, workerManager, recordService);
 
         ruleManager.addDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
@@ -516,7 +516,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
-                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+                strategy(ruleManager, workerManager, recordService);
 
         ruleManager.addDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
@@ -557,7 +557,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
-                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+                strategy(ruleManager, workerManager, recordService);
 
         ruleManager.addDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
@@ -598,7 +598,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
-                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+                strategy(ruleManager, workerManager, recordService);
 
         ruleManager.addDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
@@ -637,7 +637,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
-                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+                strategy(ruleManager, workerManager, recordService);
 
         ruleManager.addDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
@@ -671,7 +671,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
-                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+                strategy(ruleManager, workerManager, recordService);
 
         ruleManager.addDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
@@ -716,7 +716,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
-                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+                strategy(ruleManager, workerManager, recordService);
 
         ruleManager.addDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
@@ -748,13 +748,26 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
-                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+                strategy(ruleManager, workerManager, recordService);
 
         List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(backgroundTask("task-sampled"), 1);
 
         assertEquals(1, matched.size());
         assertTrue(workerManager.lastMaxCandidateCount > 1);
         assertTrue(workerManager.lastMaxCandidateCount >= RuleBasedTaskWorkerMatchingStrategy.DEFAULT_STAGE_ONE_SAMPLE_MIN);
+    }
+
+    private RuleBasedTaskWorkerMatchingStrategy strategy(RuleManager<Map<String, Object>> ruleManager,
+                                                         WorkerManager workerManager,
+                                                         AssignmentRecordService recordService) {
+        return new RuleBasedTaskWorkerMatchingStrategy(
+                ruleManager,
+                workerManager,
+                workerManager,
+                workerManager,
+                recordService,
+                com.xa.mass.engine.util.TraceEventLogger.noop()
+        );
     }
 
     private RuleDefinition rule(String id, String content) {

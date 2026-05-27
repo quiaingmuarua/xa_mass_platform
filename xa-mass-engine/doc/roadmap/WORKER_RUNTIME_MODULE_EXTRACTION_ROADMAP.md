@@ -655,6 +655,9 @@ Progress:
   task occupancy and `WorkerWarmHintRuntime` for useful-candidate hint writes,
   instead of keeping a direct `WorkerManager` dependency in
   `TaskWorkerAssignListener`.
+- `RuleBasedTaskWorkerMatchingStrategy` now exposes only runtime-contract
+  constructors for candidate acquisition, admission, and scheduling-view reads;
+  the previous `WorkerManager` convenience constructor path has been removed.
 - Engine still assembles those owners through `WorkerManager`; match strategy
   and event handler parsing residue stays in engine for later slices.
 - SDK shell runtime bridge now accepts `WorkerResourceRuntime` for legacy

@@ -3,7 +3,6 @@ package com.xa.mass.engine.strategy;
 import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
-import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.runtime.worker.WorkerAdmissionRuntime;
 import com.xa.mass.runtime.worker.WorkerCandidateBatch;
 import com.xa.mass.runtime.worker.WorkerCandidateRow;
@@ -51,49 +50,6 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
     private final WorkerCandidateRanker candidateRanker;
     private final WorkerDispatchResourcePolicy resourcePolicy;
     private final WorkerSchedulingCandidateEnumerator candidateEnumerator;
-
-    RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
-                                        WorkerManager workerManager,
-                                        AssignmentDiagnosticRecorder recordService) {
-        this(ruleManager, workerManager, recordService, TraceEventLogger.noop());
-    }
-
-    public RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
-                                               WorkerManager workerManager,
-                                               AssignmentDiagnosticRecorder recordService,
-                                               TraceEventLogger traceEventLogger) {
-        this(ruleManager, workerManager, recordService, traceEventLogger, new DefaultWorkerCandidateRanker());
-    }
-
-    RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
-                                        WorkerManager workerManager,
-                                        AssignmentDiagnosticRecorder recordService,
-                                        TraceEventLogger traceEventLogger,
-                                        WorkerCandidateRanker candidateRanker) {
-        this(ruleManager, workerManager, recordService, traceEventLogger, candidateRanker,
-                new DefaultWorkerDispatchResourcePolicy());
-    }
-
-    RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
-                                        WorkerManager workerManager,
-                                        AssignmentDiagnosticRecorder recordService,
-                                        TraceEventLogger traceEventLogger,
-                                        WorkerCandidateRanker candidateRanker,
-                                        WorkerDispatchResourcePolicy resourcePolicy) {
-        this(ruleManager, workerManager, recordService, traceEventLogger, candidateRanker,
-                resourcePolicy, null);
-    }
-
-    RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
-                                        WorkerManager workerManager,
-                                        AssignmentDiagnosticRecorder recordService,
-                                        TraceEventLogger traceEventLogger,
-                                        WorkerCandidateRanker candidateRanker,
-                                        WorkerDispatchResourcePolicy resourcePolicy,
-                                        WorkerSchedulingCandidateEnumerator candidateEnumerator) {
-        this(ruleManager, workerManager, workerManager, workerManager, recordService, traceEventLogger,
-                candidateRanker, resourcePolicy, candidateEnumerator);
-    }
 
     public RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
                                                WorkerCandidateRuntime candidateRuntime,
