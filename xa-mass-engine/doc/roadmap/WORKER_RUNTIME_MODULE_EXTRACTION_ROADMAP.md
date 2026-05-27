@@ -728,7 +728,9 @@ Progress:
   EngineConfig keeps WorkerManager as private assembly and exposes only narrow
   worker runtime contracts to callers.
 - Engine still assembles those owners through `WorkerManager`; match strategy
-  and event handler parsing residue stays in engine for later slices.
+  stays in engine for later slices. Worker-control event handlers now parse
+  event payloads against `WorkerControlRuntime`, but the parser classes still
+  live in engine.
 - SDK shell runtime bridge now accepts `WorkerResourceRuntime` for legacy
   runtime event-bus heartbeat refresh instead of full `WorkerManager`; the
   legacy worker-status listener is SDK shell code, not an engine worker owner.

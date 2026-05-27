@@ -305,9 +305,12 @@ Do not make worker runtime depend on `Task`.
 - `WorkerManager` still assembles worker-runtime owners and publishes registry
   snapshots, but no longer owns the resource maps, candidate source, warm pool,
   admission state, or report projection implementations directly.
-- In-memory `WorkerRegistry` implementation is no longer a blocker for M2; the
-  remaining M2 work is shared memory/Redis contract proof and engine import
-  cleanup around slot/index internals.
+- In-memory `WorkerRegistry` implementation is no longer a blocker for M2.
+  Shared memory/Redis registry contract proof has a WRX-D2 command recorded in
+  the roadmap. The remaining module-movement blocker is engine import cleanup
+  around slot/index diagnostics: `WorkerManager` still publishes package-local
+  `WorkerRegistrySnapshot` / `WorkerCandidateIndex` evidence for engine tests
+  while acting as the assembly surface.
 - Command-gate effects remain engine-owned because the default policy consumes
   engine command lifecycle records. Do not move that policy until the command
   owner boundary is extracted or represented through a runtime-neutral command
