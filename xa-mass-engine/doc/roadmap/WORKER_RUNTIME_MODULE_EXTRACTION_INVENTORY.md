@@ -69,7 +69,7 @@ owners while callers converge.
 | Dispatch gate read | `isWorkerDispatchEnabled` | scheduling candidate enumeration, tests | `WorkerSchedulingViewRuntime` | runtime state | Derived from source-scoped gates |
 | Dispatch gate mutation | `disableWorkerDispatch`, `clearWorkerDispatchDisable` | worker state report policy, node-group binding policy, tests | worker runtime dispatch gate owner | runtime state | Source-scoped gate mutation |
 | Wakeup callback | `setDispatchWakeupCallback` | SDK engine assembly | assembly residue | lifecycle wiring | Keep as assembly wiring until owner split decides final home |
-| Admission / occupancy | `reserveWorkerCapacity`, `tryReserveWorkerCapacity`, `confirmWorkerReservation`, `releaseWorkerReservation`, `recordWorkClaimed`, `recordWorkFinal` | match strategy, dispatch binder, resource releaser, result/resource listeners | `WorkerAdmissionOwner` through `WorkerAdmissionRuntime` | runtime state | Structured reserve is the strategy path; boolean reserve remains a compatibility helper |
+| Admission / occupancy | `reserveWorkerCapacity`, `confirmWorkerReservation`, `releaseWorkerReservation`, `recordWorkClaimed`, `recordWorkFinal` | match strategy, dispatch binder, resource releaser, result/resource listeners | `WorkerAdmissionOwner` through `WorkerAdmissionRuntime` | runtime state | Structured reserve is the strategy path; boolean reserve remains a `WorkerManager`-only internal helper |
 | Exclusive lease | `tryAcquireWorkerExclusiveLease`, `releaseWorkerExclusiveLease`, `hasWorkerExclusiveLease`, `getExclusiveLeaseWorkerIds` | match strategy, resource releaser, diagnostics, tests | `WorkerAdmissionOwner` through `WorkerAdmissionRuntime` | runtime state | Rename away from lock vocabulary only when owner move requires it |
 | Load / occupancy read | `getWorkerLoad`, `getActiveWorkerCountForTask` | match strategy, allocation policy caller, tests | `WorkerAdmissionOwner` / scheduling view runtime | runtime state | `WorkerLoadSnapshot` lives in `mass-runtime-api`; runtime load evidence, not control-plane truth |
 
@@ -146,8 +146,9 @@ recordWorkFinal(workerId, taskId)
 
 `reserveWorkerCapacity(workerId, taskId)` is the main strategy-facing path and
 returns the structured `ReserveResult` from the underlying `WorkerRegistry`.
-`tryReserveWorkerCapacity(workerId, taskId)` remains a boolean compatibility
-helper for older internal call sites and tests.
+`tryReserveWorkerCapacity(workerId, taskId)` remains a `WorkerManager` boolean
+helper for older internal call sites and tests, but is not part of the extracted
+`WorkerAdmissionRuntime` contract.
 
 The admission owner internally resolves `groupId` from the current worker slot,
 uses one permit for the current scheduling path, and passes the current clock to

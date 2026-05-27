@@ -9,8 +9,6 @@ public interface WorkerAdmissionRuntime {
 
     ReserveResult reserveWorkerCapacity(String workerId, String taskId);
 
-    boolean tryReserveWorkerCapacity(String workerId, String taskId);
-
     boolean confirmWorkerReservation(String workerId, String taskId);
 
     void releaseWorkerReservation(String workerId, String taskId);
