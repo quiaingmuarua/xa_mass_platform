@@ -1,6 +1,6 @@
 # Production Scheduling Kernel Improvement Notes
 
-Last updated: 2026-05-18
+Last updated: 2026-05-27
 
 Status: future improvement notes, not implementation proof.
 
@@ -32,6 +32,10 @@ Completed convergence that should be treated as current baseline:
   explicit owners
 - worker occupancy, capacity, and dispatch gates are owned by `WorkerRegistry`
   slot state, not by storage locks or live queries inside matching loops
+- worker command delivery is owner-backed through
+  `WorkerCommandLifecycleOwner`, `WorkerCommandDeliveryCoordinator`, polling
+  pull, realtime push, acknowledgement ingress, bounded retry, and command
+  read snapshots
 - event owner surfaces now route through owner-backed services and SDK
   contracts rather than event handlers or concrete owner internals
 - server is a validation shell / SDK adapter; it must not redefine engine
@@ -53,16 +57,14 @@ What already exists:
   `TaskRuntimeMaintenancePort.expireLeasedWork(...)`
 - `LeaseExpireWatchdog` also polls max-runtime task expiry and terminates tasks
   with `MAX_RUNTIME_REACHED`
+- worker-command maintenance expires command deadlines through
+  `WorkerCommandLifecycleOwner`
 
 What is still missing:
 
-- worker command `deadlineEpochMillis` is stored but not actively enforced by a
-  scheduler
-- command states such as `REQUESTED`, `DELIVERY_ACCEPTED`, and
-  `EXECUTION_ACCEPTED` have no timeout policy owner
 - task item stage evidence has timestamps, but no SLA/checkpoint timeout owner
 - there is no common owner vocabulary for time-triggered lifecycle mutation
-  outside the existing task lease watchdog
+  outside the existing task lease watchdog and worker-command maintenance
 
 Future direction:
 
@@ -85,9 +87,10 @@ Boundary rules:
 
 Suggested first slice:
 
-- add command deadline expiry only
-- keep task lease behavior unchanged
-- do not implement command delivery/retry in the same slice
+- define a stage SLA/checkpoint timeout owner without changing task lease or
+  command maintenance behavior
+- add one proof that a time trigger enters the owning lifecycle surface and
+  does not become a query/reporting loop
 
 ### 2. Feedback-Driven Ranking
 
@@ -172,50 +175,7 @@ Suggested first slice:
 - add trace/test evidence for same-lane large-task vs small-task competition
 - then add the first bounded fairness rule, such as aging or deficit quota
 
-### 4. Worker Command Execution Path
-
-Current worker command code has correct lifecycle ownership shape, but the
-execution path is not complete.
-
-What already exists:
-
-- `WorkerCommandLifecycleOwner`
-- `WorkerCommandDeliveryCoordinator`
-- `WorkerCommandDeliveryPort`
-- SDK/server owner-backed command request, acknowledgement, and read surfaces
-
-What is still missing:
-
-- real delivery port implementation
-- automatic request-to-delivery handoff
-- worker-side acknowledgement ingress through runtime/transport
-- delivery retry or unavailable policy
-- command deadline enforcement
-
-Future direction:
-
-```text
-command request
-  -> WorkerCommandLifecycleOwner
-  -> WorkerCommandDeliveryCoordinator
-  -> command delivery port
-  -> worker ack/status ingress
-  -> WorkerCommandLifecycleOwner
-```
-
-Boundary rules:
-
-- command status must not enter task result runtime
-- command delivery must not reuse task-work dispatch as a hidden command path
-- acknowledgement ingress shape is decided by the command lifecycle owner, not
-  by transport convenience
-
-Suggested first slice:
-
-- implement command deadline expiry before delivery retry
-- then add one minimal delivery implementation and ack path
-
-### 5. Worker Registry Contention
+### 4. Worker Registry Contention
 
 `WorkerRegistry` is now the worker occupancy owner. The old `WorkerLoadView`
 global-monitor issue is retired from production wiring; future contention work
@@ -258,9 +218,8 @@ Suggested first slice:
 
 | Priority | Work | Reason |
 | --- | --- | --- |
-| P0 | Time execution kernel baseline | shared prerequisite for command expiry, stage SLA, and active timeout behavior |
+| P0 | Time execution kernel baseline | shared prerequisite for stage SLA and active timeout behavior |
 | P0.5 | `WorkerRegistry` mutation contention | keeps worker admission scalable without adding a second occupancy truth |
-| P1 | Worker command delivery and acknowledgement | turns command lifecycle from owner skeleton into usable control path |
 | P1 | Cross-task fairness owner | prevents same-lane starvation and protects production scheduling correctness |
 | P2 | Feedback-driven ranking | improves dispatch quality after core timeout/fairness mechanics are stable |
 

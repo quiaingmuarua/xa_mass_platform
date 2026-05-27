@@ -2,7 +2,39 @@
 
 Last updated: 2026-05-26
 
-Status: active implementation roadmap.
+Status: archived completed first-slice convergence roadmap. TRS-C1, TRS-C2,
+TRS-M1, TRS-M2, TRS-M3, TRS-M4, TRS-D1, and TRS-D2 landed their first/proof
+slices. Remaining deeper distributed disconnect/reconnect or wakeup-lag work is
+future specialist work, not an active continuation of this roadmap.
+
+## Archive Summary
+
+Completed in this roadmap:
+
+- memory and Redis task-work/result runtimes share the same contract proof
+  baseline for key concurrency and finality behavior
+- Redis visible-final commit removed its method-level JVM monitor and is guarded
+  by cross-client proof
+- delayed promotion and ready-head cleanup moved to small bounded Lua
+  transitions where Redis multi-key atomicity is required
+- task write locks were constrained to lifecycle/progress/audit boundaries, and
+  runtime claim/internal result apply are guarded against broad task locking
+- result-release/refill, duplicate/stale/fault paths, runtime backend metrics,
+  and perf-smoke proof were strengthened for the first slice
+- stale docs around retired dispatch gate / worker lock / `WorkerLoadView`
+  truth were cleaned for the current mainline
+
+Not completed by this roadmap:
+
+- this is not a complete distributed scheduling benchmark suite
+- deeper multi-JVM worker disconnect/reconnect, wakeup-lag, and Redis
+  duplicate-dispatch soak remain specialist proof topics
+- worker-registry Redis contention and worker-slot shape changes belong to
+  `WORKER_SLOT_REGISTRY_ROADMAP.md`, not this archive
+- future stream/pubsub wakeup hints, memory sharding, and repair cleanup are
+  explicitly later topics unless a new roadmap promotes them
+- archived phase text below may include original targets and review questions;
+  verify current behavior from code, tests, and baseline docs
 
 ## Summary
 

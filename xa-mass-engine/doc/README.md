@@ -11,6 +11,8 @@ entry and place detailed current/future owner docs under this directory.
 - `roadmap/`: future or deferred direction that is not current behavior.
 - repo-level `../../doc/archive/xa-mass-engine/`: completed historical plans
   kept for changelog-style reference only.
+  Archived roadmap documents should state completed scope and deferred scope at
+  the top; archive does not imply every related future topic is finished.
 
 ## Current Baselines
 
@@ -23,9 +25,13 @@ entry and place detailed current/future owner docs under this directory.
 
 ## Roadmaps
 
-- [GROUP_SELECTOR_FIRST_SCHEDULING_ROADMAP.md](roadmap/GROUP_SELECTOR_FIRST_SCHEDULING_ROADMAP.md)
+Active or future direction only. Completed convergence records are archived
+below and must not stay in this list.
+
 - [PRODUCTION_SCHEDULING_KERNEL_IMPROVEMENTS.md](roadmap/PRODUCTION_SCHEDULING_KERNEL_IMPROVEMENTS.md)
+- [TASK_CANDIDATE_WARM_POOL_ROADMAP.md](roadmap/TASK_CANDIDATE_WARM_POOL_ROADMAP.md)
 - [TASK_RUNTIME_PROFILE_DESIGN.md](roadmap/TASK_RUNTIME_PROFILE_DESIGN.md)
+- [WORKER_SLOT_REGISTRY_ROADMAP.md](roadmap/WORKER_SLOT_REGISTRY_ROADMAP.md)
 
 ## Historical Archive
 
@@ -40,6 +46,9 @@ entry and place detailed current/future owner docs under this directory.
 - [SYSTEM_EVENT_OWNER_BASELINE.md](../../doc/archive/xa-mass-engine/SYSTEM_EVENT_OWNER_BASELINE.md)
 - [UNIFIED_EVENT_ENVELOPE_ROADMAP.md](../../doc/archive/xa-mass-engine/UNIFIED_EVENT_ENVELOPE_ROADMAP.md)
 - [WORKER_COMMAND_LIFECYCLE_ROADMAP.md](../../doc/archive/xa-mass-engine/WORKER_COMMAND_LIFECYCLE_ROADMAP.md)
+- [GROUP_SELECTOR_FIRST_SCHEDULING_ROADMAP.md](../../doc/archive/xa-mass-engine/GROUP_SELECTOR_FIRST_SCHEDULING_ROADMAP.md)
+- [TASK_RUNTIME_SCHEDULING_LOCK_REDUCTION_ROADMAP.md](../../doc/archive/xa-mass-engine/TASK_RUNTIME_SCHEDULING_LOCK_REDUCTION_ROADMAP.md)
+- [WORKER_COMMAND_DELIVERY_ROADMAP.md](../../doc/archive/xa-mass-engine/WORKER_COMMAND_DELIVERY_ROADMAP.md)
 
 Archived documents are historical context only. Do not use them as proof of
 current implementation behavior; verify against current code, tests, and

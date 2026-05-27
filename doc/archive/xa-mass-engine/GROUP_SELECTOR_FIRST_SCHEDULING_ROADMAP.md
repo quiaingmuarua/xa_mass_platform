@@ -10,7 +10,33 @@ mainline. Remaining references to old event-first terms are historical gap
 markers, archive material, report-ceiling/catalog tests, or runtime/trace
 evidence, not scheduling candidate-source truth.
 
-This document defines the next scheduling-kernel convergence line:
+## Archive Summary
+
+Completed in this roadmap:
+
+- task scheduling candidate source moved to explicit `workerGroupId` /
+  `workerGroupIds`
+- `eventCode` was demoted to business/intake/runtime evidence, not scheduling
+  candidate truth
+- event-to-group resolution exists before scheduling where compatibility with
+  event-oriented intake is still needed
+- group-first candidate source, route bucket sampling, worker-stage filtering,
+  dispatch evidence, and source guards landed for the current mainline
+- old event-first candidate-source branches were removed from the scheduling
+  hot path
+
+Not completed by this roadmap:
+
+- this does not make worker ranking, fairness, warm-pool reuse, or route
+  placement production-optimal
+- this does not remove `eventCode` from task/business semantics, trace, report
+  ceilings, catalog validation, or diagnostics
+- this does not replace later worker-registry, Redis-runtime, or warm-pool
+  scalability work
+- archived text below may describe original gaps and phase plans; use current
+  code and baseline docs as implementation truth
+
+This document defined the scheduling-kernel convergence line:
 
 ```text
 Task must not find workers through eventCode.

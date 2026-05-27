@@ -1,8 +1,35 @@
 # Worker Command Delivery Roadmap
 
-Status: implementation started; WCD-0 through WCD-6 first slice is implemented.
-WCD-7 read-surface slice is implemented for SDK/server command snapshots; no
-frontend console work has been added.
+Status: archived completed mainline roadmap. WCD-0 through WCD-6 first slice
+and WCD-7 read-surface slice are implemented for SDK/server command snapshots.
+No frontend console work has been added.
+
+## Archive Summary
+
+Completed in this roadmap:
+
+- worker-command request/status truth is owned by
+  `WorkerCommandLifecycleOwner`
+- automatic delivery handoff goes through `WorkerCommandDeliveryCoordinator`
+  and `WorkerCommandDeliveryPort`
+- polling workers can pull commands, realtime workers can receive command
+  frames, and acknowledgements return through worker-control operations
+- first-slice `DRAIN` / `PING` catalog admission, deadline expiry, bounded
+  retry, delivery attempt tracking, and SDK/server read snapshots landed
+- accepted `DRAIN` updates dispatch availability through the command-owned gate
+  path without entering task-work or task-result runtime
+
+Not completed by this roadmap:
+
+- no frontend/operator console was added
+- the current worker-facing command frame has not been promoted to a formal
+  stable public DTO contract
+- sample workers acknowledge commands simply; they are not a full real-world
+  `DRAIN` execution reference
+- richer retry/backoff and future `RESUME` command semantics remain separate
+  owner decisions
+- archived phase text below may describe original gaps; verify current behavior
+  from code, tests, and baseline docs
 
 This roadmap turns the existing worker-command lifecycle skeleton into a usable
 control path. It is engine-owned because command request/status truth already
@@ -11,7 +38,7 @@ surfaces, not lifecycle owners.
 
 ## Summary
 
-Current command control is intentionally owner-backed but incomplete:
+Original gap before this roadmap:
 
 ```text
 command request
@@ -21,7 +48,7 @@ command request
   -> dispatch gate policy reacts to accepted DRAIN lifecycle results
 ```
 
-Target mainline:
+Implemented mainline:
 
 ```text
 command request
@@ -62,13 +89,23 @@ Implemented:
 - command delivery attempt count is tracked on command records
 - command read snapshots expose delivery attempt count and last attempt time
 
-Missing:
+Deferred follow-ups:
 
 - formal public worker command frame DTOs if the current JSON shape needs to
   become stable external contract
 - richer command execution semantics beyond sample-worker immediate success ack
 - richer retry scheduling/backoff beyond bounded maintenance retry
 - frontend/operator console rendering, if a UI owner later needs it
+
+Current drain recovery semantics:
+
+- accepted `DRAIN` closes the `WORKER_COMMAND` dispatch gate
+- `report-state(AVAILABLE)` only clears `WORKER_STATE`; it does not reopen
+  `WORKER_COMMAND`
+- recovery after first-slice `DRAIN` requires worker disconnect and
+  re-registration
+- a future `RESUME` command, if added, must explicitly own the command-gate
+  reopening path
 
 ## Owner Boundaries
 
@@ -459,8 +496,9 @@ Mitigation:
 Mitigation:
 
 - first catalog does not include `RESUME`
-- `report-state(AVAILABLE)` remains the explicit recovery path
-- later `RESUME` requires a separate owner decision
+- `report-state(AVAILABLE)` only clears `WORKER_STATE`, not `WORKER_COMMAND`
+- first-slice `DRAIN` recovery is disconnect and re-registration
+- later `RESUME` requires a separate owner decision for command-gate reopening
 
 ### Risk 3: Transport Convenience Pollutes Engine Ownership
 
