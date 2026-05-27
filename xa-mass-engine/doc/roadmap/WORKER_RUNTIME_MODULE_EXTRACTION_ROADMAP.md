@@ -1,7 +1,8 @@
 # Worker Runtime Module Extraction Roadmap
 
-Status: active. The `xa-mass-worker-runtime` module exists, but this roadmap
-must not be read as proof that every target owner has already moved.
+Status: mainline implemented. The worker-runtime extraction owner split is in
+place; remaining work should be treated as follow-up hardening, scale proof, or
+new feature work, not as another live engine-worker migration track.
 
 This is the next convergence line after
 [`WORKER_MATCH_UPGRADE_ROADMAP.md`](./WORKER_MATCH_UPGRADE_ROADMAP.md) and the
@@ -1081,17 +1082,15 @@ Mitigation:
 - runtime projections are derived and may be rebuilt
 - candidate source and reserve must use runtime projection, not DB-style scans
 
-## Recommended First Slice
+## Historical First Slice
 
-Start with:
+This roadmap started with:
 
 ```text
 WRX-C0 + WRX-C1
 ```
 
-Do not create the new module first.
-
-First prove the current worker surface can be consumed through narrow,
-structured contracts. Then do DTO hygiene. Only then move value types and
-implementations. This keeps each phase independently testable and avoids a
-long-lived old/new split.
+That sequencing has now been followed: contracts and DTO hygiene landed before
+the module move, the old engine-worker path was deleted instead of preserved as
+a compatibility track, and runtime selection has memory/Redis plus external
+worker proof commands recorded above.
