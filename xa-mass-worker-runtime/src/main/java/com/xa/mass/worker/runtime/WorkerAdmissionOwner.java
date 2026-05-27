@@ -1,4 +1,4 @@
-package com.xa.mass.engine.worker;
+package com.xa.mass.worker.runtime;
 
 import com.xa.mass.runtime.worker.WorkerLoadSnapshot;
 import com.xa.mass.runtime.worker.ReserveResult;
@@ -9,36 +9,36 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Package-local owner for worker runtime admission, lease, and occupancy state.
+ * Worker runtime owner for worker runtime admission, lease, and occupancy state.
  */
-final class WorkerAdmissionOwner {
+public final class WorkerAdmissionOwner {
 
     private final WorkerRegistry workerRegistry;
 
-    WorkerAdmissionOwner(WorkerRegistry workerRegistry) {
+    public WorkerAdmissionOwner(WorkerRegistry workerRegistry) {
         this.workerRegistry = Objects.requireNonNull(workerRegistry, "workerRegistry");
     }
 
-    boolean tryAcquireWorkerExclusiveLease(String workerId) {
+    public boolean tryAcquireWorkerExclusiveLease(String workerId) {
         return workerRegistry.slotByWorkerId(workerId)
                 .map(slot -> workerRegistry.tryAcquireExclusiveLease(slot.groupId(), slot.workerId()))
                 .orElse(false);
     }
 
-    void releaseWorkerExclusiveLease(String workerId) {
+    public void releaseWorkerExclusiveLease(String workerId) {
         workerRegistry.slotByWorkerId(workerId)
                 .ifPresent(slot -> workerRegistry.releaseExclusiveLease(slot.groupId(), slot.workerId()));
     }
 
-    boolean hasWorkerExclusiveLease(String workerId) {
+    public boolean hasWorkerExclusiveLease(String workerId) {
         return workerRegistry.hasExclusiveLease(workerId);
     }
 
-    List<String> getExclusiveLeaseWorkerIds() {
+    public List<String> getExclusiveLeaseWorkerIds() {
         return workerRegistry.exclusiveLeaseWorkerIds();
     }
 
-    WorkerLoadSnapshot getWorkerLoad(String workerId) {
+    public WorkerLoadSnapshot getWorkerLoad(String workerId) {
         return workerRegistry.slotByWorkerId(workerId)
                 .map(slot -> new WorkerLoadSnapshot(
                         slot.workerId(),
@@ -49,11 +49,11 @@ final class WorkerAdmissionOwner {
                 .orElseGet(() -> WorkerLoadSnapshot.empty(workerId));
     }
 
-    int getActiveWorkerCountForTask(String taskId) {
+    public int getActiveWorkerCountForTask(String taskId) {
         return workerRegistry.activeWorkerCountForTask(taskId);
     }
 
-    ReserveResult reserveWorkerCapacity(String workerId, String taskId) {
+    public ReserveResult reserveWorkerCapacity(String workerId, String taskId) {
         return workerRegistry.slotByWorkerId(workerId)
                 .map(slot -> workerRegistry.tryReserve(
                         slot.groupId(),
@@ -65,27 +65,27 @@ final class WorkerAdmissionOwner {
                 .orElseGet(() -> ReserveResult.rejected(ReserveStatus.MISSING_SLOT, "worker slot missing"));
     }
 
-    boolean tryReserveWorkerCapacity(String workerId, String taskId) {
+    public boolean tryReserveWorkerCapacity(String workerId, String taskId) {
         return reserveWorkerCapacity(workerId, taskId).accepted();
     }
 
-    boolean confirmWorkerReservation(String workerId, String taskId) {
+    public boolean confirmWorkerReservation(String workerId, String taskId) {
         return workerRegistry.slotByWorkerId(workerId)
                 .map(slot -> workerRegistry.confirmReservation(slot.groupId(), slot.workerId(), taskId, 1))
                 .orElse(false);
     }
 
-    void releaseWorkerReservation(String workerId, String taskId) {
+    public void releaseWorkerReservation(String workerId, String taskId) {
         workerRegistry.slotByWorkerId(workerId)
                 .ifPresent(slot -> workerRegistry.releaseReservation(slot.groupId(), slot.workerId(), taskId, 1));
     }
 
-    void recordWorkClaimed(String workerId, String taskId) {
+    public void recordWorkClaimed(String workerId, String taskId) {
         workerRegistry.slotByWorkerId(workerId)
                 .ifPresent(slot -> workerRegistry.recordWorkClaimed(slot.groupId(), slot.workerId(), taskId, 1));
     }
 
-    void recordWorkFinal(String workerId, String taskId) {
+    public void recordWorkFinal(String workerId, String taskId) {
         workerRegistry.slotByWorkerId(workerId)
                 .ifPresent(slot -> workerRegistry.recordWorkFinal(slot.groupId(), slot.workerId(), taskId, 1));
     }

@@ -11,6 +11,7 @@ Current scope:
 - AdapterNode and NodeGroupBinding relationship owner.
 - Worker registration row to runtime slot projection owner.
 - Worker state report bounded projection owner.
+- Worker admission, occupancy, and exclusive lease owner.
 
 Boundaries:
 

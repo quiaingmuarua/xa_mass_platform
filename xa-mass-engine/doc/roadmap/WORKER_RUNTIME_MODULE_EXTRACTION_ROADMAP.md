@@ -616,9 +616,11 @@ Progress:
 - WorkerGroup, AdapterNode / NodeGroupBinding, and Worker registration row to
   runtime slot projection owners have moved out of engine source.
 - Bounded worker state report projection has moved out of engine source.
+- Worker admission, occupancy, and exclusive lease owner has moved out of
+  engine source.
 - Engine still assembles those owners through `WorkerManager`; report,
-  admission, candidate-source, and match strategy residue stays in engine for
-  later slices.
+  candidate-source, and match strategy residue stays in engine for later
+  slices.
 
 Scope:
 

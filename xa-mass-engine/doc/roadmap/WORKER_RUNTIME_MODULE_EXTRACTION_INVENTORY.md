@@ -42,8 +42,9 @@ helpers; Redis tests no longer depend on engine `WorkerRoutingPolicy`.
 `xa-mass-worker-runtime` now exists as the higher-level worker runtime owner
 module. It owns WorkerGroup declaration state, AdapterNode / NodeGroupBinding
 relationship state, Worker registration row to runtime slot projection, and
-bounded worker state report projection. Engine still assembles these owners
-through `WorkerManager` / `WorkerControlService`, but those owner
+bounded worker state report projection. It also owns worker admission,
+occupancy, and exclusive lease operations over `WorkerRegistry`. Engine still
+assembles these owners through `WorkerManager` / `WorkerControlService`, but those owner
 implementations are no longer engine-local source.
 
 Task selector, candidate batch shape, candidate rows, Worker resource row,
@@ -68,13 +69,13 @@ Worker row mutation and registry slot projection are owned by
 `xa-mass-worker-runtime` `WorkerResourceOwner`; WorkerGroup declaration state is
 owned by `WorkerGroupOwner`; AdapterNode and WorkerGroup binding relationships
 are owned by `WorkerRelationshipOwner`; bounded worker state report projection
-is owned by `WorkerStateProjectionOwner`. Worker-originated capability report
-projection is still engine-local in `WorkerReportOwner` because it composes the
-current engine `WorkerRegistrySnapshot` residue. Worker runtime admission,
-exclusive lease, and occupancy reads are still engine-local in
-`WorkerAdmissionOwner`. `WorkerManager` and `WorkerControlService` still
-implement the external contracts and delegate to these owners while callers
-converge.
+is owned by `WorkerStateProjectionOwner`; worker runtime admission, exclusive
+lease, and occupancy reads are owned by `WorkerAdmissionOwner`.
+Worker-originated capability report projection is still engine-local in
+`WorkerReportOwner` because it composes the current engine
+`WorkerRegistrySnapshot` residue. `WorkerManager` and `WorkerControlService`
+still implement the external contracts and delegate to these owners while
+callers converge.
 
 ## Public Method Inventory
 
