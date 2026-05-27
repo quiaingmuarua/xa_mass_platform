@@ -1032,6 +1032,36 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void workerAdmissionRuntimeContractLivesInRuntimeApi() throws IOException {
+        Path repo = repositoryRoot();
+        Path engineContractPath = repo.resolve(
+                "xa-mass-engine/src/main/java/com/xa/mass/engine/worker/WorkerAdmissionRuntime.java");
+        Path runtimeContractPath = repo.resolve(
+                "platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/WorkerAdmissionRuntime.java");
+
+        List<String> violations = new ArrayList<>();
+        if (Files.exists(engineContractPath)) {
+            violations.add(engineContractPath + " reintroduces the worker admission contract inside engine");
+        }
+        if (!Files.isRegularFile(runtimeContractPath)) {
+            violations.add(runtimeContractPath + " is missing");
+        } else {
+            String source = Files.readString(runtimeContractPath, StandardCharsets.UTF_8);
+            if (source.contains("com.xa.mass.engine")) {
+                violations.add(runtimeContractPath + " depends on xa-mass-engine");
+            }
+            if (source.contains("com.xa.mass.base")) {
+                violations.add(runtimeContractPath + " depends on xa-mass-base");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "WorkerAdmissionRuntime is the first extracted worker runtime contract. "
+                        + "Keep it runtime-api owned and independent from engine/base model rows:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void workerManagerDoesNotUseWorkerLevelEventStorageIndexForEventCandidateSource() throws IOException {
         Path workerManagerPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/worker/WorkerManager.java");
