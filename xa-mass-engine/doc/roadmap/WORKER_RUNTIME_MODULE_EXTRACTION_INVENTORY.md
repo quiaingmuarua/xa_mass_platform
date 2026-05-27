@@ -32,8 +32,10 @@ Candidate acquisition and task-local warm hints are now package-owned by
 boundary is still inside engine.
 
 Worker runtime admission, exclusive lease, and occupancy reads are now
-package-owned by `WorkerAdmissionOwner`; `WorkerManager` still implements the
-external contracts and delegates to that owner while callers converge.
+package-owned by `WorkerAdmissionOwner`; AdapterNode and WorkerGroup binding
+relationships are package-owned by `WorkerRelationshipOwner`. `WorkerManager`
+still implements the external contracts and delegates to these owners while
+callers converge.
 
 ## Public Method Inventory
 
@@ -43,10 +45,10 @@ external contracts and delegates to that owner while callers converge.
 | Worker row lookup | `getWorker`, `findWorker`, `getAllWorkers` | SDK diagnostics, storage-edge lookup, tests | resource read path or replacement read contract | control-plane storage read | `findWorker` exists because `WorkerLookupStore` is still active |
 | WorkerGroup mutation | `upsertWorkerGroup`, `deleteWorkerGroup` | SDK declaration, bootstrap, tests | worker resource write path | control-plane storage plus runtime candidate projection | WorkerGroup is capability declaration truth, not match strategy state |
 | WorkerGroup read | `workerGroup`, `workerGroupReadView`, `workerGroups` | SDK read APIs, candidate enumeration, tests | resource read path / scheduling-view runtime | control-plane read plus runtime read model | `workerGroupReadView` is used by scheduling candidate enumeration |
-| AdapterNode mutation | `registerAdapterNode`, `deleteAdapterNode` | SDK declaration, tests | worker resource write path | control-plane storage plus runtime projection | AdapterNode is endpoint/runtime-node declaration truth |
-| AdapterNode read | `adapterNode`, `adapterNodes` | SDK read APIs, tests | resource read path | control-plane read | Not scheduling policy |
-| NodeGroupBinding mutation | `bindNodeGroup`, `unbindNodeGroup`, `setNodeGroupBindingEnabled`, `setNodeGroupBindingDraining` | SDK declaration/control, tests | worker resource write path plus dispatch-gate effect | control-plane declaration plus runtime dispatch gate | Enabled/draining effects mutate source-scoped dispatch gates |
-| NodeGroupBinding read | `nodeGroupBinding`, `nodeGroupBindings`, `groupIdsByAdapterNodeId`, `adapterNodeIdsByGroupId` | SDK read APIs, tests, routing diagnostics | resource read path | control-plane read / runtime read model | Candidate source may consume relation evidence but not own declaration truth |
+| AdapterNode mutation | `registerAdapterNode`, `deleteAdapterNode` | SDK declaration, tests | `WorkerRelationshipOwner` through resource runtime | control-plane storage plus runtime projection | AdapterNode is endpoint/runtime-node declaration truth |
+| AdapterNode read | `adapterNode`, `adapterNodes` | SDK read APIs, tests | `WorkerRelationshipOwner` through resource runtime | control-plane read | Not scheduling policy |
+| NodeGroupBinding mutation | `bindNodeGroup`, `unbindNodeGroup`, `setNodeGroupBindingEnabled`, `setNodeGroupBindingDraining` | SDK declaration/control, tests | `WorkerRelationshipOwner` through resource runtime | control-plane declaration plus runtime dispatch gate | Enabled/draining effects mutate source-scoped dispatch gates in `WorkerRegistry` |
+| NodeGroupBinding read | `nodeGroupBinding`, `nodeGroupBindings`, `groupIdsByAdapterNodeId`, `adapterNodeIdsByGroupId` | SDK read APIs, tests, routing diagnostics | `WorkerRelationshipOwner` through resource runtime | control-plane read / runtime read model | Candidate source may consume relation evidence but not own declaration truth |
 | Candidate source | `findWorkerCandidates`, `findWorkerCandidateBatch`, `getWorkerCandidateIndex` | `RuleBasedTaskWorkerMatchingStrategy`, tests | `WorkerCandidateRuntime` | runtime state | Must start from resolved WorkerGroup selector; no all-worker candidate scan |
 | Warm hints | `recordWarmCandidate` | `TaskWorkerAssignListener`, strategy tests | `WorkerCandidateSourceOwner` through `WorkerCandidateRuntime` | runtime state | Engine triggers after useful assignment evidence; runtime owns hint storage/revalidation |
 | Snapshot maintenance | `refreshWorkerRegistrySnapshot`, `getWorkerRegistrySnapshot` | tests, diagnostics, capability report path | candidate/resource read model residue | runtime read model residue | Delete or narrow after runtime DTOs replace snapshot callers |
@@ -87,6 +89,11 @@ worker control
   -> WorkerStateProjectionOwner
   -> WorkerDispatchAvailabilityPolicy
   -> WorkerManager dispatch-gate methods
+
+worker relationship resources
+  -> WorkerManager resource-compatible methods
+  -> WorkerRelationshipOwner
+  -> WorkerRegistry source-scoped dispatch gates for binding availability
 ```
 
 ## Disposition Notes
