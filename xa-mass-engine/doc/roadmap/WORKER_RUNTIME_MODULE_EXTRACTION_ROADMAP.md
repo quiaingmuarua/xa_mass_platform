@@ -704,6 +704,9 @@ Progress:
 - The old `WorkerManager.addWorker(Worker)`, `updateWorker(Worker)`, and
   `getWorker()` model-shaped resource helpers have been deleted; the assembly
   surface now uses `WorkerResourceRecord` for worker row mutation and lookup.
+- Worker registry snapshot refresh/read and candidate-index diagnostics have
+  been narrowed to package-private engine diagnostics; public callers must use
+  runtime/resource contracts instead of snapshot/index internals.
 - The unused `getExclusiveLeaseWorkerIds()` forwarding helper has been deleted
   from `WorkerAdmissionRuntime` and the engine assembly surface; lease
   diagnostics remain owned by the worker admission owner.

@@ -254,11 +254,11 @@ public class WorkerManager implements WorkerResourceRuntime,
         return candidateSourceOwner.findWorkerCandidateBatch(selector, maxCandidateCount);
     }
 
-    public WorkerRegistrySnapshot getWorkerRegistrySnapshot() {
+    WorkerRegistrySnapshot getWorkerRegistrySnapshot() {
         return workerRegistrySnapshot;
     }
 
-    public WorkerCandidateIndex getWorkerCandidateIndex() {
+    WorkerCandidateIndex getWorkerCandidateIndex() {
         return new WorkerCandidateIndex(workerRegistrySnapshot, workerRegistry);
     }
 
@@ -271,7 +271,7 @@ public class WorkerManager implements WorkerResourceRuntime,
         return candidateSourceOwner.warmCandidateCount(taskId);
     }
 
-    public void refreshWorkerRegistrySnapshot() {
+    void refreshWorkerRegistrySnapshot() {
         resourceOwner.syncWorkerRegistrySlots(resourceOwner.getAllWorkers());
         publishWorkerRegistrySnapshot();
     }

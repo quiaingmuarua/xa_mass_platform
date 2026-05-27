@@ -70,7 +70,7 @@ public final class WorkerRegistrationTestSupport {
                                           String groupId,
                                           List<String> projectCodes,
                                           List<String> eventCodes) {
-        if (workerManager.getWorkerRegistrySnapshot().group(groupId).isPresent()) {
+        if (workerManager.workerGroup(groupId).isPresent()) {
             return;
         }
         Set<String> projects = normalizeProjects(projectCodes);

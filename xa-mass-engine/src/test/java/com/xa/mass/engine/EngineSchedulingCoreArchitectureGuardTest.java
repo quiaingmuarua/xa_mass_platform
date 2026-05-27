@@ -876,7 +876,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         String source = Files.readString(workerManagerPath, StandardCharsets.UTF_8);
         Map<String, String> guardedMethods = Map.of(
                 "findWorkerCandidateBatch", "public WorkerCandidateBatch<WorkerCandidateRow> findWorkerCandidateBatch",
-                "getWorkerCandidateIndex", "public WorkerCandidateIndex getWorkerCandidateIndex"
+                "getWorkerCandidateIndex", "WorkerCandidateIndex getWorkerCandidateIndex"
         );
 
         List<String> violations = new ArrayList<>();
@@ -1321,6 +1321,21 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
         if (Pattern.compile("public\\s+boolean\\s+updateWorker\\s*\\(\\s*Worker\\s+").matcher(source).find()) {
             violations.add(workerManagerPath + " exposes Worker-shaped resource update");
+        }
+        if (Pattern.compile("public\\s+WorkerRegistrySnapshot\\s+getWorkerRegistrySnapshot\\s*\\(")
+                .matcher(source)
+                .find()) {
+            violations.add(workerManagerPath + " exposes registry snapshot diagnostics as public API");
+        }
+        if (Pattern.compile("public\\s+WorkerCandidateIndex\\s+getWorkerCandidateIndex\\s*\\(")
+                .matcher(source)
+                .find()) {
+            violations.add(workerManagerPath + " exposes candidate index diagnostics as public API");
+        }
+        if (Pattern.compile("public\\s+void\\s+refreshWorkerRegistrySnapshot\\s*\\(")
+                .matcher(source)
+                .find()) {
+            violations.add(workerManagerPath + " exposes snapshot refresh diagnostics as public API");
         }
         if (Pattern.compile("\\bfindWorkerCandidateBatch\\s*\\(\\s*Task\\b").matcher(source).find()) {
             violations.add(workerManagerPath + " exposes Task-shaped candidate acquisition");
