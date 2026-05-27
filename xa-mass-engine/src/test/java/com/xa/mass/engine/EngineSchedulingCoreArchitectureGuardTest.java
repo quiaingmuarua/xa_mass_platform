@@ -1664,9 +1664,12 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "com", "xa", "mass", "sdk", "DefaultRuntimeDiagnosticsOperations.java");
         Path massEnginePath = Path.of("..", "xa-mass-sdk", "src", "main", "java",
                 "com", "xa", "mass", "starter", "MassEngine.java");
+        Path engineConfigPath = Path.of("..", "xa-mass-sdk", "src", "main", "java",
+                "com", "xa", "mass", "starter", "config", "EngineConfig.java");
         String sdkSource = Files.readString(sdkApplicationPath, StandardCharsets.UTF_8);
         String diagnosticsSource = Files.readString(diagnosticsPath, StandardCharsets.UTF_8);
         String massEngineSource = Files.readString(massEnginePath, StandardCharsets.UTF_8);
+        String engineConfigSource = Files.readString(engineConfigPath, StandardCharsets.UTF_8);
 
         List<String> violations = new ArrayList<>();
         if (sdkSource.contains("getWorkerManager()")) {
@@ -1685,6 +1688,11 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
         if (massEngineSource.contains("getWorkerManager()")) {
             violations.add(massEnginePath + " calls EngineConfig.getWorkerManager()");
+        }
+        if (Pattern.compile("public\\s+WorkerManager\\s+getWorkerManager\\s*\\(")
+                .matcher(engineConfigSource)
+                .find()) {
+            violations.add(engineConfigPath + " exposes WorkerManager as public starter config surface");
         }
         if (massEngineSource.contains("com.xa.mass.engine.worker.WorkerManager")
                 || Pattern.compile("\\bWorkerManager\\b").matcher(massEngineSource).find()) {
