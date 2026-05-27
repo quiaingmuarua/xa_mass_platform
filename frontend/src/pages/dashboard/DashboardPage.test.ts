@@ -107,6 +107,7 @@ describe('DashboardPage', () => {
         await flushPromises()
 
         expect(wrapper.text()).toContain('Backend')
+        expect(wrapper.text()).toContain('Operator cockpit')
         expect(wrapper.text()).toContain('Public provider reachability batch')
         expect(wrapper.text()).toContain('Running tasks')
         expect(wrapper.text()).toContain('Online workers')

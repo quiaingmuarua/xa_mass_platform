@@ -5,6 +5,8 @@ export const taskRoutes: AppRouteRecordRaw[] = [
         path: 'tasks',
         component: () => import('@/layouts/RouteSectionView.vue'),
         meta: {
+            shell: 'operator',
+            navGroup: 'tasks',
             title: 'Tasks',
             icon: 'Tickets',
             order: 30,
@@ -20,6 +22,8 @@ export const taskRoutes: AppRouteRecordRaw[] = [
                 name: 'tasks',
                 component: () => import('@/pages/tasks/TasksListPage.vue'),
                 meta: {
+                    shell: 'operator',
+                    navGroup: 'tasks',
                     title: 'Task List',
                     icon: 'List',
                     order: 31,
@@ -35,6 +39,8 @@ export const taskRoutes: AppRouteRecordRaw[] = [
                 name: 'task-detail',
                 component: () => import('@/pages/tasks/TaskDetailPage.vue'),
                 meta: {
+                    shell: 'operator',
+                    navGroup: 'tasks',
                     title: 'Task Detail',
                     icon: 'Document',
                     order: 32,

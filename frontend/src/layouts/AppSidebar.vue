@@ -42,14 +42,16 @@
 import {computed} from 'vue'
 import {useRoute} from 'vue-router'
 import {resolveMenuIcon} from '@/layouts/icons'
-import {buildMenuTree} from '@/router/menu'
+import {buildMenuModel} from '@/router/menu-model'
 import {appRoutes} from '@/router/routes'
 
 const route = useRoute()
 
 const menuItems = computed(() => {
   const rootRoute = appRoutes[0]
-  return rootRoute.children ? buildMenuTree(rootRoute.children, '/') : []
+  return rootRoute.children
+    ? buildMenuModel(rootRoute.children, 'operator', '/')
+    : []
 })
 
 const activePath = computed(() => route.path)

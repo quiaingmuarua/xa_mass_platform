@@ -6,6 +6,8 @@ export const utilityRoutes: AppRouteRecordRaw[] = [
         name: 'submitter-viewer',
         component: () => import('@/pages/submitter/SubmitterViewerPage.vue'),
         meta: {
+            shell: 'submitter-viewer',
+            navGroup: 'viewer',
             title: 'Submitter Viewer',
             icon: 'Tickets',
             order: 56,
@@ -21,6 +23,8 @@ export const utilityRoutes: AppRouteRecordRaw[] = [
         name: 'forbidden',
         component: () => import('@/pages/app/ForbiddenPage.vue'),
         meta: {
+            shell: 'public',
+            navGroup: 'public',
             title: 'Forbidden',
             icon: 'WarningFilled',
             order: 90,
@@ -36,6 +40,8 @@ export const utilityRoutes: AppRouteRecordRaw[] = [
         name: 'not-found',
         component: () => import('@/pages/app/NotFoundPage.vue'),
         meta: {
+            shell: 'public',
+            navGroup: 'public',
             title: 'Not Found',
             icon: 'Warning',
             order: 99,

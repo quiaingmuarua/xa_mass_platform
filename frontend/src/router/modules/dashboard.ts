@@ -6,6 +6,8 @@ export const dashboardRoutes: AppRouteRecordRaw[] = [
         name: 'dashboard',
         component: () => import('@/pages/dashboard/DashboardPage.vue'),
         meta: {
+            shell: 'operator',
+            navGroup: 'dashboard',
             title: 'Overview',
             icon: 'DataAnalysis',
             order: 10,

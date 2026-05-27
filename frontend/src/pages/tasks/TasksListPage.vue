@@ -1,14 +1,12 @@
 <template>
-  <section class="app-page">
-    <header class="page-header">
-      <div>
-        <h2 class="page-title">Task List</h2>
-        <p class="page-subtitle">
-          Core orchestration list view. This page intentionally centers task
-          state, project binding, and progress instead of generic CRUD
-          boilerplate.
-        </p>
-      </div>
+  <ConsolePage
+    tone="operator"
+    width="wide"
+    eyebrow="Runtime work"
+    title="Task List"
+    subtitle="Core orchestration list view. This page intentionally centers task state, project binding, and progress instead of generic CRUD boilerplate."
+  >
+    <template #actions>
       <el-button
         v-permission="'task:create'"
         type="primary"
@@ -16,7 +14,7 @@
       >
         Create task shell
       </el-button>
-    </header>
+    </template>
 
     <PageErrorState
       v-if="errorMessage"
@@ -25,7 +23,7 @@
     />
 
     <el-card v-else class="page-card">
-      <div class="toolbar">
+      <FilterToolbar>
         <el-input
           v-model="filters.keyword"
           clearable
@@ -52,7 +50,7 @@
           />
         </el-select>
         <el-button @click="loadTasks">Search</el-button>
-      </div>
+      </FilterToolbar>
 
       <PageSectionSkeleton v-if="loading" />
 
@@ -71,7 +69,10 @@
         <el-table-column prop="project" label="Project" min-width="130" />
         <el-table-column prop="status" label="Status" min-width="120">
           <template #default="{ row }">
-            <el-tag :type="tagForStatus(row.status)">{{ row.status }}</el-tag>
+            <StatusBadge
+              :status="row.status"
+              :type="tagForStatus(row.status)"
+            />
           </template>
         </el-table-column>
         <el-table-column label="Progress" min-width="170">
@@ -252,7 +253,7 @@
         </el-button>
       </template>
     </el-dialog>
-  </section>
+  </ConsolePage>
 </template>
 
 <script setup lang="ts">
@@ -262,6 +263,9 @@ import {useRoute, useRouter} from 'vue-router'
 import {listProjectCodes} from '@/api/configs'
 import {appendTaskItems, createTaskShell, listTasks, sealTask} from '@/api/tasks'
 import {useAuth} from '@/auth/use-auth'
+import FilterToolbar from '@/console-kit/data/FilterToolbar.vue'
+import StatusBadge from '@/console-kit/data/StatusBadge.vue'
+import ConsolePage from '@/console-kit/layout/ConsolePage.vue'
 import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
@@ -597,20 +601,6 @@ watch(
 </script>
 
 <style scoped>
-.toolbar {
-  display: flex;
-  gap: 12px;
-  margin-bottom: 18px;
-}
-
-.toolbar :deep(.el-input) {
-  width: 220px;
-}
-
-.toolbar :deep(.el-select) {
-  width: 160px;
-}
-
 .row-primary {
   font-weight: 700;
   color: #122033;

@@ -1,17 +1,20 @@
 <template>
-  <section class="app-page submitter-viewer-page">
-    <header class="page-header">
-      <div>
-        <h2 class="page-title">API Key Viewer</h2>
-        <p class="page-subtitle">
-          Enter an API key secret to inspect that key's submitter profile and
-          usage. The secret is used once and is not stored in this browser.
-        </p>
-      </div>
+  <ConsolePage
+    class="submitter-viewer-page"
+    tone="security"
+    width="normal"
+    eyebrow="Submitter access"
+    title="API Key Viewer"
+    subtitle="Inspect one API key's identity, allowed scope, and recent usage without entering the operator console. The API key secret is exchanged once for a short-lived browser credential and is never stored locally."
+  >
+    <template #badge>
+      <el-tag effect="dark" type="success">Key-scoped</el-tag>
+    </template>
+    <template #actions>
       <el-button :disabled="!viewerCredential" @click="refreshViewer">
         Refresh
       </el-button>
-    </header>
+    </template>
 
     <el-alert
       v-if="useMockApi"
@@ -28,46 +31,39 @@
     />
 
     <section class="viewer-grid">
-      <el-card class="page-card credential-card">
-        <template #header>
-          <strong>Open viewer</strong>
-        </template>
-        <el-form label-position="top">
-          <el-form-item label="API Key Secret">
-            <el-input
-              v-model="apiKeySecret"
-              type="password"
-              show-password
-              placeholder="mass_sk_..."
-              autocomplete="off"
-            />
-            <div class="field-hint">
-              The secret works like a password. It is exchanged for a short-lived
-              browser credential and is never stored locally.
-            </div>
-          </el-form-item>
+      <CredentialInputCard
+        v-model="apiKeySecret"
+        title="Open viewer"
+        label="API Key Secret"
+        action-label="View API key usage"
+        placeholder="mass_sk_..."
+        hint="The secret works like a password. It is exchanged for a short-lived browser credential and is never stored locally."
+        :disabled="useMockApi"
+        :loading="loading"
+        @submit="openViewer"
+      >
+        <template #actions>
           <el-button
-            type="primary"
-            :disabled="!apiKeySecret.trim()"
-            @click="openViewer"
+            class="exit-button"
+            type="danger"
+            plain
+            :disabled="!viewerCredential"
+            @click="exitViewer"
           >
-            View API key usage
+            Exit viewer
           </el-button>
-        </el-form>
-        <el-button
-          class="exit-button"
-          type="danger"
-          plain
-          :disabled="!viewerCredential"
-          @click="exitViewer"
-        >
-          Exit viewer
-        </el-button>
-      </el-card>
+        </template>
+      </CredentialInputCard>
 
-      <el-card class="page-card">
+      <el-card class="page-card current-key-card">
         <template #header>
-          <strong>Current API key</strong>
+          <div class="card-header">
+            <div>
+              <strong>Current API key</strong>
+              <p>Identity and scope resolved from the submitted secret.</p>
+            </div>
+            <el-tag v-if="viewer" type="success" effect="plain">Active viewer</el-tag>
+          </div>
         </template>
         <PageEmptyState
           v-if="!viewer"
@@ -96,28 +92,28 @@
       </el-card>
     </section>
 
-    <section class="metric-grid">
-      <div class="metric-tile">
-        <div class="metric-label">Usage rows</div>
-        <div class="metric-value">{{ usage?.total ?? 0 }}</div>
-      </div>
-      <div class="metric-tile">
-        <div class="metric-label">Principal</div>
-        <div class="metric-value compact-value">
-          {{ profile?.principalId ?? '-' }}
-        </div>
-      </div>
-      <div class="metric-tile">
-        <div class="metric-label">Key</div>
-        <div class="metric-value compact-value">
-          {{ usage?.keyId ?? viewer?.keyId ?? '-' }}
-        </div>
-      </div>
-    </section>
+    <MetricGrid :columns="3">
+      <MetricCard label="Usage rows" :value="usage?.total ?? 0" tone="success" />
+      <MetricCard
+        label="Principal"
+        :value="profile?.principalId ?? '-'"
+        compact
+      />
+      <MetricCard
+        label="Key"
+        :value="usage?.keyId ?? viewer?.keyId ?? '-'"
+        compact
+      />
+    </MetricGrid>
 
-    <el-card class="page-card">
+    <el-card class="page-card usage-card">
       <template #header>
-        <strong>Recent usage</strong>
+        <div class="card-header">
+          <div>
+            <strong>Recent usage</strong>
+            <p>Audit rows visible to this API-key viewer.</p>
+          </div>
+        </div>
       </template>
       <PageSectionSkeleton v-if="loading" />
       <PageEmptyState
@@ -128,9 +124,10 @@
         <el-table-column prop="operation" label="Operation" min-width="180" />
         <el-table-column prop="status" label="Status" min-width="150">
           <template #default="{ row }">
-            <el-tag :type="usageStatusTag(row.status)">
-              {{ row.status }}
-            </el-tag>
+            <StatusBadge
+              :status="row.status"
+              :type="usageStatusTag(row.status)"
+            />
           </template>
         </el-table-column>
         <el-table-column prop="project" label="Project" min-width="140" />
@@ -143,7 +140,7 @@
         <el-table-column prop="createdAt" label="Created" min-width="220" />
       </el-table>
     </el-card>
-  </section>
+  </ConsolePage>
 </template>
 
 <script setup lang="ts">
@@ -156,6 +153,11 @@ import {
   logoutSubmitterViewerSession,
 } from '@/api/submitter-sessions'
 import {getAppConfig} from '@/app/config'
+import MetricCard from '@/console-kit/data/MetricCard.vue'
+import MetricGrid from '@/console-kit/data/MetricGrid.vue'
+import StatusBadge from '@/console-kit/data/StatusBadge.vue'
+import ConsolePage from '@/console-kit/layout/ConsolePage.vue'
+import CredentialInputCard from '@/console-kit/security/CredentialInputCard.vue'
 import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
@@ -266,35 +268,36 @@ onMounted(() => {
 <style scoped>
 .viewer-grid {
   display: grid;
-  grid-template-columns: minmax(320px, 420px) 1fr;
+  grid-template-columns: minmax(340px, 420px) 1fr;
   gap: 20px;
-  margin-bottom: 20px;
 }
 
 .page-alert {
-  margin-bottom: 16px;
-}
-
-.credential-card {
-  height: fit-content;
-}
-
-.field-hint {
-  margin-top: 8px;
-  color: #667085;
-  font-size: 13px;
-  line-height: 1.5;
+  margin: 0;
 }
 
 .exit-button {
   margin-top: 12px;
+  margin-left: 10px;
 }
 
-.compact-value {
-  max-width: 280px;
+.current-key-card,
+.usage-card {
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.card-header p {
+  margin: 4px 0 0;
+  color: #667085;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 @media (max-width: 980px) {

@@ -5,6 +5,8 @@ export const systemRoutes: AppRouteRecordRaw[] = [
         path: 'system',
         component: () => import('@/layouts/RouteSectionView.vue'),
         meta: {
+            shell: 'operator',
+            navGroup: 'system',
             title: 'System',
             icon: 'Setting',
             order: 50,
@@ -20,6 +22,8 @@ export const systemRoutes: AppRouteRecordRaw[] = [
                 name: 'users',
                 component: () => import('@/pages/system/users/UsersPage.vue'),
                 meta: {
+                    shell: 'operator',
+                    navGroup: 'system',
                     title: 'Users',
                     icon: 'User',
                     order: 51,
@@ -35,6 +39,8 @@ export const systemRoutes: AppRouteRecordRaw[] = [
                 name: 'roles',
                 component: () => import('@/pages/system/roles/RolesPage.vue'),
                 meta: {
+                    shell: 'operator',
+                    navGroup: 'system',
                     title: 'Roles',
                     icon: 'Avatar',
                     order: 52,
@@ -51,6 +57,8 @@ export const systemRoutes: AppRouteRecordRaw[] = [
                 component: () =>
                     import('@/pages/system/api-keys/ApiKeysPage.vue'),
                 meta: {
+                    shell: 'operator',
+                    navGroup: 'system',
                     title: 'API Keys',
                     icon: 'Tickets',
                     order: 53,
@@ -66,6 +74,8 @@ export const systemRoutes: AppRouteRecordRaw[] = [
                 name: 'audit',
                 component: () => import('@/pages/system/audit/AuditPage.vue'),
                 meta: {
+                    shell: 'operator',
+                    navGroup: 'system',
                     title: 'Audit Logs',
                     icon: 'Notebook',
                     order: 54,

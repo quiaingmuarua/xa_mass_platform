@@ -1,6 +1,6 @@
 import {mockAdminUser, mockViewerUser} from '@/auth/mock-user'
 import {resetMockAuth, setMockCurrentUser} from '@/auth/use-auth'
-import {buildMenuTree} from '@/router/menu'
+import {buildMenuModel} from '@/router/menu-model'
 import {appRoutes} from '@/router/routes'
 
 describe('menu filtering', () => {
@@ -12,7 +12,7 @@ describe('menu filtering', () => {
         setMockCurrentUser(mockViewerUser)
 
         const rootChildren = appRoutes[0].children ?? []
-        const menu = buildMenuTree(rootChildren, '/')
+        const menu = buildMenuModel(rootChildren, 'operator', '/')
         const system = menu.find((item) => item.title === 'System')
         const resources = menu.find((item) => item.title === 'Resources')
 
@@ -35,7 +35,7 @@ describe('menu filtering', () => {
         setMockCurrentUser(mockAdminUser)
 
         const rootChildren = appRoutes[0].children ?? []
-        const menu = buildMenuTree(rootChildren, '/')
+        const menu = buildMenuModel(rootChildren, 'operator', '/')
         const system = menu.find((item) => item.title === 'System')
         const resources = menu.find((item) => item.title === 'Resources')
 
@@ -51,5 +51,20 @@ describe('menu filtering', () => {
         expect(
             resources?.children.some((child) => child.title === 'Projects'),
         ).toBe(true)
+    })
+
+    it('keeps submitter viewer out of the operator menu', () => {
+        setMockCurrentUser(mockAdminUser)
+
+        const rootChildren = appRoutes[0].children ?? []
+        const operatorMenu = buildMenuModel(rootChildren, 'operator', '/')
+        const viewerMenu = buildMenuModel(rootChildren, 'submitter-viewer', '/')
+
+        expect(
+            operatorMenu.some((item) => item.title === 'Submitter Viewer'),
+        ).toBe(false)
+        expect(viewerMenu.map((item) => item.title)).toEqual([
+            'Submitter Viewer',
+        ])
     })
 })

@@ -15,6 +15,11 @@ describe('route metadata', () => {
 
         flatRoutes.forEach((route) => {
             expect(route.meta.title).toBeTruthy()
+            expect(route.meta.shell).toBeTruthy()
+            expect(
+                route.meta.navGroup === undefined ||
+                    typeof route.meta.navGroup === 'string',
+            ).toBe(true)
             expect(typeof route.meta.icon).toBe('string')
             expect(typeof route.meta.order).toBe('number')
             expect(typeof route.meta.hidden).toBe('boolean')
@@ -22,6 +27,16 @@ describe('route metadata', () => {
             expect(typeof route.meta.requiresAuth).toBe('boolean')
             expect(Array.isArray(route.meta.permissions)).toBe(true)
             expect(typeof route.meta.menuVisible).toBe('boolean')
+        })
+    })
+
+    it('does not leave routes on implicit shell fallback', () => {
+        const flatRoutes = walkRoutes(appRoutes)
+
+        flatRoutes.forEach((route) => {
+            expect(['operator', 'submitter-viewer', 'public']).toContain(
+                route.meta.shell,
+            )
         })
     })
 })

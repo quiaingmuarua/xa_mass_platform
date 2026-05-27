@@ -4,6 +4,8 @@ import {resetMockAuth, setMockCurrentUser} from '@/auth/use-auth'
 import {canAccessRoute, hasAnyPermission, hasPermission,} from '@/utils/permissions'
 
 const baseMeta: AppRouteMeta = {
+    shell: 'operator',
+    navGroup: 'tasks',
     title: 'Tasks',
     icon: 'Tickets',
     order: 1,

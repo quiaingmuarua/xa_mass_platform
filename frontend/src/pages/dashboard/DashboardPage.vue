@@ -1,15 +1,17 @@
 <template>
-  <section class="app-page">
-    <header class="page-header">
-      <div>
-        <h2 class="page-title">Control Overview</h2>
-        <p class="page-subtitle">
-          Lightweight control-plane landing page for orchestration health,
-          operational posture, and current runtime visibility.
-        </p>
-      </div>
+  <ConsolePage
+    tone="operator"
+    width="wide"
+    eyebrow="Operator cockpit"
+    title="Control Overview"
+    subtitle="Lightweight control-plane landing page for orchestration health, operational posture, and current runtime visibility."
+  >
+    <template #badge>
+      <el-tag effect="plain" type="primary">{{ integrationMode }}</el-tag>
+    </template>
+    <template #actions>
       <el-button @click="loadOverview">Refresh</el-button>
-    </header>
+    </template>
 
     <PageErrorState
       v-if="errorMessage"
@@ -18,51 +20,30 @@
     />
 
     <template v-else>
-      <section class="metric-grid">
-        <div class="metric-tile">
-          <div class="metric-label">Tasks</div>
-          <div class="metric-value">{{ taskCount }}</div>
-        </div>
-        <div class="metric-tile">
-          <div class="metric-label">Workers</div>
-          <div class="metric-value">{{ workerCount }}</div>
-        </div>
-        <div class="metric-tile">
-          <div class="metric-label">Capabilities</div>
-          <div class="metric-value">{{ capabilityCount }}</div>
-        </div>
-        <div class="metric-tile">
-          <div class="metric-label">Rules</div>
-          <div class="metric-value">{{ ruleCount }}</div>
-        </div>
-      </section>
+      <MetricGrid class="overview-metrics" :columns="4">
+        <MetricCard label="Tasks" :value="taskCount" tone="primary" />
+        <MetricCard label="Workers" :value="workerCount" />
+        <MetricCard label="Capabilities" :value="capabilityCount" />
+        <MetricCard label="Rules" :value="ruleCount" />
+      </MetricGrid>
 
-      <section class="metric-grid secondary-metrics">
-        <div class="metric-tile">
-          <div class="metric-label">Running tasks</div>
-          <div class="metric-value">{{ runningTaskCount }}</div>
-        </div>
-        <div class="metric-tile">
-          <div class="metric-label">Online workers</div>
-          <div class="metric-value">{{ onlineWorkerCount }}</div>
-        </div>
-        <div class="metric-tile">
-          <div class="metric-label">Locked workers</div>
-          <div class="metric-value">{{ lockedWorkerCount }}</div>
-        </div>
-        <div class="metric-tile">
-          <div class="metric-label">Integration mode</div>
-          <div class="metric-value">{{ integrationMode }}</div>
-        </div>
-      </section>
+      <MetricGrid :columns="4">
+        <MetricCard label="Running tasks" :value="runningTaskCount" />
+        <MetricCard label="Online workers" :value="onlineWorkerCount" tone="success" />
+        <MetricCard label="Locked workers" :value="lockedWorkerCount" tone="warning" />
+        <MetricCard label="Integration mode" :value="integrationMode" compact />
+      </MetricGrid>
 
       <PageSectionSkeleton v-if="loading" />
 
       <el-row v-else :gutter="20">
         <el-col :span="12">
-          <el-card class="page-card detail-card">
+          <el-card class="page-card detail-card context-card">
             <template #header>
-              <strong>Current permission context</strong>
+              <div class="card-header">
+                <strong>Current permission context</strong>
+                <span>{{ authMode }}</span>
+              </div>
             </template>
             <el-descriptions :column="1" border>
               <el-descriptions-item label="User">
@@ -103,9 +84,12 @@
         </el-col>
       </el-row>
 
-      <el-card v-if="!loading" class="page-card">
+      <el-card v-if="!loading" class="page-card recent-card">
         <template #header>
-          <strong>Recent tasks</strong>
+          <div class="card-header">
+            <strong>Recent tasks</strong>
+            <span>Latest 5 visible records</span>
+          </div>
         </template>
         <PageEmptyState
           v-if="tasks.length === 0"
@@ -120,9 +104,10 @@
           </el-table-column>
           <el-table-column prop="status" label="Status" min-width="120">
             <template #default="{ row }">
-              <el-tag :type="tagForTaskStatus(row.status)">
-                {{ row.status }}
-              </el-tag>
+              <StatusBadge
+                :status="row.status"
+                :type="tagForTaskStatus(row.status)"
+              />
             </template>
           </el-table-column>
           <el-table-column label="Progress" min-width="160">
@@ -134,7 +119,7 @@
         </el-table>
       </el-card>
     </template>
-  </section>
+  </ConsolePage>
 </template>
 
 <script setup lang="ts">
@@ -144,6 +129,10 @@ import {listTasks} from '@/api/tasks'
 import {listWorkers} from '@/api/workers'
 import {getAppConfig} from '@/app/config'
 import {useAuth} from '@/auth/use-auth'
+import ConsolePage from '@/console-kit/layout/ConsolePage.vue'
+import MetricCard from '@/console-kit/data/MetricCard.vue'
+import MetricGrid from '@/console-kit/data/MetricGrid.vue'
+import StatusBadge from '@/console-kit/data/StatusBadge.vue'
 import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
@@ -246,11 +235,24 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.secondary-metrics {
-  margin-top: 18px;
-}
-
 .detail-card {
   height: 100%;
 }
+
+.card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.card-header span {
+  color: #667085;
+  font-size: 13px;
+}
+
+.recent-card {
+  overflow: hidden;
+}
+
 </style>

@@ -11,6 +11,7 @@ export const appRoutes: AppRouteRecordRaw[] = [
         path: '/',
         component: () => import('@/layouts/AppShell.vue'),
         meta: {
+            shell: 'operator',
             title: 'Control Console',
             icon: 'Monitor',
             order: 0,

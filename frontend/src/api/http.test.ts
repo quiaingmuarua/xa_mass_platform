@@ -73,6 +73,15 @@ describe('http API helpers', () => {
         } satisfies Partial<ApiError>)
     })
 
+    it('rejects successful responses that are not API envelopes', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(null)))
+
+        await expect(requestApiData('/api/v1/auth/me')).rejects.toMatchObject({
+            message: 'Invalid API response envelope',
+            status: 500,
+        } satisfies Partial<ApiError>)
+    })
+
     it('adds the selected backend operator mode header outside mock auth', async () => {
         setRuntimeConfigOverrides({
             apiBaseUrl: '/backend',

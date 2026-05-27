@@ -62,6 +62,10 @@ export async function requestApiData<T>(
 ): Promise<T> {
     const payload = await requestJson<ApiResponseEnvelope<T>>(input, init)
 
+    if (!isApiResponseEnvelope<T>(payload)) {
+        throw new ApiError('Invalid API response envelope', 500, payload)
+    }
+
     if (payload.code !== 0) {
         throw new ApiError(payload.msg, payload.code, payload)
     }
@@ -90,6 +94,17 @@ function submitterCredentialHeader(
     return {
         'X-Mass-Api-Key': normalized,
     }
+}
+
+function isApiResponseEnvelope<T>(
+    payload: ApiResponseEnvelope<T> | unknown,
+): payload is ApiResponseEnvelope<T> {
+    if (!payload || typeof payload !== 'object') {
+        return false
+    }
+
+    const record = payload as Record<string, unknown>
+    return typeof record.code === 'number' && typeof record.msg === 'string'
 }
 
 export function buildApiUrl(input: string): string {

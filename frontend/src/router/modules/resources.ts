@@ -5,6 +5,8 @@ export const resourceRoutes: AppRouteRecordRaw[] = [
         path: 'resources',
         component: () => import('@/layouts/RouteSectionView.vue'),
         meta: {
+            shell: 'operator',
+            navGroup: 'resources',
             title: 'Resources',
             icon: 'FolderOpened',
             order: 20,
@@ -21,6 +23,8 @@ export const resourceRoutes: AppRouteRecordRaw[] = [
                 component: () =>
                     import('@/pages/resources/projects/ProjectsPage.vue'),
                 meta: {
+                    shell: 'operator',
+                    navGroup: 'resources',
                     title: 'Projects',
                     icon: 'Notebook',
                     order: 21,
@@ -37,6 +41,8 @@ export const resourceRoutes: AppRouteRecordRaw[] = [
                 component: () =>
                     import('@/pages/resources/projects/ProjectDetailPage.vue'),
                 meta: {
+                    shell: 'operator',
+                    navGroup: 'resources',
                     title: 'Project Detail',
                     icon: 'Notebook',
                     order: 22,
@@ -53,6 +59,8 @@ export const resourceRoutes: AppRouteRecordRaw[] = [
                 component: () =>
                     import('@/pages/resources/workers/WorkersPage.vue'),
                 meta: {
+                    shell: 'operator',
+                    navGroup: 'resources',
                     title: 'Workers',
                     icon: 'Cpu',
                     order: 23,
@@ -69,6 +77,8 @@ export const resourceRoutes: AppRouteRecordRaw[] = [
                 component: () =>
                     import('@/pages/resources/workers/WorkerDetailPage.vue'),
                 meta: {
+                    shell: 'operator',
+                    navGroup: 'resources',
                     title: 'Worker Detail',
                     icon: 'Cpu',
                     order: 23,
@@ -85,6 +95,8 @@ export const resourceRoutes: AppRouteRecordRaw[] = [
                 component: () =>
                     import('@/pages/resources/rules/RulesPage.vue'),
                 meta: {
+                    shell: 'operator',
+                    navGroup: 'resources',
                     title: 'Rules',
                     icon: 'SetUp',
                     order: 25,
@@ -101,6 +113,8 @@ export const resourceRoutes: AppRouteRecordRaw[] = [
                 component: () =>
                     import('@/pages/resources/configs/ConfigsPage.vue'),
                 meta: {
+                    shell: 'operator',
+                    navGroup: 'resources',
                     title: 'Configs',
                     icon: 'Tools',
                     order: 26,

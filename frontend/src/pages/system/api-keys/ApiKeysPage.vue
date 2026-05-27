@@ -1,16 +1,17 @@
 <template>
-  <section class="app-page">
-    <header class="page-header">
-      <div>
-        <h2 class="page-title">API Keys</h2>
-        <p class="page-subtitle">
-          Scoped programmatic credentials for SDK-first task submission and
-          result reads. Key IDs are safe to display; secrets are shown once and
-          work like passwords.
-        </p>
-      </div>
+  <ConsolePage
+    tone="security"
+    width="wide"
+    eyebrow="Identity access"
+    title="API Keys"
+    subtitle="Scoped programmatic credentials for SDK-first task submission and result reads. Key IDs are safe to display; secrets are shown once and work like passwords."
+  >
+    <template #badge>
+      <el-tag effect="plain" type="success">Credential registry</el-tag>
+    </template>
+    <template #actions>
       <el-button @click="loadAll">Refresh</el-button>
-    </header>
+    </template>
 
     <PageErrorState
       v-if="errorMessage"
@@ -19,24 +20,12 @@
     />
 
     <template v-else>
-      <section class="metric-grid">
-        <div class="metric-tile">
-          <div class="metric-label">Credentials</div>
-          <div class="metric-value">{{ credentials.length }}</div>
-        </div>
-        <div class="metric-tile">
-          <div class="metric-label">Active</div>
-          <div class="metric-value">{{ activeCredentialCount }}</div>
-        </div>
-        <div class="metric-tile">
-          <div class="metric-label">Applications</div>
-          <div class="metric-value">{{ applications.length }}</div>
-        </div>
-        <div class="metric-tile">
-          <div class="metric-label">Pending</div>
-          <div class="metric-value">{{ pendingApplicationCount }}</div>
-        </div>
-      </section>
+      <MetricGrid :columns="4">
+        <MetricCard label="Credentials" :value="credentials.length" tone="primary" />
+        <MetricCard label="Active" :value="activeCredentialCount" tone="success" />
+        <MetricCard label="Applications" :value="applications.length" />
+        <MetricCard label="Pending" :value="pendingApplicationCount" tone="warning" />
+      </MetricGrid>
 
       <PageSectionSkeleton v-if="loading" />
 
@@ -122,9 +111,10 @@
                   <el-table-column prop="keyPrefix" label="Prefix" min-width="180" />
                   <el-table-column prop="status" label="Status" min-width="120">
                     <template #default="{ row }">
-                      <el-tag :type="credentialStatusTag(row.status)">
-                        {{ row.status }}
-                      </el-tag>
+                      <StatusBadge
+                        :status="row.status"
+                        :type="credentialStatusTag(row.status)"
+                      />
                     </template>
                   </el-table-column>
                   <el-table-column prop="expiresAt" label="Expires" min-width="190">
@@ -254,9 +244,10 @@
                   </el-table-column>
                   <el-table-column prop="status" label="Status" min-width="120">
                     <template #default="{ row }">
-                      <el-tag :type="applicationStatusTag(row.status)">
-                        {{ row.status }}
-                      </el-tag>
+                      <StatusBadge
+                        :status="row.status"
+                        :type="applicationStatusTag(row.status)"
+                      />
                     </template>
                   </el-table-column>
                   <el-table-column prop="requestedUserId" label="User" min-width="160" />
@@ -301,32 +292,14 @@
       </el-tabs>
     </template>
 
-    <el-dialog v-model="secretDialogVisible" title="API key secret" width="640px">
-      <el-alert
-        type="warning"
-        :closable="false"
-        title="Copy this secret now. The server will not return it again."
-      />
-      <el-descriptions v-if="rawSecretCredential" class="secret-meta" :column="1" border>
-        <el-descriptions-item label="Key ID">
-          <span class="mono">{{ rawSecretCredential.keyId }}</span>
-        </el-descriptions-item>
-        <el-descriptions-item label="Secret prefix">
-          <span class="mono">{{ rawSecretCredential.keyPrefix }}</span>
-        </el-descriptions-item>
-        <el-descriptions-item label="Principal">
-          {{ rawSecretCredential.principalId }}
-        </el-descriptions-item>
-      </el-descriptions>
-      <div class="field-hint">
-        Save the Key ID for identification. Save the Secret like a password; it
-        is required for SDK/API calls and is never shown again.
-      </div>
-      <pre class="secret-block">{{ rawSecret }}</pre>
-      <template #footer>
-        <el-button type="primary" @click="closeSecretDialog">I copied it</el-button>
-      </template>
-    </el-dialog>
+    <SecretRevealDialog
+      v-model="secretDialogVisible"
+      :secret="rawSecret"
+      :key-id="rawSecretCredential?.keyId ?? '-'"
+      :secret-prefix="rawSecretCredential?.keyPrefix ?? ''"
+      :principal-id="rawSecretCredential?.principalId ?? ''"
+      @confirm="clearRawSecret"
+    />
 
     <el-dialog v-model="detailDialogVisible" title="API key detail" width="720px">
       <pre class="detail-block">{{ detailPayload }}</pre>
@@ -341,9 +314,10 @@
         <el-table-column prop="operation" label="Operation" min-width="180" />
         <el-table-column prop="status" label="Status" min-width="150">
           <template #default="{ row }">
-            <el-tag :type="usageStatusTag(row.status)">
-              {{ row.status }}
-            </el-tag>
+            <StatusBadge
+              :status="row.status"
+              :type="usageStatusTag(row.status)"
+            />
           </template>
         </el-table-column>
         <el-table-column prop="project" label="Project" min-width="140" />
@@ -356,7 +330,7 @@
         <el-table-column prop="createdAt" label="Created" min-width="220" />
       </el-table>
     </el-dialog>
-  </section>
+  </ConsolePage>
 </template>
 
 <script setup lang="ts">
@@ -375,9 +349,14 @@ import {
 } from '@/api/api-keys'
 import {listPermissions} from '@/api/roles'
 import {useAuth} from '@/auth/use-auth'
+import MetricCard from '@/console-kit/data/MetricCard.vue'
+import MetricGrid from '@/console-kit/data/MetricGrid.vue'
+import StatusBadge from '@/console-kit/data/StatusBadge.vue'
+import ConsolePage from '@/console-kit/layout/ConsolePage.vue'
 import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
+import SecretRevealDialog from '@/console-kit/security/SecretRevealDialog.vue'
 import type {
   ApiKeyApplicationRecord,
   ApiKeyApplicationStatus,
@@ -557,8 +536,7 @@ function showRawSecret(credential: ApiKeyCredentialView, secret: string): void {
   secretDialogVisible.value = true
 }
 
-function closeSecretDialog(): void {
-  secretDialogVisible.value = false
+function clearRawSecret(): void {
   rawSecret.value = ''
   rawSecretCredential.value = null
 }
@@ -635,26 +613,6 @@ onMounted(() => {
 
 .full-width {
   width: 100%;
-}
-
-.secret-meta {
-  margin-top: 16px;
-}
-
-.field-hint {
-  margin-top: 14px;
-  color: #667085;
-  line-height: 1.5;
-}
-
-.secret-block {
-  margin: 16px 0 0;
-  padding: 14px;
-  border-radius: 14px;
-  background: #101828;
-  color: #ecfdf3;
-  white-space: pre-wrap;
-  word-break: break-all;
 }
 
 .detail-block {

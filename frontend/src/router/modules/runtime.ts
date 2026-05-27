@@ -5,6 +5,8 @@ export const runtimeRoutes: AppRouteRecordRaw[] = [
         path: 'runtime',
         component: () => import('@/layouts/RouteSectionView.vue'),
         meta: {
+            shell: 'operator',
+            navGroup: 'runtime',
             title: 'Runtime',
             icon: 'Compass',
             order: 40,
@@ -21,6 +23,8 @@ export const runtimeRoutes: AppRouteRecordRaw[] = [
                 component: () =>
                     import('@/pages/runtime/RuntimeDiscoveryPage.vue'),
                 meta: {
+                    shell: 'operator',
+                    navGroup: 'runtime',
                     title: 'Discovery',
                     icon: 'Tickets',
                     order: 41,

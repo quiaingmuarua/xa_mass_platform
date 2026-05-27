@@ -1,8 +1,8 @@
 <template>
-  <div class="shell">
-    <AppSidebar />
+  <div class="shell" :class="`shell--${currentShell}`">
+    <AppSidebar v-if="currentShell === 'operator'" />
     <div class="shell-main">
-      <AppHeader />
+      <AppHeader v-if="currentShell === 'operator'" />
       <main class="shell-content">
         <RouterView v-slot="{ Component, route }">
           <KeepAlive>
@@ -24,9 +24,13 @@
 </template>
 
 <script setup lang="ts">
-import {RouterView} from 'vue-router'
+import {computed} from 'vue'
+import {RouterView, useRoute} from 'vue-router'
 import AppHeader from '@/layouts/AppHeader.vue'
 import AppSidebar from '@/layouts/AppSidebar.vue'
+
+const route = useRoute()
+const currentShell = computed(() => route.meta.shell)
 </script>
 
 <style scoped>
@@ -45,5 +49,12 @@ import AppSidebar from '@/layouts/AppSidebar.vue'
 .shell-content {
   flex: 1;
   padding: 24px;
+}
+
+.shell--submitter-viewer .shell-content,
+.shell--public .shell-content {
+  display: flex;
+  justify-content: center;
+  padding: 32px 20px;
 }
 </style>
