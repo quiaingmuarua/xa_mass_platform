@@ -1,6 +1,5 @@
 package com.xa.mass.engine.worker;
 
-import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
 
 import java.util.List;
@@ -10,13 +9,13 @@ import java.util.List;
  */
 public interface WorkerCandidateRuntime {
 
-    List<Worker> findWorkerCandidates(Task task);
+    List<Worker> findWorkerCandidates(WorkerTaskSelector selector);
 
-    List<Worker> findWorkerCandidates(Task task, int maxCandidateCount);
+    List<Worker> findWorkerCandidates(WorkerTaskSelector selector, int maxCandidateCount);
 
-    WorkerCandidateBatch findWorkerCandidateBatch(Task task, int maxCandidateCount);
+    WorkerCandidateBatch findWorkerCandidateBatch(WorkerTaskSelector selector, int maxCandidateCount);
 
     WorkerCandidateIndex getWorkerCandidateIndex();
 
-    void recordWarmCandidate(Task task, Worker worker);
+    void recordWarmCandidate(WorkerTaskSelector selector, Worker worker);
 }

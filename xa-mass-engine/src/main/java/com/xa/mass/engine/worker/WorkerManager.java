@@ -6,7 +6,6 @@ import com.xa.mass.base.channel.eventbus.event.worker.WorkerOnlineEvent;
 import com.xa.mass.base.channel.eventbus.core.MassSubscribe;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.load.WorkerLoadSnapshot;
 import com.xa.mass.runtime.worker.DispatchAvailabilitySource;
@@ -378,29 +377,43 @@ public class WorkerManager implements WorkerLookupStore,
     }
 
     public List<Worker> findWorkerCandidates(Task task) {
-        return findWorkerCandidates(task, DEFAULT_DIAGNOSTIC_CANDIDATE_LIMIT);
+        return findWorkerCandidates(WorkerTaskSelectorFactory.fromTask(task), DEFAULT_DIAGNOSTIC_CANDIDATE_LIMIT);
     }
 
     public List<Worker> findWorkerCandidates(Task task, int maxCandidateCount) {
-        return findWorkerCandidateBatch(task, maxCandidateCount).candidates();
+        return findWorkerCandidateBatch(WorkerTaskSelectorFactory.fromTask(task), maxCandidateCount).candidates();
+    }
+
+    public List<Worker> findWorkerCandidates(WorkerTaskSelector selector) {
+        return findWorkerCandidates(selector, DEFAULT_DIAGNOSTIC_CANDIDATE_LIMIT);
+    }
+
+    public List<Worker> findWorkerCandidates(WorkerTaskSelector selector, int maxCandidateCount) {
+        return findWorkerCandidateBatch(selector, maxCandidateCount).candidates();
     }
 
     public WorkerCandidateBatch findWorkerCandidateBatch(Task task, int maxCandidateCount) {
-        String targetWorkerId = TaskSharedConfig.targetWorkerId(task);
-        if (targetWorkerId == null && maxCandidateCount <= 0) {
+        return findWorkerCandidateBatch(WorkerTaskSelectorFactory.fromTask(task), maxCandidateCount);
+    }
+
+    public WorkerCandidateBatch findWorkerCandidateBatch(WorkerTaskSelector selector, int maxCandidateCount) {
+        if (selector == null) {
             return WorkerCandidateBatch.empty();
         }
-        int limit = targetWorkerId == null
+        if (!selector.targetsWorker() && maxCandidateCount <= 0) {
+            return WorkerCandidateBatch.empty();
+        }
+        int limit = !selector.targetsWorker()
                 ? Math.max(1, maxCandidateCount)
                 : 1;
         WorkerCandidateIndex candidateIndex = getWorkerCandidateIndex();
-        if (targetWorkerId != null) {
-            List<Worker> targetCandidates = candidateIndex.workersFor(task, limit);
+        if (selector.targetsWorker()) {
+            List<Worker> targetCandidates = candidateIndex.workersFor(selector, limit);
             return new WorkerCandidateBatch(targetCandidates, 0, targetCandidates.size(), 0);
         }
-        WarmCandidateSelection warmSelection = warmCandidatesFor(task, candidateIndex, limit);
+        WarmCandidateSelection warmSelection = warmCandidatesFor(selector, candidateIndex, limit);
         List<Worker> warmCandidates = warmSelection.candidates();
-        List<Worker> coldCandidates = candidateIndex.workersFor(task, limit);
+        List<Worker> coldCandidates = candidateIndex.workersFor(selector, limit);
         if (warmCandidates.isEmpty()) {
             return new WorkerCandidateBatch(coldCandidates, 0, coldCandidates.size(),
                     warmSelection.sourceGuardRejectedCount());
@@ -436,17 +449,21 @@ public class WorkerManager implements WorkerLookupStore,
     }
 
     public void recordWarmCandidate(Task task, Worker worker) {
-        String taskId = task == null ? null : normalizeNullable(task.getTid());
+        recordWarmCandidate(WorkerTaskSelectorFactory.fromTask(task), worker);
+    }
+
+    public void recordWarmCandidate(WorkerTaskSelector selector, Worker worker) {
+        String taskId = selector == null ? null : normalizeNullable(selector.taskId());
         String workerId = worker == null ? null : normalizeNullable(worker.getWorkerId());
         String groupId = worker == null ? null : normalizeNullable(worker.getWorkerGroupId());
         if (taskId == null || workerId == null || groupId == null) {
             return;
         }
-        if (TaskSharedConfig.targetWorkerId(task) != null) {
+        if (selector.targetsWorker()) {
             return;
         }
         long nowMillis = System.currentTimeMillis();
-        for (String routeBucketKey : routeBucketKeysForTask(task)) {
+        for (String routeBucketKey : routeBucketKeysForTask(selector)) {
             taskCandidateWarmPool.put(new TaskCandidateWarmPool.Entry(
                     taskId,
                     workerId,
@@ -462,8 +479,8 @@ public class WorkerManager implements WorkerLookupStore,
         return taskCandidateWarmPool.sizeForTask(taskId);
     }
 
-    private WarmCandidateSelection warmCandidatesFor(Task task, WorkerCandidateIndex candidateIndex, int limit) {
-        String taskId = task == null ? null : normalizeNullable(task.getTid());
+    private WarmCandidateSelection warmCandidatesFor(WorkerTaskSelector selector, WorkerCandidateIndex candidateIndex, int limit) {
+        String taskId = selector == null ? null : normalizeNullable(selector.taskId());
         if (taskId == null || limit <= 0) {
             return WarmCandidateSelection.empty();
         }
@@ -475,7 +492,7 @@ public class WorkerManager implements WorkerLookupStore,
                 limit
         )) {
             WorkerCandidateIndex.SourceGuardResult guardResult = candidateIndex.sourceGuard(
-                    task,
+                    selector,
                     entry.observedGroupId(),
                     entry.observedAdapterNodeId(),
                     entry.observedRouteBucketKey(),
@@ -491,12 +508,8 @@ public class WorkerManager implements WorkerLookupStore,
         return new WarmCandidateSelection(List.copyOf(workers), rejected);
     }
 
-    private Set<String> routeBucketKeysForTask(Task task) {
-        Set<String> routeBucketKeys = WorkerRoutingPolicy.defaultPolicy().routeBucketKeysForTask(task);
-        if (routeBucketKeys == null || routeBucketKeys.isEmpty()) {
-            return Set.of(WorkerRoutingPolicy.DEFAULT_ROUTE_BUCKET_KEY);
-        }
-        return routeBucketKeys;
+    private Set<String> routeBucketKeysForTask(WorkerTaskSelector selector) {
+        return selector == null ? Set.of(WorkerRoutingPolicy.DEFAULT_ROUTE_BUCKET_KEY) : selector.routeBucketKeys();
     }
 
     private record WarmCandidateSelection(List<Worker> candidates, int sourceGuardRejectedCount) {

@@ -24,6 +24,10 @@ Current first-slice contract split inside `com.xa.mass.engine.worker`:
 | `WorkerReportRuntime` | `WorkerManager` | Capability report mutation currently owned by `WorkerCapabilityAuthority` via `WorkerManager` |
 | `WorkerLookupStore` | `WorkerManager` | Storage-edge single-worker lookup seam; disposition still open |
 
+`WorkerCandidateRuntime` now accepts `WorkerTaskSelector`, not `Task`. The
+engine adapts `Task.sharedConfig` to selector evidence through
+`WorkerTaskSelectorFactory` before crossing the candidate-source contract.
+
 ## Public Method Inventory
 
 | Method group | Methods | Current callers | Target owner | Truth layer | Notes |
@@ -112,6 +116,24 @@ They internally resolve `groupId` from the current worker slot. The future
 contract must either keep that as a documented runtime-owned lookup or expose
 `groupId` explicitly. It must also preserve permits and heartbeat clock facts
 from `WorkerRegistry.tryReserve(groupId, workerId, taskId, permits, nowMillis)`.
+
+### Task Selector Boundary
+
+Current candidate-source contract input:
+
+```text
+WorkerTaskSelector
+  taskId
+  workerGroupIds
+  adapterNodeId
+  targetWorkerId
+  routeBucketKeys
+```
+
+`Task.sharedConfig` parsing remains on the engine side through
+`WorkerTaskSelectorFactory`. Worker runtime contracts should keep consuming this
+selector shape and must not grow a dependency on `Task`, `WorkerMatchContext`,
+or rule-evaluation DTOs.
 
 ### Warm Hint Boundary
 

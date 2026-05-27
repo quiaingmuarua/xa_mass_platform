@@ -10,6 +10,7 @@ import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskEventPublisher;
 import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.engine.worker.WorkerReachabilityState;
+import com.xa.mass.engine.worker.WorkerTaskSelector;
 import com.xa.mass.engine.assignment.AssignmentAllocationDecision;
 import com.xa.mass.engine.assignment.AssignmentAllocationOutcome;
 import com.xa.mass.engine.assignment.AssignmentAllocationPlan;
@@ -32,6 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -81,7 +83,9 @@ public class TaskWorkerAssignListenerTest {
         verify(matchingStrategy).matchWorkers(same(task), eq(2));
         verify(assignmentRuntime).updateTask(same(task));
         verify(dispatchBinder).bindDispatches(same(task), eq(List.of(matchedWorker)));
-        verify(workerManager).recordWarmCandidate(same(task), same(worker));
+        verify(workerManager).recordWarmCandidate(
+                argThat((WorkerTaskSelector selector) -> "task-1".equals(selector.taskId())),
+                same(worker));
     }
 
     @Test
@@ -238,7 +242,9 @@ public class TaskWorkerAssignListenerTest {
         assertFalse(listener.onTaskAssign(task));
 
         verify(workerManager).releaseWorkerExclusiveLease("worker-1");
-        verify(workerManager, never()).recordWarmCandidate(same(task), same(worker));
+        verify(workerManager, never()).recordWarmCandidate(
+                argThat((WorkerTaskSelector selector) -> "task-1".equals(selector.taskId())),
+                same(worker));
         verify(assignmentRuntime, never()).updateTask(same(task));
     }
 

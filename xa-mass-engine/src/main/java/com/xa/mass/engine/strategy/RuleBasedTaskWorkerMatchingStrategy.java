@@ -10,6 +10,8 @@ import com.xa.mass.engine.worker.WorkerCandidateRuntime;
 import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.engine.worker.WorkerReachabilityState;
 import com.xa.mass.engine.worker.WorkerSchedulingViewRuntime;
+import com.xa.mass.engine.worker.WorkerTaskSelector;
+import com.xa.mass.engine.worker.WorkerTaskSelectorFactory;
 import com.xa.mass.engine.model.RuleEvaluationDetail;
 import com.xa.mass.engine.model.WorkerMatchContext;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
@@ -120,8 +122,9 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
         if (maxWorkerCount <= 0) {
             return matchedWorkers;
         }
+        WorkerTaskSelector selector = WorkerTaskSelectorFactory.fromTask(task);
         WorkerCandidateBatch candidateBatch = candidateRuntime.findWorkerCandidateBatch(
-                task,
+                selector,
                 candidateAcquisitionLimit(task, maxWorkerCount)
         );
         List<Worker> candidates = candidateBatch.candidates();

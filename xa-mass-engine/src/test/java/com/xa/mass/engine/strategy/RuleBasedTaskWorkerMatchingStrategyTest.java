@@ -11,6 +11,7 @@ import com.xa.mass.engine.worker.WorkerCandidateBatch;
 import com.xa.mass.engine.worker.WorkerGroupRecord;
 import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.engine.worker.WorkerReachabilityState;
+import com.xa.mass.engine.worker.WorkerTaskSelector;
 import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.storage.rule.RuleDefinition;
@@ -775,13 +776,13 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         }
 
         @Override
-        public List<Worker> findWorkerCandidates(Task task, int maxCandidateCount) {
+        public List<Worker> findWorkerCandidates(WorkerTaskSelector selector, int maxCandidateCount) {
             lastMaxCandidateCount = maxCandidateCount;
             return candidates;
         }
 
         @Override
-        public WorkerCandidateBatch findWorkerCandidateBatch(Task task, int maxCandidateCount) {
+        public WorkerCandidateBatch findWorkerCandidateBatch(WorkerTaskSelector selector, int maxCandidateCount) {
             lastMaxCandidateCount = maxCandidateCount;
             return new WorkerCandidateBatch(candidates, 0, candidates.size(), 0);
         }

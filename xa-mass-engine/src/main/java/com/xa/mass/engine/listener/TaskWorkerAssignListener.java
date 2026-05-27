@@ -6,6 +6,7 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.TaskAssignmentEventSink;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.worker.WorkerManager;
+import com.xa.mass.engine.worker.WorkerTaskSelectorFactory;
 import com.xa.mass.engine.assignment.AssignmentAllocationDecision;
 import com.xa.mass.engine.assignment.AssignmentAllocationOutcome;
 import com.xa.mass.engine.assignment.AssignmentAllocationPlan;
@@ -304,7 +305,7 @@ public class TaskWorkerAssignListener {
                 continue;
             }
             if (usedWorkerIds.contains(candidate.getWorkerId()) && recordedWorkerIds.add(candidate.getWorkerId())) {
-                workerManager.recordWarmCandidate(task, candidate.getWorker());
+                workerManager.recordWarmCandidate(WorkerTaskSelectorFactory.fromTask(task), candidate.getWorker());
             }
         }
     }

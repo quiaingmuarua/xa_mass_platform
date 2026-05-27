@@ -1,7 +1,6 @@
 package com.xa.mass.engine.worker;
 
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.runtime.worker.WorkerSlot;
@@ -31,30 +30,42 @@ public final class WorkerCandidateIndex {
     }
 
     public List<Worker> workersFor(Task task) {
-        return workersFor(task, Integer.MAX_VALUE);
+        return workersFor(WorkerTaskSelectorFactory.fromTask(task), Integer.MAX_VALUE);
     }
 
     public List<Worker> workersFor(Task task, int maxCandidateCount) {
-        List<String> groupIds = TaskSharedConfig.workerGroupSelector(task);
+        return workersFor(WorkerTaskSelectorFactory.fromTask(task), maxCandidateCount);
+    }
+
+    public List<Worker> workersFor(WorkerTaskSelector selector) {
+        return workersFor(selector, Integer.MAX_VALUE);
+    }
+
+    public List<Worker> workersFor(WorkerTaskSelector selector, int maxCandidateCount) {
+        List<String> groupIds = selector == null ? List.of() : selector.workerGroupIds();
         if (groupIds.isEmpty()) {
             return List.of();
         }
 
-        String targetWorkerId = TaskSharedConfig.targetWorkerId(task);
+        String targetWorkerId = selector.targetWorkerId();
         if (targetWorkerId != null && !targetWorkerId.isBlank()) {
-            return workerForWorkerId(task, groupIds, targetWorkerId).map(List::of).orElseGet(List::of);
+            return workerForWorkerId(selector, groupIds, targetWorkerId).map(List::of).orElseGet(List::of);
         }
 
-        return workersForGroups(task, groupIds, maxCandidateCount);
+        return workersForGroups(selector, groupIds, maxCandidateCount);
     }
 
     public List<Worker> workersForGroups(Task task, List<String> groupIds, int maxCandidateCount) {
+        return workersForGroups(WorkerTaskSelectorFactory.fromTask(task), groupIds, maxCandidateCount);
+    }
+
+    public List<Worker> workersForGroups(WorkerTaskSelector selector, List<String> groupIds, int maxCandidateCount) {
         if (groupIds == null || groupIds.isEmpty() || maxCandidateCount <= 0) {
             return List.of();
         }
-        String adapterNodeId = TaskSharedConfig.adapterNodeId(task);
+        String adapterNodeId = selector == null ? null : selector.adapterNodeId();
         List<Worker> workers = new ArrayList<>();
-        for (CandidateSourceBucket sourceBucket : candidateSourceBuckets(task, groupIds)) {
+        for (CandidateSourceBucket sourceBucket : candidateSourceBuckets(selector, groupIds)) {
             int remaining = remaining(maxCandidateCount, workers.size());
             if (remaining <= 0) {
                 break;
@@ -62,7 +73,7 @@ public final class WorkerCandidateIndex {
             int sourceBudget = sourceBudget(remaining, sourceBucket.remainingSourceCount());
             for (CandidateSource source : acquireWorkerIds(sourceBucket, adapterNodeId, sourceBudget)) {
                 SourceGuardResult guardResult = sourceGuard(
-                        task,
+                        selector,
                         sourceBucket.groupId(),
                         adapterNodeId,
                         source.routeBucketKey(),
@@ -78,24 +89,25 @@ public final class WorkerCandidateIndex {
     }
 
     public Optional<Worker> workerForWorkerId(Task task, String workerId) {
-        return workerForWorkerId(task, TaskSharedConfig.workerGroupSelector(task), workerId);
+        WorkerTaskSelector selector = WorkerTaskSelectorFactory.fromTask(task);
+        return workerForWorkerId(selector, selector.workerGroupIds(), workerId);
     }
 
-    private Optional<Worker> workerForWorkerId(Task task, List<String> selectedGroupIds, String workerId) {
+    private Optional<Worker> workerForWorkerId(WorkerTaskSelector selector, List<String> selectedGroupIds, String workerId) {
         String normalizedWorkerId = normalizeNullable(workerId);
         if (normalizedWorkerId == null || selectedGroupIds == null || selectedGroupIds.isEmpty()) {
             return Optional.empty();
         }
 
-        String adapterNodeId = TaskSharedConfig.adapterNodeId(task);
+        String adapterNodeId = selector == null ? null : selector.adapterNodeId();
         for (String selectedGroupId : selectedGroupIds) {
             String normalizedGroupId = normalizeNullable(selectedGroupId);
             if (normalizedGroupId == null) {
                 continue;
             }
-            for (String routeBucketKey : taskRouteBucketKeys(task)) {
+            for (String routeBucketKey : taskRouteBucketKeys(selector)) {
                 SourceGuardResult guardResult = sourceGuard(
-                        task,
+                        selector,
                         normalizedGroupId,
                         adapterNodeId,
                         routeBucketKey,
@@ -111,6 +123,15 @@ public final class WorkerCandidateIndex {
     }
 
     public SourceGuardResult sourceGuard(Task task,
+                                         String selectedGroupId,
+                                         String observedAdapterNodeId,
+                                         String observedRouteBucketKey,
+                                         String workerId) {
+        return sourceGuard(WorkerTaskSelectorFactory.fromTask(task), selectedGroupId, observedAdapterNodeId,
+                observedRouteBucketKey, workerId);
+    }
+
+    public SourceGuardResult sourceGuard(WorkerTaskSelector selector,
                                          String selectedGroupId,
                                          String observedAdapterNodeId,
                                          String observedRouteBucketKey,
@@ -169,7 +190,7 @@ public final class WorkerCandidateIndex {
         return List.copyOf(acquired);
     }
 
-    private List<CandidateSourceBucket> candidateSourceBuckets(Task task, List<String> groupIds) {
+    private List<CandidateSourceBucket> candidateSourceBuckets(WorkerTaskSelector selector, List<String> groupIds) {
         List<String> normalizedGroupIds = groupIds.stream()
                 .map(WorkerCandidateIndex::normalizeNullable)
                 .filter(Objects::nonNull)
@@ -178,7 +199,7 @@ public final class WorkerCandidateIndex {
         if (normalizedGroupIds.isEmpty()) {
             return List.of();
         }
-        List<String> routeBucketKeys = taskRouteBucketKeys(task).stream().toList();
+        List<String> routeBucketKeys = taskRouteBucketKeys(selector).stream().toList();
         List<CandidateSourceBucket> buckets = new ArrayList<>(normalizedGroupIds.size() * routeBucketKeys.size());
         for (String groupId : normalizedGroupIds) {
             for (String routeBucketKey : routeBucketKeys) {
@@ -197,12 +218,8 @@ public final class WorkerCandidateIndex {
         return List.copyOf(indexedBuckets);
     }
 
-    private Set<String> taskRouteBucketKeys(Task task) {
-        Set<String> routeBucketKeys = WorkerRoutingPolicy.defaultPolicy().routeBucketKeysForTask(task);
-        if (routeBucketKeys == null || routeBucketKeys.isEmpty()) {
-            return Set.of(WorkerRoutingPolicy.DEFAULT_ROUTE_BUCKET_KEY);
-        }
-        return routeBucketKeys;
+    private Set<String> taskRouteBucketKeys(WorkerTaskSelector selector) {
+        return selector == null ? Set.of(WorkerRoutingPolicy.DEFAULT_ROUTE_BUCKET_KEY) : selector.routeBucketKeys();
     }
 
     private static int sourceBudget(int remainingCandidateBudget, int remainingSourceCount) {
