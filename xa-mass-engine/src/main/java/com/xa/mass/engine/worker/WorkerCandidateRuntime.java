@@ -17,7 +17,5 @@ public interface WorkerCandidateRuntime {
 
     WorkerCandidateBatch<Worker> findWorkerCandidateBatch(WorkerTaskSelector selector, int maxCandidateCount);
 
-    WorkerCandidateIndex getWorkerCandidateIndex();
-
     void recordWarmCandidate(WorkerTaskSelector selector, Worker worker);
 }
