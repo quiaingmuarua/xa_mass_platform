@@ -466,7 +466,7 @@ Landed first slice:
 
 ## Slice 3: Stage-2 Policy Review
 
-Status: rule-evaluation diagnostic first slice implemented.
+Status: rule-evaluation diagnostic and rank-policy first slices implemented.
 
 Goal: keep Stage-2 as current-state admission, while making policy choices
 visible and adjustable.
@@ -500,7 +500,9 @@ Landed first slice:
    `ruleEvaluationTotalTimeMs`.
 2. `AssignmentRecordService` derives these fields from bounded rule evaluation
    details in the matching hot path.
-3. Existing matching behavior and rank order are unchanged.
+3. `WorkerCandidateRankPolicy` owns the current default rank weights as a
+   concrete value object consumed by `DefaultWorkerCandidateRanker`.
+4. Existing matching behavior and default rank order are unchanged.
 
 ## Slice 4: Dispatch Signal And Throughput Review
 

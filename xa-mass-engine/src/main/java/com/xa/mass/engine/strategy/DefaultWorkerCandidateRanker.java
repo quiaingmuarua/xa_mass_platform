@@ -19,24 +19,20 @@ import java.util.Map;
  */
 public final class DefaultWorkerCandidateRanker implements WorkerCandidateRanker {
 
-    static final double DEFAULT_LOAD_WEIGHT = 0.6d;
-    static final double DEFAULT_AFFINITY_WEIGHT = 0.3d;
-    static final double DEFAULT_AVAILABILITY_WEIGHT = 0.1d;
-
-    private final double loadWeight;
-    private final double affinityWeight;
-    private final double availabilityWeight;
+    private final WorkerCandidateRankPolicy policy;
 
     public DefaultWorkerCandidateRanker() {
-        this(DEFAULT_LOAD_WEIGHT, DEFAULT_AFFINITY_WEIGHT, DEFAULT_AVAILABILITY_WEIGHT);
+        this(WorkerCandidateRankPolicy.defaultPolicy());
     }
 
     DefaultWorkerCandidateRanker(double loadWeight,
                                  double affinityWeight,
                                  double availabilityWeight) {
-        this.loadWeight = loadWeight;
-        this.affinityWeight = affinityWeight;
-        this.availabilityWeight = availabilityWeight;
+        this(new WorkerCandidateRankPolicy(loadWeight, affinityWeight, availabilityWeight));
+    }
+
+    DefaultWorkerCandidateRanker(WorkerCandidateRankPolicy policy) {
+        this.policy = policy != null ? policy : WorkerCandidateRankPolicy.defaultPolicy();
     }
 
     @Override
@@ -57,9 +53,9 @@ public final class DefaultWorkerCandidateRanker implements WorkerCandidateRanker
         double loadRatio = view != null ? view.estimatedLoadRatio() : 1.0d;
         double affinityScore = affinityScore(view, task);
         double availabilityPenalty = availabilityPenalty(view);
-        return loadWeight * loadRatio
-                + affinityWeight * (1.0d - affinityScore)
-                + availabilityWeight * availabilityPenalty;
+        return policy.loadWeight() * loadRatio
+                + policy.affinityWeight() * (1.0d - affinityScore)
+                + policy.availabilityWeight() * availabilityPenalty;
     }
 
     private double affinityScore(WorkerSchedulingView view, Task task) {

@@ -48,6 +48,20 @@ class DefaultWorkerCandidateRankerTest {
         assertEquals("worker-partial", ranked.get(1).getWorker().getWorkerId());
     }
 
+    @Test
+    void rankPolicyKeepsWeightsSeparateFromRankerMechanism() {
+        DefaultWorkerCandidateRanker ranker =
+                new DefaultWorkerCandidateRanker(new WorkerCandidateRankPolicy(0.0d, 1.0d, 0.0d));
+        Task task = task("task-routing", "us");
+        WorkerMatchContext lowLoadNoAffinity = context("worker-low-load", Set.of("eu"), 0, 4);
+        WorkerMatchContext highLoadExactAffinity = context("worker-exact", Set.of("us"), 4, 4);
+
+        List<WorkerMatchContext> ranked = ranker.rank(List.of(lowLoadNoAffinity, highLoadExactAffinity), task);
+
+        assertEquals("worker-exact", ranked.get(0).getWorker().getWorkerId());
+        assertEquals("worker-low-load", ranked.get(1).getWorker().getWorkerId());
+    }
+
     private WorkerMatchContext context(String workerId,
                                        Set<String> routingTags,
                                        int activeLeaseCount,
