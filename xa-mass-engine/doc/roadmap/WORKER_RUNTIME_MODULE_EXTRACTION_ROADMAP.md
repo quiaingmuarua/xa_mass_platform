@@ -873,6 +873,24 @@ manual/local verified runbook proof
 Do not hide Redis requirements behind "where supported"; mark the required
 profile, skip condition, and evidence artifact.
 
+Engine assignment/match runtime-selection proof now has a starter-level
+integration command:
+
+```powershell
+mvn -pl xa-mass-sdk -am `
+  '-Dtest=WorkerRuntimeSelectionIntegrationTest' `
+  '-Dsurefire.failIfNoSpecifiedTests=false' test
+```
+
+Current local evidence on 2026-05-28: the test ran the default
+`RuleBasedTaskWorkerMatchingStrategy` dispatch path once with
+`InMemoryWorkerRegistry` and once with `RedisWorkerRegistry`, both assigning
+one runtime item to `wrx-worker-1` through explicit WorkerGroup selector
+evidence. The Redis branch uses `mass.redis.test.uri` defaulting to
+`redis://127.0.0.1:6379/0`; if Redis is unavailable, that branch is skipped by
+JUnit assumption and the memory branch remains the default unit/integration
+proof.
+
 Scope:
 
 1. Run memory and Redis worker-runtime contract tests through the same suite.
