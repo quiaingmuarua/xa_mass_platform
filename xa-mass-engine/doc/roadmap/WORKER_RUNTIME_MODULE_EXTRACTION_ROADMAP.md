@@ -334,6 +334,9 @@ interface WorkerReportRuntime {
 `WorkerCapabilityReportResult` is runtime-facing result evidence only. It must
 not carry `WorkerRegistrySnapshot`; snapshot refresh is an engine/runtime
 application detail while the implementation still lives in engine.
+`WorkerStateReport`, `WorkerStateProjection`, `WorkerStateProjectionResult`,
+and `WorkerStateProjectionStatus` are also runtime-api DTOs; the bounded
+projection owner may remain in engine until owner implementation movement.
 
 `WorkerAdmissionResult` must be structured, not boolean. It must preserve at
 least:

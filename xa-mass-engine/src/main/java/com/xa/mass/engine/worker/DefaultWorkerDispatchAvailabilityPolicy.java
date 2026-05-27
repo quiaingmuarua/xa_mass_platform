@@ -2,6 +2,7 @@ package com.xa.mass.engine.worker;
 
 import com.xa.mass.engine.command.WorkerCommandLifecycleResult;
 import com.xa.mass.engine.command.WorkerCommandRecord;
+import com.xa.mass.runtime.worker.WorkerStateProjection;
 
 import java.util.Locale;
 

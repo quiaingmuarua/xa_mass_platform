@@ -1137,6 +1137,44 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void workerStateReportProjectionDtosLiveInRuntimeApi() throws IOException {
+        Path repo = repositoryRoot();
+        Path engineWorkerPackage = repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/worker");
+        List<String> typeNames = List.of(
+                "WorkerStateReport",
+                "WorkerStateProjection",
+                "WorkerStateProjectionResult",
+                "WorkerStateProjectionStatus"
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (String typeName : typeNames) {
+            Path enginePath = engineWorkerPackage.resolve(typeName + ".java");
+            Path runtimePath = repo.resolve(
+                    "platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/" + typeName + ".java");
+            if (Files.exists(enginePath)) {
+                violations.add(enginePath + " reintroduces worker state DTO inside engine");
+            }
+            if (!Files.isRegularFile(runtimePath)) {
+                violations.add(runtimePath + " is missing");
+                continue;
+            }
+            String source = Files.readString(runtimePath, StandardCharsets.UTF_8);
+            if (source.contains("com.xa.mass.engine")) {
+                violations.add(runtimePath + " depends on xa-mass-engine");
+            }
+            if (source.contains("com.xa.mass.base")) {
+                violations.add(runtimePath + " depends on xa-mass-base");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Worker state report/projection DTOs are runtime-api values. "
+                        + "Keep engine state owner implementation separate from DTO ownership:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void workerCandidateRuntimeContractDoesNotExposeDiagnosticsOrWarmWrites() throws IOException {
         Path candidateRuntimePath = Path.of("../platform_infra/mass-runtime-api/src/main/java")
                 .resolve("com/xa/mass/runtime/worker/WorkerCandidateRuntime.java");
@@ -1865,7 +1903,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "\\bimport\\s+com\\.xa\\.mass\\.engine\\.strategy\\.",
                 "\\bimport\\s+com\\.xa\\.mass\\.engine\\.load\\.",
                 "\\bimport\\s+com\\.xa\\.mass\\.transport\\.",
-                "\\bimport\\s+com\\.xa\\.mass\\.runtime\\."
+                "\\bimport\\s+com\\.xa\\.mass\\.runtime\\.api\\."
         )));
 
         List<String> violations = new ArrayList<>();

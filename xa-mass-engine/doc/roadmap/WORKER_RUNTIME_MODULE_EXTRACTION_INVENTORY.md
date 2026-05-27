@@ -39,7 +39,9 @@ types: `WorkerTaskSelector`,
 `WorkerCandidateRuntime`, `WorkerGroupCapabilityView`,
 `WorkerSchedulingViewRuntime`, `WorkerAdmissionRuntime`, `WorkerLoadSnapshot`,
 `WorkerReachabilityState`, `WorkerCapabilityReportStatus`, and
-`WorkerCapabilityReportResult`. Engine-owned scheduling DTOs still adapt those
+`WorkerCapabilityReportResult`, plus worker state report/projection DTOs
+(`WorkerStateReport`, `WorkerStateProjection`, `WorkerStateProjectionResult`,
+`WorkerStateProjectionStatus`). Engine-owned scheduling DTOs still adapt those
 runtime values into `WorkerSchedulingView` and `WorkerMatchContext` locally.
 Capability report application keeps `WorkerRegistrySnapshot` package-local so
 external/report DTOs do not expose engine candidate snapshot truth.
@@ -71,6 +73,7 @@ owners while callers converge.
 | Warm hints | `recordWarmCandidate` | `TaskWorkerAssignListener`, strategy tests | `WorkerCandidateSourceOwner` / future warm hint write contract | runtime state | Kept off `WorkerCandidateRuntime`; engine triggers after useful assignment evidence, runtime owns hint storage/revalidation |
 | Snapshot maintenance | `refreshWorkerRegistrySnapshot`, `getWorkerRegistrySnapshot` | tests, diagnostics, capability report path | candidate/resource read model residue | runtime read model residue | Delete or narrow after runtime DTOs replace snapshot callers |
 | Capability report | `applyWorkerCapabilityReport` | `WorkerControlService`, event handlers, SDK | `WorkerReportOwner` through `WorkerReportRuntime` | resource mutation plus runtime projection | Runtime-api result/status; package-local application carries any `WorkerRegistrySnapshot` refresh |
+| State report projection | `applyWorkerStateReport` / `WorkerStateProjectionOwner.applyReport` | `WorkerControlService`, event handlers, tests | `WorkerStateProjectionOwner` | bounded runtime diagnostic projection | Runtime-api report/projection/result DTOs; owner implementation remains engine-local |
 | Online model status | `updateOnlineStatus`, `isWorkerOnline` | legacy event bridge, tests | compatibility/resource status path | control-plane row plus transport reachability residue | Transport presence remains reachability owner |
 | Reachability read | `getWorkerReachability` | scheduling candidate enumeration, tests | `WorkerSchedulingViewRuntime` | transport evidence consumed as runtime read evidence | Returns runtime-neutral `WorkerReachabilityState`; must not turn transport session into scheduling truth |
 | Dispatch gate read | `isWorkerDispatchEnabled` | scheduling candidate enumeration, tests | `WorkerSchedulingViewRuntime` | runtime state | Derived from source-scoped gates |

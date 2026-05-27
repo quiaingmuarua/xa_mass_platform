@@ -1,5 +1,10 @@
 package com.xa.mass.engine.worker;
 
+import com.xa.mass.runtime.worker.WorkerStateProjection;
+import com.xa.mass.runtime.worker.WorkerStateProjectionResult;
+import com.xa.mass.runtime.worker.WorkerStateProjectionStatus;
+import com.xa.mass.runtime.worker.WorkerStateReport;
+
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayDeque;
