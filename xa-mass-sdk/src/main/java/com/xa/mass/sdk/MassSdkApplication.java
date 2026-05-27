@@ -2,10 +2,10 @@ package com.xa.mass.sdk;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.enums.Project;
+import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.UserRef;
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.project.ProjectRegistry;
 import com.xa.mass.command.event.*;
 import com.xa.mass.engine.TaskQueryService;
@@ -32,11 +32,12 @@ import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;
 import com.xa.mass.runtime.worker.WorkerStateProjection;
 import com.xa.mass.runtime.worker.WorkerStateProjectionResult;
 import com.xa.mass.runtime.worker.WorkerStateReport;
+import com.xa.mass.runtime.worker.WorkerResourceRecord;
+import com.xa.mass.runtime.worker.WorkerResourceRuntime;
 import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.api.TaskResultRuntimeRow;
 import com.xa.mass.runtime.api.TaskResultWindow;
 import com.xa.mass.storage.api.RuleStorage;
-import com.xa.mass.storage.api.WorkerStorage;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.storage.rule.RuleType;
 import com.xa.mass.sdk.auth.*;
@@ -610,31 +611,31 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     @Override
     public String getWorkerAdapterId(String workerId) {
         String normalizedWorkerId = requireWorkerId(workerId);
-        Worker worker = loadWorker(normalizedWorkerId);
+        WorkerResourceRecord worker = loadWorker(normalizedWorkerId);
         if (worker == null) {
             throw new IllegalArgumentException("Worker not found: " + normalizedWorkerId);
         }
         if (delegate.getTransportRuntimeRegistry() != null) {
             return delegate.getTransportRuntimeRegistry().resolveWorkerAdapterId(normalizedWorkerId);
         }
-        if (worker.getAdapterId() == null || worker.getAdapterId().isBlank()) {
-            throw new IllegalStateException("Worker adapterId is not set: " + worker.getWorkerId());
+        if (worker.adapterId() == null || worker.adapterId().isBlank()) {
+            throw new IllegalStateException("Worker adapterId is not set: " + worker.workerId());
         }
-        return worker.getAdapterId().trim().toLowerCase(Locale.ROOT);
+        return worker.adapterId().trim().toLowerCase(Locale.ROOT);
     }
 
     @Override
     public String getWorkerTransportHint(String workerId) {
-        Worker worker = loadWorker(requireWorkerId(workerId));
+        WorkerResourceRecord worker = loadWorker(requireWorkerId(workerId));
         if (worker == null) {
             throw new IllegalArgumentException("Worker not found: " + requireWorkerId(workerId));
         }
-        String transportHint = WorkerTransportHints.normalize(worker.getOnlineStrategy());
+        String transportHint = WorkerTransportHints.normalize(worker.onlineStrategy());
         if (transportHint == null && delegate.getTransportRuntimeRegistry() != null) {
-            transportHint = delegate.getTransportRuntimeRegistry().resolveWorkerTransportHint(worker.getWorkerId());
+            transportHint = delegate.getTransportRuntimeRegistry().resolveWorkerTransportHint(worker.workerId());
         }
         if (transportHint == null) {
-            throw new IllegalStateException("Worker transportHint/onlineStrategy is not set: " + worker.getWorkerId());
+            throw new IllegalStateException("Worker transportHint/onlineStrategy is not set: " + worker.workerId());
         }
         return transportHint;
     }
@@ -646,7 +647,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     @Override
     public List<WorkerSnapshot> getAllWorkers() {
-        return requireStartedWorkerStorage().getAllWorkers().stream()
+        return requireStartedWorkerResourceRuntime().workers().stream()
                 .map(this::toWorkerSnapshot)
                 .toList();
     }
@@ -733,19 +734,33 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         if (delegate.getWorkerPresenceStore() != null) {
             return delegate.getWorkerPresenceStore().isWorkerOnline(normalizedWorkerId);
         }
-        Worker worker = loadWorker(normalizedWorkerId);
-        return worker != null && worker.getStatus() != null && worker.getStatus().isAvailable();
+        WorkerResourceRecord worker = loadWorker(normalizedWorkerId);
+        return worker != null && workerStatusAvailable(worker.statusName());
     }
 
     @Override
     public boolean updateWorkerSupportedProjects(String workerId, List<String> supportedProjects) {
-        WorkerStorage workerStorage = requireStartedWorkerStorage();
-        Worker worker = workerStorage.getWorker(requireWorkerId(workerId)).orElse(null);
+        WorkerResourceRuntime workerRuntime = requireStartedWorkerResourceRuntime();
+        WorkerResourceRecord worker = workerRuntime.worker(requireWorkerId(workerId)).orElse(null);
         if (worker == null) {
             return false;
         }
-        worker.setSupportedProjects(normalizedProjectCodes(supportedProjects));
-        return workerStorage.updateWorker(worker);
+        return workerRuntime.updateWorker(new WorkerResourceRecord(
+                worker.workerId(),
+                worker.statusName(),
+                worker.agentVersion(),
+                worker.lastHeartbeat(),
+                normalizedProjectCodes(supportedProjects),
+                worker.supportedEventCodes(),
+                worker.workerGroupId(),
+                worker.adapterNodeId(),
+                worker.adapterId(),
+                worker.onlineStrategy(),
+                worker.maxConcurrentWork(),
+                worker.attributes(),
+                worker.createTime(),
+                worker.updateTime()
+        ));
     }
 
     @Override
@@ -1639,12 +1654,12 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return taskEvents;
     }
 
-    private WorkerStorage requireStartedWorkerStorage() {
-        WorkerStorage workerStorage = requireStartedEngine().getConfig().getWorkerStorage();
-        if (workerStorage == null) {
-            throw new IllegalStateException("Worker storage is unavailable for this SDK application");
+    private WorkerResourceRuntime requireStartedWorkerResourceRuntime() {
+        WorkerResourceRuntime workerRuntime = requireStartedEngine().getConfig().getWorkerResourceRuntime();
+        if (workerRuntime == null) {
+            throw new IllegalStateException("Worker resource runtime is unavailable for this SDK application");
         }
-        return workerStorage;
+        return workerRuntime;
     }
 
     private RuleStorage requireStartedRuleStorage() {
@@ -1692,8 +1707,19 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return value == null ? null : value.name();
     }
 
-    private Worker loadWorker(String workerId) {
-        return requireStartedWorkerStorage().getWorker(workerId).orElse(null);
+    private boolean workerStatusAvailable(String statusName) {
+        if (statusName == null || statusName.isBlank()) {
+            return false;
+        }
+        try {
+            return WorkerStatus.valueOf(statusName.trim().toUpperCase(Locale.ROOT)).isAvailable();
+        } catch (IllegalArgumentException ignored) {
+            return false;
+        }
+    }
+
+    private WorkerResourceRecord loadWorker(String workerId) {
+        return requireStartedWorkerResourceRuntime().worker(workerId).orElse(null);
     }
 
     private boolean executeBlockTask(TaskCommandService taskCommands, String taskId, Task currentTask) {
@@ -1806,36 +1832,36 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         );
     }
 
-    private WorkerSnapshot toWorkerSnapshot(Worker worker) {
+    private WorkerSnapshot toWorkerSnapshot(WorkerResourceRecord worker) {
         if (worker == null) {
             return null;
         }
-        WorkerGroupRecord group = resolveWorkerGroup(worker.getWorkerGroupId());
+        WorkerGroupRecord group = resolveWorkerGroup(worker.workerGroupId());
         List<String> supportedProjects = group != null
                 ? List.copyOf(group.projectCodes())
-                : worker.getSupportedProjects();
+                : worker.supportedProjects();
         List<String> supportedEventCodes = group != null
                 ? List.copyOf(group.eventCodes())
-                : worker.getSupportedEventCodes();
+                : worker.supportedEventCodes();
         List<WorkerEventBinding> eventBindings = group != null
                 ? toWorkerEventBindings(group)
                 : deriveWorkerEventBindings(worker);
         return new WorkerSnapshot(
-                worker.getWorkerId(),
-                enumName(worker.getStatus()),
-                worker.getAgentVersion(),
-                worker.getLastHeartbeat(),
+                worker.workerId(),
+                worker.statusName(),
+                worker.agentVersion(),
+                worker.lastHeartbeat(),
                 supportedProjects,
                 supportedEventCodes,
                 eventBindings,
-                worker.getWorkerGroupId(),
-                worker.getAdapterNodeId(),
-                worker.getAdapterId(),
-                worker.getOnlineStrategy(),
-                worker.getMaxConcurrentWork(),
-                worker.getAttributes(),
-                worker.getCreateTime(),
-                worker.getUpdateTime()
+                worker.workerGroupId(),
+                worker.adapterNodeId(),
+                worker.adapterId(),
+                worker.onlineStrategy(),
+                worker.maxConcurrentWork(),
+                worker.attributes(),
+                worker.createTime(),
+                worker.updateTime()
         );
     }
 
@@ -1906,11 +1932,11 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return List.copyOf(bindings);
     }
 
-    private List<WorkerEventBinding> deriveWorkerEventBindings(Worker worker) {
+    private List<WorkerEventBinding> deriveWorkerEventBindings(WorkerResourceRecord worker) {
         if (worker == null) {
             return List.of();
         }
-        List<String> supportedEventCodes = worker.getSupportedEventCodes();
+        List<String> supportedEventCodes = worker.supportedEventCodes();
         if (supportedEventCodes == null || supportedEventCodes.isEmpty()) {
             return List.of();
         }
@@ -2100,17 +2126,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         item.put("enabled", rule.isEnabled());
         item.put("priority", rule.getPriority());
         return item;
-    }
-
-    private String resolveProjectCode(String project, Worker worker) {
-        if (project != null && !project.isBlank()) {
-            return ProjectRegistry.require(project).getCode();
-        }
-        List<String> supportedProjects = worker.getSupportedProjects();
-        if (supportedProjects != null && !supportedProjects.isEmpty()) {
-            return ProjectRegistry.require(supportedProjects.get(0)).getCode();
-        }
-        return Project.DEMO_APP.getCode();
     }
 
     private MassEngine requireStartedEngine() {

@@ -680,6 +680,10 @@ Progress:
   Task-shaped or Worker-shaped convenience entry points. The remaining public
   path is runtime-neutral `WorkerTaskSelector` / `WorkerCandidateRow`, matching
   the worker-runtime contracts while WorkerManager remains the assembly owner.
+- SDK worker shell reads and updates now consume `WorkerResourceRuntime` and
+  `WorkerResourceRecord` instead of reading or mutating `WorkerStorage`
+  directly. `WorkerStorage` remains a configurable control-plane row store
+  behind the resource owner, not an SDK application dependency.
 - Engine still assembles those owners through `WorkerManager`; match strategy
   and event handler parsing residue stays in engine for later slices.
 - SDK shell runtime bridge now accepts `WorkerResourceRuntime` for legacy

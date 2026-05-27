@@ -1672,6 +1672,14 @@ class EngineSchedulingCoreArchitectureGuardTest {
         if (sdkSource.contains("getWorkerManager()")) {
             violations.add(sdkApplicationPath + " calls EngineConfig.getWorkerManager()");
         }
+        if (sdkSource.contains("com.xa.mass.storage.api.WorkerStorage")
+                || Pattern.compile("\\bWorkerStorage\\b").matcher(sdkSource).find()
+                || sdkSource.contains("getWorkerStorage()")) {
+            violations.add(sdkApplicationPath + " uses WorkerStorage for SDK worker shell operations");
+        }
+        if (!sdkSource.contains("WorkerResourceRuntime")) {
+            violations.add(sdkApplicationPath + " does not use WorkerResourceRuntime");
+        }
         if (diagnosticsSource.contains("getWorkerManager()")) {
             violations.add(diagnosticsPath + " calls EngineConfig.getWorkerManager()");
         }

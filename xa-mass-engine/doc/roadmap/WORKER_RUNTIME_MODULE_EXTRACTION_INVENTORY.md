@@ -83,7 +83,8 @@ to these owners while callers converge. `WorkerControlService` now consumes
 assembly surface.
 The SDK process-local runtime event bridge now depends on
 `WorkerResourceRuntime` for legacy heartbeat refresh and no longer receives a
-full `WorkerManager`.
+full `WorkerManager`. SDK worker shell reads and updates also use
+`WorkerResourceRuntime` instead of direct `WorkerStorage` access.
 Dispatch binding and task resource release now consume `WorkerAdmissionRuntime`
 for reservation confirmation, fallback load claim, final-load accounting,
 reservation release, and exclusive-lease release. These paths no longer require
@@ -107,8 +108,8 @@ mutable base `Worker` rows.
 
 | Method group | Methods | Current callers | Target owner | Truth layer | Notes |
 | --- | --- | --- | --- | --- | --- |
-| Worker row mutation | `addWorker`, `updateWorker`, `deleteWorker` | SDK registration, tests, server bootstrap through SDK | `WorkerResourceOwner` through `WorkerResourceRuntime` | control-plane storage plus derived runtime projection | Cross-module calls use runtime-neutral `WorkerResourceRecord`; engine-local compatibility overloads still accept `Worker` |
-| Worker row lookup | `worker`, `workers`, `getWorker`, `getAllWorkers` | SDK diagnostics, transport runtime, tests | `WorkerResourceOwner` through `WorkerResourceRuntime` | control-plane storage read | Runtime API exposes `worker` / `workers`; the separate `WorkerLookupStore` seam has been deleted |
+| Worker row mutation | `addWorker`, `updateWorker`, `deleteWorker` | SDK registration, SDK worker shell update, tests, server bootstrap through SDK | `WorkerResourceOwner` through `WorkerResourceRuntime` | control-plane storage plus derived runtime projection | Cross-module calls use runtime-neutral `WorkerResourceRecord`; engine-local compatibility overloads still accept `Worker` |
+| Worker row lookup | `worker`, `workers`, `getWorker`, `getAllWorkers` | SDK worker shell reads, SDK diagnostics, transport runtime, tests | `WorkerResourceOwner` through `WorkerResourceRuntime` | control-plane storage read | Runtime API exposes `worker` / `workers`; SDK and transport no longer read `WorkerStorage` directly for worker shell lookup; the separate `WorkerLookupStore` seam has been deleted |
 | WorkerGroup mutation | `upsertWorkerGroup`, `deleteWorkerGroup` | SDK declaration, bootstrap, tests | `WorkerGroupOwner` through resource runtime | control-plane storage plus runtime candidate projection | `WorkerGroupRecord` / `EventBinding` are runtime-api declaration values; WorkerGroup remains capability declaration truth, not match strategy state |
 | WorkerGroup read | `workerGroup`, `workerGroupReadView`, `workerGroups` | SDK read APIs, candidate enumeration, tests | `WorkerGroupOwner` / scheduling-view runtime | control-plane read plus runtime read model | `workerGroupReadView` is used by scheduling candidate enumeration |
 | AdapterNode mutation | `registerAdapterNode`, `deleteAdapterNode` | SDK declaration, tests | `WorkerRelationshipOwner` through resource runtime | control-plane storage plus runtime projection | `AdapterNodeRecord` is a runtime-api declaration value; AdapterNode is endpoint/runtime-node declaration truth |
