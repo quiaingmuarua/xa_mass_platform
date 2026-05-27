@@ -1,7 +1,7 @@
 package com.xa.mass.sdk.model;
 
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
-import com.xa.mass.base.model.Worker;
+import com.xa.mass.runtime.worker.WorkerResourceRecord;
 import com.xa.mass.transport.WorkerTransportHints;
 
 import java.util.*;
@@ -18,22 +18,27 @@ public final class SdkResourceMapper {
         return MassTaskShellCreateRequestMapper.toEngineRequest(request);
     }
 
-    public static Worker toWorker(WorkerRegistration request) {
+    public static WorkerResourceRecord toWorkerResourceRecord(WorkerRegistration request) {
         Objects.requireNonNull(request, "request");
         String workerId = requireNonBlank(request.getWorkerId(), "workerId");
         String adapterId = requireNonBlank(request.getAdapterId(), "adapterId");
         String transportHint = WorkerTransportHints.normalize(requireNonBlank(request.getTransportHint(), "transportHint"));
-        Worker worker = new Worker();
-        worker.setWorkerId(workerId);
-        worker.setAdapterNodeId(blankToNull(request.getAdapterNodeId()));
-        worker.setWorkerGroupId(blankToNull(request.getWorkerGroupId()));
-        worker.setSupportedProjects(Collections.emptyList());
-        worker.setSupportedEventCodes(Collections.emptyList());
-        worker.setAdapterId(adapterId);
-        worker.setOnlineStrategy(transportHint);
-        worker.setMaxConcurrentWork(request.getMaxConcurrentWork());
-        worker.setAttributes(normalizedAttributes(request.getAttributes()));
-        return worker;
+        return new WorkerResourceRecord(
+                workerId,
+                null,
+                null,
+                null,
+                Collections.emptyList(),
+                Collections.emptyList(),
+                blankToNull(request.getWorkerGroupId()),
+                blankToNull(request.getAdapterNodeId()),
+                adapterId,
+                transportHint,
+                request.getMaxConcurrentWork(),
+                normalizedAttributes(request.getAttributes()),
+                null,
+                null
+        );
     }
 
     private static String requireNonBlank(String value, String fieldName) {

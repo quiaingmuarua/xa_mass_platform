@@ -546,6 +546,7 @@ Scope:
    - candidate batch
    - source evidence/result
    - runtime selector
+   - resource write/read contract and worker resource row
    - scheduling view contract and group capability/load/reachability DTOs
    - dispatch gate read/mutation contract
    - admission request/result

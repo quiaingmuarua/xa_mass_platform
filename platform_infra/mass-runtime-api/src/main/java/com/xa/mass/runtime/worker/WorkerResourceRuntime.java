@@ -1,10 +1,5 @@
-package com.xa.mass.engine.worker;
+package com.xa.mass.runtime.worker;
 
-import com.xa.mass.runtime.worker.AdapterNodeRecord;
-import com.xa.mass.runtime.worker.NodeGroupBindingRecord;
-import com.xa.mass.runtime.worker.WorkerGroupRecord;
-
-import com.xa.mass.base.model.Worker;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -14,11 +9,13 @@ import java.util.Set;
  */
 public interface WorkerResourceRuntime {
 
-    void addWorker(Worker worker);
+    void addWorker(WorkerResourceRecord worker);
 
-    Worker getWorker(String workerId);
+    Optional<WorkerResourceRecord> worker(String workerId);
 
-    boolean updateWorker(Worker worker);
+    List<WorkerResourceRecord> workers();
+
+    boolean updateWorker(WorkerResourceRecord worker);
 
     boolean deleteWorker(String workerId);
 

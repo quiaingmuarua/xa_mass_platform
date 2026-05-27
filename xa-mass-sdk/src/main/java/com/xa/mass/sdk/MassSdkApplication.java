@@ -449,7 +449,8 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     public void registerWorker(WorkerRegistration request) {
         requireStartedEngine();
         WorkerRegistration registration = normalizeWorkerRegistration(request);
-        requireStartedEngine().getConfig().getWorkerResourceRuntime().addWorker(SdkResourceMapper.toWorker(registration));
+        requireStartedEngine().getConfig().getWorkerResourceRuntime()
+                .addWorker(SdkResourceMapper.toWorkerResourceRecord(registration));
     }
 
     @Override

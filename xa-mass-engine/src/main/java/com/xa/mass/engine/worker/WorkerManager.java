@@ -25,6 +25,8 @@ import com.xa.mass.runtime.worker.WorkerLoadSnapshot;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.runtime.worker.WorkerReportRuntime;
+import com.xa.mass.runtime.worker.WorkerResourceRecord;
+import com.xa.mass.runtime.worker.WorkerResourceRuntime;
 import com.xa.mass.runtime.worker.WorkerSchedulingViewRuntime;
 import com.xa.mass.runtime.worker.WorkerTaskSelector;
 import com.xa.mass.storage.api.WorkerLookupStore;
@@ -32,6 +34,7 @@ import com.xa.mass.storage.api.WorkerStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -114,8 +117,18 @@ public class WorkerManager implements WorkerLookupStore,
         notifyDispatchWakeup("worker registered");
     }
 
+    @Override
+    public void addWorker(WorkerResourceRecord worker) {
+        addWorker(toWorker(worker));
+    }
+
     public Worker getWorker(String workerId) {
         return resourceOwner.getWorker(workerId).orElse(null);
+    }
+
+    @Override
+    public Optional<WorkerResourceRecord> worker(String workerId) {
+        return resourceOwner.getWorker(workerId).map(WorkerManager::toWorkerResourceRecord);
     }
 
     @Override
@@ -127,6 +140,11 @@ public class WorkerManager implements WorkerLookupStore,
         Optional<Worker> updated = resourceOwner.updateWorker(worker);
         updated.ifPresent(ignored -> publishWorkerRegistrySnapshot());
         return updated.isPresent();
+    }
+
+    @Override
+    public boolean updateWorker(WorkerResourceRecord worker) {
+        return updateWorker(toWorker(worker));
     }
 
     public boolean deleteWorker(String workerId) {
@@ -189,6 +207,13 @@ public class WorkerManager implements WorkerLookupStore,
 
     public List<Worker> getAllWorkers() {
         return resourceOwner.getAllWorkers();
+    }
+
+    @Override
+    public List<WorkerResourceRecord> workers() {
+        return resourceOwner.getAllWorkers().stream()
+                .map(WorkerManager::toWorkerResourceRecord)
+                .toList();
     }
 
     public AdapterNodeRecord registerAdapterNode(AdapterNodeRecord adapterNode) {
@@ -413,6 +438,58 @@ public class WorkerManager implements WorkerLookupStore,
 
     private static String normalizeNullable(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private static WorkerResourceRecord toWorkerResourceRecord(Worker worker) {
+        if (worker == null) {
+            return null;
+        }
+        return new WorkerResourceRecord(
+                worker.getWorkerId(),
+                worker.getStatus() == null ? null : worker.getStatus().name(),
+                worker.getAgentVersion(),
+                worker.getLastHeartbeat(),
+                worker.getSupportedProjects(),
+                worker.getSupportedEventCodes(),
+                worker.getWorkerGroupId(),
+                worker.getAdapterNodeId(),
+                worker.getAdapterId(),
+                worker.getOnlineStrategy(),
+                worker.getMaxConcurrentWork(),
+                worker.getAttributes(),
+                worker.getCreateTime(),
+                worker.getUpdateTime()
+        );
+    }
+
+    private static Worker toWorker(WorkerResourceRecord record) {
+        if (record == null) {
+            throw new IllegalArgumentException("worker resource record must not be null");
+        }
+        Worker worker = new Worker();
+        worker.setWorkerId(record.workerId());
+        worker.setStatus(toWorkerStatus(record.statusName()));
+        worker.setAgentVersion(record.agentVersion());
+        worker.setLastHeartbeat(record.lastHeartbeat());
+        worker.setSupportedProjects(record.supportedProjects());
+        worker.setSupportedEventCodes(record.supportedEventCodes());
+        worker.setWorkerGroupId(record.workerGroupId());
+        worker.setAdapterNodeId(record.adapterNodeId());
+        worker.setAdapterId(record.adapterId());
+        worker.setOnlineStrategy(record.onlineStrategy());
+        worker.setMaxConcurrentWork(record.maxConcurrentWork());
+        worker.setAttributes(record.attributes());
+        worker.setCreateTime(record.createTime() != null ? record.createTime() : LocalDateTime.now());
+        worker.setUpdateTime(record.updateTime() != null ? record.updateTime() : LocalDateTime.now());
+        return worker;
+    }
+
+    private static WorkerStatus toWorkerStatus(String statusName) {
+        String normalizedStatus = normalizeNullable(statusName);
+        if (normalizedStatus == null) {
+            return WorkerStatus.OFFLINE;
+        }
+        return WorkerStatus.valueOf(normalizedStatus);
     }
 
     private void notifyDispatchWakeup(String reason) {

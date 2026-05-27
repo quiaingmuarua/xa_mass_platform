@@ -1568,6 +1568,34 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void workerResourceRuntimeContractIsRuntimeNeutral() throws IOException {
+        Path engineContractPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/worker/WorkerResourceRuntime.java");
+        Path runtimeContractPath = Path.of("..", "platform_infra", "mass-runtime-api", "src", "main", "java",
+                "com", "xa", "mass", "runtime", "worker", "WorkerResourceRuntime.java");
+        Path runtimeRecordPath = Path.of("..", "platform_infra", "mass-runtime-api", "src", "main", "java",
+                "com", "xa", "mass", "runtime", "worker", "WorkerResourceRecord.java");
+
+        List<String> violations = new ArrayList<>();
+        if (Files.exists(engineContractPath)) {
+            violations.add(engineContractPath + " still exists as an engine-local resource runtime contract");
+        }
+        String runtimeContract = Files.readString(runtimeContractPath, StandardCharsets.UTF_8);
+        String runtimeRecord = Files.readString(runtimeRecordPath, StandardCharsets.UTF_8);
+        String combined = runtimeContract + "\n" + runtimeRecord;
+        if (combined.contains("com.xa.mass.engine")) {
+            violations.add("worker resource runtime contract imports engine types");
+        }
+        if (combined.contains("com.xa.mass.base.model.Worker")) {
+            violations.add("worker resource runtime contract exposes base.model.Worker");
+        }
+
+        assertTrue(violations.isEmpty(),
+                "WorkerResourceRuntime is a runtime-api boundary and must stay runtime-neutral:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void taskWriteLockRemainsLifecycleAndProgressOnly() throws IOException {
         Path taskManagerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/TaskManager.java");
         String source = Files.readString(taskManagerPath, StandardCharsets.UTF_8);

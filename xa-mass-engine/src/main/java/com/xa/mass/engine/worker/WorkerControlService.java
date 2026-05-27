@@ -14,6 +14,7 @@ import com.xa.mass.runtime.worker.WorkerCapabilityReport;
 import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;
 import com.xa.mass.runtime.worker.WorkerDispatchGateRuntime;
 import com.xa.mass.runtime.worker.WorkerReportRuntime;
+import com.xa.mass.runtime.worker.WorkerResourceRuntime;
 import com.xa.mass.runtime.worker.WorkerStateProjection;
 import com.xa.mass.runtime.worker.WorkerStateProjectionResult;
 import com.xa.mass.runtime.worker.WorkerStateReport;
@@ -107,7 +108,7 @@ public final class WorkerControlService {
         if (result.success()) {
             dispatchAvailabilityPolicy.applyWorkerStateProjection(result.projection(), dispatchGateRuntime);
             if (isAvailableState(result.projection())
-                    && workerResourceRuntime.getWorker(result.workerId()) != null
+                    && workerResourceRuntime.worker(result.workerId()).isPresent()
                     && dispatchGateRuntime.isWorkerDispatchEnabled(result.workerId())) {
                 notifyDispatchWakeup();
             }

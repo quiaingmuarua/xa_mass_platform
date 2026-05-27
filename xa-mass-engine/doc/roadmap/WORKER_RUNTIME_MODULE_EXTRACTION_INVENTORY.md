@@ -17,7 +17,7 @@ Current first-slice contract split:
 
 | Contract | Current implementer | Purpose |
 | --- | --- | --- |
-| `WorkerResourceRuntime` | `WorkerManager` | Worker, WorkerGroup, AdapterNode, and NodeGroupBinding resource writes |
+| `WorkerResourceRuntime` | `WorkerManager` | Runtime-api contract for Worker, WorkerGroup, AdapterNode, and NodeGroupBinding resource writes |
 | `WorkerCandidateRuntime` | `WorkerManager` | Runtime-api candidate acquisition returning worker candidate rows |
 | `WorkerSchedulingViewRuntime` | `WorkerManager` | Read evidence used to build engine scheduling candidates |
 | `WorkerAdmissionRuntime` | `WorkerManager` | Runtime-api contract for reserve, confirm, release, final occupancy, exclusive lease, and load reads |
@@ -32,13 +32,13 @@ Candidate acquisition and task-local warm hints are now package-owned by
 `WorkerCandidateSourceOwner`; `WorkerManager` delegates to it while the module
 boundary is still inside engine.
 
-Task selector, candidate batch shape, candidate rows, WorkerGroup capability
-read view, scheduling-view contract, admission contract, worker load, resource
+Task selector, candidate batch shape, candidate rows, Worker resource row,
+WorkerGroup capability read view, scheduling-view contract, admission contract, worker load, resource
 declaration records, and transport reachability evidence now use
 runtime-neutral `mass-runtime-api` types: `WorkerTaskSelector`,
-`WorkerCandidateBatch<T>`, `WorkerCandidateRow`,
+`WorkerCandidateBatch<T>`, `WorkerCandidateRow`, `WorkerResourceRecord`,
 `WorkerCandidateRuntime`, `WorkerGroupCapabilityView`,
-`WorkerSchedulingViewRuntime`, `WorkerAdmissionRuntime`,
+`WorkerSchedulingViewRuntime`, `WorkerAdmissionRuntime`, `WorkerResourceRuntime`,
 `WorkerDispatchGateRuntime`, `WorkerLoadSnapshot`,
 `WorkerReachabilityState`, `WorkerCapabilityReport`, `WorkerReportRuntime`,
 `WorkerCapabilityReportStatus`, and `WorkerCapabilityReportResult`, plus worker state report/projection DTOs
@@ -63,8 +63,8 @@ owners while callers converge.
 
 | Method group | Methods | Current callers | Target owner | Truth layer | Notes |
 | --- | --- | --- | --- | --- | --- |
-| Worker row mutation | `addWorker`, `updateWorker`, `deleteWorker` | SDK registration, tests, server bootstrap through SDK | `WorkerResourceOwner` through resource runtime | control-plane storage plus derived runtime projection | Registration row is stable resource truth; `WorkerMeta` slot projection is runtime truth |
-| Worker row lookup | `getWorker`, `findWorker`, `getAllWorkers` | SDK diagnostics, storage-edge lookup, tests | `WorkerResourceOwner` / replacement read contract | control-plane storage read | `findWorker` exists because `WorkerLookupStore` is still active |
+| Worker row mutation | `addWorker`, `updateWorker`, `deleteWorker` | SDK registration, tests, server bootstrap through SDK | `WorkerResourceOwner` through `WorkerResourceRuntime` | control-plane storage plus derived runtime projection | Cross-module calls use runtime-neutral `WorkerResourceRecord`; engine-local compatibility overloads still accept `Worker` |
+| Worker row lookup | `worker`, `workers`, `getWorker`, `findWorker`, `getAllWorkers` | SDK diagnostics, storage-edge lookup, tests | `WorkerResourceOwner` / replacement read contract | control-plane storage read | Runtime API exposes `worker` / `workers`; `findWorker` exists because `WorkerLookupStore` is still active |
 | WorkerGroup mutation | `upsertWorkerGroup`, `deleteWorkerGroup` | SDK declaration, bootstrap, tests | `WorkerGroupOwner` through resource runtime | control-plane storage plus runtime candidate projection | `WorkerGroupRecord` / `EventBinding` are runtime-api declaration values; WorkerGroup remains capability declaration truth, not match strategy state |
 | WorkerGroup read | `workerGroup`, `workerGroupReadView`, `workerGroups` | SDK read APIs, candidate enumeration, tests | `WorkerGroupOwner` / scheduling-view runtime | control-plane read plus runtime read model | `workerGroupReadView` is used by scheduling candidate enumeration |
 | AdapterNode mutation | `registerAdapterNode`, `deleteAdapterNode` | SDK declaration, tests | `WorkerRelationshipOwner` through resource runtime | control-plane storage plus runtime projection | `AdapterNodeRecord` is a runtime-api declaration value; AdapterNode is endpoint/runtime-node declaration truth |
