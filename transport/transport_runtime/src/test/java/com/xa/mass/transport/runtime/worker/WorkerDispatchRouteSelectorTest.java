@@ -1,6 +1,6 @@
 package com.xa.mass.transport.runtime.worker;
 
-import com.xa.mass.base.model.Worker;
+import com.xa.mass.runtime.worker.WorkerResourceRecord;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.runtime.node.InMemoryTransportNodeRegistry;
 import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
@@ -22,7 +22,7 @@ class WorkerDispatchRouteSelectorTest {
         presence.markOnline("worker-1", "websocket", "route-ws", "conn-ws", "connected");
         Thread.sleep(2L);
         presence.markOnline("worker-1", "socket", "route-socket", "conn-socket", "connected");
-        Worker worker = worker("worker-1", "websocket", WorkerTransportHints.REALTIME);
+        WorkerResourceRecord worker = worker("worker-1", "websocket", WorkerTransportHints.REALTIME);
 
         WorkerDispatchRouteSelector selector = new WorkerDispatchRouteSelector(
                 presence,
@@ -41,7 +41,7 @@ class WorkerDispatchRouteSelectorTest {
         presence.markOnline("worker-1", "polling", "route-poll", "conn-poll", "connected");
         Thread.sleep(2L);
         presence.markOnline("worker-1", "websocket", "route-ws", "conn-ws", "connected");
-        Worker worker = worker("worker-1", "missing-adapter", WorkerTransportHints.POLLING);
+        WorkerResourceRecord worker = worker("worker-1", "missing-adapter", WorkerTransportHints.POLLING);
 
         WorkerDispatchRouteSelector selector = new WorkerDispatchRouteSelector(
                 presence,
@@ -51,8 +51,8 @@ class WorkerDispatchRouteSelectorTest {
 
         assertEquals("polling", selector.selectRoute(worker).orElseThrow().adapterId());
 
-        worker.setOnlineStrategy(null);
-        assertEquals("websocket", selector.selectRoute(worker).orElseThrow().adapterId());
+        assertEquals("websocket", selector.selectRoute(
+                worker("worker-1", "missing-adapter", null)).orElseThrow().adapterId());
     }
 
     @Test
@@ -62,7 +62,7 @@ class WorkerDispatchRouteSelectorTest {
         nodes.register("node-1", List.of("websocket"), 1L);
         presence.markOnline("worker-1", "websocket", "route-ws", "conn-ws", "connected");
         nodes.markOffline("node-1");
-        Worker worker = worker("worker-1", "websocket", WorkerTransportHints.REALTIME);
+        WorkerResourceRecord worker = worker("worker-1", "websocket", WorkerTransportHints.REALTIME);
 
         WorkerDispatchRouteSelector selector = new WorkerDispatchRouteSelector(
                 presence,
@@ -74,11 +74,22 @@ class WorkerDispatchRouteSelectorTest {
         assertTrue(selector.selectRoute(worker("missing-worker", "websocket", WorkerTransportHints.REALTIME)).isEmpty());
     }
 
-    private static Worker worker(String workerId, String adapterId, String transportHint) {
-        Worker worker = new Worker();
-        worker.setWorkerId(workerId);
-        worker.setAdapterId(adapterId);
-        worker.setOnlineStrategy(transportHint);
-        return worker;
+    private static WorkerResourceRecord worker(String workerId, String adapterId, String transportHint) {
+        return new WorkerResourceRecord(
+                workerId,
+                null,
+                null,
+                null,
+                List.of(),
+                List.of(),
+                null,
+                null,
+                adapterId,
+                transportHint,
+                1,
+                Map.of(),
+                null,
+                null
+        );
     }
 }

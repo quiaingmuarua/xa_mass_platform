@@ -28,7 +28,6 @@ import com.xa.mass.runtime.worker.WorkerResourceRuntime;
 import com.xa.mass.runtime.worker.WorkerSchedulingViewRuntime;
 import com.xa.mass.runtime.worker.WorkerTaskSelector;
 import com.xa.mass.runtime.worker.WorkerWarmHintRuntime;
-import com.xa.mass.storage.api.WorkerLookupStore;
 import com.xa.mass.storage.api.WorkerStorage;
 import com.xa.mass.worker.runtime.WorkerAdmissionOwner;
 import com.xa.mass.worker.runtime.WorkerCandidateIndex;
@@ -56,8 +55,7 @@ import java.util.Set;
  * <p>Transport reachability is read through {@link WorkerReachabilityView},
  * while the worker model remains the engine-owned control-plane record.
  */
-public class WorkerManager implements WorkerLookupStore,
-        WorkerResourceRuntime,
+public class WorkerManager implements WorkerResourceRuntime,
         WorkerCandidateRuntime,
         WorkerSchedulingViewRuntime,
         WorkerAdmissionRuntime,
@@ -133,11 +131,6 @@ public class WorkerManager implements WorkerLookupStore,
     @Override
     public Optional<WorkerResourceRecord> worker(String workerId) {
         return resourceOwner.getWorker(workerId).map(WorkerManager::toWorkerResourceRecord);
-    }
-
-    @Override
-    public Worker findWorker(String workerId) {
-        return getWorker(workerId);
     }
 
     public boolean updateWorker(Worker worker) {

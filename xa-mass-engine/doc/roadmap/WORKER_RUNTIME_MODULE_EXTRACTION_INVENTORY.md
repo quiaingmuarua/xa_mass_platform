@@ -25,7 +25,6 @@ Current first-slice contract split:
 | `WorkerDispatchGateRuntime` | `WorkerManager` | Runtime-api contract for source-scoped dispatch gate reads and mutations |
 | `WorkerReportRuntime` | `WorkerManager` | Runtime-api report contract for capability report mutation currently owned by `WorkerCapabilityAuthority` via `WorkerManager` |
 | `WorkerWarmHintRuntime` | `WorkerManager` | Runtime-api contract for task-local warm candidate hint mutation |
-| `WorkerLookupStore` | `WorkerManager` | Storage-edge single-worker lookup seam; disposition still open |
 
 `WorkerCandidateRuntime` now accepts runtime-neutral `WorkerTaskSelector`, not
 `Task`. The engine adapts `Task.sharedConfig` to selector evidence through
@@ -100,13 +99,16 @@ transition, dispatch binding, and refill timing stay in engine.
 Kernel worker report/state/command event registration now uses worker-control
 entry naming instead of WorkerManager owner naming; `TargetScope.WORKER_MANAGER`
 remains the historical event-routing target, not the mutation owner.
+Transport runtime dispatch routing now consumes `WorkerResourceRuntime` and
+runtime-neutral `WorkerResourceRecord` instead of `WorkerLookupStore` or
+mutable base `Worker` rows.
 
 ## Public Method Inventory
 
 | Method group | Methods | Current callers | Target owner | Truth layer | Notes |
 | --- | --- | --- | --- | --- | --- |
 | Worker row mutation | `addWorker`, `updateWorker`, `deleteWorker` | SDK registration, tests, server bootstrap through SDK | `WorkerResourceOwner` through `WorkerResourceRuntime` | control-plane storage plus derived runtime projection | Cross-module calls use runtime-neutral `WorkerResourceRecord`; engine-local compatibility overloads still accept `Worker` |
-| Worker row lookup | `worker`, `workers`, `getWorker`, `findWorker`, `getAllWorkers` | SDK diagnostics, storage-edge lookup, tests | `WorkerResourceOwner` / replacement read contract | control-plane storage read | Runtime API exposes `worker` / `workers`; `findWorker` exists because `WorkerLookupStore` is still active |
+| Worker row lookup | `worker`, `workers`, `getWorker`, `getAllWorkers` | SDK diagnostics, transport runtime, tests | `WorkerResourceOwner` through `WorkerResourceRuntime` | control-plane storage read | Runtime API exposes `worker` / `workers`; the separate `WorkerLookupStore` seam has been deleted |
 | WorkerGroup mutation | `upsertWorkerGroup`, `deleteWorkerGroup` | SDK declaration, bootstrap, tests | `WorkerGroupOwner` through resource runtime | control-plane storage plus runtime candidate projection | `WorkerGroupRecord` / `EventBinding` are runtime-api declaration values; WorkerGroup remains capability declaration truth, not match strategy state |
 | WorkerGroup read | `workerGroup`, `workerGroupReadView`, `workerGroups` | SDK read APIs, candidate enumeration, tests | `WorkerGroupOwner` / scheduling-view runtime | control-plane read plus runtime read model | `workerGroupReadView` is used by scheduling candidate enumeration |
 | AdapterNode mutation | `registerAdapterNode`, `deleteAdapterNode` | SDK declaration, tests | `WorkerRelationshipOwner` through resource runtime | control-plane storage plus runtime projection | `AdapterNodeRecord` is a runtime-api declaration value; AdapterNode is endpoint/runtime-node declaration truth |
@@ -183,13 +185,12 @@ scheduling-view reads.
 
 ### `WorkerLookupStore`
 
-Current disposition: keep temporarily.
+Current disposition: deleted.
 
-Reason: `WorkerManager` still implements storage-edge `WorkerLookupStore` for
-single-worker lookup. It overlaps with future resource read/scheduling view
-contracts, but deleting it now would be rename churn before owner split. WRX-C1
-must keep the overlap visible; WRX-D1 should either delete it or replace it with
-a worker-runtime/resource read contract.
+Reason: transport runtime now consumes `WorkerResourceRuntime.worker(...)` and
+`WorkerResourceRecord` for worker registration identity. `WorkerStorage` remains
+the control-plane storage contract, while cross-module runtime callers use the
+runtime-api resource read contract.
 
 ### `WorkerCandidateRuntime` and Candidate Rows
 

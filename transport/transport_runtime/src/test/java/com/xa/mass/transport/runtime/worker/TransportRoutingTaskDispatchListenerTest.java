@@ -2,6 +2,7 @@ package com.xa.mass.transport.runtime.worker;
 
 
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
+import com.xa.mass.runtime.worker.WorkerResourceRecord;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
@@ -282,12 +283,13 @@ class TransportRoutingTaskDispatchListenerTest {
 
     @Test
     void batchReusesResolvedDispatchTargetForRepeatedWorkerBindings() {
-        CountingWorkerLookupStore workerLookupStore = new CountingWorkerLookupStore(worker("poll-worker", null, WorkerTransportHints.POLLING));
+        CountingWorkerResourceRuntime workerResourceRuntime =
+                new CountingWorkerResourceRuntime(worker("poll-worker", null, WorkerTransportHints.POLLING));
         RecordingAdapter pollingAdapter = new RecordingAdapter(WorkerTransportHints.POLLING);
         TransportRoutingTaskDispatchListener listener = new TransportRoutingTaskDispatchListener(
-                workerLookupStore,
+                workerResourceRuntime,
                 new TransportRuntimeRegistry(
-                        workerLookupStore,
+                        workerResourceRuntime,
                         report -> true,
                         new NoopWorkerSystemEventChannel(),
                         new InMemoryWorkerPresenceStore(),
@@ -303,7 +305,7 @@ class TransportRoutingTaskDispatchListenerTest {
                 binding("task-1", "msg-2", "attempt-2", "poll-worker", "batch-2")
         ));
 
-        assertEquals(1, workerLookupStore.lookupCount(), "worker lookup should be reused within one dispatch batch");
+        assertEquals(1, workerResourceRuntime.lookupCount(), "worker lookup should be reused within one dispatch batch");
         assertEquals(List.of("msg-1", "msg-2"), pollingAdapter.dispatchedMessageIds);
     }
 
@@ -557,21 +559,18 @@ class TransportRoutingTaskDispatchListenerTest {
         }
     }
 
-    private static final class CountingWorkerLookupStore implements com.xa.mass.storage.api.WorkerLookupStore {
-        private final Worker worker;
+    private static final class CountingWorkerResourceRuntime extends WorkerManager {
         private int lookupCount;
 
-        private CountingWorkerLookupStore(Worker worker) {
-            this.worker = worker;
+        private CountingWorkerResourceRuntime(Worker worker) {
+            super(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
+            addWorker(worker);
         }
 
         @Override
-        public Worker findWorker(String workerId) {
+        public java.util.Optional<WorkerResourceRecord> worker(String workerId) {
             lookupCount++;
-            if (worker != null && worker.getWorkerId() != null && worker.getWorkerId().equals(workerId)) {
-                return worker;
-            }
-            return null;
+            return super.worker(workerId);
         }
 
         private int lookupCount() {

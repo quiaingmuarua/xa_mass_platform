@@ -13,16 +13,11 @@ import java.util.Optional;
  * runtime registry. Durable worker history belongs in trace/audit
  * projections, not this storage contract.
  */
-public interface WorkerStorage extends WorkerLookupStore {
+public interface WorkerStorage {
 
     void addWorker(Worker worker);
 
     Optional<Worker> getWorker(String workerId);
-
-    @Override
-    default Worker findWorker(String workerId) {
-        return getWorker(workerId).orElse(null);
-    }
 
     boolean updateWorker(Worker worker);
 

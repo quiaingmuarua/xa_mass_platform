@@ -325,8 +325,8 @@ Within starter assembly, `EngineConfig` now treats `WorkerManager` and
 `RuleManager` as derived helpers over `WorkerStorage` / `RuleStorage` rather
 than independent config slots that outer modules should wire or cache.
 Embedded transport runtime assembly also consumes only
-`WorkerLookupStore`-level worker resolution instead of reaching through the
-broader worker facade.
+`WorkerResourceRuntime` worker resource reads instead of reaching through the
+broader worker facade or storage lookup seams.
 Assignment no longer hands dispatch-ready batches straight into the transport
 routing listener. SDK runtime assembly now inserts an explicit
 `TaskDispatchHandoff` seam between engine and transport; the bundled default is

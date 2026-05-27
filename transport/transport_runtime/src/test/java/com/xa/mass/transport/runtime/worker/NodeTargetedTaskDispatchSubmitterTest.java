@@ -1,10 +1,13 @@
 package com.xa.mass.transport.runtime.worker;
 
+import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.runtime.dispatch.NodeTargetedTaskDispatchHandoff;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatch;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
+import com.xa.mass.engine.worker.WorkerManager;
+import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.runtime.node.InMemoryTransportNodeRegistry;
 import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
@@ -38,12 +41,10 @@ class NodeTargetedTaskDispatchSubmitterTest {
         List<TaskDispatchBinding> compensated = new ArrayList<>();
         NodeTargetedTaskDispatchSubmitter submitter = new NodeTargetedTaskDispatchSubmitter(
                 handoff,
-                workerId -> switch (workerId) {
-                    case "worker-1" -> worker("worker-1");
-                    case "worker-2" -> worker("worker-2");
-                    case "worker-missing-route" -> worker("worker-missing-route");
-                    default -> null;
-                },
+                workerResourceRuntime(
+                        worker("worker-1"),
+                        worker("worker-2"),
+                        worker("worker-missing-route")),
                 selector,
                 (task, dispatchBindings, detail) -> {
                     compensated.addAll(dispatchBindings);
@@ -79,7 +80,7 @@ class NodeTargetedTaskDispatchSubmitterTest {
         List<String> details = new ArrayList<>();
         NodeTargetedTaskDispatchSubmitter submitter = new NodeTargetedTaskDispatchSubmitter(
                 handoff,
-                workerId -> "worker-1".equals(workerId) ? worker("worker-1") : null,
+                workerResourceRuntime(worker("worker-1")),
                 selector,
                 (task, dispatchBindings, detail) -> {
                     compensated.addAll(dispatchBindings);
@@ -121,6 +122,16 @@ class NodeTargetedTaskDispatchSubmitterTest {
         worker.setAdapterId("websocket");
         worker.setOnlineStrategy(WorkerTransportHints.REALTIME);
         return worker;
+    }
+
+    private static WorkerManager workerResourceRuntime(Worker... workers) {
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
+        if (workers != null) {
+            for (Worker worker : workers) {
+                workerManager.addWorker(worker);
+            }
+        }
+        return workerManager;
     }
 
     private static List<String> messages(TaskDispatchBatch batch) {

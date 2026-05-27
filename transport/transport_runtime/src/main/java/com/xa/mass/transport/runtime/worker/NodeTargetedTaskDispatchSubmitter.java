@@ -1,12 +1,12 @@
 package com.xa.mass.transport.runtime.worker;
 
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.runtime.dispatch.NodeTargetedTaskDispatchHandoff;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatch;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
-import com.xa.mass.storage.api.WorkerLookupStore;
+import com.xa.mass.runtime.worker.WorkerResourceRecord;
+import com.xa.mass.runtime.worker.WorkerResourceRuntime;
 import com.xa.mass.transport.presence.WorkerDispatchRouteOwner;
 import com.xa.mass.transport.runtime.TransportDispatchFailureHandler;
 import org.slf4j.Logger;
@@ -27,16 +27,16 @@ public final class NodeTargetedTaskDispatchSubmitter implements TaskDispatchBatc
     private static final Logger logger = LoggerFactory.getLogger(NodeTargetedTaskDispatchSubmitter.class);
 
     private final NodeTargetedTaskDispatchHandoff handoff;
-    private final WorkerLookupStore workerLookupStore;
+    private final WorkerResourceRuntime workerResourceRuntime;
     private final WorkerDispatchRouteSelector routeSelector;
     private final TransportDispatchFailureHandler failureHandler;
 
     public NodeTargetedTaskDispatchSubmitter(NodeTargetedTaskDispatchHandoff handoff,
-                                             WorkerLookupStore workerLookupStore,
+                                             WorkerResourceRuntime workerResourceRuntime,
                                              WorkerDispatchRouteSelector routeSelector,
                                              TransportDispatchFailureHandler failureHandler) {
         this.handoff = Objects.requireNonNull(handoff, "handoff");
-        this.workerLookupStore = Objects.requireNonNull(workerLookupStore, "workerLookupStore");
+        this.workerResourceRuntime = Objects.requireNonNull(workerResourceRuntime, "workerResourceRuntime");
         this.routeSelector = Objects.requireNonNull(routeSelector, "routeSelector");
         this.failureHandler = failureHandler;
     }
@@ -53,8 +53,8 @@ public final class NodeTargetedTaskDispatchSubmitter implements TaskDispatchBatc
             if (binding == null) {
                 continue;
             }
-            Worker worker = binding != null && binding.workerId() != null
-                    ? workerLookupStore.findWorker(binding.workerId())
+            WorkerResourceRecord worker = binding != null && binding.workerId() != null
+                    ? workerResourceRuntime.worker(binding.workerId()).orElse(null)
                     : null;
             if (worker == null) {
                 unresolved.add(binding);

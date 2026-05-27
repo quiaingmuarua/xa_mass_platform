@@ -672,6 +672,10 @@ Progress:
   `WorkerAvailabilityWakeupRuntime` instead of importing `WorkerManager`
   directly. This keeps assignment retry / ready-scan wakeup wiring as lifecycle
   assembly, not scheduling truth.
+- Transport runtime dispatch routing now consumes `WorkerResourceRuntime` and
+  `WorkerResourceRecord` for worker registration identity. The separate
+  `WorkerLookupStore` storage-edge seam has been deleted instead of preserved
+  as a parallel lookup path.
 - Engine still assembles those owners through `WorkerManager`; match strategy
   and event handler parsing residue stays in engine for later slices.
 - SDK shell runtime bridge now accepts `WorkerResourceRuntime` for legacy
@@ -817,8 +821,7 @@ Add or update guards as phases land:
 
 Contract tests:
 
-- `WorkerLookupStore` disposition or replacement seam, if it still exists after
-  C1
+- worker resource read replacement seam after `WorkerLookupStore` deletion
 - worker resource declaration lifecycle
 - runtime projection after resource mutation
 - node/group binding lifecycle

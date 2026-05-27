@@ -1,6 +1,6 @@
 package com.xa.mass.transport.polling.runtime;
 
-import com.xa.mass.storage.api.WorkerLookupStore;
+import com.xa.mass.runtime.worker.WorkerResourceRuntime;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.polling.worker.PollingWorkerAdapter;
@@ -25,7 +25,7 @@ public final class DefaultWorkerTransportRuntimeFactory implements WorkerTranspo
             new TransportAdapterDescriptor(PollingWorkerAdapter.PROTOCOL, PollingWorkerAdapter.PROTOCOL);
 
     @Override
-    public TransportRuntimeRegistry create(WorkerLookupStore workerLookupStore,
+    public TransportRuntimeRegistry create(WorkerResourceRuntime workerResourceRuntime,
                                            TaskResultIngestChannel taskResultIngestChannel,
                                            WorkerSystemEventChannel systemEventChannel,
                                            WorkerPresenceStore workerPresenceStore,
@@ -37,7 +37,7 @@ public final class DefaultWorkerTransportRuntimeFactory implements WorkerTranspo
             bindings.addAll(adapterBindings);
         }
         return new TransportRuntimeRegistry(
-                workerLookupStore,
+                workerResourceRuntime,
                 taskResultIngestChannel,
                 systemEventChannel,
                 workerPresenceStore,

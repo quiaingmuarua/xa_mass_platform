@@ -1,11 +1,11 @@
 package com.xa.mass.transport.runtime.worker;
 
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
-import com.xa.mass.storage.api.WorkerLookupStore;
+import com.xa.mass.runtime.worker.WorkerResourceRecord;
+import com.xa.mass.runtime.worker.WorkerResourceRuntime;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.runtime.TransportBinding;
@@ -32,43 +32,43 @@ public class TransportRoutingTaskDispatchListener implements TaskDispatchBatchLi
 
     private static final Logger logger = LoggerFactory.getLogger(TransportRoutingTaskDispatchListener.class);
 
-    private final WorkerLookupStore workerLookupStore;
+    private final WorkerResourceRuntime workerResourceRuntime;
     private final TransportRuntimeRegistry transportRuntimeRegistry;
     private final TransportDispatchFailureHandler failureHandler;
     private final TransportDispatchEnvelopeFactory envelopeFactory;
     private final RuntimeTaskExecutor runtimeTaskExecutor;
 
-    public TransportRoutingTaskDispatchListener(WorkerLookupStore workerLookupStore,
+    public TransportRoutingTaskDispatchListener(WorkerResourceRuntime workerResourceRuntime,
                                                 TransportRuntimeRegistry transportRuntimeRegistry) {
-        this(workerLookupStore, transportRuntimeRegistry, null, new TransportDispatchEnvelopeFactory(), null);
+        this(workerResourceRuntime, transportRuntimeRegistry, null, new TransportDispatchEnvelopeFactory(), null);
     }
 
-    public TransportRoutingTaskDispatchListener(WorkerLookupStore workerLookupStore,
+    public TransportRoutingTaskDispatchListener(WorkerResourceRuntime workerResourceRuntime,
                                                 TransportRuntimeRegistry transportRuntimeRegistry,
                                                 TransportDispatchFailureHandler failureHandler) {
-        this(workerLookupStore, transportRuntimeRegistry, failureHandler, new TransportDispatchEnvelopeFactory(), null);
+        this(workerResourceRuntime, transportRuntimeRegistry, failureHandler, new TransportDispatchEnvelopeFactory(), null);
     }
 
-    TransportRoutingTaskDispatchListener(WorkerLookupStore workerLookupStore,
+    TransportRoutingTaskDispatchListener(WorkerResourceRuntime workerResourceRuntime,
                                          TransportRuntimeRegistry transportRuntimeRegistry,
                                          TransportDispatchFailureHandler failureHandler,
                                          TransportDispatchEnvelopeFactory envelopeFactory) {
-        this(workerLookupStore, transportRuntimeRegistry, failureHandler, envelopeFactory, null);
+        this(workerResourceRuntime, transportRuntimeRegistry, failureHandler, envelopeFactory, null);
     }
 
-    public TransportRoutingTaskDispatchListener(WorkerLookupStore workerLookupStore,
+    public TransportRoutingTaskDispatchListener(WorkerResourceRuntime workerResourceRuntime,
                                                 TransportRuntimeRegistry transportRuntimeRegistry,
                                                 TransportDispatchFailureHandler failureHandler,
                                                 RuntimeTaskExecutor runtimeTaskExecutor) {
-        this(workerLookupStore, transportRuntimeRegistry, failureHandler, new TransportDispatchEnvelopeFactory(), runtimeTaskExecutor);
+        this(workerResourceRuntime, transportRuntimeRegistry, failureHandler, new TransportDispatchEnvelopeFactory(), runtimeTaskExecutor);
     }
 
-    TransportRoutingTaskDispatchListener(WorkerLookupStore workerLookupStore,
+    TransportRoutingTaskDispatchListener(WorkerResourceRuntime workerResourceRuntime,
                                          TransportRuntimeRegistry transportRuntimeRegistry,
                                          TransportDispatchFailureHandler failureHandler,
                                          TransportDispatchEnvelopeFactory envelopeFactory,
                                          RuntimeTaskExecutor runtimeTaskExecutor) {
-        this.workerLookupStore = Objects.requireNonNull(workerLookupStore, "workerLookupStore");
+        this.workerResourceRuntime = Objects.requireNonNull(workerResourceRuntime, "workerResourceRuntime");
         this.transportRuntimeRegistry = Objects.requireNonNull(transportRuntimeRegistry, "transportRuntimeRegistry");
         this.failureHandler = failureHandler;
         this.envelopeFactory = Objects.requireNonNull(envelopeFactory, "envelopeFactory");
@@ -267,7 +267,7 @@ public class TransportRoutingTaskDispatchListener implements TaskDispatchBatchLi
     }
 
     private ResolvedDispatchTarget resolveDispatchTarget(String workerId) {
-        Worker worker = workerLookupStore.findWorker(workerId);
+        WorkerResourceRecord worker = workerResourceRuntime.worker(workerId).orElse(null);
         if (worker == null) {
             throw new IllegalStateException("Cannot dispatch task item because worker is missing: " + workerId);
         }

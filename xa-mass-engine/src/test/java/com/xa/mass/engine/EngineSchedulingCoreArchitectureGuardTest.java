@@ -1725,6 +1725,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
     void workerResourceRuntimeContractIsRuntimeNeutral() throws IOException {
         Path engineContractPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/worker/WorkerResourceRuntime.java");
+        Path lookupStorePath = Path.of("..", "platform_infra", "mass-storage-api", "src", "main", "java",
+                "com", "xa", "mass", "storage", "api", "WorkerLookupStore.java");
         Path runtimeContractPath = Path.of("..", "platform_infra", "mass-runtime-api", "src", "main", "java",
                 "com", "xa", "mass", "runtime", "worker", "WorkerResourceRuntime.java");
         Path runtimeRecordPath = Path.of("..", "platform_infra", "mass-runtime-api", "src", "main", "java",
@@ -1733,6 +1735,9 @@ class EngineSchedulingCoreArchitectureGuardTest {
         List<String> violations = new ArrayList<>();
         if (Files.exists(engineContractPath)) {
             violations.add(engineContractPath + " still exists as an engine-local resource runtime contract");
+        }
+        if (Files.exists(lookupStorePath)) {
+            violations.add(lookupStorePath + " reintroduces a storage-edge worker lookup seam");
         }
         String runtimeContract = Files.readString(runtimeContractPath, StandardCharsets.UTF_8);
         String runtimeRecord = Files.readString(runtimeRecordPath, StandardCharsets.UTF_8);

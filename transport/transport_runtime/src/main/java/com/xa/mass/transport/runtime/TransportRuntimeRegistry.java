@@ -1,9 +1,9 @@
 package com.xa.mass.transport.runtime;
 
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
-import com.xa.mass.storage.api.WorkerLookupStore;
+import com.xa.mass.runtime.worker.WorkerResourceRecord;
+import com.xa.mass.runtime.worker.WorkerResourceRuntime;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.presence.WorkerPresenceStore;
@@ -29,7 +29,7 @@ import java.util.TreeSet;
  */
 public final class TransportRuntimeRegistry {
 
-    private final WorkerLookupStore workerLookupStore;
+    private final WorkerResourceRuntime workerResourceRuntime;
     private final TaskResultIngestChannel taskResultIngestChannel;
     private final WorkerSystemEventChannel systemEventChannel;
     private final WorkerPresenceStore workerPresenceStore;
@@ -37,12 +37,12 @@ public final class TransportRuntimeRegistry {
     private final TransportRegistrationResolver registrationResolver;
     private final Map<String, TransportBinding> bindingByAdapterId;
 
-    public TransportRuntimeRegistry(WorkerLookupStore workerLookupStore,
+    public TransportRuntimeRegistry(WorkerResourceRuntime workerResourceRuntime,
                                     TaskResultIngestChannel taskResultIngestChannel,
                                     WorkerSystemEventChannel systemEventChannel,
                                     WorkerPresenceStore workerPresenceStore,
                                     List<TransportBinding> bindings) {
-        this.workerLookupStore = Objects.requireNonNull(workerLookupStore, "workerLookupStore");
+        this.workerResourceRuntime = Objects.requireNonNull(workerResourceRuntime, "workerResourceRuntime");
         this.taskResultIngestChannel = Objects.requireNonNull(taskResultIngestChannel, "taskResultIngestChannel");
         this.systemEventChannel = Objects.requireNonNull(systemEventChannel, "systemEventChannel");
         this.workerPresenceStore = Objects.requireNonNull(workerPresenceStore, "workerPresenceStore");
@@ -68,7 +68,7 @@ public final class TransportRuntimeRegistry {
     public TaskDispatchBatchListener createDispatchBatchListener(TransportDispatchFailureHandler failureHandler,
                                                                 RuntimeTaskExecutor runtimeTaskExecutor) {
         return new TransportRoutingTaskDispatchListener(
-                workerLookupStore,
+                workerResourceRuntime,
                 this,
                 failureHandler,
                 runtimeTaskExecutor
@@ -95,13 +95,13 @@ public final class TransportRuntimeRegistry {
         return resolveBindingForWorker(requireWorker(workerId));
     }
 
-    public TransportBinding resolveDispatchBinding(Worker worker) {
+    public TransportBinding resolveDispatchBinding(WorkerResourceRecord worker) {
         return resolveBindingForWorker(Objects.requireNonNull(worker, "worker"));
     }
 
     public ResolvedPullWorkerTransport resolvePullWorkerTransport(String workerId) {
         String normalizedWorkerId = requireWorkerId(workerId);
-        Worker worker = requireWorker(normalizedWorkerId);
+        WorkerResourceRecord worker = requireWorker(normalizedWorkerId);
         TransportBinding binding = resolveBindingForWorker(worker);
         if (binding.getTaskPullChannel() == null) {
             throw new IllegalStateException("Worker adapter '" + binding.getAdapterId()
@@ -123,8 +123,9 @@ public final class TransportRuntimeRegistry {
         return workerPresenceStore;
     }
 
-    private Worker requireWorker(String workerId) {
-        Worker worker = workerLookupStore.findWorker(requireWorkerId(workerId));
+    private WorkerResourceRecord requireWorker(String workerId) {
+        String normalizedWorkerId = requireWorkerId(workerId);
+        WorkerResourceRecord worker = workerResourceRuntime.worker(normalizedWorkerId).orElse(null);
         if (worker == null) {
             throw new IllegalArgumentException("Worker not found: " + requireWorkerId(workerId));
         }
@@ -138,13 +139,13 @@ public final class TransportRuntimeRegistry {
         return workerId.trim();
     }
 
-    private TransportBinding resolveBindingForWorker(Worker worker) {
-        String workerId = worker.getWorkerId();
+    private TransportBinding resolveBindingForWorker(WorkerResourceRecord worker) {
+        String workerId = worker.workerId();
         String resolvedAdapterId;
         try {
             resolvedAdapterId = registrationResolver.resolveRegistrationAdapterId(
-                    worker.getAdapterId(),
-                    worker.getOnlineStrategy()
+                    worker.adapterId(),
+                    worker.onlineStrategy()
             );
         } catch (IllegalArgumentException e) {
             throw new IllegalStateException("Cannot resolve transport binding for worker " + workerId

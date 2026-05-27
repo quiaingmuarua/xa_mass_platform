@@ -1,6 +1,6 @@
 package com.xa.mass.transport.runtime;
 
-import com.xa.mass.storage.api.WorkerLookupStore;
+import com.xa.mass.runtime.worker.WorkerResourceRuntime;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
@@ -20,7 +20,7 @@ class TransportRuntimeRegistryTest {
         IllegalArgumentException error = assertThrows(
                 IllegalArgumentException.class,
                 () -> new TransportRuntimeRegistry(
-                        mock(WorkerLookupStore.class),
+                        mock(WorkerResourceRuntime.class),
                         mock(TaskResultIngestChannel.class),
                         mock(WorkerSystemEventChannel.class),
                         new InMemoryWorkerPresenceStore(),

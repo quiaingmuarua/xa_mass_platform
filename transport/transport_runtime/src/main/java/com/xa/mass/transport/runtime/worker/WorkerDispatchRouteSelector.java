@@ -1,6 +1,6 @@
 package com.xa.mass.transport.runtime.worker;
 
-import com.xa.mass.base.model.Worker;
+import com.xa.mass.runtime.worker.WorkerResourceRecord;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.presence.WorkerDispatchRouteOwner;
 import com.xa.mass.transport.presence.WorkerDispatchRouteOwnerView;
@@ -33,12 +33,12 @@ public final class WorkerDispatchRouteSelector {
         this.transportHintByAdapterId = normalizeAdapterHints(transportHintByAdapterId);
     }
 
-    public Optional<WorkerDispatchRouteOwner> selectRoute(Worker worker) {
-        if (worker == null || worker.getWorkerId() == null || worker.getWorkerId().isBlank()) {
+    public Optional<WorkerDispatchRouteOwner> selectRoute(WorkerResourceRecord worker) {
+        if (worker == null || worker.workerId() == null || worker.workerId().isBlank()) {
             return Optional.empty();
         }
         long now = System.currentTimeMillis();
-        List<WorkerDispatchRouteOwner> dispatchableOwners = routeOwnerView.findOwners(worker.getWorkerId()).stream()
+        List<WorkerDispatchRouteOwner> dispatchableOwners = routeOwnerView.findOwners(worker.workerId()).stream()
                 .filter(owner -> owner.isOnline(now))
                 .filter(owner -> isNodeDispatchable(owner.transportNodeId()))
                 .toList();
@@ -46,7 +46,7 @@ public final class WorkerDispatchRouteSelector {
             return Optional.empty();
         }
 
-        String workerAdapterId = normalizeAdapterId(worker.getAdapterId());
+        String workerAdapterId = normalizeAdapterId(worker.adapterId());
         if (workerAdapterId != null) {
             Optional<WorkerDispatchRouteOwner> exactAdapter = newest(dispatchableOwners.stream()
                     .filter(owner -> workerAdapterId.equals(normalizeAdapterId(owner.adapterId())))
@@ -56,7 +56,7 @@ public final class WorkerDispatchRouteSelector {
             }
         }
 
-        String workerTransportHint = WorkerTransportHints.normalize(worker.getOnlineStrategy());
+        String workerTransportHint = WorkerTransportHints.normalize(worker.onlineStrategy());
         if (workerTransportHint != null) {
             Optional<WorkerDispatchRouteOwner> sameFamily = newest(dispatchableOwners.stream()
                     .filter(owner -> workerTransportHint.equals(transportHintByAdapterId.get(normalizeAdapterId(owner.adapterId()))))

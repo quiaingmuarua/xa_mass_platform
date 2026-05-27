@@ -333,7 +333,7 @@ public class MassApplication {
 
             if (runtimeRole != TransportRuntimeRole.ENGINE_PRODUCER) {
                 transportRuntimeRegistry = transportRuntimeComposition.resolveWorkerTransportRuntimeFactory().create(
-                        engineConfig.getWorkerStorage(),
+                        engineConfig.getWorkerResourceRuntime(),
                         taskResultIngestChannel,
                         systemEventChannel,
                         workerPresenceStore,
@@ -435,7 +435,7 @@ public class MassApplication {
             );
             return new NodeTargetedTaskDispatchSubmitter(
                     nodeTargetedHandoff,
-                    engineConfig.getWorkerStorage(),
+                    engineConfig.getWorkerResourceRuntime(),
                     selector,
                     createTransportDispatchFailureHandler()
             );

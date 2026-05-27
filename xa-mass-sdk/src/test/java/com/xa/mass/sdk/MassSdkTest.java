@@ -40,7 +40,7 @@ import com.xa.mass.runtime.worker.WorkerGroupRecord;
 import com.xa.mass.runtime.worker.EventKey;
 import com.xa.mass.engine.watchdog.PollingIdleBackoffPolicy;
 import com.xa.mass.storage.api.RuleStorage;
-import com.xa.mass.storage.api.WorkerLookupStore;
+import com.xa.mass.runtime.worker.WorkerResourceRuntime;
 import com.xa.mass.storage.api.WorkerStorage;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.rule.RuleDefinition;
@@ -418,7 +418,7 @@ class MassSdkTest {
         config.setWorkerEndpointRegistry(overriddenRegistry);
         WorkerSystemEventChannel customSystemEventChannel = mock(WorkerSystemEventChannel.class);
         config.setCustomSystemEventChannel(customSystemEventChannel);
-        WorkerTransportRuntimeFactory customFactory = (workerLookupStore,
+        WorkerTransportRuntimeFactory customFactory = (workerResourceRuntime,
                                                      taskResultIngestChannel,
                                                      systemEventChannel,
                                                      workerPresenceStore,
@@ -760,7 +760,7 @@ class MassSdkTest {
         TransportConfig config = new TransportConfig();
         config.getBundledWebSocketAdapterConfig().setEnabled(false);
         config.getBundledWebSocketAdapterConfig().setServerEnabled(false);
-        config.setWorkerTransportRuntimeFactory((workerLookupStore,
+        config.setWorkerTransportRuntimeFactory((workerResourceRuntime,
                                                 taskResultIngestChannel,
                                                 systemEventChannel,
                                                 workerPresenceStore,
@@ -784,7 +784,7 @@ class MassSdkTest {
     @Test
     void transportRuntimeCompositionUsesBootstrapDescriptorEvenWithCustomRuntimeFactory() {
         TransportConfig config = new TransportConfig();
-        config.setWorkerTransportRuntimeFactory((workerLookupStore,
+        config.setWorkerTransportRuntimeFactory((workerResourceRuntime,
                                                 taskResultIngestChannel,
                                                 systemEventChannel,
                                                 workerPresenceStore,
@@ -812,7 +812,7 @@ class MassSdkTest {
         config.getBundledWebSocketAdapterConfig().setServerEnabled(false);
         config.setWorkerTransportRuntimeFactory(new WorkerTransportRuntimeFactory() {
             @Override
-            public TransportRuntimeRegistry create(WorkerLookupStore workerLookupStore,
+            public TransportRuntimeRegistry create(WorkerResourceRuntime workerResourceRuntime,
                                                    TaskResultIngestChannel taskResultIngestChannel,
                                                    WorkerSystemEventChannel systemEventChannel,
                                                    com.xa.mass.transport.presence.WorkerPresenceStore workerPresenceStore,
@@ -2700,13 +2700,13 @@ class MassSdkTest {
     void registerWorkerRejectsMissingAdapterIdWhenRealtimeFamilyHasOnlyOneRuntimeAdapter() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
-        WorkerTransportRuntimeFactory transportFactory = (workerLookupStore,
+        WorkerTransportRuntimeFactory transportFactory = (workerResourceRuntime,
                                                          taskResultIngestChannel,
                                                          systemEventChannel,
                                                          workerPresenceStore,
                                                          deliveryService,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
-                workerLookupStore,
+                workerResourceRuntime,
                 taskResultIngestChannel,
                 systemEventChannel,
                 workerPresenceStore,
@@ -2741,13 +2741,13 @@ class MassSdkTest {
     void registerWorkerRejectsMissingAdapterIdWhenMultipleRealtimeAdaptersAreConfigured() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
-        WorkerTransportRuntimeFactory transportFactory = (workerLookupStore,
+        WorkerTransportRuntimeFactory transportFactory = (workerResourceRuntime,
                                                          taskResultIngestChannel,
                                                          systemEventChannel,
                                                          workerPresenceStore,
                                                          deliveryService,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
-                workerLookupStore,
+                workerResourceRuntime,
                 taskResultIngestChannel,
                 systemEventChannel,
                 workerPresenceStore,
@@ -2785,13 +2785,13 @@ class MassSdkTest {
     void registerWorkerUsesExplicitRealtimeAdapterIdWhenMultipleRealtimeAdaptersAreConfigured() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
-        WorkerTransportRuntimeFactory transportFactory = (workerLookupStore,
+        WorkerTransportRuntimeFactory transportFactory = (workerResourceRuntime,
                                                          taskResultIngestChannel,
                                                          systemEventChannel,
                                                          workerPresenceStore,
                                                          deliveryService,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
-                workerLookupStore,
+                workerResourceRuntime,
                 taskResultIngestChannel,
                 systemEventChannel,
                 workerPresenceStore,
@@ -2828,13 +2828,13 @@ class MassSdkTest {
     void getWorkerTransportHintFallsBackToRegistryBindingInsteadOfNormalizingAdapterId() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
-        WorkerTransportRuntimeFactory transportFactory = (workerLookupStore,
+        WorkerTransportRuntimeFactory transportFactory = (workerResourceRuntime,
                                                          taskResultIngestChannel,
                                                          systemEventChannel,
                                                          workerPresenceStore,
                                                          deliveryService,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
-                workerLookupStore,
+                workerResourceRuntime,
                 taskResultIngestChannel,
                 systemEventChannel,
                 workerPresenceStore,
@@ -2904,13 +2904,13 @@ class MassSdkTest {
     void pullWorkerRejectsRealtimeWorkerWhenTransportIsNotPullCapable() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
-        WorkerTransportRuntimeFactory transportFactory = (workerLookupStore,
+        WorkerTransportRuntimeFactory transportFactory = (workerResourceRuntime,
                                                          taskResultIngestChannel,
                                                          systemEventChannel,
                                                          workerPresenceStore,
                                                          deliveryService,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
-                workerLookupStore,
+                workerResourceRuntime,
                 taskResultIngestChannel,
                 systemEventChannel,
                 workerPresenceStore,
@@ -2948,13 +2948,13 @@ class MassSdkTest {
     void pullWorkerRejectsUnsupportedTransportEvenWhenAnotherPullCapableBindingExists() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<TransportOutboundMessage> outputQueue = new InMemoryMessageQueue<>("output", TransportOutboundMessage.class);
-        WorkerTransportRuntimeFactory transportFactory = (workerLookupStore,
+        WorkerTransportRuntimeFactory transportFactory = (workerResourceRuntime,
                                                          taskResultIngestChannel,
                                                          systemEventChannel,
                                                          workerPresenceStore,
                                                          deliveryService,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
-                workerLookupStore,
+                workerResourceRuntime,
                 taskResultIngestChannel,
                 systemEventChannel,
                 workerPresenceStore,
@@ -2995,13 +2995,13 @@ class MassSdkTest {
                 "polling-http-v2",
                 WorkerTransportHints.POLLING
         );
-        WorkerTransportRuntimeFactory transportFactory = (workerLookupStore,
+        WorkerTransportRuntimeFactory transportFactory = (workerResourceRuntime,
                                                          taskResultIngestChannel,
                                                          systemEventChannel,
                                                          workerPresenceStore,
                                                          deliveryService,
                                                          adapterBindings) -> new TransportRuntimeRegistry(
-                workerLookupStore,
+                workerResourceRuntime,
                 taskResultIngestChannel,
                 systemEventChannel,
                 workerPresenceStore,
