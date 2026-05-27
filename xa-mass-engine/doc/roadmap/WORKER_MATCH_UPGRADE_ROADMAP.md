@@ -555,7 +555,8 @@ hint state only. `WorkerManager` rehydrates warm entries through
 `WorkerCandidateIndex.sourceGuard(...)`, dedupes warm and cold candidates, and
 falls back to the normal cold candidate source. The matching strategy records
 warm hints only after a candidate has passed Stage-2 policy and reserve/lock
-admission. `targetWorkerId` tasks skip warm sampling.
+admission. `targetWorkerId` tasks skip warm sampling. Assignment context
+records warm, cold, and warm source-guard rejection counts as diagnostics only.
 
 Warm pool is a pre-Stage-2 candidate priority hint. It can prefer candidates
 that recently passed this task's source/admission path, but it is not a new
@@ -604,9 +605,7 @@ Acceptance:
    rejected by source guard before Stage-2.
 3. `targetWorkerId` direct lookup is not suppressed by warm entries.
 4. Empty, stale, or dropped warm state degrades to normal cold candidate source.
-5. Assignment diagnostics show warm/cold counts and source-guard rejections in
-   a later diagnostics slice; first slice keeps warm state internal and
-   source-guarded.
+5. Assignment diagnostics show warm/cold counts and source-guard rejections.
 6. Warm pool does not hold reservations, locks, leases, or dispatch truth.
 7. Runtime dispatch pump and lane-driven assignment can touch warm state safely.
 8. Source guard is exposed through a match/source owner API; matching code does

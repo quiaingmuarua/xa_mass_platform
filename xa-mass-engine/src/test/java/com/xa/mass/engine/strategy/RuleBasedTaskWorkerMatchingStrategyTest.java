@@ -654,6 +654,40 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
     }
 
     @Test
+    void assignmentContextRecordsWarmCandidateSourceStats() {
+        WorkerManager workerManager = new WorkerManager(
+                new InMemoryWorkerStorage(),
+                workerId -> WorkerReachabilityState.ONLINE
+        );
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        AssignmentRecordService recordService = new AssignmentRecordService();
+        RuleBasedTaskWorkerMatchingStrategy strategy =
+                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+
+        ruleManager.addDefaultRules(List.of(
+                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
+                rule("app_support_check", "supportsProject == true")
+        ));
+
+        Worker worker = worker("worker-warm-diagnostics", "pool-a");
+        worker.setMaxConcurrentWork(2);
+        registerWorker(workerManager, worker);
+
+        Task task = backgroundTask("task-warm-diagnostics");
+        assertEquals(1, strategy.matchWorkers(task, 1).size());
+        assertEquals(1, strategy.matchWorkers(task, 1).size());
+
+        assertTrue(recordService.getRecordsByTaskId("task-warm-diagnostics").stream()
+                .filter(record -> "worker-warm-diagnostics".equals(record.getWorkerId()))
+                .anyMatch(record -> Integer.valueOf(1).equals(record.getContextSnapshot()
+                        .get("workerCandidateWarmCount"))
+                        && Integer.valueOf(1).equals(record.getContextSnapshot()
+                        .get("workerCandidateColdCount"))
+                        && Integer.valueOf(0).equals(record.getContextSnapshot()
+                        .get("workerCandidateWarmRejectedCount"))));
+    }
+
+    @Test
     void matchWorkersOversamplesStageOneCandidateAcquisitionBeforeDispatchLimit() {
         Worker worker = worker("worker-sampled", "pool-a");
         RecordingWorkerManager workerManager = new RecordingWorkerManager(List.of(worker));
@@ -743,6 +777,12 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         public List<Worker> findWorkerCandidates(Task task, int maxCandidateCount) {
             lastMaxCandidateCount = maxCandidateCount;
             return candidates;
+        }
+
+        @Override
+        public WorkerManager.WorkerCandidateBatch findWorkerCandidateBatch(Task task, int maxCandidateCount) {
+            lastMaxCandidateCount = maxCandidateCount;
+            return new WorkerManager.WorkerCandidateBatch(candidates, 0, candidates.size(), 0);
         }
 
         @Override

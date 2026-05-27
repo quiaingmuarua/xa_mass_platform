@@ -696,11 +696,15 @@ public class WorkerManagerTest {
         Task task = task("demoApp", selector("pool-a"));
 
         manager.recordWarmCandidate(task, warm);
+        WorkerManager.WorkerCandidateBatch batch = manager.findWorkerCandidateBatch(task, 1);
 
         assertEquals(List.of("w-warm"),
-                manager.findWorkerCandidates(task, 1).stream()
+                batch.candidates().stream()
                         .map(Worker::getWorkerId)
                         .toList());
+        assertEquals(1, batch.warmCandidateCount());
+        assertEquals(1, batch.coldCandidateCount());
+        assertEquals(0, batch.warmSourceGuardRejectedCount());
         assertEquals(1, manager.warmCandidateCount(task.getTid()));
     }
 
@@ -716,11 +720,14 @@ public class WorkerManagerTest {
         task.setSharedConfig(sharedConfig(Map.of(
                 TaskSharedConfig.TARGET_WORKER_ID, "w-target-warm-suppressed"
         ), "pool-a"));
+        WorkerManager.WorkerCandidateBatch batch = manager.findWorkerCandidateBatch(task, 1);
 
         assertEquals(List.of("w-target-warm-suppressed"),
-                manager.findWorkerCandidates(task, 1).stream()
+                batch.candidates().stream()
                         .map(Worker::getWorkerId)
                         .toList());
+        assertEquals(0, batch.warmCandidateCount());
+        assertEquals(1, batch.coldCandidateCount());
     }
 
     @Test
@@ -740,11 +747,15 @@ public class WorkerManagerTest {
         Worker moved = worker("w-stale-warm-route", "pool-a");
         moved.setAttributes(Map.of("region", "eu"));
         assertTrue(manager.updateWorker(moved));
+        WorkerManager.WorkerCandidateBatch batch = manager.findWorkerCandidateBatch(task, 1);
 
         assertEquals(List.of("w-stable-route"),
-                manager.findWorkerCandidates(task, 1).stream()
+                batch.candidates().stream()
                         .map(Worker::getWorkerId)
                         .toList());
+        assertEquals(0, batch.warmCandidateCount());
+        assertEquals(1, batch.coldCandidateCount());
+        assertEquals(1, batch.warmSourceGuardRejectedCount());
         assertEquals(0, manager.warmCandidateCount(task.getTid()));
     }
 

@@ -99,12 +99,19 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
         if (maxWorkerCount <= 0) {
             return matchedWorkers;
         }
-        List<Worker> candidates = workerManager.findWorkerCandidates(task, candidateAcquisitionLimit(task, maxWorkerCount));
+        WorkerManager.WorkerCandidateBatch candidateBatch = workerManager.findWorkerCandidateBatch(
+                task,
+                candidateAcquisitionLimit(task, maxWorkerCount)
+        );
+        List<Worker> candidates = candidateBatch.candidates();
         List<RuleDefinition> rules = ruleManager.getDefaultRules();
         List<RulePassedCandidate> rulePassedCandidates = new ArrayList<>();
 
-        log.info("[WorkerAssign] Matching workers for task {} (routingCode: {}, candidates: {}, rules: {})",
-                task.getTid(), TaskSharedConfig.routingCode(task), candidates.size(), rules.size());
+        log.info("[WorkerAssign] Matching workers for task {} (routingCode: {}, candidates: {}, "
+                        + "warmCandidates: {}, coldCandidates: {}, warmRejected: {}, rules: {})",
+                task.getTid(), TaskSharedConfig.routingCode(task), candidates.size(),
+                candidateBatch.warmCandidateCount(), candidateBatch.coldCandidateCount(),
+                candidateBatch.warmSourceGuardRejectedCount(), rules.size());
 
         if (log.isDebugEnabled()) {
             for (RuleDefinition rule : rules) {
@@ -128,7 +135,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                 recordService.recordWorkerAssignment(
                         task, candidate, prefilterDecision.result(),
                         prefilterDecision.reason(),
-                        new ArrayList<>(), prefilterDecision.contextSnapshot(),
+                        new ArrayList<>(), withCandidateSourceStats(prefilterDecision.contextSnapshot(), candidateBatch),
                         prefilterDecision.workerLocked()
                 );
                 log.debug("Worker candidate rejected before rule evaluation: {} ({})",
@@ -174,7 +181,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                 recordService.recordWorkerAssignment(
                         task, candidate, AssignmentResult.RULE_NOT_MATCH,
                         "rule evaluation failed: " + failedRules,
-                        ruleEvaluations, matchContext.getContext(),
+                        ruleEvaluations, withCandidateSourceStats(matchContext.getContext(), candidateBatch),
                         workerManager.hasWorkerExclusiveLease(worker.getWorkerId())
                 );
                 log.debug("Rule not matched: {} (failed rules: {})",
@@ -195,7 +202,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                 recordService.recordWorkerAssignment(
                         task, candidate, AssignmentResult.FAILED,
                         "rule evaluation exception: " + e.getMessage(),
-                        new ArrayList<>(), matchContext.getContext(),
+                        new ArrayList<>(), withCandidateSourceStats(matchContext.getContext(), candidateBatch),
                         workerManager.hasWorkerExclusiveLease(worker.getWorkerId())
                 );
                 log.error("Error evaluating rules for worker {}: {}",
@@ -234,7 +241,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                 recordService.recordWorkerAssignment(
                         task, candidate, AssignmentResult.QUOTA_EXCEEDED,
                         "worker capacity unavailable after candidate ranking",
-                        passedCandidate.ruleEvaluations(), rankedContext.getContext(),
+                        passedCandidate.ruleEvaluations(), withCandidateSourceStats(rankedContext.getContext(), candidateBatch),
                         workerManager.hasWorkerExclusiveLease(worker.getWorkerId())
                 );
                 log.debug("Worker capacity unavailable after candidate ranking: {}", worker.getWorkerId());
@@ -247,7 +254,8 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                 recordService.recordWorkerAssignment(
                         task, candidate, AssignmentResult.SUCCESS,
                         "all rules matched and worker capacity reserved after candidate ranking",
-                        passedCandidate.ruleEvaluations(), rankedContext.getContext(), false
+                        passedCandidate.ruleEvaluations(), withCandidateSourceStats(rankedContext.getContext(), candidateBatch),
+                        false
                 );
                 workerManager.recordWarmCandidate(task, worker);
                 matchedWorkers.add(candidate);
@@ -267,7 +275,8 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                 recordService.recordWorkerAssignment(
                         task, candidate, AssignmentResult.SUCCESS,
                         "all rules matched and worker lock acquired after candidate ranking",
-                        passedCandidate.ruleEvaluations(), rankedContext.getContext(), true
+                        passedCandidate.ruleEvaluations(), withCandidateSourceStats(rankedContext.getContext(), candidateBatch),
+                        true
                 );
                 workerManager.recordWarmCandidate(task, worker);
                 matchedWorkers.add(candidate);
@@ -283,7 +292,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                 recordService.recordWorkerAssignment(
                         task, candidate, AssignmentResult.CONFLICT,
                         "worker lock conflict after candidate ranking",
-                        passedCandidate.ruleEvaluations(), rankedContext.getContext(),
+                        passedCandidate.ruleEvaluations(), withCandidateSourceStats(rankedContext.getContext(), candidateBatch),
                         workerManager.hasWorkerExclusiveLease(worker.getWorkerId())
                 );
                 log.debug("Worker locked after candidate ranking: {}", worker.getWorkerId());
@@ -311,6 +320,20 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
         int oversampleFactor = Math.max(1, DEFAULT_STAGE_ONE_OVERSAMPLE_FACTOR);
         long desiredSample = Math.max(1L, (long) maxWorkerCount * oversampleFactor);
         return (int) Math.min(sampleMax, Math.max(sampleMin, desiredSample));
+    }
+
+    private Map<String, Object> withCandidateSourceStats(Map<String, Object> context,
+                                                         WorkerManager.WorkerCandidateBatch candidateBatch) {
+        LinkedHashMap<String, Object> snapshot = new LinkedHashMap<>();
+        if (context != null) {
+            snapshot.putAll(context);
+        }
+        if (candidateBatch != null) {
+            snapshot.put("workerCandidateWarmCount", candidateBatch.warmCandidateCount());
+            snapshot.put("workerCandidateColdCount", candidateBatch.coldCandidateCount());
+            snapshot.put("workerCandidateWarmRejectedCount", candidateBatch.warmSourceGuardRejectedCount());
+        }
+        return Collections.unmodifiableMap(snapshot);
     }
 
     private PrefilterDecision prefilterCandidate(Task task, WorkerSchedulingCandidate candidate) {

@@ -1014,8 +1014,9 @@ class EngineSchedulingCoreArchitectureGuardTest {
         if (Pattern.compile("\\.slotByWorkerId\\s*\\(").matcher(source).find()) {
             violations.add(strategyPath + " reads WorkerRegistry slot relation directly");
         }
-        if (!Pattern.compile("\\.findWorkerCandidates\\s*\\(").matcher(source).find()) {
-            violations.add(strategyPath + " does not consume WorkerManager.findWorkerCandidates(...)");
+        if (!Pattern.compile("\\.findWorkerCandidateBatch\\s*\\(").matcher(source).find()
+                && !Pattern.compile("\\.findWorkerCandidates\\s*\\(").matcher(source).find()) {
+            violations.add(strategyPath + " does not consume WorkerManager candidate-source API");
         }
 
         assertTrue(violations.isEmpty(),
