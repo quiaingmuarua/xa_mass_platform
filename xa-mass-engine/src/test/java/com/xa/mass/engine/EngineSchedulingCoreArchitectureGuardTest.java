@@ -1062,6 +1062,34 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void workerCandidateRuntimeContractDoesNotExposeDiagnosticsOrWarmWrites() throws IOException {
+        Path candidateRuntimePath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/worker/WorkerCandidateRuntime.java");
+        String source = Files.readString(candidateRuntimePath, StandardCharsets.UTF_8);
+
+        List<String> violations = new ArrayList<>();
+        Map<String, Pattern> forbiddenMethods = Map.ofEntries(
+                Map.entry("findWorkerCandidates", Pattern.compile("\\bfindWorkerCandidates\\s*\\(")),
+                Map.entry("getWorkerCandidateIndex", Pattern.compile("\\bgetWorkerCandidateIndex\\s*\\(")),
+                Map.entry("recordWarmCandidate", Pattern.compile("\\brecordWarmCandidate\\s*\\("))
+        );
+        for (Map.Entry<String, Pattern> forbiddenMethod : forbiddenMethods.entrySet()) {
+            if (forbiddenMethod.getValue().matcher(source).find()) {
+                violations.add(candidateRuntimePath + " exposes " + forbiddenMethod.getKey());
+            }
+        }
+        if (!Pattern.compile("\\bfindWorkerCandidateBatch\\s*\\(").matcher(source).find()) {
+            violations.add(candidateRuntimePath + " does not expose batch candidate acquisition");
+        }
+
+        assertTrue(violations.isEmpty(),
+                "WorkerCandidateRuntime is the strategy-facing candidate acquisition contract. "
+                        + "Keep diagnostics and warm hint writes on WorkerManager/owner surfaces until "
+                        + "a separate runtime write contract exists:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void workerManagerDoesNotUseWorkerLevelEventStorageIndexForEventCandidateSource() throws IOException {
         Path workerManagerPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/worker/WorkerManager.java");
