@@ -1,6 +1,7 @@
 package com.xa.mass.engine.worker;
 
 import com.xa.mass.engine.command.WorkerCommandLifecycleResult;
+import com.xa.mass.runtime.worker.WorkerDispatchGateRuntime;
 import com.xa.mass.runtime.worker.WorkerStateProjection;
 
 /**
@@ -14,8 +15,8 @@ import com.xa.mass.runtime.worker.WorkerStateProjection;
 public interface WorkerDispatchAvailabilityPolicy {
 
     void applyWorkerStateProjection(WorkerStateProjection projection,
-                                    WorkerManager workerManager);
+                                    WorkerDispatchGateRuntime dispatchGateRuntime);
 
     void applyWorkerCommandLifecycleResult(WorkerCommandLifecycleResult result,
-                                           WorkerManager workerManager);
+                                           WorkerDispatchGateRuntime dispatchGateRuntime);
 }

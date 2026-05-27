@@ -12,6 +12,8 @@ import com.xa.mass.engine.command.WorkerCommandStatus;
 import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.runtime.worker.WorkerCapabilityReport;
 import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;
+import com.xa.mass.runtime.worker.WorkerDispatchGateRuntime;
+import com.xa.mass.runtime.worker.WorkerReportRuntime;
 import com.xa.mass.runtime.worker.WorkerStateProjection;
 import com.xa.mass.runtime.worker.WorkerStateProjectionResult;
 import com.xa.mass.runtime.worker.WorkerStateReport;
@@ -36,7 +38,9 @@ import java.util.concurrent.Executor;
 public final class WorkerControlService {
     private static final Logger log = LoggerFactory.getLogger(WorkerControlService.class);
 
-    private final WorkerManager workerManager;
+    private final WorkerReportRuntime workerReportRuntime;
+    private final WorkerResourceRuntime workerResourceRuntime;
+    private final WorkerDispatchGateRuntime dispatchGateRuntime;
     private final WorkerCommandLifecycleOwner commandLifecycleOwner;
     private final WorkerStateProjectionOwner stateProjectionOwner;
     private final WorkerDispatchAvailabilityPolicy dispatchAvailabilityPolicy;
@@ -51,7 +55,25 @@ public final class WorkerControlService {
                                 WorkerStateProjectionOwner stateProjectionOwner,
                                 WorkerDispatchAvailabilityPolicy dispatchAvailabilityPolicy,
                                 TraceEventLogger traceEventLogger) {
-        this.workerManager = Objects.requireNonNull(workerManager, "workerManager");
+        this(workerManager,
+                workerManager,
+                workerManager,
+                commandLifecycleOwner,
+                stateProjectionOwner,
+                dispatchAvailabilityPolicy,
+                traceEventLogger);
+    }
+
+    WorkerControlService(WorkerReportRuntime workerReportRuntime,
+                         WorkerResourceRuntime workerResourceRuntime,
+                         WorkerDispatchGateRuntime dispatchGateRuntime,
+                         WorkerCommandLifecycleOwner commandLifecycleOwner,
+                         WorkerStateProjectionOwner stateProjectionOwner,
+                         WorkerDispatchAvailabilityPolicy dispatchAvailabilityPolicy,
+                         TraceEventLogger traceEventLogger) {
+        this.workerReportRuntime = Objects.requireNonNull(workerReportRuntime, "workerReportRuntime");
+        this.workerResourceRuntime = Objects.requireNonNull(workerResourceRuntime, "workerResourceRuntime");
+        this.dispatchGateRuntime = Objects.requireNonNull(dispatchGateRuntime, "dispatchGateRuntime");
         this.commandLifecycleOwner = Objects.requireNonNull(commandLifecycleOwner, "commandLifecycleOwner");
         this.stateProjectionOwner = Objects.requireNonNull(stateProjectionOwner, "stateProjectionOwner");
         this.dispatchAvailabilityPolicy = dispatchAvailabilityPolicy != null
@@ -72,7 +94,7 @@ public final class WorkerControlService {
     }
 
     public WorkerCapabilityReportResult applyWorkerCapabilityReport(WorkerCapabilityReport report) {
-        WorkerCapabilityReportResult result = workerManager.applyWorkerCapabilityReport(report);
+        WorkerCapabilityReportResult result = workerReportRuntime.applyWorkerCapabilityReport(report);
         if (result.success() && result.snapshotChanged()) {
             notifyDispatchWakeup();
         }
@@ -83,10 +105,10 @@ public final class WorkerControlService {
     public WorkerStateProjectionResult applyWorkerStateReport(WorkerStateReport report) {
         WorkerStateProjectionResult result = stateProjectionOwner.applyReport(report);
         if (result.success()) {
-            dispatchAvailabilityPolicy.applyWorkerStateProjection(result.projection(), workerManager);
+            dispatchAvailabilityPolicy.applyWorkerStateProjection(result.projection(), dispatchGateRuntime);
             if (isAvailableState(result.projection())
-                    && workerManager.getWorker(result.workerId()) != null
-                    && workerManager.isWorkerDispatchEnabled(result.workerId())) {
+                    && workerResourceRuntime.getWorker(result.workerId()) != null
+                    && dispatchGateRuntime.isWorkerDispatchEnabled(result.workerId())) {
                 notifyDispatchWakeup();
             }
         }
@@ -106,7 +128,7 @@ public final class WorkerControlService {
     public WorkerCommandLifecycleResult applyWorkerCommandAcknowledgement(WorkerCommandAcknowledgement acknowledgement) {
         WorkerCommandLifecycleResult result = commandLifecycleOwner.applyAcknowledgement(acknowledgement);
         if (result.success()) {
-            dispatchAvailabilityPolicy.applyWorkerCommandLifecycleResult(result, workerManager);
+            dispatchAvailabilityPolicy.applyWorkerCommandLifecycleResult(result, dispatchGateRuntime);
         }
         traceEventLogger.workerCommandStatusTransition(result);
         return result;
@@ -245,7 +267,7 @@ public final class WorkerControlService {
             return;
         }
         if (result.success()) {
-            dispatchAvailabilityPolicy.applyWorkerCommandLifecycleResult(result, workerManager);
+            dispatchAvailabilityPolicy.applyWorkerCommandLifecycleResult(result, dispatchGateRuntime);
         }
         if (trace) {
             traceEventLogger.workerCommandStatusTransition(result);

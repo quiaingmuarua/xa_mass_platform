@@ -1515,6 +1515,36 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void dispatchAvailabilityPolicyConsumesOnlyDispatchGateRuntime() throws IOException {
+        Path policyPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/worker/WorkerDispatchAvailabilityPolicy.java");
+        Path defaultPolicyPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/worker/DefaultWorkerDispatchAvailabilityPolicy.java");
+        Path controlServicePath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/worker/WorkerControlService.java");
+        String policySource = Files.readString(policyPath, StandardCharsets.UTF_8)
+                + "\n"
+                + Files.readString(defaultPolicyPath, StandardCharsets.UTF_8);
+        String controlServiceSource = Files.readString(controlServicePath, StandardCharsets.UTF_8);
+
+        List<String> violations = new ArrayList<>();
+        if (Pattern.compile("\\bWorkerManager\\b").matcher(policySource).find()) {
+            violations.add("dispatch availability policy reintroduced full WorkerManager access");
+        }
+        if (!policySource.contains("WorkerDispatchGateRuntime")) {
+            violations.add("dispatch availability policy does not consume WorkerDispatchGateRuntime");
+        }
+        if (Pattern.compile("private\\s+final\\s+WorkerManager\\b").matcher(controlServiceSource).find()) {
+            violations.add("WorkerControlService stores full WorkerManager instead of narrow runtime contracts");
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Worker-control policy may mutate dispatch eligibility only through "
+                        + "WorkerDispatchGateRuntime:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void taskWriteLockRemainsLifecycleAndProgressOnly() throws IOException {
         Path taskManagerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/TaskManager.java");
         String source = Files.readString(taskManagerPath, StandardCharsets.UTF_8);

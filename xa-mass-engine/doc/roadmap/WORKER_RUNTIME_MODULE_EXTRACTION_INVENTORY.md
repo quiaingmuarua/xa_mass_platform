@@ -21,6 +21,7 @@ Current first-slice contract split:
 | `WorkerCandidateRuntime` | `WorkerManager` | Runtime-api candidate acquisition returning worker candidate rows |
 | `WorkerSchedulingViewRuntime` | `WorkerManager` | Read evidence used to build engine scheduling candidates |
 | `WorkerAdmissionRuntime` | `WorkerManager` | Runtime-api contract for reserve, confirm, release, final occupancy, exclusive lease, and load reads |
+| `WorkerDispatchGateRuntime` | `WorkerManager` | Runtime-api contract for source-scoped dispatch gate reads and mutations |
 | `WorkerReportRuntime` | `WorkerManager` | Runtime-api report contract for capability report mutation currently owned by `WorkerCapabilityAuthority` via `WorkerManager` |
 | `WorkerLookupStore` | `WorkerManager` | Storage-edge single-worker lookup seam; disposition still open |
 
@@ -37,7 +38,8 @@ declaration records, and transport reachability evidence now use
 runtime-neutral `mass-runtime-api` types: `WorkerTaskSelector`,
 `WorkerCandidateBatch<T>`, `WorkerCandidateRow`,
 `WorkerCandidateRuntime`, `WorkerGroupCapabilityView`,
-`WorkerSchedulingViewRuntime`, `WorkerAdmissionRuntime`, `WorkerLoadSnapshot`,
+`WorkerSchedulingViewRuntime`, `WorkerAdmissionRuntime`,
+`WorkerDispatchGateRuntime`, `WorkerLoadSnapshot`,
 `WorkerReachabilityState`, `WorkerCapabilityReport`, `WorkerReportRuntime`,
 `WorkerCapabilityReportStatus`, and `WorkerCapabilityReportResult`, plus worker state report/projection DTOs
 (`WorkerStateReport`, `WorkerStateProjection`, `WorkerStateProjectionResult`,
@@ -78,8 +80,8 @@ owners while callers converge.
 | State report projection | `applyWorkerStateReport` / `WorkerStateProjectionOwner.applyReport` | `WorkerControlService`, event handlers, tests | `WorkerStateProjectionOwner` | bounded runtime diagnostic projection | Runtime-api report/projection/result DTOs; owner implementation remains engine-local |
 | Online model status | `updateOnlineStatus`, `isWorkerOnline` | legacy event bridge, tests | compatibility/resource status path | control-plane row plus transport reachability residue | Transport presence remains reachability owner |
 | Reachability read | `getWorkerReachability` | scheduling candidate enumeration, tests | `WorkerSchedulingViewRuntime` | transport evidence consumed as runtime read evidence | Returns runtime-neutral `WorkerReachabilityState`; must not turn transport session into scheduling truth |
-| Dispatch gate read | `isWorkerDispatchEnabled` | scheduling candidate enumeration, tests | `WorkerSchedulingViewRuntime` | runtime state | Derived from source-scoped gates |
-| Dispatch gate mutation | `disableWorkerDispatch`, `clearWorkerDispatchDisable` | worker state report policy, node-group binding policy, tests | worker runtime dispatch gate owner | runtime state | Source-scoped gate mutation |
+| Dispatch gate read | `isWorkerDispatchEnabled` | scheduling candidate enumeration, tests | `WorkerSchedulingViewRuntime` / `WorkerDispatchGateRuntime` | runtime state | Derived from source-scoped gates; scheduling consumes read evidence, control policies consume gate contract |
+| Dispatch gate mutation | `disableWorkerDispatch`, `clearWorkerDispatchDisable` | worker state report policy, node-group binding policy, tests | `WorkerDispatchGateRuntime` | runtime state | Source-scoped gate mutation; state/command policies no longer need the full `WorkerManager` surface |
 | Wakeup callback | `setDispatchWakeupCallback` | SDK engine assembly | assembly residue | lifecycle wiring | Keep as assembly wiring until owner split decides final home |
 | Admission / occupancy | `reserveWorkerCapacity`, `confirmWorkerReservation`, `releaseWorkerReservation`, `recordWorkClaimed`, `recordWorkFinal` | match strategy, dispatch binder, resource releaser, result/resource listeners | `WorkerAdmissionOwner` through `WorkerAdmissionRuntime` | runtime state | Structured reserve is the strategy path; boolean reserve remains a `WorkerManager`-only internal helper |
 | Exclusive lease | `tryAcquireWorkerExclusiveLease`, `releaseWorkerExclusiveLease`, `hasWorkerExclusiveLease`, `getExclusiveLeaseWorkerIds` | match strategy, resource releaser, diagnostics, tests | `WorkerAdmissionOwner` through `WorkerAdmissionRuntime` | runtime state | Rename away from lock vocabulary only when owner move requires it |

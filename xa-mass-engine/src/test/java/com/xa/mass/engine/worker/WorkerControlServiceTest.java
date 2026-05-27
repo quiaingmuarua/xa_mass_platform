@@ -10,6 +10,7 @@ import com.xa.mass.engine.command.WorkerCommandStatus;
 import com.xa.mass.engine.testutil.RecordingEventSink;
 import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.runtime.worker.WorkerCapabilityReport;
+import com.xa.mass.runtime.worker.WorkerDispatchGateRuntime;
 import com.xa.mass.runtime.worker.WorkerStateProjection;
 import com.xa.mass.runtime.worker.WorkerStateReport;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
@@ -191,9 +192,9 @@ public class WorkerControlServiceTest {
         WorkerDispatchAvailabilityPolicy policy = new WorkerDispatchAvailabilityPolicy() {
             @Override
             public void applyWorkerStateProjection(WorkerStateProjection projection,
-                                                   WorkerManager workerManager) {
+                                                   WorkerDispatchGateRuntime dispatchGateRuntime) {
                 stateApplications.incrementAndGet();
-                workerManager.disableWorkerDispatch(
+                dispatchGateRuntime.disableWorkerDispatch(
                         projection.workerId(),
                         WORKER_STATE,
                         projection.reason()
@@ -202,9 +203,9 @@ public class WorkerControlServiceTest {
 
             @Override
             public void applyWorkerCommandLifecycleResult(com.xa.mass.engine.command.WorkerCommandLifecycleResult result,
-                                                          WorkerManager workerManager) {
+                                                          WorkerDispatchGateRuntime dispatchGateRuntime) {
                 commandApplications.incrementAndGet();
-                workerManager.clearWorkerDispatchDisable(
+                dispatchGateRuntime.clearWorkerDispatchDisable(
                         result.record().workerId(),
                         WORKER_STATE,
                         result.record().statusReason()

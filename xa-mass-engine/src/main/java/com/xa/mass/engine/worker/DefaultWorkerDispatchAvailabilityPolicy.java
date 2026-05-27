@@ -2,6 +2,7 @@ package com.xa.mass.engine.worker;
 
 import com.xa.mass.engine.command.WorkerCommandLifecycleResult;
 import com.xa.mass.engine.command.WorkerCommandRecord;
+import com.xa.mass.runtime.worker.WorkerDispatchGateRuntime;
 import com.xa.mass.runtime.worker.WorkerStateProjection;
 
 import java.util.Locale;
@@ -17,7 +18,7 @@ public final class DefaultWorkerDispatchAvailabilityPolicy implements WorkerDisp
 
     @Override
     public void applyWorkerStateProjection(WorkerStateProjection projection,
-                                           WorkerManager workerManager) {
+                                           WorkerDispatchGateRuntime dispatchGateRuntime) {
         if (projection == null) {
             return;
         }
@@ -27,17 +28,17 @@ public final class DefaultWorkerDispatchAvailabilityPolicy implements WorkerDisp
         }
         String normalizedState = state.trim().toUpperCase(Locale.ROOT);
         if ("DRAINING".equals(normalizedState)) {
-            workerManager.disableWorkerDispatch(projection.workerId(), WORKER_STATE, projection.reason());
+            dispatchGateRuntime.disableWorkerDispatch(projection.workerId(), WORKER_STATE, projection.reason());
             return;
         }
         if ("AVAILABLE".equals(normalizedState)) {
-            workerManager.clearWorkerDispatchDisable(projection.workerId(), WORKER_STATE, projection.reason());
+            dispatchGateRuntime.clearWorkerDispatchDisable(projection.workerId(), WORKER_STATE, projection.reason());
         }
     }
 
     @Override
     public void applyWorkerCommandLifecycleResult(WorkerCommandLifecycleResult result,
-                                                  WorkerManager workerManager) {
+                                                  WorkerDispatchGateRuntime dispatchGateRuntime) {
         WorkerCommandRecord record = result != null ? result.record() : null;
         if (record == null) {
             return;
@@ -51,7 +52,7 @@ public final class DefaultWorkerDispatchAvailabilityPolicy implements WorkerDisp
         }
         switch (result.currentStatus()) {
             case DELIVERY_ACCEPTED, EXECUTION_ACCEPTED, SUCCEEDED ->
-                    workerManager.disableWorkerDispatch(record.workerId(), WORKER_COMMAND, record.statusReason());
+                    dispatchGateRuntime.disableWorkerDispatch(record.workerId(), WORKER_COMMAND, record.statusReason());
             default -> {
             }
         }

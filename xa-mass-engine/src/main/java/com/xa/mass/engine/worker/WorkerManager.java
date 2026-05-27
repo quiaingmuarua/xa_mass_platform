@@ -19,6 +19,7 @@ import com.xa.mass.runtime.worker.WorkerCandidateRow;
 import com.xa.mass.runtime.worker.WorkerCandidateRuntime;
 import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;
 import com.xa.mass.runtime.worker.WorkerCapabilityReport;
+import com.xa.mass.runtime.worker.WorkerDispatchGateRuntime;
 import com.xa.mass.runtime.worker.WorkerGroupCapabilityView;
 import com.xa.mass.runtime.worker.WorkerLoadSnapshot;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;
@@ -46,6 +47,7 @@ public class WorkerManager implements WorkerLookupStore,
         WorkerCandidateRuntime,
         WorkerSchedulingViewRuntime,
         WorkerAdmissionRuntime,
+        WorkerDispatchGateRuntime,
         WorkerReportRuntime {
 
     private static final Logger log = LoggerFactory.getLogger(WorkerManager.class);

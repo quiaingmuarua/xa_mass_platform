@@ -320,6 +320,12 @@ interface WorkerSchedulingViewRuntime {
     WorkerLoadSnapshot getWorkerLoad(String workerId);
 }
 
+interface WorkerDispatchGateRuntime {
+    boolean isWorkerDispatchEnabled(String workerId);
+    boolean disableWorkerDispatch(String workerId, DispatchAvailabilitySource source, String reason);
+    boolean clearWorkerDispatchDisable(String workerId, DispatchAvailabilitySource source, String reason);
+}
+
 interface WorkerAdmissionRuntime {
     WorkerAdmissionResult reserve(WorkerAdmissionRequest request);
     WorkerAdmissionResult confirmReservation(WorkerAdmissionRequest request);
@@ -541,6 +547,7 @@ Scope:
    - source evidence/result
    - runtime selector
    - scheduling view contract and group capability/load/reachability DTOs
+   - dispatch gate read/mutation contract
    - admission request/result
    - report result DTOs
 4. Keep implementation in engine for this phase.
