@@ -691,6 +691,9 @@ Progress:
   local assembly, but their matching loops no longer depend on
   `getAllWorkers()`, boolean reserve shortcuts, or `Worker`-shaped dispatch
   gate reads.
+- The old `tryReserveWorkerCapacity` boolean helper has been deleted from the
+  worker admission owner and `WorkerManager`; all callers now inspect
+  structured `ReserveResult` evidence.
 - Engine still assembles those owners through `WorkerManager`; match strategy
   and event handler parsing residue stays in engine for later slices.
 - SDK shell runtime bridge now accepts `WorkerResourceRuntime` for legacy

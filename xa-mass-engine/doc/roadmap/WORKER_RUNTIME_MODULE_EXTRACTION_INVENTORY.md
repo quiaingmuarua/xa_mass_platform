@@ -134,7 +134,7 @@ read paths.
 | Dispatch gate read | `isWorkerDispatchEnabled` | scheduling candidate enumeration, tests | `WorkerSchedulingViewRuntime` / `WorkerDispatchGateRuntime` | runtime state | Derived from source-scoped gates; scheduling consumes read evidence, control policies consume gate contract |
 | Dispatch gate mutation | `disableWorkerDispatch`, `clearWorkerDispatchDisable` | worker state report policy, node-group binding policy, tests | `WorkerDispatchGateRuntime` | runtime state | Source-scoped gate mutation; state/command policies no longer need the full `WorkerManager` surface |
 | Wakeup callback | `setDispatchWakeupCallback` | SDK engine assembly through `WorkerAvailabilityWakeupRuntime` | assembly residue | lifecycle wiring | Narrow runtime-api hook for availability evidence; not candidate truth or dispatch-gate truth |
-| Admission / occupancy | `reserveWorkerCapacity`, `confirmWorkerReservation`, `releaseWorkerReservation`, `recordWorkClaimed`, `recordWorkFinal` | match strategy, dispatch binder, resource releaser, result/resource listeners, perf runner matching support | `WorkerAdmissionOwner` through `WorkerAdmissionRuntime` | runtime state | Structured reserve is the strategy and perf-runner path; boolean reserve remains a test compatibility helper outside the extracted `WorkerAdmissionRuntime` contract |
+| Admission / occupancy | `reserveWorkerCapacity`, `confirmWorkerReservation`, `releaseWorkerReservation`, `recordWorkClaimed`, `recordWorkFinal` | match strategy, dispatch binder, resource releaser, result/resource listeners, perf runner matching support | `WorkerAdmissionOwner` through `WorkerAdmissionRuntime` | runtime state | Structured reserve is the only admission path; the old boolean reserve helper has been deleted |
 | Exclusive lease | `tryAcquireWorkerExclusiveLease`, `releaseWorkerExclusiveLease`, `hasWorkerExclusiveLease`, `getExclusiveLeaseWorkerIds` | match strategy, resource releaser, diagnostics, tests | `WorkerAdmissionOwner` through `WorkerAdmissionRuntime` | runtime state | Rename away from lock vocabulary only when owner move requires it |
 | Load / occupancy read | `getWorkerLoad`, `getActiveWorkerCountForTask` | match strategy, allocation policy caller, tests | `WorkerAdmissionOwner` / scheduling view runtime | runtime state | `WorkerLoadSnapshot` lives in `mass-runtime-api`; runtime load evidence, not control-plane truth |
 
@@ -230,7 +230,6 @@ Current facade methods are worker-id-only:
 
 ```text
 reserveWorkerCapacity(workerId, taskId) -> ReserveResult
-tryReserveWorkerCapacity(workerId, taskId)
 confirmWorkerReservation(workerId, taskId)
 releaseWorkerReservation(workerId, taskId)
 recordWorkFinal(workerId, taskId)
@@ -238,10 +237,9 @@ recordWorkFinal(workerId, taskId)
 
 `reserveWorkerCapacity(workerId, taskId)` is the main strategy-facing path and
 returns the structured `ReserveResult` from the underlying `WorkerRegistry`.
-`tryReserveWorkerCapacity(workerId, taskId)` remains a boolean helper for tests
-of `WorkerAdmissionOwner` and `WorkerManager`, but is not part of the extracted
-`WorkerAdmissionRuntime` contract and is no longer used by perf matching
-support.
+The former `tryReserveWorkerCapacity(workerId, taskId)` boolean helper has been
+deleted. Callers must inspect the structured `ReserveResult` so admission
+rejection ownership and reason are not collapsed.
 
 The admission owner internally resolves `groupId` from the current worker slot,
 uses one permit for the current scheduling path, and passes the current clock to

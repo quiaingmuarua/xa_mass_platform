@@ -156,8 +156,8 @@ public class WorkerManagerTest {
     void exposesWorkerLoadReservationLifecycle() {
         manager.addWorker(worker("worker-reserve", "us"));
 
-        assertTrue(manager.tryReserveWorkerCapacity("worker-reserve", "task-1"));
-        assertFalse(manager.tryReserveWorkerCapacity("worker-reserve", "task-2"));
+        assertTrue(manager.reserveWorkerCapacity("worker-reserve", "task-1").accepted());
+        assertFalse(manager.reserveWorkerCapacity("worker-reserve", "task-2").accepted());
         assertEquals(1, manager.getWorkerLoad("worker-reserve").reservedCount());
 
         assertTrue(manager.confirmWorkerReservation("worker-reserve", "task-1"));
@@ -177,10 +177,10 @@ public class WorkerManagerTest {
         manager.addWorker(worker);
 
         assertEquals(3, manager.getWorkerLoad("worker-capacity").declaredCapacity());
-        assertTrue(manager.tryReserveWorkerCapacity("worker-capacity", "task-1"));
-        assertTrue(manager.tryReserveWorkerCapacity("worker-capacity", "task-2"));
-        assertTrue(manager.tryReserveWorkerCapacity("worker-capacity", "task-3"));
-        assertFalse(manager.tryReserveWorkerCapacity("worker-capacity", "task-4"));
+        assertTrue(manager.reserveWorkerCapacity("worker-capacity", "task-1").accepted());
+        assertTrue(manager.reserveWorkerCapacity("worker-capacity", "task-2").accepted());
+        assertTrue(manager.reserveWorkerCapacity("worker-capacity", "task-3").accepted());
+        assertFalse(manager.reserveWorkerCapacity("worker-capacity", "task-4").accepted());
     }
 
     @Test
@@ -476,9 +476,9 @@ public class WorkerManagerTest {
         WorkerManager storageBackedManager = new WorkerManager(storage, new InMemoryWorkerRegistry());
 
         assertEquals(2, storageBackedManager.getWorkerLoad("worker-storage-direct").declaredCapacity());
-        assertTrue(storageBackedManager.tryReserveWorkerCapacity("worker-storage-direct", "task-1"));
-        assertTrue(storageBackedManager.tryReserveWorkerCapacity("worker-storage-direct", "task-2"));
-        assertFalse(storageBackedManager.tryReserveWorkerCapacity("worker-storage-direct", "task-3"));
+        assertTrue(storageBackedManager.reserveWorkerCapacity("worker-storage-direct", "task-1").accepted());
+        assertTrue(storageBackedManager.reserveWorkerCapacity("worker-storage-direct", "task-2").accepted());
+        assertFalse(storageBackedManager.reserveWorkerCapacity("worker-storage-direct", "task-3").accepted());
     }
 
     @Test

@@ -853,11 +853,6 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         }
 
         @Override
-        public boolean tryReserveWorkerCapacity(String workerId, String taskId) {
-            return true;
-        }
-
-        @Override
         public ReserveResult reserveWorkerCapacity(String workerId, String taskId) {
             return ReserveResult.accepted(null);
         }

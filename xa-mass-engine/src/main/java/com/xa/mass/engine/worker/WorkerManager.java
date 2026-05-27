@@ -383,10 +383,6 @@ public class WorkerManager implements WorkerResourceRuntime,
         return admissionOwner.getActiveWorkerCountForTask(taskId);
     }
 
-    public boolean tryReserveWorkerCapacity(String workerId, String taskId) {
-        return admissionOwner.tryReserveWorkerCapacity(workerId, taskId);
-    }
-
     @Override
     public ReserveResult reserveWorkerCapacity(String workerId, String taskId) {
         return admissionOwner.reserveWorkerCapacity(workerId, taskId);

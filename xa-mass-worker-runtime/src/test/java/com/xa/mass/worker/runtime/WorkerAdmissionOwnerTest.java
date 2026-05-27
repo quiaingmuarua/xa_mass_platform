@@ -53,7 +53,6 @@ class WorkerAdmissionOwnerTest {
 
         assertEquals(ReserveStatus.MISSING_SLOT,
                 owner.reserveWorkerCapacity("missing-worker", "task-1").status());
-        assertFalse(owner.tryReserveWorkerCapacity("missing-worker", "task-1"));
     }
 
     private static WorkerMeta workerMeta(String workerId) {

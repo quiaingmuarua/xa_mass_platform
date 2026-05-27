@@ -65,10 +65,6 @@ public final class WorkerAdmissionOwner {
                 .orElseGet(() -> ReserveResult.rejected(ReserveStatus.MISSING_SLOT, "worker slot missing"));
     }
 
-    public boolean tryReserveWorkerCapacity(String workerId, String taskId) {
-        return reserveWorkerCapacity(workerId, taskId).accepted();
-    }
-
     public boolean confirmWorkerReservation(String workerId, String taskId) {
         return workerRegistry.slotByWorkerId(workerId)
                 .map(slot -> workerRegistry.confirmReservation(slot.groupId(), slot.workerId(), taskId, 1))
