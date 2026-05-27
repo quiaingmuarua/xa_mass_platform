@@ -128,6 +128,42 @@ public class TaskAssignWorkerTest {
     }
 
     @Test
+    void wakeWaitingRetriesRequeuesKnownRetryWithoutWaitingForDelay() throws InterruptedException {
+        worker.stop();
+
+        AtomicInteger attempts = new AtomicInteger();
+        CountDownLatch assignedLatch = new CountDownLatch(1);
+        TaskWorkerAssignListener retryingListener = mock(TaskWorkerAssignListener.class);
+        doAnswer(invocation -> {
+            Task task = invocation.getArgument(0);
+            if (attempts.incrementAndGet() >= 2) {
+                task.transitionTo(TaskStatus.RUNNING);
+                assignedLatch.countDown();
+                return true;
+            }
+            return false;
+        }).when(retryingListener).onTaskAssign(any());
+
+        RecordingEventSink sink = new RecordingEventSink();
+        worker = new TaskAssignWorker(retryingListener, 5_000L, new TraceEventLogger(sink));
+        worker.start();
+
+        Task task = readyTask("wakeup-retry");
+        assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(task));
+        assertTrue(awaitCondition(() -> hasRetryDelayEvent(sink, "wakeup-retry", 5_000L)),
+                "retry should be registered before wakeup");
+
+        assertEquals(1, worker.wakeWaitingRetries("worker online"));
+
+        assertTrue(assignedLatch.await(1, TimeUnit.SECONDS),
+                "worker availability wakeup should enqueue waiting retry immediately");
+        assertEquals(2, attempts.get());
+        assertTrue(awaitCondition(() -> hasQueueSnapshotEvent(sink, "wakeup-retry", "WAKE_RETRY_ENQUEUED",
+                attrs -> "SUCCESS".equals(attrs.get("result")))),
+                "wake retry queue snapshot should be captured before assertions run");
+    }
+
+    @Test
     void runningTaskWithoutImmediateSlotIsRetriedUntilAssignmentSucceeds() throws InterruptedException {
         worker.stop();
 

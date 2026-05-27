@@ -2,12 +2,14 @@ package com.xa.mass.engine.worker;
 
 import com.xa.mass.runtime.contract.WorkerRegistryContractTest;
 import com.xa.mass.runtime.worker.WorkerCandidateSamplingPolicy;
+import com.xa.mass.runtime.worker.WorkerMeta;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -70,6 +72,26 @@ class InMemoryWorkerRegistryTest extends WorkerRegistryContractTest {
     }
 
     @Test
+    void routeAttributeUpdateRemovesOnlyKnownPreviousBucketMembership() {
+        WorkerRegistry registry = new InMemoryWorkerRegistry(
+                WorkerRoutingPolicy.approvedAttributePolicy(List.of("region")),
+                (context, workerIds, maxCandidateCount) -> workerIds.stream().limit(maxCandidateCount).toList()
+        );
+        registry.upsertSlot(workerMeta("worker-1", "group-a", "us"), 1, Set.of(eventKey()));
+        registry.upsertSlot(workerMeta("worker-2", "group-a", "us"), 1, Set.of(eventKey()));
+
+        assertEquals(List.of("worker-1", "worker-2"),
+                registry.acquireCandidates("group-a", "attr:region=us", 10));
+
+        registry.upsertSlot(workerMeta("worker-1", "group-a", "eu"), 1, Set.of(eventKey()));
+
+        assertEquals(List.of("worker-2"),
+                registry.acquireCandidates("group-a", "attr:region=us", 10));
+        assertEquals(List.of("worker-1"),
+                registry.acquireCandidates("group-a", "attr:region=eu", 10));
+    }
+
+    @Test
     void cleanupRemovedSlotWaitsForOccupancyToDrain() {
         WorkerRegistry registry = createRegistry();
         registry.upsertSlot(meta("worker-1", "group-a"), 1, Set.of(eventKey()));
@@ -80,5 +102,20 @@ class InMemoryWorkerRegistryTest extends WorkerRegistryContractTest {
         registry.releaseReservation("group-a", "worker-1", "task-1", 1);
         assertEquals(1, registry.cleanupRemovedSlots("group-a", 10).removed());
         assertTrue(registry.slot("group-a", "worker-1").isEmpty());
+    }
+
+    private WorkerMeta workerMeta(String workerId, String groupId, String region) {
+        return new WorkerMeta(
+                workerId,
+                groupId,
+                "node-a",
+                "polling",
+                "polling",
+                Map.of("region", region),
+                "agent-1",
+                "runtime-1",
+                1_000,
+                "AVAILABLE"
+        );
     }
 }

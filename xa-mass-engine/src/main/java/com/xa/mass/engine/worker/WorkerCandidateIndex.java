@@ -54,17 +54,24 @@ public final class WorkerCandidateIndex {
         }
         String adapterNodeId = TaskSharedConfig.adapterNodeId(task);
         List<Worker> workers = new ArrayList<>();
-        for (String groupId : groupIds) {
-            String normalizedGroupId = normalizeNullable(groupId);
-            if (normalizedGroupId == null) {
-                continue;
-            }
+        for (CandidateSourceBucket sourceBucket : candidateSourceBuckets(task, groupIds)) {
             int remaining = remaining(maxCandidateCount, workers.size());
             if (remaining <= 0) {
                 break;
             }
-            for (String workerId : acquireWorkerIds(normalizedGroupId, adapterNodeId, task, remaining)) {
-                snapshot.worker(workerId).ifPresent(workers::add);
+            int sourceBudget = sourceBudget(remaining, sourceBucket.remainingSourceCount());
+            for (CandidateSource source : acquireWorkerIds(sourceBucket, adapterNodeId, sourceBudget)) {
+                SourceGuardResult guardResult = sourceGuard(
+                        task,
+                        sourceBucket.groupId(),
+                        adapterNodeId,
+                        source.routeBucketKey(),
+                        source.workerId()
+                );
+                if (!guardResult.accepted()) {
+                    continue;
+                }
+                guardResult.worker().ifPresent(workers::add);
             }
         }
         return List.copyOf(workers);
@@ -80,48 +87,130 @@ public final class WorkerCandidateIndex {
             return Optional.empty();
         }
 
-        Optional<Worker> worker = snapshot.worker(normalizedWorkerId);
-        if (worker.isEmpty()) {
-            return Optional.empty();
-        }
-
-        Optional<WorkerSlot> slot = workerRegistry.slotByWorkerId(normalizedWorkerId);
-        if (slot.isEmpty()) {
-            return Optional.empty();
-        }
-        String groupId = slot.orElseThrow().groupId();
-        if (snapshot.group(groupId).isEmpty()) {
-            return Optional.empty();
-        }
-
-        if (!selectedGroupIds.stream()
-                .map(WorkerCandidateIndex::normalizeNullable)
-                .filter(Objects::nonNull)
-                .anyMatch(groupId::equals)) {
-            return Optional.empty();
-        }
         String adapterNodeId = TaskSharedConfig.adapterNodeId(task);
-        if (adapterNodeId != null && !adapterNodeId.equals(normalizeNullable(worker.orElseThrow().getAdapterNodeId()))) {
-            return Optional.empty();
+        for (String selectedGroupId : selectedGroupIds) {
+            String normalizedGroupId = normalizeNullable(selectedGroupId);
+            if (normalizedGroupId == null) {
+                continue;
+            }
+            for (String routeBucketKey : taskRouteBucketKeys(task)) {
+                SourceGuardResult guardResult = sourceGuard(
+                        task,
+                        normalizedGroupId,
+                        adapterNodeId,
+                        routeBucketKey,
+                        normalizedWorkerId
+                );
+                if (guardResult.accepted()) {
+                    return guardResult.worker();
+                }
+            }
         }
 
-        return worker;
+        return Optional.empty();
     }
 
-    private List<String> acquireWorkerIds(String groupId, String adapterNodeId, Task task, int maxCandidateCount) {
-        Set<String> routeBucketKeys = WorkerRoutingPolicy.defaultPolicy().routeBucketKeysForTask(task);
-        if (routeBucketKeys == null || routeBucketKeys.isEmpty()) {
-            routeBucketKeys = Set.of(WorkerRoutingPolicy.DEFAULT_ROUTE_BUCKET_KEY);
+    public SourceGuardResult sourceGuard(Task task,
+                                         String selectedGroupId,
+                                         String observedAdapterNodeId,
+                                         String observedRouteBucketKey,
+                                         String workerId) {
+        String normalizedWorkerId = normalizeNullable(workerId);
+        if (normalizedWorkerId == null) {
+            return SourceGuardResult.rejected(SourceGuardRejectionReason.MISSING_WORKER);
         }
-        LinkedHashSet<String> acquired = new LinkedHashSet<>();
-        for (String routeBucketKey : routeBucketKeys) {
-            int remaining = remaining(maxCandidateCount, acquired.size());
-            if (remaining <= 0) {
-                break;
-            }
-            acquired.addAll(workerRegistry.acquireCandidates(groupId, adapterNodeId, routeBucketKey, remaining));
+        Optional<WorkerSlot> slot = workerRegistry.slotByWorkerId(normalizedWorkerId);
+        if (slot.isEmpty()) {
+            return SourceGuardResult.rejected(SourceGuardRejectionReason.MISSING_SLOT);
+        }
+        WorkerSlot currentSlot = slot.orElseThrow();
+        String normalizedGroupId = normalizeNullable(selectedGroupId);
+        if (normalizedGroupId == null || !normalizedGroupId.equals(currentSlot.groupId())) {
+            return SourceGuardResult.rejected(SourceGuardRejectionReason.GROUP_MISMATCH);
+        }
+        if (snapshot.group(currentSlot.groupId()).isEmpty()) {
+            return SourceGuardResult.rejected(SourceGuardRejectionReason.MISSING_GROUP);
+        }
+        String normalizedAdapterNodeId = normalizeNullable(observedAdapterNodeId);
+        if (normalizedAdapterNodeId != null && !normalizedAdapterNodeId.equals(currentSlot.adapterNodeId())) {
+            return SourceGuardResult.rejected(SourceGuardRejectionReason.ADAPTER_NODE_MISMATCH);
+        }
+        String routeBucketKey = normalizeNullable(observedRouteBucketKey);
+        if (routeBucketKey == null) {
+            return SourceGuardResult.rejected(SourceGuardRejectionReason.ROUTE_MISMATCH);
+        }
+        Set<String> currentWorkerRouteKeys = WorkerRoutingPolicy.defaultPolicy()
+                .routeBucketKeysForWorkerMeta(currentSlot.meta());
+        if (!currentWorkerRouteKeys.contains(routeBucketKey)) {
+            return SourceGuardResult.rejected(SourceGuardRejectionReason.ROUTE_MISMATCH);
+        }
+        Optional<Worker> worker = snapshot.worker(normalizedWorkerId);
+        if (worker.isEmpty()) {
+            return SourceGuardResult.rejected(SourceGuardRejectionReason.MISSING_WORKER);
+        }
+        return SourceGuardResult.accepted(worker.orElseThrow());
+    }
+
+    private List<CandidateSource> acquireWorkerIds(CandidateSourceBucket sourceBucket,
+                                                   String adapterNodeId,
+                                                   int maxCandidateCount) {
+        LinkedHashSet<CandidateSource> acquired = new LinkedHashSet<>();
+        if (sourceBucket == null || maxCandidateCount <= 0) {
+            return List.of();
+        }
+        for (String workerId : workerRegistry.acquireCandidates(
+                sourceBucket.groupId(),
+                adapterNodeId,
+                sourceBucket.routeBucketKey(),
+                maxCandidateCount
+        )) {
+            acquired.add(new CandidateSource(workerId, sourceBucket.routeBucketKey()));
         }
         return List.copyOf(acquired);
+    }
+
+    private List<CandidateSourceBucket> candidateSourceBuckets(Task task, List<String> groupIds) {
+        List<String> normalizedGroupIds = groupIds.stream()
+                .map(WorkerCandidateIndex::normalizeNullable)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (normalizedGroupIds.isEmpty()) {
+            return List.of();
+        }
+        List<String> routeBucketKeys = taskRouteBucketKeys(task).stream().toList();
+        List<CandidateSourceBucket> buckets = new ArrayList<>(normalizedGroupIds.size() * routeBucketKeys.size());
+        for (String groupId : normalizedGroupIds) {
+            for (String routeBucketKey : routeBucketKeys) {
+                buckets.add(new CandidateSourceBucket(groupId, routeBucketKey, 0));
+            }
+        }
+        int size = buckets.size();
+        List<CandidateSourceBucket> indexedBuckets = new ArrayList<>(size);
+        for (int index = 0; index < size; index++) {
+            indexedBuckets.add(new CandidateSourceBucket(
+                    buckets.get(index).groupId(),
+                    buckets.get(index).routeBucketKey(),
+                    size - index
+            ));
+        }
+        return List.copyOf(indexedBuckets);
+    }
+
+    private Set<String> taskRouteBucketKeys(Task task) {
+        Set<String> routeBucketKeys = WorkerRoutingPolicy.defaultPolicy().routeBucketKeysForTask(task);
+        if (routeBucketKeys == null || routeBucketKeys.isEmpty()) {
+            return Set.of(WorkerRoutingPolicy.DEFAULT_ROUTE_BUCKET_KEY);
+        }
+        return routeBucketKeys;
+    }
+
+    private static int sourceBudget(int remainingCandidateBudget, int remainingSourceCount) {
+        if (remainingCandidateBudget == Integer.MAX_VALUE) {
+            return Integer.MAX_VALUE;
+        }
+        int sourceCount = Math.max(1, remainingSourceCount);
+        return Math.max(1, (remainingCandidateBudget + sourceCount - 1) / sourceCount);
     }
 
     private static int remaining(int maxCandidateCount, int currentSize) {
@@ -133,5 +222,32 @@ public final class WorkerCandidateIndex {
 
     private static String normalizeNullable(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private record CandidateSource(String workerId, String routeBucketKey) {
+    }
+
+    private record CandidateSourceBucket(String groupId, String routeBucketKey, int remainingSourceCount) {
+    }
+
+    public record SourceGuardResult(boolean accepted,
+                                    SourceGuardRejectionReason rejectionReason,
+                                    Optional<Worker> worker) {
+        private static SourceGuardResult accepted(Worker worker) {
+            return new SourceGuardResult(true, null, Optional.of(worker));
+        }
+
+        private static SourceGuardResult rejected(SourceGuardRejectionReason reason) {
+            return new SourceGuardResult(false, Objects.requireNonNull(reason, "reason"), Optional.empty());
+        }
+    }
+
+    public enum SourceGuardRejectionReason {
+        MISSING_SLOT,
+        MISSING_WORKER,
+        MISSING_GROUP,
+        GROUP_MISMATCH,
+        ADAPTER_NODE_MISMATCH,
+        ROUTE_MISMATCH
     }
 }

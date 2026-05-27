@@ -153,7 +153,26 @@ public abstract class WorkerRegistryContractTest {
         assertTrue(registry.tryReserve("group-a", "worker-1", "task-1", 1, 1000).accepted());
     }
 
+    @Test
+    void staleHeartbeatRejectsReserveBeforeAndAfterCleanup() {
+        WorkerRegistry registry = createRegistry();
+        registry.upsertSlot(metaAt("worker-stale", "group-a", 1_000), 1, Set.of(eventKey()));
+
+        assertEquals(List.of("worker-stale"), registry.acquireCandidates("group-a", "default", 10));
+        assertEquals(ReserveStatus.STALE_HEARTBEAT,
+                registry.tryReserve("group-a", "worker-stale", "task-1", 1, 31_001).status());
+
+        assertEquals(1, registry.cleanupExpiredHeartbeats(31_001, 10).removed());
+        assertTrue(registry.acquireCandidates("group-a", "default", 10).isEmpty());
+        assertEquals(ReserveStatus.REMOVING_SLOT,
+                registry.tryReserve("group-a", "worker-stale", "task-2", 1, 31_001).status());
+    }
+
     protected WorkerMeta meta(String workerId, String groupId) {
+        return metaAt(workerId, groupId, 1000);
+    }
+
+    protected WorkerMeta metaAt(String workerId, String groupId, long lastHeartbeatMillis) {
         return new WorkerMeta(
                 workerId,
                 groupId,
@@ -163,7 +182,7 @@ public abstract class WorkerRegistryContractTest {
                 Map.of("region", "us"),
                 "agent-1",
                 "runtime-1",
-                1000,
+                lastHeartbeatMillis,
                 "AVAILABLE"
         );
     }

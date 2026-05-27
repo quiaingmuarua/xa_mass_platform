@@ -782,6 +782,9 @@ class EngineSchedulingCoreArchitectureGuardTest {
         if (!Pattern.compile("\\bWorkerRegistry\\b").matcher(source).find()) {
             violations.add(indexPath + " does not use WorkerRegistry for bounded acquisition");
         }
+        if (!Pattern.compile("\\bsourceGuard\\s*\\(").matcher(source).find()) {
+            violations.add(indexPath + " does not expose a source-guard owner API");
+        }
         if (Pattern.compile("\\bWorkerRouteBucketOwner\\b").matcher(source).find()) {
             violations.add(indexPath + " still references removed WorkerRouteBucketOwner residue");
         }
@@ -975,13 +978,20 @@ class EngineSchedulingCoreArchitectureGuardTest {
         if (Pattern.compile("\\.getAllWorkers\\s*\\(").matcher(source).find()) {
             violations.add(strategyPath + " calls getAllWorkers() directly");
         }
+        if (Pattern.compile("\\.acquireCandidates\\s*\\(").matcher(source).find()) {
+            violations.add(strategyPath + " calls WorkerRegistry.acquireCandidates(...) directly");
+        }
+        if (Pattern.compile("\\.slotByWorkerId\\s*\\(").matcher(source).find()) {
+            violations.add(strategyPath + " reads WorkerRegistry slot relation directly");
+        }
         if (!Pattern.compile("\\.findWorkerCandidates\\s*\\(").matcher(source).find()) {
             violations.add(strategyPath + " does not consume WorkerManager.findWorkerCandidates(...)");
         }
 
         assertTrue(violations.isEmpty(),
                 "RuleBasedTaskWorkerMatchingStrategy must consume the centralized candidate source. "
-                        + "Do not reintroduce direct worker-pool scans in the rule/rank/resource path:\n"
+                        + "Do not reintroduce direct worker-pool scans, route-bucket reads, or source-guard "
+                        + "relation checks in the rule/rank/resource path:\n"
                         + String.join("\n", violations));
     }
 

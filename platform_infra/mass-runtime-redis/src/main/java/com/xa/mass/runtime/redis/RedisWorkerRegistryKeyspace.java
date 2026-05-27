@@ -59,6 +59,10 @@ public final class RedisWorkerRegistryKeyspace {
         return groupPrefix(groupId) + ":node-routes";
     }
 
+    public String workerBucketMembershipSet(String groupId, String workerId) {
+        return groupPrefix(groupId) + ":worker:" + requireToken(workerId, "workerId") + ":bucket-membership";
+    }
+
     public String taskActiveWorkersSet(String taskId) {
         return taskPrefix(taskId) + ":active-workers";
     }

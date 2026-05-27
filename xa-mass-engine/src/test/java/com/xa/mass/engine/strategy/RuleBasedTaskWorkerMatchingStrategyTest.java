@@ -21,6 +21,7 @@ import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.engine.util.TraceEventLogCapture;
 import org.junit.jupiter.api.Test;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -395,6 +396,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         worker.setWorkerId("worker-group-first");
         worker.setWorkerGroupId("group-first");
         worker.setStatus(WorkerStatus.ONLINE);
+        worker.setLastHeartbeat(LocalDateTime.now());
         registerWorker(workerManager, worker);
 
         List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(task, 1);
@@ -682,6 +684,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         worker.setWorkerId(workerId);
         worker.setWorkerGroupId(workerGroupId);
         worker.setStatus(WorkerStatus.ONLINE);
+        worker.setLastHeartbeat(LocalDateTime.now());
         worker.setSupportedProjects(List.of("demoApp"));
         worker.setSupportedEventCodes(List.of("demo.dispatch"));
         worker.setAttributes(attributes);

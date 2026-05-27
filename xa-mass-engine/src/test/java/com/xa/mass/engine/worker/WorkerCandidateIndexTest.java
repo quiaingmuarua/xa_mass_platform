@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class WorkerCandidateIndexTest {
@@ -133,6 +134,28 @@ public class WorkerCandidateIndexTest {
     }
 
     @Test
+    void multiGroupLookupUsesFairSourceBudgetBeforeStageTwo() {
+        WorkerCandidateIndex index = index(WorkerRegistrySnapshot.from(List.of(
+                group("crawler-a", "node-a", EventBinding.of("crawler.fetch", List.of("demoApp"))),
+                group("crawler-b", "node-a", EventBinding.of("crawler.fetch", List.of("demoApp")))
+        ), List.of(
+                worker("worker-a-1", "crawler-a"),
+                worker("worker-a-2", "crawler-a"),
+                worker("worker-a-3", "crawler-a"),
+                worker("worker-b-1", "crawler-b")
+        )));
+
+        List<String> workerIds = workerIds(index.workersFor(
+                task("demoApp", "crawler.fetch", null, "crawler-a", "crawler-b"),
+                2
+        ));
+
+        assertEquals(2, workerIds.size());
+        assertTrue(workerIds.stream().anyMatch(workerId -> workerId.startsWith("worker-a-")));
+        assertTrue(workerIds.stream().anyMatch(workerId -> workerId.startsWith("worker-b-")));
+    }
+
+    @Test
     void targetWorkerLookupBypassesRouteBucketLimitButStillChecksGroupCapability() {
         WorkerCandidateIndex index = index(WorkerRegistrySnapshot.from(List.of(
                 group("crawler", "node-a", EventBinding.of("crawler.fetch", List.of("demoApp"))),
@@ -163,6 +186,47 @@ public class WorkerCandidateIndexTest {
         task.getSharedConfig().put(TaskSharedConfig.ROUTE_ATTRIBUTES, Map.of("region", "us"));
 
         assertEquals(List.of("worker-us"), workerIds(index.workersFor(task, 10)));
+    }
+
+    @Test
+    void sourceGuardRejectsStaleRouteEvidenceBeforeStageTwo() {
+        WorkerCandidateIndex index = index(WorkerRegistrySnapshot.from(List.of(
+                group("crawler", "node-a", EventBinding.of("crawler.fetch", List.of("demoApp")))
+        ), List.of(
+                worker("worker-eu", "crawler", Map.of("region", "eu"))
+        )));
+        Task task = task("demoApp", "crawler.fetch", null, "crawler");
+        task.setSharedConfig(new java.util.LinkedHashMap<>(task.getSharedConfig()));
+        task.getSharedConfig().put(TaskSharedConfig.ROUTE_ATTRIBUTES, Map.of("region", "us"));
+        String observedRouteBucket = WorkerRoutingPolicy.defaultPolicy()
+                .routeBucketKeysForTask(task)
+                .iterator()
+                .next();
+
+        WorkerCandidateIndex.SourceGuardResult result =
+                index.sourceGuard(task, "crawler", null, observedRouteBucket, "worker-eu");
+
+        assertFalse(result.accepted());
+        assertEquals(WorkerCandidateIndex.SourceGuardRejectionReason.ROUTE_MISMATCH, result.rejectionReason());
+    }
+
+    @Test
+    void sourceGuardRejectsStaleAdapterNodeEvidenceBeforeStageTwo() {
+        WorkerCandidateIndex index = index(WorkerRegistrySnapshot.from(List.of(
+                group("crawler", "node-a", EventBinding.of("crawler.fetch", List.of("demoApp")))
+        ), List.of(
+                worker("worker-node-b", "crawler", "node-b", Map.of())
+        )));
+
+        WorkerCandidateIndex.SourceGuardResult result =
+                index.sourceGuard(task("demoApp", "crawler.fetch", null, "crawler"),
+                        "crawler",
+                        "node-a",
+                        WorkerRoutingPolicy.DEFAULT_ROUTE_BUCKET_KEY,
+                        "worker-node-b");
+
+        assertFalse(result.accepted());
+        assertEquals(WorkerCandidateIndex.SourceGuardRejectionReason.ADAPTER_NODE_MISMATCH, result.rejectionReason());
     }
 
     private static List<String> workerIds(List<Worker> workers) {

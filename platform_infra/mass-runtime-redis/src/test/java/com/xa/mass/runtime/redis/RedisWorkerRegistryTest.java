@@ -229,6 +229,31 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
         assertEquals(List.of("worker-1"), registry.acquireCandidates("group-a", "attr:region=us", 10));
     }
 
+    @Test
+    void routeAttributeUpdateRemovesOnlyKnownPreviousBucketMembership() {
+        createRegistry();
+        registry.close();
+        registry = new RedisWorkerRegistry(
+                redisClient,
+                keyspace,
+                (context, workerIds, maxCandidateCount) -> workerIds.stream().limit(maxCandidateCount).toList(),
+                WorkerRoutingPolicy.approvedAttributePolicy(List.of("region")),
+                false
+        );
+        registry.upsertSlot(metaWithRegion("worker-1", "group-a", "us"), 1, Set.of(eventKey()));
+        registry.upsertSlot(metaWithRegion("worker-2", "group-a", "us"), 1, Set.of(eventKey()));
+
+        assertEquals(List.of("worker-1", "worker-2"),
+                registry.acquireCandidates("group-a", "attr:region=us", 10));
+
+        registry.upsertSlot(metaWithRegion("worker-1", "group-a", "eu"), 1, Set.of(eventKey()));
+
+        assertEquals(List.of("worker-2"),
+                registry.acquireCandidates("group-a", "attr:region=us", 10));
+        assertEquals(List.of("worker-1"),
+                registry.acquireCandidates("group-a", "attr:region=eu", 10));
+    }
+
 
     @Test
     void staleHeartbeatCandidateIsRejectedThenCleanedFromRouteBucket() {
@@ -297,6 +322,21 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
                 "agent-1",
                 "runtime-1",
                 lastHeartbeatMillis,
+                "AVAILABLE"
+        );
+    }
+
+    private WorkerMeta metaWithRegion(String workerId, String groupId, String region) {
+        return new WorkerMeta(
+                workerId,
+                groupId,
+                "node-a",
+                "polling",
+                "polling",
+                Map.of("region", region),
+                "agent-1",
+                "runtime-1",
+                1_000,
                 "AVAILABLE"
         );
     }

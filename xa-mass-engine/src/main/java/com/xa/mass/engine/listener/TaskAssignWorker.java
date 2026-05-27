@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -46,6 +47,7 @@ public class TaskAssignWorker {
     private final AtomicInteger pendingTasks = new AtomicInteger(0);
     private final Set<String> trackedTaskIds = ConcurrentHashMap.newKeySet();
     private final Set<String> deferredRequeueTaskIds = ConcurrentHashMap.newKeySet();
+    private final ConcurrentMap<String, WaitingRetry> waitingRetriesByTaskId = new ConcurrentHashMap<>();
     private final AtomicLong signalSequence = new AtomicLong();
 
     private volatile boolean running = true;
@@ -186,10 +188,30 @@ public class TaskAssignWorker {
         return submit(task, false);
     }
 
+    /**
+     * Re-enqueues only tasks already known to this owner as waiting for lane retry.
+     *
+     * <p>This is the bounded lane-side wakeup used by worker availability changes.
+     * It does not scan task storage or discover READY tasks.</p>
+     */
+    public int wakeWaitingRetries(String reason) {
+        if (!running || waitingRetriesByTaskId.isEmpty()) {
+            return 0;
+        }
+        int woken = 0;
+        for (WaitingRetry waitingRetry : List.copyOf(waitingRetriesByTaskId.values())) {
+            if (runWaitingRetry(waitingRetry, true, reason)) {
+                woken++;
+            }
+        }
+        return woken;
+    }
+
     public void stop() {
         running = false;
         trackedTaskIds.clear();
         deferredRequeueTaskIds.clear();
+        waitingRetriesByTaskId.clear();
         emitQueueSnapshot(null, null, null, "STOPPING", null,
                 "assignment signal worker is stopping", "SUCCESS");
         for (LaneState laneState : laneStates.values()) {
@@ -399,6 +421,11 @@ public class TaskAssignWorker {
         TaskRuntimeRetryPolicy retryPolicy = taskRuntimeRetryPolicyResolver.resolve(task, retryDelayMillis);
         long resolvedRetryDelayMillis = retryPolicy.assignmentRetryDelayMillis();
         laneState.scheduledRetryCount.incrementAndGet();
+        WaitingRetry waitingRetry = new WaitingRetry(task, expectedStatus, laneState, resolvedRetryDelayMillis);
+        WaitingRetry previous = waitingRetriesByTaskId.put(task.getTid(), waitingRetry);
+        if (previous != null) {
+            cancelWaitingRetry(previous);
+        }
         traceEventLogger.assignmentRetryScheduled(
                 task.getTid(),
                 expectedStatus,
@@ -409,23 +436,62 @@ public class TaskAssignWorker {
         );
         emitQueueSnapshot(task, expectedStatus, laneState, "RETRY_SCHEDULED", resolvedRetryDelayMillis,
                 "task remained eligible after assignment attempt", "SCHEDULED");
-        laneState.retryExecutor.schedule(() -> {
-            laneState.scheduledRetryCount.updateAndGet(current -> current > 0 ? current - 1 : 0);
-            if (running && task.getStatus() == expectedStatus) {
-                if (enqueueSignal(task, AssignmentSignalReason.RETRY, laneState)) {
-                    emitQueueSnapshot(task, expectedStatus, laneState, "RETRY_ENQUEUED", resolvedRetryDelayMillis,
-                            "delayed retry enqueued task back into assignment signal queue", "SUCCESS");
-                } else {
-                    emitQueueSnapshot(task, expectedStatus, laneState, "RETRY_QUEUE_FULL", resolvedRetryDelayMillis,
-                            "assignment signal queue is full; retry will be rescheduled", "DEFERRED");
-                    scheduleRetry(task, expectedStatus, laneState);
-                }
-                return;
+        ScheduledFuture<?> future = laneState.retryExecutor.schedule(
+                () -> runWaitingRetry(waitingRetry, false, "delayed retry reached due time"),
+                resolvedRetryDelayMillis,
+                TimeUnit.MILLISECONDS
+        );
+        waitingRetry.future = future;
+    }
+
+    private void cancelWaitingRetry(WaitingRetry waitingRetry) {
+        if (waitingRetry == null || !waitingRetry.consume()) {
+            return;
+        }
+        waitingRetry.cancel();
+        waitingRetry.laneState.scheduledRetryCount.updateAndGet(current -> current > 0 ? current - 1 : 0);
+    }
+
+    private boolean runWaitingRetry(WaitingRetry waitingRetry, boolean wakeup, String reason) {
+        if (waitingRetry == null || !waitingRetry.consume()) {
+            return false;
+        }
+        waitingRetriesByTaskId.remove(waitingRetry.taskId(), waitingRetry);
+        waitingRetry.laneState.scheduledRetryCount.updateAndGet(current -> current > 0 ? current - 1 : 0);
+        if (wakeup) {
+            waitingRetry.cancel();
+        }
+        Task task = waitingRetry.task;
+        TaskStatus expectedStatus = waitingRetry.expectedStatus;
+        LaneState laneState = waitingRetry.laneState;
+        long resolvedRetryDelayMillis = waitingRetry.retryDelayMillis;
+        if (running && task.getStatus() == expectedStatus) {
+            if (enqueueSignal(task, AssignmentSignalReason.RETRY, laneState)) {
+                emitQueueSnapshot(task, expectedStatus, laneState,
+                        wakeup ? "WAKE_RETRY_ENQUEUED" : "RETRY_ENQUEUED",
+                        resolvedRetryDelayMillis,
+                        wakeup
+                                ? "worker availability wakeup enqueued waiting retry: " + normalizeReason(reason)
+                                : "delayed retry enqueued task back into assignment signal queue",
+                        "SUCCESS");
+                return true;
             }
-            releaseTrackedTask(task.getTid());
-            emitQueueSnapshot(task, task.getStatus(), laneState, "RETRY_DROPPED", resolvedRetryDelayMillis,
-                    "delayed retry was dropped because task is no longer eligible", "SKIPPED");
-        }, resolvedRetryDelayMillis, TimeUnit.MILLISECONDS);
+            emitQueueSnapshot(task, expectedStatus, laneState,
+                    wakeup ? "WAKE_RETRY_QUEUE_FULL" : "RETRY_QUEUE_FULL",
+                    resolvedRetryDelayMillis,
+                    "assignment signal queue is full; retry will be rescheduled", "DEFERRED");
+            scheduleRetry(task, expectedStatus, laneState);
+            return false;
+        }
+        releaseTrackedTask(task.getTid());
+        emitQueueSnapshot(task, task.getStatus(), laneState,
+                wakeup ? "WAKE_RETRY_DROPPED" : "RETRY_DROPPED",
+                resolvedRetryDelayMillis,
+                wakeup
+                        ? "worker availability wakeup dropped retry because task is no longer eligible"
+                        : "delayed retry was dropped because task is no longer eligible",
+                "SKIPPED");
+        return false;
     }
 
     private void notifyAssignmentProcessed(Task task, LaneState laneState) {
@@ -541,6 +607,44 @@ public class TaskAssignWorker {
                 return priorityComparison;
             }
             return Long.compare(sequence, other.sequence);
+        }
+    }
+
+    private static String normalizeReason(String reason) {
+        return reason == null || reason.isBlank() ? "unspecified" : reason.trim();
+    }
+
+    private static final class WaitingRetry {
+        private final Task task;
+        private final TaskStatus expectedStatus;
+        private final LaneState laneState;
+        private final long retryDelayMillis;
+        private final AtomicBoolean consumed = new AtomicBoolean(false);
+        private volatile ScheduledFuture<?> future;
+
+        private WaitingRetry(Task task,
+                             TaskStatus expectedStatus,
+                             LaneState laneState,
+                             long retryDelayMillis) {
+            this.task = task;
+            this.expectedStatus = expectedStatus;
+            this.laneState = laneState;
+            this.retryDelayMillis = retryDelayMillis;
+        }
+
+        private String taskId() {
+            return task != null ? task.getTid() : null;
+        }
+
+        private boolean consume() {
+            return consumed.compareAndSet(false, true);
+        }
+
+        private void cancel() {
+            ScheduledFuture<?> current = future;
+            if (current != null) {
+                current.cancel(false);
+            }
         }
     }
 

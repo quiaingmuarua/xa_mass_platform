@@ -7,6 +7,7 @@ import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskCommandService;
+import com.xa.mass.engine.TaskDispatchWakeupBridge;
 import com.xa.mass.engine.TaskEventListenerRegistrar;
 import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
@@ -122,7 +123,9 @@ public class MassEngine {
                     config.getRuntimeReadyDispatchIdleBackoffMaxMillis(),
                     config.getRuntimeReadyDispatchIdleBackoffPolicy()
             );
-            Runnable dispatchWakeupCallback = runtimeReadyDispatchPump::wakeIdleAdmissions;
+            TaskDispatchWakeupBridge dispatchWakeupBridge =
+                    new TaskDispatchWakeupBridge(assignWorker, runtimeReadyDispatchPump);
+            Runnable dispatchWakeupCallback = dispatchWakeupBridge.callback("worker availability changed");
             config.getWorkerControlService().setDispatchWakeupCallback(dispatchWakeupCallback);
             workerManager.setDispatchWakeupCallback(dispatchWakeupCallback);
             runtimeReadyDispatchPump.start();
@@ -195,6 +198,7 @@ public class MassEngine {
                 runtimeBridge = null;
             }
             config.getWorkerControlService().setDispatchWakeupCallback(null);
+            config.getWorkerManager().setDispatchWakeupCallback(null);
             if (leaseWatchdog != null) {
                 leaseWatchdog.stop();
                 leaseWatchdog = null;

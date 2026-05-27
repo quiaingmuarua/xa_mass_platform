@@ -1,6 +1,7 @@
 # Worker Match Upgrade Roadmap
 
-Status: design roadmap; no implementation yet.
+Status: active implementation; Slice 0A/0B first slices are implemented and
+Slice 1 source-guard first slice is implemented.
 
 This roadmap continues from
 [`TRANSPORT_WORKER_MATCH_SPINE_ROADMAP.md`](../../../transport/TRANSPORT_WORKER_MATCH_SPINE_ROADMAP.md)
@@ -64,6 +65,38 @@ kernel itself. The kernel contracts are:
 - reserve/occupancy remains in `WorkerRegistry`
 - dispatch claim/finality remains in task runtime
 - trace must say which owner rejected a candidate
+
+## Mechanism And Policy Boundary
+
+Mechanism is the part of matching that protects runtime correctness and owner
+truth. It should be stable, testable, and shared by every strategy:
+
+- WorkerGroup selector resolution before candidate acquisition
+- route bucket membership and stale cleanup
+- heartbeat freshness and source-guard validation
+- reachability / dispatch gate / capacity admission
+- `WorkerRegistry` reserve, confirm, release, and final occupancy mutation
+- task-runtime claim, lease, result finality, retry visibility, and refill
+- bounded match evidence shape and trace owner reasons
+
+Policy is the part of matching that can evolve without changing those truth
+owners:
+
+- route bucket sampling distribution
+- candidate priority hints such as warm entries
+- prefilter ordering after hard source/admission gates
+- QLExpress rule content and rule cost budget
+- rank weights for load, affinity, task class, and future measured latency
+- retry/backoff timing and wakeup priority
+- diagnostic sampling depth
+
+Hard boundary:
+
+- policy may choose which bounded candidates to try first
+- policy may not manufacture candidate truth, bypass source guard, bypass
+  Stage-2 admission, or mutate reserve/runtime state directly
+- mechanism may expose narrow policy seams, but it must not hide mutable
+  business strategy inside registry cleanup, runtime claim, or dispatch bind
 
 ## Current Code Observations
 
@@ -195,6 +228,15 @@ It may include:
 - reserve / lock result
 - allocation and dispatch-bind result
 
+Evidence must be bounded:
+
+- always record aggregate counters and owner-level rejection reasons
+- record at most a small top-N / sampled candidate detail set per assignment
+  attempt
+- do not emit full per-candidate evidence for large worker pools by default
+- full candidate detail, if ever needed, must be an explicit debug/test mode
+  with a hard cap
+
 It must not become:
 
 - a second source of eligibility truth
@@ -202,10 +244,24 @@ It must not become:
 - a replacement for `WorkerRegistry` reserve state
 - a task result finality owner
 
-## Slice 0: Registry Hygiene
+## Slice 0A: Registry Candidate Hygiene
+
+Status: implemented first slice.
 
 Goal: make candidate-source cleanup reliable before adding more match strategy
 features.
+
+Landed in first slice:
+
+- in-memory and Redis registry reserve both reject expired heartbeat slots with
+  `STALE_HEARTBEAT` before cleanup runs
+- in-memory heartbeat cleanup now uses
+  `lastHeartbeatMillis + heartbeatFreshnessMillis` and marks expired slots
+  removing, matching Redis lifecycle semantics
+- route-bucket removal uses per-worker bucket membership instead of scanning
+  all route buckets for every worker removal
+- shared contract and implementation tests cover stale heartbeat reserve and
+  route-attribute bucket movement
 
 Scope:
 
@@ -224,16 +280,6 @@ Scope:
 6. Replace broad route-bucket removal scans with worker-to-bucket membership.
    `removeFromBuckets` must remove only the bucket keys indexed for the worker
    being removed.
-7. Add or identify an engine-side dispatch wakeup bridge that wires worker
-   availability callbacks to both relevant dispatch recovery paths:
-   lane/task-signal redispatch through `requestTaskDispatch(...)` for tasks
-   already waiting in `TaskAssignWorker` retry/backoff, and
-   runtime-driven batch admission through
-   `RuntimeReadyDispatchPump.wakeIdleAdmissions()`. Current wiring that only
-   wakes the runtime-ready pump is incomplete for lane retry latency.
-   Worker/transport owners must call only the bridge callback, not the pump
-   directly.
-8. Fix or explicitly accept the READY-state dedupe window in `TaskAssignWorker`.
 
 Acceptance:
 
@@ -244,13 +290,66 @@ Acceptance:
    cleanup has already removed the candidate from route buckets.
 3. Worker unregister / group move / route-attribute update removes only known
    bucket memberships from the worker-to-bucket reverse index.
-4. Worker registration, online, capability, and AVAILABLE-state transitions call
-   the engine wakeup bridge, and the bridge can wake both lane-driven redispatch
-   and runtime-ready batch admission where each path is configured.
-5. READY tasks do not silently lose a meaningful redispatch signal unless the
+4. Cleanup remains bounded and stale-tolerant; stale bucket members may be
+   rejected lazily by reserve, but cleanup does not scan every route bucket on
+   every worker removal.
+
+## Slice 0B: Dispatch Wakeup And Dedupe Semantics
+
+Status: implemented first slice.
+
+Goal: shorten no-match / min-worker / capacity wait time when worker
+availability changes, without giving worker owners task-scheduling authority.
+
+Landed in first slice:
+
+- `TaskDispatchWakeupBridge` owns worker-availability wakeup fanout
+- worker-control / worker-manager availability callbacks are wired to the
+  bridge instead of directly to the runtime-ready pump
+- the bridge wakes runtime-ready batch admission and bounded
+  `TaskAssignWorker` lane retries
+- `TaskAssignWorker` now owns a waiting-retry index and can requeue only tasks
+  already known to be waiting retry/backoff
+- READY dedupe remains an explicit traced skip in this slice; it is not
+  converted into blind requeue because a successful in-flight assignment could
+  otherwise be duplicated
+
+Scope:
+
+1. Add or identify an engine-side dispatch wakeup bridge, for example
+   `TaskDispatchWakeupBridge`.
+2. Worker, transport, capability, and state owners call only the bridge with a
+   reason such as `WORKER_REGISTERED`, `WORKER_ONLINE`,
+   `CAPABILITY_CHANGED`, or `STATE_AVAILABLE`.
+3. The bridge may fan out only to bounded engine-owned wakeup ports:
+   - runtime-driven batch admission via `RuntimeReadyDispatchPump.wakeIdleAdmissions()`
+   - lane-driven assignment retry via a `TaskAssignWorker`-owned bounded wake
+     method
+4. The lane wake method must not scan task storage or all READY tasks. It may
+   only requeue tasks already tracked by `TaskAssignWorker` as waiting retry,
+   deferred requeue, or deduped meaningful redispatch. `TaskAssignWorker` owns
+   the waiting-task index because it owns lane retry/backoff state.
+5. If the first implementation cannot safely wake lane retries, document and
+   trace the temporary pump-only behavior; do not pretend `requestTaskDispatch`
+   can be called without a task source.
+6. Fix or explicitly accept the READY-state dedupe window in `TaskAssignWorker`.
+
+Acceptance:
+
+1. Worker registration, online, capability, and AVAILABLE-state transitions call
+   the engine wakeup bridge, not the pump or assign worker directly.
+2. The bridge can wake runtime-ready batch admission where configured.
+3. Lane retry wakeup is bounded to tasks already known to `TaskAssignWorker`,
+   or the roadmap explicitly records pump-only behavior as a temporary
+   limitation with trace evidence.
+4. READY tasks do not silently lose a meaningful redispatch signal unless the
    accepted behavior is documented and traced.
+5. No wakeup path scans all tasks or lets worker/transport owners call
+   `requestTaskDispatch(Task)` without an engine-owned task source.
 
 ## Slice 1: Match Boundary Cleanup
+
+Status: source-guard first slice implemented.
 
 Goal: keep the current two-stage strategy but make its boundaries explicit in
 code, tests, and trace.
@@ -270,17 +369,27 @@ Scope:
    from the transport spine roadmap: worker id resolves to current worker
    relation evidence, then still passes WorkerGroup capability and current
    admission gates.
-5. Separate trace reasons for:
+5. Introduce a source-guard owner API before warm hints. Preferred first-slice
+   owner is `WorkerCandidateIndex`, backed by current `WorkerRegistry` slot/meta
+   reads. The API should validate:
+   - worker still belongs to one selected WorkerGroup
+   - optional adapter-node relation still matches
+   - current routing policy still maps worker to the observed route bucket
+   - source-guard rejection is distinguishable from Stage-2 admission rejection
+   Matching strategy code must call this API; it must not inspect route-bucket
+   storage directly.
+6. Separate trace reasons for:
    - no candidate source
    - source-guard rejection
    - prefilter rejection
    - rule failure
    - rank/reserve failure
    - dispatch bind failure
-6. Add a compact match evidence model or diagnostic record that captures source
-   counts, source-guard result, prefilter result, rule summary, rank score,
-   reserve result, and final decision for an assignment attempt.
-7. Keep source guards in architecture tests so future hints cannot fall back to
+7. Add a compact match evidence model or diagnostic record that captures
+   aggregate source counts, bounded source-guard detail, prefilter result, rule
+   summary, rank score, reserve result, and final decision for an assignment
+   attempt.
+8. Keep source guards in architecture tests so future hints cannot fall back to
    event/project/all-worker scans.
 
 Acceptance:
@@ -290,11 +399,27 @@ Acceptance:
 3. Tests prove `targetWorkerId` does not fall back to backup workers.
 4. Trace/diagnostics identify the owner that rejected a candidate.
 5. Match evidence is structured enough for tests to assert source, prefilter,
-   rule, rank, reserve, and dispatch-bind outcomes without scraping log text.
-6. Architecture guards prevent match strategy code from bypassing centralized
+   rule, rank, reserve, and dispatch-bind outcomes without scraping log text,
+   while remaining bounded for large worker pools.
+6. Source-guard API rejects stale group/node/route evidence before Stage-2, and
+   tests prove matching does not read route-bucket internals directly.
+7. Architecture guards prevent match strategy code from bypassing centralized
    candidate source or reserve owners.
 
+Landed first slice:
+
+1. `WorkerCandidateIndex` exposes `sourceGuard(...)` as the source-guard owner
+   API.
+2. Source guard validates current worker slot group, optional adapter node, and
+   current route-bucket membership before returning a worker candidate.
+3. `targetWorkerId` lookup uses the same source guard instead of bypassing
+   group/route relation checks.
+4. Architecture guards keep matching strategy code out of direct
+   `WorkerRegistry` bucket/slot reads.
+
 ## Slice 2: Candidate Source Policy Review
+
+Status: first-slice fair source budget implemented.
 
 Goal: tune Stage-1 policy without changing Stage-2 truth.
 
@@ -304,8 +429,10 @@ Scope:
 2. Add worker-to-bucket diagnostics: bucket count, worker membership count,
    stale member cleanup count.
 3. Define and test multi-group and multi-route sample distribution under bounded
-   sample limits. The first policy can be round-robin or proportional, but it
-   must be explicit.
+   sample limits. First-slice policy: round-robin bucket budget across selected
+   `(groupId, routeBucketKey)` sources, capped by the assignment candidate
+   budget. Empty/stale buckets are skipped and remaining budget may be
+   redistributed to later buckets in the same bounded pass.
 4. Review sample min/max defaults for interactive and bulk tasks.
 5. Remove `WorkerManager.DEFAULT_STAGE_ONE_CANDIDATE_LIMIT` from the hot-path
    narrative if the no-limit `findWorkerCandidates(task)` overload remains
@@ -319,13 +446,23 @@ Scope:
 
 Acceptance:
 
-1. Multi-group / multi-route tasks have a tested distribution policy. A test
+1. Multi-group / multi-route tasks have a tested round-robin bucket-budget
+   policy. A test
    with at least two selected groups or route keys proves one selected bucket
    cannot consume the whole sample budget while another selected bucket still
    has candidates.
 2. Candidate sample limits are explained by workload class and dispatch budget.
 3. Stage-1 remains bounded and stale-tolerant.
 4. Stage-2 still rejects stale or currently invalid candidates.
+
+Landed first slice:
+
+1. `WorkerCandidateIndex` builds bounded `(groupId, routeBucketKey)` source
+   buckets from the selected worker groups and approved task route attributes.
+2. Stage-1 candidate acquisition allocates remaining candidate budget fairly
+   across remaining source buckets instead of allowing the first large group to
+   consume the whole sample.
+3. Source guard still validates every sampled worker before Stage-2.
 
 ## Slice 3: Stage-2 Policy Review
 
@@ -390,8 +527,10 @@ Acceptance:
 Goal: add a task-local warm candidate hint after the match boundary and registry
 cleanup work are stable.
 
-Warm pool is a Stage-2 hit-rate optimization, not a new matching truth and not
-a Stage-1 lookup optimization.
+Warm pool is a pre-Stage-2 candidate priority hint. It can prefer candidates
+that recently passed this task's source/admission path, but it is not a new
+matching truth, not route-bucket membership truth, and not an eligibility /
+admission cache.
 
 Warm entry shape for first slice:
 
@@ -413,11 +552,13 @@ Scope:
    invalidation in the first slice.
 4. Do not add worker version fields.
 5. Disable warm sampling for `targetWorkerId` tasks in the first slice.
-6. Rehydrate warm ids through current WorkerGroup-first source guard before
-   Stage-2 sees them.
-7. Route-bucket source guard is explicit: fetch current worker meta and
-   recompute the current route bucket keys with the same routing policy used by
-   `WorkerRegistry` registration; reject a warm entry when
+6. Rehydrate warm ids through the Slice-1 source-guard owner API before Stage-2
+   sees them. Matching strategy code must not read route-bucket internals
+   directly.
+7. Route-bucket source guard is explicit inside that owner API: fetch current
+   worker meta/slot, verify selected WorkerGroup and adapter-node relation,
+   recompute current route bucket keys with the same routing policy used by
+   `WorkerRegistry` registration, and reject a warm entry when
    `observedRouteBucketKey` is no longer in that current set. TTL alone is not
    enough to prove route-bucket validity.
 8. Cold-fill through the normal candidate source after warm rehydration.
@@ -436,6 +577,8 @@ Acceptance:
 5. Assignment diagnostics show warm/cold counts and source-guard rejections.
 6. Warm pool does not hold reservations, locks, leases, or dispatch truth.
 7. Runtime dispatch pump and lane-driven assignment can touch warm state safely.
+8. Source guard is exposed through a match/source owner API; matching code does
+   not directly inspect route-bucket storage.
 
 ## Testing Plan
 
@@ -450,6 +593,7 @@ Engine tests:
 - multi-group / multi-route sampling remains fair enough under bounded limits
 - prefilter, rule, rank, reserve, and dispatch bind rejections have distinct
   diagnostics
+- match evidence uses aggregate counters plus bounded candidate details
 - warm candidates are source-guarded, deduped, revalidated, and bounded
 
 Baseline docs:
@@ -507,7 +651,7 @@ Mitigation:
 
 Mitigation:
 
-- complete Slice 0 before warm hints
+- complete Slice 0A and the source-guard part of Slice 1 before warm hints
 - distinguish source-guard rejection from Stage-2 rejection
 - keep stale candidate indexes allowed but observable
 
@@ -531,7 +675,8 @@ Mitigation:
 ## Recommended Implementation Order
 
 ```text
-Slice 0: Registry Hygiene
+Slice 0A: Registry Candidate Hygiene
+Slice 0B: Dispatch Wakeup And Dedupe Semantics
 Slice 1: Match Boundary Cleanup
 Slice 2: Candidate Source Policy Review
 Slice 3: Stage-2 Policy Review

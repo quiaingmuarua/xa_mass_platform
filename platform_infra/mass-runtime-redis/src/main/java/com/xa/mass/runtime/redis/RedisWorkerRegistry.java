@@ -729,7 +729,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         if (current.removing()) {
             return ReserveStatus.REMOVING_SLOT;
         }
-        if (heartbeatDeadlineMillis(current.meta()) < nowMillis) {
+        if (heartbeatDeadlineMillis(current.meta()) <= nowMillis) {
             return ReserveStatus.STALE_HEARTBEAT;
         }
         if (!current.dispatchEnabled()) {
@@ -742,13 +742,21 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     }
 
     private void addToBuckets(WorkerMeta meta) {
+        LinkedHashSet<String> bucketKeys = new LinkedHashSet<>();
         for (String routeBucketKey : routeBucketKeys(meta)) {
             commands.sadd(keyspace.groupRoutesSet(meta.groupId()), routeBucketKey);
-            commands.sadd(keyspace.groupRouteBucket(meta.groupId(), routeBucketKey), meta.workerId());
+            String groupBucketKey = keyspace.groupRouteBucket(meta.groupId(), routeBucketKey);
+            commands.sadd(groupBucketKey, meta.workerId());
+            bucketKeys.add(groupBucketKey);
             if (meta.adapterNodeId() != null) {
                 commands.sadd(keyspace.groupNodeRoutesSet(meta.groupId()), keyspace.nodeRouteMember(meta.adapterNodeId(), routeBucketKey));
-                commands.sadd(keyspace.nodeRouteBucket(meta.groupId(), meta.adapterNodeId(), routeBucketKey), meta.workerId());
+                String nodeBucketKey = keyspace.nodeRouteBucket(meta.groupId(), meta.adapterNodeId(), routeBucketKey);
+                commands.sadd(nodeBucketKey, meta.workerId());
+                bucketKeys.add(nodeBucketKey);
             }
+        }
+        if (!bucketKeys.isEmpty()) {
+            commands.sadd(keyspace.workerBucketMembershipSet(meta.groupId(), meta.workerId()), bucketKeys.toArray(String[]::new));
         }
     }
 
@@ -756,17 +764,12 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
         if (groupId == null || workerId == null) {
             return;
         }
-        for (String routeBucketKey : commands.smembers(keyspace.groupRoutesSet(groupId))) {
-            commands.srem(keyspace.groupRouteBucket(groupId, routeBucketKey), workerId);
+        String membershipKey = keyspace.workerBucketMembershipSet(groupId, workerId);
+        Set<String> bucketKeys = commands.smembers(membershipKey);
+        for (String bucketKey : bucketKeys) {
+            commands.srem(bucketKey, workerId);
         }
-        for (String nodeRouteMember : commands.smembers(keyspace.groupNodeRoutesSet(groupId))) {
-            try {
-                RedisWorkerRegistryKeyspace.NodeRouteMember parsed = keyspace.parseNodeRouteMember(nodeRouteMember);
-                commands.srem(keyspace.nodeRouteBucket(groupId, parsed.adapterNodeId(), parsed.routeBucketKey()), workerId);
-            } catch (IllegalArgumentException ignored) {
-                // Stale malformed diagnostic member; bounded cleanup can remove it later.
-            }
-        }
+        commands.del(membershipKey);
     }
 
     private Set<String> routeBucketKeys(WorkerMeta meta) {

@@ -30,13 +30,17 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public final class InMemoryWorkerRegistry implements WorkerRegistry {
 
+    public static final long DEFAULT_HEARTBEAT_FRESHNESS_MILLIS = 30_000L;
+
     private final WorkerRoutingPolicy routingPolicy;
     private final WorkerCandidateSamplingPolicy samplingPolicy;
+    private final long heartbeatFreshnessMillis;
     private final ConcurrentMap<String, ConcurrentMap<String, AtomicReference<WorkerSlot>>> slotsByGroupId =
             new ConcurrentHashMap<>();
     private final ConcurrentMap<String, String> workerIdToGroupId = new ConcurrentHashMap<>();
     private final ConcurrentMap<GroupRouteBucketKey, Set<String>> routeBuckets = new ConcurrentHashMap<>();
     private final ConcurrentMap<NodeGroupRouteBucketKey, Set<String>> nodeRouteBuckets = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, BucketMembership> bucketMembershipByWorkerId = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, Set<String>> taskActiveWorkersByTask = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, ConcurrentMap<String, Integer>> taskWorkerActiveCounts = new ConcurrentHashMap<>();
 
@@ -49,10 +53,17 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
     }
 
     public InMemoryWorkerRegistry(WorkerRoutingPolicy routingPolicy, WorkerCandidateSamplingPolicy samplingPolicy) {
+        this(routingPolicy, samplingPolicy, DEFAULT_HEARTBEAT_FRESHNESS_MILLIS);
+    }
+
+    public InMemoryWorkerRegistry(WorkerRoutingPolicy routingPolicy,
+                                  WorkerCandidateSamplingPolicy samplingPolicy,
+                                  long heartbeatFreshnessMillis) {
         this.routingPolicy = routingPolicy != null ? routingPolicy : WorkerRoutingPolicy.defaultPolicy();
         this.samplingPolicy = samplingPolicy != null
                 ? samplingPolicy
                 : RandomWorkerCandidateSamplingPolicy.defaultPolicy();
+        this.heartbeatFreshnessMillis = Math.max(1L, heartbeatFreshnessMillis);
     }
 
     @Override
@@ -250,7 +261,7 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
         AtomicReference<WorkerSlot> ref = slotRef.orElseThrow();
         while (true) {
             WorkerSlot current = ref.get();
-            ReserveStatus status = validateReserve(current, groupId, workerId, normalizedPermits);
+            ReserveStatus status = validateReserve(current, groupId, workerId, normalizedPermits, nowMillis);
             if (status != ReserveStatus.ACCEPTED) {
                 return ReserveResult.rejected(status, status.name());
             }
@@ -564,12 +575,15 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
                 }
                 scanned++;
                 WorkerSlot slot = slotEntry.getValue().get();
-                if (slot == null || slot.meta().lastHeartbeatMillis() > nowMillis) {
+                if (slot == null || heartbeatDeadlineMillis(slot.meta()) > nowMillis) {
                     skipped++;
                     continue;
                 }
-                markCandidateStale(groupEntry.getKey(), slotEntry.getKey(), "expired-heartbeat");
-                removed++;
+                if (markSlotRemoving(groupEntry.getKey(), slotEntry.getKey(), "heartbeat expired")) {
+                    removed++;
+                } else {
+                    skipped++;
+                }
             }
         }
         return new CleanupSummary(scanned, removed, skipped);
@@ -627,7 +641,11 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
         );
     }
 
-    private ReserveStatus validateReserve(WorkerSlot current, String groupId, String workerId, int permits) {
+    private ReserveStatus validateReserve(WorkerSlot current,
+                                          String groupId,
+                                          String workerId,
+                                          int permits,
+                                          long nowMillis) {
         if (current == null) {
             return ReserveStatus.MISSING_SLOT;
         }
@@ -639,6 +657,9 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
         if (current.removing()) {
             return ReserveStatus.REMOVING_SLOT;
         }
+        if (heartbeatDeadlineMillis(current.meta()) <= nowMillis) {
+            return ReserveStatus.STALE_HEARTBEAT;
+        }
         if (!current.dispatchEnabled()) {
             return ReserveStatus.DISPATCH_DISABLED;
         }
@@ -649,29 +670,53 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
     }
 
     private void addToBuckets(WorkerMeta meta) {
+        LinkedHashSet<GroupRouteBucketKey> groupKeys = new LinkedHashSet<>();
+        LinkedHashSet<NodeGroupRouteBucketKey> nodeKeys = new LinkedHashSet<>();
         for (String routeBucketKey : routeBucketKeys(meta)) {
+            GroupRouteBucketKey groupKey = new GroupRouteBucketKey(meta.groupId(), routeBucketKey);
             routeBuckets.computeIfAbsent(
-                    new GroupRouteBucketKey(meta.groupId(), routeBucketKey),
+                    groupKey,
                     ignored -> newWorkerBucketSet()
             ).add(meta.workerId());
+            groupKeys.add(groupKey);
             if (meta.adapterNodeId() != null) {
+                NodeGroupRouteBucketKey nodeKey =
+                        new NodeGroupRouteBucketKey(meta.groupId(), meta.adapterNodeId(), routeBucketKey);
                 nodeRouteBuckets.computeIfAbsent(
-                        new NodeGroupRouteBucketKey(meta.groupId(), meta.adapterNodeId(), routeBucketKey),
+                        nodeKey,
                         ignored -> newWorkerBucketSet()
                 ).add(meta.workerId());
+                nodeKeys.add(nodeKey);
             }
         }
+        bucketMembershipByWorkerId.put(meta.workerId(), new BucketMembership(groupKeys, nodeKeys));
     }
 
     private void removeFromBuckets(String groupId, String workerId) {
         if (groupId == null || workerId == null) {
             return;
         }
-        for (Set<String> workers : routeBuckets.values()) {
-            workers.remove(workerId);
+        BucketMembership membership = bucketMembershipByWorkerId.remove(workerId);
+        if (membership == null) {
+            return;
         }
-        for (Set<String> workers : nodeRouteBuckets.values()) {
-            workers.remove(workerId);
+        for (GroupRouteBucketKey key : membership.groupKeys()) {
+            if (!groupId.equals(key.groupId())) {
+                continue;
+            }
+            Set<String> workers = routeBuckets.get(key);
+            if (workers != null) {
+                workers.remove(workerId);
+            }
+        }
+        for (NodeGroupRouteBucketKey key : membership.nodeKeys()) {
+            if (!groupId.equals(key.groupId())) {
+                continue;
+            }
+            Set<String> workers = nodeRouteBuckets.get(key);
+            if (workers != null) {
+                workers.remove(workerId);
+            }
         }
     }
 
@@ -680,6 +725,12 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
         return routeBucketKeys == null || routeBucketKeys.isEmpty()
                 ? Set.of(WorkerRoutingPolicy.DEFAULT_ROUTE_BUCKET_KEY)
                 : Set.copyOf(routeBucketKeys);
+    }
+
+    private long heartbeatDeadlineMillis(WorkerMeta meta) {
+        long lastHeartbeatMillis = Math.max(0L, meta.lastHeartbeatMillis());
+        long maxIncrement = Long.MAX_VALUE - lastHeartbeatMillis;
+        return lastHeartbeatMillis + Math.min(heartbeatFreshnessMillis, maxIncrement);
     }
 
     private static Set<String> newWorkerBucketSet() {
@@ -788,6 +839,14 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
 
     private interface SlotUpdater {
         WorkerSlot update(WorkerSlot current);
+    }
+
+    private record BucketMembership(Set<GroupRouteBucketKey> groupKeys,
+                                    Set<NodeGroupRouteBucketKey> nodeKeys) {
+        private BucketMembership {
+            groupKeys = groupKeys == null || groupKeys.isEmpty() ? Set.of() : Set.copyOf(groupKeys);
+            nodeKeys = nodeKeys == null || nodeKeys.isEmpty() ? Set.of() : Set.copyOf(nodeKeys);
+        }
     }
 
     private record GroupRouteBucketKey(String groupId, String routeBucketKey) {
