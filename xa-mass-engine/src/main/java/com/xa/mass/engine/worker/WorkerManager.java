@@ -26,6 +26,7 @@ import com.xa.mass.runtime.worker.WorkerResourceRecord;
 import com.xa.mass.runtime.worker.WorkerResourceRuntime;
 import com.xa.mass.runtime.worker.WorkerSchedulingViewRuntime;
 import com.xa.mass.runtime.worker.WorkerTaskSelector;
+import com.xa.mass.runtime.worker.WorkerWarmHintRuntime;
 import com.xa.mass.storage.api.WorkerLookupStore;
 import com.xa.mass.storage.api.WorkerStorage;
 import com.xa.mass.worker.runtime.WorkerAdmissionOwner;
@@ -60,7 +61,8 @@ public class WorkerManager implements WorkerLookupStore,
         WorkerSchedulingViewRuntime,
         WorkerAdmissionRuntime,
         WorkerDispatchGateRuntime,
-        WorkerReportRuntime {
+        WorkerReportRuntime,
+        WorkerWarmHintRuntime {
 
     private static final Logger log = LoggerFactory.getLogger(WorkerManager.class);
     private final WorkerReachabilityView reachabilityView;

@@ -5,7 +5,6 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.TaskAssignmentEventSink;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
-import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.engine.worker.WorkerTaskSelectorFactory;
 import com.xa.mass.engine.assignment.AssignmentAllocationDecision;
 import com.xa.mass.engine.assignment.AssignmentAllocationOutcome;
@@ -17,17 +16,15 @@ import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.resource.DefaultWorkerDispatchResourcePolicy;
 import com.xa.mass.engine.resource.WorkerDispatchResourceReleaser;
 import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
-import com.xa.mass.engine.rules.RuleManager;
-import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
-import com.xa.mass.engine.strategy.RuleBasedTaskWorkerMatchingStrategy;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.engine.util.TraceEventLogger;
+import com.xa.mass.runtime.worker.WorkerAdmissionRuntime;
+import com.xa.mass.runtime.worker.WorkerWarmHintRuntime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 /**
@@ -37,7 +34,8 @@ public class TaskWorkerAssignListener {
     private static final Logger log = LoggerFactory.getLogger(TaskWorkerAssignListener.class);
 
     private final TaskWorkerMatchingStrategy matchingStrategy;
-    private final WorkerManager workerManager;
+    private final WorkerAdmissionRuntime workerAdmissionRuntime;
+    private final WorkerWarmHintRuntime workerWarmHintRuntime;
     private final TaskDispatchBinder dispatchBinder;
     private final TaskAssignmentRuntimePort assignmentRuntime;
     private final TaskAssignmentEventSink assignmentEventSink;
@@ -46,69 +44,58 @@ public class TaskWorkerAssignListener {
     private final WorkerDispatchResourcePolicy resourcePolicy;
     private final WorkerDispatchResourceReleaser resourceReleaser;
 
-    public TaskWorkerAssignListener(RuleManager<Map<String, Object>> ruleManager,
-                                    WorkerManager workerManager,
-                                    TaskDispatchBinder dispatchBinder,
-                                    AssignmentDiagnosticRecorder recordService,
-                                    TaskAssignmentRuntimePort assignmentRuntime,
-                                    TaskAssignmentEventSink assignmentEventSink) {
-        this(ruleManager, workerManager, dispatchBinder, recordService, assignmentRuntime, assignmentEventSink, TraceEventLogger.noop());
-    }
-
-    public TaskWorkerAssignListener(RuleManager<Map<String, Object>> ruleManager,
-                                    WorkerManager workerManager,
-                                    TaskDispatchBinder dispatchBinder,
-                                    AssignmentDiagnosticRecorder recordService,
-                                    TaskAssignmentRuntimePort assignmentRuntime,
-                                    TaskAssignmentEventSink assignmentEventSink,
-                                    TraceEventLogger traceEventLogger) {
-        this(new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService, traceEventLogger),
-                workerManager, dispatchBinder, assignmentRuntime, assignmentEventSink, traceEventLogger);
-    }
-
     public TaskWorkerAssignListener(TaskWorkerMatchingStrategy matchingStrategy,
-                                    WorkerManager workerManager,
+                                    WorkerAdmissionRuntime workerAdmissionRuntime,
+                                    WorkerWarmHintRuntime workerWarmHintRuntime,
                                     TaskDispatchBinder dispatchBinder,
                                     TaskAssignmentRuntimePort assignmentRuntime,
                                     TaskAssignmentEventSink assignmentEventSink) {
-        this(matchingStrategy, workerManager, dispatchBinder, assignmentRuntime, assignmentEventSink, TraceEventLogger.noop());
+        this(matchingStrategy, workerAdmissionRuntime, workerWarmHintRuntime,
+                dispatchBinder, assignmentRuntime, assignmentEventSink, TraceEventLogger.noop());
     }
 
     public TaskWorkerAssignListener(TaskWorkerMatchingStrategy matchingStrategy,
-                                    WorkerManager workerManager,
+                                    WorkerAdmissionRuntime workerAdmissionRuntime,
+                                    WorkerWarmHintRuntime workerWarmHintRuntime,
                                     TaskDispatchBinder dispatchBinder,
                                     TaskAssignmentRuntimePort assignmentRuntime,
                                     TaskAssignmentEventSink assignmentEventSink,
                                     TraceEventLogger traceEventLogger) {
-        this(matchingStrategy, workerManager, dispatchBinder, assignmentRuntime, assignmentEventSink,
+        this(matchingStrategy, workerAdmissionRuntime, workerWarmHintRuntime,
+                dispatchBinder, assignmentRuntime, assignmentEventSink,
                 traceEventLogger, new DefaultAssignmentAllocationPolicy());
     }
 
     TaskWorkerAssignListener(TaskWorkerMatchingStrategy matchingStrategy,
-                             WorkerManager workerManager,
+                             WorkerAdmissionRuntime workerAdmissionRuntime,
+                             WorkerWarmHintRuntime workerWarmHintRuntime,
                              TaskDispatchBinder dispatchBinder,
                              TaskAssignmentRuntimePort assignmentRuntime,
                              TaskAssignmentEventSink assignmentEventSink,
                              TraceEventLogger traceEventLogger,
                              AssignmentAllocationPolicy allocationPolicy) {
-        this(matchingStrategy, workerManager, dispatchBinder, assignmentRuntime, assignmentEventSink,
+        this(matchingStrategy, workerAdmissionRuntime, workerWarmHintRuntime,
+                dispatchBinder, assignmentRuntime, assignmentEventSink,
                 traceEventLogger, allocationPolicy, new DefaultWorkerDispatchResourcePolicy());
     }
 
     TaskWorkerAssignListener(TaskWorkerMatchingStrategy matchingStrategy,
-                             WorkerManager workerManager,
+                             WorkerAdmissionRuntime workerAdmissionRuntime,
+                             WorkerWarmHintRuntime workerWarmHintRuntime,
                              TaskDispatchBinder dispatchBinder,
                              TaskAssignmentRuntimePort assignmentRuntime,
                              TaskAssignmentEventSink assignmentEventSink,
                              TraceEventLogger traceEventLogger,
                              AssignmentAllocationPolicy allocationPolicy,
                              WorkerDispatchResourcePolicy resourcePolicy) {
-        this(matchingStrategy, workerManager, dispatchBinder, assignmentRuntime, assignmentEventSink,
+        this(matchingStrategy, workerAdmissionRuntime, workerWarmHintRuntime,
+                dispatchBinder, assignmentRuntime, assignmentEventSink,
                 traceEventLogger, allocationPolicy, resourcePolicy, null);
     }
 
     TaskWorkerAssignListener(TaskWorkerMatchingStrategy matchingStrategy,
-                             WorkerManager workerManager,
+                             WorkerAdmissionRuntime workerAdmissionRuntime,
+                             WorkerWarmHintRuntime workerWarmHintRuntime,
                              TaskDispatchBinder dispatchBinder,
                              TaskAssignmentRuntimePort assignmentRuntime,
                              TaskAssignmentEventSink assignmentEventSink,
@@ -117,7 +104,8 @@ public class TaskWorkerAssignListener {
                              WorkerDispatchResourcePolicy resourcePolicy,
                              WorkerDispatchResourceReleaser resourceReleaser) {
         this.matchingStrategy = matchingStrategy;
-        this.workerManager = workerManager;
+        this.workerAdmissionRuntime = workerAdmissionRuntime;
+        this.workerWarmHintRuntime = workerWarmHintRuntime;
         this.dispatchBinder = dispatchBinder;
         this.assignmentRuntime = assignmentRuntime;
         this.assignmentEventSink = assignmentEventSink;
@@ -125,7 +113,7 @@ public class TaskWorkerAssignListener {
         this.allocationPolicy = allocationPolicy == null ? new DefaultAssignmentAllocationPolicy() : allocationPolicy;
         this.resourcePolicy = resourcePolicy == null ? new DefaultWorkerDispatchResourcePolicy() : resourcePolicy;
         this.resourceReleaser = resourceReleaser == null
-                ? new WorkerDispatchResourceReleaser(workerManager, this.resourcePolicy, traceEventLogger)
+                ? new WorkerDispatchResourceReleaser(workerAdmissionRuntime, this.resourcePolicy, traceEventLogger)
                 : resourceReleaser;
     }
 
@@ -157,7 +145,7 @@ public class TaskWorkerAssignListener {
                 task,
                 initialStatus,
                 readyWorkCount,
-                workerManager.getActiveWorkerCountForTask(task.getTid())
+                workerAdmissionRuntime.getActiveWorkerCountForTask(task.getTid())
         ));
         if (allocationPlan.requestedMatchCount() <= 0) {
             AssignmentAllocationDecision allocationDecision =
@@ -305,7 +293,9 @@ public class TaskWorkerAssignListener {
                 continue;
             }
             if (usedWorkerIds.contains(candidate.getWorkerId()) && recordedWorkerIds.add(candidate.getWorkerId())) {
-                workerManager.recordWarmCandidate(WorkerTaskSelectorFactory.fromTask(task), candidate.getCandidateRow());
+                workerWarmHintRuntime.recordWarmCandidate(
+                        WorkerTaskSelectorFactory.fromTask(task),
+                        candidate.getCandidateRow());
             }
         }
     }

@@ -18,6 +18,7 @@ import com.xa.mass.engine.listener.TaskWorkerAssignListener;
 import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.service.AssignmentRecordService;
+import com.xa.mass.engine.strategy.RuleBasedTaskWorkerMatchingStrategy;
 import com.xa.mass.runtime.worker.AdapterNodeRecord;
 import com.xa.mass.runtime.worker.NodeGroupBindingRecord;
 import com.xa.mass.engine.worker.WorkerManager;
@@ -75,11 +76,17 @@ final class TaskSchedulingTestHarness {
                 assignmentRecords,
                 (context, bindings) -> dispatches.addAll(bindings)
         );
-        this.assignListener = new TaskWorkerAssignListener(
+        RuleBasedTaskWorkerMatchingStrategy matchingStrategy = new RuleBasedTaskWorkerMatchingStrategy(
                 ruleManager,
                 workerManager,
-                binder,
                 assignmentRecords,
+                com.xa.mass.engine.util.TraceEventLogger.noop()
+        );
+        this.assignListener = new TaskWorkerAssignListener(
+                matchingStrategy,
+                workerManager,
+                workerManager,
+                binder,
                 taskManager,
                 taskManager.events()
         );

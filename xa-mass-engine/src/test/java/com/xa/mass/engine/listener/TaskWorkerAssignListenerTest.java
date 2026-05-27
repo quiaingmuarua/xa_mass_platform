@@ -62,6 +62,7 @@ public class TaskWorkerAssignListenerTest {
         listener = new TaskWorkerAssignListener(
                 matchingStrategy,
                 workerManager,
+                workerManager,
                 dispatchBinder,
                 assignmentRuntime,
                 assignmentEventSink
@@ -355,6 +356,7 @@ public class TaskWorkerAssignListenerTest {
         listener = new TaskWorkerAssignListener(
                 matchingStrategy,
                 workerManager,
+                workerManager,
                 dispatchBinder,
                 assignmentRuntime,
                 assignmentEventSink,
@@ -382,6 +384,7 @@ public class TaskWorkerAssignListenerTest {
         AssignmentAllocationPolicy allocationPolicy = new FixedAllocationPolicy(2, 1);
         listener = new TaskWorkerAssignListener(
                 matchingStrategy,
+                workerManager,
                 workerManager,
                 dispatchBinder,
                 assignmentRuntime,

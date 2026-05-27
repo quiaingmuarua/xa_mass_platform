@@ -1137,6 +1137,30 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void taskWorkerAssignListenerConsumesRuntimeContractsForWorkerOccupancyAndWarmHints() throws IOException {
+        Path listenerPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/listener/TaskWorkerAssignListener.java");
+        String source = Files.readString(listenerPath, StandardCharsets.UTF_8);
+
+        List<String> violations = new ArrayList<>();
+        if (source.contains("com.xa.mass.engine.worker.WorkerManager")
+                || Pattern.compile("\\bWorkerManager\\b").matcher(source).find()) {
+            violations.add(listenerPath + " depends on full WorkerManager");
+        }
+        if (!source.contains("WorkerAdmissionRuntime")) {
+            violations.add(listenerPath + " does not use WorkerAdmissionRuntime for active occupancy/release");
+        }
+        if (!source.contains("WorkerWarmHintRuntime")) {
+            violations.add(listenerPath + " does not use WorkerWarmHintRuntime for warm hint writes");
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Assignment orchestration may own allocation/refill and warm-hint timing, but worker "
+                        + "occupancy and hint mutation must cross runtime contracts:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void workerSchedulingViewRuntimeContractLivesInRuntimeApi() throws IOException {
         Path repo = repositoryRoot();
         Path engineContractPath = repo.resolve(

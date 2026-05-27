@@ -23,6 +23,7 @@ Current first-slice contract split:
 | `WorkerAdmissionRuntime` | `WorkerManager` | Runtime-api contract for reserve, confirm, release, final occupancy, exclusive lease, and load reads |
 | `WorkerDispatchGateRuntime` | `WorkerManager` | Runtime-api contract for source-scoped dispatch gate reads and mutations |
 | `WorkerReportRuntime` | `WorkerManager` | Runtime-api report contract for capability report mutation currently owned by `WorkerCapabilityAuthority` via `WorkerManager` |
+| `WorkerWarmHintRuntime` | `WorkerManager` | Runtime-api contract for task-local warm candidate hint mutation |
 | `WorkerLookupStore` | `WorkerManager` | Storage-edge single-worker lookup seam; disposition still open |
 
 `WorkerCandidateRuntime` now accepts runtime-neutral `WorkerTaskSelector`, not
@@ -56,7 +57,7 @@ runtime-neutral `mass-runtime-api` types: `WorkerTaskSelector`,
 `WorkerCandidateBatch<T>`, `WorkerCandidateRow`, `WorkerResourceRecord`,
 `WorkerCandidateRuntime`, `WorkerGroupCapabilityView`,
 `WorkerSchedulingViewRuntime`, `WorkerAdmissionRuntime`, `WorkerResourceRuntime`,
-`WorkerDispatchGateRuntime`, `WorkerLoadSnapshot`,
+`WorkerDispatchGateRuntime`, `WorkerWarmHintRuntime`, `WorkerLoadSnapshot`,
 `WorkerReachabilityState`, `WorkerCapabilityReport`, `WorkerReportRuntime`,
 `WorkerCapabilityReportStatus`, and `WorkerCapabilityReportResult`, plus worker state report/projection DTOs
 (`WorkerStateReport`, `WorkerStateProjection`, `WorkerStateProjectionResult`,
@@ -84,6 +85,10 @@ for reservation confirmation, fallback load claim, final-load accounting,
 reservation release, and exclusive-lease release. These paths no longer require
 the full `WorkerManager` surface; task runtime claim, dispatch handoff,
 terminal handling, and refill decisions remain engine-owned.
+`TaskWorkerAssignListener` now consumes `WorkerAdmissionRuntime` for active
+occupancy reads and `WorkerWarmHintRuntime` for useful-candidate hint writes.
+It no longer needs the full `WorkerManager`; assignment allocation, status
+transition, dispatch binding, and refill timing stay in engine.
 
 ## Public Method Inventory
 
@@ -135,6 +140,9 @@ engine assignment
      -> WorkerAdmissionOwner through the configured worker admission runtime
   -> TaskResourceReleaseListener
      -> WorkerAdmissionRuntime for final-load and exclusive-lease release
+  -> TaskWorkerAssignListener
+     -> WorkerAdmissionRuntime for active occupancy reads
+     -> WorkerWarmHintRuntime for task-local warm hint writes
 
 worker control
   -> WorkerControlService

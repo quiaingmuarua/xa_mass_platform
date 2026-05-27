@@ -95,6 +95,16 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                 candidateRanker, resourcePolicy, candidateEnumerator);
     }
 
+    public RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
+                                               WorkerCandidateRuntime candidateRuntime,
+                                               WorkerAdmissionRuntime admissionRuntime,
+                                               WorkerSchedulingViewRuntime schedulingViewRuntime,
+                                               AssignmentDiagnosticRecorder recordService,
+                                               TraceEventLogger traceEventLogger) {
+        this(ruleManager, candidateRuntime, admissionRuntime, schedulingViewRuntime, recordService, traceEventLogger,
+                new DefaultWorkerCandidateRanker(), new DefaultWorkerDispatchResourcePolicy(), null);
+    }
+
     RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
                                         WorkerCandidateRuntime candidateRuntime,
                                         WorkerAdmissionRuntime admissionRuntime,

@@ -37,6 +37,7 @@ import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.runtime.worker.WorkerReportRuntime;
 import com.xa.mass.runtime.worker.WorkerResourceRuntime;
 import com.xa.mass.runtime.worker.WorkerSchedulingViewRuntime;
+import com.xa.mass.runtime.worker.WorkerWarmHintRuntime;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.TaskDetailStore;
@@ -331,6 +332,10 @@ public class EngineConfig {
     }
 
     public WorkerReportRuntime getWorkerReportRuntime() {
+        return getWorkerManager();
+    }
+
+    public WorkerWarmHintRuntime getWorkerWarmHintRuntime() {
         return getWorkerManager();
     }
 

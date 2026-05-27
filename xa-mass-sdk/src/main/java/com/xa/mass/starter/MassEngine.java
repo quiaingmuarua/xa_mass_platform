@@ -18,6 +18,7 @@ import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
+import com.xa.mass.engine.strategy.RuleBasedTaskWorkerMatchingStrategy;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.engine.util.TraceEventLogger;
@@ -100,6 +101,7 @@ public class MassEngine {
             runtimeBridge = config.getRuntimeBridge();
             WorkerManager workerManager = config.getWorkerManager();
             var workerAdmissionRuntime = config.getWorkerAdmissionRuntime();
+            var workerWarmHintRuntime = config.getWorkerWarmHintRuntime();
             AssignmentDiagnosticRecorder recordService = config.getRecordService();
             var ruleManager = config.getRuleManager();
             TraceEventLogger traceEventLogger = config.getTraceEventLogger();
@@ -110,9 +112,23 @@ public class MassEngine {
                     dispatchBatchListener,
                     traceEventLogger);
             TaskWorkerMatchingStrategy customStrategy = config.getMatchingStrategy();
-            var workerAssignListener = customStrategy != null
-                    ? new TaskWorkerAssignListener(customStrategy, workerManager, dispatchBinder, assignmentRuntimePort, taskEvents, traceEventLogger)
-                    : new TaskWorkerAssignListener(ruleManager, workerManager, dispatchBinder, recordService, assignmentRuntimePort, taskEvents, traceEventLogger);
+            TaskWorkerMatchingStrategy matchingStrategy = customStrategy != null
+                    ? customStrategy
+                    : new RuleBasedTaskWorkerMatchingStrategy(
+                            ruleManager,
+                            config.getWorkerCandidateRuntime(),
+                            workerAdmissionRuntime,
+                            config.getWorkerSchedulingViewRuntime(),
+                            recordService,
+                            traceEventLogger);
+            var workerAssignListener = new TaskWorkerAssignListener(
+                    matchingStrategy,
+                    workerAdmissionRuntime,
+                    workerWarmHintRuntime,
+                    dispatchBinder,
+                    assignmentRuntimePort,
+                    taskEvents,
+                    traceEventLogger);
             assignWorker = new TaskAssignWorker(workerAssignListener, config.getAssignmentRetryDelayMillis(), traceEventLogger);
             assignWorker.start();
             runtimeReadyDispatchPump = new RuntimeReadyDispatchPump(

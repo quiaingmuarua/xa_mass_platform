@@ -341,6 +341,10 @@ interface WorkerAdmissionRuntime {
     void releaseExclusiveLease(String workerId);
 }
 
+interface WorkerWarmHintRuntime {
+    void recordWarmCandidate(WorkerTaskSelector selector, WorkerCandidateRow candidate);
+}
+
 interface WorkerReportRuntime {
     WorkerCapabilityReportResult applyCapabilityReport(WorkerCapabilityReport report);
     WorkerStateProjectionResult applyStateReport(WorkerStateReport report);
@@ -647,6 +651,10 @@ Progress:
   exclusive-lease mutation instead of depending on the full `WorkerManager`
   assembly surface. Task runtime claim, dispatch binding, refill, and terminal
   behavior remain engine-owned.
+- Assignment orchestration now depends on `WorkerAdmissionRuntime` for active
+  task occupancy and `WorkerWarmHintRuntime` for useful-candidate hint writes,
+  instead of keeping a direct `WorkerManager` dependency in
+  `TaskWorkerAssignListener`.
 - Engine still assembles those owners through `WorkerManager`; match strategy
   and event handler parsing residue stays in engine for later slices.
 - SDK shell runtime bridge now accepts `WorkerResourceRuntime` for legacy
