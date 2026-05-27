@@ -13,14 +13,14 @@ target-state baseline.
 declaration, worker runtime projection, candidate source, report projection,
 admission delegation, and diagnostics.
 
-Current first-slice contract split inside `com.xa.mass.engine.worker`:
+Current first-slice contract split:
 
 | Contract | Current implementer | Purpose |
 | --- | --- | --- |
 | `WorkerResourceRuntime` | `WorkerManager` | Worker, WorkerGroup, AdapterNode, and NodeGroupBinding resource writes |
 | `WorkerCandidateRuntime` | `WorkerManager` | Bounded candidate acquisition and warm hint writes |
 | `WorkerSchedulingViewRuntime` | `WorkerManager` | Read evidence used to build engine scheduling candidates |
-| `WorkerAdmissionRuntime` | `WorkerManager` | Reserve, confirm, release, final occupancy, exclusive lease, and load reads |
+| `WorkerAdmissionRuntime` | `WorkerManager` | Runtime-api contract for reserve, confirm, release, final occupancy, exclusive lease, and load reads |
 | `WorkerReportRuntime` | `WorkerManager` | Capability report mutation currently owned by `WorkerCapabilityAuthority` via `WorkerManager` |
 | `WorkerLookupStore` | `WorkerManager` | Storage-edge single-worker lookup seam; disposition still open |
 
@@ -31,12 +31,12 @@ Candidate acquisition and task-local warm hints are now package-owned by
 `WorkerCandidateSourceOwner`; `WorkerManager` delegates to it while the module
 boundary is still inside engine.
 
-Task selector, candidate batch shape, worker load, and transport reachability
-evidence now use runtime-neutral `mass-runtime-api` value types:
-`WorkerTaskSelector`, generic `WorkerCandidateBatch<T>`,
-`WorkerLoadSnapshot`, and `WorkerReachabilityState`. Engine-owned scheduling
-DTOs still adapt those runtime values into `WorkerSchedulingView` and
-`WorkerMatchContext` locally.
+Task selector, candidate batch shape, admission contract, worker load, and
+transport reachability evidence now use runtime-neutral `mass-runtime-api`
+types: `WorkerTaskSelector`, generic `WorkerCandidateBatch<T>`,
+`WorkerAdmissionRuntime`, `WorkerLoadSnapshot`, and
+`WorkerReachabilityState`. Engine-owned scheduling DTOs still adapt those
+runtime values into `WorkerSchedulingView` and `WorkerMatchContext` locally.
 
 Worker row mutation and registry slot projection are now package-owned by
 `WorkerResourceOwner`; WorkerGroup declaration state is package-owned by
@@ -151,10 +151,9 @@ helper for older internal call sites and tests.
 The admission owner internally resolves `groupId` from the current worker slot,
 uses one permit for the current scheduling path, and passes the current clock to
 `WorkerRegistry.tryReserve(groupId, workerId, taskId, permits, nowMillis)`.
-The future extracted contract must either keep that as a documented
-runtime-owned lookup or expose `groupId`, `permits`, and `nowMillis`
-explicitly. The current implementation detail lives in `WorkerAdmissionOwner`,
-not in the `WorkerManager` assembly surface.
+The extracted `WorkerAdmissionRuntime` contract currently keeps that as a
+documented runtime-owned lookup. The implementation detail lives in
+`WorkerAdmissionOwner`, not in the `WorkerManager` assembly surface.
 
 ### Task Selector Boundary
 
@@ -198,8 +197,9 @@ Do not make worker runtime depend on `Task`.
 
 - `WorkerSchedulingView` and `WorkerMatchContext` are engine strategy DTOs; they
   must not move into runtime contracts.
-- `WorkerCandidateBatch<T>`, `WorkerTaskSelector`, `WorkerLoadSnapshot`, and
-  `WorkerReachabilityState` already live in `mass-runtime-api`.
+- `WorkerAdmissionRuntime`, `WorkerCandidateBatch<T>`, `WorkerTaskSelector`,
+  `WorkerLoadSnapshot`, and `WorkerReachabilityState` already live in
+  `mass-runtime-api`.
 - `WorkerManager` still owns both resource maps and runtime slot synchronization.
 - `WorkerStateProjectionOwner` and command-gate effects need a resource/report
   owner split before moving.

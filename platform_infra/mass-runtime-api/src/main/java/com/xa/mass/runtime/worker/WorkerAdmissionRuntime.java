@@ -1,7 +1,4 @@
-package com.xa.mass.engine.worker;
-
-import com.xa.mass.runtime.worker.WorkerLoadSnapshot;
-import com.xa.mass.runtime.worker.ReserveResult;
+package com.xa.mass.runtime.worker;
 
 import java.util.List;
 
