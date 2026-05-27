@@ -644,6 +644,8 @@ Progress:
   Task-to-WorkerTaskSelector adaptation and match strategy.
 - Engine still assembles those owners through `WorkerManager`; match strategy
   and event handler parsing residue stays in engine for later slices.
+- SDK shell runtime bridge now accepts `WorkerResourceRuntime` for legacy
+  runtime event-bus heartbeat refresh instead of full `WorkerManager`.
 
 Scope:
 

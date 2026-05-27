@@ -43,9 +43,11 @@ helpers; Redis tests no longer depend on engine `WorkerRoutingPolicy`.
 module. It owns WorkerGroup declaration state, AdapterNode / NodeGroupBinding
 relationship state, Worker registration row to runtime slot projection, and
 bounded worker state report projection. It also owns worker admission,
-occupancy, and exclusive lease operations over `WorkerRegistry`. Engine still
-assembles these owners through `WorkerManager` / `WorkerControlService`, but those owner
-implementations are no longer engine-local source.
+occupancy, exclusive lease operations, worker capability report application,
+registry snapshot composition, Stage-1 candidate indexing/source orchestration,
+and task-local warm candidate hints over `WorkerRegistry`. Engine still
+assembles these owners through `WorkerManager` / `WorkerControlService`, but
+those owner implementations are no longer engine-local source.
 
 Task selector, candidate batch shape, candidate rows, Worker resource row,
 WorkerGroup capability read view, scheduling-view contract, admission contract, worker load, resource
@@ -74,6 +76,9 @@ lease, and occupancy reads are owned by `WorkerAdmissionOwner`;
 worker-originated capability report projection is owned by `WorkerReportOwner`.
 `WorkerManager` and `WorkerControlService` still implement the external
 contracts and delegate to these owners while callers converge.
+The SDK process-local runtime event bridge now depends on
+`WorkerResourceRuntime` for legacy heartbeat refresh and no longer receives a
+full `WorkerManager`.
 
 ## Public Method Inventory
 
@@ -249,13 +254,17 @@ Do not make worker runtime depend on `Task`.
   `WorkerLoadSnapshot`, `WorkerReachabilityState`, and `WorkerReachabilityView`
   already live in `mass-runtime-api`.
 - `AdapterNodeRecord`, `NodeGroupBindingRecord`, `WorkerGroupRecord`, and
-  `EventBinding` now live in `mass-runtime-api`, but their owners still live in
-  engine until resource/report implementation movement.
-- `WorkerManager` still owns both resource maps and runtime slot synchronization.
+  `EventBinding` now live in `mass-runtime-api`; their owners have moved to
+  `xa-mass-worker-runtime`.
+- `WorkerManager` still assembles worker-runtime owners and publishes registry
+  snapshots, but no longer owns the resource maps, candidate source, warm pool,
+  admission state, or report projection implementations directly.
 - In-memory `WorkerRegistry` implementation is no longer a blocker for M2; the
   remaining M2 work is shared memory/Redis contract proof and engine import
   cleanup around slot/index internals.
-- `WorkerStateProjectionOwner` and command-gate effects need a resource/report
-  owner split before moving.
+- Command-gate effects remain engine-owned because the default policy consumes
+  engine command lifecycle records. Do not move that policy until the command
+  owner boundary is extracted or represented through a runtime-neutral command
+  contract.
 - Redis/memory WorkerRegistry implementations already share `mass-runtime-api`
   contracts; do not create another registry contract in a new module.

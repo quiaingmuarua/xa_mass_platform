@@ -6,9 +6,9 @@ import com.xa.mass.base.channel.eventbus.event.task.TaskAssignedEvent;
 import com.xa.mass.base.channel.eventbus.event.task.TaskCreatedEvent;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.TaskEventListenerRegistrar;
-import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.engine.worker.WorkerStatusEventListener;
 import com.xa.mass.engine.listener.EventListenerRegistry;
+import com.xa.mass.runtime.worker.WorkerResourceRuntime;
 
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -37,13 +37,13 @@ public final class RuntimeEventBusEngineBridge implements EngineRuntimeBridge {
     }
 
     @Override
-    public void start(TaskEventListenerRegistrar eventListeners, WorkerManager workerManager) {
-        start(eventListeners, workerManager, null);
+    public void start(TaskEventListenerRegistrar eventListeners, WorkerResourceRuntime workerResourceRuntime) {
+        start(eventListeners, workerResourceRuntime, null);
     }
 
     @Override
     public void start(TaskEventListenerRegistrar eventListeners,
-                      WorkerManager workerManager,
+                      WorkerResourceRuntime workerResourceRuntime,
                       Runnable dispatchWakeupCallback) {
         stop();
         @SuppressWarnings("unchecked")
@@ -54,7 +54,10 @@ public final class RuntimeEventBusEngineBridge implements EngineRuntimeBridge {
         registeredEventListeners.addTaskCreatedListener(taskCreatedListener);
         registeredEventListeners.addTaskAssignedListener(taskAssignedListener);
         this.workerStatusEventListener =
-                EventListenerRegistry.registerWorkerStatusListeners(eventBus, workerManager, dispatchWakeupCallback);
+                EventListenerRegistry.registerWorkerStatusListeners(
+                        eventBus,
+                        workerResourceRuntime,
+                        dispatchWakeupCallback);
     }
 
     @Override

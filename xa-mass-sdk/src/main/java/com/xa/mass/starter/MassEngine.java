@@ -159,7 +159,7 @@ public class MassEngine {
             );
             workerCommandMaintenanceWatchdog.start();
 
-            runtimeBridge.start(eventListeners, workerManager, dispatchWakeupCallback);
+            runtimeBridge.start(eventListeners, config.getWorkerResourceRuntime(), dispatchWakeupCallback);
             running = true;
             logger.info("MassEngine started successfully");
         } catch (Exception e) {

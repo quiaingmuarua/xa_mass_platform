@@ -1593,6 +1593,33 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void sdkRuntimeBridgeDoesNotRequireFullWorkerManager() throws IOException {
+        List<Path> bridgePaths = List.of(
+                Path.of("..", "xa-mass-sdk", "src", "main", "java",
+                        "com", "xa", "mass", "starter", "EngineRuntimeBridge.java"),
+                Path.of("..", "xa-mass-sdk", "src", "main", "java",
+                        "com", "xa", "mass", "starter", "RuntimeEventBusEngineBridge.java")
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Path bridgePath : bridgePaths) {
+            String source = Files.readString(bridgePath, StandardCharsets.UTF_8);
+            if (source.contains("com.xa.mass.engine.worker.WorkerManager")
+                    || Pattern.compile("\\bWorkerManager\\b").matcher(source).find()) {
+                violations.add(bridgePath + " depends on full WorkerManager");
+            }
+            if (!source.contains("WorkerResourceRuntime")) {
+                violations.add(bridgePath + " does not use WorkerResourceRuntime");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "SDK runtime bridge is shell wiring for legacy heartbeat refresh. It must depend on "
+                        + "WorkerResourceRuntime instead of full WorkerManager:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void workerResourceRuntimeContractIsRuntimeNeutral() throws IOException {
         Path engineContractPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/worker/WorkerResourceRuntime.java");
