@@ -1019,8 +1019,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         if (Pattern.compile("\\.slotByWorkerId\\s*\\(").matcher(source).find()) {
             violations.add(strategyPath + " reads WorkerRegistry slot relation directly");
         }
-        if (!Pattern.compile("\\.findWorkerCandidateBatch\\s*\\(").matcher(source).find()
-                && !Pattern.compile("\\.findWorkerCandidates\\s*\\(").matcher(source).find()) {
+        if (!Pattern.compile("\\.findWorkerCandidateBatch\\s*\\(").matcher(source).find()) {
             violations.add(strategyPath + " does not consume WorkerCandidateRuntime candidate-source API");
         }
 
@@ -1058,6 +1057,40 @@ class EngineSchedulingCoreArchitectureGuardTest {
         assertTrue(violations.isEmpty(),
                 "WorkerAdmissionRuntime is the first extracted worker runtime contract. "
                         + "Keep it runtime-api owned and independent from engine/base model rows:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void workerSchedulingViewRuntimeContractLivesInRuntimeApi() throws IOException {
+        Path repo = repositoryRoot();
+        Path engineContractPath = repo.resolve(
+                "xa-mass-engine/src/main/java/com/xa/mass/engine/worker/WorkerSchedulingViewRuntime.java");
+        Path runtimeContractPath = repo.resolve(
+                "platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/WorkerSchedulingViewRuntime.java");
+        Path groupCapabilityPath = repo.resolve(
+                "platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/WorkerGroupCapabilityView.java");
+
+        List<String> violations = new ArrayList<>();
+        if (Files.exists(engineContractPath)) {
+            violations.add(engineContractPath + " reintroduces the worker scheduling-view contract inside engine");
+        }
+        for (Path runtimePath : List.of(runtimeContractPath, groupCapabilityPath)) {
+            if (!Files.isRegularFile(runtimePath)) {
+                violations.add(runtimePath + " is missing");
+                continue;
+            }
+            String source = Files.readString(runtimePath, StandardCharsets.UTF_8);
+            if (source.contains("com.xa.mass.engine")) {
+                violations.add(runtimePath + " depends on xa-mass-engine");
+            }
+            if (source.contains("com.xa.mass.base")) {
+                violations.add(runtimePath + " depends on xa-mass-base");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "WorkerSchedulingViewRuntime must stay runtime-api owned and independent from "
+                        + "engine WorkerGroupRecord / base Worker rows:\n"
                         + String.join("\n", violations));
     }
 

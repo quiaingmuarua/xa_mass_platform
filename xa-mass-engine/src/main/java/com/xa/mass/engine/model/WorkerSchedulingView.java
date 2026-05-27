@@ -3,7 +3,7 @@ package com.xa.mass.engine.model;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;
 import com.xa.mass.runtime.worker.WorkerLoadSnapshot;
 import com.xa.mass.runtime.worker.WorkerCandidateRow;
-import com.xa.mass.engine.worker.WorkerGroupRecord;
+import com.xa.mass.runtime.worker.WorkerGroupCapabilityView;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -39,7 +39,7 @@ public final class WorkerSchedulingView {
     private final Map<String, String> schedulingAttributes;
 
     private WorkerSchedulingView(WorkerCandidateRow candidateRow,
-                                 WorkerGroupRecord workerGroup,
+                                 WorkerGroupCapabilityView workerGroup,
                                  WorkerReachabilityState reachability,
                                  boolean dispatchEnabled,
                                  boolean workerLocked,
@@ -68,7 +68,7 @@ public final class WorkerSchedulingView {
     }
 
     public static WorkerSchedulingView from(WorkerCandidateRow candidateRow,
-                                            WorkerGroupRecord workerGroup,
+                                            WorkerGroupCapabilityView workerGroup,
                                             WorkerReachabilityState reachability,
                                             boolean dispatchEnabled,
                                             boolean workerLocked,

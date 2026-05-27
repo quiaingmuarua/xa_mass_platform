@@ -308,9 +308,11 @@ interface WorkerCandidateRuntime {
 }
 
 interface WorkerSchedulingViewRuntime {
-    Optional<WorkerRuntimeSchedulingView> schedulingView(String workerId);
-    WorkerRuntimeLoadSnapshot load(String workerId);
-    WorkerReachabilityEvidence reachability(String workerId);
+    Optional<WorkerGroupCapabilityView> workerGroupReadView(String groupId);
+    WorkerReachabilityState getWorkerReachability(String workerId);
+    boolean isWorkerDispatchEnabled(String workerId);
+    boolean hasWorkerExclusiveLease(String workerId);
+    WorkerLoadSnapshot getWorkerLoad(String workerId);
 }
 
 interface WorkerAdmissionRuntime {
@@ -525,7 +527,7 @@ Scope:
    - candidate batch
    - source evidence/result
    - runtime selector
-   - scheduling view/load/reachability DTOs
+   - scheduling view contract and group capability/load/reachability DTOs
    - admission request/result
    - report result DTOs
 4. Keep implementation in engine for this phase.

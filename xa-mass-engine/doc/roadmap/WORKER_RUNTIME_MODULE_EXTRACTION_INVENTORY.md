@@ -1,6 +1,6 @@
 # Worker Runtime Module Extraction Inventory
 
-Status: initial WRX-C0 inventory.
+Status: active WRX inventory.
 
 This inventory supports
 [`WORKER_RUNTIME_MODULE_EXTRACTION_ROADMAP.md`](./WORKER_RUNTIME_MODULE_EXTRACTION_ROADMAP.md).
@@ -31,14 +31,15 @@ Candidate acquisition and task-local warm hints are now package-owned by
 `WorkerCandidateSourceOwner`; `WorkerManager` delegates to it while the module
 boundary is still inside engine.
 
-Task selector, candidate batch shape, candidate rows, admission contract,
-worker load, and transport reachability evidence now use runtime-neutral
-`mass-runtime-api` types: `WorkerTaskSelector`,
+Task selector, candidate batch shape, candidate rows, WorkerGroup capability
+read view, scheduling-view contract, admission contract, worker load, and
+transport reachability evidence now use runtime-neutral `mass-runtime-api`
+types: `WorkerTaskSelector`,
 `WorkerCandidateBatch<T>`, `WorkerCandidateRow`,
-`WorkerCandidateRuntime`, `WorkerAdmissionRuntime`,
-`WorkerLoadSnapshot`, and `WorkerReachabilityState`. Engine-owned scheduling
-DTOs still adapt those runtime values into `WorkerSchedulingView` and
-`WorkerMatchContext` locally.
+`WorkerCandidateRuntime`, `WorkerGroupCapabilityView`,
+`WorkerSchedulingViewRuntime`, `WorkerAdmissionRuntime`, `WorkerLoadSnapshot`,
+and `WorkerReachabilityState`. Engine-owned scheduling DTOs still adapt those
+runtime values into `WorkerSchedulingView` and `WorkerMatchContext` locally.
 
 Worker row mutation and registry slot projection are now package-owned by
 `WorkerResourceOwner`; WorkerGroup declaration state is package-owned by
@@ -62,7 +63,7 @@ owners while callers converge.
 | NodeGroupBinding mutation | `bindNodeGroup`, `unbindNodeGroup`, `setNodeGroupBindingEnabled`, `setNodeGroupBindingDraining` | SDK declaration/control, tests | `WorkerRelationshipOwner` through resource runtime | control-plane declaration plus runtime dispatch gate | Enabled/draining effects mutate source-scoped dispatch gates in `WorkerRegistry` |
 | NodeGroupBinding read | `nodeGroupBinding`, `nodeGroupBindings`, `groupIdsByAdapterNodeId`, `adapterNodeIdsByGroupId` | SDK read APIs, tests, routing diagnostics | `WorkerRelationshipOwner` through resource runtime | control-plane read / runtime read model | Candidate source may consume relation evidence but not own declaration truth |
 | Candidate source | `findWorkerCandidateBatch` | `RuleBasedTaskWorkerMatchingStrategy`, tests | `WorkerCandidateRuntime` | runtime state | Uses runtime-neutral `WorkerCandidateBatch<WorkerCandidateRow>`; must start from resolved WorkerGroup selector; no all-worker candidate scan |
-| Candidate diagnostics | `findWorkerCandidates` | tests and diagnostics | `WorkerCandidateSourceOwner` / diagnostics residue | runtime read model residue | Kept off `WorkerCandidateRuntime`; batch metadata is the strategy-facing contract |
+| Candidate diagnostics | `findWorkerCandidateBatch` metadata | tests and diagnostics | `WorkerCandidateSourceOwner` / diagnostics residue | runtime read model residue | List-only `findWorkerCandidates` has been deleted; batch metadata is the strategy-facing contract |
 | Candidate index diagnostics | `getWorkerCandidateIndex` | tests and indexed source diagnostics | `WorkerCandidateSourceOwner` / diagnostics residue | runtime read model residue | Kept off `WorkerCandidateRuntime` so the candidate contract does not expose Stage-1 implementation types |
 | Warm hints | `recordWarmCandidate` | `TaskWorkerAssignListener`, strategy tests | `WorkerCandidateSourceOwner` / future warm hint write contract | runtime state | Kept off `WorkerCandidateRuntime`; engine triggers after useful assignment evidence, runtime owns hint storage/revalidation |
 | Snapshot maintenance | `refreshWorkerRegistrySnapshot`, `getWorkerRegistrySnapshot` | tests, diagnostics, capability report path | candidate/resource read model residue | runtime read model residue | Delete or narrow after runtime DTOs replace snapshot callers |
@@ -91,7 +92,7 @@ engine assignment
   -> TaskWorkerAssignListener
   -> RuleBasedTaskWorkerMatchingStrategy
      -> WorkerCandidateRuntime from `mass-runtime-api`
-     -> WorkerSchedulingViewRuntime through WorkerSchedulingCandidateEnumerator
+     -> WorkerSchedulingViewRuntime from `mass-runtime-api` through WorkerSchedulingCandidateEnumerator
      -> WorkerAdmissionRuntime
   -> SimpleTaskDispatchBinder / WorkerDispatchResourceReleaser
      -> WorkerAdmissionRuntime-compatible methods through WorkerManager

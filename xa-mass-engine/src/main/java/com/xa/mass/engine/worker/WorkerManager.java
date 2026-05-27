@@ -13,9 +13,11 @@ import com.xa.mass.runtime.worker.WorkerAdmissionRuntime;
 import com.xa.mass.runtime.worker.WorkerCandidateBatch;
 import com.xa.mass.runtime.worker.WorkerCandidateRow;
 import com.xa.mass.runtime.worker.WorkerCandidateRuntime;
+import com.xa.mass.runtime.worker.WorkerGroupCapabilityView;
 import com.xa.mass.runtime.worker.WorkerLoadSnapshot;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;
 import com.xa.mass.runtime.worker.WorkerRegistry;
+import com.xa.mass.runtime.worker.WorkerSchedulingViewRuntime;
 import com.xa.mass.runtime.worker.WorkerTaskSelector;
 import com.xa.mass.storage.api.WorkerLookupStore;
 import com.xa.mass.storage.api.WorkerStorage;
@@ -137,13 +139,23 @@ public class WorkerManager implements WorkerLookupStore,
         return groupOwner.workerGroup(groupId);
     }
 
-    public Optional<WorkerGroupRecord> workerGroupReadView(String groupId) {
+    public Optional<WorkerGroupCapabilityView> workerGroupReadView(String groupId) {
         WorkerRegistrySnapshot snapshot = workerRegistrySnapshot;
-        return snapshot == null ? Optional.empty() : snapshot.group(groupId);
+        return snapshot == null ? Optional.empty() : snapshot.group(groupId).map(this::toCapabilityView);
     }
 
     public List<WorkerGroupRecord> workerGroups() {
         return groupOwner.workerGroups();
+    }
+
+    private WorkerGroupCapabilityView toCapabilityView(WorkerGroupRecord group) {
+        return new WorkerGroupCapabilityView(
+                group.groupId(),
+                List.copyOf(group.projectCodes()),
+                List.copyOf(group.eventCodes()),
+                group.defaultAttributes(),
+                group.defaultMaxConcurrentWork()
+        );
     }
 
     public boolean deleteWorkerGroup(String groupId) {

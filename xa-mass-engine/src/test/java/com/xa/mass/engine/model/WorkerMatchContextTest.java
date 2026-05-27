@@ -5,13 +5,11 @@ import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.TestWorkerCandidateRows;
+import com.xa.mass.runtime.worker.WorkerGroupCapabilityView;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;
 import com.xa.mass.runtime.worker.WorkerLoadSnapshot;
-import com.xa.mass.engine.worker.EventBinding;
-import com.xa.mass.engine.worker.WorkerGroupRecord;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -235,7 +233,7 @@ public class WorkerMatchContextTest {
     }
 
     private WorkerSchedulingCandidate candidate(Worker worker) {
-        WorkerGroupRecord group = groupFromWorker(worker);
+        WorkerGroupCapabilityView group = groupFromWorker(worker);
         return new WorkerSchedulingCandidate(
                 TestWorkerCandidateRows.from(worker),
                 WorkerSchedulingView.from(TestWorkerCandidateRows.from(worker), group, WorkerReachabilityState.ONLINE,
@@ -244,23 +242,20 @@ public class WorkerMatchContextTest {
         );
     }
 
-    private WorkerGroupRecord groupFromWorker(Worker worker) {
+    private WorkerGroupCapabilityView groupFromWorker(Worker worker) {
         List<String> supportedProjects = worker.getSupportedProjects() == null
                 ? List.of()
                 : worker.getSupportedProjects();
         List<String> supportedEventCodes = worker.getSupportedEventCodes() == null
                 ? List.of()
                 : worker.getSupportedEventCodes();
-        List<EventBinding> bindings = new ArrayList<>();
-        if (!supportedProjects.isEmpty()) {
-            for (String eventCode : supportedEventCodes) {
-                bindings.add(EventBinding.of(eventCode, supportedProjects));
-            }
-        }
-        return WorkerGroupRecord.builder(worker.getWorkerGroupId() == null ? "test-group" : worker.getWorkerGroupId())
-                .projectCodes(supportedProjects)
-                .eventBindings(bindings)
-                .build();
+        return new WorkerGroupCapabilityView(
+                worker.getWorkerGroupId() == null ? "test-group" : worker.getWorkerGroupId(),
+                supportedProjects,
+                supportedEventCodes,
+                Map.of(),
+                1
+        );
     }
 
     private void assertNoWorkerContextRuleFields(Map<String, Object> context) {

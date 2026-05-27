@@ -1,7 +1,4 @@
-package com.xa.mass.engine.worker;
-
-import com.xa.mass.runtime.worker.WorkerLoadSnapshot;
-import com.xa.mass.runtime.worker.WorkerReachabilityState;
+package com.xa.mass.runtime.worker;
 
 import java.util.Optional;
 
@@ -10,7 +7,7 @@ import java.util.Optional;
  */
 public interface WorkerSchedulingViewRuntime {
 
-    Optional<WorkerGroupRecord> workerGroupReadView(String groupId);
+    Optional<WorkerGroupCapabilityView> workerGroupReadView(String groupId);
 
     WorkerReachabilityState getWorkerReachability(String workerId);
 
