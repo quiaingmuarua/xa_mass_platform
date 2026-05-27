@@ -1380,6 +1380,38 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void engineStrategyConsumesWorkerRuntimeViewsWithoutWorkerRuntimeOwnerAccess() throws IOException {
+        Path strategyRoot = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/strategy");
+        Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
+                Map.entry("worker-runtime implementation package",
+                        Pattern.compile("\\bcom\\.xa\\.mass\\.worker\\.runtime\\b")),
+                Map.entry("worker registry contract",
+                        Pattern.compile("\\bWorkerRegistry\\b")),
+                Map.entry("resource/report/group runtime owners",
+                        Pattern.compile("\\bWorker(?:Resource|Report|Group|Relationship|Admission|CandidateSource)Owner\\b")),
+                Map.entry("state projection owner",
+                        Pattern.compile("\\bWorkerStateProjectionOwner\\b")),
+                Map.entry("resource/report/gate mutation contracts",
+                        Pattern.compile("\\bWorker(?:Resource|Report|DispatchGate|WarmHint)Runtime\\b"))
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Path sourcePath : javaSourceFiles(strategyRoot)) {
+            String source = Files.readString(sourcePath, StandardCharsets.UTF_8);
+            for (Map.Entry<String, Pattern> forbiddenPattern : forbiddenPatterns.entrySet()) {
+                if (forbiddenPattern.getValue().matcher(source).find()) {
+                    violations.add(sourcePath + " reaches worker runtime ownership: " + forbiddenPattern.getKey());
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Engine matching strategy may consume candidate/admission/scheduling-view evidence, "
+                        + "but must not own worker registry/resource/report/gate mutation truth:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void workerManagerDoesNotUseWorkerLevelEventStorageIndexForEventCandidateSource() throws IOException {
         Path workerManagerPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/worker/WorkerManager.java");

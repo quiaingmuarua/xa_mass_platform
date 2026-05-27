@@ -756,6 +756,14 @@ Acceptance:
 
 Goal: engine becomes strategy consumer, not worker runtime owner.
 
+Progress:
+
+- Architecture guards now require engine matching strategy code to avoid
+  worker-runtime implementation packages, registry contracts, resource/report
+  owners, dispatch-gate mutation contracts, and warm-hint mutation contracts.
+  Strategy may consume candidate/admission/scheduling-view evidence, while
+  worker runtime remains the owner of registry/resource/report/gate truth.
+
 Scope:
 
 1. `RuleBasedTaskWorkerMatchingStrategy` consumes:

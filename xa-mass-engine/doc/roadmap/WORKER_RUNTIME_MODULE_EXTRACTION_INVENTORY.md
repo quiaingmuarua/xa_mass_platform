@@ -79,7 +79,8 @@ lease, and occupancy reads are owned by `WorkerAdmissionOwner`;
 worker-originated capability report projection is owned by `WorkerReportOwner`.
 `WorkerManager` still implements the runtime contracts and delegates to these
 owners while module movement is pending, but it is no longer exposed through
-public SDK/starter configuration. `WorkerControlService` implements the narrow
+public SDK/starter configuration.
+`WorkerControlService` implements the narrow
 external `WorkerControlRuntime` caller surface and consumes
 `WorkerReportRuntime`, `WorkerResourceRuntime`, `WorkerDispatchGateRuntime`,
 and `WorkerStateProjectionRuntime` instead of accepting the full
