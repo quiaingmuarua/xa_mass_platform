@@ -1,15 +1,17 @@
-package com.xa.mass.engine.worker;
+package com.xa.mass.runtime.memory;
 
 import com.xa.mass.runtime.worker.CleanupSummary;
 import com.xa.mass.runtime.worker.DispatchAvailabilitySource;
 import com.xa.mass.runtime.worker.EventKey;
+import com.xa.mass.runtime.worker.RandomWorkerCandidateSamplingPolicy;
 import com.xa.mass.runtime.worker.ReserveResult;
 import com.xa.mass.runtime.worker.ReserveStatus;
-import com.xa.mass.runtime.worker.RandomWorkerCandidateSamplingPolicy;
 import com.xa.mass.runtime.worker.WorkerCandidateSamplingContext;
 import com.xa.mass.runtime.worker.WorkerCandidateSamplingPolicy;
 import com.xa.mass.runtime.worker.WorkerMeta;
 import com.xa.mass.runtime.worker.WorkerRegistry;
+import com.xa.mass.runtime.worker.WorkerRouteBucketPolicies;
+import com.xa.mass.runtime.worker.WorkerRouteBucketPolicy;
 import com.xa.mass.runtime.worker.WorkerSlot;
 
 import java.util.ArrayList;
@@ -32,7 +34,7 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
 
     public static final long DEFAULT_HEARTBEAT_FRESHNESS_MILLIS = 30_000L;
 
-    private final WorkerRoutingPolicy routingPolicy;
+    private final WorkerRouteBucketPolicy routingPolicy;
     private final WorkerCandidateSamplingPolicy samplingPolicy;
     private final long heartbeatFreshnessMillis;
     private final ConcurrentMap<String, ConcurrentMap<String, AtomicReference<WorkerSlot>>> slotsByGroupId =
@@ -45,21 +47,21 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
     private final ConcurrentMap<String, ConcurrentMap<String, Integer>> taskWorkerActiveCounts = new ConcurrentHashMap<>();
 
     public InMemoryWorkerRegistry() {
-        this(WorkerRoutingPolicy.defaultPolicy(), RandomWorkerCandidateSamplingPolicy.defaultPolicy());
+        this(WorkerRouteBucketPolicies.defaultPolicy(), RandomWorkerCandidateSamplingPolicy.defaultPolicy());
     }
 
     public InMemoryWorkerRegistry(WorkerCandidateSamplingPolicy samplingPolicy) {
-        this(WorkerRoutingPolicy.defaultPolicy(), samplingPolicy);
+        this(WorkerRouteBucketPolicies.defaultPolicy(), samplingPolicy);
     }
 
-    public InMemoryWorkerRegistry(WorkerRoutingPolicy routingPolicy, WorkerCandidateSamplingPolicy samplingPolicy) {
+    public InMemoryWorkerRegistry(WorkerRouteBucketPolicy routingPolicy, WorkerCandidateSamplingPolicy samplingPolicy) {
         this(routingPolicy, samplingPolicy, DEFAULT_HEARTBEAT_FRESHNESS_MILLIS);
     }
 
-    public InMemoryWorkerRegistry(WorkerRoutingPolicy routingPolicy,
+    public InMemoryWorkerRegistry(WorkerRouteBucketPolicy routingPolicy,
                                   WorkerCandidateSamplingPolicy samplingPolicy,
                                   long heartbeatFreshnessMillis) {
-        this.routingPolicy = routingPolicy != null ? routingPolicy : WorkerRoutingPolicy.defaultPolicy();
+        this.routingPolicy = routingPolicy != null ? routingPolicy : WorkerRouteBucketPolicies.defaultPolicy();
         this.samplingPolicy = samplingPolicy != null
                 ? samplingPolicy
                 : RandomWorkerCandidateSamplingPolicy.defaultPolicy();
@@ -723,7 +725,7 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
     private Set<String> routeBucketKeys(WorkerMeta meta) {
         Set<String> routeBucketKeys = routingPolicy.routeBucketKeysForWorkerMeta(meta);
         return routeBucketKeys == null || routeBucketKeys.isEmpty()
-                ? Set.of(WorkerRoutingPolicy.DEFAULT_ROUTE_BUCKET_KEY)
+                ? Set.of(WorkerRouteBucketPolicy.DEFAULT_ROUTE_BUCKET_KEY)
                 : Set.copyOf(routeBucketKeys);
     }
 
@@ -830,7 +832,7 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
 
     private static String normalizeRouteBucketKey(String value) {
         String normalized = normalizeNullable(value);
-        return normalized == null ? WorkerRoutingPolicy.DEFAULT_ROUTE_BUCKET_KEY : normalized;
+        return normalized == null ? WorkerRouteBucketPolicy.DEFAULT_ROUTE_BUCKET_KEY : normalized;
     }
 
     private static String normalizeNullable(String value) {

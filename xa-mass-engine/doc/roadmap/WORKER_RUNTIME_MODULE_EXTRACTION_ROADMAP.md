@@ -104,8 +104,10 @@ platform_infra/mass-runtime-api
 platform_infra/mass-runtime-redis
   RedisWorkerRegistry
 
-xa-mass-engine
+platform_infra/mass-runtime-memory
   InMemoryWorkerRegistry
+
+xa-mass-engine
   WorkerManager assembly and worker owner residue
 ```
 
@@ -569,6 +571,15 @@ Acceptance:
 ### WRX-M2: Move WorkerRegistry Implementation Runtime
 
 Goal: move worker slot/index/admission truth out of engine.
+
+Progress:
+
+- `InMemoryWorkerRegistry` source has moved to
+  `platform_infra/mass-runtime-memory`.
+- Worker route-bucket encoding shared by engine task selector and worker slot
+  indexing lives in `mass-runtime-api` as runtime-neutral policy helpers.
+- Engine still assembles the memory implementation for the embedded default
+  path; that assembly dependency is expected until D1 cleanup.
 
 Scope:
 

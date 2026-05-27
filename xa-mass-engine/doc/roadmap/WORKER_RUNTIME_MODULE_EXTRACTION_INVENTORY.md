@@ -32,6 +32,11 @@ Candidate acquisition and task-local warm hints are now package-owned by
 `WorkerCandidateSourceOwner`; `WorkerManager` delegates to it while the module
 boundary is still inside engine.
 
+`InMemoryWorkerRegistry` now lives in `platform_infra/mass-runtime-memory`.
+Engine still assembles it as the default embedded `WorkerRegistry`, but the
+slot/index/admission implementation source no longer lives in
+`com.xa.mass.engine.worker`.
+
 Task selector, candidate batch shape, candidate rows, Worker resource row,
 WorkerGroup capability read view, scheduling-view contract, admission contract, worker load, resource
 declaration records, and transport reachability evidence now use
@@ -236,6 +241,9 @@ Do not make worker runtime depend on `Task`.
   `EventBinding` now live in `mass-runtime-api`, but their owners still live in
   engine until resource/report implementation movement.
 - `WorkerManager` still owns both resource maps and runtime slot synchronization.
+- In-memory `WorkerRegistry` implementation is no longer a blocker for M2; the
+  remaining M2 work is shared memory/Redis contract proof and engine import
+  cleanup around slot/index internals.
 - `WorkerStateProjectionOwner` and command-gate effects need a resource/report
   owner split before moving.
 - Redis/memory WorkerRegistry implementations already share `mass-runtime-api`

@@ -5,11 +5,14 @@ Status: current in-memory runtime implementation module.
 ## Role
 
 - provides the in-memory `TaskWorkRuntime` implementation used by the current embedded default path
+- provides the in-memory `WorkerRegistry` slot/index/admission implementation used by the current embedded default path
 - hosts focused runtime tests for queue/lease/retry/backpressure semantics
+- hosts focused worker registry contract tests for candidate buckets, heartbeat cleanup, reserve, dispatch gates, and occupancy
 
 ## Current Truth
 
 - `InMemoryTaskWorkRuntime` is the current default verified embedded runtime implementation
+- `InMemoryWorkerRegistry` is the current default verified embedded worker runtime implementation
 - sdk `EngineConfig`, server bootstrap, and explicit tests currently construct this implementation as the default embedded runtime
 - this module is an implementation module; engine policy and task lifecycle ownership remain outside this module
 

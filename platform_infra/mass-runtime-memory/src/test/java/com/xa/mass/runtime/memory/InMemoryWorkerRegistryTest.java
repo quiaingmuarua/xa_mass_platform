@@ -1,9 +1,10 @@
-package com.xa.mass.engine.worker;
+package com.xa.mass.runtime.memory;
 
 import com.xa.mass.runtime.contract.WorkerRegistryContractTest;
 import com.xa.mass.runtime.worker.WorkerCandidateSamplingPolicy;
 import com.xa.mass.runtime.worker.WorkerMeta;
 import com.xa.mass.runtime.worker.WorkerRegistry;
+import com.xa.mass.runtime.worker.WorkerRouteBucketPolicies;
 
 import org.junit.jupiter.api.Test;
 
@@ -74,7 +75,7 @@ class InMemoryWorkerRegistryTest extends WorkerRegistryContractTest {
     @Test
     void routeAttributeUpdateRemovesOnlyKnownPreviousBucketMembership() {
         WorkerRegistry registry = new InMemoryWorkerRegistry(
-                WorkerRoutingPolicy.approvedAttributePolicy(List.of("region")),
+                WorkerRouteBucketPolicies.approvedAttributePolicy(List.of("region")),
                 (context, workerIds, maxCandidateCount) -> workerIds.stream().limit(maxCandidateCount).toList()
         );
         registry.upsertSlot(workerMeta("worker-1", "group-a", "us"), 1, Set.of(eventKey()));

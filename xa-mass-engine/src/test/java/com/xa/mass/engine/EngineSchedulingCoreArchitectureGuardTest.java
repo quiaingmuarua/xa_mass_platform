@@ -1596,6 +1596,35 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void inMemoryWorkerRegistryImplementationLivesInRuntimeMemory() throws IOException {
+        Path enginePath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/worker/InMemoryWorkerRegistry.java");
+        Path runtimePath = Path.of("..", "platform_infra", "mass-runtime-memory", "src", "main", "java",
+                "com", "xa", "mass", "runtime", "memory", "InMemoryWorkerRegistry.java");
+
+        List<String> violations = new ArrayList<>();
+        if (Files.exists(enginePath)) {
+            violations.add(enginePath + " reintroduces the memory WorkerRegistry implementation inside engine");
+        }
+        if (!Files.isRegularFile(runtimePath)) {
+            violations.add(runtimePath + " is missing");
+        } else {
+            String source = Files.readString(runtimePath, StandardCharsets.UTF_8);
+            if (source.contains("com.xa.mass.engine")) {
+                violations.add(runtimePath + " depends on xa-mass-engine");
+            }
+            if (!source.contains("implements WorkerRegistry")) {
+                violations.add(runtimePath + " no longer implements WorkerRegistry");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "The in-memory worker slot/index/admission implementation belongs in mass-runtime-memory. "
+                        + "Engine may assemble it but must not own its source:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void taskWriteLockRemainsLifecycleAndProgressOnly() throws IOException {
         Path taskManagerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/TaskManager.java");
         String source = Files.readString(taskManagerPath, StandardCharsets.UTF_8);

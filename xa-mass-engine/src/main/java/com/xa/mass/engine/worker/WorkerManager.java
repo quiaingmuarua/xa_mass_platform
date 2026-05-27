@@ -29,6 +29,7 @@ import com.xa.mass.runtime.worker.WorkerResourceRecord;
 import com.xa.mass.runtime.worker.WorkerResourceRuntime;
 import com.xa.mass.runtime.worker.WorkerSchedulingViewRuntime;
 import com.xa.mass.runtime.worker.WorkerTaskSelector;
+import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.storage.api.WorkerLookupStore;
 import com.xa.mass.storage.api.WorkerStorage;
 import org.slf4j.Logger;

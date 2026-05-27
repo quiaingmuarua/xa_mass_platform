@@ -20,6 +20,7 @@ import com.xa.mass.runtime.worker.WorkerCapabilityReport;
 import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;
 import com.xa.mass.runtime.worker.WorkerCapabilityReportStatus;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;
+import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
