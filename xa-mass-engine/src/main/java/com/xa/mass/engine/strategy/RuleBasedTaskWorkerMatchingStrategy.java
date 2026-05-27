@@ -8,7 +8,7 @@ import com.xa.mass.engine.worker.WorkerAdmissionRuntime;
 import com.xa.mass.engine.worker.WorkerCandidateBatch;
 import com.xa.mass.engine.worker.WorkerCandidateRuntime;
 import com.xa.mass.engine.worker.WorkerManager;
-import com.xa.mass.engine.worker.WorkerReachabilityState;
+import com.xa.mass.runtime.worker.WorkerReachabilityState;
 import com.xa.mass.engine.worker.WorkerSchedulingViewRuntime;
 import com.xa.mass.engine.worker.WorkerTaskSelector;
 import com.xa.mass.engine.worker.WorkerTaskSelectorFactory;

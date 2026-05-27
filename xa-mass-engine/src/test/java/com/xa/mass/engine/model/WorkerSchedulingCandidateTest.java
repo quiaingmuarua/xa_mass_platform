@@ -1,7 +1,7 @@
 package com.xa.mass.engine.model;
 
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.engine.worker.WorkerReachabilityState;
+import com.xa.mass.runtime.worker.WorkerReachabilityState;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;

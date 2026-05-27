@@ -9,7 +9,7 @@ import com.xa.mass.engine.TaskWorkProjectionState.AttemptFinalReason;
 import com.xa.mass.engine.TaskWorkProjectionState.AttemptStatus;
 import com.xa.mass.engine.TaskWorkProjectionState.MessageFinalReason;
 import com.xa.mass.engine.TaskWorkProjectionState.MessageStatus;
-import com.xa.mass.engine.load.WorkerLoadSnapshot;
+import com.xa.mass.runtime.worker.WorkerLoadSnapshot;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.engine.runtime.TaskRuntimeProfile;

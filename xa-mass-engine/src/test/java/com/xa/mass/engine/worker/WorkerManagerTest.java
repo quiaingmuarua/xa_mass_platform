@@ -9,6 +9,7 @@ import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.EventKey;
 import com.xa.mass.runtime.worker.RandomWorkerCandidateSamplingPolicy;
+import com.xa.mass.runtime.worker.WorkerReachabilityState;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

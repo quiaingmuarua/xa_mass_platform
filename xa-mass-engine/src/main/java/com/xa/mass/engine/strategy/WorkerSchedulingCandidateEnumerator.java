@@ -1,7 +1,7 @@
 package com.xa.mass.engine.strategy;
 
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.engine.worker.WorkerReachabilityState;
+import com.xa.mass.runtime.worker.WorkerReachabilityState;
 import com.xa.mass.engine.worker.WorkerGroupRecord;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.model.WorkerSchedulingView;

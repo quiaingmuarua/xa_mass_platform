@@ -1,7 +1,8 @@
 package com.xa.mass.engine.worker;
 
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.engine.load.WorkerLoadSnapshot;
+import com.xa.mass.runtime.worker.WorkerLoadSnapshot;
+import com.xa.mass.runtime.worker.WorkerReachabilityState;
 
 import java.util.Optional;
 

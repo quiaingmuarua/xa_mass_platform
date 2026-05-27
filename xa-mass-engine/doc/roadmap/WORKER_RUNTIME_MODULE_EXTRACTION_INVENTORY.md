@@ -31,6 +31,11 @@ Candidate acquisition and task-local warm hints are now package-owned by
 `WorkerCandidateSourceOwner`; `WorkerManager` delegates to it while the module
 boundary is still inside engine.
 
+Worker load and transport reachability evidence now use runtime-neutral
+`mass-runtime-api` value types: `WorkerLoadSnapshot` and
+`WorkerReachabilityState`. Engine-owned scheduling DTOs still adapt those
+runtime values into `WorkerSchedulingView` and `WorkerMatchContext` locally.
+
 Worker row mutation and registry slot projection are now package-owned by
 `WorkerResourceOwner`; WorkerGroup declaration state is package-owned by
 `WorkerGroupOwner`; worker-originated capability report projection is
@@ -57,13 +62,13 @@ owners while callers converge.
 | Snapshot maintenance | `refreshWorkerRegistrySnapshot`, `getWorkerRegistrySnapshot` | tests, diagnostics, capability report path | candidate/resource read model residue | runtime read model residue | Delete or narrow after runtime DTOs replace snapshot callers |
 | Capability report | `applyWorkerCapabilityReport` | `WorkerControlService`, event handlers, SDK | `WorkerReportOwner` through `WorkerReportRuntime` | resource mutation plus runtime projection | Capability truth materializes into WorkerGroup/snapshot evidence |
 | Online model status | `updateOnlineStatus`, `isWorkerOnline` | legacy event bridge, tests | compatibility/resource status path | control-plane row plus transport reachability residue | Transport presence remains reachability owner |
-| Reachability read | `getWorkerReachability` | scheduling candidate enumeration, tests | `WorkerSchedulingViewRuntime` | transport evidence consumed as runtime read evidence | Must not turn transport session into scheduling truth |
+| Reachability read | `getWorkerReachability` | scheduling candidate enumeration, tests | `WorkerSchedulingViewRuntime` | transport evidence consumed as runtime read evidence | Returns runtime-neutral `WorkerReachabilityState`; must not turn transport session into scheduling truth |
 | Dispatch gate read | `isWorkerDispatchEnabled` | scheduling candidate enumeration, tests | `WorkerSchedulingViewRuntime` | runtime state | Derived from source-scoped gates |
 | Dispatch gate mutation | `disableWorkerDispatch`, `clearWorkerDispatchDisable` | worker state report policy, node-group binding policy, tests | worker runtime dispatch gate owner | runtime state | Source-scoped gate mutation |
 | Wakeup callback | `setDispatchWakeupCallback` | SDK engine assembly | assembly residue | lifecycle wiring | Keep as assembly wiring until owner split decides final home |
 | Admission / occupancy | `reserveWorkerCapacity`, `tryReserveWorkerCapacity`, `confirmWorkerReservation`, `releaseWorkerReservation`, `recordWorkClaimed`, `recordWorkFinal` | match strategy, dispatch binder, resource releaser, result/resource listeners | `WorkerAdmissionOwner` through `WorkerAdmissionRuntime` | runtime state | Structured reserve is the strategy path; boolean reserve remains a compatibility helper |
 | Exclusive lease | `tryAcquireWorkerExclusiveLease`, `releaseWorkerExclusiveLease`, `hasWorkerExclusiveLease`, `getExclusiveLeaseWorkerIds` | match strategy, resource releaser, diagnostics, tests | `WorkerAdmissionOwner` through `WorkerAdmissionRuntime` | runtime state | Rename away from lock vocabulary only when owner move requires it |
-| Load / occupancy read | `getWorkerLoad`, `getActiveWorkerCountForTask` | match strategy, allocation policy caller, tests | `WorkerAdmissionOwner` / scheduling view runtime | runtime state | Runtime load evidence, not control-plane truth |
+| Load / occupancy read | `getWorkerLoad`, `getActiveWorkerCountForTask` | match strategy, allocation policy caller, tests | `WorkerAdmissionOwner` / scheduling view runtime | runtime state | `WorkerLoadSnapshot` lives in `mass-runtime-api`; runtime load evidence, not control-plane truth |
 
 ## Current Main Caller Graph
 
@@ -190,6 +195,8 @@ Do not make worker runtime depend on `Task`.
 - `WorkerSchedulingView` and `WorkerMatchContext` are engine strategy DTOs; they
   must not move into runtime contracts.
 - `WorkerCandidateBatch` is now top-level, but still engine-owned until M1.
+- `WorkerLoadSnapshot` and `WorkerReachabilityState` already live in
+  `mass-runtime-api`.
 - `WorkerManager` still owns both resource maps and runtime slot synchronization.
 - `WorkerStateProjectionOwner` and command-gate effects need a resource/report
   owner split before moving.

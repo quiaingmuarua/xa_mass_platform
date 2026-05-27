@@ -10,7 +10,7 @@ import com.xa.mass.engine.worker.EventBinding;
 import com.xa.mass.engine.worker.WorkerCandidateBatch;
 import com.xa.mass.engine.worker.WorkerGroupRecord;
 import com.xa.mass.engine.worker.WorkerManager;
-import com.xa.mass.engine.worker.WorkerReachabilityState;
+import com.xa.mass.runtime.worker.WorkerReachabilityState;
 import com.xa.mass.engine.worker.WorkerTaskSelector;
 import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;

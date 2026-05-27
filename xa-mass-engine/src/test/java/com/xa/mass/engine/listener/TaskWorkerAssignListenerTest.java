@@ -9,7 +9,7 @@ import com.xa.mass.engine.TaskAssignmentEventSink;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskEventPublisher;
 import com.xa.mass.engine.worker.WorkerManager;
-import com.xa.mass.engine.worker.WorkerReachabilityState;
+import com.xa.mass.runtime.worker.WorkerReachabilityState;
 import com.xa.mass.engine.worker.WorkerTaskSelector;
 import com.xa.mass.engine.assignment.AssignmentAllocationDecision;
 import com.xa.mass.engine.assignment.AssignmentAllocationOutcome;
