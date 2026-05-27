@@ -21,6 +21,8 @@ import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.storage.memory.InMemoryRuleStorage;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.engine.util.TraceEventLogCapture;
+import com.xa.mass.runtime.worker.ReserveResult;
+import com.xa.mass.runtime.worker.ReserveStatus;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
@@ -574,6 +576,44 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
     }
 
     @Test
+    void recordsStructuredReserveFailureAfterRanking() {
+        WorkerManager workerManager = new WorkerManager(
+                new InMemoryWorkerStorage(),
+                workerId -> WorkerReachabilityState.ONLINE
+        ) {
+            @Override
+            public ReserveResult reserveWorkerCapacity(String workerId, String taskId) {
+                return ReserveResult.rejected(ReserveStatus.STALE_HEARTBEAT, "worker heartbeat stale");
+            }
+        };
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        AssignmentRecordService recordService = new AssignmentRecordService();
+        RuleBasedTaskWorkerMatchingStrategy strategy =
+                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+
+        ruleManager.addDefaultRules(List.of(
+                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
+                rule("app_support_check", "supportsProject == true")
+        ));
+
+        Task task = new Task();
+        task.setTid("task-stale-reserve");
+        task.setProject("demoApp");
+        task.setSharedConfig(selector("pool-a"));
+        task.setStatus(TaskStatus.READY);
+
+        registerWorker(workerManager, worker("worker-stale-reserve", "pool-a"));
+
+        List<WorkerSchedulingCandidate> matched = strategy.matchWorkers(task, 1);
+
+        assertTrue(matched.isEmpty());
+        AssignmentRecord rejectedRecord = findRecord(recordService, "task-stale-reserve", "worker-stale-reserve");
+        assertEquals(AssignmentResult.RESOURCE_UNAVAILABLE, rejectedRecord.getResult());
+        assertEquals("worker reserve rejected after candidate ranking: worker heartbeat stale",
+                rejectedRecord.getReason());
+    }
+
+    @Test
     void releasesReservationWhenLockConflictHappensAfterRanking() {
         WorkerManager workerManager = new WorkerManager(
                 new InMemoryWorkerStorage(),
@@ -790,6 +830,11 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         @Override
         public boolean tryReserveWorkerCapacity(String workerId, String taskId) {
             return true;
+        }
+
+        @Override
+        public ReserveResult reserveWorkerCapacity(String workerId, String taskId) {
+            return ReserveResult.accepted(null);
         }
 
         @Override

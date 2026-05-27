@@ -1,6 +1,8 @@
 package com.xa.mass.engine.worker;
 
 import com.xa.mass.engine.load.WorkerLoadSnapshot;
+import com.xa.mass.runtime.worker.ReserveResult;
+import com.xa.mass.runtime.worker.ReserveStatus;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 
 import java.util.List;
@@ -51,7 +53,7 @@ final class WorkerAdmissionOwner {
         return workerRegistry.activeWorkerCountForTask(taskId);
     }
 
-    boolean tryReserveWorkerCapacity(String workerId, String taskId) {
+    ReserveResult reserveWorkerCapacity(String workerId, String taskId) {
         return workerRegistry.slotByWorkerId(workerId)
                 .map(slot -> workerRegistry.tryReserve(
                         slot.groupId(),
@@ -59,8 +61,12 @@ final class WorkerAdmissionOwner {
                         taskId,
                         1,
                         System.currentTimeMillis()
-                ).accepted())
-                .orElse(false);
+                ))
+                .orElseGet(() -> ReserveResult.rejected(ReserveStatus.MISSING_SLOT, "worker slot missing"));
+    }
+
+    boolean tryReserveWorkerCapacity(String workerId, String taskId) {
+        return reserveWorkerCapacity(workerId, taskId).accepted();
     }
 
     boolean confirmWorkerReservation(String workerId, String taskId) {

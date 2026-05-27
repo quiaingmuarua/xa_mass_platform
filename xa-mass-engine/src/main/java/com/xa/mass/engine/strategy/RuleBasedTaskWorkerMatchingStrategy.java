@@ -22,6 +22,8 @@ import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
 import com.xa.mass.engine.util.TraceEventLogger;
+import com.xa.mass.runtime.worker.ReserveResult;
+import com.xa.mass.runtime.worker.ReserveStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -258,17 +260,20 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
             Worker worker = candidate.getWorker();
             double candidateScore = rankScore(rankedContext, task);
             boolean exclusiveWorkerLock = resourcePolicy.usageForCandidate(task, candidate).exclusiveWorkerLock();
-            if (!admissionRuntime.tryReserveWorkerCapacity(worker.getWorkerId(), task.getTid())) {
+            ReserveResult reserveResult = admissionRuntime.reserveWorkerCapacity(worker.getWorkerId(), task.getTid());
+            if (!reserveResult.accepted()) {
+                String reserveRejectionReason = reserveRejectionReason(reserveResult);
                 traceEventLogger.workerMatchRejected(task, candidate,
-                        "worker capacity unavailable after candidate ranking", rank, candidateScore,
+                        reserveRejectionReason, rank, candidateScore,
                         admissionRuntime.getWorkerLoad(worker.getWorkerId()));
                 recordService.recordWorkerAssignment(
-                        task, candidate, AssignmentResult.QUOTA_EXCEEDED,
-                        "worker capacity unavailable after candidate ranking",
+                        task, candidate, reserveAssignmentResult(reserveResult),
+                        reserveRejectionReason,
                         passedCandidate.ruleEvaluations(), withCandidateSourceStats(rankedContext.getContext(), candidateBatch),
                         admissionRuntime.hasWorkerExclusiveLease(worker.getWorkerId())
                 );
-                log.debug("Worker capacity unavailable after candidate ranking: {}", worker.getWorkerId());
+                log.debug("Worker reserve rejected after candidate ranking: worker={}, status={}, reason={}",
+                        worker.getWorkerId(), reserveResult.status(), reserveResult.reason());
                 continue;
             }
             if (!exclusiveWorkerLock) {
@@ -331,6 +336,30 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
             return defaultRanker.score(context, task);
         }
         return Double.NaN;
+    }
+
+    private static String reserveRejectionReason(ReserveResult result) {
+        if (result == null) {
+            return "worker reserve rejected after candidate ranking";
+        }
+        if (result.status() == ReserveStatus.CAPACITY_UNAVAILABLE) {
+            return "worker capacity unavailable after candidate ranking";
+        }
+        if (result.reason() != null) {
+            return "worker reserve rejected after candidate ranking: " + result.reason();
+        }
+        return "worker reserve rejected after candidate ranking: " + result.status().name();
+    }
+
+    private static AssignmentResult reserveAssignmentResult(ReserveResult result) {
+        if (result == null) {
+            return AssignmentResult.QUOTA_EXCEEDED;
+        }
+        return switch (result.status()) {
+            case DISPATCH_DISABLED, MISSING_SLOT, REMOVING_SLOT, STALE_HEARTBEAT -> AssignmentResult.RESOURCE_UNAVAILABLE;
+            case GROUP_MISMATCH, ADAPTER_NODE_MISMATCH -> AssignmentResult.RULE_NOT_MATCH;
+            default -> AssignmentResult.QUOTA_EXCEEDED;
+        };
     }
 
     private int candidateAcquisitionLimit(Task task, int maxWorkerCount) {

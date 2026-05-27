@@ -1,6 +1,7 @@
 package com.xa.mass.engine.worker;
 
 import com.xa.mass.engine.load.WorkerLoadSnapshot;
+import com.xa.mass.runtime.worker.ReserveResult;
 
 import java.util.List;
 
@@ -8,6 +9,8 @@ import java.util.List;
  * Runtime admission and occupancy surface for matched workers.
  */
 public interface WorkerAdmissionRuntime {
+
+    ReserveResult reserveWorkerCapacity(String workerId, String taskId);
 
     boolean tryReserveWorkerCapacity(String workerId, String taskId);
 

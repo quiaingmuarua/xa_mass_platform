@@ -9,6 +9,7 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.load.WorkerLoadSnapshot;
 import com.xa.mass.runtime.worker.DispatchAvailabilitySource;
+import com.xa.mass.runtime.worker.ReserveResult;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.storage.api.WorkerLookupStore;
 import com.xa.mass.storage.api.WorkerStorage;
@@ -358,6 +359,11 @@ public class WorkerManager implements WorkerLookupStore,
 
     public boolean tryReserveWorkerCapacity(String workerId, String taskId) {
         return admissionOwner.tryReserveWorkerCapacity(workerId, taskId);
+    }
+
+    @Override
+    public ReserveResult reserveWorkerCapacity(String workerId, String taskId) {
+        return admissionOwner.reserveWorkerCapacity(workerId, taskId);
     }
 
     public boolean confirmWorkerReservation(String workerId, String taskId) {
