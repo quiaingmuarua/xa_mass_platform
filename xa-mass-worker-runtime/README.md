@@ -12,10 +12,13 @@ Current scope:
 - Worker registration row to runtime slot projection owner.
 - Worker state report bounded projection owner.
 - Worker admission, occupancy, and exclusive lease owner.
+- Task-local warm candidate hint storage.
 
 Boundaries:
 
 - May depend on `mass-runtime-api`, `mass-storage-api`, and `xa-mass-base`.
 - Must not depend on `xa-mass-engine` or transport adapter implementations.
 - Does not evaluate task matching rules or ranking policy.
+- Does not decide whether warm candidates are useful; engine strategy writes
+  useful assignment evidence into this module after Stage-2.
 - Does not own task runtime, task dispatch binding, or result convergence.

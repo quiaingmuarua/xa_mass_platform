@@ -895,8 +895,10 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
     @Test
     void taskCandidateWarmPoolDoesNotOwnEligibilityReserveOrDispatchTruth() throws IOException {
-        Path warmPoolPath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/worker/TaskCandidateWarmPool.java");
+        Path warmPoolPath = Path.of("..")
+                .resolve("xa-mass-worker-runtime")
+                .resolve("src/main/java/com/xa/mass/worker/runtime/TaskCandidateWarmPool.java")
+                .normalize();
         String source = Files.readString(warmPoolPath, StandardCharsets.UTF_8);
 
         Map<String, Pattern> forbiddenPatterns = Map.ofEntries(

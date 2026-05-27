@@ -92,10 +92,10 @@ callers converge.
 | Candidate source | `findWorkerCandidateBatch` | `RuleBasedTaskWorkerMatchingStrategy`, tests | `WorkerCandidateRuntime` | runtime state | Uses runtime-neutral `WorkerCandidateBatch<WorkerCandidateRow>`; must start from resolved WorkerGroup selector; no all-worker candidate scan |
 | Candidate diagnostics | `findWorkerCandidateBatch` metadata | tests and diagnostics | `WorkerCandidateSourceOwner` / diagnostics residue | runtime read model residue | List-only `findWorkerCandidates` has been deleted; batch metadata is the strategy-facing contract |
 | Candidate index diagnostics | `getWorkerCandidateIndex` | tests and indexed source diagnostics | `WorkerCandidateSourceOwner` / diagnostics residue | runtime read model residue | Kept off `WorkerCandidateRuntime` so the candidate contract does not expose Stage-1 implementation types |
-| Warm hints | `recordWarmCandidate` | `TaskWorkerAssignListener`, strategy tests | `WorkerCandidateSourceOwner` / future warm hint write contract | runtime state | Kept off `WorkerCandidateRuntime`; engine triggers after useful assignment evidence, runtime owns hint storage/revalidation |
+| Warm hints | `recordWarmCandidate` | `TaskWorkerAssignListener`, strategy tests | `TaskCandidateWarmPool` in `xa-mass-worker-runtime` plus engine-side write timing | runtime state | Kept off `WorkerCandidateRuntime`; engine triggers after useful assignment evidence, runtime owns bounded hint storage |
 | Snapshot maintenance | `refreshWorkerRegistrySnapshot`, `getWorkerRegistrySnapshot` | tests, diagnostics, capability report path | candidate/resource read model residue | runtime read model residue | Delete or narrow after runtime DTOs replace snapshot callers |
 | Capability report | `applyWorkerCapabilityReport` | `WorkerControlService`, event handlers, SDK | `WorkerReportOwner` through `WorkerReportRuntime` | resource mutation plus runtime projection | Runtime-api report/result/status contract; package-local application carries any `WorkerRegistrySnapshot` refresh |
-| State report projection | `applyWorkerStateReport` / `WorkerStateProjectionOwner.applyReport` | `WorkerControlService`, event handlers, tests | `WorkerStateProjectionOwner` | bounded runtime diagnostic projection | Runtime-api report/projection/result DTOs; owner implementation remains engine-local |
+| State report projection | `applyWorkerStateReport` / `WorkerStateProjectionOwner.applyReport` | `WorkerControlService`, event handlers, tests | `WorkerStateProjectionOwner` in `xa-mass-worker-runtime` | bounded runtime diagnostic projection | Runtime-api report/projection/result DTOs; engine callers consume the moved owner through `WorkerManager` assembly |
 | Online model status | `updateOnlineStatus`, `isWorkerOnline` | legacy event bridge, tests | compatibility/resource status path | control-plane row plus transport reachability residue | Transport presence remains reachability owner |
 | Reachability read | `getWorkerReachability` | scheduling candidate enumeration, tests | `WorkerSchedulingViewRuntime` | transport evidence consumed as runtime read evidence | Returns runtime-neutral `WorkerReachabilityState`; must not turn transport session into scheduling truth |
 | Dispatch gate read | `isWorkerDispatchEnabled` | scheduling candidate enumeration, tests | `WorkerSchedulingViewRuntime` / `WorkerDispatchGateRuntime` | runtime state | Derived from source-scoped gates; scheduling consumes read evidence, control policies consume gate contract |
@@ -231,7 +231,7 @@ Current put path:
 TaskWorkerAssignListener
   -> recordWarmCandidatesForBoundWorkers(...)
   -> WorkerManager.recordWarmCandidate(selector, workerCandidateRow)
-  -> TaskCandidateWarmPool
+  -> TaskCandidateWarmPool in xa-mass-worker-runtime
 ```
 
 Target path should be engine-triggered but runtime-owned:

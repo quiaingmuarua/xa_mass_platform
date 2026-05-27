@@ -4,6 +4,7 @@ import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.WorkerCandidateBatch;
 import com.xa.mass.runtime.worker.WorkerCandidateRow;
 import com.xa.mass.runtime.worker.WorkerTaskSelector;
+import com.xa.mass.worker.runtime.TaskCandidateWarmPool;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

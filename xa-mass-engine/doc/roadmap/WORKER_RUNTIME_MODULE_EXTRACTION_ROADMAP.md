@@ -1,7 +1,7 @@
 # Worker Runtime Module Extraction Roadmap
 
-Status: draft. This roadmap is a module-boundary convergence plan. It must not
-be read as proof that the module already exists.
+Status: active. The `xa-mass-worker-runtime` module exists, but this roadmap
+must not be read as proof that every target owner has already moved.
 
 This is the next convergence line after
 [`WORKER_MATCH_UPGRADE_ROADMAP.md`](./WORKER_MATCH_UPGRADE_ROADMAP.md) and the
@@ -618,6 +618,9 @@ Progress:
 - Bounded worker state report projection has moved out of engine source.
 - Worker admission, occupancy, and exclusive lease owner has moved out of
   engine source.
+- Task-local warm candidate hint storage has moved out of engine source; engine
+  still owns the timing decision for when assignment evidence is useful enough
+  to write a hint.
 - Engine still assembles those owners through `WorkerManager`; report,
   candidate-source, and match strategy residue stays in engine for later
   slices.

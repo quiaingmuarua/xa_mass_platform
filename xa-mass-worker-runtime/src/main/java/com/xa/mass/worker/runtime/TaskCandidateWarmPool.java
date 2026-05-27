@@ -1,11 +1,10 @@
-package com.xa.mass.engine.worker;
+package com.xa.mass.worker.runtime;
 
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ConcurrentMap;
@@ -18,11 +17,11 @@ import java.util.concurrent.atomic.AtomicReference;
  * <p>This owner stores only observed candidate source evidence. It does not
  * decide eligibility, reserve capacity, hold locks, or own dispatch truth.</p>
  */
-final class TaskCandidateWarmPool {
+public final class TaskCandidateWarmPool {
 
-    static final int DEFAULT_PER_TASK_CAP = 128;
-    static final int DEFAULT_GLOBAL_CAP = 10_000;
-    static final long DEFAULT_TTL_MILLIS = 60_000L;
+    public static final int DEFAULT_PER_TASK_CAP = 128;
+    public static final int DEFAULT_GLOBAL_CAP = 10_000;
+    public static final long DEFAULT_TTL_MILLIS = 60_000L;
 
     private final int perTaskCap;
     private final int globalCap;
@@ -31,17 +30,17 @@ final class TaskCandidateWarmPool {
     private final ConcurrentLinkedDeque<Entry> globalOrder = new ConcurrentLinkedDeque<>();
     private final AtomicInteger globalCount = new AtomicInteger();
 
-    TaskCandidateWarmPool() {
+    public TaskCandidateWarmPool() {
         this(DEFAULT_PER_TASK_CAP, DEFAULT_GLOBAL_CAP, DEFAULT_TTL_MILLIS);
     }
 
-    TaskCandidateWarmPool(int perTaskCap, int globalCap, long ttlMillis) {
+    public TaskCandidateWarmPool(int perTaskCap, int globalCap, long ttlMillis) {
         this.perTaskCap = Math.max(1, perTaskCap);
         this.globalCap = Math.max(this.perTaskCap, globalCap);
         this.ttlMillis = Math.max(1L, ttlMillis);
     }
 
-    void put(Entry entry) {
+    public void put(Entry entry) {
         if (entry == null) {
             return;
         }
@@ -58,7 +57,7 @@ final class TaskCandidateWarmPool {
         trimGlobal();
     }
 
-    List<Entry> sample(String taskId, long nowMillis, int maxCount) {
+    public List<Entry> sample(String taskId, long nowMillis, int maxCount) {
         String normalizedTaskId = normalizeNullable(taskId);
         if (normalizedTaskId == null || maxCount <= 0) {
             return List.of();
@@ -90,7 +89,7 @@ final class TaskCandidateWarmPool {
         return List.copyOf(sampled);
     }
 
-    void remove(Entry entry) {
+    public void remove(Entry entry) {
         if (entry == null) {
             return;
         }
@@ -107,12 +106,12 @@ final class TaskCandidateWarmPool {
         globalOrder.remove(entry);
     }
 
-    int sizeForTask(String taskId) {
+    public int sizeForTask(String taskId) {
         ConcurrentLinkedDeque<Entry> taskEntries = entriesByTaskId.get(normalizeNullable(taskId));
         return taskEntries == null ? 0 : taskEntries.size();
     }
 
-    int trackedTaskCount() {
+    public int trackedTaskCount() {
         return entriesByTaskId.size();
     }
 
@@ -167,13 +166,13 @@ final class TaskCandidateWarmPool {
         return value == null || value.isBlank() ? null : value.trim();
     }
 
-    record Entry(String taskId,
-                 String workerId,
-                 String observedGroupId,
-                 String observedAdapterNodeId,
-                 String observedRouteBucketKey,
-                 long observedAtMillis) {
-        Entry {
+    public record Entry(String taskId,
+                        String workerId,
+                        String observedGroupId,
+                        String observedAdapterNodeId,
+                        String observedRouteBucketKey,
+                        long observedAtMillis) {
+        public Entry {
             taskId = requireNonBlank(taskId, "taskId");
             workerId = requireNonBlank(workerId, "workerId");
             observedGroupId = requireNonBlank(observedGroupId, "observedGroupId");

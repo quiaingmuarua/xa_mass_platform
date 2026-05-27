@@ -552,7 +552,7 @@ Goal: add a task-local warm candidate hint after the match boundary and registry
 cleanup work are stable.
 
 Status: first slice implemented. `TaskCandidateWarmPool` is bounded task-local
-hint state only. `WorkerManager` rehydrates warm entries through
+hint state owned by `xa-mass-worker-runtime`. `WorkerManager` rehydrates warm entries through
 `WorkerCandidateIndex.sourceGuard(...)`, dedupes warm and cold candidates, and
 falls back to the normal cold candidate source. The assignment listener records
 warm hints only for workers that produced bound dispatch work; matching strategy
