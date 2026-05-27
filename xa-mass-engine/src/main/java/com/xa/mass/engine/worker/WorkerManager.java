@@ -38,7 +38,12 @@ import static com.xa.mass.runtime.worker.DispatchAvailabilitySource.NODE_GROUP_B
  * <p>Transport reachability is read through {@link WorkerReachabilityView},
  * while the worker model remains the engine-owned control-plane record.
  */
-public class WorkerManager implements WorkerLookupStore {
+public class WorkerManager implements WorkerLookupStore,
+        WorkerResourceRuntime,
+        WorkerCandidateRuntime,
+        WorkerSchedulingViewRuntime,
+        WorkerAdmissionRuntime,
+        WorkerReportRuntime {
 
     private static final Logger log = LoggerFactory.getLogger(WorkerManager.class);
     static final int DEFAULT_DIAGNOSTIC_CANDIDATE_LIMIT = 512;
@@ -492,22 +497,6 @@ public class WorkerManager implements WorkerLookupStore {
             return Set.of(WorkerRoutingPolicy.DEFAULT_ROUTE_BUCKET_KEY);
         }
         return routeBucketKeys;
-    }
-
-    public record WorkerCandidateBatch(List<Worker> candidates,
-                                       int warmCandidateCount,
-                                       int coldCandidateCount,
-                                       int warmSourceGuardRejectedCount) {
-        public WorkerCandidateBatch {
-            candidates = candidates == null ? List.of() : List.copyOf(candidates);
-            warmCandidateCount = Math.max(0, warmCandidateCount);
-            coldCandidateCount = Math.max(0, coldCandidateCount);
-            warmSourceGuardRejectedCount = Math.max(0, warmSourceGuardRejectedCount);
-        }
-
-        static WorkerCandidateBatch empty() {
-            return new WorkerCandidateBatch(List.of(), 0, 0, 0);
-        }
     }
 
     private record WarmCandidateSelection(List<Worker> candidates, int sourceGuardRejectedCount) {

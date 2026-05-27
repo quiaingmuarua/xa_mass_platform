@@ -710,7 +710,7 @@ public class WorkerManagerTest {
         Task task = task("demoApp", selector("pool-a"));
 
         manager.recordWarmCandidate(task, warm);
-        WorkerManager.WorkerCandidateBatch batch = manager.findWorkerCandidateBatch(task, 1);
+        WorkerCandidateBatch batch = manager.findWorkerCandidateBatch(task, 1);
 
         assertEquals(List.of("w-warm"),
                 batch.candidates().stream()
@@ -734,7 +734,7 @@ public class WorkerManagerTest {
         task.setSharedConfig(sharedConfig(Map.of(
                 TaskSharedConfig.TARGET_WORKER_ID, "w-target-warm-suppressed"
         ), "pool-a"));
-        WorkerManager.WorkerCandidateBatch batch = manager.findWorkerCandidateBatch(task, 1);
+        WorkerCandidateBatch batch = manager.findWorkerCandidateBatch(task, 1);
 
         assertEquals(List.of("w-target-warm-suppressed"),
                 batch.candidates().stream()
@@ -761,7 +761,7 @@ public class WorkerManagerTest {
         Worker moved = worker("w-stale-warm-route", "pool-a");
         moved.setAttributes(Map.of("region", "eu"));
         assertTrue(manager.updateWorker(moved));
-        WorkerManager.WorkerCandidateBatch batch = manager.findWorkerCandidateBatch(task, 1);
+        WorkerCandidateBatch batch = manager.findWorkerCandidateBatch(task, 1);
 
         assertEquals(List.of("w-stable-route"),
                 batch.candidates().stream()

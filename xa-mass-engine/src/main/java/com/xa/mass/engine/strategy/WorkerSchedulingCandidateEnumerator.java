@@ -1,11 +1,11 @@
 package com.xa.mass.engine.strategy;
 
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.engine.worker.WorkerReachabilityState;
 import com.xa.mass.engine.worker.WorkerGroupRecord;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.model.WorkerSchedulingView;
+import com.xa.mass.engine.worker.WorkerSchedulingViewRuntime;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -16,10 +16,10 @@ import java.util.Objects;
  */
 final class WorkerSchedulingCandidateEnumerator {
 
-    private final WorkerManager workerManager;
+    private final WorkerSchedulingViewRuntime schedulingViewRuntime;
 
-    WorkerSchedulingCandidateEnumerator(WorkerManager workerManager) {
-        this.workerManager = Objects.requireNonNull(workerManager, "workerManager");
+    WorkerSchedulingCandidateEnumerator(WorkerSchedulingViewRuntime schedulingViewRuntime) {
+        this.schedulingViewRuntime = Objects.requireNonNull(schedulingViewRuntime, "schedulingViewRuntime");
     }
 
     List<WorkerSchedulingCandidate> enumerate(List<Worker> workers) {
@@ -34,13 +34,13 @@ final class WorkerSchedulingCandidateEnumerator {
     }
 
     private WorkerSchedulingCandidate toSchedulingCandidate(Worker worker) {
-        WorkerReachabilityState reachability = workerManager.getWorkerReachability(worker.getWorkerId());
-        boolean dispatchEnabled = workerManager.isWorkerDispatchEnabled(worker);
-        boolean workerLocked = workerManager.hasWorkerExclusiveLease(worker.getWorkerId());
+        WorkerReachabilityState reachability = schedulingViewRuntime.getWorkerReachability(worker.getWorkerId());
+        boolean dispatchEnabled = schedulingViewRuntime.isWorkerDispatchEnabled(worker);
+        boolean workerLocked = schedulingViewRuntime.hasWorkerExclusiveLease(worker.getWorkerId());
         String workerGroupId = worker.getWorkerGroupId();
         WorkerGroupRecord workerGroup = workerGroupId == null || workerGroupId.isBlank()
                 ? null
-                : workerManager.workerGroupReadView(workerGroupId).orElse(null);
+                : schedulingViewRuntime.workerGroupReadView(workerGroupId).orElse(null);
         return new WorkerSchedulingCandidate(
                 worker,
                 WorkerSchedulingView.from(
@@ -49,7 +49,7 @@ final class WorkerSchedulingCandidateEnumerator {
                         reachability,
                         dispatchEnabled,
                         workerLocked,
-                        workerManager.getWorkerLoad(worker.getWorkerId())
+                        schedulingViewRuntime.getWorkerLoad(worker.getWorkerId())
                 )
         );
     }
