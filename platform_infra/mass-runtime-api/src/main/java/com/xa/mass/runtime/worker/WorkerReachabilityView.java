@@ -1,6 +1,4 @@
-package com.xa.mass.engine.worker;
-
-import com.xa.mass.runtime.worker.WorkerReachabilityState;
+package com.xa.mass.runtime.worker;
 
 /**
  * Cross-module read seam for transport-owned worker reachability.

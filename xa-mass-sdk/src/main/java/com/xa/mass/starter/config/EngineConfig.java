@@ -10,7 +10,7 @@ import com.xa.mass.engine.TaskManagerResultIngestFacade;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.engine.worker.WorkerManager;
-import com.xa.mass.engine.worker.WorkerReachabilityView;
+import com.xa.mass.runtime.worker.WorkerReachabilityView;
 import com.xa.mass.engine.worker.WorkerControlService;
 import com.xa.mass.engine.worker.WorkerDispatchAvailabilityPolicy;
 import com.xa.mass.engine.worker.DefaultWorkerDispatchAvailabilityPolicy;

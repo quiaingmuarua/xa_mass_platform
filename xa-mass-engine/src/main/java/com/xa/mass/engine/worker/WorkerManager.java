@@ -23,6 +23,7 @@ import com.xa.mass.runtime.worker.WorkerDispatchGateRuntime;
 import com.xa.mass.runtime.worker.WorkerGroupCapabilityView;
 import com.xa.mass.runtime.worker.WorkerLoadSnapshot;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;
+import com.xa.mass.runtime.worker.WorkerReachabilityView;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.runtime.worker.WorkerReportRuntime;
 import com.xa.mass.runtime.worker.WorkerResourceRecord;

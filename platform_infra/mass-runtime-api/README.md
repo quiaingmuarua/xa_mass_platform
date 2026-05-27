@@ -17,6 +17,7 @@ Status: current shared runtime contract module.
 - runtime result-apply outcomes
 - runtime counters and bounded runtime stats
 - worker registry slot, reserve, gate-source, and candidate sampling contracts
+- worker reachability read contract consumed by scheduling and provided by transport presence
 
 ## What Does Not Belong Here
 

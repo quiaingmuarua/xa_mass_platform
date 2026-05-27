@@ -246,8 +246,8 @@ Do not make worker runtime depend on `Task`.
 - `WorkerSchedulingView` and `WorkerMatchContext` are engine strategy DTOs; they
   must not move into runtime contracts.
 - `WorkerAdmissionRuntime`, `WorkerCandidateBatch<T>`, `WorkerTaskSelector`,
-  `WorkerLoadSnapshot`, and `WorkerReachabilityState` already live in
-  `mass-runtime-api`.
+  `WorkerLoadSnapshot`, `WorkerReachabilityState`, and `WorkerReachabilityView`
+  already live in `mass-runtime-api`.
 - `AdapterNodeRecord`, `NodeGroupBindingRecord`, `WorkerGroupRecord`, and
   `EventBinding` now live in `mass-runtime-api`, but their owners still live in
   engine until resource/report implementation movement.

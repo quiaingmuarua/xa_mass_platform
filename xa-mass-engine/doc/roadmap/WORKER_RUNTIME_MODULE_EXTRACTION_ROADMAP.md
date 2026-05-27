@@ -562,6 +562,12 @@ Scope:
 6. Move contracts/value types only after C1.5 has made them top-level and
    runtime-neutral.
 
+Progress:
+
+- Worker reachability read contract moved to `mass-runtime-api`; engine and SDK
+  now consume `WorkerReachabilityView` as a runtime-neutral transport presence
+  seam instead of an engine worker-internal type.
+
 Acceptance:
 
 1. No new module duplicates `WorkerRegistry`, `WorkerSlot`, or `WorkerMeta`.

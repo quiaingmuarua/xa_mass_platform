@@ -591,12 +591,14 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void workerAccessTypesStayInWorkerPackage() throws IOException {
+    void workerAccessTypesStayOutOfRootEnginePackage() throws IOException {
         Map<Path, String> retiredRootTypes = Map.ofEntries(
                 Map.entry(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/WorkerManager.java"), "WorkerManager"),
                 Map.entry(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/WorkerReachabilityState.java"),
                         "WorkerReachabilityState"),
                 Map.entry(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/WorkerReachabilityView.java"),
+                        "WorkerReachabilityView"),
+                Map.entry(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker/WorkerReachabilityView.java"),
                         "WorkerReachabilityView")
         );
         Map<String, Pattern> retiredImports = Map.ofEntries(
@@ -605,7 +607,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 Map.entry("WorkerReachabilityState",
                         Pattern.compile("\\bimport\\s+com\\.xa\\.mass\\.engine\\.WorkerReachabilityState\\s*;")),
                 Map.entry("WorkerReachabilityView",
-                        Pattern.compile("\\bimport\\s+com\\.xa\\.mass\\.engine\\.WorkerReachabilityView\\s*;"))
+                        Pattern.compile("\\bimport\\s+com\\.xa\\.mass\\.engine\\.(?:worker\\.)?WorkerReachabilityView\\s*;"))
         );
 
         List<String> violations = new ArrayList<>();
@@ -629,8 +631,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "Worker access/read-view types belong in com.xa.mass.engine.worker. "
-                        + "Do not move WorkerManager or reachability types back into the root engine package:\n"
+                "WorkerManager belongs in com.xa.mass.engine.worker, while reachability contracts belong in "
+                        + "mass-runtime-api. Do not keep engine-local reachability contract copies:\n"
                         + String.join("\n", violations));
     }
 
@@ -1847,7 +1849,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 Map.entry("worker state report -> reachability truth",
                         new GuardedSourceArea(
                                 List.of(
-                                        repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/worker/WorkerReachabilityView.java"),
+                                        repo.resolve("platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/WorkerReachabilityView.java"),
                                         repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/worker/WorkerManager.java")
                                 ),
                                 Pattern.compile("\\bWorkerStateReport\\b")))
@@ -2005,7 +2007,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 Map.entry("reachability read model",
                         new GuardedSourceArea(
                                 List.of(
-                                        repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/worker/WorkerReachabilityView.java")
+                                        repo.resolve("platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/WorkerReachabilityView.java")
                                 ),
                                 workerControlOrState)),
                 Map.entry("load read model",
