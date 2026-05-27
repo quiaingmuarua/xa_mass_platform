@@ -79,6 +79,11 @@ contracts and delegate to these owners while callers converge.
 The SDK process-local runtime event bridge now depends on
 `WorkerResourceRuntime` for legacy heartbeat refresh and no longer receives a
 full `WorkerManager`.
+Dispatch binding and task resource release now consume `WorkerAdmissionRuntime`
+for reservation confirmation, fallback load claim, final-load accounting,
+reservation release, and exclusive-lease release. These paths no longer require
+the full `WorkerManager` surface; task runtime claim, dispatch handoff,
+terminal handling, and refill decisions remain engine-owned.
 
 ## Public Method Inventory
 
@@ -126,8 +131,10 @@ engine assignment
      -> WorkerSchedulingViewRuntime from `mass-runtime-api` through WorkerSchedulingCandidateEnumerator
      -> WorkerAdmissionRuntime
   -> SimpleTaskDispatchBinder / WorkerDispatchResourceReleaser
-     -> WorkerAdmissionRuntime-compatible methods through WorkerManager
-     -> WorkerAdmissionOwner
+     -> WorkerAdmissionRuntime
+     -> WorkerAdmissionOwner through the configured worker admission runtime
+  -> TaskResourceReleaseListener
+     -> WorkerAdmissionRuntime for final-load and exclusive-lease release
 
 worker control
   -> WorkerControlService

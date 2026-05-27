@@ -99,12 +99,13 @@ public class MassEngine {
             eventListeners = taskEvents;
             runtimeBridge = config.getRuntimeBridge();
             WorkerManager workerManager = config.getWorkerManager();
+            var workerAdmissionRuntime = config.getWorkerAdmissionRuntime();
             AssignmentDiagnosticRecorder recordService = config.getRecordService();
             var ruleManager = config.getRuleManager();
             TraceEventLogger traceEventLogger = config.getTraceEventLogger();
             var dispatchBinder = new SimpleTaskDispatchBinder(
                     assignmentRuntimePort,
-                    workerManager,
+                    workerAdmissionRuntime,
                     recordService,
                     dispatchBatchListener,
                     traceEventLogger);
@@ -130,7 +131,10 @@ public class MassEngine {
             workerManager.setDispatchWakeupCallback(dispatchWakeupCallback);
             runtimeReadyDispatchPump.start();
 
-            resourceReleaseListener = new TaskResourceReleaseListener(runtimeMaintenancePort, workerManager, traceEventLogger);
+            resourceReleaseListener = new TaskResourceReleaseListener(
+                    runtimeMaintenancePort,
+                    workerAdmissionRuntime,
+                    traceEventLogger);
             taskReadyListener = task -> {
                 if (task != null && task.getContract() == TaskContract.SESSION) {
                     assignWorker.submit(task);

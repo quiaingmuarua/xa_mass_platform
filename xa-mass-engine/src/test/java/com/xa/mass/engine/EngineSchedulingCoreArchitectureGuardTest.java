@@ -1108,6 +1108,35 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void dispatchReleasePathUsesWorkerAdmissionRuntime() throws IOException {
+        Map<Path, String> guardedFiles = Map.of(
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/listener/SimpleTaskDispatchBinder.java"),
+                "dispatch binder",
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/resource/WorkerDispatchResourceReleaser.java"),
+                "dispatch resource releaser",
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/listener/TaskResourceReleaseListener.java"),
+                "resource release listener"
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Map.Entry<Path, String> guardedFile : guardedFiles.entrySet()) {
+            String source = Files.readString(guardedFile.getKey(), StandardCharsets.UTF_8);
+            if (source.contains("com.xa.mass.engine.worker.WorkerManager")
+                    || Pattern.compile("\\bWorkerManager\\b").matcher(source).find()) {
+                violations.add(guardedFile.getValue() + " depends on full WorkerManager");
+            }
+            if (!source.contains("WorkerAdmissionRuntime")) {
+                violations.add(guardedFile.getValue() + " does not use WorkerAdmissionRuntime");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Dispatch binding and release may mutate worker occupancy only through "
+                        + "WorkerAdmissionRuntime; task claim/refill stays engine-owned:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void workerSchedulingViewRuntimeContractLivesInRuntimeApi() throws IOException {
         Path repo = repositoryRoot();
         Path engineContractPath = repo.resolve(

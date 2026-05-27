@@ -642,6 +642,11 @@ Progress:
 - Stage-1 worker candidate index, source guard, candidate-source orchestration,
   and warm/cold merge have moved out of engine source; engine still owns
   Task-to-WorkerTaskSelector adaptation and match strategy.
+- Dispatch binding and task resource release now depend on
+  `WorkerAdmissionRuntime` for worker occupancy, reservation, final-load, and
+  exclusive-lease mutation instead of depending on the full `WorkerManager`
+  assembly surface. Task runtime claim, dispatch binding, refill, and terminal
+  behavior remain engine-owned.
 - Engine still assembles those owners through `WorkerManager`; match strategy
   and event handler parsing residue stays in engine for later slices.
 - SDK shell runtime bridge now accepts `WorkerResourceRuntime` for legacy

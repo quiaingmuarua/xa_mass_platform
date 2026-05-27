@@ -17,10 +17,10 @@ import com.xa.mass.engine.resource.WorkerDispatchResourceReleaser;
 import com.xa.mass.engine.runtime.TaskRuntimeClaimOptionsResolver;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
 import com.xa.mass.engine.util.TraceEventLogger;
-import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.TaskWorkClaimOptions;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
+import com.xa.mass.runtime.worker.WorkerAdmissionRuntime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,7 +39,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
             new TaskRuntimeClaimOptionsResolver();
 
     private final TaskAssignmentRuntimePort assignmentRuntime;
-    private final WorkerManager workerManager;
+    private final WorkerAdmissionRuntime workerAdmissionRuntime;
     private final AssignmentDiagnosticRecorder recordService;
     private final TaskDispatchBatchListener dispatchListener;
     private final TraceEventLogger traceEventLogger;
@@ -47,52 +47,52 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
     private final WorkerDispatchResourceReleaser resourceReleaser;
 
     public SimpleTaskDispatchBinder(TaskAssignmentRuntimePort assignmentRuntime,
-                                       WorkerManager workerManager,
+                                       WorkerAdmissionRuntime workerAdmissionRuntime,
                                        AssignmentDiagnosticRecorder recordService) {
-        this(assignmentRuntime, workerManager, recordService, null, TraceEventLogger.noop());
+        this(assignmentRuntime, workerAdmissionRuntime, recordService, null, TraceEventLogger.noop());
     }
 
     public SimpleTaskDispatchBinder(TaskAssignmentRuntimePort assignmentRuntime,
-                                       WorkerManager workerManager,
+                                       WorkerAdmissionRuntime workerAdmissionRuntime,
                                        AssignmentDiagnosticRecorder recordService,
                                        TaskDispatchBatchListener dispatchListener) {
-        this(assignmentRuntime, workerManager, recordService, dispatchListener, TraceEventLogger.noop());
+        this(assignmentRuntime, workerAdmissionRuntime, recordService, dispatchListener, TraceEventLogger.noop());
     }
 
     public SimpleTaskDispatchBinder(TaskAssignmentRuntimePort assignmentRuntime,
-                                       WorkerManager workerManager,
+                                       WorkerAdmissionRuntime workerAdmissionRuntime,
                                        AssignmentDiagnosticRecorder recordService,
                                        TaskDispatchBatchListener dispatchListener,
                                        TraceEventLogger traceEventLogger) {
-        this(assignmentRuntime, workerManager, recordService, dispatchListener, traceEventLogger,
+        this(assignmentRuntime, workerAdmissionRuntime, recordService, dispatchListener, traceEventLogger,
                 new DefaultWorkerDispatchResourcePolicy());
     }
 
     SimpleTaskDispatchBinder(TaskAssignmentRuntimePort assignmentRuntime,
-                             WorkerManager workerManager,
+                             WorkerAdmissionRuntime workerAdmissionRuntime,
                              AssignmentDiagnosticRecorder recordService,
                              TaskDispatchBatchListener dispatchListener,
                              TraceEventLogger traceEventLogger,
                              WorkerDispatchResourcePolicy resourcePolicy) {
-        this(assignmentRuntime, workerManager, recordService, dispatchListener, traceEventLogger,
+        this(assignmentRuntime, workerAdmissionRuntime, recordService, dispatchListener, traceEventLogger,
                 resourcePolicy, null);
     }
 
     SimpleTaskDispatchBinder(TaskAssignmentRuntimePort assignmentRuntime,
-                             WorkerManager workerManager,
+                             WorkerAdmissionRuntime workerAdmissionRuntime,
                              AssignmentDiagnosticRecorder recordService,
                              TaskDispatchBatchListener dispatchListener,
                              TraceEventLogger traceEventLogger,
                              WorkerDispatchResourcePolicy resourcePolicy,
                              WorkerDispatchResourceReleaser resourceReleaser) {
         this.assignmentRuntime = assignmentRuntime;
-        this.workerManager = workerManager;
+        this.workerAdmissionRuntime = workerAdmissionRuntime;
         this.recordService = recordService;
         this.dispatchListener = dispatchListener;
         this.traceEventLogger = traceEventLogger;
         this.resourcePolicy = resourcePolicy == null ? new DefaultWorkerDispatchResourcePolicy() : resourcePolicy;
         this.resourceReleaser = resourceReleaser == null
-                ? new WorkerDispatchResourceReleaser(workerManager, this.resourcePolicy, traceEventLogger)
+                ? new WorkerDispatchResourceReleaser(workerAdmissionRuntime, this.resourcePolicy, traceEventLogger)
                 : resourceReleaser;
     }
 
@@ -177,15 +177,15 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
             }
             TaskDispatchBinding dispatchBinding = bindClaimedTaskWork(task, work, slot);
             dispatchBindings.add(dispatchBinding);
-            if (!workerManager.confirmWorkerReservation(work.workerId(), task.getTid())) {
-                workerManager.recordWorkClaimed(work.workerId(), task.getTid());
+            if (!workerAdmissionRuntime.confirmWorkerReservation(work.workerId(), task.getTid())) {
+                workerAdmissionRuntime.recordWorkClaimed(work.workerId(), task.getTid());
             }
             slot.incrementAssigned();
 
             recordService.recordMessageAssignment(
                     task, slot.candidate, work.messageId(), slot.batchId(),
                     AssignmentResult.SUCCESS, "message assigned",
-                    workerManager.hasWorkerExclusiveLease(slot.workerId())
+                    workerAdmissionRuntime.hasWorkerExclusiveLease(slot.workerId())
             );
         }
 
@@ -262,7 +262,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
             return;
         }
         for (TaskDispatchBinding binding : dispatchBindings) {
-            workerManager.recordWorkFinal(binding.workerId(), binding.taskId());
+            workerAdmissionRuntime.recordWorkFinal(binding.workerId(), binding.taskId());
         }
     }
 

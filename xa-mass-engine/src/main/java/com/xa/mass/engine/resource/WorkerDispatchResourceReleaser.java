@@ -1,9 +1,9 @@
 package com.xa.mass.engine.resource;
 
 import com.xa.mass.base.model.Task;
-import com.xa.mass.engine.worker.WorkerManager;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.util.TraceEventLogger;
+import com.xa.mass.runtime.worker.WorkerAdmissionRuntime;
 
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -16,14 +16,14 @@ import java.util.stream.Collectors;
  * Releases dispatch-time worker reservations and exclusive locks.
  */
 public final class WorkerDispatchResourceReleaser {
-    private final WorkerManager workerManager;
+    private final WorkerAdmissionRuntime workerAdmissionRuntime;
     private final WorkerDispatchResourcePolicy resourcePolicy;
     private final TraceEventLogger traceEventLogger;
 
-    public WorkerDispatchResourceReleaser(WorkerManager workerManager,
+    public WorkerDispatchResourceReleaser(WorkerAdmissionRuntime workerAdmissionRuntime,
                                           WorkerDispatchResourcePolicy resourcePolicy,
                                           TraceEventLogger traceEventLogger) {
-        this.workerManager = workerManager;
+        this.workerAdmissionRuntime = workerAdmissionRuntime;
         this.resourcePolicy = resourcePolicy == null ? new DefaultWorkerDispatchResourcePolicy() : resourcePolicy;
         this.traceEventLogger = traceEventLogger == null ? TraceEventLogger.noop() : traceEventLogger;
     }
@@ -33,7 +33,7 @@ public final class WorkerDispatchResourceReleaser {
             return;
         }
         for (String workerId : distinctWorkerIds(candidates)) {
-            workerManager.releaseWorkerReservation(workerId, task.getTid());
+            workerAdmissionRuntime.releaseWorkerReservation(workerId, task.getTid());
         }
     }
 
@@ -46,7 +46,7 @@ public final class WorkerDispatchResourceReleaser {
             return;
         }
         for (WorkerCleanupDecision decision : cleanupDecisions(task, candidates)) {
-            workerManager.releaseWorkerReservation(decision.workerId(), task.getTid());
+            workerAdmissionRuntime.releaseWorkerReservation(decision.workerId(), task.getTid());
             releaseLockIfExclusive(task, decision.workerId(), decision.exclusiveWorkerLock(),
                     trigger, source, reason);
         }
@@ -78,7 +78,7 @@ public final class WorkerDispatchResourceReleaser {
         if (workerId == null || workerId.isBlank()) {
             return;
         }
-        workerManager.releaseWorkerReservation(workerId, task.getTid());
+        workerAdmissionRuntime.releaseWorkerReservation(workerId, task.getTid());
         releaseLockIfExclusive(task, workerId,
                 resourcePolicy.usageForCandidate(task, candidate).exclusiveWorkerLock(),
                 trigger, source, reason);
@@ -101,7 +101,7 @@ public final class WorkerDispatchResourceReleaser {
                               String trigger,
                               String source,
                               String reason) {
-        workerManager.releaseWorkerExclusiveLease(workerId);
+        workerAdmissionRuntime.releaseWorkerExclusiveLease(workerId);
         traceEventLogger.workerLockReleased(task.getTid(), workerId, trigger, source, reason);
         traceEventLogger.resourceReleased(
                 task.getTid(),
