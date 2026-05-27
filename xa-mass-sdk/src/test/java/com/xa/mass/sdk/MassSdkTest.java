@@ -20,7 +20,7 @@ import com.xa.mass.command.event.CoreEventDescriptor;
 import com.xa.mass.command.event.CoreEventResponse;
 import com.xa.mass.command.event.InMemoryMassEventRuntime;
 import com.xa.mass.engine.TaskManager;
-import com.xa.mass.engine.worker.WorkerManager;
+import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;

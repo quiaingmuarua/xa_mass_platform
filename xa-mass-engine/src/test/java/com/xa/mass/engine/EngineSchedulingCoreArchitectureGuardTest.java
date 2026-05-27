@@ -23,6 +23,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
     private static final Path MAIN_SOURCE_ROOT = Path.of("src/main/java");
     private static final Path TEST_SOURCE_ROOT = Path.of("src/test/java");
+    private static final Path WORKER_MANAGER_SOURCE = Path.of("..", "xa-mass-worker-runtime", "src", "main", "java",
+            "com", "xa", "mass", "worker", "runtime", "WorkerManager.java");
 
     private static final Map<String, Pattern> FORBIDDEN_MAINLINE_PATTERNS = Map.ofEntries(
             Map.entry("TaskMessageProjection", Pattern.compile("\\bTaskMessageProjection\\b")),
@@ -631,7 +633,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "WorkerManager belongs in com.xa.mass.engine.worker, while reachability contracts belong in "
+                "WorkerManager belongs in xa-mass-worker-runtime, while reachability contracts belong in "
                         + "mass-runtime-api. Do not keep engine-local reachability contract copies:\n"
                         + String.join("\n", violations));
     }
@@ -825,7 +827,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
     @Test
     void workerStorageAllWorkerScanStaysOutOfSchedulingHotPath() throws IOException {
         Path engineRoot = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine");
-        Path workerManagerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker/WorkerManager.java");
+        Path workerManagerPath = WORKER_MANAGER_SOURCE;
         Path workerReportOwnerPath = repositoryRoot().resolve(
                 "xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/WorkerReportOwner.java");
         Pattern allWorkerScan = Pattern.compile("\\.getAllWorkers\\s*\\(");
@@ -872,7 +874,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
     @Test
     void workerManagerCandidateReadPathDoesNotEnterRegistryLock() throws IOException {
-        Path workerManagerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker/WorkerManager.java");
+        Path workerManagerPath = WORKER_MANAGER_SOURCE;
         String source = Files.readString(workerManagerPath, StandardCharsets.UTF_8);
         Map<String, String> guardedMethods = Map.of(
                 "findWorkerCandidateBatch", "public WorkerCandidateBatch<WorkerCandidateRow> findWorkerCandidateBatch",
@@ -953,7 +955,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
     @Test
     void workerManagerDoesNotOwnRouteBucketMembershipResidue() throws IOException {
-        Path workerManagerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker/WorkerManager.java");
+        Path workerManagerPath = WORKER_MANAGER_SOURCE;
         String source = Files.readString(workerManagerPath, StandardCharsets.UTF_8);
 
         assertFalse(source.contains("WorkerRouteBucketOwner"),
@@ -964,7 +966,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
     @Test
     void workerManagerReadsWorkerMembershipFromRegistryNotSnapshot() throws IOException {
-        Path workerManagerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker/WorkerManager.java");
+        Path workerManagerPath = WORKER_MANAGER_SOURCE;
         String source = Files.readString(workerManagerPath, StandardCharsets.UTF_8);
 
         List<String> violations = new ArrayList<>();
@@ -1009,7 +1011,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
     @Test
     void workerManagerDoesNotOwnSecondWorkerRowCopy() throws IOException {
-        Path workerManagerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker/WorkerManager.java");
+        Path workerManagerPath = WORKER_MANAGER_SOURCE;
         String source = Files.readString(workerManagerPath, StandardCharsets.UTF_8);
 
         assertFalse(source.contains("workerRegistryRows"),
@@ -1121,7 +1123,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         List<String> violations = new ArrayList<>();
         for (Map.Entry<Path, String> guardedFile : guardedFiles.entrySet()) {
             String source = Files.readString(guardedFile.getKey(), StandardCharsets.UTF_8);
-            if (source.contains("com.xa.mass.engine.worker.WorkerManager")
+            if (source.contains("com.xa.mass.worker.runtime.WorkerManager")
                     || Pattern.compile("\\bWorkerManager\\b").matcher(source).find()) {
                 violations.add(guardedFile.getValue() + " depends on full WorkerManager");
             }
@@ -1143,7 +1145,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         String source = Files.readString(listenerPath, StandardCharsets.UTF_8);
 
         List<String> violations = new ArrayList<>();
-        if (source.contains("com.xa.mass.engine.worker.WorkerManager")
+        if (source.contains("com.xa.mass.worker.runtime.WorkerManager")
                 || Pattern.compile("\\bWorkerManager\\b").matcher(source).find()) {
             violations.add(listenerPath + " depends on full WorkerManager");
         }
@@ -1309,7 +1311,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
     @Test
     void workerManagerCandidateAndWarmHintSurfaceStaysRuntimeNeutral() throws IOException {
-        Path workerManagerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker/WorkerManager.java");
+        Path workerManagerPath = WORKER_MANAGER_SOURCE;
         String source = Files.readString(workerManagerPath, StandardCharsets.UTF_8);
 
         List<String> violations = new ArrayList<>();
@@ -1361,7 +1363,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         String source = Files.readString(strategyPath, StandardCharsets.UTF_8);
 
         List<String> violations = new ArrayList<>();
-        if (source.contains("com.xa.mass.engine.worker.WorkerManager")
+        if (source.contains("com.xa.mass.worker.runtime.WorkerManager")
                 || Pattern.compile("\\bWorkerManager\\b").matcher(source).find()) {
             violations.add(strategyPath + " depends on full WorkerManager");
         }
@@ -1441,8 +1443,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
     @Test
     void workerManagerDoesNotUseWorkerLevelEventStorageIndexForEventCandidateSource() throws IOException {
-        Path workerManagerPath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/worker/WorkerManager.java");
+        Path workerManagerPath = WORKER_MANAGER_SOURCE;
         Path candidateSourceOwnerPath = repositoryRoot().resolve(
                 "xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/WorkerCandidateSourceOwner.java");
         String source = Files.readString(workerManagerPath, StandardCharsets.UTF_8)
@@ -1523,8 +1524,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
     void groupSelectorFirstCandidateSourceDoesNotUseEventOrAllWorkerFallback() throws IOException {
         Path candidateIndexPath = repositoryRoot().resolve(
                 "xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/WorkerCandidateIndex.java");
-        Path workerManagerPath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/worker/WorkerManager.java");
+        Path workerManagerPath = WORKER_MANAGER_SOURCE;
         Path binderPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/listener/SimpleTaskDispatchBinder.java");
         Path traceLoggerPath = MAIN_SOURCE_ROOT.resolve(
@@ -1635,7 +1635,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
     @Test
     void productionDoesNotWireWorkerLoadViewAsRuntimeOccupancyOwner() throws IOException {
-        Path workerManagerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker/WorkerManager.java");
+        Path workerManagerPath = WORKER_MANAGER_SOURCE;
         String source = Files.readString(workerManagerPath, StandardCharsets.UTF_8);
 
         List<String> violations = new ArrayList<>();
@@ -1690,7 +1690,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
             violations.add(retiredOwnerPath + " reintroduces an independent dispatch gate owner");
         }
         String workerManagerSource = Files.readString(
-                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker/WorkerManager.java"),
+                WORKER_MANAGER_SOURCE,
                 StandardCharsets.UTF_8
         );
         if (!workerManagerSource.contains("workerRegistry.disableDispatch")
@@ -1796,7 +1796,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         if (!engineConfigSource.contains("WorkerControlRuntime getWorkerControlRuntime()")) {
             violations.add(engineConfigPath + " does not expose worker control through WorkerControlRuntime");
         }
-        if (massEngineSource.contains("com.xa.mass.engine.worker.WorkerManager")
+        if (massEngineSource.contains("com.xa.mass.worker.runtime.WorkerManager")
                 || Pattern.compile("\\bWorkerManager\\b").matcher(massEngineSource).find()) {
             violations.add(massEnginePath + " depends on full WorkerManager");
         }
@@ -1823,7 +1823,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         List<String> violations = new ArrayList<>();
         for (Path bridgePath : bridgePaths) {
             String source = Files.readString(bridgePath, StandardCharsets.UTF_8);
-            if (source.contains("com.xa.mass.engine.worker.WorkerManager")
+            if (source.contains("com.xa.mass.worker.runtime.WorkerManager")
                     || Pattern.compile("\\bWorkerManager\\b").matcher(source).find()) {
                 violations.add(bridgePath + " depends on full WorkerManager");
             }
@@ -2160,7 +2160,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
                         new GuardedSourceArea(
                                 List.of(
                                         repo.resolve("platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/WorkerReachabilityView.java"),
-                                        repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/worker/WorkerManager.java")
+                                        repo.resolve("xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/WorkerManager.java")
                                 ),
                                 Pattern.compile("\\bWorkerStateReport\\b")))
         );

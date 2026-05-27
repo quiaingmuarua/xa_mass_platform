@@ -669,8 +669,8 @@ Progress:
   remain behaviorally unchanged, but worker-control ingress no longer has a
   constructor path back to the god object.
 - SDK and lifecycle callers now consume the engine-root `WorkerControlRuntime`
-  surface; `WorkerControlService` remains the engine worker implementation
-  behind `EngineConfig` assembly.
+  surface; `WorkerControlService` is engine control ingress behind
+  `EngineConfig` assembly.
 - SDK application helper naming now refers to worker-control runtime instead of
   worker-control service, keeping the SDK shell aligned with the public runtime
   surface.
@@ -679,11 +679,9 @@ Progress:
   event parsing ingress no longer couples to worker-control implementation
   assembly.
 - Capability/state report event parsers now live in the engine control ingress
-  package rather than `engine.worker`; the worker package keeps only assembly
-  residue.
+  package rather than `engine.worker`.
 - Worker-control service and dispatch availability policy now live in engine
-  control code; `engine.worker` now contains only `WorkerManager` assembly
-  residue.
+  control code.
 - `MassEngine` now wires resource-side availability wakeups through
   `WorkerAvailabilityWakeupRuntime` instead of importing `WorkerManager`
   directly. This keeps assignment retry / ready-scan wakeup wiring as lifecycle
@@ -692,10 +690,10 @@ Progress:
   `WorkerResourceRecord` for worker registration identity. The separate
   `WorkerLookupStore` storage-edge seam has been deleted instead of preserved
   as a parallel lookup path.
-- WorkerManager candidate acquisition and warm-hint mutation no longer expose
+- `WorkerManager` candidate acquisition and warm-hint mutation no longer expose
   Task-shaped or Worker-shaped convenience entry points. The remaining public
   path is runtime-neutral `WorkerTaskSelector` / `WorkerCandidateRow`, matching
-  the worker-runtime contracts while WorkerManager remains the assembly owner.
+  the worker-runtime contracts.
 - SDK worker shell reads and updates now consume `WorkerResourceRuntime` and
   `WorkerResourceRecord` instead of reading or mutating `WorkerStorage`
   directly. `WorkerStorage` remains a configurable control-plane row store
@@ -734,12 +732,12 @@ Progress:
   presence remains the online source for SDK/server queries; the legacy worker
   event listener only refreshes heartbeat evidence through `WorkerResourceRuntime`.
 - `EngineConfig.getWorkerManager()` is no longer a public SDK/starter surface.
-  EngineConfig keeps WorkerManager as private assembly and exposes only narrow
-  worker runtime contracts to callers.
-- Engine still assembles those owners through `WorkerManager`; match strategy
-  stays in engine for later slices. Worker-control event handlers parse event
-  payloads against `WorkerControlRuntime` from engine ingress code, not the
-  worker-runtime owner package.
+  EngineConfig keeps `WorkerManager` as private worker-runtime assembly and
+  exposes only narrow worker runtime contracts to callers.
+- `WorkerManager` now lives in `xa-mass-worker-runtime` with the owner classes
+  it assembles. Engine match strategy stays in engine and consumes only runtime
+  contracts; worker-control event handlers parse event payloads against
+  `WorkerControlRuntime` from engine ingress code.
 - SDK shell runtime bridge now accepts `WorkerResourceRuntime` for legacy
   runtime event-bus heartbeat refresh instead of full `WorkerManager`; the
   legacy worker-status listener is SDK shell code, not an engine worker owner.

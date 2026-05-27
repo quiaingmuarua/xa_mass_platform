@@ -9,7 +9,7 @@ import com.xa.mass.engine.TaskAssignmentEventSink;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskEventPublisher;
 import com.xa.mass.engine.TestWorkerCandidateRows;
-import com.xa.mass.engine.worker.WorkerManager;
+import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;
 import com.xa.mass.runtime.worker.WorkerCandidateRow;
 import com.xa.mass.runtime.worker.WorkerTaskSelector;

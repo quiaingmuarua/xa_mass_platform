@@ -9,9 +9,9 @@ target-state baseline.
 
 ## Current Surface Summary
 
-`WorkerManager` is still the active assembly surface for worker resource
-declaration, worker runtime projection, candidate source, report projection,
-admission delegation, and diagnostics.
+`xa-mass-worker-runtime` `WorkerManager` is the active assembly surface for
+worker resource declaration, worker runtime projection, candidate source,
+report projection, admission delegation, and diagnostics.
 
 Current first-slice contract split:
 
@@ -32,8 +32,8 @@ Current first-slice contract split:
 `com.xa.mass.engine.strategy.WorkerTaskSelectorFactory` before crossing the
 candidate-source contract.
 Candidate acquisition and task-local warm hints are now package-owned by
-`WorkerCandidateSourceOwner`; `WorkerManager` delegates to it while the module
-boundary is still inside engine.
+`WorkerCandidateSourceOwner`; `WorkerManager` delegates to it inside
+`xa-mass-worker-runtime`.
 
 `InMemoryWorkerRegistry` now lives in `platform_infra/mass-runtime-memory`.
 SDK/server assembly injects it as the default embedded `WorkerRegistry`; engine
@@ -48,10 +48,9 @@ relationship state, Worker registration row to runtime slot projection, and
 bounded worker state report projection. It also owns worker admission,
 occupancy, exclusive lease operations, worker capability report application,
 registry snapshot composition, Stage-1 candidate indexing/source orchestration,
-and task-local warm candidate hints over `WorkerRegistry`. Engine still
-assembles these owners through `WorkerManager`, while worker-control ingress
-is implemented by engine control code. Those owner implementations are no
-longer engine-local source.
+task-local warm candidate hints over `WorkerRegistry`, and the `WorkerManager`
+assembly that connects those owners. Worker-control ingress is implemented by
+engine control code.
 
 Task selector, candidate batch shape, candidate rows, Worker resource row,
 WorkerGroup capability read view, scheduling-view contract, admission contract, worker load, resource
@@ -79,9 +78,9 @@ are owned by `WorkerRelationshipOwner`; bounded worker state report projection
 is owned by `WorkerStateProjectionOwner`; worker runtime admission, exclusive
 lease, and occupancy reads are owned by `WorkerAdmissionOwner`;
 worker-originated capability report projection is owned by `WorkerReportOwner`.
-`WorkerManager` still implements the runtime contracts and delegates to these
-owners while module movement is pending, but it is no longer exposed through
-public SDK/starter configuration.
+`WorkerManager` implements the runtime contracts and delegates to these owners
+from `xa-mass-worker-runtime`; it is no longer exposed through public
+SDK/starter configuration.
 `engine.control.WorkerControlService` implements the narrow
 external `WorkerControlRuntime` caller surface and consumes
 `WorkerReportRuntime`, `WorkerResourceRuntime`, `WorkerDispatchGateRuntime`,
@@ -109,10 +108,11 @@ remains the historical event-routing target, not the mutation owner.
 Transport runtime dispatch routing now consumes `WorkerResourceRuntime` and
 runtime-neutral `WorkerResourceRecord` instead of `WorkerLookupStore` or
 mutable base `Worker` rows.
-Perf runner deterministic matching support still uses `WorkerManager` for
-local scenario assembly, but registration setup and matching loops now consume
-`WorkerResourceRecord`, `WorkerResourceRuntime`, `WorkerAdmissionRuntime`, and
-`WorkerSchedulingViewRuntime`. They no longer use the old model-shaped
+Perf runner deterministic matching support still uses worker-runtime
+`WorkerManager` for local scenario assembly, but registration setup and
+matching loops now consume `WorkerResourceRecord`, `WorkerResourceRuntime`,
+`WorkerAdmissionRuntime`, and `WorkerSchedulingViewRuntime`. They no longer
+use the old model-shaped
 `Worker` registration setup, `getAllWorkers()`, boolean reserve shortcut, or
 `Worker`-shaped dispatch gate read paths.
 
@@ -305,15 +305,15 @@ Do not make worker runtime depend on `Task`.
 - `AdapterNodeRecord`, `NodeGroupBindingRecord`, `WorkerGroupRecord`, and
   `EventBinding` now live in `mass-runtime-api`; their owners have moved to
   `xa-mass-worker-runtime`.
-- `WorkerManager` still assembles worker-runtime owners and publishes registry
-  snapshots, but no longer owns the resource maps, candidate source, warm pool,
-  admission state, or report projection implementations directly.
+- `WorkerManager` now lives beside the worker-runtime owners it assembles and
+  publishes registry snapshots, but no longer owns the resource maps, candidate
+  source, warm pool, admission state, or report projection implementations
+  directly.
 - In-memory `WorkerRegistry` implementation is no longer a blocker for M2.
   Shared memory/Redis registry contract proof has a WRX-D2 command recorded in
-  the roadmap. The remaining module-movement blocker is engine import cleanup
-  around slot/index diagnostics: `WorkerManager` still publishes package-local
-  `WorkerRegistrySnapshot` / `WorkerCandidateIndex` evidence for engine tests
-  while acting as the assembly surface.
+  the roadmap. The remaining cleanup is moving engine-side tests and
+  diagnostics off package-local `WorkerRegistrySnapshot` / `WorkerCandidateIndex`
+  evidence where those tests are not explicitly proving worker-runtime assembly.
 - Command-gate effects remain engine-owned because the default policy consumes
   engine command lifecycle records. Do not move that policy until the command
   owner boundary is extracted or represented through a runtime-neutral command

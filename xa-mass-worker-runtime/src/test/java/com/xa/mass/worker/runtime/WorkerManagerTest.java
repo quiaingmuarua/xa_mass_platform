@@ -1,4 +1,4 @@
-package com.xa.mass.engine.worker;
+package com.xa.mass.worker.runtime;
 
 import com.xa.mass.runtime.worker.AdapterNodeRecord;
 import com.xa.mass.runtime.worker.EventBinding;
@@ -17,13 +17,10 @@ import com.xa.mass.runtime.worker.WorkerCapabilityReport;
 import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;
 import com.xa.mass.runtime.worker.WorkerCapabilityReportStatus;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;
+import com.xa.mass.runtime.worker.WorkerRouteBucketPolicies;
 import com.xa.mass.runtime.worker.WorkerResourceRecord;
 import com.xa.mass.runtime.worker.WorkerTaskSelector;
-import com.xa.mass.engine.TestWorkerCandidateRows;
-import com.xa.mass.engine.strategy.WorkerTaskSelectorFactory;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
-import com.xa.mass.worker.runtime.WorkerCandidateIndex;
-import com.xa.mass.worker.runtime.WorkerRegistrySnapshot;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -700,7 +697,7 @@ public class WorkerManagerTest {
         addWorker(warm);
         Task task = task("demoApp", selector("pool-a"));
 
-        manager.recordWarmCandidate(workerTaskSelector(task), TestWorkerCandidateRows.from(warm));
+        manager.recordWarmCandidate(workerTaskSelector(task), workerCandidateRow(warm));
         WorkerCandidateBatch<WorkerCandidateRow> batch = manager.findWorkerCandidateBatch(workerTaskSelector(task), 1);
 
         assertEquals(List.of("w-warm"),
@@ -721,7 +718,7 @@ public class WorkerManagerTest {
         addWorker(target);
         addWorker(warm);
         Task task = task("demoApp", selector("pool-a"));
-        manager.recordWarmCandidate(workerTaskSelector(task), TestWorkerCandidateRows.from(warm));
+        manager.recordWarmCandidate(workerTaskSelector(task), workerCandidateRow(warm));
         task.setSharedConfig(sharedConfig(Map.of(
                 TaskSharedConfig.TARGET_WORKER_ID, "w-target-warm-suppressed"
         ), "pool-a"));
@@ -747,7 +744,7 @@ public class WorkerManagerTest {
         Task task = task("demoApp", sharedConfig(
                 Map.of(TaskSharedConfig.ROUTE_ATTRIBUTES, Map.of("region", "us")),
                 "pool-a"));
-        manager.recordWarmCandidate(workerTaskSelector(task), TestWorkerCandidateRows.from(staleWarm));
+        manager.recordWarmCandidate(workerTaskSelector(task), workerCandidateRow(staleWarm));
 
         Worker moved = worker("w-stale-warm-route", "pool-a");
         moved.setAttributes(Map.of("region", "eu"));
@@ -1122,7 +1119,35 @@ public class WorkerManagerTest {
     }
 
     private static WorkerTaskSelector workerTaskSelector(Task task) {
-        return WorkerTaskSelectorFactory.fromTask(task);
+        return new WorkerTaskSelector(
+                task == null ? null : task.getTid(),
+                TaskSharedConfig.workerGroupSelector(task),
+                TaskSharedConfig.adapterNodeId(task),
+                TaskSharedConfig.targetWorkerId(task),
+                java.util.Set.of(WorkerRouteBucketPolicies.approvedAttributePolicy(
+                                WorkerRouteBucketPolicies.STANDARD_APPROVED_ROUTE_ATTRIBUTES)
+                        .exactRouteBucketKeyForAttributes(TaskSharedConfig.routeAttributes(task)))
+        );
+    }
+
+    private static WorkerCandidateRow workerCandidateRow(Worker worker) {
+        return new WorkerCandidateRow(
+                worker.getWorkerId(),
+                worker.getStatus() == null ? null : worker.getStatus().name(),
+                worker.getAgentVersion(),
+                worker.getLastHeartbeat(),
+                worker.getSupportedProjects(),
+                worker.getSupportedEventCodes(),
+                worker.getWorkerGroupId(),
+                worker.getAdapterNodeId(),
+                worker.getAdapterId(),
+                worker.getOnlineStrategy(),
+                worker.getMaxConcurrentWork(),
+                worker.getAttributes(),
+                worker.getCreateTime(),
+                worker.getUpdateTime(),
+                worker.isAvailable()
+        );
     }
 
     private static Map<String, Object> selector(String... groupIds) {

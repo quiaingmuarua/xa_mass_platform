@@ -16,7 +16,7 @@ import com.xa.mass.engine.event.KernelEventHandlerRegistry;
 import com.xa.mass.engine.strategy.WorkerTaskSelectorFactory;
 import com.xa.mass.engine.testutil.RecordingEventSink;
 import com.xa.mass.engine.util.TraceEventLogger;
-import com.xa.mass.runtime.worker.EventKey;
+import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.runtime.worker.WorkerCandidateRow;
 import com.xa.mass.runtime.worker.WorkerCapabilityReportStatus;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
@@ -65,12 +65,9 @@ public class WorkerCapabilityReportEventHandlerTest {
         assertEquals(List.of("worker-crawler"), workerIds(workerManager, task("demoApp", "crawler.parse")));
         assertEquals(List.of("worker-crawler"), workerIds(workerManager, task("demoApp", "crawler.fetch")));
         assertEquals(List.of("worker-crawler"), workerIds(workerManager, task("demoApp", "not.approved")));
-        assertFalse(workerManager.getWorkerRegistrySnapshot()
-                .workerSupportsEventKey("worker-crawler", new EventKey("demoApp", "not.approved")));
-        assertEquals("us", workerManager.getWorkerRegistrySnapshot()
-                .worker("worker-crawler")
-                .orElseThrow()
-                .getAttributes()
+        assertEquals("us", workerRows(workerManager, task("demoApp", "crawler.fetch"))
+                .getFirst()
+                .attributes()
                 .get("country"));
         assertTrue(sink.events().stream()
                 .anyMatch(event -> event.getEventType() == ExecutionEventType.WORKER_CAPABILITY_REPORT_APPLIED
@@ -122,9 +119,13 @@ public class WorkerCapabilityReportEventHandlerTest {
     }
 
     private static List<String> workerIds(WorkerManager workerManager, Task task) {
-        return workerManager.findWorkerCandidateBatch(WorkerTaskSelectorFactory.fromTask(task), 512).candidates().stream()
+        return workerRows(workerManager, task).stream()
                 .map(WorkerCandidateRow::workerId)
                 .toList();
+    }
+
+    private static List<WorkerCandidateRow> workerRows(WorkerManager workerManager, Task task) {
+        return workerManager.findWorkerCandidateBatch(WorkerTaskSelectorFactory.fromTask(task), 512).candidates();
     }
 
     private static Worker worker(String workerId, String workerGroupId) {

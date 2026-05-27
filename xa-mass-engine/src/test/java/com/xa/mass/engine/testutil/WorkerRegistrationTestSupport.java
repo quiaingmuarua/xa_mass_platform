@@ -6,7 +6,7 @@ import com.xa.mass.runtime.worker.EventBinding;
 import com.xa.mass.runtime.worker.NodeGroupBindingRecord;
 import com.xa.mass.runtime.worker.WorkerGroupRecord;
 import com.xa.mass.runtime.worker.WorkerResourceRecord;
-import com.xa.mass.engine.worker.WorkerManager;
+import com.xa.mass.worker.runtime.WorkerManager;
 
 import java.util.LinkedHashSet;
 import java.util.List;

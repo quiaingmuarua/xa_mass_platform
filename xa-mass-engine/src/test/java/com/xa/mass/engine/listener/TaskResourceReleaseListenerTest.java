@@ -6,7 +6,7 @@ import com.xa.mass.engine.TaskWorkProjectionState.AttemptFinalReason;
 import com.xa.mass.engine.TaskWorkProjectionState.AttemptStatus;
 import com.xa.mass.engine.TaskWorkAttemptClosedEvent;
 import com.xa.mass.engine.TaskRuntimeMaintenancePort;
-import com.xa.mass.engine.worker.WorkerManager;
+import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.engine.assignment.AssignmentRefillDecision;
 import com.xa.mass.engine.resource.DefaultWorkerDispatchResourcePolicy;
 import com.xa.mass.engine.resource.WorkerDispatchResourceReleaser;

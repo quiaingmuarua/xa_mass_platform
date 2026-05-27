@@ -21,7 +21,7 @@ import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.strategy.RuleBasedTaskWorkerMatchingStrategy;
 import com.xa.mass.runtime.worker.AdapterNodeRecord;
 import com.xa.mass.runtime.worker.NodeGroupBindingRecord;
-import com.xa.mass.engine.worker.WorkerManager;
+import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.runtime.worker.WorkerGroupRecord;
 import com.xa.mass.runtime.worker.WorkerReachabilityView;
 import com.xa.mass.runtime.worker.WorkerResourceRecord;

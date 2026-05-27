@@ -13,7 +13,7 @@ import com.xa.mass.engine.WorkerControlRuntime;
 import com.xa.mass.engine.control.DefaultWorkerDispatchAvailabilityPolicy;
 import com.xa.mass.engine.control.WorkerControlService;
 import com.xa.mass.engine.control.WorkerDispatchAvailabilityPolicy;
-import com.xa.mass.engine.worker.WorkerManager;
+import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.runtime.worker.WorkerReachabilityView;
 import com.xa.mass.worker.runtime.WorkerStateProjectionOwner;
 import com.xa.mass.engine.command.WorkerCommandLifecycleOwner;

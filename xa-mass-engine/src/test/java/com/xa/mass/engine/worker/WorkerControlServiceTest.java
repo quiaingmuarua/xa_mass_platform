@@ -2,6 +2,8 @@ package com.xa.mass.engine.worker;
 
 import com.xa.mass.worker.runtime.WorkerStateProjectionOwner;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
+import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.command.WorkerCommandAcknowledgement;
 import com.xa.mass.engine.command.WorkerCommandDeliveryCoordinator;
@@ -11,9 +13,12 @@ import com.xa.mass.engine.command.WorkerCommandRequest;
 import com.xa.mass.engine.command.WorkerCommandStatus;
 import com.xa.mass.engine.control.WorkerControlService;
 import com.xa.mass.engine.control.WorkerDispatchAvailabilityPolicy;
+import com.xa.mass.engine.strategy.WorkerTaskSelectorFactory;
 import com.xa.mass.engine.testutil.RecordingEventSink;
 import com.xa.mass.engine.util.TraceEventLogger;
+import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.runtime.worker.WorkerCapabilityReport;
+import com.xa.mass.runtime.worker.WorkerCandidateRow;
 import com.xa.mass.runtime.worker.WorkerDispatchGateRuntime;
 import com.xa.mass.runtime.worker.WorkerStateProjection;
 import com.xa.mass.runtime.worker.WorkerStateReport;
@@ -86,10 +91,8 @@ public class WorkerControlServiceTest {
         assertEquals(1, service.workerCommandsForWorker("worker-1").size());
         assertEquals("DEGRADED", service.workerStateProjection("worker-1").orElseThrow().state());
         assertEquals(1, service.workerStateProjections().size());
-        assertEquals("us", workerManager.getWorkerRegistrySnapshot()
-                .worker("worker-1")
-                .orElseThrow()
-                .getAttributes()
+        assertEquals("us", candidateRow(workerManager, "group-1", "crawler.fetch")
+                .attributes()
                 .get("country"));
         sink.assertHasEvent(ExecutionEventType.WORKER_COMMAND_STATUS_TRANSITION, "commandId", "cmd-1");
         assertTrue(sink.eventsOfType(ExecutionEventType.WORKER_CAPABILITY_REPORT_APPLIED).stream()
@@ -453,5 +456,18 @@ public class WorkerControlServiceTest {
                 stateOwner,
                 policy,
                 traceEventLogger);
+    }
+
+    private static WorkerCandidateRow candidateRow(WorkerManager workerManager, String groupId, String eventCode) {
+        Task task = new Task();
+        task.setTid("task-" + eventCode);
+        task.setProject("demoApp");
+        task.setSharedConfig(Map.of(
+                TaskSharedConfig.WORKER_GROUP_ID, groupId,
+                TaskSharedConfig.SDK_METADATA, Map.of(TaskSharedConfig.SDK_EVENT_CODE, eventCode)
+        ));
+        return workerManager.findWorkerCandidateBatch(WorkerTaskSelectorFactory.fromTask(task), 512)
+                .candidates()
+                .getFirst();
     }
 }

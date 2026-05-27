@@ -7,7 +7,6 @@ import com.xa.mass.engine.model.WorkerMatchContextTest;
 import com.xa.mass.engine.strategy.RuleBasedTaskWorkerMatchingStrategyTest;
 import com.xa.mass.engine.strategy.WorkerSchedulingCandidateEnumeratorTest;
 import com.xa.mass.engine.worker.WorkerControlServiceTest;
-import com.xa.mass.engine.worker.WorkerManagerTest;
 import org.junit.platform.suite.api.SelectClasses;
 import org.junit.platform.suite.api.Suite;
 
@@ -24,7 +23,6 @@ import org.junit.platform.suite.api.Suite;
         TaskSchedulingGateAndTargetingTest.class,
         TaskDelayedAvailabilitySchedulingTest.class,
         TaskRuntimeRecoveryPortTest.class,
-        WorkerManagerTest.class,
         WorkerControlServiceTest.class,
         TaskResourceReleaseListenerTest.class,
         TaskAssignWorkerTest.class,

@@ -5,7 +5,7 @@ import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.TestWorkerCandidateRows;
-import com.xa.mass.engine.worker.WorkerManager;
+import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.runtime.worker.WorkerResourceRecord;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;

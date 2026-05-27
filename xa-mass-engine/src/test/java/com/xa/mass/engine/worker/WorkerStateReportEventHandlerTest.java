@@ -12,6 +12,7 @@ import com.xa.mass.engine.event.KernelEventHandlerRegistry;
 import com.xa.mass.engine.control.WorkerStateReportEventHandler;
 import com.xa.mass.engine.testutil.RecordingEventSink;
 import com.xa.mass.engine.util.TraceEventLogger;
+import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.runtime.worker.WorkerStateProjectionStatus;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.trace.sink.ExecutionEventType;
