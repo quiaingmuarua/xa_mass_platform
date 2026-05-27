@@ -1,5 +1,7 @@
 package com.xa.mass.engine;
 
+
+import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
@@ -60,7 +62,7 @@ final class TaskSchedulingTestHarness {
                 taskStorage,
                 new InMemoryTaskWorkRuntime()
         );
-        this.workerManager = new WorkerManager(new InMemoryWorkerStorage(), reachabilityView);
+        this.workerManager = new WorkerManager(new InMemoryWorkerStorage(), reachabilityView, new InMemoryWorkerRegistry());
         this.ruleManager = new RuleManager<>(new InMemoryRuleStorage());
         this.assignmentRecords = new AssignmentRecordService();
         this.dispatches = new ArrayList<>();

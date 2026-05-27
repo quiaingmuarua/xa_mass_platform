@@ -29,7 +29,6 @@ import com.xa.mass.runtime.worker.WorkerResourceRecord;
 import com.xa.mass.runtime.worker.WorkerResourceRuntime;
 import com.xa.mass.runtime.worker.WorkerSchedulingViewRuntime;
 import com.xa.mass.runtime.worker.WorkerTaskSelector;
-import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.storage.api.WorkerLookupStore;
 import com.xa.mass.storage.api.WorkerStorage;
 import org.slf4j.Logger;
@@ -37,6 +36,7 @@ import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
@@ -67,12 +67,9 @@ public class WorkerManager implements WorkerLookupStore,
     private volatile Runnable dispatchWakeupCallback = () -> {
     };
 
-    public WorkerManager(WorkerStorage workerStorage) {
-        this(workerStorage, WorkerReachabilityView.permissive());
-    }
-
-    public WorkerManager(WorkerStorage workerStorage, WorkerReachabilityView reachabilityView) {
-        this(workerStorage, reachabilityView, new WorkerCapabilityAuthority());
+    public WorkerManager(WorkerStorage workerStorage,
+                         WorkerRegistry workerRegistry) {
+        this(workerStorage, WorkerReachabilityView.permissive(), workerRegistry);
     }
 
     public WorkerManager(WorkerStorage workerStorage,
@@ -83,16 +80,10 @@ public class WorkerManager implements WorkerLookupStore,
 
     WorkerManager(WorkerStorage workerStorage,
                   WorkerReachabilityView reachabilityView,
-                  WorkerCapabilityAuthority capabilityAuthority) {
-        this(workerStorage, reachabilityView, capabilityAuthority, new InMemoryWorkerRegistry());
-    }
-
-    WorkerManager(WorkerStorage workerStorage,
-                  WorkerReachabilityView reachabilityView,
                   WorkerCapabilityAuthority capabilityAuthority,
                   WorkerRegistry workerRegistry) {
         this.reachabilityView = reachabilityView != null ? reachabilityView : WorkerReachabilityView.permissive();
-        this.workerRegistry = workerRegistry != null ? workerRegistry : new InMemoryWorkerRegistry();
+        this.workerRegistry = Objects.requireNonNull(workerRegistry, "workerRegistry");
         this.groupOwner = new WorkerGroupOwner(this.workerRegistry);
         this.candidateSourceOwner = new WorkerCandidateSourceOwner(this::getWorkerCandidateIndex);
         this.admissionOwner = new WorkerAdmissionOwner(this.workerRegistry);

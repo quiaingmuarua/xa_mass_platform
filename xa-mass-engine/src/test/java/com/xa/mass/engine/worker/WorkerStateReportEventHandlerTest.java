@@ -1,5 +1,7 @@
 package com.xa.mass.engine.worker;
 
+
+import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.command.event.CoreEventPrincipal;
 import com.xa.mass.command.event.CoreEventRequest;
 import com.xa.mass.command.event.CoreEventResponse;
@@ -94,7 +96,7 @@ public class WorkerStateReportEventHandlerTest {
     private static WorkerControlService workerControlService(WorkerStateProjectionOwner owner,
                                                              TraceEventLogger traceEventLogger) {
         return new WorkerControlService(
-                new WorkerManager(new InMemoryWorkerStorage()),
+                new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry()),
                 new WorkerCommandLifecycleOwner(),
                 owner,
                 traceEventLogger);

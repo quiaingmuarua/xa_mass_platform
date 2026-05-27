@@ -7,7 +7,8 @@ import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.engine.resource.DefaultWorkerDispatchResourcePolicy;
 import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
 import com.xa.mass.engine.worker.WorkerManager;
-import com.xa.mass.engine.worker.WorkerReachabilityState;
+import com.xa.mass.runtime.worker.WorkerCandidateRow;
+import com.xa.mass.runtime.worker.WorkerReachabilityState;
 
 final class PerfWorkerMatchingSupport {
 
@@ -36,10 +37,11 @@ final class PerfWorkerMatchingSupport {
 
     private static WorkerSchedulingCandidate candidate(WorkerManager workerManager, Worker worker) {
         String workerId = worker.getWorkerId();
+        WorkerCandidateRow candidateRow = candidateRow(worker);
         return new WorkerSchedulingCandidate(
-                worker,
+                candidateRow,
                 WorkerSchedulingView.from(
-                        worker,
+                        candidateRow,
                         workerManager.getWorkerReachability(workerId) == WorkerReachabilityState.UNKNOWN
                                 ? WorkerReachabilityState.ONLINE
                                 : workerManager.getWorkerReachability(workerId),
@@ -47,6 +49,26 @@ final class PerfWorkerMatchingSupport {
                         workerManager.hasWorkerExclusiveLease(workerId),
                         workerManager.getWorkerLoad(workerId)
                 )
+        );
+    }
+
+    private static WorkerCandidateRow candidateRow(Worker worker) {
+        return new WorkerCandidateRow(
+                worker.getWorkerId(),
+                worker.getStatus() == null ? null : worker.getStatus().name(),
+                worker.getAgentVersion(),
+                worker.getLastHeartbeat(),
+                worker.getSupportedProjects(),
+                worker.getSupportedEventCodes(),
+                worker.getWorkerGroupId(),
+                worker.getAdapterNodeId(),
+                worker.getAdapterId(),
+                worker.getOnlineStrategy(),
+                worker.getMaxConcurrentWork(),
+                worker.getAttributes(),
+                worker.getCreateTime(),
+                worker.getUpdateTime(),
+                worker.isAvailable()
         );
     }
 }

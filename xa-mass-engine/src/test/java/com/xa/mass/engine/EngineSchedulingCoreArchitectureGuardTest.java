@@ -1617,10 +1617,16 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 violations.add(runtimePath + " no longer implements WorkerRegistry");
             }
         }
+        for (Path path : javaSourceFiles(MAIN_SOURCE_ROOT)) {
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            if (source.contains("InMemoryWorkerRegistry")) {
+                violations.add(path + " depends on the memory WorkerRegistry implementation");
+            }
+        }
 
         assertTrue(violations.isEmpty(),
                 "The in-memory worker slot/index/admission implementation belongs in mass-runtime-memory. "
-                        + "Engine may assemble it but must not own its source:\n"
+                        + "SDK/server assembly may inject it, but engine main must not own or instantiate it:\n"
                         + String.join("\n", violations));
     }
 

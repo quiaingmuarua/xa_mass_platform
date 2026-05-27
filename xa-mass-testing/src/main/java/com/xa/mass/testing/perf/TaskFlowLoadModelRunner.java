@@ -1,5 +1,7 @@
 package com.xa.mass.testing.perf;
 
+
+import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.enums.worker.WorkerStatus;
@@ -22,7 +24,6 @@ import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
-import com.xa.mass.engine.worker.WorkerGroupRecord;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
@@ -38,6 +39,7 @@ import com.xa.mass.runtime.api.RuntimeResultApplyContext;
 import com.xa.mass.runtime.api.TaskWorkRuntimeStats;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.api.TaskResultRuntime;
+import com.xa.mass.runtime.worker.WorkerGroupRecord;
 import com.xa.mass.runtime.api.TaskResultCallbackDraft;
 import com.xa.mass.runtime.api.TaskResultFinalDraft;
 import com.xa.mass.runtime.api.TaskResultRepairCandidate;
@@ -141,7 +143,7 @@ public final class TaskFlowLoadModelRunner {
                 TaskAssignmentRuntimePort assignmentRuntimePort = engineConfig.getTaskAssignmentRuntimePort();
                 TaskRuntimeMaintenancePort maintenancePort = engineConfig.getTaskRuntimeMaintenancePort();
                 TaskRuntimeRecoveryPort recoveryPort = engineConfig.getTaskRuntimeRecoveryPort();
-                WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+                WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
                 AssignmentRecordService recordService = new AssignmentRecordService();
                 CallbackMetrics callbackMetrics = new CallbackMetrics();
                 ReleaseMetrics releaseMetrics = new ReleaseMetrics();

@@ -580,8 +580,8 @@ Progress:
   indexing lives in `mass-runtime-api` as runtime-neutral policy helpers.
 - Redis and memory worker registries now use the same runtime-api default
   route-bucket policy and shared worker registry contract tests.
-- Engine still assembles the memory implementation for the embedded default
-  path; that assembly dependency is expected until D1 cleanup.
+- SDK/server assembly injects the memory implementation for the embedded
+  default path; engine main consumes only the `WorkerRegistry` contract.
 
 Scope:
 

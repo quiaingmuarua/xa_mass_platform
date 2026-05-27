@@ -1,5 +1,7 @@
 package com.xa.mass.testing.perf;
 
+
+import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.enums.worker.WorkerStatus;
@@ -23,7 +25,6 @@ import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
-import com.xa.mass.engine.worker.WorkerGroupRecord;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
@@ -31,6 +32,7 @@ import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.engine.watchdog.RuntimeReadyDispatchPump;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
+import com.xa.mass.runtime.worker.WorkerGroupRecord;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.testing.support.TestingPaths;
 import com.xa.mass.testing.workerfault.WorkerFaultReportMetadata;
@@ -97,7 +99,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
             TaskAssignmentRuntimePort assignmentRuntimePort = engineConfig.getTaskAssignmentRuntimePort();
             TaskRuntimeMaintenancePort maintenancePort = engineConfig.getTaskRuntimeMaintenancePort();
             TaskRuntimeRecoveryPort recoveryPort = engineConfig.getTaskRuntimeRecoveryPort();
-            WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+            WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
             AssignmentRecordService recordService = new AssignmentRecordService();
             RetryTiming timing = new RetryTiming();
             ExecutorService bulkCallbackExecutor = Executors.newFixedThreadPool(config.bulkCallbackThreads(), r -> {

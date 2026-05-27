@@ -41,7 +41,7 @@ public class WorkerManagerTest {
 
     @BeforeEach
     void setUp() {
-        manager = new WorkerManager(new InMemoryWorkerStorage());
+        manager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
     }
 
     // ---- add / get ----
@@ -473,7 +473,7 @@ public class WorkerManagerTest {
         Worker worker = worker("worker-storage-direct", "us");
         worker.setMaxConcurrentWork(2);
         storage.addWorker(worker);
-        WorkerManager storageBackedManager = new WorkerManager(storage);
+        WorkerManager storageBackedManager = new WorkerManager(storage, new InMemoryWorkerRegistry());
 
         assertEquals(2, storageBackedManager.getWorkerLoad("worker-storage-direct").declaredCapacity());
         assertTrue(storageBackedManager.tryReserveWorkerCapacity("worker-storage-direct", "task-1"));
@@ -869,7 +869,7 @@ public class WorkerManagerTest {
     @Test
     void workerRegistrySnapshotCanBeRefreshedAfterDirectStorageMutation() {
         InMemoryWorkerStorage storage = new InMemoryWorkerStorage();
-        WorkerManager storageBackedManager = new WorkerManager(storage);
+        WorkerManager storageBackedManager = new WorkerManager(storage, new InMemoryWorkerRegistry());
         storageBackedManager.upsertWorkerGroup(WorkerGroupRecord.builder("crawler")
                 .eventBindings(List.of(EventBinding.of("crawler.fetch", List.of("demoApp"))))
                 .build());
@@ -1014,7 +1014,8 @@ public class WorkerManagerTest {
                     case "w-stale" -> WorkerReachabilityState.STALE;
                     case "w-offline" -> WorkerReachabilityState.OFFLINE;
                     default -> WorkerReachabilityState.UNKNOWN;
-                }
+                },
+                new InMemoryWorkerRegistry()
         );
         Worker onlineModelWorker = worker("w-online", "us");
         onlineModelWorker.setStatus(WorkerStatus.ONLINE);

@@ -1,5 +1,7 @@
 package com.xa.mass.engine.worker;
 
+
+import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.command.WorkerCommandAcknowledgement;
 import com.xa.mass.engine.command.WorkerCommandDeliveryCoordinator;
@@ -34,7 +36,7 @@ public class WorkerControlServiceTest {
 
     @Test
     void appliesOwnerBackedCommandCapabilityAndStateEntriesWithReadViews() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
         Worker worker = new Worker();
         worker.setWorkerId("worker-1");
         worker.setWorkerGroupId("group-1");
@@ -96,7 +98,7 @@ public class WorkerControlServiceTest {
 
     @Test
     void drainCommandFailureDoesNotReenableDispatchWithoutExplicitAvailableState() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
         Worker worker = new Worker();
         worker.setWorkerId("worker-2");
         worker.setWorkerGroupId("group-2");
@@ -139,7 +141,7 @@ public class WorkerControlServiceTest {
 
     @Test
     void dispatchWakeupFiresOnlyForSchedulingRecoveryEvidence() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
         Worker worker = new Worker();
         worker.setWorkerId("worker-wakeup");
         worker.setWorkerGroupId("group-wakeup");
@@ -182,7 +184,7 @@ public class WorkerControlServiceTest {
 
     @Test
     void dispatchAvailabilityPolicyIsPluggable() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
         Worker worker = new Worker();
         worker.setWorkerId("worker-3");
         worker.setWorkerGroupId("group-3");
@@ -238,7 +240,7 @@ public class WorkerControlServiceTest {
     @Test
     void unknownCommandTypeIsRejectedAtWorkerControlBoundary() {
         WorkerControlService service = new WorkerControlService(
-                new WorkerManager(new InMemoryWorkerStorage()),
+                new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry()),
                 new WorkerCommandLifecycleOwner(),
                 new WorkerStateProjectionOwner(),
                 TraceEventLogger.noop());
@@ -252,7 +254,7 @@ public class WorkerControlServiceTest {
 
     @Test
     void expiredDrainCommandDoesNotCreateOrClearCommandDispatchGate() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
         Worker worker = new Worker();
         worker.setWorkerId("worker-expiry");
         worker.setWorkerGroupId("group-expiry");
@@ -287,7 +289,7 @@ public class WorkerControlServiceTest {
     void requestCommandCanHandoffToConfiguredDeliveryCoordinatorAfterRecordingTruth() {
         WorkerCommandLifecycleOwner commandOwner = new WorkerCommandLifecycleOwner();
         WorkerControlService service = new WorkerControlService(
-                new WorkerManager(new InMemoryWorkerStorage()),
+                new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry()),
                 commandOwner,
                 new WorkerStateProjectionOwner(),
                 TraceEventLogger.noop());
@@ -312,7 +314,7 @@ public class WorkerControlServiceTest {
 
     @Test
     void acceptedRealtimeDrainHandoffAppliesCommandGatePolicy() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
         Worker worker = new Worker();
         worker.setWorkerId("worker-realtime-drain");
         worker.setWorkerGroupId("group-realtime-drain");
@@ -342,7 +344,7 @@ public class WorkerControlServiceTest {
     void maintenanceRetryAttemptsIndexedRequestedCommandsUntilDeliveryAccepted() {
         WorkerCommandLifecycleOwner commandOwner = new WorkerCommandLifecycleOwner();
         WorkerControlService service = new WorkerControlService(
-                new WorkerManager(new InMemoryWorkerStorage()),
+                new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry()),
                 commandOwner,
                 new WorkerStateProjectionOwner(),
                 TraceEventLogger.noop());
@@ -374,7 +376,7 @@ public class WorkerControlServiceTest {
     void maintenanceRetryClosesRequestedCommandAfterConfiguredMaxAttempts() {
         WorkerCommandLifecycleOwner commandOwner = new WorkerCommandLifecycleOwner();
         WorkerControlService service = new WorkerControlService(
-                new WorkerManager(new InMemoryWorkerStorage()),
+                new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry()),
                 commandOwner,
                 new WorkerStateProjectionOwner(),
                 TraceEventLogger.noop());
@@ -400,7 +402,7 @@ public class WorkerControlServiceTest {
 
     @Test
     void pollingClaimMarksDrainDeliveredAndDisablesCommandGate() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
         Worker worker = new Worker();
         worker.setWorkerId("worker-command-poll");
         worker.setWorkerGroupId("group-command-poll");

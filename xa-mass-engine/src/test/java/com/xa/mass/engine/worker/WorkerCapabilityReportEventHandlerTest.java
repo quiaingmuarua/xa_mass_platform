@@ -1,5 +1,7 @@
 package com.xa.mass.engine.worker;
 
+
+import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
@@ -30,7 +32,7 @@ public class WorkerCapabilityReportEventHandlerTest {
 
     @Test
     void capabilityReportEventRefreshesWorkerRegistrySnapshotThroughOwner() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
         Worker worker = worker("worker-crawler", "crawler");
         worker.setSupportedProjects(List.of("demoApp"));
         worker.setSupportedEventCodes(List.of("crawler.fetch", "crawler.parse"));
@@ -75,7 +77,7 @@ public class WorkerCapabilityReportEventHandlerTest {
 
     @Test
     void staleReportEventFailsWithoutChangingCandidateSnapshot() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
         Worker worker = worker("worker-crawler", "crawler");
         worker.setSupportedProjects(List.of("demoApp"));
         worker.setSupportedEventCodes(List.of("crawler.fetch", "crawler.parse"));

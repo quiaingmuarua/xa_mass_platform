@@ -1,5 +1,7 @@
 package com.xa.mass.engine.example;
 
+
+import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 import com.xa.mass.base.jsondsl.processor.GenerateProcessor;
 import com.xa.mass.base.jsondsl.processor.ProcessingContext;
@@ -33,7 +35,7 @@ public class EngineExample {
                 taskStorage,
                 new InMemoryTaskWorkRuntime());
         TaskCommandService taskCommands = new TaskCommandService(taskManager);
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
         log.info("taskManager:" + taskManager);
         log.info("workerManager:" + workerManager);
 

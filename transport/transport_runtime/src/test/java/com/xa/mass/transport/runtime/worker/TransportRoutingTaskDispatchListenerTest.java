@@ -1,5 +1,7 @@
 package com.xa.mass.transport.runtime.worker;
 
+
+import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
@@ -39,7 +41,7 @@ class TransportRoutingTaskDispatchListenerTest {
 
     @Test
     void routesDispatchByWorkerOnlineStrategy() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
 
         Worker webSocketWorker = new Worker();
         webSocketWorker.setWorkerId("ws-worker");
@@ -75,7 +77,7 @@ class TransportRoutingTaskDispatchListenerTest {
 
     @Test
     void routesDispatchByCanonicalTransportHintInsteadOfAdapterProtocolLabel() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
 
         Worker worker = new Worker();
         worker.setWorkerId("ws-worker");
@@ -101,7 +103,7 @@ class TransportRoutingTaskDispatchListenerTest {
 
     @Test
     void rejectsDispatchWhenWorkerTransportIsMissing() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
 
         Worker worker = new Worker();
         worker.setWorkerId("missing-transport-worker");
@@ -128,7 +130,7 @@ class TransportRoutingTaskDispatchListenerTest {
 
     @Test
     void rejectsDispatchWhenWorkerTransportIsUnsupported() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
 
         Worker worker = new Worker();
         worker.setWorkerId("unsupported-transport-worker");
@@ -156,7 +158,7 @@ class TransportRoutingTaskDispatchListenerTest {
 
     @Test
     void nonSuccessDispatchOutcomesDoNotMutateTaskMessageStatus() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
 
         Worker worker = new Worker();
         worker.setWorkerId("poll-worker");
@@ -183,7 +185,7 @@ class TransportRoutingTaskDispatchListenerTest {
 
     @Test
     void retryableDispatchOutcomesTriggerCompensationForMatchedBindings() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
 
         Worker worker = new Worker();
         worker.setWorkerId("poll-worker");
@@ -217,7 +219,7 @@ class TransportRoutingTaskDispatchListenerTest {
 
     @Test
     void runtimeOwnsEnvelopeIdentityAndCreatedTime() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
 
         Worker worker = new Worker();
         worker.setWorkerId("poll-worker");
@@ -246,7 +248,7 @@ class TransportRoutingTaskDispatchListenerTest {
 
     @Test
     void routeKeyComesFromTransportBindingResolverInsteadOfBeingHardcodedToWorkerId() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
 
         Worker worker = new Worker();
         worker.setWorkerId("poll-worker");
@@ -307,7 +309,7 @@ class TransportRoutingTaskDispatchListenerTest {
 
     @Test
     void dispatchesAdapterGroupsConcurrentlyWhenRuntimeExecutorIsAvailable() throws Exception {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
         workerManager.addWorker(worker("ws-worker", "websocket", WorkerTransportHints.REALTIME));
         workerManager.addWorker(worker("poll-worker", null, WorkerTransportHints.POLLING));
 
@@ -351,7 +353,7 @@ class TransportRoutingTaskDispatchListenerTest {
 
     @Test
     void adapterDispatchFailureBecomesRetryableOutcomeWithoutBlockingOtherGroups() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
         workerManager.addWorker(worker("ws-worker", "websocket", WorkerTransportHints.REALTIME));
         workerManager.addWorker(worker("poll-worker", null, WorkerTransportHints.POLLING));
 

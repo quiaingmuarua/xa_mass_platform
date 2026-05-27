@@ -1,5 +1,7 @@
 package com.xa.mass.engine.strategy;
 
+
+import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.TestWorkerCandidateRows;
@@ -18,7 +20,7 @@ public class WorkerSchedulingCandidateEnumeratorTest {
 
     @Test
     void createsWorkerLevelCandidateFromRoutingAttributes() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
         Worker worker = worker("worker-stateless", Map.of("routingTags", "shared,us", "country", "us"));
         workerManager.addWorker(worker);
 
@@ -36,7 +38,7 @@ public class WorkerSchedulingCandidateEnumeratorTest {
 
     @Test
     void enumerationBuildsWorkerLevelCandidateFromWorkerAttributes() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
         Worker worker = worker("worker-attribute-backed", Map.of("country", "worker-level"));
         workerManager.addWorker(worker);
 

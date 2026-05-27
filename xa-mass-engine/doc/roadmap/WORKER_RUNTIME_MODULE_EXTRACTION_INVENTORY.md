@@ -33,9 +33,9 @@ Candidate acquisition and task-local warm hints are now package-owned by
 boundary is still inside engine.
 
 `InMemoryWorkerRegistry` now lives in `platform_infra/mass-runtime-memory`.
-Engine still assembles it as the default embedded `WorkerRegistry`, but the
-slot/index/admission implementation source no longer lives in
-`com.xa.mass.engine.worker`.
+SDK/server assembly injects it as the default embedded `WorkerRegistry`; engine
+main consumes only the `WorkerRegistry` contract and no longer instantiates the
+memory implementation.
 Memory and Redis worker registries both consume runtime-api route-bucket policy
 helpers; Redis tests no longer depend on engine `WorkerRoutingPolicy`.
 
