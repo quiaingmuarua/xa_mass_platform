@@ -32,7 +32,11 @@ import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.engine.watchdog.RuntimeReadyDispatchPump;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
+import com.xa.mass.runtime.worker.WorkerAdmissionRuntime;
 import com.xa.mass.runtime.worker.WorkerGroupRecord;
+import com.xa.mass.runtime.worker.WorkerResourceRecord;
+import com.xa.mass.runtime.worker.WorkerResourceRuntime;
+import com.xa.mass.runtime.worker.WorkerSchedulingViewRuntime;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.testing.support.TestingPaths;
 import com.xa.mass.testing.workerfault.WorkerFaultReportMetadata;
@@ -151,6 +155,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
             TaskWorkerAssignListener workerAssignListener =
                     new TaskWorkerAssignListener(
                             matchingStrategy,
+                            workerManager,
                             workerManager,
                             dispatchBinder,
                             assignmentRuntimePort,
@@ -406,11 +411,15 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
     }
 
     private static final class LaneAwareMatchingStrategy implements TaskWorkerMatchingStrategy {
-        private final WorkerManager workerManager;
+        private final WorkerResourceRuntime workerResourceRuntime;
+        private final WorkerAdmissionRuntime workerAdmissionRuntime;
+        private final WorkerSchedulingViewRuntime workerSchedulingViewRuntime;
         private final int reservedInteractiveWorkers;
 
         private LaneAwareMatchingStrategy(WorkerManager workerManager, int reservedInteractiveWorkers) {
-            this.workerManager = workerManager;
+            this.workerResourceRuntime = workerManager;
+            this.workerAdmissionRuntime = workerManager;
+            this.workerSchedulingViewRuntime = workerManager;
             this.reservedInteractiveWorkers = Math.max(reservedInteractiveWorkers, 0);
         }
 
@@ -421,7 +430,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                 return List.of();
             }
             List<WorkerSchedulingCandidate> matched = new ArrayList<>();
-            for (Worker worker : workerManager.getAllWorkers()) {
+            for (WorkerResourceRecord worker : workerResourceRuntime.workers()) {
                 if (matched.size() >= maxWorkerCount) {
                     break;
                 }
@@ -429,13 +438,17 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                         && isReservedInteractiveWorker(worker)) {
                     continue;
                 }
-                if (!worker.isAvailable()
-                        || !workerGroupSelector.contains(worker.getWorkerGroupId())
-                        || !worker.supportsProject(task.getProject())) {
+                if (!PerfWorkerMatchingSupport.workerAvailable(worker)
+                        || !workerGroupSelector.contains(worker.workerGroupId())
+                        || !PerfWorkerMatchingSupport.supportsProject(worker, task.getProject())) {
                     continue;
                 }
                 WorkerSchedulingCandidate candidate =
-                        PerfWorkerMatchingSupport.tryReserveCandidate(workerManager, task, worker);
+                        PerfWorkerMatchingSupport.tryReserveCandidate(
+                                workerAdmissionRuntime,
+                                workerSchedulingViewRuntime,
+                                task,
+                                worker);
                 if (candidate != null) {
                     matched.add(candidate);
                 }
@@ -443,18 +456,18 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
             return matched;
         }
 
-        private boolean isReservedInteractiveWorker(Worker worker) {
-            if (reservedInteractiveWorkers <= 0 || worker == null || worker.getWorkerId() == null) {
+        private boolean isReservedInteractiveWorker(WorkerResourceRecord worker) {
+            if (reservedInteractiveWorkers <= 0 || worker == null || worker.workerId() == null) {
                 return false;
             }
-            String workerId = worker.getWorkerId();
+            String workerId = worker.workerId();
             int dash = workerId.lastIndexOf('-');
             if (dash < 0 || dash == workerId.length() - 1) {
                 return false;
             }
             try {
                 int workerIndex = Integer.parseInt(workerId.substring(dash + 1));
-                int totalWorkers = workerManager.getAllWorkers().size();
+                int totalWorkers = workerResourceRuntime.workers().size();
                 return workerIndex >= Math.max(totalWorkers - reservedInteractiveWorkers, 0);
             } catch (NumberFormatException ignored) {
                 return false;

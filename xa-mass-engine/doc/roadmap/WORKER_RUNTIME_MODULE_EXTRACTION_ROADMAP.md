@@ -684,6 +684,13 @@ Progress:
   `WorkerResourceRecord` instead of reading or mutating `WorkerStorage`
   directly. `WorkerStorage` remains a configurable control-plane row store
   behind the resource owner, not an SDK application dependency.
+- Perf runner deterministic matching support now consumes
+  `WorkerResourceRuntime`, `WorkerAdmissionRuntime`, and
+  `WorkerSchedulingViewRuntime` instead of the old model-shaped
+  `WorkerManager` helper methods. The runners still use `WorkerManager` for
+  local assembly, but their matching loops no longer depend on
+  `getAllWorkers()`, boolean reserve shortcuts, or `Worker`-shaped dispatch
+  gate reads.
 - Engine still assembles those owners through `WorkerManager`; match strategy
   and event handler parsing residue stays in engine for later slices.
 - SDK shell runtime bridge now accepts `WorkerResourceRuntime` for legacy

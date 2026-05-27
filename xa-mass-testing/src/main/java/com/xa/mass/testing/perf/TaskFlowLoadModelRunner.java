@@ -39,7 +39,11 @@ import com.xa.mass.runtime.api.RuntimeResultApplyContext;
 import com.xa.mass.runtime.api.TaskWorkRuntimeStats;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.api.TaskResultRuntime;
+import com.xa.mass.runtime.worker.WorkerAdmissionRuntime;
 import com.xa.mass.runtime.worker.WorkerGroupRecord;
+import com.xa.mass.runtime.worker.WorkerResourceRecord;
+import com.xa.mass.runtime.worker.WorkerResourceRuntime;
+import com.xa.mass.runtime.worker.WorkerSchedulingViewRuntime;
 import com.xa.mass.runtime.api.TaskResultCallbackDraft;
 import com.xa.mass.runtime.api.TaskResultFinalDraft;
 import com.xa.mass.runtime.api.TaskResultRepairCandidate;
@@ -268,6 +272,7 @@ public final class TaskFlowLoadModelRunner {
                 TaskWorkerAssignListener workerAssignListener =
                         new TaskWorkerAssignListener(
                                 matchingStrategy,
+                                workerManager,
                                 workerManager,
                                 dispatchBinder,
                                 assignmentRuntimePort,
@@ -591,10 +596,14 @@ public final class TaskFlowLoadModelRunner {
     }
 
     private static final class DeterministicMatchingStrategy implements TaskWorkerMatchingStrategy {
-        private final WorkerManager workerManager;
+        private final WorkerResourceRuntime workerResourceRuntime;
+        private final WorkerAdmissionRuntime workerAdmissionRuntime;
+        private final WorkerSchedulingViewRuntime workerSchedulingViewRuntime;
 
         private DeterministicMatchingStrategy(WorkerManager workerManager) {
-            this.workerManager = workerManager;
+            this.workerResourceRuntime = workerManager;
+            this.workerAdmissionRuntime = workerManager;
+            this.workerSchedulingViewRuntime = workerManager;
         }
 
         @Override
@@ -604,17 +613,21 @@ public final class TaskFlowLoadModelRunner {
                 return List.of();
             }
             List<WorkerSchedulingCandidate> matched = new ArrayList<>();
-            for (Worker worker : workerManager.getAllWorkers()) {
+            for (WorkerResourceRecord worker : workerResourceRuntime.workers()) {
                 if (matched.size() >= maxWorkerCount) {
                     break;
                 }
-                if (!worker.isAvailable()
-                        || !workerGroupSelector.contains(worker.getWorkerGroupId())
-                        || !worker.supportsProject(task.getProject())) {
+                if (!PerfWorkerMatchingSupport.workerAvailable(worker)
+                        || !workerGroupSelector.contains(worker.workerGroupId())
+                        || !PerfWorkerMatchingSupport.supportsProject(worker, task.getProject())) {
                     continue;
                 }
                 WorkerSchedulingCandidate candidate =
-                        PerfWorkerMatchingSupport.tryReserveCandidate(workerManager, task, worker);
+                        PerfWorkerMatchingSupport.tryReserveCandidate(
+                                workerAdmissionRuntime,
+                                workerSchedulingViewRuntime,
+                                task,
+                                worker);
                 if (candidate != null) {
                     matched.add(candidate);
                 }

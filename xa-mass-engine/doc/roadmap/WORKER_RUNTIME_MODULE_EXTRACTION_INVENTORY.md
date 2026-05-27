@@ -103,13 +103,19 @@ remains the historical event-routing target, not the mutation owner.
 Transport runtime dispatch routing now consumes `WorkerResourceRuntime` and
 runtime-neutral `WorkerResourceRecord` instead of `WorkerLookupStore` or
 mutable base `Worker` rows.
+Perf runner deterministic matching support still uses `WorkerManager` for
+local scenario assembly, but matching loops now consume
+`WorkerResourceRuntime`, `WorkerAdmissionRuntime`, and
+`WorkerSchedulingViewRuntime`. They no longer use the old model-shaped
+`getAllWorkers()`, boolean reserve shortcut, or `Worker`-shaped dispatch gate
+read paths.
 
 ## Public Method Inventory
 
 | Method group | Methods | Current callers | Target owner | Truth layer | Notes |
 | --- | --- | --- | --- | --- | --- |
 | Worker row mutation | `addWorker`, `updateWorker`, `deleteWorker` | SDK registration, SDK worker shell update, tests, server bootstrap through SDK | `WorkerResourceOwner` through `WorkerResourceRuntime` | control-plane storage plus derived runtime projection | Cross-module calls use runtime-neutral `WorkerResourceRecord`; engine-local compatibility overloads still accept `Worker` |
-| Worker row lookup | `worker`, `workers`, `getWorker`, `getAllWorkers` | SDK worker shell reads, SDK diagnostics, transport runtime, tests | `WorkerResourceOwner` through `WorkerResourceRuntime` | control-plane storage read | Runtime API exposes `worker` / `workers`; SDK and transport no longer read `WorkerStorage` directly for worker shell lookup; the separate `WorkerLookupStore` seam has been deleted |
+| Worker row lookup | `worker`, `workers`, `getWorker`, `getAllWorkers` | SDK worker shell reads, SDK diagnostics, tests | `WorkerResourceOwner` through `WorkerResourceRuntime` | control-plane storage read | Runtime API exposes `worker` / `workers`; SDK, transport, and perf matching loops no longer read `WorkerStorage` or model-shaped `WorkerManager` lookup helpers for worker shell/candidate lookup; the separate `WorkerLookupStore` seam has been deleted |
 | WorkerGroup mutation | `upsertWorkerGroup`, `deleteWorkerGroup` | SDK declaration, bootstrap, tests | `WorkerGroupOwner` through resource runtime | control-plane storage plus runtime candidate projection | `WorkerGroupRecord` / `EventBinding` are runtime-api declaration values; WorkerGroup remains capability declaration truth, not match strategy state |
 | WorkerGroup read | `workerGroup`, `workerGroupReadView`, `workerGroups` | SDK read APIs, candidate enumeration, tests | `WorkerGroupOwner` / scheduling-view runtime | control-plane read plus runtime read model | `workerGroupReadView` is used by scheduling candidate enumeration |
 | AdapterNode mutation | `registerAdapterNode`, `deleteAdapterNode` | SDK declaration, tests | `WorkerRelationshipOwner` through resource runtime | control-plane storage plus runtime projection | `AdapterNodeRecord` is a runtime-api declaration value; AdapterNode is endpoint/runtime-node declaration truth |
@@ -128,7 +134,7 @@ mutable base `Worker` rows.
 | Dispatch gate read | `isWorkerDispatchEnabled` | scheduling candidate enumeration, tests | `WorkerSchedulingViewRuntime` / `WorkerDispatchGateRuntime` | runtime state | Derived from source-scoped gates; scheduling consumes read evidence, control policies consume gate contract |
 | Dispatch gate mutation | `disableWorkerDispatch`, `clearWorkerDispatchDisable` | worker state report policy, node-group binding policy, tests | `WorkerDispatchGateRuntime` | runtime state | Source-scoped gate mutation; state/command policies no longer need the full `WorkerManager` surface |
 | Wakeup callback | `setDispatchWakeupCallback` | SDK engine assembly through `WorkerAvailabilityWakeupRuntime` | assembly residue | lifecycle wiring | Narrow runtime-api hook for availability evidence; not candidate truth or dispatch-gate truth |
-| Admission / occupancy | `reserveWorkerCapacity`, `confirmWorkerReservation`, `releaseWorkerReservation`, `recordWorkClaimed`, `recordWorkFinal` | match strategy, dispatch binder, resource releaser, result/resource listeners | `WorkerAdmissionOwner` through `WorkerAdmissionRuntime` | runtime state | Structured reserve is the strategy path; boolean reserve remains a `WorkerManager`-only internal helper |
+| Admission / occupancy | `reserveWorkerCapacity`, `confirmWorkerReservation`, `releaseWorkerReservation`, `recordWorkClaimed`, `recordWorkFinal` | match strategy, dispatch binder, resource releaser, result/resource listeners, perf runner matching support | `WorkerAdmissionOwner` through `WorkerAdmissionRuntime` | runtime state | Structured reserve is the strategy and perf-runner path; boolean reserve remains a test compatibility helper outside the extracted `WorkerAdmissionRuntime` contract |
 | Exclusive lease | `tryAcquireWorkerExclusiveLease`, `releaseWorkerExclusiveLease`, `hasWorkerExclusiveLease`, `getExclusiveLeaseWorkerIds` | match strategy, resource releaser, diagnostics, tests | `WorkerAdmissionOwner` through `WorkerAdmissionRuntime` | runtime state | Rename away from lock vocabulary only when owner move requires it |
 | Load / occupancy read | `getWorkerLoad`, `getActiveWorkerCountForTask` | match strategy, allocation policy caller, tests | `WorkerAdmissionOwner` / scheduling view runtime | runtime state | `WorkerLoadSnapshot` lives in `mass-runtime-api`; runtime load evidence, not control-plane truth |
 
@@ -173,6 +179,11 @@ worker relationship resources
   -> xa-mass-worker-runtime WorkerGroupOwner for WorkerGroup declarations
   -> xa-mass-worker-runtime WorkerRelationshipOwner
   -> WorkerRegistry source-scoped dispatch gates for binding availability
+
+perf runner deterministic matching support
+  -> WorkerResourceRuntime.workers()
+  -> WorkerAdmissionRuntime.reserveWorkerCapacity(...)
+  -> WorkerSchedulingViewRuntime for reachability, dispatch gate, lease, load, and group read evidence
 ```
 
 `RuleBasedTaskWorkerMatchingStrategy` now receives candidate acquisition,
@@ -227,9 +238,10 @@ recordWorkFinal(workerId, taskId)
 
 `reserveWorkerCapacity(workerId, taskId)` is the main strategy-facing path and
 returns the structured `ReserveResult` from the underlying `WorkerRegistry`.
-`tryReserveWorkerCapacity(workerId, taskId)` remains a `WorkerManager` boolean
-helper for older internal call sites and tests, but is not part of the extracted
-`WorkerAdmissionRuntime` contract.
+`tryReserveWorkerCapacity(workerId, taskId)` remains a boolean helper for tests
+of `WorkerAdmissionOwner` and `WorkerManager`, but is not part of the extracted
+`WorkerAdmissionRuntime` contract and is no longer used by perf matching
+support.
 
 The admission owner internally resolves `groupId` from the current worker slot,
 uses one permit for the current scheduling path, and passes the current clock to
