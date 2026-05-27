@@ -4,10 +4,6 @@ import com.xa.mass.runtime.worker.AdapterNodeRecord;
 import com.xa.mass.runtime.worker.NodeGroupBindingRecord;
 import com.xa.mass.runtime.worker.WorkerGroupRecord;
 
-import com.xa.mass.base.channel.eventbus.event.worker.WorkerHeartbeatEvent;
-import com.xa.mass.base.channel.eventbus.event.worker.WorkerOfflineEvent;
-import com.xa.mass.base.channel.eventbus.event.worker.WorkerOnlineEvent;
-import com.xa.mass.base.channel.eventbus.core.MassSubscribe;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
@@ -504,58 +500,4 @@ public class WorkerManager implements WorkerLookupStore,
         }
     }
 
-    /**
-     * Legacy observer for runtime worker system events. Reachability truth now
-     * lives in transport presence rather than the engine worker model.
-     */
-    public static class WorkerStatusEventListener {
-        private final WorkerManager workerManager;
-        private final Runnable dispatchWakeupCallback;
-
-        public WorkerStatusEventListener(WorkerManager workerManager) {
-            this(workerManager, null);
-        }
-
-        public WorkerStatusEventListener(WorkerManager workerManager, Runnable dispatchWakeupCallback) {
-            this.workerManager = workerManager;
-            this.dispatchWakeupCallback = dispatchWakeupCallback != null ? dispatchWakeupCallback : () -> {
-            };
-        }
-
-        @MassSubscribe
-        public void onWorkerOnline(WorkerOnlineEvent event) {
-            if (recordHeartbeat(event.getWorkerId())) {
-                notifyDispatchWakeup();
-            }
-        }
-
-        @MassSubscribe
-        public void onWorkerHeartbeat(WorkerHeartbeatEvent event) {
-            recordHeartbeat(event.getWorkerId());
-        }
-
-        @MassSubscribe
-        public void onWorkerOffline(WorkerOfflineEvent event) {
-            log.debug("Worker offline event observed for {}", event.getWorkerId());
-        }
-
-        private boolean recordHeartbeat(String workerId) {
-            Worker worker = workerManager.getWorker(workerId);
-            if (worker == null) {
-                log.debug("Ignoring heartbeat for unregistered worker {}", workerId);
-                return false;
-            }
-            worker.setLastHeartbeat(java.time.LocalDateTime.now());
-            workerManager.updateWorker(worker);
-            return true;
-        }
-
-        private void notifyDispatchWakeup() {
-            try {
-                dispatchWakeupCallback.run();
-            } catch (RuntimeException e) {
-                log.warn("Worker online dispatch wakeup callback failed", e);
-            }
-        }
-    }
 }

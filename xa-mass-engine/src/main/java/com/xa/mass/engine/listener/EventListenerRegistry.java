@@ -2,11 +2,12 @@ package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.channel.eventbus.core.EventBusFacade;
 import com.xa.mass.engine.worker.WorkerManager;
+import com.xa.mass.engine.worker.WorkerStatusEventListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 浜嬩欢鐩戝惉娉ㄥ唽涓績锛屽彧娉ㄥ唽Worker涓婁笅绾夸簨浠?
+ * Legacy runtime event-bus listener registration helpers.
  */
 public class EventListenerRegistry {
     private static final Logger log = LoggerFactory.getLogger(EventListenerRegistry.class);
@@ -14,21 +15,21 @@ public class EventListenerRegistry {
     private EventListenerRegistry() {
     }
 
-    public static WorkerManager.WorkerStatusEventListener registerWorkerStatusListeners(
+    public static WorkerStatusEventListener registerWorkerStatusListeners(
             EventBusFacade eventBus,
             WorkerManager workerManager
     ) {
         return registerWorkerStatusListeners(eventBus, workerManager, null);
     }
 
-    public static WorkerManager.WorkerStatusEventListener registerWorkerStatusListeners(
+    public static WorkerStatusEventListener registerWorkerStatusListeners(
             EventBusFacade eventBus,
             WorkerManager workerManager,
             Runnable dispatchWakeupCallback
     ) {
         log.info("registerWorkerStatusListeners: register worker status event listeners ...");
-        WorkerManager.WorkerStatusEventListener listener =
-                new WorkerManager.WorkerStatusEventListener(workerManager, dispatchWakeupCallback);
+        WorkerStatusEventListener listener =
+                new WorkerStatusEventListener(workerManager, dispatchWakeupCallback);
         eventBus.register(listener);
         return listener;
     }

@@ -529,6 +529,12 @@ Scope:
 6. Keep broad rename-only churn out of this slice unless the rename is required
    to make owner semantics visible for the next move.
 
+Progress:
+
+- Legacy runtime event-bus worker status listener was lifted out of
+  `WorkerManager` into a top-level engine worker listener. It remains engine
+  bridge wiring and does not create worker-runtime truth.
+
 Acceptance:
 
 1. Candidate source logic is no longer mixed with report projection code.

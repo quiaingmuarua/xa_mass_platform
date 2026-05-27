@@ -950,8 +950,8 @@ public class WorkerManagerTest {
     @Test
     void workerStatusEventListenerOnlyRefreshesHeartbeatAndLeavesModelStatusUntouched() {
         AtomicInteger wakeups = new AtomicInteger();
-        WorkerManager.WorkerStatusEventListener listener =
-                new WorkerManager.WorkerStatusEventListener(manager, wakeups::incrementAndGet);
+        WorkerStatusEventListener listener =
+                new WorkerStatusEventListener(manager, wakeups::incrementAndGet);
         manager.addWorker(worker("w9", "us"));
         manager.updateOnlineStatus("w9", false);
 
@@ -970,8 +970,8 @@ public class WorkerManagerTest {
     @Test
     void workerHeartbeatEventRefreshesLastHeartbeatWithoutChangingWorkerModelAvailability() {
         AtomicInteger wakeups = new AtomicInteger();
-        WorkerManager.WorkerStatusEventListener listener =
-                new WorkerManager.WorkerStatusEventListener(manager, wakeups::incrementAndGet);
+        WorkerStatusEventListener listener =
+                new WorkerStatusEventListener(manager, wakeups::incrementAndGet);
         manager.addWorker(worker("w10", "us"));
         manager.updateOnlineStatus("w10", false);
 

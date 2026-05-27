@@ -7,6 +7,7 @@ import com.xa.mass.base.channel.eventbus.event.task.TaskCreatedEvent;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.TaskEventListenerRegistrar;
 import com.xa.mass.engine.worker.WorkerManager;
+import com.xa.mass.engine.worker.WorkerStatusEventListener;
 import com.xa.mass.engine.listener.EventListenerRegistry;
 
 import java.util.Objects;
@@ -24,7 +25,7 @@ public final class RuntimeEventBusEngineBridge implements EngineRuntimeBridge {
     private final EventBusFacade<?> eventBus;
     private Consumer<Task> taskCreatedListener;
     private Consumer<Task> taskAssignedListener;
-    private WorkerManager.WorkerStatusEventListener workerStatusEventListener;
+    private WorkerStatusEventListener workerStatusEventListener;
     private TaskEventListenerRegistrar registeredEventListeners;
 
     private RuntimeEventBusEngineBridge(EventBusFacade<?> eventBus) {
