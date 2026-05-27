@@ -246,7 +246,7 @@ public class TaskWorkerAssignListenerTest {
         verify(workerManager).releaseWorkerExclusiveLease("worker-1");
         verify(workerManager, never()).recordWarmCandidate(
                 argThat((WorkerTaskSelector selector) -> "task-1".equals(selector.taskId())),
-                same(worker));
+                argThat((WorkerCandidateRow row) -> "worker-1".equals(row.workerId())));
         verify(assignmentRuntime, never()).updateTask(same(task));
     }
 

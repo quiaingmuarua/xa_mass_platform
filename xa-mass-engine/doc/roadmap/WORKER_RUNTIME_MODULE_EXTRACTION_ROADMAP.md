@@ -676,6 +676,10 @@ Progress:
   `WorkerResourceRecord` for worker registration identity. The separate
   `WorkerLookupStore` storage-edge seam has been deleted instead of preserved
   as a parallel lookup path.
+- WorkerManager candidate acquisition and warm-hint mutation no longer expose
+  Task-shaped or Worker-shaped convenience entry points. The remaining public
+  path is runtime-neutral `WorkerTaskSelector` / `WorkerCandidateRow`, matching
+  the worker-runtime contracts while WorkerManager remains the assembly owner.
 - Engine still assembles those owners through `WorkerManager`; match strategy
   and event handler parsing residue stays in engine for later slices.
 - SDK shell runtime bridge now accepts `WorkerResourceRuntime` for legacy

@@ -12,6 +12,7 @@ import com.xa.mass.engine.TestWorkerCandidateRows;
 import com.xa.mass.runtime.worker.EventBinding;
 import com.xa.mass.runtime.worker.WorkerGroupRecord;
 import com.xa.mass.engine.worker.WorkerManager;
+import com.xa.mass.engine.worker.WorkerTaskSelectorFactory;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;
 import com.xa.mass.runtime.worker.WorkerTaskSelector;
 import com.xa.mass.runtime.worker.WorkerCandidateBatch;
@@ -728,7 +729,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         registerWorker(workerManager, worker);
 
         Task task = backgroundTask("task-warm-diagnostics");
-        workerManager.recordWarmCandidate(task, worker);
+        workerManager.recordWarmCandidate(WorkerTaskSelectorFactory.fromTask(task), TestWorkerCandidateRows.from(worker));
         assertEquals(1, strategy.matchWorkers(task, 1).size());
 
         assertTrue(recordService.getRecordsByTaskId("task-warm-diagnostics").stream()

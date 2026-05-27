@@ -20,6 +20,8 @@ import com.xa.mass.runtime.worker.WorkerCapabilityReport;
 import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;
 import com.xa.mass.runtime.worker.WorkerCapabilityReportStatus;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;
+import com.xa.mass.runtime.worker.WorkerTaskSelector;
+import com.xa.mass.engine.TestWorkerCandidateRows;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.worker.runtime.WorkerCandidateIndex;
 import com.xa.mass.worker.runtime.WorkerRegistrySnapshot;
@@ -699,8 +701,8 @@ public class WorkerManagerTest {
         manager.addWorker(warm);
         Task task = task("demoApp", selector("pool-a"));
 
-        manager.recordWarmCandidate(task, warm);
-        WorkerCandidateBatch<WorkerCandidateRow> batch = manager.findWorkerCandidateBatch(task, 1);
+        manager.recordWarmCandidate(workerTaskSelector(task), TestWorkerCandidateRows.from(warm));
+        WorkerCandidateBatch<WorkerCandidateRow> batch = manager.findWorkerCandidateBatch(workerTaskSelector(task), 1);
 
         assertEquals(List.of("w-warm"),
                 batch.candidates().stream()
@@ -720,11 +722,11 @@ public class WorkerManagerTest {
         manager.addWorker(target);
         manager.addWorker(warm);
         Task task = task("demoApp", selector("pool-a"));
-        manager.recordWarmCandidate(task, warm);
+        manager.recordWarmCandidate(workerTaskSelector(task), TestWorkerCandidateRows.from(warm));
         task.setSharedConfig(sharedConfig(Map.of(
                 TaskSharedConfig.TARGET_WORKER_ID, "w-target-warm-suppressed"
         ), "pool-a"));
-        WorkerCandidateBatch<WorkerCandidateRow> batch = manager.findWorkerCandidateBatch(task, 1);
+        WorkerCandidateBatch<WorkerCandidateRow> batch = manager.findWorkerCandidateBatch(workerTaskSelector(task), 1);
 
         assertEquals(List.of("w-target-warm-suppressed"),
                 batch.candidates().stream()
@@ -746,12 +748,12 @@ public class WorkerManagerTest {
         Task task = task("demoApp", sharedConfig(
                 Map.of(TaskSharedConfig.ROUTE_ATTRIBUTES, Map.of("region", "us")),
                 "pool-a"));
-        manager.recordWarmCandidate(task, staleWarm);
+        manager.recordWarmCandidate(workerTaskSelector(task), TestWorkerCandidateRows.from(staleWarm));
 
         Worker moved = worker("w-stale-warm-route", "pool-a");
         moved.setAttributes(Map.of("region", "eu"));
         assertTrue(manager.updateWorker(moved));
-        WorkerCandidateBatch<WorkerCandidateRow> batch = manager.findWorkerCandidateBatch(task, 1);
+        WorkerCandidateBatch<WorkerCandidateRow> batch = manager.findWorkerCandidateBatch(workerTaskSelector(task), 1);
 
         assertEquals(List.of("w-stable-route"),
                 batch.candidates().stream()
@@ -1086,7 +1088,7 @@ public class WorkerManagerTest {
     }
 
     private List<WorkerCandidateRow> candidateRows(Task task) {
-        return manager.findWorkerCandidateBatch(task, 512).candidates();
+        return manager.findWorkerCandidateBatch(workerTaskSelector(task), 512).candidates();
     }
 
     private List<String> candidateIds(Task task) {
@@ -1094,7 +1096,7 @@ public class WorkerManagerTest {
     }
 
     private List<String> candidateIds(WorkerManager workerManager, Task task, int maxCandidateCount) {
-        return workerManager.findWorkerCandidateBatch(task, maxCandidateCount).candidates().stream()
+        return workerManager.findWorkerCandidateBatch(workerTaskSelector(task), maxCandidateCount).candidates().stream()
                 .map(WorkerCandidateRow::workerId)
                 .toList();
     }
@@ -1111,7 +1113,7 @@ public class WorkerManagerTest {
                 .toList();
     }
 
-    private static com.xa.mass.runtime.worker.WorkerTaskSelector workerTaskSelector(Task task) {
+    private static WorkerTaskSelector workerTaskSelector(Task task) {
         return WorkerTaskSelectorFactory.fromTask(task);
     }
 

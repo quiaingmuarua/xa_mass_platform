@@ -76,29 +76,6 @@ public final class WorkerCandidateSourceOwner {
                 coldCandidates.size(), warmSelection.sourceGuardRejectedCount());
     }
 
-    public void recordWarmCandidate(WorkerTaskSelector selector, Worker worker) {
-        String taskId = selector == null ? null : normalizeNullable(selector.taskId());
-        String workerId = worker == null ? null : normalizeNullable(worker.getWorkerId());
-        String groupId = worker == null ? null : normalizeNullable(worker.getWorkerGroupId());
-        if (taskId == null || workerId == null || groupId == null) {
-            return;
-        }
-        if (selector.targetsWorker()) {
-            return;
-        }
-        long nowMillis = System.currentTimeMillis();
-        for (String routeBucketKey : routeBucketKeysForTask(selector)) {
-            taskCandidateWarmPool.put(new TaskCandidateWarmPool.Entry(
-                    taskId,
-                    workerId,
-                    groupId,
-                    normalizeNullable(worker.getAdapterNodeId()),
-                    routeBucketKey,
-                    nowMillis
-            ));
-        }
-    }
-
     public void recordWarmCandidate(WorkerTaskSelector selector, WorkerCandidateRow candidate) {
         String taskId = selector == null ? null : normalizeNullable(selector.taskId());
         String workerId = candidate == null ? null : normalizeNullable(candidate.workerId());

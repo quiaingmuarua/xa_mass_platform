@@ -119,7 +119,7 @@ public class WorkerCapabilityReportEventHandlerTest {
     }
 
     private static List<String> workerIds(WorkerManager workerManager, Task task) {
-        return workerManager.findWorkerCandidateBatch(task, 512).candidates().stream()
+        return workerManager.findWorkerCandidateBatch(WorkerTaskSelectorFactory.fromTask(task), 512).candidates().stream()
                 .map(WorkerCandidateRow::workerId)
                 .toList();
     }

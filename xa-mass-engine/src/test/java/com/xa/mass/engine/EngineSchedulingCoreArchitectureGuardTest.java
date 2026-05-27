@@ -1308,6 +1308,28 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void workerManagerCandidateAndWarmHintSurfaceStaysRuntimeNeutral() throws IOException {
+        Path workerManagerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker/WorkerManager.java");
+        String source = Files.readString(workerManagerPath, StandardCharsets.UTF_8);
+
+        List<String> violations = new ArrayList<>();
+        if (Pattern.compile("\\bfindWorkerCandidateBatch\\s*\\(\\s*Task\\b").matcher(source).find()) {
+            violations.add(workerManagerPath + " exposes Task-shaped candidate acquisition");
+        }
+        if (Pattern.compile("\\brecordWarmCandidate\\s*\\([^)]*\\bTask\\b").matcher(source).find()) {
+            violations.add(workerManagerPath + " exposes Task-shaped warm hint mutation");
+        }
+        if (Pattern.compile("\\brecordWarmCandidate\\s*\\([^)]*\\bWorker\\b").matcher(source).find()) {
+            violations.add(workerManagerPath + " exposes Worker-shaped warm hint mutation");
+        }
+
+        assertTrue(violations.isEmpty(),
+                "WorkerManager is still assembly, but candidate acquisition and warm-hint entrypoints "
+                        + "must stay on runtime-neutral WorkerTaskSelector / WorkerCandidateRow shapes:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void ruleBasedMatchingDoesNotInferSchedulingViewRuntimeFromCandidateRuntime() throws IOException {
         Path strategyPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/strategy/RuleBasedTaskWorkerMatchingStrategy.java");

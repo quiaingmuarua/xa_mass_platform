@@ -5,7 +5,6 @@ import com.xa.mass.runtime.worker.NodeGroupBindingRecord;
 import com.xa.mass.runtime.worker.WorkerGroupRecord;
 
 import com.xa.mass.base.enums.worker.WorkerStatus;
-import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.DispatchAvailabilitySource;
 import com.xa.mass.runtime.worker.ReserveResult;
@@ -265,10 +264,6 @@ public class WorkerManager implements WorkerResourceRuntime,
         return relationshipOwner.setNodeGroupBindingDraining(adapterNodeId, groupId, draining);
     }
 
-    public WorkerCandidateBatch<WorkerCandidateRow> findWorkerCandidateBatch(Task task, int maxCandidateCount) {
-        return findWorkerCandidateBatch(WorkerTaskSelectorFactory.fromTask(task), maxCandidateCount);
-    }
-
     @Override
     public WorkerCandidateBatch<WorkerCandidateRow> findWorkerCandidateBatch(WorkerTaskSelector selector,
                                                                              int maxCandidateCount) {
@@ -283,14 +278,7 @@ public class WorkerManager implements WorkerResourceRuntime,
         return new WorkerCandidateIndex(workerRegistrySnapshot, workerRegistry);
     }
 
-    public void recordWarmCandidate(Task task, Worker worker) {
-        recordWarmCandidate(WorkerTaskSelectorFactory.fromTask(task), worker);
-    }
-
-    public void recordWarmCandidate(WorkerTaskSelector selector, Worker worker) {
-        candidateSourceOwner.recordWarmCandidate(selector, worker);
-    }
-
+    @Override
     public void recordWarmCandidate(WorkerTaskSelector selector, WorkerCandidateRow candidate) {
         candidateSourceOwner.recordWarmCandidate(selector, candidate);
     }
