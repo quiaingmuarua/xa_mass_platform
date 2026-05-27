@@ -10,6 +10,4 @@ import com.xa.mass.runtime.worker.WorkerTaskSelector;
 public interface WorkerCandidateRuntime {
 
     WorkerCandidateBatch<Worker> findWorkerCandidateBatch(WorkerTaskSelector selector, int maxCandidateCount);
-
-    void recordWarmCandidate(WorkerTaskSelector selector, Worker worker);
 }
