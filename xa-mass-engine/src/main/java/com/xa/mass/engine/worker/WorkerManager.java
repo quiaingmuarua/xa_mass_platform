@@ -20,7 +20,6 @@ import org.slf4j.LoggerFactory;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -51,7 +50,7 @@ public class WorkerManager implements WorkerLookupStore,
     private final WorkerReachabilityView reachabilityView;
     private final WorkerCapabilityAuthority capabilityAuthority;
     private final WorkerRegistry workerRegistry;
-    private final TaskCandidateWarmPool taskCandidateWarmPool = new TaskCandidateWarmPool();
+    private final WorkerCandidateSourceOwner candidateSourceOwner;
     private final Object workerRegistryLock = new Object();
     private final LinkedHashMap<String, WorkerGroupRecord> workerGroupsById = new LinkedHashMap<>();
     private final Object adapterNodeRegistryLock = new Object();
@@ -92,6 +91,7 @@ public class WorkerManager implements WorkerLookupStore,
         this.reachabilityView = reachabilityView != null ? reachabilityView : WorkerReachabilityView.permissive();
         this.capabilityAuthority = capabilityAuthority != null ? capabilityAuthority : new WorkerCapabilityAuthority();
         this.workerRegistry = workerRegistry != null ? workerRegistry : new InMemoryWorkerRegistry();
+        this.candidateSourceOwner = new WorkerCandidateSourceOwner(this::getWorkerCandidateIndex);
         for (Worker worker : workerStorage.getAllWorkers()) {
             upsertWorkerRegistrySlot(worker);
         }
@@ -385,11 +385,11 @@ public class WorkerManager implements WorkerLookupStore,
     }
 
     public List<Worker> findWorkerCandidates(WorkerTaskSelector selector) {
-        return findWorkerCandidates(selector, DEFAULT_DIAGNOSTIC_CANDIDATE_LIMIT);
+        return candidateSourceOwner.findWorkerCandidates(selector, DEFAULT_DIAGNOSTIC_CANDIDATE_LIMIT);
     }
 
     public List<Worker> findWorkerCandidates(WorkerTaskSelector selector, int maxCandidateCount) {
-        return findWorkerCandidateBatch(selector, maxCandidateCount).candidates();
+        return candidateSourceOwner.findWorkerCandidates(selector, maxCandidateCount);
     }
 
     public WorkerCandidateBatch findWorkerCandidateBatch(Task task, int maxCandidateCount) {
@@ -397,47 +397,7 @@ public class WorkerManager implements WorkerLookupStore,
     }
 
     public WorkerCandidateBatch findWorkerCandidateBatch(WorkerTaskSelector selector, int maxCandidateCount) {
-        if (selector == null) {
-            return WorkerCandidateBatch.empty();
-        }
-        if (!selector.targetsWorker() && maxCandidateCount <= 0) {
-            return WorkerCandidateBatch.empty();
-        }
-        int limit = !selector.targetsWorker()
-                ? Math.max(1, maxCandidateCount)
-                : 1;
-        WorkerCandidateIndex candidateIndex = getWorkerCandidateIndex();
-        if (selector.targetsWorker()) {
-            List<Worker> targetCandidates = candidateIndex.workersFor(selector, limit);
-            return new WorkerCandidateBatch(targetCandidates, 0, targetCandidates.size(), 0);
-        }
-        WarmCandidateSelection warmSelection = warmCandidatesFor(selector, candidateIndex, limit);
-        List<Worker> warmCandidates = warmSelection.candidates();
-        List<Worker> coldCandidates = candidateIndex.workersFor(selector, limit);
-        if (warmCandidates.isEmpty()) {
-            return new WorkerCandidateBatch(coldCandidates, 0, coldCandidates.size(),
-                    warmSelection.sourceGuardRejectedCount());
-        }
-        LinkedHashMap<String, Worker> deduped = new LinkedHashMap<>();
-        for (Worker worker : warmCandidates) {
-            if (worker != null && worker.getWorkerId() != null) {
-                deduped.put(worker.getWorkerId(), worker);
-            }
-            if (deduped.size() >= limit) {
-                return new WorkerCandidateBatch(List.copyOf(deduped.values()), warmCandidates.size(),
-                        coldCandidates.size(), warmSelection.sourceGuardRejectedCount());
-            }
-        }
-        for (Worker worker : coldCandidates) {
-            if (worker != null && worker.getWorkerId() != null) {
-                deduped.putIfAbsent(worker.getWorkerId(), worker);
-            }
-            if (deduped.size() >= limit) {
-                break;
-            }
-        }
-        return new WorkerCandidateBatch(List.copyOf(deduped.values()), warmCandidates.size(),
-                coldCandidates.size(), warmSelection.sourceGuardRejectedCount());
+        return candidateSourceOwner.findWorkerCandidateBatch(selector, maxCandidateCount);
     }
 
     public WorkerRegistrySnapshot getWorkerRegistrySnapshot() {
@@ -453,74 +413,11 @@ public class WorkerManager implements WorkerLookupStore,
     }
 
     public void recordWarmCandidate(WorkerTaskSelector selector, Worker worker) {
-        String taskId = selector == null ? null : normalizeNullable(selector.taskId());
-        String workerId = worker == null ? null : normalizeNullable(worker.getWorkerId());
-        String groupId = worker == null ? null : normalizeNullable(worker.getWorkerGroupId());
-        if (taskId == null || workerId == null || groupId == null) {
-            return;
-        }
-        if (selector.targetsWorker()) {
-            return;
-        }
-        long nowMillis = System.currentTimeMillis();
-        for (String routeBucketKey : routeBucketKeysForTask(selector)) {
-            taskCandidateWarmPool.put(new TaskCandidateWarmPool.Entry(
-                    taskId,
-                    workerId,
-                    groupId,
-                    normalizeNullable(worker.getAdapterNodeId()),
-                    routeBucketKey,
-                    nowMillis
-            ));
-        }
+        candidateSourceOwner.recordWarmCandidate(selector, worker);
     }
 
     int warmCandidateCount(String taskId) {
-        return taskCandidateWarmPool.sizeForTask(taskId);
-    }
-
-    private WarmCandidateSelection warmCandidatesFor(WorkerTaskSelector selector, WorkerCandidateIndex candidateIndex, int limit) {
-        String taskId = selector == null ? null : normalizeNullable(selector.taskId());
-        if (taskId == null || limit <= 0) {
-            return WarmCandidateSelection.empty();
-        }
-        List<Worker> workers = new ArrayList<>();
-        int rejected = 0;
-        for (TaskCandidateWarmPool.Entry entry : taskCandidateWarmPool.sample(
-                taskId,
-                System.currentTimeMillis(),
-                limit
-        )) {
-            WorkerCandidateIndex.SourceGuardResult guardResult = candidateIndex.sourceGuard(
-                    selector,
-                    entry.observedGroupId(),
-                    entry.observedAdapterNodeId(),
-                    entry.observedRouteBucketKey(),
-                    entry.workerId()
-            );
-            if (guardResult.accepted()) {
-                guardResult.worker().ifPresent(workers::add);
-            } else {
-                rejected++;
-                taskCandidateWarmPool.remove(entry);
-            }
-        }
-        return new WarmCandidateSelection(List.copyOf(workers), rejected);
-    }
-
-    private Set<String> routeBucketKeysForTask(WorkerTaskSelector selector) {
-        return selector == null ? Set.of(WorkerRoutingPolicy.DEFAULT_ROUTE_BUCKET_KEY) : selector.routeBucketKeys();
-    }
-
-    private record WarmCandidateSelection(List<Worker> candidates, int sourceGuardRejectedCount) {
-        private WarmCandidateSelection {
-            candidates = candidates == null ? List.of() : List.copyOf(candidates);
-            sourceGuardRejectedCount = Math.max(0, sourceGuardRejectedCount);
-        }
-
-        static WarmCandidateSelection empty() {
-            return new WarmCandidateSelection(List.of(), 0);
-        }
+        return candidateSourceOwner.warmCandidateCount(taskId);
     }
 
     public void refreshWorkerRegistrySnapshot() {

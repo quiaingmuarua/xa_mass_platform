@@ -27,6 +27,9 @@ Current first-slice contract split inside `com.xa.mass.engine.worker`:
 `WorkerCandidateRuntime` now accepts `WorkerTaskSelector`, not `Task`. The
 engine adapts `Task.sharedConfig` to selector evidence through
 `WorkerTaskSelectorFactory` before crossing the candidate-source contract.
+Candidate acquisition and task-local warm hints are now package-owned by
+`WorkerCandidateSourceOwner`; `WorkerManager` delegates to it while the module
+boundary is still inside engine.
 
 ## Public Method Inventory
 
@@ -41,7 +44,7 @@ engine adapts `Task.sharedConfig` to selector evidence through
 | NodeGroupBinding mutation | `bindNodeGroup`, `unbindNodeGroup`, `setNodeGroupBindingEnabled`, `setNodeGroupBindingDraining` | SDK declaration/control, tests | worker resource write path plus dispatch-gate effect | control-plane declaration plus runtime dispatch gate | Enabled/draining effects mutate source-scoped dispatch gates |
 | NodeGroupBinding read | `nodeGroupBinding`, `nodeGroupBindings`, `groupIdsByAdapterNodeId`, `adapterNodeIdsByGroupId` | SDK read APIs, tests, routing diagnostics | resource read path | control-plane read / runtime read model | Candidate source may consume relation evidence but not own declaration truth |
 | Candidate source | `findWorkerCandidates`, `findWorkerCandidateBatch`, `getWorkerCandidateIndex` | `RuleBasedTaskWorkerMatchingStrategy`, tests | `WorkerCandidateRuntime` | runtime state | Must start from resolved WorkerGroup selector; no all-worker candidate scan |
-| Warm hints | `recordWarmCandidate` | `TaskWorkerAssignListener`, strategy tests | `WorkerCandidateRuntime` | runtime state | Engine triggers after useful assignment evidence; runtime owns hint storage/revalidation |
+| Warm hints | `recordWarmCandidate` | `TaskWorkerAssignListener`, strategy tests | `WorkerCandidateSourceOwner` through `WorkerCandidateRuntime` | runtime state | Engine triggers after useful assignment evidence; runtime owns hint storage/revalidation |
 | Snapshot maintenance | `refreshWorkerRegistrySnapshot`, `getWorkerRegistrySnapshot` | tests, diagnostics, capability report path | candidate/resource read model residue | runtime read model residue | Delete or narrow after runtime DTOs replace snapshot callers |
 | Capability report | `applyWorkerCapabilityReport` | `WorkerControlService`, event handlers, SDK | `WorkerReportRuntime` | resource mutation plus runtime projection | Capability truth materializes into WorkerGroup/snapshot evidence |
 | Online model status | `updateOnlineStatus`, `isWorkerOnline` | legacy event bridge, tests | compatibility/resource status path | control-plane row plus transport reachability residue | Transport presence remains reachability owner |

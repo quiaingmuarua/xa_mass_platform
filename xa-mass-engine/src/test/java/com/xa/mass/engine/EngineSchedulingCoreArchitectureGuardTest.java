@@ -1016,7 +1016,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
         if (!Pattern.compile("\\.findWorkerCandidateBatch\\s*\\(").matcher(source).find()
                 && !Pattern.compile("\\.findWorkerCandidates\\s*\\(").matcher(source).find()) {
-            violations.add(strategyPath + " does not consume WorkerManager candidate-source API");
+            violations.add(strategyPath + " does not consume WorkerCandidateRuntime candidate-source API");
         }
 
         assertTrue(violations.isEmpty(),
@@ -1030,18 +1030,22 @@ class EngineSchedulingCoreArchitectureGuardTest {
     void workerManagerDoesNotUseWorkerLevelEventStorageIndexForEventCandidateSource() throws IOException {
         Path workerManagerPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/worker/WorkerManager.java");
-        String source = Files.readString(workerManagerPath, StandardCharsets.UTF_8);
+        Path candidateSourceOwnerPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/worker/WorkerCandidateSourceOwner.java");
+        String source = Files.readString(workerManagerPath, StandardCharsets.UTF_8)
+                + "\n"
+                + Files.readString(candidateSourceOwnerPath, StandardCharsets.UTF_8);
 
         List<String> violations = new ArrayList<>();
         if (Pattern.compile("\\.getWorkersBySupportedEventCode\\s*\\(").matcher(source).find()) {
-            violations.add(workerManagerPath + " calls worker-level supported-event storage index");
+            violations.add("worker candidate source calls worker-level supported-event storage index");
         }
         if (Pattern.compile("\\.getWorkersBySupportedProject\\s*\\(").matcher(source).find()) {
-            violations.add(workerManagerPath + " calls worker-level supported-project storage index");
+            violations.add("worker candidate source calls worker-level supported-project storage index");
         }
         if (!Pattern.compile("\\bWorkerCandidateIndex\\b").matcher(source).find()
                 || !Pattern.compile("\\.workersFor\\s*\\(").matcher(source).find()) {
-            violations.add(workerManagerPath + " does not use WorkerCandidateIndex for indexed candidate lookup");
+            violations.add(candidateSourceOwnerPath + " does not use WorkerCandidateIndex for indexed candidate lookup");
         }
 
         assertTrue(violations.isEmpty(),
