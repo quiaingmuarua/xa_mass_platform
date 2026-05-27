@@ -20,6 +20,7 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -45,6 +46,7 @@ public class WorkerManager implements WorkerLookupStore {
     private final WorkerReachabilityView reachabilityView;
     private final WorkerCapabilityAuthority capabilityAuthority;
     private final WorkerRegistry workerRegistry;
+    private final TaskCandidateWarmPool taskCandidateWarmPool = new TaskCandidateWarmPool();
     private final Object workerRegistryLock = new Object();
     private final LinkedHashMap<String, WorkerGroupRecord> workerGroupsById = new LinkedHashMap<>();
     private final Object adapterNodeRegistryLock = new Object();
@@ -381,7 +383,33 @@ public class WorkerManager implements WorkerLookupStore {
         int limit = targetWorkerId == null
                 ? Math.max(1, maxCandidateCount)
                 : 1;
-        return getWorkerCandidateIndex().workersFor(task, limit);
+        WorkerCandidateIndex candidateIndex = getWorkerCandidateIndex();
+        if (targetWorkerId != null) {
+            return candidateIndex.workersFor(task, limit);
+        }
+        List<Worker> warmCandidates = warmCandidatesFor(task, candidateIndex, limit);
+        List<Worker> coldCandidates = candidateIndex.workersFor(task, limit);
+        if (warmCandidates.isEmpty()) {
+            return coldCandidates;
+        }
+        LinkedHashMap<String, Worker> deduped = new LinkedHashMap<>();
+        for (Worker worker : warmCandidates) {
+            if (worker != null && worker.getWorkerId() != null) {
+                deduped.put(worker.getWorkerId(), worker);
+            }
+            if (deduped.size() >= limit) {
+                return List.copyOf(deduped.values());
+            }
+        }
+        for (Worker worker : coldCandidates) {
+            if (worker != null && worker.getWorkerId() != null) {
+                deduped.putIfAbsent(worker.getWorkerId(), worker);
+            }
+            if (deduped.size() >= limit) {
+                break;
+            }
+        }
+        return List.copyOf(deduped.values());
     }
 
     public WorkerRegistrySnapshot getWorkerRegistrySnapshot() {
@@ -390,6 +418,68 @@ public class WorkerManager implements WorkerLookupStore {
 
     public WorkerCandidateIndex getWorkerCandidateIndex() {
         return new WorkerCandidateIndex(workerRegistrySnapshot, workerRegistry);
+    }
+
+    public void recordWarmCandidate(Task task, Worker worker) {
+        String taskId = task == null ? null : normalizeNullable(task.getTid());
+        String workerId = worker == null ? null : normalizeNullable(worker.getWorkerId());
+        String groupId = worker == null ? null : normalizeNullable(worker.getWorkerGroupId());
+        if (taskId == null || workerId == null || groupId == null) {
+            return;
+        }
+        if (TaskSharedConfig.targetWorkerId(task) != null) {
+            return;
+        }
+        long nowMillis = System.currentTimeMillis();
+        for (String routeBucketKey : routeBucketKeysForTask(task)) {
+            taskCandidateWarmPool.put(new TaskCandidateWarmPool.Entry(
+                    taskId,
+                    workerId,
+                    groupId,
+                    normalizeNullable(worker.getAdapterNodeId()),
+                    routeBucketKey,
+                    nowMillis
+            ));
+        }
+    }
+
+    int warmCandidateCount(String taskId) {
+        return taskCandidateWarmPool.sizeForTask(taskId);
+    }
+
+    private List<Worker> warmCandidatesFor(Task task, WorkerCandidateIndex candidateIndex, int limit) {
+        String taskId = task == null ? null : normalizeNullable(task.getTid());
+        if (taskId == null || limit <= 0) {
+            return List.of();
+        }
+        List<Worker> workers = new ArrayList<>();
+        for (TaskCandidateWarmPool.Entry entry : taskCandidateWarmPool.sample(
+                taskId,
+                System.currentTimeMillis(),
+                limit
+        )) {
+            WorkerCandidateIndex.SourceGuardResult guardResult = candidateIndex.sourceGuard(
+                    task,
+                    entry.observedGroupId(),
+                    entry.observedAdapterNodeId(),
+                    entry.observedRouteBucketKey(),
+                    entry.workerId()
+            );
+            if (guardResult.accepted()) {
+                guardResult.worker().ifPresent(workers::add);
+            } else {
+                taskCandidateWarmPool.remove(entry);
+            }
+        }
+        return List.copyOf(workers);
+    }
+
+    private Set<String> routeBucketKeysForTask(Task task) {
+        Set<String> routeBucketKeys = WorkerRoutingPolicy.defaultPolicy().routeBucketKeysForTask(task);
+        if (routeBucketKeys == null || routeBucketKeys.isEmpty()) {
+            return Set.of(WorkerRoutingPolicy.DEFAULT_ROUTE_BUCKET_KEY);
+        }
+        return routeBucketKeys;
     }
 
     public void refreshWorkerRegistrySnapshot() {

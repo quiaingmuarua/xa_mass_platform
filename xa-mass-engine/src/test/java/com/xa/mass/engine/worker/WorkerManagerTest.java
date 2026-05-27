@@ -14,6 +14,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -686,6 +687,68 @@ public class WorkerManagerTest {
     }
 
     @Test
+    void warmCandidateHintIsPreferredBeforeColdSourceFill() {
+        declareProjectGroup("pool-a", "demoApp");
+        Worker coldFirst = worker("w-cold-first", "pool-a");
+        Worker warm = worker("w-warm", "pool-a");
+        manager.addWorker(coldFirst);
+        manager.addWorker(warm);
+        Task task = task("demoApp", selector("pool-a"));
+
+        manager.recordWarmCandidate(task, warm);
+
+        assertEquals(List.of("w-warm"),
+                manager.findWorkerCandidates(task, 1).stream()
+                        .map(Worker::getWorkerId)
+                        .toList());
+        assertEquals(1, manager.warmCandidateCount(task.getTid()));
+    }
+
+    @Test
+    void targetWorkerLookupIgnoresWarmCandidateHints() {
+        declareProjectGroup("pool-a", "demoApp");
+        Worker target = worker("w-target-warm-suppressed", "pool-a");
+        Worker warm = worker("w-warm-suppressed", "pool-a");
+        manager.addWorker(target);
+        manager.addWorker(warm);
+        Task task = task("demoApp", selector("pool-a"));
+        manager.recordWarmCandidate(task, warm);
+        task.setSharedConfig(sharedConfig(Map.of(
+                TaskSharedConfig.TARGET_WORKER_ID, "w-target-warm-suppressed"
+        ), "pool-a"));
+
+        assertEquals(List.of("w-target-warm-suppressed"),
+                manager.findWorkerCandidates(task, 1).stream()
+                        .map(Worker::getWorkerId)
+                        .toList());
+    }
+
+    @Test
+    void staleWarmRouteEvidenceFallsBackToColdCandidateSource() {
+        declareProjectGroup("pool-a", "demoApp");
+        Worker stable = worker("w-stable-route", "pool-a");
+        stable.setAttributes(Map.of("region", "us"));
+        Worker staleWarm = worker("w-stale-warm-route", "pool-a");
+        staleWarm.setAttributes(Map.of("region", "us"));
+        manager.addWorker(stable);
+        manager.addWorker(staleWarm);
+        Task task = task("demoApp", sharedConfig(
+                Map.of(TaskSharedConfig.ROUTE_ATTRIBUTES, Map.of("region", "us")),
+                "pool-a"));
+        manager.recordWarmCandidate(task, staleWarm);
+
+        Worker moved = worker("w-stale-warm-route", "pool-a");
+        moved.setAttributes(Map.of("region", "eu"));
+        assertTrue(manager.updateWorker(moved));
+
+        assertEquals(List.of("w-stable-route"),
+                manager.findWorkerCandidates(task, 1).stream()
+                        .map(Worker::getWorkerId)
+                        .toList());
+        assertEquals(0, manager.warmCandidateCount(task.getTid()));
+    }
+
+    @Test
     void workerRegistrySnapshotPublicationSwapsPointInTimeSnapshotReference() {
         WorkerRegistrySnapshot before = manager.getWorkerRegistrySnapshot();
         declareEventGroup("crawler", "demoApp", "crawler.fetch");
@@ -1010,6 +1073,7 @@ public class WorkerManagerTest {
         w.setWorkerId(id);
         w.setWorkerGroupId(workerGroupId);
         w.setStatus(WorkerStatus.ONLINE);
+        w.setLastHeartbeat(LocalDateTime.now());
         return w;
     }
 

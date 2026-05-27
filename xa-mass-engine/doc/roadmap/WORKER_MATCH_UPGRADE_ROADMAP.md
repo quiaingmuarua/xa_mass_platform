@@ -1,7 +1,8 @@
 # Worker Match Upgrade Roadmap
 
-Status: active implementation; Slice 0A/0B first slices are implemented and
-Slice 1 source-guard first slice is implemented.
+Status: active implementation; Slice 0A/0B, Slice 1 source-guard, Slice 2,
+Slice 3 policy seam, Slice 4 measurement, and Slice 5 warm-hint first slices
+are implemented.
 
 This roadmap continues from
 [`TRANSPORT_WORKER_MATCH_SPINE_ROADMAP.md`](../../../transport/TRANSPORT_WORKER_MATCH_SPINE_ROADMAP.md)
@@ -549,6 +550,13 @@ Landed first slice:
 Goal: add a task-local warm candidate hint after the match boundary and registry
 cleanup work are stable.
 
+Status: first slice implemented. `TaskCandidateWarmPool` is bounded task-local
+hint state only. `WorkerManager` rehydrates warm entries through
+`WorkerCandidateIndex.sourceGuard(...)`, dedupes warm and cold candidates, and
+falls back to the normal cold candidate source. The matching strategy records
+warm hints only after a candidate has passed Stage-2 policy and reserve/lock
+admission. `targetWorkerId` tasks skip warm sampling.
+
 Warm pool is a pre-Stage-2 candidate priority hint. It can prefer candidates
 that recently passed this task's source/admission path, but it is not a new
 matching truth, not route-bucket membership truth, and not an eligibility /
@@ -596,7 +604,9 @@ Acceptance:
    rejected by source guard before Stage-2.
 3. `targetWorkerId` direct lookup is not suppressed by warm entries.
 4. Empty, stale, or dropped warm state degrades to normal cold candidate source.
-5. Assignment diagnostics show warm/cold counts and source-guard rejections.
+5. Assignment diagnostics show warm/cold counts and source-guard rejections in
+   a later diagnostics slice; first slice keeps warm state internal and
+   source-guarded.
 6. Warm pool does not hold reservations, locks, leases, or dispatch truth.
 7. Runtime dispatch pump and lane-driven assignment can touch warm state safely.
 8. Source guard is exposed through a match/source owner API; matching code does

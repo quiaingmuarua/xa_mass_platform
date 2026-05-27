@@ -848,6 +848,36 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void taskCandidateWarmPoolDoesNotOwnEligibilityReserveOrDispatchTruth() throws IOException {
+        Path warmPoolPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/worker/TaskCandidateWarmPool.java");
+        String source = Files.readString(warmPoolPath, StandardCharsets.UTF_8);
+
+        Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
+                Map.entry("rule evaluation", Pattern.compile("\\bRuleManager\\b|\\bevaluateRules\\b|\\bRuleEvaluation\\b")),
+                Map.entry("worker reserve", Pattern.compile("\\btryReserve\\b|\\bconfirmReservation\\b")),
+                Map.entry("worker release/final", Pattern.compile("\\breleaseReservation\\b|\\brecordWorkFinal\\b")),
+                Map.entry("dispatch runtime", Pattern.compile("\\bTaskWorkRuntime\\b|\\bTaskResultRuntime\\b|\\bTaskDispatch\\b")),
+                Map.entry("route bucket acquisition", Pattern.compile("\\bacquireCandidates\\s*\\(")),
+                Map.entry("worker slot truth", Pattern.compile("\\bWorkerSlot\\b|\\bWorkerRegistry\\b"))
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Map.Entry<String, Pattern> forbiddenPattern : forbiddenPatterns.entrySet()) {
+            if (forbiddenPattern.getValue().matcher(source).find()) {
+                violations.add(warmPoolPath + " owns forbidden warm-hint responsibility: "
+                        + forbiddenPattern.getKey());
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "TaskCandidateWarmPool is only bounded task-local source evidence. "
+                        + "It must not own rule evaluation, worker registry truth, reserve/release, "
+                        + "or dispatch/result runtime state:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void matchingMainlineDoesNotOwnWorkerGroupIndexLookup() throws IOException {
         Path strategyRoot = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/strategy");
         Pattern workerRegistrySnapshot = Pattern.compile("\\bWorkerRegistrySnapshot\\b");
@@ -1008,7 +1038,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
         if (Pattern.compile("\\.getWorkersBySupportedProject\\s*\\(").matcher(source).find()) {
             violations.add(workerManagerPath + " calls worker-level supported-project storage index");
         }
-        if (!Pattern.compile("\\bgetWorkerCandidateIndex\\s*\\(\\)\\.workersFor\\s*\\(").matcher(source).find()) {
+        if (!Pattern.compile("\\bWorkerCandidateIndex\\b").matcher(source).find()
+                || !Pattern.compile("\\.workersFor\\s*\\(").matcher(source).find()) {
             violations.add(workerManagerPath + " does not use WorkerCandidateIndex for indexed candidate lookup");
         }
 

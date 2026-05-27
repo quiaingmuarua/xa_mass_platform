@@ -249,6 +249,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                         "all rules matched and worker capacity reserved after candidate ranking",
                         passedCandidate.ruleEvaluations(), rankedContext.getContext(), false
                 );
+                workerManager.recordWarmCandidate(task, worker);
                 matchedWorkers.add(candidate);
                 log.info("Worker matched without exclusive lock: {} for background task {} at rank {}",
                         worker.getWorkerId(),
@@ -268,6 +269,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                         "all rules matched and worker lock acquired after candidate ranking",
                         passedCandidate.ruleEvaluations(), rankedContext.getContext(), true
                 );
+                workerManager.recordWarmCandidate(task, worker);
                 matchedWorkers.add(candidate);
                 log.info("Worker matched: {} for task {} at rank {}",
                         worker.getWorkerId(),
