@@ -12,6 +12,7 @@ import com.xa.mass.engine.event.KernelEventHandlerRegistry;
 import com.xa.mass.engine.testutil.RecordingEventSink;
 import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.runtime.worker.EventKey;
+import com.xa.mass.runtime.worker.WorkerCandidateRow;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.trace.sink.ExecutionEventType;
 import org.junit.jupiter.api.Test;
@@ -55,12 +56,9 @@ public class WorkerCapabilityReportEventHandlerTest {
         );
 
         assertTrue(response.isSuccess());
-        assertEquals(List.of("worker-crawler"), workerIds(workerManager.findWorkerCandidates(
-                task("demoApp", "crawler.parse"))));
-        assertEquals(List.of("worker-crawler"), workerIds(workerManager.findWorkerCandidates(
-                task("demoApp", "crawler.fetch"))));
-        assertEquals(List.of("worker-crawler"), workerIds(workerManager.findWorkerCandidates(
-                task("demoApp", "not.approved"))));
+        assertEquals(List.of("worker-crawler"), workerIds(workerManager, task("demoApp", "crawler.parse")));
+        assertEquals(List.of("worker-crawler"), workerIds(workerManager, task("demoApp", "crawler.fetch")));
+        assertEquals(List.of("worker-crawler"), workerIds(workerManager, task("demoApp", "not.approved")));
         assertFalse(workerManager.getWorkerRegistrySnapshot()
                 .workerSupportsEventKey("worker-crawler", new EventKey("demoApp", "not.approved")));
         assertEquals("us", workerManager.getWorkerRegistrySnapshot()
@@ -91,10 +89,8 @@ public class WorkerCapabilityReportEventHandlerTest {
 
         assertFalse(stale.isSuccess());
         assertEquals(WorkerCapabilityReportStatus.STALE.name(), stale.getCode());
-        assertEquals(List.of("worker-crawler"), workerIds(workerManager.findWorkerCandidates(
-                task("demoApp", "crawler.parse"))));
-        assertEquals(List.of("worker-crawler"), workerIds(workerManager.findWorkerCandidates(
-                task("demoApp", "crawler.fetch"))));
+        assertEquals(List.of("worker-crawler"), workerIds(workerManager, task("demoApp", "crawler.parse")));
+        assertEquals(List.of("worker-crawler"), workerIds(workerManager, task("demoApp", "crawler.fetch")));
     }
 
     private static CoreEventRequest request(long capabilityVersion, List<String> availableEventCodes) {
@@ -119,8 +115,10 @@ public class WorkerCapabilityReportEventHandlerTest {
         return task;
     }
 
-    private static List<String> workerIds(List<Worker> workers) {
-        return workers.stream().map(Worker::getWorkerId).toList();
+    private static List<String> workerIds(WorkerManager workerManager, Task task) {
+        return workerManager.findWorkerCandidateBatch(task, 512).candidates().stream()
+                .map(WorkerCandidateRow::workerId)
+                .toList();
     }
 
     private static Worker worker(String workerId, String workerGroupId) {

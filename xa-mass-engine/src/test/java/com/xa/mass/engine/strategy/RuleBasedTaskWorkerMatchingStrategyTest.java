@@ -818,12 +818,6 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         }
 
         @Override
-        public List<Worker> findWorkerCandidates(WorkerTaskSelector selector, int maxCandidateCount) {
-            lastMaxCandidateCount = maxCandidateCount;
-            return candidates;
-        }
-
-        @Override
         public WorkerCandidateBatch<WorkerCandidateRow> findWorkerCandidateBatch(WorkerTaskSelector selector,
                                                                                  int maxCandidateCount) {
             lastMaxCandidateCount = maxCandidateCount;

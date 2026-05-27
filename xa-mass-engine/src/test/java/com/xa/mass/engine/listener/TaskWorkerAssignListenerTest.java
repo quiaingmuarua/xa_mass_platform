@@ -209,7 +209,6 @@ public class TaskWorkerAssignListenerTest {
         Task task = createTask(100, 1, 1, TaskStatus.RUNNING);
 
         when(assignmentRuntime.countDispatchReadyWork(task.getTid())).thenReturn(100);
-        when(workerManager.findWorkerCandidates(task)).thenReturn(List.of(createWorker("worker-1")));
         when(workerManager.getActiveWorkerCountForTask(task.getTid()))
                 .thenReturn(com.xa.mass.engine.assignment.DefaultWorkerBudgetPolicy.DEFAULT_BULK_MAX_WORKERS);
 

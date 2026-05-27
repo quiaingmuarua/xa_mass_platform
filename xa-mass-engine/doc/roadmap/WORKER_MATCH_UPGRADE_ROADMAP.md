@@ -101,8 +101,8 @@ Hard boundary:
 
 ## Current Code Observations
 
-- Candidate source enters through `WorkerManager.findWorkerCandidateBatch(...)`
-  or its list-only `findWorkerCandidates(...)` helper, then through
+- Candidate source enters through `WorkerManager.findWorkerCandidateBatch(...)`,
+  then through
   `WorkerCandidateIndex` and `WorkerRegistry.acquireCandidates(...)`.
 - Stage-1 sample size is currently `requestedMatchCount * 4`, clamped by
   JVM-configurable min/max defaults of 512 and 2048.
@@ -436,10 +436,8 @@ Scope:
    budget. Empty/stale buckets are skipped and remaining budget may be
    redistributed to later buckets in the same bounded pass.
 4. Review sample min/max defaults for interactive and bulk tasks.
-5. Remove `WorkerManager.DEFAULT_STAGE_ONE_CANDIDATE_LIMIT` from the hot-path
-   narrative if the no-limit `findWorkerCandidates(task)` overload remains
-   unused by matching. If a non-hot diagnostic caller still needs a default,
-   rename it to make clear it is not the production Stage-1 sample policy.
+5. Keep the removed list-only `findWorkerCandidates(task)` overload out of the
+   hot-path narrative; diagnostics should consume explicit batch/row evidence.
 6. Add source-count trace fields:
    - selected group count
    - selected route key count
@@ -465,10 +463,8 @@ Landed first slice:
    across remaining source buckets instead of allowing the first large group to
    consume the whole sample.
 3. Source guard still validates every sampled worker before Stage-2.
-4. The no-limit helper default is named
-   `WorkerManager.DEFAULT_DIAGNOSTIC_CANDIDATE_LIMIT` so it is not confused
-   with the production Stage-1 sample policy owned by
-   `RuleBasedTaskWorkerMatchingStrategy`.
+4. The former no-limit list helper has been removed; candidate diagnostics use
+   explicit batch row evidence instead of a hidden default sample.
 
 ## Slice 3: Stage-2 Policy Review
 

@@ -831,7 +831,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         Path workerManagerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker/WorkerManager.java");
         String source = Files.readString(workerManagerPath, StandardCharsets.UTF_8);
         Map<String, String> guardedMethods = Map.of(
-                "findWorkerCandidates", "public List<Worker> findWorkerCandidates",
+                "findWorkerCandidateBatch", "public WorkerCandidateBatch<WorkerCandidateRow> findWorkerCandidateBatch",
                 "getWorkerCandidateIndex", "public WorkerCandidateIndex getWorkerCandidateIndex"
         );
 
@@ -1214,9 +1214,9 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "com/xa/mass/engine/assignment/AssignmentAllocationRequest.java");
 
         String candidateIndex = Files.readString(candidateIndexPath, StandardCharsets.UTF_8);
-        String findWorkerCandidates = sourceMethod(
+        String findWorkerCandidateBatch = sourceMethod(
                 Files.readString(workerManagerPath, StandardCharsets.UTF_8),
-                "public List<Worker> findWorkerCandidates"
+                "public WorkerCandidateBatch<WorkerCandidateRow> findWorkerCandidateBatch"
         );
         String binder = Files.readString(binderPath, StandardCharsets.UTF_8);
         String traceLogger = Files.readString(traceLoggerPath, StandardCharsets.UTF_8);
@@ -1234,8 +1234,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
         if (Pattern.compile("\\bgroupIdsByProjectCode\\s*\\(").matcher(candidateIndex).find()) {
             violations.add(candidateIndexPath + " reads groupIdsByProjectCode in candidate-source lookup");
         }
-        if (Pattern.compile("\\.getAllWorkers\\s*\\(").matcher(findWorkerCandidates).find()) {
-            violations.add(workerManagerPath + "#findWorkerCandidates falls back to all workers");
+        if (Pattern.compile("\\.getAllWorkers\\s*\\(").matcher(findWorkerCandidateBatch).find()) {
+            violations.add(workerManagerPath + "#findWorkerCandidateBatch falls back to all workers");
         }
         for (String oldSource : List.of("GROUP_INDEX", "GROUP_PROJECT_INDEX", "ALL_WORKERS_FALLBACK")) {
             if (binder.contains(oldSource)) {

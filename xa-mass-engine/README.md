@@ -112,7 +112,7 @@ Current WorkerGroup / group-selector scheduling baseline:
 - `WorkerManager` owns the active worker registry snapshot. SDK registration
   enters through `WorkerManager.addWorker(...)`, and manager add/update/delete
   refresh the active snapshot.
-- candidate source still enters through `WorkerManager.findWorkerCandidates(...)`
+- candidate source enters through `WorkerManager.findWorkerCandidateBatch(...)`
   and is materialized by the strategy-package
   `WorkerSchedulingCandidateEnumerator`
 - `targetWorkerId` is only a debug/manual narrowing shortcut inside an

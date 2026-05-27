@@ -30,19 +30,6 @@ final class WorkerCandidateSourceOwner {
         this.taskCandidateWarmPool = taskCandidateWarmPool == null ? new TaskCandidateWarmPool() : taskCandidateWarmPool;
     }
 
-    List<Worker> findWorkerCandidates(WorkerTaskSelector selector, int maxCandidateCount) {
-        if (selector == null) {
-            return List.of();
-        }
-        if (!selector.targetsWorker() && maxCandidateCount <= 0) {
-            return List.of();
-        }
-        int limit = !selector.targetsWorker()
-                ? Math.max(1, maxCandidateCount)
-                : 1;
-        return candidateIndexSupplier.get().workersFor(selector, limit);
-    }
-
     WorkerCandidateBatch<WorkerCandidateRow> findWorkerCandidateBatch(WorkerTaskSelector selector,
                                                                       int maxCandidateCount) {
         if (selector == null) {

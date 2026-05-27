@@ -40,8 +40,6 @@ public class WorkerManager implements WorkerLookupStore,
         WorkerReportRuntime {
 
     private static final Logger log = LoggerFactory.getLogger(WorkerManager.class);
-    static final int DEFAULT_DIAGNOSTIC_CANDIDATE_LIMIT = 512;
-
     private final WorkerReachabilityView reachabilityView;
     private final WorkerRegistry workerRegistry;
     private final WorkerGroupOwner groupOwner;
@@ -222,22 +220,6 @@ public class WorkerManager implements WorkerLookupStore,
                                                               String groupId,
                                                               boolean draining) {
         return relationshipOwner.setNodeGroupBindingDraining(adapterNodeId, groupId, draining);
-    }
-
-    public List<Worker> findWorkerCandidates(Task task) {
-        return findWorkerCandidates(WorkerTaskSelectorFactory.fromTask(task), DEFAULT_DIAGNOSTIC_CANDIDATE_LIMIT);
-    }
-
-    public List<Worker> findWorkerCandidates(Task task, int maxCandidateCount) {
-        return findWorkerCandidates(WorkerTaskSelectorFactory.fromTask(task), maxCandidateCount);
-    }
-
-    public List<Worker> findWorkerCandidates(WorkerTaskSelector selector) {
-        return candidateSourceOwner.findWorkerCandidates(selector, DEFAULT_DIAGNOSTIC_CANDIDATE_LIMIT);
-    }
-
-    public List<Worker> findWorkerCandidates(WorkerTaskSelector selector, int maxCandidateCount) {
-        return candidateSourceOwner.findWorkerCandidates(selector, maxCandidateCount);
     }
 
     public WorkerCandidateBatch<WorkerCandidateRow> findWorkerCandidateBatch(Task task, int maxCandidateCount) {

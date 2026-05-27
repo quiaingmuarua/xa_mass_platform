@@ -492,7 +492,7 @@ public class WorkerManagerTest {
         Task task = task("demoApp", selector("pool-a"));
 
         assertEquals(List.of("w-demo"),
-                manager.findWorkerCandidates(task).stream().map(Worker::getWorkerId).toList());
+                candidateIds(task));
     }
 
     @Test
@@ -509,7 +509,7 @@ public class WorkerManagerTest {
                 "pool-a"));
 
         assertEquals(List.of("w-event"),
-                manager.findWorkerCandidates(task).stream().map(Worker::getWorkerId).toList());
+                candidateIds(task));
     }
 
     @Test
@@ -527,7 +527,7 @@ public class WorkerManagerTest {
                 TaskSharedConfig.SDK_METADATA, Map.of(TaskSharedConfig.SDK_EVENT_CODE, "demo.dispatch")
         ));
 
-        assertTrue(manager.findWorkerCandidates(task).isEmpty());
+        assertTrue(candidateRows(task).isEmpty());
 
         Task supportedTargetTask = task("testApp", Map.of(
                 TaskSharedConfig.TARGET_WORKER_ID, "w-target",
@@ -536,7 +536,7 @@ public class WorkerManagerTest {
         ));
 
         assertEquals(List.of("w-target"),
-                manager.findWorkerCandidates(supportedTargetTask).stream().map(Worker::getWorkerId).toList());
+                candidateIds(supportedTargetTask));
     }
 
     @Test
@@ -551,7 +551,7 @@ public class WorkerManagerTest {
                 TaskSharedConfig.SDK_METADATA, Map.of(TaskSharedConfig.SDK_EVENT_CODE, "demo.dispatch")
         ));
 
-        assertTrue(manager.findWorkerCandidates(task).isEmpty());
+        assertTrue(candidateRows(task).isEmpty());
     }
 
     @Test
@@ -561,7 +561,7 @@ public class WorkerManagerTest {
 
         Task task = task(null, Map.of());
 
-        assertTrue(manager.findWorkerCandidates(task).isEmpty());
+        assertTrue(candidateRows(task).isEmpty());
     }
 
     @Test
@@ -574,11 +574,9 @@ public class WorkerManagerTest {
         Worker updated = worker("w-reindex", "pool-b");
         assertTrue(manager.updateWorker(updated));
 
-        assertTrue(manager.findWorkerCandidates(task("demoApp", selector("pool-a"))).isEmpty());
+        assertTrue(candidateRows(task("demoApp", selector("pool-a"))).isEmpty());
         assertEquals(List.of("w-reindex"),
-                manager.findWorkerCandidates(task("testApp", selector("pool-b"))).stream()
-                        .map(Worker::getWorkerId)
-                        .toList());
+                candidateIds(task("testApp", selector("pool-b"))));
     }
 
     @Test
@@ -589,27 +587,21 @@ public class WorkerManagerTest {
         manager.addWorker(worker);
 
         assertEquals(List.of("w-route-reindex"),
-                manager.findWorkerCandidates(task("demoApp", sharedConfig(
-                                Map.of(TaskSharedConfig.ROUTE_ATTRIBUTES, Map.of("region", "us")),
-                                "pool-a")))
-                        .stream()
-                        .map(Worker::getWorkerId)
-                        .toList());
+                candidateIds(task("demoApp", sharedConfig(
+                        Map.of(TaskSharedConfig.ROUTE_ATTRIBUTES, Map.of("region", "us")),
+                        "pool-a"))));
 
         Worker updated = worker("w-route-reindex", "pool-a");
         updated.setAttributes(Map.of("region", "eu"));
         assertTrue(manager.updateWorker(updated));
 
-        assertTrue(manager.findWorkerCandidates(task("demoApp", sharedConfig(
+        assertTrue(candidateRows(task("demoApp", sharedConfig(
                 Map.of(TaskSharedConfig.ROUTE_ATTRIBUTES, Map.of("region", "us")),
                 "pool-a"))).isEmpty());
         assertEquals(List.of("w-route-reindex"),
-                manager.findWorkerCandidates(task("demoApp", sharedConfig(
-                                Map.of(TaskSharedConfig.ROUTE_ATTRIBUTES, Map.of("region", "eu")),
-                                "pool-a")))
-                        .stream()
-                        .map(Worker::getWorkerId)
-                        .toList());
+                candidateIds(task("demoApp", sharedConfig(
+                        Map.of(TaskSharedConfig.ROUTE_ATTRIBUTES, Map.of("region", "eu")),
+                        "pool-a"))));
     }
 
     @Test
@@ -623,13 +615,11 @@ public class WorkerManagerTest {
         stored.setWorkerGroupId("pool-b");
         assertTrue(manager.updateWorker(stored));
 
-        assertTrue(manager.findWorkerCandidates(task("demoApp", selector("pool-a"))).isEmpty());
-        assertTrue(manager.findWorkerCandidates(task("demoApp", sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
+        assertTrue(candidateRows(task("demoApp", selector("pool-a"))).isEmpty());
+        assertTrue(candidateRows(task("demoApp", sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
                 Map.of(TaskSharedConfig.SDK_EVENT_CODE, "demo.dispatch")), "pool-a"))).isEmpty());
         assertEquals(List.of("w-mutable-reindex"),
-                manager.findWorkerCandidates(task("testApp", selector("pool-b"))).stream()
-                        .map(Worker::getWorkerId)
-                .toList());
+                candidateIds(task("testApp", selector("pool-b"))));
     }
 
     @Test
@@ -673,10 +663,7 @@ public class WorkerManagerTest {
         registryBackedManager.addWorker(worker("w-registry-selected", "pool-a"));
 
         assertEquals(List.of("w-registry-selected"),
-                registryBackedManager.findWorkerCandidates(task("demoApp", selector("pool-a")), 10)
-                        .stream()
-                        .map(Worker::getWorkerId)
-                        .toList());
+                candidateIds(registryBackedManager, task("demoApp", selector("pool-a")), 10));
     }
 
     @Test
@@ -697,10 +684,7 @@ public class WorkerManagerTest {
         }
 
         assertEquals(List.of("w-sampled-7", "w-sampled-8", "w-sampled-9"),
-                registryBackedManager.findWorkerCandidates(task("demoApp", selector("pool-a")), 3)
-                        .stream()
-                        .map(Worker::getWorkerId)
-                        .toList());
+                candidateIds(registryBackedManager, task("demoApp", selector("pool-a")), 3));
     }
 
     @Test
@@ -909,10 +893,10 @@ public class WorkerManagerTest {
 
         assertTrue(manager.deleteWorker("w-delete-index"));
 
-        assertTrue(manager.findWorkerCandidates(task("demoApp", selector("pool-a"))).isEmpty());
-        assertTrue(manager.findWorkerCandidates(task("demoApp", sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
+        assertTrue(candidateRows(task("demoApp", selector("pool-a"))).isEmpty());
+        assertTrue(candidateRows(task("demoApp", sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
                 Map.of(TaskSharedConfig.SDK_EVENT_CODE, "demo.dispatch")), "pool-a"))).isEmpty());
-        assertTrue(manager.findWorkerCandidates(task("demoApp", sharedConfig(
+        assertTrue(candidateRows(task("demoApp", sharedConfig(
                 Map.of(TaskSharedConfig.ROUTE_ATTRIBUTES, Map.of("region", "us")),
                 "pool-a"))).isEmpty());
     }
@@ -1111,6 +1095,20 @@ public class WorkerManagerTest {
         task.setProject(project);
         task.setSharedConfig(sharedConfig);
         return task;
+    }
+
+    private List<WorkerCandidateRow> candidateRows(Task task) {
+        return manager.findWorkerCandidateBatch(task, 512).candidates();
+    }
+
+    private List<String> candidateIds(Task task) {
+        return candidateIds(manager, task, 512);
+    }
+
+    private List<String> candidateIds(WorkerManager workerManager, Task task, int maxCandidateCount) {
+        return workerManager.findWorkerCandidateBatch(task, maxCandidateCount).candidates().stream()
+                .map(WorkerCandidateRow::workerId)
+                .toList();
     }
 
     private static Map<String, Object> selector(String... groupIds) {
