@@ -51,6 +51,7 @@ public class WorkerManager implements WorkerLookupStore,
     private final WorkerCapabilityAuthority capabilityAuthority;
     private final WorkerRegistry workerRegistry;
     private final WorkerCandidateSourceOwner candidateSourceOwner;
+    private final WorkerAdmissionOwner admissionOwner;
     private final Object workerRegistryLock = new Object();
     private final LinkedHashMap<String, WorkerGroupRecord> workerGroupsById = new LinkedHashMap<>();
     private final Object adapterNodeRegistryLock = new Object();
@@ -92,6 +93,7 @@ public class WorkerManager implements WorkerLookupStore,
         this.capabilityAuthority = capabilityAuthority != null ? capabilityAuthority : new WorkerCapabilityAuthority();
         this.workerRegistry = workerRegistry != null ? workerRegistry : new InMemoryWorkerRegistry();
         this.candidateSourceOwner = new WorkerCandidateSourceOwner(this::getWorkerCandidateIndex);
+        this.admissionOwner = new WorkerAdmissionOwner(this.workerRegistry);
         for (Worker worker : workerStorage.getAllWorkers()) {
             upsertWorkerRegistrySlot(worker);
         }
@@ -195,18 +197,15 @@ public class WorkerManager implements WorkerLookupStore,
     }
 
     public boolean tryAcquireWorkerExclusiveLease(String workerId) {
-        return workerRegistry.slotByWorkerId(workerId)
-                .map(slot -> workerRegistry.tryAcquireExclusiveLease(slot.groupId(), slot.workerId()))
-                .orElse(false);
+        return admissionOwner.tryAcquireWorkerExclusiveLease(workerId);
     }
 
     public void releaseWorkerExclusiveLease(String workerId) {
-        workerRegistry.slotByWorkerId(workerId)
-                .ifPresent(slot -> workerRegistry.releaseExclusiveLease(slot.groupId(), slot.workerId()));
+        admissionOwner.releaseWorkerExclusiveLease(workerId);
     }
 
     public boolean hasWorkerExclusiveLease(String workerId) {
-        return workerRegistry.hasExclusiveLease(workerId);
+        return admissionOwner.hasWorkerExclusiveLease(workerId);
     }
 
     public List<Worker> getAllWorkers() {
@@ -445,7 +444,7 @@ public class WorkerManager implements WorkerLookupStore,
     }
 
     public List<String> getExclusiveLeaseWorkerIds() {
-        return workerRegistry.exclusiveLeaseWorkerIds();
+        return admissionOwner.getExclusiveLeaseWorkerIds();
     }
 
     /**
@@ -519,51 +518,31 @@ public class WorkerManager implements WorkerLookupStore,
     }
 
     public WorkerLoadSnapshot getWorkerLoad(String workerId) {
-        return workerRegistry.slotByWorkerId(workerId)
-                .map(slot -> new WorkerLoadSnapshot(
-                        slot.workerId(),
-                        slot.activeLeaseCount(),
-                        slot.reservedCount(),
-                        slot.declaredCapacity()
-                ))
-                .orElseGet(() -> WorkerLoadSnapshot.empty(workerId));
+        return admissionOwner.getWorkerLoad(workerId);
     }
 
     public int getActiveWorkerCountForTask(String taskId) {
-        return workerRegistry.activeWorkerCountForTask(taskId);
+        return admissionOwner.getActiveWorkerCountForTask(taskId);
     }
 
     public boolean tryReserveWorkerCapacity(String workerId, String taskId) {
-        return workerRegistry.slotByWorkerId(workerId)
-                .map(slot -> workerRegistry.tryReserve(
-                        slot.groupId(),
-                        slot.workerId(),
-                        taskId,
-                        1,
-                        System.currentTimeMillis()
-                ).accepted())
-                .orElse(false);
+        return admissionOwner.tryReserveWorkerCapacity(workerId, taskId);
     }
 
     public boolean confirmWorkerReservation(String workerId, String taskId) {
-        return workerRegistry.slotByWorkerId(workerId)
-                .map(slot -> workerRegistry.confirmReservation(slot.groupId(), slot.workerId(), taskId, 1))
-                .orElse(false);
+        return admissionOwner.confirmWorkerReservation(workerId, taskId);
     }
 
     public void releaseWorkerReservation(String workerId, String taskId) {
-        workerRegistry.slotByWorkerId(workerId)
-                .ifPresent(slot -> workerRegistry.releaseReservation(slot.groupId(), slot.workerId(), taskId, 1));
+        admissionOwner.releaseWorkerReservation(workerId, taskId);
     }
 
     public void recordWorkClaimed(String workerId, String taskId) {
-        workerRegistry.slotByWorkerId(workerId)
-                .ifPresent(slot -> workerRegistry.recordWorkClaimed(slot.groupId(), slot.workerId(), taskId, 1));
+        admissionOwner.recordWorkClaimed(workerId, taskId);
     }
 
     public void recordWorkFinal(String workerId, String taskId) {
-        workerRegistry.slotByWorkerId(workerId)
-                .ifPresent(slot -> workerRegistry.recordWorkFinal(slot.groupId(), slot.workerId(), taskId, 1));
+        admissionOwner.recordWorkFinal(workerId, taskId);
     }
 
     private void syncWorkerRegistrySlots(Iterable<Worker> workers) {

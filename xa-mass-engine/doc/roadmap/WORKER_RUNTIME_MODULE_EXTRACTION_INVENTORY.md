@@ -11,7 +11,7 @@ target-state baseline.
 
 `WorkerManager` is still the active assembly surface for worker resource
 declaration, worker runtime projection, candidate source, report projection,
-admission, and diagnostics.
+admission delegation, and diagnostics.
 
 Current first-slice contract split inside `com.xa.mass.engine.worker`:
 
@@ -30,6 +30,10 @@ engine adapts `Task.sharedConfig` to selector evidence through
 Candidate acquisition and task-local warm hints are now package-owned by
 `WorkerCandidateSourceOwner`; `WorkerManager` delegates to it while the module
 boundary is still inside engine.
+
+Worker runtime admission, exclusive lease, and occupancy reads are now
+package-owned by `WorkerAdmissionOwner`; `WorkerManager` still implements the
+external contracts and delegates to that owner while callers converge.
 
 ## Public Method Inventory
 
@@ -52,9 +56,9 @@ boundary is still inside engine.
 | Dispatch gate read | `isWorkerDispatchEnabled` | scheduling candidate enumeration, tests | `WorkerSchedulingViewRuntime` | runtime state | Derived from source-scoped gates |
 | Dispatch gate mutation | `disableWorkerDispatch`, `clearWorkerDispatchDisable` | worker state report policy, node-group binding policy, tests | worker runtime dispatch gate owner | runtime state | Source-scoped gate mutation |
 | Wakeup callback | `setDispatchWakeupCallback` | SDK engine assembly | assembly residue | lifecycle wiring | Keep as assembly wiring until owner split decides final home |
-| Admission / occupancy | `tryReserveWorkerCapacity`, `confirmWorkerReservation`, `releaseWorkerReservation`, `recordWorkClaimed`, `recordWorkFinal` | match strategy, dispatch binder, resource releaser, result/resource listeners | `WorkerAdmissionRuntime` | runtime state | Current facade hides group lookup; future contract must preserve groupId/permits/clock semantics |
-| Exclusive lease | `tryAcquireWorkerExclusiveLease`, `releaseWorkerExclusiveLease`, `hasWorkerExclusiveLease`, `getExclusiveLeaseWorkerIds` | match strategy, resource releaser, diagnostics, tests | `WorkerAdmissionRuntime` | runtime state | Rename away from lock vocabulary only when owner move requires it |
-| Load / occupancy read | `getWorkerLoad`, `getActiveWorkerCountForTask` | match strategy, allocation policy caller, tests | `WorkerAdmissionRuntime` / scheduling view runtime | runtime state | Runtime load evidence, not control-plane truth |
+| Admission / occupancy | `tryReserveWorkerCapacity`, `confirmWorkerReservation`, `releaseWorkerReservation`, `recordWorkClaimed`, `recordWorkFinal` | match strategy, dispatch binder, resource releaser, result/resource listeners | `WorkerAdmissionOwner` through `WorkerAdmissionRuntime` | runtime state | Current facade hides group lookup; future contract must preserve groupId/permits/clock semantics |
+| Exclusive lease | `tryAcquireWorkerExclusiveLease`, `releaseWorkerExclusiveLease`, `hasWorkerExclusiveLease`, `getExclusiveLeaseWorkerIds` | match strategy, resource releaser, diagnostics, tests | `WorkerAdmissionOwner` through `WorkerAdmissionRuntime` | runtime state | Rename away from lock vocabulary only when owner move requires it |
+| Load / occupancy read | `getWorkerLoad`, `getActiveWorkerCountForTask` | match strategy, allocation policy caller, tests | `WorkerAdmissionOwner` / scheduling view runtime | runtime state | Runtime load evidence, not control-plane truth |
 
 ## Current Main Caller Graph
 
@@ -75,6 +79,7 @@ engine assignment
      -> WorkerAdmissionRuntime
   -> SimpleTaskDispatchBinder / WorkerDispatchResourceReleaser
      -> WorkerAdmissionRuntime-compatible methods through WorkerManager
+     -> WorkerAdmissionOwner
 
 worker control
   -> WorkerControlService
@@ -119,6 +124,8 @@ They internally resolve `groupId` from the current worker slot. The future
 contract must either keep that as a documented runtime-owned lookup or expose
 `groupId` explicitly. It must also preserve permits and heartbeat clock facts
 from `WorkerRegistry.tryReserve(groupId, workerId, taskId, permits, nowMillis)`.
+The current implementation detail lives in `WorkerAdmissionOwner`, not in the
+`WorkerManager` assembly surface.
 
 ### Task Selector Boundary
 
