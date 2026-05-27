@@ -1,4 +1,4 @@
-package com.xa.mass.engine.worker;
+package com.xa.mass.engine.strategy;
 
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;

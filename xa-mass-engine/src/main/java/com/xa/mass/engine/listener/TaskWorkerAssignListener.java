@@ -5,7 +5,7 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.TaskAssignmentEventSink;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
-import com.xa.mass.engine.worker.WorkerTaskSelectorFactory;
+import com.xa.mass.engine.strategy.WorkerTaskSelectorFactory;
 import com.xa.mass.engine.assignment.AssignmentAllocationDecision;
 import com.xa.mass.engine.assignment.AssignmentAllocationOutcome;
 import com.xa.mass.engine.assignment.AssignmentAllocationPlan;

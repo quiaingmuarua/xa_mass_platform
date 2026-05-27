@@ -29,7 +29,8 @@ Current first-slice contract split:
 
 `WorkerCandidateRuntime` now accepts runtime-neutral `WorkerTaskSelector`, not
 `Task`. The engine adapts `Task.sharedConfig` to selector evidence through
-`WorkerTaskSelectorFactory` before crossing the candidate-source contract.
+`com.xa.mass.engine.strategy.WorkerTaskSelectorFactory` before crossing the
+candidate-source contract.
 Candidate acquisition and task-local warm hints are now package-owned by
 `WorkerCandidateSourceOwner`; `WorkerManager` delegates to it while the module
 boundary is still inside engine.
@@ -268,9 +269,10 @@ WorkerTaskSelector
 ```
 
 `WorkerTaskSelector` lives in `mass-runtime-api`. `Task.sharedConfig` parsing
-remains on the engine side through `WorkerTaskSelectorFactory`. Worker runtime
-contracts should keep consuming this selector shape and must not grow a
-dependency on `Task`, `WorkerMatchContext`, or rule-evaluation DTOs.
+remains on the engine strategy side through `WorkerTaskSelectorFactory` and
+`WorkerRoutingPolicy`. Worker runtime contracts should keep consuming this
+selector shape and must not grow a dependency on `Task`, `WorkerMatchContext`,
+or rule-evaluation DTOs.
 
 ### Warm Hint Boundary
 

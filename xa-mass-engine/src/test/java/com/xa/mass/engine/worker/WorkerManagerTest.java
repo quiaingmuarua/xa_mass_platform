@@ -20,6 +20,7 @@ import com.xa.mass.runtime.worker.WorkerReachabilityState;
 import com.xa.mass.runtime.worker.WorkerResourceRecord;
 import com.xa.mass.runtime.worker.WorkerTaskSelector;
 import com.xa.mass.engine.TestWorkerCandidateRows;
+import com.xa.mass.engine.strategy.WorkerTaskSelectorFactory;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.worker.runtime.WorkerCandidateIndex;
 import com.xa.mass.worker.runtime.WorkerRegistrySnapshot;

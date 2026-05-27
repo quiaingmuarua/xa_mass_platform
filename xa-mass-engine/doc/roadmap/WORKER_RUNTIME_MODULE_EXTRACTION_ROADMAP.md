@@ -769,6 +769,10 @@ Progress:
   owners, dispatch-gate mutation contracts, and warm-hint mutation contracts.
   Strategy may consume candidate/admission/scheduling-view evidence, while
   worker runtime remains the owner of registry/resource/report/gate truth.
+- Task sharedConfig to `WorkerTaskSelector` adaptation and route-bucket policy
+  now live in `com.xa.mass.engine.strategy`, not `engine.worker`, so selector
+  construction is clearly engine strategy residue rather than worker runtime
+  owner residue.
 
 Scope:
 

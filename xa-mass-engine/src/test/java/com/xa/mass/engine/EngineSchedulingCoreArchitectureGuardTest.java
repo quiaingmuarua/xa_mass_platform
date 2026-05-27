@@ -1872,6 +1872,29 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void taskSelectorAndRoutePolicyAdaptersStayInEngineStrategyPackage() throws IOException {
+        Path workerPackage = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker");
+        Path strategyPackage = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/strategy");
+
+        List<String> violations = new ArrayList<>();
+        for (String adapterFile : List.of("WorkerTaskSelectorFactory.java", "WorkerRoutingPolicy.java")) {
+            if (Files.exists(workerPackage.resolve(adapterFile))) {
+                violations.add(workerPackage.resolve(adapterFile)
+                        + " keeps task selector or route policy adapter in worker package");
+            }
+            if (!Files.exists(strategyPackage.resolve(adapterFile))) {
+                violations.add(strategyPackage.resolve(adapterFile)
+                        + " is missing engine strategy selector/routing adapter");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Task sharedConfig to WorkerTaskSelector adaptation and route-bucket policy are "
+                        + "engine strategy concerns, not worker runtime owner residue:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void workerResourceRuntimeContractIsRuntimeNeutral() throws IOException {
         Path engineContractPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/worker/WorkerResourceRuntime.java");
