@@ -345,13 +345,6 @@ public class WorkerManager implements WorkerResourceRuntime,
         return reachabilityView.getWorkerReachability(workerId);
     }
 
-    public boolean isWorkerDispatchEnabled(Worker worker) {
-        if (worker == null || worker.getStatus() == null) {
-            return false;
-        }
-        return worker.getStatus() != WorkerStatus.EXPIRED && isWorkerDispatchEnabled(worker.getWorkerId());
-    }
-
     public boolean isWorkerDispatchEnabled(String workerId) {
         return workerRegistry.slotByWorkerId(workerId)
                 .map(slot -> !slot.removing() && slot.dispatchEnabled())

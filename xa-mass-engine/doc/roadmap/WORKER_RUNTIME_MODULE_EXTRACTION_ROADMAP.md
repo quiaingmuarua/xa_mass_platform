@@ -694,6 +694,9 @@ Progress:
 - The old `tryReserveWorkerCapacity` boolean helper has been deleted from the
   worker admission owner and `WorkerManager`; all callers now inspect
   structured `ReserveResult` evidence.
+- The old `isWorkerDispatchEnabled(Worker)` model-shaped read helper has been
+  deleted; dispatch gate reads now use worker id through
+  `WorkerSchedulingViewRuntime` / `WorkerDispatchGateRuntime`.
 - Engine still assembles those owners through `WorkerManager`; match strategy
   and event handler parsing residue stays in engine for later slices.
 - SDK shell runtime bridge now accepts `WorkerResourceRuntime` for legacy

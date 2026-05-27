@@ -201,13 +201,13 @@ public class WorkerManagerTest {
         Worker worker = worker("worker-draining", "us");
         manager.addWorker(worker);
 
-        assertTrue(manager.isWorkerDispatchEnabled(worker));
+        assertTrue(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
 
         assertTrue(manager.disableWorkerDispatch("worker-draining", WORKER_STATE, "maintenance"));
-        assertFalse(manager.isWorkerDispatchEnabled(worker));
+        assertFalse(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
 
         assertTrue(manager.clearWorkerDispatchDisable("worker-draining", WORKER_STATE, "ready"));
-        assertTrue(manager.isWorkerDispatchEnabled(worker));
+        assertTrue(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
     }
 
     @Test
@@ -308,7 +308,7 @@ public class WorkerManagerTest {
 
         assertFalse(disabled.enabled());
         assertTrue(draining.draining());
-        assertFalse(manager.isWorkerDispatchEnabled(worker));
+        assertFalse(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
         assertEquals(List.of("w-binding"),
                 candidateIndexIds(task("demoApp", sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
                         Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch")), "crawler"))));
@@ -357,13 +357,13 @@ public class WorkerManagerTest {
 
         manager.setNodeGroupBindingDraining("node-a", "crawler", true);
 
-        assertFalse(manager.isWorkerDispatchEnabled(workerA));
-        assertTrue(manager.isWorkerDispatchEnabled(workerB));
+        assertFalse(manager.isWorkerDispatchEnabled(workerA.getWorkerId()));
+        assertTrue(manager.isWorkerDispatchEnabled(workerB.getWorkerId()));
 
         manager.setNodeGroupBindingDraining("node-a", "crawler", false);
 
-        assertTrue(manager.isWorkerDispatchEnabled(workerA));
-        assertTrue(manager.isWorkerDispatchEnabled(workerB));
+        assertTrue(manager.isWorkerDispatchEnabled(workerA.getWorkerId()));
+        assertTrue(manager.isWorkerDispatchEnabled(workerB.getWorkerId()));
     }
 
     @Test
@@ -380,17 +380,17 @@ public class WorkerManagerTest {
                 "state draining"
         );
         manager.setNodeGroupBindingDraining("node-a", "crawler", true);
-        assertFalse(manager.isWorkerDispatchEnabled(worker));
+        assertFalse(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
 
         manager.setNodeGroupBindingDraining("node-a", "crawler", false);
 
-        assertFalse(manager.isWorkerDispatchEnabled(worker));
+        assertFalse(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
         manager.clearWorkerDispatchDisable(
                 "w-node-a",
                 WORKER_STATE,
                 "state available"
         );
-        assertTrue(manager.isWorkerDispatchEnabled(worker));
+        assertTrue(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
     }
 
     @Test
@@ -400,7 +400,7 @@ public class WorkerManagerTest {
         Worker worker = worker("w-node-a", "crawler");
         worker.setAdapterNodeId("node-a");
         manager.addWorker(worker);
-        assertTrue(manager.isWorkerDispatchEnabled(worker));
+        assertTrue(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
 
         manager.bindNodeGroup(new NodeGroupBindingRecord(
                 "node-a",
@@ -414,7 +414,7 @@ public class WorkerManagerTest {
                 Map.of()
         ));
 
-        assertFalse(manager.isWorkerDispatchEnabled(worker));
+        assertFalse(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
     }
 
     @Test
@@ -424,11 +424,11 @@ public class WorkerManagerTest {
         Worker worker = worker("w-node-a", "crawler");
         worker.setAdapterNodeId("node-a");
         manager.addWorker(worker);
-        assertTrue(manager.isWorkerDispatchEnabled(worker));
+        assertTrue(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
 
         assertTrue(manager.unbindNodeGroup("node-a", "crawler"));
 
-        assertFalse(manager.isWorkerDispatchEnabled(worker));
+        assertFalse(manager.isWorkerDispatchEnabled(worker.getWorkerId()));
     }
 
     @Test
@@ -1014,7 +1014,7 @@ public class WorkerManagerTest {
 
         // Worker model status can still say ONLINE while transport reachability has already converged to STALE.
         assertTrue(reachabilityAwareManager.isWorkerOnline("w-stale"));
-        assertTrue(reachabilityAwareManager.isWorkerDispatchEnabled(staleModelWorker));
+        assertTrue(reachabilityAwareManager.isWorkerDispatchEnabled(staleModelWorker.getWorkerId()));
     }
 
     // ---- helpers ----

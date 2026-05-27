@@ -56,10 +56,10 @@ public class WorkerControlServiceTest {
                         "cmd-1", "worker-1", "DRAIN")
                 .requester("operator")
                 .build()).success());
-        assertTrue(workerManager.isWorkerDispatchEnabled(worker));
+        assertTrue(workerManager.isWorkerDispatchEnabled(worker.getWorkerId()));
         assertTrue(service.applyWorkerCommandAcknowledgement(
                 WorkerCommandAcknowledgement.deliveryAccepted("cmd-1", "handoff accepted")).success());
-        assertFalse(workerManager.isWorkerDispatchEnabled(worker));
+        assertFalse(workerManager.isWorkerDispatchEnabled(worker.getWorkerId()));
         assertTrue(service.applyWorkerCapabilityReport(WorkerCapabilityReport.builder("worker-1", 1)
                 .availableEventCodes(List.of("crawler.fetch", "not.approved"))
                 .schedulingAttributes(Map.of("country", "us"))
@@ -67,17 +67,17 @@ public class WorkerControlServiceTest {
         assertTrue(service.applyWorkerStateReport(WorkerStateReport.builder("worker-1", 1, "DRAINING")
                 .reason("maintenance")
                 .build()).success());
-        assertFalse(workerManager.isWorkerDispatchEnabled(worker));
+        assertFalse(workerManager.isWorkerDispatchEnabled(worker.getWorkerId()));
 
         assertTrue(service.applyWorkerStateReport(WorkerStateReport.builder("worker-1", 2, "AVAILABLE")
                 .reason("resumed")
                 .build()).success());
-        assertFalse(workerManager.isWorkerDispatchEnabled(worker));
+        assertFalse(workerManager.isWorkerDispatchEnabled(worker.getWorkerId()));
 
         assertTrue(service.applyWorkerStateReport(WorkerStateReport.builder("worker-1", 3, "DEGRADED")
                 .reason("slow")
                 .build()).success());
-        assertFalse(workerManager.isWorkerDispatchEnabled(worker));
+        assertFalse(workerManager.isWorkerDispatchEnabled(worker.getWorkerId()));
 
         assertEquals(WorkerCommandStatus.DELIVERY_ACCEPTED,
                 service.workerCommand("cmd-1").orElseThrow().status());
@@ -115,28 +115,28 @@ public class WorkerControlServiceTest {
                 .build()).success());
         assertTrue(service.applyWorkerCommandAcknowledgement(
                 WorkerCommandAcknowledgement.deliveryAccepted("cmd-2", "accepted")).success());
-        assertFalse(workerManager.isWorkerDispatchEnabled(worker));
+        assertFalse(workerManager.isWorkerDispatchEnabled(worker.getWorkerId()));
 
         assertTrue(service.applyWorkerCommandAcknowledgement(
                 WorkerCommandAcknowledgement.failed("cmd-2", "worker-side failure")).success());
-        assertFalse(workerManager.isWorkerDispatchEnabled(worker));
+        assertFalse(workerManager.isWorkerDispatchEnabled(worker.getWorkerId()));
 
         assertTrue(service.applyWorkerStateReport(WorkerStateReport.builder("worker-2", 1, "DEGRADED")
                 .reason("still draining")
                 .build()).success());
-        assertFalse(workerManager.isWorkerDispatchEnabled(worker));
+        assertFalse(workerManager.isWorkerDispatchEnabled(worker.getWorkerId()));
 
         assertTrue(service.applyWorkerStateReport(WorkerStateReport.builder("worker-2", 2, "AVAILABLE")
                 .reason("resume")
                 .build()).success());
-        assertFalse(workerManager.isWorkerDispatchEnabled(worker));
+        assertFalse(workerManager.isWorkerDispatchEnabled(worker.getWorkerId()));
 
         assertTrue(workerManager.clearWorkerDispatchDisable(
                 "worker-2",
                 WORKER_COMMAND,
                 "command cleared"
         ));
-        assertTrue(workerManager.isWorkerDispatchEnabled(worker));
+        assertTrue(workerManager.isWorkerDispatchEnabled(worker.getWorkerId()));
     }
 
     @Test
@@ -225,7 +225,7 @@ public class WorkerControlServiceTest {
                 .reason("custom-policy-disable")
                 .build()).success());
         assertEquals(1, stateApplications.get());
-        assertFalse(workerManager.isWorkerDispatchEnabled(worker));
+        assertFalse(workerManager.isWorkerDispatchEnabled(worker.getWorkerId()));
 
         assertTrue(service.requestWorkerCommand(WorkerCommandRequest.builder(
                         "cmd-3", "worker-3", "DRAIN")
@@ -234,7 +234,7 @@ public class WorkerControlServiceTest {
         assertTrue(service.applyWorkerCommandAcknowledgement(
                 WorkerCommandAcknowledgement.deliveryAccepted("cmd-3", "custom-policy-enable")).success());
         assertEquals(1, commandApplications.get());
-        assertTrue(workerManager.isWorkerDispatchEnabled(worker));
+        assertTrue(workerManager.isWorkerDispatchEnabled(worker.getWorkerId()));
     }
 
     @Test
@@ -271,7 +271,7 @@ public class WorkerControlServiceTest {
                 .build()).success());
 
         assertEquals(1, service.expireDueWorkerCommands(Instant.ofEpochMilli(2_000L), 10).size());
-        assertTrue(workerManager.isWorkerDispatchEnabled(worker));
+        assertTrue(workerManager.isWorkerDispatchEnabled(worker.getWorkerId()));
 
         assertTrue(service.requestWorkerCommand(WorkerCommandRequest.builder(
                         "cmd-drain", "worker-expiry", "DRAIN")
@@ -279,10 +279,10 @@ public class WorkerControlServiceTest {
                 .build()).success());
         assertTrue(service.applyWorkerCommandAcknowledgement(
                 WorkerCommandAcknowledgement.deliveryAccepted("cmd-drain", "accepted")).success());
-        assertFalse(workerManager.isWorkerDispatchEnabled(worker));
+        assertFalse(workerManager.isWorkerDispatchEnabled(worker.getWorkerId()));
 
         assertEquals(1, service.expireDueWorkerCommands(Instant.ofEpochMilli(4_000L), 10).size());
-        assertFalse(workerManager.isWorkerDispatchEnabled(worker));
+        assertFalse(workerManager.isWorkerDispatchEnabled(worker.getWorkerId()));
     }
 
     @Test
@@ -337,7 +337,7 @@ public class WorkerControlServiceTest {
 
         assertEquals(WorkerCommandStatus.DELIVERY_ACCEPTED,
                 service.workerCommand("cmd-realtime-drain").orElseThrow().status());
-        assertFalse(workerManager.isWorkerDispatchEnabled(worker));
+        assertFalse(workerManager.isWorkerDispatchEnabled(worker.getWorkerId()));
     }
 
     @Test
@@ -422,7 +422,7 @@ public class WorkerControlServiceTest {
 
         assertEquals(1, commands.size());
         assertEquals(WorkerCommandStatus.DELIVERY_ACCEPTED, commands.getFirst().status());
-        assertFalse(workerManager.isWorkerDispatchEnabled(worker));
+        assertFalse(workerManager.isWorkerDispatchEnabled(worker.getWorkerId()));
     }
 
     private static WorkerControlService workerControlService(WorkerManager workerManager,
