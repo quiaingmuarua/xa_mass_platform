@@ -5,9 +5,6 @@ import com.xa.mass.runtime.worker.EventBinding;
 import com.xa.mass.runtime.worker.NodeGroupBindingRecord;
 import com.xa.mass.runtime.worker.WorkerGroupRecord;
 
-import com.xa.mass.base.channel.eventbus.event.worker.WorkerHeartbeatEvent;
-import com.xa.mass.base.channel.eventbus.event.worker.WorkerOfflineEvent;
-import com.xa.mass.base.channel.eventbus.event.worker.WorkerOnlineEvent;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
@@ -933,41 +930,6 @@ public class WorkerManagerTest {
     }
 
     // ---- worker model status vs transport reachability ----
-
-    @Test
-    void workerStatusEventListenerOnlyRefreshesHeartbeatAndLeavesModelStatusUntouched() {
-        AtomicInteger wakeups = new AtomicInteger();
-        WorkerStatusEventListener listener =
-                new WorkerStatusEventListener(manager, wakeups::incrementAndGet);
-        Worker worker = worker("w9", "us");
-        worker.setStatus(WorkerStatus.OFFLINE);
-        addWorker(worker);
-
-        listener.onWorkerOnline(new WorkerOnlineEvent("w9", "connected", null));
-        assertNotNull(workerModel("w9").getLastHeartbeat());
-        assertEquals(WorkerStatus.OFFLINE, workerModel("w9").getStatus());
-        assertEquals(1, wakeups.get());
-
-        listener.onWorkerOffline(new WorkerOfflineEvent("w9", "disconnected", null));
-        assertEquals(WorkerStatus.OFFLINE, workerModel("w9").getStatus());
-        assertEquals(1, wakeups.get());
-    }
-
-    @Test
-    void workerHeartbeatEventRefreshesLastHeartbeatWithoutChangingWorkerModelAvailability() {
-        AtomicInteger wakeups = new AtomicInteger();
-        WorkerStatusEventListener listener =
-                new WorkerStatusEventListener(manager, wakeups::incrementAndGet);
-        Worker worker = worker("w10", "us");
-        worker.setStatus(WorkerStatus.OFFLINE);
-        addWorker(worker);
-
-        listener.onWorkerHeartbeat(new WorkerHeartbeatEvent("w10", "heartbeat", null));
-
-        assertNotNull(workerModel("w10").getLastHeartbeat());
-        assertEquals(WorkerStatus.OFFLINE, workerModel("w10").getStatus());
-        assertEquals(0, wakeups.get());
-    }
 
     @Test
     void workerReachabilityComesFromTransportViewInsteadOfWorkerModelStatus() {

@@ -1,4 +1,4 @@
-package com.xa.mass.engine.worker;
+package com.xa.mass.starter;
 
 import com.xa.mass.base.channel.eventbus.core.MassSubscribe;
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerHeartbeatEvent;
@@ -13,11 +13,10 @@ import java.time.LocalDateTime;
 import java.util.Objects;
 
 /**
- * Legacy observer for runtime worker system events.
+ * Legacy observer for process-local runtime worker system events.
  *
- * <p>Reachability truth lives in transport presence rather than the engine
- * worker model; this listener only refreshes model heartbeat evidence for
- * existing worker rows.</p>
+ * <p>Reachability truth lives in transport presence. This bridge only refreshes
+ * model heartbeat evidence for existing worker rows.</p>
  */
 public final class WorkerStatusEventListener {
     private static final Logger log = LoggerFactory.getLogger(WorkerStatusEventListener.class);
@@ -25,11 +24,7 @@ public final class WorkerStatusEventListener {
     private final WorkerResourceRuntime workerResourceRuntime;
     private final Runnable dispatchWakeupCallback;
 
-    public WorkerStatusEventListener(WorkerResourceRuntime workerResourceRuntime) {
-        this(workerResourceRuntime, null);
-    }
-
-    public WorkerStatusEventListener(WorkerResourceRuntime workerResourceRuntime, Runnable dispatchWakeupCallback) {
+    WorkerStatusEventListener(WorkerResourceRuntime workerResourceRuntime, Runnable dispatchWakeupCallback) {
         this.workerResourceRuntime = Objects.requireNonNull(workerResourceRuntime, "workerResourceRuntime");
         this.dispatchWakeupCallback = dispatchWakeupCallback != null ? dispatchWakeupCallback : () -> {
         };

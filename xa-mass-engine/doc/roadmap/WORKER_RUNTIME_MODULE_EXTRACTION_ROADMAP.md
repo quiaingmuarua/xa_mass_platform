@@ -539,12 +539,11 @@ Scope:
 
 Progress:
 
-- Legacy runtime event-bus worker status listener was lifted out of
-  `WorkerManager` into a top-level engine worker listener. It remains engine
+- Legacy runtime event-bus worker status listener now lives in SDK starter
   bridge wiring and does not create worker-runtime truth.
-- The lifted listener now depends on `WorkerResourceRuntime` instead of full
+- The listener depends on `WorkerResourceRuntime` instead of full
   `WorkerManager`, keeping legacy heartbeat refresh behind a narrow resource
-  contract.
+  contract and out of engine worker ownership.
 
 Acceptance:
 
@@ -724,7 +723,8 @@ Progress:
 - Engine still assembles those owners through `WorkerManager`; match strategy
   and event handler parsing residue stays in engine for later slices.
 - SDK shell runtime bridge now accepts `WorkerResourceRuntime` for legacy
-  runtime event-bus heartbeat refresh instead of full `WorkerManager`.
+  runtime event-bus heartbeat refresh instead of full `WorkerManager`; the
+  legacy worker-status listener is SDK shell code, not an engine worker owner.
 
 Scope:
 

@@ -83,9 +83,9 @@ public SDK/starter configuration. `WorkerControlService` now consumes
 `WorkerReportRuntime`, `WorkerResourceRuntime`, `WorkerDispatchGateRuntime`,
 and `WorkerStateProjectionRuntime` instead of accepting the full
 `WorkerManager` assembly surface or concrete projection owner.
-The SDK process-local runtime event bridge now depends on
-`WorkerResourceRuntime` for legacy heartbeat refresh and no longer receives a
-full `WorkerManager`. SDK worker shell reads and updates also use
+The SDK process-local runtime event bridge now owns the legacy worker-status
+event listener, depends on `WorkerResourceRuntime` for heartbeat refresh, and
+no longer receives a full `WorkerManager`. SDK worker shell reads and updates also use
 `WorkerResourceRuntime` instead of direct `WorkerStorage` access.
 Dispatch binding and task resource release now consume `WorkerAdmissionRuntime`
 for reservation confirmation, fallback load claim, final-load accounting,
