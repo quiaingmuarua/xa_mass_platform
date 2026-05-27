@@ -1,11 +1,10 @@
-package com.xa.mass.engine.worker;
+package com.xa.mass.worker.runtime;
 
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.WorkerCandidateBatch;
 import com.xa.mass.runtime.worker.WorkerCandidateRow;
+import com.xa.mass.runtime.worker.WorkerRouteBucketPolicy;
 import com.xa.mass.runtime.worker.WorkerTaskSelector;
-import com.xa.mass.worker.runtime.WorkerCandidateIndex;
-import com.xa.mass.worker.runtime.TaskCandidateWarmPool;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -15,25 +14,25 @@ import java.util.Set;
 import java.util.function.Supplier;
 
 /**
- * Package-local owner for Stage-1 candidate acquisition and warm hint state.
+ * Runtime owner for Stage-1 candidate acquisition and warm hint state.
  */
-final class WorkerCandidateSourceOwner {
+public final class WorkerCandidateSourceOwner {
 
     private final Supplier<WorkerCandidateIndex> candidateIndexSupplier;
     private final TaskCandidateWarmPool taskCandidateWarmPool;
 
-    WorkerCandidateSourceOwner(Supplier<WorkerCandidateIndex> candidateIndexSupplier) {
+    public WorkerCandidateSourceOwner(Supplier<WorkerCandidateIndex> candidateIndexSupplier) {
         this(candidateIndexSupplier, new TaskCandidateWarmPool());
     }
 
-    WorkerCandidateSourceOwner(Supplier<WorkerCandidateIndex> candidateIndexSupplier,
-                               TaskCandidateWarmPool taskCandidateWarmPool) {
+    public WorkerCandidateSourceOwner(Supplier<WorkerCandidateIndex> candidateIndexSupplier,
+                                      TaskCandidateWarmPool taskCandidateWarmPool) {
         this.candidateIndexSupplier = Objects.requireNonNull(candidateIndexSupplier, "candidateIndexSupplier");
         this.taskCandidateWarmPool = taskCandidateWarmPool == null ? new TaskCandidateWarmPool() : taskCandidateWarmPool;
     }
 
-    WorkerCandidateBatch<WorkerCandidateRow> findWorkerCandidateBatch(WorkerTaskSelector selector,
-                                                                      int maxCandidateCount) {
+    public WorkerCandidateBatch<WorkerCandidateRow> findWorkerCandidateBatch(WorkerTaskSelector selector,
+                                                                             int maxCandidateCount) {
         if (selector == null) {
             return WorkerCandidateBatch.empty();
         }
@@ -77,7 +76,7 @@ final class WorkerCandidateSourceOwner {
                 coldCandidates.size(), warmSelection.sourceGuardRejectedCount());
     }
 
-    void recordWarmCandidate(WorkerTaskSelector selector, Worker worker) {
+    public void recordWarmCandidate(WorkerTaskSelector selector, Worker worker) {
         String taskId = selector == null ? null : normalizeNullable(selector.taskId());
         String workerId = worker == null ? null : normalizeNullable(worker.getWorkerId());
         String groupId = worker == null ? null : normalizeNullable(worker.getWorkerGroupId());
@@ -100,7 +99,7 @@ final class WorkerCandidateSourceOwner {
         }
     }
 
-    void recordWarmCandidate(WorkerTaskSelector selector, WorkerCandidateRow candidate) {
+    public void recordWarmCandidate(WorkerTaskSelector selector, WorkerCandidateRow candidate) {
         String taskId = selector == null ? null : normalizeNullable(selector.taskId());
         String workerId = candidate == null ? null : normalizeNullable(candidate.workerId());
         String groupId = candidate == null ? null : normalizeNullable(candidate.workerGroupId());
@@ -123,7 +122,7 @@ final class WorkerCandidateSourceOwner {
         }
     }
 
-    int warmCandidateCount(String taskId) {
+    public int warmCandidateCount(String taskId) {
         return taskCandidateWarmPool.sizeForTask(taskId);
     }
 
@@ -190,7 +189,7 @@ final class WorkerCandidateSourceOwner {
     }
 
     private Set<String> routeBucketKeysForTask(WorkerTaskSelector selector) {
-        return selector == null ? Set.of(WorkerRoutingPolicy.DEFAULT_ROUTE_BUCKET_KEY) : selector.routeBucketKeys();
+        return selector == null ? Set.of(WorkerRouteBucketPolicy.DEFAULT_ROUTE_BUCKET_KEY) : selector.routeBucketKeys();
     }
 
     private static String normalizeNullable(String value) {

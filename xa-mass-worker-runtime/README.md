@@ -15,6 +15,7 @@ Current scope:
 - Task-local warm candidate hint storage.
 - Worker capability composition and registry snapshot read model.
 - Stage-1 worker candidate index and source guard.
+- Stage-1 candidate source orchestration and warm/cold merge.
 
 Boundaries:
 

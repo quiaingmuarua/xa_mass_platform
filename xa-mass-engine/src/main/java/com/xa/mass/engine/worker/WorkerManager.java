@@ -33,6 +33,7 @@ import com.xa.mass.storage.api.WorkerLookupStore;
 import com.xa.mass.storage.api.WorkerStorage;
 import com.xa.mass.worker.runtime.WorkerAdmissionOwner;
 import com.xa.mass.worker.runtime.WorkerCandidateIndex;
+import com.xa.mass.worker.runtime.WorkerCandidateSourceOwner;
 import com.xa.mass.worker.runtime.WorkerCapabilityAuthority;
 import com.xa.mass.worker.runtime.WorkerGroupOwner;
 import com.xa.mass.worker.runtime.WorkerRelationshipOwner;

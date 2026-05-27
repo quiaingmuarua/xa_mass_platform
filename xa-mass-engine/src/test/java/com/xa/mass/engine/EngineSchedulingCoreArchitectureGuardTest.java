@@ -1277,8 +1277,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
     void workerManagerDoesNotUseWorkerLevelEventStorageIndexForEventCandidateSource() throws IOException {
         Path workerManagerPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/worker/WorkerManager.java");
-        Path candidateSourceOwnerPath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/worker/WorkerCandidateSourceOwner.java");
+        Path candidateSourceOwnerPath = repositoryRoot().resolve(
+                "xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/WorkerCandidateSourceOwner.java");
         String source = Files.readString(workerManagerPath, StandardCharsets.UTF_8)
                 + "\n"
                 + Files.readString(candidateSourceOwnerPath, StandardCharsets.UTF_8);
