@@ -671,6 +671,10 @@ Progress:
 - SDK and lifecycle callers now consume the engine-root `WorkerControlRuntime`
   surface; `WorkerControlService` remains the engine worker implementation
   behind `EngineConfig` assembly.
+- Worker command/capability/state event handlers now consume
+  `WorkerControlRuntime` instead of the concrete `WorkerControlService`, so
+  event parsing ingress no longer couples to worker-control implementation
+  assembly.
 - `MassEngine` now wires resource-side availability wakeups through
   `WorkerAvailabilityWakeupRuntime` instead of importing `WorkerManager`
   directly. This keeps assignment retry / ready-scan wakeup wiring as lifecycle

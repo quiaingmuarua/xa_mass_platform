@@ -2,6 +2,7 @@ package com.xa.mass.engine.worker;
 
 import com.xa.mass.command.event.CoreEventRequest;
 import com.xa.mass.command.event.CoreEventResponse;
+import com.xa.mass.engine.WorkerControlRuntime;
 import com.xa.mass.engine.event.KernelEventHandlerRegistry;
 import com.xa.mass.runtime.worker.WorkerCapabilityReport;
 import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;
@@ -15,16 +16,16 @@ import java.util.Objects;
  * Kernel-targeted event handler for worker capability self-report.
  *
  * <p>The event runtime owns routing only. This handler translates event payload
- * into a typed report and delegates mutation to {@link WorkerControlService}.</p>
+ * into a typed report and delegates mutation to {@link WorkerControlRuntime}.</p>
  */
 public final class WorkerCapabilityReportEventHandler {
 
     public static final String EVENT_CODE = "kernel.worker.capability.report";
 
-    private final WorkerControlService workerControlService;
+    private final WorkerControlRuntime workerControlRuntime;
 
-    public WorkerCapabilityReportEventHandler(WorkerControlService workerControlService) {
-        this.workerControlService = Objects.requireNonNull(workerControlService, "workerControlService");
+    public WorkerCapabilityReportEventHandler(WorkerControlRuntime workerControlRuntime) {
+        this.workerControlRuntime = Objects.requireNonNull(workerControlRuntime, "workerControlRuntime");
     }
 
     public void register(KernelEventHandlerRegistry registry) {
@@ -34,7 +35,7 @@ public final class WorkerCapabilityReportEventHandler {
     public CoreEventResponse handle(CoreEventRequest request, com.xa.mass.command.event.CoreEventPrincipal principal) {
         try {
             WorkerCapabilityReport report = reportFrom(request.getPayload());
-            WorkerCapabilityReportResult result = workerControlService.applyWorkerCapabilityReport(report);
+            WorkerCapabilityReportResult result = workerControlRuntime.applyWorkerCapabilityReport(report);
             if (result.success()) {
                 return CoreEventResponse.success(responsePayload(result), request.getRequestId());
             }

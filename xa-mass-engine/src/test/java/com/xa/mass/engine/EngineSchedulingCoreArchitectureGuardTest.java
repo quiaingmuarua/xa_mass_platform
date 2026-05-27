@@ -1837,12 +1837,15 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
     @Test
     void workerControlKernelEventsDoNotUseWorkerManagerEntryNames() throws IOException {
-        List<Path> workerControlEventPaths = List.of(
-                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/event/KernelEventHandlerRegistry.java"),
+        Path registryPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/event/KernelEventHandlerRegistry.java");
+        List<Path> workerControlHandlerPaths = List.of(
                 MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/command/WorkerCommandRequestEventHandler.java"),
                 MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker/WorkerCapabilityReportEventHandler.java"),
                 MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker/WorkerStateReportEventHandler.java")
         );
+        List<Path> workerControlEventPaths = new ArrayList<>();
+        workerControlEventPaths.add(registryPath);
+        workerControlEventPaths.addAll(workerControlHandlerPaths);
 
         List<String> violations = new ArrayList<>();
         for (Path path : workerControlEventPaths) {
@@ -1852,9 +1855,19 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 violations.add(path + " uses WorkerManager event registration naming");
             }
         }
+        for (Path path : workerControlHandlerPaths) {
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            if (source.contains("WorkerControlService")) {
+                violations.add(path + " depends on WorkerControlService instead of WorkerControlRuntime");
+            }
+            if (!source.contains("WorkerControlRuntime")) {
+                violations.add(path + " does not consume WorkerControlRuntime");
+            }
+        }
 
         assertTrue(violations.isEmpty(),
-                "Kernel worker-control event registration must not name WorkerManager as the owner:\n"
+                "Kernel worker-control event registration must not name WorkerManager as the owner, "
+                        + "and handlers must consume WorkerControlRuntime rather than the concrete service:\n"
                         + String.join("\n", violations));
     }
 

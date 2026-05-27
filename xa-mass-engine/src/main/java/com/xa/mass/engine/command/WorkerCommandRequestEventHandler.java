@@ -3,8 +3,8 @@ package com.xa.mass.engine.command;
 import com.xa.mass.command.event.CoreEventPrincipal;
 import com.xa.mass.command.event.CoreEventRequest;
 import com.xa.mass.command.event.CoreEventResponse;
+import com.xa.mass.engine.WorkerControlRuntime;
 import com.xa.mass.engine.event.KernelEventHandlerRegistry;
-import com.xa.mass.engine.worker.WorkerControlService;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -21,10 +21,10 @@ public final class WorkerCommandRequestEventHandler {
 
     public static final String EVENT_CODE = "kernel.worker.command.request";
 
-    private final WorkerControlService workerControlService;
+    private final WorkerControlRuntime workerControlRuntime;
 
-    public WorkerCommandRequestEventHandler(WorkerControlService workerControlService) {
-        this.workerControlService = Objects.requireNonNull(workerControlService, "workerControlService");
+    public WorkerCommandRequestEventHandler(WorkerControlRuntime workerControlRuntime) {
+        this.workerControlRuntime = Objects.requireNonNull(workerControlRuntime, "workerControlRuntime");
     }
 
     public void register(KernelEventHandlerRegistry registry) {
@@ -33,7 +33,7 @@ public final class WorkerCommandRequestEventHandler {
 
     public CoreEventResponse handle(CoreEventRequest request, CoreEventPrincipal principal) {
         try {
-            WorkerCommandLifecycleResult result = workerControlService.requestWorkerCommand(commandRequestFrom(request));
+            WorkerCommandLifecycleResult result = workerControlRuntime.requestWorkerCommand(commandRequestFrom(request));
             if (result.success()) {
                 return CoreEventResponse.success(responsePayload(result), request.getRequestId());
             }
