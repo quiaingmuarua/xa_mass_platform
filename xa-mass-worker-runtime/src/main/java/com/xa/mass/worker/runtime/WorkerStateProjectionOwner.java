@@ -2,6 +2,7 @@ package com.xa.mass.worker.runtime;
 
 import com.xa.mass.runtime.worker.WorkerStateProjection;
 import com.xa.mass.runtime.worker.WorkerStateProjectionResult;
+import com.xa.mass.runtime.worker.WorkerStateProjectionRuntime;
 import com.xa.mass.runtime.worker.WorkerStateProjectionStatus;
 import com.xa.mass.runtime.worker.WorkerStateReport;
 
@@ -22,7 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * truth. Raw reports stay in a bounded per-worker history, and callers may read
  * only the latest projection or recent diagnostic evidence.</p>
  */
-public final class WorkerStateProjectionOwner {
+public final class WorkerStateProjectionOwner implements WorkerStateProjectionRuntime {
 
     private static final int DEFAULT_RECENT_HISTORY_LIMIT = 8;
 
@@ -42,6 +43,7 @@ public final class WorkerStateProjectionOwner {
         this.recentHistoryLimit = recentHistoryLimit;
     }
 
+    @Override
     public WorkerStateProjectionResult applyReport(WorkerStateReport report) {
         if (report == null) {
             throw new IllegalArgumentException("report must not be null");
@@ -97,6 +99,7 @@ public final class WorkerStateProjectionOwner {
         return result[0];
     }
 
+    @Override
     public Optional<WorkerStateProjection> projection(String workerId) {
         String normalizedWorkerId = normalizeNullable(workerId);
         return normalizedWorkerId == null
@@ -104,6 +107,7 @@ public final class WorkerStateProjectionOwner {
                 : Optional.ofNullable(projectionsByWorkerId.get(normalizedWorkerId));
     }
 
+    @Override
     public List<WorkerStateProjection> projections() {
         return projectionsByWorkerId.values().stream()
                 .sorted(java.util.Comparator.comparing(WorkerStateProjection::workerId))

@@ -1,6 +1,5 @@
 package com.xa.mass.engine.worker;
 
-import com.xa.mass.worker.runtime.WorkerStateProjectionOwner;
 import com.xa.mass.command.event.CoreEventRequest;
 import com.xa.mass.command.event.CoreEventResponse;
 import com.xa.mass.engine.event.KernelEventHandlerRegistry;
@@ -16,7 +15,7 @@ import java.util.Objects;
  * Kernel-targeted event handler for worker state reports.
  *
  * <p>The handler parses event payloads and delegates projection mutation to
- * {@link WorkerStateProjectionOwner}. It does not write reachability, load,
+ * {@link WorkerControlService}. It does not write reachability, load,
  * matching, or task-result truth.</p>
  */
 public final class WorkerStateReportEventHandler {

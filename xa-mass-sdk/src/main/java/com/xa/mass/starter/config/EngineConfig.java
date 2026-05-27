@@ -38,6 +38,7 @@ import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.runtime.worker.WorkerReportRuntime;
 import com.xa.mass.runtime.worker.WorkerResourceRuntime;
 import com.xa.mass.runtime.worker.WorkerSchedulingViewRuntime;
+import com.xa.mass.runtime.worker.WorkerStateProjectionRuntime;
 import com.xa.mass.runtime.worker.WorkerWarmHintRuntime;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.storage.api.RuleStorage;
@@ -88,7 +89,7 @@ public class EngineConfig {
     private WorkerCommandLifecycleOwner workerCommandLifecycleOwner = new WorkerCommandLifecycleOwner();
     private WorkerDispatchAvailabilityPolicy workerDispatchAvailabilityPolicy =
             new DefaultWorkerDispatchAvailabilityPolicy();
-    private WorkerStateProjectionOwner workerStateProjectionOwner = new WorkerStateProjectionOwner();
+    private WorkerStateProjectionRuntime workerStateProjectionRuntime = new WorkerStateProjectionOwner();
     private WorkerControlService workerControlService;
     private TaskStageEvidenceOwner taskStageEvidenceOwner = new TaskStageEvidenceOwner();
     private TaskStageEvidenceService taskStageEvidenceService;
@@ -137,7 +138,7 @@ public class EngineConfig {
         this.workerManager = null;
         this.workerCommandLifecycleOwner = source.workerCommandLifecycleOwner;
         this.workerDispatchAvailabilityPolicy = source.workerDispatchAvailabilityPolicy;
-        this.workerStateProjectionOwner = source.workerStateProjectionOwner;
+        this.workerStateProjectionRuntime = source.workerStateProjectionRuntime;
         this.workerControlService = null;
         this.taskStageEvidenceOwner = source.taskStageEvidenceOwner;
         this.taskStageEvidenceService = null;
@@ -351,7 +352,7 @@ public class EngineConfig {
                     getWorkerResourceRuntime(),
                     getWorkerDispatchGateRuntime(),
                     workerCommandLifecycleOwner,
-                    workerStateProjectionOwner,
+                    workerStateProjectionRuntime,
                     workerDispatchAvailabilityPolicy,
                     getTraceEventLogger()
             );

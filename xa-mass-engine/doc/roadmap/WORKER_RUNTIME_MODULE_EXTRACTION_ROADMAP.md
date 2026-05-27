@@ -663,11 +663,12 @@ Progress:
   constructors for candidate acquisition, admission, and scheduling-view reads;
   the previous `WorkerManager` convenience constructor path has been removed.
 - `WorkerControlService` now consumes `WorkerReportRuntime`,
-  `WorkerResourceRuntime`, and `WorkerDispatchGateRuntime` instead of accepting
-  the full `WorkerManager` assembly surface. Capability reports, worker state
-  dispatch-gate effects, and resource reads remain behaviorally unchanged, but
-  worker-control ingress no longer has a constructor path back to the god
-  object.
+  `WorkerResourceRuntime`, `WorkerDispatchGateRuntime`, and
+  `WorkerStateProjectionRuntime` instead of accepting the full `WorkerManager`
+  assembly surface or concrete state projection owner. Capability reports,
+  worker state dispatch-gate effects, state projection, and resource reads
+  remain behaviorally unchanged, but worker-control ingress no longer has a
+  constructor path back to the god object.
 - `MassEngine` now wires resource-side availability wakeups through
   `WorkerAvailabilityWakeupRuntime` instead of importing `WorkerManager`
   directly. This keeps assignment retry / ready-scan wakeup wiring as lifecycle
@@ -707,6 +708,9 @@ Progress:
 - Worker registry snapshot refresh/read and candidate-index diagnostics have
   been narrowed to package-private engine diagnostics; public callers must use
   runtime/resource contracts instead of snapshot/index internals.
+- Worker state report projection now crosses `WorkerControlService` through
+  the runtime-api `WorkerStateProjectionRuntime` contract; the concrete
+  `WorkerStateProjectionOwner` remains in `xa-mass-worker-runtime` assembly.
 - The unused `getExclusiveLeaseWorkerIds()` forwarding helper has been deleted
   from `WorkerAdmissionRuntime` and the engine assembly surface; lease
   diagnostics remain owned by the worker admission owner.

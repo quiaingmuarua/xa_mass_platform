@@ -1,6 +1,5 @@
 package com.xa.mass.engine.worker;
 
-import com.xa.mass.worker.runtime.WorkerStateProjectionOwner;
 import com.xa.mass.engine.command.WorkerCommandAcknowledgement;
 import com.xa.mass.engine.command.WorkerCommandDeliveryCoordinator;
 import com.xa.mass.engine.command.WorkerCommandDeliveryPort;
@@ -18,6 +17,7 @@ import com.xa.mass.runtime.worker.WorkerReportRuntime;
 import com.xa.mass.runtime.worker.WorkerResourceRuntime;
 import com.xa.mass.runtime.worker.WorkerStateProjection;
 import com.xa.mass.runtime.worker.WorkerStateProjectionResult;
+import com.xa.mass.runtime.worker.WorkerStateProjectionRuntime;
 import com.xa.mass.runtime.worker.WorkerStateReport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,7 +44,7 @@ public final class WorkerControlService {
     private final WorkerResourceRuntime workerResourceRuntime;
     private final WorkerDispatchGateRuntime dispatchGateRuntime;
     private final WorkerCommandLifecycleOwner commandLifecycleOwner;
-    private final WorkerStateProjectionOwner stateProjectionOwner;
+    private final WorkerStateProjectionRuntime stateProjectionRuntime;
     private final WorkerDispatchAvailabilityPolicy dispatchAvailabilityPolicy;
     private final TraceEventLogger traceEventLogger;
     private volatile Runnable dispatchWakeupCallback = () -> {
@@ -56,14 +56,14 @@ public final class WorkerControlService {
                                 WorkerResourceRuntime workerResourceRuntime,
                                 WorkerDispatchGateRuntime dispatchGateRuntime,
                                 WorkerCommandLifecycleOwner commandLifecycleOwner,
-                                WorkerStateProjectionOwner stateProjectionOwner,
+                                WorkerStateProjectionRuntime stateProjectionRuntime,
                                 WorkerDispatchAvailabilityPolicy dispatchAvailabilityPolicy,
                                 TraceEventLogger traceEventLogger) {
         this.workerReportRuntime = Objects.requireNonNull(workerReportRuntime, "workerReportRuntime");
         this.workerResourceRuntime = Objects.requireNonNull(workerResourceRuntime, "workerResourceRuntime");
         this.dispatchGateRuntime = Objects.requireNonNull(dispatchGateRuntime, "dispatchGateRuntime");
         this.commandLifecycleOwner = Objects.requireNonNull(commandLifecycleOwner, "commandLifecycleOwner");
-        this.stateProjectionOwner = Objects.requireNonNull(stateProjectionOwner, "stateProjectionOwner");
+        this.stateProjectionRuntime = Objects.requireNonNull(stateProjectionRuntime, "stateProjectionRuntime");
         this.dispatchAvailabilityPolicy = dispatchAvailabilityPolicy != null
                 ? dispatchAvailabilityPolicy
                 : new DefaultWorkerDispatchAvailabilityPolicy();
@@ -74,13 +74,13 @@ public final class WorkerControlService {
                                 WorkerResourceRuntime workerResourceRuntime,
                                 WorkerDispatchGateRuntime dispatchGateRuntime,
                                 WorkerCommandLifecycleOwner commandLifecycleOwner,
-                                WorkerStateProjectionOwner stateProjectionOwner,
+                                WorkerStateProjectionRuntime stateProjectionRuntime,
                                 TraceEventLogger traceEventLogger) {
         this(workerReportRuntime,
                 workerResourceRuntime,
                 dispatchGateRuntime,
                 commandLifecycleOwner,
-                stateProjectionOwner,
+                stateProjectionRuntime,
                 new DefaultWorkerDispatchAvailabilityPolicy(),
                 traceEventLogger);
     }
@@ -95,7 +95,7 @@ public final class WorkerControlService {
     }
 
     public WorkerStateProjectionResult applyWorkerStateReport(WorkerStateReport report) {
-        WorkerStateProjectionResult result = stateProjectionOwner.applyReport(report);
+        WorkerStateProjectionResult result = stateProjectionRuntime.applyReport(report);
         if (result.success()) {
             dispatchAvailabilityPolicy.applyWorkerStateProjection(result.projection(), dispatchGateRuntime);
             if (isAvailableState(result.projection())
@@ -170,11 +170,11 @@ public final class WorkerControlService {
     }
 
     public Optional<WorkerStateProjection> workerStateProjection(String workerId) {
-        return stateProjectionOwner.projection(workerId);
+        return stateProjectionRuntime.projection(workerId);
     }
 
     public List<WorkerStateProjection> workerStateProjections() {
-        return stateProjectionOwner.projections();
+        return stateProjectionRuntime.projections();
     }
 
     public void setDispatchWakeupCallback(Runnable dispatchWakeupCallback) {

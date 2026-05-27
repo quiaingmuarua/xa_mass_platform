@@ -38,7 +38,6 @@ import com.xa.mass.worker.runtime.WorkerRelationshipOwner;
 import com.xa.mass.worker.runtime.WorkerReportOwner;
 import com.xa.mass.worker.runtime.WorkerResourceOwner;
 import com.xa.mass.worker.runtime.WorkerRegistrySnapshot;
-import com.xa.mass.worker.runtime.WorkerStateProjectionOwner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

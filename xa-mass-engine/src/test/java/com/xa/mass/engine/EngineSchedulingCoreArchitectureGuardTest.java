@@ -1666,10 +1666,17 @@ class EngineSchedulingCoreArchitectureGuardTest {
         if (Pattern.compile("\\bWorkerManager\\b").matcher(controlServiceSource).find()) {
             violations.add("WorkerControlService depends on full WorkerManager instead of narrow runtime contracts");
         }
+        if (Pattern.compile("\\bWorkerStateProjectionOwner\\b").matcher(controlServiceSource).find()) {
+            violations.add("WorkerControlService depends on WorkerStateProjectionOwner instead of runtime contract");
+        }
+        if (controlServiceSource.contains("com.xa.mass.worker.runtime")) {
+            violations.add("WorkerControlService depends on worker-runtime implementation package instead of runtime-api contracts");
+        }
         for (String requiredContract : List.of(
                 "WorkerReportRuntime",
                 "WorkerResourceRuntime",
-                "WorkerDispatchGateRuntime")) {
+                "WorkerDispatchGateRuntime",
+                "WorkerStateProjectionRuntime")) {
             if (!controlServiceSource.contains(requiredContract)) {
                 violations.add("WorkerControlService does not consume " + requiredContract);
             }
