@@ -1,8 +1,8 @@
 package com.xa.mass.sdk;
 
 import com.xa.mass.base.model.TaskSharedConfig;
-import com.xa.mass.engine.worker.EventBinding;
-import com.xa.mass.engine.worker.WorkerGroupRecord;
+import com.xa.mass.runtime.worker.EventBinding;
+import com.xa.mass.runtime.worker.WorkerGroupRecord;
 
 import java.util.Collection;
 import java.util.LinkedHashMap;

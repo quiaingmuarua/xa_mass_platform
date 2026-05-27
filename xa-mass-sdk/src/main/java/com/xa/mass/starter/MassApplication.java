@@ -350,20 +350,20 @@ public class MassApplication {
                     if (workerPresenceStore == null || workerPresenceStore.findOwners(workerId).isEmpty()) {
                         WorkerPresence presence = workerPresenceStore != null ? workerPresenceStore.getPresence(workerId) : null;
                         if (presence == null) {
-                            return com.xa.mass.engine.worker.WorkerReachabilityState.OFFLINE;
+                            return com.xa.mass.runtime.worker.WorkerReachabilityState.OFFLINE;
                         }
                         return switch (presence.getPresenceState()) {
-                            case ONLINE -> com.xa.mass.engine.worker.WorkerReachabilityState.ONLINE;
-                            case STALE -> com.xa.mass.engine.worker.WorkerReachabilityState.STALE;
-                            case OFFLINE -> com.xa.mass.engine.worker.WorkerReachabilityState.OFFLINE;
+                            case ONLINE -> com.xa.mass.runtime.worker.WorkerReachabilityState.ONLINE;
+                            case STALE -> com.xa.mass.runtime.worker.WorkerReachabilityState.STALE;
+                            case OFFLINE -> com.xa.mass.runtime.worker.WorkerReachabilityState.OFFLINE;
                         };
                     }
                     boolean hasDispatchableOwner = workerPresenceStore.findOwners(workerId).stream()
                             .anyMatch(owner -> owner.isOnline(System.currentTimeMillis())
                                     && (transportNodeRegistry == null || transportNodeRegistry.isNodeOnline(owner.transportNodeId())));
                     return hasDispatchableOwner
-                            ? com.xa.mass.engine.worker.WorkerReachabilityState.ONLINE
-                            : com.xa.mass.engine.worker.WorkerReachabilityState.OFFLINE;
+                            ? com.xa.mass.runtime.worker.WorkerReachabilityState.ONLINE
+                            : com.xa.mass.runtime.worker.WorkerReachabilityState.OFFLINE;
                 });
                 taskDispatchHandoff = transportRuntimeComposition.resolveTaskDispatchHandoff(DEFAULT_DISPATCH_HANDOFF_CAPACITY);
                 if (runtimeRole == TransportRuntimeRole.EMBEDDED) {

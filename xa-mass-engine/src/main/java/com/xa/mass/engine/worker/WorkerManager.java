@@ -1,5 +1,9 @@
 package com.xa.mass.engine.worker;
 
+import com.xa.mass.runtime.worker.AdapterNodeRecord;
+import com.xa.mass.runtime.worker.NodeGroupBindingRecord;
+import com.xa.mass.runtime.worker.WorkerGroupRecord;
+
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerHeartbeatEvent;
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerOfflineEvent;
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerOnlineEvent;

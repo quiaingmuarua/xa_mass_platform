@@ -1,5 +1,8 @@
 package com.xa.mass.engine.worker;
 
+import com.xa.mass.runtime.worker.AdapterNodeRecord;
+import com.xa.mass.runtime.worker.NodeGroupBindingRecord;
+
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 

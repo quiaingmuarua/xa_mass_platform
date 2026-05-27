@@ -1,4 +1,4 @@
-package com.xa.mass.engine.worker;
+package com.xa.mass.runtime.worker;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -27,7 +27,7 @@ public record NodeGroupBindingRecord(
         attributes = immutableStringMap(attributes);
     }
 
-    NodeGroupBindingRecord withLifecycleTimestamps(Instant registeredAt, Instant updatedAt) {
+    public NodeGroupBindingRecord withLifecycleTimestamps(Instant registeredAt, Instant updatedAt) {
         return new NodeGroupBindingRecord(
                 adapterNodeId,
                 groupId,
@@ -41,7 +41,7 @@ public record NodeGroupBindingRecord(
         );
     }
 
-    NodeGroupBindingRecord withEnabled(boolean enabled, Instant updatedAt) {
+    public NodeGroupBindingRecord withEnabled(boolean enabled, Instant updatedAt) {
         return new NodeGroupBindingRecord(
                 adapterNodeId,
                 groupId,
@@ -55,7 +55,7 @@ public record NodeGroupBindingRecord(
         );
     }
 
-    NodeGroupBindingRecord withDraining(boolean draining, Instant updatedAt) {
+    public NodeGroupBindingRecord withDraining(boolean draining, Instant updatedAt) {
         return new NodeGroupBindingRecord(
                 adapterNodeId,
                 groupId,

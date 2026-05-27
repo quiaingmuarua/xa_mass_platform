@@ -1,10 +1,10 @@
 package com.xa.mass.engine.testutil;
 
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.engine.worker.AdapterNodeRecord;
-import com.xa.mass.engine.worker.EventBinding;
-import com.xa.mass.engine.worker.NodeGroupBindingRecord;
-import com.xa.mass.engine.worker.WorkerGroupRecord;
+import com.xa.mass.runtime.worker.AdapterNodeRecord;
+import com.xa.mass.runtime.worker.EventBinding;
+import com.xa.mass.runtime.worker.NodeGroupBindingRecord;
+import com.xa.mass.runtime.worker.WorkerGroupRecord;
 import com.xa.mass.engine.worker.WorkerManager;
 
 import java.util.LinkedHashSet;

@@ -32,17 +32,19 @@ Candidate acquisition and task-local warm hints are now package-owned by
 boundary is still inside engine.
 
 Task selector, candidate batch shape, candidate rows, WorkerGroup capability
-read view, scheduling-view contract, admission contract, worker load, and
-transport reachability evidence now use runtime-neutral `mass-runtime-api`
-types: `WorkerTaskSelector`,
+read view, scheduling-view contract, admission contract, worker load, resource
+declaration records, and transport reachability evidence now use
+runtime-neutral `mass-runtime-api` types: `WorkerTaskSelector`,
 `WorkerCandidateBatch<T>`, `WorkerCandidateRow`,
 `WorkerCandidateRuntime`, `WorkerGroupCapabilityView`,
 `WorkerSchedulingViewRuntime`, `WorkerAdmissionRuntime`, `WorkerLoadSnapshot`,
 `WorkerReachabilityState`, `WorkerCapabilityReport`, `WorkerReportRuntime`,
 `WorkerCapabilityReportStatus`, and `WorkerCapabilityReportResult`, plus worker state report/projection DTOs
 (`WorkerStateReport`, `WorkerStateProjection`, `WorkerStateProjectionResult`,
-`WorkerStateProjectionStatus`). Engine-owned scheduling DTOs still adapt those
-runtime values into `WorkerSchedulingView` and `WorkerMatchContext` locally.
+`WorkerStateProjectionStatus`) and resource declaration records
+(`AdapterNodeRecord`, `NodeGroupBindingRecord`, `WorkerGroupRecord`,
+`EventBinding`). Engine-owned scheduling DTOs still adapt those runtime values
+into `WorkerSchedulingView` and `WorkerMatchContext` locally.
 Capability report application keeps `WorkerRegistrySnapshot` package-local so
 external/report DTOs do not expose engine candidate snapshot truth.
 
@@ -61,11 +63,11 @@ owners while callers converge.
 | --- | --- | --- | --- | --- | --- |
 | Worker row mutation | `addWorker`, `updateWorker`, `deleteWorker` | SDK registration, tests, server bootstrap through SDK | `WorkerResourceOwner` through resource runtime | control-plane storage plus derived runtime projection | Registration row is stable resource truth; `WorkerMeta` slot projection is runtime truth |
 | Worker row lookup | `getWorker`, `findWorker`, `getAllWorkers` | SDK diagnostics, storage-edge lookup, tests | `WorkerResourceOwner` / replacement read contract | control-plane storage read | `findWorker` exists because `WorkerLookupStore` is still active |
-| WorkerGroup mutation | `upsertWorkerGroup`, `deleteWorkerGroup` | SDK declaration, bootstrap, tests | `WorkerGroupOwner` through resource runtime | control-plane storage plus runtime candidate projection | WorkerGroup is capability declaration truth, not match strategy state |
+| WorkerGroup mutation | `upsertWorkerGroup`, `deleteWorkerGroup` | SDK declaration, bootstrap, tests | `WorkerGroupOwner` through resource runtime | control-plane storage plus runtime candidate projection | `WorkerGroupRecord` / `EventBinding` are runtime-api declaration values; WorkerGroup remains capability declaration truth, not match strategy state |
 | WorkerGroup read | `workerGroup`, `workerGroupReadView`, `workerGroups` | SDK read APIs, candidate enumeration, tests | `WorkerGroupOwner` / scheduling-view runtime | control-plane read plus runtime read model | `workerGroupReadView` is used by scheduling candidate enumeration |
-| AdapterNode mutation | `registerAdapterNode`, `deleteAdapterNode` | SDK declaration, tests | `WorkerRelationshipOwner` through resource runtime | control-plane storage plus runtime projection | AdapterNode is endpoint/runtime-node declaration truth |
+| AdapterNode mutation | `registerAdapterNode`, `deleteAdapterNode` | SDK declaration, tests | `WorkerRelationshipOwner` through resource runtime | control-plane storage plus runtime projection | `AdapterNodeRecord` is a runtime-api declaration value; AdapterNode is endpoint/runtime-node declaration truth |
 | AdapterNode read | `adapterNode`, `adapterNodes` | SDK read APIs, tests | `WorkerRelationshipOwner` through resource runtime | control-plane read | Not scheduling policy |
-| NodeGroupBinding mutation | `bindNodeGroup`, `unbindNodeGroup`, `setNodeGroupBindingEnabled`, `setNodeGroupBindingDraining` | SDK declaration/control, tests | `WorkerRelationshipOwner` through resource runtime | control-plane declaration plus runtime dispatch gate | Enabled/draining effects mutate source-scoped dispatch gates in `WorkerRegistry` |
+| NodeGroupBinding mutation | `bindNodeGroup`, `unbindNodeGroup`, `setNodeGroupBindingEnabled`, `setNodeGroupBindingDraining` | SDK declaration/control, tests | `WorkerRelationshipOwner` through resource runtime | control-plane declaration plus runtime dispatch gate | `NodeGroupBindingRecord` is a runtime-api declaration value; enabled/draining effects mutate source-scoped dispatch gates in `WorkerRegistry` |
 | NodeGroupBinding read | `nodeGroupBinding`, `nodeGroupBindings`, `groupIdsByAdapterNodeId`, `adapterNodeIdsByGroupId` | SDK read APIs, tests, routing diagnostics | `WorkerRelationshipOwner` through resource runtime | control-plane read / runtime read model | Candidate source may consume relation evidence but not own declaration truth |
 | Candidate source | `findWorkerCandidateBatch` | `RuleBasedTaskWorkerMatchingStrategy`, tests | `WorkerCandidateRuntime` | runtime state | Uses runtime-neutral `WorkerCandidateBatch<WorkerCandidateRow>`; must start from resolved WorkerGroup selector; no all-worker candidate scan |
 | Candidate diagnostics | `findWorkerCandidateBatch` metadata | tests and diagnostics | `WorkerCandidateSourceOwner` / diagnostics residue | runtime read model residue | List-only `findWorkerCandidates` has been deleted; batch metadata is the strategy-facing contract |
@@ -228,6 +230,9 @@ Do not make worker runtime depend on `Task`.
 - `WorkerAdmissionRuntime`, `WorkerCandidateBatch<T>`, `WorkerTaskSelector`,
   `WorkerLoadSnapshot`, and `WorkerReachabilityState` already live in
   `mass-runtime-api`.
+- `AdapterNodeRecord`, `NodeGroupBindingRecord`, `WorkerGroupRecord`, and
+  `EventBinding` now live in `mass-runtime-api`, but their owners still live in
+  engine until resource/report implementation movement.
 - `WorkerManager` still owns both resource maps and runtime slot synchronization.
 - `WorkerStateProjectionOwner` and command-gate effects need a resource/report
   owner split before moving.

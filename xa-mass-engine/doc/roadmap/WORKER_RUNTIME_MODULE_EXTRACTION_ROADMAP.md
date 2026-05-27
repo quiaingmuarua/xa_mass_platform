@@ -224,6 +224,11 @@ validates and writes them:
 - capability declaration validation
 - resource mutation wakeups
 
+The declaration value types may live in `mass-runtime-api` before their owner
+implementation moves, but that does not change their truth layer: storage-backed
+resource ownership remains control-plane truth, while matching consumes derived
+runtime projection.
+
 ### Worker Runtime Owns
 
 - `WorkerMeta` projection from resource declaration plus runtime evidence

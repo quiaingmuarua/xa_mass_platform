@@ -1,6 +1,4 @@
-package com.xa.mass.engine.worker;
-
-import com.xa.mass.runtime.worker.EventKey;
+package com.xa.mass.runtime.worker;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -64,7 +62,7 @@ public final class WorkerGroupRecord {
         return defaultMaxConcurrentWork;
     }
 
-    Set<EventKey> eventKeys() {
+    public Set<EventKey> eventKeys() {
         LinkedHashSet<EventKey> keys = new LinkedHashSet<>();
         for (EventBinding binding : eventBindings) {
             keys.addAll(binding.eventKeys());
@@ -72,7 +70,7 @@ public final class WorkerGroupRecord {
         return keys.isEmpty() ? Set.of() : Collections.unmodifiableSet(keys);
     }
 
-    boolean supportsProject(String projectCode) {
+    public boolean supportsProject(String projectCode) {
         String normalized = normalizeNullable(projectCode);
         return normalized != null && projectCodes.contains(normalized);
     }

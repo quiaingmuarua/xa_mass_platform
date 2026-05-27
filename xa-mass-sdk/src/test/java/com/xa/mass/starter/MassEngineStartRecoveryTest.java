@@ -9,7 +9,8 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.worker.WorkerManager;
-import com.xa.mass.engine.worker.WorkerReachabilityState;
+import com.xa.mass.runtime.worker.WorkerCandidateRow;
+import com.xa.mass.runtime.worker.WorkerReachabilityState;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
@@ -46,10 +47,12 @@ class MassEngineStartRecoveryTest {
             if (!workerManager.tryAcquireWorkerExclusiveLease("worker-1")) {
                 return List.of();
             }
+            Worker candidateWorker = workerManager.getWorker("worker-1");
+            WorkerCandidateRow candidateRow = candidateRow(candidateWorker);
             return List.of(new WorkerSchedulingCandidate(
-                    workerManager.getWorker("worker-1"),
+                    candidateRow,
                     WorkerSchedulingView.from(
-                            workerManager.getWorker("worker-1"),
+                            candidateRow,
                             WorkerReachabilityState.ONLINE,
                             true,
                             true
@@ -126,10 +129,12 @@ class MassEngineStartRecoveryTest {
                 if (!workerManager.tryAcquireWorkerExclusiveLease("worker-1")) {
                     return List.of();
                 }
+                Worker candidateWorker = workerManager.getWorker("worker-1");
+                WorkerCandidateRow candidateRow = candidateRow(candidateWorker);
                 return List.of(new WorkerSchedulingCandidate(
-                        workerManager.getWorker("worker-1"),
+                        candidateRow,
                         WorkerSchedulingView.from(
-                                workerManager.getWorker("worker-1"),
+                                candidateRow,
                                 WorkerReachabilityState.ONLINE,
                                 true,
                                 true
@@ -206,6 +211,26 @@ class MassEngineStartRecoveryTest {
         } finally {
             restoreProperty("xa.mass.engine.bulkWorkRetryDelayMillis", previousBulkRetryDelay);
         }
+    }
+
+    private static WorkerCandidateRow candidateRow(Worker worker) {
+        return new WorkerCandidateRow(
+                worker.getWorkerId(),
+                worker.getStatus() == null ? null : worker.getStatus().name(),
+                worker.getAgentVersion(),
+                worker.getLastHeartbeat(),
+                worker.getSupportedProjects(),
+                worker.getSupportedEventCodes(),
+                worker.getWorkerGroupId(),
+                worker.getAdapterNodeId(),
+                worker.getAdapterId(),
+                worker.getOnlineStrategy(),
+                worker.getMaxConcurrentWork(),
+                worker.getAttributes(),
+                worker.getCreateTime(),
+                worker.getUpdateTime(),
+                worker.isAvailable()
+        );
     }
 
     private static TaskExecutionSpec taskExecutionSpec(int batchSize, int defaultMaxRetryCount) {

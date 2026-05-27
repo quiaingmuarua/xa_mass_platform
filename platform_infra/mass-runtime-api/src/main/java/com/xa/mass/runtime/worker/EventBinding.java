@@ -1,6 +1,4 @@
-package com.xa.mass.engine.worker;
-
-import com.xa.mass.runtime.worker.EventKey;
+package com.xa.mass.runtime.worker;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -34,7 +32,7 @@ public final class EventBinding {
         return projectCodes;
     }
 
-    Set<EventKey> eventKeys() {
+    public Set<EventKey> eventKeys() {
         Set<EventKey> keys = new LinkedHashSet<>();
         for (String projectCode : projectCodes) {
             keys.add(new EventKey(projectCode, eventCode));

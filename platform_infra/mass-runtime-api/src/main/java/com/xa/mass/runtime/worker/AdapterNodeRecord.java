@@ -1,4 +1,4 @@
-package com.xa.mass.engine.worker;
+package com.xa.mass.runtime.worker;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -27,7 +27,7 @@ public record AdapterNodeRecord(
         attributes = immutableStringMap(attributes);
     }
 
-    AdapterNodeRecord withLifecycleTimestamps(Instant registeredAt, Instant lastSeenAt) {
+    public AdapterNodeRecord withLifecycleTimestamps(Instant registeredAt, Instant lastSeenAt) {
         return new AdapterNodeRecord(
                 adapterNodeId,
                 adapterType,

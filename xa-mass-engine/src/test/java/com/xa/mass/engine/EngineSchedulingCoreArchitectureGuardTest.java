@@ -701,10 +701,12 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
     @Test
     void adapterNodeAndNodeGroupBindingDoNotOwnCapabilityTruth() throws IOException {
-        Path workerPackage = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker");
+        Path repo = repositoryRoot();
+        Path engineWorkerPackage = repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/worker");
+        Path runtimeWorkerPackage = repo.resolve("platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker");
         List<Path> ownerPaths = List.of(
-                workerPackage.resolve("AdapterNodeRecord.java"),
-                workerPackage.resolve("NodeGroupBindingRecord.java")
+                runtimeWorkerPackage.resolve("AdapterNodeRecord.java"),
+                runtimeWorkerPackage.resolve("NodeGroupBindingRecord.java")
         );
         Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
                 Map.entry("eventBindings", Pattern.compile("\\beventBindings\\b")),
@@ -715,7 +717,17 @@ class EngineSchedulingCoreArchitectureGuardTest {
         );
 
         List<String> violations = new ArrayList<>();
+        for (String typeName : List.of("AdapterNodeRecord", "NodeGroupBindingRecord")) {
+            Path enginePath = engineWorkerPackage.resolve(typeName + ".java");
+            if (Files.exists(enginePath)) {
+                violations.add(enginePath + " reintroduces resource declaration record inside engine");
+            }
+        }
         for (Path path : ownerPaths) {
+            if (!Files.isRegularFile(path)) {
+                violations.add(path + " is missing");
+                continue;
+            }
             String source = Files.readString(path, StandardCharsets.UTF_8);
             for (Map.Entry<String, Pattern> forbiddenPattern : forbiddenPatterns.entrySet()) {
                 if (forbiddenPattern.getValue().matcher(source).find()) {
@@ -732,16 +744,26 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
     @Test
     void workerGroupAdapterNodeRelationTruthIsRemoved() throws IOException {
-        Path workerPackage = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker");
+        Path repo = repositoryRoot();
+        Path engineWorkerPackage = repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/worker");
+        Path runtimeWorkerPackage = repo.resolve("platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker");
         Map<Path, Pattern> forbiddenPatterns = Map.of(
-                workerPackage.resolve("WorkerGroupRecord.java"),
+                runtimeWorkerPackage.resolve("WorkerGroupRecord.java"),
                 Pattern.compile("\\badapterNodeId\\b"),
-                workerPackage.resolve("WorkerRegistrySnapshot.java"),
+                engineWorkerPackage.resolve("WorkerRegistrySnapshot.java"),
                 Pattern.compile("\\bgroupIdsByAdapterNodeId\\b")
         );
 
         List<String> violations = new ArrayList<>();
+        if (Files.exists(engineWorkerPackage.resolve("WorkerGroupRecord.java"))) {
+            violations.add(engineWorkerPackage.resolve("WorkerGroupRecord.java")
+                    + " reintroduces WorkerGroupRecord inside engine");
+        }
         for (Map.Entry<Path, Pattern> forbiddenPattern : forbiddenPatterns.entrySet()) {
+            if (!Files.isRegularFile(forbiddenPattern.getKey())) {
+                violations.add(forbiddenPattern.getKey() + " is missing");
+                continue;
+            }
             String source = Files.readString(forbiddenPattern.getKey(), StandardCharsets.UTF_8);
             if (forbiddenPattern.getValue().matcher(source).find()) {
                 violations.add(forbiddenPattern.getKey() + " reintroduces group-owned node relation truth");
@@ -1090,7 +1112,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
         assertTrue(violations.isEmpty(),
                 "WorkerSchedulingViewRuntime must stay runtime-api owned and independent from "
-                        + "engine WorkerGroupRecord / base Worker rows:\n"
+                        + "engine-owned WorkerGroupRecord / base Worker rows:\n"
                         + String.join("\n", violations));
     }
 
