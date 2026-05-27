@@ -307,12 +307,8 @@ public class WorkerManagerTest {
         assertTrue(draining.draining());
         assertFalse(manager.isWorkerDispatchEnabled(worker));
         assertEquals(List.of("w-binding"),
-                manager.getWorkerCandidateIndex()
-                        .workersFor(task("demoApp", sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
-                                Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch")), "crawler")))
-                        .stream()
-                        .map(Worker::getWorkerId)
-                        .toList());
+                candidateIndexIds(task("demoApp", sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
+                        Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch")), "crawler"))));
     }
 
     @Test
@@ -644,12 +640,8 @@ public class WorkerManagerTest {
         manager.addWorker(worker);
 
         assertEquals(List.of("w-indexed-group"),
-                manager.getWorkerCandidateIndex()
-                        .workersFor(task("demoApp", sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
-                                Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch")), "crawler")))
-                        .stream()
-                        .map(Worker::getWorkerId)
-                        .toList());
+                candidateIndexIds(task("demoApp", sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
+                        Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch")), "crawler"))));
         assertEquals(3,
                 manager.getWorkerRegistrySnapshot().group("crawler").orElseThrow().defaultMaxConcurrentWork());
     }
@@ -810,16 +802,12 @@ public class WorkerManagerTest {
         assertTrue(manager.updateWorker(updated));
 
         assertTrue(manager.getWorkerCandidateIndex()
-                .workersFor(task("demoApp", sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
-                        Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch")), "crawler")))
+                .workersFor(workerTaskSelector(task("demoApp", sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
+                        Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch")), "crawler"))))
                 .isEmpty());
         assertEquals(List.of("w-snapshot-update"),
-                manager.getWorkerCandidateIndex()
-                        .workersFor(task("testApp", sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
-                                Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.parse")), "parser")))
-                        .stream()
-                        .map(Worker::getWorkerId)
-                        .toList());
+                candidateIndexIds(task("testApp", sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
+                        Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.parse")), "parser"))));
     }
 
     @Test
@@ -835,18 +823,10 @@ public class WorkerManagerTest {
         );
 
         assertEquals(WorkerCapabilityReportStatus.ACCEPTED, result.status());
-        assertEquals(List.of("w-report-capability"), manager.getWorkerCandidateIndex()
-                .workersFor(task("demoApp", sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
-                        Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch")), "crawler")))
-                .stream()
-                .map(Worker::getWorkerId)
-                .toList());
-        assertEquals(List.of("w-report-capability"), manager.getWorkerCandidateIndex()
-                .workersFor(task("demoApp", sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
-                        Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.parse")), "crawler")))
-                .stream()
-                .map(Worker::getWorkerId)
-                .toList());
+        assertEquals(List.of("w-report-capability"), candidateIndexIds(task("demoApp", sharedConfig(Map.of(
+                TaskSharedConfig.SDK_METADATA, Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch")), "crawler"))));
+        assertEquals(List.of("w-report-capability"), candidateIndexIds(task("demoApp", sharedConfig(Map.of(
+                TaskSharedConfig.SDK_METADATA, Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.parse")), "crawler"))));
         assertFalse(manager.getWorkerRegistrySnapshot().workerSupportsEventKey(
                 "w-report-capability",
                 new EventKey("demoApp", "crawler.parse")
@@ -862,8 +842,8 @@ public class WorkerManagerTest {
         assertTrue(manager.deleteWorker("w-snapshot-delete"));
 
         assertTrue(manager.getWorkerCandidateIndex()
-                .workersFor(task("demoApp", sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
-                        Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch")), "crawler")))
+                .workersFor(workerTaskSelector(task("demoApp", sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
+                        Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch")), "crawler"))))
                 .isEmpty());
     }
 
@@ -878,19 +858,15 @@ public class WorkerManagerTest {
         storage.addWorker(worker);
 
         assertTrue(storageBackedManager.getWorkerCandidateIndex()
-                .workersFor(task("demoApp", sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
-                        Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch")), "crawler")))
+                .workersFor(workerTaskSelector(task("demoApp", sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
+                        Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch")), "crawler"))))
                 .isEmpty());
 
         storageBackedManager.refreshWorkerRegistrySnapshot();
 
         assertEquals(List.of("w-storage-direct-snapshot"),
-                storageBackedManager.getWorkerCandidateIndex()
-                        .workersFor(task("demoApp", sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
-                                Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch")), "crawler")))
-                        .stream()
-                        .map(Worker::getWorkerId)
-                        .toList());
+                candidateIndexIds(storageBackedManager, task("demoApp", sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
+                        Map.of(TaskSharedConfig.SDK_EVENT_CODE, "crawler.fetch")), "crawler"))));
     }
 
 
@@ -1120,6 +1096,22 @@ public class WorkerManagerTest {
         return workerManager.findWorkerCandidateBatch(task, maxCandidateCount).candidates().stream()
                 .map(WorkerCandidateRow::workerId)
                 .toList();
+    }
+
+    private List<String> candidateIndexIds(Task task) {
+        return candidateIndexIds(manager, task);
+    }
+
+    private List<String> candidateIndexIds(WorkerManager workerManager, Task task) {
+        return workerManager.getWorkerCandidateIndex()
+                .workersFor(workerTaskSelector(task))
+                .stream()
+                .map(Worker::getWorkerId)
+                .toList();
+    }
+
+    private static com.xa.mass.runtime.worker.WorkerTaskSelector workerTaskSelector(Task task) {
+        return WorkerTaskSelectorFactory.fromTask(task);
     }
 
     private static Map<String, Object> selector(String... groupIds) {

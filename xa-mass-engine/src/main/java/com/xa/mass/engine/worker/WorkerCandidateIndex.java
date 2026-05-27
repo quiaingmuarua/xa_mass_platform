@@ -1,6 +1,5 @@
 package com.xa.mass.engine.worker;
 
-import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.runtime.worker.WorkerSlot;
@@ -31,14 +30,6 @@ public final class WorkerCandidateIndex {
         this.workerRegistry = Objects.requireNonNull(workerRegistry, "workerRegistry");
     }
 
-    public List<Worker> workersFor(Task task) {
-        return workersFor(WorkerTaskSelectorFactory.fromTask(task), Integer.MAX_VALUE);
-    }
-
-    public List<Worker> workersFor(Task task, int maxCandidateCount) {
-        return workersFor(WorkerTaskSelectorFactory.fromTask(task), maxCandidateCount);
-    }
-
     public List<Worker> workersFor(WorkerTaskSelector selector) {
         return workersFor(selector, Integer.MAX_VALUE);
     }
@@ -55,10 +46,6 @@ public final class WorkerCandidateIndex {
         }
 
         return workersForGroups(selector, groupIds, maxCandidateCount);
-    }
-
-    public List<Worker> workersForGroups(Task task, List<String> groupIds, int maxCandidateCount) {
-        return workersForGroups(WorkerTaskSelectorFactory.fromTask(task), groupIds, maxCandidateCount);
     }
 
     public List<Worker> workersForGroups(WorkerTaskSelector selector, List<String> groupIds, int maxCandidateCount) {
@@ -90,11 +77,6 @@ public final class WorkerCandidateIndex {
         return List.copyOf(workers);
     }
 
-    public Optional<Worker> workerForWorkerId(Task task, String workerId) {
-        WorkerTaskSelector selector = WorkerTaskSelectorFactory.fromTask(task);
-        return workerForWorkerId(selector, selector.workerGroupIds(), workerId);
-    }
-
     private Optional<Worker> workerForWorkerId(WorkerTaskSelector selector, List<String> selectedGroupIds, String workerId) {
         String normalizedWorkerId = normalizeNullable(workerId);
         if (normalizedWorkerId == null || selectedGroupIds == null || selectedGroupIds.isEmpty()) {
@@ -122,15 +104,6 @@ public final class WorkerCandidateIndex {
         }
 
         return Optional.empty();
-    }
-
-    public SourceGuardResult sourceGuard(Task task,
-                                         String selectedGroupId,
-                                         String observedAdapterNodeId,
-                                         String observedRouteBucketKey,
-                                         String workerId) {
-        return sourceGuard(WorkerTaskSelectorFactory.fromTask(task), selectedGroupId, observedAdapterNodeId,
-                observedRouteBucketKey, workerId);
     }
 
     public SourceGuardResult sourceGuard(WorkerTaskSelector selector,

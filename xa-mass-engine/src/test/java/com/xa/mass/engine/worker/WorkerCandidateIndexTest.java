@@ -8,6 +8,7 @@ import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.runtime.worker.WorkerMeta;
+import com.xa.mass.runtime.worker.WorkerTaskSelector;
 import com.xa.mass.worker.runtime.WorkerRegistrySnapshot;
 import org.junit.jupiter.api.Test;
 
@@ -79,14 +80,14 @@ public class WorkerCandidateIndexTest {
                 worker("worker-node-b", "crawler", "node-b", Map.of())
         )));
 
-        Task task = task("demoApp", "crawler.fetch", "worker-node-b", "crawler");
+        Task task = mutableTask("demoApp", "crawler.fetch", "worker-node-b", "crawler");
         task.setSharedConfig(new java.util.LinkedHashMap<>(task.getSharedConfig()));
         task.getSharedConfig().put(TaskSharedConfig.ADAPTER_NODE_ID, "node-a");
 
-        assertTrue(index.workersFor(task).isEmpty());
+        assertTrue(index.workersFor(selector(task)).isEmpty());
 
         task.getSharedConfig().put(TaskSharedConfig.TARGET_WORKER_ID, "worker-node-a");
-        assertEquals(List.of("worker-node-a"), workerIds(index.workersFor(task)));
+        assertEquals(List.of("worker-node-a"), workerIds(index.workersFor(selector(task))));
     }
 
     @Test
@@ -120,7 +121,7 @@ public class WorkerCandidateIndexTest {
         task.setProject("demoApp");
         task.setSharedConfig(Map.of(TaskSharedConfig.WORKER_GROUP_ID, "crawler"));
 
-        assertEquals(List.of("worker-1"), workerIds(index.workersFor(task)));
+        assertEquals(List.of("worker-1"), workerIds(index.workersFor(selector(task))));
     }
 
     @Test
@@ -186,11 +187,11 @@ public class WorkerCandidateIndexTest {
                 worker("worker-eu", "crawler", Map.of("region", "eu"))
         )));
 
-        Task task = task("demoApp", "crawler.fetch", null, "crawler");
+        Task task = mutableTask("demoApp", "crawler.fetch", null, "crawler");
         task.setSharedConfig(new java.util.LinkedHashMap<>(task.getSharedConfig()));
         task.getSharedConfig().put(TaskSharedConfig.ROUTE_ATTRIBUTES, Map.of("region", "us"));
 
-        assertEquals(List.of("worker-us"), workerIds(index.workersFor(task, 10)));
+        assertEquals(List.of("worker-us"), workerIds(index.workersFor(selector(task), 10)));
     }
 
     @Test
@@ -200,7 +201,7 @@ public class WorkerCandidateIndexTest {
         ), List.of(
                 worker("worker-eu", "crawler", Map.of("region", "eu"))
         )));
-        Task task = task("demoApp", "crawler.fetch", null, "crawler");
+        Task task = mutableTask("demoApp", "crawler.fetch", null, "crawler");
         task.setSharedConfig(new java.util.LinkedHashMap<>(task.getSharedConfig()));
         task.getSharedConfig().put(TaskSharedConfig.ROUTE_ATTRIBUTES, Map.of("region", "us"));
         String observedRouteBucket = WorkerRoutingPolicy.defaultPolicy()
@@ -209,7 +210,7 @@ public class WorkerCandidateIndexTest {
                 .next();
 
         WorkerCandidateIndex.SourceGuardResult result =
-                index.sourceGuard(task, "crawler", null, observedRouteBucket, "worker-eu");
+                index.sourceGuard(selector(task), "crawler", null, observedRouteBucket, "worker-eu");
 
         assertFalse(result.accepted());
         assertEquals(WorkerCandidateIndex.SourceGuardRejectionReason.ROUTE_MISMATCH, result.rejectionReason());
@@ -260,7 +261,15 @@ public class WorkerCandidateIndexTest {
         return new WorkerCandidateIndex(snapshot, registry);
     }
 
-    private static Task task(String project, String eventCode, String targetWorkerId, String... groupIds) {
+    private static WorkerTaskSelector task(String project, String eventCode, String targetWorkerId, String... groupIds) {
+        return selector(mutableTask(project, eventCode, targetWorkerId, groupIds));
+    }
+
+    private static WorkerTaskSelector selector(Task task) {
+        return WorkerTaskSelectorFactory.fromTask(task);
+    }
+
+    private static Task mutableTask(String project, String eventCode, String targetWorkerId, String... groupIds) {
         Task task = new Task();
         task.setProject(project);
         Map<String, Object> sharedConfig = new java.util.LinkedHashMap<>();
