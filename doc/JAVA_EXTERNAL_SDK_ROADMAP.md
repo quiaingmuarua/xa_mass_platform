@@ -1,6 +1,7 @@
 # Java External SDK Roadmap
 
-Status: draft.
+Status: active. JSDK-0 inventory is complete in
+[`JAVA_EXTERNAL_SDK_INVENTORY.md`](./JAVA_EXTERNAL_SDK_INVENTORY.md).
 
 This roadmap defines a new `xa-mass-java-sdk` artifact for repo-external Java
 clients. It is intentionally separate from the current `xa-mass-sdk`, and it
@@ -49,6 +50,25 @@ Rationale:
 - keeping all external integration artifacts together makes it clearer which
   modules may depend on public server contracts and which modules must not
   influence engine/runtime ownership.
+
+`integrations/` is a repository ownership boundary, not a dependency-purity
+claim. Modules under it are allowed to be mixed during migration when their
+role is external integration, sample proof, or official worker reference code.
+For example, `xa-mass-worker-pack` may temporarily keep `xa-mass-sdk` and
+transport implementation dependencies for embedded/realtime sample paths while
+its HTTP topology/control-plane paths migrate to `xa-mass-java-sdk`.
+
+Names considered:
+
+- `clients/`: too narrow. It fits `xa-mass-java-sdk`, but not worker-pack or
+  external-process samples.
+- `examples/`: too weak. These assets are executable acceptance references,
+  not just illustrative snippets.
+- `extensions/`: too broad and easy to confuse with plugin/runtime extension
+  points.
+- `integrations/`: best fit. It covers public client SDKs, worker reference
+  packs, sample workers, and black-box integration proof without implying
+  engine/runtime ownership.
 
 Initial module path:
 
@@ -123,6 +143,30 @@ Allowed dependencies:
   mapper used by the public HTTP contract tests.
 - optionally `xa-mass-sdk-api` only when the type is a stable public contract
   and does not pull embedded/runtime composition.
+
+`xa-mass-sdk-api` is not automatically safe as a whole-module dependency. It
+contains both public model types and server/embedding support types. If this
+module depends on it, production imports must be limited by guard:
+
+- normal reuse candidates, still subject to JSDK-0 per-type classification:
+  - `com.xa.mass.sdk.model..`
+  - `com.xa.mass.sdk.event..`
+- blocked by default:
+  - `com.xa.mass.sdk.auth..`
+  - `com.xa.mass.sdk.authz..`
+  - `com.xa.mass.sdk.catalog..`
+
+Catalog value objects may be allowed only after JSDK-0 classifies a specific
+type as a stable caller contract. Catalog factories, registries, auth
+providers, authorization policies, and in-memory submitter implementations must
+stay out of `xa-mass-java-sdk`.
+
+Do not treat `com.xa.mass.sdk.model..` as a whole-package whitelist. It contains
+caller-intent request models, worker topology models, and server projection
+snapshots in one package. JSDK-0 must list every reused model type by name and
+reason. If more than eight `model` types are reused, add a follow-up decision
+on whether `xa-mass-sdk-api` needs internal model sub-packaging or a narrower
+client-contract artifact.
 
 Forbidden dependencies:
 
@@ -220,7 +264,9 @@ Initial task scope:
 - sync append one item.
 - execute task command.
 - read result window.
-- read result archive manifest and content stream.
+- read result archive manifest and content stream. Archive content must be
+  exposed as a streaming response (`InputStream` or equivalent closeable body)
+  rather than eager full-buffer loading.
 - report/read stage evidence only if the type shape is already stable enough
   to expose without mirroring internal projection fields.
 
@@ -280,6 +326,13 @@ Initial topology scope:
 The SDK should expose worker attributes directly because Stage-2 match and
 diagnostics depend on them. It should not pretend attributes are only labels.
 
+`declareGroup(...)` should be documented as the server's WorkerGroup
+declaration/upsert operation, not a plain create call. If the server keeps the
+current idempotent behavior, the Java SDK should use `declareGroup` or
+`ensureGroup` language and surface that repeated calls may update declaration
+fields. If the server later distinguishes create from update, the SDK should
+split those methods instead of hiding the semantic difference.
+
 ### Polling Worker Session Runtime
 
 Raw endpoint wrappers are not enough for Java workers. The first runtime value
@@ -311,8 +364,8 @@ PollingWorkerSession session = mass.workerSessions().polling()
 Session responsibilities:
 
 - idempotent startup sequence:
-  declare group if configured, register adapter node, bind node/group,
-  register worker, mark online, report capability, report state.
+  register adapter node, bind node/group, register worker, mark online,
+  report capability, report state.
 - heartbeat loop.
 - poll loop with bounded backoff.
 - handler registry keyed by global `eventCode`.
@@ -328,9 +381,49 @@ Session responsibilities explicitly excluded:
 - no local scheduling.
 - no local task retries after server has accepted a result.
 - no local worker matching.
-- no hidden WorkerGroup capability mutation after startup unless an explicit
-  API call requests it.
+- no WorkerGroup declaration or hidden WorkerGroup capability mutation inside
+  session startup. WorkerGroup declaration is a topology/control-plane step
+  through `mass.workers().declareGroup(...)`, normally run by deployment or
+  setup code before worker instances start.
 - no auto-run task creation.
+
+Minimum dispatch handler contract:
+
+```java
+public interface WorkerDispatchHandler {
+    WorkerResult handle(DispatchContext dispatch) throws Exception;
+}
+```
+
+`DispatchContext` should expose:
+
+- `taskId()`, `messageId()`, `eventCode()`, and `workerId()`.
+- `input()` as an immutable payload view backed by the server `input` object.
+- `sharedConfig()` as an immutable task-level payload view.
+- `rawInput()` and `rawSharedConfig()` for callers that want the mapper's raw
+  JSON/tree representation.
+
+The typed payload accessor should be deliberately small:
+
+```java
+dispatch.input().getString("url");
+dispatch.input().requiredString("url");
+dispatch.input().requiredUri("url");
+dispatch.input().asMap();
+```
+
+Missing required fields should throw `MassPayloadException`. The managed
+session catches handler exceptions and submits a failed task result with
+structured detail; direct handler callers may catch the exception themselves in
+tests.
+
+Startup is sequential best-effort, not atomic. `start()` does not roll back
+successful topology or worker registration calls if a later call fails. If
+startup fails before the poll loop begins, the session must not start heartbeat
+or polling, and the failure signal must include the last successful startup
+step plus the failing operation. This relies on server-side idempotent
+registration/declaration semantics; rollback would create false consistency and
+extra failure modes.
 
 ### Realtime Worker Client
 
@@ -377,6 +470,13 @@ The SDK should provide a raw response access option only where it is needed for
 streaming archive content or diagnostics. Normal callers should not parse the
 envelope manually.
 
+JSON mapper choice is an implementation decision until JSDK-0 records it. The
+public handler payload surface should not expose Jackson `JsonNode`, Gson
+`JsonElement`, or another mapper-specific tree as the main API. Prefer an SDK
+owned `MassPayload` / `PayloadView` wrapper with `asMap()`, typed getters, and
+optional low-level raw access. If mapper-specific raw access is exposed, it
+must be documented as an escape hatch rather than the primary handler contract.
+
 ## Authentication
 
 Initial auth support:
@@ -408,6 +508,16 @@ Use one of these paths, in order:
 Client DTOs should model caller intent, not internal runtime records. Avoid
 mirroring every engine/task/worker field into the Java client.
 
+JSDK-0 must treat `xa-mass-sdk-api` package ownership explicitly:
+
+- `model` and `event` packages are the normal reuse candidates.
+- `auth`, `authz`, and `catalog` packages are excluded unless a single type is
+  reviewed and listed by name.
+- server-side implementations such as `AuthProvider`,
+  `InMemorySubmitterRegistry`, `AuthorizationPolicy`,
+  `ControlPlaneCatalog`, and `DefaultProjectEventCatalogFactory` are never
+  production dependencies of the external Java SDK.
+
 ## Roadmap
 
 ### JSDK-0: Contract Inventory
@@ -419,8 +529,13 @@ Scope:
 - inventory current `/api/v1/tasks`, `/api/v1/catalog`, `/api/v1/submitters`,
   and `/worker-api/v1` routes used by the first SDK.
 - classify which `xa-mass-sdk-api` models can be reused safely.
+- classify `xa-mass-sdk-api` package imports. `auth`, `authz`, and `catalog`
+  are blocked by default; only named, reviewed value types may be allowed.
 - identify server DTOs that must not be imported.
 - decide JSON mapper dependency and Java baseline.
+- decide the raw payload accessor return type, including whether the public
+  API exposes an SDK-owned payload wrapper, Jackson `JsonNode`, Gson
+  `JsonElement`, `Map<String,Object>`, or another shape.
 - choose exact artifact coordinates and package names.
 
 Out of scope:
@@ -435,7 +550,14 @@ Acceptance:
 - target module path is fixed as `integrations/xa-mass-java-sdk`.
 - inventory document lists every route included in JSDK-1 through JSDK-4.
 - every reused model has a stated owner and dependency reason.
+- if more than eight `com.xa.mass.sdk.model` types are reused, the inventory
+  records a follow-up decision on model sub-packaging or narrower client
+  contracts.
+- no production import from `xa-mass-sdk-api` auth/authz/catalog packages is
+  allowed without an explicit per-type exception recorded in the inventory.
 - every non-reused server DTO has a replacement client DTO plan.
+- public raw payload accessor shape is decided and documented before JSDK-1
+  locks handler-facing APIs.
 - target package is fixed as `com.xa.mass.client` or a documented alternative.
 
 ### JSDK-1: Module Skeleton And HTTP Core
@@ -444,6 +566,7 @@ Scope:
 
 - add `integrations/xa-mass-java-sdk` Maven module with artifactId
   `xa-mass-java-sdk`.
+- add `<module>integrations/xa-mass-java-sdk</module>` to the root reactor.
 - add `MassPlatform` builder.
 - add HTTP core with base URL normalization, auth header injection,
   timeouts, JSON encode/decode, envelope unwrap, and typed exceptions.
@@ -461,6 +584,8 @@ Out of scope:
 Acceptance:
 
 - module builds standalone through reactor.
+- root reactor includes the module and the normal multi-module build graph
+  still resolves.
 - architecture guard proves no dependency on engine, server, embedded SDK,
   worker-runtime, or transport implementation modules.
 - unit tests cover envelope success, non-zero API response, non-2xx response,
@@ -473,7 +598,9 @@ Scope:
 - implement task shell create/list/get/patch.
 - implement item append and sync append.
 - implement task command.
-- implement result window read and archive manifest/content read.
+- implement result window read and archive manifest/content read. Archive
+  content uses streaming HTTP body handling, not JSON envelope unwrapping and
+  not eager full-load buffering.
 - add typed request builders for current public task mainline.
 - add focused HTTP contract tests with a fake server or mock HTTP layer.
 
@@ -492,6 +619,8 @@ Acceptance:
   of silently ignored.
 - task APIs preserve `eventCode` on append rather than moving it to shell
   truth.
+- archive content API returns a closeable stream/body handle and preserves
+  response metadata such as content type and content encoding.
 
 ### JSDK-3: Worker Topology Client
 
@@ -516,6 +645,9 @@ Acceptance:
 - Java polling sample can be rewritten to use only `xa-mass-java-sdk` topology
   client plus direct poll calls.
 - WorkerGroup-first registration is visible in the client API.
+- WorkerGroup declaration/upsert semantics are documented. Repeated
+  `declareGroup` or `ensureGroup` calls must not surprise callers as a hidden
+  create-only operation.
 - worker attributes, including fingerprint-style attributes, are represented
   as first-class registration/report inputs.
 - direct client calls do not hide transport identity defaults except the
@@ -527,15 +659,22 @@ Scope:
 
 - add managed polling worker session builder.
 - add handler registry keyed by global `eventCode`.
+- define the public `DispatchContext`, payload accessor, and
+  `WorkerResult` conversion contract before wiring the loop.
 - add heartbeat loop, poll loop, result submit, command poll/ack hook, state
   report hook, and close/offline handling.
 - add bounded retry/backoff policy for network errors.
 - add lifecycle callbacks for startup failure, dispatch handler failure,
   submit failure, and shutdown.
+- define startup partial-failure behavior: sequential best-effort, no rollback,
+  no heartbeat/poll loop after failed startup, and failure evidence includes
+  last successful step.
 - migrate Java polling sample to the managed session.
 
 Out of scope:
 
+- WorkerGroup declaration during session startup. Group declaration stays on
+  the explicit topology client path.
 - local work queue durability.
 - local task retry after server acceptance.
 - worker matching or reserve decisions.
@@ -545,7 +684,11 @@ Acceptance:
 
 - black-box Java polling worker test passes using the SDK session.
 - session shutdown reports offline best effort.
+- startup failure before polling leaves the session not running and reports
+  the last successful startup step.
 - handler exception submits a failed result with structured detail.
+- missing required payload fields fail through `MassPayloadException` and are
+  converted to structured failed task results by the managed session.
 - repeated server/auth failures stop or back off according to documented
   policy.
 - command acknowledgement remains explicit and observable.
@@ -590,9 +733,17 @@ Acceptance:
 
 Scope:
 
-- migrate Java external-worker code inside `xa-mass-worker-pack` to consume
-  `xa-mass-java-sdk` where it talks to public server/worker APIs.
+- migrate only topology/control-plane HTTP calls inside `xa-mass-worker-pack`
+  to consume `xa-mass-java-sdk` where they talk to public server/worker APIs:
+  adapter-node registration, node/group binding, worker registration,
+  capability/state report, command ack, and other HTTP worker-control calls.
 - keep worker-pack sample command/fault runtime local to worker-pack.
+- keep WebSocket/socket frame transport code on the existing worker-pack sample
+  clients until JSDK-6 defines a public realtime Java client contract.
+- document the expected middle state: worker-pack may still depend on
+  `xa-mass-sdk` and transport implementation modules for embedded/realtime
+  sample paths while also depending on `xa-mass-java-sdk` for public HTTP
+  topology/control-plane paths.
 - move module path only after dependencies are clean:
   `xa-mass-worker-pack` -> `integrations/xa-mass-worker-pack`.
 - update Maven reactor, README links, sample launchers, and black-box tests in
@@ -602,6 +753,7 @@ Out of scope:
 
 - moving worker-pack command/fault behavior into the Java SDK.
 - making worker-pack a dependency of `xa-mass-java-sdk`.
+- migrating WebSocket/socket frame handling before JSDK-6.
 - changing engine, transport, or server ownership to support the move.
 
 Acceptance:
@@ -609,8 +761,12 @@ Acceptance:
 - worker-pack depends on `xa-mass-java-sdk` only for external client/session
   behavior.
 - `xa-mass-java-sdk` does not depend on worker-pack.
-- Java worker-pack sample/client paths no longer duplicate SDK HTTP polling
-  boilerplate.
+- Java worker-pack sample/client paths no longer duplicate SDK HTTP topology
+  and worker-control boilerplate.
+- mixed worker-pack dependencies are documented as an expected transition
+  state; `integrations/` placement does not imply dependency purity.
+- realtime frame handling remains owned by worker-pack samples until JSDK-6
+  lands.
 - all executable sample paths and test launch commands use the new
   `integrations/` locations.
 
@@ -647,6 +803,10 @@ Add automated guards by JSDK-1:
   - `com.xa.mass.worker.runtime..`
   - `com.xa.mass.api.internal..`
   - transport implementation runtime packages.
+- if `xa-mass-java-sdk` depends on `xa-mass-sdk-api`, production imports from
+  `com.xa.mass.sdk.auth..`, `com.xa.mass.sdk.authz..`, and
+  `com.xa.mass.sdk.catalog..` are blocked unless JSDK-0 records a named
+  exception.
 - server must not depend on `xa-mass-java-sdk`.
 - samples may depend on `xa-mass-java-sdk`.
 - tests may use server test harnesses, but production SDK code must not.
@@ -666,6 +826,7 @@ Add process guard:
 | Realtime API freezes too early | public compatibility debt | keep realtime as JSDK-6 decision point |
 | Convenience API recreates create-with-inputs | violates task shell/item split | keep task shell and item append explicit |
 | WorkerGroup-first model gets buried | match proof weakens | make group declaration and attributes first-class in worker APIs |
+| Public SDK versioning is over-promised too early | external compatibility debt before the API proves itself | keep initial artifact reactor-scoped and defer publishing/versioning policy |
 
 ## Verification Matrix
 
@@ -691,6 +852,10 @@ only visible through dispatch/result convergence.
 - Do not rename or replace current `xa-mass-sdk`.
 - Do not merge this client into `xa-mass-sdk`.
 - Do not keep new external integration modules at repo root.
+- Do not publish `xa-mass-java-sdk` to Maven Central or another external
+  registry in this roadmap. Initial versioning follows the platform reactor;
+  external publication needs a separate release/versioning decision after the
+  API shape proves stable.
 - Do not generate a broad OpenAPI client as the first implementation.
 - Do not expose internal debug routes as stable client APIs.
 - Do not make task creation auto-run by default.
