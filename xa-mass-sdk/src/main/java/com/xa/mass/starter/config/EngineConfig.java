@@ -19,6 +19,7 @@ import com.xa.mass.worker.runtime.WorkerStateProjectionOwner;
 import com.xa.mass.engine.command.WorkerCommandLifecycleOwner;
 import com.xa.mass.engine.stage.TaskStageEvidenceOwner;
 import com.xa.mass.engine.stage.TaskStageEvidenceService;
+import com.xa.mass.engine.rules.RuleEvaluatorRegistry;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleManagerFactory;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
@@ -100,6 +101,8 @@ public class EngineConfig {
     private TaskStageEvidenceService taskStageEvidenceService;
     private AssignmentDiagnosticRecorder recordService = new AssignmentRecordService();
     private RuleStorage ruleStorage = new InMemoryRuleStorage();
+    private RuleEvaluatorRegistry<Map<String, Object>> ruleEvaluatorRegistry =
+            RuleManagerFactory.defaultEvaluatorRegistry();
     private ExecutionEventSink executionEventSink = new NoopExecutionEventSink();
     private EngineRuntimeBridge runtimeBridge = EngineRuntimeBridge.noop();
     private boolean defaultRulesInitialized;
@@ -149,6 +152,7 @@ public class EngineConfig {
         this.taskStageEvidenceService = null;
         this.recordService = source.recordService;
         this.ruleStorage = source.ruleStorage;
+        this.ruleEvaluatorRegistry = source.ruleEvaluatorRegistry;
         this.executionEventSink = source.executionEventSink;
         this.runtimeBridge = source.runtimeBridge;
         this.defaultRulesInitialized = source.defaultRulesInitialized;
@@ -443,7 +447,7 @@ public class EngineConfig {
 
     public RuleManager<Map<String, Object>> getRuleManager() {
         ensureDefaultRulesInitialized();
-        return new RuleManager<>(getRuleStorage());
+        return new RuleManager<>(getRuleStorage(), getRuleEvaluatorRegistry());
     }
 
     public RuleStorage getRuleStorage() {
@@ -456,6 +460,17 @@ public class EngineConfig {
         }
         this.ruleStorage = ruleStorage;
         this.defaultRulesInitialized = false;
+    }
+
+    public RuleEvaluatorRegistry<Map<String, Object>> getRuleEvaluatorRegistry() {
+        return ruleEvaluatorRegistry;
+    }
+
+    public void setRuleEvaluatorRegistry(RuleEvaluatorRegistry<Map<String, Object>> ruleEvaluatorRegistry) {
+        if (ruleEvaluatorRegistry == null) {
+            throw new IllegalArgumentException("ruleEvaluatorRegistry must not be null");
+        }
+        this.ruleEvaluatorRegistry = ruleEvaluatorRegistry;
     }
 
     public ExecutionEventSink getExecutionEventSink() {

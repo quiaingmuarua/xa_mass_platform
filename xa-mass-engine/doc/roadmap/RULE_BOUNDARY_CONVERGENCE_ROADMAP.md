@@ -1,7 +1,17 @@
 # Rule Boundary Convergence Roadmap
 
-Status: active direction document. RBC-0 inventory and RBC-1 contract notes
-are documented in companion files.
+Status: active direction document.
+
+Progress:
+
+- RBC-0 inventory is documented in
+  [`RULE_BOUNDARY_CONVERGENCE_INVENTORY.md`](RULE_BOUNDARY_CONVERGENCE_INVENTORY.md).
+- RBC-1 contract notes are documented in
+  [`RULE_BOUNDARY_CONTRACTS.md`](RULE_BOUNDARY_CONTRACTS.md).
+- RBC-2 is partially implemented: evaluator registry moved out of
+  `RuleStorage`, matching contracts exist, and the concrete QLExpress rule
+  evaluator moved to engine rule assembly. RBC-2 is not complete while
+  `xa-mass-base` still carries `qlexpress4` for jsondsl runtime code.
 
 This roadmap narrows the rule boundary after the worker-runtime and storage
 boundary convergence work. The current code already stores rule definitions in
@@ -38,28 +48,27 @@ that work in
 
 - `RuleDefinition`, `RuleType`, and `RuleEvaluator` live under
   `platform_infra/mass-storage-api`.
-- `RuleStorage` persists rule definitions, but it also carries evaluator
-  registry methods:
-  - `registerEvaluator(...)`
-  - `getEvaluator(...)`
-  - `getRegisteredEvaluatorTypes()`
-  - `removeEvaluator(...)`
-- `InMemoryRuleStorage` stores rule definitions in memory and registers
-  `QLExpressRuleEvaluator`.
-- `JdbcRuleStorage` persists rule definitions in `xa_rule` and keeps an
-  in-process evaluator map.
-- The concrete QLExpress evaluator implementations currently live in storage
-  implementation modules:
-  - `mass-storage-memory`: `QLExpressRuleEvaluator`
-  - `mass-storage-jdbc`: `JdbcQlExpressRuleEvaluator`
+- `RuleStorage` now persists rule definitions only. Evaluator lifecycle has
+  moved out of storage.
+- `InMemoryRuleStorage` stores rule definitions in memory and no longer owns
+  evaluator registration.
+- `JdbcRuleStorage` persists rule definitions in `xa_rule` and no longer owns
+  evaluator registration.
+- The concrete QLExpress rule evaluator now lives in
+  `xa-mass-engine.rules.QLExpressRuleEvaluator`.
 - The `qlexpress4` third-party dependency is currently declared by
-  `xa-mass-base`. That is an ownership leak: base models should not carry a
-  concrete rule engine dependency.
+  `xa-mass-base`. This remains an ownership leak, but it is not only caused by
+  rule evaluation: `xa-mass-base` jsondsl runtime code also imports QLExpress.
 - `xa-mass-engine.rules.RuleManager` is currently both:
   - a rule definition CRUD facade (`addDefaultRule`, `updateRule`,
     `deleteRule`, `clear`, etc.)
   - the matching-time rule evaluation service consumed by
     `RuleBasedTaskWorkerMatchingStrategy`
+- `RuleManager` now uses an engine-owned `RuleEvaluatorRegistry` for evaluator
+  lookup instead of reading evaluators from `RuleStorage`.
+- `RuleBasedTaskWorkerMatchingStrategy` now has narrow
+  `MatchingRuleSetProvider` and `MatchingRuleEvaluator` constructors, but the
+  SDK assembly path still passes the broad `RuleManager`.
 - `RuleBasedTaskWorkerMatchingStrategy` only needs two methods today:
   - `getDefaultRules()`
   - `evaluate(rule, context)`
@@ -76,7 +85,7 @@ that work in
   - `FrontendConsoleRoutingService`
   - related controller and routing tests
 - `MassSdkApplication.replaceDefaultRules(...)` and server/test bootstrap paths
-  still use the broad rule operations surface for scenario setup.
+  still use broad rule-definition storage operations for scenario setup.
 - `xa-mass-engine` has a production dependency on `mass-runtime-memory` only
   because `TaskManager` convenience constructors instantiate
   `InMemoryTaskResultRuntime` directly.
@@ -285,14 +294,14 @@ matching a narrow dependency before removing the broad manager.
 Scope:
 
 1. Introduce `RuleEvaluatorRegistry` or equivalent.
-2. Move evaluator registration and lookup out of `RuleStorage`.
+2. Move evaluator registration and lookup out of `RuleStorage`. (Implemented.)
 3. Keep `RuleStorage` focused on rule definition persistence.
 4. Introduce `MatchingRuleSetProvider` or equivalent for active/default worker
-   matching rules.
+   matching rules. (Implemented.)
 5. Introduce `MatchingRuleEvaluator` or equivalent for evaluating one rule
-   against `WorkerMatchContext`.
+   against `WorkerMatchContext`. (Implemented.)
 6. Move or share QLExpress evaluator implementation according to the RBC-1
-   owner decision.
+   owner decision. (Implemented for rule evaluator.)
 7. Move the `qlexpress4` Maven dependency out of `xa-mass-base` and into the
    module that owns the concrete evaluator.
 8. Update storage tests that currently assert evaluator metadata through
@@ -305,7 +314,8 @@ Acceptance:
 3. The matching contract exposes no CRUD verbs.
 4. The matching contract does not expose evaluator registration.
 5. Rule evaluation still supports the current QLExpress evaluator.
-6. `xa-mass-base` no longer declares `qlexpress4`.
+6. `xa-mass-base` no longer declares `qlexpress4`. (Pending; jsondsl still
+   imports QLExpress.)
 7. Existing matching tests still prove default rule evaluation and failed-rule
    diagnostics.
 

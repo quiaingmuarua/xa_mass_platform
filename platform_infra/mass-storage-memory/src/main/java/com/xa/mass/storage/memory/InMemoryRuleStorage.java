@@ -2,7 +2,6 @@ package com.xa.mass.storage.memory;
 
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.rule.RuleDefinition;
-import com.xa.mass.storage.rule.RuleEvaluator;
 import com.xa.mass.storage.rule.RuleType;
 
 import java.util.ArrayList;
@@ -14,15 +13,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
- * In-memory rule storage with one process-local evaluator registry.
+ * In-memory rule definition storage.
  */
 public class InMemoryRuleStorage implements RuleStorage {
 
     private final Map<String, RuleDefinition> ruleMap = new ConcurrentHashMap<>();
-    private final Map<RuleType, RuleEvaluator> evaluatorMap = new ConcurrentHashMap<>();
 
     public InMemoryRuleStorage() {
-        registerEvaluator(RuleType.QL_EXPRESS, new QLExpressRuleEvaluator());
     }
 
     @Override
@@ -77,30 +74,7 @@ public class InMemoryRuleStorage implements RuleStorage {
     }
 
     @Override
-    public void registerEvaluator(RuleType ruleType, RuleEvaluator evaluator) {
-        evaluatorMap.put(ruleType, evaluator);
-    }
-
-    @Override
-    public Optional<RuleEvaluator> getEvaluator(RuleType ruleType) {
-        return Optional.ofNullable(evaluatorMap.get(ruleType));
-    }
-
-    @Override
-    public List<RuleType> getRegisteredEvaluatorTypes() {
-        return new ArrayList<>(evaluatorMap.keySet());
-    }
-
-    @Override
-    public boolean removeEvaluator(RuleType ruleType) {
-        RuleEvaluator removed = evaluatorMap.remove(ruleType);
-        return removed != null;
-    }
-
-    @Override
     public void clear() {
         ruleMap.clear();
-        evaluatorMap.clear();
-        registerEvaluator(RuleType.QL_EXPRESS, new QLExpressRuleEvaluator());
     }
 }

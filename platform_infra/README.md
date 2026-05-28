@@ -52,7 +52,9 @@ Current truth for this conservative first slice:
   their keyspace/index baseline; it remains an explicit opt-in path outside the
   verified default runtime mainline
 - `mass-storage-api` owns shared task/worker/rule storage contracts plus the bounded `TaskDetailStore` compatibility-projection seam and the storage-adjacent rule types referenced by those contracts
-- `mass-storage-memory` owns in-memory control-plane task/worker/rule storage plus the default QLExpress rule evaluator used by the current embedded SDK/server path and focused tests
+- `mass-storage-memory` owns in-memory control-plane task/worker/rule storage;
+  rule evaluator registry and the default QLExpress rule evaluator are now
+  engine rule-runtime assembly concerns
 - `mass-storage-jdbc` owns the JDBC control-plane storage implementation plus H2/PostgreSQL dialect wiring, migrations, and residue-recovery helpers; engine manager assembly stays outside this module
 - worker registry slot state, dispatch availability, route buckets, and
   candidate sampling are runtime state, not control-plane DB CRUD state. Higher
@@ -67,7 +69,8 @@ Current truth for this conservative first slice:
 
 Current implementation drift agents must keep explicit:
 
-- `mass-storage-memory` currently contains `InMemoryRuleStorage` and `QLExpressRuleEvaluator` in addition to task/worker storage implementations; this is current code truth, not proof that those ownership boundaries are final
+- `mass-storage-memory` contains `InMemoryRuleStorage` for rule definitions;
+  it must not grow evaluator lifecycle ownership back into storage
 - `mass-storage-jdbc` currently persists control-plane task/rule truth and still exposes `JdbcStorageRuntime` as a convenience bundle for migrations and storage adapters; it returns storage contracts to outer layers, but that bundle is still convergence work rather than a long-term product extension point
 - `JdbcTaskStorage` keeps JDBC-local process-local compatibility projections for task-message residue; worker runtime registry state is intentionally not exposed through JDBC storage
 - engine/runtime assembly now wires `TaskStorage` and `TaskDetailStore` explicitly instead of relying on an implicit "task storage also means detail store" fallback

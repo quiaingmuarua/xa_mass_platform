@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -19,9 +20,11 @@ public class RuleManager<T> {
     private static final Logger log = LoggerFactory.getLogger(RuleManager.class);
 
     private final RuleStorage ruleStorage;
+    private final RuleEvaluatorRegistry<T> evaluatorRegistry;
 
-    public RuleManager(RuleStorage ruleStorage) {
-        this.ruleStorage = ruleStorage;
+    public RuleManager(RuleStorage ruleStorage, RuleEvaluatorRegistry<T> evaluatorRegistry) {
+        this.ruleStorage = Objects.requireNonNull(ruleStorage, "ruleStorage");
+        this.evaluatorRegistry = Objects.requireNonNull(evaluatorRegistry, "evaluatorRegistry");
     }
 
     public void addDefaultRule(RuleDefinition rule) {
@@ -41,7 +44,7 @@ public class RuleManager<T> {
     }
 
     public boolean evaluate(RuleDefinition rule, T context) throws Exception {
-        Optional<RuleEvaluator> evaluatorOpt = ruleStorage.getEvaluator(rule.getType());
+        Optional<RuleEvaluator<T>> evaluatorOpt = evaluatorRegistry.evaluator(rule.getType());
         if (evaluatorOpt.isEmpty()) {
             throw new IllegalArgumentException("Unsupported rule type: " + rule.getType());
         }
@@ -82,20 +85,20 @@ public class RuleManager<T> {
         return ruleStorage.getRulesByType(ruleType);
     }
 
-    public void registerEvaluator(RuleType ruleType, RuleEvaluator evaluator) {
-        ruleStorage.registerEvaluator(ruleType, evaluator);
+    public void registerEvaluator(RuleType ruleType, RuleEvaluator<T> evaluator) {
+        evaluatorRegistry.registerEvaluator(ruleType, evaluator);
     }
 
-    public Optional<RuleEvaluator> getEvaluator(RuleType ruleType) {
-        return ruleStorage.getEvaluator(ruleType);
+    public Optional<RuleEvaluator<T>> getEvaluator(RuleType ruleType) {
+        return evaluatorRegistry.evaluator(ruleType);
     }
 
     public List<RuleType> getRegisteredEvaluatorTypes() {
-        return ruleStorage.getRegisteredEvaluatorTypes();
+        return evaluatorRegistry.registeredEvaluatorTypes();
     }
 
     public boolean removeEvaluator(RuleType ruleType) {
-        return ruleStorage.removeEvaluator(ruleType);
+        return evaluatorRegistry.removeEvaluator(ruleType);
     }
 
     public void clear() {

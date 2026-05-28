@@ -11,7 +11,6 @@ Current scope:
 - `InMemoryTaskStorage`
 - `InMemoryWorkerStorage`
 - `InMemoryRuleStorage`
-- `QLExpressRuleEvaluator`
 
 These classes provide in-memory task/rule storage plus the current in-memory
 worker runtime registry used by engine defaults, focused tests, and storage
@@ -24,13 +23,12 @@ Current code truth:
 - `InMemoryWorkerStorage` is the current in-memory worker runtime registry; it
   maintains primary worker identity and secondary group indexes in memory and
   must not be treated as a DB row-store shape
-- `InMemoryRuleStorage` and `QLExpressRuleEvaluator` currently live here, so
-  rule-evaluator ownership is infra-local in code today
+- `InMemoryRuleStorage` is definition storage only; rule-evaluator ownership
+  belongs to engine rule-runtime assembly
 - SDK auth helpers such as `InMemorySubmitterRegistry` no longer live here; do
   not reintroduce SDK-surface packaging into this module
-- other modules should treat the remaining rule helper placement as current
-  fact to work with, not as a reason to expand this module further into SDK or
-  engine ownership
+- other modules should not reintroduce rule evaluator lifecycle into this
+  storage implementation module
 
 Read with:
 

@@ -16,6 +16,8 @@ import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.engine.resource.DefaultWorkerDispatchResourcePolicy;
 import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
+import com.xa.mass.engine.rules.MatchingRuleEvaluator;
+import com.xa.mass.engine.rules.MatchingRuleSetProvider;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
@@ -44,7 +46,8 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
     private static final String REJECTION_OWNER_RESERVE = "RESERVE";
     private static final String REJECTION_OWNER_DISPATCH_GATE = "DISPATCH_GATE";
 
-    private final RuleManager<Map<String, Object>> ruleManager;
+    private final MatchingRuleSetProvider ruleSetProvider;
+    private final MatchingRuleEvaluator<Map<String, Object>> ruleEvaluator;
     private final WorkerCandidateRuntime candidateRuntime;
     private final WorkerAdmissionRuntime admissionRuntime;
     private final AssignmentDiagnosticRecorder recordService;
@@ -72,7 +75,45 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                                         WorkerCandidateRanker candidateRanker,
                                         WorkerDispatchResourcePolicy resourcePolicy,
                                         WorkerSchedulingCandidateEnumerator candidateEnumerator) {
-        this.ruleManager = ruleManager;
+        Objects.requireNonNull(ruleManager, "ruleManager");
+        this.ruleSetProvider = ruleManager::getDefaultRules;
+        this.ruleEvaluator = ruleManager::evaluate;
+        this.candidateRuntime = Objects.requireNonNull(candidateRuntime, "candidateRuntime");
+        this.admissionRuntime = Objects.requireNonNull(admissionRuntime, "admissionRuntime");
+        this.recordService = recordService;
+        this.traceEventLogger = traceEventLogger;
+        this.candidateRanker = candidateRanker != null ? candidateRanker : new DefaultWorkerCandidateRanker();
+        this.resourcePolicy = resourcePolicy == null ? new DefaultWorkerDispatchResourcePolicy() : resourcePolicy;
+        WorkerSchedulingViewRuntime schedulingRuntime =
+                Objects.requireNonNull(schedulingViewRuntime, "schedulingViewRuntime");
+        this.candidateEnumerator = candidateEnumerator == null
+                ? new WorkerSchedulingCandidateEnumerator(schedulingRuntime)
+                : candidateEnumerator;
+    }
+
+    public RuleBasedTaskWorkerMatchingStrategy(MatchingRuleSetProvider ruleSetProvider,
+                                               MatchingRuleEvaluator<Map<String, Object>> ruleEvaluator,
+                                               WorkerCandidateRuntime candidateRuntime,
+                                               WorkerAdmissionRuntime admissionRuntime,
+                                               WorkerSchedulingViewRuntime schedulingViewRuntime,
+                                               AssignmentDiagnosticRecorder recordService,
+                                               TraceEventLogger traceEventLogger) {
+        this(ruleSetProvider, ruleEvaluator, candidateRuntime, admissionRuntime, schedulingViewRuntime, recordService,
+                traceEventLogger, new DefaultWorkerCandidateRanker(), new DefaultWorkerDispatchResourcePolicy(), null);
+    }
+
+    RuleBasedTaskWorkerMatchingStrategy(MatchingRuleSetProvider ruleSetProvider,
+                                        MatchingRuleEvaluator<Map<String, Object>> ruleEvaluator,
+                                        WorkerCandidateRuntime candidateRuntime,
+                                        WorkerAdmissionRuntime admissionRuntime,
+                                        WorkerSchedulingViewRuntime schedulingViewRuntime,
+                                        AssignmentDiagnosticRecorder recordService,
+                                        TraceEventLogger traceEventLogger,
+                                        WorkerCandidateRanker candidateRanker,
+                                        WorkerDispatchResourcePolicy resourcePolicy,
+                                        WorkerSchedulingCandidateEnumerator candidateEnumerator) {
+        this.ruleSetProvider = Objects.requireNonNull(ruleSetProvider, "ruleSetProvider");
+        this.ruleEvaluator = Objects.requireNonNull(ruleEvaluator, "ruleEvaluator");
         this.candidateRuntime = Objects.requireNonNull(candidateRuntime, "candidateRuntime");
         this.admissionRuntime = Objects.requireNonNull(admissionRuntime, "admissionRuntime");
         this.recordService = recordService;
@@ -98,7 +139,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                 candidateAcquisitionLimit(task, maxWorkerCount)
         );
         List<WorkerCandidateRow> candidates = candidateBatch.candidates();
-        List<RuleDefinition> rules = ruleManager.getDefaultRules();
+        List<RuleDefinition> rules = ruleSetProvider.activeWorkerMatchingRules();
         List<RulePassedCandidate> rulePassedCandidates = new ArrayList<>();
 
         log.info("[WorkerAssign] Matching workers for task {} (routingCode: {}, candidates: {}, "
@@ -417,7 +458,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
             String result = "false";
 
             try {
-                passed = ruleManager.evaluate(rule, matchContext.getContext());
+                passed = ruleEvaluator.evaluate(rule, matchContext.getContext());
                 result = String.valueOf(passed);
 
                 if (!passed) {

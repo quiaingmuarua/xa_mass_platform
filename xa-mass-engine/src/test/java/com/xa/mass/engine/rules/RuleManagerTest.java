@@ -19,7 +19,7 @@ class RuleManagerTest {
 
     @BeforeEach
     void setUp() {
-        manager = new RuleManager<>(new InMemoryRuleStorage());
+        manager = new RuleManager<>(new InMemoryRuleStorage(), RuleManagerFactory.defaultEvaluatorRegistry());
     }
 
     // ---- CRUD ----
@@ -114,7 +114,7 @@ class RuleManagerTest {
 
     @Test
     void registerAndRetrieveEvaluator() {
-        RuleEvaluator evaluator = (rule, ctx) -> true;
+        RuleEvaluator<Map<String, Object>> evaluator = (rule, ctx) -> true;
         manager.registerEvaluator(RuleType.JSON_DSL, evaluator);
         assertTrue(manager.getEvaluator(RuleType.JSON_DSL).isPresent());
     }
@@ -132,7 +132,7 @@ class RuleManagerTest {
         manager.clear();
         // rules removed
         assertTrue(manager.getDefaultRules().isEmpty());
-        // InMemoryRuleStorage re-registers QL_EXPRESS after clear as factory default
+        // Evaluator registry is runtime assembly and is not cleared with definition storage.
         assertTrue(manager.getEvaluator(RuleType.QL_EXPRESS).isPresent());
     }
 

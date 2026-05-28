@@ -19,6 +19,7 @@ import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
 import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.storage.rule.RuleDefinition;
+import com.xa.mass.engine.rules.RuleManagerFactory;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.storage.rule.RuleType;
 import com.xa.mass.engine.service.AssignmentRecordService;
@@ -42,7 +43,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
     @Test
     void matchesWorkerUsingWorkerSchedulingAttributesRule() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
-        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage(), RuleManagerFactory.defaultEvaluatorRegistry());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
                 strategy(ruleManager, workerManager, recordService);
@@ -83,7 +84,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
     @Test
     void emitsAcceptedAndRejectedMatchTraceEvents() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
-        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage(), RuleManagerFactory.defaultEvaluatorRegistry());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
                 strategy(ruleManager, workerManager, recordService);
@@ -127,7 +128,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
     @Test
     void recordsRuntimeLockStateForPreLockedWorkers() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
-        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage(), RuleManagerFactory.defaultEvaluatorRegistry());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
                 strategy(ruleManager, workerManager, recordService);
@@ -170,7 +171,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                         : WorkerReachabilityState.ONLINE,
                 new InMemoryWorkerRegistry()
         );
-        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage(), RuleManagerFactory.defaultEvaluatorRegistry());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
                 strategy(ruleManager, workerManager, recordService);
@@ -246,7 +247,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                         : WorkerReachabilityState.ONLINE,
                 new InMemoryWorkerRegistry()
         );
-        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage(), RuleManagerFactory.defaultEvaluatorRegistry());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
                 strategy(ruleManager, workerManager, recordService);
@@ -284,7 +285,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
     @Test
     void matchesStatelessWorkerWhenTaskHasNoRoutingRequirement() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
-        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage(), RuleManagerFactory.defaultEvaluatorRegistry());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
                 strategy(ruleManager, workerManager, recordService);
@@ -314,7 +315,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
     @Test
     void routingRequirementRejectsStatelessWorkerWithoutSchedulingRoutingTags() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
-        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage(), RuleManagerFactory.defaultEvaluatorRegistry());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
                 strategy(ruleManager, workerManager, recordService);
@@ -347,7 +348,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
     @Test
     void sdkEventTaskMatchesWorkerByIndexedGroupEventCapability() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
-        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage(), RuleManagerFactory.defaultEvaluatorRegistry());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
                 strategy(ruleManager, workerManager, recordService);
@@ -386,7 +387,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
     @Test
     void sdkEventTaskMatchesWorkerByDeclaredGroupWithoutWorkerLevelCapability() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
-        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage(), RuleManagerFactory.defaultEvaluatorRegistry());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
                 strategy(ruleManager, workerManager, recordService);
@@ -427,7 +428,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
     @Test
     void targetWorkerIdPrefilterOnlyMatchesRequestedWorker() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
-        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage(), RuleManagerFactory.defaultEvaluatorRegistry());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
                 strategy(ruleManager, workerManager, recordService);
@@ -464,7 +465,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
     @Test
     void targetWorkerAttributesPrefilterOnlyMatchesWorkersWithRequestedAttributes() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
-        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage(), RuleManagerFactory.defaultEvaluatorRegistry());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
                 strategy(ruleManager, workerManager, recordService);
@@ -517,7 +518,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                 workerId -> WorkerReachabilityState.ONLINE,
                 new InMemoryWorkerRegistry()
         );
-        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage(), RuleManagerFactory.defaultEvaluatorRegistry());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
                 strategy(ruleManager, workerManager, recordService);
@@ -558,7 +559,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                 workerId -> WorkerReachabilityState.ONLINE,
                 new InMemoryWorkerRegistry()
         );
-        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage(), RuleManagerFactory.defaultEvaluatorRegistry());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
                 strategy(ruleManager, workerManager, recordService);
@@ -600,7 +601,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                 return WorkerAdmissionResult.rejected(WorkerAdmissionStatus.STALE_HEARTBEAT, "worker heartbeat stale");
             }
         };
-        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage(), RuleManagerFactory.defaultEvaluatorRegistry());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
                 strategy(ruleManager, workerManager, recordService);
@@ -640,7 +641,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                 return false;
             }
         };
-        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage(), RuleManagerFactory.defaultEvaluatorRegistry());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
                 strategy(ruleManager, workerManager, recordService);
@@ -675,7 +676,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                 workerId -> WorkerReachabilityState.ONLINE,
                 new InMemoryWorkerRegistry()
         );
-        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage(), RuleManagerFactory.defaultEvaluatorRegistry());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
                 strategy(ruleManager, workerManager, recordService);
@@ -721,7 +722,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                 workerId -> WorkerReachabilityState.ONLINE,
                 new InMemoryWorkerRegistry()
         );
-        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage(), RuleManagerFactory.defaultEvaluatorRegistry());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
                 strategy(ruleManager, workerManager, recordService);
@@ -755,7 +756,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
     void matchWorkersOversamplesStageOneCandidateAcquisitionBeforeDispatchLimit() {
         Worker worker = worker("worker-sampled", "pool-a");
         RecordingWorkerManager workerManager = new RecordingWorkerManager(List.of(worker));
-        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage(), RuleManagerFactory.defaultEvaluatorRegistry());
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
                 strategy(ruleManager, workerManager, recordService);

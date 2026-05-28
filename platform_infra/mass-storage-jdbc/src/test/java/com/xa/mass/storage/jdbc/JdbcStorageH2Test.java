@@ -68,7 +68,7 @@ class JdbcStorageH2Test {
     }
 
     @Test
-    void ruleStoragePersistsRulesButKeepsEvaluatorsInProcess() {
+    void ruleStoragePersistsRulesAsDefinitionStore() {
         try (StorageFixture fixture = h2Fixture()) {
             JdbcRuleStorage storage = new JdbcRuleStorage(fixture.dataSource(), new H2JdbcDialect());
             RuleDefinition rule = testRule();
@@ -76,7 +76,6 @@ class JdbcStorageH2Test {
 
             assertThat(storage.getRule(rule.getId())).isPresent();
             assertThat(storage.getRulesByType(rule.getType())).hasSize(1);
-            assertThat(storage.getRegisteredEvaluatorTypes()).contains(RuleType.QL_EXPRESS);
             assertThat(storage.deleteRule(rule.getId())).isTrue();
             assertThat(storage.getAllRules()).isEmpty();
         }

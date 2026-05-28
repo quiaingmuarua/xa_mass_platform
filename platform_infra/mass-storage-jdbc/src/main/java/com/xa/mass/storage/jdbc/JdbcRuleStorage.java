@@ -1,7 +1,6 @@
 package com.xa.mass.storage.jdbc;
 
 import com.xa.mass.storage.rule.RuleDefinition;
-import com.xa.mass.storage.rule.RuleEvaluator;
 import com.xa.mass.storage.rule.RuleType;
 import com.xa.mass.storage.api.RuleStorage;
 
@@ -10,19 +9,15 @@ import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class JdbcRuleStorage extends JdbcStorageSupport implements RuleStorage {
 
     private final JdbcDialect dialect;
-    private final Map<RuleType, RuleEvaluator> evaluatorMap = new ConcurrentHashMap<>();
 
     public JdbcRuleStorage(DataSource dataSource, JdbcDialect dialect) {
         super(dataSource);
         this.dialect = dialect;
-        registerEvaluator(RuleType.QL_EXPRESS, new JdbcQlExpressRuleEvaluator());
     }
 
     @Override
@@ -103,34 +98,12 @@ public class JdbcRuleStorage extends JdbcStorageSupport implements RuleStorage {
     }
 
     @Override
-    public void registerEvaluator(RuleType ruleType, RuleEvaluator evaluator) {
-        evaluatorMap.put(ruleType, evaluator);
-    }
-
-    @Override
-    public Optional<RuleEvaluator> getEvaluator(RuleType ruleType) {
-        return Optional.ofNullable(evaluatorMap.get(ruleType));
-    }
-
-    @Override
-    public List<RuleType> getRegisteredEvaluatorTypes() {
-        return new ArrayList<>(evaluatorMap.keySet());
-    }
-
-    @Override
-    public boolean removeEvaluator(RuleType ruleType) {
-        return evaluatorMap.remove(ruleType) != null;
-    }
-
-    @Override
     public synchronized void clear() {
         try (var conn = connection(); var stmt = conn.createStatement()) {
             stmt.executeUpdate("DELETE FROM xa_rule");
         } catch (Exception e) {
             throw new IllegalStateException("Failed to clear rules", e);
         }
-        evaluatorMap.clear();
-        registerEvaluator(RuleType.QL_EXPRESS, new JdbcQlExpressRuleEvaluator());
     }
 
     private List<RuleDefinition> queryRules(String sql, String... args) {

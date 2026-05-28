@@ -2,6 +2,9 @@
 
 Status: RBC-0 inventory for `RULE_BOUNDARY_CONVERGENCE_ROADMAP.md`.
 
+This inventory was captured before RBC-2 code movement. Use it as the
+pre-change call-site record, not as proof of current implementation shape.
+
 This document records current rule call sites, method-level usage, route
 wiring, evaluator ownership, and engine dependency residues before any behavior
 or package movement.
@@ -145,7 +148,7 @@ narrowed to a pure matching contract.
 
 ## Evaluator Registration Stored Inside RuleStorage
 
-Current dependents:
+RBC-0 finding before the RBC-2 split:
 
 - `RuleManager.evaluate(...)` calls `ruleStorage.getEvaluator(...)`.
 - `RuleManager.registerEvaluator(...)`, `getEvaluator(...)`,
@@ -157,8 +160,10 @@ Current dependents:
 - `JdbcRuleStorage.clear()` re-registers QLExpress.
 - Storage tests assert evaluator availability through storage implementations.
 
-This confirms RBC-2 must split evaluator registry before deleting broad
-manager methods.
+RBC-2 has since moved evaluator registration and lookup into an engine-owned
+`RuleEvaluatorRegistry`. `RuleStorage` is now definition-only, and the remaining
+work is to remove the broad `RuleManager` passthrough surface from matching and
+SDK assembly.
 
 ## RBC-0 Completion Notes
 

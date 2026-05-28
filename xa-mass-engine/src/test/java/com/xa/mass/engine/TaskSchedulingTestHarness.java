@@ -16,6 +16,7 @@ import com.xa.mass.engine.listener.SimpleTaskDispatchBinder;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
 import com.xa.mass.engine.model.AssignmentRecord;
+import com.xa.mass.engine.rules.RuleManagerFactory;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.strategy.RuleBasedTaskWorkerMatchingStrategy;
@@ -65,7 +66,7 @@ final class TaskSchedulingTestHarness {
                 new InMemoryTaskWorkRuntime()
         );
         this.workerManager = new WorkerManager(new InMemoryWorkerStorage(), reachabilityView, new InMemoryWorkerRegistry());
-        this.ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        this.ruleManager = new RuleManager<>(new InMemoryRuleStorage(), RuleManagerFactory.defaultEvaluatorRegistry());
         this.assignmentRecords = new AssignmentRecordService();
         this.dispatches = new ArrayList<>();
         installDefaultSchedulingRules();

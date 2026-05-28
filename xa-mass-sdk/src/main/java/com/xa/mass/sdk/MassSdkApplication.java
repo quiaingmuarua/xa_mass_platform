@@ -1584,7 +1584,11 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     @Override
     public List<String> listRegisteredEvaluatorTypes() {
-        return requireStartedRuleStorage().getRegisteredEvaluatorTypes().stream().map(Enum::name).toList();
+        return requireStartedEngine().getConfig().getRuleEvaluatorRegistry()
+                .registeredEvaluatorTypes()
+                .stream()
+                .map(Enum::name)
+                .toList();
     }
 
     @Override

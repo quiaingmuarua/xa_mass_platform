@@ -78,7 +78,7 @@ class JdbcStoragePostgresTest {
     }
 
     @Test
-    void ruleStoragePersistsRulesButKeepsEvaluatorsInProcess() {
+    void ruleStoragePersistsRulesAsDefinitionStore() {
         try (StorageFixture fixture = postgresFixture("rule_storage")) {
             JdbcRuleStorage storage = new JdbcRuleStorage(fixture.dataSource(), new PostgresJdbcDialect());
             RuleDefinition rule = testRule();
@@ -86,7 +86,6 @@ class JdbcStoragePostgresTest {
 
             assertThat(storage.getRule(rule.getId())).isPresent();
             assertThat(storage.getRulesByType(rule.getType())).hasSize(1);
-            assertThat(storage.getRegisteredEvaluatorTypes()).contains(RuleType.QL_EXPRESS);
             assertThat(storage.deleteRule(rule.getId())).isTrue();
             assertThat(storage.getAllRules()).isEmpty();
         }

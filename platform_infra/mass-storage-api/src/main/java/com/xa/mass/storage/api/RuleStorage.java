@@ -1,7 +1,6 @@
 package com.xa.mass.storage.api;
 
 import com.xa.mass.storage.rule.RuleDefinition;
-import com.xa.mass.storage.rule.RuleEvaluator;
 import com.xa.mass.storage.rule.RuleType;
 
 import java.util.Collection;
@@ -28,14 +27,6 @@ public interface RuleStorage {
     void addRules(Collection<RuleDefinition> rules);
 
     void deleteRules(Collection<String> ruleIds);
-
-    void registerEvaluator(RuleType ruleType, RuleEvaluator evaluator);
-
-    Optional<RuleEvaluator> getEvaluator(RuleType ruleType);
-
-    List<RuleType> getRegisteredEvaluatorTypes();
-
-    boolean removeEvaluator(RuleType ruleType);
 
     void clear();
 }
