@@ -43,8 +43,9 @@ Current truth for this conservative first slice:
   `TaskWorkRuntime` for queue/lease/retry/apply truth and
   `TaskResultRuntime` for stable-final result-read truth, repair staging,
   task-local result sequence, and barriers; it also owns the shared
-  `WorkerRegistry` / `WorkerSlot` contract and worker-runtime value types used
-  by memory and future Redis worker registry implementations
+  `WorkerRegistry` / `WorkerSlot` contract and low-level worker registry
+  primitives used by memory and Redis worker registry implementations. Higher
+  level worker-plane contracts live in `xa-mass-worker-runtime`
 - `mass-runtime-memory` owns the current in-memory runtime implementations and
   their focused tests
 - `mass-runtime-redis` now owns the Redis-backed runtime implementations plus
@@ -53,12 +54,13 @@ Current truth for this conservative first slice:
 - `mass-storage-api` owns shared task/worker/rule storage contracts plus the bounded `TaskDetailStore` compatibility-projection seam and the storage-adjacent rule types referenced by those contracts
 - `mass-storage-memory` owns in-memory control-plane task/worker/rule storage plus the default QLExpress rule evaluator used by the current embedded SDK/server path and focused tests
 - `mass-storage-jdbc` owns the JDBC control-plane storage implementation plus H2/PostgreSQL dialect wiring, migrations, and residue-recovery helpers; engine manager assembly stays outside this module
-- worker runtime indexes such as `WorkerRegistrySnapshot`, `AdapterNodeRecord`,
-  `NodeGroupBindingRecord`, dispatch availability, registry slots, and
-  reachability are
-  runtime read models, not control-plane DB CRUD state; if they need durable
-  history or operator query, emit trace/events and let an async pipeline persist
-  them outside the hot path
+- worker registry slot state, dispatch availability, route buckets, and
+  candidate sampling are runtime state, not control-plane DB CRUD state. Higher
+  level worker resource/candidate/evidence contracts such as
+  `WorkerRegistrySnapshot`, `AdapterNodeRecord`, and `NodeGroupBindingRecord`
+  belong to `xa-mass-worker-runtime`; if they need durable history or operator
+  query, emit trace/events and let an async pipeline persist them outside the
+  hot path
 - `mass-trace-sink` owns the canonical `ExecutionEvent` model, event-name enum, and default asynchronous JSONL sink implementation
 - `xa-mass-engine` consumes the runtime contract directly and currently also declares storage-contract plus in-memory storage dependencies in the reactor; do not summarize that as "runtime only" without re-checking the root `pom.xml`
 - `xa-mass-engine` now depends on storage contracts and infra-owned in-memory storage implementations; engine no longer carries Redis storage placeholder classes or shared in-memory storage implementations under its package root

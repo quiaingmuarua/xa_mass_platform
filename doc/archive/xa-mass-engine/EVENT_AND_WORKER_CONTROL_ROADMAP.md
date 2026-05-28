@@ -44,7 +44,7 @@ Implemented baseline:
 - `TaskStageEvidenceOwner`
 
 Current truth is recorded in
-[`EVENT_OWNER_BOUNDARY.md`](../baseline/EVENT_OWNER_BOUNDARY.md).
+[`EVENT_OWNER_BOUNDARY.md`](../../../xa-mass-engine/doc/baseline/EVENT_OWNER_BOUNDARY.md).
 
 ## North Star
 
@@ -786,7 +786,7 @@ Each behavior phase must add owner-local proof plus canonical trace evidence:
 
 ## Related Current Docs
 
-- [EVENT_OWNER_BOUNDARY.md](../baseline/EVENT_OWNER_BOUNDARY.md)
-- [SCHEDULING_KERNEL_BASELINE.md](../baseline/SCHEDULING_KERNEL_BASELINE.md)
+- [EVENT_OWNER_BOUNDARY.md](../../../xa-mass-engine/doc/baseline/EVENT_OWNER_BOUNDARY.md)
+- [SCHEDULING_KERNEL_BASELINE.md](../../../xa-mass-engine/doc/baseline/SCHEDULING_KERNEL_BASELINE.md)
 - [../../../transport/TRANSPORT_BOUNDARY_BASELINE.md](../../../transport/TRANSPORT_BOUNDARY_BASELINE.md)
 - [../../../doc/RESULT_BOUNDARY_BASELINE.md](../../../doc/RESULT_BOUNDARY_BASELINE.md)

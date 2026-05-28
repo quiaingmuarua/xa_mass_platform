@@ -1,6 +1,6 @@
 # Current Gaps Index
 
-Last updated: 2026-05-18
+Last updated: 2026-05-28
 
 Status: current gap index.
 
@@ -12,21 +12,17 @@ target-state work.
 
 | Gap | Handling | Owner |
 | --- | --- | --- |
-| Redis storage is a fail-fast placeholder | Use memory or focused H2 verification paths | [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md) |
-| Engine `DATABASE` factory methods remain fail-fast | `xa-mass-server` owns the focused JDBC path behind `mass.storage.mode=jdbc-h2` or `mass.storage.mode=jdbc-postgres` | [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md) |
+| Redis runtime is opt-in, not the default acceptance mainline | Use Redis runtime tests only when the change touches Redis runtime behavior. Default server/shell acceptance still uses the in-memory runtime path unless the scenario explicitly selects Redis. | [mass-runtime-redis/README.md](../platform_infra/mass-runtime-redis/README.md), [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md) |
 | Redis-backed EventBus is not verified runtime behavior | Do not depend on it for acceptance or mainline behavior | [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md) |
 | **`RETRY_BUDGET_EXHAUSTED` terminal reason has no triggering policy** | `AllWorkFinalTaskTerminalPolicy` returns only `ALL_MESSAGES_SUCCEEDED`, `ALL_MESSAGES_FAILED`, and `MIXED_MESSAGE_RESULTS`. The `TaskTerminalPolicy` extension seam exists but no `RetryBudgetTaskTerminalPolicy` is implemented. Do not write tests expecting this reason to be emitted automatically. Per-message retry exhaustion (`maxRetryCount`) ends with `ALL_MESSAGES_FAILED` + message `finalReason=RETRY_EXHAUSTED`; that path is verified by `SdkPollingMessageRetryExhaustedChaosRunner`. | [xa-mass-engine/policy/AllWorkFinalTaskTerminalPolicy.java](../xa-mass-engine/src/main/java/com/xa/mass/engine/policy/AllWorkFinalTaskTerminalPolicy.java) |
-| **Worker command lifecycle is owner-backed but not fully executable** | Request/ack/read surfaces exist, and `WorkerCommandDeliveryCoordinator` proves the owner seam. A real transport delivery implementation, automatic request-to-delivery handoff, command retry, and deadline expiry enforcement are not complete. Do not assume worker commands can actively control workers until this gap is closed. | [EVENT_OWNER_BOUNDARY.md](../xa-mass-engine/doc/baseline/EVENT_OWNER_BOUNDARY.md), [PRODUCTION_SCHEDULING_KERNEL_IMPROVEMENTS.md](../xa-mass-engine/doc/roadmap/PRODUCTION_SCHEDULING_KERNEL_IMPROVEMENTS.md) |
+| **Worker command policy is first-slice only** | Worker command request/read, polling pull, realtime push handoff, ack/status ingress, bounded delivery retry, and deadline expiry exist. The remaining gap is policy depth: the accepted command catalog is still small (`DRAIN`, `PING`), current `DRAIN` recovery expects disconnect/re-register, and there is no explicit `RESUME` command-gate reopen path. | [EVENT_OWNER_BOUNDARY.md](../xa-mass-engine/doc/baseline/EVENT_OWNER_BOUNDARY.md), [PRODUCTION_SCHEDULING_KERNEL_IMPROVEMENTS.md](../xa-mass-engine/doc/roadmap/PRODUCTION_SCHEDULING_KERNEL_IMPROVEMENTS.md) |
 
 ## Coverage Gaps
 
 | Gap | Treatment | Owner |
 | --- | --- | --- |
-| HTTP cancel from `RUNNING` | Add Boot-shell E2E before changing semantics | [xa-mass-server/README.md](../xa-mass-server/README.md) |
-| HTTP cancel from `READY` | Add Boot-shell E2E before changing semantics | [xa-mass-server/README.md](../xa-mass-server/README.md) |
-| Worker disconnect during in-flight execution | Cover deterministic surrogate first; use chaos for degraded/recovery behavior | [xa-mass-server/README.md](../xa-mass-server/README.md), [TESTING_BASELINE.md](./TESTING_BASELINE.md) |
-| Stronger real-runtime `EXPIRED` message coverage | Prefer real lease/expiry path over timestamp backdating | [xa-mass-server/README.md](../xa-mass-server/README.md), [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md) |
-| Broader `batchSize > 1` multi-worker coverage | Verify assignment/refill plus Boot-shell E2E; `SdkPollingMixedResultsChaosRunner` covers single-worker multi-message flow but not concurrent multi-worker assignment | [xa-mass-server/README.md](../xa-mass-server/README.md), [TESTING_BASELINE.md](./TESTING_BASELINE.md) |
+| Worker disconnect during in-flight execution | Existing chaos covers polling/websocket lease-expiry takeover and stale late replay. Add deterministic Boot-shell coverage only when the change touches host/runtime disconnect semantics rather than generic lease expiry. | [xa-mass-testing/README.md](../xa-mass-testing/README.md), [TESTING_BASELINE.md](./TESTING_BASELINE.md) |
+| Broader `batchSize > 1` multi-worker Boot-shell coverage | Engine/perf lanes cover scheduling contention and batch sizing, and server E2E covers single-worker multi-round dispatch plus two-worker running terminate. Add a representative concurrent multi-worker Boot-shell proof only when changing multi-worker allocation/refill semantics. | [PROOF_REGISTRY.md](./PROOF_REGISTRY.md), [TESTING_INDEX.md](./TESTING_INDEX.md) |
 
 ## Rules
 

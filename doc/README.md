@@ -69,6 +69,8 @@ Use owner docs for module-local truth:
 - trace operator: [../xa-mass-trace/README.md](../xa-mass-trace/README.md)
 - transport: [../transport/AGENTS.md](../transport/AGENTS.md)
 - infra: [../platform_infra/README.md](../platform_infra/README.md)
+- worker runtime: [../xa-mass-worker-runtime/README.md](../xa-mass-worker-runtime/README.md),
+  [../xa-mass-worker-runtime/CONTRACTS.md](../xa-mass-worker-runtime/CONTRACTS.md)
 - testing: [../xa-mass-testing/README.md](../xa-mass-testing/README.md)
 - server: [../xa-mass-server/README.md](../xa-mass-server/README.md)
 - worker pack: [../xa-mass-worker-pack/README.md](../xa-mass-worker-pack/README.md)

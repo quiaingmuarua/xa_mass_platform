@@ -1,6 +1,6 @@
 # Proof Registry
 
-Last updated: 2026-05-20
+Last updated: 2026-05-28
 
 Status: current project-level proof ledger.
 
@@ -23,6 +23,7 @@ Use with:
 - [TESTING_INDEX.md](./TESTING_INDEX.md)
 - [TESTING_BASELINE.md](./TESTING_BASELINE.md)
 - [E2E_BASELINE.md](./E2E_BASELINE.md)
+- [CURRENT_GAPS.md](./CURRENT_GAPS.md)
 - [TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
 - [../xa-mass-engine/doc/baseline/SCHEDULING_CORRECTNESS_MATRIX.md](../xa-mass-engine/doc/baseline/SCHEDULING_CORRECTNESS_MATRIX.md)
 - [../xa-mass-engine/doc/baseline/KERNEL_CONVERGENCE_MATRIX.md](../xa-mass-engine/doc/baseline/KERNEL_CONVERGENCE_MATRIX.md)
@@ -124,6 +125,8 @@ tests.
 ## 3. Known Gaps
 
 Visible gaps should stay explicit so new agents add proof in the right lane.
+Operational/runtime gap tracking lives in [CURRENT_GAPS.md](./CURRENT_GAPS.md).
+This section records proof-ownership gaps only.
 
 ### 3.1 Current Explicit Gaps
 

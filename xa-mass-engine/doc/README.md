@@ -33,6 +33,17 @@ below and must not stay in this list.
 - [WORKER_MATCH_UPGRADE_ROADMAP.md](roadmap/WORKER_MATCH_UPGRADE_ROADMAP.md)
 - [WORKER_SLOT_REGISTRY_ROADMAP.md](roadmap/WORKER_SLOT_REGISTRY_ROADMAP.md)
 
+## Completed Local Convergence Records
+
+These files remain under `roadmap/` because they are still useful as local
+implementation ledgers, but current ownership must be read from module
+contracts and baseline docs first.
+
+- [WORKER_RUNTIME_MODULE_EXTRACTION_ROADMAP.md](roadmap/WORKER_RUNTIME_MODULE_EXTRACTION_ROADMAP.md)
+- [WORKER_RUNTIME_MODULE_EXTRACTION_INVENTORY.md](roadmap/WORKER_RUNTIME_MODULE_EXTRACTION_INVENTORY.md)
+- [WORKER_RUNTIME_API_SLIMMING_ROADMAP.md](roadmap/WORKER_RUNTIME_API_SLIMMING_ROADMAP.md)
+- [WORKER_RUNTIME_API_SLIMMING_INVENTORY.md](roadmap/WORKER_RUNTIME_API_SLIMMING_INVENTORY.md)
+
 ## Historical Archive
 
 - [EVENT_AND_WORKER_CONTROL_ROADMAP.md](../../doc/archive/xa-mass-engine/EVENT_AND_WORKER_CONTROL_ROADMAP.md)

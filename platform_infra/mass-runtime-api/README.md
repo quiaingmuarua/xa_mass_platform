@@ -6,8 +6,8 @@ Status: current shared runtime contract module.
 
 - owns the `TaskWorkRuntime` abstraction
 - owns queue/lease/result/counter value types used by runtime hot paths
-- owns the shared `WorkerRegistry` / `WorkerSlot` contract and worker-runtime
-  value types used by memory and future Redis worker registry implementations
+- owns the shared `WorkerRegistry` / `WorkerSlot` contract plus worker
+  registry primitives used by memory and Redis worker registry implementations
 - provides a shared boundary for engine, transport runtime, server bootstrap, and test harnesses
 
 ## What Belongs Here
@@ -16,14 +16,16 @@ Status: current shared runtime contract module.
 - active lease truth
 - runtime result-apply outcomes
 - runtime counters and bounded runtime stats
-- worker registry slot, reserve, gate-source, and candidate sampling contracts
-- worker reachability read contract consumed by scheduling and provided by transport presence
+- worker registry slot, reserve, gate-source, route-bucket SPI, and candidate
+  sampling contracts
 
 ## What Does Not Belong Here
 
 - task lifecycle policy
+- worker resource, report, candidate, admission, control, or scheduling-evidence
+  contracts owned by `xa-mass-worker-runtime`
 - worker matching logic
-- engine-owned worker capability truth or scheduling policy
+- worker capability truth or scheduling policy
 - transport-specific payload/frame protocols
 - JDBC or control-plane persistence concerns
 
@@ -35,3 +37,5 @@ Status: current shared runtime contract module.
 - `mass-runtime-memory` and `mass-runtime-redis` both implement this contract; the default verified embedded path remains in-memory
 - `mass-runtime-memory` provides the JVM `InMemoryWorkerRegistry`
   implementation while the shared worker registry contract lives here
+- high-level worker-plane contracts live in
+  [../../xa-mass-worker-runtime/CONTRACTS.md](../../xa-mass-worker-runtime/CONTRACTS.md)
