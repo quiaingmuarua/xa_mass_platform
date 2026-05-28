@@ -72,8 +72,8 @@ Current implementation drift agents must keep explicit:
 - `mass-storage-memory` contains `InMemoryRuleStorage` for rule definitions;
   it must not grow evaluator lifecycle ownership back into storage
 - `mass-storage-jdbc` currently persists control-plane task/rule truth and still exposes `JdbcStorageRuntime` as a convenience bundle for migrations and storage adapters; it returns storage contracts to outer layers, but that bundle is still convergence work rather than a long-term product extension point
-- `JdbcTaskStorage` keeps JDBC-local process-local compatibility projections for task-message residue; worker runtime registry state is intentionally not exposed through JDBC storage
-- engine/runtime assembly now wires `TaskStorage` and `TaskDetailStore` explicitly instead of relying on an implicit "task storage also means detail store" fallback
+- `JdbcTaskShellStore` keeps JDBC-local process-local compatibility projections for task-message residue; worker runtime registry state is intentionally not exposed through JDBC storage
+- engine/runtime assembly now wires `TaskShellStore` and `TaskDetailStore` explicitly instead of relying on an implicit "task shell store also means detail store" fallback
 - `xa-mass-engine` still uses `mass-storage-memory` from tests, but its main sources no longer import that package directly; keep the dependency scoped to tests unless a verified mainline caller requires more
 
 Boundary to keep stable:
@@ -84,7 +84,7 @@ Boundary to keep stable:
   worker attributes are runtime truth; DB query needs should be fed through
   trace/audit ingestion, not worker CRUD storage
 - worker capability candidate indexes belong to engine/runtime owners, not
-  `WorkerStorage`; storage must not expose supported-project or supported-event
+  `WorkerDeclarationStore`; storage must not expose supported-project or supported-event
   worker lookup APIs as scheduling shortcuts
 - high-volume task-message detail and attempt/event history belong in trace or async audit/export sinks, not in the control-plane JDBC path
 - bounded compatibility projection and runtime residue remain temporary/debug

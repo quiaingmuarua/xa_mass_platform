@@ -84,7 +84,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                             .assignmentRetryDelayMillis(config.assignmentRetryDelayMillis())
                             .leaseWatchdogIntervalSeconds(config.leaseWatchdogIntervalSeconds())
                             .taskMessageLeaseSeconds(config.taskMessageLeaseSeconds())
-                            .taskStorage(taskStorage)
+                            .taskShellStore(taskStorage)
                             .taskDetailStore(taskStorage)
                             .taskWorkRuntime(taskWorkRuntime);
                     if (traceSink != null) {
@@ -116,7 +116,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                             .assignmentRetryDelayMillis(config.assignmentRetryDelayMillis())
                             .leaseWatchdogIntervalSeconds(config.leaseWatchdogIntervalSeconds())
                             .taskMessageLeaseSeconds(config.taskMessageLeaseSeconds())
-                            .taskStorage(taskStorage)
+                            .taskShellStore(taskStorage)
                             .taskDetailStore(taskStorage)
                             .taskWorkRuntime(taskWorkRuntime);
                     if (traceSink != null) {

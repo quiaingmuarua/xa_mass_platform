@@ -12,8 +12,8 @@ remain temporary compatibility residue rather than a growth surface.
 The active engine boundary has three explicit contracts:
 
 - control-plane storage contracts in `platform_infra/mass-storage-api`
-  - `TaskStorage`
-  - `WorkerStorage`
+  - `TaskShellStore`
+  - `WorkerDeclarationStore`
   - `RuleStorage`
 - bounded compatibility projection seam in `platform_infra/mass-storage-api`
   - `TaskDetailStore`
@@ -41,8 +41,8 @@ What the engine assumes today:
   attempt object graph as the transport payload; runtime-native
   dispatch binding now carries message payload, retry summary, and
   attempt/lease ownership directly
-- engine assembly wires `TaskStorage` and `TaskDetailStore` explicitly; there
-  is no implicit "task storage also means detail store" fallback in the mainline
+- engine assembly wires `TaskShellStore` and `TaskDetailStore` explicitly; there
+  is no implicit "task shell store also means detail store" fallback in the mainline
 
 ## TaskDetailStore
 
@@ -122,8 +122,8 @@ Rules:
 Current mainline implementations:
 
 - `platform_infra/mass-storage-memory`
-  - `InMemoryTaskStorage`
-  - `InMemoryWorkerStorage`
+  - `InMemoryTaskShellStore`
+  - `InMemoryWorkerDeclarationStore`
   - `InMemoryRuleStorage`
 - `platform_infra/mass-storage-jdbc`
   - JDBC control-plane storage adapter for task/worker/rule truth

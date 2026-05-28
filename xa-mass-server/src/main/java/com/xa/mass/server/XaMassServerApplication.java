@@ -189,23 +189,24 @@ public class XaMassServerApplication {
 
     @Bean
     @Profile("dev")
-    public TaskShellStore taskStorage(JdbcStorageRuntime jdbcStorageRuntime) {
+    public TaskShellStore taskShellStore(JdbcStorageRuntime jdbcStorageRuntime) {
         if (jdbcStorageRuntime.isEnabled()) {
-            return jdbcStorageRuntime.taskStorage();
+            return jdbcStorageRuntime.taskShellStore();
         }
         return new InMemoryTaskShellStore();
     }
 
     @Bean
     @Profile("dev")
-    public TaskDetailStore taskDetailStore(JdbcStorageRuntime jdbcStorageRuntime, TaskShellStore taskStorage) {
+    public TaskDetailStore taskDetailStore(JdbcStorageRuntime jdbcStorageRuntime, TaskShellStore taskShellStore) {
         if (jdbcStorageRuntime.isEnabled()) {
             return jdbcStorageRuntime.taskDetailStore();
         }
-        if (taskStorage instanceof TaskDetailStore detailStore) {
+        if (taskShellStore instanceof TaskDetailStore detailStore) {
             return detailStore;
         }
-        throw new IllegalStateException("taskStorage does not implement TaskDetailStore: " + taskStorage.getClass().getName());
+        throw new IllegalStateException(
+                "taskShellStore does not implement TaskDetailStore: " + taskShellStore.getClass().getName());
     }
 
     @Bean(destroyMethod = "shutdown")
@@ -234,7 +235,7 @@ public class XaMassServerApplication {
     @Profile("dev")
     public MassSdkApplication fullStackRuntimeApplication(ObjectProvider<MassBootstrapDataProvider> bootstrapDataProvider,
                                                           JdbcStorageRuntime jdbcStorageRuntime,
-                                                          TaskShellStore taskStorage,
+                                                          TaskShellStore taskShellStore,
                                                           TaskDetailStore taskDetailStore,
                                                           ObjectProvider<TaskWorkRuntime> taskWorkRuntimeProvider,
                                                           ObjectProvider<TaskResultRuntime> taskResultRuntimeProvider,
@@ -285,7 +286,7 @@ public class XaMassServerApplication {
                             .runtimeReadyDispatchIdleBackoffMaxMillis(runtimeReadyDispatchIdleBackoffMaxMillis)
                             .leaseWatchdogIntervalSeconds(leaseWatchdogIntervalSeconds)
                             .taskMessageLeaseSeconds(taskMessageLeaseSeconds)
-                            .taskStorage(taskStorage)
+                            .taskShellStore(taskShellStore)
                             .taskDetailStore(taskDetailStore);
                     TaskWorkRuntime taskWorkRuntime = taskWorkRuntimeProvider.getIfAvailable(InMemoryTaskWorkRuntime::new);
                     engine.taskWorkRuntime(taskWorkRuntime);

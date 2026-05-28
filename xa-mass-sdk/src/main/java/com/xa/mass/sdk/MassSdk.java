@@ -407,8 +407,8 @@ public final class MassSdk {
             return this;
         }
 
-        public EngineOptions taskStorage(TaskShellStore taskStorage) {
-            delegate.taskStorage(taskStorage);
+        public EngineOptions taskShellStore(TaskShellStore taskShellStore) {
+            delegate.taskShellStore(taskShellStore);
             return this;
         }
 
@@ -432,8 +432,8 @@ public final class MassSdk {
             return this;
         }
 
-        public EngineOptions workerStorage(WorkerDeclarationStore workerStorage) {
-            delegate.workerStorage(workerStorage);
+        public EngineOptions workerDeclarationStore(WorkerDeclarationStore workerDeclarationStore) {
+            delegate.workerDeclarationStore(workerDeclarationStore);
             return this;
         }
 

@@ -580,8 +580,8 @@ public class MassApplicationBuilder {
             return this;
         }
 
-        public EngineBuilder taskStorage(TaskShellStore taskStorage) {
-            config.setTaskShellStore(taskStorage);
+        public EngineBuilder taskShellStore(TaskShellStore taskShellStore) {
+            config.setTaskShellStore(taskShellStore);
             return this;
         }
 
@@ -605,8 +605,8 @@ public class MassApplicationBuilder {
             return this;
         }
 
-        public EngineBuilder workerStorage(WorkerDeclarationStore workerStorage) {
-            config.setWorkerDeclarationStore(workerStorage);
+        public EngineBuilder workerDeclarationStore(WorkerDeclarationStore workerDeclarationStore) {
+            config.setWorkerDeclarationStore(workerDeclarationStore);
             return this;
         }
 

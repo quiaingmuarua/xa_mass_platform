@@ -14,18 +14,18 @@ public final class JdbcStorageRuntime implements AutoCloseable {
     private final JdbcStorageMode mode;
     private final HikariDataSource dataSource;
     private final JdbcDialect dialect;
-    private final TaskShellStore taskStorage;
+    private final TaskShellStore taskShellStore;
     private final RuleStorage ruleStorage;
 
     private JdbcStorageRuntime(JdbcStorageMode mode,
                                HikariDataSource dataSource,
                                JdbcDialect dialect,
-                               TaskShellStore taskStorage,
+                               TaskShellStore taskShellStore,
                                RuleStorage ruleStorage) {
         this.mode = mode;
         this.dataSource = dataSource;
         this.dialect = dialect;
-        this.taskStorage = taskStorage;
+        this.taskShellStore = taskShellStore;
         this.ruleStorage = ruleStorage;
     }
 
@@ -45,9 +45,9 @@ public final class JdbcStorageRuntime implements AutoCloseable {
                 .migrate();
 
         JdbcDialect dialect = mode.dialect();
-        JdbcTaskShellStore taskStorage = new JdbcTaskShellStore(dataSource, dialect);
+        JdbcTaskShellStore taskShellStore = new JdbcTaskShellStore(dataSource, dialect);
         JdbcRuleStorage ruleStorage = new JdbcRuleStorage(dataSource, dialect);
-        return new JdbcStorageRuntime(mode, dataSource, dialect, taskStorage, ruleStorage);
+        return new JdbcStorageRuntime(mode, dataSource, dialect, taskShellStore, ruleStorage);
     }
 
     private static HikariDataSource createDataSource(String jdbcUrl, String username, String password) {
@@ -76,15 +76,15 @@ public final class JdbcStorageRuntime implements AutoCloseable {
         return dialect;
     }
 
-    public TaskShellStore taskStorage() {
-        return taskStorage;
+    public TaskShellStore taskShellStore() {
+        return taskShellStore;
     }
 
     public TaskDetailStore taskDetailStore() {
-        if (taskStorage instanceof TaskDetailStore taskDetailStore) {
+        if (taskShellStore instanceof TaskDetailStore taskDetailStore) {
             return taskDetailStore;
         }
-        throw new IllegalStateException("configured JDBC task storage does not provide TaskDetailStore");
+        throw new IllegalStateException("configured JDBC task shell store does not provide TaskDetailStore");
     }
 
     public RuleStorage ruleStorage() {

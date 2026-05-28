@@ -90,13 +90,13 @@ public class EngineConfig {
     private TaskShellLifecycleMaintenancePort taskShellLifecycleMaintenancePort;
     private TaskRuntimeRecoveryPort taskRuntimeRecoveryPort;
     private com.xa.mass.engine.util.TraceEventLogger traceEventLogger;
-    private TaskShellStore taskStorage;
+    private TaskShellStore taskShellStore;
     private TaskDetailStore taskDetailStore;
     private TaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
     private TaskResultRuntime taskResultRuntime = new InMemoryTaskResultRuntime();
     private TaskWorkerMatchingStrategy matchingStrategy;
     private WorkerReachabilityView workerReachabilityView = WorkerReachabilityView.permissive();
-    private WorkerDeclarationStore workerStorage = new InMemoryWorkerDeclarationStore();
+    private WorkerDeclarationStore workerDeclarationStore = new InMemoryWorkerDeclarationStore();
     private WorkerRegistry workerRegistry;
     private final WorkerRouteBucketPolicy workerRouteBucketPolicy = WorkerRouteBucketPolicies.defaultPolicy();
     private WorkerManager workerManager;
@@ -128,7 +128,7 @@ public class EngineConfig {
 
     public EngineConfig() {
         InMemoryTaskShellStore defaultTaskShellStore = new InMemoryTaskShellStore();
-        this.taskStorage = defaultTaskShellStore;
+        this.taskShellStore = defaultTaskShellStore;
         this.taskDetailStore = defaultTaskShellStore;
     }
 
@@ -145,13 +145,13 @@ public class EngineConfig {
         this.taskDispatchWakeupPort = source.taskDispatchWakeupPort;
         this.taskShellLifecycleMaintenancePort = source.taskShellLifecycleMaintenancePort;
         this.taskRuntimeRecoveryPort = source.taskRuntimeRecoveryPort;
-        this.taskStorage = source.taskStorage;
+        this.taskShellStore = source.taskShellStore;
         this.taskDetailStore = source.taskDetailStore;
         this.taskWorkRuntime = source.taskWorkRuntime;
         this.taskResultRuntime = source.taskResultRuntime;
         this.matchingStrategy = source.matchingStrategy;
         this.workerReachabilityView = source.workerReachabilityView;
-        this.workerStorage = source.workerStorage;
+        this.workerDeclarationStore = source.workerDeclarationStore;
         this.workerRegistry = source.workerRegistry;
         this.workerManager = null;
         this.workerCommandLifecycleOwner = source.workerCommandLifecycleOwner;
@@ -301,20 +301,20 @@ public class EngineConfig {
     }
 
     public TaskShellStore getTaskShellStore() {
-        return taskStorage;
+        return taskShellStore;
     }
 
-    public void setTaskShellStore(TaskShellStore taskStorage) {
-        if (taskStorage == null) {
-            throw new IllegalArgumentException("taskStorage must not be null");
+    public void setTaskShellStore(TaskShellStore taskShellStore) {
+        if (taskShellStore == null) {
+            throw new IllegalArgumentException("taskShellStore must not be null");
         }
         if (this.taskManager != null) {
-            throw new IllegalStateException("Cannot replace taskStorage after taskManager has been configured");
+            throw new IllegalStateException("Cannot replace taskShellStore after taskManager has been configured");
         }
-        if (this.taskDetailStore == this.taskStorage) {
+        if (this.taskDetailStore == this.taskShellStore) {
             this.taskDetailStore = null;
         }
-        this.taskStorage = taskStorage;
+        this.taskShellStore = taskShellStore;
     }
 
     public TaskDetailStore getTaskDetailStore() {
@@ -428,14 +428,14 @@ public class EngineConfig {
     }
 
     public WorkerDeclarationStore getWorkerDeclarationStore() {
-        return workerStorage;
+        return workerDeclarationStore;
     }
 
-    public void setWorkerDeclarationStore(WorkerDeclarationStore workerStorage) {
-        if (workerStorage == null) {
-            throw new IllegalArgumentException("workerStorage must not be null");
+    public void setWorkerDeclarationStore(WorkerDeclarationStore workerDeclarationStore) {
+        if (workerDeclarationStore == null) {
+            throw new IllegalArgumentException("workerDeclarationStore must not be null");
         }
-        this.workerStorage = workerStorage;
+        this.workerDeclarationStore = workerDeclarationStore;
         this.workerManager = null;
         this.workerControlRuntime = null;
     }

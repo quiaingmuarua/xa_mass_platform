@@ -219,7 +219,7 @@ public final class SdkPollingSchedulingSoakRunner {
                             .queueMode())
                     .engine(engine -> {
                         engine.enabled(true)
-                                .taskStorage(taskStorage)
+                                .taskShellStore(taskStorage)
                                 .taskDetailStore(taskStorage)
                                 .taskWorkRuntime(taskWorkRuntime);
                         if (traceSink != null) {

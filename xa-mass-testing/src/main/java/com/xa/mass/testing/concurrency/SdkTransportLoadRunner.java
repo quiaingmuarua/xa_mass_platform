@@ -222,7 +222,7 @@ public final class SdkTransportLoadRunner {
                             .outputQueue(new InMemoryMessageQueue<>("sdk-load-output", com.xa.mass.transport.model.TransportOutboundMessage.class))
                             .queueMode())
                     .engine(engine -> engine.enabled(true)
-                            .taskStorage(taskStorage)
+                            .taskShellStore(taskStorage)
                             .taskDetailStore(taskStorage)
                             .taskWorkRuntime(taskWorkRuntime))
                     .build();

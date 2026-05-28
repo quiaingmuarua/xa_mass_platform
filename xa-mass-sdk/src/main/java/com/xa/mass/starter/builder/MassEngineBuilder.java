@@ -22,11 +22,11 @@ public class MassEngineBuilder {
     private TaskWorkerMatchingStrategy matchingStrategy;
     private AssignmentDiagnosticRecorder recordService;
     private MassBootstrapDataProvider bootstrapDataProvider;
-    private TaskShellStore taskStorage;
+    private TaskShellStore taskShellStore;
     private TaskDetailStore taskDetailStore;
     private TaskWorkRuntime taskWorkRuntime;
     private TaskResultRuntime taskResultRuntime;
-    private WorkerDeclarationStore workerStorage;
+    private WorkerDeclarationStore workerDeclarationStore;
     private WorkerRegistry workerRegistry;
     private RuleStorage ruleStorage;
 
@@ -45,8 +45,8 @@ public class MassEngineBuilder {
         return this;
     }
 
-    public MassEngineBuilder taskStorage(TaskShellStore taskStorage) {
-        this.taskStorage = taskStorage;
+    public MassEngineBuilder taskShellStore(TaskShellStore taskShellStore) {
+        this.taskShellStore = taskShellStore;
         return this;
     }
 
@@ -70,8 +70,8 @@ public class MassEngineBuilder {
         return this;
     }
 
-    public MassEngineBuilder workerStorage(WorkerDeclarationStore workerStorage) {
-        this.workerStorage = workerStorage;
+    public MassEngineBuilder workerDeclarationStore(WorkerDeclarationStore workerDeclarationStore) {
+        this.workerDeclarationStore = workerDeclarationStore;
         return this;
     }
 
@@ -114,11 +114,11 @@ public class MassEngineBuilder {
         if (workerThreads != null) config.setWorkerThreads(workerThreads);
         if (taskMessageLeaseSeconds != null) config.setTaskMessageLeaseSeconds(taskMessageLeaseSeconds);
         if (matchingStrategy != null) config.setMatchingStrategy(matchingStrategy);
-        if (taskStorage != null) config.setTaskShellStore(taskStorage);
+        if (taskShellStore != null) config.setTaskShellStore(taskShellStore);
         if (taskDetailStore != null) config.setTaskDetailStore(taskDetailStore);
         if (taskWorkRuntime != null) config.setTaskWorkRuntime(taskWorkRuntime);
         if (taskResultRuntime != null) config.setTaskResultRuntime(taskResultRuntime);
-        if (workerStorage != null) config.setWorkerDeclarationStore(workerStorage);
+        if (workerDeclarationStore != null) config.setWorkerDeclarationStore(workerDeclarationStore);
         if (workerRegistry != null) config.setWorkerRegistry(workerRegistry);
         if (ruleStorage != null) config.setRuleStorage(ruleStorage);
         if (recordService != null) config.setRecordService(recordService);

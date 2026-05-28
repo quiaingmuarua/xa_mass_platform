@@ -69,7 +69,12 @@ class RedisRuntimeTraceIntegrationTest {
         );
         taskStorage = new InMemoryTaskShellStore();
         traceSink = new RecordingExecutionEventSink();
-        taskManager = new TaskManager(taskStorage, taskStorage, runtime, traceSink);
+        RedisTaskResultRuntime resultRuntime = new RedisTaskResultRuntime(
+                redisConnection,
+                new RedisTaskResultKeyspace(runtimeNamespace + ":result"),
+                now::get
+        );
+        taskManager = new TaskManager(taskStorage, taskStorage, runtime, resultRuntime, traceSink);
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
         resultFacade = new TaskManagerResultIngestFacade(taskManager);

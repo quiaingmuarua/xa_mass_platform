@@ -94,7 +94,7 @@ Engine hot paths must treat these runtime semantics as authoritative:
 
 ## Storage And Projection Non-Truth
 
-`TaskStorage` owns control-plane shell truth only:
+`TaskShellStore` owns control-plane shell truth only:
 
 - `Task` shell state
 - worker registration truth

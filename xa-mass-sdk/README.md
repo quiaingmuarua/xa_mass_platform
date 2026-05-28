@@ -314,15 +314,15 @@ Current SDK contracts:
 | startup/bootstrap | operations fail fast without a started engine; mock/demo bootstrap belongs outside SDK via `MassBootstrapDataProvider` / `MassRuntimeControl` |
 
 For embedded runtime wiring, keep the mainline on storage/runtime contracts
-such as `taskStorage(...)`, `taskDetailStore(...)`, `taskWorkRuntime(...)`,
-`workerStorage(...)`, and `ruleStorage(...)`. Do not make `TaskManager` or
+such as `taskShellStore(...)`, `taskDetailStore(...)`, `taskWorkRuntime(...)`,
+`workerDeclarationStore(...)`, and `ruleStorage(...)`. Do not make `TaskManager` or
 `WorkerManager` the default SDK assembly surface.
-Shell-mainline SDK create maps onto `TaskShellCreateRequestDto`; worker registration/query helpers use `WorkerStorage`
+Shell-mainline SDK create maps onto `TaskShellCreateRequestDto`; worker registration/query helpers use `WorkerDeclarationStore`
 for control-plane truth instead of treating `WorkerManager` as the default SDK
 dependency; SDK rule list/replace helpers now use `RuleStorage` directly
 instead of carrying a broad rule manager as the default outer-layer dependency.
 Within starter assembly, `EngineConfig` now treats `WorkerManager` and
-rule matching contracts as derived helpers over `WorkerStorage` / `RuleStorage`
+rule matching contracts as derived helpers over `WorkerDeclarationStore` / `RuleStorage`
 rather than independent config slots that outer modules should wire or cache.
 Embedded transport runtime assembly also consumes only
 `WorkerResourceRuntime` worker resource reads instead of reaching through the

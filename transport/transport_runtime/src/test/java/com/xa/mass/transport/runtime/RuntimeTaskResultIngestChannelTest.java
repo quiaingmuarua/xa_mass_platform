@@ -18,6 +18,7 @@ import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
 import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
 import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
+import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.transport.model.TaskResultReport;
 import com.xa.mass.transport.model.TransportResultEnvelope;
@@ -57,7 +58,7 @@ class RuntimeTaskResultIngestChannelTest {
         taskStorage = new InMemoryTaskShellStore();
         taskWorkRuntime = new InMemoryTaskWorkRuntime();
         traceSink = new RecordingExecutionEventSink();
-        taskManager = new TaskManager(taskStorage, taskStorage, taskWorkRuntime, traceSink);
+        taskManager = new TaskManager(taskStorage, taskStorage, taskWorkRuntime, new InMemoryTaskResultRuntime(), traceSink);
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
         assignmentRuntimePort = taskManager;
@@ -139,7 +140,7 @@ class RuntimeTaskResultIngestChannelTest {
         taskStorage = trackingStorage;
         taskWorkRuntime = new InMemoryTaskWorkRuntime();
         traceSink = new RecordingExecutionEventSink();
-        taskManager = new TaskManager(taskStorage, taskStorage, taskWorkRuntime, traceSink);
+        taskManager = new TaskManager(taskStorage, taskStorage, taskWorkRuntime, new InMemoryTaskResultRuntime(), traceSink);
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
         assignmentRuntimePort = taskManager;
@@ -392,7 +393,7 @@ class RuntimeTaskResultIngestChannelTest {
         taskStorage = countingStorage;
         taskWorkRuntime = new InMemoryTaskWorkRuntime();
         traceSink = new RecordingExecutionEventSink();
-        taskManager = new TaskManager(taskStorage, taskStorage, taskWorkRuntime, traceSink);
+        taskManager = new TaskManager(taskStorage, taskStorage, taskWorkRuntime, new InMemoryTaskResultRuntime(), traceSink);
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
         assignmentRuntimePort = taskManager;
@@ -420,7 +421,7 @@ class RuntimeTaskResultIngestChannelTest {
         taskStorage = trackingStorage;
         taskWorkRuntime = new InMemoryTaskWorkRuntime();
         traceSink = new RecordingExecutionEventSink();
-        taskManager = new TaskManager(taskStorage, taskStorage, taskWorkRuntime, traceSink);
+        taskManager = new TaskManager(taskStorage, taskStorage, taskWorkRuntime, new InMemoryTaskResultRuntime(), traceSink);
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
         assignmentRuntimePort = taskManager;
@@ -445,7 +446,7 @@ class RuntimeTaskResultIngestChannelTest {
         taskStorage = hiddenReadStorage;
         taskWorkRuntime = new InMemoryTaskWorkRuntime();
         traceSink = new RecordingExecutionEventSink();
-        taskManager = new TaskManager(taskStorage, taskStorage, taskWorkRuntime, traceSink);
+        taskManager = new TaskManager(taskStorage, taskStorage, taskWorkRuntime, new InMemoryTaskResultRuntime(), traceSink);
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
         assignmentRuntimePort = taskManager;
@@ -473,7 +474,7 @@ class RuntimeTaskResultIngestChannelTest {
         taskStorage = hiddenReadStorage;
         taskWorkRuntime = new InMemoryTaskWorkRuntime();
         traceSink = new RecordingExecutionEventSink();
-        taskManager = new TaskManager(taskStorage, taskStorage, taskWorkRuntime, traceSink);
+        taskManager = new TaskManager(taskStorage, taskStorage, taskWorkRuntime, new InMemoryTaskResultRuntime(), traceSink);
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
         assignmentRuntimePort = taskManager;
@@ -498,7 +499,7 @@ class RuntimeTaskResultIngestChannelTest {
         taskStorage = new FailingUpdateAttemptStorage();
         taskWorkRuntime = new InMemoryTaskWorkRuntime();
         traceSink = new RecordingExecutionEventSink();
-        taskManager = new TaskManager(taskStorage, taskStorage, taskWorkRuntime, traceSink);
+        taskManager = new TaskManager(taskStorage, taskStorage, taskWorkRuntime, new InMemoryTaskResultRuntime(), traceSink);
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
         assignmentRuntimePort = taskManager;
