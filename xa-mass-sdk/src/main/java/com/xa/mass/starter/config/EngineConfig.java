@@ -52,11 +52,11 @@ import com.xa.mass.worker.runtime.routing.WorkerRouteBucketPolicies;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.TaskDetailStore;
-import com.xa.mass.storage.api.TaskStorage;
-import com.xa.mass.storage.api.WorkerStorage;
+import com.xa.mass.storage.api.TaskShellStore;
+import com.xa.mass.storage.api.WorkerDeclarationStore;
 import com.xa.mass.storage.memory.InMemoryRuleStorage;
-import com.xa.mass.storage.memory.InMemoryTaskStorage;
-import com.xa.mass.storage.memory.InMemoryWorkerStorage;
+import com.xa.mass.storage.memory.InMemoryTaskShellStore;
+import com.xa.mass.storage.memory.InMemoryWorkerDeclarationStore;
 import com.xa.mass.starter.EngineRuntimeBridge;
 import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.trace.sink.NoopExecutionEventSink;
@@ -86,13 +86,13 @@ public class EngineConfig {
     private TaskRuntimeMaintenancePort taskRuntimeMaintenancePort;
     private TaskRuntimeRecoveryPort taskRuntimeRecoveryPort;
     private com.xa.mass.engine.util.TraceEventLogger traceEventLogger;
-    private TaskStorage taskStorage;
+    private TaskShellStore taskStorage;
     private TaskDetailStore taskDetailStore;
     private TaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
     private TaskResultRuntime taskResultRuntime = new InMemoryTaskResultRuntime();
     private TaskWorkerMatchingStrategy matchingStrategy;
     private WorkerReachabilityView workerReachabilityView = WorkerReachabilityView.permissive();
-    private WorkerStorage workerStorage = new InMemoryWorkerStorage();
+    private WorkerDeclarationStore workerStorage = new InMemoryWorkerDeclarationStore();
     private WorkerRegistry workerRegistry;
     private final WorkerRouteBucketPolicy workerRouteBucketPolicy = WorkerRouteBucketPolicies.defaultPolicy();
     private WorkerManager workerManager;
@@ -123,9 +123,9 @@ public class EngineConfig {
     private long taskMessageLeaseSeconds = 300L;
 
     public EngineConfig() {
-        InMemoryTaskStorage defaultTaskStorage = new InMemoryTaskStorage();
-        this.taskStorage = defaultTaskStorage;
-        this.taskDetailStore = defaultTaskStorage;
+        InMemoryTaskShellStore defaultTaskShellStore = new InMemoryTaskShellStore();
+        this.taskStorage = defaultTaskShellStore;
+        this.taskDetailStore = defaultTaskShellStore;
     }
 
     public EngineConfig(EngineConfig source) {
@@ -280,11 +280,11 @@ public class EngineConfig {
         this.taskResultRuntime = taskResultRuntime;
     }
 
-    public TaskStorage getTaskStorage() {
+    public TaskShellStore getTaskShellStore() {
         return taskStorage;
     }
 
-    public void setTaskStorage(TaskStorage taskStorage) {
+    public void setTaskShellStore(TaskShellStore taskStorage) {
         if (taskStorage == null) {
             throw new IllegalArgumentException("taskStorage must not be null");
         }
@@ -318,7 +318,7 @@ public class EngineConfig {
     private WorkerManager workerManager() {
         if (workerManager == null) {
             workerManager = new WorkerManager(
-                    getWorkerStorage(),
+                    getWorkerDeclarationStore(),
                     workerReachabilityView,
                     getWorkerRegistry(),
                     workerRouteBucketPolicy
@@ -407,11 +407,11 @@ public class EngineConfig {
         this.workerControlRuntime = null;
     }
 
-    public WorkerStorage getWorkerStorage() {
+    public WorkerDeclarationStore getWorkerDeclarationStore() {
         return workerStorage;
     }
 
-    public void setWorkerStorage(WorkerStorage workerStorage) {
+    public void setWorkerDeclarationStore(WorkerDeclarationStore workerStorage) {
         if (workerStorage == null) {
             throw new IllegalArgumentException("workerStorage must not be null");
         }
@@ -611,7 +611,7 @@ public class EngineConfig {
     private TaskManager ensureTaskManager() {
         if (taskManager == null) {
             taskManager = new TaskManager(
-                    getTaskStorage(),
+                    getTaskShellStore(),
                     getTaskDetailStore(),
                     getTaskWorkRuntime(),
                     getTaskResultRuntime(),

@@ -20,7 +20,7 @@ import com.xa.mass.runtime.api.WorkEnqueueOutcome;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
 import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
-import com.xa.mass.storage.memory.InMemoryTaskStorage;
+import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -49,7 +49,7 @@ class TaskResultConcurrencyConvergenceTest {
 
     @BeforeEach
     void setUp() {
-        InMemoryTaskStorage storage = new InMemoryTaskStorage();
+        InMemoryTaskShellStore storage = new InMemoryTaskShellStore();
         taskManager = new TaskManager(
                 storage,
                 storage,
@@ -244,7 +244,7 @@ class TaskResultConcurrencyConvergenceTest {
 
     @Test
     void duplicateSuccessCallbackDoesNotTriggerExtraTaskProgressRecompute() {
-        CountingTaskManager countingTaskManager = new CountingTaskManager(new InMemoryTaskStorage());
+        CountingTaskManager countingTaskManager = new CountingTaskManager(new InMemoryTaskShellStore());
         Task task = createRunningTask(countingTaskManager, "duplicate-progress-recompute", 1, 3);
         ClaimedTaskWork claimed = claimSingle(countingTaskManager, task.getTid(), "worker-progress", "batch-progress");
 
@@ -274,7 +274,7 @@ class TaskResultConcurrencyConvergenceTest {
         int messageCount = 8;
         BlockingApplyResultRuntime blockingRuntime = new BlockingApplyResultRuntime(messageCount);
         CoalescingCountingTaskManager coalescingTaskManager = new CoalescingCountingTaskManager(
-                new InMemoryTaskStorage(),
+                new InMemoryTaskShellStore(),
                 blockingRuntime,
                 messageCount
         );
@@ -332,7 +332,7 @@ class TaskResultConcurrencyConvergenceTest {
     }
 
     private static TaskManager newManager(TaskWorkRuntime taskWorkRuntime) {
-        InMemoryTaskStorage storage = new InMemoryTaskStorage();
+        InMemoryTaskShellStore storage = new InMemoryTaskShellStore();
         return new TaskManager(storage, storage, taskWorkRuntime, new InMemoryTaskResultRuntime(), null);
     }
 
@@ -550,7 +550,7 @@ class TaskResultConcurrencyConvergenceTest {
     private static final class CountingTaskManager extends TaskManager {
         private final ConcurrentHashMap<String, AtomicInteger> progressUpdateCounts = new ConcurrentHashMap<>();
 
-        private CountingTaskManager(InMemoryTaskStorage taskStorage) {
+        private CountingTaskManager(InMemoryTaskShellStore taskStorage) {
             super(taskStorage, taskStorage, new InMemoryTaskWorkRuntime(), new InMemoryTaskResultRuntime(), null);
         }
 
@@ -573,7 +573,7 @@ class TaskResultConcurrencyConvergenceTest {
         private final CountDownLatch releaseFirstProgressResolve = new CountDownLatch(1);
         private final CountDownLatch allProgressRequestsReached;
 
-        private CoalescingCountingTaskManager(InMemoryTaskStorage taskStorage,
+        private CoalescingCountingTaskManager(InMemoryTaskShellStore taskStorage,
                                               TaskWorkRuntime taskWorkRuntime,
                                               int expectedProgressRequests) {
             super(taskStorage, taskStorage, taskWorkRuntime, new InMemoryTaskResultRuntime(), null);

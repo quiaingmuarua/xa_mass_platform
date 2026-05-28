@@ -4,7 +4,7 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.storage.api.TaskDetailStore;
-import com.xa.mass.storage.api.TaskStorage;
+import com.xa.mass.storage.api.TaskShellStore;
 import com.xa.mass.storage.contract.TaskDetailStoreContractTest;
 import com.zaxxer.hikari.HikariDataSource;
 
@@ -13,12 +13,12 @@ import java.util.Map;
 class JdbcH2TaskDetailStoreContractTest extends TaskDetailStoreContractTest {
 
     private HikariDataSource dataSource;
-    private JdbcTaskStorage taskStorage;
+    private JdbcTaskShellStore taskStorage;
 
     @Override
     protected TaskDetailStore createStore() {
         dataSource = JdbcContractTestFixture.h2DataSource();
-        taskStorage = new JdbcTaskStorage(dataSource, new H2JdbcDialect());
+        taskStorage = new JdbcTaskShellStore(dataSource, new H2JdbcDialect());
         return taskStorage;
     }
 

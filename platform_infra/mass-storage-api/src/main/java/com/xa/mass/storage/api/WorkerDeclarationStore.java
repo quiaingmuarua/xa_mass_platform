@@ -13,7 +13,7 @@ import java.util.Optional;
  * runtime registry. Durable worker history belongs in trace/audit
  * projections, not this storage contract.
  */
-public interface WorkerStorage {
+public interface WorkerDeclarationStore {
 
     void addWorker(Worker worker);
 

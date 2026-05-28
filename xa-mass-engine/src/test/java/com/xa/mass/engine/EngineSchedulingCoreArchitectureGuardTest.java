@@ -933,7 +933,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 Map.entry("AdapterNode", Pattern.compile("\\bAdapterNode")),
                 Map.entry("NodeGroupBinding", Pattern.compile("\\bNodeGroupBinding")),
                 Map.entry("WorkerManager", Pattern.compile("\\bWorkerManager\\b")),
-                Map.entry("WorkerStorage", Pattern.compile("\\bWorkerStorage\\b")),
+                Map.entry("WorkerDeclarationStore", Pattern.compile("\\bWorkerDeclarationStore\\b")),
                 Map.entry("unbounded group worker enumeration",
                         Pattern.compile("\\.workerIdsByGroupId\\s*\\(")),
                 Map.entry("all-workers scan", Pattern.compile("\\.getAllWorkers\\s*\\("))
@@ -979,12 +979,12 @@ class EngineSchedulingCoreArchitectureGuardTest {
             }
             String source = Files.readString(path, StandardCharsets.UTF_8);
             if (allWorkerScan.matcher(source).find()) {
-                violations.add(path + " calls WorkerStorage.getAllWorkers() outside worker resource convergence boundary");
+                violations.add(path + " calls WorkerDeclarationStore.getAllWorkers() outside worker resource convergence boundary");
             }
         }
 
         assertTrue(violations.isEmpty(),
-                "WorkerStorage.getAllWorkers() is a current bootstrap/refresh residue, not a scheduling hot-path "
+                "WorkerDeclarationStore.getAllWorkers() is a current bootstrap/refresh residue, not a scheduling hot-path "
                         + "candidate source. New scheduling code must use WorkerManager/WorkerCandidateIndex "
                         + "until WorkerRegistry owns bounded acquisition:\n"
                         + String.join("\n", violations));
@@ -1156,7 +1156,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
         assertFalse(source.contains("workerRegistryRows"),
                 "WorkerManager must not own a second mutable worker row map. "
-                        + "WorkerStorage remains the current control-plane row source and "
+                        + "WorkerDeclarationStore remains the current control-plane row source and "
                         + "WorkerRegistry owns runtime slot/index/admission truth.");
         assertFalse(source.contains("getWorkersByGroupId("),
                 "WorkerManager must not expose storage-backed group worker scans. "
@@ -1722,7 +1722,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
     @Test
     void workerStorageDoesNotExposeWorkerCapabilityCandidateLookup() throws IOException {
         Path workerStoragePath = repositoryRoot().resolve(
-                "platform_infra/mass-storage-api/src/main/java/com/xa/mass/storage/api/WorkerStorage.java");
+                "platform_infra/mass-storage-api/src/main/java/com/xa/mass/storage/api/WorkerDeclarationStore.java");
         String source = Files.readString(workerStoragePath, StandardCharsets.UTF_8);
 
         List<String> violations = new ArrayList<>();
@@ -1734,7 +1734,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "WorkerStorage must stay runtime worker-registry storage. Capability candidate "
+                "WorkerDeclarationStore must stay runtime worker-registry storage. Capability candidate "
                         + "lookup belongs to WorkerRegistrySnapshot / WorkerCandidateIndex, not control-plane "
                 + "storage APIs:\n"
                 + String.join("\n", violations));
@@ -1748,8 +1748,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "platform_infra/mass-storage-jdbc/src/main/resources/db/migration/control-plane/V1__create_control_plane_tables.sql");
 
         List<String> violations = new ArrayList<>();
-        if (Files.exists(jdbcSourceRoot.resolve("JdbcWorkerStorage.java"))) {
-            violations.add(jdbcSourceRoot.resolve("JdbcWorkerStorage.java")
+        if (Files.exists(jdbcSourceRoot.resolve("JdbcWorkerDeclarationStore.java"))) {
+            violations.add(jdbcSourceRoot.resolve("JdbcWorkerDeclarationStore.java")
                     + " reintroduces DB-backed worker runtime storage");
         }
         if (Files.exists(jdbcSourceRoot.resolve("JdbcWorkerCompatibilityProjection.java"))) {
@@ -1845,9 +1845,9 @@ class EngineSchedulingCoreArchitectureGuardTest {
     @Test
     void workerStorageDoesNotOwnRuntimeExclusiveLeaseTruth() throws IOException {
         Path workerStoragePath = Path.of("..", "platform_infra", "mass-storage-api", "src", "main", "java",
-                "com", "xa", "mass", "storage", "api", "WorkerStorage.java");
+                "com", "xa", "mass", "storage", "api", "WorkerDeclarationStore.java");
         Path memoryStoragePath = Path.of("..", "platform_infra", "mass-storage-memory", "src", "main", "java",
-                "com", "xa", "mass", "storage", "memory", "InMemoryWorkerStorage.java");
+                "com", "xa", "mass", "storage", "memory", "InMemoryWorkerDeclarationStore.java");
         Path sdkDiagnosticsPath = Path.of("..", "xa-mass-sdk", "src", "main", "java",
                 "com", "xa", "mass", "sdk", "DefaultRuntimeDiagnosticsOperations.java");
 
@@ -1873,12 +1873,12 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         String sdkDiagnostics = Files.readString(sdkDiagnosticsPath, StandardCharsets.UTF_8);
-        if (sdkDiagnostics.contains("getWorkerStorage().isLocked")) {
-            violations.add(sdkDiagnosticsPath + " reads lock truth from WorkerStorage");
+        if (sdkDiagnostics.contains("getWorkerDeclarationStore().isLocked")) {
+            violations.add(sdkDiagnosticsPath + " reads lock truth from WorkerDeclarationStore");
         }
 
         assertTrue(violations.isEmpty(),
-                "WorkerStorage is control-plane worker row storage only. Runtime exclusive lease truth "
+                "WorkerDeclarationStore is control-plane worker row storage only. Runtime exclusive lease truth "
                         + "must stay in WorkerRegistry/WorkerManager:\n"
                         + String.join("\n", violations));
     }
@@ -2019,10 +2019,10 @@ class EngineSchedulingCoreArchitectureGuardTest {
         if (sdkSource.contains("getWorkerManager()")) {
             violations.add(sdkApplicationPath + " calls EngineConfig.getWorkerManager()");
         }
-        if (sdkSource.contains("com.xa.mass.storage.api.WorkerStorage")
-                || Pattern.compile("\\bWorkerStorage\\b").matcher(sdkSource).find()
-                || sdkSource.contains("getWorkerStorage()")) {
-            violations.add(sdkApplicationPath + " uses WorkerStorage for SDK worker shell operations");
+        if (sdkSource.contains("com.xa.mass.storage.api.WorkerDeclarationStore")
+                || Pattern.compile("\\bWorkerDeclarationStore\\b").matcher(sdkSource).find()
+                || sdkSource.contains("getWorkerDeclarationStore()")) {
+            violations.add(sdkApplicationPath + " uses WorkerDeclarationStore for SDK worker shell operations");
         }
         if (!sdkSource.contains("WorkerResourceRuntime")) {
             violations.add(sdkApplicationPath + " does not use WorkerResourceRuntime");

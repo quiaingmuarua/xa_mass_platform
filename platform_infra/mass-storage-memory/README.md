@@ -8,21 +8,21 @@ it for a handoff.
 
 Current scope:
 
-- `InMemoryTaskStorage`
-- `InMemoryWorkerStorage`
+- `InMemoryTaskShellStore`
+- `InMemoryWorkerDeclarationStore`
 - `InMemoryRuleStorage`
 
 These classes provide in-memory task/rule storage plus the current in-memory
-worker runtime registry used by engine defaults, focused tests, and storage
+worker declaration store used by engine defaults, focused tests, and storage
 adapters that still need a process-local compatibility projection.
 
 Current code truth:
 
-- `InMemoryTaskStorage` is the real in-memory task control-plane default used
-  by SDK/server embedding and focused tests
-- `InMemoryWorkerStorage` is the current in-memory worker runtime registry; it
-  maintains primary worker identity and secondary group indexes in memory and
-  must not be treated as a DB row-store shape
+- `InMemoryTaskShellStore` is the real in-memory task shell/control-plane
+  default used by SDK/server embedding and focused tests
+- `InMemoryWorkerDeclarationStore` is the current in-memory worker declaration
+  store; it maintains primary worker identity and secondary group indexes in
+  memory and must not be treated as worker runtime scheduling truth
 - `InMemoryRuleStorage` is definition storage only; rule-evaluator ownership
   belongs to engine rule-runtime assembly
 - SDK auth helpers such as `InMemorySubmitterRegistry` no longer live here; do

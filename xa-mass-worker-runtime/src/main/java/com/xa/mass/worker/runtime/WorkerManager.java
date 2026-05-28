@@ -29,7 +29,7 @@ import com.xa.mass.worker.runtime.routing.WorkerRouteBucketPolicies;
 import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
 import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
 import com.xa.mass.worker.runtime.admission.WorkerWarmHintRuntime;
-import com.xa.mass.storage.api.WorkerStorage;
+import com.xa.mass.storage.api.WorkerDeclarationStore;
 import com.xa.mass.worker.runtime.WorkerAdmissionOwner;
 import com.xa.mass.worker.runtime.WorkerCandidateIndex;
 import com.xa.mass.worker.runtime.WorkerCandidateSourceOwner;
@@ -78,32 +78,32 @@ public class WorkerManager implements WorkerResourceRuntime,
     private volatile Runnable dispatchWakeupCallback = () -> {
     };
 
-    public WorkerManager(WorkerStorage workerStorage,
+    public WorkerManager(WorkerDeclarationStore workerStorage,
                          WorkerRegistry workerRegistry) {
         this(workerStorage, WorkerReachabilityView.permissive(), workerRegistry);
     }
 
-    public WorkerManager(WorkerStorage workerStorage,
+    public WorkerManager(WorkerDeclarationStore workerStorage,
                          WorkerReachabilityView reachabilityView,
                          WorkerRegistry workerRegistry) {
         this(workerStorage, reachabilityView, new WorkerCapabilityAuthority(), workerRegistry);
     }
 
-    public WorkerManager(WorkerStorage workerStorage,
+    public WorkerManager(WorkerDeclarationStore workerStorage,
                          WorkerReachabilityView reachabilityView,
                          WorkerRegistry workerRegistry,
                          WorkerRouteBucketPolicy routeBucketPolicy) {
         this(workerStorage, reachabilityView, new WorkerCapabilityAuthority(), workerRegistry, routeBucketPolicy);
     }
 
-    WorkerManager(WorkerStorage workerStorage,
+    WorkerManager(WorkerDeclarationStore workerStorage,
                   WorkerReachabilityView reachabilityView,
                   WorkerCapabilityAuthority capabilityAuthority,
                   WorkerRegistry workerRegistry) {
         this(workerStorage, reachabilityView, capabilityAuthority, workerRegistry, WorkerRouteBucketPolicies.defaultPolicy());
     }
 
-    WorkerManager(WorkerStorage workerStorage,
+    WorkerManager(WorkerDeclarationStore workerStorage,
                   WorkerReachabilityView reachabilityView,
                   WorkerCapabilityAuthority capabilityAuthority,
                   WorkerRegistry workerRegistry,

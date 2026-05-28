@@ -19,7 +19,7 @@ import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionFinalReason;
 import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
 import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
-import com.xa.mass.storage.memory.InMemoryTaskStorage;
+import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.engine.util.TraceEventLogCapture;
 import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
@@ -54,7 +54,7 @@ public class SimpleTaskDispatchBinderTest {
 
     private WorkerManager workerManager;
     private AssignmentRecordService recordService;
-    private InMemoryTaskStorage taskStorage;
+    private InMemoryTaskShellStore taskStorage;
     private ProjectionAwareTaskManager taskManager;
     private TaskCommandService taskCommands;
     private TaskQueryService taskQueries;
@@ -64,7 +64,7 @@ public class SimpleTaskDispatchBinderTest {
     void setUp() {
         workerManager = mock(WorkerManager.class);
         recordService = mock(AssignmentRecordService.class);
-        taskStorage = new InMemoryTaskStorage();
+        taskStorage = new InMemoryTaskShellStore();
         taskManager = new ProjectionAwareTaskManager(taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
@@ -782,7 +782,7 @@ public class SimpleTaskDispatchBinderTest {
         );
     }
 
-    private static final class TrackingLatestAttemptStorage extends InMemoryTaskStorage {
+    private static final class TrackingLatestAttemptStorage extends InMemoryTaskShellStore {
         private final AtomicInteger latestAttemptReadCount = new AtomicInteger();
 
         @Override
@@ -793,7 +793,7 @@ public class SimpleTaskDispatchBinderTest {
         }
     }
 
-    private static final class ProjectionPayloadScrubbingStorage extends InMemoryTaskStorage {
+    private static final class ProjectionPayloadScrubbingStorage extends InMemoryTaskShellStore {
         @Override
         public Optional<TaskDetailStore.TaskMessageProjection> getTaskMessageProjection(String taskId, String messageId) {
             return super.getTaskMessageProjection(taskId, messageId)
@@ -821,7 +821,7 @@ public class SimpleTaskDispatchBinderTest {
         }
     }
 
-    private static final class TrackingTaskMessageReadStorage extends InMemoryTaskStorage {
+    private static final class TrackingTaskMessageReadStorage extends InMemoryTaskShellStore {
         private final AtomicInteger taskMessageReadCount = new AtomicInteger();
 
         @Override
@@ -831,7 +831,7 @@ public class SimpleTaskDispatchBinderTest {
         }
     }
 
-    private static final class FailingAddAttemptStorage extends InMemoryTaskStorage {
+    private static final class FailingAddAttemptStorage extends InMemoryTaskShellStore {
         @Override
         public boolean upsertTaskMessageAttemptProjection(String taskId,
                                                           String messageId,

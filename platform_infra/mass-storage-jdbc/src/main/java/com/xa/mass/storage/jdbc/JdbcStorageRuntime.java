@@ -4,7 +4,7 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.RuleStorage;
-import com.xa.mass.storage.api.TaskStorage;
+import com.xa.mass.storage.api.TaskShellStore;
 import org.flywaydb.core.Flyway;
 
 import javax.sql.DataSource;
@@ -14,13 +14,13 @@ public final class JdbcStorageRuntime implements AutoCloseable {
     private final JdbcStorageMode mode;
     private final HikariDataSource dataSource;
     private final JdbcDialect dialect;
-    private final TaskStorage taskStorage;
+    private final TaskShellStore taskStorage;
     private final RuleStorage ruleStorage;
 
     private JdbcStorageRuntime(JdbcStorageMode mode,
                                HikariDataSource dataSource,
                                JdbcDialect dialect,
-                               TaskStorage taskStorage,
+                               TaskShellStore taskStorage,
                                RuleStorage ruleStorage) {
         this.mode = mode;
         this.dataSource = dataSource;
@@ -45,7 +45,7 @@ public final class JdbcStorageRuntime implements AutoCloseable {
                 .migrate();
 
         JdbcDialect dialect = mode.dialect();
-        JdbcTaskStorage taskStorage = new JdbcTaskStorage(dataSource, dialect);
+        JdbcTaskShellStore taskStorage = new JdbcTaskShellStore(dataSource, dialect);
         JdbcRuleStorage ruleStorage = new JdbcRuleStorage(dataSource, dialect);
         return new JdbcStorageRuntime(mode, dataSource, dialect, taskStorage, ruleStorage);
     }
@@ -76,7 +76,7 @@ public final class JdbcStorageRuntime implements AutoCloseable {
         return dialect;
     }
 
-    public TaskStorage taskStorage() {
+    public TaskShellStore taskStorage() {
         return taskStorage;
     }
 

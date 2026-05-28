@@ -20,7 +20,7 @@ import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
-import com.xa.mass.storage.memory.InMemoryTaskStorage;
+import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.testing.support.TestingPaths;
 import com.xa.mass.testing.support.WorkerRegistrationSpineSupport;
 import com.xa.mass.testing.workerfault.WorkerFaultReportMetadata;
@@ -201,7 +201,7 @@ public final class SdkPollingSchedulingSoakRunner {
         }
 
         private EmbeddedRuntime buildRuntime(JsonlExecutionEventSink traceSink) {
-            InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
+            InMemoryTaskShellStore taskStorage = new InMemoryTaskShellStore();
             TaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
             MassSdkApplication app = MassSdk.builder()
                     .transport(transport -> transport

@@ -2,7 +2,7 @@ package com.xa.mass.storage.contract;
 
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.storage.api.WorkerStorage;
+import com.xa.mass.storage.api.WorkerDeclarationStore;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -12,17 +12,17 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Behavioural contract that every {@link WorkerStorage} implementation must
+ * Behavioural contract that every {@link WorkerDeclarationStore} implementation must
  * satisfy. Worker storage is worker-level only; WorkerContext CRUD was retired
  * from the control-plane storage contract.
  */
-public abstract class WorkerStorageContractTest {
+public abstract class WorkerDeclarationStoreContractTest {
 
-    protected WorkerStorage storage;
+    protected WorkerDeclarationStore storage;
 
-    protected abstract WorkerStorage createStorage();
+    protected abstract WorkerDeclarationStore createStorage();
 
-    protected void destroyStorage(WorkerStorage storage) {
+    protected void destroyStorage(WorkerDeclarationStore storage) {
     }
 
     @BeforeEach

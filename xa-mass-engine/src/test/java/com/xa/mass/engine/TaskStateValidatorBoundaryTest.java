@@ -6,7 +6,7 @@ import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.storage.api.TaskDetailStore;
-import com.xa.mass.storage.memory.InMemoryTaskStorage;
+import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -117,7 +117,7 @@ class TaskStateValidatorBoundaryTest {
 
     }
 
-    private static final class TrackingTaskDetailStore extends InMemoryTaskStorage {
+    private static final class TrackingTaskDetailStore extends InMemoryTaskShellStore {
         private final AtomicInteger projectionAuditReads = new AtomicInteger();
 
         @Override

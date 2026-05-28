@@ -17,7 +17,7 @@ import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
 import com.xa.mass.worker.runtime.report.WorkerCapabilityReportStatus;
-import com.xa.mass.storage.memory.InMemoryWorkerStorage;
+import com.xa.mass.storage.memory.InMemoryWorkerDeclarationStore;
 import com.xa.mass.trace.sink.ExecutionEventType;
 import org.junit.jupiter.api.Test;
 
@@ -33,7 +33,7 @@ public class WorkerCapabilityReportEventHandlerTest {
 
     @Test
     void capabilityReportEventRefreshesWorkerRegistrySnapshotThroughOwner() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
         Worker worker = worker("worker-crawler", "crawler");
         worker.setSupportedProjects(List.of("demoApp"));
         worker.setSupportedEventCodes(List.of("crawler.fetch", "crawler.parse"));
@@ -75,7 +75,7 @@ public class WorkerCapabilityReportEventHandlerTest {
 
     @Test
     void staleReportEventFailsWithoutChangingCandidateSnapshot() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
         Worker worker = worker("worker-crawler", "crawler");
         worker.setSupportedProjects(List.of("demoApp"));
         worker.setSupportedEventCodes(List.of("crawler.fetch", "crawler.parse"));

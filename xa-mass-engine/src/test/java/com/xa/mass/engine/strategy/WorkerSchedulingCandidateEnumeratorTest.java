@@ -8,7 +8,7 @@ import com.xa.mass.engine.TestWorkerCandidateRows;
 import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
-import com.xa.mass.storage.memory.InMemoryWorkerStorage;
+import com.xa.mass.storage.memory.InMemoryWorkerDeclarationStore;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -21,7 +21,7 @@ public class WorkerSchedulingCandidateEnumeratorTest {
 
     @Test
     void createsWorkerLevelCandidateFromRoutingAttributes() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
         Worker worker = worker("worker-stateless", Map.of("routingTags", "shared,us", "country", "us"));
         workerManager.addWorker(workerResource(worker));
 
@@ -39,7 +39,7 @@ public class WorkerSchedulingCandidateEnumeratorTest {
 
     @Test
     void enumerationBuildsWorkerLevelCandidateFromWorkerAttributes() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
         Worker worker = worker("worker-attribute-backed", Map.of("country", "worker-level"));
         workerManager.addWorker(workerResource(worker));
 

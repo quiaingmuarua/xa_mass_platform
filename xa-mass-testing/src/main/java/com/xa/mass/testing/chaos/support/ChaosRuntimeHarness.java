@@ -23,7 +23,7 @@ import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.storage.api.TaskDetailStore;
-import com.xa.mass.storage.memory.InMemoryTaskStorage;
+import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.testing.support.WorkerRegistrationSpineSupport;
 import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.transport.WorkerTransportHints;
@@ -67,7 +67,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
     public static ChaosRuntimeHarness createWebSocket(WebSocketRuntimeConfig config,
                                                       ExecutionEventSink traceSink) {
         int transportPort = ChaosSupport.findFreePort();
-        InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
+        InMemoryTaskShellStore taskStorage = new InMemoryTaskShellStore();
         TaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
         MassSdk.Builder builder = MassSdk.builder()
                 .transport(transport -> transport
@@ -100,7 +100,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
 
     public static ChaosRuntimeHarness createPolling(PollingRuntimeConfig config,
                                                     ExecutionEventSink traceSink) {
-        InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
+        InMemoryTaskShellStore taskStorage = new InMemoryTaskShellStore();
         TaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
         MassSdk.Builder builder = MassSdk.builder()
                 .transport(transport -> transport

@@ -8,7 +8,7 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import com.xa.mass.worker.runtime.WorkerManager;
-import com.xa.mass.storage.memory.InMemoryWorkerStorage;
+import com.xa.mass.storage.memory.InMemoryWorkerDeclarationStore;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.runtime.node.InMemoryTransportNodeRegistry;
 import com.xa.mass.transport.runtime.presence.InMemoryWorkerPresenceStore;
@@ -126,7 +126,7 @@ class NodeTargetedTaskDispatchSubmitterTest {
     }
 
     private static WorkerManager workerResourceRuntime(Worker... workers) {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
         if (workers != null) {
             for (Worker worker : workers) {
                 workerManager.addWorker(workerResource(worker));

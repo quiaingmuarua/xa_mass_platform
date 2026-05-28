@@ -7,7 +7,7 @@ import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.storage.api.TaskDetailStore;
-import com.xa.mass.storage.api.TaskStorage;
+import com.xa.mass.storage.api.TaskShellStore;
 import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionFinalReason;
 import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
 
@@ -25,7 +25,7 @@ public class ProjectionAwareTaskManager extends TaskManager {
     private final TaskDetailStore taskDetailStore;
     private final TaskCompatibilityProjectionAccess compatibilityProjectionAccess;
 
-    public ProjectionAwareTaskManager(TaskStorage taskStorage,
+    public ProjectionAwareTaskManager(TaskShellStore taskStorage,
                                       TaskDetailStore taskDetailStore,
                                       TaskWorkRuntime taskWorkRuntime) {
         super(taskStorage, taskDetailStore, taskWorkRuntime, new InMemoryTaskResultRuntime(), null);
@@ -40,7 +40,7 @@ public class ProjectionAwareTaskManager extends TaskManager {
         );
     }
 
-    public ProjectionAwareTaskManager(TaskStorage taskStorage,
+    public ProjectionAwareTaskManager(TaskShellStore taskStorage,
                                       TaskDetailStore taskDetailStore,
                                       TaskWorkRuntime taskWorkRuntime,
                                       TaskResultRuntime taskResultRuntime) {
@@ -56,7 +56,7 @@ public class ProjectionAwareTaskManager extends TaskManager {
         );
     }
 
-    public ProjectionAwareTaskManager(TaskStorage taskStorage,
+    public ProjectionAwareTaskManager(TaskShellStore taskStorage,
                                       TaskDetailStore taskDetailStore,
                                       TaskTerminalPolicy taskTerminalPolicy,
                                       TaskWorkRuntime taskWorkRuntime) {

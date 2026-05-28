@@ -10,8 +10,8 @@ import com.xa.mass.sdk.auth.SubmitterRegistry;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.TaskDetailStore;
-import com.xa.mass.storage.api.TaskStorage;
-import com.xa.mass.storage.api.WorkerStorage;
+import com.xa.mass.storage.api.TaskShellStore;
+import com.xa.mass.storage.api.WorkerDeclarationStore;
 import com.xa.mass.starter.builder.MassApplicationBuilder;
 import com.xa.mass.starter.config.TransportRuntimeRole;
 import com.xa.mass.trace.sink.ExecutionEventSink;
@@ -407,7 +407,7 @@ public final class MassSdk {
             return this;
         }
 
-        public EngineOptions taskStorage(TaskStorage taskStorage) {
+        public EngineOptions taskStorage(TaskShellStore taskStorage) {
             delegate.taskStorage(taskStorage);
             return this;
         }
@@ -432,7 +432,7 @@ public final class MassSdk {
             return this;
         }
 
-        public EngineOptions workerStorage(WorkerStorage workerStorage) {
+        public EngineOptions workerStorage(WorkerDeclarationStore workerStorage) {
             delegate.workerStorage(workerStorage);
             return this;
         }

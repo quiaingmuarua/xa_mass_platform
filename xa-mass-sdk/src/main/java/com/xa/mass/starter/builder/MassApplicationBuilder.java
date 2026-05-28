@@ -10,8 +10,8 @@ import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.TaskDetailStore;
-import com.xa.mass.storage.api.TaskStorage;
-import com.xa.mass.storage.api.WorkerStorage;
+import com.xa.mass.storage.api.TaskShellStore;
+import com.xa.mass.storage.api.WorkerDeclarationStore;
 import com.xa.mass.starter.EngineRuntimeBridge;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
@@ -580,8 +580,8 @@ public class MassApplicationBuilder {
             return this;
         }
 
-        public EngineBuilder taskStorage(TaskStorage taskStorage) {
-            config.setTaskStorage(taskStorage);
+        public EngineBuilder taskStorage(TaskShellStore taskStorage) {
+            config.setTaskShellStore(taskStorage);
             return this;
         }
 
@@ -605,8 +605,8 @@ public class MassApplicationBuilder {
             return this;
         }
 
-        public EngineBuilder workerStorage(WorkerStorage workerStorage) {
-            config.setWorkerStorage(workerStorage);
+        public EngineBuilder workerStorage(WorkerDeclarationStore workerStorage) {
+            config.setWorkerDeclarationStore(workerStorage);
             return this;
         }
 

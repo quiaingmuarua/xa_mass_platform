@@ -12,7 +12,7 @@ import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
 import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
-import com.xa.mass.storage.memory.InMemoryTaskStorage;
+import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -30,7 +30,7 @@ class TaskContractTerminalBehaviorTest {
 
     @BeforeEach
     void setUp() {
-        InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
+        InMemoryTaskShellStore taskStorage = new InMemoryTaskShellStore();
         taskManager = new TaskManager(
                 taskStorage,
                 taskStorage,

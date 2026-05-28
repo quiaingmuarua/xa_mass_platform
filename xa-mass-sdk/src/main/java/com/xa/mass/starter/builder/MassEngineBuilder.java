@@ -8,8 +8,8 @@ import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.TaskDetailStore;
-import com.xa.mass.storage.api.TaskStorage;
-import com.xa.mass.storage.api.WorkerStorage;
+import com.xa.mass.storage.api.TaskShellStore;
+import com.xa.mass.storage.api.WorkerDeclarationStore;
 import com.xa.mass.starter.MassEngine;
 import com.xa.mass.starter.config.EngineConfig;
 
@@ -22,11 +22,11 @@ public class MassEngineBuilder {
     private TaskWorkerMatchingStrategy matchingStrategy;
     private AssignmentDiagnosticRecorder recordService;
     private MassBootstrapDataProvider bootstrapDataProvider;
-    private TaskStorage taskStorage;
+    private TaskShellStore taskStorage;
     private TaskDetailStore taskDetailStore;
     private TaskWorkRuntime taskWorkRuntime;
     private TaskResultRuntime taskResultRuntime;
-    private WorkerStorage workerStorage;
+    private WorkerDeclarationStore workerStorage;
     private WorkerRegistry workerRegistry;
     private RuleStorage ruleStorage;
 
@@ -45,7 +45,7 @@ public class MassEngineBuilder {
         return this;
     }
 
-    public MassEngineBuilder taskStorage(TaskStorage taskStorage) {
+    public MassEngineBuilder taskStorage(TaskShellStore taskStorage) {
         this.taskStorage = taskStorage;
         return this;
     }
@@ -70,7 +70,7 @@ public class MassEngineBuilder {
         return this;
     }
 
-    public MassEngineBuilder workerStorage(WorkerStorage workerStorage) {
+    public MassEngineBuilder workerStorage(WorkerDeclarationStore workerStorage) {
         this.workerStorage = workerStorage;
         return this;
     }
@@ -114,11 +114,11 @@ public class MassEngineBuilder {
         if (workerThreads != null) config.setWorkerThreads(workerThreads);
         if (taskMessageLeaseSeconds != null) config.setTaskMessageLeaseSeconds(taskMessageLeaseSeconds);
         if (matchingStrategy != null) config.setMatchingStrategy(matchingStrategy);
-        if (taskStorage != null) config.setTaskStorage(taskStorage);
+        if (taskStorage != null) config.setTaskShellStore(taskStorage);
         if (taskDetailStore != null) config.setTaskDetailStore(taskDetailStore);
         if (taskWorkRuntime != null) config.setTaskWorkRuntime(taskWorkRuntime);
         if (taskResultRuntime != null) config.setTaskResultRuntime(taskResultRuntime);
-        if (workerStorage != null) config.setWorkerStorage(workerStorage);
+        if (workerStorage != null) config.setWorkerDeclarationStore(workerStorage);
         if (workerRegistry != null) config.setWorkerRegistry(workerRegistry);
         if (ruleStorage != null) config.setRuleStorage(ruleStorage);
         if (recordService != null) config.setRecordService(recordService);

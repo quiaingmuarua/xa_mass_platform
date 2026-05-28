@@ -4,7 +4,7 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.base.project.ProjectRegistry;
-import com.xa.mass.storage.api.TaskStorage;
+import com.xa.mass.storage.api.TaskShellStore;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -15,7 +15,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Behavioural contract for {@link TaskStorage} implementations.
+ * Behavioural contract for {@link TaskShellStore} implementations.
  *
  * <p>Key invariants guarded here:
  * <ul>
@@ -25,13 +25,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>pollExpiredMaxRuntimeTasks only returns tasks past their deadline</li>
  * </ul>
  */
-public abstract class TaskStorageContractTest {
+public abstract class TaskShellStoreContractTest {
 
-    protected TaskStorage storage;
+    protected TaskShellStore storage;
 
-    protected abstract TaskStorage createStorage();
+    protected abstract TaskShellStore createStorage();
 
-    protected void destroyStorage(TaskStorage storage) {
+    protected void destroyStorage(TaskShellStore storage) {
     }
 
     @BeforeEach

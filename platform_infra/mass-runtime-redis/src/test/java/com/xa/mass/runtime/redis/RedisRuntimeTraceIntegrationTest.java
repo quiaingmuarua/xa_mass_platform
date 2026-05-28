@@ -16,7 +16,7 @@ import com.xa.mass.runtime.api.WorkerClaimTarget;
 import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
 import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
-import com.xa.mass.storage.memory.InMemoryTaskStorage;
+import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.trace.sink.ExecutionEvent;
 import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.trace.sink.ExecutionEventType;
@@ -45,7 +45,7 @@ class RedisRuntimeTraceIntegrationTest {
     private String redisUri;
     private String runtimeNamespace;
     private RedisTaskWorkRuntime runtime;
-    private InMemoryTaskStorage taskStorage;
+    private InMemoryTaskShellStore taskStorage;
     private TaskManager taskManager;
     private TaskCommandService taskCommands;
     private TaskQueryService taskQueries;
@@ -67,7 +67,7 @@ class RedisRuntimeTraceIntegrationTest {
                 1024,
                 now::get
         );
-        taskStorage = new InMemoryTaskStorage();
+        taskStorage = new InMemoryTaskShellStore();
         traceSink = new RecordingExecutionEventSink();
         taskManager = new TaskManager(taskStorage, taskStorage, runtime, traceSink);
         taskCommands = new TaskCommandService(taskManager);

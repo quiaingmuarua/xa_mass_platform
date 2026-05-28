@@ -3,7 +3,7 @@ package com.xa.mass.storage.memory;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.storage.api.TaskDetailStore;
-import com.xa.mass.storage.api.TaskStorage;
+import com.xa.mass.storage.api.TaskShellStore;
 import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
 import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
 
@@ -21,7 +21,7 @@ import java.util.stream.Collectors;
 /**
  * In-memory task storage optimized for frequent task-message writes.
  */
-public class InMemoryTaskStorage implements TaskStorage, TaskDetailStore {
+public class InMemoryTaskShellStore implements TaskShellStore, TaskDetailStore {
 
     private final Map<String, Task> tasks = new ConcurrentHashMap<>();
     private final Map<TaskStatus, java.util.LinkedHashSet<String>> taskIdsByStatus = new ConcurrentHashMap<>();

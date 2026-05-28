@@ -26,7 +26,7 @@ import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.storage.rule.RuleType;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.storage.memory.InMemoryRuleStorage;
-import com.xa.mass.storage.memory.InMemoryWorkerStorage;
+import com.xa.mass.storage.memory.InMemoryWorkerDeclarationStore;
 import com.xa.mass.engine.util.TraceEventLogCapture;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionResult;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionStatus;
@@ -44,7 +44,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
 
     @Test
     void matchesWorkerUsingWorkerSchedulingAttributesRule() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
         RuleStorage ruleStorage = new InMemoryRuleStorage();
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
@@ -85,7 +85,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
 
     @Test
     void emitsAcceptedAndRejectedMatchTraceEvents() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
         RuleStorage ruleStorage = new InMemoryRuleStorage();
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
@@ -129,7 +129,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
 
     @Test
     void recordsRuntimeLockStateForPreLockedWorkers() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
         RuleStorage ruleStorage = new InMemoryRuleStorage();
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
@@ -167,7 +167,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
     @Test
     void prefilterRejectsOfflineUnsupportedAndRoutingMismatchCandidatesBeforeRuleEvaluation() {
         WorkerManager workerManager = new WorkerManager(
-                new InMemoryWorkerStorage(),
+                new InMemoryWorkerDeclarationStore(),
                 workerId -> "worker-offline".equals(workerId)
                         ? WorkerReachabilityState.OFFLINE
                         : WorkerReachabilityState.ONLINE,
@@ -243,7 +243,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
     @Test
     void prefilterRejectsStaleTransportPresenceBeforeRuleEvaluation() {
         WorkerManager workerManager = new WorkerManager(
-                new InMemoryWorkerStorage(),
+                new InMemoryWorkerDeclarationStore(),
                 workerId -> "worker-stale".equals(workerId)
                         ? WorkerReachabilityState.STALE
                         : WorkerReachabilityState.ONLINE,
@@ -286,7 +286,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
 
     @Test
     void matchesStatelessWorkerWhenTaskHasNoRoutingRequirement() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
         RuleStorage ruleStorage = new InMemoryRuleStorage();
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
@@ -316,7 +316,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
 
     @Test
     void routingRequirementRejectsStatelessWorkerWithoutSchedulingRoutingTags() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
         RuleStorage ruleStorage = new InMemoryRuleStorage();
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
@@ -349,7 +349,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
 
     @Test
     void sdkEventTaskMatchesWorkerByIndexedGroupEventCapability() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
         RuleStorage ruleStorage = new InMemoryRuleStorage();
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
@@ -388,7 +388,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
 
     @Test
     void sdkEventTaskMatchesWorkerByDeclaredGroupWithoutWorkerLevelCapability() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
         RuleStorage ruleStorage = new InMemoryRuleStorage();
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
@@ -429,7 +429,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
 
     @Test
     void targetWorkerIdPrefilterOnlyMatchesRequestedWorker() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
         RuleStorage ruleStorage = new InMemoryRuleStorage();
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
@@ -466,7 +466,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
 
     @Test
     void targetWorkerAttributesPrefilterOnlyMatchesWorkersWithRequestedAttributes() {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
         RuleStorage ruleStorage = new InMemoryRuleStorage();
         AssignmentRecordService recordService = new AssignmentRecordService();
         RuleBasedTaskWorkerMatchingStrategy strategy =
@@ -516,7 +516,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
     @Test
     void ranksRulePassedCandidatesByObservedLoadBeforeLockAcquisition() {
         WorkerManager workerManager = new WorkerManager(
-                new InMemoryWorkerStorage(),
+                new InMemoryWorkerDeclarationStore(),
                 workerId -> WorkerReachabilityState.ONLINE,
                 new InMemoryWorkerRegistry()
         );
@@ -557,7 +557,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
     @Test
     void rejectsRankedCandidateWhenWorkerCapacityCannotBeReserved() {
         WorkerManager workerManager = new WorkerManager(
-                new InMemoryWorkerStorage(),
+                new InMemoryWorkerDeclarationStore(),
                 workerId -> WorkerReachabilityState.ONLINE,
                 new InMemoryWorkerRegistry()
         );
@@ -594,7 +594,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
     @Test
     void recordsStructuredReserveFailureAfterRanking() {
         WorkerManager workerManager = new WorkerManager(
-                new InMemoryWorkerStorage(),
+                new InMemoryWorkerDeclarationStore(),
                 workerId -> WorkerReachabilityState.ONLINE,
                 new InMemoryWorkerRegistry()
         ) {
@@ -634,7 +634,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
     @Test
     void releasesReservationWhenLockConflictHappensAfterRanking() {
         WorkerManager workerManager = new WorkerManager(
-                new InMemoryWorkerStorage(),
+                new InMemoryWorkerDeclarationStore(),
                 workerId -> WorkerReachabilityState.ONLINE,
                 new InMemoryWorkerRegistry()
         ) {
@@ -674,7 +674,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
     @Test
     void backgroundTaskReservesCapacityWithoutExclusiveWorkerLock() {
         WorkerManager workerManager = new WorkerManager(
-                new InMemoryWorkerStorage(),
+                new InMemoryWorkerDeclarationStore(),
                 workerId -> WorkerReachabilityState.ONLINE,
                 new InMemoryWorkerRegistry()
         );
@@ -720,7 +720,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
     @Test
     void assignmentContextRecordsWarmCandidateSourceStatsFromCandidateBatch() {
         WorkerManager workerManager = new WorkerManager(
-                new InMemoryWorkerStorage(),
+                new InMemoryWorkerDeclarationStore(),
                 workerId -> WorkerReachabilityState.ONLINE,
                 new InMemoryWorkerRegistry()
         );
@@ -850,7 +850,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         private int lastMaxCandidateCount;
 
         private RecordingWorkerManager(List<Worker> candidates) {
-            super(new InMemoryWorkerStorage(),
+            super(new InMemoryWorkerDeclarationStore(),
                     workerId -> WorkerReachabilityState.ONLINE,
                     new InMemoryWorkerRegistry());
             this.candidates = List.copyOf(candidates);

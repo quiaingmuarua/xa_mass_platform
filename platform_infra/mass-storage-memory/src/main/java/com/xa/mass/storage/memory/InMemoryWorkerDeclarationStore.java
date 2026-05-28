@@ -1,7 +1,7 @@
 package com.xa.mass.storage.memory;
 
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.storage.api.WorkerStorage;
+import com.xa.mass.storage.api.WorkerDeclarationStore;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -9,7 +9,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * In-memory runtime worker registry backed by primary hash plus secondary indexes.
  */
-public class InMemoryWorkerStorage implements WorkerStorage {
+public class InMemoryWorkerDeclarationStore implements WorkerDeclarationStore {
 
     private final Map<String, Worker> workersById = new ConcurrentHashMap<>();
     private final Map<String, String> groupIdByWorkerId = new ConcurrentHashMap<>();

@@ -3,7 +3,7 @@ package com.xa.mass.storage.jdbc;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.storage.api.TaskDetailStore;
-import com.xa.mass.storage.api.TaskStorage;
+import com.xa.mass.storage.api.TaskShellStore;
 
 import javax.sql.DataSource;
 import java.sql.PreparedStatement;
@@ -22,12 +22,12 @@ import java.util.Optional;
  * message analytics surface; high-volume detail belongs in queues, trace, or
  * audit sinks.</p>
  */
-public class JdbcTaskStorage extends JdbcStorageSupport implements TaskStorage, TaskDetailStore {
+public class JdbcTaskShellStore extends JdbcStorageSupport implements TaskShellStore, TaskDetailStore {
 
     private final JdbcDialect dialect;
     private final JdbcTaskCompatibilityProjection runtimeProjection = new JdbcTaskCompatibilityProjection();
 
-    public JdbcTaskStorage(DataSource dataSource, JdbcDialect dialect) {
+    public JdbcTaskShellStore(DataSource dataSource, JdbcDialect dialect) {
         super(dataSource);
         this.dialect = dialect;
     }

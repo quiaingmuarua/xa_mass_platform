@@ -16,7 +16,7 @@ import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionFinalReaso
 import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
 import com.xa.mass.storage.api.projection.TaskMessageProjectionFinalReason;
 import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
-import com.xa.mass.storage.memory.InMemoryTaskStorage;
+import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.engine.util.TraceEventLogCapture;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.TaskResultRuntimeRow;
@@ -42,14 +42,14 @@ import static org.junit.jupiter.api.Assertions.*;
 @Tag("secondary-proof")
 class TaskManagerLifecycleTest {
 
-    private InMemoryTaskStorage taskStorage;
+    private InMemoryTaskShellStore taskStorage;
     private ProjectionAwareTaskManager taskManager;
     private List<ProjectionAwareTaskManager> managedTaskManagers;
 
     @BeforeEach
     void setUp() {
         managedTaskManagers = new ArrayList<>();
-        taskStorage = new InMemoryTaskStorage();
+        taskStorage = new InMemoryTaskShellStore();
         taskManager = new ProjectionAwareTaskManager(taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
         managedTaskManagers.add(taskManager);
     }
@@ -149,7 +149,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void runtimeIngressStillConvergesWhenInitialMessageProjectionWriteFails() {
-        ProjectionWriteFailingTaskStorage failingStorage = new ProjectionWriteFailingTaskStorage();
+        ProjectionWriteFailingTaskShellStore failingStorage = new ProjectionWriteFailingTaskShellStore();
         ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
                 failingStorage,
                 failingStorage,
@@ -212,7 +212,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void legacyCreateTaskCompatibilityFlowStillConvergesWhenInitialMessageProjectionWriteFails() {
-        ProjectionWriteFailingTaskStorage failingStorage = new ProjectionWriteFailingTaskStorage();
+        ProjectionWriteFailingTaskShellStore failingStorage = new ProjectionWriteFailingTaskShellStore();
         ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
                 failingStorage,
                 failingStorage,
@@ -261,7 +261,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void runtimeExpiryStillConvergesWhenInitialMessageProjectionWriteFails() {
-        ProjectionWriteFailingTaskStorage failingStorage = new ProjectionWriteFailingTaskStorage();
+        ProjectionWriteFailingTaskShellStore failingStorage = new ProjectionWriteFailingTaskShellStore();
         ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
                 failingStorage,
                 failingStorage,
@@ -324,7 +324,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void runtimeLeaseOverlayExposesPayloadRefWhenMessageProjectionIsMissing() {
-        ProjectionWriteFailingTaskStorage failingStorage = new ProjectionWriteFailingTaskStorage();
+        ProjectionWriteFailingTaskShellStore failingStorage = new ProjectionWriteFailingTaskShellStore();
         ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
                 failingStorage,
                 failingStorage,
@@ -376,7 +376,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void runtimeCompatibilitySingleMessageViewRetainsRetryBudgetWhenMessageProjectionIsMissing() {
-        ProjectionWriteFailingTaskStorage failingStorage = new ProjectionWriteFailingTaskStorage();
+        ProjectionWriteFailingTaskShellStore failingStorage = new ProjectionWriteFailingTaskShellStore();
         ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
                 failingStorage,
                 failingStorage,
@@ -452,7 +452,7 @@ class TaskManagerLifecycleTest {
             System.setProperty("xa.mass.engine.interactiveMaxReadyItemsPerTask", "2");
             System.setProperty("xa.mass.engine.bulkMaxReadyItemsPerTask", "100");
 
-            InMemoryTaskStorage managerStorage = new InMemoryTaskStorage();
+            InMemoryTaskShellStore managerStorage = new InMemoryTaskShellStore();
             ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
                     managerStorage,
                     managerStorage,
@@ -490,7 +490,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void appendTaskItemsRejectsBeforeRuntimeAdmissionWhenEngineBacklogWouldOverflow() {
-        InMemoryTaskStorage managerStorage = new InMemoryTaskStorage();
+        InMemoryTaskShellStore managerStorage = new InMemoryTaskShellStore();
         ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
                 managerStorage,
                 managerStorage,
@@ -560,7 +560,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void runtimeSuccessStillConvergesWhenFinalMessageProjectionWriteFails() {
-        ProjectionWriteFailingTaskStorage failingStorage = new ProjectionWriteFailingTaskStorage();
+        ProjectionWriteFailingTaskShellStore failingStorage = new ProjectionWriteFailingTaskShellStore();
         ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
                 failingStorage,
                 failingStorage,
@@ -724,7 +724,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void runtimeRetryStillConvergesWhenRetryResetProjectionWriteFails() {
-        ProjectionWriteFailingTaskStorage failingStorage = new ProjectionWriteFailingTaskStorage();
+        ProjectionWriteFailingTaskShellStore failingStorage = new ProjectionWriteFailingTaskShellStore();
         ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
                 failingStorage,
                 failingStorage,
@@ -784,7 +784,7 @@ class TaskManagerLifecycleTest {
         try {
             System.setProperty("xa.mass.engine.interactiveWorkRetryDelayMillis", "200");
 
-        InMemoryTaskStorage managerStorage = new InMemoryTaskStorage();
+        InMemoryTaskShellStore managerStorage = new InMemoryTaskShellStore();
             ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
                     managerStorage,
                     managerStorage,
@@ -834,7 +834,7 @@ class TaskManagerLifecycleTest {
         try {
             System.setProperty("xa.mass.engine.bulkWorkRetryDelayMillis", "200");
 
-            InMemoryTaskStorage managerStorage = new InMemoryTaskStorage();
+            InMemoryTaskShellStore managerStorage = new InMemoryTaskShellStore();
             ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
                     managerStorage,
                     managerStorage,
@@ -880,7 +880,7 @@ class TaskManagerLifecycleTest {
         try {
             System.setProperty("xa.mass.engine.interactiveWorkRetryDelayMillis", "200");
 
-        InMemoryTaskStorage managerStorage = new InMemoryTaskStorage();
+        InMemoryTaskShellStore managerStorage = new InMemoryTaskShellStore();
             ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
                     managerStorage,
                     managerStorage,
@@ -1279,7 +1279,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void activeAttemptCompatibilityAuditViewRecoversRuntimeAttemptWhenAttemptProjectionIsMissing() {
-        taskStorage = new InMemoryTaskStorage();
+        taskStorage = new InMemoryTaskShellStore();
         taskManager = new ProjectionAwareTaskManager(taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
 
         Task task = createTask(buildRequest("task-attempt-audit-runtime-recovery", List.of("alpha")));
@@ -2067,7 +2067,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void validateTaskStateStaysOffFullTaskMessageSnapshots() {
-        PagingAwareTaskStorage pagingStorage = new PagingAwareTaskStorage();
+        PagingAwareTaskShellStore pagingStorage = new PagingAwareTaskShellStore();
         ProjectionAwareTaskManager pagingTaskManager = new ProjectionAwareTaskManager(pagingStorage, pagingStorage, new InMemoryTaskWorkRuntime());
         Task task = createTask(pagingTaskManager, buildRequest("validate-paged", List.of("a", "b", "c")));
         pagingTaskManager.approveTask(task.getTid());
@@ -2090,7 +2090,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void auditTaskProjectionStateUsesPerMessageAttemptStatsWithoutAttemptSnapshots() {
-        PagingAwareTaskStorage pagingStorage = new PagingAwareTaskStorage();
+        PagingAwareTaskShellStore pagingStorage = new PagingAwareTaskShellStore();
         ProjectionAwareTaskManager pagingTaskManager = new ProjectionAwareTaskManager(pagingStorage, pagingStorage, new InMemoryTaskWorkRuntime());
         Task task = createTask(pagingTaskManager, buildRequest("audit-paged", List.of("a", "b", "c")));
         pagingTaskManager.approveTask(task.getTid());
@@ -2161,7 +2161,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void customTerminalPolicyCanKeepTaskRunningEvenWhenMessagesAreFinal() {
-        InMemoryTaskStorage policyStorage = new InMemoryTaskStorage();
+        InMemoryTaskShellStore policyStorage = new InMemoryTaskShellStore();
         ProjectionAwareTaskManager policyAwareManager = new ProjectionAwareTaskManager(
                 policyStorage,
                 policyStorage,
@@ -2192,7 +2192,7 @@ class TaskManagerLifecycleTest {
     void customTerminalPolicyCanForceTerminalBeforeAllMessagesAreFinal() {
         TaskTerminalPolicy runtimeLimitPolicy = (task, stats) ->
                 TaskTerminalPolicyDecision.finalizeToTerminal(TaskTerminalReason.MAX_RUNTIME_REACHED);
-        InMemoryTaskStorage policyStorage = new InMemoryTaskStorage();
+        InMemoryTaskShellStore policyStorage = new InMemoryTaskShellStore();
         ProjectionAwareTaskManager policyAwareManager = new ProjectionAwareTaskManager(
                 policyStorage,
                 policyStorage,
@@ -2220,7 +2220,7 @@ class TaskManagerLifecycleTest {
     void validateTaskStateClosesIntakeDuringRuntimeLimitTerminalClosure() {
         TaskTerminalPolicy runtimeLimitPolicy = (task, stats) ->
                 TaskTerminalPolicyDecision.finalizeToTerminal(TaskTerminalReason.MAX_RUNTIME_REACHED);
-        InMemoryTaskStorage policyStorage = new InMemoryTaskStorage();
+        InMemoryTaskShellStore policyStorage = new InMemoryTaskShellStore();
         ProjectionAwareTaskManager policyAwareManager = new ProjectionAwareTaskManager(
                 policyStorage,
                 policyStorage,
@@ -2645,7 +2645,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void compatibilitySnapshotRemainsBoundedWhenRuntimeOverlayAddsMissingProjectionMessages() {
-        ProjectionWriteFailingTaskStorage failingStorage = new ProjectionWriteFailingTaskStorage();
+        ProjectionWriteFailingTaskShellStore failingStorage = new ProjectionWriteFailingTaskShellStore();
         ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
                 failingStorage,
                 failingStorage,
@@ -2688,7 +2688,7 @@ class TaskManagerLifecycleTest {
 
     @Test
     void compatibilitySnapshotTruncationUsesRuntimeTotalWhenProjectionResidueIsMissing() {
-        ProjectionWriteFailingTaskStorage failingStorage = new ProjectionWriteFailingTaskStorage();
+        ProjectionWriteFailingTaskShellStore failingStorage = new ProjectionWriteFailingTaskShellStore();
         ProjectionAwareTaskManager manager = new ProjectionAwareTaskManager(
                 failingStorage,
                 failingStorage,
@@ -3023,7 +3023,7 @@ class TaskManagerLifecycleTest {
         }
     }
 
-    private static final class PagingAwareTaskStorage extends InMemoryTaskStorage {
+    private static final class PagingAwareTaskShellStore extends InMemoryTaskShellStore {
         private final AtomicInteger fullSnapshotReadCount = new AtomicInteger();
         private final AtomicInteger attemptSnapshotReadCount = new AtomicInteger();
         private final AtomicInteger attemptStatsReadCount = new AtomicInteger();
@@ -3054,7 +3054,7 @@ class TaskManagerLifecycleTest {
         }
     }
 
-    private static final class TrackingLatestAttemptStorage extends InMemoryTaskStorage {
+    private static final class TrackingLatestAttemptStorage extends InMemoryTaskShellStore {
         private final AtomicInteger latestAttemptReadCount = new AtomicInteger();
 
         @Override
@@ -3065,7 +3065,7 @@ class TaskManagerLifecycleTest {
         }
     }
 
-    private static final class TrackingTaskMessageProjectionStorage extends InMemoryTaskStorage {
+    private static final class TrackingTaskMessageProjectionStorage extends InMemoryTaskShellStore {
         private final AtomicInteger taskMessageProjectionReadCount = new AtomicInteger();
 
         @Override
@@ -3076,7 +3076,7 @@ class TaskManagerLifecycleTest {
         }
     }
 
-    private static final class ProjectionWriteFailingTaskStorage extends InMemoryTaskStorage {
+    private static final class ProjectionWriteFailingTaskShellStore extends InMemoryTaskShellStore {
         private volatile boolean failNextTaskMessageAdd;
         private volatile boolean failNextTaskMessageProjectionUpsert;
 

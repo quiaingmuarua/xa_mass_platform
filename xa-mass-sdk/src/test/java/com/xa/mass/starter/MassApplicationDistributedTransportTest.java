@@ -52,8 +52,8 @@ class MassApplicationDistributedTransportTest {
     void engineProducerRoutesAssignedBatchToSelectedTransportNodeInbox() {
         EngineConfig engine = new EngineConfig();
         engine.setEnabled(true);
-        engine.getWorkerStorage().addWorker(worker("worker-1"));
-        engine.getWorkerStorage().addWorker(worker("worker-2"));
+        engine.getWorkerDeclarationStore().addWorker(worker("worker-1"));
+        engine.getWorkerDeclarationStore().addWorker(worker("worker-2"));
 
         InMemoryWorkerPresenceStore nodeOnePresence = new InMemoryWorkerPresenceStore(30_000L, "node-1");
         InMemoryWorkerPresenceStore nodeTwoPresence = new InMemoryWorkerPresenceStore(30_000L, "node-2");
@@ -103,8 +103,8 @@ class MassApplicationDistributedTransportTest {
     void transportConsumerDrainsOnlyItsOwnTransportNodeInbox() throws Exception {
         EngineConfig engine = new EngineConfig();
         engine.setEnabled(false);
-        engine.getWorkerStorage().addWorker(worker("worker-1"));
-        engine.getWorkerStorage().addWorker(worker("worker-2"));
+        engine.getWorkerDeclarationStore().addWorker(worker("worker-1"));
+        engine.getWorkerDeclarationStore().addWorker(worker("worker-2"));
 
         LocalNodeTargetedHandoff handoff = new LocalNodeTargetedHandoff("node-1");
         handoff.submit("node-2", new TaskDispatchBatch(context(), List.of(binding("msg-node-2", "worker-2"))));

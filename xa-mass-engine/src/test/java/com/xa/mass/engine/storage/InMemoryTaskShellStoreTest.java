@@ -7,8 +7,8 @@ import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionFinalReaso
 import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
 import com.xa.mass.storage.api.projection.TaskMessageProjectionFinalReason;
 import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
-import com.xa.mass.storage.api.TaskStorage;
-import com.xa.mass.storage.memory.InMemoryTaskStorage;
+import com.xa.mass.storage.api.TaskShellStore;
+import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
@@ -18,11 +18,11 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class InMemoryTaskStorageTest {
+class InMemoryTaskShellStoreTest {
 
     @Test
     void latestActiveAttemptIgnoresNewerFinalAttempts() {
-        InMemoryTaskStorage storage = new InMemoryTaskStorage();
+        InMemoryTaskShellStore storage = new InMemoryTaskShellStore();
 
         TaskDetailStore.TaskMessageAttemptProjection runningAttempt =
                 attempt("attempt-1", 1, TaskMessageAttemptProjectionStatus.RUNNING);
@@ -41,7 +41,7 @@ class InMemoryTaskStorageTest {
 
     @Test
     void perMessageAttemptStatsTrackIndexedAttemptStateCounts() {
-        InMemoryTaskStorage storage = new InMemoryTaskStorage();
+        InMemoryTaskShellStore storage = new InMemoryTaskShellStore();
 
         TaskDetailStore.TaskMessageAttemptProjection runningAttempt =
                 attempt("attempt-1", 1, TaskMessageAttemptProjectionStatus.RUNNING);
@@ -83,7 +83,7 @@ class InMemoryTaskStorageTest {
 
     @Test
     void pollExpiredMaxRuntimeTasksUsesDeadlineIndex() {
-        InMemoryTaskStorage storage = new InMemoryTaskStorage();
+        InMemoryTaskShellStore storage = new InMemoryTaskShellStore();
         LocalDateTime now = LocalDateTime.now();
         Task expired = runningTask("expired", now.minusSeconds(20), 10);
         Task future = runningTask("future", now.minusSeconds(5), 60);
@@ -100,7 +100,7 @@ class InMemoryTaskStorageTest {
 
     @Test
     void updateTaskRefreshesMaxRuntimeDeadlineAfterInPlaceMutation() {
-        InMemoryTaskStorage storage = new InMemoryTaskStorage();
+        InMemoryTaskShellStore storage = new InMemoryTaskShellStore();
         LocalDateTime now = LocalDateTime.now();
         Task task = runningTask("mutable", now, 60);
         storage.saveTask(task);
@@ -116,7 +116,7 @@ class InMemoryTaskStorageTest {
 
     @Test
     void updateTaskRefreshesProjectIndexAfterInPlaceMutation() {
-        InMemoryTaskStorage storage = new InMemoryTaskStorage();
+        InMemoryTaskShellStore storage = new InMemoryTaskShellStore();
         Task task = runningTask("project-mutable", LocalDateTime.now(), 60);
         task.setProject("demoApp");
         storage.saveTask(task);
@@ -132,7 +132,7 @@ class InMemoryTaskStorageTest {
 
     @Test
     void terminalTaskIsRemovedFromMaxRuntimeDeadlineIndex() {
-        InMemoryTaskStorage storage = new InMemoryTaskStorage();
+        InMemoryTaskShellStore storage = new InMemoryTaskShellStore();
         LocalDateTime now = LocalDateTime.now();
         Task task = runningTask("terminal", now.minusSeconds(120), 60);
         storage.saveTask(task);
@@ -145,7 +145,7 @@ class InMemoryTaskStorageTest {
 
     @Test
     void taskMessageProjectionFilteringExcludesTerminalMessages() {
-        InMemoryTaskStorage storage = new InMemoryTaskStorage();
+        InMemoryTaskShellStore storage = new InMemoryTaskShellStore();
         storage.saveTask(runningTask("task-1", LocalDateTime.now(), 60));
 
         TaskDetailStore.TaskMessageProjection init = message("msg-init", TaskMessageProjectionStatus.INIT, null);
@@ -204,7 +204,7 @@ class InMemoryTaskStorageTest {
 
     @Test
     void deleteTaskReleasesMessageBucketsAttemptsAndPendingIndex() {
-        InMemoryTaskStorage storage = new InMemoryTaskStorage();
+        InMemoryTaskShellStore storage = new InMemoryTaskShellStore();
         storage.saveTask(runningTask("task-1", LocalDateTime.now(), 60));
 
         TaskDetailStore.TaskMessageProjection init = message("msg-init", TaskMessageProjectionStatus.INIT, null);
@@ -221,7 +221,7 @@ class InMemoryTaskStorageTest {
 
     @Test
     void saveTaskDoesNotResetExistingMessageAndAttemptBuckets() {
-        InMemoryTaskStorage storage = new InMemoryTaskStorage();
+        InMemoryTaskShellStore storage = new InMemoryTaskShellStore();
         storage.saveTask(runningTask("task-1", LocalDateTime.now(), 60));
 
         TaskDetailStore.TaskMessageProjection init = message("msg-init", TaskMessageProjectionStatus.INIT, null);
@@ -238,7 +238,7 @@ class InMemoryTaskStorageTest {
         assertEquals(1, storage.getTaskMessageAttemptProjections("task-1", "msg-init").size());
     }
 
-    private List<TaskDetailStore.TaskMessageProjection> allMessageProjections(InMemoryTaskStorage storage,
+    private List<TaskDetailStore.TaskMessageProjection> allMessageProjections(InMemoryTaskShellStore storage,
                                                                               String taskId) {
         long total = storage.getTaskMessageStats(taskId).getTotal();
         if (total <= 0) {

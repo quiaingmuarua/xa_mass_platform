@@ -42,8 +42,8 @@ import com.xa.mass.worker.runtime.resource.WorkerResourceQueryRuntime;
 import com.xa.mass.engine.watchdog.PollingIdleBackoffPolicy;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRuntime;
-import com.xa.mass.storage.api.WorkerStorage;
-import com.xa.mass.storage.memory.InMemoryTaskStorage;
+import com.xa.mass.storage.api.WorkerDeclarationStore;
+import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.storage.rule.RuleType;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
@@ -1446,8 +1446,8 @@ class MassSdkTest {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
         EngineConfig config = new EngineConfig();
-        WorkerStorage workerStorage = spy(config.getWorkerStorage());
-        config.setWorkerStorage(workerStorage);
+        WorkerDeclarationStore workerStorage = spy(config.getWorkerDeclarationStore());
+        config.setWorkerDeclarationStore(workerStorage);
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
@@ -1640,10 +1640,10 @@ class MassSdkTest {
     }
 
     @Test
-    void engineConfigRequiresExplicitTaskDetailStoreAfterReplacingTaskStorage() {
+    void engineConfigRequiresExplicitTaskDetailStoreAfterReplacingTaskShellStore() {
         EngineConfig config = new EngineConfig();
 
-        config.setTaskStorage(new InMemoryTaskStorage());
+        config.setTaskShellStore(new InMemoryTaskShellStore());
 
         IllegalStateException error = assertThrows(IllegalStateException.class, config::getTaskCommandService);
         assertEquals("taskDetailStore is not configured; provide an explicit taskDetailStore via setTaskDetailStore()",
@@ -1651,13 +1651,13 @@ class MassSdkTest {
     }
 
     @Test
-    void engineConfigDerivesWorkerRuntimeFromCurrentWorkerStorage() {
+    void engineConfigDerivesWorkerRuntimeFromCurrentWorkerDeclarationStore() {
         EngineConfig config = new EngineConfig();
         WorkerResourceRuntime initial = config.getWorkerResourceRuntime();
         assertSame(initial, config.getWorkerResourceRuntime());
-        WorkerStorage replacement = spy(new com.xa.mass.storage.memory.InMemoryWorkerStorage());
+        WorkerDeclarationStore replacement = spy(new com.xa.mass.storage.memory.InMemoryWorkerDeclarationStore());
 
-        config.setWorkerStorage(replacement);
+        config.setWorkerDeclarationStore(replacement);
 
         WorkerResourceRuntime rebound = config.getWorkerResourceRuntime();
         assertNotSame(initial, rebound);
@@ -2456,8 +2456,8 @@ class MassSdkTest {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
         EngineConfig config = new EngineConfig();
-        WorkerStorage workerStorage = spy(config.getWorkerStorage());
-        config.setWorkerStorage(workerStorage);
+        WorkerDeclarationStore workerStorage = spy(config.getWorkerDeclarationStore());
+        config.setWorkerDeclarationStore(workerStorage);
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
@@ -2859,11 +2859,11 @@ class MassSdkTest {
                     .transportHint("realtime")
                     .build());
             Worker worker = requireDelegate(app).getEngine().getConfig()
-                    .getWorkerStorage()
+                    .getWorkerDeclarationStore()
                     .getWorker("realtime-worker-websocket")
                     .orElseThrow();
             worker.setOnlineStrategy(null);
-            assertTrue(requireDelegate(app).getEngine().getConfig().getWorkerStorage().updateWorker(worker));
+            assertTrue(requireDelegate(app).getEngine().getConfig().getWorkerDeclarationStore().updateWorker(worker));
 
             assertEquals(WorkerTransportHints.REALTIME, app.getWorkerTransportHint("realtime-worker-websocket"));
         } finally {
@@ -2886,7 +2886,7 @@ class MassSdkTest {
             app.start();
             Worker worker = new Worker();
             worker.setWorkerId("worker-without-transport");
-            requireDelegate(app).getEngine().getConfig().getWorkerStorage().addWorker(worker);
+            requireDelegate(app).getEngine().getConfig().getWorkerDeclarationStore().addWorker(worker);
 
             IllegalStateException error = assertThrows(
                     IllegalStateException.class,

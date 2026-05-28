@@ -24,8 +24,8 @@ import com.xa.mass.engine.listener.TaskResourceReleaseListener;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.service.AssignmentRecordService;
-import com.xa.mass.storage.memory.InMemoryTaskStorage;
-import com.xa.mass.storage.memory.InMemoryWorkerStorage;
+import com.xa.mass.storage.memory.InMemoryTaskShellStore;
+import com.xa.mass.storage.memory.InMemoryWorkerDeclarationStore;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.engine.watchdog.RuntimeReadyDispatchPump;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
@@ -136,7 +136,7 @@ public final class TaskFlowLoadModelRunner {
         }
 
         private LoadReport run() throws Exception {
-            InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
+            InMemoryTaskShellStore taskStorage = new InMemoryTaskShellStore();
             RuntimeOperationMetrics runtimeOperationMetrics = new RuntimeOperationMetrics();
             RuntimeBundle runtimes = RuntimeBundle.create(config, runtimeOperationMetrics);
             try {
@@ -147,7 +147,7 @@ public final class TaskFlowLoadModelRunner {
                 TaskAssignmentRuntimePort assignmentRuntimePort = engineConfig.getTaskAssignmentRuntimePort();
                 TaskRuntimeMaintenancePort maintenancePort = engineConfig.getTaskRuntimeMaintenancePort();
                 TaskRuntimeRecoveryPort recoveryPort = engineConfig.getTaskRuntimeRecoveryPort();
-                WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
+                WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
                 WorkerResourceRuntime workerResourceRuntime = workerManager;
                 WorkerAdmissionRuntime workerAdmissionRuntime = workerManager;
                 WorkerSchedulingViewRuntime workerSchedulingViewRuntime = workerManager;
@@ -494,11 +494,11 @@ public final class TaskFlowLoadModelRunner {
             return spec;
         }
 
-        private static EngineConfig buildEngineConfig(InMemoryTaskStorage taskStorage,
+        private static EngineConfig buildEngineConfig(InMemoryTaskShellStore taskStorage,
                                                       TaskWorkRuntime taskWorkRuntime,
                                                       TaskResultRuntime taskResultRuntime) {
             EngineConfig engineConfig = new EngineConfig();
-            engineConfig.setTaskStorage(taskStorage);
+            engineConfig.setTaskShellStore(taskStorage);
             engineConfig.setTaskDetailStore(taskStorage);
             engineConfig.setTaskWorkRuntime(taskWorkRuntime);
             engineConfig.setTaskResultRuntime(taskResultRuntime);

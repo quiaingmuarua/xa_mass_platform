@@ -6,7 +6,7 @@ import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
-import com.xa.mass.storage.api.TaskStorage;
+import com.xa.mass.storage.api.TaskShellStore;
 import com.xa.mass.workerpack.sample.client.SampleWorkerClient;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.event.EventDefinition;
@@ -56,7 +56,7 @@ public abstract class AbstractSampleE2eTest {
     protected MassSdkApplication app;
 
     @Autowired
-    protected TaskStorage taskStorage;
+    protected TaskShellStore taskStorage;
 
     @Autowired
     protected TaskWorkRuntime taskWorkRuntime;

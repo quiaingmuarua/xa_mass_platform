@@ -414,7 +414,7 @@ public class MassApplication {
             if (task == null || dispatchBindings == null || dispatchBindings.isEmpty()) {
                 return true;
             }
-            Task storedTask = engineConfig.getTaskStorage().getTask(task.taskId()).orElse(null);
+            Task storedTask = engineConfig.getTaskShellStore().getTask(task.taskId()).orElse(null);
             if (storedTask == null) {
                 logger.error("Cannot compensate transport dispatch failure because task {} is missing", task.taskId());
                 return false;

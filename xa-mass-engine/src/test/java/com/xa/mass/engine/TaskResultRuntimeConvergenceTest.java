@@ -19,7 +19,7 @@ import com.xa.mass.runtime.api.TaskResultWindow;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
 import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
-import com.xa.mass.storage.memory.InMemoryTaskStorage;
+import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -40,7 +40,7 @@ class TaskResultRuntimeConvergenceTest {
 
     @BeforeEach
     void setUp() {
-        InMemoryTaskStorage storage = new InMemoryTaskStorage();
+        InMemoryTaskShellStore storage = new InMemoryTaskShellStore();
         taskManager = new TaskManager(
                 storage,
                 storage,
@@ -259,7 +259,7 @@ class TaskResultRuntimeConvergenceTest {
     }
 
     private static TaskManager newManager(TaskResultRuntime resultRuntime) {
-        InMemoryTaskStorage storage = new InMemoryTaskStorage();
+        InMemoryTaskShellStore storage = new InMemoryTaskShellStore();
         return new TaskManager(storage, storage, new InMemoryTaskWorkRuntime(), resultRuntime, null);
     }
 

@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Optional;
 
 /** Storage abstraction for the task control-plane aggregate. */
-public interface TaskStorage {
+public interface TaskShellStore {
 
     void saveTask(Task task);
 

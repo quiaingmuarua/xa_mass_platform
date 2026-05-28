@@ -16,7 +16,7 @@ import java.util.Optional;
 /**
  * Storage seam for task-message compatibility projection and attempt detail.
  *
- * <p>Separated from {@link TaskStorage} so that the high-frequency
+ * <p>Separated from {@link TaskShellStore} so that the high-frequency
  * message/attempt write path can be routed to a different sink (e.g. a
  * trace/audit module) without touching the control-plane task storage or the
  * engine orchestration code. The current in-memory and JDBC implementations

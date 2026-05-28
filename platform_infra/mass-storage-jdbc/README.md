@@ -27,7 +27,7 @@ Stable boundary:
 
 Current implementation facts:
 
-- `JdbcTaskStorage` persists durable task truth but keeps `TaskMsg` and
+- `JdbcTaskShellStore` persists durable task shell truth but keeps `TaskMsg` and
   `TaskMsgAttempt` compatibility reads in-process
 - `JdbcStorageRuntime` is currently more than a storage factory: it wires
   datasource, Flyway, and adapter construction, and it is the
@@ -38,7 +38,7 @@ Current implementation drift to keep explicit:
 - `JdbcStorageRuntime` is still a convenience bundle for datasource, migration,
   and adapter construction; treat it as convergence work, not a long-term
   public extension point
-- `JdbcTaskStorage` now owns a JDBC-local process-local compatibility
+- `JdbcTaskShellStore` now owns a JDBC-local process-local compatibility
   projection instead of reusing the full in-memory task-storage backend, but
   that residue is still in-process and restart-volatile
 - worker runtime storage is intentionally not provided by this module; use the
@@ -50,7 +50,7 @@ update this README in the same change.
 ## Entry Files
 
 - `src/main/java/com/xa/mass/storage/jdbc/JdbcStorageRuntime.java`
-- `src/main/java/com/xa/mass/storage/jdbc/JdbcTaskStorage.java`
+- `src/main/java/com/xa/mass/storage/jdbc/JdbcTaskShellStore.java`
 - `src/main/java/com/xa/mass/storage/jdbc/JdbcRuleStorage.java`
 
 ## Fast Verification

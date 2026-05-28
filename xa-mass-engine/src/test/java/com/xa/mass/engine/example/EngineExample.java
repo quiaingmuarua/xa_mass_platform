@@ -13,9 +13,9 @@ import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.worker.runtime.WorkerManager;
-import com.xa.mass.storage.memory.InMemoryTaskStorage;
+import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
-import com.xa.mass.storage.memory.InMemoryWorkerStorage;
+import com.xa.mass.storage.memory.InMemoryWorkerDeclarationStore;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,7 +30,7 @@ public class EngineExample {
     private static final Logger log = LoggerFactory.getLogger(EngineExample.class);
 
     public static void main(String[] args) {
-        InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
+        InMemoryTaskShellStore taskStorage = new InMemoryTaskShellStore();
         TaskManager taskManager = new TaskManager(
                 taskStorage,
                 taskStorage,
@@ -38,7 +38,7 @@ public class EngineExample {
                 new InMemoryTaskResultRuntime(),
                 null);
         TaskCommandService taskCommands = new TaskCommandService(taskManager);
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
         log.info("taskManager:" + taskManager);
         log.info("workerManager:" + workerManager);
 

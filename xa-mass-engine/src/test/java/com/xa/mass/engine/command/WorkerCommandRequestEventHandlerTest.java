@@ -11,7 +11,7 @@ import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.engine.control.WorkerControlService;
 import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.worker.runtime.WorkerStateProjectionOwner;
-import com.xa.mass.storage.memory.InMemoryWorkerStorage;
+import com.xa.mass.storage.memory.InMemoryWorkerDeclarationStore;
 import com.xa.mass.trace.sink.ExecutionEventType;
 import org.junit.jupiter.api.Test;
 
@@ -99,7 +99,7 @@ public class WorkerCommandRequestEventHandlerTest {
 
     private static WorkerControlService workerControlService(WorkerCommandLifecycleOwner owner,
                                                              TraceEventLogger traceEventLogger) {
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
         return new WorkerControlService(
                 workerManager,
                 workerManager,

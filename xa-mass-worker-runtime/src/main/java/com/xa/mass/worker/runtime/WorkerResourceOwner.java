@@ -4,7 +4,7 @@ import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.WorkerMeta;
 import com.xa.mass.runtime.worker.WorkerRegistry;
-import com.xa.mass.storage.api.WorkerStorage;
+import com.xa.mass.storage.api.WorkerDeclarationStore;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -17,12 +17,12 @@ import java.util.Optional;
 public final class WorkerResourceOwner {
 
     private final Object lock = new Object();
-    private final WorkerStorage workerStorage;
+    private final WorkerDeclarationStore workerStorage;
     private final WorkerRegistry workerRegistry;
     private final WorkerGroupOwner groupOwner;
     private final WorkerRelationshipOwner relationshipOwner;
 
-    public WorkerResourceOwner(WorkerStorage workerStorage,
+    public WorkerResourceOwner(WorkerDeclarationStore workerStorage,
                                WorkerRegistry workerRegistry,
                                WorkerGroupOwner groupOwner,
                                WorkerRelationshipOwner relationshipOwner) {

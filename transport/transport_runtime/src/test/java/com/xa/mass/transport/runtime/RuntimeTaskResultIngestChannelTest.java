@@ -16,7 +16,7 @@ import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionFinalReason;
 import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
 import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
-import com.xa.mass.storage.memory.InMemoryTaskStorage;
+import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.transport.model.TaskResultReport;
@@ -47,14 +47,14 @@ class RuntimeTaskResultIngestChannelTest {
     private TaskCommandService taskCommands;
     private TaskQueryService taskQueries;
     private TaskAssignmentRuntimePort assignmentRuntimePort;
-    private InMemoryTaskStorage taskStorage;
+    private InMemoryTaskShellStore taskStorage;
     private InMemoryTaskWorkRuntime taskWorkRuntime;
     private RuntimeTaskResultIngestChannel channel;
     private RecordingExecutionEventSink traceSink;
 
     @BeforeEach
     void setUp() {
-        taskStorage = new InMemoryTaskStorage();
+        taskStorage = new InMemoryTaskShellStore();
         taskWorkRuntime = new InMemoryTaskWorkRuntime();
         traceSink = new RecordingExecutionEventSink();
         taskManager = new TaskManager(taskStorage, taskStorage, taskWorkRuntime, traceSink);
@@ -820,7 +820,7 @@ class RuntimeTaskResultIngestChannelTest {
         }
     }
 
-    private static final class FailingUpdateAttemptStorage extends InMemoryTaskStorage {
+    private static final class FailingUpdateAttemptStorage extends InMemoryTaskShellStore {
         @Override
         public boolean upsertTaskMessageAttemptProjection(String taskId,
                                                           String messageId,
@@ -832,7 +832,7 @@ class RuntimeTaskResultIngestChannelTest {
         }
     }
 
-    private static final class AttemptWriteCountingStorage extends InMemoryTaskStorage {
+    private static final class AttemptWriteCountingStorage extends InMemoryTaskShellStore {
         private int attemptUpsertCount;
 
         @Override
@@ -848,7 +848,7 @@ class RuntimeTaskResultIngestChannelTest {
         }
     }
 
-    private static final class TrackingLatestAttemptStorage extends InMemoryTaskStorage {
+    private static final class TrackingLatestAttemptStorage extends InMemoryTaskShellStore {
         private int latestAttemptReadCount;
 
         @Override
@@ -863,7 +863,7 @@ class RuntimeTaskResultIngestChannelTest {
         }
     }
 
-    private static final class ActiveAttemptTrackingStorage extends InMemoryTaskStorage {
+    private static final class ActiveAttemptTrackingStorage extends InMemoryTaskShellStore {
         private int latestActiveAttemptReadCount;
 
         @Override
@@ -878,7 +878,7 @@ class RuntimeTaskResultIngestChannelTest {
         }
     }
 
-    private static final class HiddenCompatibilityMessageReadStorage extends InMemoryTaskStorage {
+    private static final class HiddenCompatibilityMessageReadStorage extends InMemoryTaskShellStore {
         private int compatibilityAddCount;
 
         @Override

@@ -33,8 +33,8 @@ import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.memory.InMemoryRuleStorage;
-import com.xa.mass.storage.memory.InMemoryTaskStorage;
-import com.xa.mass.storage.memory.InMemoryWorkerStorage;
+import com.xa.mass.storage.memory.InMemoryTaskShellStore;
+import com.xa.mass.storage.memory.InMemoryWorkerDeclarationStore;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.storage.rule.RuleType;
 
@@ -49,7 +49,7 @@ final class TaskSchedulingTestHarness {
     private static final String DEFAULT_ADAPTER_NODE_ID = "test-node-main";
     private static final String DEFAULT_WORKER_GROUP_ID = "pool-main";
 
-    final InMemoryTaskStorage taskStorage;
+    final InMemoryTaskShellStore taskStorage;
     final TaskManager taskManager;
     final WorkerManager workerManager;
     final RuleStorage ruleStorage;
@@ -62,7 +62,7 @@ final class TaskSchedulingTestHarness {
     }
 
     TaskSchedulingTestHarness(WorkerReachabilityView reachabilityView) {
-        this.taskStorage = new InMemoryTaskStorage();
+        this.taskStorage = new InMemoryTaskShellStore();
         this.taskManager = new TaskManager(
                 taskStorage,
                 taskStorage,
@@ -70,7 +70,7 @@ final class TaskSchedulingTestHarness {
                 new InMemoryTaskResultRuntime(),
                 null
         );
-        this.workerManager = new WorkerManager(new InMemoryWorkerStorage(), reachabilityView, new InMemoryWorkerRegistry());
+        this.workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), reachabilityView, new InMemoryWorkerRegistry());
         this.ruleStorage = new InMemoryRuleStorage();
         this.assignmentRecords = new AssignmentRecordService();
         this.dispatches = new ArrayList<>();

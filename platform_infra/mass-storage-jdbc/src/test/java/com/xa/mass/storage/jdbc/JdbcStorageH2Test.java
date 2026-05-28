@@ -24,7 +24,7 @@ class JdbcStorageH2Test {
     @Test
     void taskStoragePersistsTaskTruthButKeepsRuntimeMessageProjectionInProcess() {
         try (StorageFixture fixture = h2Fixture()) {
-            JdbcTaskStorage storage = new JdbcTaskStorage(fixture.dataSource(), new H2JdbcDialect());
+            JdbcTaskShellStore storage = new JdbcTaskShellStore(fixture.dataSource(), new H2JdbcDialect());
             Task task = new Task("task-1", "demo", "demoApp", 1, Map.of("k", "v"), UserRef.of("u1"));
             task.setStatus(TaskStatus.READY);
             task.setStartTime(LocalDateTime.now().minusSeconds(20));
@@ -57,7 +57,7 @@ class JdbcStorageH2Test {
                     .allMatch(projection -> projection.status() == null || !projection.status().isFinal());
             assertThat(storage.getLatestActiveTaskMessageAttemptProjection("task-1", "msg-1")).isPresent();
 
-            JdbcTaskStorage restartedStorage = new JdbcTaskStorage(fixture.dataSource(), new H2JdbcDialect());
+            JdbcTaskShellStore restartedStorage = new JdbcTaskShellStore(fixture.dataSource(), new H2JdbcDialect());
             assertThat(restartedStorage.getTask("task-1")).isPresent();
             assertThat(restartedStorage.getTaskMessageStats("task-1").getTotal()).isZero();
             assertThat(restartedStorage.getTaskMessageProjections("task-1", 1)).isEmpty();

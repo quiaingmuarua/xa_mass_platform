@@ -22,7 +22,7 @@ import com.xa.mass.engine.policy.TaskTerminalPolicy;
 import com.xa.mass.engine.runtime.TaskRuntimeEnqueueOptionsResolver;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
 import com.xa.mass.storage.api.TaskDetailStore;
-import com.xa.mass.storage.api.TaskStorage;
+import com.xa.mass.storage.api.TaskShellStore;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.BarrierClaim;
@@ -67,7 +67,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     private static final Logger logger = LoggerFactory.getLogger(TaskManager.class);
     static final int MAX_INGEST_BATCH_ITEMS = Integer.getInteger("xa.mass.engine.maxIngestBatchItems", 10_000);
 
-    private final TaskStorage taskStorage;
+    private final TaskShellStore taskStorage;
     private final TaskCompatibilityProjectionStore compatibilityProjectionStore;
     private final TaskTerminalPolicy taskTerminalPolicy;
     private final TaskEventPublisher eventPublisher;
@@ -93,7 +93,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
     private final com.xa.mass.engine.util.TraceEventLogger traceEventLogger;
     private long workLeaseSeconds = 300L;
 
-    public TaskManager(TaskStorage taskStorage,
+    public TaskManager(TaskShellStore taskStorage,
                        TaskDetailStore taskDetailStore,
                        TaskWorkRuntime taskWorkRuntime,
                        TaskResultRuntime taskResultRuntime,
@@ -102,7 +102,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
                 taskResultRuntime, executionEventSink);
     }
 
-    public TaskManager(TaskStorage taskStorage,
+    public TaskManager(TaskShellStore taskStorage,
                        TaskDetailStore taskDetailStore,
                        TaskTerminalPolicy taskTerminalPolicy,
                        TaskWorkRuntime taskWorkRuntime,

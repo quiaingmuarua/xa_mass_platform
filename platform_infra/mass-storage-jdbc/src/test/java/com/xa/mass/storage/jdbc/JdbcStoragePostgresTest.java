@@ -34,7 +34,7 @@ class JdbcStoragePostgresTest {
     @Test
     void taskStoragePersistsTaskTruthButKeepsRuntimeMessageProjectionInProcess() {
         try (StorageFixture fixture = postgresFixture("task_storage")) {
-            JdbcTaskStorage storage = new JdbcTaskStorage(fixture.dataSource(), new PostgresJdbcDialect());
+            JdbcTaskShellStore storage = new JdbcTaskShellStore(fixture.dataSource(), new PostgresJdbcDialect());
             Task task = new Task("task-1", "demo", "demoApp", 1, Map.of("k", "v"), UserRef.of("u1"));
             task.setStatus(TaskStatus.READY);
             task.setStartTime(LocalDateTime.now().minusSeconds(20));
@@ -67,7 +67,7 @@ class JdbcStoragePostgresTest {
                     .allMatch(projection -> projection.status() == null || !projection.status().isFinal());
             assertThat(storage.getLatestActiveTaskMessageAttemptProjection("task-1", "msg-1")).isPresent();
 
-            JdbcTaskStorage restartedStorage = new JdbcTaskStorage(fixture.dataSource(), new PostgresJdbcDialect());
+            JdbcTaskShellStore restartedStorage = new JdbcTaskShellStore(fixture.dataSource(), new PostgresJdbcDialect());
             assertThat(restartedStorage.getTask("task-1")).isPresent();
             assertThat(restartedStorage.getTaskMessageStats("task-1").getTotal()).isZero();
             assertThat(restartedStorage.getTaskMessageProjections("task-1", 1)).isEmpty();

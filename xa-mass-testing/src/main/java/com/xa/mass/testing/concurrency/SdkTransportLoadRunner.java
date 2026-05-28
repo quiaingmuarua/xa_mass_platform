@@ -24,7 +24,7 @@ import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
-import com.xa.mass.storage.memory.InMemoryTaskStorage;
+import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.testing.support.TestingPaths;
 import com.xa.mass.testing.support.WorkerRegistrationSpineSupport;
 import com.xa.mass.testing.workerfault.WorkerFaultReportMetadata;
@@ -206,7 +206,7 @@ public final class SdkTransportLoadRunner {
 
         private EmbeddedRuntime buildRuntime(LoadConfig config) {
             int transportPort = config.transport() == WorkerTransportMode.WEBSOCKET ? findFreePort() : 0;
-            InMemoryTaskStorage taskStorage = new InMemoryTaskStorage();
+            InMemoryTaskShellStore taskStorage = new InMemoryTaskShellStore();
             TaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
             MassSdkApplication app = MassSdk.builder()
                     .transport(transport -> transport

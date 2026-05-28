@@ -8,15 +8,20 @@ shells without making `xa-mass-engine` the package root for those APIs.
 
 Current scope:
 
-- `TaskStorage`
+- `TaskShellStore`
 - `TaskDetailStore` as a bounded compatibility-projection seam
-- `WorkerStorage`
+- `WorkerDeclarationStore`
 - `RuleStorage`
 - rule storage value types used directly by `RuleStorage`
 
 Contract split inside this module:
 
-- `TaskStorage` is the control-plane task aggregate contract
+- `TaskShellStore` is the control-plane task shell contract. It stores stable
+  task shell truth and must not grow runtime queue, dispatch, lease, heartbeat,
+  history, or analytics ownership.
+- `WorkerDeclarationStore` is the control-plane worker declaration contract.
+  It stores stable declaration rows only; active worker runtime state belongs
+  to worker runtime/registry owners.
 - `TaskDetailStore` is not control-plane truth and not a public SDK/server read
   model; it is the bounded compatibility projection for task-message residue and
   attempt detail while the long-term trace/audit sink remains separate
