@@ -33,6 +33,14 @@
       "projectCodes": ["crawlerApp"]
     },
     {
+      "code": "probe.phone.metadata",
+      "name": "Phone Metadata Probe",
+      "description": "Parse phone numbers into E.164, region, type, and possible/valid metadata.",
+      "payloadTypes": ["JSON"],
+      "taskModes": ["SINGLE_RUN", "STREAMING"],
+      "projectCodes": ["deviceProbe"]
+    },
+    {
       "code": "mock.state.get",
       "name": "Mock State Get",
       "description": "Fetch the current mock fault-injection state from a targeted worker through the task path.",
@@ -248,6 +256,14 @@
         "crawler.fetch-page",
         "stock.quote.fetch"
       ]
+    },
+    {
+      "code": "deviceProbe",
+      "name": "Device Probe",
+      "description": "Phone metadata and device fingerprint routing probes.",
+      "eventCodes": [
+        "probe.phone.metadata"
+      ]
     }
   ],
   "submitters": [
@@ -286,6 +302,29 @@
       "eventScopes": ["stock.quote.fetch"],
       "attributes": {
         "workerId": "stock-ws-worker-001"
+      }
+    },
+    {
+      "principalId": "public-probe-ops",
+      "credential": "public-probe-ops-key",
+      "permissions": ["task:create", "task:control", "task:govern"],
+      "projectScopes": ["deviceProbe"],
+      "eventScopes": ["probe.phone.metadata"],
+      "attributes": {
+        "label": "Public Probe Ops"
+      }
+    },
+    {
+      "count": 100,
+      "principalId": "phone-device-probe-poll-sg-${PAD3}",
+      "credential": "phone-device-probe-poll-sg-${PAD3}-key",
+      "permissions": ["worker:poll"],
+      "projectScopes": ["deviceProbe"],
+      "eventScopes": ["probe.phone.metadata"],
+      "attributes": {
+        "workerId": "phone-device-probe-poll-sg-${PAD3}",
+        "fingerprintProfile": "${FINGERPRINT}",
+        "mccMnc": "${MCC_MNC}"
       }
     }
   ]

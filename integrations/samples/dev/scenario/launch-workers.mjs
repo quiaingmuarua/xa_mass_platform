@@ -19,6 +19,9 @@ const bootstrapKey = process.env.SAMPLE_BOOTSTRAP_KEY ?? "dev-bootstrap-key";
 const children = [];
 let shuttingDown = false;
 let keepAliveTimer = null;
+const declaredWorkerGroups = new Set();
+const registeredAdapterNodes = new Set();
+const boundAdapterNodeGroups = new Set();
 
 main().catch(async (error) => {
   console.error("[sample-launcher] fatal error:", error);
@@ -26,21 +29,33 @@ main().catch(async (error) => {
 });
 
 async function main() {
-  const bootstrapSpec = await readJson(bootstrapConfigPath);
+  const bootstrapSpec = expandBootstrapSpec(await readJson(bootstrapConfigPath));
   const ruleSpec = await readJson(ruleConfigPath);
-  const workerSpecs = await readJson(workerConfigPath);
-  const taskSpecs = await readJson(taskConfigPath);
+  const workerSpecs = expandWorkerSpecs(await readJson(workerConfigPath));
+  const taskSpecs = expandTaskSpecs(await readJson(taskConfigPath));
+  const managedWorkerSpecs = workerSpecs.filter((spec) => spec.startMode !== "api-online");
+  const apiOnlineWorkerSpecs = workerSpecs.filter((spec) => spec.startMode === "api-online");
+  const approvedTaskSpecs = taskSpecs.filter((spec) => spec.approve === true);
+  const stagedTaskSpecs = taskSpecs.filter((spec) => spec.approve !== true);
   await bootstrapCatalog(bootstrapSpec);
   await bootstrapRules(ruleSpec);
   console.log(`[sample-launcher] registering and starting ${workerSpecs.length} sample workers`);
-  for (const spec of workerSpecs) {
+  for (const spec of managedWorkerSpecs) {
     await registerWorker(spec);
     startWorker(spec);
   }
-  for (const spec of workerSpecs) {
-    await waitForWorkerOnline(spec.workerId);
+  for (const spec of managedWorkerSpecs) {
+    await waitForWorkerOnline(spec);
   }
-  await seedTasks(taskSpecs);
+  await seedTasks(approvedTaskSpecs);
+  await runWithConcurrency(apiOnlineWorkerSpecs, 12, async (spec) => {
+    await registerWorker(spec);
+    startWorker(spec);
+  });
+  await runWithConcurrency(apiOnlineWorkerSpecs, 24, async (spec) => {
+    await waitForWorkerOnline(spec);
+  });
+  await seedTasks(stagedTaskSpecs);
 
   process.on("SIGINT", () => void shutdown(0));
   process.on("SIGTERM", () => void shutdown(0));
@@ -59,6 +74,14 @@ async function bootstrapRules(spec) {
 }
 
 function startWorker(spec) {
+  if (spec.startMode === "api-online") {
+    console.log(`[sample-launcher] worker ${spec.workerId} registered online through worker API`);
+    return;
+  }
+  if (!spec.scriptPath) {
+    console.log(`[sample-launcher] worker ${spec.workerId} registered without a managed process`);
+    return;
+  }
   const scriptPath = resolve(repoRoot, spec.scriptPath);
   const child = spawn(nodeBin, [scriptPath], {
     cwd: repoRoot,
@@ -87,31 +110,41 @@ async function registerWorker(spec) {
   const adapterNodeId = adapterNodeIdFor(spec);
   const adapterType = spec.adapterId ?? "websocket";
 
-  const groupResponse = await post("/worker-api/v1/worker-groups", spec.workerKey, {
-    groupId: spec.workerGroupId,
-    eventBindings: spec.eventBindings,
-  });
-  console.log(`[sample-launcher] declared worker group ${spec.workerGroupId}: ${JSON.stringify(groupResponse.data)}`);
+  if (!declaredWorkerGroups.has(spec.workerGroupId)) {
+    const groupResponse = await post("/worker-api/v1/worker-groups", spec.workerKey, {
+      groupId: spec.workerGroupId,
+      eventBindings: spec.eventBindings,
+    });
+    declaredWorkerGroups.add(spec.workerGroupId);
+    console.log(`[sample-launcher] declared worker group ${spec.workerGroupId}: ${JSON.stringify(groupResponse.data)}`);
+  }
 
-  const adapterNodeResponse = await post("/worker-api/v1/adapter-nodes", spec.workerKey, {
-    adapterNodeId,
-    adapterType,
-    endpointId: adapterNodeId,
-    attributes: {
-      launcher: "integrations/samples/dev/scenario/launch-workers.mjs",
-      transport: adapterType,
-    },
-  });
-  console.log(`[sample-launcher] registered adapter node ${adapterNodeId}: ${JSON.stringify(adapterNodeResponse.data)}`);
+  if (!registeredAdapterNodes.has(adapterNodeId)) {
+    const adapterNodeResponse = await post("/worker-api/v1/adapter-nodes", spec.workerKey, {
+      adapterNodeId,
+      adapterType,
+      endpointId: adapterNodeId,
+      attributes: {
+        launcher: "integrations/samples/dev/scenario/launch-workers.mjs",
+        transport: adapterType,
+      },
+    });
+    registeredAdapterNodes.add(adapterNodeId);
+    console.log(`[sample-launcher] registered adapter node ${adapterNodeId}: ${JSON.stringify(adapterNodeResponse.data)}`);
+  }
 
-  const bindingResponse = await post("/worker-api/v1/node-group-bindings", spec.workerKey, {
-    adapterNodeId,
-    workerGroupId: spec.workerGroupId,
-    attributes: {
-      transport: adapterType,
-    },
-  });
-  console.log(`[sample-launcher] bound adapter node ${adapterNodeId} to group ${spec.workerGroupId}: ${JSON.stringify(bindingResponse.data)}`);
+  const bindingKey = `${adapterNodeId}\n${spec.workerGroupId}`;
+  if (!boundAdapterNodeGroups.has(bindingKey)) {
+    const bindingResponse = await post("/worker-api/v1/node-group-bindings", spec.workerKey, {
+      adapterNodeId,
+      workerGroupId: spec.workerGroupId,
+      attributes: {
+        transport: adapterType,
+      },
+    });
+    boundAdapterNodeGroups.add(bindingKey);
+    console.log(`[sample-launcher] bound adapter node ${adapterNodeId} to group ${spec.workerGroupId}: ${JSON.stringify(bindingResponse.data)}`);
+  }
 
   const response = await post("/worker-api/v1/workers", spec.workerKey, {
     workerId: spec.workerId,
@@ -122,6 +155,25 @@ async function registerWorker(spec) {
     attributes: spec.attributes,
   });
   console.log(`[sample-launcher] registered worker ${spec.workerId}: ${JSON.stringify(response.data)}`);
+  if (spec.startMode === "api-online") {
+    await post(`/worker-api/v1/workers/${encodeURIComponent(spec.workerId)}:online`, spec.workerKey, {
+      reason: "sample-launcher-api-online",
+    });
+    await post(`/worker-api/v1/workers/${encodeURIComponent(spec.workerId)}:report-capability`, spec.workerKey, {
+      availableEventCodes: [...new Set((spec.eventBindings ?? []).map((binding) => binding.eventCode).filter(Boolean))],
+      agentVersion: "sample-launcher-api-online",
+      schedulingAttributes: spec.attributes ?? {},
+    });
+    await post(`/worker-api/v1/workers/${encodeURIComponent(spec.workerId)}:report-state`, spec.workerKey, {
+      state: "AVAILABLE",
+      reason: "sample-launcher-api-online",
+      observedAt: new Date().toISOString(),
+      attributes: {
+        source: "sample-launcher",
+        ...(spec.attributes ?? {}),
+      },
+    });
+  }
 }
 
 function adapterNodeIdFor(spec) {
@@ -140,6 +192,7 @@ async function seedTasks(taskSpecs) {
     return;
   }
   for (const taskSpec of taskSpecs) {
+    const taskApiKey = taskSpec.apiKey ?? taskSubmitterKey;
     const requestBody = replacePlaceholders(taskSpec.body ?? {}, {
       MASS_BASE_URL: baseUrl,
       MASS_WS_URL: wsUrl,
@@ -152,7 +205,7 @@ async function seedTasks(taskSpecs) {
       sourceType: requestBody.sourceType,
       sourceRef: requestBody.sourceRef,
     };
-    const createResponse = await post("/api/v1/tasks", taskSubmitterKey, {
+    const createResponse = await post("/api/v1/tasks", taskApiKey, {
       ...shellRequest,
     });
     const taskId = String(createResponse.data?.taskId ?? "");
@@ -160,16 +213,21 @@ async function seedTasks(taskSpecs) {
       `[sample-launcher] created seed task project=${requestBody.project} event=${requestBody.eventCode ?? ""}: ${taskId}`,
     );
     if (Array.isArray(requestBody.items) && requestBody.items.length > 0) {
-      await post(`/api/v1/tasks/${encodeURIComponent(taskId)}/items`, taskSubmitterKey, {
-        eventCode: requestBody.eventCode,
-        items: requestBody.items,
-      });
+      const itemBatchSize = Number.isInteger(taskSpec.itemBatchSize) && taskSpec.itemBatchSize > 0
+        ? taskSpec.itemBatchSize
+        : 500;
+      for (const items of chunks(requestBody.items, itemBatchSize)) {
+        await post(`/api/v1/tasks/${encodeURIComponent(taskId)}/items`, taskApiKey, {
+          eventCode: requestBody.eventCode,
+          items,
+        });
+      }
     }
     if (!requestBody.keepIntakeOpen) {
-      await executeTaskCommand(taskId, "SEAL");
+      await executeTaskCommand(taskId, "SEAL", taskApiKey);
     }
     if (taskSpec.approve && taskId) {
-      await executeTaskCommand(taskId, "APPROVE");
+      await executeTaskCommand(taskId, "APPROVE", taskApiKey);
       console.log(
         `[sample-launcher] approved seed task project=${requestBody.project} event=${requestBody.eventCode ?? ""}: ${taskId}`,
       );
@@ -177,8 +235,8 @@ async function seedTasks(taskSpecs) {
   }
 }
 
-async function executeTaskCommand(taskId, command) {
-  await post(`/api/v1/tasks/${encodeURIComponent(taskId)}/commands`, taskSubmitterKey, { command });
+async function executeTaskCommand(taskId, command, apiKey = taskSubmitterKey) {
+  await post(`/api/v1/tasks/${encodeURIComponent(taskId)}/commands`, apiKey, { command });
 }
 
 async function post(path, apiKey, body, headerName = "X-Mass-Api-Key") {
@@ -197,14 +255,18 @@ async function post(path, apiKey, body, headerName = "X-Mass-Api-Key") {
   return json;
 }
 
-async function waitForWorkerOnline(workerId) {
+async function waitForWorkerOnline(spec) {
+  const workerId = spec.workerId;
+  const requiresTransportPresence = spec.startMode !== "api-online" && (spec.transportHint ?? "realtime") !== "polling";
   for (let attempt = 0; attempt < 40; attempt += 1) {
     const response = await fetch(`${baseUrl}/api/v1/catalog/worker-capabilities`);
     const json = await response.json().catch(() => ({}));
     const items = json?.data;
     if (Array.isArray(items)) {
       const worker = items.find((item) => item?.workerId === workerId);
-      if (worker?.online === true || worker?.transportOnline === true || worker?.status === "ONLINE") {
+      const transportOnline = worker?.transportOnline === true || worker?.online === true || worker?.hasActiveEndpoint === true;
+      const modelOnline = worker?.status === "ONLINE";
+      if ((requiresTransportPresence && transportOnline) || (!requiresTransportPresence && (transportOnline || modelOnline))) {
         console.log(`[sample-launcher] worker online ${workerId}`);
         return;
       }
@@ -217,6 +279,95 @@ async function waitForWorkerOnline(workerId) {
 async function readJson(path) {
   const text = await readFile(path, "utf8");
   return JSON.parse(text);
+}
+
+async function runWithConcurrency(items, concurrency, worker) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return;
+  }
+  const limit = Math.max(1, Math.min(concurrency, items.length));
+  let nextIndex = 0;
+  const runners = Array.from({ length: limit }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      await worker(items[index], index);
+    }
+  });
+  await Promise.all(runners);
+}
+
+function chunks(items, chunkSize) {
+  const normalizedChunkSize = Math.max(1, chunkSize);
+  const result = [];
+  for (let index = 0; index < items.length; index += normalizedChunkSize) {
+    result.push(items.slice(index, index + normalizedChunkSize));
+  }
+  return result;
+}
+
+function expandBootstrapSpec(spec) {
+  if (!spec || typeof spec !== "object") {
+    return {};
+  }
+  return {
+    ...spec,
+    events: Array.isArray(spec.events) ? spec.events.flatMap((entry) => expandCountedSpec(entry)) : spec.events,
+    projects: Array.isArray(spec.projects) ? spec.projects.flatMap((entry) => expandCountedSpec(entry)) : spec.projects,
+    submitters: Array.isArray(spec.submitters) ? spec.submitters.flatMap((entry) => expandCountedSpec(entry)) : spec.submitters,
+  };
+}
+
+function expandWorkerSpecs(specs) {
+  if (!Array.isArray(specs)) {
+    return [];
+  }
+  return specs.flatMap((spec) => expandCountedSpec(spec));
+}
+
+function expandTaskSpecs(specs) {
+  if (!Array.isArray(specs)) {
+    return [];
+  }
+  return specs.map((spec) => {
+    const body = { ...(spec.body ?? {}) };
+    const generatedItems = spec.generatedItems;
+    if (generatedItems && Number.isInteger(generatedItems.count) && generatedItems.count > 0) {
+      const generated = [];
+      for (let index = 0; index < generatedItems.count; index += 1) {
+        generated.push(replacePlaceholders(generatedItems.template ?? {}, placeholderValues(index)));
+      }
+      body.items = [...(Array.isArray(body.items) ? body.items : []), ...generated];
+    }
+    const { generatedItems: ignored, ...rest } = spec;
+    return { ...rest, body };
+  });
+}
+
+function expandCountedSpec(spec) {
+  const count = Number.isInteger(spec?.count) && spec.count > 0 ? spec.count : 1;
+  const { count: ignored, ...template } = spec;
+  const expanded = [];
+  for (let index = 0; index < count; index += 1) {
+    expanded.push(replacePlaceholders(template, placeholderValues(index)));
+  }
+  return expanded;
+}
+
+function placeholderValues(index) {
+  const regions = ["us", "gb", "de", "fr", "sg", "jp"];
+  const fingerprints = ["fp-sg-alpha", "fp-sg-beta", "fp-sg-gamma", "fp-sg-delta"];
+  const mccMncs = ["52501", "52505"];
+  return {
+    INDEX: String(index),
+    INDEX1: String(index + 1),
+    PAD3: String(index + 1).padStart(3, "0"),
+    PAD5: String(index + 1).padStart(5, "0"),
+    PAD6: String(index + 1).padStart(6, "0"),
+    REGION: regions[index % regions.length],
+    FINGERPRINT: fingerprints[index % fingerprints.length],
+    MCC_MNC: mccMncs[index % mccMncs.length],
+  };
 }
 
 function replacePlaceholders(value, replacements) {

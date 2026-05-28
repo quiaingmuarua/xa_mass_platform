@@ -175,6 +175,16 @@ local/demo data is created by external launchers, SDK clients, or test fixtures.
 - sample-only bootstrap writes stay behind `/sample-api/bootstrap/*` protected
   by `X-Sample-Bootstrap-Key`
 
+To populate the local control console after the server is running, use the
+external dev scenario launcher:
+
+```bash
+node integrations/samples/dev/scenario/launch-workers.mjs
+```
+
+That launcher uses public sample bootstrap, task, and worker APIs. It is an
+integration asset, not server startup logic.
+
 ### Effective Sample Client Startup
 
 For test or explicit fixture paths, embedded sample clients are owned by `xa-mass-worker-pack` and started by:

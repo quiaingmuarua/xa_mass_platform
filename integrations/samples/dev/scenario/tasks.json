@@ -43,5 +43,49 @@
         }
       ]
     }
+  },
+  {
+    "apiKey": "public-probe-ops-key",
+    "approve": false,
+    "body": {
+      "project": "deviceProbe",
+      "userId": "sample-launcher",
+      "sourceRef": "sample-phone-device-probe-bulk",
+      "sharedConfig": {
+        "routingCode": "sg",
+        "workerGroupId": "phone-device-probe",
+        "requiredFingerprintProfile": "fp-sg-alpha",
+        "targetWorkerAttributes": {
+          "fingerprintProfile": "fp-sg-alpha"
+        }
+      },
+      "executionSpec": {
+        "batchSize": 20,
+        "workloadClass": "BULK",
+        "defaultMaxRetryCount": 1,
+        "maxRuntimeSeconds": 1800
+      },
+      "eventCode": "probe.phone.metadata",
+      "keepIntakeOpen": false
+    },
+    "generatedItems": {
+      "count": 1000,
+      "template": {
+        "caseId": "phone-sg-${PAD5}",
+        "sequence": "${INDEX1}",
+        "project": "deviceProbe",
+        "eventCode": "probe.phone.metadata",
+        "workerGroupId": "phone-device-probe",
+        "sleepMs": 25,
+        "timeoutMs": 3000,
+        "phoneNumber": "+6588${PAD6}",
+        "defaultRegion": "SG",
+        "expectedCountry": "SG",
+        "expectedMccMnc": "${MCC_MNC}",
+        "requiredFingerprintProfile": "${FINGERPRINT}",
+        "expectedOutcome": "VALID_OR_POSSIBLE",
+        "traceLabel": "phone-device-probe-${PAD5}"
+      }
+    }
   }
 ]

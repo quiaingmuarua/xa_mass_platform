@@ -37,6 +37,23 @@ For the dev Spring Boot shell there is now a sample supervisor script at
   when `sample.worker.auto-start=true`
 - worker and task seed definitions live under `integrations/samples/dev/scenario/*.json`
 
+Current dev scenario shape:
+
+- 2 managed realtime Node workers are launched as external processes.
+- 100 polling phone-device workers are registered and marked online through the
+  public worker API. They model a larger device fleet for matching review
+  without starting 100 local processes.
+- `bootstrap.json` defines dev-only submitter credentials, including per-worker
+  `worker:poll` credentials for the 100 generated polling workers.
+- `tasks.json` creates normal approved realtime sample tasks plus a sealed but
+  unapproved `deviceProbe/probe.phone.metadata` task with 1000 generated items.
+- The phone-device task uses
+  `targetWorkerAttributes.fingerprintProfile=fp-sg-alpha`; only 25 of the 100
+  generated workers carry that fingerprint, so the console can prove
+  group-first plus attribute-based matching.
+- Large item batches are appended in chunks of 500 to stay inside the public
+  task ingest limit.
+
 ## Acceptance Signals
 
 Every sample should remain provable through an external-process black-box test:

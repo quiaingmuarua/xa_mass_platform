@@ -99,6 +99,17 @@ Default runtime facts:
 - Pull-style workers can also run without the WebSocket transport server through `MassSdkApplication.pullWorker(...)`.
 - `sample.client.task-result-status=FAILED` forces failed task result write-back for regression tests.
 
+Optional external dev scenario against a running server:
+
+```bash
+node integrations/samples/dev/scenario/launch-workers.mjs
+```
+
+The launcher uses public sample bootstrap, task, and worker APIs. It starts
+managed realtime sample workers, registers a larger polling phone-device worker
+group for matching review, and creates seed tasks externally instead of through
+server startup.
+
 ## 3. Smoke Checks
 
 HTTP:

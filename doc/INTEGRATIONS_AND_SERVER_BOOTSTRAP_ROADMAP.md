@@ -1,10 +1,11 @@
 # Integrations Layout And Server Bootstrap Roadmap
 
-Status: proposed mainline direction. ILC-0 layout inventory is complete in
+Status: implemented mainline direction. ILC-0 layout inventory is complete in
 [`INTEGRATIONS_LAYOUT_INVENTORY.md`](./INTEGRATIONS_LAYOUT_INVENTORY.md).
 ILC-1 sample path convergence, ILC-2 worker-pack movement, SBE-0 server
 bootstrap classification, and SBE-1 server main-source scenario seeding removal
-are complete. External scenario richness remains a follow-up under SBE-3.
+are complete. SBE-2 test fixture preservation and SBE-3 external scenario
+documentation are complete for the current public-API dev launcher.
 
 This roadmap covers two related but independently implementable tracks:
 
@@ -31,9 +32,10 @@ startup-behavior regressions can be isolated.
 - The dev sample launcher already uses public task and worker APIs for many
   operations, and ILC-1 moves its path assumptions under
   `integrations/samples/dev/scenario`.
-- `xa-mass-server` still has main-source dev scenario bootstrap code that can
-  register catalog, submitters, workers, and tasks in-process through
-  `MassSdkApplication` / `MassRuntimeControl`.
+- `xa-mass-server` still has main-source dev metadata bootstrap code that can
+  register catalog and submitters when explicitly enabled by dev profile
+  properties, but main-source task, worker, and WorkerGroup scenario seeding has
+  been removed.
 - Test sources also contain fixture bootstraps. Those are not the same concern
   as server main-source startup and should be classified before removal.
 
@@ -269,9 +271,10 @@ Acceptance:
 
 ### SBE-1 Externalize Scenario Task And Worker Seeding
 
-Status: server main-source task/worker seeding is removed. Existing external
-scenario launcher uses public APIs; richer parity with the removed generated
-probe scenario remains a follow-up under SBE-3/sample enrichment.
+Status: complete. Server main-source task/worker seeding is removed. The
+external dev scenario launcher uses public HTTP APIs, creates realistic
+multi-project task data, registers realtime workers as external processes, and
+registers a 100-worker polling phone-device group for matching review.
 
 Scope:
 
@@ -281,15 +284,21 @@ Scope:
   server startup.
 - Move equivalent local/demo scenario creation into an external launcher or SDK
   client under `integrations/samples/dev/scenario`.
-- The external scenario launcher should depend on `xa-mass-java-sdk` for task
-  and worker API calls. It must not import `xa-mass-sdk`,
-  `MassSdkApplication`, `MassRuntimeControl`, or server bootstrap classes.
+- The external scenario launcher must use public HTTP/API contracts or a pure
+  external SDK client. The current Node launcher uses raw public HTTP APIs; a
+  future Java launcher may use `xa-mass-java-sdk`. It must not import
+  `xa-mass-sdk`, `MassSdkApplication`, `MassRuntimeControl`, or server
+  bootstrap classes.
 - Use API keys and public task/worker endpoints for scenario work and worker
   topology.
 - Keep external scenario data deterministic and rich enough for console review:
   multiple projects, polling workers, realtime workers, at least one
   fingerprint-like worker attribute group, and task item batches large enough to
   exercise matching.
+- Keep heavyweight matching-review tasks sealed but unapproved by default unless
+  the scenario intentionally validates execution. This lets the console inspect
+  realistic task/work/worker matching state without making dev startup run 1000+
+  items immediately.
 
 Acceptance:
 
@@ -305,8 +314,14 @@ Acceptance:
   from environment variables or documented dev credentials.
 - Control-console pages still have realistic data after the external scenario
   runs, but that data is no longer server-owned startup state.
+- The external scenario contains a 100-worker polling group with
+  `fingerprintProfile` attributes and a 1000-item `probe.phone.metadata` task
+  whose `targetWorkerAttributes` match only the intended fingerprint subset.
 
 ### SBE-2 Preserve Explicit Test Fixtures
+
+Status: complete. Test-only bootstrap remains in test sources and was not
+converted into a server main-source fallback.
 
 Scope:
 
@@ -324,6 +339,8 @@ Acceptance:
 - No failing test is fixed by reintroducing a server main-source demo path.
 
 ### SBE-3 Documentation And Runbook Cleanup
+
+Status: complete for the current layout and external dev scenario.
 
 Scope:
 

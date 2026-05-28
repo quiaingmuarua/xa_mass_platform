@@ -40,5 +40,31 @@
       }
     ],
     "scriptPath": "integrations/samples/node/worker-websocket/worker.mjs"
+  },
+  {
+    "count": 100,
+    "workerId": "phone-device-probe-poll-sg-${PAD3}",
+    "workerKey": "phone-device-probe-poll-sg-${PAD3}-key",
+    "workerGroupId": "phone-device-probe",
+    "adapterNodeId": "sample-polling-phone-node",
+    "adapterId": "polling",
+    "transportHint": "polling",
+    "startMode": "api-online",
+    "attributes": {
+      "lang": "api",
+      "runtime": "sample-launcher-polling",
+      "workerType": "phone-device",
+      "country": "SG",
+      "region": "sg",
+      "fingerprintProfile": "${FINGERPRINT}",
+      "mccMnc": "${MCC_MNC}",
+      "routingTags": "device,sg,${FINGERPRINT}"
+    },
+    "eventBindings": [
+      {
+        "eventCode": "probe.phone.metadata",
+        "projectCodes": ["deviceProbe"]
+      }
+    ]
   }
 ]

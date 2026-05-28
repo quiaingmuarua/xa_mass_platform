@@ -199,16 +199,18 @@ that provider before deleting or moving server-owned seeding logic.
 ## Server Bootstrap Switch Evidence
 
 Current repo search found
-`mass.control-console.scenario.enabled` only in:
+`mass.control-console.scenario.enabled` in:
 
 - `ControlConsoleScenarioBootstrapConfiguration`
+- `xa-mass-server/src/main/resources/application-dev.yml`
 - roadmap text
 
-No tracked `.yml`, `.yaml`, `.properties`, `.json`, `.mjs`, README, or test
-property currently sets it to `true`. Based on tracked repo state, the
-control-console scenario bootstrap is not default-on; SBE-1 should treat it as
-dead-code removal plus external scenario replacement unless an untracked IDE
-run configuration proves otherwise.
+`application-dev.yml` sets it to `true`. After SBE-1 this dev switch only
+controls catalog/project/submitter metadata bootstrap. It no longer creates
+tasks, task items, WorkerGroups, adapter nodes, or workers from server main
+source. SBE-1 therefore removed server-owned workload seeding while preserving
+the narrower dev metadata path needed by external launchers and local console
+flows.
 
 `mass.mock.bootstrap.*` is test-source fixture configuration in
 `TestDevBootstrapConfiguration` and related tests. It is not a main-source

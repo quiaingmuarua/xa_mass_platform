@@ -16,7 +16,7 @@ removing server-owned task and worker scenario seeding.
 | `xa-mass-server/src/main/java/com/xa/mass/server/ControlConsoleScenarioBootstrapConfiguration.java` | dev-profile catalog, submitter, and scenario loader wiring | server dev shell | split in SBE-1: keep or replace metadata bootstrap only; remove task/worker data-load runner |
 | `xa-mass-server/src/main/java/com/xa/mass/server/bootstrap/ControlConsoleScenarioBootstrapDataProvider.java` | generated WorkerGroups, workers, tasks, and task items | server main-source scenario seeding | removed in SBE-1 |
 | `integrations/xa-mass-worker-pack/src/main/java/com/xa/mass/workerpack/sample/api/SampleBootstrapController.java` | dev sample catalog and rule bootstrap API | integration/sample admin surface | keep as temporary dev-only sample/admin API until a public admin SDK exists |
-| `integrations/samples/dev/scenario/launch-workers.mjs` | external launcher for sample catalog, rules, worker registration, worker processes, and seed tasks | external integration asset | keep; this is the preferred scenario entry path |
+| `integrations/samples/dev/scenario/launch-workers.mjs` | external launcher for sample catalog, rules, worker registration, managed worker processes, API-online polling workers, and seed tasks | external integration asset | keep; this is the preferred scenario entry path |
 | `xa-mass-server/src/test/java/com/xa/mass/server/TestDevBootstrapConfiguration.java` | test-only dev bootstrap wiring | test fixture | keep in test scope |
 | `xa-mass-server/src/test/java/com/xa/mass/server/bootstrap/MockRuntimeDataLoader.java` | JSON-driven test workers, rules, and tasks | test fixture | keep in test scope only |
 
@@ -38,9 +38,13 @@ The external dev launcher has two credential sources:
 |---|---|---|---|
 | `SAMPLE_BOOTSTRAP_KEY` | `dev-bootstrap-key` | `/sample-api/bootstrap/catalog`, `/sample-api/bootstrap/rules` | `SampleBootstrapController`, property `sample.bootstrap.api-key` |
 | `MASS_TASK_SUBMITTER_KEY` | `crawler-submitter-key` | `/api/v1/tasks`, task item append, task commands | `integrations/samples/dev/scenario/bootstrap.json` submitter seed |
+| task-specific `apiKey` | `public-probe-ops-key` for the device probe task | `/api/v1/tasks`, task item append, task commands for that task | `integrations/samples/dev/scenario/tasks.json` |
 
 Worker registration credentials are defined per worker in
-`integrations/samples/dev/scenario/workers.json` through `workerKey`.
+`integrations/samples/dev/scenario/workers.json` through `workerKey`. Counted
+worker specs in `bootstrap.json` create one worker credential per generated
+polling worker, so public worker API authorization stays worker-bound instead
+of relying on a shared in-process bypass.
 
 The server-side control-console scenario credentials are currently hard-coded
 dev credentials in `ControlConsoleScenarioBootstrapConfiguration`. They may
@@ -74,8 +78,8 @@ external launcher/client fixture if still needed.
 | `launch-workers.mjs` | manually launched dev process; default launched by `SampleWorkerProcessStarter` | external launcher |
 | `bootstrap.json` | `launch-workers.mjs` posts it to `/sample-api/bootstrap/catalog` | external launcher catalog/submitter input |
 | `rules.json` | `launch-workers.mjs` posts it to `/sample-api/bootstrap/rules` | external launcher rule input |
-| `workers.json` | `launch-workers.mjs` reads it, declares WorkerGroups, registers adapter nodes, binds groups, registers workers, starts Node worker processes | external launcher worker input |
-| `tasks.json` | `launch-workers.mjs` creates task shells, appends items, seals, and optionally approves through public task APIs | external launcher task input |
+| `workers.json` | `launch-workers.mjs` reads it, declares WorkerGroups, registers adapter nodes, binds groups, registers workers, starts managed Node worker processes, and marks API-online polling workers through public worker APIs | external launcher worker input |
+| `tasks.json` | `launch-workers.mjs` creates task shells, expands generated item templates, appends items in public API chunks, seals, and optionally approves through public task APIs | external launcher task input |
 
 Current search evidence shows no tracked server main-source class reads
 `integrations/samples/dev/scenario/*.json` directly.
