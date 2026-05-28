@@ -13,6 +13,10 @@ JSDK-5 Java polling sample convergence is implemented for
 `samples/worker-polling/java`: it now builds through the root reactor and uses
 `xa-mass-java-sdk` managed polling sessions. Broad `samples/` path movement is
 deferred.
+JSDK-6 realtime decision is recorded in
+[`JAVA_EXTERNAL_SDK_REALTIME_DECISION.md`](./JAVA_EXTERNAL_SDK_REALTIME_DECISION.md):
+do not add public realtime Java sessions until a dedicated protocol contract
+exists.
 
 This roadmap defines a new `xa-mass-java-sdk` artifact for repo-external Java
 clients. It is intentionally separate from the current `xa-mass-sdk`, and it
@@ -464,11 +468,12 @@ extra failure modes.
 
 ### Realtime Worker Client
 
-Realtime Java client support should be a later phase, not the first public
-freeze. The current Java WebSocket/socket samples prove protocol feasibility,
-but the SDK should not lock a public realtime API until frame lifecycle,
-command frames, reconnect behavior, and route identity are documented as a
-stable external contract.
+Realtime Java client support is deferred by
+[`JAVA_EXTERNAL_SDK_REALTIME_DECISION.md`](./JAVA_EXTERNAL_SDK_REALTIME_DECISION.md).
+The current Java WebSocket/socket samples prove protocol feasibility, but the
+SDK must not lock a public realtime API until frame lifecycle, command frames,
+reconnect behavior, and route identity are documented as a stable external
+contract.
 
 Target later shape:
 
@@ -840,6 +845,13 @@ Acceptance:
 
 ### JSDK-6: Realtime Client Decision Point
 
+Status: decision complete; implementation deferred.
+
+Decision: do not add public Java realtime worker sessions in this roadmap.
+Current WebSocket/socket paths remain adapter-local validation seams. A later
+protocol roadmap must exist before `mass.workerSessions().realtime()` is
+implemented.
+
 Scope:
 
 - inventory WebSocket and socket sample protocols.
@@ -857,8 +869,10 @@ Out of scope:
 Acceptance:
 
 - a protocol contract exists before public realtime client API is added.
-- realtime session has black-box parity with current Java WebSocket or socket
-  sample.
+- realtime decision record explains why no public realtime client is added in
+  this roadmap.
+- any later realtime session must have black-box parity with current Java
+  WebSocket or socket sample before being exposed.
 - polling client remains the recommended first public worker integration path.
 
 ## Architecture Guards
