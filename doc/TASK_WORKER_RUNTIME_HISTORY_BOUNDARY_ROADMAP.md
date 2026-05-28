@@ -53,6 +53,9 @@ Read with:
   hints, and helper methods like `updateHeartbeat()`.
 - WorkerGroup is now the capability owner. Worker rows should not become a
   second project/event capability source.
+- `WorkerStateProjectionOwner` keeps bounded recent reports as current
+  diagnostic evidence. That bounded window is not an archive/history owner and
+  must not be treated as durable analytics truth.
 - `DB_STORAGE_PRINCIPLES.md` already bans queue/lease history, worker
   online/offline churn, heartbeat streams, locks, reservations, dispatch
   history, result history, and analytics from DB ownership.
@@ -235,11 +238,39 @@ Acceptance:
 
 ## TWH-1 Rename Broad Storage Contracts
 
+Goal: remove broad storage vocabulary without changing runtime behavior.
+
+This phase is intentionally split. A single PR that renames task storage,
+worker storage, implementation classes, SDK builder APIs, config methods, docs,
+and all tests is too large to review safely. Each sub-slice should compile and
+should not preserve old names as compatibility aliases.
+
+### TWH-1A Rename Contracts And Implementations
+
 Scope:
 
 - Rename `TaskStorage` to a task-shell/control-plane name.
 - Rename `WorkerStorage` to a worker-declaration/control-plane name.
 - Rename memory/JDBC implementations accordingly.
+- Update direct in-repo imports and constructor signatures needed to compile.
+- Keep embedding SDK method names for TWH-1B if needed to keep this slice
+  reviewable, but do not introduce new compatibility adapters.
+- Keep behavior unchanged in this slice.
+
+Acceptance:
+
+- No production import of `TaskStorage` or `WorkerStorage` remains.
+- Storage implementations use shell/declaration names.
+- No compatibility alias type remains for old storage names.
+- `mass-storage-api` README uses shell/declaration vocabulary for the renamed
+  contracts.
+- Architecture guards prevent new storage contract methods whose names imply
+  scheduling, dispatch, lease, heartbeat, runtime history, or analytics.
+
+### TWH-1B Rename SDK And Config Surfaces
+
+Scope:
+
 - Update SDK builder/config names so embedding callers do not see
   `taskStorage(...)` or `workerStorage(...)` as generic runtime/history
   extension points.
@@ -269,8 +300,6 @@ Scope:
 
 Acceptance:
 
-- No production import of `TaskStorage` or `WorkerStorage` remains.
-- No compatibility alias remains for old names.
 - No `taskStorage(...)`, `workerStorage(...)`, `setTaskStorage(...)`, or
   `setWorkerStorage(...)` embedding SDK API remains.
 - The migration table is committed with the slice so downstream breakage is
@@ -279,9 +308,26 @@ Acceptance:
   behavior.
 - The SDK README states this is a `0.0.1-SNAPSHOT` breaking rename with no
   compatibility alias in this roadmap.
-- `mass-storage-api` README uses shell/declaration vocabulary.
+- No old SDK/config method remains as a deprecated fallback.
+
+### TWH-1C Global Vocabulary And Guard Sweep
+
+Scope:
+
+- Update global docs after the code rename has landed:
+  - `platform_infra/README.md`
+  - `INFRA_TRUTH_LAYERS.md`
+  - `DB_STORAGE_PRINCIPLES.md`
+  - SDK/server README and API references touched by renamed surfaces
+- Add or update architecture guards for the renamed shell/declaration boundary.
+- Keep this as documentation and guard convergence only.
+
+Acceptance:
+
 - `platform_infra/README.md`, `INFRA_TRUTH_LAYERS.md`, and
   `DB_STORAGE_PRINCIPLES.md` use shell/declaration vocabulary consistently.
+- New code cannot reintroduce `TaskStorage` / `WorkerStorage` as broad
+  runtime/history extension-point names.
 
 ## TWH-2 Move Runtime-Shaped Task Queries Out Of Storage
 
@@ -299,11 +345,17 @@ Scope:
 - Split or rename `TaskRuntimeMaintenancePort` so lease-runtime operations and
   current task-shell lifecycle scanning are not presented as one runtime truth
   category. A split is preferred if the implementation remains readable:
-  - lease runtime maintenance: active leases, expired leases, lease expiry
-  - current task-shell lifecycle maintenance: max-runtime deadline scanning
-  - dispatch wakeup/readiness: dispatch-ready checks and task dispatch requests
+  - `TaskLeaseMaintenancePort`: active leases, expired leases, lease expiry
+  - `TaskShellLifecycleMaintenancePort`: max-runtime deadline scanning and
+    terminal lifecycle action over current shells
+  - `TaskDispatchRecoveryPort`: runtime ready-task discovery and dispatch
+    wakeup/readiness
 - Ensure watchdog code talks to engine lifecycle/maintenance ports, not a raw
   storage contract.
+- Add guards in the same slice:
+  - storage contracts do not expose `schedulable` or dispatch-admission
+    methods
+  - runtime dispatch recovery does not call shell/control-plane scans
 
 Acceptance:
 
@@ -313,13 +365,23 @@ Acceptance:
   historical task execution query.
 - The watchdog-facing port name makes clear whether a method reads runtime
   lease state or current task-shell lifecycle state.
+- Guard coverage fails if `getSchedulableTasks()` or equivalent storage-level
+  scheduling admission returns.
 
 ## TWH-3 Split Worker Declaration From Runtime Projection
 
+Goal: make worker declaration persistence impossible to confuse with active
+worker runtime state.
+
+This is the highest-risk phase. It must not be implemented as one rename-only
+commit because the current code still maps `WorkerResourceRecord <-> Worker`
+and `WorkerResourceOwner.normalizeWorkerRegistrationRow()` can write runtime
+heartbeat data before persistence.
+
+### TWH-3A Decide And Add Worker Declaration Shape
+
 Scope:
 
-- Introduce a declaration-shaped record. Do not keep `WorkerDeclarationStore`
-  writing the mixed `Worker` model directly.
 - Decide the target model shape before moving code:
   - `WorkerDeclarationRecord`: persisted declaration-only input/output
   - `WorkerRuntimeStateRecord`: current runtime state such as status,
@@ -328,10 +390,6 @@ Scope:
   - `WorkerResourceRecord`: either renamed to the declaration record or kept as
     a composite current-state read model assembled from declaration + runtime
     evidence
-- `WorkerResourceOwner` registration writes the declaration record only.
-- `WorkerManager.workers()` may continue returning a current-state/composite
-  view, but that view must be assembled above the declaration store rather than
-  stored as a declaration row.
 - Stable declaration candidates:
   - `workerId`
   - `workerGroupId`
@@ -352,6 +410,36 @@ Scope:
 - WorkerGroup remains capability truth. Worker-level supported project/event
   fields remain compatibility read hints only until removed or projected from
   WorkerGroup.
+- Decide initial online semantics before persistence changes:
+  - worker registration may create/update a `WorkerRegistry` slot
+  - active online state must come from transport reachability, heartbeat, or
+    current registry metadata
+  - declaration persistence must not be the source of heartbeat freshness
+
+Acceptance:
+
+- The roadmap or implementation doc states the final role of `Worker`,
+  `WorkerDeclarationRecord`, `WorkerRuntimeStateRecord`, and
+  `WorkerResourceRecord`.
+- The initial online/heartbeat semantics are written before
+  `WorkerResourceOwner` persistence changes.
+- No production behavior changes are required in this sub-slice unless adding
+  the value type requires mechanical compile updates.
+
+### TWH-3B Move Declaration Store Writes To Declaration Records
+
+Scope:
+
+- Introduce a declaration-shaped record. Do not keep `WorkerDeclarationStore`
+  writing the mixed `Worker` model directly.
+- `WorkerResourceOwner` registration writes the declaration record only.
+- `WorkerResourceOwner.normalizeWorkerRegistrationRow()` no longer mutates a
+  declaration row with runtime heartbeat data before persistence.
+- Declaration rows must not store `status` or `lastHeartbeat`.
+- Worker runtime derives `WorkerRegistry` slot metadata from declaration rows
+  plus current runtime evidence.
+- Add guards that fail if worker declaration persistence writes heartbeat,
+  online/offline churn, lock/lease, or dispatch history fields.
 
 Acceptance:
 
@@ -361,13 +449,31 @@ Acceptance:
   `Worker` object carrying `status` / `lastHeartbeat`.
 - `WorkerResourceOwner.normalizeWorkerRegistrationRow()` no longer mutates a
   declaration row with runtime heartbeat data before persistence.
-- The roadmap or implementation doc states the final role of `Worker`,
-  `WorkerDeclarationRecord`, `WorkerRuntimeStateRecord`, and
-  `WorkerResourceRecord`.
 - Worker runtime derives `WorkerRegistry` slot metadata from declaration rows
   plus current runtime evidence.
+
+### TWH-3C Define Worker Current-State Read Models
+
+Scope:
+
+- `WorkerManager.workers()` may continue returning a current-state/composite
+  view, but that view must be assembled above the declaration store rather than
+  stored as a declaration row.
+- Decide whether `WorkerResourceRecord` remains a composite current-state read
+  model or is renamed.
 - Server worker read models label fields clearly as declaration, runtime,
   transport reachability, or compatibility projection.
+- Document that `WorkerStateProjectionOwner` bounded recent reports are current
+  diagnostic evidence, not durable archive/history truth.
+
+Acceptance:
+
+- Server worker read models label fields clearly as declaration, runtime,
+  transport reachability, or compatibility projection.
+- `WorkerResourceRecord` role is explicit and no longer described as
+  runtime-neutral if it contains runtime/current-state fields.
+- Bounded worker state report history is documented as diagnostic current-state
+  evidence only.
 
 ## TWH-4 Current-State API Guardrails
 
@@ -389,6 +495,8 @@ Scope:
     tables
   - storage contracts do not grow methods named after scheduling, lease,
     dispatch, heartbeat, or analytics concerns
+- Prefer adding the relevant guard in the slice that creates the boundary.
+  TWH-4 is the final sweep, not the first time guards appear.
 
 Acceptance:
 
@@ -458,12 +566,16 @@ Acceptance:
 ## Suggested Implementation Order
 
 1. TWH-0 inventory.
-2. TWH-1 rename broad storage contracts.
+2. TWH-1A rename storage contracts and implementations.
 3. TWH-2 move runtime-shaped task queries out of storage.
-4. TWH-3 split worker declaration from runtime projection.
-5. TWH-4 current-state API guardrails.
-6. TWH-5 trace/archive history direction checkpoint.
-7. TWH-6 residue removal.
+4. TWH-1B rename SDK/config surfaces.
+5. TWH-1C global vocabulary and guard sweep.
+6. TWH-3A decide/add worker declaration shape.
+7. TWH-3B move declaration-store writes to declaration records.
+8. TWH-3C define worker current-state read models.
+9. TWH-4 current-state API guardrail sweep.
+10. TWH-5 trace/archive history direction checkpoint.
+11. TWH-6 residue removal.
 
 Do not start with TWH-5. A trace/archive plan cannot compensate for a
 misnamed storage/runtime boundary. First make the current ownership explicit,
