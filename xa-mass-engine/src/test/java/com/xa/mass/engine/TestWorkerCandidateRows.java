@@ -1,7 +1,7 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.runtime.worker.WorkerCandidateRow;
+import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
 
 public final class TestWorkerCandidateRows {
     private TestWorkerCandidateRows() {

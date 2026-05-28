@@ -1,4 +1,4 @@
-package com.xa.mass.runtime.worker;
+package com.xa.mass.worker.runtime.candidate;
 
 /**
  * Candidate-source surface for worker matching.

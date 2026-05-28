@@ -5,9 +5,9 @@ import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.TestWorkerCandidateRows;
-import com.xa.mass.runtime.worker.WorkerGroupCapabilityView;
-import com.xa.mass.runtime.worker.WorkerReachabilityState;
-import com.xa.mass.runtime.worker.WorkerLoadSnapshot;
+import com.xa.mass.worker.runtime.evidence.WorkerGroupCapabilityView;
+import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
+import com.xa.mass.worker.runtime.evidence.WorkerLoadSnapshot;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

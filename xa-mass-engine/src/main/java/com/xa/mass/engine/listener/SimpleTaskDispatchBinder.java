@@ -20,7 +20,7 @@ import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.TaskWorkClaimOptions;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
-import com.xa.mass.runtime.worker.WorkerAdmissionRuntime;
+import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

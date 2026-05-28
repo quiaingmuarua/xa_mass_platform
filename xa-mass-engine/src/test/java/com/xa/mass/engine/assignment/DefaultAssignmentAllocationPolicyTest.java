@@ -5,7 +5,7 @@ import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.TestWorkerCandidateRows;
-import com.xa.mass.runtime.worker.WorkerReachabilityState;
+import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.model.WorkerSchedulingView;
 import org.junit.jupiter.api.Test;

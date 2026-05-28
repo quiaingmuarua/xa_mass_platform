@@ -1,6 +1,6 @@
 package com.xa.mass.engine.model;
 
-import com.xa.mass.runtime.worker.WorkerCandidateRow;
+import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
 
 import java.util.Objects;
 

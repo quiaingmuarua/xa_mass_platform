@@ -13,7 +13,7 @@ import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
 import com.xa.mass.engine.resource.WorkerDispatchResourceUsage;
 import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
-import com.xa.mass.runtime.worker.WorkerAdmissionRuntime;
+import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
 
 import java.util.LinkedHashSet;
 import java.util.List;

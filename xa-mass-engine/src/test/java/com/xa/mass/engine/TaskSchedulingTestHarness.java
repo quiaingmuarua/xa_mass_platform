@@ -23,7 +23,7 @@ import com.xa.mass.worker.runtime.resource.AdapterNodeRecord;
 import com.xa.mass.worker.runtime.resource.NodeGroupBindingRecord;
 import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
-import com.xa.mass.runtime.worker.WorkerReachabilityView;
+import com.xa.mass.worker.runtime.evidence.WorkerReachabilityView;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.TaskWorkStats;

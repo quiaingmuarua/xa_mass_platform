@@ -1,4 +1,4 @@
-package com.xa.mass.runtime.worker;
+package com.xa.mass.worker.runtime.admission;
 
 /**
  * Lifecycle hook for worker-runtime evidence that can make waiting tasks

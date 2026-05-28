@@ -1,9 +1,9 @@
 package com.xa.mass.engine.model;
 
-import com.xa.mass.runtime.worker.WorkerReachabilityState;
-import com.xa.mass.runtime.worker.WorkerLoadSnapshot;
-import com.xa.mass.runtime.worker.WorkerCandidateRow;
-import com.xa.mass.runtime.worker.WorkerGroupCapabilityView;
+import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
+import com.xa.mass.worker.runtime.evidence.WorkerLoadSnapshot;
+import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
+import com.xa.mass.worker.runtime.evidence.WorkerGroupCapabilityView;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;

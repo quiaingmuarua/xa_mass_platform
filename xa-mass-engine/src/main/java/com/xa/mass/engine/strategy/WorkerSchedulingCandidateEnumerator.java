@@ -1,9 +1,9 @@
 package com.xa.mass.engine.strategy;
 
-import com.xa.mass.runtime.worker.WorkerCandidateRow;
-import com.xa.mass.runtime.worker.WorkerGroupCapabilityView;
-import com.xa.mass.runtime.worker.WorkerReachabilityState;
-import com.xa.mass.runtime.worker.WorkerSchedulingViewRuntime;
+import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
+import com.xa.mass.worker.runtime.evidence.WorkerGroupCapabilityView;
+import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
+import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.model.WorkerSchedulingView;
 

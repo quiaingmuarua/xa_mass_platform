@@ -1,4 +1,6 @@
-package com.xa.mass.runtime.worker;
+package com.xa.mass.worker.runtime.candidate;
+
+import com.xa.mass.runtime.worker.WorkerRouteBucketPolicy;
 
 import java.util.List;
 import java.util.Set;

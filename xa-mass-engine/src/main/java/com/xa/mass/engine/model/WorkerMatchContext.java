@@ -2,7 +2,7 @@ package com.xa.mass.engine.model;
 
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
-import com.xa.mass.runtime.worker.WorkerCandidateRow;
+import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
 
 import java.util.LinkedHashMap;
 import java.util.Map;

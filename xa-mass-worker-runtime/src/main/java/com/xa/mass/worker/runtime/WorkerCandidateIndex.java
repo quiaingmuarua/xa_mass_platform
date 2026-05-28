@@ -5,7 +5,7 @@ import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.runtime.worker.WorkerRouteBucketPolicies;
 import com.xa.mass.runtime.worker.WorkerRouteBucketPolicy;
 import com.xa.mass.runtime.worker.WorkerSlot;
-import com.xa.mass.runtime.worker.WorkerTaskSelector;
+import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;

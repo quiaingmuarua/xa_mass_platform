@@ -7,7 +7,7 @@ import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.runtime.worker.WorkerMeta;
-import com.xa.mass.runtime.worker.WorkerTaskSelector;
+import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

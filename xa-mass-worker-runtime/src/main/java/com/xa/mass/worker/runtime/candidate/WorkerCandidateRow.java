@@ -1,4 +1,4 @@
-package com.xa.mass.runtime.worker;
+package com.xa.mass.worker.runtime.candidate;
 
 import java.time.LocalDateTime;
 import java.util.Collections;

@@ -12,6 +12,11 @@ Post-WRA-1a note: resource records and resource runtime contracts have moved
 to `xa-mass-worker-runtime` under `com.xa.mass.worker.runtime.resource`. This
 file remains the WRA-0 baseline and disposition record.
 
+Post-WRA-1b note: candidate, scheduling-evidence, admission, wakeup, and warm
+hint contracts have moved to `xa-mass-worker-runtime` under
+`com.xa.mass.worker.runtime.candidate`, `com.xa.mass.worker.runtime.evidence`,
+and `com.xa.mass.worker.runtime.admission`.
+
 Consumer abbreviations:
 
 ```text

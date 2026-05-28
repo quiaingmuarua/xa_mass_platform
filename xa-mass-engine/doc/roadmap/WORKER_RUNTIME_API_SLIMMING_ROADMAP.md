@@ -4,6 +4,8 @@ Status: in progress. WRA-0 inventory is complete in
 [`WORKER_RUNTIME_API_SLIMMING_INVENTORY.md`](./WORKER_RUNTIME_API_SLIMMING_INVENTORY.md).
 WRA-0.5 contract alignment decisions are recorded here and in the inventory.
 WRA-1a resource contract family has moved to `xa-mass-worker-runtime`.
+WRA-1b match/evidence/admission contract families have moved to
+`xa-mass-worker-runtime`.
 This roadmap follows
 [`WORKER_RUNTIME_MODULE_EXTRACTION_ROADMAP.md`](./WORKER_RUNTIME_MODULE_EXTRACTION_ROADMAP.md).
 
@@ -518,6 +520,11 @@ Acceptance:
 
 Goal: move worker matching evidence, candidate source, and admission contracts
 without splitting value types from interfaces that reference them.
+
+Status: complete. Candidate, scheduling-evidence, admission, wakeup, and warm
+hint contracts now live under `com.xa.mass.worker.runtime.candidate`,
+`com.xa.mass.worker.runtime.evidence`, and
+`com.xa.mass.worker.runtime.admission`.
 
 Scope:
 

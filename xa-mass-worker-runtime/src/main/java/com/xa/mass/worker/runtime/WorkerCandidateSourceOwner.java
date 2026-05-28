@@ -1,10 +1,10 @@
 package com.xa.mass.worker.runtime;
 
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.runtime.worker.WorkerCandidateBatch;
-import com.xa.mass.runtime.worker.WorkerCandidateRow;
+import com.xa.mass.worker.runtime.candidate.WorkerCandidateBatch;
+import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
 import com.xa.mass.runtime.worker.WorkerRouteBucketPolicy;
-import com.xa.mass.runtime.worker.WorkerTaskSelector;
+import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

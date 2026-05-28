@@ -1,4 +1,6 @@
-package com.xa.mass.runtime.worker;
+package com.xa.mass.worker.runtime.admission;
+
+import com.xa.mass.runtime.worker.ReserveStatus;
 
 public enum WorkerAdmissionStatus {
     ACCEPTED,

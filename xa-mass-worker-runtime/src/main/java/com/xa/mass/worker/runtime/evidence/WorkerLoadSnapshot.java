@@ -1,4 +1,4 @@
-package com.xa.mass.runtime.worker;
+package com.xa.mass.worker.runtime.evidence;
 
 /**
  * Immutable observational load view for one worker.

@@ -8,7 +8,7 @@ import com.xa.mass.engine.ProjectionAwareTaskManager;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.TestWorkerCandidateRows;
 import com.xa.mass.worker.runtime.WorkerManager;
-import com.xa.mass.runtime.worker.WorkerReachabilityState;
+import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;

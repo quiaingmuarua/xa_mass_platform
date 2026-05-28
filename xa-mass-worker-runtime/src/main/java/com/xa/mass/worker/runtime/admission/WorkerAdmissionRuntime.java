@@ -1,4 +1,6 @@
-package com.xa.mass.runtime.worker;
+package com.xa.mass.worker.runtime.admission;
+
+import com.xa.mass.worker.runtime.evidence.WorkerLoadSnapshot;
 
 /**
  * Runtime admission and occupancy surface for matched workers.

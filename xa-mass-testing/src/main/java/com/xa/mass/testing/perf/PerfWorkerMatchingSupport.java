@@ -6,12 +6,12 @@ import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.engine.resource.DefaultWorkerDispatchResourcePolicy;
 import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
-import com.xa.mass.runtime.worker.WorkerAdmissionResult;
-import com.xa.mass.runtime.worker.WorkerAdmissionRuntime;
-import com.xa.mass.runtime.worker.WorkerCandidateRow;
-import com.xa.mass.runtime.worker.WorkerReachabilityState;
+import com.xa.mass.worker.runtime.admission.WorkerAdmissionResult;
+import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
+import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
+import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
-import com.xa.mass.runtime.worker.WorkerSchedulingViewRuntime;
+import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
 
 import java.util.Locale;
 

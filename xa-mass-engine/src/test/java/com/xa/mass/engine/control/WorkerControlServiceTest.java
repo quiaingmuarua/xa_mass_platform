@@ -16,7 +16,7 @@ import com.xa.mass.engine.testutil.RecordingEventSink;
 import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.runtime.worker.WorkerCapabilityReport;
-import com.xa.mass.runtime.worker.WorkerCandidateRow;
+import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
 import com.xa.mass.runtime.worker.WorkerDispatchGateRuntime;
 import com.xa.mass.runtime.worker.WorkerStateProjection;
 import com.xa.mass.runtime.worker.WorkerStateReport;

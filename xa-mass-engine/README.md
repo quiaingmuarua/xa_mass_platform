@@ -407,9 +407,9 @@ Current owner types:
 - `src/main/java/com/xa/mass/engine/model/WorkerSchedulingView.java`
 - `src/main/java/com/xa/mass/engine/model/WorkerMatchContext.java`
 - `src/main/java/com/xa/mass/engine/strategy/WorkerSchedulingCandidateEnumerator.java`
-- `../platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/WorkerCandidateRuntime.java`
-- `../platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/WorkerSchedulingViewRuntime.java`
-- `../platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/WorkerAdmissionRuntime.java`
+- `../xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/candidate/WorkerCandidateRuntime.java`
+- `../xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/evidence/WorkerSchedulingViewRuntime.java`
+- `../xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/admission/WorkerAdmissionRuntime.java`
 - `src/main/java/com/xa/mass/engine/rules/RuleConfig.java`
 
 Current default rule set:

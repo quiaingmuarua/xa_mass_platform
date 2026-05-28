@@ -634,7 +634,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
         assertTrue(violations.isEmpty(),
                 "WorkerManager belongs in xa-mass-worker-runtime, while reachability contracts belong in "
-                        + "mass-runtime-api. Do not keep engine-local reachability contract copies:\n"
+                        + "xa-mass-worker-runtime evidence contracts. Do not keep engine-local reachability contract copies:\n"
                         + String.join("\n", violations));
     }
 
@@ -1082,12 +1082,12 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void workerAdmissionRuntimeContractLivesInRuntimeApi() throws IOException {
+    void workerAdmissionRuntimeContractLivesInWorkerRuntime() throws IOException {
         Path repo = repositoryRoot();
         Path engineContractPath = repo.resolve(
                 "xa-mass-engine/src/main/java/com/xa/mass/engine/worker/WorkerAdmissionRuntime.java");
         Path runtimeContractPath = repo.resolve(
-                "platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/WorkerAdmissionRuntime.java");
+                "xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/admission/WorkerAdmissionRuntime.java");
 
         List<String> violations = new ArrayList<>();
         if (Files.exists(engineContractPath)) {
@@ -1106,8 +1106,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "WorkerAdmissionRuntime is the first extracted worker runtime contract. "
-                        + "Keep it runtime-api owned and independent from engine/base model rows:\n"
+                "WorkerAdmissionRuntime is a worker-runtime admission contract. "
+                        + "Keep it worker-runtime owned and independent from engine/base model rows:\n"
                         + String.join("\n", violations));
     }
 
@@ -1165,14 +1165,14 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void workerSchedulingViewRuntimeContractLivesInRuntimeApi() throws IOException {
+    void workerSchedulingViewRuntimeContractLivesInWorkerRuntime() throws IOException {
         Path repo = repositoryRoot();
         Path engineContractPath = repo.resolve(
                 "xa-mass-engine/src/main/java/com/xa/mass/engine/worker/WorkerSchedulingViewRuntime.java");
         Path runtimeContractPath = repo.resolve(
-                "platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/WorkerSchedulingViewRuntime.java");
+                "xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/evidence/WorkerSchedulingViewRuntime.java");
         Path groupCapabilityPath = repo.resolve(
-                "platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/WorkerGroupCapabilityView.java");
+                "xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/evidence/WorkerGroupCapabilityView.java");
 
         List<String> violations = new ArrayList<>();
         if (Files.exists(engineContractPath)) {
@@ -1193,7 +1193,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "WorkerSchedulingViewRuntime must stay runtime-api owned and independent from "
+                "WorkerSchedulingViewRuntime must stay worker-runtime owned and independent from "
                         + "engine-owned WorkerGroupRecord / base Worker rows:\n"
                         + String.join("\n", violations));
     }
@@ -1279,8 +1279,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
     @Test
     void workerCandidateRuntimeContractDoesNotExposeDiagnosticsOrWarmWrites() throws IOException {
-        Path candidateRuntimePath = Path.of("../platform_infra/mass-runtime-api/src/main/java")
-                .resolve("com/xa/mass/runtime/worker/WorkerCandidateRuntime.java");
+        Path candidateRuntimePath = Path.of("../xa-mass-worker-runtime/src/main/java")
+                .resolve("com/xa/mass/worker/runtime/candidate/WorkerCandidateRuntime.java");
         String source = Files.readString(candidateRuntimePath, StandardCharsets.UTF_8);
 
         List<String> violations = new ArrayList<>();
@@ -1387,8 +1387,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
     void engineStrategyConsumesWorkerRuntimeViewsWithoutWorkerRuntimeOwnerAccess() throws IOException {
         Path strategyRoot = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/strategy");
         Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
-                Map.entry("worker-runtime implementation package",
-                        Pattern.compile("\\bcom\\.xa\\.mass\\.worker\\.runtime\\b")),
+                Map.entry("worker-runtime non-match package",
+                        Pattern.compile("\\bimport\\s+com\\.xa\\.mass\\.worker\\.runtime\\.(?!(?:candidate|evidence|admission)\\.)")),
                 Map.entry("worker registry contract",
                         Pattern.compile("\\bWorkerRegistry\\b")),
                 Map.entry("resource/report/group runtime owners",
@@ -1930,7 +1930,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "WorkerResourceRuntime is a runtime-api boundary and must stay runtime-neutral:\n"
+                "WorkerResourceRuntime is a worker-runtime resource boundary and must stay runtime-neutral:\n"
                         + String.join("\n", violations));
     }
 
@@ -2163,7 +2163,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 Map.entry("worker state report -> reachability truth",
                         new GuardedSourceArea(
                                 List.of(
-                                        repo.resolve("platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/WorkerReachabilityView.java"),
+                                        repo.resolve("xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/evidence/WorkerReachabilityView.java"),
                                         repo.resolve("xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/WorkerManager.java")
                                 ),
                                 Pattern.compile("\\bWorkerStateReport\\b")))
@@ -2321,7 +2321,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 Map.entry("reachability read model",
                         new GuardedSourceArea(
                                 List.of(
-                                        repo.resolve("platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/WorkerReachabilityView.java")
+                                        repo.resolve("xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/evidence/WorkerReachabilityView.java")
                                 ),
                                 workerControlOrState)),
                 Map.entry("load read model",

@@ -1,4 +1,4 @@
-package com.xa.mass.runtime.worker;
+package com.xa.mass.worker.runtime.evidence;
 
 /**
  * Read-only worker transport reachability view consumed by engine matching.

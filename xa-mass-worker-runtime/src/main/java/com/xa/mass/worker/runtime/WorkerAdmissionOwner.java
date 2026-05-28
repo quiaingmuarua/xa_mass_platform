@@ -1,9 +1,9 @@
 package com.xa.mass.worker.runtime;
 
-import com.xa.mass.runtime.worker.WorkerLoadSnapshot;
+import com.xa.mass.worker.runtime.evidence.WorkerLoadSnapshot;
 import com.xa.mass.runtime.worker.ReserveResult;
 import com.xa.mass.runtime.worker.ReserveStatus;
-import com.xa.mass.runtime.worker.WorkerAdmissionResult;
+import com.xa.mass.worker.runtime.admission.WorkerAdmissionResult;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 
 import java.util.List;

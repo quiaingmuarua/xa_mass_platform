@@ -1,7 +1,7 @@
 package com.xa.mass.worker.runtime;
 
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
-import com.xa.mass.runtime.worker.WorkerAdmissionStatus;
+import com.xa.mass.worker.runtime.admission.WorkerAdmissionStatus;
 import com.xa.mass.runtime.worker.WorkerMeta;
 import org.junit.jupiter.api.Test;
 

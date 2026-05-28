@@ -11,7 +11,7 @@ import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.engine.monkey.snapshot.TaskSnapshot;
 import com.xa.mass.engine.monkey.snapshot.WorkerSchedulingSnapshot;
 import com.xa.mass.engine.monkey.snapshot.WorkerSnapshot;
-import com.xa.mass.runtime.worker.WorkerCandidateRow;
+import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

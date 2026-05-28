@@ -3,7 +3,7 @@ package com.xa.mass.engine.resource;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.util.TraceEventLogger;
-import com.xa.mass.runtime.worker.WorkerAdmissionRuntime;
+import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
 
 import java.util.Collection;
 import java.util.LinkedHashMap;
