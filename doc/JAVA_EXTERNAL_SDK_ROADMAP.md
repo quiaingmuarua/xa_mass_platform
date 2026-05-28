@@ -5,6 +5,8 @@ Status: active. JSDK-0 inventory is complete in
 JSDK-1 module skeleton and HTTP core are implemented under
 [`../integrations/xa-mass-java-sdk`](../integrations/xa-mass-java-sdk).
 JSDK-2 task client mainline is implemented in the same module.
+JSDK-3 worker topology and direct polling worker client are implemented in the
+same module.
 
 This roadmap defines a new `xa-mass-java-sdk` artifact for repo-external Java
 clients. It is intentionally separate from the current `xa-mass-sdk`, and it
