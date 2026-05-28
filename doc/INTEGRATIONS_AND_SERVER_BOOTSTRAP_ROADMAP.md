@@ -386,12 +386,13 @@ Minimum checks after server bootstrap extraction:
 ```bash
 mvn -pl xa-mass-server -am -Dtest=JavaPollingWorkerBlackBoxIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test
 mvn -pl xa-mass-server -am -Dtest=DevSampleWorkerLauncherIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -pl xa-mass-server -am -Dtest=CleanServerStartupIntegrationTest,ServerMainSourceArchitectureGuardTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Add a clean-start smoke proof when the implementation removes server-owned
 scenario data:
 
-- start server with the default dev profile
+- start server with the dev profile and sample/mock worker launch disabled
 - query task list / worker capability read models
 - verify no demo tasks, workers, or WorkerGroups exist until the external
   scenario launcher runs
