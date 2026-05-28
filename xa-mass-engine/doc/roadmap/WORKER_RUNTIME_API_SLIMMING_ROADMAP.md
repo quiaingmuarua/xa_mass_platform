@@ -1,6 +1,6 @@
 # Worker Runtime API Slimming Roadmap
 
-Status: in progress. WRA-0 inventory is complete in
+Status: complete. WRA-0 inventory is complete in
 [`WORKER_RUNTIME_API_SLIMMING_INVENTORY.md`](./WORKER_RUNTIME_API_SLIMMING_INVENTORY.md).
 WRA-0.5 contract alignment decisions are recorded here and in the inventory.
 WRA-1a resource contract family has moved to `xa-mass-worker-runtime`.
@@ -15,6 +15,7 @@ WRA-3 has slimmed `mass-runtime-api` to registry primitives and active
 extension points only. WRA-4 guard work is complete for this roadmap: explicit
 runtime-api allowlist, memory/Redis dependency, engine strategy caller, and
 transport lookup-only constraints are covered by architecture tests.
+WRA-5 proof and verification is complete.
 This roadmap follows
 [`WORKER_RUNTIME_MODULE_EXTRACTION_ROADMAP.md`](./WORKER_RUNTIME_MODULE_EXTRACTION_ROADMAP.md).
 
@@ -739,6 +740,9 @@ Acceptance:
 ## Slice WRA-5: Proof And Verification
 
 Run the existing WRX proof set after the package move:
+
+Status: complete. Memory/Redis, engine, transport, SDK/runtime selection, and
+external worker proof commands have passed after the package move.
 
 ```powershell
 mvn -pl platform_infra/mass-runtime-memory,platform_infra/mass-runtime-redis -am `
