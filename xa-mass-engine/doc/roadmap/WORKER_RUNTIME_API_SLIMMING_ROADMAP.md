@@ -12,8 +12,9 @@ WRA-2 route-bucket policy ownership has been split: registry keeps only the
 low-level SPI/default helper, and platform approved-attribute routing now lives
 in `xa-mass-worker-runtime`.
 WRA-3 has slimmed `mass-runtime-api` to registry primitives and active
-extension points only. WRA-4 guard work has started with an explicit
-`mass-runtime-api` worker package allowlist and memory/Redis dependency guard.
+extension points only. WRA-4 guard work is complete for this roadmap: explicit
+runtime-api allowlist, memory/Redis dependency, engine strategy caller, and
+transport lookup-only constraints are covered by architecture tests.
 This roadmap follows
 [`WORKER_RUNTIME_MODULE_EXTRACTION_ROADMAP.md`](./WORKER_RUNTIME_MODULE_EXTRACTION_ROADMAP.md).
 
@@ -693,10 +694,9 @@ Acceptance:
 
 Goal: prevent regression into another shared API bucket.
 
-Status: in progress. The explicit `com.xa.mass.runtime.worker` allowlist and
-memory/Redis no-worker-runtime-dependency guard are implemented; remaining
-transport/control-specific caller guards should be kept aligned with the
-existing boundary tests.
+Status: complete. The explicit `com.xa.mass.runtime.worker` allowlist,
+memory/Redis no-worker-runtime-dependency guard, engine strategy import guard,
+and transport lookup-only guard are implemented.
 
 Add or update guards:
 

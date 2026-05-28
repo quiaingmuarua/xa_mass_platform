@@ -1485,6 +1485,45 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void transportWorkerRuntimeAccessStaysLookupOnly() throws IOException {
+        Path repo = repositoryRoot();
+        List<Path> transportRoots = List.of(
+                repo.resolve("transport/transport_runtime/src/main/java"),
+                repo.resolve("transport/polling-adapter/src/main/java"),
+                repo.resolve("transport/socket-adapter/src/main/java"),
+                repo.resolve("transport/websocket-adapter/src/main/java")
+        );
+        Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
+                Map.entry("full resource mutation surface",
+                        Pattern.compile("\\bimport\\s+com\\.xa\\.mass\\.worker\\.runtime\\.resource\\."
+                                + "(?:WorkerResourceRuntime|WorkerResourceDeclarationRuntime|WorkerNodeBindingRuntime)\\b")),
+                Map.entry("worker registry mutation surface",
+                        Pattern.compile("\\bimport\\s+com\\.xa\\.mass\\.runtime\\.worker\\.WorkerRegistry\\b")),
+                Map.entry("admission/control/report mutation surface",
+                        Pattern.compile("\\bimport\\s+com\\.xa\\.mass\\.worker\\.runtime\\."
+                                + "(?:admission\\.WorkerAdmissionRuntime|control\\.WorkerDispatchGateRuntime|"
+                                + "report\\.WorkerReportRuntime|admission\\.WorkerWarmHintRuntime)\\b"))
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Path root : transportRoots) {
+            for (Path sourcePath : javaSourceFiles(root)) {
+                String source = Files.readString(sourcePath, StandardCharsets.UTF_8);
+                for (Map.Entry<String, Pattern> forbiddenPattern : forbiddenPatterns.entrySet()) {
+                    if (forbiddenPattern.getValue().matcher(source).find()) {
+                        violations.add(sourcePath + " reaches " + forbiddenPattern.getKey());
+                    }
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Transport may consume worker resource lookup evidence, but must not mutate "
+                        + "worker runtime state or registry truth directly:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void serverAndTransportDoNotImportEngineWorkerInternals() throws IOException {
         Path repo = repositoryRoot();
         List<Path> guardedRoots = List.of(
