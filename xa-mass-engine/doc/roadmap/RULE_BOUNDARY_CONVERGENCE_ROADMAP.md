@@ -8,10 +8,11 @@ Progress:
   [`RULE_BOUNDARY_CONVERGENCE_INVENTORY.md`](RULE_BOUNDARY_CONVERGENCE_INVENTORY.md).
 - RBC-1 contract notes are documented in
   [`RULE_BOUNDARY_CONTRACTS.md`](RULE_BOUNDARY_CONTRACTS.md).
-- RBC-2 is partially implemented: evaluator registry moved out of
+- RBC-2 is implemented for the rule boundary: evaluator registry moved out of
   `RuleStorage`, matching contracts exist, and the concrete QLExpress rule
-  evaluator moved to engine rule assembly. RBC-2 is not complete while
-  `xa-mass-base` still carries `qlexpress4` for jsondsl runtime code.
+  evaluator moved to engine rule assembly. The remaining `xa-mass-base`
+  `qlexpress4` dependency is classified as JSON-DSL boundary work, not rule
+  evaluator work.
 
 This roadmap narrows the rule boundary after the worker-runtime and storage
 boundary convergence work. The current code already stores rule definitions in
@@ -57,8 +58,9 @@ that work in
 - The concrete QLExpress rule evaluator now lives in
   `xa-mass-engine.rules.QLExpressRuleEvaluator`.
 - The `qlexpress4` third-party dependency is currently declared by
-  `xa-mass-base`. This remains an ownership leak, but it is not only caused by
-  rule evaluation: `xa-mass-base` jsondsl runtime code also imports QLExpress.
+  `xa-mass-base` for JSON-DSL runtime code. That is a separate base-module
+  boundary issue tracked in
+  [`../../../xa-mass-base/JSON_DSL_BOUNDARY_CONVERGENCE_ROADMAP.md`](../../../xa-mass-base/JSON_DSL_BOUNDARY_CONVERGENCE_ROADMAP.md).
 - `xa-mass-engine.rules.RuleManager` is currently both:
   - a rule definition CRUD facade (`addDefaultRule`, `updateRule`,
     `deleteRule`, `clear`, etc.)
@@ -99,7 +101,8 @@ Rule evaluation is an engine matching concern.
 Evaluator registration is runtime assembly, not durable storage truth.
 
 QLExpress is a concrete evaluator implementation. It should not live in
-`xa-mass-base` and should not be owned by storage implementations.
+storage implementations. The `xa-mass-base` QLExpress dependency is caused by
+legacy JSON-DSL runtime code and is handled by the JSON-DSL boundary roadmap.
 
 Implications:
 
@@ -139,7 +142,6 @@ MatchingRuleEvaluator
 
 QLExpress evaluator implementation
   -> module owner: engine rule runtime assembly or dedicated evaluator module
-  -> not xa-mass-base
   -> not storage implementation modules
 ```
 
@@ -180,8 +182,9 @@ Dependencies that should converge in this roadmap:
   not import `RuleStorage` directly.
 - `mass-storage-memory` is already test-scope and should stay out of engine
   production code.
-- `qlexpress4` should move from `xa-mass-base` to the module that owns the
-  concrete QLExpress evaluator.
+- the rule evaluator implementation should own any QLExpress dependency it
+  needs; `xa-mass-base` QLExpress residue is JSON-DSL work, not rule matching
+  work.
 
 Storage dependency rule for engine:
 
@@ -302,9 +305,7 @@ Scope:
    against `WorkerMatchContext`. (Implemented.)
 6. Move or share QLExpress evaluator implementation according to the RBC-1
    owner decision. (Implemented for rule evaluator.)
-7. Move the `qlexpress4` Maven dependency out of `xa-mass-base` and into the
-   module that owns the concrete evaluator.
-8. Update storage tests that currently assert evaluator metadata through
+7. Update storage tests that currently assert evaluator metadata through
    `RuleStorage`.
 
 Acceptance:
@@ -314,8 +315,8 @@ Acceptance:
 3. The matching contract exposes no CRUD verbs.
 4. The matching contract does not expose evaluator registration.
 5. Rule evaluation still supports the current QLExpress evaluator.
-6. `xa-mass-base` no longer declares `qlexpress4`. (Pending; jsondsl still
-   imports QLExpress.)
+6. Rule storage modules no longer import or auto-register QLExpress evaluator
+   implementations.
 7. Existing matching tests still prove default rule evaluation and failed-rule
    diagnostics.
 
@@ -440,7 +441,7 @@ Scope:
    - future rule write endpoints must not live under `/runtime/rules`
    - engine production code must not depend on storage implementations
    - engine production code must not import `com.xa.mass.runtime.memory`
-   - `xa-mass-base` must not depend on QLExpress
+   - storage modules must not import concrete rule evaluator implementations
 2. Add focused proof that default rules still affect worker matching.
 3. Add focused proof that rule definition persistence still works through
    memory and JDBC storage.
@@ -454,7 +455,8 @@ Acceptance:
    packages.
 4. Guard fails if engine production code imports runtime memory
    implementation packages.
-5. Guard fails if `xa-mass-base` carries QLExpress after evaluator extraction.
+5. Guard fails if storage modules import QLExpress evaluator classes after
+   evaluator extraction.
 6. Memory and JDBC rule definition tests pass.
 7. Existing scheduling/rule diagnostics remain behaviorally equivalent.
 
@@ -491,7 +493,6 @@ Dependency review commands for the engine convergence slices:
 
 ```powershell
 mvn -pl xa-mass-engine dependency:tree
-mvn -pl xa-mass-base dependency:tree
 ```
 
 The exact test list should be corrected in RBC-0 after the current rule test

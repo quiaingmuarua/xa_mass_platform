@@ -91,15 +91,13 @@ Current direct QLExpress imports outside storage evaluators:
 - `xa-mass-base/src/main/java/com/xa/mass/base/jsondsl/builtin/BuiltinFunctions.java`
 - `xa-mass-base/src/test/java/com/xa/mass/base/jsondsl/QLExpressBuiltinTest.java`
 
-RBC-1 decision required:
+RBC-1 decision:
 
-- If `jsondsl` is still a base-level model utility, then removing QLExpress
-  from `xa-mass-base` requires moving jsondsl runtime/eval classes to a runtime
-  or rule/evaluator module first.
-- If `jsondsl` is only a generator/test/support facility, it should not keep
-  QLExpress in base production scope.
-- QLExpress evaluator ownership cannot be solved by moving only the two storage
-  evaluator classes while base still owns QLExpress through jsondsl.
+- Rule evaluator ownership can be solved without moving JSON-DSL.
+- The two storage evaluator classes move to engine rule runtime assembly.
+- Remaining `xa-mass-base` QLExpress ownership is a JSON-DSL boundary problem,
+  tracked in
+  [`../../../xa-mass-base/JSON_DSL_BOUNDARY_CONVERGENCE_ROADMAP.md`](../../../xa-mass-base/JSON_DSL_BOUNDARY_CONVERGENCE_ROADMAP.md).
 
 ## Engine Runtime-Memory Dependency Residue
 

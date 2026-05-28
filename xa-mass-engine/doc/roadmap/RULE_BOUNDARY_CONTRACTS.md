@@ -106,31 +106,19 @@ registry or plugin framework is part of this roadmap.
 
 ## QLExpress Dependency Decision
 
-QLExpress remains the default evaluator language, but its dependency owner must
-change.
+QLExpress remains the default matching-rule evaluator language, but storage no
+longer owns evaluator lifecycle or concrete evaluator code.
 
-Current blockers:
-
-- `xa-mass-base` declares `qlexpress4`.
-- `xa-mass-base` production code imports QLExpress in jsondsl runtime classes.
-- storage implementation modules import QLExpress for rule evaluators.
-
-Target:
+Rule-boundary target:
 
 - storage modules do not import QLExpress
-- base model module does not carry QLExpress only for rule evaluation
 - concrete QLExpress rule evaluator lives with engine rule runtime assembly
+- evaluator registration is process/runtime assembly, not durable storage truth
 
-Open implementation decision before removing `qlexpress4` from
-`xa-mass-base`:
-
-- move jsondsl runtime/eval classes out of `xa-mass-base`, or
-- split jsondsl API/model from jsondsl QLExpress runtime implementation, or
-- explicitly declare jsondsl as the separate reason base still carries
-  QLExpress and handle it in a follow-up module-boundary roadmap
-
-Do not claim RBC-2 complete while `xa-mass-base` still carries `qlexpress4`
-for unclassified production code.
+`xa-mass-base` still declares `qlexpress4`, but the remaining direct imports
+belong to legacy JSON-DSL runtime code, not matching rule evaluation. Track
+that separate boundary in
+[`../../../xa-mass-base/JSON_DSL_BOUNDARY_CONVERGENCE_ROADMAP.md`](../../../xa-mass-base/JSON_DSL_BOUNDARY_CONVERGENCE_ROADMAP.md).
 
 ## Route/API Boundary
 
