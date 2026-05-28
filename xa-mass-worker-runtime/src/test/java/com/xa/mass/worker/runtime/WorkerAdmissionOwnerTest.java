@@ -1,7 +1,7 @@
 package com.xa.mass.worker.runtime;
 
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
-import com.xa.mass.runtime.worker.ReserveStatus;
+import com.xa.mass.runtime.worker.WorkerAdmissionStatus;
 import com.xa.mass.runtime.worker.WorkerMeta;
 import org.junit.jupiter.api.Test;
 
@@ -51,7 +51,7 @@ class WorkerAdmissionOwnerTest {
     void missingWorkerSlotRejectsReservation() {
         WorkerAdmissionOwner owner = new WorkerAdmissionOwner(new InMemoryWorkerRegistry());
 
-        assertEquals(ReserveStatus.MISSING_SLOT,
+        assertEquals(WorkerAdmissionStatus.MISSING_SLOT,
                 owner.reserveWorkerCapacity("missing-worker", "task-1").status());
     }
 

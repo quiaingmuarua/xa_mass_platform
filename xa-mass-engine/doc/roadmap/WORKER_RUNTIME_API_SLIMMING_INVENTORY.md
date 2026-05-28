@@ -34,9 +34,15 @@ api      same mass-runtime-api package references
 3. `WorkerRouteBucketPolicies` must be split. The low-level default-bucket
    helper remains in `mass-runtime-api`; approved worker attribute policy moves
    to `xa-mass-worker-runtime`.
-4. `ReserveResult` / `ReserveStatus` remain registry primitives. WRA-0.5 must
-   decide whether engine strategy receives them directly or through a
-   worker-plane admission result that hides `WorkerSlot`.
+4. `ReserveResult` / `ReserveStatus` remain registry primitives. WRA-0.5 added
+   `WorkerAdmissionResult` / `WorkerAdmissionStatus`, and engine strategy now
+   receives the worker-plane result rather than registry reserve primitives.
+5. `WorkerResourceRuntime` remains the full composite resource surface for
+   current assembly, but WRA-0.5 split narrow caller contracts:
+   `WorkerResourceQueryRuntime`, `WorkerResourceDeclarationRuntime`, and
+   `WorkerNodeBindingRuntime`.
+6. Engine-side `WorkerRoutingPolicy` is task-side only after WRA-0.5; worker
+   metadata bucket computation remains below the worker-runtime boundary.
 
 ## Inventory Table
 
@@ -49,11 +55,13 @@ api      same mass-runtime-api package references
 | `EventKey` | registry capability key | keep in runtime-api | eng, mem, redis, api, wr | memory/Redis, worker-runtime impl; project-scoped semantics only |
 | `NodeGroupBindingRecord` | worker resource contract | move to worker-runtime resource | eng, sdk, wr, api | engine control/resource, SDK/server shell, worker-runtime impl |
 | `RandomWorkerCandidateSamplingPolicy` | registry default policy | keep in runtime-api | mem, redis, api, wr | memory/Redis, worker-runtime impl |
-| `ReserveResult` | registry primitive | keep in runtime-api | eng, mem, redis, testing, wr, api | memory/Redis, worker-runtime impl; engine match only by WRA-0.5 exception |
-| `ReserveStatus` | registry primitive | keep in runtime-api | eng, mem, redis, wr, api | memory/Redis, worker-runtime impl; engine match only by WRA-0.5 exception |
+| `ReserveResult` | registry primitive | keep in runtime-api | mem, redis, wr, api | memory/Redis, worker-runtime impl; not an engine match contract after WRA-0.5 |
+| `ReserveStatus` | registry primitive | keep in runtime-api | mem, redis, wr, api | memory/Redis, worker-runtime impl; not an engine match contract after WRA-0.5 |
 | `WorkerAdmissionContext` | unused registry extension residue | delete unless WRA-0.5 revives | api | none yet |
 | `WorkerAdmissionPolicy` | unused registry extension residue | delete unless WRA-0.5 revives | none | none yet |
+| `WorkerAdmissionResult` | worker admission result | move to worker-runtime admission | eng, testing, wr | engine match, worker-runtime impl, testing support |
 | `WorkerAdmissionRuntime` | worker admission contract | move to worker-runtime admission | eng, sdk, testing, wr | engine match/resource release, SDK assembly, worker-runtime impl |
+| `WorkerAdmissionStatus` | worker admission status | move to worker-runtime admission | eng, testing, wr | engine match, worker-runtime impl, testing support |
 | `WorkerAvailabilityWakeupRuntime` | worker lifecycle/admission contract | move to worker-runtime admission | eng, sdk, wr | engine lifecycle wiring, SDK assembly, worker-runtime impl |
 | `WorkerCandidateBatch` | worker candidate value | move to worker-runtime candidate | eng, wr, api | engine match, worker-runtime impl |
 | `WorkerCandidateRow` | worker candidate value | move to worker-runtime candidate | eng, sdk, testing, wr, api | engine match, worker-runtime impl, testing support |
@@ -68,17 +76,20 @@ api      same mass-runtime-api package references
 | `WorkerGroupCapabilityView` | scheduling evidence value | move to worker-runtime evidence | eng, wr, api | engine match, worker-runtime impl |
 | `WorkerGroupRecord` | worker resource contract | move to worker-runtime resource | eng, sdk, testing, wr, api | engine control/resource, SDK/server shell, worker-runtime impl |
 | `WorkerLoadSnapshot` | scheduling evidence value | move to worker-runtime evidence | eng, wr, api | engine match, worker-runtime impl |
-| `WorkerMeta` | registry primitive | keep in runtime-api | eng, mem, redis, wr, api | memory/Redis, worker-runtime impl; engine only as temporary WRA-0.5 exception |
+| `WorkerMeta` | registry primitive | keep in runtime-api | mem, redis, wr, api | memory/Redis, worker-runtime impl; not an engine strategy contract after WRA-0.5 |
 | `WorkerReachabilityState` | scheduling evidence enum | move to worker-runtime evidence | eng, sdk, testing, wr, api | engine match, SDK public shell, worker-runtime impl |
 | `WorkerReachabilityView` | scheduling evidence contract | move to worker-runtime evidence | eng, sdk, wr | engine match, SDK assembly, worker-runtime impl |
 | `WorkerRegistry` | registry SPI | keep in runtime-api | eng, mem, redis, sdk, server, wr, api | memory/Redis, worker-runtime impl, documented low-level assembly |
 | `WorkerReportRuntime` | worker report contract | move to worker-runtime report | eng, sdk, wr | engine control/report path, SDK assembly, worker-runtime impl |
+| `WorkerNodeBindingRuntime` | worker node/group binding mutation contract | move to worker-runtime resource | wr, api | worker-runtime impl; narrow mutation callers only |
+| `WorkerResourceDeclarationRuntime` | worker resource declaration mutation contract | move to worker-runtime resource | wr, api | worker-runtime impl; SDK/server declaration paths |
+| `WorkerResourceQueryRuntime` | worker resource lookup contract | move to worker-runtime resource | eng, tx, wr, api | engine control lookup, transport lookup, worker-runtime impl |
 | `WorkerResourceRecord` | worker resource value | move to worker-runtime resource | eng, sdk, testing, tx, wr, api | engine control/resource, SDK/server shell, transport, worker-runtime impl |
-| `WorkerResourceRuntime` | worker resource contract | split or move in WRA-0.5 | eng, sdk, testing, tx, wr | engine control/resource, SDK/server shell, transport, worker-runtime impl |
+| `WorkerResourceRuntime` | composite worker resource contract | move to worker-runtime resource | sdk, testing, wr | SDK/server assembly, worker-runtime impl; avoid for lookup-only transport/control callers |
 | `WorkerRouteBucketPolicies` | mixed registry default and platform routing policy | split in WRA-2 | eng, mem, redis, wr | memory/Redis default helper; worker-runtime platform policy |
-| `WorkerRouteBucketPolicy` | registry route-bucket SPI | keep in runtime-api | eng, mem, redis, wr, api | memory/Redis, worker-runtime impl; engine routing only by WRA-0.5 decision |
+| `WorkerRouteBucketPolicy` | registry route-bucket SPI | keep in runtime-api | eng, mem, redis, wr, api | memory/Redis, worker-runtime impl; engine strategy import is WRA-2 route-policy residue |
 | `WorkerSchedulingViewRuntime` | scheduling evidence contract | move or rename to worker-runtime evidence | eng, sdk, testing, wr | engine match, SDK assembly/testing, worker-runtime impl |
-| `WorkerSlot` | registry primitive | keep in runtime-api | eng, mem, redis, wr, api | memory/Redis, worker-runtime impl; engine match must not depend directly after WRA-0.5 |
+| `WorkerSlot` | registry primitive | keep in runtime-api | mem, redis, wr, api | memory/Redis, worker-runtime impl; not an engine match contract after WRA-0.5 |
 | `WorkerStateProjection` | worker report/projection value | move to worker-runtime report | eng, sdk, wr, api | engine control/report path, SDK/server shell, worker-runtime impl |
 | `WorkerStateProjectionResult` | worker report/projection result | move to worker-runtime report | eng, sdk, wr, api | engine control/report path, SDK/server shell, worker-runtime impl |
 | `WorkerStateProjectionRuntime` | worker report/projection contract | move to worker-runtime report | eng, sdk, wr | engine control/report path, SDK assembly, worker-runtime impl |
@@ -98,4 +109,8 @@ api      same mass-runtime-api package references
   `WorkerMeta`, `WorkerRegistry`, `WorkerRouteBucketPolicies`,
   `WorkerRouteBucketPolicy`, and `WorkerSlot`.
 - Public worker-runtime contracts now have allowed caller families.
+- WRA-0.5 adds `WorkerAdmissionResult`, `WorkerAdmissionStatus`,
+  `WorkerResourceQueryRuntime`, `WorkerResourceDeclarationRuntime`, and
+  `WorkerNodeBindingRuntime`; they are worker-plane contracts and must move out
+  of `mass-runtime-api` in WRA-1.
 - WRA-0 introduces no code behavior change.

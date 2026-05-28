@@ -1,6 +1,6 @@
 package com.xa.mass.transport.polling.runtime;
 
-import com.xa.mass.runtime.worker.WorkerResourceRuntime;
+import com.xa.mass.runtime.worker.WorkerResourceQueryRuntime;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.polling.worker.PollingWorkerAdapter;
@@ -25,7 +25,7 @@ public final class DefaultWorkerTransportRuntimeFactory implements WorkerTranspo
             new TransportAdapterDescriptor(PollingWorkerAdapter.PROTOCOL, PollingWorkerAdapter.PROTOCOL);
 
     @Override
-    public TransportRuntimeRegistry create(WorkerResourceRuntime workerResourceRuntime,
+    public TransportRuntimeRegistry create(WorkerResourceQueryRuntime workerResourceRuntime,
                                            TaskResultIngestChannel taskResultIngestChannel,
                                            WorkerSystemEventChannel systemEventChannel,
                                            WorkerPresenceStore workerPresenceStore,

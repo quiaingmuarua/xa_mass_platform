@@ -6,7 +6,7 @@ import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.engine.resource.DefaultWorkerDispatchResourcePolicy;
 import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
-import com.xa.mass.runtime.worker.ReserveResult;
+import com.xa.mass.runtime.worker.WorkerAdmissionResult;
 import com.xa.mass.runtime.worker.WorkerAdmissionRuntime;
 import com.xa.mass.runtime.worker.WorkerCandidateRow;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;
@@ -31,7 +31,7 @@ final class PerfWorkerMatchingSupport {
             return null;
         }
         String workerId = worker.workerId();
-        ReserveResult reserveResult = admissionRuntime.reserveWorkerCapacity(workerId, task.getTid());
+        WorkerAdmissionResult reserveResult = admissionRuntime.reserveWorkerCapacity(workerId, task.getTid());
         if (!reserveResult.accepted()) {
             return null;
         }

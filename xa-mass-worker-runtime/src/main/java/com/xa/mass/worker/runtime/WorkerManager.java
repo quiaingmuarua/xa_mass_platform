@@ -7,7 +7,7 @@ import com.xa.mass.runtime.worker.WorkerGroupRecord;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.DispatchAvailabilitySource;
-import com.xa.mass.runtime.worker.ReserveResult;
+import com.xa.mass.runtime.worker.WorkerAdmissionResult;
 import com.xa.mass.runtime.worker.WorkerAdmissionRuntime;
 import com.xa.mass.runtime.worker.WorkerAvailabilityWakeupRuntime;
 import com.xa.mass.runtime.worker.WorkerCandidateBatch;
@@ -323,7 +323,7 @@ public class WorkerManager implements WorkerResourceRuntime,
     }
 
     @Override
-    public ReserveResult reserveWorkerCapacity(String workerId, String taskId) {
+    public WorkerAdmissionResult reserveWorkerCapacity(String workerId, String taskId) {
         return admissionOwner.reserveWorkerCapacity(workerId, taskId);
     }
 

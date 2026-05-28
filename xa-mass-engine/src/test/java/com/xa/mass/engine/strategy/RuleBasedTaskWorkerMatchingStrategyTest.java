@@ -25,8 +25,8 @@ import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.storage.memory.InMemoryRuleStorage;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.engine.util.TraceEventLogCapture;
-import com.xa.mass.runtime.worker.ReserveResult;
-import com.xa.mass.runtime.worker.ReserveStatus;
+import com.xa.mass.runtime.worker.WorkerAdmissionResult;
+import com.xa.mass.runtime.worker.WorkerAdmissionStatus;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
@@ -596,8 +596,8 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                 new InMemoryWorkerRegistry()
         ) {
             @Override
-            public ReserveResult reserveWorkerCapacity(String workerId, String taskId) {
-                return ReserveResult.rejected(ReserveStatus.STALE_HEARTBEAT, "worker heartbeat stale");
+            public WorkerAdmissionResult reserveWorkerCapacity(String workerId, String taskId) {
+                return WorkerAdmissionResult.rejected(WorkerAdmissionStatus.STALE_HEARTBEAT, "worker heartbeat stale");
             }
         };
         RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
@@ -862,8 +862,8 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         }
 
         @Override
-        public ReserveResult reserveWorkerCapacity(String workerId, String taskId) {
-            return ReserveResult.accepted(null);
+        public WorkerAdmissionResult reserveWorkerCapacity(String workerId, String taskId) {
+            return WorkerAdmissionResult.acceptedResult();
         }
 
         @Override

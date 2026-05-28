@@ -15,7 +15,7 @@ import com.xa.mass.runtime.worker.WorkerCapabilityReport;
 import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;
 import com.xa.mass.runtime.worker.WorkerDispatchGateRuntime;
 import com.xa.mass.runtime.worker.WorkerReportRuntime;
-import com.xa.mass.runtime.worker.WorkerResourceRuntime;
+import com.xa.mass.runtime.worker.WorkerResourceQueryRuntime;
 import com.xa.mass.runtime.worker.WorkerStateProjection;
 import com.xa.mass.runtime.worker.WorkerStateProjectionResult;
 import com.xa.mass.runtime.worker.WorkerStateProjectionRuntime;
@@ -42,7 +42,7 @@ public final class WorkerControlService implements WorkerControlRuntime {
     private static final Logger log = LoggerFactory.getLogger(WorkerControlService.class);
 
     private final WorkerReportRuntime workerReportRuntime;
-    private final WorkerResourceRuntime workerResourceRuntime;
+    private final WorkerResourceQueryRuntime workerResourceRuntime;
     private final WorkerDispatchGateRuntime dispatchGateRuntime;
     private final WorkerCommandLifecycleOwner commandLifecycleOwner;
     private final WorkerStateProjectionRuntime stateProjectionRuntime;
@@ -54,7 +54,7 @@ public final class WorkerControlService implements WorkerControlRuntime {
     private volatile Executor commandDeliveryExecutor = Runnable::run;
 
     public WorkerControlService(WorkerReportRuntime workerReportRuntime,
-                                WorkerResourceRuntime workerResourceRuntime,
+                                WorkerResourceQueryRuntime workerResourceRuntime,
                                 WorkerDispatchGateRuntime dispatchGateRuntime,
                                 WorkerCommandLifecycleOwner commandLifecycleOwner,
                                 WorkerStateProjectionRuntime stateProjectionRuntime,
@@ -72,7 +72,7 @@ public final class WorkerControlService implements WorkerControlRuntime {
     }
 
     public WorkerControlService(WorkerReportRuntime workerReportRuntime,
-                                WorkerResourceRuntime workerResourceRuntime,
+                                WorkerResourceQueryRuntime workerResourceRuntime,
                                 WorkerDispatchGateRuntime dispatchGateRuntime,
                                 WorkerCommandLifecycleOwner commandLifecycleOwner,
                                 WorkerStateProjectionRuntime stateProjectionRuntime,

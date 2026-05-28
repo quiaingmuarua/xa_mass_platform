@@ -20,8 +20,8 @@ import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
 import com.xa.mass.engine.util.TraceEventLogger;
-import com.xa.mass.runtime.worker.ReserveResult;
-import com.xa.mass.runtime.worker.ReserveStatus;
+import com.xa.mass.runtime.worker.WorkerAdmissionResult;
+import com.xa.mass.runtime.worker.WorkerAdmissionStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -231,7 +231,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
             WorkerCandidateRow worker = candidate.getCandidateRow();
             double candidateScore = rankScore(rankedContext, task);
             boolean exclusiveWorkerLock = resourcePolicy.usageForCandidate(task, candidate).exclusiveWorkerLock();
-            ReserveResult reserveResult = admissionRuntime.reserveWorkerCapacity(worker.workerId(), task.getTid());
+            WorkerAdmissionResult reserveResult = admissionRuntime.reserveWorkerCapacity(worker.workerId(), task.getTid());
             if (!reserveResult.accepted()) {
                 String reserveRejectionReason = reserveRejectionReason(reserveResult);
                 traceEventLogger.workerMatchRejected(task, candidate,
@@ -311,11 +311,11 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
         return Double.NaN;
     }
 
-    private static String reserveRejectionReason(ReserveResult result) {
+    private static String reserveRejectionReason(WorkerAdmissionResult result) {
         if (result == null) {
             return "worker reserve rejected after candidate ranking";
         }
-        if (result.status() == ReserveStatus.CAPACITY_UNAVAILABLE) {
+        if (result.status() == WorkerAdmissionStatus.CAPACITY_UNAVAILABLE) {
             return "worker capacity unavailable after candidate ranking";
         }
         if (result.reason() != null) {
@@ -324,7 +324,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
         return "worker reserve rejected after candidate ranking: " + result.status().name();
     }
 
-    private static AssignmentResult reserveAssignmentResult(ReserveResult result) {
+    private static AssignmentResult reserveAssignmentResult(WorkerAdmissionResult result) {
         if (result == null) {
             return AssignmentResult.QUOTA_EXCEEDED;
         }

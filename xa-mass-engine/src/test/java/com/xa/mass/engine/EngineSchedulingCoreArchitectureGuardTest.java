@@ -1734,7 +1734,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
         for (String requiredContract : List.of(
                 "WorkerReportRuntime",
-                "WorkerResourceRuntime",
+                "WorkerResourceQueryRuntime",
                 "WorkerDispatchGateRuntime",
                 "WorkerStateProjectionRuntime")) {
             if (!controlServiceSource.contains(requiredContract)) {

@@ -5,7 +5,7 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.runtime.worker.WorkerResourceRecord;
-import com.xa.mass.runtime.worker.WorkerResourceRuntime;
+import com.xa.mass.runtime.worker.WorkerResourceQueryRuntime;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.runtime.TransportBinding;
@@ -32,38 +32,38 @@ public class TransportRoutingTaskDispatchListener implements TaskDispatchBatchLi
 
     private static final Logger logger = LoggerFactory.getLogger(TransportRoutingTaskDispatchListener.class);
 
-    private final WorkerResourceRuntime workerResourceRuntime;
+    private final WorkerResourceQueryRuntime workerResourceRuntime;
     private final TransportRuntimeRegistry transportRuntimeRegistry;
     private final TransportDispatchFailureHandler failureHandler;
     private final TransportDispatchEnvelopeFactory envelopeFactory;
     private final RuntimeTaskExecutor runtimeTaskExecutor;
 
-    public TransportRoutingTaskDispatchListener(WorkerResourceRuntime workerResourceRuntime,
+    public TransportRoutingTaskDispatchListener(WorkerResourceQueryRuntime workerResourceRuntime,
                                                 TransportRuntimeRegistry transportRuntimeRegistry) {
         this(workerResourceRuntime, transportRuntimeRegistry, null, new TransportDispatchEnvelopeFactory(), null);
     }
 
-    public TransportRoutingTaskDispatchListener(WorkerResourceRuntime workerResourceRuntime,
+    public TransportRoutingTaskDispatchListener(WorkerResourceQueryRuntime workerResourceRuntime,
                                                 TransportRuntimeRegistry transportRuntimeRegistry,
                                                 TransportDispatchFailureHandler failureHandler) {
         this(workerResourceRuntime, transportRuntimeRegistry, failureHandler, new TransportDispatchEnvelopeFactory(), null);
     }
 
-    TransportRoutingTaskDispatchListener(WorkerResourceRuntime workerResourceRuntime,
+    TransportRoutingTaskDispatchListener(WorkerResourceQueryRuntime workerResourceRuntime,
                                          TransportRuntimeRegistry transportRuntimeRegistry,
                                          TransportDispatchFailureHandler failureHandler,
                                          TransportDispatchEnvelopeFactory envelopeFactory) {
         this(workerResourceRuntime, transportRuntimeRegistry, failureHandler, envelopeFactory, null);
     }
 
-    public TransportRoutingTaskDispatchListener(WorkerResourceRuntime workerResourceRuntime,
+    public TransportRoutingTaskDispatchListener(WorkerResourceQueryRuntime workerResourceRuntime,
                                                 TransportRuntimeRegistry transportRuntimeRegistry,
                                                 TransportDispatchFailureHandler failureHandler,
                                                 RuntimeTaskExecutor runtimeTaskExecutor) {
         this(workerResourceRuntime, transportRuntimeRegistry, failureHandler, new TransportDispatchEnvelopeFactory(), runtimeTaskExecutor);
     }
 
-    TransportRoutingTaskDispatchListener(WorkerResourceRuntime workerResourceRuntime,
+    TransportRoutingTaskDispatchListener(WorkerResourceQueryRuntime workerResourceRuntime,
                                          TransportRuntimeRegistry transportRuntimeRegistry,
                                          TransportDispatchFailureHandler failureHandler,
                                          TransportDispatchEnvelopeFactory envelopeFactory,

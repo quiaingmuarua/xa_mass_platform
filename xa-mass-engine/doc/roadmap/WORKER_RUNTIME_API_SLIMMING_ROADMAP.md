@@ -2,6 +2,7 @@
 
 Status: in progress. WRA-0 inventory is complete in
 [`WORKER_RUNTIME_API_SLIMMING_INVENTORY.md`](./WORKER_RUNTIME_API_SLIMMING_INVENTORY.md).
+WRA-0.5 contract alignment decisions are recorded here and in the inventory.
 This roadmap follows
 [`WORKER_RUNTIME_MODULE_EXTRACTION_ROADMAP.md`](./WORKER_RUNTIME_MODULE_EXTRACTION_ROADMAP.md).
 
@@ -112,8 +113,7 @@ scheduling evidence
 
 admission
   WorkerAdmissionRuntime
-  WorkerAdmissionResult / WorkerAdmissionStatus if WRA-0.5 introduces them
-  ReserveResult / ReserveStatus only if explicitly accepted as leaked registry primitives
+  WorkerAdmissionResult / WorkerAdmissionStatus
 ```
 
 Engine match path must not consume resource mutation or report-ingress
@@ -126,6 +126,9 @@ Engine control / SDK / server resource paths may consume:
 ```text
 resource declaration
   WorkerResourceRuntime
+  WorkerResourceDeclarationRuntime
+  WorkerResourceQueryRuntime
+  WorkerNodeBindingRuntime
   WorkerResourceRecord
   WorkerGroupRecord
   AdapterNodeRecord
@@ -141,14 +144,14 @@ report and gate projection
   WorkerDispatchGateRuntime
 ```
 
-Transport may consume worker resource lookup and report input contracts, but
-must not call `WorkerRegistry` or admission APIs directly.
+Transport may consume worker resource lookup and report input contracts. It
+must not call `WorkerRegistry`, admission APIs, or full resource mutation
+surfaces directly.
 
-`WorkerResourceRuntime` is intentionally suspicious in this roadmap. It is a
-large surface that currently mixes resource declaration, lookup, node/group
-binding, and some runtime-adjacent relationship reads. WRA-0.5 must decide
-whether it remains one contract for now or splits into smaller contracts such
-as:
+`WorkerResourceRuntime` was intentionally suspicious in this roadmap because it
+mixed declaration, lookup, node/group binding, and runtime-adjacent relationship
+reads. WRA-0.5 keeps `WorkerResourceRuntime` as the full composite surface for
+current SDK/server assembly, but splits the caller-facing contracts into:
 
 ```text
 WorkerResourceDeclarationRuntime
@@ -176,6 +179,7 @@ WorkerMeta
 ReserveResult
 ReserveStatus
 CleanupSummary
+EventKey
 WorkerCandidateSamplingPolicy
 WorkerCandidateSamplingContext
 RandomWorkerCandidateSamplingPolicy
@@ -190,6 +194,8 @@ AdapterNodeRecord
 EventBinding
 NodeGroupBindingRecord
 WorkerAdmissionRuntime
+WorkerAdmissionResult
+WorkerAdmissionStatus
 WorkerAvailabilityWakeupRuntime
 WorkerCandidateBatch
 WorkerCandidateRow
@@ -206,6 +212,9 @@ WorkerReachabilityView
 WorkerReportRuntime
 WorkerResourceRecord
 WorkerResourceRuntime
+WorkerResourceDeclarationRuntime
+WorkerResourceQueryRuntime
+WorkerNodeBindingRuntime
 WorkerSchedulingViewRuntime
 WorkerStateProjection
 WorkerStateProjectionResult
@@ -216,10 +225,9 @@ WorkerTaskSelector
 WorkerWarmHintRuntime
 ```
 
-Decide before implementation:
+Delete or justify before slimming `mass-runtime-api`:
 
 ```text
-EventKey
 WorkerAdmissionContext
 WorkerAdmissionPolicy
 WorkerCleanupPolicy
@@ -294,6 +302,9 @@ Moved public worker-plane contracts should use domain subpackages:
 ```text
 com.xa.mass.worker.runtime.resource
   WorkerResourceRuntime
+  WorkerResourceDeclarationRuntime
+  WorkerResourceQueryRuntime
+  WorkerNodeBindingRuntime
   WorkerResourceRecord
   WorkerGroupRecord
   AdapterNodeRecord
@@ -322,6 +333,8 @@ com.xa.mass.worker.runtime.evidence
 
 com.xa.mass.worker.runtime.admission
   WorkerAdmissionRuntime
+  WorkerAdmissionResult
+  WorkerAdmissionStatus
   WorkerAvailabilityWakeupRuntime
   WorkerWarmHintRuntime
 
@@ -331,7 +344,6 @@ com.xa.mass.worker.runtime.control
 com.xa.mass.worker.runtime.routing
   WorkerRouteBucketPolicies
   ApprovedAttributeRouteBucketPolicy
-  TaskRouteAttributePolicy if WRA-0.5 extracts task-side routing from engine
 ```
 
 If implementation proves a subpackage split creates circular dependency or
@@ -395,6 +407,23 @@ Acceptance:
 
 Goal: correct the contract shape before package movement.
 
+Status: contract decisions are made. The current alignment keeps the types in
+`mass-runtime-api` only until WRA-1 movement, but narrows caller authority
+before broad package churn:
+
+- `WorkerResourceRuntime` remains the full composite resource surface.
+- `WorkerResourceQueryRuntime` is the lookup-only surface for transport and
+  engine control paths that do not need mutation.
+- `WorkerResourceDeclarationRuntime` owns resource declaration mutation.
+- `WorkerNodeBindingRuntime` owns node/group binding mutation.
+- `WorkerAdmissionRuntime` returns `WorkerAdmissionResult` /
+  `WorkerAdmissionStatus`; engine strategy no longer consumes
+  `ReserveResult`, `ReserveStatus`, or `WorkerSlot` from the admission path.
+- `WorkerSchedulingViewRuntime` keeps its current name for this roadmap; it is
+  classified as scheduling evidence, not scheduling policy.
+- engine-side `WorkerRoutingPolicy` is task-side only. Worker-side
+  `WorkerMeta` bucket computation remains below the worker-runtime boundary.
+
 Scope:
 
 1. Define the worker-runtime contract families:
@@ -405,7 +434,7 @@ Scope:
    - report/state projection
    - dispatch gate/control
    - warm hint
-2. Decide whether current interfaces are correctly scoped:
+2. Verify current interfaces are correctly scoped:
    - `WorkerCandidateRuntime`
    - `WorkerSchedulingViewRuntime`
    - `WorkerAdmissionRuntime`
@@ -415,17 +444,15 @@ Scope:
    - `WorkerDispatchGateRuntime`
    - `WorkerWarmHintRuntime`
    - engine-side `WorkerRoutingPolicy`
-3. Decide whether `WorkerResourceRuntime` remains one surface or splits into
-   smaller resource declaration/query/binding contracts.
-4. Decide whether `WorkerSchedulingViewRuntime` is the right name, or whether
-   a name such as `WorkerSchedulingEvidenceRuntime` better communicates that
-   it returns evidence, not policy.
+3. Keep `WorkerResourceRuntime` as a composite surface, and expose smaller
+   resource declaration/query/binding contracts for narrow callers.
+4. Keep the current `WorkerSchedulingViewRuntime` name for this roadmap and
+   document it as evidence, not policy.
 5. Keep `EventKey` in `mass-runtime-api` for this roadmap and document that it
    is a project-scoped worker capability key, not a global event identity.
-6. Decide whether `WorkerAdmissionRuntime` may continue exposing
-   `ReserveResult` / `ReserveStatus`, or whether worker-runtime needs a
-   worker-plane admission result that hides `WorkerSlot` from engine strategy.
-7. Decide where the task-side route selector policy lives. Engine may own the
+6. Route `WorkerAdmissionRuntime` through a worker-plane admission result that
+   hides registry reserve primitives from engine strategy.
+7. Keep task-side route selector policy in engine for now. Engine may own the
    choice of task route attributes, but worker-side `WorkerMeta` bucket
    computation must stay below the worker-runtime boundary.
 8. Update architecture guards to reflect allowed caller families before broad
@@ -442,7 +469,9 @@ Acceptance:
 5. Engine match strategy does not directly depend on `WorkerRegistry`,
    `WorkerSlot`, or `WorkerMeta` after contract alignment unless WRA-0.5
    records a concrete temporary exception.
-6. Package movement may proceed without changing contract semantics mid-move.
+6. Transport and engine control use `WorkerResourceQueryRuntime` where they
+   need lookup only.
+7. Package movement may proceed without changing contract semantics mid-move.
 
 ## Slice WRA-1a: Move Worker Data Records And Enums
 
@@ -491,6 +520,9 @@ Scope:
 
 1. Move resource/report/candidate interfaces:
    - `WorkerResourceRuntime`
+   - `WorkerResourceDeclarationRuntime`
+   - `WorkerResourceQueryRuntime`
+   - `WorkerNodeBindingRuntime`
    - `WorkerReportRuntime`
    - `WorkerCandidateRuntime`
    - `WorkerStateProjectionRuntime`
@@ -499,6 +531,8 @@ Scope:
    - `WorkerReachabilityView`
 3. Move high-level admission/wakeup/gate contracts:
    - `WorkerAdmissionRuntime`
+   - `WorkerAdmissionResult`
+   - `WorkerAdmissionStatus`
    - `WorkerAvailabilityWakeupRuntime`
    - `WorkerDispatchGateRuntime`
    - `WorkerWarmHintRuntime`
@@ -559,6 +593,7 @@ Expected remaining worker package:
 com.xa.mass.runtime.worker
   CleanupSummary
   DispatchAvailabilitySource
+  EventKey
   RandomWorkerCandidateSamplingPolicy
   ReserveResult
   ReserveStatus
@@ -570,8 +605,8 @@ com.xa.mass.runtime.worker
   WorkerSlot
 ```
 
-If WRA-0 keeps `EventKey`, rename the documentation to say explicitly that it
-is a worker capability scope key, not a global event identity.
+Document `EventKey` explicitly as a worker capability scope key, not a global
+event identity.
 
 If WRA-0 keeps any of `WorkerAdmissionContext`, `WorkerAdmissionPolicy`, or
 `WorkerCleanupPolicy`, document why they are active low-level registry
@@ -607,8 +642,9 @@ Automated guards:
    packages only; it must not import resource/report/control packages,
    registry implementation classes, or low-level registry primitives such as
    `WorkerRegistry`, `WorkerSlot`, and `WorkerMeta`.
-5. Transport may consume `WorkerResourceRuntime` from worker-runtime, but must
-   not mutate `WorkerRegistry` directly.
+5. Transport may consume `WorkerResourceQueryRuntime` from worker-runtime, but
+   must not consume full resource mutation surfaces or mutate `WorkerRegistry`
+   directly.
 6. Engine control may consume resource/report/control contracts, but match
    strategy may not.
 
@@ -645,6 +681,12 @@ mvn -pl xa-mass-worker-runtime,xa-mass-engine -am `
 ```
 
 ```powershell
+mvn -pl xa-mass-worker-runtime,xa-mass-engine,transport/transport_runtime -am `
+  '-Dtest=WorkerAdmissionOwnerTest,WorkerManagerTest,RuleBasedTaskWorkerMatchingStrategyTest,TransportRuntimeRegistryTest,TransportRoutingTaskDispatchListenerTest,EngineSchedulingCoreArchitectureGuardTest' `
+  '-Dsurefire.failIfNoSpecifiedTests=false' test
+```
+
+```powershell
 mvn -pl xa-mass-worker-runtime,xa-mass-engine,xa-mass-sdk -am test
 ```
 
@@ -658,9 +700,11 @@ Acceptance:
 
 1. Memory/Redis registry contract tests pass.
 2. Engine match and architecture guard tests pass.
-3. SDK/runtime selection proof still passes.
-4. External worker black-box proof still passes.
-5. No behavior or public API semantics change beyond Java package ownership.
+3. Transport routing and registry lookup tests pass without using full
+   resource mutation contracts.
+4. SDK/runtime selection proof still passes.
+5. External worker black-box proof still passes.
+6. No behavior or public API semantics change beyond Java package ownership.
 
 ## Implementation Notes
 

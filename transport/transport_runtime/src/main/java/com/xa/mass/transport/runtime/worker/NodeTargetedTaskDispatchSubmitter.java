@@ -6,7 +6,7 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.runtime.worker.WorkerResourceRecord;
-import com.xa.mass.runtime.worker.WorkerResourceRuntime;
+import com.xa.mass.runtime.worker.WorkerResourceQueryRuntime;
 import com.xa.mass.transport.presence.WorkerDispatchRouteOwner;
 import com.xa.mass.transport.runtime.TransportDispatchFailureHandler;
 import org.slf4j.Logger;
@@ -27,12 +27,12 @@ public final class NodeTargetedTaskDispatchSubmitter implements TaskDispatchBatc
     private static final Logger logger = LoggerFactory.getLogger(NodeTargetedTaskDispatchSubmitter.class);
 
     private final NodeTargetedTaskDispatchHandoff handoff;
-    private final WorkerResourceRuntime workerResourceRuntime;
+    private final WorkerResourceQueryRuntime workerResourceRuntime;
     private final WorkerDispatchRouteSelector routeSelector;
     private final TransportDispatchFailureHandler failureHandler;
 
     public NodeTargetedTaskDispatchSubmitter(NodeTargetedTaskDispatchHandoff handoff,
-                                             WorkerResourceRuntime workerResourceRuntime,
+                                             WorkerResourceQueryRuntime workerResourceRuntime,
                                              WorkerDispatchRouteSelector routeSelector,
                                              TransportDispatchFailureHandler failureHandler) {
         this.handoff = Objects.requireNonNull(handoff, "handoff");

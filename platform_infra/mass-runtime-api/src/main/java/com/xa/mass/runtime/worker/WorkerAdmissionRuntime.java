@@ -5,7 +5,7 @@ package com.xa.mass.runtime.worker;
  */
 public interface WorkerAdmissionRuntime {
 
-    ReserveResult reserveWorkerCapacity(String workerId, String taskId);
+    WorkerAdmissionResult reserveWorkerCapacity(String workerId, String taskId);
 
     boolean confirmWorkerReservation(String workerId, String taskId);
 

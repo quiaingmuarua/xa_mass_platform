@@ -3,7 +3,7 @@ package com.xa.mass.transport.runtime;
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.runtime.worker.WorkerResourceRecord;
-import com.xa.mass.runtime.worker.WorkerResourceRuntime;
+import com.xa.mass.runtime.worker.WorkerResourceQueryRuntime;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.presence.WorkerPresenceStore;
@@ -29,7 +29,7 @@ import java.util.TreeSet;
  */
 public final class TransportRuntimeRegistry {
 
-    private final WorkerResourceRuntime workerResourceRuntime;
+    private final WorkerResourceQueryRuntime workerResourceRuntime;
     private final TaskResultIngestChannel taskResultIngestChannel;
     private final WorkerSystemEventChannel systemEventChannel;
     private final WorkerPresenceStore workerPresenceStore;
@@ -37,7 +37,7 @@ public final class TransportRuntimeRegistry {
     private final TransportRegistrationResolver registrationResolver;
     private final Map<String, TransportBinding> bindingByAdapterId;
 
-    public TransportRuntimeRegistry(WorkerResourceRuntime workerResourceRuntime,
+    public TransportRuntimeRegistry(WorkerResourceQueryRuntime workerResourceRuntime,
                                     TaskResultIngestChannel taskResultIngestChannel,
                                     WorkerSystemEventChannel systemEventChannel,
                                     WorkerPresenceStore workerPresenceStore,
