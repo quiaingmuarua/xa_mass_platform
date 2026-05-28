@@ -2,6 +2,7 @@ package com.xa.mass.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xa.mass.client.http.MassHttpClient;
+import com.xa.mass.client.task.TaskClient;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -13,6 +14,7 @@ public final class MassPlatform {
     private final Duration connectTimeout;
     private final Duration requestTimeout;
     private final MassHttpClient httpClient;
+    private final TaskClient taskClient;
 
     private MassPlatform(Builder builder) {
         this.baseUri = normalizeBaseUri(builder.baseUri);
@@ -33,6 +35,7 @@ public final class MassPlatform {
                 MassHttpClient.AuthHeader.of(builder.authHeaderName, builder.authToken),
                 requestTimeout
         );
+        this.taskClient = new TaskClient(httpClient);
     }
 
     public static Builder builder() {
@@ -53,6 +56,10 @@ public final class MassPlatform {
 
     public MassHttpClient http() {
         return httpClient;
+    }
+
+    public TaskClient tasks() {
+        return taskClient;
     }
 
     private static URI normalizeBaseUri(URI baseUri) {

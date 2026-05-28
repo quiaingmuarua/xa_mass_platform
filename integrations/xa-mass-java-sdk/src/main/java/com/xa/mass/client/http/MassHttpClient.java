@@ -1,6 +1,7 @@
 package com.xa.mass.client.http;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xa.mass.client.http.exception.MassApiException;
@@ -10,6 +11,7 @@ import com.xa.mass.client.http.exception.MassProtocolException;
 import com.xa.mass.client.http.exception.MassTimeoutException;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -45,6 +47,41 @@ public final class MassHttpClient {
 
     public <T> T post(String path, Object body, Class<T> dataType) {
         return send("POST", path, body, dataType);
+    }
+
+    public <T> T patch(String path, Object body, Class<T> dataType) {
+        return send("PATCH", path, body, dataType);
+    }
+
+    public MassHttpStreamResponse getStream(String path) {
+        Objects.requireNonNull(path, "path is required");
+        HttpRequest request = HttpRequest.newBuilder(resolve(path))
+                .timeout(requestTimeout)
+                .header(authHeader.name(), authHeader.value())
+                .GET()
+                .build();
+        HttpResponse<InputStream> response;
+        try {
+            response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+        } catch (HttpTimeoutException e) {
+            throw new MassTimeoutException("GET", path, requestTimeout, e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new MassClientException("Interrupted while calling GET " + path, e);
+        } catch (IOException e) {
+            throw new MassClientException("I/O failure while calling GET " + path, e);
+        }
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            String errorBody = readErrorBody(response.body());
+            throw new MassHttpException("GET", path, response.statusCode(), authHeader.redact(errorBody));
+        }
+        return new MassHttpStreamResponse(
+                response.statusCode(),
+                response.headers().firstValue("Content-Type").orElse(""),
+                response.headers().firstValue("Content-Encoding").orElse(""),
+                response.headers().firstValue("Content-Disposition").orElse(""),
+                response.body()
+        );
     }
 
     public <T> T send(String method, String path, Object body, Class<T> dataType) {
@@ -133,9 +170,22 @@ public final class MassHttpClient {
             return null;
         }
         try {
-            return objectMapper.treeToValue(data, dataType);
+            return objectMapper.copy()
+                    .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+                    .treeToValue(data, dataType);
         } catch (JsonProcessingException e) {
             throw new MassProtocolException("Failed to decode ApiResponse data from " + method + " " + path, e);
+        }
+    }
+
+    private String readErrorBody(InputStream body) {
+        if (body == null) {
+            return "";
+        }
+        try (body) {
+            return new String(body.readAllBytes());
+        } catch (IOException e) {
+            return "<failed to read error body>";
         }
     }
 

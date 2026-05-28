@@ -18,10 +18,10 @@ Current implemented surface:
 - JDK `HttpClient` based HTTP core
 - Jackson-based `ApiResponse<T>` envelope handling
 - typed client exceptions
+- task shell, item ingest, command, result window, and archive clients
 
 Not implemented in this skeleton:
 
-- task client
 - worker topology client
 - managed polling worker session
 - realtime worker client
