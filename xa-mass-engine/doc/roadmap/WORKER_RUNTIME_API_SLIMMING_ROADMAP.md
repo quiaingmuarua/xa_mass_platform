@@ -1,6 +1,8 @@
 # Worker Runtime API Slimming Roadmap
 
-Status: proposed follow-up after
+Status: in progress. WRA-0 inventory is complete in
+[`WORKER_RUNTIME_API_SLIMMING_INVENTORY.md`](./WORKER_RUNTIME_API_SLIMMING_INVENTORY.md).
+This roadmap follows
 [`WORKER_RUNTIME_MODULE_EXTRACTION_ROADMAP.md`](./WORKER_RUNTIME_MODULE_EXTRACTION_ROADMAP.md).
 
 WRX moved worker runtime ownership out of `xa-mass-engine`, but it left too
@@ -129,7 +131,7 @@ resource declaration
   AdapterNodeRecord
   NodeGroupBindingRecord
   EventBinding
-  ProjectEventKey / WorkerEventScope if EventKey moves
+  EventKey remains a low-level project-scoped registry key
 
 report and gate projection
   WorkerReportRuntime
@@ -224,10 +226,10 @@ WorkerCleanupPolicy
 ```
 
 `EventKey` is currently a `(projectCode, eventCode)` key used for worker
-capability scope, not a globally unique event identity. WRA-0 must decide
-whether to keep it as a low-level registry ceiling primitive, or rename/move it
-with `EventBinding` as a worker-plane scope type such as `ProjectEventKey` or
-`WorkerEventScope`.
+capability scope, not a globally unique event identity. WRA-0 keeps it as a
+low-level registry ceiling primitive because `WorkerRegistry.upsertSlot(...)`
+uses it directly. WRA-3 must document that project-scoped meaning if the type
+name remains unchanged.
 
 `WorkerAdmissionContext`, `WorkerAdmissionPolicy`, and `WorkerCleanupPolicy`
 look like low-level registry extension points, but current code does not use
@@ -297,7 +299,7 @@ com.xa.mass.worker.runtime.resource
   AdapterNodeRecord
   NodeGroupBindingRecord
   EventBinding
-  ProjectEventKey / WorkerEventScope if EventKey moves
+  EventKey references remain in mass-runtime-api
 
 com.xa.mass.worker.runtime.report
   WorkerReportRuntime
@@ -418,8 +420,8 @@ Scope:
 4. Decide whether `WorkerSchedulingViewRuntime` is the right name, or whether
    a name such as `WorkerSchedulingEvidenceRuntime` better communicates that
    it returns evidence, not policy.
-5. Decide whether `EventKey` is renamed/moved as `ProjectEventKey` or
-   `WorkerEventScope`.
+5. Keep `EventKey` in `mass-runtime-api` for this roadmap and document that it
+   is a project-scoped worker capability key, not a global event identity.
 6. Decide whether `WorkerAdmissionRuntime` may continue exposing
    `ReserveResult` / `ReserveStatus`, or whether worker-runtime needs a
    worker-plane admission result that hides `WorkerSlot` from engine strategy.
@@ -454,7 +456,7 @@ Scope:
    - `AdapterNodeRecord`
    - `NodeGroupBindingRecord`
    - `EventBinding`
-   - `ProjectEventKey` / `WorkerEventScope` if WRA-0 moves/renames `EventKey`
+   - `EventKey` references stay in `mass-runtime-api`
 2. Move worker report and projection records/enums:
    - `WorkerCapabilityReport*`
    - `WorkerStateReport`
