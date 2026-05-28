@@ -26,7 +26,6 @@ public class FrontendConsoleController {
             "/status/",
             "/status/tasks",
             "/status/workers",
-            "/status/rules",
             "/config"
     })
     public ResponseEntity<Void> redirectLegacyPage(HttpServletRequest request) {

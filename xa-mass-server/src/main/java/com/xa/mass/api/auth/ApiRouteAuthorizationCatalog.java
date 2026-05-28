@@ -243,10 +243,10 @@ public class ApiRouteAuthorizationCatalog {
         if (uri.matches("^/api/v1/runtime/workers/[^/]+/commands/[^/]+/ack$") && "POST".equals(method)) {
             return route(PlatformResourceType.WORKER, PlatformAction.EDIT, ApiPermissionNames.WORKER_EDIT);
         }
-        if (uri.equals("/api/v1/runtime/rules") && "GET".equals(method)) {
+        if (uri.equals("/api/v1/admin/rules") && "GET".equals(method)) {
             return route(PlatformResourceType.RULE, PlatformAction.VIEW, ApiPermissionNames.RULE_VIEW);
         }
-        if (uri.equals("/api/v1/runtime/rules/meta") && "GET".equals(method)) {
+        if (uri.equals("/api/v1/admin/rules/meta") && "GET".equals(method)) {
             return route(PlatformResourceType.RULE, PlatformAction.VIEW, ApiPermissionNames.RULE_VIEW);
         }
         return null;

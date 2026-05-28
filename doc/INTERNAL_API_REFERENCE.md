@@ -792,13 +792,13 @@ Notes:
 ### 5.11 List Rules
 
 - Method: `GET`
-- Path: `/api/v1/runtime/rules`
+- Path: `/api/v1/admin/rules`
 - Status: `Implemented`
 
 ### 5.12 Rule Catalog
 
 - Method: `GET`
-- Path: `/api/v1/runtime/rules/meta`
+- Path: `/api/v1/admin/rules/meta`
 - Status: `Implemented`
 
 ## 6. External Worker API

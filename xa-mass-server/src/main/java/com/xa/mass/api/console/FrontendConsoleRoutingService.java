@@ -19,7 +19,6 @@ public class FrontendConsoleRoutingService {
             "/status/", "/",
             "/status/tasks", "/tasks",
             "/status/workers", "/resources/workers",
-            "/status/rules", "/resources/rules",
             "/config", "/resources/configs"
     );
 

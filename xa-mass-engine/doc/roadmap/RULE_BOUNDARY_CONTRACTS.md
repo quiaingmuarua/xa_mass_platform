@@ -124,7 +124,8 @@ that separate boundary in
 
 Rule definitions are control-plane/admin data, not runtime truth.
 
-The current route name `/api/v1/runtime/rules` should not survive RBC-5.
+The rule read route is `/api/v1/admin/rules`; it is intentionally not under
+`/api/v1/runtime`.
 
 All route changes must cover:
 

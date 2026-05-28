@@ -124,7 +124,7 @@ Worker scheduling and compatibility:
 Control console:
 
 - `/`, `/tasks`, and `/resources/workers` return the backend-hosted SPA shell through the real Boot entry
-- `/status`, `/status/tasks`, `/status/workers`, `/status/rules`, and `/config` remain redirect aliases only
+- `/status`, `/status/tasks`, `/status/workers`, and `/config` remain redirect aliases only
 
 Audit:
 

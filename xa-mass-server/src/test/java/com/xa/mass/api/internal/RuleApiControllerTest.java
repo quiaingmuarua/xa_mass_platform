@@ -42,7 +42,7 @@ class RuleApiControllerTest {
                 "priority", 10
         )));
 
-        mockMvc.perform(get("/api/v1/runtime/rules"))
+        mockMvc.perform(get("/api/v1/admin/rules"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.total").value(1))
@@ -56,7 +56,7 @@ class RuleApiControllerTest {
         when(ruleOperations.listRuleTypes()).thenReturn(List.of("QL_EXPRESS", "JSON_DSL"));
         when(ruleOperations.listRegisteredEvaluatorTypes()).thenReturn(List.of("QL_EXPRESS"));
 
-        mockMvc.perform(get("/api/v1/runtime/rules/meta"))
+        mockMvc.perform(get("/api/v1/admin/rules/meta"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.ruleTypes[0]").value("QL_EXPRESS"))

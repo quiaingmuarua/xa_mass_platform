@@ -19,6 +19,9 @@ Progress:
 - RBC-4 is implemented for production assembly: `EngineConfig` seeds default
   rules directly into `RuleStorage` and exposes matching rule contracts instead
   of an engine `RuleManager`.
+- RBC-5 is implemented: rule read routes moved from `/api/v1/runtime/rules`
+  to `/api/v1/admin/rules`, and the legacy `/status/rules` console redirect
+  alias was removed.
 
 This roadmap narrows the rule boundary after the worker-runtime and storage
 boundary convergence work. Rule definitions are stored in
@@ -75,9 +78,9 @@ that work in
   engine-owned `RuleEvaluatorRegistry`.
 - `EngineConfig` seeds default worker matching rules directly into
   `RuleStorage` and exposes matching rule contracts to `MassEngine`.
-- `RuleApiController` is read-only today (`GET /api/v1/runtime/rules`,
-  `GET /api/v1/runtime/rules/meta`), but the path name says `runtime` even
-  though rule definitions are control-plane storage truth.
+- `RuleApiController` is read-only today (`GET /api/v1/admin/rules`,
+  `GET /api/v1/admin/rules/meta`) and is named as an admin/control-plane rule
+  definition surface.
 - Rule route naming is wired in more than the controller:
   - `ApiRouteAuthorizationCatalog`
   - `FrontendConsoleController`

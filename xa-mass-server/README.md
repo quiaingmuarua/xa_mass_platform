@@ -143,7 +143,7 @@ After startup:
 
 Control-console routing note:
 
-- `/status`, `/status/tasks`, `/status/workers`, and `/status/rules` are redirect aliases only
+- `/status`, `/status/tasks`, `/status/workers`, and `/config` are redirect aliases only
 - the backend-hosted SPA routes above are the primary operator entrypoints
 - project now has a dedicated read/control-plane surface under
   `/api/v1/projects/**`, and the console exposes it as a first-class navigation

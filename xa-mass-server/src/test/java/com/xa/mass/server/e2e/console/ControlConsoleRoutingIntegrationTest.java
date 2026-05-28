@@ -65,7 +65,6 @@ class ControlConsoleRoutingIntegrationTest extends AbstractSampleE2eTest {
         assertRedirect("/status", "/");
         assertRedirect("/status/tasks", "/tasks");
         assertRedirect("/status/workers", "/resources/workers");
-        assertRedirect("/status/rules", "/resources/rules");
         assertRedirect("/config", "/resources/configs");
     }
 

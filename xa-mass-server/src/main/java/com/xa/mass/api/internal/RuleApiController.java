@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/v1/runtime/rules")
+@RequestMapping("/api/v1/admin/rules")
 public class RuleApiController {
 
     private final RuleOperations ruleOperations;
