@@ -35,7 +35,8 @@ Most tasks only need one contract lane plus one owner README:
   [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
 - HTTP / external shell:
   [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md),
-  [EXTERNAL_WORKER_QUICKSTART.md](./EXTERNAL_WORKER_QUICKSTART.md)
+  [EXTERNAL_WORKER_QUICKSTART.md](./EXTERNAL_WORKER_QUICKSTART.md),
+  [JAVA_EXTERNAL_SDK_ROADMAP.md](./JAVA_EXTERNAL_SDK_ROADMAP.md)
 
 ## 2. Core Global Docs
 
@@ -52,6 +53,7 @@ Most tasks only need one contract lane plus one owner README:
 | [TESTING_BASELINE.md](./TESTING_BASELINE.md) | acceptance lanes and test matrix |
 | [OBSERVABILITY_AND_TEST_PROOF_ROADMAP.md](./OBSERVABILITY_AND_TEST_PROOF_ROADMAP.md) | trace/query/invariant direction for systematic proof without scattered tests |
 | [WORKER_FAULT_MATRIX_ROADMAP.md](./WORKER_FAULT_MATRIX_ROADMAP.md) | worker/resource fault matrix direction for non-ideal full-flow testing |
+| [JAVA_EXTERNAL_SDK_ROADMAP.md](./JAVA_EXTERNAL_SDK_ROADMAP.md) | external Java client SDK direction for task and worker HTTP integrations |
 | [E2E_BASELINE.md](./E2E_BASELINE.md) | Boot-shell E2E scope |
 | [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md) | verified startup and regression commands |
 | [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md) | current HTTP/API contract |
