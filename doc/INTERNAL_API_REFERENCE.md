@@ -199,7 +199,8 @@ Notes:
 - `invocationModel=DIRECT_RUNTIME` means the event is handled directly by the
   SDK runtime definition
 - `ready=true` means either a direct runtime handler exists or at least one
-  online worker declares the event
+  online worker belongs to a WorkerGroup whose capability declaration binds the
+  event
 
 ### 4.4 List Worker Capability Snapshots
 
@@ -209,12 +210,12 @@ Notes:
 
 Notes:
 
-- joins SDK worker capability declarations with current transport/session
-  snapshots by `workerId`
-- `eventBindings` is the capability truth exposed to operators
+- joins WorkerGroup capability declarations, worker declarations, and current
+  transport/session snapshots by `workerGroupId` / `workerId`
+- `eventBindings` is projected from WorkerGroup capability truth
 - `supportedEventCodes` remains a flat compatibility/read convenience derived
-  from worker capability declarations; do not treat it as a separate matching
-  owner
+  from WorkerGroup capability declarations; do not treat it as a separate
+  worker-row matching owner
 - `adapterId` is the concrete runtime adapter identity
 - `transportHint` is the coarse transport family
 - `online` follows transport presence truth, not the worker model status field
@@ -222,7 +223,7 @@ Notes:
   transport/session layer, not capability truth
 - each row includes `fieldSources`, a field-to-owner label map. Expected
   owners are `declaration`, `runtime`, `transport`,
-  `declarationOrTransport`, and `compatibilityProjection`.
+  `declarationOrTransport`, and `workerGroupCapability`.
 
 ## 5. Task API
 

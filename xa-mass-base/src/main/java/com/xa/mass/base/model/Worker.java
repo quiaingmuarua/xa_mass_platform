@@ -180,30 +180,6 @@ public class Worker {
         return status.isAvailable();
     }
 
-    public boolean supportsProject(String projectCode) {
-        return supportedProjects != null && supportedProjects.contains(projectCode);
-    }
-
-    public boolean supportsEvent(String eventCode) {
-        return supportedEventCodes != null && supportedEventCodes.contains(eventCode);
-    }
-
-    public void updateHeartbeat() {
-        this.lastHeartbeat = LocalDateTime.now();
-        this.updateTime = LocalDateTime.now();
-
-        if (this.status != WorkerStatus.ONLINE) {
-            this.status = WorkerStatus.ONLINE;
-        }
-    }
-
-    public boolean isHeartbeatExpired(int timeoutSeconds) {
-        if (lastHeartbeat == null) {
-            return true;
-        }
-        return lastHeartbeat.plusSeconds(timeoutSeconds).isBefore(LocalDateTime.now());
-    }
-
     public boolean transitionTo(WorkerStatus targetStatus) {
         if (targetStatus != null && this.status.canTransitionTo(targetStatus)) {
             setStatus(targetStatus);

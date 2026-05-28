@@ -65,7 +65,7 @@ class CatalogControllerTest {
                 .handler((request, principal) -> EventResponse.success(java.util.Map.of(), request.getRequestId()))
                 .build());
         WorkerSnapshot crawlerWorker = worker("crawler-worker-1", "ONLINE",
-                List.of("otherApp"), List.of("crawler.fetch-page"));
+                List.of("legacyWorkerProject"), List.of("legacy.worker.event"));
         WorkerSnapshot offlineChatWorker = worker("chat-worker-1", "OFFLINE",
                 List.of("demoApp"), List.of("chatbot.reply"));
         WorkerSnapshot scopeOnlyWorker = worker("scope-only-worker", "ONLINE",
@@ -191,7 +191,8 @@ class CatalogControllerTest {
                 .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.hasActiveEndpoint==true)]").exists())
                 .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.fieldSources.workerGroupId=='declaration')]").exists())
                 .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.fieldSources.online=='transport')]").exists())
-                .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.fieldSources.supportedEventCodes=='compatibilityProjection')]").exists())
+                .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.fieldSources.supportedEventCodes=='workerGroupCapability')]").exists())
+                .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.supportedEventCodes[0]=='legacy.worker.event')]").doesNotExist())
                 .andExpect(jsonPath("$.data[?(@.workerId=='chat-worker-1' && @.locked==true)]").exists());
     }
 

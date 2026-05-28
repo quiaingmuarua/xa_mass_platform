@@ -49,12 +49,8 @@ public final class WorkerSchedulingView {
         this.workerGroupId = candidateRow.workerGroupId();
         this.adapterNodeId = candidateRow.adapterNodeId();
         this.agentVersion = candidateRow.agentVersion();
-        this.supportedProjects = workerGroup == null
-                ? List.copyOf(candidateRow.supportedProjects())
-                : List.copyOf(workerGroup.projectCodes());
-        this.supportedEventCodes = workerGroup == null
-                ? List.copyOf(candidateRow.supportedEventCodes())
-                : List.copyOf(workerGroup.eventCodes());
+        this.supportedProjects = workerGroup == null ? List.of() : List.copyOf(workerGroup.projectCodes());
+        this.supportedEventCodes = workerGroup == null ? List.of() : List.copyOf(workerGroup.eventCodes());
         this.workerAttributes = copyMap(candidateRow.attributes());
         this.reachability = reachability == null ? WorkerReachabilityState.UNKNOWN : reachability;
         this.dispatchEnabled = dispatchEnabled;

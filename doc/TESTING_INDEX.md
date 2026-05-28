@@ -505,6 +505,7 @@ Use first when:
 | --- | --- | --- |
 | task/worker matching, competition, routing, gating | engine scheduling acceptance/concurrency + representative server scheduling E2E | cross-language black-box when adapter/process parity is at risk |
 | `project / submitter / worker capability and scheduling-view` boundary | Boot-shell E2E | controller/API contract tests |
+| current-state task/worker read models and trace/archive boundary | controller/API contract tests + storage boundary guards | trace/archive design gap note when adding history or analytics requirements |
 | task lifecycle / contract / intake | engine acceptance/concurrency + representative Boot-shell E2E | chaos for degraded edge behavior |
 | retry / expiry / finality / result ingest | engine acceptance/concurrency + Boot-shell E2E | chaos for late replay / disconnect / lease expiry |
 | trace schema / event emission / operator trace query | sink or emitter tests + `xa-mass-trace` integration tests against canonical output | Boot-shell or chaos trace-observed scenario when integrated lifecycle visibility changed |

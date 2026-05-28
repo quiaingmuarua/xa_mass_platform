@@ -570,7 +570,7 @@ Fixture rules:
 - worker JSON is a fixture input, not runtime truth
 - direct `WorkerManager` or broad rule-manager setup writes are not mainline
   E2E setup
-- direct `TaskManager`, `TaskStorage`, or runtime writes stay limited to
+- direct `TaskManager`, `TaskShellStore`, or runtime writes stay limited to
   focused white-box assertions, audit-only verification, or deterministic fault
   injection
 - new mainline tests should prefer SDK or HTTP surfaces over direct

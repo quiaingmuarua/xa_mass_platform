@@ -399,7 +399,11 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 Map.entry("workerContextAvailable", Pattern.compile("\\bworkerContextAvailable\\b")),
                 Map.entry("workerContextUsable", Pattern.compile("\\bworkerContextUsable\\b")),
                 Map.entry("workerContextReserved", Pattern.compile("\\bworkerContextReserved\\b")),
-                Map.entry("workerContextOccupied", Pattern.compile("\\bworkerContextOccupied\\b"))
+                Map.entry("workerContextOccupied", Pattern.compile("\\bworkerContextOccupied\\b")),
+                Map.entry("worker-row supported project fallback",
+                        Pattern.compile("\\bcandidateRow\\.supportedProjects\\s*\\(")),
+                Map.entry("worker-row supported event fallback",
+                        Pattern.compile("\\bcandidateRow\\.supportedEventCodes\\s*\\("))
         );
 
         List<String> violations = new ArrayList<>();
@@ -412,7 +416,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
         assertTrue(violations.isEmpty(),
                 "WorkerSchedulingView is a worker-level scheduling read model. It must not "
-                        + "read account-slot identity or lifecycle state:\n"
+                        + "read account-slot identity, lifecycle state, or worker-row capability fallback:\n"
                         + String.join("\n", violations));
     }
 

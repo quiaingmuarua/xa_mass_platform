@@ -37,6 +37,28 @@ final class WorkerCapabilityViewSupport {
             Map.entry("supportedEventCodes", "compatibilityProjection"),
             Map.entry("eventBindings", "compatibilityProjection")
     );
+    private static final Map<String, String> CATALOG_WORKER_FIELD_SOURCES = Map.ofEntries(
+            Map.entry("workerId", "declaration"),
+            Map.entry("workerGroupId", "declaration"),
+            Map.entry("adapterNodeId", "declaration"),
+            Map.entry("agentVersion", "declaration"),
+            Map.entry("maxConcurrentWork", "declaration"),
+            Map.entry("attributes", "declaration"),
+            Map.entry("transportHint", "declaration"),
+            Map.entry("updateTime", "declaration"),
+            Map.entry("status", "runtime"),
+            Map.entry("lastHeartbeat", "runtime"),
+            Map.entry("locked", "runtime"),
+            Map.entry("transportReachability", "transport"),
+            Map.entry("transportOnline", "transport"),
+            Map.entry("online", "transport"),
+            Map.entry("connections", "transport"),
+            Map.entry("hasActiveEndpoint", "transport"),
+            Map.entry("adapterId", "declarationOrTransport"),
+            Map.entry("supportedProjects", "workerGroupCapability"),
+            Map.entry("supportedEventCodes", "workerGroupCapability"),
+            Map.entry("eventBindings", "workerGroupCapability")
+    );
 
     private WorkerCapabilityViewSupport() {
     }
@@ -114,6 +136,10 @@ final class WorkerCapabilityViewSupport {
 
     static Map<String, String> workerFieldSources() {
         return WORKER_FIELD_SOURCES;
+    }
+
+    static Map<String, String> catalogWorkerFieldSources() {
+        return CATALOG_WORKER_FIELD_SOURCES;
     }
 
     static String resolveTransportHint(String onlineStrategy) {

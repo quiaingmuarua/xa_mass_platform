@@ -133,6 +133,10 @@ This section records proof-ownership gaps only.
 - there is no current top-priority gap in external worker public-contract proof
   ownership; parity now has a canonical trace-observed scenario and analyzer
   chain
+- durable task/worker history and analytics read models are intentionally not
+  implemented as control-plane storage. Current trace/archive direction and
+  vocabulary gaps are tracked in
+  [TASK_WORKER_TRACE_ARCHIVE_DIRECTION.md](./TASK_WORKER_TRACE_ARCHIVE_DIRECTION.md).
 
 ## 4. Naming Rule
 

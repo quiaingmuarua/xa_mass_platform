@@ -59,6 +59,17 @@ class ServerMainSourceArchitectureGuardTest {
     }
 
     @Test
+    void catalogCapabilityViewsDoNotUseWorkerRowCapabilityFallback() throws IOException {
+        Path controller = SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/api/internal/CatalogController.java");
+        String source = Files.readString(controller, StandardCharsets.UTF_8);
+
+        assertTrue(!source.contains(".getSupportedProjects()"),
+                "CatalogController must derive project capability from WorkerGroup views, not worker-row hints");
+        assertTrue(!source.contains(".getSupportedEventCodes()"),
+                "CatalogController must derive event capability from WorkerGroup views, not worker-row hints");
+    }
+
+    @Test
     void controlConsoleScenarioDoesNotSeedTasksOrWorkersFromServerMainSource() throws IOException {
         Path provider = SERVER_MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/server/bootstrap/ControlConsoleScenarioBootstrapDataProvider.java");

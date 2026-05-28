@@ -9,6 +9,7 @@ import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
 import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.model.AdapterNodeSnapshot;
 import com.xa.mass.sdk.model.NodeGroupBindingSnapshot;
+import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerGroupSnapshot;
 import com.xa.mass.sdk.model.WorkerSnapshot;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -83,22 +84,24 @@ public class CatalogController {
     @GetMapping("/event-capabilities")
     public ResponseEntity<ApiResponse<List<EventCapabilityView>>> listEventCapabilities() {
         List<WorkerSnapshot> workers = workerQueries == null ? List.of() : workerQueries.getAllWorkers();
+        Map<String, WorkerGroupSnapshot> groupsById = workerGroupsById();
         List<EventCapabilityView> items = catalog.listEvents().stream()
                 .sorted(Comparator.comparing(EventDefinition::getCode, String::compareToIgnoreCase))
                 .map(event -> {
                     boolean directRuntime = event.getTaskModes().isEmpty();
+                    List<String> groupIds = groupsForEvent(groupsById, event.getCode()).stream()
+                            .map(WorkerGroupSnapshot::groupId)
+                            .toList();
                     List<String> onlineWorkerIds = workers.stream()
+                            .filter(worker -> groupIds.contains(worker.getWorkerGroupId()))
                             .filter(worker -> isTransportOnline(worker.getWorkerId()))
-                            .filter(worker -> worker.getSupportedEventCodes() != null
-                                    && worker.getSupportedEventCodes().contains(event.getCode()))
                             .map(worker -> worker.getWorkerId())
                             .filter(Objects::nonNull)
                             .distinct()
                             .sorted(String::compareToIgnoreCase)
                             .toList();
                     List<String> workerIds = workers.stream()
-                            .filter(worker -> worker.getSupportedEventCodes() != null
-                                    && worker.getSupportedEventCodes().contains(event.getCode()))
+                            .filter(worker -> groupIds.contains(worker.getWorkerGroupId()))
                             .map(worker -> worker.getWorkerId())
                             .filter(Objects::nonNull)
                             .distinct()
@@ -134,9 +137,11 @@ public class CatalogController {
         }
         Map<String, List<Map<String, Object>>> connectionsByWorker =
                 WorkerCapabilityViewSupport.groupConnectionsByWorker(runtimeDiagnostics);
+        Map<String, WorkerGroupSnapshot> groupsById = workerGroupsById();
         List<Map<String, Object>> items = workerQueries.getAllWorkers().stream()
                 .sorted(Comparator.comparing(worker -> worker.getWorkerId(), Comparator.nullsLast(String::compareTo)))
                 .map(worker -> {
+                    WorkerGroupSnapshot group = groupsById.get(worker.getWorkerGroupId());
                     List<Map<String, Object>> connections =
                             connectionsByWorker.getOrDefault(worker.getWorkerId(), List.of());
                     Map<String, Object> item = new LinkedHashMap<>();
@@ -144,11 +149,10 @@ public class CatalogController {
                     item.put("status", worker.getStatus());
                     item.put("workerGroupId", worker.getWorkerGroupId());
                     item.put("agentVersion", worker.getAgentVersion());
-                    item.put("supportedProjects", normalizeProjectCodes(worker.getSupportedProjects()));
-                    item.put("supportedEventCodes", normalizeProjectCodes(worker.getSupportedEventCodes()));
+                    item.put("supportedProjects", groupProjectCodes(group));
+                    item.put("supportedEventCodes", groupEventCodes(group));
                     item.put("maxConcurrentWork", worker.getMaxConcurrentWork());
-                    item.put("eventBindings", WorkerCapabilityViewSupport.deriveEventBindings(
-                            worker.getEventBindings(), worker.getSupportedEventCodes(), catalog));
+                    item.put("eventBindings", groupEventBindings(group));
                     item.put("adapterId", WorkerCapabilityViewSupport.resolveAdapterId(worker.getAdapterId(), connections));
                     item.put("transportHint", WorkerCapabilityViewSupport.resolveTransportHint(worker.getOnlineStrategy()));
                     item.put("attributes", worker.getAttributes());
@@ -156,7 +160,7 @@ public class CatalogController {
                     item.put("connections", connections);
                     item.put("hasActiveEndpoint", WorkerCapabilityViewSupport.hasActiveConnection(connections));
                     item.put("locked", runtimeDiagnostics != null && runtimeDiagnostics.isWorkerLocked(worker.getWorkerId()));
-                    item.put("fieldSources", WorkerCapabilityViewSupport.workerFieldSources());
+                    item.put("fieldSources", WorkerCapabilityViewSupport.catalogWorkerFieldSources());
                     return item;
                 })
                 .toList();
@@ -215,6 +219,62 @@ public class CatalogController {
                 && workerId != null
                 && !workerId.isBlank()
                 && workerQueries.isWorkerOnline(workerId);
+    }
+
+    private Map<String, WorkerGroupSnapshot> workerGroupsById() {
+        if (workerTopology == null) {
+            return Map.of();
+        }
+        return workerTopology.listWorkerGroups().stream()
+                .filter(Objects::nonNull)
+                .filter(group -> group.groupId() != null && !group.groupId().isBlank())
+                .collect(java.util.stream.Collectors.toMap(
+                        WorkerGroupSnapshot::groupId,
+                        group -> group,
+                        (left, right) -> left,
+                        LinkedHashMap::new));
+    }
+
+    private List<WorkerGroupSnapshot> groupsForEvent(Map<String, WorkerGroupSnapshot> groupsById,
+                                                     String eventCode) {
+        if (eventCode == null || eventCode.isBlank() || groupsById.isEmpty()) {
+            return List.of();
+        }
+        return groupsById.values().stream()
+                .filter(group -> groupEventCodes(group).contains(eventCode))
+                .toList();
+    }
+
+    private List<String> groupProjectCodes(WorkerGroupSnapshot group) {
+        return group == null ? List.of() : normalizeProjectCodes(group.projectCodes());
+    }
+
+    private List<String> groupEventCodes(WorkerGroupSnapshot group) {
+        if (group == null || group.eventBindings() == null || group.eventBindings().isEmpty()) {
+            return List.of();
+        }
+        return group.eventBindings().stream()
+                .filter(Objects::nonNull)
+                .map(WorkerEventBinding::getEventCode)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(code -> !code.isEmpty())
+                .distinct()
+                .sorted(String::compareToIgnoreCase)
+                .toList();
+    }
+
+    private List<WorkerEventBinding> groupEventBindings(WorkerGroupSnapshot group) {
+        if (group == null || group.eventBindings() == null || group.eventBindings().isEmpty()) {
+            return List.of();
+        }
+        return group.eventBindings().stream()
+                .filter(Objects::nonNull)
+                .filter(binding -> binding.getEventCode() != null && !binding.getEventCode().isBlank())
+                .sorted(Comparator.comparing(
+                        binding -> binding.getEventCode().trim(),
+                        String.CASE_INSENSITIVE_ORDER))
+                .toList();
     }
 
     private Map<String, Object> workerGroupCapability(WorkerGroupSnapshot group,

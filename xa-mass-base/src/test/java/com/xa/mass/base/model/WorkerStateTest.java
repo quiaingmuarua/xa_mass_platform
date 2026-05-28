@@ -3,7 +3,6 @@ package com.xa.mass.base.model;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import org.junit.jupiter.api.Test;
 
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -53,30 +52,9 @@ class WorkerStateTest {
     }
 
     @Test
-    void heartbeatRevivesExpiredWorkerToOnline() {
-        Worker worker = new Worker();
-        worker.transitionTo(WorkerStatus.ONLINE);
-        worker.transitionTo(WorkerStatus.EXPIRED);
-
-        worker.updateHeartbeat();
-
-        assertEquals(WorkerStatus.ONLINE, worker.getStatus());
-        assertNotNull(worker.getLastHeartbeat());
-    }
-
-    @Test
     void setStatusRejectsNull() {
         Worker worker = new Worker();
 
         assertThrows(NullPointerException.class, () -> worker.setStatus(null));
-    }
-
-    @Test
-    void heartbeatExpiryDependsOnLastHeartbeatTimestamp() {
-        Worker worker = new Worker();
-        worker.setLastHeartbeat(LocalDateTime.now().minusSeconds(60));
-
-        assertTrue(worker.isHeartbeatExpired(30));
-        assertFalse(worker.isHeartbeatExpired(120));
     }
 }

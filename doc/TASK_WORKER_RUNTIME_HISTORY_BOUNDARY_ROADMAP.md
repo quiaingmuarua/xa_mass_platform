@@ -589,6 +589,9 @@ Acceptance:
   compatibility-only with a deletion path.
 - The proof registry or testing index points to current-state tests and
   trace/archive proof gaps separately.
+- Base `Worker` no longer exposes heartbeat or project/event capability helper
+  methods that imply the model owns runtime heartbeat or WorkerGroup
+  capability truth.
 
 ## Suggested Implementation Order
 
