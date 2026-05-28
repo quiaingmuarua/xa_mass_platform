@@ -38,7 +38,8 @@ Most tasks only need one contract lane plus one owner README:
   [EXTERNAL_WORKER_QUICKSTART.md](./EXTERNAL_WORKER_QUICKSTART.md),
   [JAVA_EXTERNAL_SDK_ROADMAP.md](./JAVA_EXTERNAL_SDK_ROADMAP.md),
   [JAVA_EXTERNAL_SDK_INVENTORY.md](./JAVA_EXTERNAL_SDK_INVENTORY.md),
-  [JAVA_EXTERNAL_SDK_REALTIME_DECISION.md](./JAVA_EXTERNAL_SDK_REALTIME_DECISION.md)
+  [JAVA_EXTERNAL_SDK_REALTIME_DECISION.md](./JAVA_EXTERNAL_SDK_REALTIME_DECISION.md),
+  [INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md](./INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md)
 
 ## 2. Core Global Docs
 
@@ -58,6 +59,7 @@ Most tasks only need one contract lane plus one owner README:
 | [JAVA_EXTERNAL_SDK_ROADMAP.md](./JAVA_EXTERNAL_SDK_ROADMAP.md) | external Java client SDK direction for task and worker HTTP integrations |
 | [JAVA_EXTERNAL_SDK_INVENTORY.md](./JAVA_EXTERNAL_SDK_INVENTORY.md) | route, DTO, dependency, and payload decisions for the external Java SDK |
 | [JAVA_EXTERNAL_SDK_REALTIME_DECISION.md](./JAVA_EXTERNAL_SDK_REALTIME_DECISION.md) | decision record deferring public Java realtime worker sessions until a protocol contract exists |
+| [INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md](./INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md) | roadmap for moving worker-pack/samples under integrations and extracting server-owned demo task/worker startup |
 | [E2E_BASELINE.md](./E2E_BASELINE.md) | Boot-shell E2E scope |
 | [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md) | verified startup and regression commands |
 | [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md) | current HTTP/API contract |

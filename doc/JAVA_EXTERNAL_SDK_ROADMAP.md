@@ -17,7 +17,9 @@ JSDK-6 realtime decision is recorded in
 [`JAVA_EXTERNAL_SDK_REALTIME_DECISION.md`](./JAVA_EXTERNAL_SDK_REALTIME_DECISION.md):
 do not add public realtime Java sessions until a dedicated protocol contract
 exists. Further work should start a narrower follow-up roadmap for realtime
-protocol design or broad sample path convergence.
+protocol design. Broad sample path convergence and clean server demo bootstrap
+extraction continue in
+[`INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md`](./INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md).
 
 This roadmap defines a new `xa-mass-java-sdk` artifact for repo-external Java
 clients. It is intentionally separate from the current `xa-mass-sdk`, and it
