@@ -27,6 +27,7 @@ Most tasks only need one contract lane plus one owner README:
 - storage / runtime / trace placement:
   [INFRA_TRUTH_LAYERS.md](./INFRA_TRUTH_LAYERS.md),
   [DB_STORAGE_PRINCIPLES.md](./DB_STORAGE_PRINCIPLES.md),
+  [WORKER_RUNTIME_HISTORY_BOUNDARY_ROADMAP.md](./WORKER_RUNTIME_HISTORY_BOUNDARY_ROADMAP.md),
   [../platform_infra/README.md](../platform_infra/README.md)
 - testing / acceptance:
   [PROOF_REGISTRY.md](./PROOF_REGISTRY.md),
@@ -54,6 +55,7 @@ Most tasks only need one contract lane plus one owner README:
 | [RESULT_BOUNDARY_BASELINE.md](./RESULT_BOUNDARY_BASELINE.md) | runtime result owner split, public result boundary, and compatibility residue rules |
 | [INFRA_TRUTH_LAYERS.md](./INFRA_TRUTH_LAYERS.md) | control-plane/runtime/trace placement matrix |
 | [DB_STORAGE_PRINCIPLES.md](./DB_STORAGE_PRINCIPLES.md) | DB boundary and hot-write guardrail |
+| [WORKER_RUNTIME_HISTORY_BOUNDARY_ROADMAP.md](./WORKER_RUNTIME_HISTORY_BOUNDARY_ROADMAP.md) | roadmap for separating worker declaration storage, runtime current state, and trace/archive history |
 | [TESTING_INDEX.md](./TESTING_INDEX.md) | current testing entry, CI truth, and minimum verification map |
 | [TESTING_BASELINE.md](./TESTING_BASELINE.md) | acceptance lanes and test matrix |
 | [OBSERVABILITY_AND_TEST_PROOF_ROADMAP.md](./OBSERVABILITY_AND_TEST_PROOF_ROADMAP.md) | trace/query/invariant direction for systematic proof without scattered tests |
