@@ -1,7 +1,8 @@
 package com.xa.mass.worker.runtime;
 
 import com.xa.mass.worker.runtime.resource.EventBinding;
-import com.xa.mass.runtime.worker.WorkerRouteBucketPolicies;
+import com.xa.mass.worker.runtime.routing.WorkerRouteBucketPolicies;
+import com.xa.mass.runtime.worker.RandomWorkerCandidateSamplingPolicy;
 import com.xa.mass.runtime.worker.WorkerRouteBucketPolicy;
 import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
 import com.xa.mass.base.model.Worker;
@@ -225,7 +226,10 @@ public class WorkerCandidateIndexTest {
     }
 
     private static WorkerCandidateIndex index(WorkerRegistrySnapshot snapshot) {
-        InMemoryWorkerRegistry registry = new InMemoryWorkerRegistry();
+        InMemoryWorkerRegistry registry = new InMemoryWorkerRegistry(
+                WorkerRouteBucketPolicies.defaultPolicy(),
+                RandomWorkerCandidateSamplingPolicy.defaultPolicy()
+        );
         for (Worker worker : snapshot.workers()) {
             if (worker.getWorkerGroupId() == null || snapshot.group(worker.getWorkerGroupId()).isEmpty()) {
                 continue;
@@ -243,7 +247,7 @@ public class WorkerCandidateIndexTest {
                     worker.getStatus() == null ? null : worker.getStatus().name()
             ), worker.getMaxConcurrentWork(), Set.of());
         }
-        return new WorkerCandidateIndex(snapshot, registry);
+        return new WorkerCandidateIndex(snapshot, registry, WorkerRouteBucketPolicies.defaultPolicy());
     }
 
     private static WorkerTaskSelector task(String project, String eventCode, String targetWorkerId, String... groupIds) {

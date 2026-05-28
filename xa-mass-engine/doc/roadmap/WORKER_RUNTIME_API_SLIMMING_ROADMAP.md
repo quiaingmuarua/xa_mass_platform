@@ -8,6 +8,9 @@ WRA-1b match/evidence/admission contract families have moved to
 `xa-mass-worker-runtime`.
 WRA-1c report/state/control contract families have moved to
 `xa-mass-worker-runtime`.
+WRA-2 route-bucket policy ownership has been split: registry keeps only the
+low-level SPI/default helper, and platform approved-attribute routing now lives
+in `xa-mass-worker-runtime`.
 This roadmap follows
 [`WORKER_RUNTIME_MODULE_EXTRACTION_ROADMAP.md`](./WORKER_RUNTIME_MODULE_EXTRACTION_ROADMAP.md).
 
@@ -277,7 +280,7 @@ Preferred WRA-2 direction:
 ```text
 mass-runtime-api
   WorkerRouteBucketPolicy
-  DefaultRouteBucketPolicy or equivalent registry-neutral default-only helper
+  DefaultWorkerRouteBucketPolicy registry-neutral default-only helper
 
 xa-mass-worker-runtime
   WorkerRouteBucketPolicies
@@ -289,6 +292,11 @@ Registry constructors should receive a `WorkerRouteBucketPolicy`. Their default
 constructor may use only the registry-neutral default policy. Platform assembly
 must inject the approved-attribute policy when it wants current
 WorkerGroup-first route behavior.
+
+The registry write path and worker-runtime source guard must use the same
+route-bucket policy instance for a given engine assembly. Otherwise a worker
+can be written into one bucket set while source guard validates it against a
+different bucket convention.
 
 ## Target Package Convention
 
@@ -599,6 +607,11 @@ Acceptance:
 Goal: keep low-level route-bucket SPI in registry while moving platform routing
 policy to worker-runtime.
 
+Status: complete. Memory/Redis no longer import platform route policy, default
+SDK/server assembly injects approved-attribute routing into both registry
+bucket writes and worker-runtime source guard, and custom policy injection is
+covered by registry tests.
+
 Scope:
 
 1. Keep `WorkerRouteBucketPolicy` in `mass-runtime-api`.
@@ -612,7 +625,8 @@ Scope:
 5. Ensure `InMemoryWorkerRegistry` and `RedisWorkerRegistry` still receive a
    `WorkerRouteBucketPolicy` without depending on worker-runtime.
 6. Ensure `EngineConfig` / server assembly injects the platform default route
-   policy when creating default registries.
+   policy when creating default registries and passes the same policy into
+   `WorkerManager` / `WorkerCandidateIndex` source-guard construction.
 7. Audit engine strategy imports of `WorkerRouteBucketPolicies`,
    `WorkerRouteBucketPolicy`, and `WorkerMeta`; preserve task-side route
    selector behavior without letting engine strategy depend on worker-side
@@ -625,6 +639,8 @@ Acceptance:
 3. Standard approved route attributes live outside `mass-runtime-api`.
 4. Engine strategy does not import worker-side registry metadata for routing.
 5. Tests prove custom route policy injection still works for memory and Redis.
+6. Tests or assembly checks prove registry bucket writes and source-guard
+   revalidation use the same route policy for the default platform assembly.
 
 ## Slice WRA-3: Slim `mass-runtime-api`
 
@@ -637,6 +653,7 @@ com.xa.mass.runtime.worker
   CleanupSummary
   DispatchAvailabilitySource
   EventKey
+  DefaultWorkerRouteBucketPolicy
   RandomWorkerCandidateSamplingPolicy
   ReserveResult
   ReserveStatus

@@ -11,7 +11,7 @@ import com.xa.mass.runtime.worker.WorkerCandidateSamplingContext;
 import com.xa.mass.runtime.worker.WorkerCandidateSamplingPolicy;
 import com.xa.mass.runtime.worker.WorkerMeta;
 import com.xa.mass.runtime.worker.WorkerRegistry;
-import com.xa.mass.runtime.worker.WorkerRouteBucketPolicies;
+import com.xa.mass.runtime.worker.DefaultWorkerRouteBucketPolicy;
 import com.xa.mass.runtime.worker.WorkerRouteBucketPolicy;
 import com.xa.mass.runtime.worker.WorkerSlot;
 import io.lettuce.core.Range;
@@ -55,10 +55,14 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     private final boolean ownsClient;
 
     public RedisWorkerRegistry(String redisUri, String namespace) {
+        this(redisUri, namespace, DefaultWorkerRouteBucketPolicy.defaultPolicy());
+    }
+
+    public RedisWorkerRegistry(String redisUri, String namespace, WorkerRouteBucketPolicy routeBucketPolicy) {
         this(RedisClient.create(Objects.requireNonNull(redisUri, "redisUri")),
                 new RedisWorkerRegistryKeyspace(namespace),
                 RandomWorkerCandidateSamplingPolicy.defaultPolicy(),
-                WorkerRouteBucketPolicies.defaultPolicy(),
+                routeBucketPolicy,
                 DEFAULT_HEARTBEAT_FRESHNESS_MILLIS,
                 true);
     }
@@ -120,7 +124,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
                 : RandomWorkerCandidateSamplingPolicy.defaultPolicy();
         this.routeBucketPolicy = routeBucketPolicy != null
                 ? routeBucketPolicy
-                : WorkerRouteBucketPolicies.defaultPolicy();
+                : DefaultWorkerRouteBucketPolicy.defaultPolicy();
         this.heartbeatFreshnessMillis = Math.max(1L, heartbeatFreshnessMillis);
         this.ownsClient = ownsClient;
     }

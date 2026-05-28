@@ -8,6 +8,7 @@ import com.xa.mass.runtime.redis.RedisWorkerRegistry;
 import com.xa.mass.runtime.redis.RedisTaskResultRuntime;
 import com.xa.mass.runtime.redis.RedisTaskWorkRuntime;
 import com.xa.mass.runtime.worker.WorkerRegistry;
+import com.xa.mass.worker.runtime.routing.WorkerRouteBucketPolicies;
 import com.xa.mass.transport.presence.WorkerPresenceStore;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
@@ -313,7 +314,11 @@ public class XaMassServerApplication {
         String normalizedMode = runtimeMode == null ? "memory" : runtimeMode.trim().toLowerCase(Locale.ROOT);
         return switch (normalizedMode) {
             case "", "memory" -> null;
-            case "redis" -> new RedisWorkerRegistry(redisUri(), runtimeRedisNamespace + ":worker");
+            case "redis" -> new RedisWorkerRegistry(
+                    redisUri(),
+                    runtimeRedisNamespace + ":worker",
+                    WorkerRouteBucketPolicies.defaultPolicy()
+            );
             default -> throw new IllegalArgumentException("Unsupported mass.runtime.mode: " + runtimeMode);
         };
     }

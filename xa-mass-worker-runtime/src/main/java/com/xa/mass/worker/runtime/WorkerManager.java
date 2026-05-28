@@ -21,9 +21,11 @@ import com.xa.mass.worker.runtime.evidence.WorkerLoadSnapshot;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityView;
 import com.xa.mass.runtime.worker.WorkerRegistry;
+import com.xa.mass.runtime.worker.WorkerRouteBucketPolicy;
 import com.xa.mass.worker.runtime.report.WorkerReportRuntime;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRuntime;
+import com.xa.mass.worker.runtime.routing.WorkerRouteBucketPolicies;
 import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
 import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
 import com.xa.mass.worker.runtime.admission.WorkerWarmHintRuntime;
@@ -65,6 +67,7 @@ public class WorkerManager implements WorkerResourceRuntime,
     private static final Logger log = LoggerFactory.getLogger(WorkerManager.class);
     private final WorkerReachabilityView reachabilityView;
     private final WorkerRegistry workerRegistry;
+    private final WorkerRouteBucketPolicy routeBucketPolicy;
     private final WorkerGroupOwner groupOwner;
     private final WorkerResourceOwner resourceOwner;
     private final WorkerReportOwner reportOwner;
@@ -86,12 +89,28 @@ public class WorkerManager implements WorkerResourceRuntime,
         this(workerStorage, reachabilityView, new WorkerCapabilityAuthority(), workerRegistry);
     }
 
+    public WorkerManager(WorkerStorage workerStorage,
+                         WorkerReachabilityView reachabilityView,
+                         WorkerRegistry workerRegistry,
+                         WorkerRouteBucketPolicy routeBucketPolicy) {
+        this(workerStorage, reachabilityView, new WorkerCapabilityAuthority(), workerRegistry, routeBucketPolicy);
+    }
+
     WorkerManager(WorkerStorage workerStorage,
                   WorkerReachabilityView reachabilityView,
                   WorkerCapabilityAuthority capabilityAuthority,
                   WorkerRegistry workerRegistry) {
+        this(workerStorage, reachabilityView, capabilityAuthority, workerRegistry, WorkerRouteBucketPolicies.defaultPolicy());
+    }
+
+    WorkerManager(WorkerStorage workerStorage,
+                  WorkerReachabilityView reachabilityView,
+                  WorkerCapabilityAuthority capabilityAuthority,
+                  WorkerRegistry workerRegistry,
+                  WorkerRouteBucketPolicy routeBucketPolicy) {
         this.reachabilityView = reachabilityView != null ? reachabilityView : WorkerReachabilityView.permissive();
         this.workerRegistry = Objects.requireNonNull(workerRegistry, "workerRegistry");
+        this.routeBucketPolicy = routeBucketPolicy != null ? routeBucketPolicy : WorkerRouteBucketPolicies.defaultPolicy();
         this.groupOwner = new WorkerGroupOwner(this.workerRegistry);
         this.candidateSourceOwner = new WorkerCandidateSourceOwner(this::getWorkerCandidateIndex);
         this.admissionOwner = new WorkerAdmissionOwner(this.workerRegistry);
@@ -258,7 +277,7 @@ public class WorkerManager implements WorkerResourceRuntime,
     }
 
     WorkerCandidateIndex getWorkerCandidateIndex() {
-        return new WorkerCandidateIndex(workerRegistrySnapshot, workerRegistry);
+        return new WorkerCandidateIndex(workerRegistrySnapshot, workerRegistry, routeBucketPolicy);
     }
 
     @Override

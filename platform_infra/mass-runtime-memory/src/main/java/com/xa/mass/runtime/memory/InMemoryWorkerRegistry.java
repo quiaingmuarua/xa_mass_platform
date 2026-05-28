@@ -10,7 +10,7 @@ import com.xa.mass.runtime.worker.WorkerCandidateSamplingContext;
 import com.xa.mass.runtime.worker.WorkerCandidateSamplingPolicy;
 import com.xa.mass.runtime.worker.WorkerMeta;
 import com.xa.mass.runtime.worker.WorkerRegistry;
-import com.xa.mass.runtime.worker.WorkerRouteBucketPolicies;
+import com.xa.mass.runtime.worker.DefaultWorkerRouteBucketPolicy;
 import com.xa.mass.runtime.worker.WorkerRouteBucketPolicy;
 import com.xa.mass.runtime.worker.WorkerSlot;
 
@@ -47,11 +47,11 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
     private final ConcurrentMap<String, ConcurrentMap<String, Integer>> taskWorkerActiveCounts = new ConcurrentHashMap<>();
 
     public InMemoryWorkerRegistry() {
-        this(WorkerRouteBucketPolicies.defaultPolicy(), RandomWorkerCandidateSamplingPolicy.defaultPolicy());
+        this(DefaultWorkerRouteBucketPolicy.defaultPolicy(), RandomWorkerCandidateSamplingPolicy.defaultPolicy());
     }
 
     public InMemoryWorkerRegistry(WorkerCandidateSamplingPolicy samplingPolicy) {
-        this(WorkerRouteBucketPolicies.defaultPolicy(), samplingPolicy);
+        this(DefaultWorkerRouteBucketPolicy.defaultPolicy(), samplingPolicy);
     }
 
     public InMemoryWorkerRegistry(WorkerRouteBucketPolicy routingPolicy, WorkerCandidateSamplingPolicy samplingPolicy) {
@@ -61,7 +61,7 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
     public InMemoryWorkerRegistry(WorkerRouteBucketPolicy routingPolicy,
                                   WorkerCandidateSamplingPolicy samplingPolicy,
                                   long heartbeatFreshnessMillis) {
-        this.routingPolicy = routingPolicy != null ? routingPolicy : WorkerRouteBucketPolicies.defaultPolicy();
+        this.routingPolicy = routingPolicy != null ? routingPolicy : DefaultWorkerRouteBucketPolicy.defaultPolicy();
         this.samplingPolicy = samplingPolicy != null
                 ? samplingPolicy
                 : RandomWorkerCandidateSamplingPolicy.defaultPolicy();

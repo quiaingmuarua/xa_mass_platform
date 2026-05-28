@@ -2,7 +2,7 @@ package com.xa.mass.engine.strategy;
 
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
-import com.xa.mass.runtime.worker.WorkerRouteBucketPolicies;
+import com.xa.mass.worker.runtime.routing.WorkerRouteBucketPolicies;
 import com.xa.mass.runtime.worker.WorkerRouteBucketPolicy;
 
 import java.util.Collection;

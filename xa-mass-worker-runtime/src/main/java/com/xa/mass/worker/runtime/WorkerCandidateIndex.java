@@ -2,9 +2,9 @@ package com.xa.mass.worker.runtime;
 
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.WorkerRegistry;
-import com.xa.mass.runtime.worker.WorkerRouteBucketPolicies;
 import com.xa.mass.runtime.worker.WorkerRouteBucketPolicy;
 import com.xa.mass.runtime.worker.WorkerSlot;
+import com.xa.mass.worker.runtime.routing.WorkerRouteBucketPolicies;
 import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
 
 import java.util.ArrayList;
@@ -25,10 +25,20 @@ public final class WorkerCandidateIndex {
 
     private final WorkerRegistrySnapshot snapshot;
     private final WorkerRegistry workerRegistry;
+    private final WorkerRouteBucketPolicy routeBucketPolicy;
 
     public WorkerCandidateIndex(WorkerRegistrySnapshot snapshot, WorkerRegistry workerRegistry) {
+        this(snapshot, workerRegistry, WorkerRouteBucketPolicies.defaultPolicy());
+    }
+
+    public WorkerCandidateIndex(WorkerRegistrySnapshot snapshot,
+                                WorkerRegistry workerRegistry,
+                                WorkerRouteBucketPolicy routeBucketPolicy) {
         this.snapshot = Objects.requireNonNull(snapshot, "snapshot");
         this.workerRegistry = Objects.requireNonNull(workerRegistry, "workerRegistry");
+        this.routeBucketPolicy = routeBucketPolicy != null
+                ? routeBucketPolicy
+                : WorkerRouteBucketPolicies.defaultPolicy();
     }
 
     public List<Worker> workersFor(WorkerTaskSelector selector) {
@@ -136,8 +146,7 @@ public final class WorkerCandidateIndex {
         if (routeBucketKey == null) {
             return SourceGuardResult.rejected(SourceGuardRejectionReason.ROUTE_MISMATCH);
         }
-        Set<String> currentWorkerRouteKeys = WorkerRouteBucketPolicies.defaultPolicy()
-                .routeBucketKeysForWorkerMeta(currentSlot.meta());
+        Set<String> currentWorkerRouteKeys = routeBucketPolicy.routeBucketKeysForWorkerMeta(currentSlot.meta());
         if (!currentWorkerRouteKeys.contains(routeBucketKey)) {
             return SourceGuardResult.rejected(SourceGuardRejectionReason.ROUTE_MISMATCH);
         }

@@ -1391,7 +1391,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         Path strategyRoot = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/strategy");
         Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
                 Map.entry("worker-runtime non-match package",
-                        Pattern.compile("\\bimport\\s+com\\.xa\\.mass\\.worker\\.runtime\\.(?!(?:candidate|evidence|admission)\\.)")),
+                        Pattern.compile("\\bimport\\s+com\\.xa\\.mass\\.worker\\.runtime\\.(?!(?:candidate|evidence|admission|routing)\\.)")),
                 Map.entry("worker registry contract",
                         Pattern.compile("\\bWorkerRegistry\\b")),
                 Map.entry("resource/report/group runtime owners",

@@ -31,6 +31,8 @@ import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
+import com.xa.mass.runtime.worker.RandomWorkerCandidateSamplingPolicy;
+import com.xa.mass.runtime.worker.WorkerRouteBucketPolicy;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
 import com.xa.mass.worker.runtime.admission.WorkerAvailabilityWakeupRuntime;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRuntime;
@@ -41,6 +43,7 @@ import com.xa.mass.worker.runtime.resource.WorkerResourceRuntime;
 import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
 import com.xa.mass.worker.runtime.report.WorkerStateProjectionRuntime;
 import com.xa.mass.worker.runtime.admission.WorkerWarmHintRuntime;
+import com.xa.mass.worker.runtime.routing.WorkerRouteBucketPolicies;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.TaskDetailStore;
@@ -86,6 +89,7 @@ public class EngineConfig {
     private WorkerReachabilityView workerReachabilityView = WorkerReachabilityView.permissive();
     private WorkerStorage workerStorage = new InMemoryWorkerStorage();
     private WorkerRegistry workerRegistry;
+    private final WorkerRouteBucketPolicy workerRouteBucketPolicy = WorkerRouteBucketPolicies.defaultPolicy();
     private WorkerManager workerManager;
     private WorkerCommandLifecycleOwner workerCommandLifecycleOwner = new WorkerCommandLifecycleOwner();
     private WorkerDispatchAvailabilityPolicy workerDispatchAvailabilityPolicy =
@@ -308,7 +312,8 @@ public class EngineConfig {
             workerManager = new WorkerManager(
                     getWorkerStorage(),
                     workerReachabilityView,
-                    getWorkerRegistry()
+                    getWorkerRegistry(),
+                    workerRouteBucketPolicy
             );
         }
         return workerManager;
@@ -409,7 +414,10 @@ public class EngineConfig {
 
     public WorkerRegistry getWorkerRegistry() {
         if (workerRegistry == null) {
-            workerRegistry = new InMemoryWorkerRegistry();
+            workerRegistry = new InMemoryWorkerRegistry(
+                    workerRouteBucketPolicy,
+                    RandomWorkerCandidateSamplingPolicy.defaultPolicy()
+            );
         }
         return workerRegistry;
     }

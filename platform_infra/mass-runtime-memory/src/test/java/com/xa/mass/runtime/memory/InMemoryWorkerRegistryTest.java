@@ -4,7 +4,7 @@ import com.xa.mass.runtime.contract.WorkerRegistryContractTest;
 import com.xa.mass.runtime.worker.WorkerCandidateSamplingPolicy;
 import com.xa.mass.runtime.worker.WorkerMeta;
 import com.xa.mass.runtime.worker.WorkerRegistry;
-import com.xa.mass.runtime.worker.WorkerRouteBucketPolicies;
+import com.xa.mass.runtime.worker.WorkerRouteBucketPolicy;
 
 import org.junit.jupiter.api.Test;
 
@@ -75,7 +75,7 @@ class InMemoryWorkerRegistryTest extends WorkerRegistryContractTest {
     @Test
     void routeAttributeUpdateRemovesOnlyKnownPreviousBucketMembership() {
         WorkerRegistry registry = new InMemoryWorkerRegistry(
-                WorkerRouteBucketPolicies.approvedAttributePolicy(List.of("region")),
+                regionRoutePolicy(),
                 (context, workerIds, maxCandidateCount) -> workerIds.stream().limit(maxCandidateCount).toList()
         );
         registry.upsertSlot(workerMeta("worker-1", "group-a", "us"), 1, Set.of(eventKey()));
@@ -118,5 +118,15 @@ class InMemoryWorkerRegistryTest extends WorkerRegistryContractTest {
                 1_000,
                 "AVAILABLE"
         );
+    }
+
+    private static WorkerRouteBucketPolicy regionRoutePolicy() {
+        return meta -> {
+            String region = meta == null || meta.attributes() == null ? null : meta.attributes().get("region");
+            if (region == null || region.isBlank()) {
+                return Set.of(WorkerRouteBucketPolicy.DEFAULT_ROUTE_BUCKET_KEY);
+            }
+            return Set.of(WorkerRouteBucketPolicy.DEFAULT_ROUTE_BUCKET_KEY, "attr:region=" + region.trim());
+        };
     }
 }

@@ -21,6 +21,10 @@ Post-WRA-1c note: report, state projection, and dispatch-gate contracts have
 moved to `xa-mass-worker-runtime` under `com.xa.mass.worker.runtime.report`
 and `com.xa.mass.worker.runtime.control`.
 
+Post-WRA-2 note: `WorkerRouteBucketPolicies` is split. Memory/Redis keep only
+the `WorkerRouteBucketPolicy` SPI plus `DefaultWorkerRouteBucketPolicy`;
+platform approved-attribute routing lives in `xa-mass-worker-runtime`.
+
 Consumer abbreviations:
 
 ```text
@@ -117,10 +121,13 @@ api      same mass-runtime-api package references
 - Every current worker type has an explicit disposition.
 - Memory/Redis required types are identified from production imports:
   `CleanupSummary`, `DispatchAvailabilitySource`, `EventKey`,
+  `DefaultWorkerRouteBucketPolicy`,
   `RandomWorkerCandidateSamplingPolicy`, `ReserveResult`, `ReserveStatus`,
   `WorkerCandidateSamplingContext`, `WorkerCandidateSamplingPolicy`,
-  `WorkerMeta`, `WorkerRegistry`, `WorkerRouteBucketPolicies`,
-  `WorkerRouteBucketPolicy`, and `WorkerSlot`.
+  `WorkerMeta`, `WorkerRegistry`, `WorkerRouteBucketPolicy`, and
+  `WorkerSlot`. At WRA-0 this list included `WorkerRouteBucketPolicies`; WRA-2
+  split that class so the memory/Redis production dependency is now the
+  registry-neutral default helper only.
 - Public worker-runtime contracts now have allowed caller families.
 - WRA-0.5 adds `WorkerAdmissionResult`, `WorkerAdmissionStatus`,
   `WorkerResourceQueryRuntime`, `WorkerResourceDeclarationRuntime`, and
