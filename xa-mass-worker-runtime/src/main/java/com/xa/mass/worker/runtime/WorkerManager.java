@@ -1,8 +1,8 @@
 package com.xa.mass.worker.runtime;
 
-import com.xa.mass.runtime.worker.AdapterNodeRecord;
-import com.xa.mass.runtime.worker.NodeGroupBindingRecord;
-import com.xa.mass.runtime.worker.WorkerGroupRecord;
+import com.xa.mass.worker.runtime.resource.AdapterNodeRecord;
+import com.xa.mass.worker.runtime.resource.NodeGroupBindingRecord;
+import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
 
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Worker;
@@ -22,8 +22,8 @@ import com.xa.mass.runtime.worker.WorkerReachabilityState;
 import com.xa.mass.runtime.worker.WorkerReachabilityView;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.runtime.worker.WorkerReportRuntime;
-import com.xa.mass.runtime.worker.WorkerResourceRecord;
-import com.xa.mass.runtime.worker.WorkerResourceRuntime;
+import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
+import com.xa.mass.worker.runtime.resource.WorkerResourceRuntime;
 import com.xa.mass.runtime.worker.WorkerSchedulingViewRuntime;
 import com.xa.mass.runtime.worker.WorkerTaskSelector;
 import com.xa.mass.runtime.worker.WorkerWarmHintRuntime;

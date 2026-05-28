@@ -2,8 +2,8 @@ package com.xa.mass.transport.runtime;
 
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
-import com.xa.mass.runtime.worker.WorkerResourceRecord;
-import com.xa.mass.runtime.worker.WorkerResourceQueryRuntime;
+import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
+import com.xa.mass.worker.runtime.resource.WorkerResourceQueryRuntime;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.presence.WorkerPresenceStore;

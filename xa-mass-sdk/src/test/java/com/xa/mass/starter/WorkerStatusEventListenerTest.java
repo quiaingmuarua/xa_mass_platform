@@ -4,11 +4,11 @@ import com.xa.mass.base.channel.eventbus.event.worker.WorkerHeartbeatEvent;
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerOfflineEvent;
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerOnlineEvent;
 import com.xa.mass.base.enums.worker.WorkerStatus;
-import com.xa.mass.runtime.worker.AdapterNodeRecord;
-import com.xa.mass.runtime.worker.NodeGroupBindingRecord;
-import com.xa.mass.runtime.worker.WorkerGroupRecord;
-import com.xa.mass.runtime.worker.WorkerResourceRecord;
-import com.xa.mass.runtime.worker.WorkerResourceRuntime;
+import com.xa.mass.worker.runtime.resource.AdapterNodeRecord;
+import com.xa.mass.worker.runtime.resource.NodeGroupBindingRecord;
+import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
+import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
+import com.xa.mass.worker.runtime.resource.WorkerResourceRuntime;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;

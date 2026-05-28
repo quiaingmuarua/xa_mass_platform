@@ -1,7 +1,7 @@
 package com.xa.mass.starter;
 
 import com.xa.mass.engine.TaskEventListenerRegistrar;
-import com.xa.mass.runtime.worker.WorkerResourceRuntime;
+import com.xa.mass.worker.runtime.resource.WorkerResourceRuntime;
 
 /**
  * Optional shell-side bridge installed around the engine runtime.

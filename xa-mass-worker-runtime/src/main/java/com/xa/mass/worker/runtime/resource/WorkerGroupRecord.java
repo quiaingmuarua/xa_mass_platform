@@ -1,4 +1,6 @@
-package com.xa.mass.runtime.worker;
+package com.xa.mass.worker.runtime.resource;
+
+import com.xa.mass.runtime.worker.EventKey;
 
 import java.util.Collection;
 import java.util.Collections;

@@ -1,6 +1,6 @@
 package com.xa.mass.transport.runtime;
 
-import com.xa.mass.runtime.worker.WorkerResourceQueryRuntime;
+import com.xa.mass.worker.runtime.resource.WorkerResourceQueryRuntime;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.presence.WorkerPresenceStore;

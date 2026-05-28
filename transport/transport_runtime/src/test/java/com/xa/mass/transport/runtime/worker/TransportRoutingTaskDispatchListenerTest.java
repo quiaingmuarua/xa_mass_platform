@@ -2,7 +2,7 @@ package com.xa.mass.transport.runtime.worker;
 
 
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
-import com.xa.mass.runtime.worker.WorkerResourceRecord;
+import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;

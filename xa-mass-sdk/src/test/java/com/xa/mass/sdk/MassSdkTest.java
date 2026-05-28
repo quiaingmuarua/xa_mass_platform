@@ -35,12 +35,13 @@ import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.model.TaskAppendReceipt;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
-import com.xa.mass.runtime.worker.EventBinding;
-import com.xa.mass.runtime.worker.WorkerGroupRecord;
-import com.xa.mass.runtime.worker.WorkerResourceRecord;
+import com.xa.mass.worker.runtime.resource.EventBinding;
+import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
+import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
+import com.xa.mass.worker.runtime.resource.WorkerResourceQueryRuntime;
 import com.xa.mass.engine.watchdog.PollingIdleBackoffPolicy;
 import com.xa.mass.storage.api.RuleStorage;
-import com.xa.mass.runtime.worker.WorkerResourceRuntime;
+import com.xa.mass.worker.runtime.resource.WorkerResourceRuntime;
 import com.xa.mass.storage.api.WorkerStorage;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.rule.RuleDefinition;
@@ -812,7 +813,7 @@ class MassSdkTest {
         config.getBundledWebSocketAdapterConfig().setServerEnabled(false);
         config.setWorkerTransportRuntimeFactory(new WorkerTransportRuntimeFactory() {
             @Override
-            public TransportRuntimeRegistry create(WorkerResourceRuntime workerResourceRuntime,
+            public TransportRuntimeRegistry create(WorkerResourceQueryRuntime workerResourceRuntime,
                                                    TaskResultIngestChannel taskResultIngestChannel,
                                                    WorkerSystemEventChannel systemEventChannel,
                                                    com.xa.mass.transport.presence.WorkerPresenceStore workerPresenceStore,

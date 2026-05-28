@@ -1,7 +1,7 @@
 package com.xa.mass.worker.runtime;
 
 import com.xa.mass.runtime.worker.EventKey;
-import com.xa.mass.runtime.worker.WorkerGroupRecord;
+import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 
 import java.util.LinkedHashMap;

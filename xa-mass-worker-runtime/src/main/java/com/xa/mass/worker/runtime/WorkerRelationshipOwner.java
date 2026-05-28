@@ -1,8 +1,8 @@
 package com.xa.mass.worker.runtime;
 
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.runtime.worker.AdapterNodeRecord;
-import com.xa.mass.runtime.worker.NodeGroupBindingRecord;
+import com.xa.mass.worker.runtime.resource.AdapterNodeRecord;
+import com.xa.mass.worker.runtime.resource.NodeGroupBindingRecord;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 
 import java.time.Instant;

@@ -1,9 +1,9 @@
 package com.xa.mass.worker.runtime;
 
-import com.xa.mass.runtime.worker.EventBinding;
+import com.xa.mass.worker.runtime.resource.EventBinding;
 import com.xa.mass.runtime.worker.WorkerRouteBucketPolicies;
 import com.xa.mass.runtime.worker.WorkerRouteBucketPolicy;
-import com.xa.mass.runtime.worker.WorkerGroupRecord;
+import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.runtime.worker.WorkerMeta;

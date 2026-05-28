@@ -4,8 +4,8 @@ import com.xa.mass.base.channel.eventbus.core.MassSubscribe;
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerHeartbeatEvent;
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerOfflineEvent;
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerOnlineEvent;
-import com.xa.mass.runtime.worker.WorkerResourceRecord;
-import com.xa.mass.runtime.worker.WorkerResourceRuntime;
+import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
+import com.xa.mass.worker.runtime.resource.WorkerResourceRuntime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

@@ -1,7 +1,7 @@
 package com.xa.mass.sdk.model;
 
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
-import com.xa.mass.runtime.worker.WorkerResourceRecord;
+import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import com.xa.mass.transport.WorkerTransportHints;
 
 import java.util.*;

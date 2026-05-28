@@ -707,7 +707,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
     void adapterNodeAndNodeGroupBindingDoNotOwnCapabilityTruth() throws IOException {
         Path repo = repositoryRoot();
         Path engineWorkerPackage = repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/worker");
-        Path runtimeWorkerPackage = repo.resolve("platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker");
+        Path runtimeWorkerPackage = repo.resolve(
+                "xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/resource");
         List<Path> ownerPaths = List.of(
                 runtimeWorkerPackage.resolve("AdapterNodeRecord.java"),
                 runtimeWorkerPackage.resolve("NodeGroupBindingRecord.java")
@@ -751,7 +752,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
         Path repo = repositoryRoot();
         Path engineWorkerPackage = repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/worker");
         Path workerRuntimePackage = repo.resolve("xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime");
-        Path runtimeWorkerPackage = repo.resolve("platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker");
+        Path runtimeWorkerPackage = repo.resolve(
+                "xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/resource");
         Map<Path, Pattern> forbiddenPatterns = Map.of(
                 runtimeWorkerPackage.resolve("WorkerGroupRecord.java"),
                 Pattern.compile("\\badapterNodeId\\b"),
@@ -1729,8 +1731,10 @@ class EngineSchedulingCoreArchitectureGuardTest {
         if (Pattern.compile("\\bWorkerStateProjectionOwner\\b").matcher(controlServiceSource).find()) {
             violations.add("WorkerControlService depends on WorkerStateProjectionOwner instead of runtime contract");
         }
-        if (controlServiceSource.contains("com.xa.mass.worker.runtime")) {
-            violations.add("WorkerControlService depends on worker-runtime implementation package instead of runtime-api contracts");
+        if (Pattern.compile("import\\s+com\\.xa\\.mass\\.worker\\.runtime\\.(?!resource\\.)")
+                .matcher(controlServiceSource)
+                .find()) {
+            violations.add("WorkerControlService depends on worker-runtime implementation package instead of worker-runtime contracts");
         }
         for (String requiredContract : List.of(
                 "WorkerReportRuntime",
@@ -1903,10 +1907,10 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "com/xa/mass/engine/worker/WorkerResourceRuntime.java");
         Path lookupStorePath = Path.of("..", "platform_infra", "mass-storage-api", "src", "main", "java",
                 "com", "xa", "mass", "storage", "api", "WorkerLookupStore.java");
-        Path runtimeContractPath = Path.of("..", "platform_infra", "mass-runtime-api", "src", "main", "java",
-                "com", "xa", "mass", "runtime", "worker", "WorkerResourceRuntime.java");
-        Path runtimeRecordPath = Path.of("..", "platform_infra", "mass-runtime-api", "src", "main", "java",
-                "com", "xa", "mass", "runtime", "worker", "WorkerResourceRecord.java");
+        Path runtimeContractPath = Path.of("..", "xa-mass-worker-runtime", "src", "main", "java",
+                "com", "xa", "mass", "worker", "runtime", "resource", "WorkerResourceRuntime.java");
+        Path runtimeRecordPath = Path.of("..", "xa-mass-worker-runtime", "src", "main", "java",
+                "com", "xa", "mass", "worker", "runtime", "resource", "WorkerResourceRecord.java");
 
         List<String> violations = new ArrayList<>();
         if (Files.exists(engineContractPath)) {

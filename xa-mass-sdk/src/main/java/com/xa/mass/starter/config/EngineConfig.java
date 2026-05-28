@@ -37,7 +37,7 @@ import com.xa.mass.runtime.worker.WorkerCandidateRuntime;
 import com.xa.mass.runtime.worker.WorkerDispatchGateRuntime;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.runtime.worker.WorkerReportRuntime;
-import com.xa.mass.runtime.worker.WorkerResourceRuntime;
+import com.xa.mass.worker.runtime.resource.WorkerResourceRuntime;
 import com.xa.mass.runtime.worker.WorkerSchedulingViewRuntime;
 import com.xa.mass.runtime.worker.WorkerStateProjectionRuntime;
 import com.xa.mass.runtime.worker.WorkerWarmHintRuntime;

@@ -3,6 +3,7 @@
 Status: in progress. WRA-0 inventory is complete in
 [`WORKER_RUNTIME_API_SLIMMING_INVENTORY.md`](./WORKER_RUNTIME_API_SLIMMING_INVENTORY.md).
 WRA-0.5 contract alignment decisions are recorded here and in the inventory.
+WRA-1a resource contract family has moved to `xa-mass-worker-runtime`.
 This roadmap follows
 [`WORKER_RUNTIME_MODULE_EXTRACTION_ROADMAP.md`](./WORKER_RUNTIME_MODULE_EXTRACTION_ROADMAP.md).
 
@@ -477,6 +478,9 @@ Acceptance:
 
 Goal: move the resource declaration/query family as one coherent contract
 batch.
+
+Status: complete. Resource records and resource runtime contracts now live
+under `com.xa.mass.worker.runtime.resource`.
 
 Do not move worker value types first while their runtime interfaces remain in
 `mass-runtime-api`. That would force `mass-runtime-api` to depend on

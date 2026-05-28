@@ -8,6 +8,10 @@ This inventory is the authoritative WRA-0 classification for the current
 package. It is based on the current source file list plus production import
 and reference scans.
 
+Post-WRA-1a note: resource records and resource runtime contracts have moved
+to `xa-mass-worker-runtime` under `com.xa.mass.worker.runtime.resource`. This
+file remains the WRA-0 baseline and disposition record.
+
 Consumer abbreviations:
 
 ```text

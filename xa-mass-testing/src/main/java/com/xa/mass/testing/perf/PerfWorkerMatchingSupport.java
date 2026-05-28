@@ -10,7 +10,7 @@ import com.xa.mass.runtime.worker.WorkerAdmissionResult;
 import com.xa.mass.runtime.worker.WorkerAdmissionRuntime;
 import com.xa.mass.runtime.worker.WorkerCandidateRow;
 import com.xa.mass.runtime.worker.WorkerReachabilityState;
-import com.xa.mass.runtime.worker.WorkerResourceRecord;
+import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import com.xa.mass.runtime.worker.WorkerSchedulingViewRuntime;
 
 import java.util.Locale;

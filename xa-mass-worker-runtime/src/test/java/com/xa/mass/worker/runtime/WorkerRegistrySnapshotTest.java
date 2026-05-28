@@ -1,7 +1,7 @@
 package com.xa.mass.worker.runtime;
 
-import com.xa.mass.runtime.worker.EventBinding;
-import com.xa.mass.runtime.worker.WorkerGroupRecord;
+import com.xa.mass.worker.runtime.resource.EventBinding;
+import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
 
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.EventKey;

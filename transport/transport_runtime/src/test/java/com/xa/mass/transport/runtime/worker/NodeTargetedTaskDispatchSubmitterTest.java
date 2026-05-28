@@ -6,7 +6,7 @@ import com.xa.mass.base.runtime.dispatch.NodeTargetedTaskDispatchHandoff;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatch;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
-import com.xa.mass.runtime.worker.WorkerResourceRecord;
+import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.transport.WorkerTransportHints;

@@ -15,7 +15,7 @@ import com.xa.mass.runtime.worker.WorkerCapabilityReport;
 import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;
 import com.xa.mass.runtime.worker.WorkerDispatchGateRuntime;
 import com.xa.mass.runtime.worker.WorkerReportRuntime;
-import com.xa.mass.runtime.worker.WorkerResourceQueryRuntime;
+import com.xa.mass.worker.runtime.resource.WorkerResourceQueryRuntime;
 import com.xa.mass.runtime.worker.WorkerStateProjection;
 import com.xa.mass.runtime.worker.WorkerStateProjectionResult;
 import com.xa.mass.runtime.worker.WorkerStateProjectionRuntime;

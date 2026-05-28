@@ -1,6 +1,6 @@
 package com.xa.mass.transport.runtime.worker;
 
-import com.xa.mass.runtime.worker.WorkerResourceRecord;
+import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.presence.WorkerDispatchRouteOwner;
 import com.xa.mass.transport.presence.WorkerDispatchRouteOwnerView;
