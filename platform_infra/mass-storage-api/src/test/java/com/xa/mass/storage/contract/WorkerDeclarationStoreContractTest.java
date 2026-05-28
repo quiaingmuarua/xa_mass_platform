@@ -1,20 +1,19 @@
 package com.xa.mass.storage.contract;
 
-import com.xa.mass.base.enums.worker.WorkerStatus;
-import com.xa.mass.base.model.Worker;
+import com.xa.mass.storage.api.WorkerDeclarationRecord;
 import com.xa.mass.storage.api.WorkerDeclarationStore;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Behavioural contract that every {@link WorkerDeclarationStore} implementation must
- * satisfy. Worker storage is worker-level only; WorkerContext CRUD was retired
- * from the control-plane storage contract.
+ * satisfy. Worker declaration storage is declaration-only; runtime heartbeat,
+ * status, dispatch, and WorkerContext CRUD do not belong in this contract.
  */
 public abstract class WorkerDeclarationStoreContractTest {
 
@@ -49,28 +48,26 @@ public abstract class WorkerDeclarationStoreContractTest {
     void addAndGetWorker_persists() {
         storage.addWorker(worker("w1", "grp-a"));
         assertThat(storage.getWorker("w1")).isPresent()
-                .get().extracting(Worker::getWorkerGroupId).isEqualTo("grp-a");
+                .get().extracting(WorkerDeclarationRecord::workerGroupId).isEqualTo("grp-a");
     }
 
     @Test
     void updateWorker_persistsChanges() {
         storage.addWorker(worker("w1", "grp-a"));
-        Worker updated = storage.getWorker("w1").orElseThrow();
-        updated.setWorkerGroupId("grp-b");
+        WorkerDeclarationRecord updated = withGroup(storage.getWorker("w1").orElseThrow(), "grp-b");
         storage.updateWorker(updated);
         assertThat(storage.getWorker("w1")).get()
-                .extracting(Worker::getWorkerGroupId).isEqualTo("grp-b");
+                .extracting(WorkerDeclarationRecord::workerGroupId).isEqualTo("grp-b");
     }
 
     @Test
     void updateWorker_movesWorkerBetweenGroupIndexes() {
         storage.addWorker(worker("w1", "grp-a"));
-        Worker updated = storage.getWorker("w1").orElseThrow();
-        updated.setWorkerGroupId("grp-b");
+        WorkerDeclarationRecord updated = withGroup(storage.getWorker("w1").orElseThrow(), "grp-b");
         assertThat(storage.updateWorker(updated)).isTrue();
         assertThat(storage.getWorkersByGroupId("grp-a")).isEmpty();
         assertThat(storage.getWorkersByGroupId("grp-b"))
-                .extracting(Worker::getWorkerId).containsExactly("w1");
+                .extracting(WorkerDeclarationRecord::workerId).containsExactly("w1");
     }
 
     @Test
@@ -91,7 +88,7 @@ public abstract class WorkerDeclarationStoreContractTest {
     void getAllWorkers_includesAllAdded() {
         storage.addWorker(worker("wa", "grp"));
         storage.addWorker(worker("wb", "grp"));
-        assertThat(storage.getAllWorkers()).extracting(Worker::getWorkerId)
+        assertThat(storage.getAllWorkers()).extracting(WorkerDeclarationRecord::workerId)
                 .containsExactlyInAnyOrder("wa", "wb");
     }
 
@@ -100,7 +97,7 @@ public abstract class WorkerDeclarationStoreContractTest {
         storage.addWorker(worker("w-a", "grp-a"));
         storage.addWorker(worker("w-b", "grp-b"));
         assertThat(storage.getWorkersByGroupId("grp-a"))
-                .extracting(Worker::getWorkerId).containsExactly("w-a");
+                .extracting(WorkerDeclarationRecord::workerId).containsExactly("w-a");
     }
 
     @Test
@@ -109,10 +106,33 @@ public abstract class WorkerDeclarationStoreContractTest {
         assertThat(storage.getWorkersByGroupId("no-such-group")).isEmpty();
     }
 
-    protected Worker worker(String workerId, String groupId) {
-        Worker worker = new Worker(workerId, "1.0", List.of());
-        worker.setWorkerGroupId(groupId);
-        worker.setStatus(WorkerStatus.ONLINE);
-        return worker;
+    protected WorkerDeclarationRecord worker(String workerId, String groupId) {
+        return new WorkerDeclarationRecord(
+                workerId,
+                groupId,
+                null,
+                null,
+                null,
+                "1.0",
+                1,
+                Map.of(),
+                null,
+                null
+        );
+    }
+
+    private static WorkerDeclarationRecord withGroup(WorkerDeclarationRecord source, String groupId) {
+        return new WorkerDeclarationRecord(
+                source.workerId(),
+                groupId,
+                source.adapterNodeId(),
+                source.adapterId(),
+                source.onlineStrategy(),
+                source.agentVersion(),
+                source.maxConcurrentWork(),
+                source.attributes(),
+                source.createTime(),
+                source.updateTime()
+        );
     }
 }

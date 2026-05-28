@@ -6,6 +6,7 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchBatch;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
+import com.xa.mass.storage.api.WorkerDeclarationRecord;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
@@ -52,8 +53,8 @@ class MassApplicationDistributedTransportTest {
     void engineProducerRoutesAssignedBatchToSelectedTransportNodeInbox() {
         EngineConfig engine = new EngineConfig();
         engine.setEnabled(true);
-        engine.getWorkerDeclarationStore().addWorker(worker("worker-1"));
-        engine.getWorkerDeclarationStore().addWorker(worker("worker-2"));
+        engine.getWorkerDeclarationStore().addWorker(workerDeclaration("worker-1"));
+        engine.getWorkerDeclarationStore().addWorker(workerDeclaration("worker-2"));
 
         InMemoryWorkerPresenceStore nodeOnePresence = new InMemoryWorkerPresenceStore(30_000L, "node-1");
         InMemoryWorkerPresenceStore nodeTwoPresence = new InMemoryWorkerPresenceStore(30_000L, "node-2");
@@ -103,8 +104,8 @@ class MassApplicationDistributedTransportTest {
     void transportConsumerDrainsOnlyItsOwnTransportNodeInbox() throws Exception {
         EngineConfig engine = new EngineConfig();
         engine.setEnabled(false);
-        engine.getWorkerDeclarationStore().addWorker(worker("worker-1"));
-        engine.getWorkerDeclarationStore().addWorker(worker("worker-2"));
+        engine.getWorkerDeclarationStore().addWorker(workerDeclaration("worker-1"));
+        engine.getWorkerDeclarationStore().addWorker(workerDeclaration("worker-2"));
 
         LocalNodeTargetedHandoff handoff = new LocalNodeTargetedHandoff("node-1");
         handoff.submit("node-2", new TaskDispatchBatch(context(), List.of(binding("msg-node-2", "worker-2"))));
@@ -157,6 +158,22 @@ class MassApplicationDistributedTransportTest {
         worker.setAdapterId("websocket");
         worker.setOnlineStrategy(WorkerTransportHints.REALTIME);
         return worker;
+    }
+
+    private static WorkerDeclarationRecord workerDeclaration(String workerId) {
+        Worker worker = worker(workerId);
+        return new WorkerDeclarationRecord(
+                worker.getWorkerId(),
+                worker.getWorkerGroupId(),
+                worker.getAdapterNodeId(),
+                worker.getAdapterId(),
+                worker.getOnlineStrategy(),
+                worker.getAgentVersion(),
+                worker.getMaxConcurrentWork(),
+                worker.getAttributes(),
+                worker.getCreateTime(),
+                worker.getUpdateTime()
+        );
     }
 
     private static TaskDispatchContext context() {

@@ -1,5 +1,7 @@
 package com.xa.mass.worker.runtime.resource;
 
+import com.xa.mass.storage.api.WorkerDeclarationRecord;
+
 /**
  * Worker resource declaration mutation surface.
  *

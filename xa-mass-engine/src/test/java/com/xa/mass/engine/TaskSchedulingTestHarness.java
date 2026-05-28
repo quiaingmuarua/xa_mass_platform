@@ -39,6 +39,7 @@ import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.storage.rule.RuleType;
 
 import java.util.ArrayList;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -277,6 +278,7 @@ final class TaskSchedulingTestHarness {
         Worker worker = new Worker();
         worker.setWorkerId(workerId);
         worker.setStatus(WorkerStatus.ONLINE);
+        worker.setLastHeartbeat(LocalDateTime.now());
         worker.setAdapterNodeId(DEFAULT_ADAPTER_NODE_ID);
         worker.setWorkerGroupId(DEFAULT_WORKER_GROUP_ID);
         worker.setSupportedProjects(List.of("demoApp"));

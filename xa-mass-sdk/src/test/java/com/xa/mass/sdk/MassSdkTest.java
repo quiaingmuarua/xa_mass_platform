@@ -44,6 +44,7 @@ import com.xa.mass.worker.runtime.resource.WorkerResourceQueryRuntime;
 import com.xa.mass.engine.watchdog.PollingIdleBackoffPolicy;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRuntime;
+import com.xa.mass.storage.api.WorkerDeclarationRecord;
 import com.xa.mass.storage.api.WorkerDeclarationStore;
 import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.storage.rule.RuleDefinition;
@@ -1472,17 +1473,14 @@ class MassSdkTest {
                 .attributes(Map.of("type", "crawler"))
                 .build());
 
-        var captor = org.mockito.ArgumentCaptor.forClass(Worker.class);
+        var captor = org.mockito.ArgumentCaptor.forClass(WorkerDeclarationRecord.class);
         verify(workerStorage).addWorker(captor.capture());
-        Worker worker = captor.getValue();
-        Assertions.assertEquals("crawler-worker-001", worker.getWorkerId());
-        Assertions.assertEquals("crawler", worker.getWorkerGroupId());
-        Assertions.assertTrue(worker.getSupportedProjects().isEmpty());
-        Assertions.assertTrue(worker.getSupportedEventCodes().isEmpty());
-        Assertions.assertEquals("polling", worker.getOnlineStrategy());
-        Assertions.assertEquals(4, worker.getMaxConcurrentWork());
-        Assertions.assertEquals(Map.of("type", "crawler"), worker.getAttributes());
-        Assertions.assertEquals(WorkerStatus.OFFLINE, worker.getStatus());
+        WorkerDeclarationRecord worker = captor.getValue();
+        Assertions.assertEquals("crawler-worker-001", worker.workerId());
+        Assertions.assertEquals("crawler", worker.workerGroupId());
+        Assertions.assertEquals("polling", worker.onlineStrategy());
+        Assertions.assertEquals(4, worker.maxConcurrentWork());
+        Assertions.assertEquals(Map.of("type", "crawler"), worker.attributes());
     }
 
     @Test
@@ -1670,7 +1668,7 @@ class MassSdkTest {
         assertSame(rebound, config.getWorkerResourceRuntime());
         rebound.addWorker(workerResource("worker-rebound", "runtime-group"));
 
-        verify(replacement).addWorker(argThat(worker -> "worker-rebound".equals(worker.getWorkerId())));
+        verify(replacement).addWorker(argThat(worker -> "worker-rebound".equals(worker.workerId())));
         assertNotNull(replacement.getWorker("worker-rebound").orElse(null));
     }
 
@@ -2489,15 +2487,13 @@ class MassSdkTest {
                 .attributes(workerAttributes)
                 .build());
 
-        var workerCaptor = org.mockito.ArgumentCaptor.forClass(Worker.class);
+        var workerCaptor = org.mockito.ArgumentCaptor.forClass(WorkerDeclarationRecord.class);
         verify(workerStorage).addWorker(workerCaptor.capture());
-        Worker worker = workerCaptor.getValue();
-        Assertions.assertEquals("crawler-worker-001", worker.getWorkerId());
-        Assertions.assertEquals("crawler", worker.getWorkerGroupId());
-        Assertions.assertTrue(worker.getSupportedProjects().isEmpty());
-        Assertions.assertTrue(worker.getSupportedEventCodes().isEmpty());
-        Assertions.assertEquals("polling", worker.getOnlineStrategy());
-        Assertions.assertEquals(Map.of("type", "crawler"), worker.getAttributes());
+        WorkerDeclarationRecord worker = workerCaptor.getValue();
+        Assertions.assertEquals("crawler-worker-001", worker.workerId());
+        Assertions.assertEquals("crawler", worker.workerGroupId());
+        Assertions.assertEquals("polling", worker.onlineStrategy());
+        Assertions.assertEquals(Map.of("type", "crawler"), worker.attributes());
     }
 
     @Test
@@ -2864,12 +2860,24 @@ class MassSdkTest {
                     .adapterId("websocket")
                     .transportHint("realtime")
                     .build());
-            Worker worker = requireDelegate(app).getEngine().getConfig()
+            WorkerDeclarationRecord worker = requireDelegate(app).getEngine().getConfig()
                     .getWorkerDeclarationStore()
                     .getWorker("realtime-worker-websocket")
                     .orElseThrow();
-            worker.setOnlineStrategy(null);
-            assertTrue(requireDelegate(app).getEngine().getConfig().getWorkerDeclarationStore().updateWorker(worker));
+            assertTrue(requireDelegate(app).getEngine().getConfig().getWorkerDeclarationStore().updateWorker(
+                    new WorkerDeclarationRecord(
+                            worker.workerId(),
+                            worker.workerGroupId(),
+                            worker.adapterNodeId(),
+                            worker.adapterId(),
+                            null,
+                            worker.agentVersion(),
+                            worker.maxConcurrentWork(),
+                            worker.attributes(),
+                            worker.createTime(),
+                            worker.updateTime()
+                    )
+            ));
 
             assertEquals(WorkerTransportHints.REALTIME, app.getWorkerTransportHint("realtime-worker-websocket"));
         } finally {
@@ -2892,7 +2900,18 @@ class MassSdkTest {
             app.start();
             Worker worker = new Worker();
             worker.setWorkerId("worker-without-transport");
-            requireDelegate(app).getEngine().getConfig().getWorkerDeclarationStore().addWorker(worker);
+            requireDelegate(app).getEngine().getConfig().getWorkerDeclarationStore().addWorker(new WorkerDeclarationRecord(
+                    worker.getWorkerId(),
+                    worker.getWorkerGroupId(),
+                    worker.getAdapterNodeId(),
+                    worker.getAdapterId(),
+                    worker.getOnlineStrategy(),
+                    worker.getAgentVersion(),
+                    worker.getMaxConcurrentWork(),
+                    worker.getAttributes(),
+                    worker.getCreateTime(),
+                    worker.getUpdateTime()
+            ));
 
             IllegalStateException error = assertThrows(
                     IllegalStateException.class,

@@ -1,4 +1,4 @@
-package com.xa.mass.worker.runtime.resource;
+package com.xa.mass.storage.api;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
@@ -6,12 +6,11 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Declaration-only worker row shape.
+ * Declaration-only worker row shape for control-plane storage.
  *
- * <p>This is the target persisted worker declaration model. It intentionally
- * excludes heartbeat, online/offline status, dispatch gates, reservations,
- * leases, and capability history. WorkerGroup remains the capability owner;
- * worker-level supported project/event hints do not belong in this record.</p>
+ * <p>This record intentionally excludes heartbeat, online/offline state,
+ * dispatch gates, reservations, leases, and worker-level supported
+ * project/event capability hints.</p>
  */
 public record WorkerDeclarationRecord(
         String workerId,

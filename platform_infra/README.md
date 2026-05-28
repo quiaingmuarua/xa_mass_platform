@@ -52,9 +52,10 @@ Current truth for this conservative first slice:
   their keyspace/index baseline; it remains an explicit opt-in path outside the
   verified default runtime mainline
 - `mass-storage-api` owns shared `TaskShellStore`,
-  `WorkerDeclarationStore`, rule-definition storage contracts, plus the
-  bounded `TaskDetailStore` compatibility-projection seam and the
-  storage-adjacent rule types referenced by those contracts
+  `WorkerDeclarationStore` / `WorkerDeclarationRecord`, rule-definition
+  storage contracts, plus the bounded `TaskDetailStore`
+  compatibility-projection seam and the storage-adjacent rule types referenced
+  by those contracts
 - `mass-storage-memory` owns in-memory control-plane task shell, worker
   declaration, and rule-definition storage;
   rule evaluator registry and the default QLExpress rule evaluator are now

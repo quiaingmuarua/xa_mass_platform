@@ -21,6 +21,7 @@ import com.xa.mass.worker.runtime.routing.WorkerRouteBucketPolicies;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
+import com.xa.mass.storage.api.WorkerDeclarationRecord;
 import com.xa.mass.storage.memory.InMemoryWorkerDeclarationStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -56,7 +57,7 @@ public class WorkerManagerTest {
     }
 
     @Test
-    void addOnlineWorkerWithoutExplicitHeartbeatSeedsRegistrationHeartbeat() {
+    void addOnlineWorkerWithoutExplicitHeartbeatDoesNotPersistSyntheticHeartbeat() {
         Worker worker = new Worker();
         worker.setWorkerId("w-no-heartbeat");
         worker.setWorkerGroupId("us");
@@ -66,7 +67,7 @@ public class WorkerManagerTest {
 
         Worker found = workerModel("w-no-heartbeat");
         assertNotNull(found);
-        assertNotNull(found.getLastHeartbeat());
+        assertNull(found.getLastHeartbeat());
     }
 
     @Test
@@ -464,17 +465,15 @@ public class WorkerManagerTest {
     }
 
     @Test
-    void loadReadSynchronizesCapacityFromStorageRegisteredWorker() {
+    void loadReadSynchronizesCapacityButDoesNotMakeDeclarationOnlyWorkerReservable() {
         InMemoryWorkerDeclarationStore storage = new InMemoryWorkerDeclarationStore();
         Worker worker = worker("worker-storage-direct", "us");
         worker.setMaxConcurrentWork(2);
-        storage.addWorker(worker);
+        storage.addWorker(workerDeclaration(worker));
         WorkerManager storageBackedManager = new WorkerManager(storage, new InMemoryWorkerRegistry());
 
         assertEquals(2, storageBackedManager.getWorkerLoad("worker-storage-direct").declaredCapacity());
-        assertTrue(storageBackedManager.reserveWorkerCapacity("worker-storage-direct", "task-1").accepted());
-        assertTrue(storageBackedManager.reserveWorkerCapacity("worker-storage-direct", "task-2").accepted());
-        assertFalse(storageBackedManager.reserveWorkerCapacity("worker-storage-direct", "task-3").accepted());
+        assertFalse(storageBackedManager.reserveWorkerCapacity("worker-storage-direct", "task-1").accepted());
     }
 
     @Test
@@ -877,7 +876,7 @@ public class WorkerManagerTest {
                 .eventBindings(List.of(EventBinding.of("crawler.fetch", List.of("demoApp"))))
                 .build());
         Worker worker = worker("w-storage-direct-snapshot", "crawler");
-        storage.addWorker(worker);
+        storage.addWorker(workerDeclaration(worker));
 
         assertTrue(storageBackedManager.getWorkerCandidateIndex()
                 .workersFor(workerTaskSelector(task("demoApp", sharedConfig(Map.of(TaskSharedConfig.SDK_METADATA,
@@ -1078,6 +1077,21 @@ public class WorkerManagerTest {
                 worker.getAdapterNodeId(),
                 worker.getAdapterId(),
                 worker.getOnlineStrategy(),
+                worker.getMaxConcurrentWork(),
+                worker.getAttributes(),
+                worker.getCreateTime(),
+                worker.getUpdateTime()
+        );
+    }
+
+    private static WorkerDeclarationRecord workerDeclaration(Worker worker) {
+        return new WorkerDeclarationRecord(
+                worker.getWorkerId(),
+                worker.getWorkerGroupId(),
+                worker.getAdapterNodeId(),
+                worker.getAdapterId(),
+                worker.getOnlineStrategy(),
+                worker.getAgentVersion(),
                 worker.getMaxConcurrentWork(),
                 worker.getAttributes(),
                 worker.getCreateTime(),

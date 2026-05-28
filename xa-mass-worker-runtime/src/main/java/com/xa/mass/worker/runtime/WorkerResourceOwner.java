@@ -4,9 +4,11 @@ import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.WorkerMeta;
 import com.xa.mass.runtime.worker.WorkerRegistry;
+import com.xa.mass.storage.api.WorkerDeclarationRecord;
 import com.xa.mass.storage.api.WorkerDeclarationStore;
 
 import java.time.LocalDateTime;
+import java.time.Instant;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
@@ -33,32 +35,36 @@ public final class WorkerResourceOwner {
     }
 
     public Worker addWorker(Worker worker) {
-        Worker registrationRow = normalizeWorkerRegistrationRow(worker);
-        workerStorage.addWorker(registrationRow);
+        Worker registrationRow = normalizeWorkerRegistrationInput(worker);
+        WorkerDeclarationRecord declarationRow = toDeclarationRecord(registrationRow);
+        workerStorage.addWorker(declarationRow);
         synchronized (lock) {
             upsertWorkerRegistrySlot(registrationRow);
         }
         applyNodeGroupBindingDispatchGate(registrationRow);
-        return registrationRow;
+        return toWorkerWithRuntimeState(declarationRow);
     }
 
     public Optional<Worker> getWorker(String workerId) {
-        return workerStorage.getWorker(workerId);
+        return workerStorage.getWorker(workerId).map(this::toWorkerWithRuntimeState);
     }
 
     public List<Worker> getAllWorkers() {
-        return workerStorage.getAllWorkers();
+        return workerStorage.getAllWorkers().stream()
+                .map(this::toWorkerWithRuntimeState)
+                .toList();
     }
 
     public Optional<Worker> updateWorker(Worker worker) {
-        Worker registrationRow = normalizeWorkerRegistrationRow(worker);
-        boolean updated = workerStorage.updateWorker(registrationRow);
+        Worker registrationRow = normalizeWorkerRegistrationInput(worker);
+        WorkerDeclarationRecord declarationRow = toDeclarationRecord(registrationRow);
+        boolean updated = workerStorage.updateWorker(declarationRow);
         if (updated) {
             synchronized (lock) {
                 upsertWorkerRegistrySlot(registrationRow);
             }
             applyNodeGroupBindingDispatchGate(registrationRow);
-            return Optional.of(registrationRow);
+            return Optional.of(toWorkerWithRuntimeState(declarationRow));
         }
         return Optional.empty();
     }
@@ -124,7 +130,7 @@ public final class WorkerResourceOwner {
         );
     }
 
-    private Worker normalizeWorkerRegistrationRow(Worker worker) {
+    private Worker normalizeWorkerRegistrationInput(Worker worker) {
         if (worker == null) {
             throw new IllegalArgumentException("worker must not be null");
         }
@@ -142,10 +148,61 @@ public final class WorkerResourceOwner {
             relationshipOwner.validateExplicitWorkerNodeGroupMembership(adapterNodeId, groupId);
             worker.setAdapterNodeId(adapterNodeId);
         }
-        if (worker.getStatus() == WorkerStatus.ONLINE && worker.getLastHeartbeat() == null) {
-            worker.setLastHeartbeat(LocalDateTime.now());
-        }
         return worker;
+    }
+
+    private WorkerDeclarationRecord toDeclarationRecord(Worker worker) {
+        return new WorkerDeclarationRecord(
+                worker.getWorkerId(),
+                worker.getWorkerGroupId(),
+                worker.getAdapterNodeId(),
+                worker.getAdapterId(),
+                worker.getOnlineStrategy(),
+                worker.getAgentVersion(),
+                worker.getMaxConcurrentWork(),
+                worker.getAttributes(),
+                worker.getCreateTime(),
+                worker.getUpdateTime()
+        );
+    }
+
+    private Worker toWorkerWithRuntimeState(WorkerDeclarationRecord declaration) {
+        Worker worker = toWorker(declaration);
+        workerRegistry.slotByWorkerId(worker.getWorkerId()).ifPresent(slot -> {
+            WorkerMeta meta = slot.meta();
+            worker.setStatus(toWorkerStatus(meta.diagnosticStatus()));
+            if (meta.lastHeartbeatMillis() > 0L) {
+                worker.setLastHeartbeat(LocalDateTime.ofInstant(
+                        Instant.ofEpochMilli(meta.lastHeartbeatMillis()),
+                        ZoneId.systemDefault()
+                ));
+            }
+        });
+        return worker;
+    }
+
+    private Worker toWorker(WorkerDeclarationRecord declaration) {
+        Worker worker = new Worker();
+        worker.setWorkerId(declaration.workerId());
+        worker.setStatus(WorkerStatus.OFFLINE);
+        worker.setAgentVersion(declaration.agentVersion());
+        worker.setWorkerGroupId(declaration.workerGroupId());
+        worker.setAdapterNodeId(declaration.adapterNodeId());
+        worker.setAdapterId(declaration.adapterId());
+        worker.setOnlineStrategy(declaration.onlineStrategy());
+        worker.setMaxConcurrentWork(declaration.maxConcurrentWork());
+        worker.setAttributes(declaration.attributes());
+        worker.setCreateTime(declaration.createTime() != null ? declaration.createTime() : LocalDateTime.now());
+        worker.setUpdateTime(declaration.updateTime() != null ? declaration.updateTime() : LocalDateTime.now());
+        return worker;
+    }
+
+    private WorkerStatus toWorkerStatus(String statusName) {
+        String normalizedStatus = normalizeNullable(statusName);
+        if (normalizedStatus == null) {
+            return WorkerStatus.OFFLINE;
+        }
+        return WorkerStatus.valueOf(normalizedStatus);
     }
 
     private void applyNodeGroupBindingDispatchGate(Worker worker) {

@@ -1,5 +1,7 @@
 package com.xa.mass.worker.runtime.resource;
 
+import com.xa.mass.storage.api.WorkerDeclarationRecord;
+
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.LinkedHashMap;

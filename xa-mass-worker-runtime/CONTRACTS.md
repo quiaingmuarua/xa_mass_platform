@@ -53,7 +53,6 @@ Owned contracts:
 - `WorkerResourceDeclarationRuntime`
 - `WorkerNodeBindingRuntime`
 - `WorkerResourceRecord`
-- `WorkerDeclarationRecord`
 - `WorkerRuntimeStateRecord`
 - `WorkerGroupRecord`
 - `AdapterNodeRecord`
@@ -62,11 +61,12 @@ Owned contracts:
 
 Role split:
 
-- `WorkerDeclarationRecord` is the target declaration-store row shape. It
-  contains stable worker identity, group/node membership, adapter hints,
-  static attributes, max concurrency, and timestamps. It does not contain
-  heartbeat, online/offline state, dispatch gates, reservations, leases, or
-  worker-level supported project/event capability hints.
+- `WorkerDeclarationRecord` lives in `mass-storage-api` because it is the
+  `WorkerDeclarationStore` row contract. It contains stable worker identity,
+  group/node membership, adapter hints, static attributes, max concurrency,
+  and timestamps. It does not contain heartbeat, online/offline state,
+  dispatch gates, reservations, leases, or worker-level supported
+  project/event capability hints.
 - `WorkerRuntimeStateRecord` is a current runtime-state view assembled from
   registry, reachability, heartbeat freshness, dispatch gate, and admission
   evidence. It is not persisted as declaration truth.

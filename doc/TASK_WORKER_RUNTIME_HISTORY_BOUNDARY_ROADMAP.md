@@ -46,8 +46,9 @@ Read with:
 - Current production worker declaration storage implementation found in this
   slice is `InMemoryWorkerDeclarationStore`; no JDBC worker declaration
   implementation was found.
-- `WorkerResourceOwner` writes worker registration rows to
-  `WorkerDeclarationStore` and projects them into `WorkerRegistry` slots.
+- `WorkerResourceOwner` writes `WorkerDeclarationRecord` rows to
+  `WorkerDeclarationStore` and projects declaration plus current runtime
+  evidence into `WorkerRegistry` slots.
 - `WorkerManager` publishes worker resource/current-state APIs from worker
   declaration rows, `WorkerRegistry`, capability reports, and transport
   reachability views.
@@ -111,10 +112,11 @@ cleanup.
 9. `WorkerResourceRecord` is not yet a clean declaration record. It still
    carries runtime or compatibility projection fields such as `statusName`,
    `lastHeartbeat`, `supportedProjects`, and `supportedEventCodes`.
-   `WorkerDeclarationRecord` is now the target declaration-store row shape,
-   `WorkerRuntimeStateRecord` is the target current runtime-state shape, and
-   `WorkerResourceRecord` is the current composite current-state read model.
-   TWH-3B must move declaration-store writes away from mixed worker shapes.
+   `WorkerDeclarationRecord` in `mass-storage-api` is now the
+   declaration-store row shape, `WorkerRuntimeStateRecord` is the target
+   current runtime-state shape, and `WorkerResourceRecord` is the current
+   composite current-state read model. TWH-3B moves declaration-store writes
+   away from mixed worker shapes.
 10. `EngineConfig` has real internal coupling between task shell storage and
     compatibility projection storage: the default `InMemoryTaskShellStore` is
     both `taskShellStore` and `taskDetailStore`, and

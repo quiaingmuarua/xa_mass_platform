@@ -12,6 +12,7 @@ Current scope:
 - `TaskShellLifecycleQuery`
 - `TaskDetailStore` as a bounded compatibility-projection seam
 - `WorkerDeclarationStore`
+- `WorkerDeclarationRecord`
 - `RuleStorage`
 - rule storage value types used directly by `RuleStorage`
 
@@ -24,8 +25,10 @@ Contract split inside this module:
   such as max-runtime deadline termination. It is not dispatch-admission or
   ready-queue truth.
 - `WorkerDeclarationStore` is the control-plane worker declaration contract.
-  It stores stable declaration rows only; active worker runtime state belongs
-  to worker runtime/registry owners.
+  It stores `WorkerDeclarationRecord` rows only; active worker runtime state
+  belongs to worker runtime/registry owners. The declaration record must not
+  carry heartbeat, online/offline status, dispatch gates, reservations, leases,
+  or worker-level supported project/event capability hints.
 - `TaskDetailStore` is not control-plane truth and not a public SDK/server read
   model; it is the bounded compatibility projection for task-message residue and
   attempt detail while the long-term trace/audit sink remains separate

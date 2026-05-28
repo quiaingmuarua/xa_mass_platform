@@ -1,7 +1,5 @@
 package com.xa.mass.storage.api;
 
-import com.xa.mass.base.model.Worker;
-
 import java.util.List;
 import java.util.Optional;
 
@@ -15,15 +13,15 @@ import java.util.Optional;
  */
 public interface WorkerDeclarationStore {
 
-    void addWorker(Worker worker);
+    void addWorker(WorkerDeclarationRecord worker);
 
-    Optional<Worker> getWorker(String workerId);
+    Optional<WorkerDeclarationRecord> getWorker(String workerId);
 
-    boolean updateWorker(Worker worker);
+    boolean updateWorker(WorkerDeclarationRecord worker);
 
     boolean deleteWorker(String workerId);
 
-    List<Worker> getWorkersByGroupId(String workerGroupId);
+    List<WorkerDeclarationRecord> getWorkersByGroupId(String workerGroupId);
 
-    List<Worker> getAllWorkers();
+    List<WorkerDeclarationRecord> getAllWorkers();
 }

@@ -14,7 +14,7 @@ Worker runtime owns worker truth that is not task truth:
 
 - WorkerGroup declaration state.
 - AdapterNode and NodeGroupBinding relationships.
-- Worker registration row to runtime slot projection.
+- Worker declaration row to runtime slot projection.
 - Worker capability report application.
 - Worker state report bounded projection.
 - Worker reachability, load, and group capability evidence.
@@ -43,9 +43,10 @@ com.xa.mass.worker.runtime            implementation owners and assembly
 
 ## Worker Shape Split
 
-- `WorkerDeclarationRecord` is the target persisted declaration shape:
-  identity, WorkerGroup/node membership, adapter hints, static attributes, max
-  concurrency, and timestamps.
+- `WorkerDeclarationRecord` lives in `mass-storage-api` as the
+  `WorkerDeclarationStore` row contract: identity, WorkerGroup/node
+  membership, adapter hints, static attributes, max concurrency, and
+  timestamps.
 - `WorkerRuntimeStateRecord` is current runtime evidence: heartbeat freshness,
   reachability, dispatch gate, reservation/load, and lease observations.
 - `WorkerResourceRecord` is the current composite read model. It may be used

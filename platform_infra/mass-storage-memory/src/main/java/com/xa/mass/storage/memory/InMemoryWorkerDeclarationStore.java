@@ -1,6 +1,6 @@
 package com.xa.mass.storage.memory;
 
-import com.xa.mass.base.model.Worker;
+import com.xa.mass.storage.api.WorkerDeclarationRecord;
 import com.xa.mass.storage.api.WorkerDeclarationStore;
 
 import java.util.*;
@@ -11,38 +11,38 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class InMemoryWorkerDeclarationStore implements WorkerDeclarationStore {
 
-    private final Map<String, Worker> workersById = new ConcurrentHashMap<>();
+    private final Map<String, WorkerDeclarationRecord> workersById = new ConcurrentHashMap<>();
     private final Map<String, String> groupIdByWorkerId = new ConcurrentHashMap<>();
     private final Map<String, Set<String>> workerIdsByGroupId = new ConcurrentHashMap<>();
 
     @Override
-    public synchronized void addWorker(Worker worker) {
+    public synchronized void addWorker(WorkerDeclarationRecord worker) {
         String workerId = requireWorkerId(worker);
         unindexWorker(workerId);
         workersById.put(workerId, worker);
-        indexWorker(workerId, worker.getWorkerGroupId());
+        indexWorker(workerId, worker.workerGroupId());
     }
 
     @Override
-    public Optional<Worker> getWorker(String workerId) {
+    public Optional<WorkerDeclarationRecord> getWorker(String workerId) {
         return Optional.ofNullable(workersById.get(workerId));
     }
 
     @Override
-    public synchronized boolean updateWorker(Worker worker) {
+    public synchronized boolean updateWorker(WorkerDeclarationRecord worker) {
         String workerId = requireWorkerId(worker);
         if (!workersById.containsKey(workerId)) {
             return false;
         }
         unindexWorker(workerId);
         workersById.put(workerId, worker);
-        indexWorker(workerId, worker.getWorkerGroupId());
+        indexWorker(workerId, worker.workerGroupId());
         return true;
     }
 
     @Override
     public synchronized boolean deleteWorker(String workerId) {
-        Worker removed = workersById.remove(workerId);
+        WorkerDeclarationRecord removed = workersById.remove(workerId);
         if (removed != null) {
             unindexWorker(workerId);
         }
@@ -50,7 +50,7 @@ public class InMemoryWorkerDeclarationStore implements WorkerDeclarationStore {
     }
 
     @Override
-    public List<Worker> getWorkersByGroupId(String workerGroupId) {
+    public List<WorkerDeclarationRecord> getWorkersByGroupId(String workerGroupId) {
         if (workerGroupId == null) {
             return List.of();
         }
@@ -58,9 +58,9 @@ public class InMemoryWorkerDeclarationStore implements WorkerDeclarationStore {
         if (workerIds == null || workerIds.isEmpty()) {
             return List.of();
         }
-        List<Worker> workers = new ArrayList<>();
+        List<WorkerDeclarationRecord> workers = new ArrayList<>();
         for (String workerId : workerIds) {
-            Worker worker = workersById.get(workerId);
+            WorkerDeclarationRecord worker = workersById.get(workerId);
             if (worker != null) {
                 workers.add(worker);
             }
@@ -69,13 +69,13 @@ public class InMemoryWorkerDeclarationStore implements WorkerDeclarationStore {
     }
 
     @Override
-    public List<Worker> getAllWorkers() {
+    public List<WorkerDeclarationRecord> getAllWorkers() {
         return new ArrayList<>(workersById.values());
     }
 
-    private static String requireWorkerId(Worker worker) {
+    private static String requireWorkerId(WorkerDeclarationRecord worker) {
         Objects.requireNonNull(worker, "worker");
-        return Objects.requireNonNull(worker.getWorkerId(), "workerId");
+        return Objects.requireNonNull(worker.workerId(), "workerId");
     }
 
     private void indexWorker(String workerId, String workerGroupId) {

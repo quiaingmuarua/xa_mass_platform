@@ -1,6 +1,7 @@
 package com.xa.mass.storage.contract;
 
 import com.xa.mass.storage.api.TaskShellStore;
+import com.xa.mass.storage.api.WorkerDeclarationRecord;
 import com.xa.mass.storage.api.WorkerDeclarationStore;
 import org.junit.jupiter.api.Test;
 
@@ -62,6 +63,49 @@ class StorageBoundaryGuardTest {
         assertTrue(violations.isEmpty(),
                 "Task shell and worker declaration stores must not grow runtime/history-shaped methods. "
                         + "Known TWH-2 residue is explicitly allowlisted until that slice removes it:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void workerDeclarationStoreDoesNotExposeBaseWorkerModel() {
+        List<String> violations = new ArrayList<>();
+        for (Method method : WorkerDeclarationStore.class.getDeclaredMethods()) {
+            if (method.getReturnType().getName().equals("com.xa.mass.base.model.Worker")) {
+                violations.add(method.getName() + " returns base.model.Worker");
+            }
+            for (Class<?> parameterType : method.getParameterTypes()) {
+                if (parameterType.getName().equals("com.xa.mass.base.model.Worker")) {
+                    violations.add(method.getName() + " accepts base.model.Worker");
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "WorkerDeclarationStore must persist WorkerDeclarationRecord, not the mixed base Worker model:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void workerDeclarationRecordDoesNotCarryRuntimeOrCapabilityHintFields() {
+        Set<String> forbiddenComponents = Set.of(
+                "statusName",
+                "status",
+                "lastHeartbeat",
+                "supportedProjects",
+                "supportedEventCodes",
+                "dispatchEnabled",
+                "reservedPermits",
+                "exclusiveLeaseHeld"
+        );
+
+        List<String> violations = Stream.of(WorkerDeclarationRecord.class.getRecordComponents())
+                .map(component -> component.getName())
+                .filter(forbiddenComponents::contains)
+                .toList();
+
+        assertTrue(violations.isEmpty(),
+                "WorkerDeclarationRecord must stay declaration-only and must not carry runtime state "
+                        + "or worker-level capability hints:\n"
                         + String.join("\n", violations));
     }
 
