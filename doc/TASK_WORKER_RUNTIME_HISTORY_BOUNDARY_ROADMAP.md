@@ -6,9 +6,12 @@ This roadmap protects a core boundary:
 
 - engine and worker-runtime expose current runtime state and lifecycle command
   surfaces
-- control-plane storage owns stable task shell and worker declaration truth
-- historical task/worker connections, scheduling, dispatch, results, and
-  analytics belong to trace/event/archive read models
+- DB/control-plane storage owns stable task shell, worker declaration,
+  seed/admin input, and bounded light snapshots only
+- historical task state, worker connections, scheduling, dispatch, results,
+  usage statistics, and analytics belong to trace -> queue -> archive read
+  models
+- history/read-model output must not participate in runtime decisions
 
 The issue is not only whether an API has `getAll`. The deeper issue is that
 `TaskStorage` and `WorkerStorage` are exposed to engine/runtime as broad storage
@@ -54,6 +57,44 @@ Read with:
   online/offline churn, heartbeat streams, locks, reservations, dispatch
   history, result history, and analytics from DB ownership.
 
+## Owner Review
+
+This review treats the boundary as a runtime correctness issue, not naming
+cleanup.
+
+1. `TaskStorage` is currently too broad for the desired architecture.
+   `saveTask`, `getTask`, `updateTask`, delete, status/project/list reads can
+   be interpreted as task shell/control-plane operations. In contrast,
+   `getSchedulableTasks()` is a scheduling-admission query and does not belong
+   on a storage contract. `pollExpiredMaxRuntimeTasks(...)` is less severe but
+   still needs a lifecycle-specific shell query owner so it is not confused
+   with queue/lease expiry truth.
+2. `WorkerStorage` is also too broad. Its current implementation acts like a
+   worker declaration row store, but the name and `Worker` model make it easy
+   to persist runtime-flavored fields such as status and heartbeat. That would
+   be wrong once a JDBC worker implementation appears.
+3. `TaskManager` already has the correct runtime-first path for dispatchable
+   work: `TaskWorkRuntime.readyTaskIds(limit)` followed by bounded shell
+   lookup. That is the model to strengthen. Storage-level schedulable scans are
+   the residue to remove.
+4. `WorkerManager` projects declaration rows into `WorkerRegistry` slots.
+   That projection is acceptable only as current-state setup/cache. It must not
+   become a durable worker connection or dispatch history store.
+5. Trace emission already exists in engine hot paths through
+   `ExecutionEventSink` / `TraceEventLogger`. The missing piece is not to make
+   storage bigger; it is to make the trace -> queue -> archive path the place
+   where historical analysis is materialized.
+
+Conclusion: the target should be stricter than "storage is control-plane." The
+rule should be:
+
+```text
+engine / worker-runtime answer current runtime state;
+DB stores control-plane, seed/admin input, and bounded light snapshots;
+history and analytics come from trace -> queue -> archive;
+history/read-models never drive runtime decisions.
+```
+
 ## Boundary Decision
 
 Use three distinct surfaces:
@@ -62,7 +103,8 @@ Use three distinct surfaces:
 control-plane declaration / shell
   TaskShellStore / WorkerDeclarationStore
   stable task shell truth, worker identity/declaration, WorkerGroup/node
-  binding, rule/principal/catalog truth, bounded current operator summaries
+  binding, rule/principal/catalog truth, seed/admin input, bounded light
+  current operator snapshots
 
 runtime current state
   TaskWorkRuntime / TaskResultRuntime / WorkerRegistry / worker-runtime
@@ -71,16 +113,21 @@ runtime current state
   current capability projection
 
 history / analytics
-  trace/event/archive pipeline
+  trace -> queue -> archive pipeline
   task item timelines, attempts, dispatch decisions, candidate rejection
-  history, worker connection timelines, result timelines, cross-task analysis
+  history, worker connection timelines, result timelines, usage statistics,
+  cross-task analysis
 ```
 
 The target is not "remove DB". The target is to keep DB/control-plane storage
-limited to stable current truth and bounded shell summaries. Engine/runtime
-should consume named owner ports such as task shell commands, task shell
-queries, runtime queues, worker declarations, and worker current-state views,
-not broad `TaskStorage` / `WorkerStorage` seams.
+limited to stable current truth, seed/admin inputs, and bounded light
+snapshots. Engine/runtime should consume named owner ports such as task shell
+commands, task shell queries, runtime queues, worker declarations, and worker
+current-state views, not broad `TaskStorage` / `WorkerStorage` seams.
+
+Read models are one-way outputs. They may serve UI, debugging, analytics, and
+operator review. They must not feed matching, dispatch, lease acceptance,
+retry, result convergence, or worker reachability decisions.
 
 ## Non-Goals
 
@@ -89,6 +136,7 @@ not broad `TaskStorage` / `WorkerStorage` seams.
   heartbeat, online/offline, reservation, candidate rejection, or result
   history.
 - Do not route scheduling decisions through control-plane DB scans.
+- Do not route runtime decisions through archive/history/read-model output.
 - Do not preserve old and new storage names as two public seams. Converge
   in-repo callers.
 - Do not make trace/archive the source of runtime correctness. Trace is for
