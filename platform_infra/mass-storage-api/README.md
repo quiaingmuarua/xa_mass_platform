@@ -9,6 +9,7 @@ shells without making `xa-mass-engine` the package root for those APIs.
 Current scope:
 
 - `TaskShellStore`
+- `TaskShellLifecycleQuery`
 - `TaskDetailStore` as a bounded compatibility-projection seam
 - `WorkerDeclarationStore`
 - `RuleStorage`
@@ -19,6 +20,9 @@ Contract split inside this module:
 - `TaskShellStore` is the control-plane task shell contract. It stores stable
   task shell truth and must not grow runtime queue, dispatch, lease, heartbeat,
   history, or analytics ownership.
+- `TaskShellLifecycleQuery` is a current-shell lifecycle query for policies
+  such as max-runtime deadline termination. It is not dispatch-admission or
+  ready-queue truth.
 - `WorkerDeclarationStore` is the control-plane worker declaration contract.
   It stores stable declaration rows only; active worker runtime state belongs
   to worker runtime/registry owners.

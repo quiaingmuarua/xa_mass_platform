@@ -101,7 +101,10 @@ final class TaskSchedulingTestHarness {
                 taskManager.events()
         );
 
-        TaskResourceReleaseListener releaseListener = new TaskResourceReleaseListener(taskManager, workerManager);
+        TaskResourceReleaseListener releaseListener = new TaskResourceReleaseListener(
+                taskManager,
+                taskManager,
+                workerManager);
         taskManager.events().addTaskWorkAttemptClosedListener(releaseListener::onTaskWorkAttemptClosed);
         taskManager.events().addTaskTerminalListener(releaseListener::onTaskTerminal);
     }

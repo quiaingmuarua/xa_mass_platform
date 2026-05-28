@@ -152,7 +152,7 @@ wakeups after approval and requires no duplicate runtime dispatch claims when
 retry faults are disabled. Lease-expiry/refill proof is opt-in through
 `mass.load.expireFirstAttemptEveryNth` or
 `MASS_PERF_TASK_FLOW_EXPIRE_FIRST_ATTEMPT_EVERY_NTH`; it expires selected
-first-attempt leases through `TaskRuntimeMaintenancePort` and requires the
+first-attempt leases through `TaskLeaseMaintenancePort` and requires the
 normal retry/refill path to converge. Stale-result proof is opt-in through
 `mass.load.staleResultEveryNth` or `MASS_PERF_TASK_FLOW_STALE_RESULT_EVERY_NTH`;
 it submits a wrong-token runtime result before the real callback and requires

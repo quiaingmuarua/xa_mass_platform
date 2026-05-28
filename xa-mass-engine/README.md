@@ -206,7 +206,9 @@ Runtime-facing glue should prefer narrow engine ports and facades such as:
 
 - `TaskResultIngestFacade`
 - `TaskAssignmentRuntimePort`
-- `TaskRuntimeMaintenancePort`
+- `TaskLeaseMaintenancePort`
+- `TaskDispatchWakeupPort`
+- `TaskShellLifecycleMaintenancePort`
 - `TaskRuntimeRecoveryPort`
 - `TaskEventListenerRegistrar`
 - `TaskEventService`
@@ -388,8 +390,8 @@ Infra ownership:
 - transport adapter contracts live outside engine; engine must not take a direct
   dependency on `../transport/transport_api`
 - SDK/server bootstrap owns concrete wiring
-- primary SDK/server builders should wire `TaskStorage`, `TaskDetailStore`,
-  `TaskWorkRuntime`, `WorkerStorage`, worker runtime contracts, and
+- primary SDK/server builders should wire `TaskShellStore`, `TaskDetailStore`,
+  `TaskWorkRuntime`, `WorkerDeclarationStore`, worker runtime contracts, and
   `RuleStorage` rather than exposing full `TaskManager` / `WorkerManager`
   configuration surfaces in outer modules
 - starter assembly should treat private worker-runtime `WorkerManager` assembly

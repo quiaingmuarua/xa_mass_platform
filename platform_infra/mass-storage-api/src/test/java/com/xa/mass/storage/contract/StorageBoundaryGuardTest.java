@@ -20,7 +20,7 @@ class StorageBoundaryGuardTest {
     );
 
     private static final Map<Class<?>, Set<String>> KNOWN_TWH_2_RESIDUE = Map.of(
-            TaskShellStore.class, Set.of("getSchedulableTasks", "pollExpiredMaxRuntimeTasks"),
+            TaskShellStore.class, Set.of(),
             WorkerDeclarationStore.class, Set.of()
     );
 

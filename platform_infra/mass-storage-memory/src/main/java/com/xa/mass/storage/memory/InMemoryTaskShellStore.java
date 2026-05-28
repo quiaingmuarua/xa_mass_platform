@@ -3,6 +3,7 @@ package com.xa.mass.storage.memory;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.storage.api.TaskDetailStore;
+import com.xa.mass.storage.api.TaskShellLifecycleQuery;
 import com.xa.mass.storage.api.TaskShellStore;
 import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
 import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
@@ -21,15 +22,13 @@ import java.util.stream.Collectors;
 /**
  * In-memory task storage optimized for frequent task-message writes.
  */
-public class InMemoryTaskShellStore implements TaskShellStore, TaskDetailStore {
+public class InMemoryTaskShellStore implements TaskShellStore, TaskShellLifecycleQuery, TaskDetailStore {
 
     private final Map<String, Task> tasks = new ConcurrentHashMap<>();
     private final Map<TaskStatus, java.util.LinkedHashSet<String>> taskIdsByStatus = new ConcurrentHashMap<>();
     private final Map<String, java.util.LinkedHashSet<String>> taskIdsByProject = new ConcurrentHashMap<>();
-    private final java.util.LinkedHashSet<String> schedulableTaskIds = new java.util.LinkedHashSet<>();
     private final Map<String, TaskStatus> indexedStatusByTask = new ConcurrentHashMap<>();
     private final Map<String, String> indexedProjectByTask = new ConcurrentHashMap<>();
-    private final Map<String, Boolean> indexedSchedulableByTask = new ConcurrentHashMap<>();
     private final Map<String, MessageBucket> taskMessages = new ConcurrentHashMap<>();
     private final Map<String, Map<String, AttemptBucket>> taskMessageAttempts = new ConcurrentHashMap<>();
     private final Map<String, LocalDateTime> maxRuntimeDeadlineByTask = new ConcurrentHashMap<>();
@@ -103,14 +102,7 @@ public class InMemoryTaskShellStore implements TaskShellStore, TaskDetailStore {
     }
 
     @Override
-    public List<Task> getSchedulableTasks() {
-        synchronized (this) {
-            return tasksByIds(schedulableTaskIds);
-        }
-    }
-
-    @Override
-    public List<Task> pollExpiredMaxRuntimeTasks(LocalDateTime now, int limit) {
+    public List<Task> pollTasksPastMaxRuntimeDeadline(LocalDateTime now, int limit) {
         if (now == null || limit <= 0) {
             return List.of();
         }
@@ -312,13 +304,6 @@ public class InMemoryTaskShellStore implements TaskShellStore, TaskDetailStore {
         } else {
             indexedProjectByTask.remove(task.getTid());
         }
-        if (task.isSchedulable()) {
-            schedulableTaskIds.add(task.getTid());
-            indexedSchedulableByTask.put(task.getTid(), Boolean.TRUE);
-        } else {
-            schedulableTaskIds.remove(task.getTid());
-            indexedSchedulableByTask.put(task.getTid(), Boolean.FALSE);
-        }
     }
 
     private void removeTaskIndexes(Task task) {
@@ -332,12 +317,6 @@ public class InMemoryTaskShellStore implements TaskShellStore, TaskDetailStore {
         String indexedProject = indexedProjectByTask.remove(task.getTid());
         if (indexedProject != null) {
             removeTaskIndex(taskIdsByProject, indexedProject, task.getTid());
-        }
-        Boolean indexedSchedulable = indexedSchedulableByTask.remove(task.getTid());
-        if (Boolean.TRUE.equals(indexedSchedulable)) {
-            schedulableTaskIds.remove(task.getTid());
-        } else {
-            schedulableTaskIds.remove(task.getTid());
         }
     }
 

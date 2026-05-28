@@ -2,10 +2,11 @@ package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.engine.TaskDispatchWakeupPort;
+import com.xa.mass.engine.TaskLeaseMaintenancePort;
 import com.xa.mass.engine.TaskWorkProjectionState.AttemptFinalReason;
 import com.xa.mass.engine.TaskWorkProjectionState.AttemptStatus;
 import com.xa.mass.engine.TaskWorkAttemptClosedEvent;
-import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.engine.assignment.AssignmentRefillDecision;
 import com.xa.mass.engine.resource.DefaultWorkerDispatchResourcePolicy;
@@ -31,15 +32,17 @@ import static org.mockito.Mockito.*;
 
 public class TaskResourceReleaseListenerTest {
 
-    private TaskRuntimeMaintenancePort maintenancePort;
+    private TaskLeaseMaintenancePort leaseMaintenancePort;
+    private TaskDispatchWakeupPort dispatchWakeupPort;
     private WorkerManager workerManager;
     private TaskResourceReleaseListener listener;
 
     @BeforeEach
     void setUp() {
-        maintenancePort = mock(TaskRuntimeMaintenancePort.class);
+        leaseMaintenancePort = mock(TaskLeaseMaintenancePort.class);
+        dispatchWakeupPort = mock(TaskDispatchWakeupPort.class);
         workerManager = mock(WorkerManager.class);
-        listener = new TaskResourceReleaseListener(maintenancePort, workerManager);
+        listener = new TaskResourceReleaseListener(leaseMaintenancePort, dispatchWakeupPort, workerManager);
     }
 
     @Test
@@ -47,7 +50,7 @@ public class TaskResourceReleaseListenerTest {
         Task task = new Task();
         task.setTid("task-1");
 
-        when(maintenancePort.getActiveLeases("task-1")).thenReturn(activeLeases("task-1", "msg-1", "worker-1"));
+        when(leaseMaintenancePort.getActiveLeases("task-1")).thenReturn(activeLeases("task-1", "msg-1", "worker-1"));
 
         listener.onTaskTerminal(task);
 
@@ -61,7 +64,7 @@ public class TaskResourceReleaseListenerTest {
         task.setTid("task-1");
         task.getExecutionSpec().setForeground(false);
 
-        when(maintenancePort.getActiveLeases("task-1")).thenReturn(activeLeases("task-1", "msg-1", "worker-1"));
+        when(leaseMaintenancePort.getActiveLeases("task-1")).thenReturn(activeLeases("task-1", "msg-1", "worker-1"));
 
         listener.onTaskTerminal(task);
 
@@ -75,7 +78,7 @@ public class TaskResourceReleaseListenerTest {
         task.setTid("task-1");
         task.getExecutionSpec().setForeground(false);
 
-        when(maintenancePort.getActiveLeases("task-1")).thenReturn(activeLeases("task-1", "msg-1", "worker-1"));
+        when(leaseMaintenancePort.getActiveLeases("task-1")).thenReturn(activeLeases("task-1", "msg-1", "worker-1"));
 
         listener.onTaskTerminal(task);
 
@@ -88,7 +91,7 @@ public class TaskResourceReleaseListenerTest {
         Task task = new Task();
         task.setTid("task-1");
 
-        when(maintenancePort.getActiveLeases("task-1")).thenReturn(activeLeases("task-1", "msg-1", "worker-1"));
+        when(leaseMaintenancePort.getActiveLeases("task-1")).thenReturn(activeLeases("task-1", "msg-1", "worker-1"));
 
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
             listener.onTaskTerminal(task);
@@ -105,7 +108,7 @@ public class TaskResourceReleaseListenerTest {
         Task task = new Task();
         task.setTid("task-1");
 
-        when(maintenancePort.getActiveLeases("task-1")).thenReturn(activeLeases("task-1", "msg-1", "worker-1"));
+        when(leaseMaintenancePort.getActiveLeases("task-1")).thenReturn(activeLeases("task-1", "msg-1", "worker-1"));
 
         listener.onTaskTerminal(task);
 
@@ -121,14 +124,14 @@ public class TaskResourceReleaseListenerTest {
         TaskWorkAttemptClosedEvent closedAttempt =
                 closedAttempt("task-1", "msg-1", "attempt-1", "worker-1");
 
-        when(maintenancePort.hasActiveWorkForWorker("task-1", "worker-1")).thenReturn(false);
-        when(maintenancePort.hasDispatchReadyWork("task-1")).thenReturn(true);
+        when(leaseMaintenancePort.hasActiveWorkForWorker("task-1", "worker-1")).thenReturn(false);
+        when(dispatchWakeupPort.hasDispatchReadyWork("task-1")).thenReturn(true);
 
         listener.onTaskWorkAttemptClosed(task, closedAttempt);
 
         verify(workerManager).recordWorkFinal("worker-1", "task-1");
         verify(workerManager).releaseWorkerExclusiveLease("worker-1");
-        verify(maintenancePort).requestTaskDispatch(same(task));
+        verify(dispatchWakeupPort).requestTaskDispatch(same(task));
     }
 
     @Test
@@ -140,13 +143,13 @@ public class TaskResourceReleaseListenerTest {
         TaskWorkAttemptClosedEvent closedAttempt =
                 closedAttempt("task-1", "msg-1", "attempt-1", "worker-1");
 
-        when(maintenancePort.hasActiveWorkForWorker("task-1", "worker-1")).thenReturn(false);
-        when(maintenancePort.hasDispatchReadyWork("task-1")).thenReturn(true);
+        when(leaseMaintenancePort.hasActiveWorkForWorker("task-1", "worker-1")).thenReturn(false);
+        when(dispatchWakeupPort.hasDispatchReadyWork("task-1")).thenReturn(true);
 
         listener.onTaskWorkAttemptClosed(task, closedAttempt);
 
         verify(workerManager).releaseWorkerExclusiveLease("worker-1");
-        verify(maintenancePort).requestTaskDispatch(same(task));
+        verify(dispatchWakeupPort).requestTaskDispatch(same(task));
     }
 
     @Test
@@ -159,14 +162,14 @@ public class TaskResourceReleaseListenerTest {
         TaskWorkAttemptClosedEvent closedAttempt =
                 closedAttempt("task-1", "msg-1", "attempt-1", "worker-1");
 
-        when(maintenancePort.hasActiveWorkForWorker("task-1", "worker-1")).thenReturn(false);
-        when(maintenancePort.hasDispatchReadyWork("task-1")).thenReturn(true);
+        when(leaseMaintenancePort.hasActiveWorkForWorker("task-1", "worker-1")).thenReturn(false);
+        when(dispatchWakeupPort.hasDispatchReadyWork("task-1")).thenReturn(true);
 
         listener.onTaskWorkAttemptClosed(task, closedAttempt);
 
         verify(workerManager).recordWorkFinal("worker-1", "task-1");
         verify(workerManager, never()).releaseWorkerExclusiveLease("worker-1");
-        verify(maintenancePort).requestTaskDispatch(same(task));
+        verify(dispatchWakeupPort).requestTaskDispatch(same(task));
     }
 
     @Test
@@ -179,20 +182,21 @@ public class TaskResourceReleaseListenerTest {
                 closedAttempt("task-1", "msg-1", "attempt-1", "worker-1");
 
         listener = new TaskResourceReleaseListener(
-                maintenancePort,
+                leaseMaintenancePort,
+                dispatchWakeupPort,
                 workerManager,
                 TraceEventLogger.noop(),
                 request -> AssignmentRefillDecision.skip("refill suppressed by test policy")
         );
 
-        when(maintenancePort.hasActiveWorkForWorker("task-1", "worker-1")).thenReturn(false);
+        when(leaseMaintenancePort.hasActiveWorkForWorker("task-1", "worker-1")).thenReturn(false);
 
         listener.onTaskWorkAttemptClosed(task, closedAttempt);
 
         verify(workerManager).recordWorkFinal("worker-1", "task-1");
         verify(workerManager).releaseWorkerExclusiveLease("worker-1");
-        verify(maintenancePort, never()).hasDispatchReadyWork("task-1");
-        verify(maintenancePort, never()).requestTaskDispatch(any());
+        verify(dispatchWakeupPort, never()).hasDispatchReadyWork("task-1");
+        verify(dispatchWakeupPort, never()).requestTaskDispatch(any());
     }
 
     @Test
@@ -205,14 +209,15 @@ public class TaskResourceReleaseListenerTest {
                 closedAttempt("task-1", "msg-1", "attempt-1", "worker-1");
 
         listener = new TaskResourceReleaseListener(
-                maintenancePort,
+                leaseMaintenancePort,
+                dispatchWakeupPort,
                 workerManager,
                 TraceEventLogger.noop(),
                 request -> AssignmentRefillDecision.skip("refill suppressed by test policy"),
                 new NonExclusiveResourcePolicy()
         );
 
-        when(maintenancePort.hasActiveWorkForWorker("task-1", "worker-1")).thenReturn(false);
+        when(leaseMaintenancePort.hasActiveWorkForWorker("task-1", "worker-1")).thenReturn(false);
 
         listener.onTaskWorkAttemptClosed(task, closedAttempt);
 
@@ -229,7 +234,8 @@ public class TaskResourceReleaseListenerTest {
                 closedAttempt("task-1", "msg-1", "attempt-1", "worker-1");
         WorkerDispatchResourceReleaser resourceReleaser = mock(WorkerDispatchResourceReleaser.class);
         listener = new TaskResourceReleaseListener(
-                maintenancePort,
+                leaseMaintenancePort,
+                dispatchWakeupPort,
                 workerManager,
                 TraceEventLogger.noop(),
                 request -> AssignmentRefillDecision.skip("refill suppressed by test policy"),
@@ -237,7 +243,7 @@ public class TaskResourceReleaseListenerTest {
                 resourceReleaser
         );
 
-        when(maintenancePort.hasActiveWorkForWorker("task-1", "worker-1")).thenReturn(false);
+        when(leaseMaintenancePort.hasActiveWorkForWorker("task-1", "worker-1")).thenReturn(false);
 
         listener.onTaskWorkAttemptClosed(task, closedAttempt);
 
@@ -260,13 +266,13 @@ public class TaskResourceReleaseListenerTest {
         TaskWorkAttemptClosedEvent closedAttempt =
                 closedAttempt("task-1", "msg-1", "attempt-1", "worker-1");
 
-        when(maintenancePort.hasActiveWorkForWorker("task-1", "worker-1")).thenReturn(false);
+        when(leaseMaintenancePort.hasActiveWorkForWorker("task-1", "worker-1")).thenReturn(false);
 
         listener.onTaskWorkAttemptClosed(task, closedAttempt);
 
         verify(workerManager).releaseWorkerExclusiveLease("worker-1");
-        verify(maintenancePort, never()).hasDispatchReadyWork("task-1");
-        verify(maintenancePort, never()).requestTaskDispatch(any());
+        verify(dispatchWakeupPort, never()).hasDispatchReadyWork("task-1");
+        verify(dispatchWakeupPort, never()).requestTaskDispatch(any());
     }
 
     @Test
@@ -278,12 +284,12 @@ public class TaskResourceReleaseListenerTest {
         TaskWorkAttemptClosedEvent closedAttempt =
                 closedAttempt("task-1", "msg-1", "attempt-1", "worker-1");
 
-        when(maintenancePort.hasActiveWorkForWorker("task-1", "worker-1")).thenReturn(true);
+        when(leaseMaintenancePort.hasActiveWorkForWorker("task-1", "worker-1")).thenReturn(true);
 
         listener.onTaskWorkAttemptClosed(task, closedAttempt);
 
         verify(workerManager, never()).releaseWorkerExclusiveLease("worker-1");
-        verify(maintenancePort, never()).requestTaskDispatch(any());
+        verify(dispatchWakeupPort, never()).requestTaskDispatch(any());
     }
 
     @Test
@@ -291,7 +297,7 @@ public class TaskResourceReleaseListenerTest {
         Task task = new Task();
         task.setTid("task-1");
 
-        when(maintenancePort.getActiveLeases("task-1")).thenReturn(activeLeases("task-1", "msg-1", "worker-1"));
+        when(leaseMaintenancePort.getActiveLeases("task-1")).thenReturn(activeLeases("task-1", "msg-1", "worker-1"));
 
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
             listener.onTaskTerminal(task);

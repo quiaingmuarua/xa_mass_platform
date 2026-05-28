@@ -18,7 +18,8 @@ import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;
-import com.xa.mass.engine.TaskRuntimeMaintenancePort;
+import com.xa.mass.engine.TaskDispatchWakeupPort;
+import com.xa.mass.engine.TaskLeaseMaintenancePort;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.engine.listener.SimpleTaskDispatchBinder;
@@ -98,7 +99,8 @@ public final class TaskWorkloadMixSmokeRunner {
             TaskEventService taskEvents = engineConfig.getTaskEventService();
             TaskResultIngestFacade taskResultIngestFacade = engineConfig.getTaskResultIngestFacade();
             TaskAssignmentRuntimePort assignmentRuntimePort = engineConfig.getTaskAssignmentRuntimePort();
-            TaskRuntimeMaintenancePort maintenancePort = engineConfig.getTaskRuntimeMaintenancePort();
+            TaskLeaseMaintenancePort leaseMaintenancePort = engineConfig.getTaskLeaseMaintenancePort();
+            TaskDispatchWakeupPort dispatchWakeupPort = engineConfig.getTaskDispatchWakeupPort();
             TaskRuntimeRecoveryPort recoveryPort = engineConfig.getTaskRuntimeRecoveryPort();
             WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
             WorkerResourceRuntime workerResourceRuntime = workerManager;
@@ -156,7 +158,7 @@ public final class TaskWorkloadMixSmokeRunner {
             RuntimeReadyDispatchPump runtimeReadyDispatchPump =
                     new RuntimeReadyDispatchPump(recoveryPort, assignWorker::submit, 50L, 64);
             TaskResourceReleaseListener releaseListener =
-                    new TaskResourceReleaseListener(maintenancePort, workerAdmissionRuntime);
+                    new TaskResourceReleaseListener(leaseMaintenancePort, dispatchWakeupPort, workerAdmissionRuntime);
 
             try {
                 registerWorkers(workerResourceRuntime, config.workerCount());

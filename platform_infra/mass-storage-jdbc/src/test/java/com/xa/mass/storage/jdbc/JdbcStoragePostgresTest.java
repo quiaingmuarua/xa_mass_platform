@@ -59,8 +59,7 @@ class JdbcStoragePostgresTest {
             assertThat(storage.getTask("task-1")).isPresent();
             assertThat(storage.getTasksByStatus(TaskStatus.READY)).hasSize(1);
             assertThat(storage.getTasksByProject("demoApp")).hasSize(1);
-            assertThat(storage.getSchedulableTasks()).hasSize(1);
-            assertThat(storage.pollExpiredMaxRuntimeTasks(LocalDateTime.now(), 10)).hasSize(1);
+            assertThat(storage.pollTasksPastMaxRuntimeDeadline(LocalDateTime.now(), 10)).hasSize(1);
             assertThat(storage.getTaskMessageStats("task-1").getTotal()).isEqualTo(1);
             assertThat(storage.getTaskMessageProjections("task-1", 1)).hasSize(1);
             assertThat(storage.getTaskMessageProjections("task-1", 1))

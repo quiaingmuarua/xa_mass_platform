@@ -3,6 +3,7 @@ package com.xa.mass.storage.jdbc;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.storage.api.TaskDetailStore;
+import com.xa.mass.storage.api.TaskShellLifecycleQuery;
 import com.xa.mass.storage.api.TaskShellStore;
 
 import javax.sql.DataSource;
@@ -22,7 +23,7 @@ import java.util.Optional;
  * message analytics surface; high-volume detail belongs in queues, trace, or
  * audit sinks.</p>
  */
-public class JdbcTaskShellStore extends JdbcStorageSupport implements TaskShellStore, TaskDetailStore {
+public class JdbcTaskShellStore extends JdbcStorageSupport implements TaskShellStore, TaskShellLifecycleQuery, TaskDetailStore {
 
     private final JdbcDialect dialect;
     private final JdbcTaskCompatibilityProjection runtimeProjection = new JdbcTaskCompatibilityProjection();
@@ -115,12 +116,7 @@ public class JdbcTaskShellStore extends JdbcStorageSupport implements TaskShellS
     }
 
     @Override
-    public List<Task> getSchedulableTasks() {
-        return queryTasks("SELECT json FROM xa_task WHERE schedulable = TRUE");
-    }
-
-    @Override
-    public List<Task> pollExpiredMaxRuntimeTasks(LocalDateTime now, int limit) {
+    public List<Task> pollTasksPastMaxRuntimeDeadline(LocalDateTime now, int limit) {
         if (now == null || limit <= 0) {
             return List.of();
         }

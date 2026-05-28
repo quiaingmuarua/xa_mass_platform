@@ -2,7 +2,8 @@ package com.xa.mass.engine.watchdog;
 
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.engine.TaskRuntimeMaintenancePort;
+import com.xa.mass.engine.TaskLeaseMaintenancePort;
+import com.xa.mass.engine.TaskShellLifecycleMaintenancePort;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,7 +20,7 @@ import java.util.concurrent.TimeUnit;
  * <ol>
  *   <li><b>Lease expiry</b>: any active leased work item whose
  *       {@code leaseExpireTime} has passed is expired via
- *       {@link TaskRuntimeMaintenancePort#expireLeasedWork}, which releases the worker
+ *       {@link TaskLeaseMaintenancePort#expireLeasedWork}, which releases the worker
  *       context and re-queues the work item (or finalizes it if retries are
  *       exhausted).</li>
  *   <li><b>Max task runtime</b>: any non-terminal {@code Task} with
@@ -37,12 +38,16 @@ public class LeaseExpireWatchdog {
     private static final int EXPIRED_LEASE_SCAN_LIMIT = 1000;
     private static final int EXPIRED_TASK_RUNTIME_SCAN_LIMIT = 1000;
 
-    private final TaskRuntimeMaintenancePort maintenancePort;
+    private final TaskLeaseMaintenancePort leaseMaintenancePort;
+    private final TaskShellLifecycleMaintenancePort shellLifecycleMaintenancePort;
     private final long intervalSeconds;
     private ScheduledExecutorService scheduler;
 
-    public LeaseExpireWatchdog(TaskRuntimeMaintenancePort maintenancePort, long intervalSeconds) {
-        this.maintenancePort = maintenancePort;
+    public LeaseExpireWatchdog(TaskLeaseMaintenancePort leaseMaintenancePort,
+                               TaskShellLifecycleMaintenancePort shellLifecycleMaintenancePort,
+                               long intervalSeconds) {
+        this.leaseMaintenancePort = leaseMaintenancePort;
+        this.shellLifecycleMaintenancePort = shellLifecycleMaintenancePort;
         this.intervalSeconds = intervalSeconds;
     }
 
@@ -82,20 +87,21 @@ public class LeaseExpireWatchdog {
     }
 
     private void scanExpiredLeases(java.time.Instant now) {
-        List<ActiveLeaseRecord> expiredLeases = maintenancePort.pollExpiredLeases(EXPIRED_LEASE_SCAN_LIMIT, now);
+        List<ActiveLeaseRecord> expiredLeases = leaseMaintenancePort.pollExpiredLeases(EXPIRED_LEASE_SCAN_LIMIT, now);
         for (ActiveLeaseRecord lease : expiredLeases) {
             log.warn("[Watchdog] Expiring stale work lease {} for msg {} in task {} (lease expired at {})",
                     lease.leaseToken(), lease.messageId(), lease.taskId(), lease.leaseExpireAt());
-            maintenancePort.expireLeasedWork(lease.taskId(), lease.messageId());
+            leaseMaintenancePort.expireLeasedWork(lease.taskId(), lease.messageId());
         }
     }
 
     private void scanMaxRuntime(LocalDateTime now) {
-        List<Task> expiredTasks = maintenancePort.pollExpiredMaxRuntimeTasks(now, EXPIRED_TASK_RUNTIME_SCAN_LIMIT);
+        List<Task> expiredTasks = shellLifecycleMaintenancePort.pollTasksPastMaxRuntimeDeadline(
+                now, EXPIRED_TASK_RUNTIME_SCAN_LIMIT);
         for (Task task : expiredTasks) {
             log.warn("[Watchdog] Task {} exceeded max runtime of {}s (started {}), terminating",
                     task.getTid(), task.getExecutionSpec().getMaxRuntimeSeconds(), task.getStartTime());
-            maintenancePort.terminateTask(task.getTid(), TaskTerminalReason.MAX_RUNTIME_REACHED);
+            shellLifecycleMaintenancePort.terminateTask(task.getTid(), TaskTerminalReason.MAX_RUNTIME_REACHED);
         }
     }
 }

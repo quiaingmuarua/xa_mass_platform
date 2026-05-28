@@ -8,7 +8,7 @@ import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.TaskManagerResultIngestFacade;
 import com.xa.mass.engine.TaskQueryService;
-import com.xa.mass.engine.TaskRuntimeMaintenancePort;
+import com.xa.mass.engine.TaskLeaseMaintenancePort;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.ResultApplyStatus;
 import com.xa.mass.runtime.api.TaskWorkResult;
@@ -50,7 +50,7 @@ class RedisRuntimeTraceIntegrationTest {
     private TaskCommandService taskCommands;
     private TaskQueryService taskQueries;
     private TaskManagerResultIngestFacade resultFacade;
-    private TaskRuntimeMaintenancePort maintenancePort;
+    private TaskLeaseMaintenancePort maintenancePort;
     private RecordingExecutionEventSink traceSink;
     private AtomicReference<Instant> now;
 

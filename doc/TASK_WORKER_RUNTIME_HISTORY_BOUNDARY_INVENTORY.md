@@ -91,9 +91,9 @@ storage implementation exists in this inventory.
 | `getActiveLeases(String)` | `TaskRuntimeMaintenancePort` | lease runtime maintenance | `TaskLeaseMaintenancePort` |
 | `pollExpiredLeases(int, Instant)` | `TaskRuntimeMaintenancePort` | lease runtime maintenance | `TaskLeaseMaintenancePort` |
 | `expireLeasedWork(String,String)` | `TaskRuntimeMaintenancePort` | lease runtime maintenance/result convergence trigger | `TaskLeaseMaintenancePort` |
-| `hasDispatchReadyWork(String)` | `TaskRuntimeMaintenancePort` | dispatch readiness/current runtime state | `TaskDispatchRecoveryPort` or dispatch readiness owner |
+| `hasDispatchReadyWork(String)` | `TaskRuntimeMaintenancePort` | dispatch readiness/current runtime state | `TaskDispatchWakeupPort` |
 | `hasActiveWorkForWorker(String,String)` | `TaskRuntimeMaintenancePort` | runtime active-work state | lease/runtime state owner |
-| `requestTaskDispatch(Task)` | `TaskRuntimeMaintenancePort` | dispatch wakeup/request | `TaskDispatchRecoveryPort` or assignment runtime port |
+| `requestTaskDispatch(Task)` | `TaskRuntimeMaintenancePort` | dispatch wakeup/request | `TaskDispatchWakeupPort` |
 | `pollExpiredMaxRuntimeTasks(LocalDateTime,int)` | `TaskRuntimeMaintenancePort` | current task-shell lifecycle maintenance | `TaskShellLifecycleMaintenancePort` |
 | `terminateTask(String, TaskTerminalReason)` | `TaskRuntimeMaintenancePort` | current task-shell lifecycle command | `TaskShellLifecycleMaintenancePort` or existing command/lifecycle port |
 

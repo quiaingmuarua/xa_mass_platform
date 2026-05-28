@@ -495,7 +495,7 @@ Use first when:
 ### Phase Out
 
 - server tests that treat `base model` as a stable host-shell API
-- server E2E that drives mainline behavior by directly mutating `Task`, `TaskStorage`, or runtime state
+- server E2E that drives mainline behavior by directly mutating `Task`, `TaskShellStore`, or runtime state
 - tests organized around historical `message` semantics instead of the current `work` mainline
 - local tests that prove only private implementation detail and not a mainline behavior or kernel invariant
 

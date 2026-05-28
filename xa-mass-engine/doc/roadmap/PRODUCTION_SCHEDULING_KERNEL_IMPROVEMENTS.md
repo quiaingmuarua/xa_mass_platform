@@ -54,7 +54,7 @@ generalized.
 What already exists:
 
 - `LeaseExpireWatchdog` polls expired task-work leases and calls
-  `TaskRuntimeMaintenancePort.expireLeasedWork(...)`
+  `TaskLeaseMaintenancePort.expireLeasedWork(...)`
 - `LeaseExpireWatchdog` also polls max-runtime task expiry and terminates tasks
   with `MAX_RUNTIME_REACHED`
 - worker-command maintenance expires command deadlines through

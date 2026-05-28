@@ -15,7 +15,8 @@ import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;
-import com.xa.mass.engine.TaskRuntimeMaintenancePort;
+import com.xa.mass.engine.TaskDispatchWakeupPort;
+import com.xa.mass.engine.TaskLeaseMaintenancePort;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.engine.listener.SimpleTaskDispatchBinder;
@@ -145,7 +146,8 @@ public final class TaskFlowLoadModelRunner {
                 TaskEventService taskEvents = engineConfig.getTaskEventService();
                 TaskResultIngestFacade taskResultIngestFacade = engineConfig.getTaskResultIngestFacade();
                 TaskAssignmentRuntimePort assignmentRuntimePort = engineConfig.getTaskAssignmentRuntimePort();
-                TaskRuntimeMaintenancePort maintenancePort = engineConfig.getTaskRuntimeMaintenancePort();
+                TaskLeaseMaintenancePort leaseMaintenancePort = engineConfig.getTaskLeaseMaintenancePort();
+                TaskDispatchWakeupPort dispatchWakeupPort = engineConfig.getTaskDispatchWakeupPort();
                 TaskRuntimeRecoveryPort recoveryPort = engineConfig.getTaskRuntimeRecoveryPort();
                 WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
                 WorkerResourceRuntime workerResourceRuntime = workerManager;
@@ -184,7 +186,7 @@ public final class TaskFlowLoadModelRunner {
                                 boolean expireFirstAttempt = shouldExpireFirstAttempt(config, logicalSeq, attemptNo);
                                 if (expireFirstAttempt) {
                                     long expiryStartNanos = System.nanoTime();
-                                    boolean expired = maintenancePort.expireLeasedWork(taskId, messageId);
+                                    boolean expired = leaseMaintenancePort.expireLeasedWork(taskId, messageId);
                                     callbackMetrics.onSyntheticLeaseExpiry(
                                             System.nanoTime() - expiryStartNanos,
                                             expired
@@ -290,7 +292,8 @@ public final class TaskFlowLoadModelRunner {
                         new RuntimeReadyDispatchPump(recoveryPort, assignWorker::submit, 50L, 64);
                 MeasuredTaskResourceReleaseListener releaseListener =
                         new MeasuredTaskResourceReleaseListener(
-                                maintenancePort,
+                                leaseMaintenancePort,
+                                dispatchWakeupPort,
                                 workerAdmissionRuntime,
                                 releaseMetrics
                         );
@@ -657,10 +660,11 @@ public final class TaskFlowLoadModelRunner {
     private static final class MeasuredTaskResourceReleaseListener extends TaskResourceReleaseListener {
         private final ReleaseMetrics metrics;
 
-        private MeasuredTaskResourceReleaseListener(TaskRuntimeMaintenancePort maintenancePort,
+        private MeasuredTaskResourceReleaseListener(TaskLeaseMaintenancePort leaseMaintenancePort,
+                                                    TaskDispatchWakeupPort dispatchWakeupPort,
                                                     WorkerAdmissionRuntime workerAdmissionRuntime,
                                                     ReleaseMetrics metrics) {
-            super(maintenancePort, workerAdmissionRuntime);
+            super(leaseMaintenancePort, dispatchWakeupPort, workerAdmissionRuntime);
             this.metrics = metrics;
         }
 

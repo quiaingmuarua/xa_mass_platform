@@ -13,10 +13,11 @@ This roadmap protects a core boundary:
   models
 - history/read-model output must not participate in runtime decisions
 
-The issue is not only whether an API has `getAll`. The deeper issue is that
-`TaskStorage` and `WorkerStorage` are exposed to engine/runtime as broad storage
-contracts. That makes it easy for future work to query runtime state, history,
-or analytics from control-plane DB APIs.
+The issue is not only whether an API has `getAll`. The deeper issue was that
+the old `TaskStorage` and `WorkerStorage` names exposed broad storage
+contracts to engine/runtime. TWH-1A renamed those contracts, and the remaining
+work is to keep the new `TaskShellStore` / `WorkerDeclarationStore` surfaces
+from regrowing runtime state, history, or analytics queries.
 
 Read with:
 
@@ -30,21 +31,23 @@ Read with:
 
 ## Current Facts
 
-- `TaskStorage` currently lives in `mass-storage-api` and is documented as the
-  task control-plane aggregate contract.
-- `TaskStorage` still exposes runtime-shaped query methods:
-  `getSchedulableTasks()` and `pollExpiredMaxRuntimeTasks(...)`.
+- `TaskShellStore` currently lives in `mass-storage-api` and is documented as
+  the task shell/control-plane contract.
+- `TaskShellStore` no longer exposes `getSchedulableTasks()` or max-runtime
+  deadline polling. Max-runtime shell lifecycle scanning is isolated behind
+  `TaskShellLifecycleQuery.pollTasksPastMaxRuntimeDeadline(...)`.
 - `TaskManager` already has a runtime-first dispatchable path through
-  `TaskWorkRuntime.readyTaskIds(limit)`, but still delegates
-  `getSchedulableTasks()` and max-runtime polling to `TaskStorage`.
+  `TaskWorkRuntime.readyTaskIds(limit)`.
 - `TaskWorkRuntime` owns ready queue membership, delayed visibility, lease
   ownership, retry timing, runtime counters, and result apply truth.
-- `WorkerStorage` currently lives in `mass-storage-api` and is documented as a
-  control-plane worker row abstraction, not runtime scheduling truth.
-- Current production worker storage implementation found in this slice is
-  `InMemoryWorkerStorage`; no JDBC `WorkerStorage` implementation was found.
-- `WorkerResourceOwner` writes worker registration rows to `WorkerStorage` and
-  projects them into `WorkerRegistry` slots.
+- `WorkerDeclarationStore` currently lives in `mass-storage-api` and is
+  documented as a control-plane worker row abstraction, not runtime scheduling
+  truth.
+- Current production worker declaration storage implementation found in this
+  slice is `InMemoryWorkerDeclarationStore`; no JDBC worker declaration
+  implementation was found.
+- `WorkerResourceOwner` writes worker registration rows to
+  `WorkerDeclarationStore` and projects them into `WorkerRegistry` slots.
 - `WorkerManager` publishes worker resource/current-state APIs from worker
   declaration rows, `WorkerRegistry`, capability reports, and transport
   reachability views.
@@ -65,17 +68,18 @@ Read with:
 This review treats the boundary as a runtime correctness issue, not naming
 cleanup.
 
-1. `TaskStorage` is currently too broad for the desired architecture.
-   `saveTask`, `getTask`, `updateTask`, delete, status/project/list reads can
-   be interpreted as task shell/control-plane operations. In contrast,
-   `getSchedulableTasks()` is a scheduling-admission query and does not belong
-   on a storage contract. `pollExpiredMaxRuntimeTasks(...)` is less severe but
-   still needs a lifecycle-specific shell query owner so it is not confused
-   with queue/lease expiry truth.
-2. `WorkerStorage` is also too broad. Its current implementation acts like a
-   worker declaration row store, but the name and `Worker` model make it easy
-   to persist runtime-flavored fields such as status and heartbeat. That would
-   be wrong once a JDBC worker implementation appears.
+1. The old `TaskStorage` contract was too broad for the desired architecture.
+   `saveTask`, `getTask`, `updateTask`, delete, status/project/list reads were
+   retained under `TaskShellStore` as task shell/control-plane operations.
+   `getSchedulableTasks()` was removed from storage because it was a
+   scheduling-admission query. Max-runtime shell lifecycle polling now lives
+   behind `TaskShellLifecycleQuery`, so it is not confused with queue/lease
+   expiry truth.
+2. The old `WorkerStorage` contract was also too broad. Its implementation
+   acted like a worker declaration row store, but the old name and `Worker`
+   model made it easy to persist runtime-flavored fields such as status and
+   heartbeat. That remains a TWH-3 model-split risk once a JDBC worker
+   declaration implementation appears.
 3. `TaskManager` already has the correct runtime-first path for dispatchable
    work: `TaskWorkRuntime.readyTaskIds(limit)` followed by bounded shell
    lookup. That is the model to strengthen. Storage-level schedulable scans are
@@ -94,10 +98,10 @@ cleanup.
    breaking embedded-SDK cleanup, not a deprecated compatibility track, because
    keeping old and new methods would preserve the bad abstraction as a live
    public seam.
-7. `TaskRuntimeMaintenancePort` currently mixes runtime lease maintenance with
-   current task-shell lifecycle scanning. That is better than exposing storage
-   directly to the watchdog, but the method classification still needs to be
-   explicit before implementation.
+7. The old `TaskRuntimeMaintenancePort` mixed runtime lease maintenance with
+   current task-shell lifecycle scanning. It has been split into lease,
+   dispatch-wakeup, and task-shell lifecycle ports so watchdog/listener wiring
+   does not expose broad storage or a mixed maintenance surface.
 8. Current task shell query methods need a disposition path after
    classification. `listTasksPaged(...)`, `getTasksByStatus(...)`, and
    `getTasksByProject(...)` are acceptable only as current shell/support views.
@@ -110,10 +114,11 @@ cleanup.
    decide whether `WorkerResourceRecord` becomes a current-state composite view
    or is split into declaration and runtime projection records.
 10. `EngineConfig` has real internal coupling between task shell storage and
-    compatibility projection storage: the default `InMemoryTaskStorage` is both
-    `taskStorage` and `taskDetailStore`, and `setTaskStorage(...)` clears the
-    detail store when both fields alias the same object. TWH-1 must preserve
-    that explicit fallback-breaking behavior under the new names.
+    compatibility projection storage: the default `InMemoryTaskShellStore` is
+    both `taskShellStore` and `taskDetailStore`, and
+    `setTaskShellStore(...)` clears the detail store when both fields alias the
+    same object. TWH-1 must preserve that explicit fallback-breaking behavior
+    under the new names.
 11. TWH-5 is a design/checkpoint slice. It should not be treated like an
     implementation slice. Its output is a trace/archive gap note or updates to
     trace contracts, not runtime/storage code.
@@ -350,8 +355,10 @@ Scope:
   - `TaskLeaseMaintenancePort`: active leases, expired leases, lease expiry
   - `TaskShellLifecycleMaintenancePort`: max-runtime deadline scanning and
     terminal lifecycle action over current shells
-  - `TaskDispatchRecoveryPort`: runtime ready-task discovery and dispatch
-    wakeup/readiness
+  - `TaskDispatchWakeupPort`: runtime dispatch readiness and dispatch request
+    wakeup
+  - `TaskRuntimeRecoveryPort`: runtime ready-task discovery for startup and
+    polling recovery
 - Ensure watchdog code talks to engine lifecycle/maintenance ports, not a raw
   storage contract.
 - Add guards in the same slice:

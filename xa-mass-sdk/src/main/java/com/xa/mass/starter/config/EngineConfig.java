@@ -5,10 +5,12 @@ import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
+import com.xa.mass.engine.TaskDispatchWakeupPort;
+import com.xa.mass.engine.TaskLeaseMaintenancePort;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.TaskManagerResultIngestFacade;
-import com.xa.mass.engine.TaskRuntimeMaintenancePort;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
+import com.xa.mass.engine.TaskShellLifecycleMaintenancePort;
 import com.xa.mass.engine.WorkerControlRuntime;
 import com.xa.mass.engine.control.DefaultWorkerDispatchAvailabilityPolicy;
 import com.xa.mass.engine.control.WorkerControlService;
@@ -83,7 +85,9 @@ public class EngineConfig {
     private TaskQueryService taskQueryService;
     private TaskResultIngestFacade taskResultIngestFacade;
     private TaskAssignmentRuntimePort taskAssignmentRuntimePort;
-    private TaskRuntimeMaintenancePort taskRuntimeMaintenancePort;
+    private TaskLeaseMaintenancePort taskLeaseMaintenancePort;
+    private TaskDispatchWakeupPort taskDispatchWakeupPort;
+    private TaskShellLifecycleMaintenancePort taskShellLifecycleMaintenancePort;
     private TaskRuntimeRecoveryPort taskRuntimeRecoveryPort;
     private com.xa.mass.engine.util.TraceEventLogger traceEventLogger;
     private TaskShellStore taskStorage;
@@ -137,7 +141,9 @@ public class EngineConfig {
         this.taskQueryService = source.taskQueryService;
         this.taskResultIngestFacade = source.taskResultIngestFacade;
         this.taskAssignmentRuntimePort = source.taskAssignmentRuntimePort;
-        this.taskRuntimeMaintenancePort = source.taskRuntimeMaintenancePort;
+        this.taskLeaseMaintenancePort = source.taskLeaseMaintenancePort;
+        this.taskDispatchWakeupPort = source.taskDispatchWakeupPort;
+        this.taskShellLifecycleMaintenancePort = source.taskShellLifecycleMaintenancePort;
         this.taskRuntimeRecoveryPort = source.taskRuntimeRecoveryPort;
         this.taskStorage = source.taskStorage;
         this.taskDetailStore = source.taskDetailStore;
@@ -231,11 +237,25 @@ public class EngineConfig {
         return taskAssignmentRuntimePort;
     }
 
-    public TaskRuntimeMaintenancePort getTaskRuntimeMaintenancePort() {
-        if (taskRuntimeMaintenancePort == null) {
-            taskRuntimeMaintenancePort = ensureTaskManager();
+    public TaskLeaseMaintenancePort getTaskLeaseMaintenancePort() {
+        if (taskLeaseMaintenancePort == null) {
+            taskLeaseMaintenancePort = ensureTaskManager();
         }
-        return taskRuntimeMaintenancePort;
+        return taskLeaseMaintenancePort;
+    }
+
+    public TaskDispatchWakeupPort getTaskDispatchWakeupPort() {
+        if (taskDispatchWakeupPort == null) {
+            taskDispatchWakeupPort = ensureTaskManager();
+        }
+        return taskDispatchWakeupPort;
+    }
+
+    public TaskShellLifecycleMaintenancePort getTaskShellLifecycleMaintenancePort() {
+        if (taskShellLifecycleMaintenancePort == null) {
+            taskShellLifecycleMaintenancePort = ensureTaskManager();
+        }
+        return taskShellLifecycleMaintenancePort;
     }
 
     public TaskRuntimeRecoveryPort getTaskRuntimeRecoveryPort() {

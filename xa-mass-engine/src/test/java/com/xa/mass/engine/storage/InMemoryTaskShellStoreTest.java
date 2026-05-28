@@ -82,7 +82,7 @@ class InMemoryTaskShellStoreTest {
     }
 
     @Test
-    void pollExpiredMaxRuntimeTasksUsesDeadlineIndex() {
+    void pollTasksPastMaxRuntimeDeadlineUsesDeadlineIndex() {
         InMemoryTaskShellStore storage = new InMemoryTaskShellStore();
         LocalDateTime now = LocalDateTime.now();
         Task expired = runningTask("expired", now.minusSeconds(20), 10);
@@ -92,10 +92,10 @@ class InMemoryTaskShellStoreTest {
         storage.saveTask(future);
         storage.saveTask(unlimited);
 
-        List<Task> tasks = storage.pollExpiredMaxRuntimeTasks(now, 10);
+        List<Task> tasks = storage.pollTasksPastMaxRuntimeDeadline(now, 10);
 
         assertEquals(List.of("expired"), tasks.stream().map(Task::getTid).toList());
-        assertTrue(storage.pollExpiredMaxRuntimeTasks(now.plusSeconds(1), 10).isEmpty());
+        assertTrue(storage.pollTasksPastMaxRuntimeDeadline(now.plusSeconds(1), 10).isEmpty());
     }
 
     @Test
@@ -109,7 +109,7 @@ class InMemoryTaskShellStoreTest {
         stored.setStartTime(now.minusSeconds(120));
         assertTrue(storage.updateTask(stored));
 
-        List<Task> tasks = storage.pollExpiredMaxRuntimeTasks(now, 10);
+        List<Task> tasks = storage.pollTasksPastMaxRuntimeDeadline(now, 10);
 
         assertEquals(List.of("mutable"), tasks.stream().map(Task::getTid).toList());
     }
@@ -140,7 +140,7 @@ class InMemoryTaskShellStoreTest {
         task.setStatus(TaskStatus.TERMINAL);
         assertTrue(storage.updateTask(task));
 
-        assertTrue(storage.pollExpiredMaxRuntimeTasks(now, 10).isEmpty());
+        assertTrue(storage.pollTasksPastMaxRuntimeDeadline(now, 10).isEmpty());
     }
 
     @Test

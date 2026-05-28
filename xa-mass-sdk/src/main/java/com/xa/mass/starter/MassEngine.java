@@ -7,11 +7,13 @@ import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskCommandService;
+import com.xa.mass.engine.TaskDispatchWakeupPort;
 import com.xa.mass.engine.TaskDispatchWakeupBridge;
 import com.xa.mass.engine.TaskEventListenerRegistrar;
 import com.xa.mass.engine.TaskEventService;
+import com.xa.mass.engine.TaskLeaseMaintenancePort;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
-import com.xa.mass.engine.TaskRuntimeMaintenancePort;
+import com.xa.mass.engine.TaskShellLifecycleMaintenancePort;
 import com.xa.mass.engine.listener.SimpleTaskDispatchBinder;
 import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
@@ -57,7 +59,9 @@ public class MassEngine {
 
     private TaskCommandService taskCommands;
     private TaskRuntimeRecoveryPort runtimeRecoveryPort;
-    private TaskRuntimeMaintenancePort runtimeMaintenancePort;
+    private TaskLeaseMaintenancePort leaseMaintenancePort;
+    private TaskDispatchWakeupPort dispatchWakeupPort;
+    private TaskShellLifecycleMaintenancePort shellLifecycleMaintenancePort;
     private TaskEventListenerRegistrar eventListeners;
     private TaskEventService taskEvents;
     private TaskAssignWorker assignWorker;
@@ -93,7 +97,9 @@ public class MassEngine {
         try {
             taskCommands = config.getTaskCommandService();
             runtimeRecoveryPort = config.getTaskRuntimeRecoveryPort();
-            runtimeMaintenancePort = config.getTaskRuntimeMaintenancePort();
+            leaseMaintenancePort = config.getTaskLeaseMaintenancePort();
+            dispatchWakeupPort = config.getTaskDispatchWakeupPort();
+            shellLifecycleMaintenancePort = config.getTaskShellLifecycleMaintenancePort();
             TaskAssignmentRuntimePort assignmentRuntimePort = config.getTaskAssignmentRuntimePort();
             taskEvents = config.getTaskEventService();
             eventListeners = taskEvents;
@@ -147,7 +153,8 @@ public class MassEngine {
             runtimeReadyDispatchPump.start();
 
             resourceReleaseListener = new TaskResourceReleaseListener(
-                    runtimeMaintenancePort,
+                    leaseMaintenancePort,
+                    dispatchWakeupPort,
                     workerAdmissionRuntime,
                     traceEventLogger);
             taskReadyListener = task -> {
@@ -168,7 +175,10 @@ public class MassEngine {
             eventListeners.addTaskTerminalListener(taskTerminalListener);
             recoverRuntimeReadyTasks();
 
-            leaseWatchdog = new LeaseExpireWatchdog(runtimeMaintenancePort, config.getLeaseWatchdogIntervalSeconds());
+            leaseWatchdog = new LeaseExpireWatchdog(
+                    leaseMaintenancePort,
+                    shellLifecycleMaintenancePort,
+                    config.getLeaseWatchdogIntervalSeconds());
             leaseWatchdog.start();
             workerCommandMaintenanceWatchdog = new WorkerCommandMaintenanceWatchdog(
                     config.getWorkerControlRuntime(),
@@ -242,7 +252,9 @@ public class MassEngine {
             config.shutdownTaskRuntime();
             taskCommands = null;
             runtimeRecoveryPort = null;
-            runtimeMaintenancePort = null;
+            leaseMaintenancePort = null;
+            dispatchWakeupPort = null;
+            shellLifecycleMaintenancePort = null;
             eventListeners = null;
             taskEvents = null;
             running = false;

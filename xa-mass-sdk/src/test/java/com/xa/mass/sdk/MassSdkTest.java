@@ -28,7 +28,9 @@ import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.TaskWorkLogicallyFinalEvent;
 import com.xa.mass.engine.TaskWorkLogicallyFinalListener;
 import com.xa.mass.engine.TaskWorkProjectionState;
-import com.xa.mass.engine.TaskRuntimeMaintenancePort;
+import com.xa.mass.engine.TaskDispatchWakeupPort;
+import com.xa.mass.engine.TaskLeaseMaintenancePort;
+import com.xa.mass.engine.TaskShellLifecycleMaintenancePort;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
@@ -1630,12 +1632,16 @@ class MassSdkTest {
 
         TaskResultIngestFacade resultIngestFacade = config.getTaskResultIngestFacade();
         TaskAssignmentRuntimePort assignmentRuntimePort = config.getTaskAssignmentRuntimePort();
-        TaskRuntimeMaintenancePort runtimeMaintenancePort = config.getTaskRuntimeMaintenancePort();
+        TaskLeaseMaintenancePort leaseMaintenancePort = config.getTaskLeaseMaintenancePort();
+        TaskDispatchWakeupPort dispatchWakeupPort = config.getTaskDispatchWakeupPort();
+        TaskShellLifecycleMaintenancePort shellLifecycleMaintenancePort = config.getTaskShellLifecycleMaintenancePort();
         TaskRuntimeRecoveryPort runtimeRecoveryPort = config.getTaskRuntimeRecoveryPort();
 
         assertSame(resultIngestFacade, config.getTaskResultIngestFacade());
         assertSame(assignmentRuntimePort, config.getTaskAssignmentRuntimePort());
-        assertSame(runtimeMaintenancePort, config.getTaskRuntimeMaintenancePort());
+        assertSame(leaseMaintenancePort, config.getTaskLeaseMaintenancePort());
+        assertSame(dispatchWakeupPort, config.getTaskDispatchWakeupPort());
+        assertSame(shellLifecycleMaintenancePort, config.getTaskShellLifecycleMaintenancePort());
         assertSame(runtimeRecoveryPort, config.getTaskRuntimeRecoveryPort());
     }
 

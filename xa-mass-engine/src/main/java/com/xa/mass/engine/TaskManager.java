@@ -22,6 +22,7 @@ import com.xa.mass.engine.policy.TaskTerminalPolicy;
 import com.xa.mass.engine.runtime.TaskRuntimeEnqueueOptionsResolver;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
 import com.xa.mass.storage.api.TaskDetailStore;
+import com.xa.mass.storage.api.TaskShellLifecycleQuery;
 import com.xa.mass.storage.api.TaskShellStore;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
@@ -59,16 +60,18 @@ import java.util.function.Supplier;
  * preferred cross-module caller surface for shell, SDK, transport, or testing
  * flows. Downstream callers should prefer {@link TaskCommandService},
  * {@link TaskQueryService}, {@link TaskResultIngestFacade},
- * {@link TaskAssignmentRuntimePort}, {@link TaskRuntimeMaintenancePort},
+ * {@link TaskAssignmentRuntimePort}, {@link TaskLeaseMaintenancePort},
+ * {@link TaskDispatchWakeupPort}, {@link TaskShellLifecycleMaintenancePort},
  * {@link TaskRuntimeRecoveryPort}, and {@link TaskEventService}.
  */
-public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMaintenancePort, TaskRuntimeRecoveryPort, TaskStateRuntimePort, TaskQueryPort, TaskCommandPort, TaskResultIngestPort {
+public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintenancePort, TaskDispatchWakeupPort, TaskShellLifecycleMaintenancePort, TaskRuntimeRecoveryPort, TaskStateRuntimePort, TaskQueryPort, TaskCommandPort, TaskResultIngestPort {
 
     private static final Logger logger = LoggerFactory.getLogger(TaskManager.class);
     static final int MAX_INGEST_BATCH_ITEMS = Integer.getInteger("xa.mass.engine.maxIngestBatchItems", 10_000);
 
     private final TaskShellStore taskStorage;
     private final TaskCompatibilityProjectionStore compatibilityProjectionStore;
+    private final TaskShellLifecycleQuery taskShellLifecycleQuery;
     private final TaskTerminalPolicy taskTerminalPolicy;
     private final TaskEventPublisher eventPublisher;
     private final TaskStateResolver stateResolver;
@@ -109,6 +112,9 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
                        TaskResultRuntime taskResultRuntime,
                        ExecutionEventSink executionEventSink) {
         this.taskStorage = Objects.requireNonNull(taskStorage, "taskStorage");
+        this.taskShellLifecycleQuery = taskStorage instanceof TaskShellLifecycleQuery lifecycleQuery
+                ? lifecycleQuery
+                : new ScanningTaskShellLifecycleQuery(taskStorage);
         TaskDetailStore requiredTaskDetailStore = Objects.requireNonNull(taskDetailStore, "taskDetailStore");
         this.compatibilityProjectionStore = new TaskCompatibilityProjectionStore(requiredTaskDetailStore);
         TaskWorkRuntime requiredTaskWorkRuntime = Objects.requireNonNull(taskWorkRuntime, "taskWorkRuntime");
@@ -257,21 +263,9 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         return tasks;
     }
 
-    /**
-     * Returns tasks that the scheduler currently considers schedulable.
-     */
-    List<Task> getSchedulableTasks() {
-        LogUtils.logOperationStart("GET_SCHEDULABLE_TASKS", "TaskManager");
-
-        List<Task> tasks = taskStorage.getSchedulableTasks();
-
-        LogUtils.logOperationSuccess("loaded schedulable tasks: count=" + tasks.size(), 0);
-        return tasks;
-    }
-
     @Override
-    public List<Task> pollExpiredMaxRuntimeTasks(LocalDateTime now, int limit) {
-        return taskStorage.pollExpiredMaxRuntimeTasks(now, limit);
+    public List<Task> pollTasksPastMaxRuntimeDeadline(LocalDateTime now, int limit) {
+        return taskShellLifecycleQuery.pollTasksPastMaxRuntimeDeadline(now, limit);
     }
 
     @Override
@@ -891,6 +885,63 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
         String leaf = slash >= 0 ? normalized.substring(slash + 1) : normalized;
         String sanitized = leaf.replaceAll("[^A-Za-z0-9._-]", "-");
         return sanitized.isBlank() ? null : sanitized;
+    }
+
+    private static final class ScanningTaskShellLifecycleQuery implements TaskShellLifecycleQuery {
+
+        private static final int PAGE_SIZE = 1000;
+        private static final int MAX_SCANNED_TASKS =
+                Integer.getInteger("xa.mass.engine.maxRuntimeShellLifecycleScanLimit", 10_000);
+
+        private final TaskShellStore taskShellStore;
+
+        private ScanningTaskShellLifecycleQuery(TaskShellStore taskShellStore) {
+            this.taskShellStore = Objects.requireNonNull(taskShellStore, "taskShellStore");
+        }
+
+        @Override
+        public List<Task> pollTasksPastMaxRuntimeDeadline(LocalDateTime now, int limit) {
+            if (now == null || limit <= 0) {
+                return List.of();
+            }
+            java.util.ArrayList<Task> expired = new java.util.ArrayList<>(Math.min(limit, PAGE_SIZE));
+            int offset = 0;
+            int scanned = 0;
+            while (expired.size() < limit && scanned < MAX_SCANNED_TASKS) {
+                int pageLimit = Math.min(PAGE_SIZE, MAX_SCANNED_TASKS - scanned);
+                List<Task> page = taskShellStore.listTasksPaged(offset, pageLimit);
+                if (page.isEmpty()) {
+                    break;
+                }
+                for (Task task : page) {
+                    scanned++;
+                    if (isPastMaxRuntimeDeadline(task, now)) {
+                        expired.add(task);
+                        if (expired.size() >= limit) {
+                            break;
+                        }
+                    }
+                }
+                if (page.size() < pageLimit) {
+                    break;
+                }
+                offset += pageLimit;
+            }
+            return expired;
+        }
+
+        private boolean isPastMaxRuntimeDeadline(Task task, LocalDateTime now) {
+            if (task == null
+                    || task.getStatus() == null
+                    || task.getStatus().isFinal()
+                    || task.getExecutionSpec().getMaxRuntimeSeconds() <= 0
+                    || task.getStartTime() == null) {
+                return false;
+            }
+            return task.getStartTime()
+                    .plusSeconds(task.getExecutionSpec().getMaxRuntimeSeconds())
+                    .isBefore(now);
+        }
     }
 
 }
