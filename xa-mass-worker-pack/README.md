@@ -13,6 +13,9 @@ Status: current worker-pack owner README.
 - keep runtime composition SDK-first; worker-pack registers through normal platform APIs
 - keep external process references under `samples/`
 - do not let worker-pack redefine `xa-mass-server` as the product shell
+- do not add `xa-mass-java-sdk` unless worker-pack has real public HTTP
+  worker-control boilerplate to remove, or a later public realtime Java client
+  contract to consume
 
 ## Start Here
 
@@ -69,3 +72,11 @@ Not yet implemented:
 
 Those belong to the worker-fault roadmap and should be added through normal
 sample-worker command paths, not by mutating engine or transport internals.
+
+## Java External SDK Convergence
+
+Current audit: worker-pack does not duplicate Java raw HTTP client calls for
+`/worker-api/v1` topology or worker-control routes. It discovers dev-shell
+sample workers through embedded `MassSdkApplication` and owns realtime
+WebSocket/socket frame clients plus sample fault behavior. JSDK-5.5 is
+therefore conditional rather than an immediate migration step.

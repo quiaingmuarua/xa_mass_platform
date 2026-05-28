@@ -780,10 +780,29 @@ Acceptance:
 
 ### JSDK-5.5: Worker Pack Integration Convergence
 
+Status: conditional, not currently actionable as a code migration.
+
+Current audit:
+
+- `xa-mass-worker-pack` does not currently duplicate Java raw HTTP
+  topology/control-plane client code for `/worker-api/v1`.
+- worker-pack discovers sample workers through the embedded `MassSdkApplication`
+  because it runs inside the dev-shell runtime.
+- worker-pack's Java sample clients are primarily WebSocket/socket realtime
+  frame clients plus sample fault/command runtime.
+- adding `xa-mass-java-sdk` to worker-pack now would be dependency churn without
+  removing a real duplicate public HTTP client path.
+
+Execution rule: do not add a worker-pack dependency on `xa-mass-java-sdk` until
+there is an actual public HTTP worker-control caller to migrate, or until
+JSDK-6 defines a public realtime Java client contract that worker-pack can
+consume without losing its sample fault/runtime ownership.
+
 Scope:
 
-- migrate only topology/control-plane HTTP calls inside `xa-mass-worker-pack`
-  to consume `xa-mass-java-sdk` where they talk to public server/worker APIs:
+- when such calls exist, migrate only topology/control-plane HTTP calls inside
+  `xa-mass-worker-pack` to consume `xa-mass-java-sdk` where they talk to public
+  server/worker APIs:
   adapter-node registration, node/group binding, worker registration,
   capability/state report, command ack, and other HTTP worker-control calls.
 - keep worker-pack sample command/fault runtime local to worker-pack.
