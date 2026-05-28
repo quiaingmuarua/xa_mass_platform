@@ -150,4 +150,7 @@ Engine must not depend on:
 - CRUD-shaped rule managers in matching code
 
 `mass-runtime-memory` removal is tracked as RBC-6 because it is an engine
-production dependency issue independent of rule evaluator extraction.
+production dependency issue independent of rule evaluator extraction. RBC-6
+has converged this boundary: engine main sources require injected
+`TaskResultRuntime`, and in-memory runtime defaults live in SDK/server/test
+assembly.

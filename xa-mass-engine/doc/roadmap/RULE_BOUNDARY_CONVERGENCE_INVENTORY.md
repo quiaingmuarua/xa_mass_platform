@@ -101,7 +101,7 @@ RBC-1 decision:
 
 ## Engine Runtime-Memory Dependency Residue
 
-Current direct main-source references:
+RBC-0 direct main-source references:
 
 - `TaskManager(TaskStorage, TaskDetailStore, TaskWorkRuntime)`
 - `TaskManager(TaskStorage, TaskDetailStore, TaskTerminalPolicy, TaskWorkRuntime)`
@@ -125,6 +125,14 @@ Required movement:
 - keep in-memory result runtime defaults in server/SDK/test composition
 - change `xa-mass-engine` `mass-runtime-memory` dependency to test scope or
   remove it after main sources stop referencing it
+
+RBC-6 result:
+
+- These convenience constructors were removed.
+- `TaskManager` now requires explicit `TaskResultRuntime` injection at the
+  engine constructor boundary.
+- `xa-mass-engine` keeps `mass-runtime-memory` only as a test-scoped fixture
+  dependency.
 
 ## Call Sites That Mutate Rule Definitions Through Engine Package Types
 

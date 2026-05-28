@@ -41,7 +41,13 @@ class TaskResultRuntimeConvergenceTest {
     @BeforeEach
     void setUp() {
         InMemoryTaskStorage storage = new InMemoryTaskStorage();
-        taskManager = new TaskManager(storage, storage, new InMemoryTaskWorkRuntime());
+        taskManager = new TaskManager(
+                storage,
+                storage,
+                new InMemoryTaskWorkRuntime(),
+                new InMemoryTaskResultRuntime(),
+                null
+        );
     }
 
     @AfterEach

@@ -18,6 +18,7 @@ import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.api.WorkEnqueueOptions;
 import com.xa.mass.runtime.api.WorkEnqueueOutcome;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
+import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,7 +50,13 @@ class TaskResultConcurrencyConvergenceTest {
     @BeforeEach
     void setUp() {
         InMemoryTaskStorage storage = new InMemoryTaskStorage();
-        taskManager = new TaskManager(storage, storage, new InMemoryTaskWorkRuntime());
+        taskManager = new TaskManager(
+                storage,
+                storage,
+                new InMemoryTaskWorkRuntime(),
+                new InMemoryTaskResultRuntime(),
+                null
+        );
     }
 
     @Test
@@ -326,7 +333,7 @@ class TaskResultConcurrencyConvergenceTest {
 
     private static TaskManager newManager(TaskWorkRuntime taskWorkRuntime) {
         InMemoryTaskStorage storage = new InMemoryTaskStorage();
-        return new TaskManager(storage, storage, taskWorkRuntime);
+        return new TaskManager(storage, storage, taskWorkRuntime, new InMemoryTaskResultRuntime(), null);
     }
 
     private static Task createRunningTask(TaskManager manager,
@@ -544,7 +551,7 @@ class TaskResultConcurrencyConvergenceTest {
         private final ConcurrentHashMap<String, AtomicInteger> progressUpdateCounts = new ConcurrentHashMap<>();
 
         private CountingTaskManager(InMemoryTaskStorage taskStorage) {
-            super(taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
+            super(taskStorage, taskStorage, new InMemoryTaskWorkRuntime(), new InMemoryTaskResultRuntime(), null);
         }
 
         @Override
@@ -569,7 +576,7 @@ class TaskResultConcurrencyConvergenceTest {
         private CoalescingCountingTaskManager(InMemoryTaskStorage taskStorage,
                                               TaskWorkRuntime taskWorkRuntime,
                                               int expectedProgressRequests) {
-            super(taskStorage, taskStorage, taskWorkRuntime);
+            super(taskStorage, taskStorage, taskWorkRuntime, new InMemoryTaskResultRuntime(), null);
             this.allProgressRequestsReached = new CountDownLatch(expectedProgressRequests);
         }
 

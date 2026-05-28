@@ -14,6 +14,7 @@ import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
+import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import org.slf4j.Logger;
@@ -33,7 +34,9 @@ public class EngineExample {
         TaskManager taskManager = new TaskManager(
                 taskStorage,
                 taskStorage,
-                new InMemoryTaskWorkRuntime());
+                new InMemoryTaskWorkRuntime(),
+                new InMemoryTaskResultRuntime(),
+                null);
         TaskCommandService taskCommands = new TaskCommandService(taskManager);
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage(), new InMemoryWorkerRegistry());
         log.info("taskManager:" + taskManager);

@@ -9,6 +9,7 @@ import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
+import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,7 +33,13 @@ class TaskKernelLifecycleTest {
     @BeforeEach
     void setUp() {
         taskStorage = new InMemoryTaskStorage();
-        taskManager = new TaskManager(taskStorage, taskStorage, new InMemoryTaskWorkRuntime());
+        taskManager = new TaskManager(
+                taskStorage,
+                taskStorage,
+                new InMemoryTaskWorkRuntime(),
+                new InMemoryTaskResultRuntime(),
+                null
+        );
     }
 
     @Test
@@ -176,7 +183,9 @@ class TaskKernelLifecycleTest {
             TaskManager backpressureAwareManager = new TaskManager(
                     backpressureStorage,
                     backpressureStorage,
-                    new InMemoryTaskWorkRuntime()
+                    new InMemoryTaskWorkRuntime(),
+                    new InMemoryTaskResultRuntime(),
+                    null
             );
             TaskCreateSpec request = buildRequest("interactive-backpressure", List.of("alpha"), 3);
             request.setContract(TaskContract.SESSION);
@@ -211,7 +220,9 @@ class TaskKernelLifecycleTest {
         TaskManager backlogAwareManager = new TaskManager(
                 backlogStorage,
                 backlogStorage,
-                new InMemoryTaskWorkRuntime(2)
+                new InMemoryTaskWorkRuntime(2),
+                new InMemoryTaskResultRuntime(),
+                null
         );
         TaskCreateSpec request = buildRequest("append-atomic-backlog", List.of("alpha"), 3);
         request.setContract(TaskContract.BATCH);

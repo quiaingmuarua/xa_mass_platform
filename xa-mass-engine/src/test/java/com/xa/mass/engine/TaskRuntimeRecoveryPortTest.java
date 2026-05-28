@@ -15,6 +15,7 @@ import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.api.WorkEnqueueOptions;
 import com.xa.mass.runtime.api.WorkEnqueueOutcome;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
+import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import org.junit.jupiter.api.Test;
@@ -31,7 +32,7 @@ class TaskRuntimeRecoveryPortTest {
     void runtimeRecoveryOnlyReturnsTasksAdvertisedByRuntimeReadySet() {
         InMemoryTaskStorage storage = new InMemoryTaskStorage();
         ReadyTaskIdsOverrideRuntime runtime = new ReadyTaskIdsOverrideRuntime();
-        TaskManager manager = new TaskManager(storage, storage, runtime);
+        TaskManager manager = new TaskManager(storage, storage, runtime, new InMemoryTaskResultRuntime(), null);
 
         Task first = createTask(manager, buildRequest("runtime-ready-first"));
         Task second = createTask(manager, buildRequest("runtime-ready-second"));
@@ -49,7 +50,7 @@ class TaskRuntimeRecoveryPortTest {
     void runtimeRecoveryDropsRuntimeResidueThatNoLongerHasTaskShellTruth() {
         InMemoryTaskStorage storage = new InMemoryTaskStorage();
         ReadyTaskIdsOverrideRuntime runtime = new ReadyTaskIdsOverrideRuntime();
-        TaskManager manager = new TaskManager(storage, storage, runtime);
+        TaskManager manager = new TaskManager(storage, storage, runtime, new InMemoryTaskResultRuntime(), null);
 
         Task task = createTask(manager, buildRequest("runtime-ready-live"));
         manager.approveTask(task.getTid());

@@ -22,6 +22,9 @@ Progress:
 - RBC-5 is implemented: rule read routes moved from `/api/v1/runtime/rules`
   to `/api/v1/admin/rules`, and the legacy `/status/rules` console redirect
   alias was removed.
+- RBC-6 is implemented: `TaskManager` no longer constructs
+  `InMemoryTaskResultRuntime`; engine constructor callers must inject
+  `TaskResultRuntime`, while SDK/server/test assembly own in-memory defaults.
 
 This roadmap narrows the rule boundary after the worker-runtime and storage
 boundary convergence work. Rule definitions are stored in
@@ -88,9 +91,8 @@ that work in
   - related controller and routing tests
 - `MassSdkApplication.replaceDefaultRules(...)` and server/test bootstrap paths
   still use broad rule-definition storage operations for scenario setup.
-- `xa-mass-engine` has a production dependency on `mass-runtime-memory` only
-  because `TaskManager` convenience constructors instantiate
-  `InMemoryTaskResultRuntime` directly.
+- `xa-mass-engine` keeps `mass-runtime-memory` only as a test-scoped fixture
+  dependency. Main sources no longer import `com.xa.mass.runtime.memory`.
 
 ## Boundary Decision
 
@@ -170,12 +172,10 @@ Dependencies that remain justified:
 
 Dependencies that should converge in this roadmap:
 
-- `mass-runtime-memory` is a production-scope residual dependency. Current main
-  code only needs it because `TaskManager` convenience constructors instantiate
-  `InMemoryTaskResultRuntime` directly. The engine kernel should accept an
-  injected `TaskResultRuntime`; in-memory defaults should be assembled by
-  server/SDK/test bootstrap. After that, `mass-runtime-memory` should become a
-  test or assembly-surface dependency, not an engine production dependency.
+- `mass-runtime-memory` production-scope residue has converged under RBC-6:
+  `TaskManager` now requires injected `TaskResultRuntime`, and in-memory
+  result runtime defaults are assembled by server/SDK/test bootstrap. Engine
+  keeps `mass-runtime-memory` only as a test fixture dependency.
 - `mass-storage-api` remains acceptable as a contract dependency, but
   rule-specific storage access should shrink to a narrow
   `MatchingRuleSetProvider` / `RuleDefinitionStore` boundary. Matching should

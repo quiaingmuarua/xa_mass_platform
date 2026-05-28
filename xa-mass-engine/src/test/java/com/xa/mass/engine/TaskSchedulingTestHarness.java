@@ -29,6 +29,7 @@ import com.xa.mass.worker.runtime.evidence.WorkerReachabilityView;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.TaskWorkStats;
+import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.memory.InMemoryRuleStorage;
@@ -65,7 +66,9 @@ final class TaskSchedulingTestHarness {
         this.taskManager = new TaskManager(
                 taskStorage,
                 taskStorage,
-                new InMemoryTaskWorkRuntime()
+                new InMemoryTaskWorkRuntime(),
+                new InMemoryTaskResultRuntime(),
+                null
         );
         this.workerManager = new WorkerManager(new InMemoryWorkerStorage(), reachabilityView, new InMemoryWorkerRegistry());
         this.ruleStorage = new InMemoryRuleStorage();

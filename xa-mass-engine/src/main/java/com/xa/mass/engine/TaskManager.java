@@ -95,43 +95,11 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskRuntimeMainte
 
     public TaskManager(TaskStorage taskStorage,
                        TaskDetailStore taskDetailStore,
-                       TaskWorkRuntime taskWorkRuntime) {
-        this(taskStorage, taskDetailStore, new ContractAwareTaskTerminalPolicy(), taskWorkRuntime,
-                new com.xa.mass.runtime.memory.InMemoryTaskResultRuntime(), null);
-    }
-
-    public TaskManager(TaskStorage taskStorage,
-                       TaskDetailStore taskDetailStore,
-                       TaskTerminalPolicy taskTerminalPolicy,
-                       TaskWorkRuntime taskWorkRuntime) {
-        this(taskStorage, taskDetailStore, taskTerminalPolicy, taskWorkRuntime,
-                new com.xa.mass.runtime.memory.InMemoryTaskResultRuntime(), null);
-    }
-
-    public TaskManager(TaskStorage taskStorage,
-                       TaskDetailStore taskDetailStore,
-                       TaskWorkRuntime taskWorkRuntime,
-                       ExecutionEventSink executionEventSink) {
-        this(taskStorage, taskDetailStore, new ContractAwareTaskTerminalPolicy(), taskWorkRuntime,
-                new com.xa.mass.runtime.memory.InMemoryTaskResultRuntime(), executionEventSink);
-    }
-
-    public TaskManager(TaskStorage taskStorage,
-                       TaskDetailStore taskDetailStore,
                        TaskWorkRuntime taskWorkRuntime,
                        TaskResultRuntime taskResultRuntime,
                        ExecutionEventSink executionEventSink) {
         this(taskStorage, taskDetailStore, new ContractAwareTaskTerminalPolicy(), taskWorkRuntime,
                 taskResultRuntime, executionEventSink);
-    }
-
-    public TaskManager(TaskStorage taskStorage,
-                       TaskDetailStore taskDetailStore,
-                       TaskTerminalPolicy taskTerminalPolicy,
-                       TaskWorkRuntime taskWorkRuntime,
-                       ExecutionEventSink executionEventSink) {
-        this(taskStorage, taskDetailStore, taskTerminalPolicy, taskWorkRuntime,
-                new com.xa.mass.runtime.memory.InMemoryTaskResultRuntime(), executionEventSink);
     }
 
     public TaskManager(TaskStorage taskStorage,
