@@ -2,8 +2,8 @@
 
 Status: proposed mainline direction. ILC-0 layout inventory is complete in
 [`INTEGRATIONS_LAYOUT_INVENTORY.md`](./INTEGRATIONS_LAYOUT_INVENTORY.md).
-ILC-1 sample path convergence is complete. ILC-2 worker-pack movement is
-complete; SBE-0 server bootstrap classification is next.
+ILC-1 sample path convergence, ILC-2 worker-pack movement, and SBE-0 server
+bootstrap classification are complete.
 
 This roadmap covers two related but independently implementable tracks:
 
@@ -206,6 +206,9 @@ Acceptance:
 ## Track B: Server Bootstrap Extraction
 
 ### SBE-0 Bootstrap Classification
+
+Status: complete. See
+[`SERVER_BOOTSTRAP_CLASSIFICATION.md`](./SERVER_BOOTSTRAP_CLASSIFICATION.md).
 
 Scope:
 

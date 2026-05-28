@@ -40,7 +40,8 @@ Most tasks only need one contract lane plus one owner README:
   [JAVA_EXTERNAL_SDK_INVENTORY.md](./JAVA_EXTERNAL_SDK_INVENTORY.md),
   [JAVA_EXTERNAL_SDK_REALTIME_DECISION.md](./JAVA_EXTERNAL_SDK_REALTIME_DECISION.md),
   [INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md](./INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md),
-  [INTEGRATIONS_LAYOUT_INVENTORY.md](./INTEGRATIONS_LAYOUT_INVENTORY.md)
+  [INTEGRATIONS_LAYOUT_INVENTORY.md](./INTEGRATIONS_LAYOUT_INVENTORY.md),
+  [SERVER_BOOTSTRAP_CLASSIFICATION.md](./SERVER_BOOTSTRAP_CLASSIFICATION.md)
 
 ## 2. Core Global Docs
 
@@ -62,6 +63,7 @@ Most tasks only need one contract lane plus one owner README:
 | [JAVA_EXTERNAL_SDK_REALTIME_DECISION.md](./JAVA_EXTERNAL_SDK_REALTIME_DECISION.md) | decision record deferring public Java realtime worker sessions until a protocol contract exists |
 | [INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md](./INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md) | roadmap for moving worker-pack/samples under integrations and extracting server-owned demo task/worker startup |
 | [INTEGRATIONS_LAYOUT_INVENTORY.md](./INTEGRATIONS_LAYOUT_INVENTORY.md) | ILC-0 path inventory for moving root samples and worker-pack under integrations |
+| [SERVER_BOOTSTRAP_CLASSIFICATION.md](./SERVER_BOOTSTRAP_CLASSIFICATION.md) | SBE-0 classification of server bootstrap metadata, scenario seeding, external launcher inputs, and test fixtures |
 | [E2E_BASELINE.md](./E2E_BASELINE.md) | Boot-shell E2E scope |
 | [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md) | verified startup and regression commands |
 | [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md) | current HTTP/API contract |
