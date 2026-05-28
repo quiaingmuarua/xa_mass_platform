@@ -11,7 +11,7 @@ Status: current worker-pack owner README.
 ## Boundaries
 
 - keep runtime composition SDK-first; worker-pack registers through normal platform APIs
-- keep external process references under `samples/`
+- keep external process references under `integrations/samples/`
 - do not let worker-pack redefine `xa-mass-server` as the product shell
 - do not add `xa-mass-java-sdk` unless worker-pack has real public HTTP
   worker-control boilerplate to remove, or a later public realtime Java client

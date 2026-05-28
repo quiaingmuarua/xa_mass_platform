@@ -39,7 +39,7 @@ Those are tracked in [../../doc/JAVA_EXTERNAL_SDK_ROADMAP.md](../../doc/JAVA_EXT
 
 Runnable sample:
 
-- [../../samples/worker-polling/java](../../samples/worker-polling/java)
+- [../samples/java/worker-polling](../samples/java/worker-polling)
   uses this SDK's managed `PollingWorkerSession`.
 
 ## Example

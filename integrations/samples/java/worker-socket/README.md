@@ -5,13 +5,13 @@ Status: current runnable external worker sample.
 Build from repo root:
 
 ```bash
-./mvnw -f samples/worker-socket/java/pom.xml -DskipTests package
+./mvnw -f integrations/samples/java/worker-socket/pom.xml -DskipTests package
 ```
 
 Run:
 
 ```bash
-java -jar samples/worker-socket/java/target/worker-socket-java-sample.jar
+java -jar integrations/samples/java/worker-socket/target/worker-socket-java-sample.jar
 ```
 
 Required environment:

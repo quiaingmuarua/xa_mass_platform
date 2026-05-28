@@ -18,7 +18,7 @@
         "projectCodes": ["crawlerApp"]
       }
     ],
-    "scriptPath": "samples/worker-websocket/node/worker.mjs"
+    "scriptPath": "integrations/samples/node/worker-websocket/worker.mjs"
   },
   {
     "workerId": "stock-ws-worker-001",
@@ -39,6 +39,6 @@
         "projectCodes": ["crawlerApp"]
       }
     ],
-    "scriptPath": "samples/worker-websocket/node/worker.mjs"
+    "scriptPath": "integrations/samples/node/worker-websocket/worker.mjs"
   }
 ]

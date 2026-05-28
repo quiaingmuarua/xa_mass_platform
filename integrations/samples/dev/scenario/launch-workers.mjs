@@ -8,11 +8,11 @@ import { dirname, resolve } from "node:path";
 const baseUrl = normalizeBaseUrl(process.env.MASS_BASE_URL ?? "http://127.0.0.1:8088");
 const wsUrl = requiredEnv("MASS_WS_URL");
 const nodeBin = process.env.NODE_BIN ?? process.execPath;
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const bootstrapConfigPath = resolve(repoRoot, "samples/dev/bootstrap.json");
-const ruleConfigPath = resolve(repoRoot, "samples/dev/rules.json");
-const workerConfigPath = resolve(repoRoot, "samples/dev/workers.json");
-const taskConfigPath = resolve(repoRoot, "samples/dev/tasks.json");
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const bootstrapConfigPath = resolve(repoRoot, "integrations/samples/dev/scenario/bootstrap.json");
+const ruleConfigPath = resolve(repoRoot, "integrations/samples/dev/scenario/rules.json");
+const workerConfigPath = resolve(repoRoot, "integrations/samples/dev/scenario/workers.json");
+const taskConfigPath = resolve(repoRoot, "integrations/samples/dev/scenario/tasks.json");
 const taskSubmitterKey = process.env.MASS_TASK_SUBMITTER_KEY ?? "crawler-submitter-key";
 const bootstrapKey = process.env.SAMPLE_BOOTSTRAP_KEY ?? "dev-bootstrap-key";
 
@@ -98,7 +98,7 @@ async function registerWorker(spec) {
     adapterType,
     endpointId: adapterNodeId,
     attributes: {
-      launcher: "samples/dev/launch-workers.mjs",
+      launcher: "integrations/samples/dev/scenario/launch-workers.mjs",
       transport: adapterType,
     },
   });

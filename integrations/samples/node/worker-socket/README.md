@@ -5,7 +5,7 @@ Status: current runnable external worker sample.
 Run:
 
 ```bash
-node samples/worker-socket/node/worker.mjs
+node integrations/samples/node/worker-socket/worker.mjs
 ```
 
 Required environment:

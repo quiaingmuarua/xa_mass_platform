@@ -3,7 +3,8 @@
 Status: current cross-module external-worker quickstart.
 
 Use this file for the shortest current truth about repo-external workers.
-Keep per-language startup and env details in `samples/*/README.md`.
+Keep per-language startup and env details in
+`integrations/samples/{java,node}/*/README.md`.
 
 ## 1. Current Contract Split
 
@@ -82,9 +83,9 @@ today and Boot-shell E2E proves them:
 
 | Path | adapterId | transportHint | Role |
 | --- | --- | --- | --- |
-| `samples/worker-polling/*` | `polling` | `polling` | stable public external worker contract |
-| `samples/worker-websocket/*` | `websocket` | `realtime` | cross-language adapter validation |
-| `samples/worker-socket/*` | `socket` | `realtime` | cross-language adapter validation |
+| `integrations/samples/*/worker-polling` | `polling` | `polling` | stable public external worker contract |
+| `integrations/samples/*/worker-websocket` | `websocket` | `realtime` | cross-language adapter validation |
+| `integrations/samples/*/worker-socket` | `socket` | `realtime` | cross-language adapter validation |
 
 For realtime paths:
 
@@ -99,8 +100,8 @@ For realtime paths:
 Use the real Boot shell plus the sample READMEs:
 
 - Boot runtime and verified commands: [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
-- sample matrix and black-box role: [../samples/README.md](../samples/README.md)
-- per-sample commands: `samples/*/README.md`
+- sample matrix and black-box role: [../integrations/samples/README.md](../integrations/samples/README.md)
+- per-sample commands: `integrations/samples/{java,node}/*/README.md`
 
 For a CLI-only public-contract smoke against an already running dev server, use:
 

@@ -50,7 +50,7 @@ JSDK-5 also adds the Java polling sample to the root reactor so it can consume
 the local SDK artifact without publishing it:
 
 ```xml
-<module>samples/worker-polling/java</module>
+<module>integrations/samples/java/worker-polling</module>
 ```
 
 `integrations/` means external integration ownership: public clients,

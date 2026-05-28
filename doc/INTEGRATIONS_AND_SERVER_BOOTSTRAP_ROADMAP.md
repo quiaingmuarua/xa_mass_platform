@@ -2,6 +2,8 @@
 
 Status: proposed mainline direction. ILC-0 layout inventory is complete in
 [`INTEGRATIONS_LAYOUT_INVENTORY.md`](./INTEGRATIONS_LAYOUT_INVENTORY.md).
+ILC-1 sample path convergence is complete. Next implementation slice is ILC-2
+worker-pack movement.
 
 This roadmap covers two related but independently implementable tracks:
 
@@ -20,13 +22,15 @@ startup-behavior regressions can be isolated.
 
 - `integrations/xa-mass-java-sdk` already exists and is the pure external Java
   client SDK.
-- `samples/` is still a root-level directory with transport-first grouping such
-  as `worker-polling/java`, `worker-websocket/node`, and `dev/`.
+- external worker samples are converging under `integrations/samples` with
+  language-first grouping such as `java/worker-polling`,
+  `node/worker-websocket`, and `dev/scenario`.
 - `xa-mass-worker-pack` is still a root-level module even though its role is
   official worker reference and sample/dev capability code, not kernel or
   server ownership.
 - The dev sample launcher already uses public task and worker APIs for many
-  operations, but its path assumptions are rooted at `samples/`.
+  operations, and ILC-1 moves its path assumptions under
+  `integrations/samples/dev/scenario`.
 - `xa-mass-server` still has main-source dev scenario bootstrap code that can
   register catalog, submitters, workers, and tasks in-process through
   `MassSdkApplication` / `MassRuntimeControl`.
@@ -121,7 +125,7 @@ Scope:
 - Produce an authoritative target path table for every moved directory.
 - Split the inventory into Maven module path changes versus plain filesystem
   reference changes. These are different migration surfaces:
-  `samples/worker-polling/java` is currently a root reactor module, while Node
+  `integrations/samples/java/worker-polling` is currently a root reactor module, while Node
   samples and some Java realtime samples are launched or built by explicit file
   paths.
 - Decide whether Java websocket/socket samples remain standalone POM samples or
@@ -140,6 +144,11 @@ Acceptance:
   transport-first directory as a parallel tree.
 
 ### ILC-1 Move Samples Under `integrations/samples`
+
+Status: complete. Root `samples/` has been removed from tracked files, Java
+samples live under `integrations/samples/java`, Node samples live under
+`integrations/samples/node`, and the dev scenario launcher/configs live under
+`integrations/samples/dev/scenario`.
 
 Scope:
 
@@ -218,7 +227,7 @@ Scope:
     external scenario has a documented credential source
   - rule bootstrap may remain behind sample/admin APIs until a public admin SDK
     exists, but it must not create tasks, workers, or WorkerGroups
-- Classify `samples/dev/launch-workers.mjs` and
+- Classify `integrations/samples/dev/scenario/launch-workers.mjs` and
   `samples/dev/{bootstrap,rules,workers,tasks}.json` before moving them. The
   inventory must state whether each file is external-launcher input,
   server-startup input, or both.

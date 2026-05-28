@@ -5,13 +5,13 @@ Status: current runnable external worker sample.
 Build from repo root:
 
 ```bash
-./mvnw -pl samples/worker-polling/java -am -DskipTests package
+./mvnw -pl integrations/samples/java/worker-polling -am -DskipTests package
 ```
 
 Run:
 
 ```bash
-java -jar samples/worker-polling/java/target/worker-polling-java-sample.jar
+java -jar integrations/samples/java/worker-polling/target/worker-polling-java-sample.jar
 ```
 
 Environment defaults:
@@ -34,5 +34,5 @@ Implementation note:
 - WorkerGroup declaration is still explicit setup code.
 - runtime worker lifecycle, heartbeat, polling, dispatch handling, result
   submit, and offline shutdown are handled through `PollingWorkerSession`.
-- the sample remains under `samples/` for now; broad path convergence to
-  `integrations/samples` is intentionally left to a later slice.
+- the sample lives under `integrations/samples` with the other external worker
+  samples.

@@ -135,4 +135,4 @@ Module truth comes from the root `pom.xml`. Do not treat removed historical modu
 - SDK embedding/runtime composition: [xa-mass-sdk/README.md](./xa-mass-sdk/README.md)
 - human architecture guide: [architecture/README.md](./architecture/README.md)
 - external worker onboarding: [doc/EXTERNAL_WORKER_QUICKSTART.md](./doc/EXTERNAL_WORKER_QUICKSTART.md)
-- samples: [samples/](./samples/)
+- samples: [integrations/samples/](./integrations/samples/)

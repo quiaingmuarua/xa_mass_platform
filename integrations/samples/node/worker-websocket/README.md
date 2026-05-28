@@ -5,7 +5,7 @@ Status: current runnable external worker sample.
 Run from repo root:
 
 ```bash
-node samples/worker-websocket/node/worker.mjs
+node integrations/samples/node/worker-websocket/worker.mjs
 ```
 
 Required environment:
@@ -18,7 +18,7 @@ WS_URL=ws://127.0.0.1:18088/ws
 This sample uses the realtime WebSocket adapter handshake plus canonical
 task-dispatch and task-result frames.
 
-For the dev Spring Boot shell, `samples/dev/launch-workers.mjs` can register
+For the dev Spring Boot shell, `integrations/samples/dev/scenario/launch-workers.mjs` can register
 and launch the curated WebSocket sample workers automatically. In that flow the
 launcher first bootstraps sample catalog resources and rules through
 `/sample-api/bootstrap/*`, then registers workers through `/worker-api/v1/*`.

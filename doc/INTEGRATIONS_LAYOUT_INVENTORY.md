@@ -2,17 +2,18 @@
 
 Status: ILC-0 complete for
 [`INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md`](./INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md).
+ILC-1 sample movement is implemented against this inventory.
 
 Date: 2026-05-28.
 
-This inventory records the current root `samples/` and `xa-mass-worker-pack`
-references before path movement. It separates Maven module changes from plain
-filesystem references so the next implementation slice can move files without
-changing build ownership by accident.
+This inventory records the pre-move root `samples/` and `xa-mass-worker-pack`
+references and the target paths for layout convergence. It separates Maven
+module changes from plain filesystem references so the implementation can move
+files without changing build ownership by accident.
 
 ## Target Move Table
 
-| Current path | Target path | Kind | ILC slice | Decision |
+| Pre-move path | Target path | Kind | ILC slice | Decision |
 | --- | --- | --- | --- | --- |
 | `samples/README.md` | `integrations/samples/README.md` | docs | ILC-1 | move with sample tree |
 | `samples/worker-polling/java` | `integrations/samples/java/worker-polling` | Java sample, root reactor module | ILC-1 | keep in root reactor at new path |
@@ -26,7 +27,7 @@ changing build ownership by accident.
 
 ## Maven Module Changes
 
-Current root reactor entries:
+Pre-ILC-1 root reactor entries:
 
 ```xml
 <module>integrations/xa-mass-java-sdk</module>
@@ -48,8 +49,8 @@ ILC-2 should change worker-pack:
 
 Standalone Java sample POMs:
 
-- `samples/worker-websocket/java/pom.xml`
-- `samples/worker-socket/java/pom.xml`
+- `integrations/samples/java/worker-websocket/pom.xml`
+- `integrations/samples/java/worker-socket/pom.xml`
 
 Decision: keep them standalone during ILC-1. They are built by
 `ExternalJavaWorkerProcess` using `mvn -f ... package`, not by the root reactor.
@@ -66,15 +67,15 @@ only.
 File:
 `xa-mass-server/src/test/java/com/xa/mass/server/e2e/support/ExternalJavaWorkerProcess.java`
 
-Current references:
+Target references after ILC-1:
 
-- `samples/worker-polling/java/target/worker-polling-java-sample.jar`
-- `samples/worker-websocket/java/target/worker-websocket-java-sample.jar`
-- `samples/worker-socket/java/target/worker-socket-java-sample.jar`
-- `samples/worker-polling/java`
-- `samples/worker-websocket/java/pom.xml`
-- `samples/worker-socket/java/pom.xml`
-- repo-root discovery checks `samples/worker-polling/java/pom.xml`
+- `integrations/samples/java/worker-polling/target/worker-polling-java-sample.jar`
+- `integrations/samples/java/worker-websocket/target/worker-websocket-java-sample.jar`
+- `integrations/samples/java/worker-socket/target/worker-socket-java-sample.jar`
+- `integrations/samples/java/worker-polling`
+- `integrations/samples/java/worker-websocket/pom.xml`
+- `integrations/samples/java/worker-socket/pom.xml`
+- repo-root discovery checks `integrations/samples/java/worker-polling/pom.xml`
 
 ILC-1 action:
 
@@ -88,11 +89,11 @@ ILC-1 action:
 File:
 `xa-mass-server/src/test/java/com/xa/mass/server/e2e/support/ExternalNodeWorkerProcess.java`
 
-Current references:
+Target references after ILC-1:
 
-- `samples/worker-websocket/node/worker.mjs`
-- `samples/worker-socket/node/worker.mjs`
-- `samples/worker-polling/node/worker.mjs`
+- `integrations/samples/node/worker-websocket/worker.mjs`
+- `integrations/samples/node/worker-socket/worker.mjs`
+- `integrations/samples/node/worker-polling/worker.mjs`
 
 ILC-1 action:
 
@@ -100,15 +101,15 @@ ILC-1 action:
 
 ### Dev Scenario Launcher
 
-File: `samples/dev/launch-workers.mjs`
+File: `integrations/samples/dev/scenario/launch-workers.mjs`
 
-Current references:
+Target references after ILC-1:
 
-- `samples/dev/bootstrap.json`
-- `samples/dev/rules.json`
-- `samples/dev/workers.json`
-- `samples/dev/tasks.json`
-- launcher attribute string `samples/dev/launch-workers.mjs`
+- `integrations/samples/dev/scenario/bootstrap.json`
+- `integrations/samples/dev/scenario/rules.json`
+- `integrations/samples/dev/scenario/workers.json`
+- `integrations/samples/dev/scenario/tasks.json`
+- launcher attribute string `integrations/samples/dev/scenario/launch-workers.mjs`
 
 ILC-1 action:
 
@@ -119,11 +120,11 @@ ILC-1 action:
 
 ### Dev Worker Config
 
-File: `samples/dev/workers.json`
+File: `integrations/samples/dev/scenario/workers.json`
 
-Current script references:
+Target script references after ILC-1:
 
-- `samples/worker-websocket/node/worker.mjs`
+- `integrations/samples/node/worker-websocket/worker.mjs`
 
 ILC-1 action:
 
@@ -134,10 +135,10 @@ ILC-1 action:
 File:
 `xa-mass-worker-pack/src/main/java/com/xa/mass/workerpack/sample/starter/SampleWorkerProcessStarter.java`
 
-Current references:
+Target references after ILC-1:
 
-- Javadoc says child-process startup is under `samples/`
-- default `sample.worker.launcher-script` is `samples/dev/launch-workers.mjs`
+- Javadoc says child-process startup is under `integrations/samples`
+- default `sample.worker.launcher-script` is `integrations/samples/dev/scenario/launch-workers.mjs`
 
 ILC-1 action:
 
@@ -158,8 +159,8 @@ ILC-1 updates:
 - `README.zh-CN.md`: root sample link
 - `samples/README.md`: move to `integrations/samples/README.md` and update
   all commands
-- `samples/worker-*/node/README.md`: update `node .../worker.mjs` commands
-- `samples/worker-*/java/README.md`: update Maven/JAR commands
+- `integrations/samples/node/worker-*/README.md`: update `node .../worker.mjs` commands
+- `integrations/samples/java/worker-*/README.md`: update Maven/JAR commands
 - `integrations/xa-mass-java-sdk/README.md`: update Java polling sample link
 - `doc/EXTERNAL_WORKER_QUICKSTART.md`: update sample matrix and per-sample
   path text
@@ -182,13 +183,13 @@ ILC-2 updates:
 
 Current repo search shows these tracked consumers:
 
-- `samples/dev/launch-workers.mjs` reads `bootstrap.json`, `rules.json`,
+- `integrations/samples/dev/scenario/launch-workers.mjs` reads `bootstrap.json`, `rules.json`,
   `workers.json`, and `tasks.json`.
-- `xa-mass-worker-pack` launches `samples/dev/launch-workers.mjs` through
+- `xa-mass-worker-pack` launches `integrations/samples/dev/scenario/launch-workers.mjs` through
   `SampleWorkerProcessStarter`.
-- `samples/dev/workers.json` points to Node websocket worker scripts.
+- `integrations/samples/dev/scenario/workers.json` points to Node websocket worker scripts.
 
-No tracked server main-source class reads `samples/dev/*.json` directly. The
+No tracked server main-source class reads `integrations/samples/dev/scenario/*.json` directly. The
 server main-source control-console scenario uses
 `ControlConsoleScenarioBootstrapDataProvider` and `MassSdkApplication` /
 `MassRuntimeControl` directly. SBE-0 still needs method-level classification of

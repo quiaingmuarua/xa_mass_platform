@@ -246,7 +246,7 @@ register event
 如果你要接外部 worker：
 
 - 看 [doc/EXTERNAL_WORKER_QUICKSTART.md](./doc/EXTERNAL_WORKER_QUICKSTART.md)
-- 再看 [samples/README.md](./samples/README.md)
+- 再看 [integrations/samples/README.md](./integrations/samples/README.md)
 
 如果你要改内核：
 

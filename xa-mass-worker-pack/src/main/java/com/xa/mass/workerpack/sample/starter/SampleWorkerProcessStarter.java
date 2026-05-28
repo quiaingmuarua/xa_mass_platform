@@ -26,7 +26,7 @@ import java.util.concurrent.TimeUnit;
  *
  * <p>The server shell stays responsible only for submitter credentials and HTTP
  * availability. The sample launcher script owns worker registration plus
- * child-process startup under {@code samples/}.
+ * child-process startup under {@code integrations/samples}.
  */
 @Component
 @Profile("dev")
@@ -41,7 +41,7 @@ public class SampleWorkerProcessStarter {
     @Value("${sample.worker.node-bin:node}")
     private String nodeBin;
 
-    @Value("${sample.worker.launcher-script:samples/dev/launch-workers.mjs}")
+    @Value("${sample.worker.launcher-script:integrations/samples/dev/scenario/launch-workers.mjs}")
     private String launcherScript;
 
     @Value("${sample.bootstrap.api-key:dev-bootstrap-key}")

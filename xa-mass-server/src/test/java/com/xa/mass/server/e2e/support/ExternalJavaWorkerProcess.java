@@ -66,7 +66,7 @@ public final class ExternalJavaWorkerProcess implements AutoCloseable {
         if (workerGroupId != null && !workerGroupId.isBlank()) {
             environment.put("MASS_WORKER_GROUP_ID", workerGroupId);
         }
-        return startJar(resolveRepoFile("samples/worker-polling/java/target/worker-polling-java-sample.jar"),
+        return startJar(resolveRepoFile("integrations/samples/java/worker-polling/target/worker-polling-java-sample.jar"),
                 environment, () -> postWorkerOffline(baseUrl, workerId, workerKey));
     }
 
@@ -75,7 +75,7 @@ public final class ExternalJavaWorkerProcess implements AutoCloseable {
         Objects.requireNonNull(wsUri, "wsUri");
 
         ensureWebSocketSampleBuilt();
-        return startJar(resolveRepoFile("samples/worker-websocket/java/target/worker-websocket-java-sample.jar"), Map.of(
+        return startJar(resolveRepoFile("integrations/samples/java/worker-websocket/target/worker-websocket-java-sample.jar"), Map.of(
                 "WORKER_ID", workerId,
                 "WS_URL", wsUri.toString()
         ), null);
@@ -89,7 +89,7 @@ public final class ExternalJavaWorkerProcess implements AutoCloseable {
         }
 
         ensureSocketSampleBuilt();
-        return startJar(resolveRepoFile("samples/worker-socket/java/target/worker-socket-java-sample.jar"), Map.of(
+        return startJar(resolveRepoFile("integrations/samples/java/worker-socket/target/worker-socket-java-sample.jar"), Map.of(
                 "WORKER_ID", workerId,
                 "SOCKET_HOST", host,
                 "SOCKET_PORT", String.valueOf(port)
@@ -160,7 +160,7 @@ public final class ExternalJavaWorkerProcess implements AutoCloseable {
             if (pollingSampleBuilt) {
                 return;
             }
-            buildReactorModule("samples/worker-polling/java", "Java polling");
+            buildReactorModule("integrations/samples/java/worker-polling", "Java polling");
             pollingSampleBuilt = true;
         }
     }
@@ -173,7 +173,7 @@ public final class ExternalJavaWorkerProcess implements AutoCloseable {
             if (websocketSampleBuilt) {
                 return;
             }
-            buildSample("samples/worker-websocket/java/pom.xml", "Java websocket");
+            buildSample("integrations/samples/java/worker-websocket/pom.xml", "Java websocket");
             websocketSampleBuilt = true;
         }
     }
@@ -186,7 +186,7 @@ public final class ExternalJavaWorkerProcess implements AutoCloseable {
             if (socketSampleBuilt) {
                 return;
             }
-            buildSample("samples/worker-socket/java/pom.xml", "Java socket");
+            buildSample("integrations/samples/java/worker-socket/pom.xml", "Java socket");
             socketSampleBuilt = true;
         }
     }
@@ -295,8 +295,7 @@ public final class ExternalJavaWorkerProcess implements AutoCloseable {
         Path current = Paths.get("").toAbsolutePath();
         for (Path cursor = current; cursor != null; cursor = cursor.getParent()) {
             if (Files.exists(cursor.resolve("pom.xml"))
-                    && Files.isDirectory(cursor.resolve("samples"))
-                    && Files.exists(cursor.resolve("samples/worker-polling/java/pom.xml"))) {
+                    && Files.exists(cursor.resolve("integrations/samples/java/worker-polling/pom.xml"))) {
                 return cursor;
             }
         }

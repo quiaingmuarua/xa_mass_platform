@@ -10,9 +10,10 @@ same module.
 JSDK-4 managed polling worker session mainline is implemented with SDK
 fake-server tests and a real server black-box polling proof.
 JSDK-5 Java polling sample convergence is implemented for
-`samples/worker-polling/java`: it now builds through the root reactor and uses
-`xa-mass-java-sdk` managed polling sessions. Broad `samples/` path movement is
-deferred.
+`integrations/samples/java/worker-polling`: it now builds through the root reactor and uses
+`xa-mass-java-sdk` managed polling sessions. Broad sample path movement is
+implemented by ILC-1 in
+[`INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md`](./INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md).
 JSDK-6 realtime decision is recorded in
 [`JAVA_EXTERNAL_SDK_REALTIME_DECISION.md`](./JAVA_EXTERNAL_SDK_REALTIME_DECISION.md):
 do not add public realtime Java sessions until a dedicated protocol contract
@@ -51,7 +52,7 @@ artifacts:
 integrations/
   xa-mass-java-sdk/        pure external Java client SDK
   xa-mass-worker-pack/     later move; official sample/dev worker capability pack
-  samples/                 later move; external-process sample workers and launchers
+  samples/                 external-process sample workers and launchers
 ```
 
 Decision: `integrations/` is appropriate for this roadmap, but only if it is
@@ -63,7 +64,7 @@ Rationale:
 - `xa-mass-java-sdk` is not kernel, infra, transport, server, or embedded SDK.
   Placing it at repo root makes the boundary look equal to core runtime
   modules.
-- `samples/` is currently too thin to justify a root-level domain. It is an
+- root `samples/` was too thin to justify a root-level domain. It is an
   external integration proof surface, not a platform owner.
 - `xa-mass-worker-pack` is sample/dev worker capability and launcher code. Once
   Java worker sessions are available, worker-pack should consume
@@ -133,11 +134,11 @@ artifacts just to match the folder move.
 The first implementation should create `integrations/xa-mass-java-sdk`
 directly. Do not create it at repo root and then move it later.
 
-Moving existing `samples/` and `xa-mass-worker-pack` is useful but should be a
-separate convergence slice after the SDK client/session API exists. That move
-has broad path fallout in black-box tests, README commands, sample launchers,
-and Maven module declarations; it should not be mixed into the first SDK
-skeleton commit.
+Moving existing root `samples/` and `xa-mass-worker-pack` is useful but belongs
+to the separate integrations/bootstrap convergence roadmap. That move has
+broad path fallout in black-box tests, README commands, sample launchers, and
+Maven module declarations; it should not be mixed into the first SDK skeleton
+commit.
 
 ## Current Facts
 
@@ -153,9 +154,9 @@ skeleton commit.
 - external worker samples already prove the contract with raw Java
   `HttpClient` plus JSON handling. The new SDK should replace that repeated
   boilerplate with stable client/runtime APIs.
-- `samples/` and `xa-mass-worker-pack` are currently root-level caller-facing
-  assets. They should converge under `integrations/` after the Java SDK gives
-  them a stable public client surface to consume.
+- sample workers are caller-facing assets under `integrations/samples`.
+  `xa-mass-worker-pack` is still a root-level caller-facing asset until the
+  worker-pack move slice converges it under `integrations/`.
 - `eventCode` is global event/capability identity. Project binding scopes where
   an event is available; it does not make event identity project-local.
 - Worker capability truth is WorkerGroup-first. Workers are execution
@@ -588,7 +589,7 @@ Out of scope:
 - implementation.
 - generated OpenAPI client.
 - WebSocket public client API.
-- moving existing `samples/` or `xa-mass-worker-pack`.
+- moving existing root samples or `xa-mass-worker-pack`.
 
 Acceptance:
 
@@ -761,11 +762,10 @@ Scope:
   follow-up slice:
   - `samples/...` -> `integrations/samples/...`
   - update README commands, launch scripts, and black-box test process paths.
-- current decision: do not move `samples/` in this slice. Keep the phase to
-  Java polling sample SDK convergence plus executable proof. Move
-  `samples/...` to `integrations/samples/...` only in a later path-convergence
-  slice because it affects multiple language samples, launcher paths, and
-  black-box process helpers.
+- current status: Java polling sample SDK convergence was implemented first.
+  Broad sample path movement is handled by the integrations/bootstrap roadmap
+  because it affects multiple language samples, launcher paths, and black-box
+  process helpers.
 
 Out of scope:
 
@@ -949,5 +949,5 @@ only visible through dispatch/result convergence.
 - Do not make WebSocket/socket client support part of the first phase unless a
   stable public frame contract is approved first.
 - Do not add compatibility aliases under `com.xa.mass.sdk` for this artifact.
-- Do not move `samples/` or `xa-mass-worker-pack` in the first SDK skeleton
+- Do not move root samples or `xa-mass-worker-pack` in the first SDK skeleton
   slice.

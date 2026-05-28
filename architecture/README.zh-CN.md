@@ -115,7 +115,7 @@ policy 收敛状态。
 如果你要接外部 worker：
 
 - [`../doc/EXTERNAL_WORKER_QUICKSTART.md`](../doc/EXTERNAL_WORKER_QUICKSTART.md)
-- [`../samples/README.md`](../samples/README.md)
+- [`../integrations/samples/README.md`](../integrations/samples/README.md)
 
 如果你要改 engine：
 

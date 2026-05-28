@@ -5,7 +5,7 @@ Status: current runnable external worker sample.
 Run from repo root:
 
 ```bash
-node samples/worker-polling/node/worker.mjs
+node integrations/samples/node/worker-polling/worker.mjs
 ```
 
 Environment defaults:

@@ -44,7 +44,7 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
         Objects.requireNonNull(workerId, "workerId");
         Objects.requireNonNull(wsUri, "wsUri");
 
-        return startRepoScript("samples/worker-websocket/node/worker.mjs", Map.of(
+        return startRepoScript("integrations/samples/node/worker-websocket/worker.mjs", Map.of(
                 "WORKER_ID", workerId,
                 "WS_URL", wsUri.toString()
         ));
@@ -54,7 +54,7 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
         Objects.requireNonNull(workerId, "workerId");
         Objects.requireNonNull(host, "host");
 
-        return startRepoScript("samples/worker-socket/node/worker.mjs", Map.of(
+        return startRepoScript("integrations/samples/node/worker-socket/worker.mjs", Map.of(
                 "WORKER_ID", workerId,
                 "SOCKET_HOST", host,
                 "SOCKET_PORT", String.valueOf(port)
@@ -85,7 +85,7 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
         if (workerGroupId != null && !workerGroupId.isBlank()) {
             environment.put("MASS_WORKER_GROUP_ID", workerGroupId);
         }
-        return startRepoScript("samples/worker-polling/node/worker.mjs", environment,
+        return startRepoScript("integrations/samples/node/worker-polling/worker.mjs", environment,
                 () -> postWorkerOffline(baseUrl, workerId, workerKey));
     }
 
