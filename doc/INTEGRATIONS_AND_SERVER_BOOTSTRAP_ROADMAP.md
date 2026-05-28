@@ -135,6 +135,13 @@ Scope:
   helpers, sample README commands, and launcher path resolution.
 - Update `integrations/xa-mass-java-sdk` docs to point at the new Java sample
   path.
+- Treat Node samples as filesystem/runtime assets, not Maven reactor modules:
+  update launcher configs, process-helper paths, and README commands, but do
+  not invent Maven wrappers for Node-only samples.
+- Before moving `samples/dev/*`, verify whether those JSON files are consumed
+  only by the external Node launcher or also by server-side bootstrap code. If a
+  server-side consumer exists, cut that dependency in SBE-0/SBE-1 before the
+  move rather than preserving a root-path fallback.
 
 Acceptance:
 
@@ -142,6 +149,8 @@ Acceptance:
 - Root reactor builds the Java polling sample from its new path.
 - Node and Java worker black-box tests resolve their sample paths from the new
   layout.
+- Node sample movement does not require POM updates; it requires runtime path,
+  launcher config, and documentation updates.
 - `rg "samples/"` has no stale root-path references, except historical notes
   explicitly marked as old paths if any are retained.
 
@@ -155,11 +164,15 @@ Scope:
   E2E helpers.
 - Keep dependency cleanup separate from the directory move unless a dependency
   break is directly caused by the move.
+- Audit server E2E process helpers that build or execute worker-pack artifacts
+  and update them to resolve the new integration path.
 
 Acceptance:
 
 - No root-level `xa-mass-worker-pack/` directory remains in tracked files.
 - Reactor build and impacted worker-pack tests pass from the new path.
+- Server E2E tests that reference worker-pack build or execute it from
+  `integrations/xa-mass-worker-pack`, not from a stale root path.
 - Documentation describes worker-pack as an integration/reference worker asset,
   not a platform kernel module.
 
@@ -177,12 +190,25 @@ Scope:
 - Specifically audit `ControlConsoleScenarioBootstrapConfiguration`,
   `ControlConsoleScenarioBootstrapDataProvider`, `MockRuntimeDataLoader`, and
   E2E support code.
+- Treat `ControlConsoleScenarioBootstrapDataProvider` as a likely mixed owner:
+  classify method-level responsibilities instead of deciding whether to keep or
+  delete the class as a whole. At minimum, separate catalog/event/submitter/rule
+  metadata initialization from task creation, item append, worker registration,
+  and WorkerGroup declaration.
+- Classify `samples/dev/launch-workers.mjs` and
+  `samples/dev/{bootstrap,rules,workers,tasks}.json` before moving them. The
+  inventory must state whether each file is external-launcher input,
+  server-startup input, or both.
 
 Acceptance:
 
 - Each path that creates tasks, appends items, registers workers, or declares
   WorkerGroups has an owner classification.
 - The classification separates main-source runtime behavior from test fixtures.
+- `ControlConsoleScenarioBootstrapDataProvider` has a method-level ownership
+  table for metadata bootstrap versus scenario task/worker seeding.
+- `samples/dev/*` has a consumer table showing external launcher and server
+  bootstrap dependencies before any path move.
 - Any remaining server-owned catalog/submitter/rule setup is explicitly
   justified as platform metadata bootstrap, not task/worker scenario seeding.
 
@@ -301,6 +327,12 @@ scenario data:
   sample/admin bootstrap only where metadata setup still requires it.
 - Existing tests may implicitly rely on hidden startup data. Those tests should
   create their own fixtures or call an explicit external scenario helper.
+- `samples/dev` is a sequencing risk: moving files before cutting server-side
+  consumers can either break startup or lead to root-path compatibility shims.
+  Do the consumer classification first.
+- `ControlConsoleScenarioBootstrapDataProvider` is likely not all good or all
+  bad. Treat it as a mixed implementation and move only the task/worker seeding
+  responsibility out of server startup.
 
 ## Owner Review
 
