@@ -1,7 +1,7 @@
 # Rule Boundary Convergence Roadmap
 
-Status: active direction document. No implementation slices have landed from
-this roadmap yet.
+Status: active direction document. RBC-0 inventory and RBC-1 contract notes
+are documented in companion files.
 
 This roadmap narrows the rule boundary after the worker-runtime and storage
 boundary convergence work. The current code already stores rule definitions in
@@ -202,6 +202,8 @@ engine matching must not depend on CRUD-shaped storage or manager APIs
 
 Goal: classify every rule call site before changing code.
 
+Deliverable: [`RULE_BOUNDARY_CONVERGENCE_INVENTORY.md`](RULE_BOUNDARY_CONVERGENCE_INVENTORY.md).
+
 Scope:
 
 1. List all production and test callers of:
@@ -241,6 +243,8 @@ Acceptance:
 ## Slice RBC-1: Define Rule Runtime Contracts And Owners
 
 Goal: make the contract split explicit without moving behavior yet.
+
+Deliverable: [`RULE_BOUNDARY_CONTRACTS.md`](RULE_BOUNDARY_CONTRACTS.md).
 
 Scope:
 
