@@ -43,11 +43,15 @@ Current default scope:
   - shared config carried by task truth
   - task status and terminal reason
   - bounded task aggregates already stored on the task model
-- worker registration truth
+- worker declaration truth
   - worker identity
-  - supported projects and supported event codes
+  - explicit worker group / adapter-node membership
   - adapter / transport hint
   - static worker attributes
+- worker group capability truth
+  - supported projects
+  - supported event codes
+  - group-level capability metadata used to build candidate-source views
 - rule definitions
 - principal credential truth
   - principal identity and type
@@ -99,7 +103,8 @@ placement authoritative.
 The active `platform_infra/mass-storage-jdbc` JDBC path is intentionally narrow:
 
 - JDBC persists task truth
-- JDBC persists worker registration truth
+- JDBC worker declaration persistence is not implemented in the current path
+  and must not be introduced as a worker runtime/history table
 - JDBC persists rule definitions
 - JDBC persists principal credential truth
 - runtime message/attempt detail stays process-local

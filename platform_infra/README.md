@@ -51,8 +51,12 @@ Current truth for this conservative first slice:
 - `mass-runtime-redis` now owns the Redis-backed runtime implementations plus
   their keyspace/index baseline; it remains an explicit opt-in path outside the
   verified default runtime mainline
-- `mass-storage-api` owns shared task/worker/rule storage contracts plus the bounded `TaskDetailStore` compatibility-projection seam and the storage-adjacent rule types referenced by those contracts
-- `mass-storage-memory` owns in-memory control-plane task/worker/rule storage;
+- `mass-storage-api` owns shared `TaskShellStore`,
+  `WorkerDeclarationStore`, rule-definition storage contracts, plus the
+  bounded `TaskDetailStore` compatibility-projection seam and the
+  storage-adjacent rule types referenced by those contracts
+- `mass-storage-memory` owns in-memory control-plane task shell, worker
+  declaration, and rule-definition storage;
   rule evaluator registry and the default QLExpress rule evaluator are now
   engine rule-runtime assembly concerns
 - `mass-storage-jdbc` owns the JDBC control-plane storage implementation plus H2/PostgreSQL dialect wiring, migrations, and residue-recovery helpers; engine manager assembly stays outside this module
