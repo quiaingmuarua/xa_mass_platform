@@ -1,6 +1,7 @@
 # Integrations Layout And Server Bootstrap Roadmap
 
-Status: proposed mainline direction.
+Status: proposed mainline direction. ILC-0 layout inventory is complete in
+[`INTEGRATIONS_LAYOUT_INVENTORY.md`](./INTEGRATIONS_LAYOUT_INVENTORY.md).
 
 This roadmap covers two related but independently implementable tracks:
 
@@ -107,6 +108,9 @@ until an external actor registers capabilities and submits work.
 ## Track A: Integration Layout Convergence
 
 ### ILC-0 Inventory
+
+Status: complete. See
+[`INTEGRATIONS_LAYOUT_INVENTORY.md`](./INTEGRATIONS_LAYOUT_INVENTORY.md).
 
 Scope:
 
