@@ -169,6 +169,143 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void ruleBasedMatchingStrategyUsesNarrowRuleContractsOnly() throws IOException {
+        Path strategyPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/strategy/RuleBasedTaskWorkerMatchingStrategy.java");
+        String source = Files.readString(strategyPath, StandardCharsets.UTF_8);
+
+        Map<String, Pattern> forbiddenPatterns = Map.ofEntries(
+                Map.entry("RuleManager", Pattern.compile("\\bRuleManager\\b")),
+                Map.entry("RuleStorage", Pattern.compile("\\bRuleStorage\\b")),
+                Map.entry("rule CRUD method", Pattern.compile(
+                        "\\b(?:addRule|addRules|deleteRule|updateRule|clear|getAllRules|getRulesByType)\\s*\\(")),
+                Map.entry("broad evaluator method", Pattern.compile("\\bevaluateRules\\s*\\("))
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Map.Entry<String, Pattern> forbiddenPattern : forbiddenPatterns.entrySet()) {
+            if (forbiddenPattern.getValue().matcher(source).find()) {
+                violations.add(strategyPath + " uses forbidden broad rule dependency: "
+                        + forbiddenPattern.getKey());
+            }
+        }
+        assertTrue(source.contains("MatchingRuleSetProvider"),
+                "RuleBasedTaskWorkerMatchingStrategy must depend on MatchingRuleSetProvider");
+        assertTrue(source.contains("MatchingRuleEvaluator"),
+                "RuleBasedTaskWorkerMatchingStrategy must depend on MatchingRuleEvaluator");
+        assertTrue(violations.isEmpty(),
+                "Matching must consume narrow rule contracts, not a CRUD-shaped rule manager or storage facade:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void engineMainSourcesDoNotImportRuntimeMemoryOrStorageImplementations() throws IOException {
+        Pattern forbiddenImport = Pattern.compile(String.join("|", List.of(
+                "\\bimport\\s+com\\.xa\\.mass\\.runtime\\.memory\\.",
+                "\\bimport\\s+com\\.xa\\.mass\\.storage\\.memory\\.",
+                "\\bimport\\s+com\\.xa\\.mass\\.storage\\.jdbc\\."
+        )));
+
+        List<String> violations = new ArrayList<>();
+        for (Path path : javaSourceFiles(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine"))) {
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            if (forbiddenImport.matcher(source).find()) {
+                violations.add(path + " imports a runtime/storage implementation package");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Engine production code must consume runtime and storage contracts only. "
+                        + "Implementation defaults belong in SDK/server/test assembly:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void enginePomKeepsRuntimeMemoryOutOfProductionScope() throws IOException {
+        Path enginePom = repositoryRoot().resolve("xa-mass-engine/pom.xml");
+        String pom = Files.readString(enginePom, StandardCharsets.UTF_8);
+        Pattern runtimeMemoryDependency = Pattern.compile(
+                "<dependency>\\s*<groupId>com\\.xa\\.mass</groupId>\\s*"
+                        + "<artifactId>mass-runtime-memory</artifactId>.*?</dependency>",
+                Pattern.DOTALL
+        );
+
+        java.util.regex.Matcher matcher = runtimeMemoryDependency.matcher(pom);
+        List<String> violations = new ArrayList<>();
+        while (matcher.find()) {
+            String dependencyBlock = matcher.group();
+            if (!Pattern.compile("<scope>\\s*test\\s*</scope>").matcher(dependencyBlock).find()) {
+                violations.add("xa-mass-engine declares mass-runtime-memory outside test scope");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "mass-runtime-memory is an implementation fixture for engine tests, not an engine production dependency:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void ruleApiRoutesDoNotUseRuntimeRulesNamespace() throws IOException {
+        Path repo = repositoryRoot();
+        Pattern runtimeRuleRoute = Pattern.compile("/api/v1/runtime/rules|/status/rules");
+        List<Path> guardedRoots = List.of(
+                repo.resolve("xa-mass-server/src/main/java"),
+                repo.resolve("xa-mass-server/src/test/java"),
+                repo.resolve("doc/INTERNAL_API_REFERENCE.md"),
+                repo.resolve("doc/E2E_BASELINE.md"),
+                repo.resolve("xa-mass-server/README.md")
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Path root : guardedRoots) {
+            for (Path path : sourceOrSingleFile(root)) {
+                String source = Files.readString(path, StandardCharsets.UTF_8);
+                if (runtimeRuleRoute.matcher(source).find()) {
+                    violations.add(path + " still references the retired runtime rule route");
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Rule definition APIs are admin/control-plane surfaces, not runtime APIs. "
+                        + "Do not reintroduce `/api/v1/runtime/rules` or `/status/rules` aliases:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void storageModulesDoNotImportConcreteRuleEvaluatorImplementations() throws IOException {
+        Path repo = repositoryRoot();
+        Pattern forbiddenEvaluatorOwner = Pattern.compile(String.join("|", List.of(
+                "\\bimport\\s+com\\.xa\\.mass\\.engine\\.rules\\.",
+                "\\bQLExpressRuleEvaluator\\b",
+                "\\bRegistryBackedMatchingRuleEvaluator\\b",
+                "\\bRuleEvaluatorRegistries\\b",
+                "\\bimport\\s+com\\.alibaba\\.qlexpress4\\."
+        )));
+
+        List<Path> guardedRoots = List.of(
+                repo.resolve("platform_infra/mass-storage-api/src/main/java"),
+                repo.resolve("platform_infra/mass-storage-memory/src/main/java"),
+                repo.resolve("platform_infra/mass-storage-jdbc/src/main/java")
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Path root : guardedRoots) {
+            for (Path path : javaSourceFiles(root)) {
+                String source = Files.readString(path, StandardCharsets.UTF_8);
+                if (forbiddenEvaluatorOwner.matcher(source).find()) {
+                    violations.add(path + " imports concrete evaluator runtime code");
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Storage modules own rule definitions only. Concrete evaluator registration and QLExpress "
+                        + "runtime code belong to engine rule assembly:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void ruleBasedMatchingStrategyDoesNotOwnRuleContextSnapshotFields() throws IOException {
         Path strategyPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/strategy/RuleBasedTaskWorkerMatchingStrategy.java");
@@ -2703,6 +2840,13 @@ class EngineSchedulingCoreArchitectureGuardTest {
                     .sorted()
                     .toList();
         }
+    }
+
+    private static List<Path> sourceOrSingleFile(Path root) throws IOException {
+        if (Files.isRegularFile(root)) {
+            return List.of(root);
+        }
+        return javaSourceFiles(root);
     }
 
     private static Path repositoryRoot() {

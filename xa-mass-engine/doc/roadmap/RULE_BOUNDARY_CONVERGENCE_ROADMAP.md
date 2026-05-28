@@ -1,6 +1,6 @@
 # Rule Boundary Convergence Roadmap
 
-Status: active direction document.
+Status: implemented direction document.
 
 Progress:
 
@@ -25,6 +25,10 @@ Progress:
 - RBC-6 is implemented: `TaskManager` no longer constructs
   `InMemoryTaskResultRuntime`; engine constructor callers must inject
   `TaskResultRuntime`, while SDK/server/test assembly own in-memory defaults.
+- RBC-7 is implemented: architecture guards now prevent broad rule-manager
+  matching dependencies, runtime rule routes, engine implementation imports,
+  production `mass-runtime-memory` scope, and storage-owned evaluator runtime
+  code from returning.
 
 This roadmap narrows the rule boundary after the worker-runtime and storage
 boundary convergence work. Rule definitions are stored in
@@ -431,6 +435,8 @@ Acceptance:
 ## Slice RBC-7: Guard And Proof
 
 Goal: prevent rule CRUD and assembly residues from drifting back into engine.
+
+Status: implemented.
 
 Scope:
 
