@@ -40,6 +40,7 @@
         <module>transport/websocket-adapter</module>
         <module>xa-mass-sdk-api</module>
         <module>xa-mass-sdk</module>
+        <module>integrations/xa-mass-java-sdk</module>
         <module>xa-mass-testing</module>
         <module>xa-mass-worker-pack</module>
         <module>xa-mass-server</module>

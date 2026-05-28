@@ -2,6 +2,8 @@
 
 Status: active. JSDK-0 inventory is complete in
 [`JAVA_EXTERNAL_SDK_INVENTORY.md`](./JAVA_EXTERNAL_SDK_INVENTORY.md).
+JSDK-1 module skeleton and HTTP core are implemented under
+[`../integrations/xa-mass-java-sdk`](../integrations/xa-mass-java-sdk).
 
 This roadmap defines a new `xa-mass-java-sdk` artifact for repo-external Java
 clients. It is intentionally separate from the current `xa-mass-sdk`, and it
