@@ -3,55 +3,37 @@ package com.xa.mass.worker.runtime.resource;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
- * Composite worker current-state read model.
+ * Declaration-only worker row shape.
  *
- * <p>This shape still carries declaration fields together with runtime and
- * compatibility projection fields such as status, heartbeat, and
- * worker-level supported project/event hints. It is suitable for resource
- * reads and current operator views, but it is not the target declaration-store
- * persistence shape. New declaration persistence should move toward
- * {@link WorkerDeclarationRecord}; current runtime evidence should move toward
- * {@link WorkerRuntimeStateRecord}.</p>
+ * <p>This is the target persisted worker declaration model. It intentionally
+ * excludes heartbeat, online/offline status, dispatch gates, reservations,
+ * leases, and capability history. WorkerGroup remains the capability owner;
+ * worker-level supported project/event hints do not belong in this record.</p>
  */
-public record WorkerResourceRecord(
+public record WorkerDeclarationRecord(
         String workerId,
-        String statusName,
-        String agentVersion,
-        LocalDateTime lastHeartbeat,
-        List<String> supportedProjects,
-        List<String> supportedEventCodes,
         String workerGroupId,
         String adapterNodeId,
         String adapterId,
         String onlineStrategy,
+        String agentVersion,
         int maxConcurrentWork,
         Map<String, String> attributes,
         LocalDateTime createTime,
         LocalDateTime updateTime
 ) {
-    public WorkerResourceRecord {
+    public WorkerDeclarationRecord {
         workerId = normalizeNullable(workerId);
-        statusName = normalizeNullable(statusName);
-        agentVersion = normalizeNullable(agentVersion);
-        supportedProjects = copyList(supportedProjects);
-        supportedEventCodes = copyList(supportedEventCodes);
         workerGroupId = normalizeNullable(workerGroupId);
         adapterNodeId = normalizeNullable(adapterNodeId);
         adapterId = normalizeNullable(adapterId);
         onlineStrategy = normalizeNullable(onlineStrategy);
+        agentVersion = normalizeNullable(agentVersion);
         maxConcurrentWork = Math.max(1, maxConcurrentWork);
         attributes = copyMap(attributes);
-    }
-
-    private static List<String> copyList(List<String> source) {
-        if (source == null || source.isEmpty()) {
-            return List.of();
-        }
-        return List.copyOf(source);
     }
 
     private static Map<String, String> copyMap(Map<String, String> source) {

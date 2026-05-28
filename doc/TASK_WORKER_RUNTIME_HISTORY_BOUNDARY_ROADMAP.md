@@ -110,9 +110,11 @@ cleanup.
    DB query API.
 9. `WorkerResourceRecord` is not yet a clean declaration record. It still
    carries runtime or compatibility projection fields such as `statusName`,
-   `lastHeartbeat`, `supportedProjects`, and `supportedEventCodes`. TWH-3 must
-   decide whether `WorkerResourceRecord` becomes a current-state composite view
-   or is split into declaration and runtime projection records.
+   `lastHeartbeat`, `supportedProjects`, and `supportedEventCodes`.
+   `WorkerDeclarationRecord` is now the target declaration-store row shape,
+   `WorkerRuntimeStateRecord` is the target current runtime-state shape, and
+   `WorkerResourceRecord` is the current composite current-state read model.
+   TWH-3B must move declaration-store writes away from mixed worker shapes.
 10. `EngineConfig` has real internal coupling between task shell storage and
     compatibility projection storage: the default `InMemoryTaskShellStore` is
     both `taskShellStore` and `taskDetailStore`, and

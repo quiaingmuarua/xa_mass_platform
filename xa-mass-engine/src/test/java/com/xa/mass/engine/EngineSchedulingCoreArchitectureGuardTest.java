@@ -1494,7 +1494,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
         assertTrue(violations.isEmpty(),
                 "WorkerManager is still assembly, but resource, candidate acquisition, and warm-hint "
-                        + "entrypoints must stay on runtime-neutral WorkerResourceRecord / "
+                        + "entrypoints must stay on model-neutral WorkerResourceRecord / "
                         + "WorkerTaskSelector / WorkerCandidateRow shapes:\n"
                         + String.join("\n", violations));
     }
@@ -2150,7 +2150,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void workerResourceRuntimeContractIsRuntimeNeutral() throws IOException {
+    void workerResourceRuntimeContractDoesNotExposeBaseWorkerModel() throws IOException {
         Path engineContractPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/worker/WorkerResourceRuntime.java");
         Path lookupStorePath = Path.of("..", "platform_infra", "mass-storage-api", "src", "main", "java",
@@ -2178,7 +2178,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "WorkerResourceRuntime is a worker-runtime resource boundary and must stay runtime-neutral:\n"
+                "WorkerResourceRuntime is a worker-runtime resource boundary and must not expose base.model.Worker:\n"
                         + String.join("\n", violations));
     }
 

@@ -53,10 +53,27 @@ Owned contracts:
 - `WorkerResourceDeclarationRuntime`
 - `WorkerNodeBindingRuntime`
 - `WorkerResourceRecord`
+- `WorkerDeclarationRecord`
+- `WorkerRuntimeStateRecord`
 - `WorkerGroupRecord`
 - `AdapterNodeRecord`
 - `NodeGroupBindingRecord`
 - `EventBinding`
+
+Role split:
+
+- `WorkerDeclarationRecord` is the target declaration-store row shape. It
+  contains stable worker identity, group/node membership, adapter hints,
+  static attributes, max concurrency, and timestamps. It does not contain
+  heartbeat, online/offline state, dispatch gates, reservations, leases, or
+  worker-level supported project/event capability hints.
+- `WorkerRuntimeStateRecord` is a current runtime-state view assembled from
+  registry, reachability, heartbeat freshness, dispatch gate, and admission
+  evidence. It is not persisted as declaration truth.
+- `WorkerResourceRecord` is the current composite resource read model used by
+  SDK/server/operator views and compatibility mutation surfaces. Because it
+  contains status, heartbeat, and compatibility capability hints, it must not
+  be described as declaration-store truth.
 
 Allowed callers:
 
@@ -180,6 +197,15 @@ Owned contract:
 
 `WorkerRouteBucketPolicies` is the platform approved-attribute route policy.
 The registry-level route-bucket SPI remains in `mass-runtime-api`.
+
+## Online And Heartbeat Semantics
+
+Worker registration may create or refresh a registry slot so the runtime can
+route current work, but declaration persistence is not the source of active
+online state. Online state comes from transport reachability, heartbeat
+freshness in current registry metadata, dispatch gates, and admission evidence.
+TWH-3B must remove declaration-store writes that persist heartbeat or
+online/offline churn as durable worker truth.
 
 ## Registry SPI Below This Boundary
 

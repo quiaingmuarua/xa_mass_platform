@@ -41,6 +41,21 @@ com.xa.mass.worker.runtime.routing    platform route bucket policy
 com.xa.mass.worker.runtime            implementation owners and assembly
 ```
 
+## Worker Shape Split
+
+- `WorkerDeclarationRecord` is the target persisted declaration shape:
+  identity, WorkerGroup/node membership, adapter hints, static attributes, max
+  concurrency, and timestamps.
+- `WorkerRuntimeStateRecord` is current runtime evidence: heartbeat freshness,
+  reachability, dispatch gate, reservation/load, and lease observations.
+- `WorkerResourceRecord` is the current composite read model. It may be used
+  for SDK/server/operator resource views, but it must not become declaration
+  persistence truth while it still carries status, last heartbeat, and
+  compatibility supported project/event hints.
+
+WorkerGroup owns capability truth. Worker-level supported project/event fields
+are compatibility read hints only.
+
 ## Dependency Rules
 
 Allowed:
