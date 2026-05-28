@@ -84,6 +84,17 @@ cleanup.
    `ExecutionEventSink` / `TraceEventLogger`. The missing piece is not to make
    storage bigger; it is to make the trace -> queue -> archive path the place
    where historical analysis is materialized.
+6. The rename impact crosses the embedding SDK public surface. `MassSdk`,
+   `MassApplicationBuilder`, `MassEngineBuilder`, and `EngineConfig` expose
+   `taskStorage(...)`, `workerStorage(...)`, `setTaskStorage(...)`, and
+   `setWorkerStorage(...)`. This roadmap intentionally treats the rename as a
+   breaking embedded-SDK cleanup, not a deprecated compatibility track, because
+   keeping old and new methods would preserve the bad abstraction as a live
+   public seam.
+7. `TaskRuntimeMaintenancePort` currently mixes runtime lease maintenance with
+   current task-shell lifecycle scanning. That is better than exposing storage
+   directly to the watchdog, but the method classification still needs to be
+   explicit before implementation.
 
 Conclusion: the target should be stricter than "storage is control-plane." The
 rule should be:
@@ -139,6 +150,9 @@ retry, result convergence, or worker reachability decisions.
 - Do not route runtime decisions through archive/history/read-model output.
 - Do not preserve old and new storage names as two public seams. Converge
   in-repo callers.
+- Do not keep deprecated `taskStorage(...)` / `workerStorage(...)` builder
+  aliases unless a later release decision explicitly chooses a public
+  compatibility window. This roadmap assumes no such window.
 - Do not make trace/archive the source of runtime correctness. Trace is for
   history, replay assistance, debugging, and analytics.
 - Do not introduce a generic repository abstraction that hides whether data is
@@ -154,8 +168,16 @@ Scope:
   - `InMemoryTaskStorage`
   - `InMemoryWorkerStorage`
   - `JdbcTaskStorage`
+  - every `TaskStorage` method:
+    `saveTask`, `getTask`, `updateTask`, `deleteTask`, `listTasksPaged`,
+    `getTasksByStatus`, `getTasksByProject`, `getSchedulableTasks`, and
+    `pollExpiredMaxRuntimeTasks`
+  - every `WorkerStorage` method:
+    `addWorker`, `getWorker`, `updateWorker`, `deleteWorker`,
+    `getWorkersByGroupId`, and `getAllWorkers`
   - `TaskManager.getSchedulableTasks()`
   - `TaskManager.pollExpiredMaxRuntimeTasks(...)`
+  - `TaskRuntimeMaintenancePort` method categories
   - `WorkerResourceOwner.getAllWorkers()`
   - `WorkerManager.workers()`
   - SDK/server task and worker read models
@@ -180,6 +202,12 @@ Acceptance:
 - No implementation starts before ambiguous callers are classified.
 - The inventory explicitly marks `getSchedulableTasks()` as runtime-shaped
   residue that must not remain a storage contract.
+- The inventory classifies `listTasksPaged`, `getTasksByStatus`, and
+  `getTasksByProject` as current shell queries or history-shaped queries before
+  they are renamed or retained.
+- The inventory classifies every `TaskRuntimeMaintenancePort` method as
+  runtime maintenance, current-shell lifecycle maintenance, dispatch wakeup, or
+  mixed residue.
 - The inventory explicitly states that current JDBC does not provide worker
   runtime/history storage.
 
@@ -193,12 +221,27 @@ Scope:
 - Update SDK builder/config names so embedding callers do not see
   `taskStorage(...)` or `workerStorage(...)` as generic runtime/history
   extension points.
+- Treat the embedded SDK rename as a breaking change in this roadmap. Update:
+  - `MassSdk.EngineOptions`
+  - `MassApplicationBuilder.EngineBuilder`
+  - `MassEngineBuilder`
+  - `EngineConfig`
+  - `xa-mass-sdk/README.md`
+- Add a concise migration table, for example:
+  - `taskStorage(...)` -> `taskShellStore(...)`
+  - `workerStorage(...)` -> `workerDeclarationStore(...)`
+  - `getTaskStorage()` -> `getTaskShellStore()`
+  - `getWorkerStorage()` -> `getWorkerDeclarationStore()`
 - Keep behavior unchanged in this slice.
 
 Acceptance:
 
 - No production import of `TaskStorage` or `WorkerStorage` remains.
 - No compatibility alias remains for old names.
+- No `taskStorage(...)`, `workerStorage(...)`, `setTaskStorage(...)`, or
+  `setWorkerStorage(...)` embedding SDK API remains.
+- The migration table is committed with the slice so downstream breakage is
+  intentional and searchable.
 - `mass-storage-api` README uses shell/declaration vocabulary.
 - `platform_infra/README.md`, `INFRA_TRUTH_LAYERS.md`, and
   `DB_STORAGE_PRINCIPLES.md` use shell/declaration vocabulary consistently.
@@ -216,6 +259,12 @@ Scope:
     runtime queue/lease truth.
   - Prefer a lifecycle-specific owner port name such as
     `TaskShellLifecycleQuery.pollTasksPastMaxRuntimeDeadline(...)`.
+- Split or rename `TaskRuntimeMaintenancePort` so lease-runtime operations and
+  current task-shell lifecycle scanning are not presented as one runtime truth
+  category. A split is preferred if the implementation remains readable:
+  - lease runtime maintenance: active leases, expired leases, lease expiry
+  - current task-shell lifecycle maintenance: max-runtime deadline scanning
+  - dispatch wakeup/readiness: dispatch-ready checks and task dispatch requests
 - Ensure watchdog code talks to engine lifecycle/maintenance ports, not a raw
   storage contract.
 
@@ -225,13 +274,15 @@ Acceptance:
 - Runtime dispatchable work recovery does not use control-plane DB scans.
 - Max-runtime task termination remains bounded and current-shell scoped, not a
   historical task execution query.
+- The watchdog-facing port name makes clear whether a method reads runtime
+  lease state or current task-shell lifecycle state.
 
 ## TWH-3 Split Worker Declaration From Runtime Projection
 
 Scope:
 
-- Introduce a declaration-shaped record if needed, instead of persisting the
-  mixed `Worker` model directly.
+- Introduce a declaration-shaped record. Do not keep `WorkerDeclarationStore`
+  writing the mixed `Worker` model directly.
 - Stable declaration candidates:
   - `workerId`
   - `workerGroupId`
@@ -257,6 +308,10 @@ Acceptance:
 
 - Declaration-store writes cannot persist heartbeat or online churn as durable
   truth.
+- `WorkerDeclarationStore` accepts declaration-shaped input rather than a
+  `Worker` object carrying `status` / `lastHeartbeat`.
+- `WorkerResourceOwner.normalizeWorkerRegistrationRow()` no longer mutates a
+  declaration row with runtime heartbeat data before persistence.
 - Worker runtime derives `WorkerRegistry` slot metadata from declaration rows
   plus current runtime evidence.
 - Server worker read models label fields clearly as declaration, runtime,
@@ -307,6 +362,12 @@ Scope:
   - result accepted / rejected
 - Decide whether these are existing `ExecutionEvent` names, new trace event
   names, or a later archive materialized view.
+- First compare the candidate event list with
+  `platform_infra/mass-trace-sink/.../ExecutionEventType.java`, because
+  `ExecutionEventType` is the stable trace vocabulary. Record:
+  - existing event types that already cover the candidate
+  - candidates that are archive materialized views rather than new trace events
+  - true vocabulary gaps requiring a new `ExecutionEventType`
 - Keep emission async and non-authoritative for runtime correctness.
 
 Acceptance:
