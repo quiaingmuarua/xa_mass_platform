@@ -131,7 +131,12 @@ class WorkerApiControllerTest {
                 .andExpect(jsonPath("$.data.items[0].connections[0].adapterId").value("ws-public"))
                 .andExpect(jsonPath("$.data.items[0].hasActiveEndpoint").value(true))
                 .andExpect(jsonPath("$.data.items[0].locked").value(true))
-                .andExpect(jsonPath("$.data.items[0].lastHeartbeat").value("2026-04-21 10:15:00"));
+                .andExpect(jsonPath("$.data.items[0].lastHeartbeat").value("2026-04-21 10:15:00"))
+                .andExpect(jsonPath("$.data.items[0].fieldSources.workerGroupId").value("declaration"))
+                .andExpect(jsonPath("$.data.items[0].fieldSources.status").value("runtime"))
+                .andExpect(jsonPath("$.data.items[0].fieldSources.transportReachability").value("transport"))
+                .andExpect(jsonPath("$.data.items[0].fieldSources.supportedEventCodes")
+                        .value("compatibilityProjection"));
     }
 
     @Test

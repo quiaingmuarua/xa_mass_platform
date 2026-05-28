@@ -156,6 +156,7 @@ public class CatalogController {
                     item.put("connections", connections);
                     item.put("hasActiveEndpoint", WorkerCapabilityViewSupport.hasActiveConnection(connections));
                     item.put("locked", runtimeDiagnostics != null && runtimeDiagnostics.isWorkerLocked(worker.getWorkerId()));
+                    item.put("fieldSources", WorkerCapabilityViewSupport.workerFieldSources());
                     return item;
                 })
                 .toList();

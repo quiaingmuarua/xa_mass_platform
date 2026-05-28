@@ -15,6 +15,29 @@ import java.util.Objects;
 
 final class WorkerCapabilityViewSupport {
 
+    private static final Map<String, String> WORKER_FIELD_SOURCES = Map.ofEntries(
+            Map.entry("workerId", "declaration"),
+            Map.entry("workerGroupId", "declaration"),
+            Map.entry("adapterNodeId", "declaration"),
+            Map.entry("agentVersion", "declaration"),
+            Map.entry("maxConcurrentWork", "declaration"),
+            Map.entry("attributes", "declaration"),
+            Map.entry("transportHint", "declaration"),
+            Map.entry("updateTime", "declaration"),
+            Map.entry("status", "runtime"),
+            Map.entry("lastHeartbeat", "runtime"),
+            Map.entry("locked", "runtime"),
+            Map.entry("transportReachability", "transport"),
+            Map.entry("transportOnline", "transport"),
+            Map.entry("online", "transport"),
+            Map.entry("connections", "transport"),
+            Map.entry("hasActiveEndpoint", "transport"),
+            Map.entry("adapterId", "declarationOrTransport"),
+            Map.entry("supportedProjects", "compatibilityProjection"),
+            Map.entry("supportedEventCodes", "compatibilityProjection"),
+            Map.entry("eventBindings", "compatibilityProjection")
+    );
+
     private WorkerCapabilityViewSupport() {
     }
 
@@ -87,6 +110,10 @@ final class WorkerCapabilityViewSupport {
         return connections.stream().anyMatch(connection ->
                 connection != null && Boolean.TRUE.equals(connection.get("active"))
         );
+    }
+
+    static Map<String, String> workerFieldSources() {
+        return WORKER_FIELD_SOURCES;
     }
 
     static String resolveTransportHint(String onlineStrategy) {

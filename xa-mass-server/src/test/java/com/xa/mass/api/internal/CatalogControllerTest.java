@@ -189,6 +189,9 @@ class CatalogControllerTest {
                 .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.connections[0].routeKey=='route-crawler-1')]").exists())
                 .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.connections[0].adapterId=='ws-public')]").exists())
                 .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.hasActiveEndpoint==true)]").exists())
+                .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.fieldSources.workerGroupId=='declaration')]").exists())
+                .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.fieldSources.online=='transport')]").exists())
+                .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.fieldSources.supportedEventCodes=='compatibilityProjection')]").exists())
                 .andExpect(jsonPath("$.data[?(@.workerId=='chat-worker-1' && @.locked==true)]").exists());
     }
 

@@ -6,6 +6,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Composite current-state worker read model.
+ *
+ * <p>Identity, group, adapter, attributes, and declared capacity are
+ * declaration fields. Status and heartbeat are runtime evidence.
+ * Project/event capability fields are compatibility projections and should
+ * not be treated as durable worker declaration truth.</p>
+ */
 public final class WorkerSnapshot {
 
     private final String workerId;

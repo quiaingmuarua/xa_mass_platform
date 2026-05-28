@@ -478,6 +478,13 @@ Scope:
   transport reachability, or compatibility projection.
 - Document that `WorkerStateProjectionOwner` bounded recent reports are current
   diagnostic evidence, not durable archive/history truth.
+- Expose server worker read-model field ownership labels without changing
+  the existing flat operator fields:
+  - `declaration`
+  - `runtime`
+  - `transport`
+  - `declarationOrTransport`
+  - `compatibilityProjection`
 
 Acceptance:
 
@@ -487,6 +494,9 @@ Acceptance:
   runtime-neutral if it contains runtime/current-state fields.
 - Bounded worker state report history is documented as diagnostic current-state
   evidence only.
+- `/api/v1/runtime/workers` and `/api/v1/catalog/worker-capabilities` expose
+  field ownership labels or an equivalent source map for operator/debug
+  consumers.
 
 ## TWH-4 Current-State API Guardrails
 

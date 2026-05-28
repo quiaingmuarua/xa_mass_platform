@@ -220,6 +220,9 @@ Notes:
 - `online` follows transport presence truth, not the worker model status field
 - `connections` and `hasActiveEndpoint` are reachability facts from the
   transport/session layer, not capability truth
+- each row includes `fieldSources`, a field-to-owner label map. Expected
+  owners are `declaration`, `runtime`, `transport`,
+  `declarationOrTransport`, and `compatibilityProjection`.
 
 ## 5. Task API
 
@@ -726,6 +729,9 @@ Notes:
   facts read through the SDK/transport presence view
 - joins worker state with current connection snapshots
 - `eventBindings` remains the richer capability read model
+- each row includes `fieldSources`, a field-to-owner label map. Expected
+  owners are `declaration`, `runtime`, `transport`,
+  `declarationOrTransport`, and `compatibilityProjection`.
 
 ### 5.7 Worker Capability And State Reports
 

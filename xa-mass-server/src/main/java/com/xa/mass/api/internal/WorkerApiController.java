@@ -77,6 +77,10 @@ public class WorkerApiController {
     }
 
     @GetMapping("/workers")
+    @Operation(
+            summary = "List runtime worker read models",
+            description = "Returns composite current-state worker rows. The fieldSources map labels declaration, runtime, transport, and compatibility projection fields."
+    )
     public ApiResponse<Map<String, Object>> listWorkers() {
         Map<String, List<Map<String, Object>>> connectionsByWorker =
                 WorkerCapabilityViewSupport.groupConnectionsByWorker(runtimeDiagnostics);
@@ -107,6 +111,7 @@ public class WorkerApiController {
                     item.put("connections", connections);
                     item.put("hasActiveEndpoint", WorkerCapabilityViewSupport.hasActiveConnection(connections));
                     item.put("updateTime", formatDateTime(worker.getUpdateTime()));
+                    item.put("fieldSources", WorkerCapabilityViewSupport.workerFieldSources());
                     return item;
                 })
                 .toList();
