@@ -13,6 +13,10 @@ Progress:
   evaluator moved to engine rule assembly. The remaining `xa-mass-base`
   `qlexpress4` dependency is classified as JSON-DSL boundary work, not rule
   evaluator work.
+- RBC-3 is implemented for the matching strategy: `RuleBasedTaskWorkerMatchingStrategy`
+  now depends on `MatchingRuleSetProvider` and `MatchingRuleEvaluator`, not the
+  CRUD-shaped `RuleManager`. SDK assembly still gets those method references
+  from `EngineConfig.getRuleManager()` until RBC-4 moves bootstrap/admin writes.
 
 This roadmap narrows the rule boundary after the worker-runtime and storage
 boundary convergence work. The current code already stores rule definitions in
@@ -68,9 +72,10 @@ that work in
     `RuleBasedTaskWorkerMatchingStrategy`
 - `RuleManager` now uses an engine-owned `RuleEvaluatorRegistry` for evaluator
   lookup instead of reading evaluators from `RuleStorage`.
-- `RuleBasedTaskWorkerMatchingStrategy` now has narrow
-  `MatchingRuleSetProvider` and `MatchingRuleEvaluator` constructors, but the
-  SDK assembly path still passes the broad `RuleManager`.
+- `RuleBasedTaskWorkerMatchingStrategy` now only accepts
+  `MatchingRuleSetProvider` and `MatchingRuleEvaluator` for rule access.
+- The SDK assembly path still obtains those method references from the broad
+  `RuleManager`; moving that bootstrap/admin owner is RBC-4.
 - `RuleBasedTaskWorkerMatchingStrategy` only needs two methods today:
   - `getDefaultRules()`
   - `evaluate(rule, context)`

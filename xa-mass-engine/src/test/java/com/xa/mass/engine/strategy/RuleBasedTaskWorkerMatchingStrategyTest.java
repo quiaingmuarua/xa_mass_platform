@@ -772,7 +772,8 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                                                          WorkerManager workerManager,
                                                          AssignmentRecordService recordService) {
         return new RuleBasedTaskWorkerMatchingStrategy(
-                ruleManager,
+                ruleManager::getDefaultRules,
+                ruleManager::evaluate,
                 workerManager,
                 workerManager,
                 workerManager,

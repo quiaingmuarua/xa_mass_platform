@@ -114,7 +114,8 @@ public class MassEngine {
             TaskWorkerMatchingStrategy matchingStrategy = customStrategy != null
                     ? customStrategy
                     : new RuleBasedTaskWorkerMatchingStrategy(
-                            ruleManager,
+                            ruleManager::getDefaultRules,
+                            ruleManager::evaluate,
                             config.getWorkerCandidateRuntime(),
                             workerAdmissionRuntime,
                             config.getWorkerSchedulingViewRuntime(),

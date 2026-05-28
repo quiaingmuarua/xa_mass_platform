@@ -19,7 +19,6 @@ import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
 import com.xa.mass.engine.rules.MatchingRuleEvaluator;
 import com.xa.mass.engine.rules.MatchingRuleSetProvider;
 import com.xa.mass.storage.rule.RuleDefinition;
-import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
 import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionResult;
@@ -55,41 +54,6 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
     private final WorkerCandidateRanker candidateRanker;
     private final WorkerDispatchResourcePolicy resourcePolicy;
     private final WorkerSchedulingCandidateEnumerator candidateEnumerator;
-
-    public RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
-                                               WorkerCandidateRuntime candidateRuntime,
-                                               WorkerAdmissionRuntime admissionRuntime,
-                                               WorkerSchedulingViewRuntime schedulingViewRuntime,
-                                               AssignmentDiagnosticRecorder recordService,
-                                               TraceEventLogger traceEventLogger) {
-        this(ruleManager, candidateRuntime, admissionRuntime, schedulingViewRuntime, recordService, traceEventLogger,
-                new DefaultWorkerCandidateRanker(), new DefaultWorkerDispatchResourcePolicy(), null);
-    }
-
-    RuleBasedTaskWorkerMatchingStrategy(RuleManager<Map<String, Object>> ruleManager,
-                                        WorkerCandidateRuntime candidateRuntime,
-                                        WorkerAdmissionRuntime admissionRuntime,
-                                        WorkerSchedulingViewRuntime schedulingViewRuntime,
-                                        AssignmentDiagnosticRecorder recordService,
-                                        TraceEventLogger traceEventLogger,
-                                        WorkerCandidateRanker candidateRanker,
-                                        WorkerDispatchResourcePolicy resourcePolicy,
-                                        WorkerSchedulingCandidateEnumerator candidateEnumerator) {
-        Objects.requireNonNull(ruleManager, "ruleManager");
-        this.ruleSetProvider = ruleManager::getDefaultRules;
-        this.ruleEvaluator = ruleManager::evaluate;
-        this.candidateRuntime = Objects.requireNonNull(candidateRuntime, "candidateRuntime");
-        this.admissionRuntime = Objects.requireNonNull(admissionRuntime, "admissionRuntime");
-        this.recordService = recordService;
-        this.traceEventLogger = traceEventLogger;
-        this.candidateRanker = candidateRanker != null ? candidateRanker : new DefaultWorkerCandidateRanker();
-        this.resourcePolicy = resourcePolicy == null ? new DefaultWorkerDispatchResourcePolicy() : resourcePolicy;
-        WorkerSchedulingViewRuntime schedulingRuntime =
-                Objects.requireNonNull(schedulingViewRuntime, "schedulingViewRuntime");
-        this.candidateEnumerator = candidateEnumerator == null
-                ? new WorkerSchedulingCandidateEnumerator(schedulingRuntime)
-                : candidateEnumerator;
-    }
 
     public RuleBasedTaskWorkerMatchingStrategy(MatchingRuleSetProvider ruleSetProvider,
                                                MatchingRuleEvaluator<Map<String, Object>> ruleEvaluator,

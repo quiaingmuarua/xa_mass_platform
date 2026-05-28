@@ -79,7 +79,8 @@ final class TaskSchedulingTestHarness {
                 (context, bindings) -> dispatches.addAll(bindings)
         );
         RuleBasedTaskWorkerMatchingStrategy matchingStrategy = new RuleBasedTaskWorkerMatchingStrategy(
-                ruleManager,
+                ruleManager::getDefaultRules,
+                ruleManager::evaluate,
                 workerManager,
                 workerManager,
                 workerManager,
