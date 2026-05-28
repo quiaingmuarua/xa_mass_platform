@@ -27,14 +27,14 @@ same coupling will reappear under a cleaner Maven module name.
 ```text
 xa-mass-engine
   -> xa-mass-worker-runtime      worker resource/candidate/admission/report APIs
-  -> mass-runtime-api            task work/result runtime APIs only
+  -> mass-runtime-api            task work/result APIs; worker primitives only by documented exception
 
 transport
   -> xa-mass-worker-runtime      worker resource lookup and runtime evidence
 
 xa-mass-sdk / xa-mass-server
   -> xa-mass-worker-runtime      worker platform API surface
-  -> mass-runtime-api            task runtime selection only where needed
+  -> mass-runtime-api            task runtime selection and documented low-level assembly only
 
 xa-mass-worker-runtime
   -> mass-runtime-api            low-level registry primitives
