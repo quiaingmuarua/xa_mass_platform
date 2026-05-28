@@ -79,7 +79,7 @@ Use owner docs for module-local truth:
   [../xa-mass-worker-runtime/CONTRACTS.md](../xa-mass-worker-runtime/CONTRACTS.md)
 - testing: [../xa-mass-testing/README.md](../xa-mass-testing/README.md)
 - server: [../xa-mass-server/README.md](../xa-mass-server/README.md)
-- worker pack: [../xa-mass-worker-pack/README.md](../xa-mass-worker-pack/README.md)
+- worker pack: [../integrations/xa-mass-worker-pack/README.md](../integrations/xa-mass-worker-pack/README.md)
 - SDK API: [../xa-mass-sdk-api/README.md](../xa-mass-sdk-api/README.md)
 - SDK embedding: [../xa-mass-sdk/README.md](../xa-mass-sdk/README.md)
 

@@ -51,7 +51,7 @@ artifacts:
 ```text
 integrations/
   xa-mass-java-sdk/        pure external Java client SDK
-  xa-mass-worker-pack/     later move; official sample/dev worker capability pack
+  xa-mass-worker-pack/     official sample/dev worker capability pack
   samples/                 external-process sample workers and launchers
 ```
 
@@ -155,8 +155,7 @@ commit.
   `HttpClient` plus JSON handling. The new SDK should replace that repeated
   boilerplate with stable client/runtime APIs.
 - sample workers are caller-facing assets under `integrations/samples`.
-  `xa-mass-worker-pack` is still a root-level caller-facing asset until the
-  worker-pack move slice converges it under `integrations/`.
+  `integrations/xa-mass-worker-pack` is the caller-facing worker-pack module.
 - `eventCode` is global event/capability identity. Project binding scopes where
   an event is available; it does not make event identity project-local.
 - Worker capability truth is WorkerGroup-first. Workers are execution

@@ -2,8 +2,8 @@
 
 Status: proposed mainline direction. ILC-0 layout inventory is complete in
 [`INTEGRATIONS_LAYOUT_INVENTORY.md`](./INTEGRATIONS_LAYOUT_INVENTORY.md).
-ILC-1 sample path convergence is complete. Next implementation slice is ILC-2
-worker-pack movement.
+ILC-1 sample path convergence is complete. ILC-2 worker-pack movement is
+complete; SBE-0 server bootstrap classification is next.
 
 This roadmap covers two related but independently implementable tracks:
 
@@ -25,9 +25,8 @@ startup-behavior regressions can be isolated.
 - external worker samples are converging under `integrations/samples` with
   language-first grouping such as `java/worker-polling`,
   `node/worker-websocket`, and `dev/scenario`.
-- `xa-mass-worker-pack` is still a root-level module even though its role is
-  official worker reference and sample/dev capability code, not kernel or
-  server ownership.
+- `integrations/xa-mass-worker-pack` is the official worker reference and
+  sample/dev capability module; Maven artifactId remains `xa-mass-worker-pack`.
 - The dev sample launcher already uses public task and worker APIs for many
   operations, and ILC-1 moves its path assumptions under
   `integrations/samples/dev/scenario`.
@@ -180,6 +179,9 @@ Acceptance:
   explicitly marked as old paths if any are retained.
 
 ### ILC-2 Move Worker Pack Under `integrations/xa-mass-worker-pack`
+
+Status: complete. The module now lives at `integrations/xa-mass-worker-pack`,
+with the Maven artifactId unchanged.
 
 Scope:
 

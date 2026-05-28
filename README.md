@@ -115,7 +115,8 @@ Current integration boundary rule:
 - `xa-mass-sdk-api`: stable SDK-facing auth, catalog, event, and model contracts
 - `xa-mass-sdk`: embedding entry and runtime composition for JVM callers
 - `xa-mass-testing`: acceptance tooling, load harnesses, and chaos probes
-- `xa-mass-worker-pack`: official builtin/sample/dev worker capabilities, sample clients, launchers, and worker-side command runtime
+- `integrations/xa-mass-worker-pack`: official builtin/sample/dev worker
+  capabilities, sample clients, launchers, and worker-side command runtime
 - `xa-mass-server`: Boot reference host, HTTP controllers, lightweight backend
   product skeleton, backend-hosted control console, and frontend shell
 

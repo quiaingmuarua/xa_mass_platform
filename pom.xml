@@ -43,7 +43,7 @@
         <module>integrations/xa-mass-java-sdk</module>
         <module>integrations/samples/java/worker-polling</module>
         <module>xa-mass-testing</module>
-        <module>xa-mass-worker-pack</module>
+        <module>integrations/xa-mass-worker-pack</module>
         <module>xa-mass-server</module>
     </modules>
     <properties>

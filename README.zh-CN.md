@@ -65,7 +65,7 @@ XA Mass Platform 是一个通用的分布式任务调度平台。
   - 面向 embedding app、worker、自动化脚本和宿主应用
 - `xa-mass-server`
   - Spring Boot 参考宿主、轻量后台产品骨架、HTTP/API、IAM/API key、控制台后端、验证入口
-- `xa-mass-worker-pack`
+- `integrations/xa-mass-worker-pack`
   - 内置/示例 worker 能力和调试 worker
 - `xa-mass-trace`
   - trace operator CLI，用于本地 timeline / stats / validation
@@ -223,7 +223,7 @@ register event
 | `xa-mass-sdk` | SDK embedding/runtime composition |
 | `xa-mass-server` | Boot reference host、轻量后台产品骨架、HTTP controllers、IAM/API key、console backend |
 | `xa-mass-testing` | perf、chaos、acceptance harness |
-| `xa-mass-worker-pack` | sample/dev worker capabilities |
+| `integrations/xa-mass-worker-pack` | sample/dev worker capabilities |
 | `xa-mass-trace` | DuckDB-backed trace operator CLI |
 
 ## 不要误解的点

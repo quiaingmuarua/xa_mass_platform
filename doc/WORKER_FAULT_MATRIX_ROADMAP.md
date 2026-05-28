@@ -575,5 +575,5 @@ When this roadmap starts landing, update:
 - `doc/TESTING_INDEX.md` for lane placement and minimum verification
 - `doc/PROOF_REGISTRY.md` only for promoted critical invariants
 - `xa-mass-testing/README.md` for runner commands and report schema
-- `xa-mass-worker-pack/README.md` for `fault.*` worker event behavior
+- `integrations/xa-mass-worker-pack/README.md` for `fault.*` worker event behavior
 - `doc/TRACE_CONTRACT.md` if new canonical event fields are required

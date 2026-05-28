@@ -56,7 +56,7 @@ the local SDK artifact without publishing it:
 `integrations/` means external integration ownership: public clients,
 official worker references, runnable sample workers, and black-box integration
 proof. It does not mean every module inside is dependency-pure. Later
-`xa-mass-worker-pack` may move under `integrations/` while still keeping
+`integrations/xa-mass-worker-pack` may keep
 embedded SDK and transport implementation dependencies for sample/realtime
 paths.
 

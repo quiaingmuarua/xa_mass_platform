@@ -2,7 +2,8 @@
 
 Status: ILC-0 complete for
 [`INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md`](./INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md).
-ILC-1 sample movement is implemented against this inventory.
+ILC-1 sample movement and ILC-2 worker-pack movement are implemented against
+this inventory.
 
 Date: 2026-05-28.
 
@@ -133,7 +134,7 @@ ILC-1 action:
 ### Worker-Pack Process Starter
 
 File:
-`xa-mass-worker-pack/src/main/java/com/xa/mass/workerpack/sample/starter/SampleWorkerProcessStarter.java`
+`integrations/xa-mass-worker-pack/src/main/java/com/xa/mass/workerpack/sample/starter/SampleWorkerProcessStarter.java`
 
 Target references after ILC-1:
 
@@ -175,7 +176,7 @@ ILC-2 updates:
 - `doc/VERIFIED_RUNBOOK.md`
 - `doc/WORKER_FAULT_MATRIX_ROADMAP.md`
 - `xa-mass-server/README.md`
-- `xa-mass-worker-pack/README.md` after it moves
+- `integrations/xa-mass-worker-pack/README.md` after it moves
 - `doc/JAVA_EXTERNAL_SDK_ROADMAP.md` and
   `doc/JAVA_EXTERNAL_SDK_INVENTORY.md`
 
