@@ -25,6 +25,10 @@ Post-WRA-2 note: `WorkerRouteBucketPolicies` is split. Memory/Redis keep only
 the `WorkerRouteBucketPolicy` SPI plus `DefaultWorkerRouteBucketPolicy`;
 platform approved-attribute routing lives in `xa-mass-worker-runtime`.
 
+Post-WRA-3 note: `WorkerAdmissionContext`, `WorkerAdmissionPolicy`, and
+`WorkerCleanupPolicy` have been deleted because they had no production
+consumers and were not active registry extension points.
+
 Consumer abbreviations:
 
 ```text
@@ -46,8 +50,8 @@ api      same mass-runtime-api package references
    ceiling. It must be documented as a project-scoped worker capability key,
    not as a globally unique event identity.
 2. `WorkerAdmissionContext`, `WorkerAdmissionPolicy`, and `WorkerCleanupPolicy`
-   have no production consumers outside their own declarations. They should be
-   deleted unless WRA-0.5 introduces a concrete registry extension use.
+   had no production consumers outside their own declarations. WRA-3 deleted
+   them instead of leaving unused policy seams in `mass-runtime-api`.
 3. `WorkerRouteBucketPolicies` must be split. The low-level default-bucket
    helper remains in `mass-runtime-api`; approved worker attribute policy moves
    to `xa-mass-worker-runtime`.
@@ -74,8 +78,8 @@ api      same mass-runtime-api package references
 | `RandomWorkerCandidateSamplingPolicy` | registry default policy | keep in runtime-api | mem, redis, api, wr | memory/Redis, worker-runtime impl |
 | `ReserveResult` | registry primitive | keep in runtime-api | mem, redis, wr, api | memory/Redis, worker-runtime impl; not an engine match contract after WRA-0.5 |
 | `ReserveStatus` | registry primitive | keep in runtime-api | mem, redis, wr, api | memory/Redis, worker-runtime impl; not an engine match contract after WRA-0.5 |
-| `WorkerAdmissionContext` | unused registry extension residue | delete unless WRA-0.5 revives | api | none yet |
-| `WorkerAdmissionPolicy` | unused registry extension residue | delete unless WRA-0.5 revives | none | none yet |
+| `WorkerAdmissionContext` | unused registry extension residue | deleted in WRA-3 | api | none |
+| `WorkerAdmissionPolicy` | unused registry extension residue | deleted in WRA-3 | none | none |
 | `WorkerAdmissionResult` | worker admission result | move to worker-runtime admission | eng, testing, wr | engine match, worker-runtime impl, testing support |
 | `WorkerAdmissionRuntime` | worker admission contract | move to worker-runtime admission | eng, sdk, testing, wr | engine match/resource release, SDK assembly, worker-runtime impl |
 | `WorkerAdmissionStatus` | worker admission status | move to worker-runtime admission | eng, testing, wr | engine match, worker-runtime impl, testing support |
@@ -88,7 +92,7 @@ api      same mass-runtime-api package references
 | `WorkerCapabilityReport` | worker report contract | move to worker-runtime report | eng, sdk, wr, api | engine control/report path, SDK/server shell, worker-runtime impl |
 | `WorkerCapabilityReportResult` | worker report result | move to worker-runtime report | eng, sdk, wr, api | engine control/report path, SDK/server shell, worker-runtime impl |
 | `WorkerCapabilityReportStatus` | worker report status | move to worker-runtime report | eng, wr, api | engine control/report path, worker-runtime impl |
-| `WorkerCleanupPolicy` | unused registry extension residue | delete unless WRA-0.5 revives | none | none yet |
+| `WorkerCleanupPolicy` | unused registry extension residue | deleted in WRA-3 | none | none |
 | `WorkerDispatchGateRuntime` | worker control/gate contract | move to worker-runtime control | eng, sdk, wr | engine control, SDK assembly, worker-runtime impl |
 | `WorkerGroupCapabilityView` | scheduling evidence value | move to worker-runtime evidence | eng, wr, api | engine match, worker-runtime impl |
 | `WorkerGroupRecord` | worker resource contract | move to worker-runtime resource | eng, sdk, testing, wr, api | engine control/resource, SDK/server shell, worker-runtime impl |

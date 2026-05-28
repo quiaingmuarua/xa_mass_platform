@@ -231,7 +231,10 @@ TaskWorkRuntime / result owners
   own work lease, result finality, and terminal convergence
 ```
 
-Policy must be pluggable and replaceable:
+Policy seams are intentionally narrow. Earlier drafts mentioned separate
+admission and cleanup policies, but WRA slimming removed those unused
+runtime-api residues; admission and cleanup behavior stays inside the current
+registry/runtime owners until a real implementation boundary exists.
 
 ```text
 WorkerRoutingPolicy
@@ -239,12 +242,6 @@ WorkerRoutingPolicy
 
 WorkerCandidateSamplingPolicy
   choose bounded worker ids from a large group/route bucket
-
-WorkerAdmissionPolicy
-  interpret slot evidence, reachability, gate, capacity, and route attributes
-
-WorkerCleanupPolicy
-  cleanup cadence, batch size, stale tolerance, and watchdog pacing
 
 WorkerRankingPolicy
   optional ranking after bounded sampling; first slice may be random/no-op
@@ -752,8 +749,6 @@ Scope:
    - `WorkerRoutingPolicy`
    - `WorkerCandidateSamplingPolicy`, injected into `WorkerRegistry` at
      construction time and used by `acquireCandidates(...)`
-   - `WorkerAdmissionPolicy`
-   - `WorkerCleanupPolicy`
    - optional `WorkerRankingPolicy`
 6. Create abstract `WorkerRegistryContractTest`.
 

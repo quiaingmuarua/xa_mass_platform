@@ -12,6 +12,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
@@ -1415,6 +1416,71 @@ class EngineSchedulingCoreArchitectureGuardTest {
         assertTrue(violations.isEmpty(),
                 "Engine matching strategy may consume candidate/admission/scheduling-view evidence, "
                         + "but must not own worker registry/resource/report/gate mutation truth:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void massRuntimeApiWorkerPackageContainsOnlyLowLevelRegistrySpi() throws IOException {
+        Path workerApiPackage = repositoryRoot().resolve(
+                "platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker");
+        Set<String> allowedFiles = Set.of(
+                "CleanupSummary.java",
+                "DefaultWorkerRouteBucketPolicy.java",
+                "DispatchAvailabilitySource.java",
+                "EventKey.java",
+                "RandomWorkerCandidateSamplingPolicy.java",
+                "ReserveResult.java",
+                "ReserveStatus.java",
+                "WorkerCandidateSamplingContext.java",
+                "WorkerCandidateSamplingPolicy.java",
+                "WorkerMeta.java",
+                "WorkerRegistry.java",
+                "WorkerRouteBucketPolicy.java",
+                "WorkerSlot.java"
+        );
+        Set<String> actualFiles = javaSourceFiles(workerApiPackage).stream()
+                .map(path -> path.getFileName().toString())
+                .collect(java.util.stream.Collectors.toSet());
+
+        List<String> violations = new ArrayList<>();
+        for (String actualFile : actualFiles) {
+            if (!allowedFiles.contains(actualFile)) {
+                violations.add("unexpected worker runtime-api type: " + actualFile);
+            }
+        }
+        for (String allowedFile : allowedFiles) {
+            if (!actualFiles.contains(allowedFile)) {
+                violations.add("missing allowed worker runtime-api type: " + allowedFile);
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "mass-runtime-api worker package must remain a low-level registry SPI allowlist:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void registryImplementationsDoNotDependOnWorkerRuntimeOwnerModule() throws IOException {
+        Path repo = repositoryRoot();
+        List<Path> registryImplementationRoots = List.of(
+                repo.resolve("platform_infra/mass-runtime-memory/src/main/java"),
+                repo.resolve("platform_infra/mass-runtime-redis/src/main/java")
+        );
+        Pattern workerRuntimeImport = Pattern.compile("\\bimport\\s+com\\.xa\\.mass\\.worker\\.runtime\\.");
+
+        List<String> violations = new ArrayList<>();
+        for (Path root : registryImplementationRoots) {
+            for (Path sourcePath : javaSourceFiles(root)) {
+                String source = Files.readString(sourcePath, StandardCharsets.UTF_8);
+                if (workerRuntimeImport.matcher(source).find()) {
+                    violations.add(sourcePath + " imports worker-runtime owner module");
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Memory/Redis registry implementations may depend on mass-runtime-api only, "
+                        + "not xa-mass-worker-runtime owner contracts:\n"
                         + String.join("\n", violations));
     }
 

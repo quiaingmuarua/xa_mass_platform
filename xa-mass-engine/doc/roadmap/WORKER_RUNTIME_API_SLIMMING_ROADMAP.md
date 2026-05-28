@@ -11,6 +11,9 @@ WRA-1c report/state/control contract families have moved to
 WRA-2 route-bucket policy ownership has been split: registry keeps only the
 low-level SPI/default helper, and platform approved-attribute routing now lives
 in `xa-mass-worker-runtime`.
+WRA-3 has slimmed `mass-runtime-api` to registry primitives and active
+extension points only. WRA-4 guard work has started with an explicit
+`mass-runtime-api` worker package allowlist and memory/Redis dependency guard.
 This roadmap follows
 [`WORKER_RUNTIME_MODULE_EXTRACTION_ROADMAP.md`](./WORKER_RUNTIME_MODULE_EXTRACTION_ROADMAP.md).
 
@@ -251,7 +254,7 @@ name remains unchanged.
 look like low-level registry extension points, but current code does not use
 them in production. Either keep them only if a memory/Redis implementation uses
 them, or delete/move them in the same slice. Do not leave unused policy seams in
-`mass-runtime-api`.
+`mass-runtime-api`. WRA-3 deletes these unused residues.
 
 Route bucket policy needs a split:
 
@@ -646,6 +649,10 @@ Acceptance:
 
 Goal: make the public contents match the intended low-level SPI.
 
+Status: complete. The unused admission/cleanup policy residues have been
+deleted, and the worker package now matches the expected low-level registry
+SPI list below.
+
 Expected remaining worker package:
 
 ```text
@@ -668,9 +675,9 @@ com.xa.mass.runtime.worker
 Document `EventKey` explicitly as a worker capability scope key, not a global
 event identity.
 
-If WRA-0 keeps any of `WorkerAdmissionContext`, `WorkerAdmissionPolicy`, or
-`WorkerCleanupPolicy`, document why they are active low-level registry
-extension points. Otherwise remove or move them in this slice.
+WRA-3 deletes `WorkerAdmissionContext`, `WorkerAdmissionPolicy`, and
+`WorkerCleanupPolicy` because they had no production consumers and were not
+revived as active memory/Redis extension points.
 
 Acceptance:
 
@@ -685,6 +692,11 @@ Acceptance:
 ## Slice WRA-4: Architecture Guards
 
 Goal: prevent regression into another shared API bucket.
+
+Status: in progress. The explicit `com.xa.mass.runtime.worker` allowlist and
+memory/Redis no-worker-runtime-dependency guard are implemented; remaining
+transport/control-specific caller guards should be kept aligned with the
+existing boundary tests.
 
 Add or update guards:
 
