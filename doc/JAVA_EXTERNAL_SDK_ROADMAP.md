@@ -39,6 +39,10 @@ integrations/
   samples/                 later move; external-process sample workers and launchers
 ```
 
+Decision: `integrations/` is appropriate for this roadmap, but only if it is
+kept as an ownership boundary for repo-external integration artifacts. It must
+not become a generic "misc", "examples", or "plugins" bucket.
+
 Rationale:
 
 - `xa-mass-java-sdk` is not kernel, infra, transport, server, or embedded SDK.
@@ -54,12 +58,34 @@ Rationale:
   modules may depend on public server contracts and which modules must not
   influence engine/runtime ownership.
 
+Use `integrations/` for:
+
+- public client SDKs that talk to a running `xa-mass-server`.
+- official external worker reference packs.
+- runnable external-process samples that prove public API behavior.
+- black-box integration proof modules whose purpose is to validate public
+  server/worker contracts from outside the kernel.
+
+Do not use `integrations/` for:
+
+- engine/runtime/kernel modules.
+- server-owned controllers, projections, or internal API models.
+- transport runtime implementations.
+- embedded runtime composition APIs.
+- worker matching, admission, reserve/release, or scheduling policy.
+- storage/runtime SPI modules.
+
 `integrations/` is a repository ownership boundary, not a dependency-purity
 claim. Modules under it are allowed to be mixed during migration when their
 role is external integration, sample proof, or official worker reference code.
 For example, `xa-mass-worker-pack` may temporarily keep `xa-mass-sdk` and
 transport implementation dependencies for embedded/realtime sample paths while
 its HTTP topology/control-plane paths migrate to `xa-mass-java-sdk`.
+
+This distinction matters: `integrations/xa-mass-worker-pack` can be a mixed
+reference worker during migration, but `integrations/xa-mass-java-sdk` must stay
+a pure remote client artifact. The directory groups external-facing artifacts;
+each module still has its own dependency rules.
 
 Names considered:
 

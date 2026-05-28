@@ -53,6 +53,19 @@ proof. It does not mean every module inside is dependency-pure. Later
 embedded SDK and transport implementation dependencies for sample/realtime
 paths.
 
+Directory guardrails:
+
+- `integrations/xa-mass-java-sdk` is dependency-pure remote client code. It
+  must not depend on engine, server, embedded SDK, worker-runtime, storage SPI,
+  or transport implementation modules.
+- `integrations/xa-mass-worker-pack` may be mixed during migration because it
+  is a reference worker pack, not the public SDK itself.
+- `integrations/samples` is for runnable public-contract examples and
+  black-box proof, not kernel test fixtures or server bootstrap data.
+- new modules under `integrations/` must state which public server/worker
+  contract they prove or consume. If they cannot state that contract, they do
+  not belong in this directory.
+
 ## Route Inventory
 
 ### Task Client Routes
@@ -276,4 +289,3 @@ JSDK-0 is ready to proceed to JSDK-1 when these facts remain true:
 - public payload API is SDK-owned `MassPayload` / `PayloadView`.
 - task and worker route scopes are the ones listed above.
 - realtime client is still deferred.
-
