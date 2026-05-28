@@ -48,6 +48,10 @@ worker-plane resource, report, candidate, or control contracts.
 
 `mass-runtime-api` currently has two worker layers in one package.
 
+The lists below are preliminary. WRA-0 must produce the authoritative
+classification table from the current file list and import graph before any
+move/delete slice starts.
+
 Keep in `mass-runtime-api`:
 
 ```text
@@ -57,7 +61,6 @@ WorkerMeta
 ReserveResult
 ReserveStatus
 CleanupSummary
-EventKey
 WorkerCandidateSamplingPolicy
 WorkerCandidateSamplingContext
 RandomWorkerCandidateSamplingPolicy
@@ -101,15 +104,23 @@ WorkerWarmHintRuntime
 Decide before implementation:
 
 ```text
+EventKey
 WorkerAdmissionContext
 WorkerAdmissionPolicy
 WorkerCleanupPolicy
 ```
 
-These three look like low-level registry extension points, but current code
-does not use them in production. Either keep them only if a memory/Redis
-implementation uses them, or delete/move them in the same slice. Do not leave
-unused policy seams in `mass-runtime-api`.
+`EventKey` is currently a `(projectCode, eventCode)` key used for worker
+capability scope, not a globally unique event identity. WRA-0 must decide
+whether to keep it as a low-level registry ceiling primitive, or rename/move it
+with `EventBinding` as a worker-plane scope type such as `ProjectEventKey` or
+`WorkerEventScope`.
+
+`WorkerAdmissionContext`, `WorkerAdmissionPolicy`, and `WorkerCleanupPolicy`
+look like low-level registry extension points, but current code does not use
+them in production. Either keep them only if a memory/Redis implementation uses
+them, or delete/move them in the same slice. Do not leave unused policy seams in
+`mass-runtime-api`.
 
 Route bucket policy needs a split:
 
@@ -126,6 +137,86 @@ Memory/Redis registry implementations may still accept a
 `WorkerRouteBucketPolicy` instance, but the platform default policy should be
 provided by worker-runtime assembly. Registry implementations must not own the
 standard worker attribute list.
+
+Current code caveat: `InMemoryWorkerRegistry` and `RedisWorkerRegistry` import
+`WorkerRouteBucketPolicies` directly today for constructor defaults and null
+fallbacks. WRA-2 must audit those call sites first. Directly moving the whole
+class would either break the registries or force a forbidden dependency from
+memory/Redis to `xa-mass-worker-runtime`.
+
+Preferred WRA-2 direction:
+
+```text
+mass-runtime-api
+  WorkerRouteBucketPolicy
+  DefaultRouteBucketPolicy or equivalent registry-neutral default-only helper
+
+xa-mass-worker-runtime
+  WorkerRouteBucketPolicies
+  ApprovedAttributeRouteBucketPolicy
+  STANDARD_APPROVED_ROUTE_ATTRIBUTES
+```
+
+Registry constructors should receive a `WorkerRouteBucketPolicy`. Their default
+constructor may use only the registry-neutral default policy. Platform assembly
+must inject the approved-attribute policy when it wants current
+WorkerGroup-first route behavior.
+
+## Target Package Convention
+
+Moved worker-plane types must not keep the old
+`com.xa.mass.runtime.worker` package name in a different Maven module. Split
+packages hide ownership and make imports misleading.
+
+Implementation owners may stay in:
+
+```text
+com.xa.mass.worker.runtime
+```
+
+Moved public worker-plane contracts should use domain subpackages:
+
+```text
+com.xa.mass.worker.runtime.resource
+  WorkerResourceRuntime
+  WorkerResourceRecord
+  WorkerGroupRecord
+  AdapterNodeRecord
+  NodeGroupBindingRecord
+  EventBinding
+  ProjectEventKey / WorkerEventScope if EventKey moves
+
+com.xa.mass.worker.runtime.report
+  WorkerReportRuntime
+  WorkerCapabilityReport*
+  WorkerStateReport
+  WorkerStateProjection*
+
+com.xa.mass.worker.runtime.candidate
+  WorkerCandidateRuntime
+  WorkerCandidateBatch
+  WorkerCandidateRow
+  WorkerTaskSelector
+  WorkerGroupCapabilityView
+  WorkerLoadSnapshot
+  WorkerReachabilityState
+  WorkerReachabilityView
+
+com.xa.mass.worker.runtime.admission
+  WorkerAdmissionRuntime
+  WorkerAvailabilityWakeupRuntime
+  WorkerDispatchGateRuntime
+  WorkerSchedulingViewRuntime
+  WorkerWarmHintRuntime
+
+com.xa.mass.worker.runtime.routing
+  WorkerRouteBucketPolicies
+  ApprovedAttributeRouteBucketPolicy
+```
+
+If implementation proves a subpackage split creates circular dependency or
+excessive churn, stop and update WRA-0. Do not fall back to same-package
+movement without recording the tradeoff.
 
 ## Non-Goals
 
@@ -173,42 +264,63 @@ Acceptance:
 3. The keep/move/delete list is explicit.
 4. Memory/Redis required types are proven from imports, not assumed.
 
-## Slice WRA-1: Move High-Level Worker Contracts
+## Slice WRA-1a: Move Worker Data Records And Enums
 
-Goal: make `xa-mass-worker-runtime` the module that exposes worker-plane
-contracts.
+Goal: move pure worker-plane value types before runtime interfaces.
 
 Scope:
 
-1. Move worker resource/control records and contracts:
-   - `WorkerResourceRuntime`
+1. Move worker resource/control records:
    - `WorkerResourceRecord`
    - `WorkerGroupRecord`
    - `AdapterNodeRecord`
    - `NodeGroupBindingRecord`
    - `EventBinding`
-2. Move worker report and projection contracts:
-   - `WorkerReportRuntime`
+   - `ProjectEventKey` / `WorkerEventScope` if WRA-0 moves/renames `EventKey`
+2. Move worker report and projection records/enums:
    - `WorkerCapabilityReport*`
    - `WorkerStateReport`
-   - `WorkerStateProjection*`
-3. Move worker candidate/match evidence contracts:
-   - `WorkerCandidateRuntime`
+   - `WorkerStateProjection`
+   - `WorkerStateProjectionResult`
+   - `WorkerStateProjectionStatus`
+3. Move worker candidate/match evidence records/enums:
    - `WorkerCandidateBatch`
    - `WorkerCandidateRow`
    - `WorkerTaskSelector`
    - `WorkerGroupCapabilityView`
    - `WorkerLoadSnapshot`
    - `WorkerReachabilityState`
+4. Update imports in worker-runtime tests first, then engine/SDK/server/transport.
+5. Do not keep forwarding types in `mass-runtime-api`.
+
+Acceptance:
+
+1. Moved value types keep the same validation and behavior.
+2. No runtime interface is moved before its value types compile from
+   `xa-mass-worker-runtime`.
+3. No compatibility aliases remain under old package names.
+
+## Slice WRA-1b: Move Worker Runtime Interfaces
+
+Goal: make `xa-mass-worker-runtime` the module that exposes worker-plane
+contracts.
+
+Scope:
+
+1. Move resource/report/candidate interfaces:
+   - `WorkerResourceRuntime`
+   - `WorkerReportRuntime`
+   - `WorkerCandidateRuntime`
    - `WorkerReachabilityView`
-4. Move high-level admission/wakeup/gate contracts:
+   - `WorkerStateProjectionRuntime`
+2. Move high-level admission/wakeup/gate contracts:
    - `WorkerAdmissionRuntime`
    - `WorkerAvailabilityWakeupRuntime`
    - `WorkerDispatchGateRuntime`
    - `WorkerSchedulingViewRuntime`
    - `WorkerWarmHintRuntime`
-5. Update imports in engine, SDK, server, transport, and worker-runtime tests.
-6. Do not keep forwarding types in `mass-runtime-api`.
+3. Update imports in engine, SDK, server, transport, and worker-runtime tests.
+4. Do not keep forwarding types in `mass-runtime-api`.
 
 Acceptance:
 
@@ -226,13 +338,16 @@ policy to worker-runtime.
 Scope:
 
 1. Keep `WorkerRouteBucketPolicy` in `mass-runtime-api`.
-2. Move `WorkerRouteBucketPolicies` to `xa-mass-worker-runtime`, or split it
-   into:
+2. Audit every memory/Redis import of `WorkerRouteBucketPolicies` and classify
+   the use as constructor default, null fallback, test fixture, or production
+   route-bucket logic.
+3. Split `WorkerRouteBucketPolicies` into:
    - a registry-neutral default-bucket helper in `mass-runtime-api`; and
    - platform approved-attribute policy in `xa-mass-worker-runtime`.
-3. Ensure `InMemoryWorkerRegistry` and `RedisWorkerRegistry` still receive a
+4. Remove direct memory/Redis imports of the platform policy class.
+5. Ensure `InMemoryWorkerRegistry` and `RedisWorkerRegistry` still receive a
    `WorkerRouteBucketPolicy` without depending on worker-runtime.
-4. Ensure `EngineConfig` / server assembly injects the platform default route
+6. Ensure `EngineConfig` / server assembly injects the platform default route
    policy when creating default registries.
 
 Acceptance:
@@ -252,7 +367,6 @@ Expected remaining worker package:
 com.xa.mass.runtime.worker
   CleanupSummary
   DispatchAvailabilitySource
-  EventKey
   RandomWorkerCandidateSamplingPolicy
   ReserveResult
   ReserveStatus
@@ -263,6 +377,9 @@ com.xa.mass.runtime.worker
   WorkerRouteBucketPolicy
   WorkerSlot
 ```
+
+If WRA-0 keeps `EventKey`, rename the documentation to say explicitly that it
+is a worker capability scope key, not a global event identity.
 
 If WRA-0 keeps any of `WorkerAdmissionContext`, `WorkerAdmissionPolicy`, or
 `WorkerCleanupPolicy`, document why they are active low-level registry
@@ -284,17 +401,25 @@ Goal: prevent regression into another shared API bucket.
 
 Add or update guards:
 
-1. `mass-runtime-api` must not define worker resource/control/report/match
+Automated guards:
+
+1. `mass-runtime-api` worker package must match an explicit allowlist after
+   WRA-3. Any new type in `com.xa.mass.runtime.worker` fails the guard until
+   the allowlist and WRA inventory are updated.
+2. `mass-runtime-api` must not define worker resource/control/report/match
    contracts.
-2. `mass-runtime-memory` and `mass-runtime-redis` must not depend on
+3. `mass-runtime-memory` and `mass-runtime-redis` must not depend on
    `xa-mass-worker-runtime`.
-3. Engine strategy may import worker-plane contracts from
+4. Engine strategy may import worker-plane contracts from
    `xa-mass-worker-runtime`, but must not import registry implementation
    classes.
-4. Transport may consume `WorkerResourceRuntime` from worker-runtime, but must
+5. Transport may consume `WorkerResourceRuntime` from worker-runtime, but must
    not mutate `WorkerRegistry` directly.
-5. New `com.xa.mass.runtime.worker` types require explicit classification as
-   registry primitive or active registry extension point.
+
+Process guard:
+
+6. New `com.xa.mass.runtime.worker` types require explicit classification as
+   registry primitive or active registry extension point in the WRA inventory.
 
 Acceptance:
 
@@ -302,6 +427,8 @@ Acceptance:
    `mass-runtime-api`.
 2. Guard tests fail if memory/Redis import worker-runtime.
 3. Guard tests fail if moved types reappear as aliases in `mass-runtime-api`.
+4. Guard tests fail if any non-allowlisted type exists in
+   `com.xa.mass.runtime.worker`.
 
 ## Slice WRA-5: Proof And Verification
 
@@ -340,7 +467,15 @@ Acceptance:
 ## Implementation Notes
 
 - This should be mostly file move plus import correction.
-- Use one or a small number of phase commits; avoid one commit per moved file.
+- Commit by slice or domain batch:
+  - WRA-0 inventory/doc-only commit.
+  - WRA-1a data type move commit.
+  - WRA-1b interface move commit.
+  - WRA-2 route policy split commit.
+  - WRA-3/WRA-4 slim API and guard commit if small enough; split if test churn
+    is large.
+  Avoid one commit per moved file and avoid one mega-commit for the whole
+  roadmap.
 - Do not preserve old package aliases.
 - If a moved type is used by generated docs or snippets, update the docs in the
   same change.
