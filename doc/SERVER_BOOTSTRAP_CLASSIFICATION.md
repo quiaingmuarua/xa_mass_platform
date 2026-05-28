@@ -1,6 +1,7 @@
 # Server Bootstrap Classification
 
-Status: SBE-0 inventory for
+Status: SBE-0 inventory, updated after SBE-1 removal of server main-source
+scenario seeding for
 [`INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md`](./INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md).
 
 Date: 2026-05-28.
@@ -13,7 +14,7 @@ removing server-owned task and worker scenario seeding.
 | Path | Scope | Current owner | Decision |
 |---|---|---|---|
 | `xa-mass-server/src/main/java/com/xa/mass/server/ControlConsoleScenarioBootstrapConfiguration.java` | dev-profile catalog, submitter, and scenario loader wiring | server dev shell | split in SBE-1: keep or replace metadata bootstrap only; remove task/worker data-load runner |
-| `xa-mass-server/src/main/java/com/xa/mass/server/bootstrap/ControlConsoleScenarioBootstrapDataProvider.java` | generated WorkerGroups, workers, tasks, and task items | server main-source scenario seeding | externalize or delete in SBE-1; it must not remain a server startup provider |
+| `xa-mass-server/src/main/java/com/xa/mass/server/bootstrap/ControlConsoleScenarioBootstrapDataProvider.java` | generated WorkerGroups, workers, tasks, and task items | server main-source scenario seeding | removed in SBE-1 |
 | `integrations/xa-mass-worker-pack/src/main/java/com/xa/mass/workerpack/sample/api/SampleBootstrapController.java` | dev sample catalog and rule bootstrap API | integration/sample admin surface | keep as temporary dev-only sample/admin API until a public admin SDK exists |
 | `integrations/samples/dev/scenario/launch-workers.mjs` | external launcher for sample catalog, rules, worker registration, worker processes, and seed tasks | external integration asset | keep; this is the preferred scenario entry path |
 | `xa-mass-server/src/test/java/com/xa/mass/server/TestDevBootstrapConfiguration.java` | test-only dev bootstrap wiring | test fixture | keep in test scope |
@@ -26,8 +27,8 @@ removing server-owned task and worker scenario seeding.
 | Catalog events and projects | `ControlConsoleScenarioBootstrapConfiguration.registerProbeEvents(...)` plus three project registrations | may remain as dev metadata only if still required for local console shell; must not create workers or tasks |
 | Submitters/API keys | `ControlConsoleScenarioBootstrapConfiguration.controlConsoleScenarioSubmitterBootstrapRunner(...)` | may remain as dev metadata only if documented as local credentials; external launcher already uses `bootstrap.json` and sample API credentials |
 | Rules | `SampleBootstrapController.bootstrapRules(...)`; test fixtures via `MockRuntimeDataLoader.loadRules(...)` | keep sample API and test fixtures; do not promote server startup rule replacement as mainline behavior |
-| WorkerGroups, adapter nodes, bindings, workers | `ControlConsoleScenarioBootstrapDataProvider.registerTopologyAndWorkers(...)` | move out of server main-source startup; should be performed by external launcher or SDK/API calls |
-| Tasks and items | `ControlConsoleScenarioBootstrapDataProvider.createTasks(...)` | move out of server main-source startup; should be performed by external launcher or SDK/API calls |
+| WorkerGroups, adapter nodes, bindings, workers | removed `ControlConsoleScenarioBootstrapDataProvider.registerTopologyAndWorkers(...)` | create through external launcher or SDK/API calls |
+| Tasks and items | removed `ControlConsoleScenarioBootstrapDataProvider.createTasks(...)` | create through external launcher or SDK/API calls |
 
 ## Credential Sources
 
@@ -88,23 +89,22 @@ Current search evidence shows no tracked server main-source class reads
 | `ControlConsoleScenarioBootstrapDataProviderTest` | instantiates `ControlConsoleScenarioBootstrapDataProvider` directly | test coverage for main-source scenario provider; remove or replace when provider leaves main source |
 | E2E classes with `mass.mock.data.*` properties | depend on test-scope mock fixture JSON, not control-console scenario JSON | test-only fixture data |
 
-SBE-1 must not keep `ControlConsoleScenarioBootstrapDataProvider` in main source
-only to satisfy its current unit test. Either remove that test with the
-provider or move any retained scenario generator into test/external fixture
-ownership.
+SBE-1 removed `ControlConsoleScenarioBootstrapDataProvider` and its unit test.
+Any retained scenario generator must live in test or external integration
+ownership, not server main source.
 
 ## Effective Defaults
 
-`ControlConsoleScenarioBootstrapConfiguration` is active only under both:
+`ControlConsoleScenarioBootstrapConfiguration` is active under the Spring
+`dev` profile because `application-dev.yml` sets
+`mass.control-console.scenario.enabled=true`.
 
-- Spring profile `dev`
-- property `mass.control-console.scenario.enabled=true`
-
-The `@ConditionalOnProperty` has no `matchIfMissing=true`, and repo search finds
-no tracked config, launcher, or CI file that sets
-`mass.control-console.scenario.enabled=true`. Therefore SBE-1 is primarily
-dead-code removal plus external scenario replacement for tracked default
-startup behavior, not a change to default server startup.
+After SBE-1 this default dev wiring registers catalog events, projects, and
+submitters only. It does not register adapter nodes, declare WorkerGroups,
+register workers, create task shells, append task items, seal tasks, or approve
+tasks. The previous count/profile properties were removed from
+`application-dev.yml` because server main source no longer owns scenario data
+generation.
 
 `TestDevBootstrapConfiguration` is test-scope only and defaults
 `mass.mock.bootstrap.enabled` to active in tests through

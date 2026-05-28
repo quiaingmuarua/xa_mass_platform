@@ -46,7 +46,7 @@ class DevSampleWorkerLauncherIntegrationTest extends ProjectionSampleE2eTest {
     /**
      * Support-only dev launcher coverage.
      *
-     * <p>This validates sample bootstrap wiring and seeded demo flows. It is
+     * <p>This validates sample bootstrap wiring and external sample flows. It is
      * useful for local confidence, but it is not proof ownership for scheduling,
      * lifecycle, or external-worker parity.
      */

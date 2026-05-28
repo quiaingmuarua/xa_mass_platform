@@ -59,6 +59,22 @@ class ServerMainSourceArchitectureGuardTest {
     }
 
     @Test
+    void controlConsoleScenarioDoesNotSeedTasksOrWorkersFromServerMainSource() throws IOException {
+        Path provider = SERVER_MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/server/bootstrap/ControlConsoleScenarioBootstrapDataProvider.java");
+        Path configuration = SERVER_MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/server/ControlConsoleScenarioBootstrapConfiguration.java");
+        String configurationSource = Files.readString(configuration, StandardCharsets.UTF_8);
+
+        assertTrue(!Files.exists(provider),
+                "control-console task/worker scenario data must live outside server main source");
+        assertTrue(!configurationSource.contains("loadInto("),
+                "control-console server bootstrap must not call scenario data loadInto from startup");
+        assertTrue(!configurationSource.contains("MassBootstrapDataProvider"),
+                "control-console server bootstrap must not register a scenario MassBootstrapDataProvider");
+    }
+
+    @Test
     void kernelAndTransportDoNotImportServerIamStores() throws IOException {
         Path repoRoot = Path.of("..").toAbsolutePath().normalize();
         List<Path> scannedRoots = List.of(

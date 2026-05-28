@@ -3,13 +3,6 @@ mass:
   control-console:
     scenario:
       enabled: true
-      profile: dev-demo
-      worker-count: 115
-      task-count: 12
-      items-per-task: 120
-      batch-size: 20
-      default-max-retry-count: 1
-      auto-approve-tasks: false
   runtime:
     event-handler-timeout-ms: 5000
     transport-max-pending-tasks: 10000

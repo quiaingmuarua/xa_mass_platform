@@ -155,18 +155,23 @@ Everything below this section is intentionally dev/demo/sample wiring. It is
 useful for local validation, Boot-shell E2E, and black-box debugging, but it is
 not the stable definition of platform ownership.
 
-### Dev Demo Bootstrap
+### Dev Metadata Bootstrap
 
-When `spring.profiles.active=dev` and `mass.demo.bootstrap.enabled=true`, the server starts with a mainline demo shell instead of an external fixture bootstrap.
+When `spring.profiles.active=dev` and
+`mass.control-console.scenario.enabled=true`, the server may register
+control-console catalog and submitter metadata.
 
-The demo bootstrap intentionally stays inside server-owned dev wiring:
+The server no longer owns demo task or worker scenario seeding in main source.
+The default server startup path should boot a clean platform shell; optional
+local/demo data is created by external launchers, SDK clients, or test fixtures.
 
-- demo projects, events, submitters, workers, and seeded task shells
-  are registered strictly through SDK-native APIs
-- the default dev path can auto-start embedded sample adapter clients so the
-  seeded demo workers go `ONLINE` and process demo tasks
+- control-console dev metadata may register catalog events, projects, and
+  submitters only when explicitly enabled with
+  `mass.control-console.scenario.enabled=true`
+- WorkerGroups, adapter nodes, workers, task shells, and task items must be
+  created through public worker/task APIs or SDK clients
 - JSON fixture bootstrap remains a test-only input path; packaged fixture files
-  are not the default dev startup source
+  are not a server startup source
 - sample-only bootstrap writes stay behind `/sample-api/bootstrap/*` protected
   by `X-Sample-Bootstrap-Key`
 

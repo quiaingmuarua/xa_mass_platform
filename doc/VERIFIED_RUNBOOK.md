@@ -92,14 +92,9 @@ Default runtime facts:
 - `server.port=8088` serves the backend-hosted control console and JSON APIs.
 - `mass.websocket.port=18088` serves the current WebSocket transport adapter endpoint when the transport server is enabled.
 - `mass.socket.port=18089` serves the current socket transport adapter endpoint when `mass.socket.enabled=true`.
-- default `dev` startup seeds a demo catalog in-process when `mass.demo.bootstrap.enabled=true`:
-  - projects: `demoApp`, `demoOps`
-  - events: `demo.dispatch`, `demo.dispatch.gb`
-  - submitter credentials: `demo-app-key`, `demo-ops-key`, `demo-admin-key`
-  - workers: `36` demo workers across `us,gb,de,fr,sg,jp`
-  - tasks: `12` demo tasks with per-project mixed states (`RUNNING`, `NEW`, `PAUSED`, `BLOCKED`) and `1500` items each by default
-- default `dev` startup also auto-starts embedded sample WebSocket clients against `ws://localhost:${mass.websocket.port}/ws`, so the SDK-registered demo workers can go `ONLINE` and consume the seeded demo tasks
-- external sample worker launcher is not part of the default dev demo path; enable `sample.worker.auto-start=true` explicitly only when validating the separate cross-process sample shell
+- default `dev` startup may register control-console catalog events, projects, and submitters as metadata, but it does not create demo tasks, WorkerGroups, workers, or task items.
+- optional local/demo data is created by external launchers or SDK clients through public task and worker APIs.
+- external sample worker launcher is not part of clean server startup; enable `sample.worker.auto-start=true` explicitly only when validating the separate cross-process sample shell.
 - Sample adapter clients connect through their adapter-local addresses, including `ws://localhost:18088/ws` for WebSocket and `tcp://localhost:18089` for socket when enabled.
 - Pull-style workers can also run without the WebSocket transport server through `MassSdkApplication.pullWorker(...)`.
 - `sample.client.task-result-status=FAILED` forces failed task result write-back for regression tests.

@@ -2,8 +2,9 @@
 
 Status: proposed mainline direction. ILC-0 layout inventory is complete in
 [`INTEGRATIONS_LAYOUT_INVENTORY.md`](./INTEGRATIONS_LAYOUT_INVENTORY.md).
-ILC-1 sample path convergence, ILC-2 worker-pack movement, and SBE-0 server
-bootstrap classification are complete.
+ILC-1 sample path convergence, ILC-2 worker-pack movement, SBE-0 server
+bootstrap classification, and SBE-1 server main-source scenario seeding removal
+are complete. External scenario richness remains a follow-up under SBE-3.
 
 This roadmap covers two related but independently implementable tracks:
 
@@ -268,6 +269,10 @@ Acceptance:
 
 ### SBE-1 Externalize Scenario Task And Worker Seeding
 
+Status: server main-source task/worker seeding is removed. Existing external
+scenario launcher uses public APIs; richer parity with the removed generated
+probe scenario remains a follow-up under SBE-3/sample enrichment.
+
 Scope:
 
 - Remove main-source dev scenario task creation and item append from server
@@ -332,9 +337,8 @@ Acceptance:
 
 - Docs distinguish clean server startup from optional external scenario launch.
 - Commands use `integrations/samples/...` paths.
-- `mass.demo.bootstrap.enabled` / `mass.control-console.scenario.enabled`
-  semantics are either removed or narrowed so they cannot imply server-owned
-  task/worker generation.
+- `mass.control-console.scenario.enabled` semantics are narrowed so they cannot
+  imply server-owned task/worker generation.
 
 ## Suggested Implementation Order
 

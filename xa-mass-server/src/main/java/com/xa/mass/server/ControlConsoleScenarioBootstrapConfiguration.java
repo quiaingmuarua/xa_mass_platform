@@ -1,6 +1,5 @@
 package com.xa.mass.server;
 
-import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
@@ -8,11 +7,7 @@ import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.event.EventDefinition;
-import com.xa.mass.server.bootstrap.ControlConsoleScenarioBootstrapDataProvider;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -48,50 +43,10 @@ public class ControlConsoleScenarioBootstrapConfiguration {
             "probe.json.schema"
     );
 
-    @Value("${mass.control-console.scenario.worker-count:115}")
-    private int workerCount;
-
-    @Value("${mass.control-console.scenario.task-count:12}")
-    private int taskCount;
-
-    @Value("${mass.control-console.scenario.items-per-task:120}")
-    private int itemsPerTask;
-
-    @Value("${mass.control-console.scenario.batch-size:20}")
-    private int batchSize;
-
-    @Value("${mass.control-console.scenario.default-max-retry-count:1}")
-    private int defaultMaxRetryCount;
-
-    @Value("${mass.control-console.scenario.auto-approve-tasks:false}")
-    private boolean autoApproveTasks;
-
-    @Value("${mass.control-console.scenario.profile:dev-demo}")
-    private String profile;
-
-    @Bean
-    @ConditionalOnMissingBean(MassBootstrapDataProvider.class)
-    public MassBootstrapDataProvider controlConsoleScenarioBootstrapDataProvider() {
-        return new ControlConsoleScenarioBootstrapDataProvider(
-                profile,
-                workerCount,
-                taskCount,
-                itemsPerTask,
-                batchSize,
-                defaultMaxRetryCount,
-                autoApproveTasks
-        );
-    }
-
     @Bean
     @Order(Ordered.HIGHEST_PRECEDENCE)
-    public CommandLineRunner controlConsoleScenarioCatalogBootstrapRunner(
-            MassSdkApplication app,
-            ObjectProvider<MassBootstrapDataProvider> bootstrapProvider) {
+    public CommandLineRunner controlConsoleScenarioCatalogBootstrapRunner(MassSdkApplication app) {
         return args -> {
-            if (!hasControlConsoleScenarioProvider(bootstrapProvider)) {
-                return;
-            }
             registerProbeEvents(app);
             app.registerProject(ProjectDefinition.builder()
                     .code("publicProbe")
@@ -116,13 +71,8 @@ public class ControlConsoleScenarioBootstrapConfiguration {
 
     @Bean
     @Order(Ordered.HIGHEST_PRECEDENCE + 1)
-    public CommandLineRunner controlConsoleScenarioSubmitterBootstrapRunner(
-            MassSdkApplication app,
-            ObjectProvider<MassBootstrapDataProvider> bootstrapProvider) {
+    public CommandLineRunner controlConsoleScenarioSubmitterBootstrapRunner(MassSdkApplication app) {
         return args -> {
-            if (!hasControlConsoleScenarioProvider(bootstrapProvider)) {
-                return;
-            }
             app.registerSubmitter(SubmitterRegistration.builder()
                     .principalId("public-probe-runner")
                     .credential("public-probe-key")
@@ -171,23 +121,6 @@ public class ControlConsoleScenarioBootstrapConfiguration {
                     .attributes(Map.of("label", "Public Probe Ops"))
                     .build());
         };
-    }
-
-    @Bean
-    @Order(10)
-    public CommandLineRunner controlConsoleScenarioDataLoadRunner(
-            MassSdkApplication app,
-            ObjectProvider<MassBootstrapDataProvider> bootstrapProvider) {
-        return args -> {
-            MassBootstrapDataProvider provider = bootstrapProvider.getIfAvailable();
-            if (provider instanceof ControlConsoleScenarioBootstrapDataProvider) {
-                provider.loadInto(app);
-            }
-        };
-    }
-
-    private boolean hasControlConsoleScenarioProvider(ObjectProvider<MassBootstrapDataProvider> bootstrapProvider) {
-        return bootstrapProvider.getIfAvailable() instanceof ControlConsoleScenarioBootstrapDataProvider;
     }
 
     private void registerProbeEvents(MassSdkApplication app) {
