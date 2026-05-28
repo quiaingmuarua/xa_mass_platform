@@ -149,6 +149,12 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <groupId>com.xa.mass</groupId>
+            <artifactId>xa-mass-java-sdk</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>postgresql</artifactId>
             <scope>test</scope>

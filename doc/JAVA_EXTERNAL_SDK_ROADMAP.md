@@ -7,6 +7,8 @@ JSDK-1 module skeleton and HTTP core are implemented under
 JSDK-2 task client mainline is implemented in the same module.
 JSDK-3 worker topology and direct polling worker client are implemented in the
 same module.
+JSDK-4 managed polling worker session mainline is implemented with SDK
+fake-server tests and a real server black-box polling proof.
 
 This roadmap defines a new `xa-mass-java-sdk` artifact for repo-external Java
 clients. It is intentionally separate from the current `xa-mass-sdk`, and it
@@ -692,20 +694,22 @@ Scope:
 - add handler registry keyed by global `eventCode`.
 - define the public `DispatchContext`, payload accessor, and
   `WorkerResult` conversion contract before wiring the loop.
-- add heartbeat loop, poll loop, result submit, command poll/ack hook, state
-  report hook, and close/offline handling.
+- add heartbeat loop, poll loop, dispatch handler invocation, result submit,
+  state report hook, and close/offline handling.
 - add bounded retry/backoff policy for network errors.
 - add lifecycle callbacks for startup failure, dispatch handler failure,
   submit failure, and shutdown.
 - define startup partial-failure behavior: sequential best-effort, no rollback,
   no heartbeat/poll loop after failed startup, and failure evidence includes
   last successful step.
-- migrate Java polling sample to the managed session.
+- keep command polling and acknowledgement on the explicit direct worker client
+  path until a managed command handler contract is designed.
 
 Out of scope:
 
 - WorkerGroup declaration during session startup. Group declaration stays on
   the explicit topology client path.
+- sample directory or worker-pack migration.
 - local work queue durability.
 - local task retry after server acceptance.
 - worker matching or reserve decisions.
@@ -722,7 +726,8 @@ Acceptance:
   converted to structured failed task results by the managed session.
 - repeated server/auth failures stop or back off according to documented
   policy.
-- command acknowledgement remains explicit and observable.
+- command acknowledgement remains explicit through `mass.workers()` and is not
+  hidden behind the first managed session loop.
 
 ### JSDK-5: Samples And External Proof
 
@@ -732,6 +737,8 @@ Scope:
   - task-only submitter.
   - polling worker group with fingerprint attributes.
   - task producer plus polling worker end-to-end.
+- migrate or add the Java polling sample to the managed session once the sample
+  location decision is applied.
 - update sample README references to prefer `xa-mass-java-sdk` for Java
   external client code.
 - keep raw HTTP samples only where they prove non-Java parity or protocol
@@ -838,7 +845,7 @@ Add automated guards by JSDK-1:
   `com.xa.mass.sdk.auth..`, `com.xa.mass.sdk.authz..`, and
   `com.xa.mass.sdk.catalog..` are blocked unless JSDK-0 records a named
   exception.
-- server must not depend on `xa-mass-java-sdk`.
+- server production code must not depend on `xa-mass-java-sdk`.
 - samples may depend on `xa-mass-java-sdk`.
 - tests may use server test harnesses, but production SDK code must not.
 

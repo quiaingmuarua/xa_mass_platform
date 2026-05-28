@@ -1,6 +1,6 @@
 # xa-mass-java-sdk
 
-Status: JSDK-3 direct worker client.
+Status: JSDK-4 managed polling worker session.
 
 `xa-mass-java-sdk` is the pure external Java client for a running
 `xa-mass-server`.
@@ -25,10 +25,13 @@ Current implemented surface:
 - direct polling worker calls:
   online, heartbeat, poll, submit result, command poll/ack, capability report,
   state report, and offline
+- managed polling worker session:
+  adapter/node registration, node/group binding, worker registration, online,
+  capability/state report, heartbeat, poll, handler dispatch, result submit,
+  and best-effort offline on close
 
 Not implemented yet:
 
-- managed polling worker session
 - realtime worker client
 
 Those are tracked in [../../doc/JAVA_EXTERNAL_SDK_ROADMAP.md](../../doc/JAVA_EXTERNAL_SDK_ROADMAP.md).
@@ -92,6 +95,36 @@ mass.workers().online("phone-worker-sg-001", "startup");
 WorkerPollResult poll = mass.workers().poll("phone-worker-sg-001",
         WorkerPollRequest.builder().maxMessages(10).timeoutMs(500L).build());
 ```
+
+Managed polling worker session:
+
+```java
+mass.workers().declareGroup(WorkerGroupSpec.builder()
+        .groupId("phone-device-probe")
+        .bindEvent("probe.phone.metadata", List.of("probeApp"))
+        .build());
+
+try (PollingWorkerSession session = mass.workerSessions().polling()
+        .workerId("phone-worker-sg-001")
+        .workerGroupId("phone-device-probe")
+        .adapterNodeId("phone-poll-node-sg-1")
+        .attribute("fingerprint", "fp-android-13-sg")
+        .attribute("region", "sg")
+        .event("probe.phone.metadata", dispatch -> {
+            String phone = dispatch.input().requiredString("phone");
+            return WorkerResult.success(Map.of(
+                    "phone", phone,
+                    "mcc", "525",
+                    "mnc", "01"
+            ));
+        })
+        .start()) {
+    Thread.currentThread().join();
+}
+```
+
+`PollingWorkerSession.start()` does not declare WorkerGroups. Group declaration
+is an explicit topology/setup operation through `mass.workers()`.
 
 ## Boundary
 
