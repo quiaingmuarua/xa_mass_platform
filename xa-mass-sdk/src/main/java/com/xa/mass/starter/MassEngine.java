@@ -102,7 +102,6 @@ public class MassEngine {
             var workerAvailabilityWakeupRuntime = config.getWorkerAvailabilityWakeupRuntime();
             var workerWarmHintRuntime = config.getWorkerWarmHintRuntime();
             AssignmentDiagnosticRecorder recordService = config.getRecordService();
-            var ruleManager = config.getRuleManager();
             TraceEventLogger traceEventLogger = config.getTraceEventLogger();
             var dispatchBinder = new SimpleTaskDispatchBinder(
                     assignmentRuntimePort,
@@ -114,8 +113,8 @@ public class MassEngine {
             TaskWorkerMatchingStrategy matchingStrategy = customStrategy != null
                     ? customStrategy
                     : new RuleBasedTaskWorkerMatchingStrategy(
-                            ruleManager::getDefaultRules,
-                            ruleManager::evaluate,
+                            config.getMatchingRuleSetProvider(),
+                            config.getMatchingRuleEvaluator(),
                             config.getWorkerCandidateRuntime(),
                             workerAdmissionRuntime,
                             config.getWorkerSchedulingViewRuntime(),

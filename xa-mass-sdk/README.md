@@ -320,10 +320,10 @@ such as `taskStorage(...)`, `taskDetailStore(...)`, `taskWorkRuntime(...)`,
 Shell-mainline SDK create maps onto `TaskShellCreateRequestDto`; worker registration/query helpers use `WorkerStorage`
 for control-plane truth instead of treating `WorkerManager` as the default SDK
 dependency; SDK rule list/replace helpers now use `RuleStorage` directly
-instead of carrying `RuleManager` as the default outer-layer dependency.
+instead of carrying a broad rule manager as the default outer-layer dependency.
 Within starter assembly, `EngineConfig` now treats `WorkerManager` and
-`RuleManager` as derived helpers over `WorkerStorage` / `RuleStorage` rather
-than independent config slots that outer modules should wire or cache.
+rule matching contracts as derived helpers over `WorkerStorage` / `RuleStorage`
+rather than independent config slots that outer modules should wire or cache.
 Embedded transport runtime assembly also consumes only
 `WorkerResourceRuntime` worker resource reads instead of reaching through the
 broader worker facade or storage lookup seams.

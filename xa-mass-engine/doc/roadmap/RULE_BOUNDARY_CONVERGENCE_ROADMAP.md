@@ -15,13 +15,15 @@ Progress:
   evaluator work.
 - RBC-3 is implemented for the matching strategy: `RuleBasedTaskWorkerMatchingStrategy`
   now depends on `MatchingRuleSetProvider` and `MatchingRuleEvaluator`, not the
-  CRUD-shaped `RuleManager`. SDK assembly still gets those method references
-  from `EngineConfig.getRuleManager()` until RBC-4 moves bootstrap/admin writes.
+  removed CRUD-shaped `RuleManager`.
+- RBC-4 is implemented for production assembly: `EngineConfig` seeds default
+  rules directly into `RuleStorage` and exposes matching rule contracts instead
+  of an engine `RuleManager`.
 
 This roadmap narrows the rule boundary after the worker-runtime and storage
-boundary convergence work. The current code already stores rule definitions in
-`platform_infra/mass-storage-*`, but `xa-mass-engine` still exposes a broad
-`RuleManager` that looks like a rule CRUD owner.
+boundary convergence work. Rule definitions are stored in
+`platform_infra/mass-storage-*`; engine matching now consumes narrow rule
+contracts instead of a CRUD-shaped manager.
 
 The target is not to remove rule-based matching from engine. The target is to
 make the owner split explicit:
@@ -65,24 +67,14 @@ that work in
   `xa-mass-base` for JSON-DSL runtime code. That is a separate base-module
   boundary issue tracked in
   [`../../../xa-mass-base/JSON_DSL_BOUNDARY_CONVERGENCE_ROADMAP.md`](../../../xa-mass-base/JSON_DSL_BOUNDARY_CONVERGENCE_ROADMAP.md).
-- `xa-mass-engine.rules.RuleManager` is currently both:
-  - a rule definition CRUD facade (`addDefaultRule`, `updateRule`,
-    `deleteRule`, `clear`, etc.)
-  - the matching-time rule evaluation service consumed by
-    `RuleBasedTaskWorkerMatchingStrategy`
-- `RuleManager` now uses an engine-owned `RuleEvaluatorRegistry` for evaluator
-  lookup instead of reading evaluators from `RuleStorage`.
 - `RuleBasedTaskWorkerMatchingStrategy` now only accepts
   `MatchingRuleSetProvider` and `MatchingRuleEvaluator` for rule access.
-- The SDK assembly path still obtains those method references from the broad
-  `RuleManager`; moving that bootstrap/admin owner is RBC-4.
-- `RuleBasedTaskWorkerMatchingStrategy` only needs two methods today:
-  - `getDefaultRules()`
-  - `evaluate(rule, context)`
-- `RuleManagerFactory` seeds default/project/loose rule sets by mutating a
-  storage-backed manager.
-- `xa-mass-sdk` `EngineConfig.getRuleManager()` creates the seeded manager via
-  `RuleManagerFactory.getDefaultRuleManager(getRuleStorage())`.
+- `StorageBackedMatchingRuleSetProvider` reads active worker matching rules
+  from `RuleStorage`.
+- `RegistryBackedMatchingRuleEvaluator` evaluates rules through an
+  engine-owned `RuleEvaluatorRegistry`.
+- `EngineConfig` seeds default worker matching rules directly into
+  `RuleStorage` and exposes matching rule contracts to `MassEngine`.
 - `RuleApiController` is read-only today (`GET /api/v1/runtime/rules`,
   `GET /api/v1/runtime/rules/meta`), but the path name says `runtime` even
   though rule definitions are control-plane storage truth.
@@ -483,7 +475,7 @@ movement.
 Initial commands to keep in the roadmap proof set:
 
 ```powershell
-mvn -pl xa-mass-engine -am '-Dtest=RuleManagerTest,RuleConfigTest,RuleBasedTaskWorkerMatchingStrategyTest,EngineSchedulingCoreArchitectureGuardTest' '-Dsurefire.failIfNoSpecifiedTests=false' test
+mvn -pl xa-mass-engine -am '-Dtest=RegistryBackedMatchingRuleEvaluatorTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,EngineSchedulingCoreArchitectureGuardTest' '-Dsurefire.failIfNoSpecifiedTests=false' test
 ```
 
 ```powershell

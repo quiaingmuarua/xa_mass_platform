@@ -19,9 +19,13 @@ import com.xa.mass.worker.runtime.WorkerStateProjectionOwner;
 import com.xa.mass.engine.command.WorkerCommandLifecycleOwner;
 import com.xa.mass.engine.stage.TaskStageEvidenceOwner;
 import com.xa.mass.engine.stage.TaskStageEvidenceService;
+import com.xa.mass.engine.rules.MatchingRuleEvaluator;
+import com.xa.mass.engine.rules.MatchingRuleSetProvider;
+import com.xa.mass.engine.rules.RegistryBackedMatchingRuleEvaluator;
+import com.xa.mass.engine.rules.RuleConfig;
 import com.xa.mass.engine.rules.RuleEvaluatorRegistry;
-import com.xa.mass.engine.rules.RuleManager;
-import com.xa.mass.engine.rules.RuleManagerFactory;
+import com.xa.mass.engine.rules.RuleEvaluatorRegistries;
+import com.xa.mass.engine.rules.StorageBackedMatchingRuleSetProvider;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
@@ -102,7 +106,7 @@ public class EngineConfig {
     private AssignmentDiagnosticRecorder recordService = new AssignmentRecordService();
     private RuleStorage ruleStorage = new InMemoryRuleStorage();
     private RuleEvaluatorRegistry<Map<String, Object>> ruleEvaluatorRegistry =
-            RuleManagerFactory.defaultEvaluatorRegistry();
+            RuleEvaluatorRegistries.defaultRegistry();
     private ExecutionEventSink executionEventSink = new NoopExecutionEventSink();
     private EngineRuntimeBridge runtimeBridge = EngineRuntimeBridge.noop();
     private boolean defaultRulesInitialized;
@@ -445,9 +449,13 @@ public class EngineConfig {
         this.recordService = recordService;
     }
 
-    public RuleManager<Map<String, Object>> getRuleManager() {
+    public MatchingRuleSetProvider getMatchingRuleSetProvider() {
         ensureDefaultRulesInitialized();
-        return new RuleManager<>(getRuleStorage(), getRuleEvaluatorRegistry());
+        return new StorageBackedMatchingRuleSetProvider(getRuleStorage());
+    }
+
+    public MatchingRuleEvaluator<Map<String, Object>> getMatchingRuleEvaluator() {
+        return new RegistryBackedMatchingRuleEvaluator(getRuleEvaluatorRegistry());
     }
 
     public RuleStorage getRuleStorage() {
@@ -618,7 +626,7 @@ public class EngineConfig {
         if (defaultRulesInitialized) {
             return;
         }
-        RuleManagerFactory.getDefaultRuleManager(getRuleStorage());
+        getRuleStorage().addRules(RuleConfig.getDefaultWorkerMatchRules());
         defaultRulesInitialized = true;
     }
 }

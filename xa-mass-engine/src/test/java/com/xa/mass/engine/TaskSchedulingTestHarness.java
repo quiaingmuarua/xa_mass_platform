@@ -16,8 +16,9 @@ import com.xa.mass.engine.listener.SimpleTaskDispatchBinder;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
 import com.xa.mass.engine.model.AssignmentRecord;
-import com.xa.mass.engine.rules.RuleManagerFactory;
-import com.xa.mass.engine.rules.RuleManager;
+import com.xa.mass.engine.rules.RegistryBackedMatchingRuleEvaluator;
+import com.xa.mass.engine.rules.RuleEvaluatorRegistries;
+import com.xa.mass.engine.rules.StorageBackedMatchingRuleSetProvider;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.strategy.RuleBasedTaskWorkerMatchingStrategy;
 import com.xa.mass.worker.runtime.resource.AdapterNodeRecord;
@@ -29,6 +30,7 @@ import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
+import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.memory.InMemoryRuleStorage;
 import com.xa.mass.storage.memory.InMemoryTaskStorage;
 import com.xa.mass.storage.memory.InMemoryWorkerStorage;
@@ -49,7 +51,7 @@ final class TaskSchedulingTestHarness {
     final InMemoryTaskStorage taskStorage;
     final TaskManager taskManager;
     final WorkerManager workerManager;
-    final RuleManager<Map<String, Object>> ruleManager;
+    final RuleStorage ruleStorage;
     final AssignmentRecordService assignmentRecords;
     final List<TaskDispatchBinding> dispatches;
     final TaskWorkerAssignListener assignListener;
@@ -66,7 +68,7 @@ final class TaskSchedulingTestHarness {
                 new InMemoryTaskWorkRuntime()
         );
         this.workerManager = new WorkerManager(new InMemoryWorkerStorage(), reachabilityView, new InMemoryWorkerRegistry());
-        this.ruleManager = new RuleManager<>(new InMemoryRuleStorage(), RuleManagerFactory.defaultEvaluatorRegistry());
+        this.ruleStorage = new InMemoryRuleStorage();
         this.assignmentRecords = new AssignmentRecordService();
         this.dispatches = new ArrayList<>();
         installDefaultSchedulingRules();
@@ -79,8 +81,8 @@ final class TaskSchedulingTestHarness {
                 (context, bindings) -> dispatches.addAll(bindings)
         );
         RuleBasedTaskWorkerMatchingStrategy matchingStrategy = new RuleBasedTaskWorkerMatchingStrategy(
-                ruleManager::getDefaultRules,
-                ruleManager::evaluate,
+                new StorageBackedMatchingRuleSetProvider(ruleStorage),
+                new RegistryBackedMatchingRuleEvaluator(RuleEvaluatorRegistries.defaultRegistry()),
                 workerManager,
                 workerManager,
                 workerManager,
@@ -248,7 +250,7 @@ final class TaskSchedulingTestHarness {
     }
 
     private void installDefaultSchedulingRules() {
-        ruleManager.addDefaultRules(List.of(
+        ruleStorage.addRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
                 rule("worker_scheduling_resource_check", "isWorkerSchedulingResourceAllocatable == true"),
                 rule("routing_code_match", "taskHasRoutingRequirement == false || workerSchedulingMatchesRoutingCode == true"),

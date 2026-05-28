@@ -199,7 +199,8 @@ Start with these classes before changing behavior:
   overlays or residue audit helpers
 - `../xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/WorkerManager.java`
   only when you are intentionally working on worker-runtime owner assembly
-- `src/main/java/com/xa/mass/engine/rules/RuleManager.java`
+- `src/main/java/com/xa/mass/engine/rules/MatchingRuleSetProvider.java`
+- `src/main/java/com/xa/mass/engine/rules/MatchingRuleEvaluator.java`
 
 Runtime-facing glue should prefer narrow engine ports and facades such as:
 
@@ -350,9 +351,9 @@ Keep these facts fixed unless the owning global baselines change:
   reads for attempt timelines
 - cross-module callers that only need worker registration lookup should depend
   on storage lookup contracts rather than carrying `WorkerManager`
-- cross-module callers that only need rule definition/evaluator registration
-  should depend on `RuleStorage`; keep `RuleManager` scoped to engine matching
-  and rule-evaluation orchestration
+- cross-module callers that only need rule definitions should depend on
+  `RuleStorage`; matching consumes `MatchingRuleSetProvider` and
+  `MatchingRuleEvaluator` rather than a CRUD-shaped manager
 
 Repo-level mainline surfaces:
 
@@ -391,10 +392,10 @@ Infra ownership:
   `TaskWorkRuntime`, `WorkerStorage`, worker runtime contracts, and
   `RuleStorage` rather than exposing full `TaskManager` / `WorkerManager`
   configuration surfaces in outer modules
-- starter assembly should treat the private worker-runtime `WorkerManager`
-  assembly and `RuleManager` as derived helpers over storage/runtime contracts,
-  not as parallel public config truth carried beside `WorkerStorage` /
-  `RuleStorage`
+- starter assembly should treat private worker-runtime `WorkerManager` assembly
+  as derived over storage/runtime contracts, and should assemble rule matching
+  from `RuleStorage` plus `RuleEvaluatorRegistry`, not from a broad rule
+  manager
 
 ## Rule-Matching Surface
 
@@ -410,6 +411,10 @@ Current owner types:
 - `../xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/candidate/WorkerCandidateRuntime.java`
 - `../xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/evidence/WorkerSchedulingViewRuntime.java`
 - `../xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/admission/WorkerAdmissionRuntime.java`
+- `src/main/java/com/xa/mass/engine/rules/MatchingRuleSetProvider.java`
+- `src/main/java/com/xa/mass/engine/rules/MatchingRuleEvaluator.java`
+- `src/main/java/com/xa/mass/engine/rules/RegistryBackedMatchingRuleEvaluator.java`
+- `src/main/java/com/xa/mass/engine/rules/StorageBackedMatchingRuleSetProvider.java`
 - `src/main/java/com/xa/mass/engine/rules/RuleConfig.java`
 
 Current default rule set:

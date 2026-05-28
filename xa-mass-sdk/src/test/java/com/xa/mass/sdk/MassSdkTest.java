@@ -1691,13 +1691,14 @@ class MassSdkTest {
     @Test
     void engineConfigReinitializesDefaultRulesForReplacementRuleStorage() {
         EngineConfig config = new EngineConfig();
-        var initial = config.getRuleManager();
+        var initialRules = config.getMatchingRuleSetProvider().activeWorkerMatchingRules();
         RuleStorage replacement = new com.xa.mass.storage.memory.InMemoryRuleStorage();
 
         config.setRuleStorage(replacement);
 
-        var rebound = config.getRuleManager();
-        assertNotSame(initial, rebound);
+        var reboundRules = config.getMatchingRuleSetProvider().activeWorkerMatchingRules();
+        Assertions.assertFalse(initialRules.isEmpty());
+        Assertions.assertFalse(reboundRules.isEmpty());
         Assertions.assertFalse(replacement.getAllRules().isEmpty());
     }
 
@@ -3189,7 +3190,7 @@ class MassSdkTest {
         assertMissingMethod(MassEngine.class, "publishTaskEvents");
         assertMissingMethod(EngineConfig.class, "getWorkerManager");
         assertMissingMethod(EngineConfig.class, "setWorkerManager", WorkerManager.class);
-        assertMissingMethod(EngineConfig.class, "setRuleManager", com.xa.mass.engine.rules.RuleManager.class);
+        assertMissingMethod(EngineConfig.class, "getRuleManager");
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.sdk.TaskOperations"));
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.sdk.WorkerOperations"));
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.sdk.TransportOperations"));

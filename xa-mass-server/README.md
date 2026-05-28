@@ -568,7 +568,8 @@ Fixture rules:
 
 - prefer `registerWorker(...)`, `replaceDefaultRules(...)`, `createTaskShell(...)`, `appendTaskItems(...)`, and `executeTaskCommand(..., "SEAL")`
 - worker JSON is a fixture input, not runtime truth
-- direct `WorkerManager` and `RuleManager` setup writes are not mainline E2E setup
+- direct `WorkerManager` or broad rule-manager setup writes are not mainline
+  E2E setup
 - direct `TaskManager`, `TaskStorage`, or runtime writes stay limited to
   focused white-box assertions, audit-only verification, or deterministic fault
   injection

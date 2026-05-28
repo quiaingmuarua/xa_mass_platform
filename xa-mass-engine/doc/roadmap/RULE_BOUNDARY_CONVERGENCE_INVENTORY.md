@@ -159,9 +159,9 @@ RBC-0 finding before the RBC-2 split:
 - Storage tests assert evaluator availability through storage implementations.
 
 RBC-2 has since moved evaluator registration and lookup into an engine-owned
-`RuleEvaluatorRegistry`. `RuleStorage` is now definition-only, and the remaining
-work is to remove the broad `RuleManager` passthrough surface from matching and
-SDK assembly.
+`RuleEvaluatorRegistry`. `RuleStorage` is now definition-only. RBC-3/RBC-4
+removed the broad `RuleManager` passthrough surface from matching and SDK
+assembly.
 
 ## RBC-0 Completion Notes
 
