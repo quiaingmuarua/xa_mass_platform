@@ -43,6 +43,13 @@ class StorageBoundaryGuardTest {
             "\\bgetTaskStorage\\s*\\(",
             "\\bgetWorkerStorage\\s*\\("
     )));
+    private static final Pattern CREATE_TABLE = Pattern.compile(
+            "(?is)\\bCREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?([a-zA-Z0-9_]+)"
+    );
+    private static final Pattern WORKER_RUNTIME_OR_HISTORY_TABLE = Pattern.compile(
+            "(?i)(worker.*(heartbeat|dispatch|attempt|history|lease|runtime|reservation))"
+                    + "|((heartbeat|dispatch|attempt|history|lease|runtime|reservation).*worker)"
+    );
 
     @Test
     void shellAndDeclarationStoresDoNotGrowRuntimeOrHistoryMethods() {
@@ -127,6 +134,28 @@ class StorageBoundaryGuardTest {
                         + String.join("\n", violations));
     }
 
+    @Test
+    void jdbcMigrationsDoNotCreateWorkerRuntimeOrHistoryTables() throws IOException {
+        Path migrationRoot = repoRoot().resolve(
+                "platform_infra/mass-storage-jdbc/src/main/resources/db/migration");
+        List<String> violations = new ArrayList<>();
+        for (Path path : sqlFiles(migrationRoot)) {
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            java.util.regex.Matcher matcher = CREATE_TABLE.matcher(source);
+            while (matcher.find()) {
+                String tableName = matcher.group(1);
+                if (WORKER_RUNTIME_OR_HISTORY_TABLE.matcher(tableName).find()) {
+                    violations.add(path + " creates worker runtime/history table " + tableName);
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "JDBC storage may persist control-plane declarations, but worker heartbeat, dispatch, "
+                        + "lease, reservation, and history tables belong to runtime or trace/archive ownership:\n"
+                        + String.join("\n", violations));
+    }
+
     private static List<Path> productionSourceRoots() {
         Path repoRoot = repoRoot();
         return List.of(
@@ -164,6 +193,18 @@ class StorageBoundaryGuardTest {
                     .filter(Files::isRegularFile)
                     .filter(path -> path.toString().endsWith(".java"))
                     .filter(path -> path.toString().contains(Path.of("src", "main", "java").toString()))
+                    .toList();
+        }
+    }
+
+    private static List<Path> sqlFiles(Path root) throws IOException {
+        if (!Files.isDirectory(root)) {
+            return List.of();
+        }
+        try (Stream<Path> stream = Files.walk(root)) {
+            return stream
+                    .filter(Files::isRegularFile)
+                    .filter(path -> path.toString().endsWith(".sql"))
                     .toList();
         }
     }

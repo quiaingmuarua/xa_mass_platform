@@ -527,6 +527,9 @@ Acceptance:
   unless they explicitly point to archive/trace.
 - New task/worker current-state APIs must state their canonical layer.
 - Architecture tests block new storage-side runtime/history contracts.
+- Storage boundary guards scan storage contracts and JDBC migrations so worker
+  heartbeat, dispatch, lease, reservation, and history tables cannot be added
+  under control-plane storage by accident.
 
 ## TWH-5 Trace/Event Archive Direction Checkpoint
 
