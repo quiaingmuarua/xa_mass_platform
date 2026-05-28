@@ -56,6 +56,7 @@ Most tasks only need one contract lane plus one owner README:
 | [INFRA_TRUTH_LAYERS.md](./INFRA_TRUTH_LAYERS.md) | control-plane/runtime/trace placement matrix |
 | [DB_STORAGE_PRINCIPLES.md](./DB_STORAGE_PRINCIPLES.md) | DB boundary and hot-write guardrail |
 | [TASK_WORKER_RUNTIME_HISTORY_BOUNDARY_ROADMAP.md](./TASK_WORKER_RUNTIME_HISTORY_BOUNDARY_ROADMAP.md) | roadmap for separating task shell and worker declaration storage, runtime current state, and trace/archive history |
+| [TASK_WORKER_TRACE_ARCHIVE_DIRECTION.md](./TASK_WORKER_TRACE_ARCHIVE_DIRECTION.md) | TWH-5 checkpoint mapping task/worker history needs to existing trace event vocabulary and archive read-model gaps |
 | [TESTING_INDEX.md](./TESTING_INDEX.md) | current testing entry, CI truth, and minimum verification map |
 | [TESTING_BASELINE.md](./TESTING_BASELINE.md) | acceptance lanes and test matrix |
 | [OBSERVABILITY_AND_TEST_PROOF_ROADMAP.md](./OBSERVABILITY_AND_TEST_PROOF_ROADMAP.md) | trace/query/invariant direction for systematic proof without scattered tests |
