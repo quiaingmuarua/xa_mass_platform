@@ -115,11 +115,23 @@ Scope:
 - Inventory all root `xa-mass-worker-pack` references in Maven modules,
   docs, CI commands, and test helpers.
 - Produce an authoritative target path table for every moved directory.
+- Split the inventory into Maven module path changes versus plain filesystem
+  reference changes. These are different migration surfaces:
+  `samples/worker-polling/java` is currently a root reactor module, while Node
+  samples and some Java realtime samples are launched or built by explicit file
+  paths.
+- Decide whether Java websocket/socket samples remain standalone POM samples or
+  become root reactor modules after the move. Do not accidentally add them to
+  the reactor as a side effect of directory cleanup.
 
 Acceptance:
 
 - The roadmap or a linked inventory lists each move from old path to new path.
 - Path-sensitive tests and scripts are identified before moving files.
+- Maven module moves and plain file-reference moves are listed separately.
+- Java websocket/socket sample POMs have an explicit reactor decision:
+  standalone remains standalone, or reactor inclusion is added as deliberate
+  scope.
 - The target sample layout is language-first and does not preserve the old
   transport-first directory as a parallel tree.
 
@@ -195,20 +207,44 @@ Scope:
   delete the class as a whole. At minimum, separate catalog/event/submitter/rule
   metadata initialization from task creation, item append, worker registration,
   and WorkerGroup declaration.
+- Classify catalog, submitter, and rule bootstrap separately:
+  - catalog/event/project metadata may remain server-owned dev metadata if it is
+    treated like platform initialization rather than workload creation
+  - submitter/API-key bootstrap may remain server-owned dev metadata only if the
+    external scenario has a documented credential source
+  - rule bootstrap may remain behind sample/admin APIs until a public admin SDK
+    exists, but it must not create tasks, workers, or WorkerGroups
 - Classify `samples/dev/launch-workers.mjs` and
   `samples/dev/{bootstrap,rules,workers,tasks}.json` before moving them. The
   inventory must state whether each file is external-launcher input,
   server-startup input, or both.
+- Audit test fixtures for direct or indirect dependencies on
+  `ControlConsoleScenarioBootstrapConfiguration` and
+  `ControlConsoleScenarioBootstrapDataProvider`. If tests rely on the provider,
+  decide whether to keep a test-scope fixture copy/helper before deleting
+  main-source scenario code.
+- Confirm whether `mass.control-console.scenario.enabled` is ever set by repo
+  config, launch scripts, or CI. If it is not set by default, SBE-1 is primarily
+  dead-code removal plus external scenario replacement rather than a default
+  startup behavior change.
 
 Acceptance:
 
 - Each path that creates tasks, appends items, registers workers, or declares
   WorkerGroups has an owner classification.
 - The classification separates main-source runtime behavior from test fixtures.
+- Catalog/event/project bootstrap, submitter/API-key bootstrap, and rule
+  bootstrap each have an explicit keep/move/delete decision.
+- The external scenario credential source is documented: hard-coded dev keys,
+  environment-provided keys, or a future API-key creation path.
 - `ControlConsoleScenarioBootstrapDataProvider` has a method-level ownership
   table for metadata bootstrap versus scenario task/worker seeding.
 - `samples/dev/*` has a consumer table showing external launcher and server
   bootstrap dependencies before any path move.
+- Test fixture dependencies on control-console scenario classes are listed, or
+  the inventory states that none exist.
+- The effective default for `mass.control-console.scenario.enabled` is recorded
+  with evidence from repo config or launch scripts.
 - Any remaining server-owned catalog/submitter/rule setup is explicitly
   justified as platform metadata bootstrap, not task/worker scenario seeding.
 
@@ -222,6 +258,9 @@ Scope:
   server startup.
 - Move equivalent local/demo scenario creation into an external launcher or SDK
   client under `integrations/samples/dev/scenario`.
+- The external scenario launcher should depend on `xa-mass-java-sdk` for task
+  and worker API calls. It must not import `xa-mass-sdk`,
+  `MassSdkApplication`, `MassRuntimeControl`, or server bootstrap classes.
 - Use API keys and public task/worker endpoints for scenario work and worker
   topology.
 - Keep external scenario data deterministic and rich enough for console review:
@@ -237,6 +276,10 @@ Acceptance:
   item append APIs.
 - Running the external scenario declares WorkerGroups and workers through
   `/worker-api/v1/*`.
+- The external scenario launcher compiles/runs as an external integration
+  client and has no dependency on embedded runtime control APIs.
+- Submitter/API-key usage is explicit in the scenario docs and can be supplied
+  from environment variables or documented dev credentials.
 - Control-console pages still have realistic data after the external scenario
   runs, but that data is no longer server-owned startup state.
 
@@ -325,6 +368,10 @@ scenario data:
 - Catalog/rule bootstrap is not yet a fully public SDK surface. Do not let that
   block removing task/worker generation from server startup; keep the narrower
   sample/admin bootstrap only where metadata setup still requires it.
+- Submitter/API-key bootstrap is a boundary risk. If server dev metadata creates
+  the credentials, the external scenario must document those dev credentials or
+  accept them through environment variables. Hidden in-process credentials would
+  make the scenario look external while still depending on server-owned state.
 - Existing tests may implicitly rely on hidden startup data. Those tests should
   create their own fixtures or call an explicit external scenario helper.
 - `samples/dev` is a sequencing risk: moving files before cutting server-side
