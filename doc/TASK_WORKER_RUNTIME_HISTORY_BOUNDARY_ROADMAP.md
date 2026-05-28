@@ -182,6 +182,8 @@ retry, result convergence, or worker reachability decisions.
 
 ## TWH-0 Inventory And Classification
 
+Artifact: [TASK_WORKER_RUNTIME_HISTORY_BOUNDARY_INVENTORY.md](./TASK_WORKER_RUNTIME_HISTORY_BOUNDARY_INVENTORY.md)
+
 Scope:
 
 - Inventory every production and test caller of:
