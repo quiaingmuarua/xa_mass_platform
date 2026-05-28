@@ -15,7 +15,11 @@ WRA-3 has slimmed `mass-runtime-api` to registry primitives and active
 extension points only. WRA-4 guard work is complete for this roadmap: explicit
 runtime-api allowlist, memory/Redis dependency, engine strategy caller, and
 transport lookup-only constraints are covered by architecture tests.
-WRA-5 proof and verification is complete.
+WRA-5 proof and verification is complete. The final worker-runtime module
+boundary is captured in
+[`xa-mass-worker-runtime/README.md`](../../../xa-mass-worker-runtime/README.md)
+and
+[`xa-mass-worker-runtime/CONTRACTS.md`](../../../xa-mass-worker-runtime/CONTRACTS.md).
 This roadmap follows
 [`WORKER_RUNTIME_MODULE_EXTRACTION_ROADMAP.md`](./WORKER_RUNTIME_MODULE_EXTRACTION_ROADMAP.md).
 
