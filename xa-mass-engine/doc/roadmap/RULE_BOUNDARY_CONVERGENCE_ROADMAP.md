@@ -8,8 +8,14 @@ boundary convergence work. The current code already stores rule definitions in
 `platform_infra/mass-storage-*`, but `xa-mass-engine` still exposes a broad
 `RuleManager` that looks like a rule CRUD owner.
 
+This roadmap also records the adjacent engine dependency convergence needed to
+keep the rule cleanup honest: production engine should not retain storage
+projection residue or in-memory runtime implementations as long-term module
+dependencies.
+
 The target is not to remove rule-based matching from engine. The target is to
-make the owner split explicit:
+make the owner split explicit and eliminate compatibility surfaces that keep
+engine coupled to storage-shaped read models:
 
 ```text
 control-plane rule definition
@@ -60,6 +66,13 @@ Engine may consume rules. Engine must not become the rule catalog CRUD owner.
   though rule definitions are control-plane storage truth.
 - `MassSdkApplication.replaceDefaultRules(...)` and server/test bootstrap paths
   still use the broad rule operations surface for scenario setup.
+- `TaskCompatibilityProjectionStore` is an engine-internal compatibility owner
+  over `TaskDetailStore` message/attempt projections.
+- `TaskWorkProjectionState` still converts engine residue enums to
+  `mass-storage-api` projection enums.
+- `TaskProjectionStateAuditor` performs explicit full-scan projection residue
+  audits. It is intentionally separate from runtime validation, but it still
+  keeps the storage projection model visible in engine.
 
 ## Boundary Decision
 
@@ -79,6 +92,9 @@ Implications:
 - default/sample rule seeding is bootstrap, not engine kernel behavior
 - route compatibility is not a goal in this internal convergence roadmap; move
   in-repo callers to the corrected boundary and remove the old path
+- compatibility projection is not a durable engine boundary; it should converge
+  to either runtime truth, trace/audit evidence, or external read-model
+  assembly outside engine
 
 ## Target Shape
 
@@ -121,10 +137,8 @@ Dependencies that remain justified:
 - `mass-runtime-api`: task work runtime, result runtime, lease/counter records,
   and runtime contracts consumed by the engine kernel.
 - `mass-storage-api`: storage contracts that the engine currently owns or
-  projects through:
+  currently consumes:
   - `TaskStorage` for stable task shell persistence
-  - `TaskDetailStore` for bounded compatibility projection
-  - projection enums/records used by `TaskWorkProjectionState`
   - rule definition model/provider types until the rule boundary is narrowed
 - `xa-mass-worker-runtime`: worker registration, lifecycle, candidate,
   admission, and report surfaces used by assignment.
@@ -142,6 +156,11 @@ Dependencies that should converge:
   rule-specific storage access should shrink to a narrow
   `MatchingRuleSetProvider` / `RuleDefinitionStore` boundary. Matching should
   not import `RuleStorage` directly.
+- `TaskDetailStore` and projection enums/records are compatibility residues,
+  not a desired long-term engine dependency. Runtime task validation,
+  scheduling, result convergence, and terminal policy should not need message
+  or attempt projection reads. Projection writes should either be removed from
+  engine or moved behind an external read-model/console assembly owner.
 - `mass-storage-memory` is already test-scope and should stay out of engine
   production code.
 
@@ -151,6 +170,7 @@ Storage dependency rule for engine:
 engine may depend on storage contracts for current kernel truth
 engine must not depend on storage implementations
 engine matching must not depend on CRUD-shaped storage or manager APIs
+engine runtime truth must not depend on storage projection read models
 ```
 
 ## Non-Goals
@@ -166,6 +186,8 @@ engine matching must not depend on CRUD-shaped storage or manager APIs
 6. No compatibility aliases for old broad manager methods after in-repo callers
    move.
 7. No storage implementation dependency from engine production code.
+8. No long-term preservation of message/attempt compatibility projection as an
+   engine-owned read model.
 
 ## Slice RBC-0: Inventory Current Rule Callers
 
@@ -180,18 +202,28 @@ Scope:
    - `RuleOperations`
    - `/api/v1/runtime/rules`
 2. Record method-level usage for each caller, not only file-level usage.
-3. Classify each caller as one of:
+3. Inventory storage projection residue callers:
+   - `TaskCompatibilityProjectionStore`
+   - `TaskWorkProjectionState`
+   - `TaskProjectionStateAuditor`
+   - tests that assert through `TaskDetailStore` message/attempt projections
+4. Classify each caller as one of:
    - matching-time evaluation
    - admin/control-plane definition read
    - bootstrap/sample fixture setup
    - evaluator assembly
+   - compatibility projection read/write
    - test-only convenience
-4. Identify callers that mutate rule definitions through engine package types.
-5. Identify whether any caller depends on evaluator registration being stored
+5. Identify callers that mutate rule definitions through engine package types.
+6. Identify whether any caller depends on evaluator registration being stored
    inside `RuleStorage`.
-6. Record engine production dependencies that exist only for default
+7. Record engine production dependencies that exist only for default
    construction, especially `mass-runtime-memory`.
-7. Produce a small inventory doc beside this roadmap.
+8. Record whether each projection read/write is:
+   - required for runtime correctness
+   - required only for current console/read-model compatibility
+   - test-only residue
+9. Produce a small inventory doc beside this roadmap.
 
 Acceptance:
 
@@ -201,7 +233,9 @@ Acceptance:
    narrowed.
 4. The inventory names which engine dependencies are kernel contracts and which
    are assembly/default-constructor residues.
-5. No behavior changes in this slice.
+5. The inventory names which projection call sites can be removed, moved to
+   read-model assembly, or rewritten against runtime/trace truth.
+6. No behavior changes in this slice.
 
 ## Slice RBC-1: Define Narrow Rule Contracts
 
@@ -334,7 +368,43 @@ Acceptance:
 4. In-repo callers use the corrected route or bootstrap surface; no old-path
    compatibility layer remains.
 
-## Slice RBC-6: Guard And Proof
+## Slice RBC-6: Converge Compatibility Projection Residue
+
+Goal: remove storage projection read-model coupling from engine runtime truth.
+
+Scope:
+
+1. Remove projection reads from runtime validation and scheduling-sensitive
+   paths. Runtime validation should use `TaskWorkRuntime`, `TaskResultRuntime`,
+   task shell state, and trace/audit evidence, not `TaskDetailStore`
+   message/attempt projections.
+2. Delete `TaskProjectionStateAuditor` if its only remaining value is scanning
+   compatibility projection residue. If an explicit offline audit is still
+   useful, move it outside the engine kernel boundary.
+3. Remove or move `TaskCompatibilityProjectionStore` writes. If the console
+   still needs a message/attempt read model, assemble that read model outside
+   engine from runtime/trace/control-plane evidence.
+4. Remove `TaskWorkProjectionState` conversions to storage projection enums
+   once no engine runtime path writes storage projection rows.
+5. Update tests that currently assert scheduling/result correctness through
+   `TaskDetailStore` projections to assert through runtime state, result
+   records, trace/audit evidence, or external read-model tests.
+6. Keep any remaining projection code clearly marked as external read-model
+   assembly, not engine kernel behavior.
+
+Acceptance:
+
+1. Engine runtime correctness tests do not require `TaskDetailStore`
+   message/attempt projection reads.
+2. Engine production code no longer imports
+   `com.xa.mass.storage.api.projection.*`.
+3. Any remaining `TaskDetailStore` dependency is justified by task shell/detail
+   control-plane storage, not message/attempt runtime projection.
+4. Scan-heavy projection audit is removed from default engine diagnostics.
+5. Console/read-model coverage, if still needed, lives outside engine kernel
+   tests.
+
+## Slice RBC-7: Guard And Proof
 
 Goal: prevent rule CRUD and assembly residues from drifting back into engine.
 
@@ -346,6 +416,8 @@ Scope:
      dependency
    - future rule write endpoints must not live under `/runtime/rules`
    - engine production code must not depend on storage implementations
+   - engine production code must not import storage projection enums/records
+     after RBC-6
 2. Add focused proof that default rules still affect worker matching.
 3. Add focused proof that rule definition persistence still works through
    memory and JDBC storage.
@@ -358,9 +430,11 @@ Acceptance:
 2. Guard fails if rule definition writes are added under runtime API routes.
 3. Guard fails if engine production code imports storage implementation
    packages.
-4. Memory and JDBC rule definition tests pass.
-5. Existing scheduling/rule diagnostics remain behaviorally equivalent.
-6. `xa-mass-engine` production dependency review documents whether
+4. Guard fails if engine runtime correctness depends on storage projection
+   packages after projection convergence.
+5. Memory and JDBC rule definition tests pass.
+6. Existing scheduling/rule diagnostics remain behaviorally equivalent.
+7. `xa-mass-engine` production dependency review documents whether
    `mass-runtime-memory` is gone or still intentionally pending.
 
 ## Implementation Order
@@ -368,12 +442,13 @@ Acceptance:
 Recommended order:
 
 ```text
-RBC-0 -> RBC-1 -> RBC-2 -> RBC-3 -> RBC-4 -> RBC-5 -> RBC-6
+RBC-0 -> RBC-1 -> RBC-2 -> RBC-3 -> RBC-4 -> RBC-5 -> RBC-6 -> RBC-7
 ```
 
 Do not start by moving files. First classify call sites and define the contract
 split. The highest-risk parts are evaluator lifecycle ownership and engine
-dependency direction, not Java package movement.
+dependency direction, including projection residue removal, not Java package
+movement.
 
 ## Verification Candidates
 
