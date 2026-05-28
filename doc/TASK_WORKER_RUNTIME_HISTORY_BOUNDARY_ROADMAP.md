@@ -95,6 +95,25 @@ cleanup.
    current task-shell lifecycle scanning. That is better than exposing storage
    directly to the watchdog, but the method classification still needs to be
    explicit before implementation.
+8. Current task shell query methods need a disposition path after
+   classification. `listTasksPaged(...)`, `getTasksByStatus(...)`, and
+   `getTasksByProject(...)` are acceptable only as current shell/support views.
+   If any is classified as history-shaped, it must be deferred until the
+   archive/read-model pipeline exists; it should not be migrated into a broader
+   DB query API.
+9. `WorkerResourceRecord` is not yet a clean declaration record. It still
+   carries runtime or compatibility projection fields such as `statusName`,
+   `lastHeartbeat`, `supportedProjects`, and `supportedEventCodes`. TWH-3 must
+   decide whether `WorkerResourceRecord` becomes a current-state composite view
+   or is split into declaration and runtime projection records.
+10. `EngineConfig` has real internal coupling between task shell storage and
+    compatibility projection storage: the default `InMemoryTaskStorage` is both
+    `taskStorage` and `taskDetailStore`, and `setTaskStorage(...)` clears the
+    detail store when both fields alias the same object. TWH-1 must preserve
+    that explicit fallback-breaking behavior under the new names.
+11. TWH-5 is a design/checkpoint slice. It should not be treated like an
+    implementation slice. Its output is a trace/archive gap note or updates to
+    trace contracts, not runtime/storage code.
 
 Conclusion: the target should be stricter than "storage is control-plane." The
 rule should be:
@@ -205,6 +224,9 @@ Acceptance:
 - The inventory classifies `listTasksPaged`, `getTasksByStatus`, and
   `getTasksByProject` as current shell queries or history-shaped queries before
   they are renamed or retained.
+- If a task shell query is classified as history-shaped, mark it deferred until
+  archive/read-model ownership exists. Do not migrate it to a new DB query
+  surface in this roadmap.
 - The inventory classifies every `TaskRuntimeMaintenancePort` method as
   runtime maintenance, current-shell lifecycle maintenance, dispatch wakeup, or
   mixed residue.
@@ -232,6 +254,17 @@ Scope:
   - `workerStorage(...)` -> `workerDeclarationStore(...)`
   - `getTaskStorage()` -> `getTaskShellStore()`
   - `getWorkerStorage()` -> `getWorkerDeclarationStore()`
+- Preserve and rename the `EngineConfig` task shell/detail-store coupling
+  deliberately:
+  - default in-memory shell store may still also implement the compatibility
+    detail store for local/test use
+  - replacing the task shell store must still require an explicit compatible
+    detail store when the old default alias is broken
+  - do not let the rename silently reintroduce an implicit
+    "task shell store also means detail store" rule
+- Document that this repository is still `0.0.1-SNAPSHOT`; breaking embedded
+  SDK renames are allowed inside this snapshot line. If a release version is
+  cut before TWH-1, revisit whether a short compatibility window is required.
 - Keep behavior unchanged in this slice.
 
 Acceptance:
@@ -242,6 +275,10 @@ Acceptance:
   `setWorkerStorage(...)` embedding SDK API remains.
 - The migration table is committed with the slice so downstream breakage is
   intentional and searchable.
+- Tests cover the renamed `EngineConfig` shell-store/detail-store alias break
+  behavior.
+- The SDK README states this is a `0.0.1-SNAPSHOT` breaking rename with no
+  compatibility alias in this roadmap.
 - `mass-storage-api` README uses shell/declaration vocabulary.
 - `platform_infra/README.md`, `INFRA_TRUTH_LAYERS.md`, and
   `DB_STORAGE_PRINCIPLES.md` use shell/declaration vocabulary consistently.
@@ -283,6 +320,18 @@ Scope:
 
 - Introduce a declaration-shaped record. Do not keep `WorkerDeclarationStore`
   writing the mixed `Worker` model directly.
+- Decide the target model shape before moving code:
+  - `WorkerDeclarationRecord`: persisted declaration-only input/output
+  - `WorkerRuntimeStateRecord`: current runtime state such as status,
+    heartbeat freshness, dispatch gate, reachability, and reservation/load
+    evidence
+  - `WorkerResourceRecord`: either renamed to the declaration record or kept as
+    a composite current-state read model assembled from declaration + runtime
+    evidence
+- `WorkerResourceOwner` registration writes the declaration record only.
+- `WorkerManager.workers()` may continue returning a current-state/composite
+  view, but that view must be assembled above the declaration store rather than
+  stored as a declaration row.
 - Stable declaration candidates:
   - `workerId`
   - `workerGroupId`
@@ -312,6 +361,9 @@ Acceptance:
   `Worker` object carrying `status` / `lastHeartbeat`.
 - `WorkerResourceOwner.normalizeWorkerRegistrationRow()` no longer mutates a
   declaration row with runtime heartbeat data before persistence.
+- The roadmap or implementation doc states the final role of `Worker`,
+  `WorkerDeclarationRecord`, `WorkerRuntimeStateRecord`, and
+  `WorkerResourceRecord`.
 - Worker runtime derives `WorkerRegistry` slot metadata from declaration rows
   plus current runtime evidence.
 - Server worker read models label fields clearly as declaration, runtime,
@@ -345,7 +397,7 @@ Acceptance:
 - New task/worker current-state APIs must state their canonical layer.
 - Architecture tests block new storage-side runtime/history contracts.
 
-## TWH-5 Trace/Event Archive Direction For History
+## TWH-5 Trace/Event Archive Direction Checkpoint
 
 Scope:
 
@@ -369,6 +421,9 @@ Scope:
   - candidates that are archive materialized views rather than new trace events
   - true vocabulary gaps requiring a new `ExecutionEventType`
 - Keep emission async and non-authoritative for runtime correctness.
+- Treat this as a design checkpoint. Do not add runtime/storage code in this
+  slice unless the trace contract update itself requires a compile-time enum or
+  schema addition.
 
 Acceptance:
 
@@ -377,6 +432,8 @@ Acceptance:
 - Runtime hot-path writes are not blocked on archive/analytics availability.
 - Analytics requirements are expressed against trace/archive read models, not
   engine/runtime or control-plane storage APIs.
+- The suggested implementation order marks this as a checkpoint/documentation
+  slice, not a prerequisite for TWH-1 through TWH-4 code cleanup.
 
 ## TWH-6 Remove Compatibility Residue
 
@@ -405,7 +462,7 @@ Acceptance:
 3. TWH-2 move runtime-shaped task queries out of storage.
 4. TWH-3 split worker declaration from runtime projection.
 5. TWH-4 current-state API guardrails.
-6. TWH-5 trace/archive history direction.
+6. TWH-5 trace/archive history direction checkpoint.
 7. TWH-6 residue removal.
 
 Do not start with TWH-5. A trace/archive plan cannot compensate for a
