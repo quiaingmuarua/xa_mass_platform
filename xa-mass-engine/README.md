@@ -102,9 +102,9 @@ Current WorkerGroup / group-selector scheduling baseline:
 - WorkerGroup candidate-source convergence is closed; ordinary scheduling uses
   explicit task `workerGroupId` / `workerGroupIds` selectors before worker rows
   are acquired
-- worker registry primitives and not-yet-moved worker contracts live in
+- low-level worker registry primitives live in
   `platform_infra/mass-runtime-api`; resource contracts and higher-level worker
-  runtime owners live in `xa-mass-worker-runtime`
+  runtime contracts live in `xa-mass-worker-runtime`
 - `EventKey` remains a low-level project-scoped worker capability key.
   `EventBinding`, `WorkerGroupRecord`, and resource DTOs are worker-runtime
   resource contracts; `WorkerRegistrySnapshot` is worker-runtime package-local
