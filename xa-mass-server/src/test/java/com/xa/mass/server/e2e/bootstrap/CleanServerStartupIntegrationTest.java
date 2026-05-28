@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @ActiveProfiles("dev")
 @DirtiesContext
 @Tag("secondary-proof")
-class CleanServerStartupIntegrationTest extends AbstractSampleE2eTest {
+public class CleanServerStartupIntegrationTest extends AbstractSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
 

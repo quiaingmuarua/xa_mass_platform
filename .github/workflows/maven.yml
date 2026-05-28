@@ -33,7 +33,7 @@ jobs:
           distribution: "temurin"
           cache: maven
       - name: Build and run core reactor tests
-        run: ./mvnw -B -pl xa-mass-worker-pack -am test
+        run: ./mvnw -B -pl integrations/xa-mass-worker-pack -am test
       - name: Compile xa-mass-testing (compilation gate)
         run: ./mvnw -q -pl xa-mass-testing -am -DskipTests compile
       - name: Check xa-mass-sdk public API compatibility
