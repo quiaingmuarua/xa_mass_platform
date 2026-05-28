@@ -1,4 +1,4 @@
-package com.xa.mass.runtime.worker;
+package com.xa.mass.worker.runtime.report;
 
 import java.util.ArrayList;
 import java.util.Collections;

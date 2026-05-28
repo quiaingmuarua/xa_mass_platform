@@ -1199,9 +1199,11 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void workerCapabilityReportDtosLiveInRuntimeApiWithoutSnapshotLeak() throws IOException {
+    void workerCapabilityReportDtosLiveInWorkerRuntimeWithoutSnapshotLeak() throws IOException {
         Path repo = repositoryRoot();
         Path engineWorkerPackage = repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/worker");
+        Path workerRuntimeReportPackage = repo.resolve(
+                "xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/report");
         List<String> typeNames = List.of(
                 "WorkerCapabilityReport",
                 "WorkerCapabilityReportResult",
@@ -1212,8 +1214,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         List<String> violations = new ArrayList<>();
         for (String typeName : typeNames) {
             Path enginePath = engineWorkerPackage.resolve(typeName + ".java");
-            Path runtimePath = repo.resolve(
-                    "platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/" + typeName + ".java");
+            Path runtimePath = workerRuntimeReportPackage.resolve(typeName + ".java");
             if (Files.exists(enginePath)) {
                 violations.add(enginePath + " reintroduces capability report DTO/contract inside engine");
             }
@@ -1240,21 +1241,23 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void workerStateReportProjectionDtosLiveInRuntimeApi() throws IOException {
+    void workerStateReportProjectionDtosLiveInWorkerRuntime() throws IOException {
         Path repo = repositoryRoot();
         Path engineWorkerPackage = repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/worker");
+        Path workerRuntimeReportPackage = repo.resolve(
+                "xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/report");
         List<String> typeNames = List.of(
                 "WorkerStateReport",
                 "WorkerStateProjection",
                 "WorkerStateProjectionResult",
-                "WorkerStateProjectionStatus"
+                "WorkerStateProjectionStatus",
+                "WorkerStateProjectionRuntime"
         );
 
         List<String> violations = new ArrayList<>();
         for (String typeName : typeNames) {
             Path enginePath = engineWorkerPackage.resolve(typeName + ".java");
-            Path runtimePath = repo.resolve(
-                    "platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/" + typeName + ".java");
+            Path runtimePath = workerRuntimeReportPackage.resolve(typeName + ".java");
             if (Files.exists(enginePath)) {
                 violations.add(enginePath + " reintroduces worker state DTO inside engine");
             }
@@ -1272,7 +1275,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "Worker state report/projection DTOs are runtime-api values. "
+                "Worker state report/projection DTOs are worker-runtime report values. "
                         + "Keep engine state owner implementation separate from DTO ownership:\n"
                         + String.join("\n", violations));
     }
@@ -1731,7 +1734,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         if (Pattern.compile("\\bWorkerStateProjectionOwner\\b").matcher(controlServiceSource).find()) {
             violations.add("WorkerControlService depends on WorkerStateProjectionOwner instead of runtime contract");
         }
-        if (Pattern.compile("import\\s+com\\.xa\\.mass\\.worker\\.runtime\\.(?!resource\\.)")
+        if (Pattern.compile("import\\s+com\\.xa\\.mass\\.worker\\.runtime\\.(?!(?:resource|report|control)\\.)")
                 .matcher(controlServiceSource)
                 .find()) {
             violations.add("WorkerControlService depends on worker-runtime implementation package instead of worker-runtime contracts");

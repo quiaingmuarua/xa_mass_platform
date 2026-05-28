@@ -1,9 +1,9 @@
 package com.xa.mass.worker.runtime;
 
-import com.xa.mass.runtime.worker.WorkerStateProjection;
-import com.xa.mass.runtime.worker.WorkerStateProjectionResult;
-import com.xa.mass.runtime.worker.WorkerStateProjectionStatus;
-import com.xa.mass.runtime.worker.WorkerStateReport;
+import com.xa.mass.worker.runtime.report.WorkerStateProjection;
+import com.xa.mass.worker.runtime.report.WorkerStateProjectionResult;
+import com.xa.mass.worker.runtime.report.WorkerStateProjectionStatus;
+import com.xa.mass.worker.runtime.report.WorkerStateReport;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;

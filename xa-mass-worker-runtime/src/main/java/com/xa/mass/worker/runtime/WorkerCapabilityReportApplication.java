@@ -1,6 +1,6 @@
 package com.xa.mass.worker.runtime;
 
-import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;
+import com.xa.mass.worker.runtime.report.WorkerCapabilityReportResult;
 
 public record WorkerCapabilityReportApplication(
         WorkerCapabilityReportResult result,

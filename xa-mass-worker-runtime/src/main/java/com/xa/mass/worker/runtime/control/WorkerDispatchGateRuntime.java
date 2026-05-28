@@ -1,4 +1,6 @@
-package com.xa.mass.runtime.worker;
+package com.xa.mass.worker.runtime.control;
+
+import com.xa.mass.runtime.worker.DispatchAvailabilitySource;
 
 /**
  * Runtime dispatch-gate mutation/read surface.

@@ -5,9 +5,9 @@ import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
 
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.EventKey;
-import com.xa.mass.runtime.worker.WorkerCapabilityReport;
-import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;
-import com.xa.mass.runtime.worker.WorkerCapabilityReportStatus;
+import com.xa.mass.worker.runtime.report.WorkerCapabilityReport;
+import com.xa.mass.worker.runtime.report.WorkerCapabilityReportResult;
+import com.xa.mass.worker.runtime.report.WorkerCapabilityReportStatus;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

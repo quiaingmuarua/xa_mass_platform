@@ -1,7 +1,7 @@
 package com.xa.mass.worker.runtime;
 
-import com.xa.mass.runtime.worker.WorkerCapabilityReport;
-import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;
+import com.xa.mass.worker.runtime.report.WorkerCapabilityReport;
+import com.xa.mass.worker.runtime.report.WorkerCapabilityReportResult;
 
 /**
  * Runtime owner for worker-originated capability report projection.

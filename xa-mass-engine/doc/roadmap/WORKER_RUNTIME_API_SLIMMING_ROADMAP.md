@@ -6,6 +6,8 @@ WRA-0.5 contract alignment decisions are recorded here and in the inventory.
 WRA-1a resource contract family has moved to `xa-mass-worker-runtime`.
 WRA-1b match/evidence/admission contract families have moved to
 `xa-mass-worker-runtime`.
+WRA-1c report/state/control contract families have moved to
+`xa-mass-worker-runtime`.
 This roadmap follows
 [`WORKER_RUNTIME_MODULE_EXTRACTION_ROADMAP.md`](./WORKER_RUNTIME_MODULE_EXTRACTION_ROADMAP.md).
 
@@ -561,6 +563,10 @@ Acceptance:
 
 Goal: move worker report, state projection, and dispatch-gate contracts after
 the hot match/admission surface is already out of `mass-runtime-api`.
+
+Status: complete. Report, state projection, and dispatch-gate contracts now
+live under `com.xa.mass.worker.runtime.report` and
+`com.xa.mass.worker.runtime.control`.
 
 Scope:
 

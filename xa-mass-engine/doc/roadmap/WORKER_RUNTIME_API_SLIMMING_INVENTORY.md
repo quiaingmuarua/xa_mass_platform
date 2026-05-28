@@ -17,6 +17,10 @@ hint contracts have moved to `xa-mass-worker-runtime` under
 `com.xa.mass.worker.runtime.candidate`, `com.xa.mass.worker.runtime.evidence`,
 and `com.xa.mass.worker.runtime.admission`.
 
+Post-WRA-1c note: report, state projection, and dispatch-gate contracts have
+moved to `xa-mass-worker-runtime` under `com.xa.mass.worker.runtime.report`
+and `com.xa.mass.worker.runtime.control`.
+
 Consumer abbreviations:
 
 ```text

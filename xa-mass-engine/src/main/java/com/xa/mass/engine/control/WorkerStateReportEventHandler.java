@@ -4,8 +4,8 @@ import com.xa.mass.command.event.CoreEventRequest;
 import com.xa.mass.command.event.CoreEventResponse;
 import com.xa.mass.engine.WorkerControlRuntime;
 import com.xa.mass.engine.event.KernelEventHandlerRegistry;
-import com.xa.mass.runtime.worker.WorkerStateProjectionResult;
-import com.xa.mass.runtime.worker.WorkerStateReport;
+import com.xa.mass.worker.runtime.report.WorkerStateProjectionResult;
+import com.xa.mass.worker.runtime.report.WorkerStateReport;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;

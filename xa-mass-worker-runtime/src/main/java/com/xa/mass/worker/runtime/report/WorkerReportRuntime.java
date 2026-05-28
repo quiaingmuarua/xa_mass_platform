@@ -1,4 +1,4 @@
-package com.xa.mass.runtime.worker;
+package com.xa.mass.worker.runtime.report;
 
 /**
  * Worker-originated report surface that may update runtime projections.

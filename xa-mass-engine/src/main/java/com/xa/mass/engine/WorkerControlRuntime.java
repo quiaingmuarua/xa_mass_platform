@@ -5,11 +5,11 @@ import com.xa.mass.engine.command.WorkerCommandDeliveryPort;
 import com.xa.mass.engine.command.WorkerCommandLifecycleResult;
 import com.xa.mass.engine.command.WorkerCommandRecord;
 import com.xa.mass.engine.command.WorkerCommandRequest;
-import com.xa.mass.runtime.worker.WorkerCapabilityReport;
-import com.xa.mass.runtime.worker.WorkerCapabilityReportResult;
-import com.xa.mass.runtime.worker.WorkerStateProjection;
-import com.xa.mass.runtime.worker.WorkerStateProjectionResult;
-import com.xa.mass.runtime.worker.WorkerStateReport;
+import com.xa.mass.worker.runtime.report.WorkerCapabilityReport;
+import com.xa.mass.worker.runtime.report.WorkerCapabilityReportResult;
+import com.xa.mass.worker.runtime.report.WorkerStateProjection;
+import com.xa.mass.worker.runtime.report.WorkerStateProjectionResult;
+import com.xa.mass.worker.runtime.report.WorkerStateReport;
 
 import java.time.Instant;
 import java.util.List;
