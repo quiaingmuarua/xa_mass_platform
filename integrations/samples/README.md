@@ -37,6 +37,26 @@ For the dev Spring Boot shell there is now a sample supervisor script at
   when `sample.worker.auto-start=true`
 - worker and task seed definitions live under `integrations/samples/dev/scenario/*.json`
 
+Manual registration against an already running dev server:
+
+```bash
+node integrations/samples/dev/scenario/launch-workers.mjs --register-only
+```
+
+Use this when you want the console populated without starting managed realtime
+sample worker processes. It registers catalog metadata, rules, WorkerGroups,
+adapter nodes, workers, online API-polling workers, and sample tasks through
+public HTTP APIs, then exits.
+
+Full external sample launch:
+
+```bash
+node integrations/samples/dev/scenario/launch-workers.mjs
+```
+
+The full launch keeps the process alive because it also owns the managed
+realtime sample worker child processes.
+
 Current dev scenario shape:
 
 - 2 managed realtime Node workers are launched as external processes.

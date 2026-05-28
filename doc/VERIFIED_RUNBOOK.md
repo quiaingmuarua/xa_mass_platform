@@ -110,6 +110,18 @@ managed realtime sample workers, registers a larger polling phone-device worker
 group for matching review, and creates seed tasks externally instead of through
 server startup.
 
+Manual registration without starting managed realtime sample processes:
+
+```bash
+node integrations/samples/dev/scenario/launch-workers.mjs --register-only
+```
+
+This mode is intended for quick console population after `XaMassServerApplication`
+is already running. It registers catalog metadata, rules, WorkerGroups, adapter
+nodes, workers, online API-polling workers, and sample tasks through public HTTP
+APIs, then exits. Realtime workers remain registered but offline until an
+external worker process connects.
+
 ## 3. Smoke Checks
 
 HTTP:

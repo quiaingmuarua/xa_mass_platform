@@ -5,8 +5,14 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
-const baseUrl = normalizeBaseUrl(process.env.MASS_BASE_URL ?? "http://127.0.0.1:8088");
-const wsUrl = requiredEnv("MASS_WS_URL");
+const args = parseArgs(process.argv.slice(2));
+if (args.help) {
+  printHelp();
+  process.exit(0);
+}
+
+const baseUrl = normalizeBaseUrl(args.baseUrl ?? process.env.MASS_BASE_URL ?? "http://127.0.0.1:8088");
+const wsUrl = args.wsUrl ?? process.env.MASS_WS_URL ?? "ws://127.0.0.1:18088/ws";
 const nodeBin = process.env.NODE_BIN ?? process.execPath;
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 const bootstrapConfigPath = resolve(repoRoot, "integrations/samples/dev/scenario/bootstrap.json");
@@ -39,13 +45,20 @@ async function main() {
   const stagedTaskSpecs = taskSpecs.filter((spec) => spec.approve !== true);
   await bootstrapCatalog(bootstrapSpec);
   await bootstrapRules(ruleSpec);
-  console.log(`[sample-launcher] registering and starting ${workerSpecs.length} sample workers`);
+  console.log(`[sample-launcher] mode=${args.registerOnly ? "register-only" : "launch"} baseUrl=${baseUrl} wsUrl=${wsUrl}`);
+  console.log(`[sample-launcher] registering ${workerSpecs.length} sample workers`);
   for (const spec of managedWorkerSpecs) {
     await registerWorker(spec);
-    startWorker(spec);
+    if (!args.registerOnly) {
+      startWorker(spec);
+    } else {
+      console.log(`[sample-launcher] worker ${spec.workerId} registered only; external transport process not started`);
+    }
   }
-  for (const spec of managedWorkerSpecs) {
-    await waitForWorkerOnline(spec);
+  if (!args.registerOnly) {
+    for (const spec of managedWorkerSpecs) {
+      await waitForWorkerOnline(spec);
+    }
   }
   await seedTasks(approvedTaskSpecs);
   await runWithConcurrency(apiOnlineWorkerSpecs, 12, async (spec) => {
@@ -57,9 +70,13 @@ async function main() {
   });
   await seedTasks(stagedTaskSpecs);
 
+  if (args.registerOnly) {
+    console.log("[sample-launcher] register-only complete");
+    return;
+  }
+
   process.on("SIGINT", () => void shutdown(0));
   process.on("SIGTERM", () => void shutdown(0));
-
   keepAliveTimer = setInterval(() => {}, 60_000);
 }
 
@@ -449,10 +466,53 @@ function normalizeBaseUrl(value) {
   return value.endsWith("/") ? value.slice(0, -1) : value;
 }
 
-function requiredEnv(name) {
-  const value = process.env[name];
-  if (!value || String(value).trim().length === 0) {
-    throw new Error(`${name} is required`);
+function parseArgs(argv) {
+  const parsed = {
+    baseUrl: null,
+    wsUrl: null,
+    help: false,
+    registerOnly: false,
+  };
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--help" || arg === "-h") {
+      parsed.help = true;
+    } else if (arg === "--register-only") {
+      parsed.registerOnly = true;
+    } else if (arg === "--base-url") {
+      parsed.baseUrl = requiredArg(argv, index, arg);
+      index += 1;
+    } else if (arg.startsWith("--base-url=")) {
+      parsed.baseUrl = arg.slice("--base-url=".length);
+    } else if (arg === "--ws-url") {
+      parsed.wsUrl = requiredArg(argv, index, arg);
+      index += 1;
+    } else if (arg.startsWith("--ws-url=")) {
+      parsed.wsUrl = arg.slice("--ws-url=".length);
+    } else {
+      throw new Error(`unknown argument: ${arg}`);
+    }
   }
-  return String(value).trim();
+  return parsed;
+}
+
+function requiredArg(argv, index, name) {
+  const value = argv[index + 1];
+  if (!value || value.startsWith("--")) {
+    throw new Error(`${name} requires a value`);
+  }
+  return value;
+}
+
+function printHelp() {
+  console.log(`Usage:
+  node integrations/samples/dev/scenario/launch-workers.mjs [options]
+
+Options:
+  --register-only       Register catalog, rules, workers, and tasks, then exit.
+                        Realtime worker processes are not started.
+  --base-url <url>      Server HTTP base URL. Default: MASS_BASE_URL or http://127.0.0.1:8088
+  --ws-url <url>        WebSocket URL for full launch. Default: MASS_WS_URL or ws://127.0.0.1:18088/ws
+  -h, --help            Show this help.
+`);
 }
