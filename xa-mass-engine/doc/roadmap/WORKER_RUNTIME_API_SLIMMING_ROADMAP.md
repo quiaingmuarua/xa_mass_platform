@@ -473,83 +473,109 @@ Acceptance:
    need lookup only.
 7. Package movement may proceed without changing contract semantics mid-move.
 
-## Slice WRA-1a: Move Worker Data Records And Enums
+## Slice WRA-1a: Move Resource Contract Family
 
-Goal: move pure worker-plane value types before runtime interfaces.
+Goal: move the resource declaration/query family as one coherent contract
+batch.
+
+Do not move worker value types first while their runtime interfaces remain in
+`mass-runtime-api`. That would force `mass-runtime-api` to depend on
+`xa-mass-worker-runtime`, which violates the target dependency direction.
+Move each contract family as value types plus the interfaces that reference
+them.
 
 Scope:
 
-1. Move worker resource/control records:
+1. Move resource records:
    - `WorkerResourceRecord`
    - `WorkerGroupRecord`
    - `AdapterNodeRecord`
    - `NodeGroupBindingRecord`
    - `EventBinding`
    - `EventKey` references stay in `mass-runtime-api`
-2. Move worker report and projection records/enums:
-   - `WorkerCapabilityReport*`
-   - `WorkerStateReport`
-   - `WorkerStateProjection`
-   - `WorkerStateProjectionResult`
-   - `WorkerStateProjectionStatus`
-3. Move worker candidate records/enums:
-   - `WorkerCandidateBatch`
-   - `WorkerCandidateRow`
-   - `WorkerTaskSelector`
-4. Move worker scheduling evidence records/enums:
-   - `WorkerGroupCapabilityView`
-   - `WorkerLoadSnapshot`
-   - `WorkerReachabilityState`
-5. Update imports in worker-runtime tests first, then engine/SDK/server/transport.
-6. Do not keep forwarding types in `mass-runtime-api`.
-7. Follow the package convention and contract family decisions from WRA-0.5.
-
-Acceptance:
-
-1. Moved value types keep the same validation and behavior.
-2. No runtime interface is moved before its value types compile from
-   `xa-mass-worker-runtime`.
-3. No compatibility aliases remain under old package names.
-
-## Slice WRA-1b: Move Worker Runtime Interfaces
-
-Goal: make `xa-mass-worker-runtime` the module that exposes worker-plane
-contracts.
-
-Scope:
-
-1. Move resource/report/candidate interfaces:
+2. Move resource interfaces:
    - `WorkerResourceRuntime`
    - `WorkerResourceDeclarationRuntime`
    - `WorkerResourceQueryRuntime`
    - `WorkerNodeBindingRuntime`
-   - `WorkerReportRuntime`
+3. Update imports in worker-runtime first, then engine control, SDK/server,
+   transport, testing, and docs.
+4. Do not keep forwarding types in `mass-runtime-api`.
+5. Follow the package convention and contract family decisions from WRA-0.5.
+
+Acceptance:
+
+1. Moved resource types keep the same validation and behavior.
+2. `mass-runtime-api` does not import or depend on `xa-mass-worker-runtime`.
+3. Transport consumes only the resource query contract after the move.
+4. No compatibility aliases remain under old package names.
+
+## Slice WRA-1b: Move Match And Admission Contract Families
+
+Goal: move worker matching evidence, candidate source, and admission contracts
+without splitting value types from interfaces that reference them.
+
+Scope:
+
+1. Move candidate/routing contract family:
    - `WorkerCandidateRuntime`
-   - `WorkerStateProjectionRuntime`
-2. Move scheduling evidence interfaces:
+   - `WorkerCandidateBatch`
+   - `WorkerCandidateRow`
+   - `WorkerTaskSelector`
+2. Move scheduling evidence contract family:
    - `WorkerSchedulingViewRuntime`
    - `WorkerReachabilityView`
-3. Move high-level admission/wakeup/gate contracts:
+   - `WorkerGroupCapabilityView`
+   - `WorkerLoadSnapshot`
+   - `WorkerReachabilityState`
+3. Move admission/wakeup/warm hint contract family:
    - `WorkerAdmissionRuntime`
    - `WorkerAdmissionResult`
    - `WorkerAdmissionStatus`
    - `WorkerAvailabilityWakeupRuntime`
-   - `WorkerDispatchGateRuntime`
    - `WorkerWarmHintRuntime`
-4. Update imports in engine, SDK, server, transport, and worker-runtime tests.
+4. Update imports in engine match/listener paths, worker-runtime owners,
+   SDK assembly, tests, and perf helpers.
 5. Do not keep forwarding types in `mass-runtime-api`.
-6. Do not move an interface unchanged if WRA-0.5 found it grants excessive
-   caller authority; split or rename it first in the same slice.
 
 Acceptance:
 
-1. Production source outside memory/Redis no longer imports moved worker-plane
-   types from `com.xa.mass.runtime.worker`.
-2. `xa-mass-worker-runtime` exports the worker-plane contracts directly.
+1. Engine match path imports candidate, evidence, and admission contracts from
+   `xa-mass-worker-runtime`, not `mass-runtime-api`.
+2. `mass-runtime-api` does not import or depend on `xa-mass-worker-runtime`.
 3. Moved types keep the same behavior and validation.
 4. No compatibility aliases remain under old package names.
-5. Engine match path imports only candidate, evidence, admission, and routing
-   contract packages.
+
+## Slice WRA-1c: Move Report And Control Contract Families
+
+Goal: move worker report, state projection, and dispatch-gate contracts after
+the hot match/admission surface is already out of `mass-runtime-api`.
+
+Scope:
+
+1. Move report contract family:
+   - `WorkerReportRuntime`
+   - `WorkerCapabilityReport`
+   - `WorkerCapabilityReportResult`
+   - `WorkerCapabilityReportStatus`
+2. Move state projection contract family:
+   - `WorkerStateProjectionRuntime`
+   - `WorkerStateReport`
+   - `WorkerStateProjection`
+   - `WorkerStateProjectionResult`
+   - `WorkerStateProjectionStatus`
+3. Move control contract:
+   - `WorkerDispatchGateRuntime`
+4. Update engine control, SDK/server, worker-runtime owners, tests, and docs.
+5. Do not keep forwarding types in `mass-runtime-api`.
+
+Acceptance:
+
+1. Engine control/report paths import report and control contracts from
+   `xa-mass-worker-runtime`, not `mass-runtime-api`.
+2. `mass-runtime-api` does not import or depend on `xa-mass-worker-runtime`.
+3. Moved types keep the same behavior and validation.
+4. No compatibility aliases remain under old package names.
 
 ## Slice WRA-2: Split Route Bucket Policy Ownership
 
@@ -712,8 +738,9 @@ Acceptance:
 - Commit by slice or domain batch:
   - WRA-0 inventory/doc-only commit.
   - WRA-0.5 contract alignment commit if interfaces are split or renamed.
-  - WRA-1a data type move commit.
-  - WRA-1b interface move commit.
+  - WRA-1a resource contract-family move commit.
+  - WRA-1b match/admission contract-family move commit.
+  - WRA-1c report/control contract-family move commit.
   - WRA-2 route policy split commit.
   - WRA-3/WRA-4 slim API and guard commit if small enough; split if test churn
     is large.
