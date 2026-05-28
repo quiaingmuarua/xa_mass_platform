@@ -16,6 +16,8 @@ import java.util.Set;
  */
 public final class WorkerRouteBucketPolicies {
 
+    public static final String DEFAULT_ROUTE_BUCKET_KEY = WorkerRouteBucketPolicy.DEFAULT_ROUTE_BUCKET_KEY;
+
     public static final List<String> STANDARD_APPROVED_ROUTE_ATTRIBUTES =
             List.of("business", "tenant", "region", "pool");
 

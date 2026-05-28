@@ -108,7 +108,7 @@ api      same mass-runtime-api package references
 | `WorkerResourceRecord` | worker resource value | move to worker-runtime resource | eng, sdk, testing, tx, wr, api | engine control/resource, SDK/server shell, transport, worker-runtime impl |
 | `WorkerResourceRuntime` | composite worker resource contract | move to worker-runtime resource | sdk, testing, wr | SDK/server assembly, worker-runtime impl; avoid for lookup-only transport/control callers |
 | `WorkerRouteBucketPolicies` | mixed registry default and platform routing policy | split in WRA-2 | eng, mem, redis, wr | memory/Redis default helper; worker-runtime platform policy |
-| `WorkerRouteBucketPolicy` | registry route-bucket SPI | keep in runtime-api | eng, mem, redis, wr, api | memory/Redis, worker-runtime impl; engine strategy import is WRA-2 route-policy residue |
+| `WorkerRouteBucketPolicy` | registry route-bucket SPI | keep in runtime-api | mem, redis, sdk, wr, api | memory/Redis, worker-runtime impl, documented low-level SDK assembly; not an engine strategy contract |
 | `WorkerSchedulingViewRuntime` | scheduling evidence contract | move or rename to worker-runtime evidence | eng, sdk, testing, wr | engine match, SDK assembly/testing, worker-runtime impl |
 | `WorkerSlot` | registry primitive | keep in runtime-api | mem, redis, wr, api | memory/Redis, worker-runtime impl; not an engine match contract after WRA-0.5 |
 | `WorkerStateProjection` | worker report/projection value | move to worker-runtime report | eng, sdk, wr, api | engine control/report path, SDK/server shell, worker-runtime impl |

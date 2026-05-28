@@ -1395,6 +1395,9 @@ class EngineSchedulingCoreArchitectureGuardTest {
                         Pattern.compile("\\bimport\\s+com\\.xa\\.mass\\.worker\\.runtime\\.(?!(?:candidate|evidence|admission|routing)\\.)")),
                 Map.entry("worker registry contract",
                         Pattern.compile("\\bWorkerRegistry\\b")),
+                Map.entry("low-level worker registry primitive import",
+                        Pattern.compile("\\bimport\\s+com\\.xa\\.mass\\.runtime\\.worker\\."
+                                + "(?:WorkerRegistry|WorkerSlot|WorkerMeta|WorkerRouteBucketPolicy)\\b")),
                 Map.entry("resource/report/group runtime owners",
                         Pattern.compile("\\bWorker(?:Resource|Report|Group|Relationship|Admission|CandidateSource)Owner\\b")),
                 Map.entry("state projection owner",
