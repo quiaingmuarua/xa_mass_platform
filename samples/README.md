@@ -17,7 +17,7 @@ Rules:
 | Sample path | Language | adapterId | transportHint | Entry | Verified black-box test |
 | --- | --- | --- | --- | --- | --- |
 | `worker-polling/node` | Node.js | `polling` | `polling` | `node samples/worker-polling/node/worker.mjs` | `NodePollingWorkerBlackBoxIntegrationTest` |
-| `worker-polling/java` | Java | `polling` | `polling` | `java -jar samples/worker-polling/java/target/worker-polling-java-sample.jar` | `JavaPollingWorkerBlackBoxIntegrationTest` |
+| `worker-polling/java` | Java, via `xa-mass-java-sdk` | `polling` | `polling` | `java -jar samples/worker-polling/java/target/worker-polling-java-sample.jar` | `JavaPollingWorkerBlackBoxIntegrationTest` |
 | `worker-websocket/node` | Node.js | `websocket` | `realtime` | `node samples/worker-websocket/node/worker.mjs` | `NodeWebSocketWorkerBlackBoxIntegrationTest` |
 | `worker-websocket/java` | Java | `websocket` | `realtime` | `java -jar samples/worker-websocket/java/target/worker-websocket-java-sample.jar` | `JavaWebSocketWorkerBlackBoxIntegrationTest` |
 | `worker-socket/node` | Node.js | `socket` | `realtime` | `node samples/worker-socket/node/worker.mjs` | `NodeSocketWorkerBlackBoxIntegrationTest` |
@@ -46,6 +46,9 @@ Every sample should remain provable through an external-process black-box test:
 - polling samples report capability at startup via `:report-capability` and
   bounded worker state via `:report-state`; both go through the public
   `/worker-api/v1` contract
+- the Java polling sample uses `integrations/xa-mass-java-sdk` and its managed
+  `PollingWorkerSession`; raw HTTP polling code should not be reintroduced
+  there
 - polling samples can acknowledge operator-issued worker commands via
   `/commands/{commandId}:ack`
 - engine scheduling still gates task dispatch; samples do not bypass task mainline

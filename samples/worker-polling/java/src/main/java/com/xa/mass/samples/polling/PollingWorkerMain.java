@@ -1,35 +1,35 @@
 package com.xa.mass.samples.polling;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
+import com.xa.mass.client.MassPlatform;
+import com.xa.mass.client.worker.WorkerGroupSpec;
+import com.xa.mass.client.worker.session.DispatchContext;
+import com.xa.mass.client.worker.session.PollingWorkerSession;
+import com.xa.mass.client.worker.session.WorkerResult;
 
 import java.io.IOException;
 import java.net.URI;
-import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Objects;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class PollingWorkerMain {
 
-    private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
-    private static final Pattern TITLE_PATTERN = Pattern.compile("<title[^>]*>([^<]+)</title>", Pattern.CASE_INSENSITIVE);
+    private static final Pattern TITLE_PATTERN = Pattern.compile("<title[^>]*>([^<]+)</title>",
+            Pattern.CASE_INSENSITIVE);
 
     private final HttpClient httpClient;
-    private final String baseUrl;
+    private final MassPlatform mass;
     private final String workerId;
-    private final String workerKey;
     private final String workerGroupId;
     private final String adapterNodeId;
     private final String project;
@@ -39,17 +39,17 @@ public final class PollingWorkerMain {
     private final String[] routingTags;
     private final long pollIntervalMs;
     private final long heartbeatIntervalMs;
-    private final String initialWorkerState;
-    private final String initialWorkerStateReason;
-    private final AtomicBoolean shuttingDown = new AtomicBoolean(false);
+    private final CountDownLatch shutdownLatch = new CountDownLatch(1);
+    private final AtomicBoolean shutdownRequested = new AtomicBoolean(false);
+    private volatile PollingWorkerSession session;
 
     private PollingWorkerMain() {
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
                 .build();
-        this.baseUrl = normalizeBaseUrl(env("MASS_BASE_URL", "http://127.0.0.1:8088"));
+        String baseUrl = env("MASS_BASE_URL", "http://127.0.0.1:8088");
         this.workerId = requiredEnv("MASS_WORKER_ID", "java-worker-api-001");
-        this.workerKey = requiredEnv("MASS_WORKER_KEY", "java-worker-key");
+        String workerKey = requiredEnv("MASS_WORKER_KEY", "java-worker-key");
         this.workerGroupId = env("MASS_WORKER_GROUP_ID", "java-runtime");
         this.adapterNodeId = env("MASS_ADAPTER_NODE_ID", this.workerGroupId + "-node");
         this.project = env("MASS_PROJECT", "crawlerApp");
@@ -59,173 +59,73 @@ public final class PollingWorkerMain {
         this.routingTags = splitCsv(env("MASS_ROUTING_TAGS", "web," + region));
         this.pollIntervalMs = longEnv("MASS_POLL_INTERVAL_MS", 1000L);
         this.heartbeatIntervalMs = longEnv("MASS_HEARTBEAT_INTERVAL_MS", 10000L);
-        this.initialWorkerState = optionalEnv("MASS_INITIAL_WORKER_STATE", "AVAILABLE");
-        this.initialWorkerStateReason = env("MASS_INITIAL_WORKER_STATE_REASON", "worker-ready");
+        this.mass = MassPlatform.builder()
+                .baseUrl(baseUrl)
+                .apiKey(workerKey)
+                .connectTimeout(Duration.ofSeconds(5))
+                .requestTimeout(Duration.ofSeconds(30))
+                .build();
     }
 
     public static void main(String[] args) throws Exception {
         new PollingWorkerMain().run();
     }
 
-    private void run() throws Exception {
-        log("starting polling worker " + workerId + " for " + eventCode + " at " + baseUrl);
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> safeShutdown("java-shutdown-hook"),
+    private void run() throws InterruptedException {
+        log("starting polling worker " + workerId + " for " + eventCode + " at " + mass.baseUri());
+        Runtime.getRuntime().addShutdownHook(new Thread(this::safeShutdown,
                 "java-polling-worker-shutdown"));
 
-        registerWorker();
-        post("/worker-api/v1/workers/" + encoded(workerId) + ":online",
-                jsonObject("reason", "java-worker-online"));
-        reportWorkerCapability();
-        reportInitialWorkerState();
+        declareWorkerGroup();
+        session = mass.workerSessions().polling()
+                .workerId(workerId)
+                .workerGroupId(workerGroupId)
+                .adapterNodeId(adapterNodeId)
+                .adapterType("polling")
+                .endpointId(adapterNodeId)
+                .attribute("lang", "java")
+                .attribute("runtime", runtime)
+                .attribute("region", region)
+                .attribute("country", region)
+                .attribute("routingTags", String.join(",", routingTags))
+                .pollInterval(Duration.ofMillis(pollIntervalMs))
+                .heartbeatInterval(Duration.ofMillis(heartbeatIntervalMs))
+                .maxMessages(10)
+                .event(eventCode, this::handleDispatch)
+                .start();
 
-        long lastHeartbeatAt = 0L;
-        while (!shuttingDown.get()) {
-            long now = System.currentTimeMillis();
-            if (now - lastHeartbeatAt >= heartbeatIntervalMs) {
-                post("/worker-api/v1/workers/" + encoded(workerId) + ":heartbeat",
-                        jsonObject("reason", "java-worker-heartbeat"));
-                lastHeartbeatAt = now;
-            }
-            pollOnce();
-            Thread.sleep(pollIntervalMs);
+        shutdownLatch.await();
+    }
+
+    private void declareWorkerGroup() {
+        mass.workers().declareGroup(WorkerGroupSpec.builder()
+                .groupId(workerGroupId)
+                .bindEvent(eventCode, List.of(project))
+                .defaultAttribute("lang", "java")
+                .defaultAttribute("region", region)
+                .defaultAttribute("routingTags", String.join(",", routingTags))
+                .build());
+        log("declared worker group " + workerGroupId + " for " + eventCode);
+    }
+
+    private WorkerResult handleDispatch(DispatchContext dispatch) {
+        log("received taskId=" + dispatch.taskId()
+                + " messageId=" + dispatch.messageId()
+                + " eventCode=" + dispatch.eventCode());
+        if (!eventCode.equals(dispatch.eventCode())) {
+            return WorkerResult.failure("UNSUPPORTED_EVENT",
+                    "Unsupported eventCode: " + dispatch.eventCode(),
+                    baseOutput(dispatch));
         }
+        return handleCrawlerFetchPage(dispatch);
     }
 
-    private void registerWorker() throws Exception {
-        JsonObject groupBody = new JsonObject();
-        groupBody.addProperty("groupId", workerGroupId);
-        JsonArray eventBindings = new JsonArray();
-        JsonObject binding = new JsonObject();
-        binding.addProperty("eventCode", eventCode);
-        JsonArray projectCodes = new JsonArray();
-        projectCodes.add(project);
-        binding.add("projectCodes", projectCodes);
-        eventBindings.add(binding);
-        groupBody.add("eventBindings", eventBindings);
-        JsonObject groupResponse = post("/worker-api/v1/worker-groups", groupBody);
-        log("declared worker group: " + groupResponse.get("data"));
-
-        JsonObject adapterNodeBody = new JsonObject();
-        adapterNodeBody.addProperty("adapterNodeId", adapterNodeId);
-        adapterNodeBody.addProperty("adapterType", "polling");
-        adapterNodeBody.addProperty("endpointId", adapterNodeId);
-        JsonObject adapterNodeAttributes = new JsonObject();
-        adapterNodeAttributes.addProperty("lang", "java");
-        adapterNodeAttributes.addProperty("region", region);
-        adapterNodeBody.add("attributes", adapterNodeAttributes);
-        JsonObject adapterNodeResponse = post("/worker-api/v1/adapter-nodes", adapterNodeBody);
-        log("registered adapter node: " + adapterNodeResponse.get("data"));
-
-        JsonObject bindingBody = new JsonObject();
-        bindingBody.addProperty("adapterNodeId", adapterNodeId);
-        bindingBody.addProperty("workerGroupId", workerGroupId);
-        JsonObject bindingAttributes = new JsonObject();
-        bindingAttributes.addProperty("region", region);
-        bindingBody.add("attributes", bindingAttributes);
-        JsonObject bindingResponse = post("/worker-api/v1/node-group-bindings", bindingBody);
-        log("bound adapter node to group: " + bindingResponse.get("data"));
-
-        JsonObject body = new JsonObject();
-        body.addProperty("workerId", workerId);
-        body.addProperty("adapterNodeId", adapterNodeId);
-        body.addProperty("workerGroupId", workerGroupId);
-        body.addProperty("transportHint", "polling");
-
-        JsonObject attributes = new JsonObject();
-        attributes.addProperty("lang", "java");
-        attributes.addProperty("runtime", runtime);
-        attributes.addProperty("region", region);
-        attributes.addProperty("country", region);
-        attributes.addProperty("routingTags", String.join(",", routingTags));
-        body.add("attributes", attributes);
-
-        JsonObject response = post("/worker-api/v1/workers", body);
-        log("registered worker: " + response.get("data"));
-    }
-
-    private void reportWorkerCapability() throws Exception {
-        JsonObject body = new JsonObject();
-        body.addProperty("agentVersion", runtime);
-        JsonArray availableEventCodes = new JsonArray();
-        availableEventCodes.add(eventCode);
-        body.add("availableEventCodes", availableEventCodes);
-        JsonObject schedulingAttributes = new JsonObject();
-        schedulingAttributes.addProperty("region", region);
-        schedulingAttributes.addProperty("routingTags", String.join(",", routingTags));
-        body.add("schedulingAttributes", schedulingAttributes);
-        JsonObject response = post("/worker-api/v1/workers/" + encoded(workerId) + ":report-capability", body);
-        log("reported worker capability: " + response.get("data"));
-    }
-
-    private void reportInitialWorkerState() throws Exception {
-        if (initialWorkerState == null || initialWorkerState.isBlank()) {
-            return;
-        }
-        JsonObject body = new JsonObject();
-        body.addProperty("state", initialWorkerState);
-        body.addProperty("reason", initialWorkerStateReason);
-        JsonObject attributes = new JsonObject();
-        attributes.addProperty("source", "java-polling-worker");
-        attributes.addProperty("region", region);
-        body.add("attributes", attributes);
-        JsonObject response = post("/worker-api/v1/workers/" + encoded(workerId) + ":report-state", body);
-        log("reported worker state: " + response.get("data"));
-    }
-
-    private void pollOnce() throws Exception {
-        JsonObject request = new JsonObject();
-        request.addProperty("maxMessages", 10);
-        JsonObject response = post("/worker-api/v1/workers/" + encoded(workerId) + ":poll", request);
-        JsonObject data = objectMember(response, "data");
-        JsonArray items = arrayMember(data, "items");
-        for (JsonElement element : items) {
-            if (element != null && element.isJsonObject()) {
-                handleDispatch(element.getAsJsonObject());
-            }
-        }
-    }
-
-    private void handleDispatch(JsonObject item) throws Exception {
-        String taskId = stringMember(item, "taskId");
-        String messageId = stringMember(item, "messageId");
-        String dispatchEventCode = stringMember(item, "eventCode");
-        log("received taskId=" + taskId + " messageId=" + messageId + " eventCode=" + dispatchEventCode);
-
-        JsonObject result;
-        try {
-            result = dispatchByEventCode(item);
-        } catch (Exception error) {
-            result = buildFailureResult(dispatchEventCode, error);
-        }
-
-        JsonObject submitBody = new JsonObject();
-        submitBody.addProperty("taskId", taskId);
-        submitBody.addProperty("messageId", messageId);
-        submitBody.addProperty("success", boolMember(result, "success"));
-        submitBody.addProperty("detail", stringMember(result, "detail"));
-        JsonElement errorCodeElement = result.get("errorCode");
-        if (errorCodeElement == null || errorCodeElement.isJsonNull()) {
-            submitBody.add("errorCode", null);
-        } else {
-            submitBody.addProperty("errorCode", errorCodeElement.getAsString());
-        }
-        submitBody.add("output", objectMember(result, "output"));
-        JsonObject response = post("/worker-api/v1/workers/" + encoded(workerId) + ":submit-result", submitBody);
-        log("submitted result: " + response.get("data"));
-    }
-
-    private JsonObject dispatchByEventCode(JsonObject item) throws Exception {
-        String dispatchEventCode = stringMember(item, "eventCode");
-        if ("crawler.fetch-page".equals(dispatchEventCode)) {
-            return handleCrawlerFetchPage(item);
-        }
-        throw new IllegalArgumentException("Unsupported eventCode: " + dispatchEventCode);
-    }
-
-    private JsonObject handleCrawlerFetchPage(JsonObject item) throws Exception {
-        String url = lookupDispatchUrl(item);
+    private WorkerResult handleCrawlerFetchPage(DispatchContext dispatch) {
+        String url = lookupDispatchUrl(dispatch);
         if (url == null || url.isBlank()) {
-            return buildValidationFailure(item, "url is required in TaskDispatchItem.input.url");
+            return WorkerResult.failure("INVALID_INPUT",
+                    "url is required in TaskDispatchItem.input.url",
+                    baseOutput(dispatch));
         }
 
         long startedAt = System.currentTimeMillis();
@@ -240,173 +140,74 @@ public final class PollingWorkerMain {
             if (error instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
-            return buildFetchFailure(item, url, startedAt, error);
+            Map<String, Object> output = fetchOutput(dispatch, url, startedAt);
+            return WorkerResult.failure("FETCH_ERROR",
+                    error.getMessage() != null ? error.getMessage() : error.getClass().getSimpleName(),
+                    output);
+        } catch (IllegalArgumentException error) {
+            return WorkerResult.failure("INVALID_INPUT", error.getMessage(), baseOutput(dispatch));
         }
 
-        JsonObject output = baseOutput(item);
-        output.addProperty("url", response.uri().toString());
-        output.addProperty("statusCode", response.statusCode());
-        output.addProperty("title", extractHtmlTitle(response.body()));
-        output.addProperty("fetchedAt", Instant.now().toString());
-        output.addProperty("elapsedMs", System.currentTimeMillis() - startedAt);
+        Map<String, Object> output = fetchOutput(dispatch, response.uri().toString(), startedAt);
+        output.put("statusCode", response.statusCode());
+        putIfNotNull(output, "title", extractHtmlTitle(response.body()));
 
-        JsonObject result = new JsonObject();
         boolean success = response.statusCode() >= 200 && response.statusCode() < 300;
-        result.addProperty("success", success);
-        result.addProperty("detail", success ? "crawler-success" : "crawler-http-" + response.statusCode());
         if (success) {
-            result.add("errorCode", null);
-        } else {
-            result.addProperty("errorCode", "HTTP_" + response.statusCode());
+            return WorkerResult.success("crawler-success", output);
         }
-        result.add("output", output);
-        return result;
+        return WorkerResult.failure("HTTP_" + response.statusCode(),
+                "crawler-http-" + response.statusCode(),
+                output);
     }
 
-    private JsonObject buildValidationFailure(JsonObject item, String detail) {
-        JsonObject result = new JsonObject();
-        result.addProperty("success", false);
-        result.addProperty("detail", detail);
-        result.addProperty("errorCode", "INVALID_INPUT");
-        result.add("output", baseOutput(item));
-        return result;
+    private String lookupDispatchUrl(DispatchContext dispatch) {
+        return dispatch.input().getString("url")
+                .or(() -> dispatch.sharedConfig().getString("url"))
+                .orElse(null);
     }
 
-    private JsonObject buildFetchFailure(JsonObject item, String url, long startedAt, Exception error) {
-        JsonObject output = baseOutput(item);
-        output.addProperty("url", url);
-        output.addProperty("fetchedAt", Instant.now().toString());
-        output.addProperty("elapsedMs", System.currentTimeMillis() - startedAt);
-
-        JsonObject result = new JsonObject();
-        result.addProperty("success", false);
-        result.addProperty("detail", error.getMessage() != null ? error.getMessage() : error.getClass().getSimpleName());
-        result.addProperty("errorCode", "FETCH_ERROR");
-        result.add("output", output);
-        return result;
-    }
-
-    private JsonObject buildFailureResult(String dispatchEventCode, Exception error) {
-        JsonObject output = new JsonObject();
-        output.addProperty("workerId", workerId);
-        output.addProperty("eventCode", dispatchEventCode);
-        output.add("workerProfile", workerProfile());
-
-        JsonObject result = new JsonObject();
-        result.addProperty("success", false);
-        result.addProperty("detail", error.getMessage() != null ? error.getMessage() : error.getClass().getSimpleName());
-        result.addProperty("errorCode", "WORKER_HANDLER_ERROR");
-        result.add("output", output);
-        return result;
-    }
-
-    private JsonObject baseOutput(JsonObject item) {
-        JsonObject output = new JsonObject();
-        output.addProperty("workerId", workerId);
-        output.addProperty("eventCode", stringMember(item, "eventCode"));
-        output.addProperty("integrationProbe", "cross-language-java-polling");
-        output.add("workerProfile", workerProfile());
+    private Map<String, Object> fetchOutput(DispatchContext dispatch, String url, long startedAt) {
+        Map<String, Object> output = baseOutput(dispatch);
+        output.put("url", url);
+        output.put("fetchedAt", Instant.now().toString());
+        output.put("elapsedMs", System.currentTimeMillis() - startedAt);
         return output;
     }
 
-    private JsonObject workerProfile() {
-        JsonObject workerProfile = new JsonObject();
-        workerProfile.addProperty("runtime", "java-polling-worker");
-        workerProfile.addProperty("language", "java");
-        workerProfile.addProperty("workerId", workerId);
+    private Map<String, Object> baseOutput(DispatchContext dispatch) {
+        Map<String, Object> output = new LinkedHashMap<>();
+        output.put("workerId", workerId);
+        output.put("eventCode", dispatch.eventCode());
+        output.put("integrationProbe", "cross-language-java-polling");
+        output.put("workerProfile", workerProfile());
+        return output;
+    }
+
+    private Map<String, Object> workerProfile() {
+        Map<String, Object> workerProfile = new LinkedHashMap<>();
+        workerProfile.put("runtime", "java-polling-worker");
+        workerProfile.put("language", "java");
+        workerProfile.put("workerId", workerId);
         return workerProfile;
     }
 
-    private JsonObject post(String path, JsonObject body) throws Exception {
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(baseUrl + path))
-                .timeout(Duration.ofSeconds(15))
-                .header("Content-Type", "application/json")
-                .header("X-Mass-Api-Key", workerKey)
-                .POST(HttpRequest.BodyPublishers.ofString(GSON.toJson(body), StandardCharsets.UTF_8))
-                .build();
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        String responseBody = response.body() != null ? response.body() : "";
-        JsonObject envelope = JsonParser.parseString(responseBody.isBlank() ? "{}" : responseBody).getAsJsonObject();
-        int code = envelope.has("code") && !envelope.get("code").isJsonNull()
-                ? envelope.get("code").getAsInt()
-                : Integer.MIN_VALUE;
-        if (response.statusCode() / 100 != 2 || code != 0) {
-            throw new IllegalStateException("HTTP " + response.statusCode() + " " + path + ": "
-                    + (envelope.has("msg") ? envelope.get("msg").getAsString() : "unknown error"));
-        }
-        return envelope;
-    }
-
-    private void safeShutdown(String reason) {
-        if (!shuttingDown.compareAndSet(false, true)) {
+    private void safeShutdown() {
+        if (!shutdownRequested.compareAndSet(false, true)) {
             return;
         }
-        log("shutting down: " + reason);
-        try {
-            post("/worker-api/v1/workers/" + encoded(workerId) + ":offline", jsonObject("reason", reason));
-        } catch (Exception error) {
-            log("offline failed: " + error.getMessage());
+        log("shutting down");
+        PollingWorkerSession current = session;
+        if (current != null) {
+            current.close();
         }
+        shutdownLatch.countDown();
     }
 
-    private String lookupDispatchUrl(JsonObject item) {
-        JsonObject input = optionalObjectMember(item, "input");
-        if (input != null) {
-            String candidate = optionalStringMember(input, "url");
-            if (candidate != null && !candidate.isBlank()) {
-                return candidate;
-            }
+    private static void putIfNotNull(Map<String, Object> output, String key, Object value) {
+        if (value != null) {
+            output.put(key, value);
         }
-        JsonObject sharedConfig = optionalObjectMember(item, "sharedConfig");
-        if (sharedConfig != null) {
-            return optionalStringMember(sharedConfig, "url");
-        }
-        return null;
-    }
-
-    private static JsonObject jsonObject(String key, String value) {
-        JsonObject object = new JsonObject();
-        object.addProperty(key, value);
-        return object;
-    }
-
-    private static JsonObject objectMember(JsonObject object, String fieldName) {
-        JsonObject nested = optionalObjectMember(object, fieldName);
-        return nested != null ? nested : new JsonObject();
-    }
-
-    private static JsonObject optionalObjectMember(JsonObject object, String fieldName) {
-        if (object == null || !object.has(fieldName) || object.get(fieldName).isJsonNull()) {
-            return null;
-        }
-        JsonElement value = object.get(fieldName);
-        return value.isJsonObject() ? value.getAsJsonObject() : null;
-    }
-
-    private static JsonArray arrayMember(JsonObject object, String fieldName) {
-        if (object == null || !object.has(fieldName) || object.get(fieldName).isJsonNull()) {
-            return new JsonArray();
-        }
-        JsonElement value = object.get(fieldName);
-        return value.isJsonArray() ? value.getAsJsonArray() : new JsonArray();
-    }
-
-    private static String stringMember(JsonObject object, String fieldName) {
-        String value = optionalStringMember(object, fieldName);
-        return value != null ? value : "";
-    }
-
-    private static String optionalStringMember(JsonObject object, String fieldName) {
-        if (object == null || !object.has(fieldName) || object.get(fieldName).isJsonNull()) {
-            return null;
-        }
-        return object.get(fieldName).getAsString();
-    }
-
-    private static boolean boolMember(JsonObject object, String fieldName) {
-        return object != null && object.has(fieldName) && !object.get(fieldName).isJsonNull()
-                && object.get(fieldName).getAsBoolean();
     }
 
     private static String extractHtmlTitle(String html) {
@@ -420,15 +221,6 @@ public final class PollingWorkerMain {
     private static String env(String name, String fallback) {
         String value = System.getenv(name);
         return value == null || value.isBlank() ? fallback : value.trim();
-    }
-
-    private static String optionalEnv(String name, String fallback) {
-        String value = System.getenv(name);
-        if (value == null) {
-            return fallback;
-        }
-        String normalized = value.trim();
-        return normalized.isEmpty() ? null : normalized;
     }
 
     private static String requiredEnv(String name, String fallback) {
@@ -455,15 +247,6 @@ public final class PollingWorkerMain {
         return value == null || value.isBlank()
                 ? new String[0]
                 : value.trim().split("\\s*,\\s*");
-    }
-
-    private static String encoded(String value) {
-        return URLEncoder.encode(Objects.requireNonNull(value, "value"), StandardCharsets.UTF_8);
-    }
-
-    private static String normalizeBaseUrl(String value) {
-        Objects.requireNonNull(value, "value");
-        return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
     }
 
     private void log(String message) {

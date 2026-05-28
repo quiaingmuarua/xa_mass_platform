@@ -15,6 +15,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -320,6 +321,19 @@ class PollingWorkerSessionTest {
         }
 
         assertInstanceOf(MassPayloadException.class, handlerFailure.get().cause());
+    }
+
+    @Test
+    void workerResultAllowsNullOutputValuesForJsonNullFields() {
+        Map<String, Object> output = new LinkedHashMap<>();
+        output.put("title", null);
+        output.put("statusCode", 204);
+
+        WorkerResult result = WorkerResult.success(output);
+
+        assertTrue(result.output().containsKey("title"));
+        assertEquals(null, result.output().get("title"));
+        assertEquals(204, result.output().get("statusCode"));
     }
 
     private MassPlatform platform() {

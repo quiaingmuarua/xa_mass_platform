@@ -12,15 +12,14 @@
     <properties>
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <gson.version>2.10.1</gson.version>
         <shade.finalName>worker-polling-java-sample</shade.finalName>
     </properties>
 
     <dependencies>
         <dependency>
-            <groupId>com.google.code.gson</groupId>
-            <artifactId>gson</artifactId>
-            <version>${gson.version}</version>
+            <groupId>com.xa.mass</groupId>
+            <artifactId>xa-mass-java-sdk</artifactId>
+            <version>${project.version}</version>
         </dependency>
     </dependencies>
 

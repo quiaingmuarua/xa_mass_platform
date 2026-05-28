@@ -160,7 +160,7 @@ public final class ExternalJavaWorkerProcess implements AutoCloseable {
             if (pollingSampleBuilt) {
                 return;
             }
-            buildSample("samples/worker-polling/java/pom.xml", "Java polling");
+            buildReactorModule("samples/worker-polling/java", "Java polling");
             pollingSampleBuilt = true;
         }
     }
@@ -199,6 +199,35 @@ public final class ExternalJavaWorkerProcess implements AutoCloseable {
                 "-q",
                 "-f",
                 pomPath,
+                "-DskipTests",
+                "package");
+        processBuilder.directory(repoRoot.toFile());
+        processBuilder.redirectErrorStream(true);
+        Process buildProcess = processBuilder.start();
+        StringBuilder output = new StringBuilder();
+        Thread outputPump = new Thread(() -> pumpOutput(buildProcess, output),
+                "external-java-worker-build-output");
+        outputPump.setDaemon(true);
+        outputPump.start();
+        if (!buildProcess.waitFor(DEFAULT_SHUTDOWN_TIMEOUT.toMillis() * 6, TimeUnit.MILLISECONDS)) {
+            buildProcess.destroyForcibly();
+            throw new IllegalStateException("Timed out while building " + label + " sample");
+        }
+        outputPump.join(DEFAULT_SHUTDOWN_TIMEOUT.toMillis());
+        if (buildProcess.exitValue() != 0) {
+            throw new IllegalStateException("Failed to build " + label + " sample. Output:\n" + output);
+        }
+    }
+
+    private static void buildReactorModule(String modulePath, String label) throws Exception {
+        Path repoRoot = resolveRepoRoot();
+        String wrapper = resolveMavenCommand(repoRoot);
+        ProcessBuilder processBuilder = new ProcessBuilder(
+                wrapper,
+                "-q",
+                "-pl",
+                modulePath,
+                "-am",
                 "-DskipTests",
                 "package");
         processBuilder.directory(repoRoot.toFile());

@@ -1,5 +1,7 @@
 package com.xa.mass.client.worker.session;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 public record WorkerResult(
@@ -9,7 +11,9 @@ public record WorkerResult(
         Map<String, Object> output
 ) {
     public WorkerResult {
-        output = output == null || output.isEmpty() ? Map.of() : Map.copyOf(output);
+        output = output == null || output.isEmpty()
+                ? Map.of()
+                : Collections.unmodifiableMap(new LinkedHashMap<>(output));
     }
 
     public static WorkerResult success(Map<String, Object> output) {

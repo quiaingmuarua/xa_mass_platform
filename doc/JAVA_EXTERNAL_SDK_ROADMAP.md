@@ -9,6 +9,10 @@ JSDK-3 worker topology and direct polling worker client are implemented in the
 same module.
 JSDK-4 managed polling worker session mainline is implemented with SDK
 fake-server tests and a real server black-box polling proof.
+JSDK-5 Java polling sample convergence is implemented for
+`samples/worker-polling/java`: it now builds through the root reactor and uses
+`xa-mass-java-sdk` managed polling sessions. Broad `samples/` path movement is
+deferred.
 
 This roadmap defines a new `xa-mass-java-sdk` artifact for repo-external Java
 clients. It is intentionally separate from the current `xa-mass-sdk`, and it
@@ -749,6 +753,11 @@ Scope:
   follow-up slice:
   - `samples/...` -> `integrations/samples/...`
   - update README commands, launch scripts, and black-box test process paths.
+- current decision: do not move `samples/` in this slice. Keep the phase to
+  Java polling sample SDK convergence plus executable proof. Move
+  `samples/...` to `integrations/samples/...` only in a later path-convergence
+  slice because it affects multiple language samples, launcher paths, and
+  black-box process helpers.
 
 Out of scope:
 
@@ -761,6 +770,8 @@ Acceptance:
 
 - examples are runnable against `xa-mass-server`.
 - Java sample output includes worker identity and eventCode evidence.
+- Java polling sample uses `xa-mass-java-sdk` rather than raw HTTP polling
+  boilerplate.
 - proof demonstrates:
   task shell -> item append -> polling worker dispatch -> result submit ->
   result read.

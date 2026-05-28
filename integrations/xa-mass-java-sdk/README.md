@@ -36,6 +36,11 @@ Not implemented yet:
 
 Those are tracked in [../../doc/JAVA_EXTERNAL_SDK_ROADMAP.md](../../doc/JAVA_EXTERNAL_SDK_ROADMAP.md).
 
+Runnable sample:
+
+- [../../samples/worker-polling/java](../../samples/worker-polling/java)
+  uses this SDK's managed `PollingWorkerSession`.
+
 ## Example
 
 ```java

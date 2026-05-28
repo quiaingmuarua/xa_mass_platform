@@ -46,6 +46,13 @@ Root reactor entry:
 <module>integrations/xa-mass-java-sdk</module>
 ```
 
+JSDK-5 also adds the Java polling sample to the root reactor so it can consume
+the local SDK artifact without publishing it:
+
+```xml
+<module>samples/worker-polling/java</module>
+```
+
 `integrations/` means external integration ownership: public clients,
 official worker references, runnable sample workers, and black-box integration
 proof. It does not mean every module inside is dependency-pure. Later
