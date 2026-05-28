@@ -1,6 +1,6 @@
 # Java External SDK Roadmap
 
-Status: active. JSDK-0 inventory is complete in
+Status: current mainline complete. JSDK-0 inventory is complete in
 [`JAVA_EXTERNAL_SDK_INVENTORY.md`](./JAVA_EXTERNAL_SDK_INVENTORY.md).
 JSDK-1 module skeleton and HTTP core are implemented under
 [`../integrations/xa-mass-java-sdk`](../integrations/xa-mass-java-sdk).
@@ -16,7 +16,8 @@ deferred.
 JSDK-6 realtime decision is recorded in
 [`JAVA_EXTERNAL_SDK_REALTIME_DECISION.md`](./JAVA_EXTERNAL_SDK_REALTIME_DECISION.md):
 do not add public realtime Java sessions until a dedicated protocol contract
-exists.
+exists. Further work should start a narrower follow-up roadmap for realtime
+protocol design or broad sample path convergence.
 
 This roadmap defines a new `xa-mass-java-sdk` artifact for repo-external Java
 clients. It is intentionally separate from the current `xa-mass-sdk`, and it

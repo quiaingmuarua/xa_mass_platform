@@ -1,6 +1,6 @@
 # xa-mass-java-sdk
 
-Status: JSDK-4 managed polling worker session.
+Status: JSDK-5 current external Java SDK mainline.
 
 `xa-mass-java-sdk` is the pure external Java client for a running
 `xa-mass-server`.
@@ -32,7 +32,8 @@ Current implemented surface:
 
 Not implemented yet:
 
-- realtime worker client
+- realtime worker client; deferred until a public realtime protocol contract
+  exists
 
 Those are tracked in [../../doc/JAVA_EXTERNAL_SDK_ROADMAP.md](../../doc/JAVA_EXTERNAL_SDK_ROADMAP.md).
 
