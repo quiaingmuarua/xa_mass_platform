@@ -8,14 +8,8 @@ boundary convergence work. The current code already stores rule definitions in
 `platform_infra/mass-storage-*`, but `xa-mass-engine` still exposes a broad
 `RuleManager` that looks like a rule CRUD owner.
 
-This roadmap also records the adjacent engine dependency convergence needed to
-keep the rule cleanup honest: production engine should not retain storage
-projection residue or in-memory runtime implementations as long-term module
-dependencies.
-
 The target is not to remove rule-based matching from engine. The target is to
-make the owner split explicit and eliminate compatibility surfaces that keep
-engine coupled to storage-shaped read models:
+make the owner split explicit:
 
 ```text
 control-plane rule definition
@@ -35,6 +29,11 @@ engine matching
 
 Engine may consume rules. Engine must not become the rule catalog CRUD owner.
 
+Compatibility task projection cleanup is related engine dependency work, but it
+has different blast radius and should not block this rule boundary track. Track
+that work in
+[`PROJECTION_BOUNDARY_CONVERGENCE_ROADMAP.md`](PROJECTION_BOUNDARY_CONVERGENCE_ROADMAP.md).
+
 ## Current Code Observations
 
 - `RuleDefinition`, `RuleType`, and `RuleEvaluator` live under
@@ -49,6 +48,13 @@ Engine may consume rules. Engine must not become the rule catalog CRUD owner.
   `QLExpressRuleEvaluator`.
 - `JdbcRuleStorage` persists rule definitions in `xa_rule` and keeps an
   in-process evaluator map.
+- The concrete QLExpress evaluator implementations currently live in storage
+  implementation modules:
+  - `mass-storage-memory`: `QLExpressRuleEvaluator`
+  - `mass-storage-jdbc`: `JdbcQlExpressRuleEvaluator`
+- The `qlexpress4` third-party dependency is currently declared by
+  `xa-mass-base`. That is an ownership leak: base models should not carry a
+  concrete rule engine dependency.
 - `xa-mass-engine.rules.RuleManager` is currently both:
   - a rule definition CRUD facade (`addDefaultRule`, `updateRule`,
     `deleteRule`, `clear`, etc.)
@@ -64,15 +70,16 @@ Engine may consume rules. Engine must not become the rule catalog CRUD owner.
 - `RuleApiController` is read-only today (`GET /api/v1/runtime/rules`,
   `GET /api/v1/runtime/rules/meta`), but the path name says `runtime` even
   though rule definitions are control-plane storage truth.
+- Rule route naming is wired in more than the controller:
+  - `ApiRouteAuthorizationCatalog`
+  - `FrontendConsoleController`
+  - `FrontendConsoleRoutingService`
+  - related controller and routing tests
 - `MassSdkApplication.replaceDefaultRules(...)` and server/test bootstrap paths
   still use the broad rule operations surface for scenario setup.
-- `TaskCompatibilityProjectionStore` is an engine-internal compatibility owner
-  over `TaskDetailStore` message/attempt projections.
-- `TaskWorkProjectionState` still converts engine residue enums to
-  `mass-storage-api` projection enums.
-- `TaskProjectionStateAuditor` performs explicit full-scan projection residue
-  audits. It is intentionally separate from runtime validation, but it still
-  keeps the storage projection model visible in engine.
+- `xa-mass-engine` has a production dependency on `mass-runtime-memory` only
+  because `TaskManager` convenience constructors instantiate
+  `InMemoryTaskResultRuntime` directly.
 
 ## Boundary Decision
 
@@ -81,6 +88,9 @@ Rule definitions are control-plane truth.
 Rule evaluation is an engine matching concern.
 
 Evaluator registration is runtime assembly, not durable storage truth.
+
+QLExpress is a concrete evaluator implementation. It should not live in
+`xa-mass-base` and should not be owned by storage implementations.
 
 Implications:
 
@@ -92,9 +102,8 @@ Implications:
 - default/sample rule seeding is bootstrap, not engine kernel behavior
 - route compatibility is not a goal in this internal convergence roadmap; move
   in-repo callers to the corrected boundary and remove the old path
-- compatibility projection is not a durable engine boundary; it should converge
-  to either runtime truth, trace/audit evidence, or external read-model
-  assembly outside engine
+- engine should not depend on in-memory runtime implementations for production
+  code defaults
 
 ## Target Shape
 
@@ -107,7 +116,8 @@ RuleDefinitionStore
 
 RuleEvaluatorRegistry
   -> register/lookup evaluator implementations
-  -> module owner: xa-mass-engine rule runtime assembly
+  -> module owner: xa-mass-engine rule runtime assembly, or a dedicated
+     rule-runtime module if implementation coupling grows
 
 MatchingRuleSetProvider
   -> read active worker-matching rules
@@ -117,10 +127,14 @@ MatchingRuleSetProvider
 MatchingRuleEvaluator
   -> evaluate RuleDefinition against WorkerMatchContext
   -> module owner: xa-mass-engine matching/rules boundary
+
+QLExpress evaluator implementation
+  -> module owner: engine rule runtime assembly or dedicated evaluator module
+  -> not xa-mass-base
+  -> not storage implementation modules
 ```
 
-Names may change during implementation, but the four roles should stay
-separate.
+Names may change during implementation, but the roles should stay separate.
 
 Do not introduce a generic plugin framework. The default evaluator may remain
 QLExpress. The important change is owner separation, not evaluator
@@ -136,15 +150,14 @@ Dependencies that remain justified:
 - `xa-mass-base`: task, contract, result, assignment, and shared model truth.
 - `mass-runtime-api`: task work runtime, result runtime, lease/counter records,
   and runtime contracts consumed by the engine kernel.
-- `mass-storage-api`: storage contracts that the engine currently owns or
-  currently consumes:
+- `mass-storage-api`: storage contracts that the engine currently consumes:
   - `TaskStorage` for stable task shell persistence
   - rule definition model/provider types until the rule boundary is narrowed
 - `xa-mass-worker-runtime`: worker registration, lifecycle, candidate,
   admission, and report surfaces used by assignment.
 - `mass-trace-sink`: execution trace emission.
 
-Dependencies that should converge:
+Dependencies that should converge in this roadmap:
 
 - `mass-runtime-memory` is a production-scope residual dependency. Current main
   code only needs it because `TaskManager` convenience constructors instantiate
@@ -156,13 +169,10 @@ Dependencies that should converge:
   rule-specific storage access should shrink to a narrow
   `MatchingRuleSetProvider` / `RuleDefinitionStore` boundary. Matching should
   not import `RuleStorage` directly.
-- `TaskDetailStore` and projection enums/records are compatibility residues,
-  not a desired long-term engine dependency. Runtime task validation,
-  scheduling, result convergence, and terminal policy should not need message
-  or attempt projection reads. Projection writes should either be removed from
-  engine or moved behind an external read-model/console assembly owner.
 - `mass-storage-memory` is already test-scope and should stay out of engine
   production code.
+- `qlexpress4` should move from `xa-mass-base` to the module that owns the
+  concrete QLExpress evaluator.
 
 Storage dependency rule for engine:
 
@@ -170,7 +180,6 @@ Storage dependency rule for engine:
 engine may depend on storage contracts for current kernel truth
 engine must not depend on storage implementations
 engine matching must not depend on CRUD-shaped storage or manager APIs
-engine runtime truth must not depend on storage projection read models
 ```
 
 ## Non-Goals
@@ -186,8 +195,8 @@ engine runtime truth must not depend on storage projection read models
 6. No compatibility aliases for old broad manager methods after in-repo callers
    move.
 7. No storage implementation dependency from engine production code.
-8. No long-term preservation of message/attempt compatibility projection as an
-   engine-owned read model.
+8. No compatibility projection cleanup in this roadmap; that work is tracked
+   separately because it changes read-model/result projection behavior.
 
 ## Slice RBC-0: Inventory Current Rule Callers
 
@@ -202,28 +211,20 @@ Scope:
    - `RuleOperations`
    - `/api/v1/runtime/rules`
 2. Record method-level usage for each caller, not only file-level usage.
-3. Inventory storage projection residue callers:
-   - `TaskCompatibilityProjectionStore`
-   - `TaskWorkProjectionState`
-   - `TaskProjectionStateAuditor`
-   - tests that assert through `TaskDetailStore` message/attempt projections
-4. Classify each caller as one of:
+3. Classify each caller as one of:
    - matching-time evaluation
    - admin/control-plane definition read
    - bootstrap/sample fixture setup
    - evaluator assembly
-   - compatibility projection read/write
+   - route/auth/console wiring
    - test-only convenience
-5. Identify callers that mutate rule definitions through engine package types.
-6. Identify whether any caller depends on evaluator registration being stored
+4. Identify callers that mutate rule definitions through engine package types.
+5. Identify whether any caller depends on evaluator registration being stored
    inside `RuleStorage`.
+6. Record current QLExpress implementation and dependency locations.
 7. Record engine production dependencies that exist only for default
    construction, especially `mass-runtime-memory`.
-8. Record whether each projection read/write is:
-   - required for runtime correctness
-   - required only for current console/read-model compatibility
-   - test-only residue
-9. Produce a small inventory doc beside this roadmap.
+8. Produce a small inventory doc beside this roadmap.
 
 Acceptance:
 
@@ -233,11 +234,11 @@ Acceptance:
    narrowed.
 4. The inventory names which engine dependencies are kernel contracts and which
    are assembly/default-constructor residues.
-5. The inventory names which projection call sites can be removed, moved to
-   read-model assembly, or rewritten against runtime/trace truth.
+5. The inventory names every in-repo route/auth/console caller that must move
+   if `/api/v1/runtime/rules` is renamed.
 6. No behavior changes in this slice.
 
-## Slice RBC-1: Define Narrow Rule Contracts
+## Slice RBC-1: Define Rule Runtime Contracts And Owners
 
 Goal: make the contract split explicit without moving behavior yet.
 
@@ -251,12 +252,17 @@ Scope:
 2. Define the control-plane rule-definition surface separately from the
    matching surface.
 3. Define evaluator registry ownership separately from durable rule storage.
-4. Declare the module owner for each new contract:
+4. Decide the concrete QLExpress evaluator module owner:
+   - engine rule runtime assembly, or
+   - a dedicated evaluator/rule-runtime module if the engine module would
+     otherwise become too implementation-heavy
+5. Declare the module owner for each new contract:
    - definition persistence contract
    - evaluator registry
    - matching rule-set provider
    - matching evaluator
-5. Update docs to say rule definitions are control-plane storage truth and
+   - QLExpress evaluator implementation
+6. Update docs to say rule definitions are control-plane storage truth and
    matching consumes a snapshot/provider, not CRUD.
 
 Acceptance:
@@ -264,54 +270,42 @@ Acceptance:
 1. Engine matching can be described without CRUD verbs.
 2. Rule definition storage can be described without evaluator lifecycle verbs.
 3. Every new contract has a declared module owner.
-4. No new generic plugin framework is introduced.
+4. The QLExpress dependency owner is explicit before any file move.
+5. No new generic plugin framework is introduced.
 
-## Slice RBC-2: Split Evaluator Registry From Rule Storage
+## Slice RBC-2: Extract Evaluator Registry And Matching Contracts
 
-Goal: stop treating evaluator lifecycle as durable storage behavior before the
-matching dependency is narrowed.
+Goal: stop treating evaluator lifecycle as durable storage behavior and give
+matching a narrow dependency before removing the broad manager.
 
 Scope:
 
-1. Introduce a concrete evaluator registry contract or owner.
+1. Introduce `RuleEvaluatorRegistry` or equivalent.
 2. Move evaluator registration and lookup out of `RuleStorage`.
 3. Keep `RuleStorage` focused on rule definition persistence.
-4. Let in-memory and JDBC rule storage share the same evaluator registry where
-   assembly requires it.
-5. Update storage tests that currently assert evaluator metadata through
+4. Introduce `MatchingRuleSetProvider` or equivalent for active/default worker
+   matching rules.
+5. Introduce `MatchingRuleEvaluator` or equivalent for evaluating one rule
+   against `WorkerMatchContext`.
+6. Move or share QLExpress evaluator implementation according to the RBC-1
+   owner decision.
+7. Move the `qlexpress4` Maven dependency out of `xa-mass-base` and into the
+   module that owns the concrete evaluator.
+8. Update storage tests that currently assert evaluator metadata through
    `RuleStorage`.
 
 Acceptance:
 
 1. `RuleStorage` no longer exposes evaluator registration methods.
 2. In-memory and JDBC storage remain definition stores.
-3. Rule evaluation still supports the current QLExpress evaluator.
-4. Existing tests for registered evaluator metadata target the evaluator
-   registry, not storage.
-
-## Slice RBC-3: Introduce Matching Rule Contracts
-
-Goal: give matching a narrow dependency before removing the broad manager.
-
-Scope:
-
-1. Introduce `MatchingRuleSetProvider` or equivalent for active/default worker
-   matching rules.
-2. Introduce `MatchingRuleEvaluator` or equivalent for evaluating one rule
-   against `WorkerMatchContext`.
-3. Keep the implementation backed by existing rule definitions and evaluator
-   registry.
-4. Keep rule evaluation diagnostics equivalent.
-5. Keep default rule evaluation behavior equivalent.
-
-Acceptance:
-
-1. The matching contract exposes no CRUD verbs.
-2. The matching contract does not expose evaluator registration.
-3. Existing matching tests still prove default rule evaluation and failed-rule
+3. The matching contract exposes no CRUD verbs.
+4. The matching contract does not expose evaluator registration.
+5. Rule evaluation still supports the current QLExpress evaluator.
+6. `xa-mass-base` no longer declares `qlexpress4`.
+7. Existing matching tests still prove default rule evaluation and failed-rule
    diagnostics.
 
-## Slice RBC-4: Narrow Engine Rule Usage
+## Slice RBC-3: Narrow Engine Rule Usage
 
 Goal: remove rule CRUD authority from engine matching dependencies.
 
@@ -339,7 +333,7 @@ Acceptance:
    diagnostics.
 4. No compatibility aliases remain for removed manager methods.
 
-## Slice RBC-5: Move Bootstrap And Admin Writes Out Of Engine
+## Slice RBC-4: Move Bootstrap And Admin Writes Out Of Engine
 
 Goal: rule writes enter through storage/admin/bootstrap surfaces, not engine.
 
@@ -353,56 +347,71 @@ Scope:
    the explicit bootstrap/admin rule-definition path.
 4. Keep sample/test bootstrap deterministic, but make it clear that bootstrap
    is not engine kernel behavior.
-5. Keep or rename `RuleApiController` read APIs based on current console needs;
-   do not preserve `/api/v1/runtime/rules` as a compatibility requirement.
-6. Put any future rule write endpoint under an explicit admin/control-plane
-   path, not `/runtime/rules`.
 
 Acceptance:
 
 1. No production bootstrap path needs engine package rule CRUD methods.
-2. `RuleApiController` is either read-only or explicitly admin/control-plane
-   named.
-3. `doc/INTERNAL_API_REFERENCE.md` does not describe rule definitions as
+2. `doc/INTERNAL_API_REFERENCE.md` does not describe rule definitions as
    runtime truth.
-4. In-repo callers use the corrected route or bootstrap surface; no old-path
+3. In-repo bootstrap callers use the corrected setup surface; no old manager
    compatibility layer remains.
 
-## Slice RBC-6: Converge Compatibility Projection Residue
+## Slice RBC-5: Rename Rule API Route And Console Wiring
 
-Goal: remove storage projection read-model coupling from engine runtime truth.
+Goal: rule read/write surfaces are named as admin/control-plane surfaces, not
+runtime surfaces.
 
 Scope:
 
-1. Remove projection reads from runtime validation and scheduling-sensitive
-   paths. Runtime validation should use `TaskWorkRuntime`, `TaskResultRuntime`,
-   task shell state, and trace/audit evidence, not `TaskDetailStore`
-   message/attempt projections.
-2. Delete `TaskProjectionStateAuditor` if its only remaining value is scanning
-   compatibility projection residue. If an explicit offline audit is still
-   useful, move it outside the engine kernel boundary.
-3. Remove or move `TaskCompatibilityProjectionStore` writes. If the console
-   still needs a message/attempt read model, assemble that read model outside
-   engine from runtime/trace/control-plane evidence.
-4. Remove `TaskWorkProjectionState` conversions to storage projection enums
-   once no engine runtime path writes storage projection rows.
-5. Update tests that currently assert scheduling/result correctness through
-   `TaskDetailStore` projections to assert through runtime state, result
-   records, trace/audit evidence, or external read-model tests.
-6. Keep any remaining projection code clearly marked as external read-model
-   assembly, not engine kernel behavior.
+1. Rename or remove `RuleApiController`'s `/api/v1/runtime/rules` route.
+2. Update `ApiRouteAuthorizationCatalog` for the new rule route.
+3. Update frontend console route aliases and resource routes:
+   - `FrontendConsoleController`
+   - `FrontendConsoleRoutingService`
+   - `/status/rules`
+   - `/resources/rules`
+4. Update controller, authorization, routing, and console integration tests.
+5. Put any future rule write endpoint under an explicit admin/control-plane
+   path, not `/runtime/rules`.
 
 Acceptance:
 
-1. Engine runtime correctness tests do not require `TaskDetailStore`
-   message/attempt projection reads.
-2. Engine production code no longer imports
-   `com.xa.mass.storage.api.projection.*`.
-3. Any remaining `TaskDetailStore` dependency is justified by task shell/detail
-   control-plane storage, not message/attempt runtime projection.
-4. Scan-heavy projection audit is removed from default engine diagnostics.
-5. Console/read-model coverage, if still needed, lives outside engine kernel
-   tests.
+1. No in-repo caller depends on `/api/v1/runtime/rules`.
+2. Rule read APIs are either removed or explicitly control-plane/admin named.
+3. Route authorization covers the new route.
+4. Console redirects and resource routes remain coherent after the rename.
+5. No compatibility alias remains for the old runtime rule path.
+
+## Slice RBC-6: Remove Engine Runtime-Memory Production Dependency
+
+Goal: remove in-memory runtime implementation ownership from engine production
+code.
+
+Scope:
+
+1. Remove `TaskManager` convenience constructors that instantiate
+   `InMemoryTaskResultRuntime`.
+2. Require `TaskResultRuntime` injection at the engine constructor boundary.
+3. Move in-memory default assembly to server/SDK/test composition:
+   - `xa-mass-server` can keep constructing `InMemoryTaskResultRuntime` for
+     memory profile assembly.
+   - `xa-mass-sdk` can keep defaulting `EngineConfig.taskResultRuntime` for
+     embedded assembly.
+   - engine tests can construct in-memory runtime directly as test fixtures.
+4. Change `xa-mass-engine` `mass-runtime-memory` dependency to test scope or
+   remove it if no engine tests need it directly.
+5. Update callers to use the explicit constructor or assembly defaults.
+
+Acceptance:
+
+1. `xa-mass-engine` main sources do not reference
+   `com.xa.mass.runtime.memory`.
+2. `xa-mass-engine` production dependency tree does not include
+   `mass-runtime-memory` as a direct production dependency.
+3. Server and SDK embedded assembly still have an in-memory task result runtime
+   default where appropriate.
+4. Engine tests that need in-memory runtime use it as a test fixture, not as an
+   engine production default.
 
 ## Slice RBC-7: Guard And Proof
 
@@ -416,13 +425,12 @@ Scope:
      dependency
    - future rule write endpoints must not live under `/runtime/rules`
    - engine production code must not depend on storage implementations
-   - engine production code must not import storage projection enums/records
-     after RBC-6
+   - engine production code must not import `com.xa.mass.runtime.memory`
+   - `xa-mass-base` must not depend on QLExpress
 2. Add focused proof that default rules still affect worker matching.
 3. Add focused proof that rule definition persistence still works through
    memory and JDBC storage.
-4. Add dependency proof for `xa-mass-engine` production scope after the
-   `mass-runtime-memory` constructor residue is removed.
+4. Add dependency proof for `xa-mass-engine` production scope.
 
 Acceptance:
 
@@ -430,12 +438,11 @@ Acceptance:
 2. Guard fails if rule definition writes are added under runtime API routes.
 3. Guard fails if engine production code imports storage implementation
    packages.
-4. Guard fails if engine runtime correctness depends on storage projection
-   packages after projection convergence.
-5. Memory and JDBC rule definition tests pass.
-6. Existing scheduling/rule diagnostics remain behaviorally equivalent.
-7. `xa-mass-engine` production dependency review documents whether
-   `mass-runtime-memory` is gone or still intentionally pending.
+4. Guard fails if engine production code imports runtime memory
+   implementation packages.
+5. Guard fails if `xa-mass-base` carries QLExpress after evaluator extraction.
+6. Memory and JDBC rule definition tests pass.
+7. Existing scheduling/rule diagnostics remain behaviorally equivalent.
 
 ## Implementation Order
 
@@ -446,8 +453,8 @@ RBC-0 -> RBC-1 -> RBC-2 -> RBC-3 -> RBC-4 -> RBC-5 -> RBC-6 -> RBC-7
 ```
 
 Do not start by moving files. First classify call sites and define the contract
-split. The highest-risk parts are evaluator lifecycle ownership and engine
-dependency direction, including projection residue removal, not Java package
+split. The highest-risk parts are evaluator lifecycle ownership, route
+renaming blast radius, and engine dependency direction, not Java package
 movement.
 
 ## Verification Candidates
@@ -463,13 +470,14 @@ mvn -pl platform_infra/mass-storage-memory,platform_infra/mass-storage-jdbc -am 
 ```
 
 ```powershell
-mvn -pl xa-mass-server -am '-Dtest=RuleApiControllerTest' '-Dsurefire.failIfNoSpecifiedTests=false' test
+mvn -pl xa-mass-server -am '-Dtest=RuleApiControllerTest,FrontendConsoleControllerTest,ControlConsoleRoutingIntegrationTest' '-Dsurefire.failIfNoSpecifiedTests=false' test
 ```
 
-Dependency review command for the engine convergence slice:
+Dependency review commands for the engine convergence slices:
 
 ```powershell
 mvn -pl xa-mass-engine dependency:tree
+mvn -pl xa-mass-base dependency:tree
 ```
 
 The exact test list should be corrected in RBC-0 after the current rule test
