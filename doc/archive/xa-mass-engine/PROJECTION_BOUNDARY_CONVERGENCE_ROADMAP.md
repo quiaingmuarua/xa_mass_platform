@@ -1,17 +1,19 @@
 # Projection Boundary Convergence Roadmap
 
-Status: active direction document. PBC-0 inventory has landed and selected
-server/read-model-side assembly for PBC-3. PBC-1 is covered by existing
-mainline proof guards. PBC-2 has landed. PBC-3 server review
-contract/controller/helper migration has landed, and the server read-model
-writer is now wired from append plus final runtime-result evidence, including
-worker, batch, attempt, and timing fields. PBC-4 has removed engine
-compatibility projection writes and split engine-native lifecycle enums out of
-the old projection-named state holder. PBC-5 production ownership guards now
-prevent projection-write dependencies or unclassified storage imports from
-returning to engine mainline code.
+Status: **completed**. All slices (PBC-0 through PBC-5) have landed. Archived
+to `doc/archive/xa-mass-engine/`.
 
-This is the current `xa-mass-engine` convergence roadmap.
+PBC-0 inventory landed and selected server/read-model-side assembly for PBC-3.
+PBC-1 is covered by existing mainline proof guards. PBC-2 landed. PBC-3 server
+review contract/controller/helper migration landed, and the server read-model
+writer is now wired from append plus final runtime-result evidence, including
+worker, batch, attempt, and timing fields. PBC-4 removed engine compatibility
+projection writes and split engine-native lifecycle enums out of the old
+projection-named state holder. PBC-5 production ownership guards now prevent
+projection-write dependencies or unclassified storage imports from returning to
+engine mainline code.
+
+This was the `xa-mass-engine` projection boundary convergence roadmap.
 
 PBC-0 inventory record:
 [`PROJECTION_BOUNDARY_CONVERGENCE_INVENTORY.md`](PROJECTION_BOUNDARY_CONVERGENCE_INVENTORY.md).
@@ -27,7 +29,7 @@ server/read-model owner before PBC-4 removes engine compatibility writes.
 This roadmap removes compatibility task message/attempt projection from the
 engine kernel boundary. It is intentionally separate from the completed
 rule-boundary convergence record in
-[`../../../doc/archive/xa-mass-engine/RULE_BOUNDARY_CONVERGENCE_ROADMAP.md`](../../../doc/archive/xa-mass-engine/RULE_BOUNDARY_CONVERGENCE_ROADMAP.md)
+[`RULE_BOUNDARY_CONVERGENCE_ROADMAP.md`](RULE_BOUNDARY_CONVERGENCE_ROADMAP.md)
 because projection cleanup affects runtime result convergence, console review
 read models, tests, and storage read-model assembly.
 
@@ -143,6 +145,9 @@ Implications:
 
 ## Slice PBC-0: Inventory Projection Truth Usage
 
+Status: landed. Inventory produced in
+`PROJECTION_BOUNDARY_CONVERGENCE_INVENTORY.md`. Path A selected for PBC-3.
+
 Goal: identify every projection read/write and classify whether it is runtime
 truth, console read model, test residue, or an unrelated engine dependency.
 
@@ -217,6 +222,9 @@ Acceptance:
 
 ## Slice PBC-1: Replace Runtime Assertions With Runtime Truth
 
+Status: landed. Covered by existing mainline proof guards; engine runtime
+correctness tests no longer require projection reads.
+
 Goal: stop proving engine correctness through compatibility projection rows.
 
 Scope:
@@ -243,6 +251,9 @@ Acceptance:
 
 ## Slice PBC-2: Remove Projection Audit From Engine Diagnostics
 
+Status: landed. `TaskProjectionStateAuditor` deleted; default engine
+diagnostics no longer scan compatibility projection residue.
+
 Goal: remove scan-heavy projection auditing from the default engine kernel.
 
 Scope:
@@ -263,6 +274,10 @@ Acceptance:
 3. Runtime state validation remains covered by tests.
 
 ## Slice PBC-3: Move Or Replace Console Review Read Model
+
+Status: landed. `InternalTaskReviewController` depends on `TaskReviewReadModel`.
+Server read-model writer wired from ingress acceptance and runtime-result
+finality evidence.
 
 Goal: keep console review useful without making engine own projection truth.
 
@@ -426,6 +441,20 @@ problems:
 - `RuleStorage` / storage rule DTOs should move only through a rule-domain
   roadmap, not as cleanup fallout from projection work.
 - `TaskDetailStore` should no longer be required by engine kernel runtime code.
+
+## Surviving Test Residue
+
+`TaskCompatibilityProjectionAccess` (engine test-only, `@CompatibilityProjectionOnly`)
+provides bounded compatibility projection overlay and audit views for secondary
+proof lanes. It is guarded by `EngineProofOwnershipGuardTest` +
+`EngineProjectionResidueSuite` + `@Tag("secondary-proof")` so it cannot leak
+into mainline proof or production.
+
+Retirement trigger: delete `TaskCompatibilityProjectionAccess` and its
+consuming test classes when the transitional `TaskDetailStoreTaskReviewReadModel`
+is replaced by a trace/archive-derived read model that no longer needs
+`TaskDetailStore` projection rows. At that point, `TaskDetailStore`
+message/attempt projection types can also be removed from `mass-storage-api`.
 
 ## Verification Candidates
 
