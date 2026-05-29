@@ -2270,7 +2270,6 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "public boolean sealTask(String taskId)",
                 "public TaskStateResolutionResult resolveTaskState(String taskId)",
                 "public TaskStateValidationResult validateTaskState(String taskId)",
-                "TaskStateValidationResult auditTaskProjectionState(String taskId)",
                 "<T> T withTaskLock(String taskId, Supplier<T> action)",
                 "void withTaskLock(String taskId, Runnable action)"
         );

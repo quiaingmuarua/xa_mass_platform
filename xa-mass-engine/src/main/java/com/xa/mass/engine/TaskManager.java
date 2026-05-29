@@ -76,7 +76,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
     private final TaskEventPublisher eventPublisher;
     private final TaskStateResolver stateResolver;
     private final TaskStateValidator stateValidator;
-    private final TaskProjectionStateAuditor projectionStateAuditor;
     private final TaskDispatchRequestService dispatchRequestService;
     private final TaskLifecycleService lifecycleService;
     private final TaskResultService resultService;
@@ -129,10 +128,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
         this.stateValidator = new TaskStateValidator(
                 this,
                 traceEventLogger
-        );
-        this.projectionStateAuditor = new TaskProjectionStateAuditor(
-                stateValidator,
-                compatibilityProjectionStore
         );
         this.taskWorkRuntime = requiredTaskWorkRuntime;
         this.taskResultRuntime = requiredTaskResultRuntime;
@@ -506,16 +501,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
     @Override
     public TaskStateValidationResult validateTaskState(String taskId) {
         return withTaskLock(taskId, () -> stateValidator.validateTaskState(taskId));
-    }
-
-    /**
-     * Explicit deep audit of the persisted compatibility projection plus
-     * attempt aggregates. This is diagnostic-only and may require a full
-     * bounded work-projection snapshot.
-     */
-    @CompatibilityProjectionOnly
-    TaskStateValidationResult auditTaskProjectionState(String taskId) {
-        return withTaskLock(taskId, () -> projectionStateAuditor.auditTaskProjectionState(taskId));
     }
 
     /**

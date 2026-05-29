@@ -28,8 +28,7 @@ class EngineProofOwnershipGuardTest {
     );
 
     private static final List<Class<?>> SUPPORT_SUITES = List.of(
-            EngineProjectionResidueSuite.class,
-            EngineProjectionAuditSuite.class
+            EngineProjectionResidueSuite.class
     );
 
     @Test

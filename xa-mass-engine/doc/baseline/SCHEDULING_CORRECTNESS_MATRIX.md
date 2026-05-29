@@ -29,8 +29,9 @@ Primary scheduling correctness proof must stay engine-local and runtime-first:
 - assignment records and canonical scheduling trace evidence
 
 Do not use compatibility projection as the pass/fail truth for scheduling
-correctness. Projection residue and audit belong to `EngineProjectionResidueSuite`
-and `EngineProjectionAuditSuite`.
+correctness. Remaining projection residue proof belongs to
+`EngineProjectionResidueSuite`; scan-heavy projection audit is no longer part
+of the engine kernel diagnostic surface.
 
 ## Test Lanes
 
@@ -38,7 +39,6 @@ and `EngineProjectionAuditSuite`.
 | --- | --- | --- |
 | `EngineSchedulingCoreSuite` | `xa-mass-engine` | Primary PR gate for deterministic scheduling correctness and owner-boundary guards |
 | `EngineProjectionResidueSuite` | `xa-mass-engine` secondary | Compatibility/debug/audit residue only |
-| `EngineProjectionAuditSuite` | `xa-mass-engine` secondary | Projection audit boundary only |
 | `xa-mass-testing` soak/chaos | `xa-mass-testing` | Runtime pressure and distributed edge proof; not a substitute for deterministic scheduling matrix coverage |
 | `xa-mass-server` E2E | `xa-mass-server` | Host/API wiring proof; not the full scheduling matrix |
 

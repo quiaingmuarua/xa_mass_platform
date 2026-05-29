@@ -17,9 +17,10 @@ contract / intake truth
   -> task aggregate convergence
 ```
 
-Compatibility projection may be validated as residue or audit, but it must not
-be the mainline pass/fail truth for lifecycle, retry, expiry, finality, or
-terminal closure.
+Compatibility projection may be validated as residue, but it must not be the
+mainline pass/fail truth for lifecycle, retry, expiry, finality, or terminal
+closure. Scan-heavy projection audit is no longer part of the engine kernel
+diagnostic surface.
 
 ## Test Lanes
 
@@ -28,7 +29,6 @@ terminal closure.
 | `EngineKernelConvergenceSuite` | `xa-mass-engine` | Primary runtime-first kernel lifecycle and convergence gate |
 | `EngineSchedulingCoreSuite` | `xa-mass-engine` | Cross-lane scenarios where scheduling competition also proves convergence |
 | `EngineProjectionResidueSuite` | `xa-mass-engine` secondary | Compatibility/debug residue while older mixed tests are being retired or split |
-| `EngineProjectionAuditSuite` | `xa-mass-engine` secondary | Explicit projection-audit boundary only |
 | `xa-mass-testing` soak/chaos | `xa-mass-testing` | Runtime pressure, disconnect, replay, and distributed edge proof |
 | `xa-mass-server` lifecycle/result E2E | `xa-mass-server` | Real host/API wiring proof |
 
@@ -77,7 +77,7 @@ When adding a kernel-convergence test:
 1. Pick an invariant in this matrix or add a new one.
 2. Prefer runtime truth, lease truth, result-runtime truth, and task aggregate
    truth as the pass/fail surface.
-3. Put projection residue in the explicit residue/audit suites only when the
+3. Put projection residue in the explicit residue suite only when the
    residue itself is the subject.
 4. Use scheduling tests when the real risk is worker choice or competition;
    use soak/chaos when the real risk is timing, disconnect, or replay.

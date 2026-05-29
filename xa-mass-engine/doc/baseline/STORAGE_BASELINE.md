@@ -35,7 +35,7 @@ What the engine assumes today:
   (`payloadRef`, retry counters, create time); projection residue does not
   repair public result rows
 - bounded message/attempt projections are still used by attempt identity
-  display/audit, focused tests, and explicit projection audit
+  display/read-model residue and focused projection tests
 - ingest enqueue must not roll back or fail runtime admission just because the
   compatibility message row could not be written in the same turn
 - dispatch handoff no longer requires message-projection input or a persisted

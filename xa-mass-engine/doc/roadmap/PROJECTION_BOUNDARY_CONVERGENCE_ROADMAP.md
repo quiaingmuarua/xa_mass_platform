@@ -1,7 +1,7 @@
 # Projection Boundary Convergence Roadmap
 
-Status: active direction document. PBC-0 inventory has landed; behavior-changing
-implementation slices are still pending.
+Status: active direction document. PBC-0 inventory has landed. PBC-1 is
+covered by existing mainline proof guards. PBC-2 has landed.
 
 This is the current `xa-mass-engine` convergence roadmap.
 
@@ -22,8 +22,9 @@ the current goal because task shell storage and rule-definition reads remain
 legitimate engine-facing contracts until separate owner work changes them.
 
 The current code has already moved scheduling and terminal truth toward runtime
-state, but engine still writes and sometimes scans `TaskDetailStore`
-message/attempt projection residue.
+state. PBC-2 removed the default engine projection-audit scan, but engine still
+writes `TaskDetailStore` message/attempt projection residue and server review
+surfaces still read that read model.
 
 ## Current Code Observations
 
@@ -31,10 +32,9 @@ message/attempt projection residue.
   `TaskDetailStore` message/attempt projections.
 - `TaskWorkProjectionState` converts engine residue enums to
   `mass-storage-api` projection enums.
-- `TaskProjectionStateAuditor` scans compatibility projection residue and
-  reports violations as projection-audit state validation.
-- `TaskManager` constructs `TaskCompatibilityProjectionStore` and
-  `TaskProjectionStateAuditor`.
+- PBC-2 removed `TaskProjectionStateAuditor`; default engine diagnostics no
+  longer scan compatibility projection residue.
+- `TaskManager` constructs `TaskCompatibilityProjectionStore`.
 - `TaskResultService` writes best-effort work and attempt projection residue
   after runtime result convergence.
 - `TaskManager.addRuntimeIngressItems(...)` writes ingress-accepted
@@ -379,7 +379,7 @@ problems:
 Initial commands to keep in the roadmap proof set:
 
 ```powershell
-mvn -pl xa-mass-engine -am '-Dtest=TaskStateValidatorBoundaryTest,TaskResultRuntimeConvergenceTest,SimpleTaskDispatchBinderTest,EngineSchedulingCoreArchitectureGuardTest' '-Dsurefire.failIfNoSpecifiedTests=false' test
+mvn -pl xa-mass-engine -am '-Dtest=TaskResultRuntimeConvergenceTest,SimpleTaskDispatchBinderTest,EngineSchedulingCoreArchitectureGuardTest,EngineProofOwnershipGuardTest' '-Dsurefire.failIfNoSpecifiedTests=false' test
 ```
 
 ```powershell

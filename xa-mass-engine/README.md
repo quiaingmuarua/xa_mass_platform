@@ -191,9 +191,6 @@ Start with these classes before changing behavior:
 - `src/main/java/com/xa/mass/engine/TaskConcurrencyStrategy.java` (interface) / `LocalTaskConcurrencyCoordinator.java` (default impl)
 - `src/main/java/com/xa/mass/engine/TaskCommandService.java`
 - `src/main/java/com/xa/mass/engine/TaskQueryService.java`
-- `src/main/java/com/xa/mass/engine/TaskProjectionStateAuditor.java`
-  only when you are intentionally working on explicit full-scan compatibility
-  projection diagnostics
 - `src/test/java/com/xa/mass/engine/TaskCompatibilityProjectionAccess.java`
   only when you are intentionally working on test-only bounded projection
   overlays or residue audit helpers
@@ -325,7 +322,8 @@ Keep these facts fixed unless the owning global baselines change:
 - `TaskQueryService` is the default task aggregate/state query surface; do not
   grow message/attempt residue reads back into it
 - `TaskStateValidator` owns runtime aggregate validation only; scan-heavy
-  compatibility projection audit belongs to `TaskProjectionStateAuditor`
+  compatibility projection audit is no longer part of the engine kernel
+  diagnostic surface
 - `TaskWorkProjectionState` is the engine-owned work/attempt residue
   state owner; do not let storage-edge projection enums leak back into
   runtime/result/trace code as native engine state
@@ -544,9 +542,7 @@ Explicit secondary residue/audit tests:
 - `EngineProjectionResidueSuite`
   - `TaskManagerLifecycleTest`
   - `SimpleTaskDispatchBinderTest`
-- `EngineProjectionAuditSuite`
-  - `TaskStateValidatorBoundaryTest`
-- these projection/support suites are mechanically downgraded:
+- this projection/support suite is mechanically downgraded:
   `EngineProofOwnershipGuardTest` requires their classes to stay tagged
   `secondary-proof`, and blocks them from leaking back into
   `EngineSchedulingCoreSuite` or `EngineKernelConvergenceSuite`
