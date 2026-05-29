@@ -13,6 +13,7 @@ xa-mass-sdk/server  -> xa-mass-worker-runtime -> mass-runtime-api
 
 platform_infra/mass-runtime-memory -> mass-runtime-api
 platform_infra/mass-runtime-redis  -> mass-runtime-api
+platform_infra/mass-storage-memory -> xa-mass-worker-runtime
 ```
 
 Memory and Redis registry implementations must not depend on this module.
@@ -61,12 +62,12 @@ Owned contracts:
 
 Role split:
 
-- `WorkerDeclarationRecord` lives in `mass-storage-api` because it is the
-  `WorkerDeclarationStore` row contract. It contains stable worker identity,
-  group/node membership, adapter hints, static attributes, max concurrency,
-  and timestamps. It does not contain heartbeat, online/offline state,
-  dispatch gates, reservations, leases, or worker-level supported
-  project/event capability hints.
+- `WorkerDeclarationRecord` and `WorkerDeclarationStore` live in this module
+  because worker declaration is worker-runtime lifecycle/control-plane
+  ownership. The record contains stable worker identity, group/node membership,
+  adapter hints, static attributes, max concurrency, and timestamps. It does
+  not contain heartbeat, online/offline state, dispatch gates, reservations,
+  leases, or worker-level supported project/event capability hints.
 - `WorkerRuntimeStateRecord` is a current runtime-state view assembled from
   registry, reachability, heartbeat freshness, dispatch gate, and admission
   evidence. It is not persisted as declaration truth.

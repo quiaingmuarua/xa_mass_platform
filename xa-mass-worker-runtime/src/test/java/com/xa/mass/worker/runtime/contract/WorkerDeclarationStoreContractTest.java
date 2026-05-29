@@ -1,7 +1,7 @@
-package com.xa.mass.storage.contract;
+package com.xa.mass.worker.runtime.contract;
 
-import com.xa.mass.storage.api.WorkerDeclarationRecord;
-import com.xa.mass.storage.api.WorkerDeclarationStore;
+import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
+import com.xa.mass.worker.runtime.resource.WorkerDeclarationStore;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

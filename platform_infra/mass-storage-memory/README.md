@@ -20,9 +20,10 @@ Current code truth:
 
 - `InMemoryTaskShellStore` is the real in-memory task shell/control-plane
   default used by SDK/server embedding and focused tests
-- `InMemoryWorkerDeclarationStore` is the current in-memory worker declaration
-  store; it maintains primary worker identity and secondary group indexes in
-  memory and must not be treated as worker runtime scheduling truth
+- `InMemoryWorkerDeclarationStore` is the current in-memory adapter for the
+  `xa-mass-worker-runtime` worker declaration port; it maintains primary
+  worker identity and secondary group indexes in memory and must not be treated
+  as worker runtime scheduling truth
 - `InMemoryRuleStorage` is definition storage only; rule-evaluator ownership
   belongs to engine rule-runtime assembly
 - SDK auth helpers such as `InMemorySubmitterRegistry` no longer live here; do

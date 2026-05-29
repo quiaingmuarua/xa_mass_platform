@@ -13,8 +13,9 @@ The active engine boundary has three explicit contracts:
 
 - control-plane storage contracts in `platform_infra/mass-storage-api`
   - `TaskShellStore`
-  - `WorkerDeclarationStore`
   - `RuleStorage`
+- worker declaration port in `xa-mass-worker-runtime`
+  - `WorkerDeclarationStore`
 - bounded compatibility projection seam in `platform_infra/mass-storage-api`
   - `TaskDetailStore`
 - hot-path runtime contract in `platform_infra/mass-runtime-api`
@@ -26,8 +27,8 @@ Do not collapse them back into one "storage owns everything" model.
 
 What the engine assumes today:
 
-- `Task` shell truth, worker definitions, and rule definitions come from
-  storage
+- `Task` shell truth and rule definitions come from storage; worker
+  declarations come through the worker-runtime declaration port
 - ready backlog, delay queues, lease ownership, retry visibility, expiry
   indexes, and backpressure come from runtime
 - result/expiry recovery should prefer runtime work-envelope metadata
@@ -123,10 +124,10 @@ Current mainline implementations:
 
 - `platform_infra/mass-storage-memory`
   - `InMemoryTaskShellStore`
-  - `InMemoryWorkerDeclarationStore`
+  - `InMemoryWorkerDeclarationStore` as a worker-runtime declaration adapter
   - `InMemoryRuleStorage`
 - `platform_infra/mass-storage-jdbc`
-  - JDBC control-plane storage adapter for task/worker/rule truth
+  - JDBC control-plane storage adapter for task/rule truth
   - process-local compatibility projection for neutral message/attempt records
 
 Current implementation facts that matter architecturally:

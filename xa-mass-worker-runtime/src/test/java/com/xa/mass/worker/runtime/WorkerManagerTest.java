@@ -21,8 +21,7 @@ import com.xa.mass.worker.runtime.routing.WorkerRouteBucketPolicies;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
-import com.xa.mass.storage.api.WorkerDeclarationRecord;
-import com.xa.mass.storage.memory.InMemoryWorkerDeclarationStore;
+import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -42,7 +41,7 @@ public class WorkerManagerTest {
 
     @BeforeEach
     void setUp() {
-        manager = new WorkerManager(new InMemoryWorkerDeclarationStore(), platformRegistry());
+        manager = new WorkerManager(new TestWorkerDeclarationStore(), platformRegistry());
     }
 
     // ---- add / get ----
@@ -466,7 +465,7 @@ public class WorkerManagerTest {
 
     @Test
     void loadReadSynchronizesCapacityButDoesNotMakeDeclarationOnlyWorkerReservable() {
-        InMemoryWorkerDeclarationStore storage = new InMemoryWorkerDeclarationStore();
+        TestWorkerDeclarationStore storage = new TestWorkerDeclarationStore();
         Worker worker = worker("worker-storage-direct", "us");
         worker.setMaxConcurrentWork(2);
         storage.addWorker(workerDeclaration(worker));
@@ -652,7 +651,7 @@ public class WorkerManagerTest {
                         .limit(maxCandidateCount)
                         .toList());
         WorkerManager registryBackedManager = new WorkerManager(
-                new InMemoryWorkerDeclarationStore(),
+                new TestWorkerDeclarationStore(),
                 null,
                 registry
         );
@@ -672,7 +671,7 @@ public class WorkerManagerTest {
                 new RandomWorkerCandidateSamplingPolicy(bound -> bound - 1)
         );
         WorkerManager registryBackedManager = new WorkerManager(
-                new InMemoryWorkerDeclarationStore(),
+                new TestWorkerDeclarationStore(),
                 null,
                 registry
         );
@@ -870,7 +869,7 @@ public class WorkerManagerTest {
 
     @Test
     void workerRegistrySnapshotCanBeRefreshedAfterDirectStorageMutation() {
-        InMemoryWorkerDeclarationStore storage = new InMemoryWorkerDeclarationStore();
+        TestWorkerDeclarationStore storage = new TestWorkerDeclarationStore();
         WorkerManager storageBackedManager = new WorkerManager(storage, new InMemoryWorkerRegistry());
         storageBackedManager.upsertWorkerGroup(WorkerGroupRecord.builder("crawler")
                 .eventBindings(List.of(EventBinding.of("crawler.fetch", List.of("demoApp"))))
@@ -954,7 +953,7 @@ public class WorkerManagerTest {
     @Test
     void workerReachabilityComesFromTransportViewInsteadOfWorkerModelStatus() {
         WorkerManager reachabilityAwareManager = new WorkerManager(
-                new InMemoryWorkerDeclarationStore(),
+                new TestWorkerDeclarationStore(),
                 workerId -> switch (workerId) {
                     case "w-online" -> WorkerReachabilityState.ONLINE;
                     case "w-stale" -> WorkerReachabilityState.STALE;

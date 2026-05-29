@@ -1,7 +1,20 @@
 # Worker Declaration Port Boundary Roadmap
 
-Status: proposed direction document. No implementation slices have landed from
-this roadmap yet.
+Status: implemented direction document.
+
+Progress:
+
+- WDP-0 is complete: caller inventory confirmed `EngineConfig` as the primary
+  SDK assembly caller, `mass-storage-memory` as the only current storage
+  adapter, and no JDBC worker declaration implementation.
+- WDP-1 is complete: `WorkerDeclarationStore` and `WorkerDeclarationRecord`
+  moved to `xa-mass-worker-runtime`.
+- WDP-2 is complete: `mass-storage-memory` implements the worker-runtime port
+  and keeps storage-api test contracts for task storage plus worker-runtime
+  test contracts for worker declaration storage.
+- WDP-3 is complete: SDK/test assembly imports use the moved port.
+- WDP-4 is complete: worker declaration shape guards live in worker-runtime and
+  storage-api guards prevent worker declaration contracts from returning.
 
 This roadmap removes the remaining production `mass-storage-api` dependency
 from `xa-mass-worker-runtime` by moving the worker declaration port into the
@@ -26,7 +39,7 @@ Both prerequisites have landed. `WorkerDeclarationStore` now persists
 `WorkerDeclarationRecord`, and `WorkerResourceOwner` converts base `Worker`
 registration input into declaration rows before writing.
 
-## Current Code Observations
+## Original Code Observations
 
 - `xa-mass-worker-runtime` has a production dependency on `mass-storage-api`.
 - Main-source worker-runtime imports from `mass-storage-api` are limited to:
@@ -56,6 +69,21 @@ registration input into declaration rows before writing.
   `xa-mass-worker-runtime` test sources.
 - `mass-storage-memory` is only a test-scoped dependency of
   `xa-mass-worker-runtime`; that part is not the production boundary problem.
+
+## Current Code Shape
+
+- `xa-mass-worker-runtime` no longer has a production dependency on
+  `mass-storage-api`.
+- `WorkerDeclarationStore` and `WorkerDeclarationRecord` live in
+  `com.xa.mass.worker.runtime.resource`.
+- `mass-storage-memory` depends on `xa-mass-worker-runtime` in production scope
+  to implement the worker declaration adapter.
+- `xa-mass-worker-runtime` no longer depends on `mass-storage-memory`, even in
+  test scope; worker-runtime tests use a local test declaration store fixture.
+- `mass-storage-memory` still depends on both test-jars:
+  - `mass-storage-api` test-jar for task shell/detail storage contract tests
+  - `xa-mass-worker-runtime` test-jar for worker declaration contract tests
+- `mass-storage-jdbc` still has no worker declaration implementation.
 
 ## Boundary Decision
 
@@ -292,12 +320,9 @@ mvn -pl xa-mass-engine -am '-Dtest=WorkerControlOwnerSliceTest,EngineSchedulingC
 ```
 
 ```powershell
-mvn -pl platform_infra/mass-storage-api,platform_infra/mass-storage-memory -am '-Dtest=WorkerDeclarationStoreContractTest,InMemoryWorkerDeclarationStoreContractTest,StorageBoundaryGuardTest' '-Dsurefire.failIfNoSpecifiedTests=false' test
+mvn -pl platform_infra/mass-storage-api,platform_infra/mass-storage-memory -am '-Dtest=InMemoryWorkerDeclarationStoreContractTest,StorageBoundaryGuardTest' '-Dsurefire.failIfNoSpecifiedTests=false' test
 ```
 
 ```powershell
 mvn -pl xa-mass-sdk,xa-mass-server -am -DskipTests compile
 ```
-
-The exact test list should be corrected in WDP-0 after the caller inventory is
-complete.

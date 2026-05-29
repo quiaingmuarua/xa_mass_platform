@@ -4,8 +4,8 @@ import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.runtime.worker.WorkerMeta;
 import com.xa.mass.runtime.worker.WorkerRegistry;
-import com.xa.mass.storage.api.WorkerDeclarationRecord;
-import com.xa.mass.storage.api.WorkerDeclarationStore;
+import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
+import com.xa.mass.worker.runtime.resource.WorkerDeclarationStore;
 
 import java.time.LocalDateTime;
 import java.time.Instant;

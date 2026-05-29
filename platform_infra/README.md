@@ -51,13 +51,14 @@ Current truth for this conservative first slice:
 - `mass-runtime-redis` now owns the Redis-backed runtime implementations plus
   their keyspace/index baseline; it remains an explicit opt-in path outside the
   verified default runtime mainline
-- `mass-storage-api` owns shared `TaskShellStore`,
-  `WorkerDeclarationStore` / `WorkerDeclarationRecord`, rule-definition
-  storage contracts, plus the bounded `TaskDetailStore`
-  compatibility-projection seam and the storage-adjacent rule types referenced
-  by those contracts
+- `mass-storage-api` owns shared `TaskShellStore`, rule-definition storage
+  contracts, plus the bounded `TaskDetailStore` compatibility-projection seam
+  and the storage-adjacent rule types referenced by those contracts
+- `xa-mass-worker-runtime` owns `WorkerDeclarationStore` /
+  `WorkerDeclarationRecord`; storage modules implement that port as worker
+  declaration adapters when needed
 - `mass-storage-memory` owns in-memory control-plane task shell, worker
-  declaration, and rule-definition storage;
+  declaration adapter, and rule-definition storage;
   rule evaluator registry and the default QLExpress rule evaluator are now
   engine rule-runtime assembly concerns
 - `mass-storage-jdbc` owns the JDBC control-plane storage implementation plus H2/PostgreSQL dialect wiring, migrations, and residue-recovery helpers; engine manager assembly stays outside this module
@@ -89,8 +90,8 @@ Boundary to keep stable:
   worker attributes are runtime truth; DB query needs should be fed through
   trace/audit ingestion, not worker CRUD storage
 - worker capability candidate indexes belong to engine/runtime owners, not
-  `WorkerDeclarationStore`; storage must not expose supported-project or supported-event
-  worker lookup APIs as scheduling shortcuts
+  `WorkerDeclarationStore`; storage adapters must not expose supported-project
+  or supported-event worker lookup APIs as scheduling shortcuts
 - high-volume task-message detail and attempt/event history belong in trace or async audit/export sinks, not in the control-plane JDBC path
 - bounded compatibility projection and runtime residue remain temporary/debug
   material even though `mass-trace-sink` is landed; do not redefine that

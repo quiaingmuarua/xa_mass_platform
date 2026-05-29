@@ -43,8 +43,8 @@ com.xa.mass.worker.runtime            implementation owners and assembly
 
 ## Worker Shape Split
 
-- `WorkerDeclarationRecord` lives in `mass-storage-api` as the
-  `WorkerDeclarationStore` row contract: identity, WorkerGroup/node
+- `WorkerDeclarationRecord` and `WorkerDeclarationStore` live in this module as
+  the worker-runtime owned declaration port: identity, WorkerGroup/node
   membership, adapter hints, static attributes, max concurrency, and
   timestamps.
 - `WorkerRuntimeStateRecord` is current runtime evidence: heartbeat freshness,
@@ -70,6 +70,8 @@ Forbidden:
 - This module must not depend on `xa-mass-engine` or transport adapter
   implementations.
 - `mass-runtime-memory` and `mass-runtime-redis` must not depend on this module.
+- `mass-storage-api` must not own worker declaration contracts; storage modules
+  may implement this module's declaration port as adapters.
 - Engine match strategy must not consume `WorkerRegistry`, `WorkerSlot`,
   `WorkerMeta`, `ReserveResult`, or `ReserveStatus` as strategy contracts.
 

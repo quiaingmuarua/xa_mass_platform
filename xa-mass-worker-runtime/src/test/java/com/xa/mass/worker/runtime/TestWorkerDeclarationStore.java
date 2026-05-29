@@ -1,15 +1,17 @@
-package com.xa.mass.storage.memory;
+package com.xa.mass.worker.runtime;
 
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationStore;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * In-memory runtime worker registry backed by primary hash plus secondary indexes.
- */
-public class InMemoryWorkerDeclarationStore implements WorkerDeclarationStore {
+final class TestWorkerDeclarationStore implements WorkerDeclarationStore {
 
     private final Map<String, WorkerDeclarationRecord> workersById = new ConcurrentHashMap<>();
     private final Map<String, String> groupIdByWorkerId = new ConcurrentHashMap<>();

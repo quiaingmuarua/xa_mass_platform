@@ -73,7 +73,7 @@ design and must not be implied by result ingress or projection residue.
 | `platform_infra/mass-storage-jdbc` | persists task shell/rule/principal truth; no JDBC worker declaration implementation currently exists | correct control-plane role |
 | JDBC-local message/attempt projections | process-local compatibility residue | not a storage expansion license |
 | JDBC-local worker lock residue | process-local runtime residue | not durable worker-runtime truth; worker locks/capacity must not become control-plane storage truth |
-| `platform_infra/mass-storage-memory` | in-memory task shell, worker declaration, and rule definition storage | current embedded/test implementation |
+| `platform_infra/mass-storage-memory` | in-memory task shell, worker declaration adapter, and rule definition storage | current embedded/test implementation |
 | memory/JDBC detail residue internals | neutral projection-record storage with compatibility materialization at the boundary | do not let legacy message models become the internal owner shape again |
 | `mass-runtime-*` modules | queue/lease/counter semantics | canonical runtime-state home |
 | `TaskResultRuntime` memory/Redis implementations | stable-final result rows plus stage/barrier repair state | canonical runtime result-read truth; memory is volatile local/dev, Redis is cross-process runtime truth |
@@ -81,7 +81,7 @@ design and must not be implied by result ingress or projection residue.
 | Redis worker presence / route-owner view | shared transport-owned reachability state | queryable runtime view for matching and dispatch routing, not a queue and not control-plane worker declaration |
 | Redis transport result / dispatch-failure inboxes | transport-to-engine runtime ingress | bounded cross-JVM channels drained into engine-owned result ingest and compensation ports, not server endpoints |
 | `TaskDetailStore` engine usage | projection-first bounded compatibility upsert/snapshot reads through neutral records only | not message CRUD ownership and not runtime truth |
-| engine assembly | wires `TaskShellStore`, `TaskDetailStore`, and `WorkerDeclarationStore` explicitly | prevents shell/declaration truth from silently redefining detail/projection or runtime ownership |
+| engine assembly | wires `TaskShellStore`, `TaskDetailStore`, and worker-runtime `WorkerDeclarationStore` explicitly | prevents shell/declaration truth from silently redefining detail/projection or runtime ownership |
 | `doc/TRACE_CONTRACT.md` plus `platform_infra/mass-trace-sink` | required trace semantics plus the current canonical sink/module implementation | trace remains analysis/debug ownership, not lifecycle/runtime truth |
 
 ## 4. Fast Placement Test

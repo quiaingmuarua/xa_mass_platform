@@ -29,7 +29,7 @@ import com.xa.mass.worker.runtime.routing.WorkerRouteBucketPolicies;
 import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
 import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
 import com.xa.mass.worker.runtime.admission.WorkerWarmHintRuntime;
-import com.xa.mass.storage.api.WorkerDeclarationStore;
+import com.xa.mass.worker.runtime.resource.WorkerDeclarationStore;
 import com.xa.mass.worker.runtime.WorkerAdmissionOwner;
 import com.xa.mass.worker.runtime.WorkerCandidateIndex;
 import com.xa.mass.worker.runtime.WorkerCandidateSourceOwner;

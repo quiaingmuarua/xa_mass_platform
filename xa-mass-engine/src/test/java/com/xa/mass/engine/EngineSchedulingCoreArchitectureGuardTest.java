@@ -1726,7 +1726,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
     @Test
     void workerStorageDoesNotExposeWorkerCapabilityCandidateLookup() throws IOException {
         Path workerStoragePath = repositoryRoot().resolve(
-                "platform_infra/mass-storage-api/src/main/java/com/xa/mass/storage/api/WorkerDeclarationStore.java");
+                "xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/resource/WorkerDeclarationStore.java");
         String source = Files.readString(workerStoragePath, StandardCharsets.UTF_8);
 
         List<String> violations = new ArrayList<>();
@@ -1848,12 +1848,13 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
     @Test
     void workerStorageDoesNotOwnRuntimeExclusiveLeaseTruth() throws IOException {
-        Path workerStoragePath = Path.of("..", "platform_infra", "mass-storage-api", "src", "main", "java",
-                "com", "xa", "mass", "storage", "api", "WorkerDeclarationStore.java");
-        Path memoryStoragePath = Path.of("..", "platform_infra", "mass-storage-memory", "src", "main", "java",
-                "com", "xa", "mass", "storage", "memory", "InMemoryWorkerDeclarationStore.java");
-        Path sdkDiagnosticsPath = Path.of("..", "xa-mass-sdk", "src", "main", "java",
-                "com", "xa", "mass", "sdk", "DefaultRuntimeDiagnosticsOperations.java");
+        Path root = repositoryRoot();
+        Path workerStoragePath = root.resolve(
+                "xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/resource/WorkerDeclarationStore.java");
+        Path memoryStoragePath = root.resolve(
+                "platform_infra/mass-storage-memory/src/main/java/com/xa/mass/storage/memory/InMemoryWorkerDeclarationStore.java");
+        Path sdkDiagnosticsPath = root.resolve(
+                "xa-mass-sdk/src/main/java/com/xa/mass/sdk/DefaultRuntimeDiagnosticsOperations.java");
 
         List<String> violations = new ArrayList<>();
         String workerStorage = Files.readString(workerStoragePath, StandardCharsets.UTF_8);
@@ -2023,7 +2024,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         if (sdkSource.contains("getWorkerManager()")) {
             violations.add(sdkApplicationPath + " calls EngineConfig.getWorkerManager()");
         }
-        if (sdkSource.contains("com.xa.mass.storage.api.WorkerDeclarationStore")
+        if (sdkSource.contains("com.xa.mass.worker.runtime.resource.WorkerDeclarationStore")
                 || Pattern.compile("\\bWorkerDeclarationStore\\b").matcher(sdkSource).find()
                 || sdkSource.contains("getWorkerDeclarationStore()")) {
             violations.add(sdkApplicationPath + " uses WorkerDeclarationStore for SDK worker shell operations");

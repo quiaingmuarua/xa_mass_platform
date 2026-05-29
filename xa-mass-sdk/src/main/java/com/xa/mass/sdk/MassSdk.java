@@ -11,7 +11,7 @@ import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.TaskShellStore;
-import com.xa.mass.storage.api.WorkerDeclarationStore;
+import com.xa.mass.worker.runtime.resource.WorkerDeclarationStore;
 import com.xa.mass.starter.builder.MassApplicationBuilder;
 import com.xa.mass.starter.config.TransportRuntimeRole;
 import com.xa.mass.trace.sink.ExecutionEventSink;

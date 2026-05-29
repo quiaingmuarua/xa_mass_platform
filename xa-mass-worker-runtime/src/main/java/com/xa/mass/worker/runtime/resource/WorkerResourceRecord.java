@@ -1,6 +1,6 @@
 package com.xa.mass.worker.runtime.resource;
 
-import com.xa.mass.storage.api.WorkerDeclarationRecord;
+import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 
 import java.time.LocalDateTime;
 import java.util.Collections;

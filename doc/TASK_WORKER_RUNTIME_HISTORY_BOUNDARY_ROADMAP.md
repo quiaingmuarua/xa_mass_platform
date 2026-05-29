@@ -40,7 +40,7 @@ Read with:
   `TaskWorkRuntime.readyTaskIds(limit)`.
 - `TaskWorkRuntime` owns ready queue membership, delayed visibility, lease
   ownership, retry timing, runtime counters, and result apply truth.
-- `WorkerDeclarationStore` currently lives in `mass-storage-api` and is
+- `WorkerDeclarationStore` now lives in `xa-mass-worker-runtime` and is
   documented as a control-plane worker row abstraction, not runtime scheduling
   truth.
 - Current production worker declaration storage implementation found in this
@@ -112,8 +112,8 @@ cleanup.
 9. `WorkerResourceRecord` is not yet a clean declaration record. It still
    carries runtime or compatibility projection fields such as `statusName`,
    `lastHeartbeat`, `supportedProjects`, and `supportedEventCodes`.
-   `WorkerDeclarationRecord` in `mass-storage-api` is now the
-   declaration-store row shape, `WorkerRuntimeStateRecord` is the target
+   `WorkerDeclarationRecord` is now the worker-runtime-owned declaration-store
+   row shape, `WorkerRuntimeStateRecord` is the target
    current runtime-state shape, and `WorkerResourceRecord` is the current
    composite current-state read model. TWH-3B moves declaration-store writes
    away from mixed worker shapes.

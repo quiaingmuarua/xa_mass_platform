@@ -1,15 +1,15 @@
-package com.xa.mass.storage.api;
+package com.xa.mass.worker.runtime.resource;
 
 import java.util.List;
 import java.util.Optional;
 
 /**
- * Control-plane worker row abstraction.
+ * Worker-runtime owned persistence port for declaration-only worker rows.
  *
  * <p>This is not runtime scheduling truth. Worker runtime occupancy,
- * exclusivity, reachability, and dispatch gates are owned by the engine
- * runtime registry. Durable worker history belongs in trace/audit
- * projections, not this storage contract.
+ * exclusivity, reachability, and dispatch gates are owned by the registry and
+ * admission owners. Durable worker history belongs in trace/audit projections,
+ * not this declaration contract.</p>
  */
 public interface WorkerDeclarationStore {
 

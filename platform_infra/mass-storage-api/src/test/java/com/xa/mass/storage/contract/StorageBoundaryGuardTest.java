@@ -1,19 +1,14 @@
 package com.xa.mass.storage.contract;
 
 import com.xa.mass.storage.api.TaskShellStore;
-import com.xa.mass.storage.api.WorkerDeclarationRecord;
-import com.xa.mass.storage.api.WorkerDeclarationStore;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
-import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
@@ -23,11 +18,6 @@ class StorageBoundaryGuardTest {
 
     private static final Pattern RUNTIME_OR_HISTORY_METHOD = Pattern.compile(
             "(?i)(schedul|dispatch|lease|heartbeat|history|analytics|attempt|reservation|runtime)"
-    );
-
-    private static final Map<Class<?>, Set<String>> KNOWN_TWH_2_RESIDUE = Map.of(
-            TaskShellStore.class, Set.of(),
-            WorkerDeclarationStore.class, Set.of()
     );
 
     private static final Pattern LEGACY_BROAD_STORAGE_SURFACE = Pattern.compile(String.join("|", List.of(
@@ -52,67 +42,34 @@ class StorageBoundaryGuardTest {
     );
 
     @Test
-    void shellAndDeclarationStoresDoNotGrowRuntimeOrHistoryMethods() {
+    void taskShellStoreDoesNotGrowRuntimeOrHistoryMethods() {
         List<String> violations = new ArrayList<>();
-        for (Class<?> contract : List.of(TaskShellStore.class, WorkerDeclarationStore.class)) {
-            Set<String> knownResidue = KNOWN_TWH_2_RESIDUE.getOrDefault(contract, Set.of());
-            for (Method method : contract.getDeclaredMethods()) {
-                String methodName = method.getName();
-                if (knownResidue.contains(methodName)) {
-                    continue;
-                }
-                if (RUNTIME_OR_HISTORY_METHOD.matcher(methodName).find()) {
-                    violations.add(contract.getSimpleName() + "." + methodName);
-                }
+        for (java.lang.reflect.Method method : TaskShellStore.class.getDeclaredMethods()) {
+            String methodName = method.getName();
+            if (RUNTIME_OR_HISTORY_METHOD.matcher(methodName).find()) {
+                violations.add(TaskShellStore.class.getSimpleName() + "." + methodName);
             }
         }
 
         assertTrue(violations.isEmpty(),
-                "Task shell and worker declaration stores must not grow runtime/history-shaped methods. "
-                        + "Known TWH-2 residue is explicitly allowlisted until that slice removes it:\n"
+                "Task shell store must not grow runtime/history-shaped methods:\n"
                         + String.join("\n", violations));
     }
 
     @Test
-    void workerDeclarationStoreDoesNotExposeBaseWorkerModel() {
+    void storageApiDoesNotReintroduceWorkerDeclarationContracts() throws IOException {
+        Path storageApiRoot = repoRoot().resolve("platform_infra/mass-storage-api/src/main/java");
         List<String> violations = new ArrayList<>();
-        for (Method method : WorkerDeclarationStore.class.getDeclaredMethods()) {
-            if (method.getReturnType().getName().equals("com.xa.mass.base.model.Worker")) {
-                violations.add(method.getName() + " returns base.model.Worker");
-            }
-            for (Class<?> parameterType : method.getParameterTypes()) {
-                if (parameterType.getName().equals("com.xa.mass.base.model.Worker")) {
-                    violations.add(method.getName() + " accepts base.model.Worker");
-                }
+        for (Path path : javaSourceFiles(storageApiRoot)) {
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            if (source.contains("WorkerDeclarationStore") || source.contains("WorkerDeclarationRecord")) {
+                violations.add(path.toString());
             }
         }
 
         assertTrue(violations.isEmpty(),
-                "WorkerDeclarationStore must persist WorkerDeclarationRecord, not the mixed base Worker model:\n"
-                        + String.join("\n", violations));
-    }
-
-    @Test
-    void workerDeclarationRecordDoesNotCarryRuntimeOrCapabilityHintFields() {
-        Set<String> forbiddenComponents = Set.of(
-                "statusName",
-                "status",
-                "lastHeartbeat",
-                "supportedProjects",
-                "supportedEventCodes",
-                "dispatchEnabled",
-                "reservedPermits",
-                "exclusiveLeaseHeld"
-        );
-
-        List<String> violations = Stream.of(WorkerDeclarationRecord.class.getRecordComponents())
-                .map(component -> component.getName())
-                .filter(forbiddenComponents::contains)
-                .toList();
-
-        assertTrue(violations.isEmpty(),
-                "WorkerDeclarationRecord must stay declaration-only and must not carry runtime state "
-                        + "or worker-level capability hints:\n"
+                "mass-storage-api must not reintroduce worker declaration contracts; "
+                        + "worker declaration ports belong to xa-mass-worker-runtime:\n"
                         + String.join("\n", violations));
     }
 
