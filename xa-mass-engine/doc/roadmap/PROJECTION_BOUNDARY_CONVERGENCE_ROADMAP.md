@@ -38,8 +38,20 @@ message/attempt projection residue.
   projection residue through `TaskCompatibilityProjectionStore`.
 - Server review surfaces still read `TaskDetailStore` projections, especially
   `InternalTaskReviewController`.
+- `InternalTaskReviewController` uses projection rows for review summary,
+  seed preview/export, and result preview/export. The required fields include
+  message id, input/event code, payload ref, status/final reason, retry counts,
+  latest attempt id/worker/batch, timing fields, error summary, output, and
+  aggregate message stats.
+- Server proof lanes still include projection-specific suites and support
+  classes such as `ServerProjectionResidueSuite`,
+  `ServerProjectionAuditSuite`, and `ProjectionSampleE2eTest`.
 - Many engine tests still assert behavior through `TaskDetailStore`
   message/attempt projections instead of runtime/result/trace truth.
+- `@CompatibilityProjectionOnly` already marks the current compatibility
+  boundary on projection owners, methods, and test helpers. PBC guards should
+  use this annotation as one input instead of inventing a wholly separate
+  marker.
 - `TaskWorkProjectionState` is not only a storage conversion holder today.
   Its inner enums are also used as engine runtime event field types by
   `TaskWorkLogicallyFinalEvent`, `TaskWorkAttemptClosedEvent`,
@@ -72,6 +84,8 @@ Implications:
   `com.xa.mass.storage.api.projection.*`
 - console review/read-model needs should be assembled outside engine kernel or
   explicitly marked as external read-model assembly
+- the PBC-3 read-model replacement path must be decided during PBC-0, not
+  discovered while implementing PBC-3
 - scan-heavy projection auditing should not be part of default engine
   diagnostics
 - projection cleanup should not be hidden under rule-boundary work
@@ -81,6 +95,8 @@ Implications:
   changed in PBC unless the change is required to decouple projection residue
 - engine-native work/attempt lifecycle event types must not keep projection
   naming after projection persistence is removed
+- server projection proof lanes must move with the server/read-model decision
+  before engine projection writes are removed
 
 ## Non-Goals
 
@@ -130,15 +146,32 @@ Scope:
    policy, result convergence, or dispatch eligibility.
 5. Identify server/API callers that need a replacement read model before
    projection writes can be removed.
-6. Record that rule-domain storage dependencies are not being changed by this
+6. Decide the PBC-3 replacement path before implementation starts:
+   - path A: server/read-model-side writer keeps a `TaskDetailStore`-like
+     review projection without engine runtime writes
+   - path B: server review reads from trace/archive/runtime-derived read model
+     and stops depending on `TaskDetailStore` projection rows
+   - any third path requires owner review before PBC-1 begins
+7. Build a field coverage matrix for `InternalTaskReviewController`:
+   - current response/export field
+   - current `TaskDetailStore` source field
+   - proposed replacement source
+   - whether existing `ExecutionEventType` coverage is sufficient
+   - required new trace/read-model event or assembler, if any
+8. Record that rule-domain storage dependencies are not being changed by this
    roadmap unless they directly block projection removal.
-7. Specifically classify `TaskWorkProjectionState` inner enum consumers:
+9. Specifically classify `TaskWorkProjectionState` inner enum consumers:
    - storage conversion
    - projection audit
    - runtime event payload
    - trace/logging payload
    - test-only helper
-8. Produce a small inventory doc beside this roadmap.
+10. Classify server projection proof assets:
+    - `ServerProjectionResidueSuite`
+    - `ServerProjectionAuditSuite`
+    - `ProjectionSampleE2eTest`
+    - every E2E class extending `ProjectionSampleE2eTest`
+11. Produce a small inventory doc beside this roadmap.
 
 Acceptance:
 
@@ -149,7 +182,12 @@ Acceptance:
    classified as keep-for-now, PBC target, rule follow-up, or unexpected.
 5. Every `TaskWorkProjectionState` enum consumer is classified before PBC-4
    attempts to delete projection conversion logic.
-6. No behavior changes in this slice.
+6. PBC-3 has one selected read-model replacement path with explicit tradeoffs.
+7. `InternalTaskReviewController` field coverage is mapped against
+   trace/runtime/read-model sources before PBC-3 implementation starts.
+8. Server projection proof assets have an owner decision: migrate, rename,
+   keep as explicit projection-read-model proof, or delete.
+9. No behavior changes in this slice.
 
 ## Slice PBC-1: Replace Runtime Assertions With Runtime Truth
 
@@ -205,14 +243,23 @@ Goal: keep console review useful without making engine own projection truth.
 Scope:
 
 1. Replace server review reads from `TaskDetailStore` message/attempt
-   projections with a read model assembled outside engine kernel, or explicitly
-   keep them as server/read-model storage concerns.
-2. If `TaskDetailStore` remains the server read-model backing store, make the
+   projections with the read-model path selected in PBC-0.
+2. If PBC-0 selected server/read-model-side projection assembly, make the
    writer/assembler server-side or read-model-side, not engine-side runtime
    logic.
-3. Update `InternalTaskReviewController` and related tests to the chosen read
+3. If PBC-0 selected trace/archive/runtime-derived review, implement the
+   required reader or assembler before removing the old controller dependency.
+4. Do not start this slice until the `InternalTaskReviewController` field
+   coverage matrix has no unresolved required field.
+5. Update `InternalTaskReviewController` and related tests to the chosen read
    model.
-4. Keep the replacement read model deterministic enough for local console demo
+6. Migrate or rename server projection proof lanes according to the PBC-0
+   owner decision:
+   - `ServerProjectionResidueSuite`
+   - `ServerProjectionAuditSuite`
+   - `ProjectionSampleE2eTest`
+   - E2E classes extending `ProjectionSampleE2eTest`
+7. Keep the replacement read model deterministic enough for local console demo
    and review surfaces; do not make external network calls part of this proof.
 
 Acceptance:
@@ -222,6 +269,11 @@ Acceptance:
 2. Server read-model ownership is documented outside engine kernel ownership.
 3. Review/export tests remain deterministic and do not rely on hidden engine
    compatibility writes.
+4. Server projection suites/support classes either target the new read model
+   explicitly or have been renamed/deleted so they no longer imply engine-owned
+   projection truth.
+5. Existing trace event coverage gaps found in PBC-0 are closed or documented
+   as explicit follow-up blockers before PBC-4 starts.
 
 ## Slice PBC-4: Remove Engine Projection Writes
 
@@ -270,6 +322,9 @@ Scope:
    - projection read-model assembly, if any remains, is outside engine kernel
    - remaining engine `mass-storage-api` imports must be on the allowlist from
      PBC-0 classification
+   - engine kernel/runtime mainline must not depend on classes or methods
+     annotated `@CompatibilityProjectionOnly`, except inside explicitly
+     named projection/read-model lanes that survived PBC-0 classification
 2. Prefer extending `EngineSchedulingCoreArchitectureGuardTest` for these
    guards because it is the current engine architecture guard carrier. Create
    a separate `EngineStorageDependencyGuardTest` only if PBC-0 inventory shows
@@ -288,6 +343,9 @@ Acceptance:
 4. Engine scheduling/result suites pass without projection assertion helpers.
 5. Guard or inventory check fails when a new unclassified engine
    `mass-storage-api` dependency appears.
+6. Guard fails if a new engine kernel/runtime path consumes
+   `@CompatibilityProjectionOnly` code outside an explicitly allowed
+   projection/read-model lane.
 
 ## Implementation Order
 
@@ -299,6 +357,10 @@ PBC-0 -> PBC-1 -> PBC-2 -> PBC-3 -> PBC-4 -> PBC-5
 
 Do not start by deleting projection writes. First move tests and console reads
 off projection truth, then remove engine writes.
+
+PBC-4 is blocked until PBC-3 has landed. Deleting engine projection writes
+before the server review replacement is in place will silently break
+`/internal/v1/review/tasks/**` seed/result preview and export behavior.
 
 PBC is the engine convergence mainline. After PBC lands, reassess whether
 remaining engine `mass-storage-api` dependencies are real owner-boundary
