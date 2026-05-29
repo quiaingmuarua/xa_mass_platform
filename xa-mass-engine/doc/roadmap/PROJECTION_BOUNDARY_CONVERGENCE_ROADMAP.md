@@ -34,12 +34,16 @@ message/attempt projection residue.
   `TaskProjectionStateAuditor`.
 - `TaskResultService` writes best-effort work and attempt projection residue
   after runtime result convergence.
-- `TaskManager.appendRuntimeIngressItems(...)` writes ingress-accepted
+- `TaskManager.addRuntimeIngressItems(...)` writes ingress-accepted
   projection residue through `TaskCompatibilityProjectionStore`.
 - Server review surfaces still read `TaskDetailStore` projections, especially
   `InternalTaskReviewController`.
 - Many engine tests still assert behavior through `TaskDetailStore`
   message/attempt projections instead of runtime/result/trace truth.
+- `TaskWorkProjectionState` is not only a storage conversion holder today.
+  Its inner enums are also used as engine runtime event field types by
+  `TaskWorkLogicallyFinalEvent`, `TaskWorkAttemptClosedEvent`,
+  `SimpleTaskDispatchBinder`, and `TraceEventLogger`.
 - Engine production code still depends on `mass-storage-api` for three
   different reasons that must not be collapsed:
   - `TaskShellStore` / `TaskShellLifecycleQuery`: current task shell and
@@ -75,6 +79,8 @@ Implications:
   shell/control-plane contract
 - `RuleStorage` and storage rule DTO usage should be inventoried but not
   changed in PBC unless the change is required to decouple projection residue
+- engine-native work/attempt lifecycle event types must not keep projection
+  naming after projection persistence is removed
 
 ## Non-Goals
 
@@ -126,7 +132,13 @@ Scope:
    projection writes can be removed.
 6. Record that rule-domain storage dependencies are not being changed by this
    roadmap unless they directly block projection removal.
-7. Produce a small inventory doc beside this roadmap.
+7. Specifically classify `TaskWorkProjectionState` inner enum consumers:
+   - storage conversion
+   - projection audit
+   - runtime event payload
+   - trace/logging payload
+   - test-only helper
+8. Produce a small inventory doc beside this roadmap.
 
 Acceptance:
 
@@ -135,7 +147,9 @@ Acceptance:
 3. Console/read-model callers are separated from engine runtime callers.
 4. Every current engine production dependency on `mass-storage-api` is
    classified as keep-for-now, PBC target, rule follow-up, or unexpected.
-5. No behavior changes in this slice.
+5. Every `TaskWorkProjectionState` enum consumer is classified before PBC-4
+   attempts to delete projection conversion logic.
+6. No behavior changes in this slice.
 
 ## Slice PBC-1: Replace Runtime Assertions With Runtime Truth
 
@@ -218,9 +232,15 @@ Scope:
 1. Remove `TaskCompatibilityProjectionStore` from `TaskManager` assembly.
 2. Remove ingress projection writes from runtime item append.
 3. Remove best-effort work/attempt projection writes from `TaskResultService`.
-4. Delete `TaskWorkProjectionState` conversions to storage projection enums
-   once no engine runtime path writes projection rows.
-5. Remove `TaskDetailStore` constructor requirements that exist only for
+4. Split engine-native work/attempt lifecycle enums out of
+   `TaskWorkProjectionState` before deleting storage projection conversion
+   logic. Runtime event records such as `TaskWorkLogicallyFinalEvent` and
+   `TaskWorkAttemptClosedEvent` must depend on engine-native lifecycle types,
+   not projection-named containers.
+5. Delete `TaskWorkProjectionState` conversions to storage projection enums
+   once no engine runtime path writes projection rows and no runtime event
+   payload depends on `TaskWorkProjectionState`.
+6. Remove `TaskDetailStore` constructor requirements that exist only for
    compatibility projection writes.
 
 Acceptance:
@@ -234,6 +254,8 @@ Acceptance:
 4. Result convergence, retry, expiry, and terminal policy tests still pass.
 5. Remaining engine `mass-storage-api` imports are limited to explicitly kept
    task shell/control-plane or rule-domain follow-up contracts.
+6. Runtime work/finality event records no longer use
+   `TaskWorkProjectionState` as their field type.
 
 ## Slice PBC-5: Guard And Proof
 
@@ -248,8 +270,13 @@ Scope:
    - projection read-model assembly, if any remains, is outside engine kernel
    - remaining engine `mass-storage-api` imports must be on the allowlist from
      PBC-0 classification
-2. Add proof that console review/read-model still works through its new owner.
-3. Add proof that runtime correctness tests pass without projection reads.
+2. Prefer extending `EngineSchedulingCoreArchitectureGuardTest` for these
+   guards because it is the current engine architecture guard carrier. Create
+   a separate `EngineStorageDependencyGuardTest` only if PBC-0 inventory shows
+   the allowlist logic would make the existing guard materially harder to
+   maintain.
+3. Add proof that console review/read-model still works through its new owner.
+4. Add proof that runtime correctness tests pass without projection reads.
 
 Acceptance:
 
