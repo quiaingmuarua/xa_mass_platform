@@ -632,7 +632,6 @@ public class EngineConfig {
         if (taskManager == null) {
             taskManager = new TaskManager(
                     getTaskShellStore(),
-                    getTaskDetailStore(),
                     getTaskWorkRuntime(),
                     getTaskResultRuntime(),
                     getExecutionEventSink()

@@ -170,7 +170,7 @@ Identify the dominant boundary first:
 Read the owner README after [TESTING_INDEX.md](./TESTING_INDEX.md) confirms the
 minimum verification set.
 
-## 6. Projection-First Tests
+## 6. Projection-First And Review Read-Model Tests
 
 - keep local kernel tests strong; do not weaken lifecycle or convergence coverage
 - rewrite tests that prove runtime/result correctness by immediately reading compatibility projection
@@ -178,8 +178,8 @@ minimum verification set.
 - keep compatibility residue ownership explicit:
   `EngineProjectionResidueSuite` and `EngineProjectionAuditSuite` are valid supporting lanes, but they do not define the scheduling-core gate
 - keep server compatibility residue ownership explicit:
-  `ServerProjectionResidueSuite` and `ServerProjectionAuditSuite` are valid
-  supporting lanes; `ServerSchedulingE2eSuite` and
+  `ServerReviewReadModelResidueSuite` and `ServerReviewReadModelAuditSuite`
+  are valid supporting lanes; `ServerSchedulingE2eSuite` and
   `ServerLifecycleResultConvergenceSuite` stay runtime/aggregate-first
 - `ServerMainlineE2eArchitectureGuardTest` derives its scan list from
   `ServerSchedulingE2eSuite` and `ServerLifecycleResultConvergenceSuite`
@@ -189,9 +189,9 @@ minimum verification set.
 - `ServerMainSourceArchitectureGuardTest` scans `xa-mass-server/src/main/java`
   and fails if server mainline imports `com.xa.mass.base.*`,
   `com.xa.mass.engine.*`, or `com.xa.mass.sdk.internal.*`
-- server E2E projection helpers live behind the explicit
-  `ProjectionSampleE2eTest` support base; the default `AbstractSampleE2eTest`
-  only exposes runtime-first task snapshot helpers
+- server E2E review read-model helpers live behind the explicit
+  `ReviewReadModelSampleE2eTest` support base; the default
+  `AbstractSampleE2eTest` only exposes runtime-first task snapshot helpers
 - when the real risk is disconnect, replay, late result, takeover, or host/runtime wiring, prefer Boot-shell E2E, cross-language black-box, or chaos over adding more projection-first local tests
 - chaos/perf reports may read bounded compatibility residue for diagnostics,
   but the runner's pass/fail proof must stay runtime/aggregate/trace-first

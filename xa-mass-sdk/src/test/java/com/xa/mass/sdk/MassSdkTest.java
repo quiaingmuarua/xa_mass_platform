@@ -27,7 +27,7 @@ import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.TaskWorkLogicallyFinalEvent;
 import com.xa.mass.engine.TaskWorkLogicallyFinalListener;
-import com.xa.mass.engine.TaskWorkProjectionState;
+import com.xa.mass.engine.TaskWorkLifecycleState;
 import com.xa.mass.engine.TaskDispatchWakeupPort;
 import com.xa.mass.engine.TaskLeaseMaintenancePort;
 import com.xa.mass.engine.TaskShellLifecycleMaintenancePort;
@@ -1553,8 +1553,8 @@ class MassSdkTest {
         captor.getValue().onTaskWorkLogicallyFinal(task, new TaskWorkLogicallyFinalEvent(
                 "task-1",
                 "msg-1",
-                TaskWorkProjectionState.MessageStatus.SUCCESS,
-                TaskWorkProjectionState.MessageFinalReason.BUSINESS_SUCCESS,
+                TaskWorkLifecycleState.MessageStatus.SUCCESS,
+                TaskWorkLifecycleState.MessageFinalReason.BUSINESS_SUCCESS,
                 2,
                 null,
                 null,
@@ -1644,14 +1644,20 @@ class MassSdkTest {
     }
 
     @Test
-    void engineConfigRequiresExplicitTaskDetailStoreAfterReplacingTaskShellStore() {
+    void engineConfigDoesNotRequireTaskDetailStoreForEngineRuntimeAfterReplacingTaskShellStore() {
         EngineConfig config = new EngineConfig();
 
         config.setTaskShellStore(new InMemoryTaskShellStore());
 
-        IllegalStateException error = assertThrows(IllegalStateException.class, config::getTaskCommandService);
-        assertEquals("taskDetailStore is not configured; provide an explicit taskDetailStore via setTaskDetailStore()",
-                error.getMessage());
+        try {
+            assertNotNull(config.getTaskCommandService());
+
+            IllegalStateException error = assertThrows(IllegalStateException.class, config::getTaskDetailStore);
+            assertEquals("taskDetailStore is not configured; provide an explicit taskDetailStore via setTaskDetailStore()",
+                    error.getMessage());
+        } finally {
+            config.shutdownTaskRuntime();
+        }
     }
 
     @Test

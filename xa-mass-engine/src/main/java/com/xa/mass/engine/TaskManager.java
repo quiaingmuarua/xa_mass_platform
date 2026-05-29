@@ -1,6 +1,5 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
 import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskIntakeStatus;
 import com.xa.mass.base.enums.task.TaskStatus;
@@ -21,7 +20,6 @@ import com.xa.mass.engine.policy.ContractAwareTaskTerminalPolicy;
 import com.xa.mass.engine.policy.TaskTerminalPolicy;
 import com.xa.mass.engine.runtime.TaskRuntimeEnqueueOptionsResolver;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
-import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.TaskShellLifecycleQuery;
 import com.xa.mass.storage.api.TaskShellStore;
 import com.xa.mass.engine.util.LogUtils;
@@ -53,8 +51,8 @@ import java.util.Objects;
 import java.util.function.Supplier;
 
 /**
- * Internal engine orchestration facade and composition root for task lifecycle,
- * best-effort compatibility residue writes, and runtime-bridge wiring.
+ * Internal engine orchestration facade and composition root for task lifecycle
+ * and runtime-bridge wiring.
  *
  * <p>This remains the owner of engine assembly semantics, but it is not the
  * preferred cross-module caller surface for shell, SDK, transport, or testing
@@ -70,7 +68,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
     static final int MAX_INGEST_BATCH_ITEMS = Integer.getInteger("xa.mass.engine.maxIngestBatchItems", 10_000);
 
     private final TaskShellStore taskStorage;
-    private final TaskCompatibilityProjectionStore compatibilityProjectionStore;
     private final TaskShellLifecycleQuery taskShellLifecycleQuery;
     private final TaskTerminalPolicy taskTerminalPolicy;
     private final TaskEventPublisher eventPublisher;
@@ -84,28 +81,18 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
     private final TaskRuntimeEnqueueOptionsResolver enqueueOptionsResolver;
     private final TaskConcurrencyStrategy concurrencyCoordinator;
     private final VirtualThreadRuntimeTaskExecutor retryWakeupExecutor;
-    /**
-     * Async executor for best-effort compatibility projection writes.
-     *
-     * <p>Projection writes are {@link CompatibilityProjectionOnly} residue - they must not block the runtime callback hot path. Submitting them here
-     * offloads the blocking storage I/O to a virtual-thread pool so the caller
-     * returns as soon as the runtime mutation completes.</p>
-     */
-    private final VirtualThreadRuntimeTaskExecutor projectionWriteExecutor;
     private final com.xa.mass.engine.util.TraceEventLogger traceEventLogger;
     private long workLeaseSeconds = 300L;
 
     public TaskManager(TaskShellStore taskStorage,
-                       TaskDetailStore taskDetailStore,
                        TaskWorkRuntime taskWorkRuntime,
                        TaskResultRuntime taskResultRuntime,
                        ExecutionEventSink executionEventSink) {
-        this(taskStorage, taskDetailStore, new ContractAwareTaskTerminalPolicy(), taskWorkRuntime,
+        this(taskStorage, new ContractAwareTaskTerminalPolicy(), taskWorkRuntime,
                 taskResultRuntime, executionEventSink);
     }
 
     public TaskManager(TaskShellStore taskStorage,
-                       TaskDetailStore taskDetailStore,
                        TaskTerminalPolicy taskTerminalPolicy,
                        TaskWorkRuntime taskWorkRuntime,
                        TaskResultRuntime taskResultRuntime,
@@ -114,8 +101,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
         this.taskShellLifecycleQuery = taskStorage instanceof TaskShellLifecycleQuery lifecycleQuery
                 ? lifecycleQuery
                 : new ScanningTaskShellLifecycleQuery(taskStorage);
-        TaskDetailStore requiredTaskDetailStore = Objects.requireNonNull(taskDetailStore, "taskDetailStore");
-        this.compatibilityProjectionStore = new TaskCompatibilityProjectionStore(requiredTaskDetailStore);
         TaskWorkRuntime requiredTaskWorkRuntime = Objects.requireNonNull(taskWorkRuntime, "taskWorkRuntime");
         TaskResultRuntime requiredTaskResultRuntime = Objects.requireNonNull(taskResultRuntime, "taskResultRuntime");
         this.taskTerminalPolicy = Objects.requireNonNull(taskTerminalPolicy, "taskTerminalPolicy");
@@ -137,10 +122,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
                 "engine-retry-wakeup-",
                 Integer.getInteger("xa.mass.engine.retryWakeupMaxPendingTasks", 10_000)
         );
-        this.projectionWriteExecutor = new VirtualThreadRuntimeTaskExecutor(
-                "engine-proj-write-",
-                Integer.getInteger("xa.mass.engine.projectionWriteMaxPendingTasks", 50_000)
-        );
         this.dispatchRequestService = new TaskDispatchRequestService(
                 this,
                 retryWakeupExecutor,
@@ -153,7 +134,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
         );
         this.resultService = new TaskResultService(
                 this,
-                compatibilityProjectionStore,
                 requiredTaskResultRuntime,
                 new TaskRuntimeRetryPolicyResolver(),
                 traceEventLogger
@@ -335,10 +315,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
 
     /**
      * Runtime-first ingest for one logical work item.
-     *
-     * <p>Runtime admission happens before compatibility projection write so
-     * the bounded compatibility projection is not the canonical ingest product for execution
-     * correctness.</p>
      */
     void ingestRuntimeInput(String taskId,
                       String messageId,
@@ -385,10 +361,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
             if (outcome != null && outcome.status() != WorkEnqueueStatus.ENQUEUED) {
                 throw new IllegalStateException("task work enqueue failed: status="
                         + outcome.status() + ", reason=" + outcome.reason());
-            }
-            if (!compatibilityProjectionStore.upsertRuntimeIngressAccepted(ingressItem)) {
-                logger.warn("Compatibility projection write failed for taskId={}, messageId={} during runtime ingest; runtime work already enqueued",
-                        ingressItem.taskId(), ingressItem.messageId());
             }
         }
         LogUtils.logOperationSuccess("runtime work batch added: count=" + ingressItems.size(), 0);
@@ -515,7 +487,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
         dispatchRequestService.shutdown();
         resultService.shutdown();
         retryWakeupExecutor.shutdown();
-        projectionWriteExecutor.shutdown();
         taskResultRuntime.shutdown();
         taskWorkRuntime.shutdown();
     }
@@ -731,26 +702,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
         taskResultRuntime.getVisibleByMessageId(taskId, messageId)
                 .filter(row -> row.attemptClosedPublished() && row.logicalFinalPublished() && row.progressApplied())
                 .ifPresent(row -> taskResultRuntime.discardStagedCallbacksForMessage(taskId, messageId));
-    }
-
-    /**
-     * Submits a best-effort compatibility projection write to the async
-     * projection executor.
-     *
-     * <p>The task is dropped (with a warning) if the executor's pending-task
-     * capacity is exhausted. Callers must not treat this as a durable write
-     * path - projection residue is secondary to runtime truth.</p>
-     *
-     * @param task the projection write to execute off the hot path
-     */
-    @CompatibilityProjectionOnly
-    void submitProjectionWrite(Runnable task) {
-        try {
-            projectionWriteExecutor.submit(task);
-        } catch (java.util.concurrent.RejectedExecutionException ex) {
-            logger.warn("Projection write executor at capacity - dropping best-effort projection write: {}",
-                    ex.getMessage());
-        }
     }
 
     @Override

@@ -7,7 +7,7 @@ import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.server.e2e.support.ProjectionSampleE2eTest;
+import com.xa.mass.server.e2e.support.ReviewReadModelSampleE2eTest;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -46,7 +46,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @ActiveProfiles("dev")
 @DirtiesContext
 @Tag("secondary-proof")
-class PostgresExternalWorkerPollingApiIntegrationTest extends ProjectionSampleE2eTest {
+class PostgresExternalWorkerPollingApiIntegrationTest extends ReviewReadModelSampleE2eTest {
 
     /**
      * Support-only storage compatibility coverage.

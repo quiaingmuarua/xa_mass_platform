@@ -1,14 +1,13 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.base.annotation.CompatibilityProjectionOnly;
 import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
-import com.xa.mass.engine.TaskWorkProjectionState.AttemptFinalReason;
-import com.xa.mass.engine.TaskWorkProjectionState.AttemptStatus;
-import com.xa.mass.engine.TaskWorkProjectionState.MessageFinalReason;
-import com.xa.mass.engine.TaskWorkProjectionState.MessageStatus;
+import com.xa.mass.engine.TaskWorkLifecycleState.AttemptFinalReason;
+import com.xa.mass.engine.TaskWorkLifecycleState.AttemptStatus;
+import com.xa.mass.engine.TaskWorkLifecycleState.MessageFinalReason;
+import com.xa.mass.engine.TaskWorkLifecycleState.MessageStatus;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicy;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
 import com.xa.mass.engine.util.LogUtils;
@@ -58,19 +57,16 @@ class TaskResultService {
     private static final String LEASE_EXPIRED_ERROR_CODE = "LEASE_EXPIRED";
 
     private final TaskManager taskManager;
-    private final TaskCompatibilityProjectionStore compatibilityProjectionStore;
     private final TaskResultRuntime taskResultRuntime;
     private final TaskRuntimeRetryPolicyResolver taskRuntimeRetryPolicyResolver;
     private final TraceEventLogger traceEventLogger;
     private final ScheduledExecutorService repairExecutor;
 
     TaskResultService(TaskManager taskManager,
-                      TaskCompatibilityProjectionStore compatibilityProjectionStore,
                       TaskResultRuntime taskResultRuntime,
                       TaskRuntimeRetryPolicyResolver taskRuntimeRetryPolicyResolver,
                       TraceEventLogger traceEventLogger) {
         this.taskManager = taskManager;
-        this.compatibilityProjectionStore = compatibilityProjectionStore;
         this.taskResultRuntime = taskResultRuntime;
         this.taskRuntimeRetryPolicyResolver = taskRuntimeRetryPolicyResolver;
         this.traceEventLogger = traceEventLogger;
@@ -158,14 +154,6 @@ class TaskResultService {
                     activeAttempt.batchId(),
                     workRetryDelayMillis,
                     "EXPIRE_LEASED_WORK", "TaskManager", "lease expired but retry budget allows re-dispatch");
-            final RuntimeWorkSummary capturedRetrySummary = retrySummary;
-            final AttemptProjectionView capturedExpiredAttempt = activeAttempt;
-            taskManager.submitProjectionWrite(() -> {
-                persistAttemptProjectionUpsertBestEffort(taskId, messageId, capturedExpiredAttempt,
-                        "mark attempt expired");
-                persistWorkProjectionBestEffort(taskId, capturedRetrySummary,
-                        "persist expiry retry-reset compatibility summary");
-            });
             currentSummary = retrySummary;
             discardStage(stagedDraft);
         } else {
@@ -187,14 +175,6 @@ class TaskResultService {
                         taskId, messageId, visibleFinalCommit.status(), visibleFinalCommit.reason());
                 return ResultMutationOutcome.acceptedNoop();
             }
-            final RuntimeWorkSummary capturedFinalSummary = logicallyFinalSummary;
-            final AttemptProjectionView capturedExpiredAttempt = activeAttempt;
-            taskManager.submitProjectionWrite(() -> {
-                persistAttemptProjectionUpsertBestEffort(taskId, messageId, capturedExpiredAttempt,
-                        "mark attempt expired");
-                persistWorkProjectionBestEffort(taskId, capturedFinalSummary,
-                        "persist expiry compatibility summary");
-            });
             currentSummary = logicallyFinalSummary;
         }
         traceEventLogger.leaseExpired(
@@ -607,22 +587,12 @@ class TaskResultService {
                 "TaskManager",
                 "work item marked success"
         );
-        // Projection writes are @CompatibilityProjectionOnly residue - submitted async
-        // so they cannot block the runtime callback hot path.
         CommitResult commit = commitVisibleFinal(successSummary, activeAttempt, stagedDraft);
         if (!commit.visible()) {
             logger.warn("Result runtime visible commit failed for success result taskId={}, messageId={}, status={}, reason={}",
                     taskId, messageId, commit.status(), commit.reason());
             return ResultMutationOutcome.acceptedNoop();
         }
-        final RuntimeWorkSummary capturedSummary = successSummary;
-        final AttemptProjectionView capturedAttempt = activeAttempt;
-        taskManager.submitProjectionWrite(() -> {
-            persistAttemptProjectionUpsertBestEffort(taskId, messageId, capturedAttempt,
-                    "mark attempt success");
-            persistWorkProjectionBestEffort(taskId, capturedSummary,
-                    "persist success compatibility summary");
-        });
         // Event publishing is kept synchronous - it drives downstream state transitions.
         if (task != null) {
             publishWorkAttemptClosedOnce(task, successSummary, activeAttempt, commit.row(),
@@ -696,12 +666,6 @@ class TaskResultService {
                 "TaskManager",
                 resetReason
         );
-        // Attempt projection write is @CompatibilityProjectionOnly - submit async.
-        final AttemptProjectionView capturedAttempt = activeAttempt;
-        taskManager.submitProjectionWrite(() ->
-                persistAttemptProjectionUpsertBestEffort(taskId, messageId, capturedAttempt,
-                        "revoke attempt for retry"));
-
         RuntimeWorkSummary retryBase = buildRetryResetCompatibilityBaseView(workSummary, activeAttempt);
         if (retryBase == null) {
             logger.warn("Failed to recover retry-reset compatibility view for work item {} from status {}",
@@ -733,11 +697,6 @@ class TaskResultService {
                 trigger,
                 "TaskManager",
                 resetReason);
-        // Work projection write is @CompatibilityProjectionOnly residue - submit async.
-        final RuntimeWorkSummary capturedRetrySummary = retrySummary;
-        taskManager.submitProjectionWrite(() ->
-                persistWorkProjectionBestEffort(taskId, capturedRetrySummary,
-                        "persist retry-reset compatibility summary"));
         return retrySummary;
     }
 
@@ -787,21 +746,12 @@ class TaskResultService {
                 "work item marked failure"
         );
 
-        // Projection writes are @CompatibilityProjectionOnly residue - submitted async.
         CommitResult commit = commitVisibleFinal(failureSummary, activeAttempt, stagedDraft);
         if (!commit.visible()) {
             logger.warn("Result runtime visible commit failed for failure result taskId={}, messageId={}, status={}, reason={}",
                     taskId, messageId, commit.status(), commit.reason());
             return ResultMutationOutcome.acceptedNoop();
         }
-        final RuntimeWorkSummary capturedSummary = failureSummary;
-        final AttemptProjectionView capturedAttempt = activeAttempt;
-        taskManager.submitProjectionWrite(() -> {
-            persistAttemptProjectionUpsertBestEffort(taskId, messageId, capturedAttempt,
-                    "mark attempt failure");
-            persistWorkProjectionBestEffort(taskId, capturedSummary,
-                    "persist exhausted-failure compatibility summary");
-        });
         // Event publishing kept synchronous; use the already-loaded task.
         if (task != null) {
             publishWorkAttemptClosedOnce(task, failureSummary, activeAttempt, commit.row(),
@@ -851,82 +801,6 @@ class TaskResultService {
                                                               String errorCode,
                                                               Map<String, Object> output) {
         return base.completeFailure(MessageFinalReason.RETRY_EXHAUSTED, detail, errorCode, output);
-    }
-
-    /**
-     * Compatibility projection persistence is best-effort only.
-     *
-     * <p>Runtime {@code applyResult(...)} has already decided execution truth
-     * before this write runs, so projection failure must not redefine callback,
-     * expiry, or retry convergence.</p>
-     */
-    @CompatibilityProjectionOnly
-    private void persistWorkProjectionBestEffort(String taskId,
-                                                 RuntimeWorkSummary workSummary,
-                                                 String action) {
-        compatibilityProjectionStore.upsertWorkSummaryBestEffort(
-                taskId,
-                toProjectionResidue(workSummary),
-                action
-        );
-    }
-
-    @CompatibilityProjectionOnly
-    private void persistAttemptProjectionUpsertBestEffort(String taskId,
-                                                          String messageId,
-                                                          AttemptProjectionView attempt,
-                                                          String action) {
-        compatibilityProjectionStore.upsertAttemptSummaryBestEffort(
-                taskId,
-                messageId,
-                toProjectionResidue(attempt),
-                action
-        );
-    }
-
-    private TaskCompatibilityProjectionStore.WorkSummaryResidue toProjectionResidue(RuntimeWorkSummary workSummary) {
-        if (workSummary == null) {
-            return null;
-        }
-        return new TaskCompatibilityProjectionStore.WorkSummaryResidue(
-                workSummary.messageId(),
-                workSummary.taskId(),
-                workSummary.latestAttemptId(),
-                workSummary.latestAttemptWorkerId(),
-                workSummary.latestAttemptBatchId(),
-                workSummary.status(),
-                workSummary.assignedTime(),
-                workSummary.createTime(),
-                workSummary.updateTime(),
-                workSummary.startTime(),
-                workSummary.completeTime(),
-                workSummary.retryCount(),
-                workSummary.maxRetryCount(),
-                workSummary.errorMessage(),
-                workSummary.errorCode(),
-                workSummary.finalReason(),
-                workSummary.payloadRef(),
-                workSummary.output()
-        );
-    }
-
-    private TaskCompatibilityProjectionStore.WorkAttemptResidue toProjectionResidue(AttemptProjectionView attempt) {
-        if (attempt == null) {
-            return null;
-        }
-        return new TaskCompatibilityProjectionStore.WorkAttemptResidue(
-                attempt.attemptId(),
-                attempt.taskId(),
-                attempt.messageId(),
-                attempt.attemptNo(),
-                attempt.workerId(),
-                attempt.batchId(),
-                attempt.status(),
-                attempt.finalReason(),
-                attempt.errorMessage(),
-                attempt.errorCode(),
-                attempt.output()
-        );
     }
 
     private boolean isCallbackAcceptableMessageState(MessageStatus workStatus) {

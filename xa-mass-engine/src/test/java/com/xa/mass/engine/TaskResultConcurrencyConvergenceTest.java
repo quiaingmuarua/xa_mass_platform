@@ -52,7 +52,6 @@ class TaskResultConcurrencyConvergenceTest {
         InMemoryTaskShellStore storage = new InMemoryTaskShellStore();
         taskManager = new TaskManager(
                 storage,
-                storage,
                 new InMemoryTaskWorkRuntime(),
                 new InMemoryTaskResultRuntime(),
                 null
@@ -333,7 +332,7 @@ class TaskResultConcurrencyConvergenceTest {
 
     private static TaskManager newManager(TaskWorkRuntime taskWorkRuntime) {
         InMemoryTaskShellStore storage = new InMemoryTaskShellStore();
-        return new TaskManager(storage, storage, taskWorkRuntime, new InMemoryTaskResultRuntime(), null);
+        return new TaskManager(storage, taskWorkRuntime, new InMemoryTaskResultRuntime(), null);
     }
 
     private static Task createRunningTask(TaskManager manager,
@@ -551,7 +550,7 @@ class TaskResultConcurrencyConvergenceTest {
         private final ConcurrentHashMap<String, AtomicInteger> progressUpdateCounts = new ConcurrentHashMap<>();
 
         private CountingTaskManager(InMemoryTaskShellStore taskStorage) {
-            super(taskStorage, taskStorage, new InMemoryTaskWorkRuntime(), new InMemoryTaskResultRuntime(), null);
+            super(taskStorage, new InMemoryTaskWorkRuntime(), new InMemoryTaskResultRuntime(), null);
         }
 
         @Override
@@ -576,7 +575,7 @@ class TaskResultConcurrencyConvergenceTest {
         private CoalescingCountingTaskManager(InMemoryTaskShellStore taskStorage,
                                               TaskWorkRuntime taskWorkRuntime,
                                               int expectedProgressRequests) {
-            super(taskStorage, taskStorage, taskWorkRuntime, new InMemoryTaskResultRuntime(), null);
+            super(taskStorage, taskWorkRuntime, new InMemoryTaskResultRuntime(), null);
             this.allProgressRequestsReached = new CountDownLatch(expectedProgressRequests);
         }
 

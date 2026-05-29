@@ -276,11 +276,11 @@ Non-scheduling lifecycle and result convergence gate:
 ./mvnw -pl xa-mass-server -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=ServerLifecycleResultConvergenceSuite test
 ```
 
-Explicit compatibility residue/audit supporting lanes:
+Explicit compatibility and review read-model supporting lanes:
 
 ```bash
 ./mvnw -pl xa-mass-engine -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=EngineProjectionResidueSuite,EngineProjectionAuditSuite test
-./mvnw -pl xa-mass-server -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=ServerProjectionResidueSuite,ServerProjectionAuditSuite test
+./mvnw -pl xa-mass-server -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=ServerReviewReadModelResidueSuite,ServerReviewReadModelAuditSuite test
 ```
 
 Cross-language external worker samples:

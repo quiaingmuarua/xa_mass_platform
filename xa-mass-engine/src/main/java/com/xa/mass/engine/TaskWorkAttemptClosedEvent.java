@@ -10,8 +10,8 @@ public record TaskWorkAttemptClosedEvent(
         int attemptNo,
         String workerId,
         String batchId,
-        TaskWorkProjectionState.AttemptStatus status,
-        TaskWorkProjectionState.AttemptFinalReason finalReason
+        TaskWorkLifecycleState.AttemptStatus status,
+        TaskWorkLifecycleState.AttemptFinalReason finalReason
 ) {
 
     public static TaskWorkAttemptClosedEvent from(String taskId,
@@ -20,8 +20,8 @@ public record TaskWorkAttemptClosedEvent(
                                                      int attemptNo,
                                                      String workerId,
                                                      String batchId,
-                                                     TaskWorkProjectionState.AttemptStatus status,
-                                                     TaskWorkProjectionState.AttemptFinalReason finalReason) {
+                                                     TaskWorkLifecycleState.AttemptStatus status,
+                                                     TaskWorkLifecycleState.AttemptFinalReason finalReason) {
         return new TaskWorkAttemptClosedEvent(
                 taskId,
                 messageId,

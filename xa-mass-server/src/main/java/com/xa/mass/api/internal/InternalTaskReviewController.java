@@ -1,9 +1,12 @@
 package com.xa.mass.api.internal;
 
 import com.xa.mass.api.model.ApiResponse;
+import com.xa.mass.api.review.TaskReviewReadModel;
+import com.xa.mass.api.review.TaskReviewReadModel.TaskReviewItem;
+import com.xa.mass.api.review.TaskReviewReadModel.TaskReviewSnapshot;
+import com.xa.mass.api.review.TaskReviewReadModel.TaskReviewStats;
 import com.xa.mass.sdk.TaskQueryOperations;
 import com.xa.mass.sdk.model.TaskDetailSnapshot;
-import com.xa.mass.storage.api.TaskDetailStore;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -15,7 +18,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,24 +34,23 @@ public class InternalTaskReviewController {
             new com.fasterxml.jackson.databind.ObjectMapper();
 
     private final TaskQueryOperations taskQueries;
-    private final TaskDetailStore taskDetailStore;
+    private final TaskReviewReadModel taskReviewReadModel;
 
     public InternalTaskReviewController(TaskQueryOperations taskQueries,
-                                        TaskDetailStore taskDetailStore) {
+                                        TaskReviewReadModel taskReviewReadModel) {
         this.taskQueries = taskQueries;
-        this.taskDetailStore = taskDetailStore;
+        this.taskReviewReadModel = taskReviewReadModel;
     }
 
     @GetMapping("/{taskId}")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getTaskReview(@PathVariable String taskId) {
         return executeApi("Task review lookup failed", () -> {
             requireTaskDetail(taskId);
-            TaskDetailStore.TaskMessageStats stats = taskDetailStore.getTaskMessageStats(taskId);
-            List<TaskDetailStore.TaskMessageProjection> preview = loadTaskMessageProjections(taskId, TASK_REVIEW_PREVIEW_LIMIT);
+            TaskReviewSnapshot review = loadTaskReview(taskId, TASK_REVIEW_PREVIEW_LIMIT);
             Map<String, Object> response = new LinkedHashMap<>();
-            response.put("summary", toTaskReviewSummary(stats, preview.size()));
-            response.put("seedPreview", preview.stream().map(this::toTaskSeedPreviewItem).toList());
-            response.put("resultPreview", preview.stream().map(this::toTaskResultPreviewItem).toList());
+            response.put("summary", toTaskReviewSummary(review.stats(), review.preview().size()));
+            response.put("seedPreview", review.preview().stream().map(this::toTaskSeedPreviewItem).toList());
+            response.put("resultPreview", review.preview().stream().map(this::toTaskResultPreviewItem).toList());
             response.put("exports", Map.of(
                     "seedUrl", "/internal/v1/review/tasks/" + taskId + "/seed-export",
                     "resultUrl", "/internal/v1/review/tasks/" + taskId + "/result-export"
@@ -74,8 +75,8 @@ public class InternalTaskReviewController {
         return executeRawApi("Task " + exportKind + " export failed", () -> {
             TaskDetailSnapshot task = requireTaskDetail(taskId);
             int exportLimit = resolveReviewExportLimit(task);
-            List<TaskDetailStore.TaskMessageProjection> projections = loadTaskMessageProjections(taskId, exportLimit);
-            List<Map<String, Object>> rows = projections.stream()
+            List<TaskReviewItem> items = loadTaskReviewItems(taskId, exportLimit);
+            List<Map<String, Object>> rows = items.stream()
                     .map(exportSeedRows ? this::toTaskSeedPreviewItem : this::toTaskResultPreviewItem)
                     .toList();
             Map<String, Object> payload = new LinkedHashMap<>();
@@ -117,7 +118,7 @@ public class InternalTaskReviewController {
     }
 
     private TaskDetailSnapshot requireTaskDetail(String taskId) {
-        ensureTaskDetailStoreConfigured();
+        ensureTaskReviewReadModelConfigured();
         TaskDetailSnapshot task = taskQueries.getTaskDetail(taskId);
         if (task == null) {
             throw new TaskReviewException(404, "Task not found: " + taskId);
@@ -125,81 +126,79 @@ public class InternalTaskReviewController {
         return task;
     }
 
-    private void ensureTaskDetailStoreConfigured() {
-        if (taskDetailStore == null) {
-            throw new TaskReviewException(400, "Task review storage is unavailable");
+    private void ensureTaskReviewReadModelConfigured() {
+        if (taskReviewReadModel == null) {
+            throw new TaskReviewException(400, "Task review read model is unavailable");
         }
     }
 
-    private List<TaskDetailStore.TaskMessageProjection> loadTaskMessageProjections(String taskId, int limit) {
-        List<TaskDetailStore.TaskMessageProjection> projections =
-                taskDetailStore.getTaskMessageProjections(taskId, Math.max(1, limit));
-        return projections.stream()
-                .sorted(Comparator.comparing(TaskDetailStore.TaskMessageProjection::createTime,
-                        Comparator.nullsLast(Comparator.naturalOrder())))
-                .toList();
+    private TaskReviewSnapshot loadTaskReview(String taskId, int previewLimit) {
+        ensureTaskReviewReadModelConfigured();
+        return taskReviewReadModel.loadReview(taskId, Math.max(1, previewLimit));
     }
 
-    private Map<String, Object> toTaskReviewSummary(TaskDetailStore.TaskMessageStats stats, int previewCount) {
+    private List<TaskReviewItem> loadTaskReviewItems(String taskId, int limit) {
+        ensureTaskReviewReadModelConfigured();
+        return taskReviewReadModel.loadItems(taskId, Math.max(1, limit));
+    }
+
+    private TaskReviewStats loadTaskReviewStats(String taskId) {
+        ensureTaskReviewReadModelConfigured();
+        return taskReviewReadModel.loadStats(taskId);
+    }
+
+    private Map<String, Object> toTaskReviewSummary(TaskReviewStats stats, int previewCount) {
         Map<String, Object> summary = new LinkedHashMap<>();
-        summary.put("totalItems", stats != null ? stats.getTotal() : 0L);
-        summary.put("successItems", stats != null ? stats.getSuccess() : 0L);
-        summary.put("failedItems", stats != null ? stats.getFailed() : 0L);
-        summary.put("expiredItems", stats != null ? stats.getExpired() : 0L);
-        summary.put("processingItems", stats != null ? stats.getProcessing() : 0L);
+        summary.put("totalItems", stats != null ? stats.totalItems() : 0L);
+        summary.put("successItems", stats != null ? stats.successItems() : 0L);
+        summary.put("failedItems", stats != null ? stats.failedItems() : 0L);
+        summary.put("expiredItems", stats != null ? stats.expiredItems() : 0L);
+        summary.put("processingItems", stats != null ? stats.processingItems() : 0L);
         summary.put("previewCount", previewCount);
         summary.put("previewLimit", TASK_REVIEW_PREVIEW_LIMIT);
-        summary.put("hasMore", stats != null && stats.getTotal() > previewCount);
+        summary.put("hasMore", stats != null && stats.totalItems() > previewCount);
         return summary;
     }
 
-    private Map<String, Object> toTaskSeedPreviewItem(TaskDetailStore.TaskMessageProjection projection) {
+    private Map<String, Object> toTaskSeedPreviewItem(TaskReviewItem reviewItem) {
         Map<String, Object> item = new LinkedHashMap<>();
-        item.put("messageId", projection.messageId());
-        item.put("eventCode", resolveProjectionEventCode(projection));
-        item.put("status", enumName(projection.status()));
-        item.put("payloadRef", projection.payloadRef());
-        item.put("retryCount", projection.retryCount());
-        item.put("maxRetryCount", projection.maxRetryCount());
-        item.put("createTime", formatDateTime(projection.createTime()));
-        item.put("assignedTime", formatDateTime(projection.assignedTime()));
-        item.put("input", projection.input());
+        item.put("messageId", reviewItem.messageId());
+        item.put("eventCode", reviewItem.eventCode());
+        item.put("status", reviewItem.status());
+        item.put("payloadRef", reviewItem.payloadRef());
+        item.put("retryCount", reviewItem.retryCount());
+        item.put("maxRetryCount", reviewItem.maxRetryCount());
+        item.put("createTime", formatDateTime(reviewItem.createTime()));
+        item.put("assignedTime", formatDateTime(reviewItem.assignedTime()));
+        item.put("input", reviewItem.input());
         return item;
     }
 
-    private Map<String, Object> toTaskResultPreviewItem(TaskDetailStore.TaskMessageProjection projection) {
+    private Map<String, Object> toTaskResultPreviewItem(TaskReviewItem reviewItem) {
         Map<String, Object> item = new LinkedHashMap<>();
-        item.put("messageId", projection.messageId());
-        item.put("eventCode", resolveProjectionEventCode(projection));
-        item.put("status", enumName(projection.status()));
-        item.put("finalReason", enumName(projection.finalReason()));
-        item.put("retryCount", projection.retryCount());
-        item.put("maxRetryCount", projection.maxRetryCount());
-        item.put("workerId", projection.latestAttemptWorkerId());
-        item.put("batchId", projection.latestAttemptBatchId());
-        item.put("attemptId", projection.latestAttemptId());
-        item.put("startTime", formatDateTime(projection.startTime()));
-        item.put("completeTime", formatDateTime(projection.completeTime()));
-        item.put("updateTime", formatDateTime(projection.updateTime()));
-        item.put("errorCode", projection.errorCode());
-        item.put("errorMessage", projection.errorMessage());
-        item.put("output", projection.output());
+        item.put("messageId", reviewItem.messageId());
+        item.put("eventCode", reviewItem.eventCode());
+        item.put("status", reviewItem.status());
+        item.put("finalReason", reviewItem.finalReason());
+        item.put("retryCount", reviewItem.retryCount());
+        item.put("maxRetryCount", reviewItem.maxRetryCount());
+        item.put("workerId", reviewItem.workerId());
+        item.put("batchId", reviewItem.batchId());
+        item.put("attemptId", reviewItem.attemptId());
+        item.put("startTime", formatDateTime(reviewItem.startTime()));
+        item.put("completeTime", formatDateTime(reviewItem.completeTime()));
+        item.put("updateTime", formatDateTime(reviewItem.updateTime()));
+        item.put("errorCode", reviewItem.errorCode());
+        item.put("errorMessage", reviewItem.errorMessage());
+        item.put("output", reviewItem.output());
         return item;
-    }
-
-    private String resolveProjectionEventCode(TaskDetailStore.TaskMessageProjection projection) {
-        if (projection == null || projection.input() == null) {
-            return null;
-        }
-        Object rawValue = projection.input().get("eventCode");
-        return rawValue == null ? null : String.valueOf(rawValue);
     }
 
     private int resolveReviewExportLimit(TaskDetailSnapshot task) {
         int requested = task != null ? Math.max(task.getTaskTargetNumber(), task.getTaskEligibleNumber()) : 0;
-        if (requested <= 0 && taskDetailStore != null) {
-            TaskDetailStore.TaskMessageStats stats = taskDetailStore.getTaskMessageStats(task.getTaskId());
-            requested = stats != null ? Math.toIntExact(Math.min(Integer.MAX_VALUE, stats.getTotal())) : 0;
+        if (requested <= 0 && taskReviewReadModel != null) {
+            TaskReviewStats stats = loadTaskReviewStats(task.getTaskId());
+            requested = stats != null ? Math.toIntExact(Math.min(Integer.MAX_VALUE, stats.totalItems())) : 0;
         }
         if (requested <= 0) {
             return TASK_REVIEW_PREVIEW_LIMIT;
@@ -218,10 +217,6 @@ public class InternalTaskReviewController {
 
     private String formatDateTime(LocalDateTime value) {
         return value == null ? "" : value.format(DATE_TIME_FORMATTER);
-    }
-
-    private String enumName(Enum<?> value) {
-        return value == null ? null : value.name();
     }
 
     @FunctionalInterface

@@ -2822,6 +2822,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         List<Path> sourceFiles = Arrays.stream(selectedClasses.value())
                 .filter(Objects::nonNull)
                 .filter(testClass -> testClass != EngineSchedulingCoreArchitectureGuardTest.class)
+                .filter(testClass -> testClass != EngineProofOwnershipGuardTest.class)
                 .map(EngineSchedulingCoreArchitectureGuardTest::sourcePathFor)
                 .toList();
         assertTrue(!sourceFiles.isEmpty(), "EngineSchedulingCoreSuite must select at least one guarded test class");

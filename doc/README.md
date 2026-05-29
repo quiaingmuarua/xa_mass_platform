@@ -19,15 +19,12 @@ Most tasks only need one contract lane plus one owner README:
   [../xa-mass-trace/README.md](../xa-mass-trace/README.md),
   [TRACE_CONTRACT.md](./TRACE_CONTRACT.md),
   [PROOF_REGISTRY.md](./PROOF_REGISTRY.md),
-  [OBSERVABILITY_AND_TEST_PROOF_ROADMAP.md](./OBSERVABILITY_AND_TEST_PROOF_ROADMAP.md),
-  [WORKER_FAULT_MATRIX_ROADMAP.md](./WORKER_FAULT_MATRIX_ROADMAP.md),
   [TESTING_INDEX.md](./TESTING_INDEX.md)
 - result owner split / runtime result truth:
   [RESULT_BOUNDARY_BASELINE.md](./RESULT_BOUNDARY_BASELINE.md)
 - storage / runtime / trace placement:
   [INFRA_TRUTH_LAYERS.md](./INFRA_TRUTH_LAYERS.md),
   [DB_STORAGE_PRINCIPLES.md](./DB_STORAGE_PRINCIPLES.md),
-  [TASK_WORKER_RUNTIME_HISTORY_BOUNDARY_ROADMAP.md](./TASK_WORKER_RUNTIME_HISTORY_BOUNDARY_ROADMAP.md),
   [../platform_infra/README.md](../platform_infra/README.md)
 - testing / acceptance:
   [PROOF_REGISTRY.md](./PROOF_REGISTRY.md),
@@ -36,13 +33,7 @@ Most tasks only need one contract lane plus one owner README:
   [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
 - HTTP / external shell:
   [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md),
-  [EXTERNAL_WORKER_QUICKSTART.md](./EXTERNAL_WORKER_QUICKSTART.md),
-  [JAVA_EXTERNAL_SDK_ROADMAP.md](./JAVA_EXTERNAL_SDK_ROADMAP.md),
-  [JAVA_EXTERNAL_SDK_INVENTORY.md](./JAVA_EXTERNAL_SDK_INVENTORY.md),
-  [JAVA_EXTERNAL_SDK_REALTIME_DECISION.md](./JAVA_EXTERNAL_SDK_REALTIME_DECISION.md),
-  [INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md](./INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md),
-  [INTEGRATIONS_LAYOUT_INVENTORY.md](./INTEGRATIONS_LAYOUT_INVENTORY.md),
-  [SERVER_BOOTSTRAP_CLASSIFICATION.md](./SERVER_BOOTSTRAP_CLASSIFICATION.md)
+  [EXTERNAL_WORKER_QUICKSTART.md](./EXTERNAL_WORKER_QUICKSTART.md)
 
 ## 2. Core Global Docs
 
@@ -51,22 +42,12 @@ Most tasks only need one contract lane plus one owner README:
 | [AGENT_BASELINE.md](./AGENT_BASELINE.md) | global platform baseline and hard guardrails |
 | [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md) | lifecycle vocabulary and invariants |
 | [TRACE_CONTRACT.md](./TRACE_CONTRACT.md) | required trace surface |
-| [PROOF_REGISTRY.md](./PROOF_REGISTRY.md) | authoritative proof ownership, representative trace pairing, and explicit known gaps |
+| [PROOF_REGISTRY.md](./PROOF_REGISTRY.md) | authoritative proof ownership and representative trace pairing |
 | [RESULT_BOUNDARY_BASELINE.md](./RESULT_BOUNDARY_BASELINE.md) | runtime result owner split, public result boundary, and compatibility residue rules |
 | [INFRA_TRUTH_LAYERS.md](./INFRA_TRUTH_LAYERS.md) | control-plane/runtime/trace placement matrix |
 | [DB_STORAGE_PRINCIPLES.md](./DB_STORAGE_PRINCIPLES.md) | DB boundary and hot-write guardrail |
-| [TASK_WORKER_RUNTIME_HISTORY_BOUNDARY_ROADMAP.md](./TASK_WORKER_RUNTIME_HISTORY_BOUNDARY_ROADMAP.md) | roadmap for separating task shell and worker declaration storage, runtime current state, and trace/archive history |
-| [TASK_WORKER_TRACE_ARCHIVE_DIRECTION.md](./TASK_WORKER_TRACE_ARCHIVE_DIRECTION.md) | TWH-5 checkpoint mapping task/worker history needs to existing trace event vocabulary and archive read-model gaps |
 | [TESTING_INDEX.md](./TESTING_INDEX.md) | current testing entry, CI truth, and minimum verification map |
 | [TESTING_BASELINE.md](./TESTING_BASELINE.md) | acceptance lanes and test matrix |
-| [OBSERVABILITY_AND_TEST_PROOF_ROADMAP.md](./OBSERVABILITY_AND_TEST_PROOF_ROADMAP.md) | trace/query/invariant direction for systematic proof without scattered tests |
-| [WORKER_FAULT_MATRIX_ROADMAP.md](./WORKER_FAULT_MATRIX_ROADMAP.md) | worker/resource fault matrix direction for non-ideal full-flow testing |
-| [JAVA_EXTERNAL_SDK_ROADMAP.md](./JAVA_EXTERNAL_SDK_ROADMAP.md) | external Java client SDK direction for task and worker HTTP integrations |
-| [JAVA_EXTERNAL_SDK_INVENTORY.md](./JAVA_EXTERNAL_SDK_INVENTORY.md) | route, DTO, dependency, and payload decisions for the external Java SDK |
-| [JAVA_EXTERNAL_SDK_REALTIME_DECISION.md](./JAVA_EXTERNAL_SDK_REALTIME_DECISION.md) | decision record deferring public Java realtime worker sessions until a protocol contract exists |
-| [INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md](./INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md) | roadmap for moving worker-pack/samples under integrations and extracting server-owned demo task/worker startup |
-| [INTEGRATIONS_LAYOUT_INVENTORY.md](./INTEGRATIONS_LAYOUT_INVENTORY.md) | ILC-0 path inventory for moving root samples and worker-pack under integrations |
-| [SERVER_BOOTSTRAP_CLASSIFICATION.md](./SERVER_BOOTSTRAP_CLASSIFICATION.md) | SBE-0 classification of server bootstrap metadata, scenario seeding, external launcher inputs, and test fixtures |
 | [E2E_BASELINE.md](./E2E_BASELINE.md) | Boot-shell E2E scope |
 | [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md) | verified startup and regression commands |
 | [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md) | current HTTP/API contract |
@@ -93,6 +74,16 @@ Use owner docs for module-local truth:
 These are useful only when the task explicitly touches those future directions:
 
 - [ARCHITECTURE_BOUNDARY_DIRECTION.md](./ARCHITECTURE_BOUNDARY_DIRECTION.md)
+- [TASK_WORKER_RUNTIME_HISTORY_BOUNDARY_ROADMAP.md](./TASK_WORKER_RUNTIME_HISTORY_BOUNDARY_ROADMAP.md)
+- [TASK_WORKER_TRACE_ARCHIVE_DIRECTION.md](./TASK_WORKER_TRACE_ARCHIVE_DIRECTION.md)
+- [OBSERVABILITY_AND_TEST_PROOF_ROADMAP.md](./OBSERVABILITY_AND_TEST_PROOF_ROADMAP.md)
+- [WORKER_FAULT_MATRIX_ROADMAP.md](./WORKER_FAULT_MATRIX_ROADMAP.md)
+- [JAVA_EXTERNAL_SDK_ROADMAP.md](./JAVA_EXTERNAL_SDK_ROADMAP.md)
+- [JAVA_EXTERNAL_SDK_INVENTORY.md](./JAVA_EXTERNAL_SDK_INVENTORY.md)
+- [JAVA_EXTERNAL_SDK_REALTIME_DECISION.md](./JAVA_EXTERNAL_SDK_REALTIME_DECISION.md)
+- [INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md](./INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md)
+- [INTEGRATIONS_LAYOUT_INVENTORY.md](./INTEGRATIONS_LAYOUT_INVENTORY.md)
+- [SERVER_BOOTSTRAP_CLASSIFICATION.md](./SERVER_BOOTSTRAP_CLASSIFICATION.md)
 - [../xa-mass-engine/doc/roadmap/PRODUCTION_SCHEDULING_KERNEL_IMPROVEMENTS.md](../xa-mass-engine/doc/roadmap/PRODUCTION_SCHEDULING_KERNEL_IMPROVEMENTS.md)
 - [../xa-mass-engine/doc/roadmap/TASK_RUNTIME_PROFILE_DESIGN.md](../xa-mass-engine/doc/roadmap/TASK_RUNTIME_PROFILE_DESIGN.md)
 - [../transport/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md](../transport/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md)

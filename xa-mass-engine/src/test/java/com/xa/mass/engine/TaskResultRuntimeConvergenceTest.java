@@ -43,7 +43,6 @@ class TaskResultRuntimeConvergenceTest {
         InMemoryTaskShellStore storage = new InMemoryTaskShellStore();
         taskManager = new TaskManager(
                 storage,
-                storage,
                 new InMemoryTaskWorkRuntime(),
                 new InMemoryTaskResultRuntime(),
                 null
@@ -260,7 +259,7 @@ class TaskResultRuntimeConvergenceTest {
 
     private static TaskManager newManager(TaskResultRuntime resultRuntime) {
         InMemoryTaskShellStore storage = new InMemoryTaskShellStore();
-        return new TaskManager(storage, storage, new InMemoryTaskWorkRuntime(), resultRuntime, null);
+        return new TaskManager(storage, new InMemoryTaskWorkRuntime(), resultRuntime, null);
     }
 
     private static Task createRunningSingleItemTask(TaskManager manager,

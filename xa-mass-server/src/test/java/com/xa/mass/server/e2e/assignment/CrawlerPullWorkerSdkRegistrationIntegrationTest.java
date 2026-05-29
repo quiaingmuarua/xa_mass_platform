@@ -3,7 +3,7 @@ package com.xa.mass.server.e2e.assignment;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.storage.rule.RuleType;
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.server.e2e.support.ProjectionSampleE2eTest;
+import com.xa.mass.server.e2e.support.ReviewReadModelSampleE2eTest;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
@@ -47,7 +47,7 @@ import static org.junit.jupiter.api.Assertions.*;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class CrawlerPullWorkerSdkRegistrationIntegrationTest extends ProjectionSampleE2eTest {
+class CrawlerPullWorkerSdkRegistrationIntegrationTest extends ReviewReadModelSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
 

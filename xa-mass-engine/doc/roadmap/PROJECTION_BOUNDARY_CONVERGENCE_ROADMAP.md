@@ -2,7 +2,14 @@
 
 Status: active direction document. PBC-0 inventory has landed and selected
 server/read-model-side assembly for PBC-3. PBC-1 is covered by existing
-mainline proof guards. PBC-2 has landed.
+mainline proof guards. PBC-2 has landed. PBC-3 server review
+contract/controller/helper migration has landed, and the server read-model
+writer is now wired from append plus final runtime-result evidence, including
+worker, batch, attempt, and timing fields. PBC-4 has removed engine
+compatibility projection writes and split engine-native lifecycle enums out of
+the old projection-named state holder. PBC-5 production ownership guards now
+prevent projection-write dependencies or unclassified storage imports from
+returning to engine mainline code.
 
 This is the current `xa-mass-engine` convergence roadmap.
 
@@ -30,50 +37,56 @@ work described here. Broadly removing `mass-storage-api` from engine is not
 the current goal because task shell storage and rule-definition reads remain
 legitimate engine-facing contracts until separate owner work changes them.
 
-The current code has already moved scheduling and terminal truth toward runtime
-state. PBC-2 removed the default engine projection-audit scan, but engine still
-writes `TaskDetailStore` message/attempt projection residue and server review
-surfaces still read that read model.
+The current code has moved scheduling, terminal, and work-finality truth toward
+runtime state. PBC-2 removed the default engine projection-audit scan, and
+PBC-4 removed engine writes to `TaskDetailStore` message/attempt projection
+residue. Server review surfaces now depend on a server `TaskReviewReadModel`
+contract backed by a transitional `TaskDetailStore` implementation.
 
 ## Current Code Observations
 
-- `TaskCompatibilityProjectionStore` is an engine-internal owner over
-  `TaskDetailStore` message/attempt projections.
-- `TaskWorkProjectionState` converts engine residue enums to
-  `mass-storage-api` projection enums.
+- `TaskCompatibilityProjectionStore` has been deleted from engine production
+  code.
+- `TaskWorkProjectionState` has been deleted from engine production code.
+  Runtime event records now use `TaskWorkLifecycleState`.
 - PBC-2 removed `TaskProjectionStateAuditor`; default engine diagnostics no
   longer scan compatibility projection residue.
-- `TaskManager` constructs `TaskCompatibilityProjectionStore`.
-- `TaskResultService` writes best-effort work and attempt projection residue
-  after runtime result convergence.
-- `TaskManager.addRuntimeIngressItems(...)` writes ingress-accepted
-  projection residue through `TaskCompatibilityProjectionStore`.
-- Server review surfaces still read `TaskDetailStore` projections, especially
-  `InternalTaskReviewController`.
+- `TaskManager` no longer constructs a compatibility projection store and no
+  longer requires `TaskDetailStore` for projection writes.
+- `TaskResultService` no longer writes best-effort work or attempt projection
+  residue after runtime result convergence.
+- `TaskManager.addRuntimeIngressItems(...)` admits work into runtime state
+  without writing ingress-accepted projection residue.
+- `InternalTaskReviewController` depends on `TaskReviewReadModel`, not
+  `TaskDetailStore`.
 - `InternalTaskReviewController` uses projection rows for review summary,
   seed preview/export, and result preview/export. The required fields include
   message id, input/event code, payload ref, status/final reason, retry counts,
   latest attempt id/worker/batch, timing fields, error summary, output, and
   aggregate message stats.
-- Server proof lanes still include projection-specific suites and support
-  classes such as `ServerProjectionResidueSuite`,
-  `ServerProjectionAuditSuite`, and `ProjectionSampleE2eTest`.
-- Many engine tests still assert behavior through `TaskDetailStore`
-  message/attempt projections instead of runtime/result/trace truth.
-- `@CompatibilityProjectionOnly` already marks the current compatibility
-  boundary on projection owners, methods, and test helpers. PBC guards should
-  use this annotation as one input instead of inventing a wholly separate
-  marker.
-- `TaskWorkProjectionState` is not only a storage conversion holder today.
-  Its inner enums are also used as engine runtime event field types by
-  `TaskWorkLogicallyFinalEvent`, `TaskWorkAttemptClosedEvent`,
-  `SimpleTaskDispatchBinder`, and `TraceEventLogger`.
+- Server proof lanes that used to include projection-specific suites and support
+  classes have been renamed to review read-model ownership:
+  `ServerReviewReadModelResidueSuite`, `ServerReviewReadModelAuditSuite`, and
+  `ReviewReadModelSampleE2eTest`.
+- The server read-model writer is attached after item append acceptance and
+  final runtime-result visibility. Finality enriches the logical-final
+  notification from SDK `getTaskWorkFinal(...)` so worker id, batch id, attempt
+  id, retry/max-retry counts, result payload, and timing fields come from the
+  runtime result row rather than from engine projection residue.
+- Engine mainline result/convergence tests use runtime/result/task aggregate
+  proof. Explicit compatibility projection tests remain secondary proof lanes
+  and test-only helpers.
+- `@CompatibilityProjectionOnly` remains on explicit test-only compatibility
+  projection helpers. Engine production code is guarded from consuming it.
+- `TaskWorkLifecycleState` owns engine-native work/attempt lifecycle enums used
+  by `TaskWorkLogicallyFinalEvent`, `TaskWorkAttemptClosedEvent`,
+  `SimpleTaskDispatchBinder`, `TraceEventLogger`, and SDK tests.
 - Engine production code still depends on `mass-storage-api` for three
   different reasons that must not be collapsed:
   - `TaskShellStore` / `TaskShellLifecycleQuery`: current task shell and
     lifecycle lookup contract; not a PBC removal target.
   - `TaskDetailStore` and `com.xa.mass.storage.api.projection.*`: projection
-    residue; PBC removal target.
+    residue; removed from engine production by PBC-4.
   - `RuleStorage` / `com.xa.mass.storage.rule.*`: rule-definition and
     matching-policy data; record as a follow-up rule-domain boundary question,
     not part of PBC implementation.
@@ -179,11 +192,10 @@ Scope:
    - runtime event payload
    - trace/logging payload
    - test-only helper
-10. Classify server projection proof assets:
-    - `ServerProjectionResidueSuite`
-    - `ServerProjectionAuditSuite`
-    - `ProjectionSampleE2eTest`
-    - every E2E class extending `ProjectionSampleE2eTest`
+ 10. Classify server projection proof assets. The PBC-0 inventory captured the
+     pre-migration names; current PBC-3 names are
+     `ServerReviewReadModelResidueSuite`, `ServerReviewReadModelAuditSuite`,
+     and `ReviewReadModelSampleE2eTest`.
 11. Produce a small inventory doc beside this roadmap.
 
 Acceptance:
@@ -270,10 +282,10 @@ Scope:
    model.
 6. Migrate or rename server projection proof lanes according to the PBC-0
    owner decision:
-   - `ServerProjectionResidueSuite`
-   - `ServerProjectionAuditSuite`
-   - `ProjectionSampleE2eTest`
-   - E2E classes extending `ProjectionSampleE2eTest`
+   - `ServerReviewReadModelResidueSuite`
+   - `ServerReviewReadModelAuditSuite`
+   - `ReviewReadModelSampleE2eTest`
+   - E2E classes extending `ReviewReadModelSampleE2eTest`
 7. Keep the replacement read model deterministic enough for local console demo
    and review surfaces; do not make external network calls part of this proof.
 8. Wire the server/read-model writer from explicit ingress and lifecycle
@@ -302,12 +314,16 @@ Acceptance:
    as explicit follow-up blockers before PBC-4 starts.
 6. `InternalTaskReviewController` depends on the server review read-model
    contract, not `TaskDetailStore`.
-7. The migrated server projection proof lane proves accepted input, final
-   output/error, retry state, and aggregate stats through the new owner.
+7. The migrated server projection proof lane proves accepted input,
+   worker/batch/attempt identity, timing, final output/error, retry state, and
+   aggregate stats through the new owner.
 
 ## Slice PBC-4: Remove Engine Projection Writes
 
 Goal: stop engine runtime paths from writing compatibility projection rows.
+
+Status: landed. Engine production no longer owns compatibility projection
+assembly or writes.
 
 Scope:
 
@@ -327,21 +343,29 @@ Scope:
 
 Acceptance:
 
-1. Engine production code no longer imports
+1. Landed: engine production code no longer imports
    `com.xa.mass.storage.api.projection.*`.
-2. Engine runtime paths do not write `TaskDetailStore` message/attempt
+2. Landed: engine runtime paths do not write `TaskDetailStore` message/attempt
    projections.
-3. Any remaining `TaskDetailStore` dependency is outside engine kernel runtime
-   logic and is documented as read-model assembly or explicit audit.
-4. Result convergence, retry, expiry, and terminal policy tests still pass.
-5. Remaining engine `mass-storage-api` imports are limited to explicitly kept
+3. Landed: `TaskDetailStore` is no longer required by `TaskManager` or
+   `TaskResultService`.
+4. Verified: result convergence, retry, expiry, and terminal-policy focused
+   tests compile and run through the runtime/result proof lane.
+5. Landed: remaining engine `mass-storage-api` imports are limited to explicitly kept
    task shell/control-plane or rule-domain follow-up contracts.
-6. Runtime work/finality event records no longer use
+6. Landed: runtime work/finality event records no longer use
    `TaskWorkProjectionState` as their field type.
 
 ## Slice PBC-5: Guard And Proof
 
 Goal: prevent projection residue from returning to engine runtime truth.
+
+Status: landed for the current PBC scope. `EngineProofOwnershipGuardTest` now
+guards engine production against `TaskDetailStore` projection rows, storage
+projection enum packages, `TaskCompatibilityProjectionStore`,
+`TaskWorkProjectionState`, projection read/write method names,
+`@CompatibilityProjectionOnly`, and unclassified storage imports outside the
+PBC allowlist.
 
 Scope:
 
@@ -365,15 +389,16 @@ Scope:
 
 Acceptance:
 
-1. Guard fails if engine production runtime code imports
+1. Landed: guard fails if engine production runtime code imports
    `com.xa.mass.storage.api.projection.*`.
-2. Guard fails if scheduling/result/terminal code reads message/attempt
+2. Landed: guard fails if scheduling/result/terminal code reads message/attempt
    projection rows.
-3. Console review/read-model proof passes through the new owner.
-4. Engine scheduling/result suites pass without projection assertion helpers.
-5. Guard or inventory check fails when a new unclassified engine
+3. Verified: console review/read-model proof passes through the new owner.
+4. Verified: engine scheduling/result suites pass without projection assertion
+   helpers in mainline proof lanes.
+5. Landed: guard fails when a new unclassified engine
    `mass-storage-api` dependency appears.
-6. Guard fails if a new engine kernel/runtime path consumes
+6. Landed: guard fails if a new engine kernel/runtime path consumes
    `@CompatibilityProjectionOnly` code outside an explicitly allowed
    projection/read-model lane.
 
@@ -388,10 +413,10 @@ PBC-0 -> PBC-1 -> PBC-2 -> PBC-3 -> PBC-4 -> PBC-5
 Do not start by deleting projection writes. First move tests and console reads
 off projection truth, then remove engine writes.
 
-PBC-4 is blocked until PBC-3 has landed and its server proof lane passes.
-Deleting engine projection writes before the server review replacement is in
-place will silently break `/internal/v1/review/tasks/**` seed/result preview
-and export behavior.
+PBC-4 must start only after the PBC-3 server proof lane passes. Deleting engine
+projection writes before the server review replacement is in place will
+silently break `/internal/v1/review/tasks/**` seed/result preview and export
+behavior.
 
 PBC is the engine convergence mainline. After PBC lands, reassess whether
 remaining engine `mass-storage-api` dependencies are real owner-boundary

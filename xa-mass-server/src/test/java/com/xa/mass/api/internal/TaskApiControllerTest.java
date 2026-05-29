@@ -7,6 +7,8 @@ import com.xa.mass.api.auth.usage.ApiUsageLedgerService;
 import com.xa.mass.api.auth.usage.ApiUsageOperation;
 import com.xa.mass.api.auth.usage.ApiUsageStatus;
 import com.xa.mass.api.auth.usage.InMemoryApiUsageLedgerStore;
+import com.xa.mass.api.review.TaskDetailStoreTaskReviewReadModel;
+import com.xa.mass.api.review.TaskReviewReadModelWriter;
 import com.xa.mass.api.sync.SyncTaskResultBridge;
 import com.xa.mass.api.sync.TaskSyncRequestSupervisor;
 import com.xa.mass.sdk.TaskAdminOperations;
@@ -119,12 +121,13 @@ class TaskApiControllerTest {
     void setUp() {
         taskSyncRequestSupervisor = new TaskSyncRequestSupervisor(null, 500, 100, 20);
         usageStore = new InMemoryApiUsageLedgerStore();
-        controller = new TaskApiController(taskQueries, taskResultQueries, taskAdmin, createTaskCatalog(), taskDetailStore,
+        controller = new TaskApiController(taskQueries, taskResultQueries, taskAdmin, createTaskCatalog(),
                 authProvider, syncTaskResultBridge, taskSyncRequestSupervisor, taskStageEvidence);
         controller.setApiUsageLedgerService(new ApiUsageLedgerService(usageStore));
+        controller.setTaskReviewReadModelWriter(reviewReadModel());
         mockMvc = MockMvcBuilders.standaloneSetup(
                 controller,
-                new InternalTaskReviewController(taskQueries, taskDetailStore)
+                new InternalTaskReviewController(taskQueries, reviewReadModel())
         ).build();
     }
 
@@ -579,7 +582,8 @@ class TaskApiControllerTest {
     @Test
     void appendTaskItemsPassesBatchEventCode() throws Exception {
         when(taskQueries.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
-        when(taskAdmin.appendTaskItems(any(), any(MassTaskItemBatchAppendRequest.class))).thenReturn(2);
+        when(taskAdmin.appendTaskItemsWithReceipt(any(), any(MassTaskItemBatchAppendRequest.class)))
+                .thenReturn(new TaskItemBatchAppendReceipt(TASK_ID, 2, List.of("msg-001", "msg-002")));
 
         mockMvc.perform(post("/api/v1/tasks/{taskId}/items", TASK_ID)
                         .contentType("application/json")
@@ -594,9 +598,38 @@ class TaskApiControllerTest {
 
         ArgumentCaptor<MassTaskItemBatchAppendRequest> captor =
                 ArgumentCaptor.forClass(MassTaskItemBatchAppendRequest.class);
-        verify(taskAdmin).appendTaskItems(org.mockito.ArgumentMatchers.eq(TASK_ID), captor.capture());
+        verify(taskAdmin).appendTaskItemsWithReceipt(org.mockito.ArgumentMatchers.eq(TASK_ID), captor.capture());
         assertEquals(List.of(Map.of("text", "hello"), Map.of("text", "world")), captor.getValue().getItems());
         assertEquals("chatbot.reply", captor.getValue().getEventCode());
+        ArgumentCaptor<TaskDetailStore.TaskMessageProjection> projectionCaptor =
+                ArgumentCaptor.forClass(TaskDetailStore.TaskMessageProjection.class);
+        verify(taskDetailStore, org.mockito.Mockito.times(2))
+                .upsertTaskMessageProjection(eq(TASK_ID), projectionCaptor.capture());
+        assertEquals("chatbot.reply", projectionCaptor.getAllValues().getFirst().input().get("eventCode"));
+    }
+
+    @Test
+    void appendTaskItemsReturnsAcceptedAppendWhenReviewWriterFails() throws Exception {
+        TaskReviewReadModelWriter writer = org.mockito.Mockito.mock(TaskReviewReadModelWriter.class);
+        doThrow(new IllegalStateException("review write failed"))
+                .when(writer).recordItemsAccepted(any(), any(), any(), anyInt());
+        controller.setTaskReviewReadModelWriter(writer);
+        when(taskQueries.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
+        when(taskAdmin.appendTaskItemsWithReceipt(any(), any(MassTaskItemBatchAppendRequest.class)))
+                .thenReturn(new TaskItemBatchAppendReceipt(TASK_ID, 1, List.of("msg-001")));
+
+        mockMvc.perform(post("/api/v1/tasks/{taskId}/items", TASK_ID)
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "eventCode":"chatbot.reply",
+                                  "items":[{"text":"hello"}]
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.added").value(1));
+
+        verify(taskAdmin).appendTaskItemsWithReceipt(eq(TASK_ID), any(MassTaskItemBatchAppendRequest.class));
     }
 
     @Test
@@ -613,7 +646,7 @@ class TaskApiControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.msg").value("append requires batch eventCode or per-item eventCode"));
 
-        verify(taskAdmin, never()).appendTaskItems(any(), any(MassTaskItemBatchAppendRequest.class));
+        verify(taskAdmin, never()).appendTaskItemsWithReceipt(any(), any(MassTaskItemBatchAppendRequest.class));
     }
 
     @Test
@@ -629,7 +662,7 @@ class TaskApiControllerTest {
                                 """))
                 .andExpect(status().isBadRequest());
 
-        verify(taskAdmin, never()).appendTaskItems(any(), any(MassTaskItemBatchAppendRequest.class));
+        verify(taskAdmin, never()).appendTaskItemsWithReceipt(any(), any(MassTaskItemBatchAppendRequest.class));
     }
 
     @Test
@@ -854,9 +887,9 @@ class TaskApiControllerTest {
         TaskSyncRequestSupervisor zeroCapacitySupervisor = new TaskSyncRequestSupervisor(null, 500, 100, 1);
         zeroCapacitySupervisor.acquire("demoApp", TASK_ID);
         MockMvc capacityMvc = MockMvcBuilders.standaloneSetup(
-                new TaskApiController(taskQueries, taskResultQueries, taskAdmin, createTaskCatalog(), taskDetailStore,
+                new TaskApiController(taskQueries, taskResultQueries, taskAdmin, createTaskCatalog(),
                         authProvider, syncTaskResultBridge, zeroCapacitySupervisor),
-                new InternalTaskReviewController(taskQueries, taskDetailStore)
+                new InternalTaskReviewController(taskQueries, reviewReadModel())
         ).build();
 
         when(taskQueries.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
@@ -944,6 +977,10 @@ class TaskApiControllerTest {
 
     private TaskAccessSnapshot taskAccess(String project) {
         return new TaskAccessSnapshot(TASK_ID, project, Map.of(), "OPEN");
+    }
+
+    private TaskDetailStoreTaskReviewReadModel reviewReadModel() {
+        return new TaskDetailStoreTaskReviewReadModel(taskDetailStore);
     }
 
     private TaskAccessSnapshot taskAccessOwned(String project, String userId) {

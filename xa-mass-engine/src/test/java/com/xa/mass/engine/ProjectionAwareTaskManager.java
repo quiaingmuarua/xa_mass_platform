@@ -28,7 +28,7 @@ public class ProjectionAwareTaskManager extends TaskManager {
     public ProjectionAwareTaskManager(TaskShellStore taskStorage,
                                       TaskDetailStore taskDetailStore,
                                       TaskWorkRuntime taskWorkRuntime) {
-        super(taskStorage, taskDetailStore, taskWorkRuntime, new InMemoryTaskResultRuntime(), null);
+        super(taskStorage, taskWorkRuntime, new InMemoryTaskResultRuntime(), null);
         this.taskDetailStore = taskDetailStore;
         this.compatibilityProjectionAccess = new TaskCompatibilityProjectionAccess(
                 taskDetailStore,
@@ -44,7 +44,7 @@ public class ProjectionAwareTaskManager extends TaskManager {
                                       TaskDetailStore taskDetailStore,
                                       TaskWorkRuntime taskWorkRuntime,
                                       TaskResultRuntime taskResultRuntime) {
-        super(taskStorage, taskDetailStore, taskWorkRuntime, taskResultRuntime, null);
+        super(taskStorage, taskWorkRuntime, taskResultRuntime, null);
         this.taskDetailStore = taskDetailStore;
         this.compatibilityProjectionAccess = new TaskCompatibilityProjectionAccess(
                 taskDetailStore,
@@ -60,7 +60,7 @@ public class ProjectionAwareTaskManager extends TaskManager {
                                       TaskDetailStore taskDetailStore,
                                       TaskTerminalPolicy taskTerminalPolicy,
                                       TaskWorkRuntime taskWorkRuntime) {
-        super(taskStorage, taskDetailStore, taskTerminalPolicy, taskWorkRuntime, new InMemoryTaskResultRuntime(), null);
+        super(taskStorage, taskTerminalPolicy, taskWorkRuntime, new InMemoryTaskResultRuntime(), null);
         this.taskDetailStore = taskDetailStore;
         this.compatibilityProjectionAccess = new TaskCompatibilityProjectionAccess(
                 taskDetailStore,

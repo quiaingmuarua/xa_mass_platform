@@ -7,5 +7,5 @@ import org.junit.platform.suite.api.Suite;
 @SelectClasses({
         TaskApiStateValidationIntegrationTest.class
 })
-class ServerProjectionAuditSuite {
+class ServerReviewReadModelAuditSuite {
 }

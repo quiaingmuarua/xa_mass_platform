@@ -33,7 +33,6 @@ public class EngineExample {
         InMemoryTaskShellStore taskStorage = new InMemoryTaskShellStore();
         TaskManager taskManager = new TaskManager(
                 taskStorage,
-                taskStorage,
                 new InMemoryTaskWorkRuntime(),
                 new InMemoryTaskResultRuntime(),
                 null);

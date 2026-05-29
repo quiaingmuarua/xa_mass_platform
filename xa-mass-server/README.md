@@ -43,6 +43,19 @@ What this module does not own:
 - the stable integration contract for external workers or embedding callers
 - runtime truth defined by transport or sample/demo protocol details
 
+## Task Review Read Model
+
+- task review APIs are server-owned console/read-model surfaces, not engine
+  scheduling, result convergence, or terminal-policy truth
+- `InternalTaskReviewController` depends on `TaskReviewReadModel`
+- the current `dev` profile wires `TaskDetailStoreTaskReviewReadModel`, a
+  transitional implementation backed by bounded `TaskDetailStore` residue
+- `TaskApiController` records accepted append items through
+  `TaskReviewReadModelWriter`; a server startup listener records stable-final
+  work notifications into the same read model
+- public result reads still use SDK `TaskResultQueryOperations` backed by
+  `TaskResultRuntime`; review read-model rows must not source `/results`
+
 ## Security Wiring
 
 - operator, submitter credential, and external worker HTTP entrypoints now converge on the shared SDK authorization contract
@@ -60,25 +73,12 @@ What this module does not own:
 - current ownership stamp is intentionally minimal: `createdByPrincipalId` and `createdByPrincipalType`
 - default dev trust remains intentionally permissive in this phase; this change is framework convergence, not production trust tightening
 
-Direction note:
+Current boundary note:
 
-- User, role, permission, API-key lifecycle, and API-key usage audit are planned in
-  [IDENTITY_ACCESS_ROADMAP.md](./doc/roadmap/IDENTITY_ACCESS_ROADMAP.md).
-  That roadmap keeps identity and API-key ownership in the server control-plane,
-  preserves `PrincipalContext + AuthorizationPolicy` as the authorization bridge,
-  and must not move IAM or usage-audit logic into engine scheduling, worker
-  callbacks, or result convergence. Credit, billing, and quota are intentionally
-  left for a later accounting roadmap.
-- The planned identity path does not include public user registration: early
-  users are built-in/operator-managed, mid-term Google/GitHub login maps to
-  approved users, and API keys remain the SDK-first programmatic credential.
-- API keys may later create a restricted submitter viewer session for their own
-  tasks/results/usage, but this must not become an operator console session.
-- The backend-hosted control console is also converging from early dev/demo
-  vocabulary toward a more realistic platform scenario. Keep that work in
-  [CONTROL_CONSOLE_REALISTIC_SCENARIO_ROADMAP.md](./doc/roadmap/CONTROL_CONSOLE_REALISTIC_SCENARIO_ROADMAP.md)
-  so project, event, worker, submitter, and task demo shape evolves without
-  redefining engine/runtime ownership.
+- identity and API-key policy are server control-plane concerns
+- `PrincipalContext + AuthorizationPolicy` is the host authorization bridge
+- IAM, API-key usage audit, billing/quota, and console scenario vocabulary do
+  not belong in engine scheduling, worker callbacks, or result convergence
 
 Current host security matrix:
 
@@ -426,12 +426,12 @@ Mainline stance:
   another server E2E class for a scheduling or lifecycle invariant
 - the full scheduling-correctness matrix belongs engine-first; server E2E keeps
   representative assignment, polling, routing, and reuse scenarios
-- `ServerSchedulingE2eSuite` is runtime-first and representative; projection-heavy
-  scenarios live in `ServerProjectionResidueSuite`, and generic smoke/support
+- `ServerSchedulingE2eSuite` is runtime-first and representative; review read-model
+  scenarios live in `ServerReviewReadModelResidueSuite`, and generic smoke/support
   cases tagged `secondary-proof` stay out of the mainline suite
 - `ServerLifecycleResultConvergenceSuite` asserts task aggregate plus
-  `TaskWorkRuntime` stats/lease truth; diagnostic projection/audit cases live in
-  `ServerProjectionAuditSuite`, while low-standard lifecycle smoke stays tagged
+  `TaskWorkRuntime` stats/lease truth; diagnostic review read-model cases live in
+  `ServerReviewReadModelAuditSuite`, while low-standard lifecycle smoke stays tagged
   `secondary-proof`
 - `ServerSupportCoverageSuite`, `ServerLifecycleSupportCoverageSuite`, and
   `ServerStorageCompatibilitySuite` are the explicit homes for downgraded
@@ -559,7 +559,7 @@ High-signal classes:
     shell coverage; it is not a lifecycle/result mainline proof class
 - console and audit:
   - `ControlConsoleRoutingIntegrationTest`
-- explicit projection residue/audit:
+- review read-model support/audit:
   - `TaskApiMultiRoundDispatchIntegrationTest`
   - `TaskApiTerminateReuseIntegrationTest`
   - `TaskApiStateValidationIntegrationTest`

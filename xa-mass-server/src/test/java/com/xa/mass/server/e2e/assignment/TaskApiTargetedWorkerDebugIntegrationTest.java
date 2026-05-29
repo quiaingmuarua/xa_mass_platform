@@ -1,7 +1,7 @@
 package com.xa.mass.server.e2e.assignment;
 
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.server.e2e.support.ProjectionSampleE2eTest;
+import com.xa.mass.server.e2e.support.ReviewReadModelSampleE2eTest;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -36,7 +36,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @ActiveProfiles("dev")
 @DirtiesContext
 @Tag("secondary-proof")
-class TaskApiTargetedWorkerDebugIntegrationTest extends ProjectionSampleE2eTest {
+class TaskApiTargetedWorkerDebugIntegrationTest extends ReviewReadModelSampleE2eTest {
 
     /**
      * Support-only debug-task coverage.

@@ -35,7 +35,6 @@ class TaskKernelLifecycleTest {
         taskStorage = new InMemoryTaskShellStore();
         taskManager = new TaskManager(
                 taskStorage,
-                taskStorage,
                 new InMemoryTaskWorkRuntime(),
                 new InMemoryTaskResultRuntime(),
                 null
@@ -182,7 +181,6 @@ class TaskKernelLifecycleTest {
             InMemoryTaskShellStore backpressureStorage = new InMemoryTaskShellStore();
             TaskManager backpressureAwareManager = new TaskManager(
                     backpressureStorage,
-                    backpressureStorage,
                     new InMemoryTaskWorkRuntime(),
                     new InMemoryTaskResultRuntime(),
                     null
@@ -218,7 +216,6 @@ class TaskKernelLifecycleTest {
     void appendTaskItemsRejectsBeforeRuntimeAdmissionWhenEngineBacklogWouldOverflow() {
         InMemoryTaskShellStore backlogStorage = new InMemoryTaskShellStore();
         TaskManager backlogAwareManager = new TaskManager(
-                backlogStorage,
                 backlogStorage,
                 new InMemoryTaskWorkRuntime(2),
                 new InMemoryTaskResultRuntime(),

@@ -25,6 +25,7 @@ import com.xa.mass.api.model.task.TaskItemSyncIngestApiRequest;
 import com.xa.mass.api.model.task.TaskStageEvidenceApiRequest;
 import com.xa.mass.api.model.task.TaskShellCreateApiRequest;
 import com.xa.mass.api.model.task.TaskUpdateApiRequest;
+import com.xa.mass.api.review.TaskReviewReadModelWriter;
 import com.xa.mass.api.sync.SyncTaskResultBridge;
 import com.xa.mass.api.sync.TaskSyncRequestSupervisor;
 import com.xa.mass.sdk.TaskAdminOperations;
@@ -39,11 +40,12 @@ import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
 import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
 import com.xa.mass.sdk.model.*;
-import com.xa.mass.storage.api.TaskDetailStore;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpHeaders;
@@ -65,6 +67,7 @@ import java.util.concurrent.TimeUnit;
 @Tag(name = "Task API", description = "Public task shell, item ingest, command, and result APIs")
 public class TaskApiController {
 
+    private static final Logger log = LoggerFactory.getLogger(TaskApiController.class);
     private static final DateTimeFormatter DATE_TIME_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final Set<String> EDITABLE_TASK_STATUSES = Set.of("NEW", "BLOCKED");
@@ -83,7 +86,6 @@ public class TaskApiController {
     private final TaskResultQueryOperations taskResultQueries;
     private final TaskAdminOperations taskAdmin;
     private final ControlPlaneCatalog catalog;
-    private final TaskDetailStore taskDetailStore;
     private final ApiAuthService apiAuthService;
     private final ApiAuthorizationService apiAuthorizationService;
     private final TaskSecurityViewSupport taskSecurityViewSupport;
@@ -92,17 +94,18 @@ public class TaskApiController {
     private final TaskSyncRequestSupervisor taskSyncRequestSupervisor;
     private final TaskStageEvidenceOperations taskStageEvidence;
     private ApiUsageLedgerService apiUsageLedgerService;
+    private TaskReviewReadModelWriter taskReviewReadModelWriter;
 
     public TaskApiController(TaskQueryOperations taskQueries,
                              TaskAdminOperations taskAdmin) {
-        this(taskQueries, taskAdmin, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(), null,
+        this(taskQueries, null, taskAdmin, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(),
                 new ApiAuthService(), new ApiAuthorizationService(), new TaskSecurityViewSupport(), null, null, null);
     }
 
     public TaskApiController(TaskQueryOperations taskQueries,
                              TaskAdminOperations taskAdmin,
                              ControlPlaneCatalog catalog) {
-        this(taskQueries, taskAdmin, catalog, null, new ApiAuthService(), new ApiAuthorizationService(),
+        this(taskQueries, null, taskAdmin, catalog, new ApiAuthService(), new ApiAuthorizationService(),
                 new TaskSecurityViewSupport(), null, null, null);
     }
 
@@ -110,9 +113,8 @@ public class TaskApiController {
                              TaskResultQueryOperations taskResultQueries,
                              TaskAdminOperations taskAdmin,
                              ControlPlaneCatalog catalog,
-                             TaskDetailStore taskDetailStore,
                              com.xa.mass.sdk.auth.AuthProvider authProvider) {
-        this(taskQueries, taskResultQueries, taskAdmin, catalog, taskDetailStore, new ApiAuthService(),
+        this(taskQueries, taskResultQueries, taskAdmin, catalog, new ApiAuthService(),
                 new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), null, null, null);
     }
 
@@ -120,21 +122,19 @@ public class TaskApiController {
                              TaskResultQueryOperations taskResultQueries,
                              TaskAdminOperations taskAdmin,
                              ControlPlaneCatalog catalog,
-                             TaskDetailStore taskDetailStore,
                              com.xa.mass.sdk.auth.AuthProvider authProvider,
                              SyncTaskResultBridge syncTaskResultBridge) {
-        this(taskQueries, taskResultQueries, taskAdmin, catalog, taskDetailStore, authProvider, syncTaskResultBridge, null);
+        this(taskQueries, taskResultQueries, taskAdmin, catalog, authProvider, syncTaskResultBridge, null);
     }
 
     public TaskApiController(TaskQueryOperations taskQueries,
                              TaskResultQueryOperations taskResultQueries,
                              TaskAdminOperations taskAdmin,
                              ControlPlaneCatalog catalog,
-                             TaskDetailStore taskDetailStore,
                              com.xa.mass.sdk.auth.AuthProvider authProvider,
                              SyncTaskResultBridge syncTaskResultBridge,
                              TaskSyncRequestSupervisor taskSyncRequestSupervisor) {
-        this(taskQueries, taskResultQueries, taskAdmin, catalog, taskDetailStore, new ApiAuthService(),
+        this(taskQueries, taskResultQueries, taskAdmin, catalog, new ApiAuthService(),
                 new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), syncTaskResultBridge,
                 taskSyncRequestSupervisor, null);
     }
@@ -143,12 +143,11 @@ public class TaskApiController {
                              TaskResultQueryOperations taskResultQueries,
                              TaskAdminOperations taskAdmin,
                              ControlPlaneCatalog catalog,
-                             TaskDetailStore taskDetailStore,
                              com.xa.mass.sdk.auth.AuthProvider authProvider,
                              SyncTaskResultBridge syncTaskResultBridge,
                              TaskSyncRequestSupervisor taskSyncRequestSupervisor,
                              TaskStageEvidenceOperations taskStageEvidence) {
-        this(taskQueries, taskResultQueries, taskAdmin, catalog, taskDetailStore, new ApiAuthService(),
+        this(taskQueries, taskResultQueries, taskAdmin, catalog, new ApiAuthService(),
                 new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), syncTaskResultBridge,
                 taskSyncRequestSupervisor, taskStageEvidence);
     }
@@ -156,17 +155,8 @@ public class TaskApiController {
     public TaskApiController(TaskQueryOperations taskQueries,
                              TaskAdminOperations taskAdmin,
                              ControlPlaneCatalog catalog,
-                             TaskDetailStore taskDetailStore,
                              com.xa.mass.sdk.auth.AuthProvider authProvider) {
-        this(taskQueries, taskAdmin, catalog, taskDetailStore, new ApiAuthService(),
-                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), null, null, null);
-    }
-
-    public TaskApiController(TaskQueryOperations taskQueries,
-                             TaskAdminOperations taskAdmin,
-                             ControlPlaneCatalog catalog,
-                             com.xa.mass.sdk.auth.AuthProvider authProvider) {
-        this(taskQueries, taskAdmin, catalog, null, new ApiAuthService(),
+        this(taskQueries, null, taskAdmin, catalog, new ApiAuthService(),
                 new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), null, null, null);
     }
 
@@ -174,7 +164,6 @@ public class TaskApiController {
     public TaskApiController(TaskQueryOperations taskQueries,
                              TaskAdminOperations taskAdmin,
                              ControlPlaneCatalog catalog,
-                             TaskDetailStore taskDetailStore,
                              ApiAuthService apiAuthService,
                              ApiAuthorizationService apiAuthorizationService,
                              TaskSecurityViewSupport taskSecurityViewSupport,
@@ -185,7 +174,6 @@ public class TaskApiController {
                 taskQueries instanceof TaskResultQueryOperations resultQueries ? resultQueries : null,
                 taskAdmin,
                 catalog,
-                taskDetailStore,
                 apiAuthService,
                 apiAuthorizationService,
                 taskSecurityViewSupport,
@@ -198,7 +186,6 @@ public class TaskApiController {
                               TaskResultQueryOperations taskResultQueries,
                               TaskAdminOperations taskAdmin,
                               ControlPlaneCatalog catalog,
-                              TaskDetailStore taskDetailStore,
                               ApiAuthService apiAuthService,
                               ApiAuthorizationService apiAuthorizationService,
                               TaskSecurityViewSupport taskSecurityViewSupport,
@@ -211,7 +198,6 @@ public class TaskApiController {
                 : taskQueries instanceof TaskResultQueryOperations resultQueries ? resultQueries : null;
         this.taskAdmin = taskAdmin;
         this.catalog = catalog;
-        this.taskDetailStore = taskDetailStore;
         this.apiAuthService = apiAuthService == null ? new ApiAuthService() : apiAuthService;
         this.apiAuthorizationService = apiAuthorizationService == null ? new ApiAuthorizationService() : apiAuthorizationService;
         this.taskSecurityViewSupport = taskSecurityViewSupport == null ? new TaskSecurityViewSupport() : taskSecurityViewSupport;
@@ -227,6 +213,11 @@ public class TaskApiController {
     public void setApiUsageLedgerService(ApiUsageLedgerService apiUsageLedgerService) {
         this.apiUsageLedgerService = apiUsageLedgerService;
         this.apiAuthorizationService.setApiUsageLedgerService(apiUsageLedgerService);
+    }
+
+    @Autowired(required = false)
+    public void setTaskReviewReadModelWriter(TaskReviewReadModelWriter taskReviewReadModelWriter) {
+        this.taskReviewReadModelWriter = taskReviewReadModelWriter;
     }
 
     @GetMapping("")
@@ -391,10 +382,13 @@ public class TaskApiController {
             }
             PrincipalContext appender = resolveTaskAppender(apiKeyHeader, authorizationHeader, task.getTaskId(), task.getProject(),
                     task.getSharedConfig(), eventCodes, ApiUsageOperation.TASK_ITEM_APPEND, null);
-            int added = taskAdmin.appendTaskItems(taskId, MassTaskItemBatchAppendRequest.builder()
+            List<Map<String, Object>> reviewItems = normalizeAppendItemsForReview(items, requestBody.getEventCode());
+            TaskItemBatchAppendReceipt receipt = taskAdmin.appendTaskItemsWithReceipt(taskId, MassTaskItemBatchAppendRequest.builder()
                     .eventCode(requestBody.getEventCode())
                     .items(items)
                     .build());
+            int added = receipt.added();
+            recordReviewItemsAccepted(taskId, reviewItems, receipt, resolveDefaultMaxRetryCount(taskId));
             ApiUsageAcceptedContext usage = recordApiUsage(
                     appender,
                     ApiUsageOperation.TASK_ITEM_APPEND,
@@ -455,6 +449,10 @@ public class TaskApiController {
                     .items(items)
                     .build());
             String messageId = requireSingleMessageId(receipt);
+            recordReviewItemsAccepted(taskId,
+                    normalizeAppendItemsForReview(items, requestBody.getEventCode()),
+                    receipt,
+                    resolveDefaultMaxRetryCount(taskId));
             usage = recordApiUsage(
                     appender,
                     ApiUsageOperation.TASK_ITEM_SYNC_APPEND,
@@ -1319,6 +1317,62 @@ public class TaskApiController {
             throw new IllegalStateException("Sync append returned blank message id");
         }
         return messageId;
+    }
+
+    private void recordReviewItemsAccepted(String taskId,
+                                           List<Map<String, Object>> acceptedItems,
+                                           TaskItemBatchAppendReceipt receipt,
+                                           int maxRetryCount) {
+        if (taskReviewReadModelWriter == null) {
+            return;
+        }
+        try {
+            taskReviewReadModelWriter.recordItemsAccepted(taskId, acceptedItems, receipt, maxRetryCount);
+        } catch (RuntimeException e) {
+            log.warn("Task review read-model append write failed: taskId={}, added={}, reason={}",
+                    taskId,
+                    receipt == null ? null : receipt.added(),
+                    e.getMessage(),
+                    e);
+        }
+    }
+
+    private int resolveDefaultMaxRetryCount(String taskId) {
+        TaskDetailSnapshot task = taskQueries.getTaskDetail(taskId);
+        if (task == null || task.getExecutionSpec() == null) {
+            return 0;
+        }
+        return task.getExecutionSpec().getDefaultMaxRetryCount();
+    }
+
+    private List<Map<String, Object>> normalizeAppendItemsForReview(List<Object> items, String batchEventCode) {
+        if (items == null || items.isEmpty()) {
+            return List.of();
+        }
+        List<Map<String, Object>> normalized = new ArrayList<>(items.size());
+        String normalizedBatchEventCode = normalizeEventCode(batchEventCode);
+        for (Object item : items) {
+            if (!(item instanceof Map<?, ?> rawMap)) {
+                throw new IllegalArgumentException("append items must be JSON object maps");
+            }
+            Map<String, Object> normalizedMap = stringObjectMap(rawMap);
+            if (normalizedBatchEventCode != null && !normalizedMap.containsKey("eventCode")) {
+                LinkedHashMap<String, Object> merged = new LinkedHashMap<>(normalizedMap);
+                merged.put("eventCode", normalizedBatchEventCode);
+                normalized.add(Map.copyOf(merged));
+            } else {
+                normalized.add(normalizedMap);
+            }
+        }
+        return List.copyOf(normalized);
+    }
+
+    private Map<String, Object> stringObjectMap(Map<?, ?> rawMap) {
+        LinkedHashMap<String, Object> copy = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
+            copy.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        return Map.copyOf(copy);
     }
 
     private long resolveSyncTimeoutMs(Long requestedTimeoutMs) {

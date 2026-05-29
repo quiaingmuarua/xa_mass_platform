@@ -13,6 +13,9 @@ import com.xa.mass.transport.presence.WorkerPresenceStore;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.runtime.presence.RedisWorkerPresenceStore;
+import com.xa.mass.api.review.TaskDetailStoreTaskReviewReadModel;
+import com.xa.mass.api.review.TaskReviewReadModel;
+import com.xa.mass.api.review.TaskReviewReadModelWriter;
 import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.TaskShellStore;
 import com.xa.mass.storage.jdbc.JdbcStorageMode;
@@ -24,6 +27,8 @@ import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.RuntimeDiagnosticsOperations;
 import com.xa.mass.sdk.auth.PrincipalDirectory;
 import com.xa.mass.sdk.catalog.*;
+import com.xa.mass.sdk.model.TaskWorkFinalNotification;
+import com.xa.mass.sdk.model.TaskWorkFinalSnapshot;
 import com.xa.mass.api.auth.CompositePrincipalDirectory;
 import com.xa.mass.api.auth.DefaultOperatorPrincipalDirectory;
 import com.xa.mass.server.auth.jdbc.JdbcSubmitterRegistry;
@@ -33,6 +38,7 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -209,6 +215,24 @@ public class XaMassServerApplication {
                 "taskShellStore does not implement TaskDetailStore: " + taskShellStore.getClass().getName());
     }
 
+    @Bean
+    @Profile("dev")
+    public TaskReviewReadModel taskReviewReadModel(TaskDetailStore taskDetailStore) {
+        return new TaskDetailStoreTaskReviewReadModel(taskDetailStore);
+    }
+
+    @Bean
+    @Primary
+    @Profile("dev")
+    public TaskReviewReadModelWriter taskReviewReadModelWriter(@Qualifier("taskReviewReadModel")
+                                                               TaskReviewReadModel taskReviewReadModel) {
+        if (taskReviewReadModel instanceof TaskReviewReadModelWriter writer) {
+            return writer;
+        }
+        throw new IllegalStateException("taskReviewReadModel does not implement TaskReviewReadModelWriter: "
+                + taskReviewReadModel.getClass().getName());
+    }
+
     @Bean(destroyMethod = "shutdown")
     @Profile("dev")
     public TaskWorkRuntime taskWorkRuntime() {
@@ -362,6 +386,50 @@ public class XaMassServerApplication {
                 throw new RuntimeException("Failed to start full-stack services", e);
             }
         };
+    }
+
+    @Bean
+    @Profile("dev")
+    @Order(1)
+    public CommandLineRunner taskReviewReadModelFinalityListener(MassSdkApplication app,
+                                                                 @Qualifier("taskReviewReadModelWriter")
+                                                                 TaskReviewReadModelWriter writer) {
+        return args -> app.addTaskWorkFinalListener(notification -> {
+            try {
+                writer.recordWorkFinal(enrichTaskWorkFinalNotification(app, notification));
+            } catch (RuntimeException e) {
+                TaskWorkFinalSnapshot snapshot = notification == null ? null : notification.finalSnapshot();
+                log.warn("Task review read-model finality write failed: taskId={}, messageId={}, reason={}",
+                        snapshot == null ? null : snapshot.taskId(),
+                        snapshot == null ? null : snapshot.messageId(),
+                        e.getMessage(),
+                        e);
+            }
+        });
+    }
+
+    private static TaskWorkFinalNotification enrichTaskWorkFinalNotification(MassSdkApplication app,
+                                                                             TaskWorkFinalNotification notification) {
+        if (notification == null || notification.finalSnapshot() == null) {
+            return notification;
+        }
+        TaskWorkFinalSnapshot eventSnapshot = notification.finalSnapshot();
+        try {
+            return app.getTaskWorkFinal(eventSnapshot.taskId(), eventSnapshot.messageId())
+                    .map(snapshot -> new TaskWorkFinalNotification(
+                            notification.taskId(),
+                            notification.sharedConfig(),
+                            snapshot
+                    ))
+                    .orElse(notification);
+        } catch (RuntimeException e) {
+            log.warn("Task review read-model finality enrichment failed: taskId={}, messageId={}, reason={}",
+                    eventSnapshot.taskId(),
+                    eventSnapshot.messageId(),
+                    e.getMessage(),
+                    e);
+            return notification;
+        }
     }
 
     /**

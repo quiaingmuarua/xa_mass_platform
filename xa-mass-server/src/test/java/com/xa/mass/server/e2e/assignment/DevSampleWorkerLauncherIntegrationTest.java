@@ -1,7 +1,7 @@
 package com.xa.mass.server.e2e.assignment;
 
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.server.e2e.support.ProjectionSampleE2eTest;
+import com.xa.mass.server.e2e.support.ReviewReadModelSampleE2eTest;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.WorkerSnapshot;
 import org.junit.jupiter.api.Tag;
@@ -41,7 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @ActiveProfiles("dev")
 @DirtiesContext
 @Tag("secondary-proof")
-class DevSampleWorkerLauncherIntegrationTest extends ProjectionSampleE2eTest {
+class DevSampleWorkerLauncherIntegrationTest extends ReviewReadModelSampleE2eTest {
 
     /**
      * Support-only dev launcher coverage.

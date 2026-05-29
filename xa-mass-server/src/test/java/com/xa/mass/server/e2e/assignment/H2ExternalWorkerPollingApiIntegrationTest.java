@@ -4,7 +4,7 @@ import com.xa.mass.api.internal.SdkCredentialAuthSupport;
 import com.xa.mass.storage.rule.RuleDefinition;
 import com.xa.mass.storage.rule.RuleType;
 import com.xa.mass.server.XaMassServerApplication;
-import com.xa.mass.server.e2e.support.ProjectionSampleE2eTest;
+import com.xa.mass.server.e2e.support.ReviewReadModelSampleE2eTest;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.auth.PrincipalContext;
@@ -43,7 +43,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @ActiveProfiles("dev")
 @DirtiesContext
 @Tag("secondary-proof")
-class H2ExternalWorkerPollingApiIntegrationTest extends ProjectionSampleE2eTest {
+class H2ExternalWorkerPollingApiIntegrationTest extends ReviewReadModelSampleE2eTest {
 
     /**
      * Support-only storage compatibility coverage.

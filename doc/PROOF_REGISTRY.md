@@ -13,7 +13,7 @@ Use it to answer:
 3. which trace analyzer or trace-observed scenario is the canonical
    observational proof
 4. which distributed-edge lane also matters
-5. which gaps are still intentional and where the next proof belongs
+5. where the next proof belongs when current coverage is insufficient
 
 This file does not replace owner matrices. It sits above them and points to the
 current authoritative proof surface.
@@ -23,7 +23,6 @@ Use with:
 - [TESTING_INDEX.md](./TESTING_INDEX.md)
 - [TESTING_BASELINE.md](./TESTING_BASELINE.md)
 - [E2E_BASELINE.md](./E2E_BASELINE.md)
-- [CURRENT_GAPS.md](./CURRENT_GAPS.md)
 - [TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
 - [../xa-mass-engine/doc/baseline/SCHEDULING_CORRECTNESS_MATRIX.md](../xa-mass-engine/doc/baseline/SCHEDULING_CORRECTNESS_MATRIX.md)
 - [../xa-mass-engine/doc/baseline/KERNEL_CONVERGENCE_MATRIX.md](../xa-mass-engine/doc/baseline/KERNEL_CONVERGENCE_MATRIX.md)
@@ -122,21 +121,11 @@ tests.
 | `TaskApiTerminateRunningIntegrationTest` | terminate-after-assignment shell boundary on the real callback path | do not add another generic terminate-running shell test before checking this class |
 | `TaskApiWorkerWithoutContextIntegrationTest` | worker-without-context host boundary coverage remains part of routing/mainline viability | do not add another compatibility-free worker smoke unless registry proof ownership changes |
 
-## 3. Known Gaps
+## 3. Coverage Notes
 
-Visible gaps should stay explicit so new agents add proof in the right lane.
-Operational/runtime gap tracking lives in [CURRENT_GAPS.md](./CURRENT_GAPS.md).
-This section records proof-ownership gaps only.
-
-### 3.1 Current Explicit Gaps
-
-- there is no current top-priority gap in external worker public-contract proof
-  ownership; parity now has a canonical trace-observed scenario and analyzer
-  chain
-- durable task/worker history and analytics read models are intentionally not
-  implemented as control-plane storage. Current trace/archive direction and
-  vocabulary gaps are tracked in
-  [TASK_WORKER_TRACE_ARCHIVE_DIRECTION.md](./TASK_WORKER_TRACE_ARCHIVE_DIRECTION.md).
+This registry does not maintain a central gap index. When proof is insufficient,
+record the current evidence boundary in the owning baseline, suite map, or
+owner README instead of accumulating closed-gap or target-state notes here.
 
 ## 4. Naming Rule
 

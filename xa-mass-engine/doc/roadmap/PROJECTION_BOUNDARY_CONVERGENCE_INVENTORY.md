@@ -1,6 +1,8 @@
 # Projection Boundary Convergence Inventory
 
-Status: PBC-0 inventory record.
+Status: PBC-0 inventory record, updated with PBC-3 server read-model rename,
+writer evidence wiring, PBC-4 engine projection-write removal, and PBC-5
+production ownership guards.
 
 This file is the working inventory for
 [`PROJECTION_BOUNDARY_CONVERGENCE_ROADMAP.md`](PROJECTION_BOUNDARY_CONVERGENCE_ROADMAP.md).
@@ -16,6 +18,16 @@ projection rows, but console review/export still needs a deterministic read
 model that covers fields not currently available from trace events alone. The
 first implementation path should therefore move projection assembly out of the
 engine kernel and into a server/read-model owner.
+
+Current PBC-3 implementation follows this path: item append acceptance records
+message/input/event/max-retry/create evidence, while final runtime-result
+visibility supplies worker, batch, attempt, retry, timing, output, and error
+evidence for the review read model.
+
+PBC-4 then removed engine runtime writes to compatibility projection rows.
+Engine production code no longer contains `TaskCompatibilityProjectionStore`,
+`TaskWorkProjectionState`, storage projection enum imports, or `TaskDetailStore`
+projection write calls.
 
 Path B, trace/archive/runtime-derived review, remains the target direction once
 the trace/archive read API can cover the complete review/export field set. It
@@ -33,44 +45,49 @@ reads, offline audit, and test proof residue.
 | --- | --- | --- | --- |
 | `TaskShellStore` | `TaskManager` | Keep for now | Task shell/control-plane storage contract. Not a PBC target. |
 | `TaskShellLifecycleQuery` | `TaskManager` | Keep for now | Lifecycle lookup contract. Not a PBC target. |
-| `TaskDetailStore` | `TaskManager`, `TaskCompatibilityProjectionStore` | PBC target | Remove from engine runtime assembly after read-model replacement exists. |
-| `com.xa.mass.storage.api.projection.*` | `TaskWorkProjectionState` | PBC target | Delete engine storage projection conversion after native lifecycle enums are split out. |
+| `TaskDetailStore` | None in engine production | PBC target | Removed from engine runtime assembly in PBC-4. |
+| `com.xa.mass.storage.api.projection.*` | None in engine production | PBC target | Removed from engine production in PBC-4 after `TaskWorkLifecycleState` split. |
 | `RuleStorage` | `StorageBackedMatchingRuleSetProvider` | Rule follow-up | Leave unchanged in PBC. Rule-domain boundary owns this later. |
 | `com.xa.mass.storage.rule.*` | `rules/*`, `RuleBasedTaskWorkerMatchingStrategy`, `MonkeyGenerator` | Rule follow-up | Leave unchanged in PBC unless it directly blocks projection removal. |
 
 No unexpected `mass-storage-api` production dependency was found in
-`xa-mass-engine/src/main/java` during this inventory.
+`xa-mass-engine/src/main/java` during this inventory. PBC-5 now enforces this
+classification through `EngineProofOwnershipGuardTest`: engine production may
+import only the current task-shell/control-plane contracts
+(`TaskShellStore`, `TaskShellLifecycleQuery`) and rule-domain contracts
+(`RuleStorage`, `RuleDefinition`, `RuleEvaluator`, `RuleType`).
 
 ## Projection Caller Classification
 
 | Caller | Current use | Classification | PBC action |
 | --- | --- | --- | --- |
-| `TaskCompatibilityProjectionStore` | Builds and updates `TaskDetailStore` message/attempt projection rows. | Result convergence residue write and ingress residue write. | Delete from engine runtime after PBC-3. |
-| `TaskManager` | Constructs projection store/auditor and writes ingress-accepted projection residue. | Assembly and residue write. | Remove projection constructor requirements and ingress writes in PBC-4. |
-| `TaskResultService` | Writes best-effort work/attempt projection residue after runtime convergence. | Result convergence residue write. | Remove best-effort projection writes in PBC-4. |
+| `TaskCompatibilityProjectionStore` | Deleted from engine production. | Removed residue writer. | Completed in PBC-4. |
+| `TaskManager` | No longer constructs projection store/auditor and no longer writes ingress-accepted projection residue. | Runtime assembly only. | Completed in PBC-4. |
+| `TaskResultService` | No longer writes best-effort work/attempt projection residue after runtime convergence. | Runtime result convergence owner. | Completed in PBC-4. |
 | `TaskProjectionStateAuditor` | Scans projection rows and compares them with runtime validation. | Explicit offline audit in engine today. | Delete or move outside engine kernel in PBC-2. |
 | `TaskStateValidatorBoundaryTest` | Proves projection audit and validator separation. | Test-only projection/audit proof. | Update or delete with PBC-2. |
 | `EngineProjectionResidueSuite` | Groups engine projection residue tests. | Test-only projection proof lane. | Retire or rename as read-model proof after PBC-1/PBC-4. |
 | `EngineProjectionAuditSuite` | Groups engine projection audit tests. | Test-only audit proof lane. | Retire with PBC-2 if audit leaves engine. |
-| `InternalTaskReviewController` | Reads `TaskDetailStore` projection rows for review summary, previews, and exports. | Console/review read model. | Replace with server/read-model owner in PBC-3 before PBC-4. |
-| `TaskApiControllerTest` | Mocks projection rows for review behavior. | Server read-model test. | Move to selected PBC-3 read model. |
-| `ProjectionSampleE2eTest` | Reads projection rows as E2E proof helper. | Server E2E proof residue. | Migrate helper to new read model or rename as explicit read-model proof in PBC-3. |
-| `ServerProjectionResidueSuite` | Groups server projection residue E2E tests. | Server E2E proof residue. | Migrate/rename/delete according to PBC-3 read-model owner. |
-| `ServerProjectionAuditSuite` | Groups server projection audit E2E tests. | Server E2E proof residue. | Migrate/rename/delete according to PBC-3 read-model owner. |
+| `InternalTaskReviewController` | Reads `TaskReviewReadModel` for review summary, previews, and exports. | Console/review read model. | PBC-3 controller contract migration landed. |
+| `TaskApiControllerTest` | Uses transitional `TaskDetailStoreTaskReviewReadModel` for review behavior. | Server read-model test. | PBC-3 test contract migration landed. |
+| `ReviewReadModelSampleE2eTest` | Reads server `TaskReviewReadModel` as E2E proof helper. | Server E2E read-model proof. | PBC-3 helper rename landed. |
+| `ServerReviewReadModelResidueSuite` | Groups server review read-model E2E tests. | Server E2E read-model proof. | PBC-3 suite rename landed. |
+| `ServerReviewReadModelAuditSuite` | Groups server review read-model audit E2E tests. | Server E2E read-model proof. | PBC-3 suite rename landed. |
 
 ## TaskWorkProjectionState Consumers
 
 | Consumer | Enum use | Classification | PBC action |
 | --- | --- | --- | --- |
-| `TaskWorkProjectionState` | Converts engine residue enums to storage projection enums. | Storage conversion. | Delete after native lifecycle enums exist and projection writes are removed. |
-| `TaskCompatibilityProjectionStore` | Uses message/attempt enums for projection rows. | Storage conversion and residue write. | Delete with projection writes. |
+| `TaskWorkProjectionState` | Deleted from engine production. | Removed storage conversion. | Completed in PBC-4. |
+| `TaskCompatibilityProjectionStore` | Deleted from engine production. | Removed residue writer. | Completed in PBC-4. |
 | `TaskProjectionStateAuditor` | Compares projection enum state with runtime validation. | Projection audit. | Delete or move out of engine kernel in PBC-2. |
-| `TaskResultService` | Uses enums for convergence residue and internal event creation. | Runtime event payload plus residue write. | Split native engine lifecycle enums before removing projection conversion. |
-| `TaskWorkLogicallyFinalEvent` | Record fields use `MessageStatus` and `MessageFinalReason`. | Runtime event payload. | Move to engine-native lifecycle enum type before deleting `TaskWorkProjectionState`. |
-| `TaskWorkAttemptClosedEvent` | Record fields use `AttemptStatus` and `AttemptFinalReason`. | Runtime event payload. | Move to engine-native lifecycle enum type before deleting `TaskWorkProjectionState`. |
-| `SimpleTaskDispatchBinder` | Uses `AttemptStatus` for dispatch status trace/event behavior. | Runtime/trace payload. | Move to engine-native attempt lifecycle type. |
-| `TraceEventLogger` | Uses message/attempt enums in trace event attributes. | Trace/logging payload. | Move to engine-native lifecycle type and keep trace payload names stable as strings. |
-| `TaskResourceReleaseListenerTest` and projection tests | Imports attempt/message enums. | Test-only helper/proof. | Update with native lifecycle enum split or delete projection-specific assertions. |
+| `TaskWorkLifecycleState` | Owns engine-native work/attempt lifecycle enums without storage projection conversions. | Runtime event payload. | Added in PBC-4. |
+| `TaskResultService` | Uses `TaskWorkLifecycleState` enums for internal event creation. | Runtime event payload. | Completed in PBC-4. |
+| `TaskWorkLogicallyFinalEvent` | Record fields use `TaskWorkLifecycleState.MessageStatus` and `MessageFinalReason`. | Runtime event payload. | Completed in PBC-4. |
+| `TaskWorkAttemptClosedEvent` | Record fields use `TaskWorkLifecycleState.AttemptStatus` and `AttemptFinalReason`. | Runtime event payload. | Completed in PBC-4. |
+| `SimpleTaskDispatchBinder` | Uses `TaskWorkLifecycleState.AttemptStatus` for dispatch status trace/event behavior. | Runtime/trace payload. | Completed in PBC-4. |
+| `TraceEventLogger` | Uses lifecycle enum names in trace event attributes. | Trace/logging payload. | Completed in PBC-4. |
+| `TaskResourceReleaseListenerTest` and SDK event tests | Import native lifecycle enums. | Test proof. | Updated in PBC-4. |
 
 ## InternalTaskReviewController Field Coverage
 
@@ -107,24 +124,10 @@ projection writer. The immediate PBC path chooses the latter.
 
 | Asset | Current role | PBC owner decision |
 | --- | --- | --- |
-| `ServerProjectionResidueSuite` | E2E projection residue suite. | Rename or replace as server read-model proof in PBC-3. |
-| `ServerProjectionAuditSuite` | E2E projection audit suite. | Delete or move to explicit admin/read-model audit if audit survives PBC-2. |
-| `ProjectionSampleE2eTest` | Shared helper reading projection rows. | Migrate to new server/read-model query helper in PBC-3. |
-| `CrawlerPullWorkerSdkRegistrationIntegrationTest` | Extends projection helper. | Migrate helper usage to new read-model proof. |
-| `DevSampleWorkerLauncherIntegrationTest` | Extends projection helper. | Migrate helper usage to new read-model proof. |
-| `H2ExternalWorkerPollingApiIntegrationTest` | Extends projection helper. | Migrate helper usage to new read-model proof. |
-| `JavaPollingWorkerBlackBoxIntegrationTest` | Extends projection helper. | Migrate helper usage to new read-model proof. |
-| `JavaSocketWorkerBlackBoxIntegrationTest` | Extends projection helper. | Migrate helper usage to new read-model proof. |
-| `JavaWebSocketWorkerBlackBoxIntegrationTest` | Extends projection helper. | Migrate helper usage to new read-model proof. |
-| `NodePollingWorkerBlackBoxIntegrationTest` | Extends projection helper. | Migrate helper usage to new read-model proof. |
-| `NodeSocketWorkerBlackBoxIntegrationTest` | Extends projection helper. | Migrate helper usage to new read-model proof. |
-| `NodeWebSocketWorkerBlackBoxIntegrationTest` | Extends projection helper. | Migrate helper usage to new read-model proof. |
-| `PostgresExternalWorkerPollingApiIntegrationTest` | Extends projection helper. | Migrate helper usage to new read-model proof. |
-| `RuntimeLateReplayE2eScenario` | Extends projection helper. | Migrate helper usage to runtime/result/read-model proof according to scenario intent. |
-| `SdkTaskApiIntegrationTest` | Extends projection helper. | Migrate helper usage to new read-model proof. |
-| `TaskApiMultiRoundDispatchIntegrationTest` | Extends projection helper. | Migrate helper usage to new read-model proof. |
-| `TaskApiTargetedWorkerDebugIntegrationTest` | Extends projection helper. | Migrate helper usage to new read-model proof. |
-| `TaskApiTerminateReuseIntegrationTest` | Extends projection helper. | Migrate helper usage to new read-model proof. |
+| `ServerReviewReadModelResidueSuite` | E2E review read-model suite. | Renamed in PBC-3. |
+| `ServerReviewReadModelAuditSuite` | E2E review read-model audit suite. | Renamed in PBC-3. |
+| `ReviewReadModelSampleE2eTest` | Shared helper reading server review read model. | Renamed and migrated in PBC-3. |
+| E2E classes extending `ReviewReadModelSampleE2eTest` | Use read-model helper for support/debug assertions. | Helper usage migrated to the new read-model contract. |
 
 ## PBC-0 Acceptance Mapping
 
@@ -149,7 +152,10 @@ projection writer. The immediate PBC path chooses the latter.
   treating it as runtime truth.
 - PBC-3 must provide the server/read-model-side assembler/writer before PBC-4
   removes engine projection writes.
-- PBC-4 must split engine-native lifecycle enums out of
-  `TaskWorkProjectionState` before deleting storage conversion logic.
-- PBC-5 should use `@CompatibilityProjectionOnly` plus an engine storage
-  dependency allowlist as guard inputs.
+- The PBC-3 writer must stay best-effort relative to item append and finality
+  publication; read-model write failure must not roll back accepted runtime
+  work or result convergence.
+- PBC-4 split engine-native lifecycle enums out of `TaskWorkProjectionState`
+  and deleted engine storage conversion logic.
+- PBC-5 has production ownership guards for projection-write tokens and the
+  engine storage dependency allowlist.

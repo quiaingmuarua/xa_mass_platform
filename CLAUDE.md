@@ -28,7 +28,6 @@ Useful current indexes:
 
 - [doc/README.md](doc/README.md)
 - [doc/TESTING_INDEX.md](doc/TESTING_INDEX.md)
-- [doc/CURRENT_GAPS.md](doc/CURRENT_GAPS.md)
 - [xa-mass-engine/doc/README.md](xa-mass-engine/doc/README.md)
 
 Archived documents are changelog-style reference only. They are not proof that

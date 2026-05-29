@@ -57,6 +57,7 @@ class EngineKernelConvergenceArchitectureGuardTest {
         List<Path> sourceFiles = Arrays.stream(selectedClasses.value())
                 .filter(Objects::nonNull)
                 .filter(testClass -> testClass != EngineKernelConvergenceArchitectureGuardTest.class)
+                .filter(testClass -> testClass != EngineProofOwnershipGuardTest.class)
                 .map(EngineKernelConvergenceArchitectureGuardTest::sourcePathFor)
                 .toList();
         assertTrue(!sourceFiles.isEmpty(), "EngineKernelConvergenceSuite must select at least one guarded test class");

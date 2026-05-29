@@ -7,5 +7,5 @@ import org.junit.platform.suite.api.Suite;
         TaskApiMultiRoundDispatchIntegrationTest.class,
         TaskApiTerminateReuseIntegrationTest.class
 })
-class ServerProjectionResidueSuite {
+class ServerReviewReadModelResidueSuite {
 }

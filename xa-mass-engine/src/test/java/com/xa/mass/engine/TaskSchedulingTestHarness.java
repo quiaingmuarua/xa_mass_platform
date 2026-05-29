@@ -66,7 +66,6 @@ final class TaskSchedulingTestHarness {
         this.taskStorage = new InMemoryTaskShellStore();
         this.taskManager = new TaskManager(
                 taskStorage,
-                taskStorage,
                 new InMemoryTaskWorkRuntime(),
                 new InMemoryTaskResultRuntime(),
                 null

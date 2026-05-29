@@ -1,7 +1,7 @@
 package com.xa.mass.server.e2e.results;
 
 import com.google.gson.JsonObject;
-import com.xa.mass.server.e2e.support.ProjectionSampleE2eTest;
+import com.xa.mass.server.e2e.support.ReviewReadModelSampleE2eTest;
 import com.xa.mass.server.testutil.WsFrameTestSupport;
 import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
 import org.junit.jupiter.api.Test;
@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-abstract class RuntimeLateReplayE2eScenario extends ProjectionSampleE2eTest {
+abstract class RuntimeLateReplayE2eScenario extends ReviewReadModelSampleE2eTest {
 
     private static final String CHAOS_WORKER_ID = "runtime-chaos-worker";
     private static final String STEADY_WORKER_ID = "runtime-steady-worker";

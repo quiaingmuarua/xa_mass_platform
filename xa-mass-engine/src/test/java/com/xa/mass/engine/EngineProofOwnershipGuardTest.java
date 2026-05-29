@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EngineProofOwnershipGuardTest {
 
+    private static final Path ENGINE_MAIN_ROOT = Path.of("src", "main", "java", "com", "xa", "mass", "engine");
     private static final Path ENGINE_TEST_ROOT = Path.of("src", "test", "java", "com", "xa", "mass", "engine");
 
     private static final List<Class<?>> MAINLINE_SUITES = List.of(
@@ -89,6 +90,80 @@ class EngineProofOwnershipGuardTest {
                         + String.join("\n", violations));
     }
 
+    @Test
+    void engineProductionDoesNotOwnCompatibilityProjectionWrites() throws IOException {
+        List<ForbiddenToken> forbiddenTokens = List.of(
+                new ForbiddenToken("TaskDetailStore", "storage read-model owner"),
+                new ForbiddenToken("com.xa.mass.storage.api.projection", "storage projection enum package"),
+                new ForbiddenToken("TaskMessageProjection", "message projection row"),
+                new ForbiddenToken("TaskMessageAttemptProjection", "attempt projection row"),
+                new ForbiddenToken("TaskCompatibilityProjectionStore", "engine projection writer"),
+                new ForbiddenToken("TaskWorkProjectionState", "projection-named lifecycle state"),
+                new ForbiddenToken("CompatibilityProjectionOnly", "compatibility projection marker"),
+                new ForbiddenToken("upsertTaskMessageProjection", "message projection write"),
+                new ForbiddenToken("upsertTaskMessageAttemptProjection", "attempt projection write"),
+                new ForbiddenToken("getTaskMessageProjection", "projection read"),
+                new ForbiddenToken("getTaskMessageProjections", "projection read")
+        );
+
+        List<String> violations = new ArrayList<>();
+        try (Stream<Path> paths = Files.walk(ENGINE_MAIN_ROOT)) {
+            for (Path path : paths.filter(Files::isRegularFile).toList()) {
+                if (!path.getFileName().toString().endsWith(".java")) {
+                    continue;
+                }
+                String source = Files.readString(path, StandardCharsets.UTF_8);
+                for (ForbiddenToken token : forbiddenTokens) {
+                    if (source.contains(token.value())) {
+                        violations.add(path + " uses " + token.reason() + ": " + token.value());
+                    }
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Engine production must stay runtime/task-shell first and must not write compatibility projection rows:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void engineProductionStorageImportsStayOnPbcAllowlist() throws IOException {
+        Set<String> allowedStorageImports = Set.of(
+                "com.xa.mass.storage.api.RuleStorage",
+                "com.xa.mass.storage.api.TaskShellLifecycleQuery",
+                "com.xa.mass.storage.api.TaskShellStore",
+                "com.xa.mass.storage.rule.RuleDefinition",
+                "com.xa.mass.storage.rule.RuleEvaluator",
+                "com.xa.mass.storage.rule.RuleType"
+        );
+
+        List<String> violations = new ArrayList<>();
+        try (Stream<Path> paths = Files.walk(ENGINE_MAIN_ROOT)) {
+            for (Path path : paths.filter(Files::isRegularFile).toList()) {
+                if (!path.getFileName().toString().endsWith(".java")) {
+                    continue;
+                }
+                for (String line : Files.readAllLines(path, StandardCharsets.UTF_8)) {
+                    String trimmed = line.trim();
+                    if (!trimmed.startsWith("import com.xa.mass.storage.")) {
+                        continue;
+                    }
+                    String importedType = trimmed
+                            .replace("import ", "")
+                            .replace(";", "");
+                    if (!allowedStorageImports.contains(importedType)) {
+                        violations.add(path + " imports unclassified storage dependency: " + importedType);
+                    }
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Engine production storage dependencies must stay on the PBC allowlist. "
+                        + "Task shell/control-plane and rule-domain imports are the only current owners:\n"
+                        + String.join("\n", violations));
+    }
+
     private static Set<Class<?>> selectedClasses(List<Class<?>> suiteClasses) {
         Set<Class<?>> selectedClasses = new LinkedHashSet<>();
         for (Class<?> suiteClass : suiteClasses) {
@@ -133,5 +208,8 @@ class EngineProofOwnershipGuardTest {
         } catch (ClassNotFoundException e) {
             throw new IllegalStateException("Engine proof guard class not found: " + className, e);
         }
+    }
+
+    private record ForbiddenToken(String value, String reason) {
     }
 }

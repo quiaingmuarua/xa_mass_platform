@@ -33,7 +33,6 @@ class TaskContractTerminalBehaviorTest {
         InMemoryTaskShellStore taskStorage = new InMemoryTaskShellStore();
         taskManager = new TaskManager(
                 taskStorage,
-                taskStorage,
                 new InMemoryTaskWorkRuntime(),
                 new InMemoryTaskResultRuntime(),
                 null

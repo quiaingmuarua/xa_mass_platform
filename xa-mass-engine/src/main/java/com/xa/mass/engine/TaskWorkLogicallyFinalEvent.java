@@ -8,8 +8,8 @@ import java.util.Map;
 public record TaskWorkLogicallyFinalEvent(
         String taskId,
         String messageId,
-        TaskWorkProjectionState.MessageStatus status,
-        TaskWorkProjectionState.MessageFinalReason finalReason,
+        TaskWorkLifecycleState.MessageStatus status,
+        TaskWorkLifecycleState.MessageFinalReason finalReason,
         int retryCount,
         String errorCode,
         String errorMessage,
@@ -19,8 +19,8 @@ public record TaskWorkLogicallyFinalEvent(
 
     static TaskWorkLogicallyFinalEvent from(String taskId,
                                                String messageId,
-                                               TaskWorkProjectionState.MessageStatus status,
-                                               TaskWorkProjectionState.MessageFinalReason finalReason,
+                                               TaskWorkLifecycleState.MessageStatus status,
+                                               TaskWorkLifecycleState.MessageFinalReason finalReason,
                                                int retryCount,
                                                String errorCode,
                                                String errorMessage,

@@ -4,7 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
-import com.xa.mass.server.e2e.support.ProjectionSampleE2eTest;
+import com.xa.mass.server.e2e.support.ReviewReadModelSampleE2eTest;
 import com.xa.mass.server.testutil.WsFrameTestSupport;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -39,7 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @ActiveProfiles("dev")
 @DirtiesContext
 @Tag("secondary-proof")
-class TaskApiTerminateReuseIntegrationTest extends ProjectionSampleE2eTest {
+class TaskApiTerminateReuseIntegrationTest extends ReviewReadModelSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
     private static final Gson GSON = new Gson();

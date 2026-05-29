@@ -4,7 +4,7 @@ Status: active boundary for XA Mass control-plane persistence.
 
 This document exists to prevent repeated storage refactors. Treat it as the
 default policy whenever someone proposes a new table, a new hot-path write, or
-an early PostgreSQL requirement.
+a PostgreSQL-specific requirement.
 
 For the dense cross-layer placement matrix, read
 [INFRA_TRUTH_LAYERS.md](./INFRA_TRUTH_LAYERS.md) first.
@@ -62,7 +62,7 @@ Current default scope:
   - lagging summary counters or summary snapshots are acceptable only when they
     stay task-level and are not treated as queue/lease truth
 
-This is the intended long-term role for PostgreSQL as well.
+PostgreSQL follows the same control-plane boundary.
 
 ## What Does Not Belong In DB
 
@@ -103,8 +103,8 @@ placement authoritative.
 The active `platform_infra/mass-storage-jdbc` JDBC path is intentionally narrow:
 
 - JDBC persists task truth
-- JDBC worker declaration persistence is not implemented in the current path
-  and must not be introduced as a worker runtime/history table
+- JDBC does not persist a worker declaration table in the current path; do not
+  add worker runtime/history/churn tables under that name
 - JDBC persists rule definitions
 - JDBC persists principal credential truth
 - runtime message/attempt detail stays process-local
@@ -113,7 +113,7 @@ The active `platform_infra/mass-storage-jdbc` JDBC path is intentionally narrow:
 - startup cleanup may repair runtime residue, but it does not make JDBC the
   owner of queue, lease, or inflight execution truth
 
-This is true for both `jdbc-h2` and future `jdbc-postgres`.
+This boundary is identical for `jdbc-h2` and `jdbc-postgres`.
 
 ## Before Adding A Table Or Hot Write
 
@@ -147,5 +147,5 @@ Not in scope for the control-plane DB:
 - analytical storage
 - message warehouse / big-data pipelines
 
-Those may exist later, but they are separate systems and must not redefine the
-control-plane DB boundary.
+If added as separate systems, they must not redefine the control-plane DB
+boundary.

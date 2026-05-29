@@ -31,8 +31,8 @@ public class ServerProofOwnershipGuardTest {
             "com.xa.mass.server.e2e.assignment.ServerSupportCoverageSuite",
             "com.xa.mass.server.e2e.lifecycle.ServerLifecycleSupportCoverageSuite",
             "com.xa.mass.server.e2e.assignment.ServerStorageCompatibilitySuite",
-            "com.xa.mass.server.e2e.assignment.ServerProjectionResidueSuite",
-            "com.xa.mass.server.e2e.audit.ServerProjectionAuditSuite"
+            "com.xa.mass.server.e2e.assignment.ServerReviewReadModelResidueSuite",
+            "com.xa.mass.server.e2e.audit.ServerReviewReadModelAuditSuite"
     );
 
     private static final Set<String> RETIRED_TEST_SIMPLE_NAMES = Set.of(

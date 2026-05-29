@@ -2083,9 +2083,19 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 row.status(),
                 row.finalReason(),
                 row.retryCount(),
+                row.maxRetryCount(),
+                row.eventCode(),
+                row.workerId(),
+                row.batchId(),
+                row.attemptId(),
                 row.errorCode(),
                 row.errorMessage(),
                 row.payloadRef(),
+                row.createTime(),
+                row.assignedTime(),
+                row.startTime(),
+                row.completeTime(),
+                row.updateTime(),
                 row.output()
         );
     }

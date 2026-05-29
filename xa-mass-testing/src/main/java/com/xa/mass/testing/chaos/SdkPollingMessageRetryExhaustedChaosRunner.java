@@ -31,8 +31,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>This exercises the only currently-implemented retry-exhaustion code path.
  * {@code RETRY_BUDGET_EXHAUSTED} (task-level policy) has no triggering
- * implementation in {@code AllWorkFinalTaskTerminalPolicy}; that is a separate
- * gap tracked in {@code doc/CURRENT_GAPS.md}.
+ * implementation in {@code AllWorkFinalTaskTerminalPolicy}; this probe does not
+ * assert that task-level terminal reason.
  *
  * <p>Scenario:
  * <ol>

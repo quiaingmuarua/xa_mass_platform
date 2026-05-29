@@ -1,7 +1,9 @@
 package com.xa.mass.server.e2e.support;
 
+import com.xa.mass.api.review.TaskReviewReadModel;
+import com.xa.mass.api.review.TaskReviewReadModel.TaskReviewAttempt;
+import com.xa.mass.api.review.TaskReviewReadModel.TaskReviewItem;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
-import com.xa.mass.storage.api.TaskDetailStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpMethod;
 
@@ -12,17 +14,16 @@ import java.util.Set;
 import java.util.function.Predicate;
 
 /**
- * Explicit compatibility-projection E2E support.
+ * Explicit server review-read-model E2E support.
  *
  * <p>Mainline scheduling/lifecycle suites should stay on
  * {@link AbstractSampleE2eTest}'s runtime-first helpers. Extend this class only
- * when the test intentionally proves bounded projection residue or
- * audit/debug-oriented behavior.
+ * when the test intentionally proves console/review read-model behavior.
  */
-public abstract class ProjectionSampleE2eTest extends AbstractSampleE2eTest {
+public abstract class ReviewReadModelSampleE2eTest extends AbstractSampleE2eTest {
 
     @Autowired
-    protected TaskDetailStore taskDetailStore;
+    protected TaskReviewReadModel taskReviewReadModel;
 
     protected TaskSnapshot waitForTaskSnapshot(String taskId, String expectedStatus) throws InterruptedException {
         return waitForTaskSnapshot(taskId, expectedStatus, 20, 250L);
@@ -45,7 +46,7 @@ public abstract class ProjectionSampleE2eTest extends AbstractSampleE2eTest {
                                                int maxAttempts,
                                                long sleepMillis) throws InterruptedException {
         return awaitValue(
-                "Task " + taskId + " did not reach expected projection state: " + expectation,
+                "Task " + taskId + " did not reach expected review state: " + expectation,
                 maxAttempts,
                 sleepMillis,
                 () -> fetchTaskSnapshot(taskId),
@@ -67,8 +68,7 @@ public abstract class ProjectionSampleE2eTest extends AbstractSampleE2eTest {
 
     protected List<Map<String, Object>> fetchTaskMessageAttempts(String taskId, String messageId) {
         List<Map<String, Object>> attempts = new java.util.ArrayList<>();
-        for (TaskDetailStore.TaskMessageAttemptProjection projection
-                : taskDetailStore.getTaskMessageAttemptProjections(taskId, messageId)) {
+        for (TaskReviewAttempt projection : taskReviewReadModel.loadAttempts(taskId, messageId)) {
             Map<String, Object> attempt = new LinkedHashMap<>();
             attempt.put("attemptId", projection.attemptId());
             attempt.put("taskId", projection.taskId());
@@ -76,13 +76,13 @@ public abstract class ProjectionSampleE2eTest extends AbstractSampleE2eTest {
             attempt.put("attemptNo", projection.attemptNo());
             attempt.put("workerId", projection.workerId());
             attempt.put("batchId", projection.batchId());
-            attempt.put("status", projection.status() != null ? projection.status().name() : null);
+            attempt.put("status", projection.status());
             attempt.put("leaseExpireTime", null);
             attempt.put("dispatchTime", null);
             attempt.put("ackTime", null);
             attempt.put("startTime", null);
             attempt.put("finishTime", null);
-            attempt.put("finalReason", projection.finalReason() != null ? projection.finalReason().name() : null);
+            attempt.put("finalReason", projection.finalReason());
             attempt.put("errorMessage", projection.errorMessage());
             attempt.put("errorCode", projection.errorCode());
             attempt.put("output", projection.output() == null ? null : new LinkedHashMap<>(projection.output()));
@@ -106,15 +106,14 @@ public abstract class ProjectionSampleE2eTest extends AbstractSampleE2eTest {
         }
         List<Map<String, Object>> messages = new java.util.ArrayList<>();
         Set<String> seenMessageIds = new java.util.LinkedHashSet<>();
-        for (TaskDetailStore.TaskMessageProjection projection
-                : taskDetailStore.getTaskMessageProjections(taskId, limit)) {
+        for (TaskReviewItem projection : taskReviewReadModel.loadItems(taskId, limit)) {
             ActiveLeaseRecord activeLease = activeLeaseByMessageId.get(projection.messageId());
             Map<String, Object> message = new LinkedHashMap<>();
             message.put("messageId", projection.messageId());
-            message.put("taskId", projection.taskId());
+            message.put("taskId", taskId);
             message.put("status", overlayStatus(taskView, projection, activeLease));
-            message.put("latestAttemptWorkerId", activeLease != null ? activeLease.workerId() : projection.latestAttemptWorkerId());
-            message.put("latestAttemptBatchId", activeLease != null ? activeLease.batchId() : projection.latestAttemptBatchId());
+            message.put("latestAttemptWorkerId", activeLease != null ? activeLease.workerId() : projection.workerId());
+            message.put("latestAttemptBatchId", activeLease != null ? activeLease.batchId() : projection.batchId());
             message.put("retryCount", activeLease != null ? Math.max(0, activeLease.retryCount()) : projection.retryCount());
             message.put("maxRetryCount", projection.maxRetryCount());
             message.put("errorMessage", projection.errorMessage());
@@ -167,10 +166,10 @@ public abstract class ProjectionSampleE2eTest extends AbstractSampleE2eTest {
     }
 
     private static String overlayStatus(Map<String, Object> taskView,
-                                        TaskDetailStore.TaskMessageProjection projection,
+                                        TaskReviewItem projection,
                                         ActiveLeaseRecord activeLease) {
-        String baseStatus = projection != null && projection.status() != null ? projection.status().name() : null;
-        if (projection != null && projection.status() != null && projection.status().isFinal()) {
+        String baseStatus = projection != null ? projection.status() : null;
+        if (isFinalStatus(baseStatus)) {
             return baseStatus;
         }
         if (isTerminalStop(taskView)) {
@@ -183,11 +182,15 @@ public abstract class ProjectionSampleE2eTest extends AbstractSampleE2eTest {
     }
 
     private static String overlayFinalReason(Map<String, Object> taskView,
-                                             TaskDetailStore.TaskMessageProjection projection) {
+                                             TaskReviewItem projection) {
         if (!isTerminalStop(taskView)) {
-            return projection != null && projection.finalReason() != null ? projection.finalReason().name() : null;
+            return projection != null ? projection.finalReason() : null;
         }
         return "MANUAL_CANCELLED";
+    }
+
+    private static boolean isFinalStatus(String status) {
+        return "SUCCEEDED".equals(status) || "FAILED".equals(status) || "EXPIRED".equals(status);
     }
 
     private static boolean isTerminalStop(Map<String, Object> taskView) {

@@ -32,7 +32,7 @@ class TaskRuntimeRecoveryPortTest {
     void runtimeRecoveryOnlyReturnsTasksAdvertisedByRuntimeReadySet() {
         InMemoryTaskShellStore storage = new InMemoryTaskShellStore();
         ReadyTaskIdsOverrideRuntime runtime = new ReadyTaskIdsOverrideRuntime();
-        TaskManager manager = new TaskManager(storage, storage, runtime, new InMemoryTaskResultRuntime(), null);
+        TaskManager manager = new TaskManager(storage, runtime, new InMemoryTaskResultRuntime(), null);
 
         Task first = createTask(manager, buildRequest("runtime-ready-first"));
         Task second = createTask(manager, buildRequest("runtime-ready-second"));
@@ -50,7 +50,7 @@ class TaskRuntimeRecoveryPortTest {
     void runtimeRecoveryDropsRuntimeResidueThatNoLongerHasTaskShellTruth() {
         InMemoryTaskShellStore storage = new InMemoryTaskShellStore();
         ReadyTaskIdsOverrideRuntime runtime = new ReadyTaskIdsOverrideRuntime();
-        TaskManager manager = new TaskManager(storage, storage, runtime, new InMemoryTaskResultRuntime(), null);
+        TaskManager manager = new TaskManager(storage, runtime, new InMemoryTaskResultRuntime(), null);
 
         Task task = createTask(manager, buildRequest("runtime-ready-live"));
         manager.approveTask(task.getTid());
