@@ -18,3 +18,29 @@ documents the same owner split.
 Apply the repo handoff and module README/CONTRACTS files first. If those files
 contradict this reference, report the gap and follow current code plus active
 repo contracts.
+
+## XA Mass Roadmap Discovery
+
+Roadmaps and direction docs are distributed across the repo. Do not only scan
+the current roadmap directory.
+
+Start with:
+
+- root `AGENTS.md`
+- `doc/README.md`
+- owning module `README.md` and `CONTRACTS.md`
+- `xa-mass-engine/doc/roadmap/`
+- `doc/`
+
+Use `doc/archive/` only as historical context unless an active doc points to
+it. For stale status checks, compare the roadmap `Status:` line with current
+code, architecture guards, focused tests, and recent commits.
+
+Common active boundary tracks may include:
+
+- worker runtime extraction and API slimming
+- worker match upgrade
+- rule boundary convergence
+- projection boundary convergence
+- task/worker runtime-history boundary
+- Java external SDK and integration bootstrap roadmaps

@@ -24,6 +24,11 @@ Choose the mode from the user's request before editing anything.
 In review mode, require or recommend an inventory when needed, but do not
 create files unless the user asks for edits.
 
+Use the lightest response shape that fits the task. Simple one-file roadmap
+checks can be short. Use the full findings table for owner review,
+multi-module boundary work, high-severity issues, or when the user explicitly
+asks for a full review.
+
 ## Operating Rules
 
 - Treat code and verified behavior as stronger evidence than direction docs.
@@ -40,6 +45,8 @@ create files unless the user asks for edits.
   boundary, protocol seam, lifecycle split, or external caller surface.
 - Do not merge unrelated boundary work into one roadmap because the dependency
   name looks similar.
+- Do not trust a roadmap `Status:` line without checking current code and, when
+  useful, recent commits or archive location.
 
 ## Convergence Rhythm
 
@@ -77,8 +84,8 @@ Determine whether the task is:
 - implementation planning for an approved roadmap
 - dependency or owner-boundary convergence
 
-Locate the current roadmap, related module README/CONTRACTS files, and repo
-handoff instructions when present.
+Locate the current roadmap, related module README/CONTRACTS files, repo
+handoff instructions, and the repository's roadmap/doc index when present.
 
 If the user asks whether to merge with an existing roadmap, answer from owner
 boundary, caller set, blast radius, and proof set.
@@ -96,8 +103,10 @@ Check:
 - existing architecture guards
 - storage/runtime/transport ownership docs
 - companion docs referenced by the roadmap header or body
-- sibling roadmaps in the same directory
+- related active roadmaps from doc indexes, explicit links, and nearby roadmap
+  directories
 - stale roadmap or inventory documents
+- recent commits when a roadmap status may be stale
 
 When reporting facts, distinguish:
 
@@ -111,8 +120,17 @@ For referenced docs, verify that files exist and do not contradict the
 roadmap's boundary decision. Do not treat referenced direction docs as proof
 of current behavior unless the current code also confirms it.
 
-For sibling roadmaps, check status, Non-Goals, pending slices, acceptance
+For related roadmaps, check status, Non-Goals, pending slices, acceptance
 criteria, and dependency assumptions. Flag conflicts or required cross-links.
+
+For stale status detection:
+
+- Verify `Status: proposed`, `active`, or `complete` against source code,
+  guards, tests, and recent commits when available.
+- Treat archived roadmaps as historical context, not active truth, unless the
+  repo explicitly says otherwise.
+- If status and code disagree, report doc drift in review mode or update the
+  roadmap status in edit mode.
 
 ### 3. Require, Propose, Or Create Inventory
 
@@ -318,7 +336,32 @@ For every boundary decision, prefer at least one guard:
 Verification candidates should be concrete commands. If exact tests are not
 known yet, say they must be corrected after inventory.
 
-### 10. Review Delivery Format
+### 10. Implementation Mode Rules
+
+When executing a roadmap slice:
+
+1. Confirm the exact slice, scope, acceptance criteria, and verification
+   commands before editing.
+2. Check the worktree and avoid reverting unrelated user changes.
+3. Establish a baseline when risk is meaningful: compile, focused tests, or at
+   minimum inspect recent failures so pre-existing failures are not confused
+   with new regressions.
+4. Implement only the current slice. Do not opportunistically pull in future
+   slices.
+5. If the roadmap conflicts with current code or the slice requires a larger
+   owner decision, stop implementation and return to roadmap refinement.
+6. If compilation fails because of this slice, fix it within scope before
+   continuing.
+7. If tests fail:
+   - fix failures clearly caused by the slice
+   - record clearly pre-existing failures without expanding scope
+   - reduce ambiguous failures to a focused repro before deciding
+8. If fixing requires changing contracts, docs, guards, or verification, update
+   them in the same slice.
+9. End the slice at a stable point: relevant compile/tests pass, guards are in
+   place, docs match behavior, and the repo is ready for a phase commit.
+
+### 11. Review Delivery Format
 
 In review mode, lead with findings.
 
@@ -360,7 +403,7 @@ Use conclusion formulas:
 - `No blocking findings; remaining items can be handled during implementation.`
 - `Too broad; split into separate roadmaps before executing.`
 
-### 11. Final Response
+### 12. Final Response
 
 After editing, summarize:
 
@@ -399,9 +442,11 @@ Before finishing a roadmap refinement:
 
 - Current code observations are verified with source search.
 - Target state is not described as already implemented.
+- Roadmap `Status:` was checked against code, tests, guards, or commits when
+  plausibly stale.
 - Mode was respected: review-only did not edit files.
 - Companion docs referenced by the roadmap exist and do not contradict it.
-- Sibling roadmap Non-Goals and acceptance criteria do not conflict.
+- Related roadmap Non-Goals and acceptance criteria do not conflict.
 - Public SDK/API breaking changes are called out when present.
 - File, class, method, and route names match current code.
 - Non-goals prevent scope creep.
