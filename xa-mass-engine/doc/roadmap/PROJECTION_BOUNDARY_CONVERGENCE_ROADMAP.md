@@ -3,12 +3,20 @@
 Status: active direction document. No implementation slices have landed from
 this roadmap yet.
 
+This is the current `xa-mass-engine` convergence roadmap.
+
 This roadmap removes compatibility task message/attempt projection from the
 engine kernel boundary. It is intentionally separate from the completed
 rule-boundary convergence record in
 [`../../../doc/archive/xa-mass-engine/RULE_BOUNDARY_CONVERGENCE_ROADMAP.md`](../../../doc/archive/xa-mass-engine/RULE_BOUNDARY_CONVERGENCE_ROADMAP.md)
 because projection cleanup affects runtime result convergence, console review
 read models, tests, and storage read-model assembly.
+
+Do not create a parallel storage-dependency convergence track for this work.
+The next meaningful engine dependency reduction is the projection boundary
+work described here. Broadly removing `mass-storage-api` from engine is not
+the current goal because task shell storage and rule-definition reads remain
+legitimate engine-facing contracts until separate owner work changes them.
 
 The current code has already moved scheduling and terminal truth toward runtime
 state, but engine still writes and sometimes scans `TaskDetailStore`
@@ -32,6 +40,17 @@ message/attempt projection residue.
   `InternalTaskReviewController`.
 - Many engine tests still assert behavior through `TaskDetailStore`
   message/attempt projections instead of runtime/result/trace truth.
+- Engine production code still depends on `mass-storage-api` for three
+  different reasons that must not be collapsed:
+  - `TaskShellStore` / `TaskShellLifecycleQuery`: current task shell and
+    lifecycle lookup contract; not a PBC removal target.
+  - `TaskDetailStore` and `com.xa.mass.storage.api.projection.*`: projection
+    residue; PBC removal target.
+  - `RuleStorage` / `com.xa.mass.storage.rule.*`: rule-definition and
+    matching-policy data; record as a follow-up rule-domain boundary question,
+    not part of PBC implementation.
+- Worker declaration storage has already moved to `xa-mass-worker-runtime`.
+  Do not use PBC to reopen that boundary.
 
 ## Boundary Decision
 
@@ -52,22 +71,33 @@ Implications:
 - scan-heavy projection auditing should not be part of default engine
   diagnostics
 - projection cleanup should not be hidden under rule-boundary work
+- `TaskShellStore` may remain an engine dependency while it is the task
+  shell/control-plane contract
+- `RuleStorage` and storage rule DTO usage should be inventoried but not
+  changed in PBC unless the change is required to decouple projection residue
 
 ## Non-Goals
 
 1. No rewrite of task shell persistence.
-2. No removal of `TaskStorage` as engine control-plane storage.
+2. No removal of `TaskShellStore` as engine control-plane storage.
 3. No console product redesign beyond moving it away from engine-owned
    compatibility projection truth.
 4. No change to result correctness semantics except removing projection as a
    source of runtime truth.
 5. No compatibility alias for removed projection paths after in-repo callers
    move.
+6. No broad attempt to remove every `mass-storage-api` dependency from
+   `xa-mass-engine`.
+7. No rule-domain migration. `RuleStorage`, `RuleDefinition`, `RuleType`, and
+   evaluator registry ownership should be handled by a later rule-domain
+   roadmap if PBC inventory confirms a real boundary problem.
+8. No worker declaration movement. That boundary is owned by
+   `xa-mass-worker-runtime`.
 
 ## Slice PBC-0: Inventory Projection Truth Usage
 
 Goal: identify every projection read/write and classify whether it is runtime
-truth, console read model, or test residue.
+truth, console read model, test residue, or an unrelated engine dependency.
 
 Scope:
 
@@ -78,24 +108,34 @@ Scope:
    - `TaskDetailStore.TaskMessageProjection`
    - `TaskDetailStore.TaskMessageAttemptProjection`
    - `com.xa.mass.storage.api.projection.*`
-2. Classify each caller as:
+2. Classify every `xa-mass-engine` production dependency on `mass-storage-api`
+   into exactly one bucket:
+   - keep for now: `TaskShellStore` / `TaskShellLifecycleQuery`
+   - PBC target: `TaskDetailStore` projection read/write residue
+   - rule follow-up: `RuleStorage` / `com.xa.mass.storage.rule.*`
+   - unexpected dependency requiring owner review before implementation
+3. Classify each projection caller as:
    - runtime correctness
    - result convergence residue write
    - console/review read model
    - explicit offline audit
    - test-only assertion helper
-3. Identify any path where projection data affects scheduling, terminal
+4. Identify any path where projection data affects scheduling, terminal
    policy, result convergence, or dispatch eligibility.
-4. Identify server/API callers that need a replacement read model before
+5. Identify server/API callers that need a replacement read model before
    projection writes can be removed.
-5. Produce a small inventory doc beside this roadmap.
+6. Record that rule-domain storage dependencies are not being changed by this
+   roadmap unless they directly block projection removal.
+7. Produce a small inventory doc beside this roadmap.
 
 Acceptance:
 
 1. Every current projection caller has one classification.
 2. Any runtime-correctness dependency on projection data is explicitly named.
 3. Console/read-model callers are separated from engine runtime callers.
-4. No behavior changes in this slice.
+4. Every current engine production dependency on `mass-storage-api` is
+   classified as keep-for-now, PBC target, rule follow-up, or unexpected.
+5. No behavior changes in this slice.
 
 ## Slice PBC-1: Replace Runtime Assertions With Runtime Truth
 
@@ -113,6 +153,8 @@ Scope:
    - dispatch/result service outcomes
 3. Keep dedicated read-model tests only where the read model itself is the
    subject under test.
+4. Do not rewrite task shell or rule-storage tests in this slice unless they
+   currently rely on projection rows as proof of engine runtime correctness.
 
 Acceptance:
 
@@ -132,6 +174,7 @@ Scope:
 2. If an offline audit is still useful, move it to a read-model/admin
    diagnostic surface outside engine kernel.
 3. Keep `TaskStateValidator` focused on runtime task state.
+4. Do not replace projection audit with another scan-heavy engine diagnostic.
 
 Acceptance:
 
@@ -155,6 +198,8 @@ Scope:
    logic.
 3. Update `InternalTaskReviewController` and related tests to the chosen read
    model.
+4. Keep the replacement read model deterministic enough for local console demo
+   and review surfaces; do not make external network calls part of this proof.
 
 Acceptance:
 
@@ -184,9 +229,11 @@ Acceptance:
    `com.xa.mass.storage.api.projection.*`.
 2. Engine runtime paths do not write `TaskDetailStore` message/attempt
    projections.
-3. Any remaining `TaskDetailStore` dependency is justified by control-plane
-   task detail storage, not runtime projection residue.
+3. Any remaining `TaskDetailStore` dependency is outside engine kernel runtime
+   logic and is documented as read-model assembly or explicit audit.
 4. Result convergence, retry, expiry, and terminal policy tests still pass.
+5. Remaining engine `mass-storage-api` imports are limited to explicitly kept
+   task shell/control-plane or rule-domain follow-up contracts.
 
 ## Slice PBC-5: Guard And Proof
 
@@ -199,6 +246,8 @@ Scope:
    - scheduling/result/terminal code must not read `TaskDetailStore`
      message/attempt projections
    - projection read-model assembly, if any remains, is outside engine kernel
+   - remaining engine `mass-storage-api` imports must be on the allowlist from
+     PBC-0 classification
 2. Add proof that console review/read-model still works through its new owner.
 3. Add proof that runtime correctness tests pass without projection reads.
 
@@ -210,6 +259,8 @@ Acceptance:
    projection rows.
 3. Console review/read-model proof passes through the new owner.
 4. Engine scheduling/result suites pass without projection assertion helpers.
+5. Guard or inventory check fails when a new unclassified engine
+   `mass-storage-api` dependency appears.
 
 ## Implementation Order
 
@@ -221,6 +272,15 @@ PBC-0 -> PBC-1 -> PBC-2 -> PBC-3 -> PBC-4 -> PBC-5
 
 Do not start by deleting projection writes. First move tests and console reads
 off projection truth, then remove engine writes.
+
+PBC is the engine convergence mainline. After PBC lands, reassess whether
+remaining engine `mass-storage-api` dependencies are real owner-boundary
+problems:
+
+- `TaskShellStore` should stay until a task-shell owner boundary changes.
+- `RuleStorage` / storage rule DTOs should move only through a rule-domain
+  roadmap, not as cleanup fallout from projection work.
+- `TaskDetailStore` should no longer be required by engine kernel runtime code.
 
 ## Verification Candidates
 
