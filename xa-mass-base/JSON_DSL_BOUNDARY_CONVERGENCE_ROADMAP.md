@@ -3,8 +3,9 @@
 Status: active direction document.
 
 This roadmap owns the remaining `xa-mass-base` `qlexpress4` dependency after
-rule evaluator extraction. It is intentionally separate from
-`xa-mass-engine/doc/roadmap/RULE_BOUNDARY_CONVERGENCE_ROADMAP.md`: matching
+rule evaluator extraction. It is intentionally separate from the archived rule
+boundary convergence record at
+`doc/archive/xa-mass-engine/RULE_BOUNDARY_CONVERGENCE_ROADMAP.md`: matching
 rules no longer need storage-owned evaluator code, while JSON-DSL is a legacy
 generator/runtime concern under the base module.
 

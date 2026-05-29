@@ -12,8 +12,8 @@ It is intentionally separate from
 because projection cleanup is task read-model residue in `xa-mass-engine`.
 Worker declaration storage is worker lifecycle/control-plane ownership.
 
-It is also separate from
-[`RULE_BOUNDARY_CONVERGENCE_ROADMAP.md`](RULE_BOUNDARY_CONVERGENCE_ROADMAP.md)
+It is also separate from the completed rule-boundary convergence record in
+[`../../../doc/archive/xa-mass-engine/RULE_BOUNDARY_CONVERGENCE_ROADMAP.md`](../../../doc/archive/xa-mass-engine/RULE_BOUNDARY_CONVERGENCE_ROADMAP.md)
 because rule definitions are matching policy data, not worker lifecycle data.
 
 ## Current Code Observations
@@ -93,8 +93,9 @@ worker-level supported project/event capability fields.
 
 1. No projection cleanup. Track task message/attempt projection work in
    `PROJECTION_BOUNDARY_CONVERGENCE_ROADMAP.md`.
-2. No rule-definition movement. Track rule domain/storage work in
-   `RULE_BOUNDARY_CONVERGENCE_ROADMAP.md` or a follow-up rule-domain roadmap.
+2. No rule-definition movement. The completed rule-boundary convergence record
+   is historical; track new rule domain/storage work in a follow-up rule-domain
+   roadmap.
 3. No task shell/detail storage movement.
 4. No new generic repository/facade layer.
 5. No compatibility aliases under the old `com.xa.mass.storage.api` worker

@@ -257,9 +257,5 @@ Worker-runtime focused regression:
 mvn -pl xa-mass-worker-runtime,xa-mass-engine -am '-Dtest=WorkerManagerTest,WorkerCandidateIndexTest,WorkerAdmissionOwnerTest,TaskCandidateWarmPoolTest,RuleBasedTaskWorkerMatchingStrategyTest,EngineSchedulingCoreArchitectureGuardTest' '-Dsurefire.failIfNoSpecifiedTests=false' test
 ```
 
-Related direction docs:
-
-- `xa-mass-engine/doc/roadmap/WORKER_RUNTIME_MODULE_EXTRACTION_ROADMAP.md`
-- `xa-mass-engine/doc/roadmap/WORKER_RUNTIME_MODULE_EXTRACTION_INVENTORY.md`
-- `xa-mass-engine/doc/roadmap/WORKER_RUNTIME_API_SLIMMING_ROADMAP.md`
-- `xa-mass-engine/doc/roadmap/WORKER_RUNTIME_API_SLIMMING_INVENTORY.md`
+The completed WRX/WRA convergence records are historical archive entries. This
+contract is the current worker-runtime boundary source.

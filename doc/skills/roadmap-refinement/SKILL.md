@@ -132,7 +132,35 @@ For stale status detection:
 - If status and code disagree, report doc drift in review mode or update the
   roadmap status in edit mode.
 
-### 3. Require, Propose, Or Create Inventory
+### 3. Classify Roadmap Portfolio State
+
+When a repository has many roadmaps, classify each roadmap by current code
+state, not only by its `Status:` line.
+
+Use this taxonomy:
+
+| Class | Meaning | Action |
+| --- | --- | --- |
+| proposed | target direction exists, no meaningful implementation has landed | review/refine before execution |
+| active | implementation is in progress and slices remain | continue from the current slice |
+| implemented | acceptance appears satisfied in code/tests/docs | update status and proof; consider archive |
+| implemented-with-residue | mainline is done but old names/imports/docs/aliases remain | run residue scan before archive |
+| superseded | a newer roadmap owns the direction | mark pointer to replacement; archive when safe |
+| blocked | owner decision, external dependency, or proof gap blocks execution | record decision needed |
+| stale-status | status line disagrees with code or commits | repair status before planning work |
+| historical | archived or obsolete context only | do not execute; use only for background |
+
+For portfolio review, produce a table:
+
+```markdown
+| Roadmap | Status Line | Code Evidence | Class | Next Action |
+| --- | --- | --- | --- | --- |
+```
+
+Do not archive just because code exists. Archive only after status, proof,
+remaining residue, and replacement links are clear.
+
+### 4. Require, Propose, Or Create Inventory
 
 Inventory is often the first real deliverable for boundary work, but it should
 match the mode.
@@ -187,7 +215,7 @@ Useful classifications:
 - test fixture
 - stale documentation
 
-### 4. Owner Review
+### 5. Owner Review
 
 Before rewriting a roadmap, state the owner decision explicitly.
 
@@ -206,7 +234,7 @@ another repository unless the current repo has the same documented boundary.
 For XA Mass Platform roadmaps, load
 `references/xa-mass-owner-rules.md` from this skill directory if present.
 
-### 5. Decide Merge Versus Separate Roadmap
+### 6. Decide Merge Versus Separate Roadmap
 
 Merge into an existing roadmap only when all are true:
 
@@ -226,7 +254,7 @@ Create a separate roadmap when any are true:
 
 When splitting, cross-link the roadmaps and state why they are separate.
 
-### 6. Roadmap Structure
+### 7. Roadmap Structure
 
 Use this as a flexible skeleton, not a rigid template:
 
@@ -278,7 +306,7 @@ Keep slices executable. Each slice should have:
 Include a "Do Not Start With" note for boundary roadmaps that are likely to
 tempt agents into the wrong order.
 
-### 7. Slice Ordering
+### 8. Slice Ordering
 
 Map slices to the convergence rhythm.
 
@@ -302,7 +330,7 @@ Do not start by deleting dependencies. First prove what owns the contract, move
 callers, then remove the dependency. Each step should be commit-sized or
 phase-sized and independently verifiable.
 
-### 8. Acceptance Criteria
+### 9. Acceptance Criteria
 
 Acceptance must be testable in code review.
 
@@ -322,7 +350,7 @@ Weak:
 - "Make the boundary clearer."
 - "Consider adding a guard."
 
-### 9. Guards And Verification
+### 10. Guards And Verification
 
 For every boundary decision, prefer at least one guard:
 
@@ -336,7 +364,7 @@ For every boundary decision, prefer at least one guard:
 Verification candidates should be concrete commands. If exact tests are not
 known yet, say they must be corrected after inventory.
 
-### 10. Implementation Mode Rules
+### 11. Implementation Mode Rules
 
 When executing a roadmap slice:
 
@@ -360,8 +388,11 @@ When executing a roadmap slice:
    them in the same slice.
 9. End the slice at a stable point: relevant compile/tests pass, guards are in
    place, docs match behavior, and the repo is ready for a phase commit.
+10. After a rename, dependency, boundary, or compatibility-removal slice,
+    suggest or run `roadmap-residue-scan` when available before declaring the
+    slice complete.
 
-### 11. Review Delivery Format
+### 12. Review Delivery Format
 
 In review mode, lead with findings.
 
@@ -403,7 +434,7 @@ Use conclusion formulas:
 - `No blocking findings; remaining items can be handled during implementation.`
 - `Too broad; split into separate roadmaps before executing.`
 
-### 12. Final Response
+### 13. Final Response
 
 After editing, summarize:
 
@@ -444,6 +475,7 @@ Before finishing a roadmap refinement:
 - Target state is not described as already implemented.
 - Roadmap `Status:` was checked against code, tests, guards, or commits when
   plausibly stale.
+- Portfolio state was classified when the request involves many roadmaps.
 - Mode was respected: review-only did not edit files.
 - Companion docs referenced by the roadmap exist and do not contradict it.
 - Related roadmap Non-Goals and acceptance criteria do not conflict.

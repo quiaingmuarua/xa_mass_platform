@@ -4,11 +4,11 @@ Status: mainline implemented. The worker-runtime extraction owner split is in
 place; remaining work should be treated as follow-up hardening, scale proof, or
 new feature work, not as another live engine-worker migration track.
 
-This is the next convergence line after
-[`WORKER_MATCH_UPGRADE_ROADMAP.md`](./WORKER_MATCH_UPGRADE_ROADMAP.md) and the
-transport worker-match spine. The match roadmap keeps the two-stage match
-strategy healthy; this roadmap makes the worker runtime owner explicit so later
-strategy work does not keep accumulating inside `xa-mass-engine`.
+This was the next convergence line after the active worker-match roadmap at
+[`../../../xa-mass-engine/doc/roadmap/WORKER_MATCH_UPGRADE_ROADMAP.md`](../../../xa-mass-engine/doc/roadmap/WORKER_MATCH_UPGRADE_ROADMAP.md)
+and the transport worker-match spine. The match roadmap keeps the two-stage
+match strategy healthy; this roadmap made the worker runtime owner explicit so
+later strategy work does not keep accumulating inside `xa-mass-engine`.
 
 ## Summary
 
@@ -410,7 +410,7 @@ Goal: document current owner/caller reality without behavior change.
 Deliverable:
 
 ```text
-xa-mass-engine/doc/roadmap/WORKER_RUNTIME_MODULE_EXTRACTION_INVENTORY.md
+doc/archive/xa-mass-engine/WORKER_RUNTIME_MODULE_EXTRACTION_INVENTORY.md
 ```
 
 Keep the inventory outside this roadmap so the roadmap remains the phase plan.

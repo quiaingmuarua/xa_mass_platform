@@ -4,10 +4,11 @@ Status: active direction document. No implementation slices have landed from
 this roadmap yet.
 
 This roadmap removes compatibility task message/attempt projection from the
-engine kernel boundary. It is intentionally separate from
-`RULE_BOUNDARY_CONVERGENCE_ROADMAP.md` because projection cleanup affects
-runtime result convergence, console review read models, tests, and storage
-read-model assembly.
+engine kernel boundary. It is intentionally separate from the completed
+rule-boundary convergence record in
+[`../../../doc/archive/xa-mass-engine/RULE_BOUNDARY_CONVERGENCE_ROADMAP.md`](../../../doc/archive/xa-mass-engine/RULE_BOUNDARY_CONVERGENCE_ROADMAP.md)
+because projection cleanup affects runtime result convergence, console review
+read models, tests, and storage read-model assembly.
 
 The current code has already moved scheduling and terminal truth toward runtime
 state, but engine still writes and sometimes scans `TaskDetailStore`

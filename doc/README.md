@@ -106,7 +106,18 @@ tests, owner READMEs, and baseline docs.
 - archive index: [archive/README.md](./archive/README.md)
 - engine: [archive/xa-mass-engine/](./archive/xa-mass-engine/)
 
-## 6. What Stays Out Of `doc/`
+## 6. Reusable Codex Skills
+
+Reusable agent skills that can be installed remotely live under
+[skills/](./skills/). These are workflow assets, not platform behavior
+contracts.
+
+- [roadmap-refinement](./skills/roadmap-refinement/SKILL.md) - roadmap owner
+  review, refinement, portfolio classification, and slice execution rules
+- [roadmap-residue-scan](./skills/roadmap-residue-scan/SKILL.md) - post-roadmap
+  residue, stale status, old-name, and compatibility-path scans
+
+## 7. What Stays Out Of `doc/`
 
 Do not add a new `doc/*` file for:
 
