@@ -16,6 +16,16 @@ It is also separate from the completed rule-boundary convergence record in
 [`../../../doc/archive/xa-mass-engine/RULE_BOUNDARY_CONVERGENCE_ROADMAP.md`](../../../doc/archive/xa-mass-engine/RULE_BOUNDARY_CONVERGENCE_ROADMAP.md)
 because rule definitions are matching policy data, not worker lifecycle data.
 
+This roadmap depends on the task/worker runtime-history boundary work:
+
+- TWH-1 renamed broad storage contracts to shell/declaration names.
+- TWH-3A/TWH-3B split worker declaration shape from mixed worker runtime
+  state.
+
+Both prerequisites have landed. `WorkerDeclarationStore` now persists
+`WorkerDeclarationRecord`, and `WorkerResourceOwner` converts base `Worker`
+registration input into declaration rows before writing.
+
 ## Current Code Observations
 
 - `xa-mass-worker-runtime` has a production dependency on `mass-storage-api`.
@@ -33,6 +43,17 @@ because rule definitions are matching policy data, not worker lifecycle data.
 - `mass-storage-jdbc` does not currently have a worker declaration store
   implementation. It must not be treated as an existing migration target until
   WDP-0 verifies a real JDBC worker declaration adapter requirement.
+- `xa-mass-worker-runtime` currently depends on `mass-storage-memory` in test
+  scope for fixtures. WDP-2 may create the reverse production dependency
+  `mass-storage-memory -> xa-mass-worker-runtime`; that production/test-scope
+  crossing is allowed if Maven validates it and the production graph remains
+  acyclic.
+- SDK `EngineConfig` is the primary assembly caller that owns the default
+  `InMemoryWorkerDeclarationStore` initialization.
+- `StorageBoundaryGuardTest` currently guards worker declaration contracts
+  from `mass-storage-api` test sources. After the port moves, those
+  declaration-shape guards should move with the contracts into
+  `xa-mass-worker-runtime` test sources.
 - `mass-storage-memory` is only a test-scoped dependency of
   `xa-mass-worker-runtime`; that part is not the production boundary problem.
 
@@ -121,10 +142,13 @@ Scope:
    - storage adapter implementation
    - test fixture
    - stale documentation
-3. Confirm whether the moved names stay as `WorkerDeclarationStore` and
+3. Explicitly classify `xa-mass-sdk` `EngineConfig` as the SDK primary
+   assembly caller, including its default `InMemoryWorkerDeclarationStore`
+   initialization.
+4. Confirm whether the moved names stay as `WorkerDeclarationStore` and
    `WorkerDeclarationRecord` or become more explicit names such as
    `WorkerDeclarationPort`.
-4. Confirm the target package remains
+5. Confirm the target package remains
    `com.xa.mass.worker.runtime.resource`.
 
 Acceptance:
@@ -169,7 +193,15 @@ Scope:
    finds an existing production assembly path that requires one.
 3. Update storage contract tests to use the moved worker declaration port or
    relocate worker declaration contract tests under worker-runtime test support.
-4. Keep task shell/detail/rule storage contracts in `mass-storage-api`.
+4. If the worker declaration contract test base moves out of
+   `mass-storage-api`, update `mass-storage-memory` test dependencies from the
+   `mass-storage-api` test-jar to the `xa-mass-worker-runtime` test-jar.
+5. Document the resulting dependency shape:
+   - `mass-storage-memory -> xa-mass-worker-runtime` in production scope for
+     the adapter contract
+   - `xa-mass-worker-runtime -> mass-storage-memory` only in test scope for
+     fixtures, if still needed
+6. Keep task shell/detail/rule storage contracts in `mass-storage-api`.
 
 Acceptance:
 
@@ -180,6 +212,8 @@ Acceptance:
 3. There is no duplicate worker declaration port in `mass-storage-api`.
 4. Worker declaration persistence contract tests pass for implemented adapters.
 5. No task/rule storage contract is moved by this slice.
+6. Any production/test-scope crossing between `mass-storage-memory` and
+   `xa-mass-worker-runtime` is intentional, documented, and validated by Maven.
 
 ## WDP-3 Update SDK, Server, And Test Assembly
 
@@ -188,9 +222,11 @@ Goal: update all in-repo assembly callers to the new port owner.
 Scope:
 
 1. Update SDK/server imports and constructor wiring for `WorkerManager`.
-2. Update tests that build `WorkerDeclarationRecord` fixtures.
-3. Update architecture guards that reference the old path.
-4. Remove old worker declaration names from current docs outside historical
+2. Update `EngineConfig` imports, setters/getters, and default
+   `InMemoryWorkerDeclarationStore` initialization to use the moved port.
+3. Update tests that build `WorkerDeclarationRecord` fixtures.
+4. Update architecture guards that reference the old path.
+5. Remove old worker declaration names from current docs outside historical
    inventories.
 
 Acceptance:
@@ -214,9 +250,14 @@ Scope:
      `mass-storage-api`.
    - `mass-storage-api` must not declare `WorkerDeclaration*` contracts.
    - worker declaration row shape must stay declaration-only.
-2. Update module docs to show storage modules as adapters for worker
+2. Move existing worker declaration shape guard coverage from
+   `mass-storage-api` tests to `xa-mass-worker-runtime` tests, or create
+   equivalent worker-runtime-local guards before deleting the old coverage.
+3. Keep a storage-api guard that fails if `WorkerDeclaration*` contracts are
+   reintroduced under `com.xa.mass.storage.api`.
+4. Update module docs to show storage modules as adapters for worker
    declaration persistence.
-3. Keep `mass-storage-memory` test-scope dependency in worker-runtime only if
+5. Keep `mass-storage-memory` test-scope dependency in worker-runtime only if
    it is still useful for tests; do not treat that as production boundary
    violation.
 
