@@ -1,9 +1,12 @@
 # Projection Boundary Convergence Roadmap
 
-Status: active direction document. No implementation slices have landed from
-this roadmap yet.
+Status: active direction document. PBC-0 inventory has landed; behavior-changing
+implementation slices are still pending.
 
 This is the current `xa-mass-engine` convergence roadmap.
+
+PBC-0 inventory record:
+[`PROJECTION_BOUNDARY_CONVERGENCE_INVENTORY.md`](PROJECTION_BOUNDARY_CONVERGENCE_INVENTORY.md).
 
 This roadmap removes compatibility task message/attempt projection from the
 engine kernel boundary. It is intentionally separate from the completed
