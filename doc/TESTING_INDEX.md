@@ -74,10 +74,10 @@ Agent rule:
   classes may stay in `ServerSchedulingE2eSuite`,
   `ServerLifecycleResultConvergenceSuite`, and `ExternalWorkerParitySuite`, but
   `secondary-proof` or support-suite coverage must not leak back in
-- engine mainline suites are mechanically guarded against projection/support
-  leakage as well: `EngineProjectionResidueSuite` and
-  `EngineProjectionAuditSuite` are support lanes only and must stay tagged
-  `secondary-proof`
+- engine mainline suites are mechanically guarded against support leakage as
+  well: engine projection residue suites have been retired, and any future
+  engine support suite must explicitly own downgraded `secondary-proof`
+  coverage instead of leaking into mainline suites
 
 Use with:
 

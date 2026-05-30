@@ -177,11 +177,9 @@ Read this before interpreting engine tests.
   [../doc/PROOF_REGISTRY.md](../doc/PROOF_REGISTRY.md)
 - `EngineKernelConvergenceSuite` is the runtime-first gate for deterministic
   lifecycle and convergence facts that do not need projection residue
-- important current result-runtime and race coverage still exists inside
-  compatibility-heavy secondary classes; keep that gap explicit until those
-  cases are extracted into dedicated runtime-first tests
-- do not promote a projection-aware mixed class into the mainline suite merely
-  because it contains some important assertions
+- engine projection residue helper classes and secondary projection suites have
+  been retired; current convergence proof should stay runtime/result-first
+- do not recreate projection-aware mixed classes to recover old assertions
 
 ## Start Here
 
@@ -191,9 +189,6 @@ Start with these classes before changing behavior:
 - `src/main/java/com/xa/mass/engine/TaskConcurrencyStrategy.java` (interface) / `LocalTaskConcurrencyCoordinator.java` (default impl)
 - `src/main/java/com/xa/mass/engine/TaskCommandService.java`
 - `src/main/java/com/xa/mass/engine/TaskQueryService.java`
-- `src/test/java/com/xa/mass/engine/TaskCompatibilityProjectionAccess.java`
-  only when you are intentionally working on test-only bounded projection
-  overlays or residue audit helpers
 - `../xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/WorkerManager.java`
   only when you are intentionally working on worker-runtime owner assembly
 - `src/main/java/com/xa/mass/engine/rules/MatchingRuleSetProvider.java`
@@ -537,15 +532,12 @@ Current scheduling-matrix scenarios include:
   outside its transitional lifecycle owner, or retired context-first matching
   handoff types return
 
-Explicit secondary residue/audit tests:
+Current projection residue state:
 
-- `EngineProjectionResidueSuite`
-  - `TaskManagerLifecycleTest`
-  - `SimpleTaskDispatchBinderTest`
-- this projection/support suite is mechanically downgraded:
-  `EngineProofOwnershipGuardTest` requires their classes to stay tagged
-  `secondary-proof`, and blocks them from leaking back into
-  `EngineSchedulingCoreSuite` or `EngineKernelConvergenceSuite`
+- engine projection residue helpers and support suites have been retired
+- `EngineProofOwnershipGuardTest` still guards against future regression:
+  mainline suites may not include `secondary-proof` classes, and any future
+  engine support suite must explicitly own downgraded coverage
 
 ## Read Map
 

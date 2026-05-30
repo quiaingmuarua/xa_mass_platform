@@ -17,10 +17,10 @@ contract / intake truth
   -> task aggregate convergence
 ```
 
-Compatibility projection may be validated as residue, but it must not be the
-mainline pass/fail truth for lifecycle, retry, expiry, finality, or terminal
-closure. Scan-heavy projection audit is no longer part of the engine kernel
-diagnostic surface.
+Compatibility projection is retired from engine proof. It must not be
+reintroduced as the pass/fail truth for lifecycle, retry, expiry, finality, or
+terminal closure. Scan-heavy projection audit is no longer part of the engine
+kernel diagnostic surface.
 
 ## Test Lanes
 
@@ -28,7 +28,6 @@ diagnostic surface.
 | --- | --- | --- |
 | `EngineKernelConvergenceSuite` | `xa-mass-engine` | Primary runtime-first kernel lifecycle and convergence gate |
 | `EngineSchedulingCoreSuite` | `xa-mass-engine` | Cross-lane scenarios where scheduling competition also proves convergence |
-| `EngineProjectionResidueSuite` | `xa-mass-engine` secondary | Compatibility/debug residue while older mixed tests are being retired or split |
 | `xa-mass-testing` soak/chaos | `xa-mass-testing` | Runtime pressure, disconnect, replay, and distributed edge proof |
 | `xa-mass-server` lifecycle/result E2E | `xa-mass-server` | Real host/API wiring proof |
 
@@ -61,11 +60,10 @@ Logical ownership is defined by this matrix and suite membership first.
 
 These are testing-structure gaps, not known product-behavior gaps.
 
-- `TaskManagerLifecycleTest` is still a broad projection-aware residue holder:
-  lifecycle shell checks, payload-ref compatibility, retry/expiry residue, and
-  terminal overlay checks remain physically mixed there. Split it only through
-  small owner-specific passes; do not reopen the runtime-first kernel suite by
-  moving projection proof back into mainline.
+- Engine projection residue helpers and suites have been retired. If an old
+  projection-style assertion is rediscovered, migrate it to runtime/result
+  truth or server-local review materialization proof instead of recreating an
+  engine projection support lane.
 - Scheduling scenarios already prove some convergence invariants. Do not clone
   them into lifecycle-only tests unless the owner boundary changes or the
   scheduling scenario becomes too noisy to isolate the kernel fact.
@@ -77,7 +75,7 @@ When adding a kernel-convergence test:
 1. Pick an invariant in this matrix or add a new one.
 2. Prefer runtime truth, lease truth, result-runtime truth, and task aggregate
    truth as the pass/fail surface.
-3. Put projection residue in the explicit residue suite only when the
-   residue itself is the subject.
+3. Do not add projection residue back to engine tests. Review/export
+   materialization proof belongs to server-local review tests.
 4. Use scheduling tests when the real risk is worker choice or competition;
    use soak/chaos when the real risk is timing, disconnect, or replay.

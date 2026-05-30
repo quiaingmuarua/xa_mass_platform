@@ -1,16 +1,19 @@
 # Review Materialization Pipeline Inventory
 
-Status: RMP-0 current-code inventory for
+Status: historical RMP-0 inventory for
 `REVIEW_MATERIALIZATION_PIPELINE_ROADMAP.md`.
 
-This inventory classifies the current review/export read and write paths before
-the queued materializer is introduced. It records current code only; target
-implementation belongs to RMP-1 and later slices.
+This inventory classifies the review/export read and write paths that existed
+before the queued materializer was introduced. It records the RMP-0 starting
+point only; it is not current implementation truth after RMP and PIR landed.
+Current production review materialization uses server-local `TaskReviewStore*`
+components, including `TaskReviewStoreMaterializer` and
+`TaskReviewStoreTaskReviewReadModel`.
 
-## Summary
+## Historical RMP-0 Summary
 
-Current review/export materialization is synchronous and `TaskDetailStore`
-backed:
+At the RMP-0 starting point, review/export materialization was synchronous and
+`TaskDetailStore` backed:
 
 ```text
 accepted items

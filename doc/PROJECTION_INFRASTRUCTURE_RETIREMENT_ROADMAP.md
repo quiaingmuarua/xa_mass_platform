@@ -61,10 +61,11 @@ Retired PIR residue:
 - testing-framework callers
 - projection-oriented tests and helpers listed in PIR-0 inventory scope
 
-## Problem Statement
+## Historical Problem Statement
 
-PBC removed engine production code's imports of projection types, but the
-projection infrastructure itself remains intact in `mass-storage-api`:
+At the PIR starting point, PBC had removed engine production code's imports of
+projection types, but the projection infrastructure itself still remained in
+`mass-storage-api`:
 
 - `TaskDetailStore` (10+ methods including real-time-style stats queries)
 - `TaskMessageProjection` / `TaskMessageAttemptProjection` (inner records)
@@ -74,7 +75,7 @@ projection infrastructure itself remains intact in `mass-storage-api`:
 - `JdbcTaskCompatibilityProjection` (JDBC projection delegation)
 
 The projection was hidden from engine, not removed from the platform. Server
-used to write the same rows through the queued RMP materialization path:
+wrote the same rows through the queued RMP materialization path:
 `QueueBackedTaskReviewReadModelWriter` ->
 `InProcessTaskReviewReportQueue` -> `TaskReviewStoreMaterializer` ->
 `TaskReviewStore`. The PIR deletion work then removed the shared-infra residue
@@ -112,23 +113,20 @@ finality, retry, lease, or progress truth.
   have been removed from server production. Production server wiring uses
   `TaskReviewStoreTaskReviewReadModel`, `TaskReviewStoreMaterializer`, and
   `QueueBackedTaskReviewReadModelWriter`.
-- `InMemoryTaskShellStore` and `JdbcTaskShellStore` both
-  `implements TaskDetailStore` alongside `TaskShellStore` and
-  `TaskShellLifecycleQuery`. This forces task shell storage implementations
-  to carry projection write/read/stats logic even though no engine
-  production path uses it.
+- `InMemoryTaskShellStore` and `JdbcTaskShellStore` no longer implement
+  `TaskDetailStore`; task-shell storage implementations no longer carry shared
+  projection write/read/stats logic.
 - SDK production APIs no longer expose `taskDetailStore(...)`, and
   `EngineConfig` no longer carries a `TaskDetailStore`. Engine does not consume
   review materialization storage in production.
-- `JdbcTaskCompatibilityProjection` is a process-local in-memory helper class
-  inside `mass-storage-jdbc` that `JdbcTaskShellStore` delegates projection
-  operations to. It does not own durable JDBC projection SQL, tables, or DDL.
-  The only current JDBC migration creates `xa_task` task-shell tables.
-- Engine test residue (`TaskCompatibilityProjectionAccess`,
-  `ProjectionAwareTaskManager`, `ProjectionTestSupport`,
-  `CompatibilityProjectionAwait`, `TaskManagerLifecycleTest`,
-  `SimpleTaskDispatchBinderTest`) still uses `TaskDetailStore` for
-  secondary proof. These need a test-local replacement or retirement.
+- `JdbcTaskCompatibilityProjection` has been deleted. JDBC review
+  materialization now belongs to server-local `JdbcTaskReviewStore`, while task
+  shell storage remains scoped to task-shell tables.
+- Engine projection test residue has been retired in the current worktree:
+  `TaskCompatibilityProjectionAccess`, `ProjectionAwareTaskManager`,
+  `ProjectionTestSupport`, `CompatibilityProjectionAwait`, and the projection
+  support suites no longer exist. Engine runtime/result proof should stay on
+  runtime/result truth, not server review materialization.
 - `xa-mass-engine` production still has a `mass-storage-api` dependency for
   non-projection control-plane contracts (`TaskShellStore`,
   `TaskShellLifecycleQuery`, `RuleStorage`). PIR must not add any DB/review
@@ -498,14 +496,13 @@ Scope:
    own SQL and DDL. If any SQL is still shared, that is a PIR-2 acceptance
    gap, not a reason to keep the shared infra helper.
 6. Delete `TaskDetailStoreContractTest` from `mass-storage-api` tests.
-7. Migrate or retire engine test residue:
-   - `TaskCompatibilityProjectionAccess` -> retire or convert to
-     server-local test support
-   - `ProjectionAwareTaskManager` -> retire
-   - `ProjectionTestSupport` -> retire
-   - `CompatibilityProjectionAwait` -> retire
-   - Update `TaskManagerLifecycleTest` / `SimpleTaskDispatchBinderTest` to
-     use runtime-based assertions if they still need projection-like checks
+7. Keep engine projection residue retired:
+   - `TaskCompatibilityProjectionAccess`, `ProjectionAwareTaskManager`,
+     `ProjectionTestSupport`, `CompatibilityProjectionAwait`, and engine
+     projection support suites must not be recreated.
+   - Runtime/result assertions belong in engine runtime-first tests.
+   - Review/export materialization assertions belong in server-local review
+     tests.
 8. Migrate or retire testing framework helpers:
    - `ProjectionTestViews` in `xa-mass-testing` -> retire or convert
    - `ChaosRuntimeHarness` projection usage -> runtime stats

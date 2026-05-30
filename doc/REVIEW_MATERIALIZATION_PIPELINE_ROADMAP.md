@@ -7,6 +7,13 @@ through the server-local bounded report queue, `TaskDetailStore` remains the
 temporary persistence backing, memory/JDBC backing paths are proven, and
 architecture guards cover the new boundary.
 
+Historical scope note: this roadmap proves the queued review materialization
+pipeline that PIR later used as a prerequisite. It is not current
+implementation truth after projection retirement. Current production review
+materialization uses server-local `TaskReviewStore*` components, including
+`TaskReviewStoreMaterializer` and `TaskReviewStoreTaskReviewReadModel`, not the
+temporary `TaskDetailStore*` backing described in the RMP-0 observations below.
+
 This roadmap creates the server-owned report queue and materializer for
 task review/export rows. The first implementation intentionally reuses the
 existing `TaskDetailStore` as the persistence backing so the new reporting
@@ -61,21 +68,25 @@ The handoff to PIR is now:
 Whether PIR then replaces `TaskDetailStore` with a server-local store is a
 later owner decision.
 
-## Current Code Observations
+## Historical RMP-0 Code Observations
 
-- Server review currently uses `TaskReviewReadModel` and
+The observations in this section are the code state captured before RMP landed.
+They intentionally preserve the migration context and should not be read as the
+current review/materialization implementation.
+
+- At RMP-0, server review used `TaskReviewReadModel` and
   `TaskReviewReadModelWriter` as the review/export contract.
-- `TaskDetailStoreTaskReviewReadModel` currently implements both the read model
+- `TaskDetailStoreTaskReviewReadModel` implemented both the read model
   and writer by delegating to shared `TaskDetailStore`.
 - The writer already receives the two facts needed for first-version
   materialization:
   - `recordItemsAccepted(...)`
   - `recordWorkFinal(...)`
-- `XaMassServerApplication` wires `TaskDetailStore` and
+- `XaMassServerApplication` wired `TaskDetailStore` and
   `TaskDetailStoreTaskReviewReadModel` in the dev profile.
-- JDBC mode currently gets review persistence by delegating to
+- JDBC mode got review persistence by delegating to
   `JdbcStorageRuntime.taskDetailStore()` and `JdbcTaskCompatibilityProjection`.
-- In-memory mode currently gets review persistence because
+- In-memory mode got review persistence because
   `InMemoryTaskShellStore` also implements `TaskDetailStore`.
 - `InternalTaskReviewController` reads `TaskReviewReadModel` and does not need
   to know whether writes are direct or queued.

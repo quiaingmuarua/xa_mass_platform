@@ -279,9 +279,13 @@ Non-scheduling lifecycle and result convergence gate:
 Explicit compatibility and review read-model supporting lanes:
 
 ```bash
-./mvnw -pl xa-mass-engine -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=EngineProjectionResidueSuite,EngineProjectionAuditSuite test
 ./mvnw -pl xa-mass-server -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=ServerReviewReadModelResidueSuite,ServerReviewReadModelAuditSuite test
 ```
+
+Engine projection residue suites have been retired. Engine runtime/result
+proof now belongs to `EngineSchedulingCoreSuite` and
+`EngineKernelConvergenceSuite`; review/export materialization proof belongs to
+server-local review tests.
 
 Cross-language external worker samples:
 

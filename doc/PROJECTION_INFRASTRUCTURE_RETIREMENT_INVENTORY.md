@@ -111,7 +111,11 @@ Post-PIR-5 Java residue scan only returns forbidden-token strings in
 architecture guard tests. Active-doc residue scan returns no output outside
 roadmap/inventory documents.
 
-## Production Consumers
+## Historical PIR-0 Production Consumers
+
+The rows below are the original PIR-0 starting-point inventory. They are kept
+only as migration evidence; post-PIR current truth is recorded in the delta
+sections above.
 
 | Consumer | Classification | Current Use | Replacement Decision |
 |---|---|---|---|
@@ -129,7 +133,7 @@ roadmap/inventory documents.
 | `platform_infra/mass-storage-jdbc/src/main/java/com/xa/mass/storage/jdbc/JdbcTaskCompatibilityProjection.java` | storage implementation residue | Process-local in-memory projection helper used by JDBC task shell store; not durable DB storage | Delete in PIR-4 after server-local review storage exists |
 | `platform_infra/mass-storage-jdbc/src/main/java/com/xa/mass/storage/jdbc/JdbcStorageRuntime.java` | storage runtime wiring | Exposes `taskDetailStore()` by casting the task shell store | Remove in PIR-4; server must not ask JDBC storage runtime for review rows |
 
-## Main-Source Test Framework Consumers
+## Historical PIR-0 Main-Source Test Framework Consumers
 
 These are under `src/main`, but they are testing/support modules, not platform
 production runtime.
@@ -144,7 +148,7 @@ production runtime.
 | `xa-mass-testing/src/main/java/com/xa/mass/testing/perf/TaskFlowLoadModelRunner.java` | testing framework runner | Previously called `EngineConfig.setTaskDetailStore(taskStorage)`; call removed in PIR-3 | No remaining projection call after PIR-3 |
 | `xa-mass-testing/src/main/java/com/xa/mass/testing/soak/SdkPollingSchedulingSoakRunner.java` | testing framework runner | Previously wired `.taskDetailStore(taskStorage)`; wiring removed in PIR-3 | No remaining projection call after PIR-3 |
 
-## Test Consumers
+## Historical PIR-0 Test Consumers
 
 | Consumer | Classification | Current Use | Replacement Decision |
 |---|---|---|---|

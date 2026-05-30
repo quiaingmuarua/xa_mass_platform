@@ -65,8 +65,8 @@ Use with:
   not re-import support or `secondary-proof` coverage
 - engine PR mainline suites are now runtime-first:
   `EngineSchedulingCoreSuite` and `EngineKernelConvergenceSuite` no longer
-  carry projection-heavy residue classes directly; compatibility residue and
-  audit live in explicit secondary suites
+  carry projection-heavy residue classes directly; engine projection residue
+  suites have been retired
 - `EngineSchedulingCoreArchitectureGuardTest` derives its scan list from
   `EngineSchedulingCoreSuite` `@SelectClasses`, so newly added scheduling-core
   tests are covered automatically and projection-first helpers stay out of the
@@ -76,11 +76,9 @@ Use with:
   `EngineKernelConvergenceSuite` `@SelectClasses`, so newly added lifecycle /
   convergence mainline tests stay runtime/task-aggregate first instead of
   silently drifting back to projection-first proof
-- engine proof ownership is now mechanically split: mainline suites must not
-  pull classes back out of `EngineProjectionResidueSuite` or
-  `EngineProjectionAuditSuite`, and those support suites must contain only
-  explicit `secondary-proof` coverage; downgraded engine tests may not remain
-  orphaned outside those suites
+- engine proof ownership is mechanically guarded: mainline suites must not
+  pull downgraded `secondary-proof` coverage back in, and any future engine
+  support suite must explicitly own those downgraded classes
 
 ## 2. Lane Map
 
@@ -175,8 +173,9 @@ minimum verification set.
 - keep local kernel tests strong; do not weaken lifecycle or convergence coverage
 - rewrite tests that prove runtime/result correctness by immediately reading compatibility projection
 - keep compatibility projection assertions only when proving bounded residue, overlay, or explicit no-op behavior
-- keep compatibility residue ownership explicit:
-  `EngineProjectionResidueSuite` and `EngineProjectionAuditSuite` are valid supporting lanes, but they do not define the scheduling-core gate
+- engine projection residue suites have been retired. Do not recreate them for
+  runtime/result proof; review/export materialization belongs to server-local
+  review tests
 - keep server compatibility residue ownership explicit:
   `ServerReviewReadModelResidueSuite` and `ServerReviewReadModelAuditSuite`
   are valid supporting lanes; `ServerSchedulingE2eSuite` and

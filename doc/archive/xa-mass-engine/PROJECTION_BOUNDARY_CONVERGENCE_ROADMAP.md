@@ -444,17 +444,12 @@ problems:
 
 ## Surviving Test Residue
 
-`TaskCompatibilityProjectionAccess` (engine test-only, `@CompatibilityProjectionOnly`)
-provides bounded compatibility projection overlay and audit views for secondary
-proof lanes. It is guarded by `EngineProofOwnershipGuardTest` +
-`EngineProjectionResidueSuite` + `@Tag("secondary-proof")` so it cannot leak
-into mainline proof or production.
-
-Retirement trigger: delete `TaskCompatibilityProjectionAccess` and its
-consuming test classes when the transitional `TaskDetailStoreTaskReviewReadModel`
-is replaced by a trace/archive-derived read model that no longer needs
-`TaskDetailStore` projection rows. At that point, `TaskDetailStore`
-message/attempt projection types can also be removed from `mass-storage-api`.
+None in the current implementation. PBC-4/PBC-5 and follow-up PIR cleanup
+removed the engine projection helper classes and projection support suites
+instead of leaving a transitional secondary-proof lane. `EngineProofOwnershipGuardTest`
+keeps the regression rule: future engine support suites must explicitly own
+downgraded `secondary-proof` classes, and mainline suites must stay
+runtime/result-first.
 
 ## Verification Candidates
 
