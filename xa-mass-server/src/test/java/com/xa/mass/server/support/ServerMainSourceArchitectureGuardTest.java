@@ -119,6 +119,88 @@ class ServerMainSourceArchitectureGuardTest {
                         + String.join("\n", violations));
     }
 
+    @Test
+    void reviewMaterializationQueueStaysOutOfSharedInfraAndEngine() throws IOException {
+        Path repoRoot = Path.of("..").toAbsolutePath().normalize();
+        List<Path> scannedRoots = List.of(
+                repoRoot.resolve("platform_infra"),
+                repoRoot.resolve("xa-mass-engine/src/main/java"),
+                repoRoot.resolve("xa-mass-worker-runtime/src/main/java"),
+                repoRoot.resolve("transport")
+        );
+        List<String> violations = new ArrayList<>();
+        for (Path root : scannedRoots) {
+            if (!Files.exists(root)) {
+                continue;
+            }
+            try (Stream<Path> paths = Files.walk(root)) {
+                paths.filter(Files::isRegularFile)
+                        .filter(path -> path.toString().endsWith(".java"))
+                        .forEach(path -> {
+                            try {
+                                String source = Files.readString(path, StandardCharsets.UTF_8);
+                                if (source.contains("import com.xa.mass.api.review.TaskReviewReport")
+                                        || source.contains("import com.xa.mass.api.review.TaskReviewMaterializer")
+                                        || source.contains("import com.xa.mass.api.review.QueueBackedTaskReview")) {
+                                    violations.add(repoRoot.relativize(path)
+                                            + " imports server review materialization queue contract");
+                                }
+                            } catch (IOException e) {
+                                violations.add(path + " could not be read: " + e.getMessage());
+                            }
+                        });
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "review materialization queue/materializer contracts must stay server-owned:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void productionReviewWritesUseQueueBackedWriter() throws IOException {
+        Path application = SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/server/XaMassServerApplication.java");
+        String source = Files.readString(application, StandardCharsets.UTF_8);
+
+        assertTrue(source.contains("new QueueBackedTaskReviewReadModelWriter(taskReviewReportQueue)"),
+                "server production review writer bean must submit through the review report queue");
+        assertTrue(source.contains("new TaskDetailStoreReviewMaterializer(taskDetailStore)"),
+                "server production review materializer must write through current TaskDetailStore backing");
+    }
+
+    @Test
+    void reviewQueueApiDoesNotGrowRuntimeDecisionVocabulary() throws IOException {
+        Path reviewRoot = SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/api/review");
+        List<String> violations = new ArrayList<>();
+        try (Stream<Path> paths = Files.walk(reviewRoot)) {
+            paths.filter(Files::isRegularFile)
+                    .filter(path -> path.toString().endsWith(".java"))
+                    .filter(path -> {
+                        String fileName = path.getFileName().toString();
+                        return fileName.contains("ReportQueue")
+                                || fileName.contains("ReportEvent")
+                                || fileName.contains("Materializer");
+                    })
+                    .forEach(path -> {
+                        try {
+                            String source = Files.readString(path, StandardCharsets.UTF_8);
+                            if (source.contains("dispatch") || source.contains("Dispatch")
+                                    || source.contains("lease") || source.contains("Lease")
+                                    || source.contains("scheduling") || source.contains("Scheduling")
+                                    || source.contains("TerminalPolicy")) {
+                                violations.add(path + " exposes runtime decision vocabulary");
+                            }
+                        } catch (IOException e) {
+                            violations.add(path + " could not be read: " + e.getMessage());
+                        }
+                    });
+        }
+
+        assertTrue(violations.isEmpty(),
+                "review queue/materializer APIs must not become scheduling or lifecycle decision surfaces:\n"
+                        + String.join("\n", violations));
+    }
+
     private static void collectViolations(Path path, List<String> violations) {
         String source;
         try {

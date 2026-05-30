@@ -3,17 +3,8 @@ package com.xa.mass.api.review;
 import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.sdk.model.TaskItemBatchAppendReceipt;
 import com.xa.mass.sdk.model.TaskWorkFinalNotification;
-import com.xa.mass.sdk.model.TaskWorkFinalSnapshot;
-import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionFinalReason;
-import com.xa.mass.storage.api.projection.TaskMessageAttemptProjectionStatus;
-import com.xa.mass.storage.api.projection.TaskMessageProjectionFinalReason;
-import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
 
-import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -25,9 +16,11 @@ import java.util.Objects;
 public class TaskDetailStoreTaskReviewReadModel implements TaskReviewReadModel, TaskReviewReadModelWriter {
 
     private final TaskDetailStore taskDetailStore;
+    private final TaskReviewMaterializer materializer;
 
     public TaskDetailStoreTaskReviewReadModel(TaskDetailStore taskDetailStore) {
         this.taskDetailStore = Objects.requireNonNull(taskDetailStore, "taskDetailStore");
+        this.materializer = new TaskDetailStoreReviewMaterializer(taskDetailStore);
     }
 
     @Override
@@ -77,106 +70,12 @@ public class TaskDetailStoreTaskReviewReadModel implements TaskReviewReadModel, 
                                     List<Map<String, Object>> acceptedItems,
                                     TaskItemBatchAppendReceipt receipt,
                                     int maxRetryCount) {
-        if (taskId == null || taskId.isBlank() || acceptedItems == null || receipt == null) {
-            return;
-        }
-        List<String> messageIds = receipt.messageIds();
-        int itemCount = Math.min(acceptedItems.size(), messageIds.size());
-        LocalDateTime now = LocalDateTime.now();
-        for (int i = 0; i < itemCount; i++) {
-            String messageId = messageIds.get(i);
-            if (messageId == null || messageId.isBlank()) {
-                continue;
-            }
-            taskDetailStore.upsertTaskMessageProjection(taskId, new TaskDetailStore.TaskMessageProjection(
-                    messageId,
-                    taskId,
-                    acceptedItems.get(i),
-                    null,
-                    TaskMessageProjectionStatus.INIT,
-                    null,
-                    now,
-                    now,
-                    null,
-                    null,
-                    0,
-                    Math.max(0, maxRetryCount),
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null
-            ));
-        }
+        materializer.apply(TaskReviewItemsAcceptedEvent.from(taskId, acceptedItems, receipt, maxRetryCount));
     }
 
     @Override
     public void recordWorkFinal(TaskWorkFinalNotification notification) {
-        if (notification == null || notification.finalSnapshot() == null) {
-            return;
-        }
-        TaskWorkFinalSnapshot snapshot = notification.finalSnapshot();
-        String taskId = snapshot.taskId();
-        String messageId = snapshot.messageId();
-        if (taskId == null || taskId.isBlank() || messageId == null || messageId.isBlank()) {
-            return;
-        }
-        LocalDateTime now = LocalDateTime.now();
-        TaskDetailStore.TaskMessageProjection previous =
-                taskDetailStore.getTaskMessageProjection(taskId, messageId).orElse(null);
-        LocalDateTime createTime = firstNonNull(asLocalDateTime(snapshot.createTime()),
-                previous != null ? previous.createTime() : null);
-        LocalDateTime assignedTime = firstNonNull(asLocalDateTime(snapshot.assignedTime()),
-                previous != null ? previous.assignedTime() : null);
-        LocalDateTime startTime = firstNonNull(asLocalDateTime(snapshot.startTime()),
-                previous != null ? previous.startTime() : null);
-        LocalDateTime completeTime = firstNonNull(asLocalDateTime(snapshot.completeTime()), now);
-        LocalDateTime updateTime = firstNonNull(asLocalDateTime(snapshot.updateTime()), now);
-        Map<String, Object> input = previous != null ? previous.input() : eventCodeInput(snapshot.eventCode());
-        String latestAttemptId = firstNonBlank(snapshot.attemptId(), previous != null ? previous.latestAttemptId() : null);
-        String latestAttemptWorkerId = firstNonBlank(snapshot.workerId(),
-                previous != null ? previous.latestAttemptWorkerId() : null);
-        String latestAttemptBatchId = firstNonBlank(snapshot.batchId(),
-                previous != null ? previous.latestAttemptBatchId() : null);
-        taskDetailStore.upsertTaskMessageProjection(taskId, new TaskDetailStore.TaskMessageProjection(
-                messageId,
-                taskId,
-                input,
-                firstNonBlank(snapshot.payloadRef(), previous != null ? previous.payloadRef() : null),
-                parseStatus(snapshot.status()),
-                assignedTime,
-                createTime,
-                updateTime,
-                startTime,
-                completeTime,
-                snapshot.retryCount(),
-                resolveMaxRetryCount(snapshot, previous),
-                snapshot.errorMessage(),
-                snapshot.errorCode(),
-                parseFinalReason(snapshot.finalReason()),
-                copyMap(snapshot.output()),
-                latestAttemptId,
-                latestAttemptWorkerId,
-                latestAttemptBatchId
-        ));
-        if (latestAttemptId != null) {
-            taskDetailStore.upsertTaskMessageAttemptProjection(taskId, messageId,
-                    new TaskDetailStore.TaskMessageAttemptProjection(
-                            latestAttemptId,
-                            taskId,
-                            messageId,
-                            snapshot.retryCount() + 1,
-                            latestAttemptWorkerId,
-                            latestAttemptBatchId,
-                            parseAttemptStatus(snapshot.status()),
-                            parseAttemptFinalReason(snapshot.finalReason()),
-                            snapshot.errorMessage(),
-                            snapshot.errorCode(),
-                            copyMap(snapshot.output())
-                    ));
-        }
+        materializer.apply(TaskReviewWorkTerminalEvent.from(notification));
     }
 
     private TaskReviewItem toReviewItem(TaskDetailStore.TaskMessageProjection projection) {
@@ -231,80 +130,4 @@ public class TaskDetailStoreTaskReviewReadModel implements TaskReviewReadModel, 
         return value == null ? null : value.name();
     }
 
-    private static TaskMessageProjectionStatus parseStatus(String status) {
-        if (status == null || status.isBlank()) {
-            return TaskMessageProjectionStatus.FAILED;
-        }
-        return TaskMessageProjectionStatus.valueOf(status.trim().toUpperCase(java.util.Locale.ROOT));
-    }
-
-    private static TaskMessageProjectionFinalReason parseFinalReason(String finalReason) {
-        if (finalReason == null || finalReason.isBlank()) {
-            return null;
-        }
-        return TaskMessageProjectionFinalReason.valueOf(finalReason.trim().toUpperCase(java.util.Locale.ROOT));
-    }
-
-    private static TaskMessageAttemptProjectionStatus parseAttemptStatus(String status) {
-        if (status == null || status.isBlank()) {
-            return TaskMessageAttemptProjectionStatus.FAILED;
-        }
-        return switch (status.trim().toUpperCase(java.util.Locale.ROOT)) {
-            case "SUCCESS" -> TaskMessageAttemptProjectionStatus.SUCCEEDED;
-            case "EXPIRED" -> TaskMessageAttemptProjectionStatus.EXPIRED;
-            default -> TaskMessageAttemptProjectionStatus.FAILED;
-        };
-    }
-
-    private static TaskMessageAttemptProjectionFinalReason parseAttemptFinalReason(String finalReason) {
-        if (finalReason == null || finalReason.isBlank()) {
-            return null;
-        }
-        return switch (finalReason.trim().toUpperCase(java.util.Locale.ROOT)) {
-            case "BUSINESS_SUCCESS" -> TaskMessageAttemptProjectionFinalReason.SUCCESS;
-            case "LEASE_EXPIRED" -> TaskMessageAttemptProjectionFinalReason.LEASE_EXPIRED;
-            case "TIMEOUT" -> TaskMessageAttemptProjectionFinalReason.TIMEOUT;
-            case "WORKER_LOST" -> TaskMessageAttemptProjectionFinalReason.WORKER_LOST;
-            case "MANUAL_CANCELLED" -> TaskMessageAttemptProjectionFinalReason.MANUAL_CANCELLED;
-            case "REVOKED_FOR_RETRY" -> TaskMessageAttemptProjectionFinalReason.REVOKED_FOR_RETRY;
-            default -> TaskMessageAttemptProjectionFinalReason.BUSINESS_FAILURE;
-        };
-    }
-
-    private static String firstNonBlank(String first, String second) {
-        if (first != null && !first.isBlank()) {
-            return first;
-        }
-        return second;
-    }
-
-    private static <T> T firstNonNull(T first, T second) {
-        return first != null ? first : second;
-    }
-
-    private static LocalDateTime asLocalDateTime(Instant instant) {
-        return instant == null ? null : LocalDateTime.ofInstant(instant, ZoneId.systemDefault());
-    }
-
-    private static int resolveMaxRetryCount(TaskWorkFinalSnapshot snapshot,
-                                            TaskDetailStore.TaskMessageProjection previous) {
-        if (snapshot.maxRetryCount() > 0 || previous == null) {
-            return snapshot.maxRetryCount();
-        }
-        return previous.maxRetryCount();
-    }
-
-    private static Map<String, Object> eventCodeInput(String eventCode) {
-        if (eventCode == null || eventCode.isBlank()) {
-            return null;
-        }
-        return Map.of("eventCode", eventCode);
-    }
-
-    private static Map<String, Object> copyMap(Map<String, Object> values) {
-        if (values == null || values.isEmpty()) {
-            return null;
-        }
-        return Map.copyOf(new LinkedHashMap<>(values));
-    }
 }

@@ -13,9 +13,14 @@ import com.xa.mass.transport.presence.WorkerPresenceStore;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.runtime.presence.RedisWorkerPresenceStore;
+import com.xa.mass.api.review.InProcessTaskReviewReportQueue;
+import com.xa.mass.api.review.QueueBackedTaskReviewReadModelWriter;
 import com.xa.mass.api.review.TaskDetailStoreTaskReviewReadModel;
+import com.xa.mass.api.review.TaskDetailStoreReviewMaterializer;
+import com.xa.mass.api.review.TaskReviewMaterializer;
 import com.xa.mass.api.review.TaskReviewReadModel;
 import com.xa.mass.api.review.TaskReviewReadModelWriter;
+import com.xa.mass.api.review.TaskReviewReportQueue;
 import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.TaskShellStore;
 import com.xa.mass.storage.jdbc.JdbcStorageMode;
@@ -222,15 +227,22 @@ public class XaMassServerApplication {
     }
 
     @Bean
+    @Profile("dev")
+    public TaskReviewMaterializer taskReviewMaterializer(TaskDetailStore taskDetailStore) {
+        return new TaskDetailStoreReviewMaterializer(taskDetailStore);
+    }
+
+    @Bean(destroyMethod = "close")
+    @Profile("dev")
+    public TaskReviewReportQueue taskReviewReportQueue(TaskReviewMaterializer taskReviewMaterializer) {
+        return new InProcessTaskReviewReportQueue(taskReviewMaterializer);
+    }
+
+    @Bean
     @Primary
     @Profile("dev")
-    public TaskReviewReadModelWriter taskReviewReadModelWriter(@Qualifier("taskReviewReadModel")
-                                                               TaskReviewReadModel taskReviewReadModel) {
-        if (taskReviewReadModel instanceof TaskReviewReadModelWriter writer) {
-            return writer;
-        }
-        throw new IllegalStateException("taskReviewReadModel does not implement TaskReviewReadModelWriter: "
-                + taskReviewReadModel.getClass().getName());
+    public TaskReviewReadModelWriter taskReviewReadModelWriter(TaskReviewReportQueue taskReviewReportQueue) {
+        return new QueueBackedTaskReviewReadModelWriter(taskReviewReportQueue);
     }
 
     @Bean(destroyMethod = "shutdown")
