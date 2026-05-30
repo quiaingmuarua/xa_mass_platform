@@ -1,7 +1,7 @@
 package com.xa.mass.storage.memory;
 
-import com.xa.mass.storage.rule.RuleDefinition;
-import com.xa.mass.storage.rule.RuleType;
+import com.xa.mass.kernel.spi.rule.RuleDefinition;
+import com.xa.mass.kernel.spi.rule.RuleType;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;

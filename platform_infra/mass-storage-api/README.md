@@ -2,16 +2,16 @@
 
 Status: shared storage-contract module.
 
-This module owns shared storage contracts and storage-adjacent rule types that
-must be referenced by engine, storage implementations, server, SDK, and test
-shells without making `xa-mass-engine` the package root for those APIs.
+This module owns persistence/control-plane storage contracts. Kernel-facing
+task ports and worker-matching rule value contracts live in
+`xa-mass-kernel-spi`; storage contracts may depend on those value types, but
+engine production must not depend on this module.
 
 Current scope:
 
 - `TaskShellStore`
 - `TaskShellLifecycleQuery`
 - `RuleStorage`
-- rule storage value types used directly by `RuleStorage`
 
 Contract split inside this module:
 
@@ -21,6 +21,9 @@ Contract split inside this module:
 - `TaskShellLifecycleQuery` is a current-shell lifecycle query for policies
   such as max-runtime deadline termination. It is not dispatch-admission or
   ready-queue truth.
+- `RuleStorage` persists rule definitions using the shared
+  `xa-mass-kernel-spi` rule value contracts. Rule CRUD remains storage/control
+  plane; matching consumes rule sets through engine matching-time providers.
 
 Worker declaration contracts are owned by `xa-mass-worker-runtime`.
 `mass-storage-api` must not reintroduce `WorkerDeclarationStore` or

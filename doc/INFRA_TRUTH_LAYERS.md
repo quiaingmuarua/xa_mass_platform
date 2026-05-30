@@ -78,7 +78,7 @@ design and must not be implied by result ingress or projection residue.
 | Redis worker presence / route-owner view | shared transport-owned reachability state | queryable runtime view for matching and dispatch routing, not a queue and not control-plane worker declaration |
 | Redis transport result / dispatch-failure inboxes | transport-to-engine runtime ingress | bounded cross-JVM channels drained into engine-owned result ingest and compensation ports, not server endpoints |
 | server review materialization | server-local review store populated from the review report queue | operator/read-model materialization, not engine runtime truth |
-| engine assembly | wires `TaskShellStore` and worker-runtime `WorkerDeclarationStore` explicitly | prevents shell/declaration truth from silently redefining review/export or runtime ownership |
+| engine assembly | wires kernel SPI task-shell ports and worker-runtime `WorkerDeclarationStore` explicitly | prevents shell/declaration truth from silently redefining review/export or runtime ownership |
 | `doc/TRACE_CONTRACT.md` plus `platform_infra/mass-trace-sink` | required trace semantics plus the current canonical sink/module implementation | trace remains analysis/debug ownership, not lifecycle/runtime truth |
 
 ## 4. Fast Placement Test

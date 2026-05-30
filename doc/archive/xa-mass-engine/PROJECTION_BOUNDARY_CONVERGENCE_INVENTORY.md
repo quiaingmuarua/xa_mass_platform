@@ -48,7 +48,7 @@ reads, offline audit, and test proof residue.
 | `TaskDetailStore` | None in engine production | PBC target | Removed from engine runtime assembly in PBC-4. |
 | `com.xa.mass.storage.api.projection.*` | None in engine production | PBC target | Removed from engine production in PBC-4 after `TaskWorkLifecycleState` split. |
 | `RuleStorage` | `StorageBackedMatchingRuleSetProvider` | Rule follow-up | Leave unchanged in PBC. Rule-domain boundary owns this later. |
-| `com.xa.mass.storage.rule.*` | `rules/*`, `RuleBasedTaskWorkerMatchingStrategy`, `MonkeyGenerator` | Rule follow-up | Leave unchanged in PBC unless it directly blocks projection removal. |
+| `com.xa.mass.kernel.spi.rule.*` | `rules/*`, `RuleBasedTaskWorkerMatchingStrategy`, `MonkeyGenerator` | Rule follow-up | Leave unchanged in PBC unless it directly blocks projection removal. |
 
 No unexpected `mass-storage-api` production dependency was found in
 `xa-mass-engine/src/main/java` during this inventory. PBC-5 now enforces this

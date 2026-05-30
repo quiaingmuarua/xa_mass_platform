@@ -20,9 +20,9 @@ import com.xa.mass.engine.policy.ContractAwareTaskTerminalPolicy;
 import com.xa.mass.engine.policy.TaskTerminalPolicy;
 import com.xa.mass.engine.runtime.TaskRuntimeEnqueueOptionsResolver;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
-import com.xa.mass.storage.api.TaskShellLifecycleQuery;
-import com.xa.mass.storage.api.TaskShellStore;
 import com.xa.mass.engine.util.LogUtils;
+import com.xa.mass.kernel.spi.task.TaskShellRuntimeLifecycleQuery;
+import com.xa.mass.kernel.spi.task.TaskShellRuntimeStore;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.BarrierClaim;
 import com.xa.mass.runtime.api.BarrierMarkResult;
@@ -67,8 +67,8 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
     private static final Logger logger = LoggerFactory.getLogger(TaskManager.class);
     static final int MAX_INGEST_BATCH_ITEMS = Integer.getInteger("xa.mass.engine.maxIngestBatchItems", 10_000);
 
-    private final TaskShellStore taskStorage;
-    private final TaskShellLifecycleQuery taskShellLifecycleQuery;
+    private final TaskShellRuntimeStore taskStorage;
+    private final TaskShellRuntimeLifecycleQuery taskShellLifecycleQuery;
     private final TaskTerminalPolicy taskTerminalPolicy;
     private final TaskEventPublisher eventPublisher;
     private final TaskStateResolver stateResolver;
@@ -84,23 +84,22 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
     private final com.xa.mass.engine.util.TraceEventLogger traceEventLogger;
     private long workLeaseSeconds = 300L;
 
-    public TaskManager(TaskShellStore taskStorage,
+    public TaskManager(TaskShellRuntimeStore taskStorage,
                        TaskWorkRuntime taskWorkRuntime,
                        TaskResultRuntime taskResultRuntime,
                        ExecutionEventSink executionEventSink) {
-        this(taskStorage, new ContractAwareTaskTerminalPolicy(), taskWorkRuntime,
+        this(taskStorage, requireLifecycleQuery(taskStorage), new ContractAwareTaskTerminalPolicy(), taskWorkRuntime,
                 taskResultRuntime, executionEventSink);
     }
 
-    public TaskManager(TaskShellStore taskStorage,
+    public TaskManager(TaskShellRuntimeStore taskStorage,
+                       TaskShellRuntimeLifecycleQuery taskShellLifecycleQuery,
                        TaskTerminalPolicy taskTerminalPolicy,
                        TaskWorkRuntime taskWorkRuntime,
                        TaskResultRuntime taskResultRuntime,
                        ExecutionEventSink executionEventSink) {
         this.taskStorage = Objects.requireNonNull(taskStorage, "taskStorage");
-        this.taskShellLifecycleQuery = taskStorage instanceof TaskShellLifecycleQuery lifecycleQuery
-                ? lifecycleQuery
-                : new ScanningTaskShellLifecycleQuery(taskStorage);
+        this.taskShellLifecycleQuery = Objects.requireNonNull(taskShellLifecycleQuery, "taskShellLifecycleQuery");
         TaskWorkRuntime requiredTaskWorkRuntime = Objects.requireNonNull(taskWorkRuntime, "taskWorkRuntime");
         TaskResultRuntime requiredTaskResultRuntime = Objects.requireNonNull(taskResultRuntime, "taskResultRuntime");
         this.taskTerminalPolicy = Objects.requireNonNull(taskTerminalPolicy, "taskTerminalPolicy");
@@ -210,11 +209,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
     }
 
     @Override
-    public List<Task> listTasksPaged(int offset, int limit) {
-        return taskStorage.listTasksPaged(offset, limit);
-    }
-
-    @Override
     public List<Task> getRuntimeDispatchableTasks(int limit) {
         if (limit <= 0) {
             return List.of();
@@ -223,19 +217,6 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
                 .map(taskId -> taskStorage.getTask(taskId).orElse(null))
                 .filter(task -> task != null)
                 .toList();
-    }
-
-    /**
-     * Returns tasks currently in the given status.
-     */
-    @Override
-    public List<Task> getTasksByStatus(TaskStatus status) {
-        LogUtils.logOperationStart("GET_TASKS_BY_STATUS", "TaskManager", "status", status.name());
-
-        List<Task> tasks = taskStorage.getTasksByStatus(status);
-
-        LogUtils.logOperationSuccess("loaded tasks by status: status=" + status + ", count=" + tasks.size(), 0);
-        return tasks;
     }
 
     @Override
@@ -823,61 +804,11 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
         return sanitized.isBlank() ? null : sanitized;
     }
 
-    private static final class ScanningTaskShellLifecycleQuery implements TaskShellLifecycleQuery {
-
-        private static final int PAGE_SIZE = 1000;
-        private static final int MAX_SCANNED_TASKS =
-                Integer.getInteger("xa.mass.engine.maxRuntimeShellLifecycleScanLimit", 10_000);
-
-        private final TaskShellStore taskShellStore;
-
-        private ScanningTaskShellLifecycleQuery(TaskShellStore taskShellStore) {
-            this.taskShellStore = Objects.requireNonNull(taskShellStore, "taskShellStore");
+    private static TaskShellRuntimeLifecycleQuery requireLifecycleQuery(TaskShellRuntimeStore taskStorage) {
+        if (taskStorage instanceof TaskShellRuntimeLifecycleQuery lifecycleQuery) {
+            return lifecycleQuery;
         }
-
-        @Override
-        public List<Task> pollTasksPastMaxRuntimeDeadline(LocalDateTime now, int limit) {
-            if (now == null || limit <= 0) {
-                return List.of();
-            }
-            java.util.ArrayList<Task> expired = new java.util.ArrayList<>(Math.min(limit, PAGE_SIZE));
-            int offset = 0;
-            int scanned = 0;
-            while (expired.size() < limit && scanned < MAX_SCANNED_TASKS) {
-                int pageLimit = Math.min(PAGE_SIZE, MAX_SCANNED_TASKS - scanned);
-                List<Task> page = taskShellStore.listTasksPaged(offset, pageLimit);
-                if (page.isEmpty()) {
-                    break;
-                }
-                for (Task task : page) {
-                    scanned++;
-                    if (isPastMaxRuntimeDeadline(task, now)) {
-                        expired.add(task);
-                        if (expired.size() >= limit) {
-                            break;
-                        }
-                    }
-                }
-                if (page.size() < pageLimit) {
-                    break;
-                }
-                offset += pageLimit;
-            }
-            return expired;
-        }
-
-        private boolean isPastMaxRuntimeDeadline(Task task, LocalDateTime now) {
-            if (task == null
-                    || task.getStatus() == null
-                    || task.getStatus().isFinal()
-                    || task.getExecutionSpec().getMaxRuntimeSeconds() <= 0
-                    || task.getStartTime() == null) {
-                return false;
-            }
-            return task.getStartTime()
-                    .plusSeconds(task.getExecutionSpec().getMaxRuntimeSeconds())
-                    .isBefore(now);
-        }
+        throw new IllegalArgumentException("taskStorage must implement TaskShellRuntimeLifecycleQuery");
     }
 
 }

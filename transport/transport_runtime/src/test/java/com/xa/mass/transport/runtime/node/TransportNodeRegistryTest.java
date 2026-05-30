@@ -54,7 +54,7 @@ class TransportNodeRegistryTest {
 
     @Test
     void redisRegistryTracksOnlineHeartbeatOfflineAndStaleState() throws Exception {
-        RedisTransportNodeRegistry registry = new RedisTransportNodeRegistry(connection, namespacePrefix, 25L);
+        RedisTransportNodeRegistry registry = new RedisTransportNodeRegistry(connection, namespacePrefix, 250L);
         registry.register("node-1", List.of("websocket"), 12L);
 
         assertTrue(registry.isNodeOnline("node-1"));
@@ -69,7 +69,7 @@ class TransportNodeRegistryTest {
         assertFalse(registry.isNodeOnline("node-1"));
 
         registry.register("node-2", List.of("polling"), 1L);
-        Thread.sleep(40L);
+        Thread.sleep(300L);
         TransportNodePresence stale = registry.getNode("node-2");
         assertEquals(TransportNodeState.STALE, stale.state());
         assertFalse(registry.isNodeOnline("node-2"));

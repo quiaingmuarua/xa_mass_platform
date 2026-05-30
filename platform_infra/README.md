@@ -5,6 +5,7 @@ Status: shared platform infrastructure module family.
 Current module family:
 
 - `mass-queue-primitives`
+- `../xa-mass-kernel-spi` (repo-level kernel contract module)
 - `mass-runtime-api`
 - `mass-runtime-memory`
 - `mass-runtime-redis`
@@ -51,13 +52,17 @@ Current truth for this conservative first slice:
 - `mass-runtime-redis` now owns the Redis-backed runtime implementations plus
   their keyspace/index baseline; it remains an explicit opt-in path outside the
   verified default runtime mainline
-- `mass-storage-api` owns shared `TaskShellStore`, rule-definition storage
-  contracts, and the storage-adjacent rule types referenced by those contracts
+- `../xa-mass-kernel-spi` owns the kernel-facing task shell ports and
+  worker-matching rule value contracts consumed by engine/runtime callers
+- `mass-storage-api` owns persistence/control-plane storage contracts such as
+  `TaskShellStore` and `RuleStorage`; it may depend on kernel SPI value types
+  but it is not a kernel-facing API
 - `xa-mass-worker-runtime` owns `WorkerDeclarationStore` /
   `WorkerDeclarationRecord`; storage modules implement that port as worker
   declaration adapters when needed
 - `mass-storage-memory` owns in-memory control-plane task shell, worker
-  declaration adapter, and rule-definition storage;
+  declaration adapter, and rule-definition storage; its task shell adapter also
+  implements the kernel-facing task shell ports;
   rule evaluator registry and the default QLExpress rule evaluator are now
   engine rule-runtime assembly concerns
 - `mass-storage-jdbc` owns the JDBC control-plane storage implementation plus H2/PostgreSQL dialect wiring, migrations, and residue-recovery helpers; engine manager assembly stays outside this module
@@ -69,8 +74,10 @@ Current truth for this conservative first slice:
   query, emit trace/events and let an async pipeline persist them outside the
   hot path
 - `mass-trace-sink` owns the canonical `ExecutionEvent` model, event-name enum, and default asynchronous JSONL sink implementation
-- `xa-mass-engine` consumes the runtime contract directly and currently also declares storage-contract plus in-memory storage dependencies in the reactor; do not summarize that as "runtime only" without re-checking the root `pom.xml`
-- `xa-mass-engine` now depends on storage contracts and infra-owned in-memory storage implementations; engine no longer carries Redis storage placeholder classes or shared in-memory storage implementations under its package root
+- `xa-mass-engine` consumes runtime and kernel SPI contracts directly; it must
+  not declare production dependencies on `mass-storage-*`
+- `xa-mass-engine` may keep storage-memory as test fixture residue only; engine
+  main sources must not import storage packages
 
 Current implementation drift agents must keep explicit:
 
@@ -80,8 +87,8 @@ Current implementation drift agents must keep explicit:
 - `JdbcTaskShellStore` is a task-shell control-plane store; server review/export
   materialization owns any server-local review rows outside engine runtime
   assembly
-- engine/runtime assembly wires `TaskShellStore` without a detail/projection
-  store fallback
+- SDK/server assembly wires storage implementations into kernel SPI task-shell
+  ports; engine/runtime assembly does not consume `TaskShellStore` directly
 - `xa-mass-engine` still uses `mass-storage-memory` from tests, but its main sources no longer import that package directly; keep the dependency scoped to tests unless a verified mainline caller requires more
 
 Boundary to keep stable:

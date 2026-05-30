@@ -18,7 +18,7 @@ import com.xa.mass.engine.resource.DefaultWorkerDispatchResourcePolicy;
 import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
 import com.xa.mass.engine.rules.MatchingRuleEvaluator;
 import com.xa.mass.engine.rules.MatchingRuleSetProvider;
-import com.xa.mass.storage.rule.RuleDefinition;
+import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
 import com.xa.mass.engine.util.TraceEventLogger;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionResult;

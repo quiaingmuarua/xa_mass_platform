@@ -1,8 +1,8 @@
 package com.xa.mass.server.e2e.assignment;
 
 import com.xa.mass.api.internal.SdkCredentialAuthSupport;
-import com.xa.mass.storage.rule.RuleDefinition;
-import com.xa.mass.storage.rule.RuleType;
+import com.xa.mass.kernel.spi.rule.RuleDefinition;
+import com.xa.mass.kernel.spi.rule.RuleType;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.ReviewReadModelSampleE2eTest;
 import com.xa.mass.server.e2e.support.ExternalJavaWorkerProcess;

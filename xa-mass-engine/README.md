@@ -378,15 +378,19 @@ Repo-level mainline surfaces:
 
 Infra ownership:
 
-- storage contracts live in `../platform_infra/mass-storage-api`
+- kernel-facing task/rule contracts live in `../xa-mass-kernel-spi`
+- persistence/control-plane storage contracts live in
+  `../platform_infra/mass-storage-api`; engine production must not depend on
+  that module
 - runtime queue/lease contracts live in `../platform_infra/mass-runtime-api`
 - transport adapter contracts live outside engine; engine must not take a direct
   dependency on `../transport/transport_api`
 - SDK/server bootstrap owns concrete wiring
-- primary SDK/server builders should wire `TaskShellStore`, `TaskDetailStore`,
-  `TaskWorkRuntime`, `WorkerDeclarationStore`, worker runtime contracts, and
-  `RuleStorage` rather than exposing full `TaskManager` / `WorkerManager`
-  configuration surfaces in outer modules
+- primary SDK/server builders should wire storage implementations into kernel
+  SPI task-shell ports, `TaskDetailStore`, `TaskWorkRuntime`,
+  `WorkerDeclarationStore`, worker runtime contracts, and `RuleStorage` rather
+  than exposing full `TaskManager` / `WorkerManager` configuration surfaces in
+  outer modules
 - starter assembly should treat private worker-runtime `WorkerManager` assembly
   as derived over storage/runtime contracts, and should assemble rule matching
   from `RuleStorage` plus `RuleEvaluatorRegistry`, not from a broad rule

@@ -1,7 +1,7 @@
 package com.xa.mass.engine.rules;
 
-import com.xa.mass.storage.rule.RuleDefinition;
-import com.xa.mass.storage.rule.RuleEvaluator;
+import com.xa.mass.kernel.spi.rule.RuleDefinition;
+import com.xa.mass.kernel.spi.rule.RuleEvaluator;
 
 import java.util.Map;
 import java.util.Objects;

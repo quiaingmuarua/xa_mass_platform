@@ -2,6 +2,8 @@ package com.xa.mass.storage.memory;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.kernel.spi.task.TaskShellRuntimeLifecycleQuery;
+import com.xa.mass.kernel.spi.task.TaskShellRuntimeStore;
 import com.xa.mass.storage.api.TaskShellLifecycleQuery;
 import com.xa.mass.storage.api.TaskShellStore;
 
@@ -17,7 +19,8 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * In-memory task storage optimized for frequent task-message writes.
  */
-public class InMemoryTaskShellStore implements TaskShellStore, TaskShellLifecycleQuery {
+public class InMemoryTaskShellStore implements TaskShellStore, TaskShellLifecycleQuery,
+        TaskShellRuntimeStore, TaskShellRuntimeLifecycleQuery {
 
     private final Map<String, Task> tasks = new ConcurrentHashMap<>();
     private final Map<TaskStatus, java.util.LinkedHashSet<String>> taskIdsByStatus = new ConcurrentHashMap<>();

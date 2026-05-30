@@ -22,6 +22,7 @@ class EngineProofOwnershipGuardTest {
 
     private static final Path ENGINE_MAIN_ROOT = Path.of("src", "main", "java", "com", "xa", "mass", "engine");
     private static final Path ENGINE_TEST_ROOT = Path.of("src", "test", "java", "com", "xa", "mass", "engine");
+    private static final Path ENGINE_POM = Path.of("pom.xml");
 
     private static final List<Class<?>> MAINLINE_SUITES = List.of(
             EngineSchedulingCoreSuite.class,
@@ -126,16 +127,7 @@ class EngineProofOwnershipGuardTest {
     }
 
     @Test
-    void engineProductionStorageImportsStayOnPbcAllowlist() throws IOException {
-        Set<String> allowedStorageImports = Set.of(
-                "com.xa.mass.storage.api.RuleStorage",
-                "com.xa.mass.storage.api.TaskShellLifecycleQuery",
-                "com.xa.mass.storage.api.TaskShellStore",
-                "com.xa.mass.storage.rule.RuleDefinition",
-                "com.xa.mass.storage.rule.RuleEvaluator",
-                "com.xa.mass.storage.rule.RuleType"
-        );
-
+    void engineProductionDoesNotImportStorageContracts() throws IOException {
         List<String> violations = new ArrayList<>();
         try (Stream<Path> paths = Files.walk(ENGINE_MAIN_ROOT)) {
             for (Path path : paths.filter(Files::isRegularFile).toList()) {
@@ -150,16 +142,43 @@ class EngineProofOwnershipGuardTest {
                     String importedType = trimmed
                             .replace("import ", "")
                             .replace(";", "");
-                    if (!allowedStorageImports.contains(importedType)) {
-                        violations.add(path + " imports unclassified storage dependency: " + importedType);
-                    }
+                    violations.add(path + " imports storage dependency: " + importedType);
                 }
             }
         }
 
         assertTrue(violations.isEmpty(),
-                "Engine production storage dependencies must stay on the PBC allowlist. "
-                        + "Task shell/control-plane and rule-domain imports are the only current owners:\n"
+                "Engine production must not import storage contracts; use kernel SPI or engine-owned ports instead:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void enginePomDoesNotDeclareProductionStorageDependencies() throws IOException {
+        Set<String> forbiddenArtifacts = Set.of(
+                "mass-storage-api",
+                "mass-storage-memory",
+                "mass-storage-jdbc"
+        );
+
+        List<String> violations = new ArrayList<>();
+        String pom = Files.readString(ENGINE_POM, StandardCharsets.UTF_8);
+        for (String dependency : pom.split("<dependency>")) {
+            if (!dependency.contains("</dependency>")) {
+                continue;
+            }
+            String block = dependency.substring(0, dependency.indexOf("</dependency>"));
+            String artifactId = tagValue(block, "artifactId");
+            if (!forbiddenArtifacts.contains(artifactId)) {
+                continue;
+            }
+            String scope = tagValue(block, "scope");
+            if (!"test".equals(scope)) {
+                violations.add("xa-mass-engine declares production storage dependency: " + artifactId);
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Engine production POM must not depend on storage modules:\n"
                         + String.join("\n", violations));
     }
 
@@ -209,6 +228,20 @@ class EngineProofOwnershipGuardTest {
         } catch (ClassNotFoundException e) {
             throw new IllegalStateException("Engine proof guard class not found: " + className, e);
         }
+    }
+
+    private static String tagValue(String xml, String tag) {
+        String open = "<" + tag + ">";
+        String close = "</" + tag + ">";
+        int start = xml.indexOf(open);
+        if (start < 0) {
+            return null;
+        }
+        int end = xml.indexOf(close, start + open.length());
+        if (end < 0) {
+            return null;
+        }
+        return xml.substring(start + open.length(), end).trim();
     }
 
     private record ForbiddenToken(String value, String reason) {

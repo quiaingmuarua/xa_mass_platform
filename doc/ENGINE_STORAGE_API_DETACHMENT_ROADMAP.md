@@ -1,6 +1,6 @@
 # Engine Storage API Detachment Roadmap
 
-Status: approved for implementation.
+Status: implemented.
 
 This roadmap removes the remaining production dependency from
 `xa-mass-engine` to `mass-storage-api`. It follows
@@ -24,13 +24,32 @@ Current production imports are limited, but they are still storage-owned:
 - `TaskManager` imports `TaskShellStore` and `TaskShellLifecycleQuery`.
 - `StorageBackedMatchingRuleSetProvider` imports `RuleStorage`.
 - engine rule runtime classes import `RuleDefinition`, `RuleEvaluator`, and
-  `RuleType` from `com.xa.mass.storage.rule`.
+  `RuleType` from `com.xa.mass.kernel.spi.rule`.
 
 This keeps the engine kernel coupled to a DB/storage module even after
 projection retirement. The remaining dependency is not review/projection
 residue; it is a deeper contract ownership issue.
 
-## Current Code Facts
+## Implementation Record
+
+This roadmap has landed. The implemented shape is:
+
+- `xa-mass-kernel-spi` owns the kernel-facing task shell ports and matching
+  rule value contracts.
+- `xa-mass-engine` production depends on `xa-mass-kernel-spi`, not on
+  `mass-storage-api`, `mass-storage-memory`, or `mass-storage-jdbc`.
+- `mass-storage-api` remains a persistence/control-plane storage contract
+  module and depends on `xa-mass-kernel-spi` for shared rule value types.
+- `mass-storage-memory` and `mass-storage-jdbc` implement the kernel-facing
+  task shell ports as storage adapters.
+- The `RuleStorage` to `MatchingRuleSetProvider` adapter lives in SDK
+  assembly, not in engine production.
+- Broad task list/status query methods were removed from the engine query
+  port and are handled through SDK/storage assembly.
+- `mass-storage-memory` remains in `xa-mass-engine` test scope only as a test
+  fixture dependency.
+
+## Pre-Implementation Code Facts
 
 - `mass-storage-api` currently contains only:
   - `RuleStorage`
@@ -196,7 +215,7 @@ Scope:
    `com.xa.mass.storage.*`.
 2. Record every `xa-mass-sdk/src/main` and `xa-mass-server/src/main` caller
    that exposes or wires `TaskShellStore`, `TaskShellLifecycleQuery`,
-   `RuleStorage`, or `com.xa.mass.storage.rule.*`.
+   `RuleStorage`, or `com.xa.mass.kernel.spi.rule.*`.
 3. Record every storage implementation that implements task-shell or rule
    contracts.
 4. Record test-only dependencies separately, especially engine tests using
@@ -529,3 +548,45 @@ mvn -pl xa-mass-engine help:effective-pom | rg "mass-storage-(api|memory|jdbc)"
 
 Expected result after ESD-5: no production-scope storage dependency. Test-scope
 fixture dependencies must be explicitly classified if still present.
+
+## Landed Verification
+
+Verified on 2026-05-30:
+
+```powershell
+mvn -pl xa-mass-engine,xa-mass-sdk,xa-mass-server,platform_infra/mass-storage-api,platform_infra/mass-storage-memory,platform_infra/mass-storage-jdbc -am -DskipTests compile
+```
+
+Result: passed.
+
+```powershell
+mvn -pl xa-mass-engine -am clean test
+```
+
+Result: passed.
+
+```powershell
+mvn -pl platform_infra/mass-runtime-redis -am clean test
+```
+
+Result: passed.
+
+```powershell
+mvn -pl xa-mass-sdk,xa-mass-server,platform_infra/mass-storage-jdbc -am test
+```
+
+Result: passed.
+
+Residue checks:
+
+```powershell
+rg -n "com\.xa\.mass\.storage" xa-mass-engine/src/main
+rg -n "com\.xa\.mass\.storage\.rule|package com\.xa\.mass\.storage\.rule" .
+rg -n "StorageBackedMatchingRuleSetProvider" xa-mass-engine/src/main xa-mass-sdk/src/main
+rg -n "mass-storage-(api|memory|jdbc)" xa-mass-engine/pom.xml
+```
+
+Result: engine production has no storage imports; old storage rule package has
+no remaining source references; `StorageBackedMatchingRuleSetProvider` exists
+only in SDK assembly; engine POM keeps only `mass-storage-memory` in test
+scope.

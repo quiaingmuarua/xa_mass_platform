@@ -1,6 +1,6 @@
 package com.xa.mass.engine.rules;
 
-import com.xa.mass.storage.rule.RuleDefinition;
+import com.xa.mass.kernel.spi.rule.RuleDefinition;
 
 /**
  * Narrow matching-time rule evaluator contract.

@@ -5,8 +5,8 @@ import com.zaxxer.hikari.HikariDataSource;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.UserRef;
-import com.xa.mass.storage.rule.RuleDefinition;
-import com.xa.mass.storage.rule.RuleType;
+import com.xa.mass.kernel.spi.rule.RuleDefinition;
+import com.xa.mass.kernel.spi.rule.RuleType;
 
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;

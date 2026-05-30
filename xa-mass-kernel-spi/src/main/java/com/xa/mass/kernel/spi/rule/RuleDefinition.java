@@ -1,4 +1,4 @@
-package com.xa.mass.storage.rule;
+package com.xa.mass.kernel.spi.rule;
 
 /** Worker-matching rule definition. */
 public class RuleDefinition {

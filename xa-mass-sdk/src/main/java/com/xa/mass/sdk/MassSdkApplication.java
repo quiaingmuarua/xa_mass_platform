@@ -38,8 +38,8 @@ import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.api.TaskResultRuntimeRow;
 import com.xa.mass.runtime.api.TaskResultWindow;
 import com.xa.mass.storage.api.RuleStorage;
-import com.xa.mass.storage.rule.RuleDefinition;
-import com.xa.mass.storage.rule.RuleType;
+import com.xa.mass.kernel.spi.rule.RuleDefinition;
+import com.xa.mass.kernel.spi.rule.RuleType;
 import com.xa.mass.sdk.auth.*;
 import com.xa.mass.sdk.authz.*;
 import com.xa.mass.sdk.catalog.*;
@@ -182,14 +182,14 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     @Override
     public List<TaskSummarySnapshot> listTaskSummaries(int offset, int limit) {
-        return requireStartedTaskQueries().listTasksPaged(offset, limit).stream()
+        return requireStartedEngine().getConfig().getTaskShellStore().listTasksPaged(offset, limit).stream()
                 .map(this::toTaskSummarySnapshot)
                 .toList();
     }
 
     @Override
     public List<TaskSummarySnapshot> getTaskSummariesByStatus(String status) {
-        return requireStartedTaskQueries().getTasksByStatus(
+        return requireStartedEngine().getConfig().getTaskShellStore().getTasksByStatus(
                 parseTaskStatus(status)
         ).stream().map(this::toTaskSummarySnapshot).toList();
     }

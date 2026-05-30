@@ -1,11 +1,9 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 
-import java.util.List;
 import java.util.Objects;
 
 /**
@@ -25,14 +23,6 @@ public class TaskQueryService {
 
     public Task getTask(String taskId) {
         return taskQueries.getTask(taskId);
-    }
-
-    public List<Task> listTasksPaged(int offset, int limit) {
-        return taskQueries.listTasksPaged(offset, limit);
-    }
-
-    public List<Task> getTasksByStatus(TaskStatus status) {
-        return taskQueries.getTasksByStatus(status);
     }
 
     public TaskStateResolutionResult resolveTaskState(String taskId) {

@@ -3,7 +3,7 @@ package com.xa.mass.server.bootstrap;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.xa.mass.storage.rule.RuleDefinition;
+import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassRuntimeControl;
 import com.xa.mass.sdk.model.AdapterNodeRegistration;

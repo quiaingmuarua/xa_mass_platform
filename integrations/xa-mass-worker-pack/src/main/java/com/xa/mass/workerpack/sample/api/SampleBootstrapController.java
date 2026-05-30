@@ -1,6 +1,6 @@
 package com.xa.mass.workerpack.sample.api;
 
-import com.xa.mass.storage.rule.RuleDefinition;
+import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.workerpack.sample.api.model.SampleCatalogBootstrapRequest;
 import com.xa.mass.workerpack.sample.api.model.SampleRuleBootstrapRequest;
 import com.xa.mass.sdk.MassSdkApplication;

@@ -18,7 +18,6 @@ import com.xa.mass.engine.listener.TaskWorkerAssignListener;
 import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.engine.rules.RegistryBackedMatchingRuleEvaluator;
 import com.xa.mass.engine.rules.RuleEvaluatorRegistries;
-import com.xa.mass.engine.rules.StorageBackedMatchingRuleSetProvider;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.strategy.RuleBasedTaskWorkerMatchingStrategy;
 import com.xa.mass.worker.runtime.resource.AdapterNodeRecord;
@@ -35,11 +34,12 @@ import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.memory.InMemoryRuleStorage;
 import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.storage.memory.InMemoryWorkerDeclarationStore;
-import com.xa.mass.storage.rule.RuleDefinition;
-import com.xa.mass.storage.rule.RuleType;
+import com.xa.mass.kernel.spi.rule.RuleDefinition;
+import com.xa.mass.kernel.spi.rule.RuleType;
 
 import java.util.ArrayList;
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 
@@ -84,7 +84,10 @@ final class TaskSchedulingTestHarness {
                 (context, bindings) -> dispatches.addAll(bindings)
         );
         RuleBasedTaskWorkerMatchingStrategy matchingStrategy = new RuleBasedTaskWorkerMatchingStrategy(
-                new StorageBackedMatchingRuleSetProvider(ruleStorage),
+                () -> ruleStorage.getAllRules().stream()
+                        .filter(RuleDefinition::isEnabled)
+                        .sorted(Comparator.comparingInt(RuleDefinition::getPriority))
+                        .toList(),
                 new RegistryBackedMatchingRuleEvaluator(RuleEvaluatorRegistries.defaultRegistry()),
                 workerManager,
                 workerManager,

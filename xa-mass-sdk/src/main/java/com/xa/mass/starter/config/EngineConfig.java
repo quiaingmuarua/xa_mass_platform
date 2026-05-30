@@ -27,12 +27,13 @@ import com.xa.mass.engine.rules.RegistryBackedMatchingRuleEvaluator;
 import com.xa.mass.engine.rules.RuleConfig;
 import com.xa.mass.engine.rules.RuleEvaluatorRegistry;
 import com.xa.mass.engine.rules.RuleEvaluatorRegistries;
-import com.xa.mass.engine.rules.StorageBackedMatchingRuleSetProvider;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.engine.watchdog.ExponentialPollingIdleBackoffPolicy;
 import com.xa.mass.engine.watchdog.PollingIdleBackoffPolicy;
+import com.xa.mass.kernel.spi.task.TaskShellRuntimeLifecycleQuery;
+import com.xa.mass.kernel.spi.task.TaskShellRuntimeStore;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
@@ -606,7 +607,9 @@ public class EngineConfig {
     private TaskManager ensureTaskManager() {
         if (taskManager == null) {
             taskManager = new TaskManager(
-                    getTaskShellStore(),
+                    getTaskShellRuntimeStore(),
+                    getTaskShellRuntimeLifecycleQuery(),
+                    new com.xa.mass.engine.policy.ContractAwareTaskTerminalPolicy(),
                     getTaskWorkRuntime(),
                     getTaskResultRuntime(),
                     getExecutionEventSink()
@@ -622,5 +625,19 @@ public class EngineConfig {
         }
         getRuleStorage().addRules(RuleConfig.getDefaultWorkerMatchRules());
         defaultRulesInitialized = true;
+    }
+
+    private TaskShellRuntimeStore getTaskShellRuntimeStore() {
+        if (taskShellStore instanceof TaskShellRuntimeStore runtimeStore) {
+            return runtimeStore;
+        }
+        throw new IllegalStateException("taskShellStore must implement TaskShellRuntimeStore");
+    }
+
+    private TaskShellRuntimeLifecycleQuery getTaskShellRuntimeLifecycleQuery() {
+        if (taskShellStore instanceof TaskShellRuntimeLifecycleQuery lifecycleQuery) {
+            return lifecycleQuery;
+        }
+        throw new IllegalStateException("taskShellStore must implement TaskShellRuntimeLifecycleQuery");
     }
 }

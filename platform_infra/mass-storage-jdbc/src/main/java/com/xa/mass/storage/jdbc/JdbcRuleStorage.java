@@ -1,7 +1,7 @@
 package com.xa.mass.storage.jdbc;
 
-import com.xa.mass.storage.rule.RuleDefinition;
-import com.xa.mass.storage.rule.RuleType;
+import com.xa.mass.kernel.spi.rule.RuleDefinition;
+import com.xa.mass.kernel.spi.rule.RuleType;
 import com.xa.mass.storage.api.RuleStorage;
 
 import javax.sql.DataSource;

@@ -1,6 +1,6 @@
 package com.xa.mass.sdk;
 
-import com.xa.mass.storage.rule.RuleDefinition;
+import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;

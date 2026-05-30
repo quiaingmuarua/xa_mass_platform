@@ -89,7 +89,7 @@ contract backed by a transitional `TaskDetailStore` implementation.
     lifecycle lookup contract; not a PBC removal target.
   - `TaskDetailStore` and `com.xa.mass.storage.api.projection.*`: projection
     residue; removed from engine production by PBC-4.
-  - `RuleStorage` / `com.xa.mass.storage.rule.*`: rule-definition and
+  - `RuleStorage` / `com.xa.mass.kernel.spi.rule.*`: rule-definition and
     matching-policy data; record as a follow-up rule-domain boundary question,
     not part of PBC implementation.
 - Worker declaration storage has already moved to `xa-mass-worker-runtime`.
@@ -164,7 +164,7 @@ Scope:
    into exactly one bucket:
    - keep for now: `TaskShellStore` / `TaskShellLifecycleQuery`
    - PBC target: `TaskDetailStore` projection read/write residue
-   - rule follow-up: `RuleStorage` / `com.xa.mass.storage.rule.*`
+   - rule follow-up: `RuleStorage` / `com.xa.mass.kernel.spi.rule.*`
    - unexpected dependency requiring owner review before implementation
 3. Classify each projection caller as:
    - runtime correctness

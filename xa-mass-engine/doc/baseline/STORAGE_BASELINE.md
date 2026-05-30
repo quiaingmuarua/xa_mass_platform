@@ -8,9 +8,15 @@ truth, and server review/export owns lagging operator read models.
 
 ## Boundary
 
-The active engine boundary has three explicit contract groups:
+The active engine boundary has four explicit contract groups:
 
-- control-plane storage contracts in `platform_infra/mass-storage-api`
+- kernel-facing contracts in `xa-mass-kernel-spi`
+  - `TaskShellRuntimeStore`
+  - `TaskShellRuntimeLifecycleQuery`
+  - `RuleDefinition`
+  - `RuleType`
+  - `RuleEvaluator`
+- persistence/control-plane storage contracts in `platform_infra/mass-storage-api`
   - `TaskShellStore`
   - `RuleStorage`
 - worker declaration port in `xa-mass-worker-runtime`
@@ -25,8 +31,12 @@ Do not collapse them back into one "storage owns everything" model.
 
 What the engine assumes today:
 
-- `Task` shell truth and rule definitions come from storage; worker
-  declarations come through the worker-runtime declaration port.
+- `Task` shell truth is persisted by storage adapters but consumed by engine
+  through kernel SPI task-shell ports; worker declarations come through the
+  worker-runtime declaration port.
+- Matching rule definitions are stable control-plane input. Engine matching
+  consumes them through `MatchingRuleSetProvider` and kernel SPI rule value
+  contracts, not through `RuleStorage` CRUD.
 - Ready backlog, delay queues, lease ownership, retry visibility, expiry
   indexes, and backpressure come from runtime.
 - Result/expiry recovery should prefer runtime work-envelope metadata,
@@ -38,8 +48,8 @@ What the engine assumes today:
   attempt object graph as the transport payload; runtime-native dispatch
   binding carries message payload, retry summary, and attempt/lease ownership
   directly.
-- Engine assembly wires `TaskShellStore` without a detail/projection store
-  fallback.
+- SDK/server assembly wires storage implementations into engine through kernel
+  SPI task-shell ports without a detail/projection store fallback.
 
 ## Review Rows
 
@@ -74,7 +84,7 @@ Current mainline implementations:
 Current implementation facts that matter architecturally:
 
 - SDK/server embed the storage implementations explicitly
-- engine depends on contracts only
+- engine depends on kernel SPI and runtime contracts only, not storage modules
 - the JDBC path is a control-plane adapter, not a message analytics backend
 - in-memory helper indexes are allowed when they protect hot paths from full
   scans, but they remain helper indexes rather than second lifecycle truth
@@ -83,7 +93,7 @@ Current implementation facts that matter architecturally:
 
 The shortest convergence path remains:
 
-1. keep runtime-critical storage contracts narrow
+1. keep runtime-critical kernel SPI contracts narrow
 2. keep cross-module message/attempt reads outside engine runtime
 3. move future detail, analytics, and timelines into trace or async audit sinks
 

@@ -2,6 +2,8 @@ package com.xa.mass.storage.jdbc;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.kernel.spi.task.TaskShellRuntimeLifecycleQuery;
+import com.xa.mass.kernel.spi.task.TaskShellRuntimeStore;
 import com.xa.mass.storage.api.TaskShellLifecycleQuery;
 import com.xa.mass.storage.api.TaskShellStore;
 
@@ -20,7 +22,8 @@ import java.util.Optional;
  * <p>High-frequency message and attempt detail belongs in queues, trace, or
  * server-owned review materialization, not in task shell storage.</p>
  */
-public class JdbcTaskShellStore extends JdbcStorageSupport implements TaskShellStore, TaskShellLifecycleQuery {
+public class JdbcTaskShellStore extends JdbcStorageSupport implements TaskShellStore, TaskShellLifecycleQuery,
+        TaskShellRuntimeStore, TaskShellRuntimeLifecycleQuery {
 
     private final JdbcDialect dialect;
 

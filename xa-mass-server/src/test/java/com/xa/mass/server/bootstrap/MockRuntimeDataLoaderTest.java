@@ -1,6 +1,6 @@
 package com.xa.mass.server.bootstrap;
 
-import com.xa.mass.storage.rule.RuleDefinition;
+import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.sdk.MassRuntimeControl;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.event.EventRequest;

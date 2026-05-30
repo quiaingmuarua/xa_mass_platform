@@ -114,7 +114,10 @@ Boundary rules:
   - `platform_infra/mass-runtime-api` owns queue/lease/counter contracts plus
     the active result-runtime boundary
   - `platform_infra/mass-runtime-memory` is the current verified runtime implementation
-  - `platform_infra/mass-storage-api` owns task/worker/rule storage contracts
+  - `xa-mass-kernel-spi` owns kernel-facing task shell ports and matching rule
+    value contracts
+  - `platform_infra/mass-storage-api` owns persistence/control-plane task shell
+    and rule storage contracts
   - `platform_infra/mass-trace-sink` owns canonical trace schema + sink write
     path; `xa-mass-trace` owns local operator read/query over that output
 - current engine truth:

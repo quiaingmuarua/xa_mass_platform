@@ -15,7 +15,7 @@ import com.xa.mass.command.event.InMemoryMassEventRuntime;
 import com.xa.mass.command.event.MassEventRuntime;
 import com.xa.mass.engine.command.WorkerCommandDeliveryResult;
 import com.xa.mass.engine.command.WorkerCommandRecord;
-import com.xa.mass.storage.rule.RuleDefinition;
+import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.worker.PullWorkerSession;

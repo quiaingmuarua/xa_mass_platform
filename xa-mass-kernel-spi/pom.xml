@@ -1,0 +1,21 @@
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.xa.mass</groupId>
+        <artifactId>xa_mass_platform</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+    </parent>
+    <artifactId>xa-mass-kernel-spi</artifactId>
+    <packaging>jar</packaging>
+    <name>xa-mass-kernel-spi</name>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.xa.mass</groupId>
+            <artifactId>xa-mass-base</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+    </dependencies>
+</project>
