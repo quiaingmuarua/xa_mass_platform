@@ -1,6 +1,8 @@
 package com.xa.mass.api.review;
 
 import com.xa.mass.sdk.model.TaskItemBatchAppendReceipt;
+import com.xa.mass.sdk.model.TaskWorkAttemptClosedNotification;
+import com.xa.mass.sdk.model.TaskWorkAttemptClosedSnapshot;
 import com.xa.mass.sdk.model.TaskWorkFinalNotification;
 import com.xa.mass.sdk.model.TaskWorkFinalSnapshot;
 import org.slf4j.Logger;
@@ -41,6 +43,25 @@ public final class QueueBackedTaskReviewReadModelWriter implements TaskReviewRea
         } catch (RuntimeException e) {
             log.warn("Task review materialization event creation failed: type=itemsAccepted, taskId={}, reason={}",
                     taskId, e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public void recordAttemptClosed(TaskWorkAttemptClosedNotification notification) {
+        TaskWorkAttemptClosedSnapshot snapshot = notification == null ? null : notification.attemptSnapshot();
+        if (snapshot == null || isBlank(snapshot.taskId()) || isBlank(snapshot.messageId())
+                || isBlank(snapshot.attemptId())) {
+            return;
+        }
+        try {
+            TaskReviewAttemptClosedEvent event = TaskReviewAttemptClosedEvent.from(snapshot);
+            if (!queue.submit(event)) {
+                log.warn("Task review materialization event rejected: type=attemptClosed, taskId={}, messageId={}, attemptId={}",
+                        snapshot.taskId(), snapshot.messageId(), snapshot.attemptId());
+            }
+        } catch (RuntimeException e) {
+            log.warn("Task review materialization event creation failed: type=attemptClosed, taskId={}, messageId={}, attemptId={}, reason={}",
+                    snapshot.taskId(), snapshot.messageId(), snapshot.attemptId(), e.getMessage(), e);
         }
     }
 

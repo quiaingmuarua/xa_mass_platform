@@ -8,6 +8,7 @@ import com.xa.mass.api.auth.usage.ApiUsageOperation;
 import com.xa.mass.api.auth.usage.ApiUsageStatus;
 import com.xa.mass.api.auth.usage.InMemoryApiUsageLedgerStore;
 import com.xa.mass.api.review.InMemoryTaskReviewStore;
+import com.xa.mass.api.review.TaskReviewAttemptClosedEvent;
 import com.xa.mass.api.review.TaskReviewItemsAcceptedEvent;
 import com.xa.mass.api.review.TaskReviewReadModelWriter;
 import com.xa.mass.api.review.TaskReviewStoreMaterializer;
@@ -957,6 +958,11 @@ class TaskApiControllerTest {
                                             TaskItemBatchAppendReceipt receipt,
                                             int maxRetryCount) {
                 materializer.apply(TaskReviewItemsAcceptedEvent.from(taskId, acceptedItems, receipt, maxRetryCount));
+            }
+
+            @Override
+            public void recordAttemptClosed(com.xa.mass.sdk.model.TaskWorkAttemptClosedNotification notification) {
+                materializer.apply(TaskReviewAttemptClosedEvent.from(notification));
             }
 
             @Override

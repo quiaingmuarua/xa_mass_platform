@@ -1,6 +1,7 @@
 package com.xa.mass.api.review;
 
 import com.xa.mass.sdk.model.TaskItemBatchAppendReceipt;
+import com.xa.mass.sdk.model.TaskWorkAttemptClosedNotification;
 import com.xa.mass.sdk.model.TaskWorkFinalNotification;
 
 import java.util.List;
@@ -15,6 +16,8 @@ public interface TaskReviewReadModelWriter {
                              List<Map<String, Object>> acceptedItems,
                              TaskItemBatchAppendReceipt receipt,
                              int maxRetryCount);
+
+    void recordAttemptClosed(TaskWorkAttemptClosedNotification notification);
 
     void recordWorkFinal(TaskWorkFinalNotification notification);
 }

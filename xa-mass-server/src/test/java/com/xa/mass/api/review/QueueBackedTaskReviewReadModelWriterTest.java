@@ -1,6 +1,8 @@
 package com.xa.mass.api.review;
 
 import com.xa.mass.sdk.model.TaskItemBatchAppendReceipt;
+import com.xa.mass.sdk.model.TaskWorkAttemptClosedNotification;
+import com.xa.mass.sdk.model.TaskWorkAttemptClosedSnapshot;
 import com.xa.mass.sdk.model.TaskWorkFinalNotification;
 import com.xa.mass.sdk.model.TaskWorkFinalSnapshot;
 import org.junit.jupiter.api.Test;
@@ -69,6 +71,34 @@ class QueueBackedTaskReviewReadModelWriterTest {
         assertEquals("task-001", event.taskId());
         assertEquals("msg-001", event.messageId());
         assertEquals("attempt-002", event.attemptId());
+    }
+
+    @Test
+    void recordAttemptClosedSubmitsAttemptClosedEvent() {
+        CapturingQueue queue = new CapturingQueue(true);
+        QueueBackedTaskReviewReadModelWriter writer = new QueueBackedTaskReviewReadModelWriter(queue);
+
+        writer.recordAttemptClosed(new TaskWorkAttemptClosedNotification(
+                "task-001",
+                Map.of(),
+                new TaskWorkAttemptClosedSnapshot(
+                        "task-001",
+                        "msg-001",
+                        "attempt-001",
+                        1,
+                        "worker-stale",
+                        "batch-001",
+                        "EXPIRED",
+                        "LEASE_EXPIRED")));
+
+        assertEquals(1, queue.events.size());
+        TaskReviewAttemptClosedEvent event =
+                assertInstanceOf(TaskReviewAttemptClosedEvent.class, queue.events.get(0));
+        assertEquals("task-001", event.taskId());
+        assertEquals("msg-001", event.messageId());
+        assertEquals("attempt-001", event.attemptId());
+        assertEquals("EXPIRED", event.status());
+        assertEquals("LEASE_EXPIRED", event.finalReason());
     }
 
     @Test

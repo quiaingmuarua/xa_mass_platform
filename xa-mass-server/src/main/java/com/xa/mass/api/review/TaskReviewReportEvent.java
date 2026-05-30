@@ -7,7 +7,7 @@ package com.xa.mass.api.review;
  * progress, result, or finality truth.</p>
  */
 public sealed interface TaskReviewReportEvent
-        permits TaskReviewItemsAcceptedEvent, TaskReviewWorkTerminalEvent {
+        permits TaskReviewAttemptClosedEvent, TaskReviewItemsAcceptedEvent, TaskReviewWorkTerminalEvent {
 
     String taskId();
 }

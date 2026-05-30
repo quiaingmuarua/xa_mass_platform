@@ -25,7 +25,9 @@ public final class TaskReviewStoreMaterializer implements TaskReviewMaterializer
 
     @Override
     public void apply(TaskReviewReportEvent event) {
-        if (event instanceof TaskReviewItemsAcceptedEvent acceptedEvent) {
+        if (event instanceof TaskReviewAttemptClosedEvent attemptClosedEvent) {
+            applyAttemptClosed(attemptClosedEvent);
+        } else if (event instanceof TaskReviewItemsAcceptedEvent acceptedEvent) {
             applyItemsAccepted(acceptedEvent);
         } else if (event instanceof TaskReviewWorkTerminalEvent terminalEvent) {
             applyWorkTerminal(terminalEvent);
@@ -105,6 +107,55 @@ public final class TaskReviewStoreMaterializer implements TaskReviewMaterializer
         );
     }
 
+    private void applyAttemptClosed(TaskReviewAttemptClosedEvent event) {
+        String taskId = event.taskId();
+        String messageId = event.messageId();
+        String attemptId = event.attemptId();
+        if (isBlank(taskId) || isBlank(messageId) || isBlank(attemptId)) {
+            return;
+        }
+        store.upsertAttempt(taskId, messageId, new TaskReviewAttempt(
+                attemptId,
+                taskId,
+                messageId,
+                event.attemptNo(),
+                event.workerId(),
+                event.batchId(),
+                normalizeAttemptStatus(event.status()),
+                normalizeAttemptFinalReason(event.finalReason()),
+                null,
+                null,
+                null
+        ));
+
+        TaskReviewItem previous = store.findItem(taskId, messageId).orElse(null);
+        if (previous == null || isFinalStatus(previous.status())) {
+            return;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        store.upsertItem(taskId, new TaskReviewItem(
+                messageId,
+                previous.eventCode(),
+                normalizeItemStatus(event.status(), previous.status()),
+                normalizeAttemptFinalReason(event.finalReason()),
+                previous.payloadRef(),
+                Math.max(0, event.attemptNo() - 1),
+                previous.maxRetryCount(),
+                previous.createTime(),
+                previous.assignedTime(),
+                previous.startTime(),
+                now,
+                now,
+                previous.input(),
+                firstNonBlank(event.workerId(), previous.workerId()),
+                firstNonBlank(event.batchId(), previous.batchId()),
+                attemptId,
+                previous.errorCode(),
+                previous.errorMessage(),
+                previous.output()
+        ));
+    }
+
     private void applyWorkTerminal(TaskReviewWorkTerminalEvent event) {
         String taskId = event.taskId();
         String messageId = event.messageId();
@@ -174,10 +225,27 @@ public final class TaskReviewStoreMaterializer implements TaskReviewMaterializer
     private static String normalizeAttemptStatus(String status) {
         String normalized = normalizeStatus(status, "FAILED");
         return switch (normalized) {
-            case "SUCCESS" -> "SUCCEEDED";
+            case "SUCCESS", "SUCCEEDED" -> "SUCCEEDED";
             case "EXPIRED" -> "EXPIRED";
+            case "REVOKED" -> "REVOKED";
             default -> "FAILED";
         };
+    }
+
+    private static String normalizeItemStatus(String status, String fallback) {
+        String normalized = normalizeStatus(status, fallback);
+        return switch (normalized) {
+            case "SUCCEEDED" -> "SUCCESS";
+            default -> normalized;
+        };
+    }
+
+    private static boolean isFinalStatus(String status) {
+        String normalized = normalizeStatus(status, "");
+        return "SUCCESS".equals(normalized)
+                || "SUCCEEDED".equals(normalized)
+                || "FAILED".equals(normalized)
+                || "EXPIRED".equals(normalized);
     }
 
     private static String normalizeAttemptFinalReason(String finalReason) {

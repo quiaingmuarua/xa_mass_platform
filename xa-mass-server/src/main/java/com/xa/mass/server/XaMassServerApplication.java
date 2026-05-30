@@ -411,6 +411,27 @@ public class XaMassServerApplication {
                         snapshot == null ? null : snapshot.taskId(),
                         snapshot == null ? null : snapshot.messageId(),
                         e.getMessage(),
+                e);
+            }
+        });
+    }
+
+    @Bean
+    @Profile("dev")
+    @Order(1)
+    public CommandLineRunner taskReviewReadModelAttemptClosedListener(MassSdkApplication app,
+                                                                      @Qualifier("taskReviewReadModelWriter")
+                                                                      TaskReviewReadModelWriter writer) {
+        return args -> app.addTaskWorkAttemptClosedListener(notification -> {
+            try {
+                writer.recordAttemptClosed(notification);
+            } catch (RuntimeException e) {
+                var snapshot = notification == null ? null : notification.attemptSnapshot();
+                log.warn("Task review read-model attempt write failed: taskId={}, messageId={}, attemptId={}, reason={}",
+                        snapshot == null ? null : snapshot.taskId(),
+                        snapshot == null ? null : snapshot.messageId(),
+                        snapshot == null ? null : snapshot.attemptId(),
+                        e.getMessage(),
                         e);
             }
         });

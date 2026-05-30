@@ -87,6 +87,70 @@ class TaskReviewStoreMaterializerTest {
     }
 
     @Test
+    void retryableAttemptClosedIsMaterializedBeforeLaterTerminalSuccess() {
+        InMemoryTaskReviewStore store = new InMemoryTaskReviewStore();
+        TaskReviewStoreMaterializer materializer = new TaskReviewStoreMaterializer(store);
+
+        materializer.apply(new TaskReviewItemsAcceptedEvent(
+                "task-001",
+                List.of(Map.of("eventCode", "probe.weather", "city", "shenzhen")),
+                List.of("msg-001"),
+                1,
+                3));
+        materializer.apply(new TaskReviewAttemptClosedEvent(
+                "task-001",
+                "msg-001",
+                "attempt-001",
+                1,
+                "worker-stale",
+                "batch-001",
+                "EXPIRED",
+                "LEASE_EXPIRED"));
+
+        TaskReviewItem expiredItem = store.findItem("task-001", "msg-001").orElseThrow();
+        assertEquals("EXPIRED", expiredItem.status());
+        assertEquals("LEASE_EXPIRED", expiredItem.finalReason());
+        assertEquals("attempt-001", expiredItem.attemptId());
+        assertEquals("worker-stale", expiredItem.workerId());
+
+        materializer.apply(new TaskReviewWorkTerminalEvent(
+                "task-001",
+                "msg-001",
+                "SUCCESS",
+                "BUSINESS_SUCCESS",
+                1,
+                3,
+                "probe.weather",
+                "worker-steady",
+                "batch-002",
+                "attempt-002",
+                null,
+                null,
+                "payload://result/msg-001",
+                Instant.parse("2026-05-29T02:00:00Z"),
+                Instant.parse("2026-05-29T02:01:00Z"),
+                Instant.parse("2026-05-29T02:01:05Z"),
+                Instant.parse("2026-05-29T02:01:12Z"),
+                Instant.parse("2026-05-29T02:01:12Z"),
+                Map.of("ok", true)));
+
+        TaskReviewItem terminalItem = store.findItem("task-001", "msg-001").orElseThrow();
+        assertEquals("SUCCESS", terminalItem.status());
+        assertEquals("BUSINESS_SUCCESS", terminalItem.finalReason());
+        assertEquals("attempt-002", terminalItem.attemptId());
+        assertEquals("worker-steady", terminalItem.workerId());
+
+        List<TaskReviewAttempt> attempts = store.listAttempts("task-001", "msg-001");
+        assertEquals(2, attempts.size());
+        assertEquals("attempt-001", attempts.get(0).attemptId());
+        assertEquals("EXPIRED", attempts.get(0).status());
+        assertEquals("LEASE_EXPIRED", attempts.get(0).finalReason());
+        assertEquals("attempt-002", attempts.get(1).attemptId());
+        assertEquals("SUCCEEDED", attempts.get(1).status());
+        assertEquals("SUCCESS", attempts.get(1).finalReason());
+    }
+
+    @Test
     void acceptedEventAfterTerminalDoesNotEraseFinalFields() {
         InMemoryTaskReviewStore store = new InMemoryTaskReviewStore();
         store.upsertItem("task-001", terminalItem());

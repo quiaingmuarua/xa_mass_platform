@@ -1626,6 +1626,31 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         ));
     }
 
+    /**
+     * Registers a listener that fires synchronously when one concrete task work
+     * attempt closes, including retryable failure or lease-expiry attempts that
+     * may be followed by a later successful attempt.
+     */
+    public void addTaskWorkAttemptClosedListener(TaskWorkAttemptClosedListener listener) {
+        Objects.requireNonNull(listener, "listener");
+        requireStartedTaskEvents().addTaskWorkAttemptClosedListener((task, event) -> listener.onTaskWorkAttemptClosed(
+                new com.xa.mass.sdk.model.TaskWorkAttemptClosedNotification(
+                        event.taskId(),
+                        task == null ? Map.of() : task.getSharedConfig(),
+                        new com.xa.mass.sdk.model.TaskWorkAttemptClosedSnapshot(
+                                event.taskId(),
+                                event.messageId(),
+                                event.attemptId(),
+                                event.attemptNo(),
+                                event.workerId(),
+                                event.batchId(),
+                                event.status() == null ? null : event.status().name(),
+                                event.finalReason() == null ? null : event.finalReason().name()
+                        )
+                )
+        ));
+    }
+
     private TaskCommandService requireStartedTaskCommands() {
         TaskCommandService taskCommands = requireStartedEngine().getConfig().getTaskCommandService();
         if (taskCommands == null) {
