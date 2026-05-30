@@ -1,21 +1,25 @@
 # Projection Infrastructure Retirement Roadmap
 
-Status: ready for PIR-0 inventory. Do not execute deletion slices until PIR-0
-classifies every remaining projection consumer. The prerequisite
+Status: PIR-0 inventory, PIR-2 server review storage localization, PIR-3
+SDK `taskDetailStore(...)` removal, PIR-4 shared-infra deletion, and PIR-5
+guard/baseline updates are implemented in the current worktree. See
+[`PROJECTION_INFRASTRUCTURE_RETIREMENT_INVENTORY.md`](./PROJECTION_INFRASTRUCTURE_RETIREMENT_INVENTORY.md).
+The prerequisite
 `REVIEW_MATERIALIZATION_PIPELINE_ROADMAP.md` has landed: production
-review/export writes now flow through the queued materializer, while
-`TaskDetailStore` remains the temporary persistence backing.
+review/export writes now flow through the queued materializer. Server review
+read/write is now backed by server-local review stores instead of
+`TaskDetailStore`.
 
 This roadmap retires `TaskDetailStore`, `TaskMessageProjection`,
 `TaskMessageAttemptProjection`, and `com.xa.mass.storage.api.projection.*`
 from `mass-storage-api`. The target state is that no shared infrastructure
 module carries projection row types or projection query/write methods.
 
-This is a deletion roadmap, not the replacement pipeline roadmap. Build and
-verify the server-owned review report queue and `TaskDetailStore`-backed
-materializer in
+This is a deletion roadmap, not the replacement pipeline roadmap. The
+server-owned review report queue from
 [`REVIEW_MATERIALIZATION_PIPELINE_ROADMAP.md`](./REVIEW_MATERIALIZATION_PIPELINE_ROADMAP.md)
-first.
+must remain the write boundary while this roadmap removes the old shared
+projection contracts.
 
 This roadmap uses the task split below:
 
@@ -36,22 +40,25 @@ RMP completed on 2026-05-29 with these proofs:
 
 - server production review writes use `QueueBackedTaskReviewReadModelWriter`
 - accepted and terminal report events are applied through
-  `TaskDetailStoreReviewMaterializer`
-- memory backing is proven through `InMemoryTaskShellStore`
-- JDBC backing is proven through H2 `JdbcStorageRuntime.taskDetailStore()`
+  `TaskReviewStoreMaterializer`
+- memory backing is proven through `InMemoryTaskReviewStore`
+- JDBC review materialization is now server-owned through
+  `JdbcTaskReviewStore`, including server-owned table initialization for
+  `xa_task_review_item` and `xa_task_review_attempt`
 - architecture guards keep review queue/materializer types out of shared infra
   and engine production
 
-Remaining PIR residue:
+Retired PIR residue:
 
-- `TaskDetailStore`
+- `TaskDetailStore` in shared infra and testing framework residue
 - `TaskDetailStore.TaskMessageProjection`
 - `TaskDetailStore.TaskMessageAttemptProjection`
 - `com.xa.mass.storage.api.projection.*`
 - `InMemoryTaskShellStore implements TaskDetailStore`
 - `JdbcTaskShellStore implements TaskDetailStore`
-- `JdbcTaskCompatibilityProjection`
-- SDK `taskDetailStore(...)` wiring
+- `JdbcTaskCompatibilityProjection` (process-local in-memory projection helper
+  inside `mass-storage-jdbc`)
+- testing-framework callers
 - projection-oriented tests and helpers listed in PIR-0 inventory scope
 
 ## Problem Statement
@@ -65,15 +72,18 @@ projection infrastructure itself remains intact in `mass-storage-api`:
 - `InMemoryTaskShellStore implements TaskDetailStore` (mixed implementation)
 - `JdbcTaskShellStore implements TaskDetailStore` (mixed implementation)
 - `JdbcTaskCompatibilityProjection` (JDBC projection delegation)
-- SDK `MassEngineBuilder.taskDetailStore()` / `EngineConfig.taskDetailStore`
 
 The projection was hidden from engine, not removed from the platform. Server
-writes the same rows through `TaskDetailStoreTaskReviewReadModel`, and stats
-queries like `getTaskMessageStats` aggregate projection rows as if they were
-real-time data. On high-volume production workloads this is both an ownership
-problem and a truth-boundary problem: DB/review materialization rows can lag
-runtime and must not become scheduling, finality, retry, lease, or progress
-truth.
+used to write the same rows through the queued RMP materialization path:
+`QueueBackedTaskReviewReadModelWriter` ->
+`InProcessTaskReviewReportQueue` -> `TaskReviewStoreMaterializer` ->
+`TaskReviewStore`. The PIR deletion work then removed the shared-infra residue
+and test/framework residue: `TaskDetailStore` no longer exists in
+`mass-storage-api`, task-shell stores no longer implement it, and testing
+callers no longer consume it. On high-volume production workloads the boundary
+still matters:
+review materialization rows can lag runtime and must not become scheduling,
+finality, retry, lease, or progress truth.
 
 ## Current Code Observations
 
@@ -86,35 +96,45 @@ truth.
   `processingCount()`, `pendingCount()`, `successRate()`, `failureRate()`.
   This covers runtime progress and terminal-policy needs. It is not a semantic
   replacement for review/export materialization coverage stats.
-- Server review (`TaskReviewReadModel.loadStats`) reads from
-  `TaskDetailStore.getTaskMessageStats` -- projection row aggregation. This
-  must be split by meaning: runtime/progress stats should use runtime truth,
-  while review/export materialization stats, if needed, must stay server-local
-  and explicitly non-runtime.
-- Server review items (`TaskReviewReadModel.loadItems`) reads from
-  `TaskDetailStore.getTaskMessageProjections` -- these carry input, output,
-  timing, error, retry fields. This is the only consumer that needs
-  row-level projection data for review/export.
-- `TaskDetailStoreTaskReviewReadModel` implements both read model and writer.
-  The writer receives `recordItemsAccepted` and `recordWorkFinal` from
-  server-side listeners. These events already carry all the fields needed
-  for review row assembly.
+- Server review writes are now queued by
+  `QueueBackedTaskReviewReadModelWriter` and materialized by
+  `TaskReviewStoreMaterializer` into server-local `TaskReviewStore` backing.
+  Engine production must not be reintroduced as a DB/review materialization
+  writer.
+- Server review (`TaskReviewReadModel.loadStats`) now reads server-local
+  materialization coverage from `TaskReviewStore.stats()`. PIR-0 found no
+  production caller outside server review that requires these stats as runtime
+  progress, so no SDK runtime stats port is introduced by PIR-1.
+- Server review items (`TaskReviewReadModel.loadItems`) now read from
+  server-local review stores. These rows carry input, output, timing, error,
+  retry fields for review/export only.
+- `TaskDetailStoreTaskReviewReadModel` and `TaskDetailStoreReviewMaterializer`
+  have been removed from server production. Production server wiring uses
+  `TaskReviewStoreTaskReviewReadModel`, `TaskReviewStoreMaterializer`, and
+  `QueueBackedTaskReviewReadModelWriter`.
 - `InMemoryTaskShellStore` and `JdbcTaskShellStore` both
   `implements TaskDetailStore` alongside `TaskShellStore` and
   `TaskShellLifecycleQuery`. This forces task shell storage implementations
   to carry projection write/read/stats logic even though no engine
   production path uses it.
-- SDK `MassEngineBuilder.taskDetailStore()` and
-  `MassSdk.EngineOptions.taskDetailStore()` still accept a `TaskDetailStore`
-  and wire it into `EngineConfig`. Engine does not consume it in production.
-- `JdbcTaskCompatibilityProjection` is a JDBC helper class inside
-  `mass-storage-jdbc` that `JdbcTaskShellStore` delegates projection
-  operations to. It owns the SQL for projection CRUD and stats.
+- SDK production APIs no longer expose `taskDetailStore(...)`, and
+  `EngineConfig` no longer carries a `TaskDetailStore`. Engine does not consume
+  review materialization storage in production.
+- `JdbcTaskCompatibilityProjection` is a process-local in-memory helper class
+  inside `mass-storage-jdbc` that `JdbcTaskShellStore` delegates projection
+  operations to. It does not own durable JDBC projection SQL, tables, or DDL.
+  The only current JDBC migration creates `xa_task` task-shell tables.
 - Engine test residue (`TaskCompatibilityProjectionAccess`,
   `ProjectionAwareTaskManager`, `ProjectionTestSupport`,
   `CompatibilityProjectionAwait`, `TaskManagerLifecycleTest`,
   `SimpleTaskDispatchBinderTest`) still uses `TaskDetailStore` for
   secondary proof. These need a test-local replacement or retirement.
+- `xa-mass-engine` production still has a `mass-storage-api` dependency for
+  non-projection control-plane contracts (`TaskShellStore`,
+  `TaskShellLifecycleQuery`, `RuleStorage`). PIR must not add any DB/review
+  materialization dependency to engine production. Whether engine production
+  should be fully detached from `mass-storage-api` is a broader engine/storage
+  boundary task and must be recorded separately during PIR-0 if it remains.
 
 ## Boundary Decision
 
@@ -126,6 +146,23 @@ Review/export item data is a server read-model concern. The server owns the
 write path (via `TaskReviewReadModelWriter`) and the read path (via
 `TaskReviewReadModel`). The storage backing for review rows should be
 server-local, not shared infrastructure.
+
+The queue introduced by RMP is the boundary that keeps review/DB
+materialization outside the engine runtime kernel. Engine production must not
+consume server review-store contracts, materializer contracts, projection row
+types, or DB-backed review APIs as part of this roadmap. Engine tests may keep
+temporary storage/projection dependencies until their residue is migrated or
+retired.
+
+Strict target: `xa-mass-engine` production should not be a DB module consumer.
+The current production `mass-storage-api` dependency is pre-existing
+non-projection residue for task-shell/rule contracts, not a valid path for PIR
+review materialization. PIR must not add any production dependency from engine
+to `mass-storage-memory`, `mass-storage-jdbc`, server review stores, or
+projection types. If the owner chooses to remove the remaining
+`mass-storage-api` production dependency from engine, that is an explicit
+engine/storage boundary expansion or follow-up roadmap, not an implicit PIR
+side effect.
 
 Review materialization stats may exist only as server-local read-model coverage
 or export diagnostics. They must be named and documented as materialized-review
@@ -193,6 +230,12 @@ removed from `mass-storage-api`.
 5. No engine scheduling or terminal policy changes. Engine already uses
    `TaskWorkStats` exclusively.
 6. No rule-domain work. `RuleStorage` is not affected.
+7. No broad engine/storage dependency extraction. PIR may identify the current
+   production `xa-mass-engine -> mass-storage-api` dependency as residue, but
+   this roadmap removes projection infrastructure and prevents review DB
+   materialization from returning to engine. A full replacement for
+   `TaskShellStore`, `TaskShellLifecycleQuery`, or `RuleStorage` ownership is
+   a separate boundary roadmap unless PIR-0 explicitly expands scope.
 
 ## Hard Rules
 
@@ -216,6 +259,16 @@ removed from `mass-storage-api`.
 6. This roadmap must not introduce `RuntimeTaskShell`,
    `RuntimeTaskShellStore`, or any equivalent second task-shell store. Runtime
    task state must use runtime-state vocabulary and owners.
+7. `xa-mass-engine` production must not import or depend on any review-store,
+   materializer, projection-row, or DB implementation module introduced by
+   PIR. Test scope may keep temporary storage dependencies until the relevant
+   test residue is retired.
+8. No PIR replacement path may route server review/export writes back through
+   engine production. The write boundary is server queue -> server
+   materializer -> server-owned backing.
+9. `xa-mass-engine` production POM must not gain `mass-storage-memory`,
+   `mass-storage-jdbc`, or server review-store dependencies. Test-scope
+   storage dependencies are allowed only as classified residue.
 
 ## Slice PIR-0: Inventory Remaining Consumers
 
@@ -250,6 +303,11 @@ Scope:
    does not accidentally treat DB task shell list/status/project queries as
    runtime task APIs. If a follow-up is needed, it belongs to a task-shell
    command/query split, not to projection retirement.
+7. Inventory current production `xa-mass-engine -> mass-storage-api`
+   dependency reasons separately from projection consumers. Projection
+   retirement must not add new engine DB dependencies; any desire to remove
+   the remaining non-projection storage-api dependency belongs to a separate
+   engine/storage boundary decision unless explicitly added to PIR.
 
 Acceptance:
 
@@ -260,6 +318,9 @@ Acceptance:
 4. The inventory explicitly states that `TaskShellStore` is DB/control-plane
    shell storage and that runtime task state is not named or modeled as a
    runtime task shell.
+5. The inventory explicitly states whether any production engine DB/storage
+   dependency remains, and whether it is projection-related, control-plane
+   shell-related, rule-related, or out of PIR scope.
 
 ## Slice PIR-1: Separate Runtime Progress From Review Materialization Stats
 
@@ -267,13 +328,19 @@ Goal: stop projection row aggregation from pretending to be runtime progress
 truth while preserving explicitly named, server-local review materialization
 coverage if review/export still needs it.
 
-Stats query port decision: the server review read-model must not directly
-import or call `TaskWorkRuntime`. Instead, expose a narrow SDK-level query
-port (e.g. `TaskQueryOperations.getTaskWorkStats(taskId)` or a dedicated
-`TaskReviewStatsSource` interface) that returns `TaskWorkStats`. The server
-review implementation calls this port; the SDK/engine wires the port to
-`TaskWorkRuntime.stats()` internally. This keeps the server -> engine
-dependency bounded to a query contract, not an internal runtime type.
+Stats query port decision is conditional after PIR-0. Do not introduce a new
+SDK/server/engine runtime stats port unless PIR-0 proves that the current
+review stats are actually being presented as runtime progress. If
+`TaskReviewReadModel.loadStats()` is only review/export materialization
+coverage, keep it server-local and rename/document it as materialization
+coverage instead of introducing a runtime query dependency.
+
+If runtime progress stats are required by a server surface, the server
+read-model must not directly import or call `TaskWorkRuntime`, and engine must
+not become DB-backed again. Expose a narrow SDK-level query port (for example
+`TaskQueryOperations.getTaskWorkStats(taskId)` or a dedicated
+`TaskReviewStatsSource` interface) that returns `TaskWorkStats`; SDK/engine
+assembly wires that port to `TaskWorkRuntime.stats()` internally.
 
 Do not use a listener/counter approach for runtime progress stats. Runtime
 progress must come from queue/runtime truth, not an eventually-consistent
@@ -284,24 +351,28 @@ The only live runtime stats surface should be aggregate runtime state needed for
 progress/monitoring. Message-level detail should stay in server-local review
 materialization for review/export or move later to trace/archive.
 
-Scope:
+Scope after PIR-0 decides runtime-vs-materialization semantics:
 
-1. Define or extend a narrow stats query port in the SDK query surface
-   (e.g. on `TaskQueryOperations`) that returns `TaskWorkStats` for a
-   given `taskId`. Engine wires this to `TaskWorkRuntime.stats()`. This port is
-   for runtime progress/monitoring only.
-2. `TaskReviewReadModel.loadStats()` is split or redefined so runtime progress
+1. If `TaskReviewReadModel.loadStats()` is materialization coverage only,
+   keep stats server-local and rename/document the response fields so they are
+   not runtime progress truth.
+2. If runtime progress stats are required, define or extend a narrow stats
+   query port in the SDK query surface (e.g. on `TaskQueryOperations`) that
+   returns `TaskWorkStats` for a given `taskId`. Engine wires this to
+   `TaskWorkRuntime.stats()` internally. This port is for runtime
+   progress/monitoring only and must not use DB/projection rows.
+3. `TaskReviewReadModel.loadStats()` is split or redefined so runtime progress
    fields come from the stats query port, while any review/export coverage
    fields come from the server-local review store and are labeled as
    materialization stats.
-3. Remove `TaskMessageStats` and `TaskMessageAttemptStats` from
+4. Remove `TaskMessageStats` and `TaskMessageAttemptStats` from
    `TaskDetailStore` after all consumers are migrated.
-4. If any consumer needs stats that `TaskWorkStats` does not cover (e.g.
+5. If any consumer needs stats that `TaskWorkStats` does not cover (e.g.
    attempt-level active/running/failed counts), first classify whether that is
    runtime progress, review materialization coverage, or trace/archive
    analytics. Only runtime-progress gaps may extend `TaskWorkStats` or runtime
    queries. Do not keep projection row aggregation as a runtime fallback.
-5. Update review/console tests so runtime progress assertions use
+6. Update review/console tests so runtime progress assertions use
    runtime-sourced stats, while review/export materialization assertions stay
    explicitly read-model scoped.
 
@@ -311,16 +382,23 @@ Acceptance:
    `TaskDetailStore.getTaskMessageAttemptStats`.
 2. `TaskMessageStats` and `TaskMessageAttemptStats` classes are deleted from
    `TaskDetailStore`.
-3. Stats query port exists in SDK query surface; server review calls it.
-4. Server review does not import `TaskWorkRuntime` directly.
-5. Review stats tests distinguish runtime progress assertions from
+3. If runtime progress stats are required, stats query port exists in SDK
+   query surface and server review calls it.
+4. If runtime progress stats are not required, review stats are explicitly
+   server-local materialization coverage and no new runtime query port is
+   introduced.
+5. Server review does not import `TaskWorkRuntime` directly.
+6. Engine production does not import server review store/materializer types or
+   DB implementation modules for stats.
+7. Review stats tests distinguish runtime progress assertions from
    materialization coverage assertions.
-6. No message-level real-time projection query is introduced.
+8. No message-level real-time projection query is introduced.
 
 ## Slice PIR-2: Server Review Storage Localization
 
 Goal: move review item storage from shared `TaskDetailStore` to a
-server-local review store.
+server-local review store. This is the hard blocker for deleting
+`TaskDetailStore`.
 
 Module boundary rule: all review store record types, interfaces, in-memory
 implementations, and JDBC implementations must live in `xa-mass-server` (or
@@ -356,6 +434,9 @@ Scope:
    materialization only. It must not provide scheduling, lease, retry,
    finality, or runtime progress truth, and it must not expose a live
    message-level real-time query API.
+8. Add or update an architecture guard proving `xa-mass-engine` production
+   does not import the server-local review store, materializer, or queue
+   contracts.
 
 Acceptance:
 
@@ -371,6 +452,9 @@ Acceptance:
    it does not depend on `mass-storage-jdbc` projection helpers for DDL.
 7. Review store APIs are review/export materialization APIs only; no caller
    can use them as runtime task truth.
+8. Engine production has no dependency on the server-local review store or
+   review materialization path; engine test-only dependencies are explicitly
+   classified as temporary residue.
 
 ## Slice PIR-3: SDK `taskDetailStore()` Removal
 
@@ -385,12 +469,16 @@ Scope:
 5. If any SDK test or server wiring still needs a `TaskDetailStore` reference
    for non-engine purposes, that reference must come from a server-local
    factory, not from SDK/engine config.
+6. Do not replace SDK `taskDetailStore(...)` with any engine-facing review
+   store or DB materialization hook.
 
 Acceptance:
 
 1. SDK public API has no `TaskDetailStore` parameter or method.
 2. `EngineConfig` has no `taskDetailStore` field.
 3. SDK compiles and engine starts without `TaskDetailStore` wiring.
+4. `xa-mass-engine` production does not gain any new storage, DB, review-store,
+   or projection dependency from SDK removal.
 
 ## Slice PIR-4: `TaskDetailStore` Deletion From Shared Infra
 
@@ -459,6 +547,12 @@ Scope:
    - no shared module exposes a live message-level projection lookup
    - engine production must not import any server-local review store type
    - SDK public API must not accept review/projection store parameters
+   - engine production must not import `TaskDetailStore`,
+     `com.xa.mass.storage.api.projection.*`, server review-store types, or any
+     DB implementation module
+   - engine production POM must not add `mass-storage-memory`,
+     `mass-storage-jdbc`, or server review-store dependencies outside test
+     scope
 2. Update `EngineProofOwnershipGuardTest` allowlist to remove
    `TaskDetailStore` from the known storage imports (it should now fail
    if anyone adds it back).
@@ -503,26 +597,44 @@ PIR-0 -> PIR-1 -> PIR-2 -> PIR-3 -> PIR-4 -> PIR-5
 ```
 
 PIR-1 (stats) and PIR-2 (review storage) can run in parallel after PIR-0
-lands, because they address independent consumer categories. PIR-3 and PIR-4
-depend on PIR-2 completing first -- SDK config removal and interface deletion
-require all production callers to have migrated.
+lands only if PIR-0 proves that runtime-progress stats and review
+materialization storage are independent. If `loadStats()` is only review
+materialization coverage, fold the stats work into PIR-2 instead of adding a
+new SDK runtime stats port. PIR-3 and PIR-4 depend on PIR-2 completing first
+-- SDK config removal and interface deletion require all production callers to
+have migrated.
 
-PIR-1 is the highest-value quick win: it stops projection row aggregation
-from pretending to be real-time stats on production workloads.
+PIR-0 found no production caller outside server review that needs projection
+stats as runtime progress. Do not introduce a runtime stats port unless that
+evidence changes. PIR-2, PIR-3, PIR-4, and PIR-5 have landed in the current
+worktree. Any future engine/storage dependency extraction is now a separate
+boundary roadmap, not remaining PIR work.
 
-## Verification Candidates
-
-```powershell
-mvn -pl platform_infra/mass-storage-api -am test
-```
-
-```powershell
-mvn -pl xa-mass-server -am '-Dtest=TaskApiControllerTest,ControlConsoleRoutingIntegrationTest' '-Dsurefire.failIfNoSpecifiedTests=false' test
-```
+## Verification
 
 ```powershell
-mvn -pl xa-mass-engine -am '-Dtest=EngineProofOwnershipGuardTest,EngineSchedulingCoreArchitectureGuardTest' '-Dsurefire.failIfNoSpecifiedTests=false' test
+mvn -pl xa-mass-server,platform_infra/mass-storage-api,platform_infra/mass-storage-memory,platform_infra/mass-storage-jdbc,xa-mass-engine,transport/transport_runtime,platform_infra/mass-runtime-redis,xa-mass-testing -am "-Dtest=*TaskReview*,TaskApiControllerTest,ServerMainSourceArchitectureGuardTest,JdbcStorageH2Test,JdbcStoragePostgresTest,TaskManagerLifecycleTest,SimpleTaskDispatchBinderTest,EngineProofOwnershipGuardTest,EngineSchedulingCoreArchitectureGuardTest,EngineKernelConvergenceArchitectureGuardTest,RuntimeTaskResultIngestChannelTest,RedisRuntimeTraceIntegrationTest,SoakSourceArchitectureGuardTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 ```
 
-The exact test list should be corrected in PIR-0 after the full consumer
-inventory is complete.
+Result on 2026-05-30: `BUILD SUCCESS`.
+
+Environment-dependent skips:
+
+- `RedisRuntimeTraceIntegrationTest`: skipped when Redis is unavailable.
+- `JdbcStoragePostgresTest`: skipped when Docker/Testcontainers PostgreSQL is
+  unavailable.
+
+Residue scans:
+
+```powershell
+rg "TaskDetailStore|TaskMessageProjection|TaskMessageAttemptProjection|TaskMessageStats|TaskMessageAttemptStats|com\.xa\.mass\.storage\.api\.projection|ProjectionAwareTaskManager|ProjectionTestSupport|CompatibilityProjectionAwait|TaskCompatibilityProjectionAccess" -n -g "*.java" platform_infra xa-mass-engine xa-mass-testing transport xa-mass-server xa-mass-sdk integrations
+```
+
+Expected result after PIR-5: only architecture guard forbidden-token strings
+in tests.
+
+```powershell
+rg "TaskDetailStore|TaskMessageProjection|TaskMessageAttemptProjection|ProjectionTestViews|CompatibilityMessageView|CompatibilityAttemptView|compatibilityProjection|message projection|attempt projection" -n README.md README.zh-CN.md doc platform_infra/README.md platform_infra/mass-storage-api/README.md xa-mass-engine/doc xa-mass-sdk/README.md xa-mass-testing/README.md -g "*.md" -g "!doc/archive/**" -g "!*ROADMAP.md" -g "!*INVENTORY.md"
+```
+
+Expected result after PIR-5: no output.

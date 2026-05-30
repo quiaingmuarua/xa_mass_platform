@@ -550,7 +550,7 @@ Query parameters:
 Response notes:
 
 - returns committed stable-final rows from `TaskResultRuntime`, not
-  `TaskDetailStore` projection
+  server review materialization
 - response fields include `mode`, `taskTerminal`, `archiveReady`, `items`,
   `nextAfterSeq`, `hasMore`, and optional `archiveUrl`
 - callers own checkpointing through `afterSeq`
@@ -732,7 +732,7 @@ Notes:
 - `eventBindings` remains the richer capability read model
 - each row includes `fieldSources`, a field-to-owner label map. Expected
   owners are `declaration`, `runtime`, `transport`,
-  `declarationOrTransport`, and `compatibilityProjection`.
+  `declarationOrTransport`, and review materialization evidence.
 
 ### 5.7 Worker Capability And State Reports
 

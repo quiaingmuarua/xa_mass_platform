@@ -62,11 +62,9 @@ Current owner vocabulary:
   documenting the split more narrowly
 - `xa-mass-trace` is the current operator-facing read path for canonical trace
   artifacts; it does not own a second event schema or lifecycle truth
-- current bounded compatibility residue lives behind engine-internal owners plus
-  neutral storage-edge projection records; legacy message-model naming is
-  intentionally not part of the active public/kernel vocabulary
-- `TaskMessageProjection` / `TaskMessageAttemptProjection` are the current
-  storage-edge compatibility residue shapes
+- current bounded review/export materialization is server-local and lagging;
+  legacy message-model naming is intentionally not part of the active
+  public/kernel vocabulary
 - `WorkerContext` is retired historical compatibility vocabulary, not active
   SDK/server/storage/trace truth. It is not an engine scheduling truth and must
   not be reintroduced as the worker capability or resource-lifecycle owner.
@@ -90,7 +88,7 @@ Keep one canonical truth per layer:
 - HTTP API: typed controller-edge DTOs plus `ApiResponse<T>`
 - SDK API: `MassTaskShellCreateRequest`, `MassTaskItemBatchAppendRequest`, `EventDefinition`
 - engine/core: `Task` aggregate truth plus matching, lifecycle, terminal
-  semantics, and engine-internal bounded compatibility projection handling
+  semantics, and runtime-first result convergence
 - transport runtime: transport-neutral dispatch/result/system-event seams
 - adapter layer: protocol-specific frame I/O and adapter-local codec only
 
@@ -126,9 +124,6 @@ Boundary rules:
     `TaskResultService`, `TaskWorkRuntime.applyResultWithContext(...)`, and the
     result-runtime/public-result boundary documented in
     `RESULT_BOUNDARY_BASELINE.md`
-  - bounded message/attempt compatibility state is carried through
-    `TaskMessageProjection` / `TaskMessageAttemptProjection` plus
-    engine-internal projection access
   - `TaskManager` remains the engine-internal orchestration facade; cross-module
     callers should prefer `TaskCommandService`, `TaskQueryService`,
     `TaskResultIngestFacade`, `TaskEventService`, and runtime ports
@@ -146,20 +141,19 @@ Read these before inferring architecture from historical vocabulary:
 3. `xa-mass-engine/src/main/java/com/xa/mass/engine/TaskResultService.java`
 4. `platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/api/TaskWorkRuntime.java`
 5. `platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/api/TaskResultRuntime.java`
-6. `platform_infra/mass-storage-api/src/main/java/com/xa/mass/storage/api/TaskDetailStore.java`
-7. `doc/RESULT_BOUNDARY_BASELINE.md`
-8. `xa-mass-trace/README.md`
-9. `doc/TRACE_CONTRACT.md`
+6. `doc/RESULT_BOUNDARY_BASELINE.md`
+7. `xa-mass-trace/README.md`
+8. `doc/TRACE_CONTRACT.md`
 
 Read them to verify three things quickly:
 
 - runtime admission happens through `TaskWorkRuntime`, not through a
   task-message CRUD mainline
 - callback/expiry/result convergence is runtime-first; verify the split between
-  runtime apply truth, stable-final result rows, and compatibility residue from
-  the active result baseline and code
-- bounded message/attempt reads live behind explicit compatibility surfaces and
-  are not the default engine query model
+  runtime apply truth, stable-final result rows, and server-local review
+  materialization from the active result baseline and code
+- bounded message/attempt review reads are server/API materialization surfaces
+  and are not the default engine query model
 - canonical trace diagnosis should start from `xa-mass-trace` over sink output,
   not from MDC string logs or ad hoc projection reads
 
@@ -183,11 +177,12 @@ Read them to verify three things quickly:
   dispatch, and terminal semantics come from `Task.contract`
 - aggregate truth stays on `Task.project`, `Task.user`, and `Task.sharedConfig`
 - per-item runtime truth stays on the runtime ingress item and dispatch/result
-  flow; bounded compatibility projection may retain payload summary or
-  `payloadRef`
+  flow; server-local review materialization may retain payload summary or
+  `payloadRef` for operator views
 - `Task.intakeStatus` is the append-window truth; the legacy boolean intake projection has been removed from the task model
 - public contracts do not define a dedicated routing-code field
-- engine-provided message/attempt reads remain bounded compatibility helpers
+- message/attempt reads are server-local review/export helpers, not engine
+  runtime truth
 
 Lifecycle and trace detail live in:
 

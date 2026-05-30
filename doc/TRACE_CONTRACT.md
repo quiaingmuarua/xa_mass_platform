@@ -284,7 +284,7 @@ Stable assignment-oriented fields are:
 
 `xa-mass-trace assignment` and schedule scenario analyzers must read these
 fields from canonical JSONL files through the trace query backend. They must
-not read MDC logs, compatibility message/attempt projection, task-detail DB
+not read MDC logs, server review rows, task-detail DB
 tables, or runtime queues. Schedule trace explains why the scheduler made or
 skipped a decision; it does not participate in runtime correctness, lease
 acceptance, retry budgeting, dispatch ownership, or terminal convergence.
@@ -369,10 +369,10 @@ The canonical model must be able to represent these flows:
 - `Task`: `NEW -> READY`, `READY -> RUNNING`, `RUNNING/PAUSED/BLOCKED -> TERMINAL`
 - session shells may drain their current runtime work set without emitting `TASK_TERMINAL_CLOSED`; explicit or policy-driven closure remains the terminal trigger
 - task progress reconciliation snapshots
-- message projection: `INIT -> ASSIGNED -> RUNNING -> SUCCESS/FAILED/EXPIRED`
+- review item materialization: `INIT -> ASSIGNED -> RUNNING -> SUCCESS/FAILED/EXPIRED`
   - `EXPIRED` remains a session/control-path logical state; `BATCH` lease expiry may still emit `LEASE_EXPIRED`
     attempt trace but converges the logical message through retry reset or `FAILED + RETRY_EXHAUSTED`
-- attempt projection: `CREATED -> LEASED -> DISPATCHED -> ... -> final`
+- review attempt materialization: `CREATED -> LEASED -> DISPATCHED -> ... -> final`
 - retry reset without falsely claiming logical finality
 - worker lock, capacity reservation, and resource release transitions
 - worker lock acquire / release

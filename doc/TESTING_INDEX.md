@@ -364,7 +364,7 @@ Proves:
 - project/submitter/worker/task flows survive real wiring
 - representative assignment, polling, routing, and worker reuse scenarios survive real server + SDK + engine integration
 - lifecycle/result convergence gate asserts task aggregate and runtime stats/lease
-  truth first; it does not use compatibility message projection as its main
+  truth first; it does not use server review rows as its main
   proof surface
 
 Does not prove:
@@ -380,18 +380,18 @@ These suites protect bounded compatibility/read-model and diagnostic behavior.
 They are useful supporting lanes, but they are not the representative
 server-scheduling E2E gate and must not re-own lifecycle or scheduling truth.
 
-### Projection-First Proof Is Downgraded
+### Review-Row-First Proof Is Downgraded
 
 The following test shape is now downgraded:
 
 - mutate runtime state or ingest a result
-- immediately read `TaskMessageProjection` or attempt projection
-- treat that compatibility projection as authoritative proof of lifecycle correctness
+- immediately read server review item/attempt rows
+- treat that review materialization as authoritative proof of lifecycle correctness
 
 Rewrite that shape as one of:
 
 - local kernel invariant proof using runtime/lease/finality truth
-- bounded residue proof that explicitly awaits async compatibility residue convergence
+- bounded residue proof that explicitly awaits async review materialization convergence
 - integrated proof in Boot-shell E2E, cross-language black-box, or chaos when the real risk is wiring or distributed edge behavior
 - disconnect/recovery robustness by itself
 
@@ -447,16 +447,15 @@ Proves:
 
 Report-only support:
 
-- chaos reports may include bounded compatibility projection under
-  `task.compatibilityProjection` for diagnosis, but those rows are not the
+- chaos reports may include bounded review rows under `task.reviewMessages` for
+  diagnosis, but those rows are not the
   correctness owner for chaos smoke success/failure
 - `run-chaos-smokes.sh` enforces a source guard: PR-gated chaos smoke runners
   may not reference projection helpers or direct task-detail-store projection
-  access. Projection reads remain allowed only in explicit report/audit support
-  or non-gated runners that have not been promoted.
+  access. Review reads remain allowed only in explicit report/audit support.
 - `run-perf-smokes.sh` enforces the same ownership shape for perf smokes:
   smoke runners must stay runtime/timing-first and must not use compatibility
-  message/attempt projection stats as their proof surface.
+  message/attempt review stats as their proof surface.
 - current perf smokes model production risk directly: workload mix reserves an
   interactive lane worker so the smoke measures lane isolation under bulk
   pressure, and interactive retry wakeup starts `RuntimeReadyDispatchPump` so

@@ -1,16 +1,10 @@
 package com.xa.mass.api.review;
 
-import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.UserRef;
 import com.xa.mass.sdk.model.TaskItemBatchAppendReceipt;
 import com.xa.mass.sdk.model.TaskWorkFinalNotification;
 import com.xa.mass.sdk.model.TaskWorkFinalSnapshot;
-import com.xa.mass.storage.api.TaskDetailStore;
-import com.xa.mass.storage.api.TaskShellStore;
 import com.xa.mass.storage.jdbc.JdbcStorageMode;
 import com.xa.mass.storage.jdbc.JdbcStorageRuntime;
-import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -25,28 +19,23 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class QueueBackedTaskReviewBackingStoreTest {
 
     @Test
-    void queuedMaterializerWorksWithInMemoryTaskDetailStoreBacking() {
-        InMemoryTaskShellStore store = new InMemoryTaskShellStore();
-        initTask(store, "task-001");
-
-        assertQueuedMaterialization(store);
+    void queuedMaterializerWorksWithInMemoryReviewStoreBacking() {
+        assertQueuedMaterialization(new InMemoryTaskReviewStore());
     }
 
     @Test
-    void queuedMaterializerWorksWithJdbcTaskDetailStoreBacking() {
+    void queuedMaterializerWorksWithJdbcReviewStoreBacking() {
         String jdbcUrl = "jdbc:h2:mem:" + UUID.randomUUID()
                 + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false";
         try (JdbcStorageRuntime runtime = JdbcStorageRuntime.create(JdbcStorageMode.JDBC_H2, jdbcUrl, "sa", "")) {
-            initTask(runtime.taskShellStore(), "task-001");
-
-            assertQueuedMaterialization(runtime.taskDetailStore());
+            assertQueuedMaterialization(new JdbcTaskReviewStore(runtime.dataSource()));
         }
     }
 
-    private static void assertQueuedMaterialization(TaskDetailStore store) {
-        TaskReviewReadModel readModel = new TaskDetailStoreTaskReviewReadModel(store);
+    private static void assertQueuedMaterialization(TaskReviewStore store) {
+        TaskReviewReadModel readModel = new TaskReviewStoreTaskReviewReadModel(store);
         try (InProcessTaskReviewReportQueue queue = new InProcessTaskReviewReportQueue(
-                new TaskDetailStoreReviewMaterializer(store), 8)) {
+                new TaskReviewStoreMaterializer(store), 8)) {
             QueueBackedTaskReviewReadModelWriter writer = new QueueBackedTaskReviewReadModelWriter(queue);
 
             writer.recordItemsAccepted(
@@ -92,11 +81,5 @@ class QueueBackedTaskReviewBackingStoreTest {
             assertEquals("attempt-002", attempts.get(0).attemptId());
             assertEquals("SUCCEEDED", attempts.get(0).status());
         }
-    }
-
-    private static void initTask(TaskShellStore store, String taskId) {
-        Task task = new Task(taskId, "name", "demoApp", 1, Map.of(), UserRef.of("u"));
-        task.setStatus(TaskStatus.RUNNING);
-        store.saveTask(task);
     }
 }

@@ -271,7 +271,6 @@ public final class TaskWorkloadMixSmokeRunner {
                                                       InMemoryTaskWorkRuntime taskWorkRuntime) {
             EngineConfig engineConfig = new EngineConfig();
             engineConfig.setTaskShellStore(taskStorage);
-            engineConfig.setTaskDetailStore(taskStorage);
             engineConfig.setTaskWorkRuntime(taskWorkRuntime);
             return engineConfig;
         }

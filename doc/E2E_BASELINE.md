@@ -22,7 +22,7 @@ Do not use Boot-shell E2E as the first home for:
 
 - the full worker-selection competition matrix
 - every scheduling/contention permutation
-- projection-first lifecycle proof
+- review-row-first lifecycle proof
 
 E2E is the platform-viability proof surface, not the only or highest-value
 proof of scheduling correctness. The full competition matrix belongs primarily
@@ -66,7 +66,8 @@ Proof-surface note:
 
 - E2E is the preferred proof surface when the real risk is integrated lifecycle wiring, host/runtime interaction, transport interplay, or distributed edge behavior
 - E2E is not where the full worker-selection competition matrix should live; keep engine-first scheduling proof for contention, redispatch, and contract-aware convergence
-- compatibility projection may still be asserted as bounded residue, but it is not the primary proof surface for lifecycle correctness
+- server review rows may still be asserted as bounded residue, but they are not
+  the primary proof surface for lifecycle correctness
 - when E2E claims trace coverage, read canonical sink output through
   `xa-mass-trace` or the same query backend path rather than asserting raw log
   strings
@@ -97,8 +98,10 @@ Assignment and capacity:
 - `minRequiredWorkerCount` gates `READY -> RUNNING`
 - `batchSize=1` multi-round dispatch completes across rounds
 - assignment skips dispatch if the task left `READY` during matching
-- each dispatch creates attempt state that remains consistent with message projection
-- retry creates a new attempt and re-queues the logical message without duplicating the compatibility message row
+- each dispatch creates runtime attempt/lease state that can later be
+  materialized for review
+- retry creates a new attempt and re-queues the logical message without
+  duplicating runtime work
 - `BATCH` lease expiry consumes retry budget as attempt loss; exhausted budget closes the item as failure rather than logical timeout
 - representative multi-task assignment survives real server + SDK + engine wiring without double assignment
 - representative worker scheduling/routing remains correct under the assignment scenarios carried by the server E2E suite
@@ -168,4 +171,5 @@ Trace coverage note:
 - E2E does not replace deterministic engine/transport invariant tests
 - scheduling correctness should be proved engine-first; E2E should prove that the same behavior survives real host/runtime wiring
 - local kernel tests should continue to prove retry, expiry, release, finality, and convergence ordering directly
-- what should move upward into E2E/chaos/black-box is projection-first proof style for integrated or distributed behavior
+- what should move upward into E2E/chaos/black-box is review/read-model proof
+  style for integrated or distributed behavior

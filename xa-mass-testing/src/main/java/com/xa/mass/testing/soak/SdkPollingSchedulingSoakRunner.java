@@ -220,7 +220,6 @@ public final class SdkPollingSchedulingSoakRunner {
                     .engine(engine -> {
                         engine.enabled(true)
                                 .taskShellStore(taskStorage)
-                                .taskDetailStore(taskStorage)
                                 .taskWorkRuntime(taskWorkRuntime);
                         if (traceSink != null) {
                             engine.executionEventSink(traceSink);

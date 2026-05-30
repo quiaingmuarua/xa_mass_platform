@@ -137,7 +137,7 @@ writes the assigned batch to the selected `transportNodeId` inbox.
 Task result reads are exposed through `TaskResultQueryOperations`, separate
 from task aggregate query. `readTaskResults(...)` and archive streaming read
 committed stable-final rows from `TaskResultRuntime`; they do not read
-`TaskDetailStore` projection residue. Memory result runtime is volatile
+server review materialization. Memory result runtime is volatile
 local/dev truth, while Redis result runtime is the cross-process result read
 truth.
 
@@ -314,7 +314,7 @@ Current SDK contracts:
 | startup/bootstrap | operations fail fast without a started engine; mock/demo bootstrap belongs outside SDK via `MassBootstrapDataProvider` / `MassRuntimeControl` |
 
 For embedded runtime wiring, keep the mainline on storage/runtime contracts
-such as `taskShellStore(...)`, `taskDetailStore(...)`, `taskWorkRuntime(...)`,
+such as `taskShellStore(...)`, `taskWorkRuntime(...)`,
 `workerDeclarationStore(...)`, and `ruleStorage(...)`. Do not make `TaskManager` or
 `WorkerManager` the default SDK assembly surface.
 Shell-mainline SDK create maps onto `TaskShellCreateRequestDto`; worker registration/query helpers use `WorkerDeclarationStore`

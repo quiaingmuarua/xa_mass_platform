@@ -2,7 +2,6 @@ package com.xa.mass.storage.jdbc;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.TaskShellLifecycleQuery;
 import com.xa.mass.storage.api.TaskShellStore;
 
@@ -18,15 +17,12 @@ import java.util.Optional;
 /**
  * JDBC adapter for durable task truth.
  *
- * <p>High-frequency message and attempt detail stays in a process-local
- * compatibility projection. Do not expand this adapter into a cross-task
- * message analytics surface; high-volume detail belongs in queues, trace, or
- * audit sinks.</p>
+ * <p>High-frequency message and attempt detail belongs in queues, trace, or
+ * server-owned review materialization, not in task shell storage.</p>
  */
-public class JdbcTaskShellStore extends JdbcStorageSupport implements TaskShellStore, TaskShellLifecycleQuery, TaskDetailStore {
+public class JdbcTaskShellStore extends JdbcStorageSupport implements TaskShellStore, TaskShellLifecycleQuery {
 
     private final JdbcDialect dialect;
-    private final JdbcTaskCompatibilityProjection runtimeProjection = new JdbcTaskCompatibilityProjection();
 
     public JdbcTaskShellStore(DataSource dataSource, JdbcDialect dialect) {
         super(dataSource);
@@ -41,7 +37,6 @@ public class JdbcTaskShellStore extends JdbcStorageSupport implements TaskShellS
         try (var conn = connection(); var ps = conn.prepareStatement(dialect.taskUpsertSql())) {
             bindTask(ps, task);
             ps.executeUpdate();
-            runtimeProjection.ensureTask(task.getTid());
         } catch (Exception e) {
             throw new IllegalStateException("Failed to save task " + task.getTid(), e);
         }
@@ -68,9 +63,6 @@ public class JdbcTaskShellStore extends JdbcStorageSupport implements TaskShellS
             ps.setString(5, json(task));
             ps.setString(6, task.getTid());
             boolean updated = ps.executeUpdate() > 0;
-            if (updated) {
-                runtimeProjection.ensureTask(task.getTid());
-            }
             return updated;
         } catch (Exception e) {
             throw new IllegalStateException("Failed to update task " + task.getTid(), e);
@@ -80,11 +72,7 @@ public class JdbcTaskShellStore extends JdbcStorageSupport implements TaskShellS
     @Override
     public synchronized boolean deleteTask(String taskId) {
         try (var conn = connection()) {
-            boolean deleted = executeUpdate(conn, "DELETE FROM xa_task WHERE task_id = ?", taskId) > 0;
-            if (deleted) {
-                runtimeProjection.deleteTask(taskId);
-            }
-            return deleted;
+            return executeUpdate(conn, "DELETE FROM xa_task WHERE task_id = ?", taskId) > 0;
         } catch (Exception e) {
             throw new IllegalStateException("Failed to delete task " + taskId, e);
         }
@@ -132,55 +120,6 @@ public class JdbcTaskShellStore extends JdbcStorageSupport implements TaskShellS
         } catch (Exception e) {
             throw new IllegalStateException("Failed to poll expired max-runtime tasks", e);
         }
-    }
-
-    @Override
-    public synchronized boolean upsertTaskMessageProjection(String taskId, TaskDetailStore.TaskMessageProjection projection) {
-        return runtimeProjection.upsertTaskMessageProjection(taskId, projection);
-    }
-
-    @Override
-    public List<TaskDetailStore.TaskMessageProjection> getTaskMessageProjections(String taskId, int limit) {
-        return runtimeProjection.getTaskMessageProjections(taskId, limit);
-    }
-
-    @Override
-    public Optional<TaskDetailStore.TaskMessageProjection> getTaskMessageProjection(String taskId, String messageId) {
-        return runtimeProjection.getTaskMessageProjection(taskId, messageId);
-    }
-
-    @Override
-    public synchronized boolean upsertTaskMessageAttemptProjection(String taskId,
-                                                                   String messageId,
-                                                                   TaskDetailStore.TaskMessageAttemptProjection projection) {
-        return runtimeProjection.upsertTaskMessageAttemptProjection(taskId, messageId, projection);
-    }
-
-    @Override
-    public List<TaskDetailStore.TaskMessageAttemptProjection> getTaskMessageAttemptProjections(String taskId,
-                                                                                                String messageId) {
-        return runtimeProjection.getTaskMessageAttemptProjections(taskId, messageId);
-    }
-
-    @Override
-    public Optional<TaskDetailStore.TaskMessageAttemptProjection> getLatestTaskMessageAttemptProjection(String taskId,
-                                                                                                         String messageId) {
-        return runtimeProjection.getLatestTaskMessageAttemptProjection(taskId, messageId);
-    }
-
-    @Override
-    public TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId, String messageId) {
-        return runtimeProjection.getTaskMessageAttemptStats(taskId, messageId);
-    }
-
-    @Override
-    public TaskMessageStats getTaskMessageStats(String taskId) {
-        return runtimeProjection.getTaskMessageStats(taskId);
-    }
-
-    @Override
-    public TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId) {
-        return runtimeProjection.getTaskMessageAttemptStats(taskId);
     }
 
     private Optional<Task> queryOneTask(String sql, String arg) {

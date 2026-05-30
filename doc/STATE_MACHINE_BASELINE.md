@@ -17,7 +17,7 @@ Use with:
 
 ## 1. Global Rules
 
-1. `TaskStatus`, `TaskHoldReason`, `TaskIntakeStatus`, `TaskTerminalReason`, and the neutral projection enums under `mass-storage-api` are the current task/work lifecycle vocabulary.
+1. `TaskStatus`, `TaskHoldReason`, `TaskIntakeStatus`, and `TaskTerminalReason` are the current task lifecycle vocabulary. Per-item runtime state lives in `TaskWorkRuntime`; server review item/attempt statuses are materialized read-model strings, not engine lifecycle truth.
 2. `Task.contract` is the runtime contract truth (`SESSION | BATCH`), and ingress form must not redefine lifecycle, terminal, or retry semantics.
 3. No lifecycle change is complete without:
    - code change
@@ -29,10 +29,10 @@ Use with:
 6. The logical work-projection status model is a bounded compatibility contract, not a complete transport-event history. Transport-specific delivery phases belong in trace/event data or a dedicated transport model.
 7. The current runtime concurrency model is owned by worker scheduling facts, runtime capacity/reservation state, active worker locks where applicable, and work-runtime leases. `WorkerContext` must not be used as the engine scheduling or resource-lifecycle truth.
 8. Policy changes must preserve ownership boundaries across matching, assignment, attempt, release, refill, intake, control, and terminal decisions.
-9. `TaskWorkRuntime` in `platform_infra/mass-runtime-api` is the current hot-path owner for ready work, active leases, retry scheduling, and lease expiry indexes. `TaskResultRuntime` is the runtime-owned public result read truth for stable-final result rows, repair staging, and result-side attempt-closed/event/progress barriers. `TaskMessageProjection` remains bounded compatibility/debug residue for logical work-item status and payload summary. `TaskMessageAttemptProjection` remains auditable execution-history residue for concrete dispatch attempts.
+9. `TaskWorkRuntime` in `platform_infra/mass-runtime-api` is the current hot-path owner for ready work, active leases, retry scheduling, and lease expiry indexes. `TaskResultRuntime` is the runtime-owned public result read truth for stable-final result rows, repair staging, and result-side attempt-closed/event/progress barriers. Server review/export rows are lagging materialized views and must not drive lifecycle decisions.
 10. `Task.workloadClass` is the explicit task-level runtime optimization field; current engine truth is `INTERACTIVE` or `BULK`, and assignment signal routing resolves from that field rather than free-form `sharedConfig` semantics.
 11. runtime retry budget is seeded at create/append time and consumed from `TaskWorkRuntime`; post-ingest mutation of persisted message-projection retry settings must not redefine retry scheduling or finalization.
-12. result callbacks follow the result-kernel mainline in `RESULT_BOUNDARY_BASELINE.md`: runtime apply truth comes from `TaskWorkRuntime.applyResultWithContext(...)`; stable-final public result rows are committed into `TaskResultRuntime`; projection writes are submitted best-effort after runtime acceptance and are not the result commit point or a public result read source.
+12. result callbacks follow the result-kernel mainline in `RESULT_BOUNDARY_BASELINE.md`: runtime apply truth comes from `TaskWorkRuntime.applyResultWithContext(...)`; stable-final public result rows are committed into `TaskResultRuntime`; server review reports are emitted best-effort after runtime acceptance and are not the result commit point or a public result read source.
 
 ## 2. TaskStatus
 
@@ -91,7 +91,7 @@ Must hold:
 - every terminal task must have `intakeStatus=SEALED`
 - `intakeStatus` is the active append-window lifecycle truth for both `SESSION` and `BATCH`
 
-## 4. Message Projection Status
+## 4. Server Review Item Status
 
 States:
 
@@ -110,36 +110,39 @@ Allowed transitions:
 - `FAILED -> INIT` (retry reset only; `SUCCESS` is never reset)
 - `EXPIRED -> INIT` (`SESSION`-style retry reset only; `BATCH` lease expiry does not use `EXPIRED` as its logical retry base)
 
-Current entry points:
+Current materialization entry points:
 
-- runtime claim + dispatch bind: `INIT -> ASSIGNED`
-- callback write-back: `RUNNING -> SUCCESS/FAILED`
-- expiry: `SESSION` compatibility view may converge `ASSIGNED/RUNNING -> EXPIRED`
-- terminal task compatibility overlay for stop reasons (`MANUAL_CANCELLED`, `MAX_RUNTIME_REACHED`, `SUCCESS_RATE_REACHED`, `RETRY_BUDGET_EXHAUSTED`):
+- review items accepted: materializes `INIT`
+- result-side review report: materializes `SUCCESS` / `FAILED` / `EXPIRED`
+- terminal task review overlay for stop reasons (`MANUAL_CANCELLED`, `MAX_RUNTIME_REACHED`, `SUCCESS_RATE_REACHED`, `RETRY_BUDGET_EXHAUSTED`):
   - bounded reads project `INIT -> FAILED`
   - bounded reads project `ASSIGNED/RUNNING -> EXPIRED`
 - retry reset: logical work returns to `INIT` when retry budget remains; this is usually `FAILED -> INIT` for retryable failures and `SESSION` expiry, while `BATCH` lease expiry resets directly from live runtime truth without treating `EXPIRED` as the logical mainline state
 
 Must hold:
 
-- `latestAttemptWorkerId` and `latestAttemptBatchId` are projections of the latest attempt used for compatibility and UI; these fields are null between retry reset and next assignment
-- duplicate final callbacks do not mutate final state
-- final message projection must carry a compatible `finalReason`
+- review rows are server-local materialization only; they do not decide runtime
+  callback acceptance, retry scheduling, finality, or task terminal convergence
+- `workerId` and `batchId` in review rows are display/evidence fields, not active lease truth
+- duplicate final callbacks do not mutate runtime final state
+- final review item should carry a compatible `finalReason`
 - `taskWorkAttemptClosed` must fire whenever an execution attempt ends, including retryable failure
 - `taskWorkLogicallyFinal` must only fire when the logical message view is stably final and will not be reset for retry
 - retryable failure must close the current attempt and reset the logical message view to `INIT`; it must not publish logically-final semantics
 - `BATCH` lease expiry has no stable logical timeout meaning while the task is still live: it either resets `INIT` when runtime retry budget remains or finalizes as `FAILED + RETRY_EXHAUSTED` when the budget is exhausted
-- worker/adapter callbacks must resolve an active runtime lease before result application; when the lease exists but the latest attempt/message projection is missing, engine repairs that compatibility state from runtime before continuing
+- worker/adapter callbacks must resolve an active runtime lease before result application; server review row absence must not block engine result handling
 - callbacks without an active runtime lease are rejected and traced as `CALLBACK_REJECTED_NO_ACTIVE_LEASE`
-- during the current WorkRuntime slice, result handling applies against the runtime active lease and runtime retry budget before mutating the compatibility projection
-- result-side projection residue is submitted best-effort after runtime acceptance; synchronous result-side events and task progress evaluation must not depend on projection write completion
-- task cancellation and policy-driven task stop must not synchronously rewrite every queued message projection row; bounded compatibility reads may project the final message view from task shell truth instead
+- result handling applies against the runtime active lease and runtime retry budget before submitting server review reports
+- result-side review materialization is best-effort after runtime acceptance; synchronous result-side events and task progress evaluation must not depend on review row write completion
+- task cancellation and policy-driven task stop must not synchronously rewrite every queued review row
 - `errorCode` is an optional short symbolic code set by the worker alongside `errorMessage`; it is cleared on `resetForRetry()` and must not carry over between attempts
-- richer transport phases must not be silently backfilled into the message-projection status model without a baseline redesign
+- richer transport phases must not be silently backfilled into the server review item status model without a baseline redesign
 
-## 5. Attempt Projection Status
+## 5. Server Review Attempt Status
 
-`TaskMessageAttemptProjection` is one concrete, auditable execution opportunity for a logical message. It is not a raw transport-event log, and push/pull/polling must map into this same attempt truth rather than define separate attempt models.
+Server review attempts are materialized summaries of concrete execution
+opportunities. They are not raw transport-event logs and do not own runtime
+lease truth.
 
 States:
 
@@ -170,10 +173,12 @@ Must hold:
 
 - each dispatch round creates a new attempt with monotonically increasing `attemptNo`
 - retry never rewrites a final attempt back to active
-- active attempt truth outranks projected `latestAttemptWorkerId/latestAttemptBatchId` on the message projection
+- active attempt truth outranks materialized `workerId` / `batchId` on server review rows
 - at most one active attempt may exist for a single `taskId + messageId`
 - a stable-final logical message must not have any active attempt
-- if a runtime lease exists but the compatibility attempt row is missing, the engine may recover an audit attempt projection so callback/expiry handling does not fall back to stale projection truth
+- if a runtime lease exists but the review attempt row is missing, engine
+  callback/expiry handling still proceeds from runtime truth and server
+  materialization may lag
 - `REVOKED` must not be used as an expiry shortcut; only `EXPIRED` carries expiry and cancellation final reasons
 
 ## 6. Legacy WorkerContext Compatibility
@@ -214,7 +219,7 @@ Must hold:
 
 - terminal task -> non-null `terminalReason`
 - non-terminal task -> null `terminalReason`
-- batch message-driven closure must match engine work-runtime aggregate counters; message projection remains the compatibility projection/audit view
+- batch message-driven closure must match engine work-runtime aggregate counters; server review rows remain lagging operator/audit views
 - persisted terminal task state must always carry `intakeStatus=SEALED`; batch message-convergence reasons still require intake to be sealed before automatic closure
 - `SESSION` tasks do not auto-close to `ALL_MESSAGES_SUCCEEDED` / `ALL_MESSAGES_FAILED` / `MIXED_MESSAGE_RESULTS` just because the current runtime work set drained
 
@@ -223,9 +228,9 @@ Must hold:
 Both policies are enforced by `LeaseExpireWatchdog` (runs every `leaseWatchdogIntervalSeconds`, default 30 s):
 
 - **Lease expiry**: expired active leases are pulled from `TaskWorkRuntime.pollExpiredLeases(...)` and expired via
-  the engine lease-maintenance path (`TaskLeaseMaintenancePort.expireLeasedWork(...)`). This always marks the
-  concrete compatibility attempt `EXPIRED` and publishes
-  `taskWorkAttemptClosed` for resource release. If retry budget remains, the logical message is reset to `INIT`,
+  the engine lease-maintenance path (`TaskLeaseMaintenancePort.expireLeasedWork(...)`). This always publishes
+  `taskWorkAttemptClosed` for resource release and may later materialize an
+  `EXPIRED` review attempt. If retry budget remains, the logical work item is reset to `INIT`,
   `TASK_WORK_RETRY_RESET` is emitted, and redispatch is requested without `taskWorkLogicallyFinal`. When retry
   budget is exhausted, `SESSION` keeps logical `EXPIRED`, while `BATCH` finalizes as `FAILED + RETRY_EXHAUSTED`
   because lease loss is treated as an attempt failure mode rather than a stable per-item timeout contract.
@@ -239,9 +244,9 @@ Must hold:
   release listeners can release worker locks/reservations and compatibility
   residue; skipping this call leaves runtime resource state stuck
 - retryable lease expiry must follow the same logical-reset rule as retryable failure: close the attempt,
-  clear latest-attempt projections, increment `retryCount`, and avoid logical-final publication until the
+  update runtime retry counters, and avoid logical-final publication until the
   retried logical message becomes stably final
-- retryable callback failure and lease expiry must branch from runtime result application outcome; compatibility message fields follow that decision and do not override it
+- retryable callback failure and lease expiry must branch from runtime result application outcome; review materialization follows that decision and does not override it
 - `terminateTask(reason)` follows the same drain-and-notify path as `cancelTask`; the only
   difference is the `TaskTerminalReason` recorded
 
@@ -254,6 +259,6 @@ Must hold:
    task policy
 4. worker release does not happen while that worker still has a non-final latest attempt for the same task
 5. resource release must target the exact active worker/attempt/resource binding
-6. message final reason must match message status
+6. review item final reason must match review item status when materialized
 7. active attempt and final logical message must not coexist
 

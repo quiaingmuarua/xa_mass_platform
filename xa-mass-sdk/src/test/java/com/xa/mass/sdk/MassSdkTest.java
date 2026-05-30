@@ -1644,17 +1644,13 @@ class MassSdkTest {
     }
 
     @Test
-    void engineConfigDoesNotRequireTaskDetailStoreForEngineRuntimeAfterReplacingTaskShellStore() {
+    void engineConfigDoesNotRequireReviewStoreForEngineRuntimeAfterReplacingTaskShellStore() {
         EngineConfig config = new EngineConfig();
 
         config.setTaskShellStore(new InMemoryTaskShellStore());
 
         try {
             assertNotNull(config.getTaskCommandService());
-
-            IllegalStateException error = assertThrows(IllegalStateException.class, config::getTaskDetailStore);
-            assertEquals("taskDetailStore is not configured; provide an explicit taskDetailStore via setTaskDetailStore()",
-                    error.getMessage());
         } finally {
             config.shutdownTaskRuntime();
         }

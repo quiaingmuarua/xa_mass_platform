@@ -22,7 +22,6 @@ import com.xa.mass.runtime.api.RecentFinalWorkReceipt;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
-import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.testing.support.WorkerRegistrationSpineSupport;
 import com.xa.mass.trace.sink.ExecutionEventSink;
@@ -43,18 +42,15 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
     private static final List<TaskMode> DEFAULT_TASK_MODES = List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING);
 
     private final MassSdkApplication app;
-    private final TaskDetailStore taskDetailStore;
     private final TaskWorkRuntime taskWorkRuntime;
     private final int transportPort;
     private final String endpointPath;
 
     private ChaosRuntimeHarness(MassSdkApplication app,
-                                TaskDetailStore taskDetailStore,
                                 TaskWorkRuntime taskWorkRuntime,
                                 int transportPort,
                                 String endpointPath) {
         this.app = app;
-        this.taskDetailStore = taskDetailStore;
         this.taskWorkRuntime = taskWorkRuntime;
         this.transportPort = transportPort;
         this.endpointPath = endpointPath;
@@ -85,13 +81,12 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                             .leaseWatchdogIntervalSeconds(config.leaseWatchdogIntervalSeconds())
                             .taskMessageLeaseSeconds(config.taskMessageLeaseSeconds())
                             .taskShellStore(taskStorage)
-                            .taskDetailStore(taskStorage)
                             .taskWorkRuntime(taskWorkRuntime);
                     if (traceSink != null) {
                         engine.executionEventSink(traceSink);
                     }
                 });
-        return createBootstrappedHarness(builder.build(), taskStorage, taskWorkRuntime, transportPort, config.endpointPath());
+        return createBootstrappedHarness(builder.build(), taskWorkRuntime, transportPort, config.endpointPath());
     }
 
     public static ChaosRuntimeHarness createPolling(PollingRuntimeConfig config) {
@@ -117,22 +112,20 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                             .leaseWatchdogIntervalSeconds(config.leaseWatchdogIntervalSeconds())
                             .taskMessageLeaseSeconds(config.taskMessageLeaseSeconds())
                             .taskShellStore(taskStorage)
-                            .taskDetailStore(taskStorage)
                             .taskWorkRuntime(taskWorkRuntime);
                     if (traceSink != null) {
                         engine.executionEventSink(traceSink);
                     }
                 });
-        return createBootstrappedHarness(builder.build(), taskStorage, taskWorkRuntime, 0, "");
+        return createBootstrappedHarness(builder.build(), taskWorkRuntime, 0, "");
     }
 
     private static ChaosRuntimeHarness createBootstrappedHarness(MassSdkApplication app,
-                                                                 TaskDetailStore taskDetailStore,
                                                                  TaskWorkRuntime taskWorkRuntime,
                                                                  int transportPort,
                                                                  String endpointPath) {
         bootstrapCatalog(app);
-        return new ChaosRuntimeHarness(app, taskDetailStore, taskWorkRuntime, transportPort, endpointPath);
+        return new ChaosRuntimeHarness(app, taskWorkRuntime, transportPort, endpointPath);
     }
 
     private static void bootstrapCatalog(MassSdkApplication app) {
@@ -201,10 +194,6 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
 
     public MassSdkApplication app() {
         return app;
-    }
-
-    public TaskDetailStore taskDetailStore() {
-        return taskDetailStore;
     }
 
     public TaskWorkStats runtimeStats(String taskId) {
@@ -362,15 +351,6 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
         ChaosSupport.waitForCondition(() -> !app.isWorkerOnline(workerId), timeoutSeconds, failureMessage);
     }
 
-    public CompatibilityMessageView waitForSingleMessage(String taskId, int timeoutSeconds) throws Exception {
-        ChaosSupport.waitForCondition(
-                () -> ProjectionTestViews.snapshot(taskDetailStore, taskId, 1).messages().size() == 1,
-                timeoutSeconds,
-                "task should materialize exactly one logical message"
-        );
-        return ProjectionTestViews.snapshot(taskDetailStore, taskId, 1).messages().get(0);
-    }
-
     public void waitForActiveAttemptOnWorker(String taskId,
                                              String messageId,
                                              String workerId,
@@ -421,20 +401,6 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
     public TaskOutcomeSnapshot snapshotTaskOutcome(String taskId, int messageLimit) {
         TaskStateSnapshot task = app.getTaskState(taskId);
         ChaosSupport.require(task != null, "task should exist: " + taskId);
-        CompatibilityMessageSnapshot messageSnapshot = ProjectionTestViews.snapshot(taskDetailStore, taskId, messageLimit);
-        List<CompatibilityMessageView> messages = messageSnapshot.messages();
-        List<TaskOutcomeSnapshot.MessageOutcomeSnapshot> snapshots = new ArrayList<>(messages.size());
-        for (CompatibilityMessageView message : messages) {
-            List<CompatibilityAttemptView> attempts = ProjectionTestViews.attempts(taskDetailStore, taskId, message.messageId());
-            snapshots.add(new TaskOutcomeSnapshot.MessageOutcomeSnapshot(
-                    message.messageId(),
-                    message.status(),
-                    message.finalReason(),
-                    message.retryCount(),
-                    message.latestAttemptWorkerId(),
-                    attempts.stream().map(TaskOutcomeSnapshot.AttemptOutcomeSnapshot::fromAttempt).toList()
-            ));
-        }
         return new TaskOutcomeSnapshot(
                 task.getTaskId(),
                 task.getStatus(),
@@ -443,7 +409,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                         taskWorkRuntime.stats(taskId),
                         taskWorkRuntime.activeLeases(taskId)
                 ),
-                snapshots
+                List.of()
         );
     }
 

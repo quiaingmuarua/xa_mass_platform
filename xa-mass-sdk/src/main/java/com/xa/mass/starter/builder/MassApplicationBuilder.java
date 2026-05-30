@@ -9,7 +9,6 @@ import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.storage.api.RuleStorage;
-import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.TaskShellStore;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationStore;
 import com.xa.mass.starter.EngineRuntimeBridge;
@@ -582,16 +581,6 @@ public class MassApplicationBuilder {
 
         public EngineBuilder taskShellStore(TaskShellStore taskShellStore) {
             config.setTaskShellStore(taskShellStore);
-            return this;
-        }
-
-        /**
-         * Wires the bounded compatibility projection store used for task-message
-         * residue and focused diagnostics. Do not treat this seam as runtime
-         * truth or a durable public query contract.
-         */
-        public EngineBuilder taskDetailStore(TaskDetailStore taskDetailStore) {
-            config.setTaskDetailStore(taskDetailStore);
             return this;
         }
 

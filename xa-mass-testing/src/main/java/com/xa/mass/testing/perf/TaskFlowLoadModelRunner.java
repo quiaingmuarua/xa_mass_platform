@@ -502,7 +502,6 @@ public final class TaskFlowLoadModelRunner {
                                                       TaskResultRuntime taskResultRuntime) {
             EngineConfig engineConfig = new EngineConfig();
             engineConfig.setTaskShellStore(taskStorage);
-            engineConfig.setTaskDetailStore(taskStorage);
             engineConfig.setTaskWorkRuntime(taskWorkRuntime);
             engineConfig.setTaskResultRuntime(taskResultRuntime);
             return engineConfig;

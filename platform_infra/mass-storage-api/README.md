@@ -10,7 +10,6 @@ Current scope:
 
 - `TaskShellStore`
 - `TaskShellLifecycleQuery`
-- `TaskDetailStore` as a bounded compatibility-projection seam
 - `RuleStorage`
 - rule storage value types used directly by `RuleStorage`
 
@@ -22,30 +21,20 @@ Contract split inside this module:
 - `TaskShellLifecycleQuery` is a current-shell lifecycle query for policies
   such as max-runtime deadline termination. It is not dispatch-admission or
   ready-queue truth.
-- `TaskDetailStore` is not control-plane truth and not a public SDK/server read
-  model; it is the bounded compatibility projection for task-message residue and
-  attempt detail while the long-term trace/audit sink remains separate
 
 Worker declaration contracts are owned by `xa-mass-worker-runtime`.
 `mass-storage-api` must not reintroduce `WorkerDeclarationStore` or
 `WorkerDeclarationRecord`; storage implementations that persist workers should
 implement the worker-runtime declaration port as adapters.
 
-How to read `TaskDetailStore` correctly:
-
-- allowed: bounded per-task compatibility reads, residue repair, runtime
-  validation helpers, focused test/demo inspection
-- not allowed: treating `TaskMsg` / `TaskMsgAttempt` as engine truth, growing a
-  public pagination/history API around them, or using them as the main model
-  for server/SDK contracts
-
 If a new caller wants large-scale message history, attempt timelines, or
-cross-task analytics, that belongs in trace/audit/export ownership rather than
-in this module's storage contract.
+cross-task analytics, that belongs in trace/audit/export ownership or a
+server-local review materialization pipeline rather than in this module's
+storage contract.
 
 Non-goals for this slice:
 
 - no queue/lease/runtime ownership
 - no storage implementation wiring
 - no JDBC or memory behavior
-- no promotion of compatibility residue into canonical query truth
+- no review/export materialization ownership

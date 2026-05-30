@@ -7,7 +7,6 @@ import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.storage.api.RuleStorage;
-import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.TaskShellStore;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationStore;
 import com.xa.mass.starter.MassEngine;
@@ -23,7 +22,6 @@ public class MassEngineBuilder {
     private AssignmentDiagnosticRecorder recordService;
     private MassBootstrapDataProvider bootstrapDataProvider;
     private TaskShellStore taskShellStore;
-    private TaskDetailStore taskDetailStore;
     private TaskWorkRuntime taskWorkRuntime;
     private TaskResultRuntime taskResultRuntime;
     private WorkerDeclarationStore workerDeclarationStore;
@@ -47,16 +45,6 @@ public class MassEngineBuilder {
 
     public MassEngineBuilder taskShellStore(TaskShellStore taskShellStore) {
         this.taskShellStore = taskShellStore;
-        return this;
-    }
-
-    /**
-     * Supplies the bounded compatibility projection store for task-message
-     * residue and attempt detail. This is not the engine's runtime truth or a
-     * public query-model ownership point.
-     */
-    public MassEngineBuilder taskDetailStore(TaskDetailStore taskDetailStore) {
-        this.taskDetailStore = taskDetailStore;
         return this;
     }
 
@@ -115,7 +103,6 @@ public class MassEngineBuilder {
         if (taskMessageLeaseSeconds != null) config.setTaskMessageLeaseSeconds(taskMessageLeaseSeconds);
         if (matchingStrategy != null) config.setMatchingStrategy(matchingStrategy);
         if (taskShellStore != null) config.setTaskShellStore(taskShellStore);
-        if (taskDetailStore != null) config.setTaskDetailStore(taskDetailStore);
         if (taskWorkRuntime != null) config.setTaskWorkRuntime(taskWorkRuntime);
         if (taskResultRuntime != null) config.setTaskResultRuntime(taskResultRuntime);
         if (workerDeclarationStore != null) config.setWorkerDeclarationStore(workerDeclarationStore);

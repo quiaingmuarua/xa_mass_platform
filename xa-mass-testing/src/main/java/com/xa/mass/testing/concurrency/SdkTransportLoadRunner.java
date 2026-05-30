@@ -223,7 +223,6 @@ public final class SdkTransportLoadRunner {
                             .queueMode())
                     .engine(engine -> engine.enabled(true)
                             .taskShellStore(taskStorage)
-                            .taskDetailStore(taskStorage)
                             .taskWorkRuntime(taskWorkRuntime))
                     .build();
             return new EmbeddedRuntime(app, taskWorkRuntime, transportPort, ENDPOINT_PATH);

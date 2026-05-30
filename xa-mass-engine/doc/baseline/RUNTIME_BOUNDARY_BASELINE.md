@@ -3,8 +3,8 @@
 Status: current engine runtime boundary baseline.
 
 This file freezes the engine-side runtime boundary so memory and Redis can
-share one behavioral contract without turning storage, projection, or starter
-assembly into a second runtime truth.
+share one behavioral contract without turning storage, review materialization,
+or starter assembly into a second runtime truth.
 
 Use with:
 
@@ -18,12 +18,11 @@ Use with:
 This baseline only covers the engine-facing runtime boundary:
 
 - what `TaskWorkRuntime` owns
-- what storage and compatibility projection do not own
+- what storage and server review materialization do not own
 - what runtime switching does and does not promise
 - what recovery paths may infer from runtime truth
 
-It does not redesign transport, public API shape, or future trace-sink
-implementation.
+It does not redesign transport, public API shape, or future trace/audit sinks.
 
 ## Runtime Truth
 
@@ -43,87 +42,38 @@ Engine hot paths must treat these runtime semantics as authoritative:
 - batch/bulk redispatch should prefer periodic recovery from
   `readyTaskIds(limit)` over engine-local task-delay ownership
 - `claimReady(...)` is the exclusive runtime claim path
-- `applyResult(...)` is the only runtime result convergence path
+- `applyResult(...)` and `applyResultWithContext(...)` are the runtime result
+  convergence paths
 - `pollExpiredLeases(...)` reports runtime expiry truth
 - `getRecentFinalReceipt(...)` is the bounded duplicate/late callback recovery
   read after queue and lease ownership have already been released
 - `discardTask(...)` removes runtime residue without redefining storage truth
-- engine -> transport handoff now carries runtime-native dispatch bindings built
-  from claimed runtime work plus active attempt ownership; transport must not
-  need persisted message-projection input fields to reconstruct the worker
-  payload
-- assignment-side compatibility message-projection sync must happen after
-  runtime claim
-  and must not require `TaskDetailStore.getTaskMessage(...)` as a dispatch gate;
-  preserving or repairing the projection is residue, not the condition that
-  makes a claimed work item dispatchable
-- compatibility attempt-projection writes are best-effort residue only; runtime
-  dispatch ownership, retry truth, and callback acceptance must remain correct
-  when those writes lag or are absent
-- runtime lease repair on callback, expiry, or dispatch-submit compensation may
-  rebuild a bounded in-memory message compatibility view, but it must not
-  require persisting intermediate `ASSIGNED` or transient failure states before
-  runtime result convergence can finish
-- active lease truth must carry the minimal message reference needed for bounded
-  compatibility recovery, especially `payloadRef`; runtime repair must not fall
-  back to persisted message-projection input just to rediscover the queued work
-  identity
-- active-lease-backed attempt identity should be derived from runtime lease
-  ownership first; bounded compatibility `latestAttemptId` residue may help
-  close or display the same logical attempt, but it must not outrank the
-  runtime-derived attempt id while the lease is still active
-- explicit compatibility reads for the current active attempt may synthesize
-  that attempt directly from runtime lease truth when attempt projection rows
-  are missing; stored attempt-projection residue is history/audit material, not
-  the only source allowed to reveal current attempt ownership
+- engine -> transport handoff carries runtime-native dispatch bindings built
+  from claimed runtime work plus active attempt ownership
+- transport must not need persisted review input fields to reconstruct the
+  worker payload
 - callback duplicate, late, and no-active-lease trace emission must use bounded
-  runtime-synchronized message fields first; trace must not force
-  compatibility-model materialization or a hot-path latest-attempt projection
-  lookup
+  runtime state first
 - when queue work and active lease have already been removed, accepted
-  duplicate/late callback handling must rely on bounded runtime final receipts;
-  compatibility projection reads must not redefine callback acceptance after
-  runtime ownership has been released
-- result-side active-lease repair may derive an in-memory runtime message view
-  directly from runtime lease truth plus bounded projection residue; it must
-  not require routing back through legacy compatibility overlay helpers just to
-  recover current dispatch ownership
-- task termination / cancellation must drain runtime active leases only; queued
-  or merely projected message rows must not be scanned just to stamp terminal
-  status into compatibility residue
+  duplicate/late callback handling must rely on bounded runtime final receipts
+- task termination / cancellation must drain runtime active leases only; review
+  rows must not be scanned just to stamp terminal status
 
-## Storage And Projection Non-Truth
+## Storage And Review Non-Truth
 
 `TaskShellStore` owns control-plane shell truth only:
 
 - `Task` shell state
-- worker registration truth
 - rule definition truth
 
-`TaskDetailStore` remains bounded compatibility residue only. It may support:
+Worker declaration truth is owned by `xa-mass-worker-runtime`.
 
-- projection repair
-- latest-attempt compatibility fallback for audit-row closure during transition
-- bounded shell/debug reads
-- focused tests and audit helpers
-- engine-native residue state should live in engine-owned types such as
-  `TaskWorkProjectionState`; storage projection enums stay at conversion
-  edges instead of acting as the native runtime/result state model
-- bounded projection upsert/read wiring may live in an engine-internal owner
-  such as `TaskCompatibilityProjectionStore` so runtime orchestrators do not
-  each become partial `TaskDetailStore` record owners
-- engine code should depend on this seam directly through the smallest needed
-  runtime or service ports; do not reintroduce pass-through projection bridges
-  that add no ownership boundary
-- when assignment wiring already depends on `TaskAssignmentRuntimePort`, prefer
-  the engine owner implementing that seam directly over a second adapter class
-  that only forwards to `TaskManager`
-- shell/query/result facades may keep their external seam types, but
-  package-local pass-through `TaskManager*Port` wrappers should not exist when
-  same-module services can call the engine owner directly
-- the same rule applies to maintenance/recovery seams: keep the seam when
-  watchdog or startup wiring needs it, but let the engine owner implement it
-  directly instead of preserving a forwarding adapter class
+Server review/export materialization is owned by `xa-mass-server` and may lag
+runtime. It may support:
+
+- bounded UI/debug/export reads
+- focused tests and operator review flows
+- server-local item and attempt summaries
 
 It must not redefine:
 
@@ -131,6 +81,7 @@ It must not redefine:
 - lease truth
 - retry visibility truth
 - startup recovery truth
+- result commit truth
 - task progress correctness in place of runtime counters
 
 ## Cutover Semantics
@@ -162,17 +113,17 @@ Startup or replay recovery must trust runtime truth first:
 
 Recovery must not rely on:
 
-- scanning full message projections to reconstruct queue truth
+- scanning server review rows to reconstruct queue truth
 - inferring ready work from `TaskStatus.READY` alone
-- replaying projection history into runtime on every startup
+- replaying review history into runtime on every startup
 
 ## Forbidden Drift
 
 Do not add these regressions:
 
 - a second engine runtime facade beside `TaskWorkRuntime`
-- projection-driven recovery or finality correctness
-- storage scans in hot paths to reconstruct ready queues
+- review-row-driven recovery or finality correctness
+- storage or review scans in hot paths to reconstruct ready queues
 - starter or transport code that mutates runtime truth outside the contract
 - docs that imply runtime implementation switching is hot or automatic
 
@@ -180,16 +131,10 @@ Do not add these regressions:
 
 Current bounded residue that remains acceptable:
 
-- message and attempt compatibility projection
-- active-attempt projection repair when runtime lease exists but projection is
-  missing
-- bounded compatibility message recovery from runtime lease truth when result
-  ingest arrives after projection loss
-- read-time compatibility overlay that projects terminal task closure onto a
-  non-final message view without rewriting every queued message row
-- single-message compatibility views for non-final tasks may use stored residue
-  only as fallback; when runtime work or an active lease still exists, the
-  visible message/attempt identity should be rebuilt from runtime truth first
+- recent final receipts in runtime for duplicate/late callback classification
+- staged callback/result repair anchors in `TaskResultRuntime`
+- server-local review rows for operator/UI/export materialization
 - bounded debug reads exposed by shell-facing query services
 
-These are current compatibility facts, not target runtime truth.
+These are current implementation facts, not permission to make review rows
+runtime truth.

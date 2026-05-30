@@ -33,6 +33,19 @@ class StorageBoundaryGuardTest {
             "\\bgetTaskStorage\\s*\\(",
             "\\bgetWorkerStorage\\s*\\("
     )));
+    private static final Pattern PROJECTION_STORAGE_SURFACE = Pattern.compile(String.join("|", List.of(
+            "\\bTaskDetailStore\\b",
+            "\\bTaskMessageProjection\\b",
+            "\\bTaskMessageAttemptProjection\\b",
+            "\\bTaskMessageStats\\b",
+            "\\bTaskMessageAttemptStats\\b",
+            "\\bgetTaskMessageProjection\\s*\\(",
+            "\\bgetTaskMessageProjections\\s*\\(",
+            "\\bupsertTaskMessageProjection\\s*\\(",
+            "\\bupsertTaskMessageAttemptProjection\\s*\\(",
+            "\\bgetTaskMessageStats\\s*\\(",
+            "\\bgetTaskMessageAttemptStats\\s*\\("
+    )));
     private static final Pattern CREATE_TABLE = Pattern.compile(
             "(?is)\\bCREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?([a-zA-Z0-9_]+)"
     );
@@ -70,6 +83,48 @@ class StorageBoundaryGuardTest {
         assertTrue(violations.isEmpty(),
                 "mass-storage-api must not reintroduce worker declaration contracts; "
                         + "worker declaration ports belong to xa-mass-worker-runtime:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void storageApiDoesNotReintroduceProjectionContracts() throws IOException {
+        Path storageApiRoot = repoRoot().resolve("platform_infra/mass-storage-api/src/main/java");
+        List<String> violations = new ArrayList<>();
+        for (Path path : javaSourceFiles(storageApiRoot)) {
+            String normalized = path.toString().replace('\\', '/');
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            if (normalized.contains("/com/xa/mass/storage/api/projection/")
+                    || source.contains("package com.xa.mass.storage.api.projection")
+                    || PROJECTION_STORAGE_SURFACE.matcher(source).find()) {
+                violations.add(path.toString());
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "mass-storage-api must not reintroduce task review/projection contracts:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void taskShellStorageImplementationsDoNotCarryProjectionMethods() throws IOException {
+        List<String> violations = new ArrayList<>();
+        for (Path root : List.of(
+                repoRoot().resolve("platform_infra/mass-storage-memory/src/main/java"),
+                repoRoot().resolve("platform_infra/mass-storage-jdbc/src/main/java"))) {
+            for (Path path : javaSourceFiles(root)) {
+                String fileName = path.getFileName().toString();
+                if (!fileName.endsWith("TaskShellStore.java")) {
+                    continue;
+                }
+                String source = Files.readString(path, StandardCharsets.UTF_8);
+                if (PROJECTION_STORAGE_SURFACE.matcher(source).find()) {
+                    violations.add(path.toString());
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "TaskShellStore implementations must not carry projection CRUD or stats methods:\n"
                         + String.join("\n", violations));
     }
 

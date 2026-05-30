@@ -27,7 +27,7 @@ callback / result inbox
       -> trace
       -> TaskResultRuntime.commitVisibleFinal(...) for stable-final rows
       -> runtime attempt-closed/logical-final/progress idempotency barriers
-      -> projection residue write submitted best-effort
+      -> server review report emitted for async materialization
       -> synchronous result-side event publish
       -> task progress / terminal convergence trigger
 ```
@@ -46,8 +46,8 @@ then lets engine lifecycle policy converge the task aggregate.
 | engine ingest port | `TaskResultIngestFacade`, `TaskResultIngestPort` | narrow callable surface from transport into engine result handling | server API ownership, public result read API |
 | runtime apply truth | `TaskWorkRuntime.applyResultWithContext(...)` | lease-valid apply, retry budget consumption, runtime apply status, counters, recent receipts | trace policy, projection storage, public result reads |
 | runtime result read truth | `TaskResultRuntime` | staged callback repair anchors, stable-final visible result rows, task-local result sequence, and transient attempt-closed/logical-final/progress barrier gates | work queue ownership, transport ack/redelivery, task lifecycle policy, projection/debug residue |
-| engine result orchestration | `TaskResultService` | terminal/duplicate/late classification, runtime outcome interpretation, trace, projection submission, result-side events, convergence trigger | durable ledger storage, transport I/O |
-| projection residue | `TaskDetailStore` message/attempt projection | bounded UI/debug/audit residue and review read view | callback acceptance truth, retry/finality truth, public result read truth |
+| engine result orchestration | `TaskResultService` | terminal/duplicate/late classification, runtime outcome interpretation, trace, review report emission, result-side events, convergence trigger | durable ledger storage, transport I/O, review row persistence |
+| server review materialization | `TaskReviewReportQueue`, `TaskReviewMaterializer`, `TaskReviewStore` | bounded UI/debug/export read view | callback acceptance truth, retry/finality truth, public result read truth, engine runtime truth |
 
 ## 3. Runtime Apply Truth
 
@@ -64,7 +64,7 @@ recent-final receipt or task terminal state proves that the logical result has
 already converged.
 
 Stable-final public result rows are committed into `TaskResultRuntime`, not
-`TaskDetailStore`. The runtime separates callback-attempt staging from visible
+server review rows. The runtime separates callback-attempt staging from visible
 message-final rows:
 
 - stage identity: `taskId + messageId + normalized identity digest`
@@ -100,13 +100,13 @@ Redis result inboxes are bounded runtime ingress queues drained by the engine
 process. They are not durable result logs and do not provide ack/redelivery
 ledger semantics.
 
-## 5. Projection Residue
+## 5. Review Materialization
 
-Projection writes after result apply are best-effort projection residue.
-They are submitted after runtime acceptance so UI/debug/audit readers can see a
+Review reports after result apply are best-effort materialization input.
+They are emitted after runtime acceptance so UI/debug/export readers can see a
 bounded message and latest-attempt view. They are not the result commit point.
 
-Projection residue must not decide:
+Review materialization must not decide:
 
 - callback acceptance
 - stale callback rejection
@@ -117,7 +117,7 @@ Projection residue must not decide:
 - SDK `TaskResultQueryOperations`
 
 Public result reads and archive generation read committed stable-final rows
-from `TaskResultRuntime`. Controllers must not read projection rows to build or
+from `TaskResultRuntime`. Controllers must not read review rows to build or
 fill public result responses. Memory result runtime is volatile local/dev
 truth; Redis result runtime is the cross-process runtime truth. Durability
 follows the selected runtime implementation.

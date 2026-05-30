@@ -180,7 +180,7 @@ TaskResultRuntime
   -> repair / barrier truth
 ```
 
-`TaskDetailStore` projection 可以作为 compatibility/debug/audit residue，但不能作为
+server-local review materialization 可以作为 debug/audit/read-model residue，但不能作为
 public `/results`、SDK result query、archive 的 truth。
 
 ## 推荐业务接入主线

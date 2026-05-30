@@ -17,35 +17,30 @@ Trust: code and verified behavior override this summary.
 Already true in current code:
 
 - the first `TaskWorkRuntime` slice is landed, and its shared runtime contract now lives in `platform_infra/mass-runtime-api`
-- `TaskManager` still writes `Task`, while compatibility message projections
-  are best-effort residue written after runtime enqueue instead of the ingest
-  truth
+- `TaskManager` still writes `Task`, while server review materialization is
+  best-effort residue written from the review report queue instead of the
+  ingest truth
 - initial or appended work is also written into `TaskWorkRuntime`
 - assignment claims ready work from runtime instead of scanning all `INIT` messages
 - engine startup recovery can repopulate assignment signals from runtime-owned ready work instead of relying on `READY` task status scans alone
 - runtime owns active lease and expiry indexes
 - task progress and terminal policy already read runtime counters instead of aggregate message scans
-- task terminal cleanup no longer needs to scan queued/non-final message
-  projections; runtime active leases are the only terminal-drain ownership
-- task cancellation no longer synchronously rewrites every queued compatibility
-  message row; terminal task/message reads overlay the bounded final view
-  instead of turning cancel into a per-message CRUD sweep
-- bounded task-state validation no longer needs full message scans; deep projection checks are now an explicit audit path instead of the default validation meaning
+- task terminal cleanup no longer needs to scan queued/non-final review rows;
+  runtime active leases are the only terminal-drain ownership
+- task cancellation no longer synchronously rewrites every queued review row
+- bounded task-state validation no longer needs full message scans; deep review
+  checks are now an explicit audit path instead of the default validation meaning
 - engine -> transport dispatch now carries a runtime-native binding built from
-  claimed runtime work instead of transporting persisted message-projection input as the
+  claimed runtime work instead of transporting persisted review input as the
   mainline dispatch carrier
-- result ingest can recover a bounded compatibility message projection from
-  runtime lease truth when the projection is missing, rather than treating the
-  missing projection as callback truth
-- compatibility attempt writes are no longer allowed to gate dispatch
-  or callback convergence; at very high message volume they are trace residue,
+- result ingest uses runtime lease truth and recent final receipts rather than
+  treating review row presence as callback truth
+- review/attempt writes are no longer allowed to gate dispatch
+  or callback convergence; at very high message volume they are trace/review residue,
   not queue truth
-- result-side compatibility rewrites avoid preserving full message input
-  payload on the hot path; bounded residue is treated as `payloadRef` plus
-  logical status/output/error summary when payload reference is available
 - duplicate, late, and no-active-lease callback trace paths must not re-read
-  attempt projections just to decorate events; bounded message projection plus
-  runtime lease identity is the hot-path ceiling
+  review attempts just to decorate events; runtime lease identity is the
+  hot-path ceiling
 
 ## 2. Current Guardrails
 
@@ -58,11 +53,12 @@ Keep these decisions stable:
 - task strategy, worker matching, and start-gate decisions stay at the task or explicit task-slice level; do not reintroduce per-message rule matching as a scaling fallback
 - the runnable unit is a queue-native envelope, not a thick compatibility object graph
 - convergence is counter-driven, not full-message-scan-driven
-- attempt truth splits into active hot-path lease truth and off-path bounded audit residue
+- attempt truth splits into active hot-path lease truth and off-path bounded
+  review/trace residue
 - ingress sources may differ at the API edge, but converge after ingest into one runnable-unit shape
 - observability stays in logs, traces, counters, indexed reads, and explicit export sinks
 - idempotent result, retry, and timeout handling matter more than rich mid-flight projections
-- engine-owned task-detail reads stay bounded; large-scale detail analysis belongs in structured trace, audit sinks, or downstream storage engines
+- server-owned task-detail reads stay bounded; large-scale detail analysis belongs in structured trace, audit sinks, or downstream storage engines
 
 ## 3. Contracts To Preserve
 

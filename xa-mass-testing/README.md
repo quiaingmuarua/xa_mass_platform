@@ -118,7 +118,7 @@ Override them with environment variables:
 - `XA_MASS_INTERACTIVE_RETRY_DELAY_MILLIS`
 - `MASS_RETRYWAKEUP_SMOKE_MIN_DELAY_MILLIS`
 
-`scripts/run-perf-smokes.sh` also enforces that perf smoke runners stay runtime/timing-first. The smoke runners must not read compatibility message/attempt projection or message stats as their proof surface. Full load reports such as `TaskFlowLoadModelRunner` use `TaskWorkRuntime` final counters plus `TaskResultRuntime` stable-final result count for pass/fail; storage/projection metrics are not part of the perf smoke lane.
+`scripts/run-perf-smokes.sh` also enforces that perf smoke runners stay runtime/timing-first. The smoke runners must not read review rows, projection-derived stats, or storage metrics as their proof surface. Full load reports such as `TaskFlowLoadModelRunner` use `TaskWorkRuntime` final counters plus `TaskResultRuntime` stable-final result count for pass/fail.
 
 Current perf smoke modeling:
 
@@ -183,7 +183,7 @@ xa-mass-testing/scripts/run-sdk-transport-load.sh -Dmass.sdk.load.transport=webs
 xa-mass-testing/scripts/run-sdk-transport-load.sh -Dmass.sdk.load.transport=socket -Dmass.sdk.load.workloadClass=BULK
 ```
 
-`scripts/run-sdk-transport-load.sh` enforces the same source-level rule as the PR smoke scripts: the transport load runner must not import compatibility projection helpers, message/attempt projection models, projection-derived stats, or direct task-detail-store access. Its report uses `runtimeWork`, delivery diagnostics, and worker metrics as the correctness surface.
+`scripts/run-sdk-transport-load.sh` enforces the same source-level rule as the PR smoke scripts: the transport load runner must not import review/projection helpers, projection-derived stats, or direct detail-store access. Its report uses `runtimeWork`, delivery diagnostics, and worker metrics as the correctness surface.
 
 Polling scheduling soak:
 
@@ -263,7 +263,8 @@ Look at these first:
 - perf: `wallClock.totalMillis`, release cost, runtime work counters
 - SDK transport harness: `runtime.transport`, `tasks.terminalReasons`, `workerMetrics`
 - chaos: `task.runtime` counters, active lease count, task terminal reason, trace `byType`, then worker online/offline transitions
-- chaos report field `task.compatibilityProjection` is residue/report context; do not treat it as the runner's primary correctness proof
+- chaos report field `task.reviewMessages` is residue/report context when
+  present; do not treat it as the runner's primary correctness proof
 
 Use repo-level docs only for system-level policy:
 
@@ -289,6 +290,6 @@ Additional scheduled/manual chaos probes cover support scenario branches:
 
 The PR-gated chaos probes are the three distributed-edge runtime recovery paths: polling lease-expiry redispatch, websocket lease-expiry redispatch, and websocket late-result replay. Their main assertions are runtime/aggregate/trace-first; compatibility projection is kept in reports only for bounded diagnosis. Result-shape probes such as all-failed, mixed-results, and retry-exhausted remain scheduled/manual support because their primary proof lives in the engine/server/trace convergence chain. Websocket disconnect/reconnect also remains a useful manual probe until it is reduced to one crisp mechanism invariant instead of a mixed behavior bundle. All chaos probes still write report JSON under `target/chaos-reports/`.
 
-`scripts/run-chaos-smokes.sh` enforces this source-level rule before running the probes: PR-gated chaos smoke runners must not import or call compatibility projection helpers or projection-derived stats such as `ProjectionTestViews`, `CompatibilityMessageView`, `CompatibilityAttemptView`, `TaskMessageStats`, `TaskMessageAttemptStats`, `getTaskMessage*`, `waitForSingleMessage`, or direct `taskDetailStore()` access. Report/audit helpers may still live under `chaos.support`, and non-gated runners may keep explicit diagnostic reads until they are promoted to the PR gate.
+`scripts/run-chaos-smokes.sh` enforces this source-level rule before running the probes: PR-gated chaos smoke runners must not import or call compatibility projection helpers or projection-derived stats such as `TaskMessageStats`, `TaskMessageAttemptStats`, `getTaskMessage*`, or direct detail-store access. Report/audit helpers may still live under `chaos.support`, but their primary correctness proof must stay runtime/trace-first.
 
 These probes stay at the SDK embedded-runtime layer. Matching Boot-shell HTTP behavior should be verified separately under `xa-mass-server` E2E.

@@ -7,8 +7,12 @@ import com.xa.mass.api.auth.usage.ApiUsageLedgerService;
 import com.xa.mass.api.auth.usage.ApiUsageOperation;
 import com.xa.mass.api.auth.usage.ApiUsageStatus;
 import com.xa.mass.api.auth.usage.InMemoryApiUsageLedgerStore;
-import com.xa.mass.api.review.TaskDetailStoreTaskReviewReadModel;
+import com.xa.mass.api.review.InMemoryTaskReviewStore;
+import com.xa.mass.api.review.TaskReviewItemsAcceptedEvent;
 import com.xa.mass.api.review.TaskReviewReadModelWriter;
+import com.xa.mass.api.review.TaskReviewStoreMaterializer;
+import com.xa.mass.api.review.TaskReviewStoreTaskReviewReadModel;
+import com.xa.mass.api.review.TaskReviewWorkTerminalEvent;
 import com.xa.mass.api.sync.SyncTaskResultBridge;
 import com.xa.mass.api.sync.TaskSyncRequestSupervisor;
 import com.xa.mass.sdk.TaskAdminOperations;
@@ -43,9 +47,6 @@ import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.TaskStateSnapshot;
 import com.xa.mass.sdk.model.TaskItemBatchAppendReceipt;
 import com.xa.mass.sdk.model.TaskWorkFinalSnapshot;
-import com.xa.mass.storage.api.TaskDetailStore;
-import com.xa.mass.storage.api.projection.TaskMessageProjectionFinalReason;
-import com.xa.mass.storage.api.projection.TaskMessageProjectionStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -103,9 +104,6 @@ class TaskApiControllerTest {
     private AuthProvider authProvider;
 
     @Mock
-    private TaskDetailStore taskDetailStore;
-
-    @Mock
     private SyncTaskResultBridge syncTaskResultBridge;
 
     @Mock
@@ -113,6 +111,7 @@ class TaskApiControllerTest {
 
     private TaskSyncRequestSupervisor taskSyncRequestSupervisor;
     private InMemoryApiUsageLedgerStore usageStore;
+    private InMemoryTaskReviewStore taskReviewStore;
     private TaskApiController controller;
 
     private MockMvc mockMvc;
@@ -121,10 +120,11 @@ class TaskApiControllerTest {
     void setUp() {
         taskSyncRequestSupervisor = new TaskSyncRequestSupervisor(null, 500, 100, 20);
         usageStore = new InMemoryApiUsageLedgerStore();
+        taskReviewStore = new InMemoryTaskReviewStore();
         controller = new TaskApiController(taskQueries, taskResultQueries, taskAdmin, createTaskCatalog(),
                 authProvider, syncTaskResultBridge, taskSyncRequestSupervisor, taskStageEvidence);
         controller.setApiUsageLedgerService(new ApiUsageLedgerService(usageStore));
-        controller.setTaskReviewReadModelWriter(reviewReadModel());
+        controller.setTaskReviewReadModelWriter(directReviewWriter());
         mockMvc = MockMvcBuilders.standaloneSetup(
                 controller,
                 new InternalTaskReviewController(taskQueries, reviewReadModel())
@@ -465,34 +465,17 @@ class TaskApiControllerTest {
     @Test
     void getTaskReviewReturnsSeedAndResultPreview() throws Exception {
         when(taskQueries.getTaskDetail(TASK_ID)).thenReturn(taskDetail("RUNNING", "detail-task", "demoApp"));
-        when(taskDetailStore.getTaskMessageStats(TASK_ID)).thenReturn(new TaskDetailStore.TaskMessageStats(2, 1, 0, 0, 1));
-        when(taskDetailStore.getTaskMessageProjections(TASK_ID, 12)).thenReturn(List.of(
-                new TaskDetailStore.TaskMessageProjection(
-                        "msg-001",
-                        TASK_ID,
-                        Map.of("eventCode", "crawler.fetch-page", "url", "https://example.test/a"),
-                        null,
-                        TaskMessageProjectionStatus.SUCCESS,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        0,
-                        3,
-                        null,
-                        null,
-                        TaskMessageProjectionFinalReason.BUSINESS_SUCCESS,
-                        Map.of("html", "<ok>"),
-                        "attempt-001",
-                        "worker-001",
-                        "batch-001"
-                )
-        ));
+        taskReviewStore.upsertItem(TASK_ID, reviewItem(
+                "msg-001",
+                "SUCCESS",
+                "BUSINESS_SUCCESS",
+                Map.of("eventCode", "crawler.fetch-page", "url", "https://example.test/a"),
+                Map.of("html", "<ok>"),
+                "worker-001"));
 
         mockMvc.perform(get("/internal/v1/review/tasks/{taskId}", TASK_ID))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.summary.totalItems").value(2))
+                .andExpect(jsonPath("$.data.summary.totalItems").value(1))
                 .andExpect(jsonPath("$.data.seedPreview[0].eventCode").value("crawler.fetch-page"))
                 .andExpect(jsonPath("$.data.resultPreview[0].workerId").value("worker-001"))
                 .andExpect(jsonPath("$.data.exports.seedUrl").value("/internal/v1/review/tasks/task-001/seed-export"));
@@ -501,30 +484,13 @@ class TaskApiControllerTest {
     @Test
     void exportTaskSeedsReturnsAttachmentPayload() throws Exception {
         when(taskQueries.getTaskDetail(TASK_ID)).thenReturn(taskDetail("RUNNING", "detail-task", "demoApp"));
-        when(taskDetailStore.getTaskMessageStats(TASK_ID)).thenReturn(new TaskDetailStore.TaskMessageStats(1, 0, 0, 0, 1));
-        when(taskDetailStore.getTaskMessageProjections(TASK_ID, 1)).thenReturn(List.of(
-                new TaskDetailStore.TaskMessageProjection(
-                        "msg-001",
-                        TASK_ID,
-                        Map.of("eventCode", "crawler.fetch-page", "url", "https://example.test/a"),
-                        null,
-                        TaskMessageProjectionStatus.ASSIGNED,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        0,
-                        3,
-                        null,
-                        null,
-                        null,
-                        Map.of(),
-                        "attempt-001",
-                        "worker-001",
-                        "batch-001"
-                )
-        ));
+        taskReviewStore.upsertItem(TASK_ID, reviewItem(
+                "msg-001",
+                "ASSIGNED",
+                null,
+                Map.of("eventCode", "crawler.fetch-page", "url", "https://example.test/a"),
+                Map.of(),
+                "worker-001"));
 
         mockMvc.perform(get("/internal/v1/review/tasks/{taskId}/seed-export", TASK_ID))
                 .andExpect(status().isOk())
@@ -601,11 +567,10 @@ class TaskApiControllerTest {
         verify(taskAdmin).appendTaskItemsWithReceipt(org.mockito.ArgumentMatchers.eq(TASK_ID), captor.capture());
         assertEquals(List.of(Map.of("text", "hello"), Map.of("text", "world")), captor.getValue().getItems());
         assertEquals("chatbot.reply", captor.getValue().getEventCode());
-        ArgumentCaptor<TaskDetailStore.TaskMessageProjection> projectionCaptor =
-                ArgumentCaptor.forClass(TaskDetailStore.TaskMessageProjection.class);
-        verify(taskDetailStore, org.mockito.Mockito.times(2))
-                .upsertTaskMessageProjection(eq(TASK_ID), projectionCaptor.capture());
-        assertEquals("chatbot.reply", projectionCaptor.getAllValues().getFirst().input().get("eventCode"));
+        List<com.xa.mass.api.review.TaskReviewReadModel.TaskReviewItem> reviewItems =
+                taskReviewStore.listItems(TASK_ID, 10);
+        assertEquals(2, reviewItems.size());
+        assertEquals("chatbot.reply", reviewItems.getFirst().input().get("eventCode"));
     }
 
     @Test
@@ -979,8 +944,26 @@ class TaskApiControllerTest {
         return new TaskAccessSnapshot(TASK_ID, project, Map.of(), "OPEN");
     }
 
-    private TaskDetailStoreTaskReviewReadModel reviewReadModel() {
-        return new TaskDetailStoreTaskReviewReadModel(taskDetailStore);
+    private TaskReviewStoreTaskReviewReadModel reviewReadModel() {
+        return new TaskReviewStoreTaskReviewReadModel(taskReviewStore);
+    }
+
+    private TaskReviewReadModelWriter directReviewWriter() {
+        TaskReviewStoreMaterializer materializer = new TaskReviewStoreMaterializer(taskReviewStore);
+        return new TaskReviewReadModelWriter() {
+            @Override
+            public void recordItemsAccepted(String taskId,
+                                            List<Map<String, Object>> acceptedItems,
+                                            TaskItemBatchAppendReceipt receipt,
+                                            int maxRetryCount) {
+                materializer.apply(TaskReviewItemsAcceptedEvent.from(taskId, acceptedItems, receipt, maxRetryCount));
+            }
+
+            @Override
+            public void recordWorkFinal(com.xa.mass.sdk.model.TaskWorkFinalNotification notification) {
+                materializer.apply(TaskReviewWorkTerminalEvent.from(notification));
+            }
+        };
     }
 
     private TaskAccessSnapshot taskAccessOwned(String project, String userId) {
@@ -995,32 +978,32 @@ class TaskApiControllerTest {
         );
     }
 
-    private TaskDetailStore.TaskMessageProjection projection(String messageId,
-                                                             TaskMessageProjectionStatus status,
-                                                             TaskMessageProjectionFinalReason finalReason,
-                                                             Map<String, Object> input,
-                                                             Map<String, Object> output,
-                                                             String workerId) {
-        return new TaskDetailStore.TaskMessageProjection(
+    private com.xa.mass.api.review.TaskReviewReadModel.TaskReviewItem reviewItem(String messageId,
+                                                                                 String status,
+                                                                                 String finalReason,
+                                                                                 Map<String, Object> input,
+                                                                                 Map<String, Object> output,
+                                                                                 String workerId) {
+        return new com.xa.mass.api.review.TaskReviewReadModel.TaskReviewItem(
                 messageId,
-                TASK_ID,
-                input,
-                null,
+                input == null ? null : String.valueOf(input.get("eventCode")),
                 status,
-                null,
-                null,
-                null,
-                null,
+                finalReason,
                 null,
                 0,
                 3,
                 null,
                 null,
-                finalReason,
-                output,
-                "attempt-" + messageId,
+                null,
+                null,
+                null,
+                input,
                 workerId,
-                "batch-" + messageId
+                "batch-" + messageId,
+                "attempt-" + messageId,
+                null,
+                null,
+                output
         );
     }
 

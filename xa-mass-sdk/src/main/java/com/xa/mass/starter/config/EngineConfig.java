@@ -53,7 +53,6 @@ import com.xa.mass.worker.runtime.admission.WorkerWarmHintRuntime;
 import com.xa.mass.worker.runtime.routing.WorkerRouteBucketPolicies;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.storage.api.RuleStorage;
-import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.TaskShellStore;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationStore;
 import com.xa.mass.storage.memory.InMemoryRuleStorage;
@@ -91,7 +90,6 @@ public class EngineConfig {
     private TaskRuntimeRecoveryPort taskRuntimeRecoveryPort;
     private com.xa.mass.engine.util.TraceEventLogger traceEventLogger;
     private TaskShellStore taskShellStore;
-    private TaskDetailStore taskDetailStore;
     private TaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
     private TaskResultRuntime taskResultRuntime = new InMemoryTaskResultRuntime();
     private TaskWorkerMatchingStrategy matchingStrategy;
@@ -129,7 +127,6 @@ public class EngineConfig {
     public EngineConfig() {
         InMemoryTaskShellStore defaultTaskShellStore = new InMemoryTaskShellStore();
         this.taskShellStore = defaultTaskShellStore;
-        this.taskDetailStore = defaultTaskShellStore;
     }
 
     public EngineConfig(EngineConfig source) {
@@ -146,7 +143,6 @@ public class EngineConfig {
         this.taskShellLifecycleMaintenancePort = source.taskShellLifecycleMaintenancePort;
         this.taskRuntimeRecoveryPort = source.taskRuntimeRecoveryPort;
         this.taskShellStore = source.taskShellStore;
-        this.taskDetailStore = source.taskDetailStore;
         this.taskWorkRuntime = source.taskWorkRuntime;
         this.taskResultRuntime = source.taskResultRuntime;
         this.matchingStrategy = source.matchingStrategy;
@@ -311,28 +307,7 @@ public class EngineConfig {
         if (this.taskManager != null) {
             throw new IllegalStateException("Cannot replace taskShellStore after taskManager has been configured");
         }
-        if (this.taskDetailStore == this.taskShellStore) {
-            this.taskDetailStore = null;
-        }
         this.taskShellStore = taskShellStore;
-    }
-
-    public TaskDetailStore getTaskDetailStore() {
-        if (taskDetailStore != null) {
-            return taskDetailStore;
-        }
-        throw new IllegalStateException(
-                "taskDetailStore is not configured; provide an explicit taskDetailStore via setTaskDetailStore()");
-    }
-
-    public void setTaskDetailStore(TaskDetailStore taskDetailStore) {
-        if (taskDetailStore == null) {
-            throw new IllegalArgumentException("taskDetailStore must not be null");
-        }
-        if (this.taskManager != null) {
-            throw new IllegalStateException("Cannot replace taskDetailStore after taskManager has been configured");
-        }
-        this.taskDetailStore = taskDetailStore;
     }
 
     private WorkerManager workerManager() {

@@ -2,7 +2,6 @@ package com.xa.mass.storage.jdbc;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
-import com.xa.mass.storage.api.TaskDetailStore;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.TaskShellStore;
 import org.flywaydb.core.Flyway;
@@ -78,13 +77,6 @@ public final class JdbcStorageRuntime implements AutoCloseable {
 
     public TaskShellStore taskShellStore() {
         return taskShellStore;
-    }
-
-    public TaskDetailStore taskDetailStore() {
-        if (taskShellStore instanceof TaskDetailStore taskDetailStore) {
-            return taskDetailStore;
-        }
-        throw new IllegalStateException("configured JDBC task shell store does not provide TaskDetailStore");
     }
 
     public RuleStorage ruleStorage() {

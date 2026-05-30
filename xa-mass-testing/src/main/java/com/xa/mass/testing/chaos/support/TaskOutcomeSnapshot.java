@@ -26,7 +26,7 @@ public record TaskOutcomeSnapshot(String taskId,
         map.put("status", status);
         map.put("terminalReason", terminalReason);
         map.put("runtime", runtime.toMap());
-        map.put("compatibilityProjection", messages.stream().map(MessageOutcomeSnapshot::toMap).toList());
+        map.put("reviewMessages", messages.stream().map(MessageOutcomeSnapshot::toMap).toList());
         return map;
     }
 
@@ -128,18 +128,6 @@ public record TaskOutcomeSnapshot(String taskId,
                                          String status,
                                          String finalReason,
                                          String leaseExpireTime) {
-        public static AttemptOutcomeSnapshot fromAttempt(CompatibilityAttemptView attempt) {
-            return new AttemptOutcomeSnapshot(
-                    attempt.attemptNo(),
-                    attempt.attemptId(),
-                    attempt.workerId(),
-                    attempt.batchId(),
-                    attempt.status(),
-                    attempt.finalReason(),
-                    attempt.leaseExpireTime() != null ? String.valueOf(attempt.leaseExpireTime()) : null
-            );
-        }
-
         public Map<String, Object> toMap() {
             Map<String, Object> map = new LinkedHashMap<>();
             map.put("attemptNo", attemptNo);

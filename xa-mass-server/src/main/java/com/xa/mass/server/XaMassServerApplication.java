@@ -14,14 +14,16 @@ import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryStore;
 import com.xa.mass.transport.runtime.presence.RedisWorkerPresenceStore;
 import com.xa.mass.api.review.InProcessTaskReviewReportQueue;
+import com.xa.mass.api.review.InMemoryTaskReviewStore;
+import com.xa.mass.api.review.JdbcTaskReviewStore;
 import com.xa.mass.api.review.QueueBackedTaskReviewReadModelWriter;
-import com.xa.mass.api.review.TaskDetailStoreTaskReviewReadModel;
-import com.xa.mass.api.review.TaskDetailStoreReviewMaterializer;
 import com.xa.mass.api.review.TaskReviewMaterializer;
 import com.xa.mass.api.review.TaskReviewReadModel;
 import com.xa.mass.api.review.TaskReviewReadModelWriter;
 import com.xa.mass.api.review.TaskReviewReportQueue;
-import com.xa.mass.storage.api.TaskDetailStore;
+import com.xa.mass.api.review.TaskReviewStore;
+import com.xa.mass.api.review.TaskReviewStoreMaterializer;
+import com.xa.mass.api.review.TaskReviewStoreTaskReviewReadModel;
 import com.xa.mass.storage.api.TaskShellStore;
 import com.xa.mass.storage.jdbc.JdbcStorageMode;
 import com.xa.mass.storage.jdbc.JdbcStorageRuntime;
@@ -209,27 +211,23 @@ public class XaMassServerApplication {
 
     @Bean
     @Profile("dev")
-    public TaskDetailStore taskDetailStore(JdbcStorageRuntime jdbcStorageRuntime, TaskShellStore taskShellStore) {
+    public TaskReviewStore taskReviewStore(JdbcStorageRuntime jdbcStorageRuntime) {
         if (jdbcStorageRuntime.isEnabled()) {
-            return jdbcStorageRuntime.taskDetailStore();
+            return new JdbcTaskReviewStore(jdbcStorageRuntime.dataSource());
         }
-        if (taskShellStore instanceof TaskDetailStore detailStore) {
-            return detailStore;
-        }
-        throw new IllegalStateException(
-                "taskShellStore does not implement TaskDetailStore: " + taskShellStore.getClass().getName());
+        return new InMemoryTaskReviewStore();
     }
 
     @Bean
     @Profile("dev")
-    public TaskReviewReadModel taskReviewReadModel(TaskDetailStore taskDetailStore) {
-        return new TaskDetailStoreTaskReviewReadModel(taskDetailStore);
+    public TaskReviewReadModel taskReviewReadModel(TaskReviewStore taskReviewStore) {
+        return new TaskReviewStoreTaskReviewReadModel(taskReviewStore);
     }
 
     @Bean
     @Profile("dev")
-    public TaskReviewMaterializer taskReviewMaterializer(TaskDetailStore taskDetailStore) {
-        return new TaskDetailStoreReviewMaterializer(taskDetailStore);
+    public TaskReviewMaterializer taskReviewMaterializer(TaskReviewStore taskReviewStore) {
+        return new TaskReviewStoreMaterializer(taskReviewStore);
     }
 
     @Bean(destroyMethod = "close")
@@ -272,7 +270,6 @@ public class XaMassServerApplication {
     public MassSdkApplication fullStackRuntimeApplication(ObjectProvider<MassBootstrapDataProvider> bootstrapDataProvider,
                                                           JdbcStorageRuntime jdbcStorageRuntime,
                                                           TaskShellStore taskShellStore,
-                                                          TaskDetailStore taskDetailStore,
                                                           ObjectProvider<TaskWorkRuntime> taskWorkRuntimeProvider,
                                                           ObjectProvider<TaskResultRuntime> taskResultRuntimeProvider,
                                                           ObjectProvider<ExecutionEventSink> executionEventSinkProvider) {
@@ -322,8 +319,7 @@ public class XaMassServerApplication {
                             .runtimeReadyDispatchIdleBackoffMaxMillis(runtimeReadyDispatchIdleBackoffMaxMillis)
                             .leaseWatchdogIntervalSeconds(leaseWatchdogIntervalSeconds)
                             .taskMessageLeaseSeconds(taskMessageLeaseSeconds)
-                            .taskShellStore(taskShellStore)
-                            .taskDetailStore(taskDetailStore);
+                            .taskShellStore(taskShellStore);
                     TaskWorkRuntime taskWorkRuntime = taskWorkRuntimeProvider.getIfAvailable(InMemoryTaskWorkRuntime::new);
                     engine.taskWorkRuntime(taskWorkRuntime);
                     TaskResultRuntime taskResultRuntime = taskResultRuntimeProvider.getIfAvailable(InMemoryTaskResultRuntime::new);

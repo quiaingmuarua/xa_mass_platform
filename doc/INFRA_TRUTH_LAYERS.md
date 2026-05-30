@@ -40,28 +40,27 @@ more implemented than another.
 | active lease ownership / expiry | runtime state | hot-path callback and expiry truth | bounded mirrors for debug only | JDBC durable truth |
 | worker lock / capacity / reservation / online churn | runtime state | volatile worker execution state | bounded in-process residue | JDBC durable truth |
 | task progress counters used to close tasks | runtime state plus bounded task aggregate projection | hot-path correctness first, operator summary second | bounded task aggregate snapshots on `Task` | large attempt history tables |
-| per-message detail at scale | trace / audit stream | high-volume item history and reconstruction | bounded projection residue | JDBC durable event history |
-| per-message attempt timelines at scale | trace / audit stream | execution-history / analysis surface | bounded projection residue | JDBC durable event history |
-| engine -> transport dispatch payload | runtime state | claim/lease-owned hot-path delivery truth | bounded in-memory or Redis `TaskDispatchHandoff` after claim only | JDBC/message projection truth or a duplicate ready queue |
+| per-message detail at scale | trace / audit stream | high-volume item history and reconstruction | server-local review materialization for bounded UI/export views | JDBC control-plane storage or engine runtime state |
+| per-message attempt timelines at scale | trace / audit stream | execution-history / analysis surface | server-local review materialization for bounded UI/export views | JDBC control-plane storage or engine runtime state |
+| engine -> transport dispatch payload | runtime state | claim/lease-owned hot-path delivery truth | bounded in-memory or Redis `TaskDispatchHandoff` after claim only | JDBC/review-row truth or a duplicate ready queue |
 | transport -> engine result / dispatch-failure inboxes | runtime state | hot-path cross-JVM ingress back into engine-owned result/compensation ports | bounded Redis inboxes drained by engine process | server/API owner semantics or transport-owned lifecycle state |
-| runtime result apply | runtime state | active lease, retry budget consumption, runtime apply status, counters, and recent receipts are hot-path truth | `TaskWorkRuntime.applyResultWithContext(...)` | message/attempt projection or transport envelope metadata |
-| runtime result read | runtime state | stable-final public result rows, task-local result sequence, result repair anchors, and attempt-closed/event/progress barriers are kernel runtime truth | `TaskResultRuntime` memory or Redis implementation | `TaskDetailStore`, JDBC result tables, server/controller projection reads |
+| runtime result apply | runtime state | active lease, retry budget consumption, runtime apply status, counters, and recent receipts are hot-path truth | `TaskWorkRuntime.applyResultWithContext(...)` | review rows or transport envelope metadata |
+| runtime result read | runtime state | stable-final public result rows, task-local result sequence, result repair anchors, and attempt-closed/event/progress barriers are kernel runtime truth | `TaskResultRuntime` memory or Redis implementation | server review rows, JDBC result tables, controller projection reads |
 | callback / dispatch / assignment histories | trace / audit stream | replay/debug/analysis, not control truth | structured logs or bounded queues | JDBC durable event history |
 | cross-task failure analytics | trace / audit stream | analytical workload | external sink/export | task tables or runtime hot-path scans |
 
 Current engine convergence rule: callback/expiry acceptance comes from runtime
-lease truth first. Compatibility message/attempt rows may be reconstructed or
-upserted afterward as bounded residue, but they do not decide whether a leased
-work item is valid.
+lease truth first. Server review rows may be materialized afterward through the
+review report queue, but they do not decide whether a leased work item is valid.
 Result-side trace emission follows the same rule: emit from runtime-owned
-message/lease state first, then repair bounded projection residue if needed.
+message/lease state first, then let server materialization lag if needed.
 Recent duplicate receipts for already-finalized work belong to bounded runtime
-state as well; they are not an excuse to promote message projection back into
+state as well; they are not an excuse to promote review rows back into
 mainline callback acceptance. If runtime no longer has an active lease and no
 recent final receipt exists, callback acceptance must not fall back to message
 projection residue to recover a second acceptance truth.
 Public result reads come from `TaskResultRuntime` committed stable-final rows.
-Projection residue remains debug/audit material and must not be used for
+Server-local review rows remain operator/debug material and must not be used for
 `/results`, archive generation, or SDK result query.
 A durable result ledger or archive materialized view still requires a separate
 design and must not be implied by result ingress or projection residue.
@@ -71,17 +70,15 @@ design and must not be implied by result ingress or projection residue.
 | Area | Current code truth | Interpretation |
 | --- | --- | --- |
 | `platform_infra/mass-storage-jdbc` | persists task shell/rule/principal truth; no JDBC worker declaration implementation currently exists | correct control-plane role |
-| JDBC-local message/attempt projections | process-local compatibility residue | not a storage expansion license |
 | JDBC-local worker lock residue | process-local runtime residue | not durable worker-runtime truth; worker locks/capacity must not become control-plane storage truth |
 | `platform_infra/mass-storage-memory` | in-memory task shell, worker declaration adapter, and rule definition storage | current embedded/test implementation |
-| memory/JDBC detail residue internals | neutral projection-record storage with compatibility materialization at the boundary | do not let legacy message models become the internal owner shape again |
 | `mass-runtime-*` modules | queue/lease/counter semantics | canonical runtime-state home |
 | `TaskResultRuntime` memory/Redis implementations | stable-final result rows plus stage/barrier repair state | canonical runtime result-read truth; memory is volatile local/dev, Redis is cross-process runtime truth |
 | Redis transport dispatch handoff | post-claim assignment queue between engine and transport JVMs; node-targeted inboxes are keyed by `transportNodeId` | runtime-state handoff, not ready queue ownership and not task lifecycle truth |
 | Redis worker presence / route-owner view | shared transport-owned reachability state | queryable runtime view for matching and dispatch routing, not a queue and not control-plane worker declaration |
 | Redis transport result / dispatch-failure inboxes | transport-to-engine runtime ingress | bounded cross-JVM channels drained into engine-owned result ingest and compensation ports, not server endpoints |
-| `TaskDetailStore` engine usage | projection-first bounded compatibility upsert/snapshot reads through neutral records only | not message CRUD ownership and not runtime truth |
-| engine assembly | wires `TaskShellStore`, `TaskDetailStore`, and worker-runtime `WorkerDeclarationStore` explicitly | prevents shell/declaration truth from silently redefining detail/projection or runtime ownership |
+| server review materialization | server-local review store populated from the review report queue | operator/read-model materialization, not engine runtime truth |
+| engine assembly | wires `TaskShellStore` and worker-runtime `WorkerDeclarationStore` explicitly | prevents shell/declaration truth from silently redefining review/export or runtime ownership |
 | `doc/TRACE_CONTRACT.md` plus `platform_infra/mass-trace-sink` | required trace semantics plus the current canonical sink/module implementation | trace remains analysis/debug ownership, not lifecycle/runtime truth |
 
 ## 4. Fast Placement Test

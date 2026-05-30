@@ -52,8 +52,7 @@ Current truth for this conservative first slice:
   their keyspace/index baseline; it remains an explicit opt-in path outside the
   verified default runtime mainline
 - `mass-storage-api` owns shared `TaskShellStore`, rule-definition storage
-  contracts, plus the bounded `TaskDetailStore` compatibility-projection seam
-  and the storage-adjacent rule types referenced by those contracts
+  contracts, and the storage-adjacent rule types referenced by those contracts
 - `xa-mass-worker-runtime` owns `WorkerDeclarationStore` /
   `WorkerDeclarationRecord`; storage modules implement that port as worker
   declaration adapters when needed
@@ -78,8 +77,11 @@ Current implementation drift agents must keep explicit:
 - `mass-storage-memory` contains `InMemoryRuleStorage` for rule definitions;
   it must not grow evaluator lifecycle ownership back into storage
 - `mass-storage-jdbc` currently persists control-plane task/rule truth and still exposes `JdbcStorageRuntime` as a convenience bundle for migrations and storage adapters; it returns storage contracts to outer layers, but that bundle is still convergence work rather than a long-term product extension point
-- `JdbcTaskShellStore` keeps JDBC-local process-local compatibility projections for task-message residue; worker runtime registry state is intentionally not exposed through JDBC storage
-- engine/runtime assembly now wires `TaskShellStore` and `TaskDetailStore` explicitly instead of relying on an implicit "task shell store also means detail store" fallback
+- `JdbcTaskShellStore` is a task-shell control-plane store; server review/export
+  materialization owns any server-local review rows outside engine runtime
+  assembly
+- engine/runtime assembly wires `TaskShellStore` without a detail/projection
+  store fallback
 - `xa-mass-engine` still uses `mass-storage-memory` from tests, but its main sources no longer import that package directly; keep the dependency scoped to tests unless a verified mainline caller requires more
 
 Boundary to keep stable:
@@ -93,9 +95,10 @@ Boundary to keep stable:
   `WorkerDeclarationStore`; storage adapters must not expose supported-project
   or supported-event worker lookup APIs as scheduling shortcuts
 - high-volume task-message detail and attempt/event history belong in trace or async audit/export sinks, not in the control-plane JDBC path
-- bounded compatibility projection and runtime residue remain temporary/debug
-  material even though `mass-trace-sink` is landed; do not redefine that
-  residue as control-plane truth, lifecycle truth, or public result-read truth
+- runtime residue and server-local review rows remain temporary/debug or
+  operator-facing material even though `mass-trace-sink` is landed; do not
+  redefine that residue as control-plane truth, lifecycle truth, or public
+  result-read truth
 
 When docs and code disagree inside `platform_infra/`, preserve the disagreement
 explicitly in the owner README as "current implementation drift" rather than

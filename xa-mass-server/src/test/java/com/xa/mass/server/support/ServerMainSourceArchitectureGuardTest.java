@@ -141,9 +141,10 @@ class ServerMainSourceArchitectureGuardTest {
                                 String source = Files.readString(path, StandardCharsets.UTF_8);
                                 if (source.contains("import com.xa.mass.api.review.TaskReviewReport")
                                         || source.contains("import com.xa.mass.api.review.TaskReviewMaterializer")
+                                        || source.contains("import com.xa.mass.api.review.TaskReviewStore")
                                         || source.contains("import com.xa.mass.api.review.QueueBackedTaskReview")) {
                                     violations.add(repoRoot.relativize(path)
-                                            + " imports server review materialization queue contract");
+                                            + " imports server review materialization/store contract");
                                 }
                             } catch (IOException e) {
                                 violations.add(path + " could not be read: " + e.getMessage());
@@ -153,7 +154,7 @@ class ServerMainSourceArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "review materialization queue/materializer contracts must stay server-owned:\n"
+                "review materialization queue/materializer/store contracts must stay server-owned:\n"
                         + String.join("\n", violations));
     }
 
@@ -164,8 +165,10 @@ class ServerMainSourceArchitectureGuardTest {
 
         assertTrue(source.contains("new QueueBackedTaskReviewReadModelWriter(taskReviewReportQueue)"),
                 "server production review writer bean must submit through the review report queue");
-        assertTrue(source.contains("new TaskDetailStoreReviewMaterializer(taskDetailStore)"),
-                "server production review materializer must write through current TaskDetailStore backing");
+        assertTrue(source.contains("new TaskReviewStoreMaterializer(taskReviewStore)"),
+                "server production review materializer must write through server-local review store backing");
+        assertTrue(!source.contains("taskDetailStore("),
+                "server production review wiring must not request TaskDetailStore from shared infra");
     }
 
     @Test

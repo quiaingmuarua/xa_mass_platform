@@ -20,7 +20,7 @@ The shared kernel remains:
 
 - `Task` as orchestration shell
 - `TaskWorkRuntime` as ready/lease/retry/expiry owner
-- bounded attempt projection as attempt audit truth
+- bounded review/trace attempt evidence as audit truth
 
 ## Current Implemented Slice
 

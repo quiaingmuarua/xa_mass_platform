@@ -109,7 +109,8 @@ The active `platform_infra/mass-storage-jdbc` JDBC path is intentionally narrow:
 - JDBC persists principal credential truth
 - runtime message/attempt detail stays process-local
 - runtime worker online/lock/capacity/reservation state stays process-local
-- engine assembly must wire `TaskDetailStore` explicitly instead of inferring it from `TaskShellStore`
+- server review/export materialization uses server-owned backing stores and
+  must not be wired back into engine runtime assembly
 - startup cleanup may repair runtime residue, but it does not make JDBC the
   owner of queue, lease, or inflight execution truth
 
