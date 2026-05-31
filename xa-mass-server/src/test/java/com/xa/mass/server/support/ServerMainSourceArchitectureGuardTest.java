@@ -48,6 +48,35 @@ class ServerMainSourceArchitectureGuardTest {
     }
 
     @Test
+    void serverProductionDoesNotUseSharedProjectionInfrastructure() throws IOException {
+        List<String> violations = new ArrayList<>();
+        try (Stream<Path> paths = Files.walk(SERVER_MAIN_SOURCE_ROOT)) {
+            paths.filter(Files::isRegularFile)
+                    .filter(path -> path.toString().endsWith(".java"))
+                    .forEach(path -> {
+                        try {
+                            String source = Files.readString(path, StandardCharsets.UTF_8);
+                            if (source.contains("TaskDetailStore")
+                                    || source.contains("TaskDetailStoreTaskReviewReadModel")
+                                    || source.contains("TaskDetailStoreReviewMaterializer")
+                                    || source.contains("TaskMessageProjection")
+                                    || source.contains("TaskMessageAttemptProjection")
+                                    || source.contains("com.xa.mass.storage.api.projection")) {
+                                violations.add(path + " uses retired shared projection infrastructure");
+                            }
+                        } catch (IOException e) {
+                            violations.add(path + " could not be read: " + e.getMessage());
+                        }
+                    });
+        }
+
+        assertTrue(violations.isEmpty(),
+                "server production review/export must use server-local TaskReviewStore materialization, "
+                        + "not retired shared projection infrastructure:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void externalWorkerControllerDoesNotReintroduceWorkerContextCompatibilitySurface() throws IOException {
         Path controller = SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/api/internal/ExternalWorkerApiController.java");
         String source = Files.readString(controller, StandardCharsets.UTF_8);

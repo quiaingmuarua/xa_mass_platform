@@ -113,6 +113,7 @@ public class ControlConsoleScenarioBootstrapConfiguration {
                     .permissions(List.of(
                             PrincipalContext.EXTERNAL_WORKER_PERMISSION,
                             PrincipalContext.TASK_CREATE_PERMISSION,
+                            "task:edit",
                             "task:control",
                             "task:govern"
                     ))

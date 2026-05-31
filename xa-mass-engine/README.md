@@ -319,33 +319,26 @@ Keep these facts fixed unless the owning global baselines change:
 - `TaskStateValidator` owns runtime aggregate validation only; scan-heavy
   compatibility projection audit is no longer part of the engine kernel
   diagnostic surface
-- `TaskWorkProjectionState` is the engine-owned work/attempt residue
-  state owner; do not let storage-edge projection enums leak back into
-  runtime/result/trace code as native engine state
-- `TaskCompatibilityProjectionStore` is the engine-internal storage-edge owner
-  for bounded projection residue; `TaskManager` and result/dispatch hot paths
-  should not each reconstruct `TaskDetailStore` records on their own
-- `TaskDetailStore.TaskMessageProjection` and
-  `TaskDetailStore.TaskMessageAttemptProjection` are storage-edge residue
-  shapes; production engine services should translate them inside the
-  engine boundary instead of returning them as engine-facing API results
-- public result reads must use `TaskResultRuntime`; projection residue must not
-  source `/results`, SDK result query, or archive generation
-- runtime ingest must stay correct when compatibility message-projection writes
-  fail or lag; enqueue truth lives in `TaskWorkRuntime`, and projection writes
-  are best-effort residue
+- engine projection residue helpers, storage projection row types, and
+  `TaskDetailStore` have been retired from engine/runtime ownership
+- public result reads must use `TaskResultRuntime`; server-local review rows
+  and retired projection rows must not source `/results`, SDK result query, or
+  archive generation
+- runtime ingest must stay correct when server-local review materialization
+  fails or lags; enqueue truth lives in `TaskWorkRuntime`, and review writes
+  are best-effort read-model materialization
 - assignment diagnostics are append-only bounded residue; matching and dispatch
   mainline should depend on a write-only recorder, not on report/history APIs
 - dispatch submit failure after claim/attempt creation must compensate inline
-  through runtime retry re-entry plus projection reset; lease expiry repair is a
-  fallback, not the mainline
-- engine-provided message reads are compatibility helpers, not the future
-  business-detail query model
-- cross-module message reads should stay explicit about intent:
-  projection-style reads for bounded logical message views and audit-style
-  reads for attempt timelines
-- cross-module callers that only need worker registration lookup should depend
-  on storage lookup contracts rather than carrying `WorkerManager`
+  through runtime retry re-entry plus worker resource release; lease expiry
+  repair is a fallback, not the mainline
+- engine-provided bounded reads stop at task aggregate/state inspection;
+  message/attempt review and export reads are server-local read-model concerns
+- cross-module item-history reads should stay explicit about intent and should
+  not be routed back through engine query surfaces
+- cross-module callers that only need worker registration or current worker
+  views should depend on worker-runtime query contracts rather than carrying
+  private `WorkerManager` assembly
 - cross-module callers that only need rule definitions should depend on
   `RuleStorage`; matching consumes `MatchingRuleSetProvider` and
   `MatchingRuleEvaluator` rather than a CRUD-shaped manager
@@ -354,8 +347,8 @@ Repo-level mainline surfaces:
 
 - shell/admin mutation flows use `TaskCommandService`
 - bounded inspection flows use `TaskQueryService`
-- production engine mainline does not carry a compatibility projection query
-  owner; bounded residue overlays stay in test/internal harnesses only
+- production engine mainline does not carry a message/attempt projection query
+  owner; review/export read models stay server-local
 - transport/runtime result ingress uses `TaskResultIngestFacade`
 - dispatch-ready bindings and result-ingest seams used across engine, SDK,
   transport runtime, and tests now live in shared base runtime contracts rather
@@ -387,10 +380,10 @@ Infra ownership:
   dependency on `../transport/transport_api`
 - SDK/server bootstrap owns concrete wiring
 - primary SDK/server builders should wire storage implementations into kernel
-  SPI task-shell ports, `TaskDetailStore`, `TaskWorkRuntime`,
-  `WorkerDeclarationStore`, worker runtime contracts, and `RuleStorage` rather
-  than exposing full `TaskManager` / `WorkerManager` configuration surfaces in
-  outer modules
+  SPI task-shell ports, `TaskWorkRuntime`, `TaskResultRuntime`,
+  `WorkerDeclarationStore`, worker runtime contracts, and `RuleStorage`; server
+  review materialization is wired through server-local review stores, not
+  engine or shared storage projection contracts
 - starter assembly should treat private worker-runtime `WorkerManager` assembly
   as derived over storage/runtime contracts, and should assemble rule matching
   from `RuleStorage` plus `RuleEvaluatorRegistry`, not from a broad rule

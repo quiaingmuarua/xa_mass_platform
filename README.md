@@ -101,9 +101,10 @@ Current integration boundary rule:
 - `platform_infra/mass-runtime-api`: shared runtime queue/lease/counter contracts plus the active result-runtime boundary used by engine, transport, server, and test shells
 - `platform_infra/mass-runtime-memory`: in-memory runtime implementations for the current default embedded path and focused runtime tests
 - `platform_infra/mass-runtime-redis`: Redis-backed runtime implementations plus their keyspace/index baseline; explicit opt-in, not the current default verified runtime path
-- `platform_infra/mass-storage-api`: shared task/worker/rule storage contracts and storage-adjacent rule types used across engine, JDBC adapters, server, SDK, and tests
-- `platform_infra/mass-storage-memory`: in-memory control-plane task/worker storage plus the current in-memory rule helpers used by SDK/server defaults and focused tests
-- `platform_infra/mass-storage-jdbc`: JDBC control-plane storage implementation for H2/PostgreSQL task, worker, rule, and submitter truth; current implementation also keeps compatibility projections in-process
+- `xa-mass-kernel-spi`: kernel-facing task shell runtime ports and matching rule value contracts used to keep engine production detached from storage modules
+- `platform_infra/mass-storage-api`: persistence/control-plane task shell and rule storage contracts; not a kernel-facing engine dependency and not a worker declaration owner
+- `platform_infra/mass-storage-memory`: in-memory control-plane task shell storage, worker declaration adapter, and rule-definition storage used by SDK/server defaults and focused tests
+- `platform_infra/mass-storage-jdbc`: JDBC control-plane storage implementation for H2/PostgreSQL task shell, rule, and submitter truth; task review/export materialization is server-local
 - `platform_infra/mass-trace-sink`: canonical execution-event model plus the default asynchronous JSONL trace sink
 - `xa-mass-trace`: DuckDB-backed trace operator CLI for local timeline/stats/validation over canonical JSONL trace output; default human/agent read path for lifecycle trace diagnosis and trace-observed integration verification
 - `transport/transport_api`: transport-neutral dispatch/result/system-event contracts and transport model surface
@@ -111,6 +112,7 @@ Current integration boundary rule:
 - `transport/polling-adapter`: polling/pull worker transport adapter
 - `transport/socket-adapter`: socket worker transport adapter
 - `transport/websocket-adapter`: WebSocket worker transport adapter
+- `xa-mass-worker-runtime`: worker-plane lifecycle/resource owner for WorkerGroup, AdapterNode, NodeGroupBinding, worker declaration ports, candidate source, scheduling evidence, admission, dispatch gates, and warm hints
 - `xa-mass-engine`: lifecycle, assignment, result handling, and policy seams
 - `xa-mass-sdk-api`: stable SDK-facing auth, catalog, event, and model contracts
 - `xa-mass-sdk`: embedding entry and runtime composition for JVM callers

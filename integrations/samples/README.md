@@ -57,6 +57,26 @@ node integrations/samples/dev/scenario/launch-workers.mjs
 The full launch keeps the process alive because it also owns the managed
 realtime sample worker child processes.
 
+## Java SDK Scenario Launcher
+
+Formal SDK-based scenario registration lives in
+`integrations/xa-mass-scenario-launcher`.
+
+Use it when the goal is to populate a running server through the Java external
+SDK without starting managed sample worker processes:
+
+```bash
+./mvnw -pl integrations/xa-mass-scenario-launcher -am -DskipTests package
+java -jar integrations/xa-mass-scenario-launcher/target/xa-mass-scenario-launcher.jar --register-only
+```
+
+The Node launcher remains the demo/dev process supervisor for launching sample
+worker child processes. The Java launcher is the formal SDK-composition path for
+WorkerGroup, AdapterNode, NodeGroupBinding, Worker, and task seeding.
+Task shell/item writes use submitter credentials; task commands such as seal and
+approve use the launcher command credential because task commands are
+operator-style lifecycle actions.
+
 Current dev scenario shape:
 
 - 2 managed realtime Node workers are launched as external processes.

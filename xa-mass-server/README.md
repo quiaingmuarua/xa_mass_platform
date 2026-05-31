@@ -48,11 +48,13 @@ What this module does not own:
 - task review APIs are server-owned console/read-model surfaces, not engine
   scheduling, result convergence, or terminal-policy truth
 - `InternalTaskReviewController` depends on `TaskReviewReadModel`
-- the current `dev` profile wires `TaskDetailStoreTaskReviewReadModel`, a
-  transitional implementation backed by bounded `TaskDetailStore` residue
+- the current `dev` profile wires server-local `TaskReviewStore`,
+  `TaskReviewStoreTaskReviewReadModel`, `TaskReviewStoreMaterializer`, and a
+  queue-backed writer; it does not use shared `TaskDetailStore` projection
+  residue
 - `TaskApiController` records accepted append items through
-  `TaskReviewReadModelWriter`; a server startup listener records stable-final
-  work notifications into the same read model
+  `TaskReviewReadModelWriter`; server startup listeners record attempt-closed
+  and stable-final work notifications into the same read model
 - public result reads still use SDK `TaskResultQueryOperations` backed by
   `TaskResultRuntime`; review read-model rows must not source `/results`
 
@@ -456,7 +458,7 @@ What this module proves:
   convergence behavior
 - public result reads and archive endpoints use SDK `TaskResultQueryOperations`
   backed by `TaskResultRuntime` stable-final rows; controllers must not read
-  `TaskDetailStore.TaskMessageProjection` for result rows
+  server-local review rows or retired projection rows for result truth
 - representative scheduling scenarios on the real host path, not the full
   competition matrix
 

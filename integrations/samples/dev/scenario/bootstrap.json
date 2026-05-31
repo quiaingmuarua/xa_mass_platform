@@ -307,7 +307,7 @@
     {
       "principalId": "public-probe-ops",
       "credential": "public-probe-ops-key",
-      "permissions": ["task:create", "task:control", "task:govern"],
+      "permissions": ["task:create", "task:edit", "task:control", "task:govern"],
       "projectScopes": ["deviceProbe"],
       "eventScopes": ["probe.phone.metadata"],
       "attributes": {
