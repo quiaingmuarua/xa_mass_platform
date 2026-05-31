@@ -478,6 +478,9 @@ public final class SdkTransportLoadRunner {
             require(deliveryQueue != null, "deliveryDiagnostics should be available");
             DeliveryQueueSnapshot snapshot = DeliveryQueueSnapshot.from(deliveryQueue);
             require(snapshot.available(), "deliveryQueue should be available during SDK transport load run");
+            require(snapshot.queuedItems() == snapshot.queuedItemsByAdapter(),
+                    "deliveryQueue global queued count should match per-adapter breakdown; queued="
+                            + snapshot.queuedItems() + " adapterQueued=" + snapshot.queuedItemsByAdapter());
             require(snapshot.queuedItems() == 0,
                     "deliveryQueue should drain to zero after terminal convergence; queued=" + snapshot.queuedItems());
             require(snapshot.oldestQueuedAgeMillis() == 0,
@@ -1348,6 +1351,7 @@ public final class SdkTransportLoadRunner {
                                          long directFailedItems,
                                          long directInvalidItems,
                                          long directUnavailableItems,
+                                         Map<String, QueueAdapterSnapshot> queueByAdapter,
                                          Map<String, DirectAdapterSnapshot> directByAdapter) {
         private static DeliveryQueueSnapshot from(Map<String, Object> source) {
             return new DeliveryQueueSnapshot(
@@ -1368,6 +1372,7 @@ public final class SdkTransportLoadRunner {
                     longValue(source.get("directFailedItems")),
                     longValue(source.get("directInvalidItems")),
                     longValue(source.get("directUnavailableItems")),
+                    parseQueueByAdapter(source.get("queueByAdapter")),
                     parseDirectByAdapter(source.get("directByAdapter"))
             );
         }
@@ -1391,8 +1396,31 @@ public final class SdkTransportLoadRunner {
             values.put("directFailedItems", directFailedItems);
             values.put("directInvalidItems", directInvalidItems);
             values.put("directUnavailableItems", directUnavailableItems);
+            values.put("queueByAdapter", queueByAdapter);
             values.put("directByAdapter", directByAdapter);
             return Map.copyOf(values);
+        }
+
+        private long queuedItemsByAdapter() {
+            return queueByAdapter.values().stream()
+                    .mapToLong(QueueAdapterSnapshot::queuedItems)
+                    .sum();
+        }
+    }
+
+    private record QueueAdapterSnapshot(long queuedItems,
+                                        long queueCount,
+                                        long waitingPollers,
+                                        long oldestQueuedAgeMillis,
+                                        long backpressureRejectedItems) {
+        private static QueueAdapterSnapshot from(Map<?, ?> source) {
+            return new QueueAdapterSnapshot(
+                    longValue(source.get("queuedItems")),
+                    longValue(source.get("queueCount")),
+                    longValue(source.get("waitingPollers")),
+                    longValue(source.get("oldestQueuedAgeMillis")),
+                    longValue(source.get("backpressureRejectedItems"))
+            );
         }
     }
 
@@ -1420,6 +1448,19 @@ public final class SdkTransportLoadRunner {
         source.forEach((adapterId, rawStats) -> {
             if (adapterId != null && rawStats instanceof Map<?, ?> stats) {
                 snapshots.put(String.valueOf(adapterId), DirectAdapterSnapshot.from(stats));
+            }
+        });
+        return Map.copyOf(snapshots);
+    }
+
+    private static Map<String, QueueAdapterSnapshot> parseQueueByAdapter(Object value) {
+        if (!(value instanceof Map<?, ?> source) || source.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, QueueAdapterSnapshot> snapshots = new LinkedHashMap<>();
+        source.forEach((adapterId, rawStats) -> {
+            if (adapterId != null && rawStats instanceof Map<?, ?> stats) {
+                snapshots.put(String.valueOf(adapterId), QueueAdapterSnapshot.from(stats));
             }
         });
         return Map.copyOf(snapshots);

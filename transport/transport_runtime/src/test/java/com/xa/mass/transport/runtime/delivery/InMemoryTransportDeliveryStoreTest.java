@@ -11,6 +11,9 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -307,6 +310,52 @@ class InMemoryTransportDeliveryStoreTest {
         assertTrue(items.getEnvelopes().isEmpty());
     }
 
+    @Test
+    void queuedOutcomeRemainsReachableAcrossConcurrentPollTimeoutCleanup() throws Exception {
+        InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore(10_000);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            for (int i = 0; i < 500; i++) {
+                String messageId = "msg-" + i;
+                Future<TransportDeliveryPollResult> poll = executor.submit(
+                        () -> store.poll("polling", "worker-1", 1, 1, TimeUnit.MILLISECONDS));
+
+                DispatchOutcome outcome = store.enqueue(envelope("polling", item(messageId, "worker-1")));
+                assertEquals(DispatchOutcomeStatus.QUEUED, outcome.getStatus());
+
+                TransportDeliveryPollResult polled = poll.get(1, TimeUnit.SECONDS);
+                if (polled.getStatus() == TransportDeliveryPollStatus.DELIVERED) {
+                    assertEquals(List.of(messageId), messageIds(polled.getEnvelopes()));
+                } else {
+                    assertEquals(List.of(messageId), messageIds(store.drain("polling", "worker-1", 1)));
+                }
+                assertQueueBreakdownConsistent(store.stats());
+            }
+            TransportDeliveryStoreStats stats = store.stats();
+            assertEquals(0, stats.getQueuedItems());
+            assertEquals(Map.of(), stats.getQueueByAdapter());
+            assertEquals(stats.getEnqueuedItems(), stats.getDrainedItems());
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void statsGlobalQueuedItemsMatchPerAdapterBreakdown() {
+        InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore();
+
+        store.enqueue(envelope("polling", item("msg-1", "worker-1")));
+        store.enqueue(envelope("polling", item("msg-2", "worker-2")));
+        store.enqueue(envelope("websocket", item("msg-3", "worker-3")));
+
+        TransportDeliveryStoreStats queued = store.stats();
+        assertQueueBreakdownConsistent(queued);
+
+        store.drain("polling", "worker-1", 10);
+        TransportDeliveryStoreStats remaining = store.stats();
+        assertQueueBreakdownConsistent(remaining);
+    }
+
     private TaskDispatchItem item(String messageId, String workerId) {
         return new TaskDispatchItem(
                 "task-1",
@@ -371,6 +420,16 @@ class InMemoryTransportDeliveryStoreTest {
                 .toList();
     }
 
+    private void assertQueueBreakdownConsistent(TransportDeliveryStoreStats stats) {
+        int adapterQueuedItems = stats.getQueueByAdapter().values().stream()
+                .mapToInt(TransportDeliveryQueueStats::getQueuedItems)
+                .sum();
+        assertEquals(stats.getQueuedItems(), adapterQueuedItems);
+        if (stats.getQueuedItems() > 0) {
+            assertFalse(stats.getQueueByAdapter().isEmpty());
+        }
+    }
+
     private void waitUntil(BooleanSupplier condition) throws InterruptedException {
         for (int attempt = 0; attempt < 20; attempt++) {
             if (condition.getAsBoolean()) {
@@ -386,4 +445,3 @@ class InMemoryTransportDeliveryStoreTest {
         boolean getAsBoolean();
     }
 }
-

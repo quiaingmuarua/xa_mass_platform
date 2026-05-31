@@ -62,40 +62,42 @@ public final class InMemoryKeyedBlockingQueueStore<K, V> implements KeyedBlockin
             invalidItems.incrementAndGet();
             return KeyedQueueOfferResult.invalid("key and entry must not be null");
         }
-        QueueState<V> queue = queueState(key);
         if (maxItemsPerKey <= 0) {
             backpressureRejectedItems.incrementAndGet();
-            queue.backpressureRejectedItems.incrementAndGet();
-            cleanupIfEmpty(key, queue);
             return KeyedQueueOfferResult.backpressureRejected("queue capacity is exhausted");
         }
         if (!running.get()) {
             unavailableItems.incrementAndGet();
-            cleanupIfEmpty(key, queue);
             return KeyedQueueOfferResult.unavailable("queue store is stopped");
         }
-        synchronized (queue) {
-            if (!running.get()) {
-                cleanupIfEmpty(key, queue);
-                unavailableItems.incrementAndGet();
-                return KeyedQueueOfferResult.unavailable("queue store is stopped");
+        while (true) {
+            QueueState<V> queue = queueState(key);
+            synchronized (queue) {
+                if (queues.get(key) != queue) {
+                    continue;
+                }
+                if (!running.get()) {
+                    cleanupIfEmpty(key, queue);
+                    unavailableItems.incrementAndGet();
+                    return KeyedQueueOfferResult.unavailable("queue store is stopped");
+                }
+                if (queue.items.size() >= maxItemsPerKey) {
+                    backpressureRejectedItems.incrementAndGet();
+                    queue.backpressureRejectedItems.incrementAndGet();
+                    return KeyedQueueOfferResult.backpressureRejected("queue is full");
+                }
+                if (!reserveGlobalSlot()) {
+                    cleanupIfEmpty(key, queue);
+                    backpressureRejectedItems.incrementAndGet();
+                    queue.backpressureRejectedItems.incrementAndGet();
+                    return KeyedQueueOfferResult.backpressureRejected("runtime backlog is full");
+                }
+                queue.items.addLast(entry);
+                enqueuedItems.incrementAndGet();
+                invalidateSnapshot();
+                signalWaitingPoller(queue);
+                return KeyedQueueOfferResult.enqueued();
             }
-            if (queue.items.size() >= maxItemsPerKey) {
-                backpressureRejectedItems.incrementAndGet();
-                queue.backpressureRejectedItems.incrementAndGet();
-                return KeyedQueueOfferResult.backpressureRejected("queue is full");
-            }
-            if (!reserveGlobalSlot()) {
-                cleanupIfEmpty(key, queue);
-                backpressureRejectedItems.incrementAndGet();
-                queue.backpressureRejectedItems.incrementAndGet();
-                return KeyedQueueOfferResult.backpressureRejected("runtime backlog is full");
-            }
-            queue.items.addLast(entry);
-            enqueuedItems.incrementAndGet();
-            invalidateSnapshot();
-            signalWaitingPoller(queue);
-            return KeyedQueueOfferResult.enqueued();
         }
     }
 
@@ -251,8 +253,8 @@ public final class InMemoryKeyedBlockingQueueStore<K, V> implements KeyedBlockin
     }
 
     private void cleanupIfEmpty(K key, QueueState<V> queue) {
-        if (queue.items.isEmpty() && queue.waiters == 0) {
-            queues.remove(key, queue);
+        if (queue.items.isEmpty() && queue.waiters == 0 && queues.remove(key, queue)) {
+            invalidateSnapshot();
         }
     }
 

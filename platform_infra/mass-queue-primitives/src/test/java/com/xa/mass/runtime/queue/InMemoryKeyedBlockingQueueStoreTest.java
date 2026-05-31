@@ -4,6 +4,9 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -67,6 +70,32 @@ class InMemoryKeyedBlockingQueueStoreTest {
         KeyedQueuePollResult<String> result = store.poll("k1", 10, 50, TimeUnit.MILLISECONDS);
         assertEquals(KeyedQueuePollStatus.EMPTY, result.status());
         assertTrue(result.items().isEmpty());
+    }
+
+    @Test
+    void concurrentOfferAndPollTimeoutDoesNotLoseQueuedEntries() throws Exception {
+        InMemoryKeyedBlockingQueueStore<String, String> store =
+                new InMemoryKeyedBlockingQueueStore<>(10_000, new SequenceClock());
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            for (int i = 0; i < 500; i++) {
+                Future<KeyedQueuePollResult<String>> poll = executor.submit(
+                        () -> store.poll("k1", 1, 1, TimeUnit.MILLISECONDS));
+                KeyedQueueOfferResult offer = store.offer("k1", new KeyedQueueEntry<>("v" + i, i), 10_000);
+                assertEquals(KeyedQueueOfferResult.Status.ENQUEUED, offer.status());
+
+                KeyedQueuePollResult<String> polled = poll.get(1, TimeUnit.SECONDS);
+                if (polled.status() == KeyedQueuePollStatus.DELIVERED) {
+                    assertEquals(1, polled.items().size());
+                } else {
+                    List<KeyedQueueEntry<String>> drained = store.drain("k1", 1);
+                    assertEquals(1, drained.size());
+                }
+            }
+            assertEquals(0, store.snapshot().queuedItems());
+        } finally {
+            executor.shutdownNow();
+        }
     }
 
     @Test
