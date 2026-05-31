@@ -62,20 +62,24 @@ realtime sample worker child processes.
 Formal SDK-based scenario registration lives in
 `integrations/xa-mass-scenario-launcher`.
 
-Use it when the goal is to populate a running server through the Java external
-SDK without starting managed sample worker processes:
+Use it when the goal is to run the dev polling scenario through the Java
+external SDK:
 
 ```bash
 ./mvnw -pl integrations/xa-mass-scenario-launcher -am -DskipTests package
-java -jar integrations/xa-mass-scenario-launcher/target/xa-mass-scenario-launcher.jar --register-only
+java -jar integrations/xa-mass-scenario-launcher/target/xa-mass-scenario-launcher.jar
 ```
 
 The Node launcher remains the demo/dev process supervisor for launching sample
-worker child processes. The Java launcher is the formal SDK-composition path for
-WorkerGroup, AdapterNode, NodeGroupBinding, Worker, and task seeding.
+realtime worker child processes. The Java launcher is the formal SDK-composition
+path for WorkerGroup, AdapterNode, NodeGroupBinding, polling Worker runtime, and
+task seeding. Use `--register-only` when you only want control-plane data
+registered and do not want polling worker sessions started.
 Task shell/item writes use submitter credentials; task commands such as seal and
 approve use the launcher command credential because task commands are
 operator-style lifecycle actions.
+In launch mode it starts a bounded set of polling workers and auto-approves
+staged tasks that target those started worker groups.
 
 Current dev scenario shape:
 

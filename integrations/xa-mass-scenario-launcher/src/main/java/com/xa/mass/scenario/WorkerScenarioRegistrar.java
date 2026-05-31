@@ -30,12 +30,16 @@ final class WorkerScenarioRegistrar {
     }
 
     void register(List<WorkerScenarioSpec> workerSpecs) {
+        register(workerSpecs, true);
+    }
+
+    void register(List<WorkerScenarioSpec> workerSpecs, boolean markApiOnline) {
         if (workerSpecs == null || workerSpecs.isEmpty()) {
             System.out.println("[java-scenario-launcher] no workers configured");
             return;
         }
         for (WorkerScenarioSpec spec : workerSpecs) {
-            registerWorker(spec);
+            registerWorker(spec, markApiOnline);
         }
     }
 
@@ -51,7 +55,7 @@ final class WorkerScenarioRegistrar {
         return boundAdapterNodeGroups.size();
     }
 
-    private void registerWorker(WorkerScenarioSpec spec) {
+    private void registerWorker(WorkerScenarioSpec spec, boolean markApiOnline) {
         String workerId = requireNonBlank(spec.workerId(), "workerId");
         String workerGroupId = requireNonBlank(spec.workerGroupId(), "workerGroupId");
         String adapterNodeId = adapterNodeIdFor(spec);
@@ -101,9 +105,16 @@ final class WorkerScenarioRegistrar {
                 .attributes(spec.attributes())
                 .build());
         System.out.printf("[java-scenario-launcher] registered worker %s%n", workerId);
-        if ("api-online".equals(spec.startMode())) {
+        if (markApiOnline && "api-online".equals(spec.startMode())) {
             markApiOnline(client, spec, workerId);
         }
+    }
+
+    String workerApiKey(WorkerScenarioSpec spec) {
+        if (options.workerApiKey() != null && !options.workerApiKey().isBlank()) {
+            return options.workerApiKey();
+        }
+        return requireNonBlank(spec.workerKey(), "workerKey");
     }
 
     private void markApiOnline(MassPlatform client, WorkerScenarioSpec spec, String workerId) {
@@ -127,13 +138,6 @@ final class WorkerScenarioRegistrar {
                 .observedAt(Instant.now())
                 .attributes(withSource(attributes))
                 .build());
-    }
-
-    private String workerApiKey(WorkerScenarioSpec spec) {
-        if (options.workerApiKey() != null && !options.workerApiKey().isBlank()) {
-            return options.workerApiKey();
-        }
-        return requireNonBlank(spec.workerKey(), "workerKey");
     }
 
     private static Map<String, String> withSource(Map<String, String> attributes) {

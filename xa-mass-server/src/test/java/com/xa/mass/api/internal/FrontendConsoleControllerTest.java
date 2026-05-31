@@ -46,6 +46,11 @@ class FrontendConsoleControllerTest {
         configureRoutingService(distDir);
         mockMvc = MockMvcBuilders.standaloneSetup(new FrontendConsoleController(routingService)).build();
 
+        mockMvc.perform(get("/tasks/"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("console-shell")));
+
         mockMvc.perform(get("/tasks/task-001"))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML))

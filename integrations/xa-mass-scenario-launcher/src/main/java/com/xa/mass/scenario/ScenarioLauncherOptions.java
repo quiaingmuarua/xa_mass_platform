@@ -10,6 +10,8 @@ record ScenarioLauncherOptions(
         String workerApiKey,
         String bootstrapKey,
         Path scenarioDir,
+        long idleTimeoutMs,
+        int maxPollingWorkers,
         boolean registerOnly,
         boolean help
 ) {
@@ -18,6 +20,8 @@ record ScenarioLauncherOptions(
     private static final String DEFAULT_TASK_COMMAND_API_KEY = "public-probe-ops-key";
     private static final String DEFAULT_BOOTSTRAP_KEY = "dev-bootstrap-key";
     private static final Path DEFAULT_SCENARIO_DIR = Path.of("integrations/samples/dev/scenario");
+    private static final long DEFAULT_IDLE_TIMEOUT_MS = 60_000L;
+    private static final int DEFAULT_MAX_POLLING_WORKERS = 25;
 
     static ScenarioLauncherOptions parse(String[] args) {
         String baseUrl = envOrDefault("MASS_BASE_URL", DEFAULT_BASE_URL);
@@ -26,6 +30,8 @@ record ScenarioLauncherOptions(
         String workerApiKey = System.getenv("MASS_WORKER_API_KEY");
         String bootstrapKey = envOrDefault("SAMPLE_BOOTSTRAP_KEY", DEFAULT_BOOTSTRAP_KEY);
         Path scenarioDir = DEFAULT_SCENARIO_DIR;
+        long idleTimeoutMs = longEnvOrDefault("MASS_SCENARIO_IDLE_TIMEOUT_MS", DEFAULT_IDLE_TIMEOUT_MS);
+        int maxPollingWorkers = intEnvOrDefault("MASS_SCENARIO_MAX_POLLING_WORKERS", DEFAULT_MAX_POLLING_WORKERS);
         boolean registerOnly = false;
         boolean help = false;
 
@@ -65,9 +71,25 @@ record ScenarioLauncherOptions(
                 index++;
             } else if (arg.startsWith("--scenario-dir=")) {
                 scenarioDir = Path.of(arg.substring("--scenario-dir=".length()));
+            } else if ("--idle-timeout-ms".equals(arg)) {
+                idleTimeoutMs = parseLong(requiredArg(args, index, arg), arg);
+                index++;
+            } else if (arg.startsWith("--idle-timeout-ms=")) {
+                idleTimeoutMs = parseLong(arg.substring("--idle-timeout-ms=".length()), "--idle-timeout-ms");
+            } else if ("--max-polling-workers".equals(arg)) {
+                maxPollingWorkers = parseInt(requiredArg(args, index, arg), arg);
+                index++;
+            } else if (arg.startsWith("--max-polling-workers=")) {
+                maxPollingWorkers = parseInt(arg.substring("--max-polling-workers=".length()), "--max-polling-workers");
             } else {
                 throw new IllegalArgumentException("unknown argument: " + arg);
             }
+        }
+        if (idleTimeoutMs < 0) {
+            throw new IllegalArgumentException("idleTimeoutMs must be >= 0");
+        }
+        if (maxPollingWorkers < 0) {
+            throw new IllegalArgumentException("maxPollingWorkers must be >= 0");
         }
         return new ScenarioLauncherOptions(
                 normalizeBaseUrl(baseUrl),
@@ -76,6 +98,8 @@ record ScenarioLauncherOptions(
                 normalizeOptional(workerApiKey),
                 requireNonBlank(bootstrapKey, "bootstrapKey"),
                 scenarioDir,
+                idleTimeoutMs,
+                maxPollingWorkers,
                 registerOnly,
                 help
         );
@@ -84,16 +108,18 @@ record ScenarioLauncherOptions(
     static String helpText() {
         return """
                 Usage:
-                  java -jar integrations/xa-mass-scenario-launcher/target/xa-mass-scenario-launcher.jar --register-only [options]
+                  java -jar integrations/xa-mass-scenario-launcher/target/xa-mass-scenario-launcher.jar [options]
 
                 Options:
-                  --register-only              Register dev catalog, rules, workers, and tasks, then exit.
+                  --register-only              Register dev catalog, rules, workers, and tasks, then exit without polling workers.
                   --base-url <url>             Server HTTP base URL. Default: MASS_BASE_URL or http://127.0.0.1:8088
                   --task-api-key <key>         Default task API key. Default: MASS_TASK_SUBMITTER_KEY or crawler-submitter-key
                   --task-command-api-key <key> Task command API key for seal/approve. Default: MASS_TASK_COMMAND_KEY or public-probe-ops-key
                   --worker-api-key <key>       Optional worker API key override. Default: each worker spec's workerKey
                   --bootstrap-key <key>        Dev bootstrap key. Default: SAMPLE_BOOTSTRAP_KEY or dev-bootstrap-key
                   --scenario-dir <path>        Scenario JSON directory. Default: integrations/samples/dev/scenario
+                  --idle-timeout-ms <ms>       Exit after this much continuous idle time in launch mode. Default: 60000. Use 0 to disable.
+                  --max-polling-workers <n>    Max polling workers to start in launch mode. Default: 25. Use 0 for no cap.
                   -h, --help                   Show this help.
                 """;
     }
@@ -108,6 +134,32 @@ record ScenarioLauncherOptions(
     private static String envOrDefault(String name, String defaultValue) {
         String value = System.getenv(name);
         return value == null || value.isBlank() ? defaultValue : value;
+    }
+
+    private static long longEnvOrDefault(String name, long defaultValue) {
+        String value = System.getenv(name);
+        return value == null || value.isBlank() ? defaultValue : parseLong(value, name);
+    }
+
+    private static int intEnvOrDefault(String name, int defaultValue) {
+        String value = System.getenv(name);
+        return value == null || value.isBlank() ? defaultValue : parseInt(value, name);
+    }
+
+    private static long parseLong(String value, String name) {
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(name + " must be a number: " + value, e);
+        }
+    }
+
+    private static int parseInt(String value, String name) {
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(name + " must be a number: " + value, e);
+        }
     }
 
     private static String normalizeBaseUrl(String value) {

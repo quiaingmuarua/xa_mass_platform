@@ -14,9 +14,6 @@ public final class ScenarioLauncherMain {
             System.out.println(ScenarioLauncherOptions.helpText());
             return;
         }
-        if (!options.registerOnly()) {
-            throw new IllegalArgumentException("first-slice Java scenario launcher only supports --register-only");
-        }
         ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
         ScenarioFiles files = ScenarioFiles.load(options.scenarioDir(), objectMapper);
         ScenarioLauncher launcher = new ScenarioLauncher(
@@ -25,6 +22,10 @@ public final class ScenarioLauncherMain {
                 new ScenarioClientFactory(options.baseUrl(), HttpClient.newHttpClient(), objectMapper),
                 new DevBootstrapClient(options.baseUrl(), options.bootstrapKey(), HttpClient.newHttpClient(), objectMapper)
         );
-        launcher.registerOnly(files);
+        if (options.registerOnly()) {
+            launcher.registerOnly(files);
+        } else {
+            launcher.launch(files);
+        }
     }
 }

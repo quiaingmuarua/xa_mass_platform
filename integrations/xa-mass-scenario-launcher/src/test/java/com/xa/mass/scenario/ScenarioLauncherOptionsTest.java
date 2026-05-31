@@ -19,7 +19,9 @@ class ScenarioLauncherOptionsTest {
                 "--task-command-api-key", "command-key",
                 "--worker-api-key", "worker-key",
                 "--bootstrap-key=bootstrap-key",
-                "--scenario-dir", "custom/scenario"
+                "--scenario-dir", "custom/scenario",
+                "--idle-timeout-ms", "1234",
+                "--max-polling-workers=7"
         });
 
         assertTrue(options.registerOnly());
@@ -29,6 +31,8 @@ class ScenarioLauncherOptionsTest {
         assertEquals("worker-key", options.workerApiKey());
         assertEquals("bootstrap-key", options.bootstrapKey());
         assertEquals(Path.of("custom/scenario"), options.scenarioDir());
+        assertEquals(1234L, options.idleTimeoutMs());
+        assertEquals(7, options.maxPollingWorkers());
     }
 
     @Test
@@ -39,7 +43,16 @@ class ScenarioLauncherOptionsTest {
     }
 
     @Test
-    void helpDoesNotImplyRegisterOnly() {
+    void launchIsDefaultMode() {
+        ScenarioLauncherOptions options = ScenarioLauncherOptions.parse(new String[]{});
+
+        assertFalse(options.registerOnly());
+        assertEquals(60_000L, options.idleTimeoutMs());
+        assertEquals(25, options.maxPollingWorkers());
+    }
+
+    @Test
+    void helpKeepsDefaultLaunchMode() {
         ScenarioLauncherOptions options = ScenarioLauncherOptions.parse(new String[]{"--help"});
 
         assertTrue(options.help());

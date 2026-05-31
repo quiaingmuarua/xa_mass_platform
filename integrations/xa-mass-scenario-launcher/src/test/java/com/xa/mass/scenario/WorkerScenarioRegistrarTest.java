@@ -48,6 +48,37 @@ class WorkerScenarioRegistrarTest {
         }
     }
 
+    @Test
+    void launchModeRegistrationDoesNotMarkApiOnlineWithoutSession() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+        List<RecordedRequest> requests = new ArrayList<>();
+        try (RecordingServer server = RecordingServer.start(requests)) {
+            ScenarioLauncherOptions options = ScenarioLauncherOptions.parse(new String[]{
+                    "--base-url", server.baseUrl()
+            });
+            WorkerScenarioRegistrar registrar = new WorkerScenarioRegistrar(options,
+                    new ScenarioClientFactory(server.baseUrl(), HttpClient.newHttpClient(), objectMapper));
+
+            registrar.register(List.of(new WorkerScenarioSpec(
+                    "api-worker-001",
+                    "api-worker-key",
+                    "sample-group",
+                    "sample-node",
+                    "polling",
+                    "polling",
+                    "api-online",
+                    Map.of("region", "sg"),
+                    List.of(WorkerEventBindingSpec.of("probe.phone.metadata", List.of("deviceProbe")))
+            )), false);
+
+            assertEquals(0, requests.stream()
+                    .filter(request -> request.path().contains(":online")
+                            || request.path().contains(":report-capability")
+                            || request.path().contains(":report-state"))
+                    .count());
+        }
+    }
+
     private static WorkerScenarioSpec worker(String workerId) {
         return new WorkerScenarioSpec(
                 workerId,

@@ -297,7 +297,7 @@
 
 <script setup lang="ts">
 import {ElMessage, ElMessageBox} from 'element-plus'
-import {onMounted, ref, watch} from 'vue'
+import {onBeforeUnmount, onMounted, ref, watch} from 'vue'
 import {useRoute, useRouter} from 'vue-router'
 import {
   auditTask,
@@ -323,6 +323,8 @@ const detail = ref<TaskDetailResponse | null>(null)
 const review = ref<TaskReviewResponse | null>(null)
 const errorMessage = ref('')
 const actionLoading = ref('')
+const LIVE_TASK_REFRESH_INTERVAL_MS = 2_000
+let liveTaskRefreshTimer: ReturnType<typeof window.setInterval> | null = null
 
 function formatJson(value: unknown): string {
   return JSON.stringify(value, null, 2)
@@ -332,8 +334,10 @@ function goBack(): void {
   void router.push({ name: 'tasks' })
 }
 
-async function loadTaskDetail(): Promise<void> {
-  loading.value = true
+async function loadTaskDetail(options: { silent?: boolean } = {}): Promise<void> {
+  if (!options.silent) {
+    loading.value = true
+  }
   errorMessage.value = ''
 
   try {
@@ -348,8 +352,15 @@ async function loadTaskDetail(): Promise<void> {
     review.value = null
     errorMessage.value = toErrorMessage(error, 'Failed to load task detail.')
   } finally {
-    loading.value = false
+    if (!options.silent) {
+      loading.value = false
+    }
   }
+}
+
+function shouldRefreshLiveTask(): boolean {
+  const status = detail.value?.task.status
+  return status === 'READY' || status === 'RUNNING'
 }
 
 function summarizeRecord(value: Record<string, unknown> | null): string {
@@ -520,6 +531,12 @@ async function runTaskAction(
 
 onMounted(() => {
   void loadTaskDetail()
+  liveTaskRefreshTimer = window.setInterval(() => {
+    if (!shouldRefreshLiveTask() || actionLoading.value) {
+      return
+    }
+    void loadTaskDetail({ silent: true })
+  }, LIVE_TASK_REFRESH_INTERVAL_MS)
 })
 
 watch(
@@ -528,6 +545,13 @@ watch(
     void loadTaskDetail()
   },
 )
+
+onBeforeUnmount(() => {
+  if (liveTaskRefreshTimer !== null) {
+    window.clearInterval(liveTaskRefreshTimer)
+    liveTaskRefreshTimer = null
+  }
+})
 </script>
 
 <style scoped>

@@ -22,23 +22,34 @@ final class TaskScenarioSeeder {
     private final ScenarioLauncherOptions options;
     private final ObjectMapper objectMapper;
     private final ScenarioClientFactory clientFactory;
+    private final List<String> autoApproveWorkerGroupIds;
 
     TaskScenarioSeeder(ScenarioLauncherOptions options,
                        ObjectMapper objectMapper,
                        ScenarioClientFactory clientFactory) {
+        this(options, objectMapper, clientFactory, List.of());
+    }
+
+    TaskScenarioSeeder(ScenarioLauncherOptions options,
+                       ObjectMapper objectMapper,
+                       ScenarioClientFactory clientFactory,
+                       List<String> autoApproveWorkerGroupIds) {
         this.options = Objects.requireNonNull(options, "options is required");
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper is required");
         this.clientFactory = Objects.requireNonNull(clientFactory, "clientFactory is required");
+        this.autoApproveWorkerGroupIds = autoApproveWorkerGroupIds == null ? List.of() : List.copyOf(autoApproveWorkerGroupIds);
     }
 
-    void seed(List<TaskScenarioSpec> taskSpecs) {
+    List<SeededTask> seed(List<TaskScenarioSpec> taskSpecs) {
         if (taskSpecs == null || taskSpecs.isEmpty()) {
             System.out.println("[java-scenario-launcher] no tasks configured");
-            return;
+            return List.of();
         }
+        List<SeededTask> seededTasks = new ArrayList<>();
         for (TaskScenarioSpec taskSpec : taskSpecs) {
-            seedTask(taskSpec);
+            seededTasks.add(seedTask(taskSpec));
         }
+        return List.copyOf(seededTasks);
     }
 
     static List<List<Object>> chunks(List<Object> items, int chunkSize) {
@@ -50,9 +61,10 @@ final class TaskScenarioSeeder {
         return result;
     }
 
-    private void seedTask(TaskScenarioSpec taskSpec) {
+    private SeededTask seedTask(TaskScenarioSpec taskSpec) {
         Map<String, Object> body = taskSpec.body() == null ? Map.of() : taskSpec.body();
-        MassPlatform client = clientFactory.forApiKey(taskApiKey(taskSpec));
+        String taskApiKey = taskApiKey(taskSpec);
+        MassPlatform client = clientFactory.forApiKey(taskApiKey);
         TaskCreateResult createResult = client.tasks().create(toCreateRequest(body));
         String taskId = createResult.taskId();
         if (taskId == null || taskId.isBlank()) {
@@ -65,10 +77,42 @@ final class TaskScenarioSeeder {
         if (!Boolean.TRUE.equals(body.get("keepIntakeOpen"))) {
             commandClient.tasks().command(taskId, TaskCommandRequest.builder(TaskCommand.SEAL).build());
         }
-        if (taskSpec.shouldApprove()) {
+        boolean handledByStartedWorkerGroup = matchesStartedWorkerGroup(body);
+        boolean approved = taskSpec.shouldApprove() || handledByStartedWorkerGroup;
+        if (approved) {
             commandClient.tasks().command(taskId, TaskCommandRequest.builder(TaskCommand.APPROVE).build());
             System.out.printf("[java-scenario-launcher] approved task %s%n", taskId);
         }
+        return new SeededTask(
+                taskId,
+                stringValue(body.get("project")),
+                taskApiKey,
+                workerGroupId(body),
+                approved && handledByStartedWorkerGroup
+        );
+    }
+
+    @SuppressWarnings("unchecked")
+    private boolean matchesStartedWorkerGroup(Map<String, Object> body) {
+        if (autoApproveWorkerGroupIds.isEmpty()) {
+            return false;
+        }
+        Object sharedConfig = body.get("sharedConfig");
+        if (!(sharedConfig instanceof Map<?, ?> map)) {
+            return false;
+        }
+        Object workerGroupId = map.get("workerGroupId");
+        return workerGroupId instanceof String value && autoApproveWorkerGroupIds.contains(value);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static String workerGroupId(Map<String, Object> body) {
+        Object sharedConfig = body.get("sharedConfig");
+        if (!(sharedConfig instanceof Map<?, ?> map)) {
+            return null;
+        }
+        Object workerGroupId = map.get("workerGroupId");
+        return workerGroupId instanceof String value && !value.isBlank() ? value : null;
     }
 
     @SuppressWarnings("unchecked")
@@ -151,5 +195,14 @@ final class TaskScenarioSeeder {
             result.put(String.valueOf(entry.getKey()), entry.getValue());
         }
         return result;
+    }
+
+    record SeededTask(
+            String taskId,
+            String project,
+            String taskApiKey,
+            String workerGroupId,
+            boolean managedByLauncherWorkers
+    ) {
     }
 }

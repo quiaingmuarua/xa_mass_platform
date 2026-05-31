@@ -1,9 +1,10 @@
 # xa-mass-scenario-launcher
 
-Status: first-slice Java SDK scenario launcher.
+Status: Java SDK scenario launcher.
 
 This module is the formal Java SDK based launcher for registering dev scenario
-worker topology and sample tasks against a running `xa-mass-server`.
+worker topology, starting HTTP/polling sample workers, and creating sample tasks
+against a running `xa-mass-server`.
 
 It composes `integrations/xa-mass-java-sdk`; it does not redefine server,
 engine, worker-pack, or transport ownership.
@@ -17,10 +18,14 @@ engine, worker-pack, or transport ownership.
   public worker APIs via `xa-mass-java-sdk`
 - creates tasks, appends items, seals, and approves through public task APIs via
   `xa-mass-java-sdk`
-- marks `startMode=api-online` workers online and reports capability/state
-
-First slice supports `--register-only` only. It does not spawn external worker
-processes.
+- default launch mode starts Java SDK `PollingWorkerSession` workers for polling
+  scenario specs and keeps running until shutdown or until the launcher has been
+  idle and its managed polling tasks have reached terminal state
+- launch mode auto-approves staged tasks whose `sharedConfig.workerGroupId`
+  matches a started polling worker group, so the default command can execute
+  the polling scenario
+- `--register-only` keeps the old seed-and-exit behavior for control-plane-only
+  setup
 
 ## Usage
 
@@ -28,7 +33,6 @@ processes.
 ./mvnw -pl integrations/xa-mass-scenario-launcher -am -DskipTests package
 
 java -jar integrations/xa-mass-scenario-launcher/target/xa-mass-scenario-launcher.jar \
-  --register-only \
   --base-url http://127.0.0.1:8088
 ```
 
@@ -40,6 +44,9 @@ Options:
 - `--worker-api-key`: optional worker API key override. Default: each worker spec's `workerKey`
 - `--bootstrap-key`: dev bootstrap key. Default: `SAMPLE_BOOTSTRAP_KEY` or `dev-bootstrap-key`
 - `--scenario-dir`: scenario JSON directory. Default: `integrations/samples/dev/scenario`
+- `--idle-timeout-ms`: exit launch mode after continuous idle time once launcher-managed polling tasks are terminal. Default: `60000`; `0` disables idle exit
+- `--max-polling-workers`: maximum polling workers to start in launch mode. Default: `25`; `0` disables the cap
+- `--register-only`: register catalog/rules/topology/tasks and exit without polling sessions
 
 ## Boundary
 

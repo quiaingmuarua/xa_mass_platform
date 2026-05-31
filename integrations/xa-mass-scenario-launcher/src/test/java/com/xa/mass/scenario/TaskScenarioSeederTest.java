@@ -14,6 +14,8 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TaskScenarioSeederTest {
     @Test
@@ -37,7 +39,7 @@ class TaskScenarioSeederTest {
             TaskScenarioSeeder seeder = new TaskScenarioSeeder(options, objectMapper,
                     new ScenarioClientFactory(server.baseUrl(), HttpClient.newHttpClient(), objectMapper));
 
-            seeder.seed(List.of(new TaskScenarioSpec(
+            List<TaskScenarioSeeder.SeededTask> seededTasks = seeder.seed(List.of(new TaskScenarioSpec(
                     true,
                     null,
                     1,
@@ -57,6 +59,81 @@ class TaskScenarioSeederTest {
             assertEquals("/api/v1/tasks/task-001/commands", requests.get(2).path());
             assertEquals("command-key", requests.get(3).headers().get("X-mass-api-key"));
             assertEquals("/api/v1/tasks/task-001/commands", requests.get(3).path());
+            assertEquals(1, seededTasks.size());
+            assertEquals("task-001", seededTasks.getFirst().taskId());
+            assertFalse(seededTasks.getFirst().managedByLauncherWorkers());
+        }
+    }
+
+    @Test
+    void autoApprovesTasksForStartedWorkerGroups() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+        List<RecordedRequest> requests = new ArrayList<>();
+        try (RecordingServer server = RecordingServer.start(requests)) {
+            ScenarioLauncherOptions options = ScenarioLauncherOptions.parse(new String[]{
+                    "--base-url", server.baseUrl(),
+                    "--task-api-key", "submitter-key",
+                    "--task-command-api-key", "command-key"
+            });
+            TaskScenarioSeeder seeder = new TaskScenarioSeeder(options, objectMapper,
+                    new ScenarioClientFactory(server.baseUrl(), HttpClient.newHttpClient(), objectMapper),
+                    List.of("phone-device-probe"));
+
+            List<TaskScenarioSeeder.SeededTask> seededTasks = seeder.seed(List.of(new TaskScenarioSpec(
+                    false,
+                    null,
+                    1,
+                    Map.of(
+                            "project", "deviceProbe",
+                            "userId", "sample",
+                            "eventCode", "probe.phone.metadata",
+                            "sharedConfig", Map.of("workerGroupId", "phone-device-probe"),
+                            "items", List.of(Map.of("id", "item-1"))
+                    )
+            )));
+
+            long commandCount = requests.stream()
+                    .filter(request -> request.path().equals("/api/v1/tasks/task-001/commands"))
+                    .count();
+            assertEquals(2, commandCount);
+            assertEquals(1, seededTasks.size());
+            assertEquals("phone-device-probe", seededTasks.getFirst().workerGroupId());
+            assertTrue(seededTasks.getFirst().managedByLauncherWorkers());
+        }
+    }
+
+    @Test
+    void explicitApproveIsManagedWhenStartedWorkerGroupMatches() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+        List<RecordedRequest> requests = new ArrayList<>();
+        try (RecordingServer server = RecordingServer.start(requests)) {
+            ScenarioLauncherOptions options = ScenarioLauncherOptions.parse(new String[]{
+                    "--base-url", server.baseUrl(),
+                    "--task-api-key", "submitter-key",
+                    "--task-command-api-key", "command-key"
+            });
+            TaskScenarioSeeder seeder = new TaskScenarioSeeder(options, objectMapper,
+                    new ScenarioClientFactory(server.baseUrl(), HttpClient.newHttpClient(), objectMapper),
+                    List.of("phone-device-probe"));
+
+            List<TaskScenarioSeeder.SeededTask> seededTasks = seeder.seed(List.of(new TaskScenarioSpec(
+                    true,
+                    null,
+                    1,
+                    Map.of(
+                            "project", "deviceProbe",
+                            "userId", "sample",
+                            "eventCode", "probe.phone.metadata",
+                            "sharedConfig", Map.of("workerGroupId", "phone-device-probe"),
+                            "items", List.of(Map.of("id", "item-1"))
+                    )
+            )));
+
+            long commandCount = requests.stream()
+                    .filter(request -> request.path().equals("/api/v1/tasks/task-001/commands"))
+                    .count();
+            assertEquals(2, commandCount);
+            assertTrue(seededTasks.getFirst().managedByLauncherWorkers());
         }
     }
 

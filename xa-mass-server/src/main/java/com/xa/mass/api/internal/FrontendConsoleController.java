@@ -39,6 +39,7 @@ public class FrontendConsoleController {
             "/",
             "/forbidden",
             "/tasks",
+            "/tasks/",
             "/tasks/{taskId}",
             "/resources/projects",
             "/resources/projects/{projectCode}",

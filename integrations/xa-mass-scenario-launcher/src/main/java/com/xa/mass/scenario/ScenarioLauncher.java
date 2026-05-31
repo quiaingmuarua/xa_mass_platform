@@ -2,6 +2,7 @@ package com.xa.mass.scenario;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.util.List;
 import java.util.Objects;
 
 final class ScenarioLauncher {
@@ -24,10 +25,36 @@ final class ScenarioLauncher {
         bootstrapClient.bootstrapCatalog(files.bootstrapSpec());
         bootstrapClient.bootstrapRules(files.ruleSpec());
         WorkerScenarioRegistrar workerRegistrar = new WorkerScenarioRegistrar(options, clientFactory);
-        workerRegistrar.register(files.workerSpecs());
+        workerRegistrar.register(files.workerSpecs(), true);
         TaskScenarioSeeder taskSeeder = new TaskScenarioSeeder(options, objectMapper, clientFactory);
         taskSeeder.seed(files.taskSpecs());
         System.out.printf("[java-scenario-launcher] register-only complete workers=%d tasks=%d%n",
                 files.workerSpecs().size(), files.taskSpecs().size());
+    }
+
+    void launch(ScenarioFiles files) throws InterruptedException {
+        bootstrapClient.bootstrapCatalog(files.bootstrapSpec());
+        bootstrapClient.bootstrapRules(files.ruleSpec());
+        WorkerScenarioRegistrar workerRegistrar = new WorkerScenarioRegistrar(options, clientFactory);
+        workerRegistrar.register(files.workerSpecs(), false);
+        ScenarioIdleTracker idleTracker = new ScenarioIdleTracker();
+        try (ScenarioWorkerRuntime workerRuntime = new ScenarioWorkerRuntime(options, clientFactory, idleTracker)) {
+            int startedWorkers = workerRuntime.start(files.workerSpecs());
+            TaskScenarioSeeder taskSeeder = new TaskScenarioSeeder(
+                    options,
+                    objectMapper,
+                    clientFactory,
+                    workerRuntime.startedWorkerGroupIds()
+            );
+            List<TaskScenarioSeeder.SeededTask> seededTasks = taskSeeder.seed(files.taskSpecs());
+            idleTracker.markActivity();
+            if (startedWorkers == 0) {
+                System.out.println("[java-scenario-launcher] no polling workers started; launch complete");
+                return;
+            }
+            System.out.printf("[java-scenario-launcher] launch running pollingWorkers=%d idleTimeoutMs=%d%n",
+                    startedWorkers, options.idleTimeoutMs());
+            workerRuntime.awaitShutdownOrIdle(seededTasks);
+        }
     }
 }
