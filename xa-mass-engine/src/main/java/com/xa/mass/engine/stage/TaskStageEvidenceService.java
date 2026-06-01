@@ -1,6 +1,6 @@
 package com.xa.mass.engine.stage;
 
-import com.xa.mass.engine.util.TraceEventLogger;
+import com.xa.mass.engine.TraceEventLogger;
 
 import java.time.Instant;
 import java.util.List;

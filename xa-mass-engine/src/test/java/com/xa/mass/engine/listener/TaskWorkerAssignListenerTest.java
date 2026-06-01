@@ -25,7 +25,7 @@ import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
 import com.xa.mass.engine.resource.WorkerDispatchResourceUsage;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.engine.util.TraceEventLogCapture;
-import com.xa.mass.engine.util.TraceEventLogger;
+import com.xa.mass.engine.TraceEventLogger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 

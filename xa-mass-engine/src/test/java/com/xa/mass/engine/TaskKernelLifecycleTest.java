@@ -11,7 +11,6 @@ import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
-import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -27,12 +26,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TaskKernelLifecycleTest {
 
-    private InMemoryTaskShellStore taskStorage;
+    private InMemoryTaskShellRuntimeStore taskStorage;
     private TaskManager taskManager;
 
     @BeforeEach
     void setUp() {
-        taskStorage = new InMemoryTaskShellStore();
+        taskStorage = new InMemoryTaskShellRuntimeStore();
         taskManager = new TaskManager(
                 taskStorage,
                 new InMemoryTaskWorkRuntime(),
@@ -178,7 +177,7 @@ class TaskKernelLifecycleTest {
             System.setProperty("xa.mass.engine.interactiveMaxReadyItemsPerTask", "2");
             System.setProperty("xa.mass.engine.bulkMaxReadyItemsPerTask", "100");
 
-            InMemoryTaskShellStore backpressureStorage = new InMemoryTaskShellStore();
+            InMemoryTaskShellRuntimeStore backpressureStorage = new InMemoryTaskShellRuntimeStore();
             TaskManager backpressureAwareManager = new TaskManager(
                     backpressureStorage,
                     new InMemoryTaskWorkRuntime(),
@@ -214,7 +213,7 @@ class TaskKernelLifecycleTest {
 
     @Test
     void appendTaskItemsRejectsBeforeRuntimeAdmissionWhenEngineBacklogWouldOverflow() {
-        InMemoryTaskShellStore backlogStorage = new InMemoryTaskShellStore();
+        InMemoryTaskShellRuntimeStore backlogStorage = new InMemoryTaskShellRuntimeStore();
         TaskManager backlogAwareManager = new TaskManager(
                 backlogStorage,
                 new InMemoryTaskWorkRuntime(2),

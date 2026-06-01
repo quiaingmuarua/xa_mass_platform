@@ -11,7 +11,6 @@ import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
 import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
-import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,13 +23,13 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class TaskManagerLifecycleTest {
 
-    private InMemoryTaskShellStore taskStorage;
+    private InMemoryTaskShellRuntimeStore taskStorage;
     private InMemoryTaskWorkRuntime taskWorkRuntime;
     private TaskManager taskManager;
 
     @BeforeEach
     void setUp() {
-        taskStorage = new InMemoryTaskShellStore();
+        taskStorage = new InMemoryTaskShellRuntimeStore();
         taskWorkRuntime = new InMemoryTaskWorkRuntime();
         taskManager = new TaskManager(taskStorage, taskWorkRuntime, new InMemoryTaskResultRuntime(), null);
     }

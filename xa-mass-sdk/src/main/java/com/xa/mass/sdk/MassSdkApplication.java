@@ -11,11 +11,13 @@ import com.xa.mass.command.event.*;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;
-import com.xa.mass.engine.command.WorkerCommandAcknowledgement;
-import com.xa.mass.engine.command.WorkerCommandLifecycleResult;
-import com.xa.mass.engine.command.WorkerCommandRecord;
-import com.xa.mass.engine.command.WorkerCommandRequest;
-import com.xa.mass.engine.command.WorkerCommandStatus;
+import com.xa.mass.worker.runtime.command.WorkerCommandAcknowledgement;
+import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleResult;
+import com.xa.mass.worker.runtime.command.WorkerCommandRecord;
+import com.xa.mass.worker.runtime.command.WorkerCommandRequest;
+import com.xa.mass.worker.runtime.command.WorkerCommandStatus;
+import com.xa.mass.engine.model.TaskAppendReceipt;
+import com.xa.mass.engine.model.TaskDefinitionPatch;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
@@ -322,8 +324,8 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         String normalizedTaskId = requireTaskId(taskId);
         resolveWorkerGroupSelectorForAppend(normalizedTaskId, request.getEventCode());
         List<Map<String, Object>> converted = requireAppendItems(request.getItems(), request.getEventCode());
-        com.xa.mass.engine.model.TaskAppendReceipt receipt =
-                requireStartedTaskCommands().appendTaskItemsWithReceipt(normalizedTaskId, converted);
+        TaskAppendReceipt receipt = requireStartedTaskCommands()
+                .appendTaskItemsWithReceipt(normalizedTaskId, converted);
         return new TaskItemBatchAppendReceipt(receipt.taskId(), receipt.added(), receipt.messageIds());
     }
 
@@ -347,21 +349,13 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     @Override
     public boolean updateTaskDefinition(String taskId, MassTaskUpdateRequest request) {
         Objects.requireNonNull(request, "request");
-        Task task = requireStartedTaskQueries().getTask(requireTaskId(taskId));
-        if (task == null) {
-            return false;
-        }
-        if (request.getProject() != null) {
-            task.setProject(request.getProject());
-        }
         if (request.getSharedConfig() != null) {
             WorkerGroupSelectorResolver.requireExplicitTargetWorkerBinding(request.getSharedConfig());
-            task.setSharedConfig(request.getSharedConfig());
         }
-        if (request.getUserId() != null) {
-            task.setUser(UserRef.of(request.getUserId()));
-        }
-        return requireStartedTaskCommands().updateTask(task);
+        return requireStartedTaskCommands().patchTaskDefinition(
+                requireTaskId(taskId),
+                new TaskDefinitionPatch(request.getProject(), request.getSharedConfig(), request.getUserId())
+        );
     }
 
     @Override
@@ -1077,8 +1071,10 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 normalizedEventCode,
                 config.getWorkerResourceRuntime().workerGroups()
         );
-        task.setSharedConfig(sharedConfig);
-        config.getTaskCommandService().updateTask(task);
+        config.getTaskCommandService().patchTaskDefinition(
+                taskId,
+                new TaskDefinitionPatch(null, sharedConfig, null)
+        );
     }
 
     private EventHandler resolveDefinitionHandler(EventDefinition definition) {
@@ -1602,7 +1598,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     /**
      * Registers a listener that fires synchronously when a task message reaches its
      * logically final state (success or exhausted retries). Safe to call before
-     * {@link #start()} 闂?the listener is registered on the engine command/event
+     * {@link #start()} because the listener is registered on the engine command/event
      * surface which exists independent of engine lifecycle.
      */
     public void addTaskWorkFinalListener(TaskWorkFinalListener listener) {

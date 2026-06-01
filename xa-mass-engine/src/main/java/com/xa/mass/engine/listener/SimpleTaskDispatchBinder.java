@@ -16,7 +16,7 @@ import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
 import com.xa.mass.engine.resource.WorkerDispatchResourceReleaser;
 import com.xa.mass.engine.runtime.TaskRuntimeClaimOptionsResolver;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
-import com.xa.mass.engine.util.TraceEventLogger;
+import com.xa.mass.engine.TraceEventLogger;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.TaskWorkClaimOptions;
 import com.xa.mass.runtime.api.WorkerClaimTarget;

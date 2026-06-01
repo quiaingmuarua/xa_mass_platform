@@ -6,7 +6,7 @@ import com.xa.mass.engine.runtime.TaskRuntimeProfile;
 import com.xa.mass.engine.runtime.TaskRuntimeProfileResolver;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicy;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
-import com.xa.mass.engine.util.TraceEventLogger;
+import com.xa.mass.engine.TraceEventLogger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

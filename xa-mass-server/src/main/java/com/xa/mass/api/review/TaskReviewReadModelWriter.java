@@ -13,6 +13,7 @@ import java.util.Map;
 public interface TaskReviewReadModelWriter {
 
     void recordItemsAccepted(String taskId,
+                             Map<String, Object> sharedConfig,
                              List<Map<String, Object>> acceptedItems,
                              TaskItemBatchAppendReceipt receipt,
                              int maxRetryCount);

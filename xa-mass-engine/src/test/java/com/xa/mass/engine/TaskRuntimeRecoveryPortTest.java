@@ -17,7 +17,6 @@ import com.xa.mass.runtime.api.WorkEnqueueOutcome;
 import com.xa.mass.runtime.api.WorkerClaimTarget;
 import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
-import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -30,7 +29,7 @@ class TaskRuntimeRecoveryPortTest {
 
     @Test
     void runtimeRecoveryOnlyReturnsTasksAdvertisedByRuntimeReadySet() {
-        InMemoryTaskShellStore storage = new InMemoryTaskShellStore();
+        InMemoryTaskShellRuntimeStore storage = new InMemoryTaskShellRuntimeStore();
         ReadyTaskIdsOverrideRuntime runtime = new ReadyTaskIdsOverrideRuntime();
         TaskManager manager = new TaskManager(storage, runtime, new InMemoryTaskResultRuntime(), null);
 
@@ -48,7 +47,7 @@ class TaskRuntimeRecoveryPortTest {
 
     @Test
     void runtimeRecoveryDropsRuntimeResidueThatNoLongerHasTaskShellTruth() {
-        InMemoryTaskShellStore storage = new InMemoryTaskShellStore();
+        InMemoryTaskShellRuntimeStore storage = new InMemoryTaskShellRuntimeStore();
         ReadyTaskIdsOverrideRuntime runtime = new ReadyTaskIdsOverrideRuntime();
         TaskManager manager = new TaskManager(storage, runtime, new InMemoryTaskResultRuntime(), null);
 

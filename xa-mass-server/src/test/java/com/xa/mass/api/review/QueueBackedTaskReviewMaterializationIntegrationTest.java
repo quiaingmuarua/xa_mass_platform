@@ -21,10 +21,13 @@ class QueueBackedTaskReviewMaterializationIntegrationTest {
         TaskReviewReadModel readModel = new TaskReviewStoreTaskReviewReadModel(store);
         try (InProcessTaskReviewReportQueue queue = new InProcessTaskReviewReportQueue(
                 new TaskReviewStoreMaterializer(store), 8)) {
-            QueueBackedTaskReviewReadModelWriter writer = new QueueBackedTaskReviewReadModelWriter(queue);
+            QueueBackedTaskReviewReadModelWriter writer = new QueueBackedTaskReviewReadModelWriter(
+                    queue,
+                    TaskReviewMaterializationPolicy.terminalDefault());
 
             writer.recordItemsAccepted(
                     "task-001",
+                    Map.of(),
                     List.of(Map.of("eventCode", "probe.weather", "city", "shenzhen")),
                     new TaskItemBatchAppendReceipt("task-001", 1, List.of("msg-001")),
                     3);

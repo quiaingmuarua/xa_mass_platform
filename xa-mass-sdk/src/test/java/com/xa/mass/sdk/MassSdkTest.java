@@ -35,13 +35,14 @@ import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.model.TaskAppendReceipt;
+import com.xa.mass.engine.model.TaskDefinitionPatch;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.worker.runtime.resource.EventBinding;
 import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import com.xa.mass.worker.runtime.resource.WorkerResourceQueryRuntime;
-import com.xa.mass.engine.watchdog.PollingIdleBackoffPolicy;
+import com.xa.mass.engine.PollingIdleBackoffPolicy;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRuntime;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
@@ -126,6 +127,7 @@ import com.xa.mass.transport.model.TaskDispatchItem;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
+import org.mockito.ArgumentCaptor;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -1503,7 +1505,7 @@ class MassSdkTest {
         when(config.getTaskQueryService()).thenReturn(taskQueries);
         when(taskQueries.getTask("task-1")).thenReturn(task);
         when(taskCommands.resumeTaskDetailed("task-1")).thenReturn(TaskResumeResult.resumedToReady());
-        when(taskCommands.updateTask(task)).thenReturn(true);
+        when(taskCommands.patchTaskDefinition(any(), any())).thenReturn(true);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
@@ -1518,11 +1520,14 @@ class MassSdkTest {
         assertEquals("READY", resumeResult.status());
         assertTrue(updated);
         assertEquals("before", task.getTaskName());
-        assertEquals("testApp", task.getProject());
-        assertEquals("user-2", task.getUser().getUserId());
-        assertEquals(Map.of("routingCode", "us"), task.getSharedConfig());
         verify(taskCommands).resumeTaskDetailed("task-1");
-        verify(taskCommands).updateTask(task);
+        ArgumentCaptor<TaskDefinitionPatch> patchCaptor = ArgumentCaptor.forClass(TaskDefinitionPatch.class);
+        verify(taskCommands).patchTaskDefinition(eq("task-1"), patchCaptor.capture());
+        TaskDefinitionPatch patch = patchCaptor.getValue();
+        assertEquals("testApp", patch.project());
+        assertEquals("user-2", patch.userId());
+        assertEquals(Map.of("routingCode", "us"), patch.sharedConfig());
+        verify(taskCommands, never()).updateTask(any());
     }
 
     @Test
@@ -1795,11 +1800,12 @@ class MassSdkTest {
                         .items(List.of(Map.of("url", "https://example.test")))
                         .build());
 
-        var captor = org.mockito.ArgumentCaptor.forClass(Task.class);
-        verify(taskCommandService).updateTask(captor.capture());
+        ArgumentCaptor<TaskDefinitionPatch> captor = ArgumentCaptor.forClass(TaskDefinitionPatch.class);
+        verify(taskCommandService).patchTaskDefinition(eq("task-resolve-single"), captor.capture());
         Assertions.assertEquals("crawler",
-                captor.getValue().getSharedConfig().get(TaskSharedConfig.WORKER_GROUP_ID));
-        Assertions.assertFalse(captor.getValue().getSharedConfig().containsKey(TaskSharedConfig.WORKER_GROUP_IDS));
+                captor.getValue().sharedConfig().get(TaskSharedConfig.WORKER_GROUP_ID));
+        Assertions.assertFalse(captor.getValue().sharedConfig().containsKey(TaskSharedConfig.WORKER_GROUP_IDS));
+        verify(taskCommandService, never()).updateTask(any());
     }
 
     @Test
@@ -1833,11 +1839,12 @@ class MassSdkTest {
                         .items(List.of(Map.of("url", "https://example.test")))
                         .build());
 
-        var captor = org.mockito.ArgumentCaptor.forClass(Task.class);
-        verify(taskCommandService).updateTask(captor.capture());
+        ArgumentCaptor<TaskDefinitionPatch> captor = ArgumentCaptor.forClass(TaskDefinitionPatch.class);
+        verify(taskCommandService).patchTaskDefinition(eq("task-resolve-multi"), captor.capture());
         Assertions.assertEquals(List.of("crawler-a", "crawler-b"),
-                captor.getValue().getSharedConfig().get(TaskSharedConfig.WORKER_GROUP_IDS));
-        Assertions.assertFalse(captor.getValue().getSharedConfig().containsKey(TaskSharedConfig.WORKER_GROUP_ID));
+                captor.getValue().sharedConfig().get(TaskSharedConfig.WORKER_GROUP_IDS));
+        Assertions.assertFalse(captor.getValue().sharedConfig().containsKey(TaskSharedConfig.WORKER_GROUP_ID));
+        verify(taskCommandService, never()).updateTask(any());
     }
 
     @Test

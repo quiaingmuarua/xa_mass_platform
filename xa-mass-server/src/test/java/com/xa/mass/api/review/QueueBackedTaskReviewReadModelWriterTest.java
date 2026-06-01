@@ -22,10 +22,13 @@ class QueueBackedTaskReviewReadModelWriterTest {
     @Test
     void recordItemsAcceptedSubmitsAcceptedEvent() {
         CapturingQueue queue = new CapturingQueue(true);
-        QueueBackedTaskReviewReadModelWriter writer = new QueueBackedTaskReviewReadModelWriter(queue);
+        QueueBackedTaskReviewReadModelWriter writer = new QueueBackedTaskReviewReadModelWriter(
+                queue,
+                TaskReviewMaterializationPolicy.terminalDefault());
 
         writer.recordItemsAccepted(
                 "task-001",
+                Map.of(),
                 List.of(Map.of("eventCode", "probe.weather")),
                 new TaskItemBatchAppendReceipt("task-001", 1, List.of("msg-001")),
                 3);
@@ -40,7 +43,9 @@ class QueueBackedTaskReviewReadModelWriterTest {
     @Test
     void recordWorkFinalSubmitsTerminalEvent() {
         CapturingQueue queue = new CapturingQueue(true);
-        QueueBackedTaskReviewReadModelWriter writer = new QueueBackedTaskReviewReadModelWriter(queue);
+        QueueBackedTaskReviewReadModelWriter writer = new QueueBackedTaskReviewReadModelWriter(
+                queue,
+                TaskReviewMaterializationPolicy.terminalDefault());
 
         writer.recordWorkFinal(new TaskWorkFinalNotification(
                 "task-001",
@@ -74,9 +79,34 @@ class QueueBackedTaskReviewReadModelWriterTest {
     }
 
     @Test
-    void recordAttemptClosedSubmitsAttemptClosedEvent() {
+    void recordAttemptClosedSkipsAttemptClosedEventByDefault() {
         CapturingQueue queue = new CapturingQueue(true);
-        QueueBackedTaskReviewReadModelWriter writer = new QueueBackedTaskReviewReadModelWriter(queue);
+        QueueBackedTaskReviewReadModelWriter writer = new QueueBackedTaskReviewReadModelWriter(
+                queue,
+                TaskReviewMaterializationPolicy.terminalDefault());
+
+        writer.recordAttemptClosed(new TaskWorkAttemptClosedNotification(
+                "task-001",
+                Map.of(),
+                new TaskWorkAttemptClosedSnapshot(
+                        "task-001",
+                        "msg-001",
+                        "attempt-001",
+                        1,
+                        "worker-stale",
+                        "batch-001",
+                        "EXPIRED",
+                        "LEASE_EXPIRED")));
+
+        assertEquals(0, queue.events.size());
+    }
+
+    @Test
+    void recordAttemptClosedSubmitsAttemptClosedEventWhenDiagnostic() {
+        CapturingQueue queue = new CapturingQueue(true);
+        QueueBackedTaskReviewReadModelWriter writer = new QueueBackedTaskReviewReadModelWriter(
+                queue,
+                TaskReviewMaterializationPolicy.diagnosticDefault());
 
         writer.recordAttemptClosed(new TaskWorkAttemptClosedNotification(
                 "task-001",
@@ -102,11 +132,55 @@ class QueueBackedTaskReviewReadModelWriterTest {
     }
 
     @Test
+    void taskSharedConfigCanOptIntoDiagnosticAttemptMaterialization() {
+        CapturingQueue queue = new CapturingQueue(true);
+        QueueBackedTaskReviewReadModelWriter writer = new QueueBackedTaskReviewReadModelWriter(
+                queue,
+                TaskReviewMaterializationPolicy.terminalDefault());
+
+        writer.recordAttemptClosed(new TaskWorkAttemptClosedNotification(
+                "task-001",
+                Map.of(TaskReviewMaterializationPolicy.SHARED_CONFIG_KEY, "diagnostic"),
+                new TaskWorkAttemptClosedSnapshot(
+                        "task-001",
+                        "msg-001",
+                        "attempt-001",
+                        1,
+                        "worker-stale",
+                        "batch-001",
+                        "EXPIRED",
+                        "LEASE_EXPIRED")));
+
+        assertEquals(1, queue.events.size());
+        assertInstanceOf(TaskReviewAttemptClosedEvent.class, queue.events.get(0));
+    }
+
+    @Test
+    void taskSharedConfigCanDisableTerminalMaterialization() {
+        CapturingQueue queue = new CapturingQueue(true);
+        QueueBackedTaskReviewReadModelWriter writer = new QueueBackedTaskReviewReadModelWriter(
+                queue,
+                TaskReviewMaterializationPolicy.terminalDefault());
+
+        writer.recordItemsAccepted(
+                "task-001",
+                Map.of(TaskReviewMaterializationPolicy.SHARED_CONFIG_KEY, "off"),
+                List.of(Map.of("eventCode", "probe.weather")),
+                new TaskItemBatchAppendReceipt("task-001", 1, List.of("msg-001")),
+                3);
+
+        assertEquals(0, queue.events.size());
+    }
+
+    @Test
     void queueRejectionDoesNotThrowThroughWriter() {
-        QueueBackedTaskReviewReadModelWriter writer = new QueueBackedTaskReviewReadModelWriter(new CapturingQueue(false));
+        QueueBackedTaskReviewReadModelWriter writer = new QueueBackedTaskReviewReadModelWriter(
+                new CapturingQueue(false),
+                TaskReviewMaterializationPolicy.terminalDefault());
 
         assertDoesNotThrow(() -> writer.recordItemsAccepted(
                 "task-001",
+                Map.of(),
                 List.of(Map.of("eventCode", "probe.weather")),
                 new TaskItemBatchAppendReceipt("task-001", 1, List.of("msg-001")),
                 3));

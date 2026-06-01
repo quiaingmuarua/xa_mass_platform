@@ -2,7 +2,7 @@ package com.xa.mass.starter.builder;
 
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
-import com.xa.mass.engine.watchdog.PollingIdleBackoffPolicy;
+import com.xa.mass.engine.PollingIdleBackoffPolicy;
 import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.worker.WorkerRegistry;

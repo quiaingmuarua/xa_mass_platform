@@ -170,6 +170,7 @@ class ServerMainSourceArchitectureGuardTest {
                                 String source = Files.readString(path, StandardCharsets.UTF_8);
                                 if (source.contains("import com.xa.mass.api.review.TaskReviewReport")
                                         || source.contains("import com.xa.mass.api.review.TaskReviewMaterializer")
+                                        || source.contains("import com.xa.mass.api.review.TaskReviewMaterialization")
                                         || source.contains("import com.xa.mass.api.review.TaskReviewStore")
                                         || source.contains("import com.xa.mass.api.review.QueueBackedTaskReview")) {
                                     violations.add(repoRoot.relativize(path)
@@ -192,8 +193,8 @@ class ServerMainSourceArchitectureGuardTest {
         Path application = SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/server/XaMassServerApplication.java");
         String source = Files.readString(application, StandardCharsets.UTF_8);
 
-        assertTrue(source.contains("new QueueBackedTaskReviewReadModelWriter(taskReviewReportQueue)"),
-                "server production review writer bean must submit through the review report queue");
+        assertTrue(source.contains("new QueueBackedTaskReviewReadModelWriter(taskReviewReportQueue, policy)"),
+                "server production review writer bean must submit through the review report queue and server policy");
         assertTrue(source.contains("new TaskReviewStoreMaterializer(taskReviewStore)"),
                 "server production review materializer must write through server-local review store backing");
         assertTrue(!source.contains("taskDetailStore("),

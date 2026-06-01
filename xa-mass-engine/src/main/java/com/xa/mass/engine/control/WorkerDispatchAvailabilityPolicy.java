@@ -1,6 +1,6 @@
 package com.xa.mass.engine.control;
 
-import com.xa.mass.engine.command.WorkerCommandLifecycleResult;
+import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleResult;
 import com.xa.mass.worker.runtime.control.WorkerDispatchGateRuntime;
 import com.xa.mass.worker.runtime.report.WorkerStateProjection;
 

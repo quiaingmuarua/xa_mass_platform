@@ -8,6 +8,7 @@ import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.TaskCommandService;
+import com.xa.mass.engine.InMemoryTaskShellRuntimeStore;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.TestWorkerCandidateRows;
@@ -19,7 +20,6 @@ import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
-import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import org.junit.jupiter.api.BeforeEach;
@@ -53,7 +53,7 @@ public class SimpleTaskDispatchBinderTest {
         recordService = mock(AssignmentRecordService.class);
         taskWorkRuntime = new InMemoryTaskWorkRuntime();
         taskManager = new TaskManager(
-                new InMemoryTaskShellStore(),
+                new InMemoryTaskShellRuntimeStore(),
                 taskWorkRuntime,
                 new InMemoryTaskResultRuntime(),
                 null
@@ -148,7 +148,7 @@ public class SimpleTaskDispatchBinderTest {
                 workerManager,
                 recordService,
                 null,
-                com.xa.mass.engine.util.TraceEventLogger.noop(),
+                com.xa.mass.engine.TraceEventLogger.noop(),
                 new NonExclusiveResourcePolicy()
         );
 

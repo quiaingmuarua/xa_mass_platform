@@ -1,10 +1,10 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.engine.command.WorkerCommandAcknowledgement;
-import com.xa.mass.engine.command.WorkerCommandDeliveryPort;
-import com.xa.mass.engine.command.WorkerCommandLifecycleResult;
-import com.xa.mass.engine.command.WorkerCommandRecord;
-import com.xa.mass.engine.command.WorkerCommandRequest;
+import com.xa.mass.worker.runtime.command.WorkerCommandAcknowledgement;
+import com.xa.mass.worker.runtime.command.WorkerCommandDeliveryPort;
+import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleResult;
+import com.xa.mass.worker.runtime.command.WorkerCommandRecord;
+import com.xa.mass.worker.runtime.command.WorkerCommandRequest;
 import com.xa.mass.worker.runtime.report.WorkerCapabilityReport;
 import com.xa.mass.worker.runtime.report.WorkerCapabilityReportResult;
 import com.xa.mass.worker.runtime.report.WorkerStateProjection;

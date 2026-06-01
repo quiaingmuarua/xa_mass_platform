@@ -1,4 +1,4 @@
-package com.xa.mass.engine.command;
+package com.xa.mass.worker.runtime.command;
 
 public enum WorkerCommandDeliveryStatus {
     ACCEPTED("command delivery accepted"),

@@ -182,6 +182,15 @@ class EngineProofOwnershipGuardTest {
                         + String.join("\n", violations));
     }
 
+    @Test
+    void enginePomDoesNotUseStorageImplementationAsTestFixture() throws IOException {
+        String pom = Files.readString(ENGINE_POM, StandardCharsets.UTF_8);
+
+        assertTrue(!pom.contains("<artifactId>mass-storage-memory</artifactId>"),
+                "Engine tests must use engine-owned kernel fixtures for ordinary runtime proof. "
+                        + "Storage implementation tests belong in the storage module.");
+    }
+
     private static Set<Class<?>> selectedClasses(List<Class<?>> suiteClasses) {
         Set<Class<?>> selectedClasses = new LinkedHashSet<>();
         for (Class<?> suiteClass : suiteClasses) {

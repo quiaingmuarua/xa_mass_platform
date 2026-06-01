@@ -27,6 +27,9 @@ Worker runtime owns:
 - Worker capability report application and bounded state projection.
 - Worker reachability, load, and group capability evidence exposed to engine.
 - Worker admission, capacity permits, dispatch gates, and exclusive leases.
+- Worker command lifecycle truth: request records, status transitions,
+  worker-pulled claims, delivery-attempt bookkeeping, expiry, and command
+  lifecycle value contracts.
 - Stage-1 worker candidate source, source guard, and warm/cold merge.
 - Task-local warm candidate hint storage after engine observes useful Stage-2
   evidence.
@@ -38,6 +41,8 @@ Worker runtime does not own:
   state.
 - Dispatch binding, transport delivery, or result convergence.
 - Rule evaluation, worker ranking, allocation budget, or terminal policy.
+- Engine dispatch-control side effects produced from worker command lifecycle
+  results.
 - Transport protocol sessions, adapter-specific connection state, or SDK wire
   semantics.
 
@@ -187,6 +192,33 @@ Allowed callers:
 - Engine control paths.
 - SDK/server worker control paths.
 - Worker-runtime implementation.
+
+### Command
+
+Package: `com.xa.mass.worker.runtime.command`
+
+Owned contracts:
+
+- `WorkerCommandLifecycleOwner`
+- `WorkerCommandRequest`
+- `WorkerCommandAcknowledgement`
+- `WorkerCommandRecord`
+- `WorkerCommandStatus`
+- `WorkerCommandLifecycleResult`
+- `WorkerCommandLifecycleResultCode`
+- `WorkerCommandDeliveryPort`
+- `WorkerCommandDeliveryResult`
+- `WorkerCommandDeliveryStatus`
+
+Allowed callers:
+
+- Engine worker-control paths and worker-command delivery coordination.
+- SDK/server worker command APIs.
+- Worker-runtime implementation and tests.
+
+Worker command lifecycle truth is worker-scoped runtime/control truth. Engine
+may translate lifecycle results into dispatch-gate side effects, trace events,
+and delivery retries, but engine must not own the command record/status store.
 
 ### Routing
 

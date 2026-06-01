@@ -31,9 +31,6 @@ import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.storage.api.RuleStorage;
-import com.xa.mass.storage.memory.InMemoryRuleStorage;
-import com.xa.mass.storage.memory.InMemoryTaskShellStore;
-import com.xa.mass.storage.memory.InMemoryWorkerDeclarationStore;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.kernel.spi.rule.RuleType;
 
@@ -50,7 +47,7 @@ final class TaskSchedulingTestHarness {
     private static final String DEFAULT_ADAPTER_NODE_ID = "test-node-main";
     private static final String DEFAULT_WORKER_GROUP_ID = "pool-main";
 
-    final InMemoryTaskShellStore taskStorage;
+    final InMemoryTaskShellRuntimeStore taskStorage;
     final TaskManager taskManager;
     final WorkerManager workerManager;
     final RuleStorage ruleStorage;
@@ -63,15 +60,15 @@ final class TaskSchedulingTestHarness {
     }
 
     TaskSchedulingTestHarness(WorkerReachabilityView reachabilityView) {
-        this.taskStorage = new InMemoryTaskShellStore();
+        this.taskStorage = new InMemoryTaskShellRuntimeStore();
         this.taskManager = new TaskManager(
                 taskStorage,
                 new InMemoryTaskWorkRuntime(),
                 new InMemoryTaskResultRuntime(),
                 null
         );
-        this.workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), reachabilityView, new InMemoryWorkerRegistry());
-        this.ruleStorage = new InMemoryRuleStorage();
+        this.workerManager = new WorkerManager(new InMemoryWorkerDeclarationRuntimeStore(), reachabilityView, new InMemoryWorkerRegistry());
+        this.ruleStorage = new InMemoryRuleDefinitionStore();
         this.assignmentRecords = new AssignmentRecordService();
         this.dispatches = new ArrayList<>();
         installDefaultSchedulingRules();
@@ -93,7 +90,7 @@ final class TaskSchedulingTestHarness {
                 workerManager,
                 workerManager,
                 assignmentRecords,
-                com.xa.mass.engine.util.TraceEventLogger.noop()
+                com.xa.mass.engine.TraceEventLogger.noop()
         );
         this.assignListener = new TaskWorkerAssignListener(
                 matchingStrategy,

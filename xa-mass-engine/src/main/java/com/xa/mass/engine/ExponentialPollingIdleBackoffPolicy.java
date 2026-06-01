@@ -1,4 +1,4 @@
-package com.xa.mass.engine.watchdog;
+package com.xa.mass.engine;
 
 /**
  * Default exponential idle policy for polling fallback loops.

@@ -20,17 +20,26 @@ public final class QueueBackedTaskReviewReadModelWriter implements TaskReviewRea
     private static final Logger log = LoggerFactory.getLogger(QueueBackedTaskReviewReadModelWriter.class);
 
     private final TaskReviewReportQueue queue;
+    private final TaskReviewMaterializationPolicy policy;
 
-    public QueueBackedTaskReviewReadModelWriter(TaskReviewReportQueue queue) {
+    public QueueBackedTaskReviewReadModelWriter(TaskReviewReportQueue queue,
+                                                TaskReviewMaterializationPolicy policy) {
         this.queue = Objects.requireNonNull(queue, "queue");
+        this.policy = Objects.requireNonNull(policy, "policy");
     }
 
     @Override
     public void recordItemsAccepted(String taskId,
+                                    Map<String, Object> sharedConfig,
                                     List<Map<String, Object>> acceptedItems,
                                     TaskItemBatchAppendReceipt receipt,
                                     int maxRetryCount) {
         if (isBlank(taskId) || acceptedItems == null || receipt == null) {
+            return;
+        }
+        TaskReviewMaterializationMode mode = policy.modeFor(sharedConfig);
+        if (!mode.recordsTerminalFacts()) {
+            logSkipped("itemsAccepted", taskId, null, null, mode);
             return;
         }
         try {
@@ -53,6 +62,12 @@ public final class QueueBackedTaskReviewReadModelWriter implements TaskReviewRea
                 || isBlank(snapshot.attemptId())) {
             return;
         }
+        Map<String, Object> sharedConfig = notification == null ? Map.of() : notification.sharedConfig();
+        TaskReviewMaterializationMode mode = policy.modeFor(sharedConfig);
+        if (!mode.recordsDiagnosticFacts()) {
+            logSkipped("attemptClosed", snapshot.taskId(), snapshot.messageId(), snapshot.attemptId(), mode);
+            return;
+        }
         try {
             TaskReviewAttemptClosedEvent event = TaskReviewAttemptClosedEvent.from(snapshot);
             if (!queue.submit(event)) {
@@ -71,6 +86,12 @@ public final class QueueBackedTaskReviewReadModelWriter implements TaskReviewRea
         if (snapshot == null || isBlank(snapshot.taskId()) || isBlank(snapshot.messageId())) {
             return;
         }
+        Map<String, Object> sharedConfig = notification == null ? Map.of() : notification.sharedConfig();
+        TaskReviewMaterializationMode mode = policy.modeFor(sharedConfig);
+        if (!mode.recordsTerminalFacts()) {
+            logSkipped("workTerminal", snapshot.taskId(), snapshot.messageId(), snapshot.attemptId(), mode);
+            return;
+        }
         try {
             TaskReviewWorkTerminalEvent event = TaskReviewWorkTerminalEvent.from(snapshot);
             if (!queue.submit(event)) {
@@ -85,5 +106,23 @@ public final class QueueBackedTaskReviewReadModelWriter implements TaskReviewRea
 
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private void logSkipped(String type,
+                            String taskId,
+                            String messageId,
+                            String attemptId,
+                            TaskReviewMaterializationMode mode) {
+        TaskReviewReportQueueStats stats = queue.snapshotStats();
+        log.debug("Task review materialization skipped by policy: type={}, taskId={}, messageId={}, attemptId={}, mode={}, queueSubmitted={}, queueRejected={}, queuePending={}, queueFailed={}",
+                type,
+                taskId,
+                messageId,
+                attemptId,
+                mode,
+                stats.submitted(),
+                stats.rejected(),
+                stats.pending(),
+                stats.failed());
     }
 }

@@ -4,6 +4,7 @@ import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.model.TaskAppendReceipt;
+import com.xa.mass.engine.model.TaskDefinitionPatch;
 import com.xa.mass.engine.model.TaskResumeResult;
 
 import java.util.List;
@@ -31,6 +32,10 @@ public class TaskCommandService {
 
     public boolean updateTask(Task task) {
         return taskCommands.updateTask(task);
+    }
+
+    public boolean patchTaskDefinition(String taskId, TaskDefinitionPatch patch) {
+        return taskCommands.patchTaskDefinition(taskId, patch);
     }
 
     public boolean deleteTask(String taskId) {

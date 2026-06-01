@@ -20,7 +20,7 @@ import com.xa.mass.engine.rules.MatchingRuleEvaluator;
 import com.xa.mass.engine.rules.MatchingRuleSetProvider;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
-import com.xa.mass.engine.util.TraceEventLogger;
+import com.xa.mass.engine.TraceEventLogger;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionResult;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionStatus;
 import org.slf4j.Logger;

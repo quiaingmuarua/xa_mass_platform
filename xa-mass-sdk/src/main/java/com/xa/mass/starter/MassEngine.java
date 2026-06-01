@@ -1,44 +1,20 @@
 package com.xa.mass.starter;
 
-import com.xa.mass.base.enums.task.TaskContract;
-import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
-import com.xa.mass.engine.TaskAssignmentRuntimePort;
+import com.xa.mass.engine.EngineRuntimeKernel;
 import com.xa.mass.engine.TaskCommandService;
-import com.xa.mass.engine.TaskDispatchWakeupPort;
-import com.xa.mass.engine.TaskDispatchWakeupBridge;
-import com.xa.mass.engine.TaskEventListenerRegistrar;
-import com.xa.mass.engine.TaskEventService;
-import com.xa.mass.engine.TaskLeaseMaintenancePort;
-import com.xa.mass.engine.TaskRuntimeRecoveryPort;
-import com.xa.mass.engine.TaskShellLifecycleMaintenancePort;
-import com.xa.mass.engine.listener.SimpleTaskDispatchBinder;
-import com.xa.mass.engine.listener.TaskAssignWorker;
-import com.xa.mass.engine.listener.TaskResourceReleaseListener;
-import com.xa.mass.engine.listener.TaskWorkerAssignListener;
-import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
-import com.xa.mass.engine.strategy.RuleBasedTaskWorkerMatchingStrategy;
-import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
-import com.xa.mass.engine.util.LogUtils;
-import com.xa.mass.engine.util.TraceEventLogger;
-import com.xa.mass.engine.watchdog.LeaseExpireWatchdog;
-import com.xa.mass.engine.watchdog.RuntimeReadyDispatchPump;
-import com.xa.mass.engine.watchdog.WorkerCommandMaintenanceWatchdog;
 import com.xa.mass.starter.config.EngineConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.util.List;
-import java.util.function.Consumer;
 
 /**
  * Assembles and starts the task-scheduling engine for an embedded runtime.
  *
  * <h3>Event Model</h3>
  * <ul>
- *   <li><b>In-process (synchronous):</b> {@link com.xa.mass.engine.TaskEventService}
+ *   <li><b>In-process (synchronous):</b> {@code TaskEventService}
  *       exposes the runtime listener surface. Its listeners fire inline on the
  *       calling thread and are used by the engine internals
  *       (assignment, resource release, etc.).</li>
@@ -51,29 +27,12 @@ import java.util.function.Consumer;
 public class MassEngine {
 
     private static final Logger logger = LoggerFactory.getLogger(MassEngine.class);
-    private static final int STARTUP_READY_TASK_SCAN_LIMIT =
-            Integer.getInteger("xa.mass.engine.startupReadyTaskScanLimit", 10_000);
-
     private final EngineConfig config;
     private boolean running = false;
 
     private TaskCommandService taskCommands;
-    private TaskRuntimeRecoveryPort runtimeRecoveryPort;
-    private TaskLeaseMaintenancePort leaseMaintenancePort;
-    private TaskDispatchWakeupPort dispatchWakeupPort;
-    private TaskShellLifecycleMaintenancePort shellLifecycleMaintenancePort;
-    private TaskEventListenerRegistrar eventListeners;
-    private TaskEventService taskEvents;
-    private TaskAssignWorker assignWorker;
-    private LeaseExpireWatchdog leaseWatchdog;
-    private WorkerCommandMaintenanceWatchdog workerCommandMaintenanceWatchdog;
-    private RuntimeReadyDispatchPump runtimeReadyDispatchPump;
-    private TaskResourceReleaseListener resourceReleaseListener;
+    private EngineRuntimeKernel runtimeKernel;
     private EngineRuntimeBridge runtimeBridge;
-    private Consumer<Task> taskReadyListener;
-    private Consumer<Task> taskDispatchSignalListener;
-    private Consumer<Task> taskTerminalListener;
-    private com.xa.mass.engine.TaskWorkAttemptClosedListener taskWorkAttemptClosedListener;
 
     public MassEngine(EngineConfig config) {
         this.config = config;
@@ -84,7 +43,6 @@ public class MassEngine {
     }
 
     public void start(TaskDispatchBatchListener dispatchBatchListener) {
-        LogUtils.clearMdc();
         if (!config.isEnabled()) {
             logger.info("MassEngine is disabled, skipping start");
             return;
@@ -95,172 +53,45 @@ public class MassEngine {
         }
         logger.info("Starting MassEngine with {} worker threads", config.getWorkerThreads());
         try {
-            taskCommands = config.getTaskCommandService();
-            runtimeRecoveryPort = config.getTaskRuntimeRecoveryPort();
-            leaseMaintenancePort = config.getTaskLeaseMaintenancePort();
-            dispatchWakeupPort = config.getTaskDispatchWakeupPort();
-            shellLifecycleMaintenancePort = config.getTaskShellLifecycleMaintenancePort();
-            TaskAssignmentRuntimePort assignmentRuntimePort = config.getTaskAssignmentRuntimePort();
-            taskEvents = config.getTaskEventService();
-            eventListeners = taskEvents;
             runtimeBridge = config.getRuntimeBridge();
-            var workerAdmissionRuntime = config.getWorkerAdmissionRuntime();
-            var workerAvailabilityWakeupRuntime = config.getWorkerAvailabilityWakeupRuntime();
-            var workerWarmHintRuntime = config.getWorkerWarmHintRuntime();
-            AssignmentDiagnosticRecorder recordService = config.getRecordService();
-            TraceEventLogger traceEventLogger = config.getTraceEventLogger();
-            var dispatchBinder = new SimpleTaskDispatchBinder(
-                    assignmentRuntimePort,
-                    workerAdmissionRuntime,
-                    recordService,
-                    dispatchBatchListener,
-                    traceEventLogger);
-            TaskWorkerMatchingStrategy customStrategy = config.getMatchingStrategy();
-            TaskWorkerMatchingStrategy matchingStrategy = customStrategy != null
-                    ? customStrategy
-                    : new RuleBasedTaskWorkerMatchingStrategy(
-                            config.getMatchingRuleSetProvider(),
-                            config.getMatchingRuleEvaluator(),
-                            config.getWorkerCandidateRuntime(),
-                            workerAdmissionRuntime,
-                            config.getWorkerSchedulingViewRuntime(),
-                            recordService,
-                            traceEventLogger);
-            var workerAssignListener = new TaskWorkerAssignListener(
-                    matchingStrategy,
-                    workerAdmissionRuntime,
-                    workerWarmHintRuntime,
-                    dispatchBinder,
-                    assignmentRuntimePort,
-                    taskEvents,
-                    traceEventLogger);
-            assignWorker = new TaskAssignWorker(workerAssignListener, config.getAssignmentRetryDelayMillis(), traceEventLogger);
-            assignWorker.start();
-            runtimeReadyDispatchPump = new RuntimeReadyDispatchPump(
-                    runtimeRecoveryPort,
-                    workerAssignListener::onTaskAssign,
-                    config.getRuntimeReadyDispatchIntervalMillis(),
-                    STARTUP_READY_TASK_SCAN_LIMIT,
-                    config.getAssignmentRetryDelayMillis(),
-                    config.getRuntimeReadyDispatchIdleBackoffMaxMillis(),
-                    config.getRuntimeReadyDispatchIdleBackoffPolicy()
-            );
-            TaskDispatchWakeupBridge dispatchWakeupBridge =
-                    new TaskDispatchWakeupBridge(assignWorker, runtimeReadyDispatchPump);
-            Runnable dispatchWakeupCallback = dispatchWakeupBridge.callback("worker availability changed");
-            config.getWorkerControlRuntime().setDispatchWakeupCallback(dispatchWakeupCallback);
-            workerAvailabilityWakeupRuntime.setDispatchWakeupCallback(dispatchWakeupCallback);
-            runtimeReadyDispatchPump.start();
-
-            resourceReleaseListener = new TaskResourceReleaseListener(
-                    leaseMaintenancePort,
-                    dispatchWakeupPort,
-                    workerAdmissionRuntime,
-                    traceEventLogger);
-            taskReadyListener = task -> {
-                if (task != null && task.getContract() == TaskContract.SESSION) {
-                    assignWorker.submit(task);
-                }
-            };
-            taskDispatchSignalListener = task -> {
-                if (task != null && task.getContract() == TaskContract.SESSION) {
-                    assignWorker.submit(task);
-                }
-            };
-            taskWorkAttemptClosedListener = resourceReleaseListener::onTaskWorkAttemptClosed;
-            taskTerminalListener = resourceReleaseListener::onTaskTerminal;
-            eventListeners.addTaskReadyListener(taskReadyListener);
-            eventListeners.addTaskDispatchListener(taskDispatchSignalListener);
-            eventListeners.addTaskWorkAttemptClosedListener(taskWorkAttemptClosedListener);
-            eventListeners.addTaskTerminalListener(taskTerminalListener);
-            recoverRuntimeReadyTasks();
-
-            leaseWatchdog = new LeaseExpireWatchdog(
-                    leaseMaintenancePort,
-                    shellLifecycleMaintenancePort,
-                    config.getLeaseWatchdogIntervalSeconds());
-            leaseWatchdog.start();
-            workerCommandMaintenanceWatchdog = new WorkerCommandMaintenanceWatchdog(
-                    config.getWorkerControlRuntime(),
-                    config.getWorkerCommandMaintenanceIntervalSeconds(),
-                    config.getWorkerCommandMaintenanceScanLimit(),
-                    config.getWorkerCommandDeliveryMaxAttempts()
-            );
-            workerCommandMaintenanceWatchdog.start();
-
-            runtimeBridge.start(eventListeners, config.getWorkerResourceRuntime(), dispatchWakeupCallback);
+            runtimeKernel = new EngineRuntimeKernel(config);
+            EngineRuntimeKernel.StartedRuntime startedRuntime = runtimeKernel.start(dispatchBatchListener);
+            taskCommands = runtimeKernel.taskCommands();
+            runtimeBridge.start(
+                    startedRuntime.eventListeners(),
+                    startedRuntime.workerResourceRuntime(),
+                    startedRuntime.dispatchWakeupCallback());
             running = true;
             logger.info("MassEngine started successfully");
         } catch (Exception e) {
-            LogUtils.clearMdc();
+            if (runtimeKernel != null) {
+                runtimeKernel.stop();
+            }
             logger.error("Failed to start MassEngine", e);
             throw new RuntimeException("Failed to start MassEngine", e);
         }
     }
 
     public void stop() {
-        LogUtils.clearMdc();
         if (!running) {
             logger.info("MassEngine is not running, skipping stop");
             return;
         }
         logger.info("Stopping MassEngine...");
         try {
-            if (eventListeners != null) {
-                if (taskReadyListener != null) {
-                    eventListeners.removeTaskReadyListener(taskReadyListener);
-                }
-                if (taskDispatchSignalListener != null) {
-                    eventListeners.removeTaskDispatchListener(taskDispatchSignalListener);
-                }
-            }
-            if (eventListeners != null) {
-                if (taskWorkAttemptClosedListener != null) {
-                    eventListeners.removeTaskWorkAttemptClosedListener(taskWorkAttemptClosedListener);
-                }
-                if (taskTerminalListener != null) {
-                    eventListeners.removeTaskTerminalListener(taskTerminalListener);
-                }
-            }
             if (runtimeBridge != null) {
                 runtimeBridge.stop();
                 runtimeBridge = null;
             }
-            config.getWorkerControlRuntime().setDispatchWakeupCallback(null);
-            config.getWorkerAvailabilityWakeupRuntime().setDispatchWakeupCallback(null);
-            if (leaseWatchdog != null) {
-                leaseWatchdog.stop();
-                leaseWatchdog = null;
+            if (runtimeKernel != null) {
+                runtimeKernel.stop();
+                runtimeKernel = null;
             }
-            if (workerCommandMaintenanceWatchdog != null) {
-                workerCommandMaintenanceWatchdog.stop();
-                workerCommandMaintenanceWatchdog = null;
-            }
-            if (runtimeReadyDispatchPump != null) {
-                runtimeReadyDispatchPump.stop();
-                runtimeReadyDispatchPump = null;
-            }
-            if (assignWorker != null) {
-                assignWorker.stop();
-                assignWorker = null;
-            }
-            resourceReleaseListener = null;
-            taskReadyListener = null;
-            taskDispatchSignalListener = null;
-            taskWorkAttemptClosedListener = null;
-            taskTerminalListener = null;
             config.shutdownTaskRuntime();
             taskCommands = null;
-            runtimeRecoveryPort = null;
-            leaseMaintenancePort = null;
-            dispatchWakeupPort = null;
-            shellLifecycleMaintenancePort = null;
-            eventListeners = null;
-            taskEvents = null;
             running = false;
             logger.info("MassEngine stopped successfully");
         } catch (Exception e) {
-            LogUtils.clearMdc();
             logger.error("Error stopping MassEngine", e);
         }
     }
@@ -280,16 +111,4 @@ public class MassEngine {
         return config;
     }
 
-    private void recoverRuntimeReadyTasks() {
-        if (runtimeRecoveryPort == null) {
-            return;
-        }
-        for (Task task : runtimeRecoveryPort.getRuntimeDispatchableTasks(STARTUP_READY_TASK_SCAN_LIMIT)) {
-            TaskStatus status = task.getStatus();
-            if ((status == TaskStatus.READY || status == TaskStatus.RUNNING)
-                    && task.getContract() == TaskContract.SESSION) {
-                assignWorker.submit(task);
-            }
-        }
-    }
 }

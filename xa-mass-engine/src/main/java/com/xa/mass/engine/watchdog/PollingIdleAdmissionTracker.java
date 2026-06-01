@@ -1,5 +1,9 @@
 package com.xa.mass.engine.watchdog;
 
+import com.xa.mass.engine.ExponentialPollingIdleBackoffPolicy;
+import com.xa.mass.engine.PollingIdleBackoffPolicy;
+import com.xa.mass.engine.PollingResourceKey;
+
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 

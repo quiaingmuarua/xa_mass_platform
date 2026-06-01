@@ -578,7 +578,7 @@ class TaskApiControllerTest {
     void appendTaskItemsReturnsAcceptedAppendWhenReviewWriterFails() throws Exception {
         TaskReviewReadModelWriter writer = org.mockito.Mockito.mock(TaskReviewReadModelWriter.class);
         doThrow(new IllegalStateException("review write failed"))
-                .when(writer).recordItemsAccepted(any(), any(), any(), anyInt());
+                .when(writer).recordItemsAccepted(any(), any(), any(), any(), anyInt());
         controller.setTaskReviewReadModelWriter(writer);
         when(taskQueries.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
         when(taskAdmin.appendTaskItemsWithReceipt(any(), any(MassTaskItemBatchAppendRequest.class)))
@@ -954,6 +954,7 @@ class TaskApiControllerTest {
         return new TaskReviewReadModelWriter() {
             @Override
             public void recordItemsAccepted(String taskId,
+                                            Map<String, Object> sharedConfig,
                                             List<Map<String, Object>> acceptedItems,
                                             TaskItemBatchAppendReceipt receipt,
                                             int maxRetryCount) {

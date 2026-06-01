@@ -388,7 +388,7 @@ public class TaskApiController {
                     .items(items)
                     .build());
             int added = receipt.added();
-            recordReviewItemsAccepted(taskId, reviewItems, receipt, resolveDefaultMaxRetryCount(taskId));
+            recordReviewItemsAccepted(taskId, task.getSharedConfig(), reviewItems, receipt, resolveDefaultMaxRetryCount(taskId));
             ApiUsageAcceptedContext usage = recordApiUsage(
                     appender,
                     ApiUsageOperation.TASK_ITEM_APPEND,
@@ -450,6 +450,7 @@ public class TaskApiController {
                     .build());
             String messageId = requireSingleMessageId(receipt);
             recordReviewItemsAccepted(taskId,
+                    task.getSharedConfig(),
                     normalizeAppendItemsForReview(items, requestBody.getEventCode()),
                     receipt,
                     resolveDefaultMaxRetryCount(taskId));
@@ -1320,6 +1321,7 @@ public class TaskApiController {
     }
 
     private void recordReviewItemsAccepted(String taskId,
+                                           Map<String, Object> sharedConfig,
                                            List<Map<String, Object>> acceptedItems,
                                            TaskItemBatchAppendReceipt receipt,
                                            int maxRetryCount) {
@@ -1327,7 +1329,7 @@ public class TaskApiController {
             return;
         }
         try {
-            taskReviewReadModelWriter.recordItemsAccepted(taskId, acceptedItems, receipt, maxRetryCount);
+            taskReviewReadModelWriter.recordItemsAccepted(taskId, sharedConfig, acceptedItems, receipt, maxRetryCount);
         } catch (RuntimeException e) {
             log.warn("Task review read-model append write failed: taskId={}, added={}, reason={}",
                     taskId,

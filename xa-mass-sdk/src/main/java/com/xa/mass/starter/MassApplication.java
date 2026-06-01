@@ -13,10 +13,9 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.command.event.BoundedMassEventRuntime;
 import com.xa.mass.command.event.InMemoryMassEventRuntime;
 import com.xa.mass.command.event.MassEventRuntime;
-import com.xa.mass.engine.command.WorkerCommandDeliveryResult;
-import com.xa.mass.engine.command.WorkerCommandRecord;
+import com.xa.mass.worker.runtime.command.WorkerCommandDeliveryResult;
+import com.xa.mass.worker.runtime.command.WorkerCommandRecord;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
-import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.config.EngineConfig;
@@ -57,6 +56,7 @@ import com.xa.mass.transport.presence.WorkerPresence;
 import com.xa.mass.transport.presence.WorkerPresenceStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -114,11 +114,11 @@ public class MassApplication {
 
     public void start() {
         if (!running.compareAndSet(false, true)) {
-            LogUtils.clearMdc();
+            MDC.clear();
             logger.info("Mass Application is already running, skipping duplicate start");
             return;
         }
-        LogUtils.clearMdc();
+        MDC.clear();
         logger.info("Starting Mass Application");
 
         try {
@@ -128,12 +128,12 @@ public class MassApplication {
             startTransportServer();
             startEngine(taskDispatchListener);
 
-            LogUtils.clearMdc();
+            MDC.clear();
             logger.info("Mass Application started successfully");
         } catch (Exception e) {
             running.set(false);
             cleanupAfterFailedStart(e);
-            LogUtils.clearMdc();
+            MDC.clear();
             logger.error("Failed to start Mass Application", e);
             throw new RuntimeException("Failed to start Mass Application", e);
         }
@@ -141,11 +141,11 @@ public class MassApplication {
 
     public void stop() {
         if (!running.compareAndSet(true, false)) {
-            LogUtils.clearMdc();
+            MDC.clear();
             logger.info("Mass Application is not running, skipping stop");
             return;
         }
-        LogUtils.clearMdc();
+        MDC.clear();
         logger.info("Stopping Mass Application");
 
         try {
@@ -176,10 +176,10 @@ public class MassApplication {
                 stopEventRuntimeTaskExecutor();
             }
 
-            LogUtils.clearMdc();
+            MDC.clear();
             logger.info("Mass Application stopped successfully");
         } catch (Exception e) {
-            LogUtils.clearMdc();
+            MDC.clear();
             logger.error("Error stopping Mass Application", e);
         }
     }

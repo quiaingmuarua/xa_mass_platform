@@ -17,6 +17,7 @@ import com.xa.mass.api.review.InProcessTaskReviewReportQueue;
 import com.xa.mass.api.review.InMemoryTaskReviewStore;
 import com.xa.mass.api.review.JdbcTaskReviewStore;
 import com.xa.mass.api.review.QueueBackedTaskReviewReadModelWriter;
+import com.xa.mass.api.review.TaskReviewMaterializationPolicy;
 import com.xa.mass.api.review.TaskReviewMaterializer;
 import com.xa.mass.api.review.TaskReviewReadModel;
 import com.xa.mass.api.review.TaskReviewReadModelWriter;
@@ -148,6 +149,9 @@ public class XaMassServerApplication {
     @Value("${mass.storage.jdbc.password:}")
     private String storageJdbcPassword;
 
+    @Value("${mass.review.materialization.mode:TERMINAL}")
+    private String taskReviewMaterializationMode;
+
     @Value("${spring.redis.host:localhost}")
     private String redisHost;
 
@@ -239,8 +243,16 @@ public class XaMassServerApplication {
     @Bean
     @Primary
     @Profile("dev")
-    public TaskReviewReadModelWriter taskReviewReadModelWriter(TaskReviewReportQueue taskReviewReportQueue) {
-        return new QueueBackedTaskReviewReadModelWriter(taskReviewReportQueue);
+    public TaskReviewMaterializationPolicy taskReviewMaterializationPolicy() {
+        return TaskReviewMaterializationPolicy.fromDefaultMode(taskReviewMaterializationMode);
+    }
+
+    @Bean
+    @Primary
+    @Profile("dev")
+    public TaskReviewReadModelWriter taskReviewReadModelWriter(TaskReviewReportQueue taskReviewReportQueue,
+                                                              TaskReviewMaterializationPolicy policy) {
+        return new QueueBackedTaskReviewReadModelWriter(taskReviewReportQueue, policy);
     }
 
     @Bean(destroyMethod = "shutdown")

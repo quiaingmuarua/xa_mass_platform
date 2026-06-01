@@ -1,8 +1,15 @@
 package com.xa.mass.engine.command;
 
 import com.xa.mass.engine.testutil.RecordingEventSink;
-import com.xa.mass.engine.util.TraceEventLogger;
+import com.xa.mass.engine.TraceEventLogger;
 import com.xa.mass.trace.sink.ExecutionEventType;
+import com.xa.mass.worker.runtime.command.WorkerCommandDeliveryResult;
+import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleOwner;
+import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleResult;
+import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleResultCode;
+import com.xa.mass.worker.runtime.command.WorkerCommandRecord;
+import com.xa.mass.worker.runtime.command.WorkerCommandRequest;
+import com.xa.mass.worker.runtime.command.WorkerCommandStatus;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;

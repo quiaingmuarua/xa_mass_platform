@@ -1,6 +1,6 @@
 package com.xa.mass.engine.watchdog;
 
-import com.xa.mass.engine.command.WorkerCommandLifecycleResult;
+import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleResult;
 import com.xa.mass.engine.WorkerControlRuntime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

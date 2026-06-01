@@ -1,5 +1,6 @@
 package com.xa.mass.engine.watchdog;
 
+import com.xa.mass.engine.PollingResourceKey;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.atomic.AtomicInteger;

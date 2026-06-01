@@ -1,6 +1,9 @@
 package com.xa.mass.starter.config;
 
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
+import com.xa.mass.engine.EngineRuntimeKernelConfig;
+import com.xa.mass.engine.ExponentialPollingIdleBackoffPolicy;
+import com.xa.mass.engine.PollingIdleBackoffPolicy;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;
@@ -11,6 +14,7 @@ import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.TaskManagerResultIngestFacade;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.engine.TaskShellLifecycleMaintenancePort;
+import com.xa.mass.engine.TraceEventLogger;
 import com.xa.mass.engine.WorkerControlRuntime;
 import com.xa.mass.engine.control.DefaultWorkerDispatchAvailabilityPolicy;
 import com.xa.mass.engine.control.WorkerControlService;
@@ -18,7 +22,7 @@ import com.xa.mass.engine.control.WorkerDispatchAvailabilityPolicy;
 import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityView;
 import com.xa.mass.worker.runtime.WorkerStateProjectionOwner;
-import com.xa.mass.engine.command.WorkerCommandLifecycleOwner;
+import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleOwner;
 import com.xa.mass.engine.stage.TaskStageEvidenceOwner;
 import com.xa.mass.engine.stage.TaskStageEvidenceService;
 import com.xa.mass.engine.rules.MatchingRuleEvaluator;
@@ -30,8 +34,7 @@ import com.xa.mass.engine.rules.RuleEvaluatorRegistries;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
-import com.xa.mass.engine.watchdog.ExponentialPollingIdleBackoffPolicy;
-import com.xa.mass.engine.watchdog.PollingIdleBackoffPolicy;
+import com.xa.mass.engine.policy.ContractAwareTaskTerminalPolicy;
 import com.xa.mass.kernel.spi.task.TaskShellRuntimeLifecycleQuery;
 import com.xa.mass.kernel.spi.task.TaskShellRuntimeStore;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
@@ -74,7 +77,7 @@ import java.util.Map;
  * managers are derived helpers over storage contracts, not independent config
  * slots with their own truth.
  */
-public class EngineConfig {
+public class EngineConfig implements EngineRuntimeKernelConfig {
 
     private boolean enabled = true;
     private int workerThreads = 8;
@@ -89,7 +92,7 @@ public class EngineConfig {
     private TaskDispatchWakeupPort taskDispatchWakeupPort;
     private TaskShellLifecycleMaintenancePort taskShellLifecycleMaintenancePort;
     private TaskRuntimeRecoveryPort taskRuntimeRecoveryPort;
-    private com.xa.mass.engine.util.TraceEventLogger traceEventLogger;
+    private TraceEventLogger traceEventLogger;
     private TaskShellStore taskShellStore;
     private TaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
     private TaskResultRuntime taskResultRuntime = new InMemoryTaskResultRuntime();
@@ -262,9 +265,9 @@ public class EngineConfig {
         return taskRuntimeRecoveryPort;
     }
 
-    public com.xa.mass.engine.util.TraceEventLogger getTraceEventLogger() {
+    public TraceEventLogger getTraceEventLogger() {
         if (traceEventLogger == null) {
-            traceEventLogger = new com.xa.mass.engine.util.TraceEventLogger(getExecutionEventSink());
+            traceEventLogger = new TraceEventLogger(getExecutionEventSink());
         }
         return traceEventLogger;
     }
@@ -609,7 +612,7 @@ public class EngineConfig {
             taskManager = new TaskManager(
                     getTaskShellRuntimeStore(),
                     getTaskShellRuntimeLifecycleQuery(),
-                    new com.xa.mass.engine.policy.ContractAwareTaskTerminalPolicy(),
+                    new ContractAwareTaskTerminalPolicy(),
                     getTaskWorkRuntime(),
                     getTaskResultRuntime(),
                     getExecutionEventSink()

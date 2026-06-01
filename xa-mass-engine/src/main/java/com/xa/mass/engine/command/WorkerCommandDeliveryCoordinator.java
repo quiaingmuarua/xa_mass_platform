@@ -1,6 +1,13 @@
 package com.xa.mass.engine.command;
 
-import com.xa.mass.engine.util.TraceEventLogger;
+import com.xa.mass.engine.TraceEventLogger;
+import com.xa.mass.worker.runtime.command.WorkerCommandDeliveryPort;
+import com.xa.mass.worker.runtime.command.WorkerCommandDeliveryResult;
+import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleOwner;
+import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleResult;
+import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleResultCode;
+import com.xa.mass.worker.runtime.command.WorkerCommandRecord;
+import com.xa.mass.worker.runtime.command.WorkerCommandStatus;
 
 import java.util.Objects;
 

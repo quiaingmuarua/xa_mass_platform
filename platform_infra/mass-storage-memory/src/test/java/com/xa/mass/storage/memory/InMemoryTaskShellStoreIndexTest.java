@@ -1,8 +1,7 @@
-package com.xa.mass.engine.storage;
+package com.xa.mass.storage.memory;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
@@ -11,7 +10,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class InMemoryTaskShellStoreTest {
+class InMemoryTaskShellStoreIndexTest {
 
     @Test
     void pollTasksPastMaxRuntimeDeadlineUsesDeadlineIndex() {

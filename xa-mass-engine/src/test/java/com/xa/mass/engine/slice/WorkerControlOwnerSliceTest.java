@@ -1,21 +1,22 @@
 package com.xa.mass.engine.slice;
 
+import com.xa.mass.engine.InMemoryWorkerDeclarationRuntimeStore;
+
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.command.event.CoreEventPrincipal;
 import com.xa.mass.command.event.CoreEventRequest;
 import com.xa.mass.command.event.CoreEventResponse;
 import com.xa.mass.command.event.InMemoryMassEventRuntime;
-import com.xa.mass.engine.command.WorkerCommandLifecycleOwner;
 import com.xa.mass.engine.command.WorkerCommandRequestEventHandler;
-import com.xa.mass.engine.command.WorkerCommandStatus;
+import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleOwner;
+import com.xa.mass.worker.runtime.command.WorkerCommandStatus;
 import com.xa.mass.engine.event.KernelEventHandlerRegistry;
 import com.xa.mass.engine.testutil.RecordingEventSink;
-import com.xa.mass.engine.util.TraceEventLogger;
+import com.xa.mass.engine.TraceEventLogger;
 import com.xa.mass.engine.control.WorkerControlService;
 import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.worker.runtime.WorkerStateProjectionOwner;
 import com.xa.mass.engine.control.WorkerStateReportEventHandler;
-import com.xa.mass.storage.memory.InMemoryWorkerDeclarationStore;
 import com.xa.mass.trace.sink.ExecutionEventType;
 import org.junit.jupiter.api.Test;
 
@@ -33,7 +34,7 @@ public class WorkerControlOwnerSliceTest {
         WorkerStateProjectionOwner stateOwner = new WorkerStateProjectionOwner();
         RecordingEventSink sink = new RecordingEventSink();
         TraceEventLogger trace = new TraceEventLogger(sink);
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationRuntimeStore(), new InMemoryWorkerRegistry());
         WorkerControlService workerControlService = new WorkerControlService(
                 workerManager,
                 workerManager,

@@ -1,0 +1,262 @@
+package com.xa.mass.engine;
+
+import com.xa.mass.base.enums.task.TaskContract;
+import com.xa.mass.base.enums.task.TaskStatus;
+import com.xa.mass.base.model.Task;
+import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
+import com.xa.mass.engine.listener.SimpleTaskDispatchBinder;
+import com.xa.mass.engine.listener.TaskAssignWorker;
+import com.xa.mass.engine.listener.TaskResourceReleaseListener;
+import com.xa.mass.engine.listener.TaskWorkerAssignListener;
+import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
+import com.xa.mass.engine.strategy.RuleBasedTaskWorkerMatchingStrategy;
+import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
+import com.xa.mass.engine.util.LogUtils;
+import com.xa.mass.engine.TraceEventLogger;
+import com.xa.mass.engine.watchdog.LeaseExpireWatchdog;
+import com.xa.mass.engine.watchdog.RuntimeReadyDispatchPump;
+import com.xa.mass.engine.watchdog.WorkerCommandMaintenanceWatchdog;
+import com.xa.mass.worker.runtime.resource.WorkerResourceRuntime;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.Objects;
+import java.util.function.Consumer;
+
+/**
+ * Owns default engine runtime assembly and lifecycle wiring.
+ *
+ * <p>This is not a pass-through wrapper. It keeps the listener, watchdog,
+ * matching, and dispatch binder implementation graph inside the engine module
+ * while the SDK remains the embedding shell.</p>
+ */
+public class EngineRuntimeKernel {
+
+    private static final Logger logger = LoggerFactory.getLogger(EngineRuntimeKernel.class);
+    private static final int STARTUP_READY_TASK_SCAN_LIMIT =
+            Integer.getInteger("xa.mass.engine.startupReadyTaskScanLimit", 10_000);
+
+    private final EngineRuntimeKernelConfig config;
+
+    private TaskCommandService taskCommands;
+    private TaskRuntimeRecoveryPort runtimeRecoveryPort;
+    private TaskLeaseMaintenancePort leaseMaintenancePort;
+    private TaskDispatchWakeupPort dispatchWakeupPort;
+    private TaskShellLifecycleMaintenancePort shellLifecycleMaintenancePort;
+    private TaskEventListenerRegistrar eventListeners;
+    private TaskEventService taskEvents;
+    private TaskAssignWorker assignWorker;
+    private LeaseExpireWatchdog leaseWatchdog;
+    private WorkerCommandMaintenanceWatchdog workerCommandMaintenanceWatchdog;
+    private RuntimeReadyDispatchPump runtimeReadyDispatchPump;
+    private TaskResourceReleaseListener resourceReleaseListener;
+    private Consumer<Task> taskReadyListener;
+    private Consumer<Task> taskDispatchSignalListener;
+    private Consumer<Task> taskTerminalListener;
+    private TaskWorkAttemptClosedListener taskWorkAttemptClosedListener;
+    private boolean running;
+
+    public EngineRuntimeKernel(EngineRuntimeKernelConfig config) {
+        this.config = Objects.requireNonNull(config, "config");
+    }
+
+    public StartedRuntime start(TaskDispatchBatchListener dispatchBatchListener) {
+        LogUtils.clearMdc();
+        if (running) {
+            logger.info("EngineRuntimeKernel is already running, skipping duplicate start");
+            return startedRuntime();
+        }
+        try {
+            taskCommands = config.getTaskCommandService();
+            runtimeRecoveryPort = config.getTaskRuntimeRecoveryPort();
+            leaseMaintenancePort = config.getTaskLeaseMaintenancePort();
+            dispatchWakeupPort = config.getTaskDispatchWakeupPort();
+            shellLifecycleMaintenancePort = config.getTaskShellLifecycleMaintenancePort();
+            TaskAssignmentRuntimePort assignmentRuntimePort = config.getTaskAssignmentRuntimePort();
+            taskEvents = config.getTaskEventService();
+            eventListeners = taskEvents;
+            var workerAdmissionRuntime = config.getWorkerAdmissionRuntime();
+            var workerAvailabilityWakeupRuntime = config.getWorkerAvailabilityWakeupRuntime();
+            var workerWarmHintRuntime = config.getWorkerWarmHintRuntime();
+            AssignmentDiagnosticRecorder recordService = config.getRecordService();
+            TraceEventLogger traceEventLogger = config.getTraceEventLogger();
+            var dispatchBinder = new SimpleTaskDispatchBinder(
+                    assignmentRuntimePort,
+                    workerAdmissionRuntime,
+                    recordService,
+                    dispatchBatchListener,
+                    traceEventLogger);
+            TaskWorkerMatchingStrategy customStrategy = config.getMatchingStrategy();
+            TaskWorkerMatchingStrategy matchingStrategy = customStrategy != null
+                    ? customStrategy
+                    : new RuleBasedTaskWorkerMatchingStrategy(
+                            config.getMatchingRuleSetProvider(),
+                            config.getMatchingRuleEvaluator(),
+                            config.getWorkerCandidateRuntime(),
+                            workerAdmissionRuntime,
+                            config.getWorkerSchedulingViewRuntime(),
+                            recordService,
+                            traceEventLogger);
+            var workerAssignListener = new TaskWorkerAssignListener(
+                    matchingStrategy,
+                    workerAdmissionRuntime,
+                    workerWarmHintRuntime,
+                    dispatchBinder,
+                    assignmentRuntimePort,
+                    taskEvents,
+                    traceEventLogger);
+            assignWorker = new TaskAssignWorker(workerAssignListener, config.getAssignmentRetryDelayMillis(), traceEventLogger);
+            assignWorker.start();
+            runtimeReadyDispatchPump = new RuntimeReadyDispatchPump(
+                    runtimeRecoveryPort,
+                    workerAssignListener::onTaskAssign,
+                    config.getRuntimeReadyDispatchIntervalMillis(),
+                    STARTUP_READY_TASK_SCAN_LIMIT,
+                    config.getAssignmentRetryDelayMillis(),
+                    config.getRuntimeReadyDispatchIdleBackoffMaxMillis(),
+                    config.getRuntimeReadyDispatchIdleBackoffPolicy()
+            );
+            TaskDispatchWakeupBridge dispatchWakeupBridge =
+                    new TaskDispatchWakeupBridge(assignWorker, runtimeReadyDispatchPump);
+            Runnable dispatchWakeupCallback = dispatchWakeupBridge.callback("worker availability changed");
+            config.getWorkerControlRuntime().setDispatchWakeupCallback(dispatchWakeupCallback);
+            workerAvailabilityWakeupRuntime.setDispatchWakeupCallback(dispatchWakeupCallback);
+            runtimeReadyDispatchPump.start();
+
+            resourceReleaseListener = new TaskResourceReleaseListener(
+                    leaseMaintenancePort,
+                    dispatchWakeupPort,
+                    workerAdmissionRuntime,
+                    traceEventLogger);
+            taskReadyListener = task -> {
+                if (task != null && task.getContract() == TaskContract.SESSION) {
+                    assignWorker.submit(task);
+                }
+            };
+            taskDispatchSignalListener = task -> {
+                if (task != null && task.getContract() == TaskContract.SESSION) {
+                    assignWorker.submit(task);
+                }
+            };
+            taskWorkAttemptClosedListener = resourceReleaseListener::onTaskWorkAttemptClosed;
+            taskTerminalListener = resourceReleaseListener::onTaskTerminal;
+            eventListeners.addTaskReadyListener(taskReadyListener);
+            eventListeners.addTaskDispatchListener(taskDispatchSignalListener);
+            eventListeners.addTaskWorkAttemptClosedListener(taskWorkAttemptClosedListener);
+            eventListeners.addTaskTerminalListener(taskTerminalListener);
+            recoverRuntimeReadyTasks();
+
+            leaseWatchdog = new LeaseExpireWatchdog(
+                    leaseMaintenancePort,
+                    shellLifecycleMaintenancePort,
+                    config.getLeaseWatchdogIntervalSeconds());
+            leaseWatchdog.start();
+            workerCommandMaintenanceWatchdog = new WorkerCommandMaintenanceWatchdog(
+                    config.getWorkerControlRuntime(),
+                    config.getWorkerCommandMaintenanceIntervalSeconds(),
+                    config.getWorkerCommandMaintenanceScanLimit(),
+                    config.getWorkerCommandDeliveryMaxAttempts()
+            );
+            workerCommandMaintenanceWatchdog.start();
+            running = true;
+            return startedRuntime(dispatchWakeupCallback);
+        } catch (Exception e) {
+            LogUtils.clearMdc();
+            logger.error("Failed to start engine runtime kernel", e);
+            stop();
+            throw new RuntimeException("Failed to start engine runtime kernel", e);
+        }
+    }
+
+    public void stop() {
+        LogUtils.clearMdc();
+        if (!running && assignWorker == null && runtimeReadyDispatchPump == null && leaseWatchdog == null) {
+            logger.info("EngineRuntimeKernel is not running, skipping stop");
+            return;
+        }
+        try {
+            if (eventListeners != null) {
+                if (taskReadyListener != null) {
+                    eventListeners.removeTaskReadyListener(taskReadyListener);
+                }
+                if (taskDispatchSignalListener != null) {
+                    eventListeners.removeTaskDispatchListener(taskDispatchSignalListener);
+                }
+                if (taskWorkAttemptClosedListener != null) {
+                    eventListeners.removeTaskWorkAttemptClosedListener(taskWorkAttemptClosedListener);
+                }
+                if (taskTerminalListener != null) {
+                    eventListeners.removeTaskTerminalListener(taskTerminalListener);
+                }
+            }
+            config.getWorkerControlRuntime().setDispatchWakeupCallback(null);
+            config.getWorkerAvailabilityWakeupRuntime().setDispatchWakeupCallback(null);
+            if (leaseWatchdog != null) {
+                leaseWatchdog.stop();
+                leaseWatchdog = null;
+            }
+            if (workerCommandMaintenanceWatchdog != null) {
+                workerCommandMaintenanceWatchdog.stop();
+                workerCommandMaintenanceWatchdog = null;
+            }
+            if (runtimeReadyDispatchPump != null) {
+                runtimeReadyDispatchPump.stop();
+                runtimeReadyDispatchPump = null;
+            }
+            if (assignWorker != null) {
+                assignWorker.stop();
+                assignWorker = null;
+            }
+            resourceReleaseListener = null;
+            taskReadyListener = null;
+            taskDispatchSignalListener = null;
+            taskWorkAttemptClosedListener = null;
+            taskTerminalListener = null;
+            taskCommands = null;
+            runtimeRecoveryPort = null;
+            leaseMaintenancePort = null;
+            dispatchWakeupPort = null;
+            shellLifecycleMaintenancePort = null;
+            eventListeners = null;
+            taskEvents = null;
+            running = false;
+        } catch (Exception e) {
+            LogUtils.clearMdc();
+            logger.error("Error stopping engine runtime kernel", e);
+        }
+    }
+
+    public boolean isRunning() {
+        return running;
+    }
+
+    public TaskCommandService taskCommands() {
+        return taskCommands;
+    }
+
+    private void recoverRuntimeReadyTasks() {
+        if (runtimeRecoveryPort == null) {
+            return;
+        }
+        for (Task task : runtimeRecoveryPort.getRuntimeDispatchableTasks(STARTUP_READY_TASK_SCAN_LIMIT)) {
+            TaskStatus status = task.getStatus();
+            if ((status == TaskStatus.READY || status == TaskStatus.RUNNING)
+                    && task.getContract() == TaskContract.SESSION) {
+                assignWorker.submit(task);
+            }
+        }
+    }
+
+    private StartedRuntime startedRuntime() {
+        return new StartedRuntime(eventListeners, config.getWorkerResourceRuntime(), null);
+    }
+
+    private StartedRuntime startedRuntime(Runnable dispatchWakeupCallback) {
+        return new StartedRuntime(eventListeners, config.getWorkerResourceRuntime(), dispatchWakeupCallback);
+    }
+
+    public record StartedRuntime(TaskEventListenerRegistrar eventListeners,
+                                 WorkerResourceRuntime workerResourceRuntime,
+                                 Runnable dispatchWakeupCallback) {
+    }
+}

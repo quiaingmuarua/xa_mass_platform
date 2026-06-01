@@ -11,6 +11,7 @@ import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
 import com.xa.mass.base.model.*;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.model.TaskAppendReceipt;
+import com.xa.mass.engine.model.TaskDefinitionPatch;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
@@ -25,6 +26,7 @@ import com.xa.mass.kernel.spi.task.TaskShellRuntimeLifecycleQuery;
 import com.xa.mass.kernel.spi.task.TaskShellRuntimeStore;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.BarrierClaim;
+import com.xa.mass.runtime.api.BarrierClaimStatus;
 import com.xa.mass.runtime.api.BarrierMarkResult;
 import com.xa.mass.runtime.api.ClaimedTaskWork;
 import com.xa.mass.runtime.api.RecentFinalWorkReceipt;
@@ -81,7 +83,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
     private final TaskRuntimeEnqueueOptionsResolver enqueueOptionsResolver;
     private final TaskConcurrencyStrategy concurrencyCoordinator;
     private final VirtualThreadRuntimeTaskExecutor retryWakeupExecutor;
-    private final com.xa.mass.engine.util.TraceEventLogger traceEventLogger;
+    private final com.xa.mass.engine.TraceEventLogger traceEventLogger;
     private long workLeaseSeconds = 300L;
 
     public TaskManager(TaskShellRuntimeStore taskStorage,
@@ -103,7 +105,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
         TaskWorkRuntime requiredTaskWorkRuntime = Objects.requireNonNull(taskWorkRuntime, "taskWorkRuntime");
         TaskResultRuntime requiredTaskResultRuntime = Objects.requireNonNull(taskResultRuntime, "taskResultRuntime");
         this.taskTerminalPolicy = Objects.requireNonNull(taskTerminalPolicy, "taskTerminalPolicy");
-        this.traceEventLogger = new com.xa.mass.engine.util.TraceEventLogger(executionEventSink);
+        this.traceEventLogger = new com.xa.mass.engine.TraceEventLogger(executionEventSink);
         this.eventPublisher = new TaskEventPublisher();
         this.stateResolver = new TaskStateResolver(
                 this,
@@ -198,6 +200,27 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
         }
 
         return result;
+    }
+
+    @Override
+    public boolean patchTaskDefinition(String taskId, TaskDefinitionPatch patch) {
+        Objects.requireNonNull(patch, "patch");
+        return withTaskLock(taskId, () -> {
+            Task task = taskStorage.getTask(taskId).orElse(null);
+            if (task == null) {
+                return false;
+            }
+            if (patch.project() != null) {
+                task.setProject(patch.project());
+            }
+            if (patch.sharedConfig() != null) {
+                task.setSharedConfig(patch.sharedConfig());
+            }
+            if (patch.userId() != null) {
+                task.setUser(UserRef.of(patch.userId()));
+            }
+            return updateTask(task);
+        });
     }
 
     /**
@@ -582,7 +605,7 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
         return enqueueOptionsResolver;
     }
 
-    com.xa.mass.engine.util.TraceEventLogger traceEvents() {
+    com.xa.mass.engine.TraceEventLogger traceEvents() {
         return traceEventLogger;
     }
 
@@ -666,6 +689,13 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
     void applyTaskResultProgressOnce(String taskId, String messageId, long finalSeq) {
         BarrierClaim claim = taskResultRuntime.claimProgressApply(taskId, messageId, finalSeq);
         if (!claim.claimedByCaller()) {
+            if (claim.alreadyDoneByAnotherCaller()) {
+                cleanupResultStageIfConverged(taskId, messageId);
+                return;
+            }
+            if (claim.status() == BarrierClaimStatus.BUSY) {
+                updateTaskProgress(taskId);
+            }
             return;
         }
         updateTaskProgress(taskId);

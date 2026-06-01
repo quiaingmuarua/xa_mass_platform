@@ -8,7 +8,7 @@ import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.model.WorkerSchedulingView;
 import com.xa.mass.engine.util.TraceEventLogCapture;
-import com.xa.mass.engine.util.TraceEventLogger;
+import com.xa.mass.engine.TraceEventLogger;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

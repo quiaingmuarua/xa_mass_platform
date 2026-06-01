@@ -1,6 +1,6 @@
 package com.xa.mass.starter;
 
-import com.xa.mass.engine.listener.TaskAssignWorker;
+import com.xa.mass.engine.EngineRuntimeKernel;
 import com.xa.mass.starter.config.EngineConfig;
 import org.junit.jupiter.api.Test;
 
@@ -28,25 +28,25 @@ class MassEngineStopTest {
     }
 
     @Test
-    void stopDelegatesToAssignWorker() {
-        TaskAssignWorker worker = mock(TaskAssignWorker.class);
-        MassEngine engine = runningEngineWithWorker(worker);
+    void stopDelegatesToRuntimeKernel() {
+        EngineRuntimeKernel runtimeKernel = mock(EngineRuntimeKernel.class);
+        MassEngine engine = runningEngineWithRuntimeKernel(runtimeKernel);
 
         engine.stop();
 
-        verify(worker).stop();
+        verify(runtimeKernel).stop();
         assertFalse(engine.isRunning());
     }
 
     @Test
     void stopIsIdempotentOnSecondCall() {
-        TaskAssignWorker worker = mock(TaskAssignWorker.class);
-        MassEngine engine = runningEngineWithWorker(worker);
+        EngineRuntimeKernel runtimeKernel = mock(EngineRuntimeKernel.class);
+        MassEngine engine = runningEngineWithRuntimeKernel(runtimeKernel);
 
         engine.stop();
         engine.stop(); // second call should be no-op
 
-        verify(worker, times(1)).stop(); // only once
+        verify(runtimeKernel, times(1)).stop(); // only once
     }
 
     @Test
@@ -56,7 +56,7 @@ class MassEngineStopTest {
 
         assertDoesNotThrow(() -> engine.start());
         assertTrue(engine.isRunning());
-        assertNotNull(readField(engine, "assignWorker"));
+        assertNotNull(readField(engine, "runtimeKernel"));
         assertSame(config.getTaskCommandService(), readField(engine, "taskCommands"));
 
         engine.stop();
@@ -132,9 +132,9 @@ class MassEngineStopTest {
         return engine;
     }
 
-    private MassEngine runningEngineWithWorker(TaskAssignWorker worker) {
+    private MassEngine runningEngineWithRuntimeKernel(EngineRuntimeKernel runtimeKernel) {
         MassEngine engine = runningEngine();
-        setField(engine, "assignWorker", worker);
+        setField(engine, "runtimeKernel", runtimeKernel);
         return engine;
     }
 

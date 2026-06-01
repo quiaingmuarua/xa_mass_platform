@@ -1,4 +1,4 @@
-package com.xa.mass.engine.watchdog;
+package com.xa.mass.engine;
 
 /**
  * Policy seam for delaying polling resources that repeatedly make no progress.

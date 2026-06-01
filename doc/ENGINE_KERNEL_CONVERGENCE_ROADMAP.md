@@ -1,6 +1,31 @@
 # Engine Kernel Convergence Roadmap
 
-Status: proposed.
+Status: active. EKC-0 inventory is captured in
+[`ENGINE_KERNEL_CONVERGENCE_INVENTORY.md`](./ENGINE_KERNEL_CONVERGENCE_INVENTORY.md).
+EKC-1A has moved default runtime scheduling assembly out of SDK `MassEngine`
+and into engine-owned `EngineRuntimeKernel`. EKC-1B removed SDK main references
+to engine listener/watchdog/util implementation packages. EKC-1C moved
+`TraceEventLogger` out of the generic `util` package and into the engine root
+as an explicit lifecycle-trace contract and added an SDK guard requiring every
+SDK main import from `com.xa.mass.engine` to be classified. EKC-2 added
+`TaskDefinitionPatch` plus `TaskCommandService.patchTaskDefinition(...)`,
+retargeted SDK task-definition updates away from mutable aggregate overwrite,
+and added an SDK/source guard against `.updateTask(...)` usage outside approved
+engine-internal paths. EKC-3A split the result repair-pump scheduling lifecycle
+into `TaskResultRepairPump`; EKC-3B renamed projection-era runtime attempt/view
+helpers in `TaskResultService`; EKC-3C moved visible-final commit and staged
+callback cleanup into `TaskResultVisibleFinalCommitter`. Result convergence,
+repair business handling, and progress application remain visible in the
+current result/task owners. EKC-4 moved worker command lifecycle truth and
+command value/port contracts to `xa-mass-worker-runtime.command`; engine keeps
+worker-control entry, delivery coordination, trace emission, and dispatch-gate
+side effects. EKC-5 added server-owned review materialization policy with
+`TERMINAL` as the default mode and `reviewMaterializationMode` as a task
+`sharedConfig` override interpreted only by server review materialization.
+EKC-6 moved memory task-shell index tests back to `mass-storage-memory`,
+introduced engine-owned test fixtures for task shell, worker declaration, and
+rule definition ports, and removed the engine test dependency on
+`mass-storage-memory`.
 
 This roadmap continues after
 [`ENGINE_STORAGE_API_DETACHMENT_ROADMAP.md`](./ENGINE_STORAGE_API_DETACHMENT_ROADMAP.md).
@@ -16,34 +41,43 @@ convergence plan.
 ## Current Code Facts
 
 - `xa-mass-engine` production no longer imports `com.xa.mass.storage.*`.
-- `xa-mass-engine/pom.xml` keeps `mass-storage-memory` only in test scope.
+- `xa-mass-engine/pom.xml` has no `mass-storage-memory` dependency. Engine
+  tests use engine-owned fixtures for ordinary runtime proof and keep only
+  `mass-storage-api` in test scope for rule definition contracts.
 - `xa-mass-engine/src/main` still has a broad public surface. Many types under
-  listener, watchdog, strategy, command, stage, and util packages are public
+  listener, watchdog, strategy, command, and stage packages are public
   because SDK assembly currently imports concrete engine internals directly.
 - `xa-mass-sdk/src/main/java/com/xa/mass/starter/MassEngine.java` assembles
   engine internals directly: `TaskAssignWorker`, `TaskWorkerAssignListener`,
   `SimpleTaskDispatchBinder`, watchdogs, matching strategy, and trace logger.
+- Server production source already has no engine implementation package
+  imports. EKC-1 remediation is primarily SDK assembly cleanup while keeping
+  server guards in place.
 - `TaskManager` is still the engine composition root and implements many
-  narrow ports. Its size alone is not the problem; the problem is which
-  methods remain visible as cross-module caller surfaces.
-- `TaskCommandPort` still exposes CRUD-shaped methods such as
-  `updateTask(Task)` and `deleteTask(String)`. SDK currently uses
-  `getTask(...) -> mutate Task -> updateTask(...)` for task definition
-  updates.
+  narrow ports. Its size alone is not the problem; large internal
+  orchestrators are acceptable when owner boundaries, mainline flow, and
+  scheduling entry points stay visible. The problem is which methods remain
+  visible as cross-module caller surfaces.
+- `TaskCommandPort` still exposes generic `updateTask(Task)` for
+  engine-internal owner handoff, but SDK task-definition updates now use
+  `patchTaskDefinition(String, TaskDefinitionPatch)`.
 - `TaskResultService` is the largest active engine class and owns result
   ingestion, lease expiry, visible result commits, retry handling, repair pump,
   trace emission, and some projection-era wording in one implementation.
 - `WorkerCommandLifecycleOwner` lives in engine while worker capability
   authority and worker state projection owners live in `xa-mass-worker-runtime`.
-  This may be correct only if worker command lifecycle is treated as engine
-  dispatch-control truth; otherwise it should converge toward worker runtime.
-- Engine tests still directly use storage implementation fixtures such as
-  `InMemoryTaskShellStore`, including a storage implementation test under the
-  engine test tree.
+  Fixed by EKC-4: command lifecycle truth now lives in worker runtime, while
+  engine keeps dispatch-control side effects and delivery coordination.
+- Engine tests no longer use storage-memory implementation fixtures for
+  ordinary runtime proof. Storage implementation behavior such as
+  `InMemoryTaskShellStore` deadline/index maintenance lives in
+  `mass-storage-memory` tests.
 - Server review materialization is server-owned. Current dev wiring creates
   `InProcessTaskReviewReportQueue` and
-  `QueueBackedTaskReviewReadModelWriter`. It records accepted items, work-final
-  reports, and attempt-closed reports by default.
+  `QueueBackedTaskReviewReadModelWriter`. It records accepted items and
+  work-final reports by default. Attempt-closed reports are diagnostic-only
+  and require either a server default mode or task `sharedConfig` override of
+  `DIAGNOSTIC`.
 
 ## Owner Review
 
@@ -81,9 +115,9 @@ public temporarily for assembly, but the target is that SDK/server code does
 not depend on engine implementation packages unless the type is an approved
 assembly contract.
 
-Do not create pass-through wrappers merely to reduce imports. Create a new
-surface only when it protects an owner boundary, lifecycle split, or external
-caller contract.
+Do not create pass-through wrappers merely to reduce imports or make a large
+class look smaller. Create a new surface only when it protects an owner
+boundary, lifecycle split, or external caller contract.
 
 ### Task Command Boundary
 
@@ -195,10 +229,13 @@ Scope:
    external command, engine-internal mutation, test-only helper, or residue.
 5. Inventory `TaskResultService` method groups: ingest, expiry, commit, repair,
    trace, progress application, and helper projections.
-6. Inventory `WorkerCommandLifecycleOwner` callers and decide whether its state
-   is worker-runtime lifecycle truth or engine dispatch-control truth.
+6. Inventory `WorkerCommandLifecycleOwner` callers and propose whether its
+   state is worker-runtime lifecycle truth or engine dispatch-control truth.
 7. Inventory review materialization triggers:
    `recordItemsAccepted`, `recordAttemptClosed`, and `recordWorkFinal`.
+8. Verify whether task-level review materialization policy should use an
+   existing top-level `sharedConfig` key, a nested SDK/server metadata key, or
+   a dedicated server-side task policy field.
 
 Acceptance:
 
@@ -206,7 +243,10 @@ Acceptance:
 2. Every `TaskCommandPort` method has a target classification.
 3. Review materialization triggers are classified as default, diagnostic, or
    removable.
-4. No code behavior changes in this slice.
+4. Worker command lifecycle ownership is proposed from evidence, not executed.
+5. Task-level review materialization policy placement is decided or explicitly
+   deferred to EKC-5.
+6. No code behavior changes in this slice.
 
 ## Slice EKC-1: Engine Assembly Surface Convergence
 
@@ -226,7 +266,8 @@ Scope:
 
 Acceptance:
 
-1. SDK/server no longer import unclassified engine implementation classes.
+1. SDK production no longer imports unclassified engine implementation classes.
+   Server production remains free of engine implementation imports.
 2. Engine still starts through the existing SDK/server boot path.
 3. Scheduling and server E2E representative tests pass.
 4. No new same-module pass-through wrappers exist without an owner-boundary
@@ -237,6 +278,11 @@ Acceptance:
 Goal: remove CRUD-shaped aggregate update from normal SDK/API task definition
 flows.
 
+Status: implemented for the SDK task-definition path. `TaskDefinitionPatch`
+is the intent-shaped cross-module command; generic `updateTask(Task)` remains
+available only for engine-internal aggregate persistence. SDK main is guarded
+against `.updateTask(...)` call-pattern residue.
+
 Scope:
 
 1. Introduce an intent-shaped task definition update request or command method
@@ -245,8 +291,10 @@ Scope:
    `getTask -> mutate Task -> updateTask(Task)` to the new intent command.
 3. Keep `updateTask(Task)` only where EKC-0 proves engine-internal owner
    handoff requires aggregate persistence.
-4. Guard against SDK/server production code calling generic
-   `TaskCommandService.updateTask(Task)` for task definition updates.
+4. Add a source guard that fails if SDK/server production code calls generic
+   `.updateTask(...)` with a mutable `Task` aggregate outside explicitly
+   allowlisted engine-internal assembly paths. The guard must scan call
+   patterns and paths, not only the `TaskCommandService` class name.
 
 Acceptance:
 
@@ -260,6 +308,20 @@ Acceptance:
 Goal: split `TaskResultService` by real result-owner responsibilities without
 changing runtime behavior.
 
+Status: implemented through EKC-3C. EKC-3A extracted repair-pump scheduling and shutdown into
+`TaskResultRepairPump`. This is a real lifecycle split: the new class owns the
+scheduled executor, interval/batch configuration, exception isolation, and
+shutdown. EKC-3B removed `AttemptProjectionView`/active projection wording from
+the hot result service in favor of runtime-view names. EKC-3C moved
+visible-final commit and staged callback cleanup into
+`TaskResultVisibleFinalCommitter`, keeping runtime result truth in
+`TaskResultRuntime`. During EKC-3C, a repair-pump race was fixed so a BUSY
+progress-apply barrier no longer hides synchronous task-state convergence; the
+progress update is idempotent and still derived from runtime truth. Repair
+business handling and broader result progress application remain with the
+current result/task owners until a clearer convergence owner boundary is proven
+separately.
+
 Scope:
 
 1. Extract result convergence/apply logic into an owner class with a narrow
@@ -270,8 +332,10 @@ Scope:
    terms where behavior is now runtime-first.
 4. Keep trace emission semantics unchanged unless a current trace contract says
    otherwise.
-5. Add focused tests around lease expiry retry, stale replay, visible commit,
-   and repair-pump shutdown if existing coverage is not enough.
+5. Verify existing result convergence coverage still exercises lease expiry
+   retry, stale replay, visible commit, and repair-pump shutdown after the
+   split. Add tests only if the split exposes a previously invisible coverage
+   gap.
 
 Acceptance:
 
@@ -285,10 +349,20 @@ Acceptance:
 
 Goal: decide and converge worker command lifecycle ownership.
 
+Status: implemented. EKC-4 classified worker command records/status as
+worker-scoped lifecycle truth and moved `WorkerCommandLifecycleOwner` plus
+command request, acknowledgement, record, status, lifecycle-result, and
+delivery-port value contracts to `com.xa.mass.worker.runtime.command`. Engine
+retains `WorkerControlService`, `WorkerCommandDeliveryCoordinator`,
+`WorkerCommandRequestEventHandler`, and `WorkerCommandMaintenanceWatchdog`
+because they own engine entry, trace/delivery handoff, and dispatch-gate
+side effects rather than command state truth.
+
 Scope:
 
-1. Use EKC-0 inventory to decide whether `WorkerCommandLifecycleOwner` belongs
-   in engine or `xa-mass-worker-runtime`.
+1. Use EKC-0 inventory to confirm whether `WorkerCommandLifecycleOwner`
+   belongs in engine or `xa-mass-worker-runtime`, then execute the move-or-keep
+   decision.
 2. If it remains in engine, document that worker commands are dispatch-control
    truth and keep worker-runtime integration limited to resource/state inputs.
 3. If it moves to worker-runtime, move command records/status/result contracts
@@ -305,6 +379,17 @@ Acceptance:
 
 Goal: make server review materialization configurable by task and environment,
 without changing engine truth.
+
+Status: implemented. `TaskReviewMaterializationPolicy` and
+`TaskReviewMaterializationMode` live in the server review package. Server
+configuration property `mass.review.materialization.mode` defaults to
+`TERMINAL`. The task-level override key is the server-owned top-level
+`sharedConfig` key `reviewMaterializationMode`; it is intentionally not a base
+model constant or transport protocol field. `QueueBackedTaskReviewReadModelWriter`
+evaluates policy before queue submission, keeps accepted-item and terminal
+work events in `TERMINAL`, skips attempt-closed events unless mode is
+`DIAGNOSTIC`, and logs skipped materialization with queue stats. Existing
+review tests either assert terminal-only behavior or opt into diagnostic mode.
 
 Scope:
 
@@ -338,6 +423,15 @@ Acceptance:
 
 Goal: remove infra-storage implementation ownership from engine test lanes
 where possible.
+
+Status: implemented for current engine test scope. Engine test lanes now use
+engine-local fixtures `InMemoryTaskShellRuntimeStore`,
+`InMemoryWorkerDeclarationRuntimeStore`, and `InMemoryRuleDefinitionStore`.
+`InMemoryTaskShellStore` implementation/index tests moved to
+`mass-storage-memory`. `xa-mass-engine/pom.xml` no longer declares
+`mass-storage-memory`; it keeps `mass-storage-api` only in test scope for the
+rule definition test port. `EngineProofOwnershipGuardTest` now fails if
+`mass-storage-memory` is reintroduced as a generic engine test fixture.
 
 Scope:
 
@@ -384,7 +478,7 @@ mvn -pl xa-mass-engine,xa-mass-sdk,xa-mass-server -am -DskipTests compile
 ```
 
 ```powershell
-rg -n "import com\.xa\.mass\.engine\.(listener|watchdog|strategy|util)" xa-mass-sdk/src/main xa-mass-server/src/main transport platform_infra
+rg -n "com\.xa\.mass\.engine\.(listener|watchdog|strategy|util)" xa-mass-sdk/src/main xa-mass-server/src/main transport platform_infra
 ```
 
 After EKC-2:
@@ -403,6 +497,21 @@ After EKC-3:
 mvn -pl xa-mass-engine,platform_infra/mass-runtime-redis,xa-mass-server -am test
 ```
 
+After EKC-4:
+
+```powershell
+mvn -pl xa-mass-engine,xa-mass-worker-runtime,xa-mass-sdk,xa-mass-server -am test
+```
+
+```powershell
+rg -n "WorkerCommandLifecycleOwner" xa-mass-engine/src/main
+```
+
+Expected result after EKC-4: if worker command lifecycle moved to
+`xa-mass-worker-runtime`, engine production has no owner implementation
+reference. If the owner remains in engine, remaining references are documented
+as dispatch-control truth in the inventory and README/baseline update.
+
 After EKC-5:
 
 ```powershell
@@ -419,5 +528,9 @@ server-owned review materialization policy.
 After EKC-6:
 
 ```powershell
-mvn -pl xa-mass-engine,platform_infra/mass-storage-memory,platform_infra/mass-storage-jdbc -am test
+mvn -pl xa-mass-engine,platform_infra/mass-storage-memory -am clean test
+```
+
+```powershell
+rg -n "import com\.xa\.mass\.storage\.memory|mass-storage-memory" xa-mass-engine/src/test xa-mass-engine/pom.xml
 ```

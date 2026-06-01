@@ -1782,7 +1782,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         Path binderPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/listener/SimpleTaskDispatchBinder.java");
         Path traceLoggerPath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/util/TraceEventLogger.java");
+                "com/xa/mass/engine/TraceEventLogger.java");
         Path ruleConfigPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/rules/RuleConfig.java");
         Path assignmentListenerPath = MAIN_SOURCE_ROOT.resolve(
@@ -1984,7 +1984,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         if (Pattern.compile("\\bWorkerStateProjectionOwner\\b").matcher(controlServiceSource).find()) {
             violations.add("WorkerControlService depends on WorkerStateProjectionOwner instead of runtime contract");
         }
-        if (Pattern.compile("import\\s+com\\.xa\\.mass\\.worker\\.runtime\\.(?!(?:resource|report|control)\\.)")
+        if (Pattern.compile("import\\s+com\\.xa\\.mass\\.worker\\.runtime\\.(?!(?:resource|report|control|command)\\.)")
                 .matcher(controlServiceSource)
                 .find()) {
             violations.add("WorkerControlService depends on worker-runtime implementation package instead of worker-runtime contracts");
@@ -2013,11 +2013,13 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "com", "xa", "mass", "sdk", "DefaultRuntimeDiagnosticsOperations.java");
         Path massEnginePath = Path.of("..", "xa-mass-sdk", "src", "main", "java",
                 "com", "xa", "mass", "starter", "MassEngine.java");
+        Path runtimeKernelPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/EngineRuntimeKernel.java");
         Path engineConfigPath = Path.of("..", "xa-mass-sdk", "src", "main", "java",
                 "com", "xa", "mass", "starter", "config", "EngineConfig.java");
         String sdkSource = Files.readString(sdkApplicationPath, StandardCharsets.UTF_8);
         String diagnosticsSource = Files.readString(diagnosticsPath, StandardCharsets.UTF_8);
         String massEngineSource = Files.readString(massEnginePath, StandardCharsets.UTF_8);
+        String runtimeKernelSource = Files.readString(runtimeKernelPath, StandardCharsets.UTF_8);
         String engineConfigSource = Files.readString(engineConfigPath, StandardCharsets.UTF_8);
 
         List<String> violations = new ArrayList<>();
@@ -2057,9 +2059,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 || Pattern.compile("\\bWorkerManager\\b").matcher(massEngineSource).find()) {
             violations.add(massEnginePath + " depends on full WorkerManager");
         }
-        if (!massEngineSource.contains("WorkerAvailabilityWakeupRuntime")
-                && !massEngineSource.contains("getWorkerAvailabilityWakeupRuntime()")) {
-            violations.add(massEnginePath + " does not use WorkerAvailabilityWakeupRuntime");
+        if (!runtimeKernelSource.contains("getWorkerAvailabilityWakeupRuntime()")) {
+            violations.add(runtimeKernelPath + " does not use WorkerAvailabilityWakeupRuntime");
         }
 
         assertTrue(violations.isEmpty(),
@@ -2259,6 +2260,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
         List<String> approvedTaskWriteLockMethods = List.of(
                 "public boolean deleteTask(String taskId)",
+                "public boolean patchTaskDefinition(String taskId, TaskDefinitionPatch patch)",
                 "public boolean approveTask(String taskId)",
                 "public boolean rejectTask(String taskId)",
                 "public boolean blockTask(String taskId)",

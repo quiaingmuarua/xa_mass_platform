@@ -11,8 +11,8 @@ import com.xa.mass.engine.TaskWorkLifecycleState.MessageStatus;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicy;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
 import com.xa.mass.engine.util.LogUtils;
-import com.xa.mass.engine.util.TraceEventLogger;
-import com.xa.mass.engine.util.TraceEventLogger.TaskWorkTraceView;
+import com.xa.mass.engine.TraceEventLogger;
+import com.xa.mass.engine.TraceEventLogger.TaskWorkTraceView;
 import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.runtime.api.BarrierClaim;
 import com.xa.mass.runtime.api.BarrierMarkResult;
@@ -24,7 +24,6 @@ import com.xa.mass.runtime.api.ResultApplyStatus;
 import com.xa.mass.runtime.api.RuntimeResultApplyContext;
 import com.xa.mass.runtime.api.StageResult;
 import com.xa.mass.runtime.api.TaskResultCallbackDraft;
-import com.xa.mass.runtime.api.TaskResultFinalDraft;
 import com.xa.mass.runtime.api.TaskResultRepairCandidate;
 import com.xa.mass.runtime.api.TaskResultRepairKind;
 import com.xa.mass.runtime.api.TaskResultRuntime;
@@ -43,9 +42,6 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Owns runtime work-result handling, retry sequencing, and result-side event ordering.
@@ -60,7 +56,8 @@ class TaskResultService {
     private final TaskResultRuntime taskResultRuntime;
     private final TaskRuntimeRetryPolicyResolver taskRuntimeRetryPolicyResolver;
     private final TraceEventLogger traceEventLogger;
-    private final ScheduledExecutorService repairExecutor;
+    private final TaskResultVisibleFinalCommitter visibleFinalCommitter;
+    private final TaskResultRepairPump repairPump;
 
     TaskResultService(TaskManager taskManager,
                       TaskResultRuntime taskResultRuntime,
@@ -70,12 +67,9 @@ class TaskResultService {
         this.taskResultRuntime = taskResultRuntime;
         this.taskRuntimeRetryPolicyResolver = taskRuntimeRetryPolicyResolver;
         this.traceEventLogger = traceEventLogger;
-        this.repairExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread thread = new Thread(r, "engine-result-repair-");
-            thread.setDaemon(true);
-            return thread;
-        });
-        startRepairPump();
+        this.visibleFinalCommitter = new TaskResultVisibleFinalCommitter(taskResultRuntime);
+        this.repairPump = new TaskResultRepairPump(this::repairResultRuntimeCandidates);
+        this.repairPump.start();
     }
 
     ResultMutationOutcome expireLeasedWork(String taskId, String messageId) {
@@ -91,7 +85,7 @@ class TaskResultService {
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "no active runtime lease", 0);
             return ResultMutationOutcome.rejected();
         }
-        ActiveRuntimeProjection activeProjection = buildActiveRuntimeProjection(
+        ActiveRuntimeView activeRuntimeView = buildActiveRuntimeView(
                 taskId,
                 messageId,
                 activeLease,
@@ -99,17 +93,17 @@ class TaskResultService {
                 "EXPIRE_LEASED_WORK",
                 "runtime active lease defines expiry admissibility"
         );
-        if (activeProjection == null) {
-            LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "compatibility projection could not be recovered", 0);
+        if (activeRuntimeView == null) {
+            LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "runtime view could not be recovered", 0);
             return ResultMutationOutcome.rejected();
         }
-        RuntimeWorkSummary workSummary = activeProjection.workSummary();
+        RuntimeWorkSummary workSummary = activeRuntimeView.workSummary();
         if (workSummary.isCompleted()) {
             logger.info("Work item {} of task {} is already in final status {}, skip expiry",
                     messageId, taskId, workSummary.status());
             return ResultMutationOutcome.rejected();
         }
-        AttemptProjectionView activeAttempt = activeProjection.activeAttempt();
+        RuntimeAttemptView activeAttempt = activeRuntimeView.activeAttempt();
         MessageStatus fromStatus = workSummary.status();
         if (!isExpiryAcceptableMessageState(workSummary.status())) {
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR",
@@ -131,12 +125,12 @@ class TaskResultService {
                 false, expiryDetail, null, null, retryRequestedByPolicy, true);
         if (workOutcome.status() == ResultApplyStatus.STALE_LEASE
                 || workOutcome.status() == ResultApplyStatus.NO_ACTIVE_LEASE) {
-            discardStage(stagedDraft);
+            visibleFinalCommitter.discardStage(stagedDraft);
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "runtime lease rejected expiry result: " + workOutcome.status(), 0);
             return ResultMutationOutcome.rejected();
         }
         if (!activeAttempt.projectExpired(AttemptFinalReason.LEASE_EXPIRED, "leased work expired")) {
-            discardStage(stagedDraft);
+            visibleFinalCommitter.discardStage(stagedDraft);
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "attempt could not expire from status "
                     + activeAttempt.status(), 0);
             return ResultMutationOutcome.rejected();
@@ -155,7 +149,7 @@ class TaskResultService {
                     workRetryDelayMillis,
                     "EXPIRE_LEASED_WORK", "TaskManager", "lease expired but retry budget allows re-dispatch");
             currentSummary = retrySummary;
-            discardStage(stagedDraft);
+            visibleFinalCommitter.discardStage(stagedDraft);
         } else {
             logicallyFinalSummary = summarizeLeaseExpiryFinal(task, workSummary, expiryDetail);
             traceEventLogger.taskWorkStatusTransition(
@@ -169,7 +163,7 @@ class TaskResultService {
                     "TaskManager",
                     expiryDetail
             );
-            visibleFinalCommit = commitVisibleFinal(logicallyFinalSummary, activeAttempt, stagedDraft);
+            visibleFinalCommit = visibleFinalCommitter.commitVisibleFinal(logicallyFinalSummary, activeAttempt, stagedDraft);
             if (!visibleFinalCommit.visible()) {
                 logger.warn("Result runtime visible commit failed for lease expiry taskId={}, messageId={}, status={}, reason={}",
                         taskId, messageId, visibleFinalCommit.status(), visibleFinalCommit.reason());
@@ -210,7 +204,7 @@ class TaskResultService {
             }
             return ResultMutationOutcome.acceptedDirty();
         }
-        cleanupStageIfConverged(taskId, messageId, visibleFinalCommit.row());
+        visibleFinalCommitter.cleanupStageIfConverged(taskId, messageId, visibleFinalCommit.row());
         return ResultMutationOutcome.acceptedDirtyWithProgressBarrier(taskId, messageId, visibleFinalCommit.row().seq());
     }
 
@@ -306,14 +300,14 @@ class TaskResultService {
             // No active lease at apply time - duplicate or late callback.
             RuntimeWorkSummary recentFinal = recentFinalMessage(task, taskId, messageId);
             if (recentFinal != null) {
-                discardStageIfVisibleFinalExists(taskId, messageId, stagedDraft);
+                visibleFinalCommitter.discardStageIfVisibleFinalExists(taskId, messageId, stagedDraft);
                 traceEventLogger.callbackIgnoredDuplicate(recentFinal.toTraceView(),
                         "work item already final in recent runtime receipt with status " + recentFinal.status());
                 logger.info("Work item {} of task {} is already in final status {}, skipping duplicate result",
                         messageId, taskId, recentFinal.status());
                 return ResultMutationOutcome.acceptedNoop();
             }
-            discardStage(stagedDraft);
+            visibleFinalCommitter.discardStage(stagedDraft);
             TaskWorkTraceView noLeaseView = resolveTraceWorkView(taskId, messageId, null);
             traceEventLogger.callbackRejectedNoActiveLease(
                     noLeaseView, "callback arrived without any active runtime lease");
@@ -325,7 +319,7 @@ class TaskResultService {
         ResultApplyStatus applyStatus = ctx.outcome().status();
         if (applyStatus == ResultApplyStatus.STALE_LEASE
                 || applyStatus == ResultApplyStatus.NO_ACTIVE_LEASE) {
-            discardStage(stagedDraft);
+            visibleFinalCommitter.discardStage(stagedDraft);
             logger.warn("Rejecting result for work item {} because runtime lease rejected the result with {}",
                     messageId, applyStatus);
             return ResultMutationOutcome.rejected();
@@ -333,14 +327,14 @@ class TaskResultService {
         return null;
     }
 
-    private ActiveRuntimeProjection rebuildActiveProjection(String taskId,
+    private ActiveRuntimeView rebuildActiveRuntimeView(String taskId,
                                                             String messageId,
                                                             RuntimeResultApplyContext ctx) {
         // Reconstruct lease/work snapshots from the context - no extra runtime reads needed.
-        // The context carries all fields the projection pipeline requires.
+        // The context carries all fields the runtime view reconstruction requires.
         ActiveLeaseRecord syntheticLease = syntheticLeaseFromContext(ctx, taskId, messageId);
         TaskWorkEnvelope syntheticWork = syntheticWorkFromContext(ctx, taskId, messageId);
-        return buildActiveRuntimeProjection(
+        return buildActiveRuntimeView(
                 taskId, messageId, syntheticLease, syntheticWork,
                 "HANDLE_TASK_RESULT", "runtime active lease defines callback admissibility");
     }
@@ -354,14 +348,14 @@ class TaskResultService {
                                                                Map<String, Object> output,
                                                                RuntimeResultApplyContext ctx,
                                                                TaskResultCallbackDraft stagedDraft) {
-        ActiveRuntimeProjection activeProjection = rebuildActiveProjection(taskId, messageId, ctx);
-        if (activeProjection == null) {
+        ActiveRuntimeView activeRuntimeView = rebuildActiveRuntimeView(taskId, messageId, ctx);
+        if (activeRuntimeView == null) {
             logger.warn("Cannot ingest task result because msg {} was not found in task {} "
-                    + "and no runtime projection could be recovered", messageId, taskId);
+                    + "and no runtime view could be recovered", messageId, taskId);
             return ResultMutationOutcome.rejected();
         }
-        RuntimeWorkSummary workSummary = activeProjection.workSummary();
-        AttemptProjectionView activeAttempt = activeProjection.activeAttempt();
+        RuntimeWorkSummary workSummary = activeRuntimeView.workSummary();
+        RuntimeAttemptView activeAttempt = activeRuntimeView.activeAttempt();
 
         traceEventLogger.callbackAccepted(
                 workSummary.toTraceView(),
@@ -390,7 +384,7 @@ class TaskResultService {
                     messageId, taskId);
             return ResultMutationOutcome.rejected();
         }
-        ActiveRuntimeProjection activeProjection = buildActiveRuntimeProjection(
+        ActiveRuntimeView activeRuntimeView = buildActiveRuntimeView(
                 taskId,
                 messageId,
                 activeLease,
@@ -398,16 +392,16 @@ class TaskResultService {
                 "COMPENSATE_DISPATCH_SUBMIT_FAILURE",
                 "runtime active lease defines dispatch compensation admissibility"
         );
-        if (activeProjection == null) {
+        if (activeRuntimeView == null) {
             logger.warn("Cannot compensate dispatch submit failure because msg {} was not found in task {}",
                     messageId, taskId);
             return ResultMutationOutcome.rejected();
         }
-        RuntimeWorkSummary workSummary = activeProjection.workSummary();
+        RuntimeWorkSummary workSummary = activeRuntimeView.workSummary();
 
-        AttemptProjectionView activeAttempt = resolveOrRecoverDispatchAttemptProjection(workSummary, activeLease, dispatchBinding);
+        RuntimeAttemptView activeAttempt = resolveOrRecoverDispatchAttemptView(workSummary, activeLease, dispatchBinding);
         if (activeAttempt == null) {
-            logger.warn("Cannot compensate dispatch submit failure because msg {} in task {} has no recoverable attempt projection",
+            logger.warn("Cannot compensate dispatch submit failure because msg {} in task {} has no recoverable attempt view",
                     messageId, taskId);
             return ResultMutationOutcome.rejected();
         }
@@ -456,7 +450,7 @@ class TaskResultService {
                 : new TaskWorkTraceView(taskId, messageId, null, null, null, MessageStatus.INIT, null, 0, null);
     }
 
-    private ActiveRuntimeProjection buildActiveRuntimeProjection(String taskId,
+    private ActiveRuntimeView buildActiveRuntimeView(String taskId,
                                                                  String messageId,
                                                                  ActiveLeaseRecord activeLease,
                                                                  TaskWorkEnvelope runtimeWork,
@@ -466,7 +460,7 @@ class TaskResultService {
         if (activeView == null) {
             return null;
         }
-        AttemptProjectionView activeAttempt = recoverActiveAttemptProjection(activeView, activeLease, null, null);
+        RuntimeAttemptView activeAttempt = recoverActiveAttemptView(activeView, activeLease, null, null);
         if (activeAttempt == null) {
             traceEventLogger.callbackRejectedNoActiveAttempt(
                     taskId,
@@ -491,7 +485,7 @@ class TaskResultService {
                     reason
             );
         }
-        return new ActiveRuntimeProjection(activeView, activeAttempt);
+        return new ActiveRuntimeView(activeView, activeAttempt);
     }
 
     private RuntimeWorkSummary materializeRuntimeWorkSummary(String taskId,
@@ -510,7 +504,7 @@ class TaskResultService {
         return baseView.overlayActiveLease(activeLease);
     }
 
-    private AttemptProjectionView recoverActiveAttemptProjection(RuntimeWorkSummary workSummary,
+    private RuntimeAttemptView recoverActiveAttemptView(RuntimeWorkSummary workSummary,
                                                                  ActiveLeaseRecord activeLease,
                                                                  String preferredAttemptId,
                                                                  Integer preferredAttemptNo) {
@@ -524,7 +518,7 @@ class TaskResultService {
         if (attemptId == null || attemptId.isBlank()) {
             attemptId = TaskWorkAttemptIdSupport.runtimeAttemptId(workSummary.messageId(), attemptNo, activeLease);
         }
-        return AttemptProjectionView.dispatched(
+        return RuntimeAttemptView.dispatched(
                 workSummary.taskId(),
                 workSummary.messageId(),
                 activeLease,
@@ -533,7 +527,7 @@ class TaskResultService {
         );
     }
 
-    private AttemptProjectionView resolveOrRecoverDispatchAttemptProjection(RuntimeWorkSummary workSummary,
+    private RuntimeAttemptView resolveOrRecoverDispatchAttemptView(RuntimeWorkSummary workSummary,
                                                                             ActiveLeaseRecord activeLease,
                                                                             TaskDispatchBinding dispatchBinding) {
         if (workSummary == null || activeLease == null || dispatchBinding == null) {
@@ -542,13 +536,13 @@ class TaskResultService {
         if (dispatchBinding.attemptId() == null || dispatchBinding.attemptId().isBlank()) {
             return null;
         }
-        return recoverActiveAttemptProjection(workSummary, activeLease, dispatchBinding.attemptId(), dispatchBinding.attemptNo());
+        return recoverActiveAttemptView(workSummary, activeLease, dispatchBinding.attemptId(), dispatchBinding.attemptNo());
     }
 
     private ResultMutationOutcome handleSuccess(Task task,
                                               String taskId,
                                               RuntimeWorkSummary workSummary,
-                                              AttemptProjectionView activeAttempt,
+                                              RuntimeAttemptView activeAttempt,
                                               String detail,
                                               Map<String, Object> output,
                                               TaskResultCallbackDraft stagedDraft) {
@@ -587,7 +581,7 @@ class TaskResultService {
                 "TaskManager",
                 "work item marked success"
         );
-        CommitResult commit = commitVisibleFinal(successSummary, activeAttempt, stagedDraft);
+        CommitResult commit = visibleFinalCommitter.commitVisibleFinal(successSummary, activeAttempt, stagedDraft);
         if (!commit.visible()) {
             logger.warn("Result runtime visible commit failed for success result taskId={}, messageId={}, status={}, reason={}",
                     taskId, messageId, commit.status(), commit.reason());
@@ -600,14 +594,14 @@ class TaskResultService {
             publishWorkLogicallyFinalOnce(task, successSummary, activeAttempt, commit.row(),
                     "HANDLE_TASK_RESULT", "work item reached stable success");
         }
-        cleanupStageIfConverged(taskId, messageId, commit.row());
+        visibleFinalCommitter.cleanupStageIfConverged(taskId, messageId, commit.row());
         return ResultMutationOutcome.acceptedDirtyWithProgressBarrier(taskId, messageId, commit.row().seq());
     }
 
     private ResultMutationOutcome handleRetryableFailure(Task task,
                                                        String taskId,
                                                        RuntimeWorkSummary workSummary,
-                                                       AttemptProjectionView activeAttempt,
+                                                       RuntimeAttemptView activeAttempt,
                                                       String detail,
                                                       String errorCode,
                                                       Map<String, Object> output,
@@ -625,7 +619,7 @@ class TaskResultService {
         if (retrySummary == null) {
             return ResultMutationOutcome.rejected();
         }
-        discardStage(stagedDraft);
+        visibleFinalCommitter.discardStage(stagedDraft);
         long workRetryDelayMillis = resolveWorkRetryDelayMillis(task, true);
         // Event publishing kept synchronous; use the already-loaded task (no extra storage read).
         if (task != null) {
@@ -641,7 +635,7 @@ class TaskResultService {
     private RuntimeWorkSummary resetForRetryWithoutPublishingAttemptClosure(Task task,
                                                                             String taskId,
                                                                             RuntimeWorkSummary workSummary,
-                                                                            AttemptProjectionView activeAttempt,
+                                                                            RuntimeAttemptView activeAttempt,
                                                                             String detail,
                                                                             String errorCode,
                                                                             String trigger,
@@ -701,7 +695,7 @@ class TaskResultService {
     }
 
     private RuntimeWorkSummary buildRetryResetCompatibilityBaseView(RuntimeWorkSummary workSummary,
-                                                                    AttemptProjectionView activeAttempt) {
+                                                                    RuntimeAttemptView activeAttempt) {
         if (workSummary == null) {
             return null;
         }
@@ -717,7 +711,7 @@ class TaskResultService {
     private ResultMutationOutcome handleRetryExhaustedFailure(Task task,
                                                             String taskId,
                                                             RuntimeWorkSummary workSummary,
-                                                            AttemptProjectionView activeAttempt,
+                                                            RuntimeAttemptView activeAttempt,
                                                            String detail,
                                                            String errorCode,
                                                            Map<String, Object> output,
@@ -746,7 +740,7 @@ class TaskResultService {
                 "work item marked failure"
         );
 
-        CommitResult commit = commitVisibleFinal(failureSummary, activeAttempt, stagedDraft);
+        CommitResult commit = visibleFinalCommitter.commitVisibleFinal(failureSummary, activeAttempt, stagedDraft);
         if (!commit.visible()) {
             logger.warn("Result runtime visible commit failed for failure result taskId={}, messageId={}, status={}, reason={}",
                     taskId, messageId, commit.status(), commit.reason());
@@ -759,7 +753,7 @@ class TaskResultService {
             publishWorkLogicallyFinalOnce(task, failureSummary, activeAttempt, commit.row(),
                     "HANDLE_TASK_RESULT", "work item reached stable failure");
         }
-        cleanupStageIfConverged(taskId, workSummary.messageId(), commit.row());
+        visibleFinalCommitter.cleanupStageIfConverged(taskId, workSummary.messageId(), commit.row());
         return ResultMutationOutcome.acceptedDirtyWithProgressBarrier(taskId, messageId, commit.row().seq());
     }
 
@@ -844,8 +838,8 @@ class TaskResultService {
 
     /**
      * Reconstructs a minimal {@link ActiveLeaseRecord} from an
-     * {@link RuntimeResultApplyContext} snapshot so the existing projection
-     * pipeline can continue to use lease-based logic without extra runtime reads.
+     * {@link RuntimeResultApplyContext} snapshot so runtime view reconstruction
+     * can continue to use lease-based logic without extra runtime reads.
      */
     private static ActiveLeaseRecord syntheticLeaseFromContext(RuntimeResultApplyContext ctx,
                                                                String taskId,
@@ -858,7 +852,7 @@ class TaskResultService {
                 ctx.batchId(),
                 ctx.payloadRef(),
                 ctx.retryCount(),
-                null,         // leaseExpireAt - not needed for projection
+                null,         // leaseExpireAt - not needed for runtime view reconstruction
                 ctx.leasedAt()
         );
     }
@@ -866,7 +860,7 @@ class TaskResultService {
     /**
      * Reconstructs a minimal {@link TaskWorkEnvelope} from an
      * {@link RuntimeResultApplyContext} snapshot. Only fields required by the
-     * projection pipeline (retryCount, maxRetryCount, payloadRef) are populated.
+     * runtime view reconstruction (retryCount, maxRetryCount, payloadRef) are populated.
      */
     private static TaskWorkEnvelope syntheticWorkFromContext(RuntimeResultApplyContext ctx,
                                                              String taskId,
@@ -874,7 +868,7 @@ class TaskResultService {
         return new TaskWorkEnvelope(
                 taskId,
                 messageId,
-                null,              // eventCode - not needed for projection
+                null,              // eventCode - not needed for runtime view reconstruction
                 null,              // payload - not in context
                 ctx.payloadRef(),
                 ctx.retryCount(),
@@ -1020,40 +1014,9 @@ class TaskResultService {
         }
     }
 
-    private CommitResult commitVisibleFinal(RuntimeWorkSummary summary,
-                                            AttemptProjectionView attempt,
-                                            TaskResultCallbackDraft stagedDraft) {
-        if (summary == null) {
-            return CommitResult.rejected("summary must not be null");
-        }
-        String workerId = attempt != null ? attempt.workerId() : summary.latestAttemptWorkerId();
-        return taskResultRuntime.commitVisibleFinal(TaskResultFinalDraft.workerLevel(
-                summary.taskId(),
-                summary.messageId(),
-                stagedDraft != null ? stagedDraft.eventCode() : null,
-                summary.status() != null ? summary.status().name() : null,
-                summary.finalReason() != null ? summary.finalReason().name() : null,
-                summary.retryCount(),
-                summary.maxRetryCount(),
-                workerId,
-                attempt != null ? attempt.batchId() : summary.latestAttemptBatchId(),
-                attempt != null ? attempt.attemptId() : summary.latestAttemptId(),
-                summary.payloadRef(),
-                toInstant(summary.createTime()),
-                toInstant(summary.assignedTime()),
-                toInstant(summary.startTime()),
-                toInstant(summary.completeTime()),
-                toInstant(summary.updateTime()),
-                summary.errorCode(),
-                summary.errorMessage(),
-                summary.output(),
-                stagedDraft != null ? stagedDraft.stageId() : null
-        ));
-    }
-
     private void publishWorkLogicallyFinalOnce(Task task,
                                                RuntimeWorkSummary workSummary,
-                                               AttemptProjectionView attempt,
+                                               RuntimeAttemptView attempt,
                                                TaskResultRuntimeRow row,
                                                String trigger,
                                                String reason) {
@@ -1075,7 +1038,7 @@ class TaskResultService {
 
     private void publishWorkAttemptClosedOnce(Task task,
                                               RuntimeWorkSummary workSummary,
-                                              AttemptProjectionView attempt,
+                                              RuntimeAttemptView attempt,
                                               TaskResultRuntimeRow row,
                                               String trigger,
                                               String reason) {
@@ -1095,35 +1058,6 @@ class TaskResultService {
         }
     }
 
-    private void cleanupStageIfConverged(String taskId, String messageId, TaskResultRuntimeRow row) {
-        if (row == null || taskId == null || taskId.isBlank() || messageId == null || messageId.isBlank()) {
-            return;
-        }
-        TaskResultRuntimeRow current = taskResultRuntime.getVisibleByMessageId(row.taskId(), row.messageId()).orElse(row);
-        if (current.attemptClosedPublished() && current.logicalFinalPublished() && current.progressApplied()) {
-            taskResultRuntime.discardStagedCallbacksForMessage(taskId, messageId);
-        }
-    }
-
-    private void discardStage(TaskResultCallbackDraft stagedDraft) {
-        if (stagedDraft != null) {
-            taskResultRuntime.discardStagedCallback(stagedDraft.stageId());
-        }
-    }
-
-    private void discardStageIfVisibleFinalExists(String taskId, String messageId, TaskResultCallbackDraft stagedDraft) {
-        if (stagedDraft == null) {
-            return;
-        }
-        if (taskResultRuntime.getVisibleByMessageId(taskId, messageId).isPresent()) {
-            discardStage(stagedDraft);
-        }
-    }
-
-    private Instant toInstant(LocalDateTime value) {
-        return value == null ? null : value.atZone(ZoneId.systemDefault()).toInstant();
-    }
-
     private String normalizeDispatchSubmitFailureDetail(String detail) {
         if (detail == null || detail.isBlank()) {
             return "dispatch submit failed before transport delivery";
@@ -1132,27 +1066,7 @@ class TaskResultService {
     }
 
     void shutdown() {
-        repairExecutor.shutdownNow();
-    }
-
-    private void startRepairPump() {
-        if (!Boolean.getBoolean("xa.mass.engine.resultRepairPumpDisabled")) {
-            long intervalMillis = Long.getLong("xa.mass.engine.resultRepairPumpIntervalMillis", 1_000L);
-            repairExecutor.scheduleWithFixedDelay(
-                    this::repairResultRuntimeCandidatesSafely,
-                    intervalMillis,
-                    intervalMillis,
-                    TimeUnit.MILLISECONDS
-            );
-        }
-    }
-
-    private void repairResultRuntimeCandidatesSafely() {
-        try {
-            repairResultRuntimeCandidates(Integer.getInteger("xa.mass.engine.resultRepairPumpBatchSize", 100));
-        } catch (Exception e) {
-            logger.warn("Result runtime repair pump failed: {}", e.getMessage(), e);
-        }
+        repairPump.shutdown();
     }
 
     int repairResultRuntimeCandidates(int limit) {
@@ -1192,7 +1106,7 @@ class TaskResultService {
             return false;
         }
         RuntimeWorkSummary summary = rebuildFinalSummaryForRepair(task, draft, receipt);
-        CommitResult commit = commitVisibleFinal(summary, null, draft);
+        CommitResult commit = visibleFinalCommitter.commitVisibleFinal(summary, null, draft);
         if (!commit.visible()) {
             return false;
         }
@@ -1203,7 +1117,7 @@ class TaskResultService {
                     "REPAIR_RESULT_RUNTIME", "result runtime repair resumed missing logical-final event");
             taskManager.applyTaskResultProgressOnce(commit.row().taskId(), commit.row().messageId(), commit.row().seq());
         }
-        cleanupStageIfConverged(draft.taskId(), draft.messageId(), commit.row());
+        visibleFinalCommitter.cleanupStageIfConverged(draft.taskId(), draft.messageId(), commit.row());
         return true;
     }
 
@@ -1231,7 +1145,7 @@ class TaskResultService {
         publishWorkAttemptClosedRepairOnce(task, summary, current,
                 "REPAIR_RESULT_RUNTIME", "result runtime repair resumed missing attempt-closed event");
         TaskResultRuntimeRow updated = taskResultRuntime.getVisibleByMessageId(current.taskId(), current.messageId()).orElse(null);
-        cleanupStageIfConverged(current.taskId(), current.messageId(), updated);
+        visibleFinalCommitter.cleanupStageIfConverged(current.taskId(), current.messageId(), updated);
         return updated != null && updated.attemptClosedPublished();
     }
 
@@ -1266,7 +1180,7 @@ class TaskResultService {
         }
         publishWorkLogicallyFinalOnce(task, summary, null, current,
                 "REPAIR_RESULT_RUNTIME", "result runtime repair resumed missing logical-final event");
-        cleanupStageIfConverged(current.taskId(), current.messageId(), current);
+        visibleFinalCommitter.cleanupStageIfConverged(current.taskId(), current.messageId(), current);
         return true;
     }
 
@@ -1284,7 +1198,7 @@ class TaskResultService {
         }
         taskManager.applyTaskResultProgressOnce(current.taskId(), current.messageId(), current.seq());
         TaskResultRuntimeRow updated = taskResultRuntime.getVisibleByMessageId(current.taskId(), current.messageId()).orElse(null);
-        cleanupStageIfConverged(current.taskId(), current.messageId(), updated);
+        visibleFinalCommitter.cleanupStageIfConverged(current.taskId(), current.messageId(), updated);
         return updated != null && updated.progressApplied();
     }
 
@@ -1377,7 +1291,7 @@ class TaskResultService {
         if (task == null || workSummary == null || row == null || row.attemptId() == null || row.attemptId().isBlank()) {
             return;
         }
-        AttemptProjectionView repairAttempt = new AttemptProjectionView(
+        RuntimeAttemptView repairAttempt = new RuntimeAttemptView(
                 row.attemptId(),
                 row.taskId(),
                 row.messageId(),
@@ -1425,7 +1339,7 @@ class TaskResultService {
 
     private void publishWorkAttemptClosed(Task task,
                                           RuntimeWorkSummary workSummary,
-                                          AttemptProjectionView attempt,
+                                          RuntimeAttemptView attempt,
                                           String trigger,
                                           String reason) {
         traceEventLogger.taskWorkAttemptClosed(
@@ -1458,7 +1372,7 @@ class TaskResultService {
 
     private void publishWorkLogicallyFinal(Task task,
                                            RuntimeWorkSummary workSummary,
-                                           AttemptProjectionView attempt,
+                                           RuntimeAttemptView attempt,
                                            String trigger,
                                            String reason) {
         traceEventLogger.taskWorkLogicallyFinal(
@@ -1490,7 +1404,7 @@ class TaskResultService {
     private ResultMutationOutcome handleRuntimeAcceptedFailure(Task task,
                                                              String taskId,
                                                              RuntimeWorkSummary workSummary,
-                                                             AttemptProjectionView activeAttempt,
+                                                             RuntimeAttemptView activeAttempt,
                                                              ResultApplyStatus applyStatus,
                                                              String detail,
                                                              String errorCode,
@@ -1507,7 +1421,7 @@ class TaskResultService {
     private ResultMutationOutcome handleBatchRuntimeAcceptedFailure(Task task,
                                                                   String taskId,
                                                                   RuntimeWorkSummary workSummary,
-                                                                  AttemptProjectionView activeAttempt,
+                                                                  RuntimeAttemptView activeAttempt,
                                                                   ResultApplyStatus applyStatus,
                                                                   String detail,
                                                                   String errorCode,
@@ -1522,7 +1436,7 @@ class TaskResultService {
     private ResultMutationOutcome handleSessionRuntimeAcceptedFailure(Task task,
                                                                     String taskId,
                                                                     RuntimeWorkSummary workSummary,
-                                                                    AttemptProjectionView activeAttempt,
+                                                                    RuntimeAttemptView activeAttempt,
                                                                     ResultApplyStatus applyStatus,
                                                                     String detail,
                                                                     String errorCode,
@@ -1615,10 +1529,10 @@ class TaskResultService {
         }
     }
 
-    private record ActiveRuntimeProjection(RuntimeWorkSummary workSummary, AttemptProjectionView activeAttempt) {
+    private record ActiveRuntimeView(RuntimeWorkSummary workSummary, RuntimeAttemptView activeAttempt) {
     }
 
-    static final class AttemptProjectionView {
+    static final class RuntimeAttemptView {
         private final String attemptId;
         private final String taskId;
         private final String messageId;
@@ -1631,7 +1545,7 @@ class TaskResultService {
         private String errorCode;
         private Map<String, Object> output;
 
-        private AttemptProjectionView(String attemptId,
+        private RuntimeAttemptView(String attemptId,
                                       String taskId,
                                       String messageId,
                                       int attemptNo,
@@ -1646,7 +1560,7 @@ class TaskResultService {
             this.status = AttemptStatus.DISPATCHED;
         }
 
-        static AttemptProjectionView dispatched(String taskId,
+        static RuntimeAttemptView dispatched(String taskId,
                                                 String messageId,
                                                 ActiveLeaseRecord activeLease,
                                                 String attemptId,
@@ -1654,7 +1568,7 @@ class TaskResultService {
             if (taskId == null || messageId == null || activeLease == null) {
                 return null;
             }
-            AttemptProjectionView attempt = new AttemptProjectionView(
+            RuntimeAttemptView attempt = new RuntimeAttemptView(
                     attemptId,
                     taskId,
                     messageId,
@@ -1918,11 +1832,11 @@ class TaskResultService {
             }
             int runtimeRetryCount = Math.max(0, activeLease.retryCount());
             boolean needsAssignedStatus = status == null || status == MessageStatus.INIT;
-            boolean attemptProjectionDiffers = !java.util.Objects.equals(latestAttemptWorkerId, activeLease.workerId())
+            boolean attemptViewDiffers = !java.util.Objects.equals(latestAttemptWorkerId, activeLease.workerId())
                     || !java.util.Objects.equals(latestAttemptBatchId, activeLease.batchId());
-            boolean needsRetryProjection = retryCount != runtimeRetryCount;
+            boolean needsRetryView = retryCount != runtimeRetryCount;
             boolean needsAssignedTime = assignedTime == null;
-            if (!attemptProjectionDiffers && !needsAssignedStatus && !needsRetryProjection && !needsAssignedTime) {
+            if (!attemptViewDiffers && !needsAssignedStatus && !needsRetryView && !needsAssignedTime) {
                 return this;
             }
             LocalDateTime leasedAt = activeLease.leasedAt() == null
@@ -1956,7 +1870,7 @@ class TaskResultService {
             );
         }
 
-        private RuntimeWorkSummary withAssignedAttempt(AttemptProjectionView attempt) {
+        private RuntimeWorkSummary withAssignedAttempt(RuntimeAttemptView attempt) {
             if (attempt == null) {
                 return null;
             }
@@ -1984,7 +1898,7 @@ class TaskResultService {
             );
         }
 
-        private RuntimeWorkSummary attachAttempt(AttemptProjectionView attempt) {
+        private RuntimeWorkSummary attachAttempt(RuntimeAttemptView attempt) {
             if (attempt == null) {
                 return this;
             }

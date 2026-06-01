@@ -1,5 +1,7 @@
 package com.xa.mass.engine.example;
 
+import com.xa.mass.engine.InMemoryWorkerDeclarationRuntimeStore;
+
 
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
@@ -10,12 +12,11 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.base.model.Worker;
+import com.xa.mass.engine.InMemoryTaskShellRuntimeStore;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.worker.runtime.WorkerManager;
-import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
-import com.xa.mass.storage.memory.InMemoryWorkerDeclarationStore;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,14 +31,14 @@ public class EngineExample {
     private static final Logger log = LoggerFactory.getLogger(EngineExample.class);
 
     public static void main(String[] args) {
-        InMemoryTaskShellStore taskStorage = new InMemoryTaskShellStore();
+        InMemoryTaskShellRuntimeStore taskStorage = new InMemoryTaskShellRuntimeStore();
         TaskManager taskManager = new TaskManager(
                 taskStorage,
                 new InMemoryTaskWorkRuntime(),
                 new InMemoryTaskResultRuntime(),
                 null);
         TaskCommandService taskCommands = new TaskCommandService(taskManager);
-        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationStore(), new InMemoryWorkerRegistry());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerDeclarationRuntimeStore(), new InMemoryWorkerRegistry());
         log.info("taskManager:" + taskManager);
         log.info("workerManager:" + workerManager);
 
