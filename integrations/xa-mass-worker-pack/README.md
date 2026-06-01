@@ -75,6 +75,9 @@ sample-worker command paths, not by mutating engine or transport internals.
 
 ## Java External SDK Convergence
 
+Current direction is tracked by
+`doc/INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_ROADMAP.md`.
+
 Current audit: worker-pack does not duplicate Java raw HTTP client calls for
 `/worker-api/v1` topology or worker-control routes. It discovers dev-shell
 sample workers through embedded `MassSdkApplication` and owns realtime
