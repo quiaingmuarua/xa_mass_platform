@@ -1,6 +1,6 @@
 # Integrations Java SDK Adoption Roadmap
 
-Status: proposed next roadmap.
+Status: archived implemented mainline.
 
 This roadmap follows the completed local/public-readiness slice for
 [`integrations/xa-mass-java-sdk`](../integrations/xa-mass-java-sdk). Its goal is
@@ -22,24 +22,28 @@ third-party Java application would use.
 
 Current adoption state:
 
-- `integrations/xa-mass-scenario-launcher` already composes
-  `xa-mass-java-sdk` for task creation, item append, worker topology, and
-  polling worker sessions. This is the current best internal adopter pattern.
-- `integrations/samples/java/worker-polling` already uses `MassPlatform` and
-  managed `PollingWorkerSession`, but it is not a strategic long-term surface.
-  It may be removed once scenario-launcher and worker-pack cover the same Java
-  external proof.
+- IJS-0 inventory is recorded in
+  [INTEGRATIONS_JAVA_SDK_ADOPTION_INVENTORY.md](./2026-06-01_INTEGRATIONS_JAVA_SDK_ADOPTION_INVENTORY.md).
+- `integrations/xa-mass-scenario-launcher` composes `xa-mass-java-sdk` for
+  task creation, item append, worker topology, polling worker sessions, and
+  WebSocket worker sessions. It is the current Java SDK adopter pattern and
+  has server black-box proof through `JavaScenarioLauncherBlackBoxIntegrationTest`.
+- `integrations/samples/java` has been removed as a parallel Java product
+  surface. The former polling, WebSocket, and socket sample proofs are replaced
+  by scenario-launcher SDK proof for Java and Node sample fixtures for
+  adapter-level protocol coverage.
 - `xa-mass-server` uses the Java SDK only in black-box/test-style external
   proofs. Production server code must not route through the SDK.
-- `integrations/samples/java/worker-websocket` and
-  `integrations/samples/java/worker-socket` remain raw protocol samples.
-  They are removable protocol baselines, not permanent Java SDK adoption
-  targets.
 - `integrations/xa-mass-worker-pack` owns embedded/dev worker capability,
   sample fault behavior, and realtime frame clients. It is the second
-  strategic Java integration surface after scenario-launcher, but it should add
-  the Java SDK only when there is real public HTTP/session boilerplate to
-  remove or a public realtime Java session to consume.
+  strategic Java integration surface after scenario-launcher. Its current
+  realtime clients stay local because they own sample command/fault behavior
+  that is intentionally outside the SDK.
+- `integrations/xa-mass-java-sdk` already contains the transport-independent
+  handler runtime foundation under `com.xa.mass.client.worker.handler`,
+  including `WorkerEventHandlers` and `WorkerEventHandlerRuntime`.
+  Worker-pack adoption should consume that SDK-side foundation rather than
+  implement a second generic dispatch handler runtime.
 - Node samples remain runtime/protocol proof. A Node SDK is not part of this
   roadmap.
 
@@ -99,9 +103,9 @@ Built-in worker group baseline:
 
 Allowed exceptions:
 
-- Existing Java sample apps while they are still needed as black-box process
-  fixtures. They should be removed or demoted after scenario-launcher and
-  worker-pack provide equivalent proof.
+- No current Java sample app is an exception. If a future temporary Java sample
+  fixture is introduced, it must have an explicit owner reason and retirement
+  trigger.
 - Worker-pack realtime frame clients and sample fault runtime before a public
   realtime Java session exists.
 - Dev-only bootstrap endpoints under `/sample-api/bootstrap/**` when the SDK
@@ -118,8 +122,9 @@ Hard Rules:
 - Do not make production server code call `xa-mass-java-sdk` to simulate an
   external caller.
 - Do not move worker-pack command/fault behavior into the SDK.
-- Do not convert raw WebSocket/socket samples to SDK usage until the SDK owns a
-  public realtime session contract.
+- Do not recreate raw Java WebSocket/socket samples now that Java SDK
+  scenario-launcher proof exists. Socket remains adapter-internal unless a
+  future SDK session decision explicitly promotes it.
 - Do not enforce a broad ban on `java.net.http.HttpClient` in all Java
   integrations. Guard platform API calls, not generic business HTTP usage.
 
@@ -130,8 +135,7 @@ Non-Goals:
 - Do not start a Node SDK track as part of this roadmap.
 - Do not publish `xa-mass-java-sdk` to an external registry as part of this
   adoption roadmap.
-- Do not design or implement public realtime SDK sessions here; that remains
-  owned by the realtime protocol roadmap.
+- Do not start a public Java socket SDK track as part of this roadmap.
 
 ## Target Shape
 
@@ -142,11 +146,11 @@ Strategic Java integration caller
       -> tasks()
       -> workers()
       -> workerSessions().polling()
-      -> future workerSessions().webSocket()
+      -> workerSessions().webSocket()
 
 xa-mass-scenario-launcher
   -> primary internal SDK adopter
-  -> registers topology, submits tasks, runs polling sessions
+  -> registers topology, submits tasks, runs polling and WebSocket sessions
 
 xa-mass-worker-pack
   -> second strategic SDK adopter when SDK-owned session/client behavior exists
@@ -155,8 +159,7 @@ xa-mass-worker-pack
   -> transport clients adapt frames into transport-independent handlers
 
 integrations/samples/java
-  -> temporary fixtures/proofs only
-  -> removable after strategic adopters cover acceptance
+  -> removed; do not reintroduce as a parallel product surface
 ```
 
 ## Sample Retirement Rule
@@ -183,6 +186,9 @@ dependency on `xa-mass-base`.
 ## Roadmap
 
 ### IJS-0: Adoption Inventory
+
+Status: implemented by
+[INTEGRATIONS_JAVA_SDK_ADOPTION_INVENTORY.md](./2026-06-01_INTEGRATIONS_JAVA_SDK_ADOPTION_INVENTORY.md).
 
 Scope:
 
@@ -216,14 +222,16 @@ Acceptance:
 
 ### IJS-1: Standardize Scenario Launcher As The Java SDK Consumer
 
+Status: implemented.
+
 Scope:
 
 - Keep `integrations/xa-mass-scenario-launcher` as the formal internal adopter
   for task seeding, worker topology, and polling worker runtime.
-- Treat `integrations/samples/java/worker-polling` as removable once
-  scenario-launcher covers the same black-box polling proof.
-- Treat the current `JavaPollingWorkerBlackBoxIntegrationTest` as transitional
-  sample proof until a scenario-launcher black-box or boot-shell proof exists.
+- Remove `integrations/samples/java/worker-polling` once scenario-launcher
+  covers the same black-box polling proof.
+- Delete `JavaPollingWorkerBlackBoxIntegrationTest` after the scenario-launcher
+  black-box proof exists.
 - Update docs to name `xa-mass-java-sdk` as the Java standard for public
   task/worker API calls from strategic Java integrations.
 - Keep raw HTTP escape hatches in the SDK marked unstable and avoid exposing
@@ -241,21 +249,27 @@ Acceptance:
 - Scenario launcher can be used as the Java SDK proof for:
   task shell -> item append -> worker topology -> polling dispatch -> result
   submit.
-- A scenario-launcher black-box or boot-shell proof is either added, or the
-  roadmap explicitly records `JavaPollingWorkerBlackBoxIntegrationTest` as a
-  temporary sample-retirement bridge rather than the primary SDK adoption
-  proof.
-- `integrations/samples/java/worker-polling` has a removal or retention
-  decision tied to black-box proof ownership.
+- A scenario-launcher black-box proof exists through
+  `JavaScenarioLauncherBlackBoxIntegrationTest`.
+- `JavaPollingWorkerBlackBoxIntegrationTest` and
+  `integrations/samples/java/worker-polling` are removed.
 - The Java SDK is documented as a real registration/execution tool, not a
   sample helper.
 
 ### IJS-2: Add Narrow Adoption Guards
 
+Status: implemented in
+`integrations/xa-mass-java-sdk/src/test/java/com/xa/mass/client/JavaExternalSdkArchitectureGuardTest.java`.
+
 Scope:
 
 - Add an architecture/documentation guard that prevents new Java integrations
   from hard-coding public platform API routes when an SDK typed client exists.
+- The route-literal scan must cover Java sources under `integrations/` outside
+  `integrations/xa-mass-java-sdk`. A guard that only scans the SDK module does
+  not satisfy IJS-2.
+- Candidate owner: a dedicated `integrations`-level architecture test or a
+  scan anchored at the repository `integrations/` directory root.
 - Detect platform route usage by scanning Java source string literals and
   simple concatenations for public platform route prefixes such as `/api/v1/`
   and `/worker-api/v1/`. Do not fail on `HttpClient` imports alone.
@@ -277,6 +291,10 @@ Acceptance:
 
 - A new raw Java `/worker-api/v1/workers/{id}:poll` integration caller fails
   the guard unless it is in an approved temporary fixture or test path.
+- The same violation is caught when it appears in
+  `integrations/xa-mass-scenario-launcher`,
+  `integrations/xa-mass-worker-pack`, or a future Java integration module, not
+  only inside `integrations/xa-mass-java-sdk`.
 - A sample task that fetches a user URL with `HttpClient` is still allowed.
 - A Java source file that imports `HttpClient` but has no platform route prefix
   literal is not a guard violation.
@@ -288,15 +306,26 @@ Acceptance:
 
 ### IJS-3: Worker-Pack SDK Adoption
 
+Status: implemented audit keeps worker-pack explicitly non-adopting for the
+current mainline. See
+[INTEGRATIONS_JAVA_SDK_ADOPTION_INVENTORY.md](./2026-06-01_INTEGRATIONS_JAVA_SDK_ADOPTION_INVENTORY.md)
+and [../integrations/xa-mass-worker-pack/README.md](../integrations/xa-mass-worker-pack/README.md).
+
 Scope:
 
 - Re-audit `integrations/xa-mass-worker-pack` after IJS-1/IJS-2.
 - Add `xa-mass-java-sdk` only if worker-pack has a real public HTTP/session
   caller to migrate.
+- The transport-independent handler runtime already exists in the SDK
+  (`WorkerEventHandlers`, `WorkerEventHandlerRuntime`). IJS-3 scope is
+  worker-pack adoption of this runtime where it fits, not SDK-side handler
+  infrastructure implementation.
 - Keep worker-pack sample command runtime, fault profiles, and realtime frame
   behavior local.
-- If a public SDK realtime session exists by then, migrate only the matching
-  worker-pack realtime client path to that session.
+- The public SDK WebSocket session now exists, but worker-pack's current
+  WebSocket client remains a sample fault/command fixture. It is not migrated
+  until the non-fault builtin worker path exists or SDK result queues expose
+  the needed fault harness hooks.
 - Prefer worker-pack over standalone Java sample apps as the long-term
   repository proof for Java worker behavior that includes fault/command
   scenarios.
@@ -331,7 +360,10 @@ Acceptance:
 - Built-in worker groups provided by worker-pack prove the same external path:
   declare/register -> online/session -> dispatch handler -> result report.
 
-### IJS-4: WebSocket Java Session Adoption Through Worker-Pack
+### IJS-4: WebSocket Java Session Adoption Through Strategic Consumer
+
+Status: implemented through `workerSessions().webSocket()` and
+`JavaScenarioLauncherBlackBoxIntegrationTest`.
 
 Prerequisite:
 
@@ -343,10 +375,10 @@ Scope:
 
 - Adopt the SDK WebSocket worker session delivered by WSDK-4 through a
   strategic integration consumer.
-- Make worker-pack the preferred internal adopter for the SDK WebSocket
-  session if worker-pack still owns the relevant realtime sample behavior.
-- Remove or demote `integrations/samples/java/worker-websocket` after
-  black-box parity exists through worker-pack or scenario-launcher.
+- Scenario-launcher is the current adopter because it can prove the SDK
+  realtime session without worker-pack's sample fault harness.
+- Remove `integrations/samples/java/worker-websocket` after black-box parity
+  exists through scenario-launcher.
 
 Out of scope:
 
@@ -359,12 +391,14 @@ Acceptance:
 
 - Java WebSocket black-box proof passes through an SDK-backed strategic
   consumer.
-- The old raw Java WebSocket sample is removed or clearly demoted to a
-  protocol fixture; it must not remain as a parallel recommended path.
+- The old raw Java WebSocket sample is removed.
 - The SDK handler contract remains transport-neutral from the caller's point of
   view.
 
 ### IJS-5: Socket Java Session Decision
+
+Status: implemented decision: Java socket is not a public SDK session in this
+roadmap.
 
 Prerequisite:
 
@@ -373,9 +407,10 @@ Prerequisite:
 
 Scope:
 
-- Decide whether Java socket should become a public SDK session through
-  worker-pack, stay a temporary protocol fixture, or be removed from the Java
-  external standard.
+- Record that Java external standardization stops at polling plus WebSocket.
+- Remove `integrations/samples/java/worker-socket`; socket remains
+  adapter-internal/Node fixture coverage unless a future socket SDK roadmap
+  promotes it.
 - If promoted, add a socket session with the same handler/result contract used
   by polling and WebSocket.
 - If not promoted, document why Java external standardization stops at polling
@@ -383,12 +418,13 @@ Scope:
 
 Acceptance:
 
-- Java socket sample no longer ambiguously looks like a recommended public Java
-  integration path unless the SDK owns it.
-- Socket decision is recorded before adding more socket-specific Java sample
-  features.
+- Java socket sample no longer exists as a recommended public Java integration
+  path.
+- Socket decision is recorded before adding more socket-specific Java features.
 
 ### IJS-6: Internal Standard Proof
+
+Status: implemented.
 
 Scope:
 
@@ -396,18 +432,21 @@ Scope:
   - SDK unit and architecture guards
   - scenario launcher package
   - scenario launcher black-box or boot-shell proof for Java SDK polling
+  - scenario launcher black-box proof for Java SDK WebSocket
   - worker-pack tests when worker-pack consumes SDK behavior
-  - Java WebSocket black-box proof after IJS-4, preferably through worker-pack
 - Keep publication readiness separate from internal adoption proof.
 
 Acceptance:
 
 - The documented Java standard can be exercised internally without relying on
   `xa-mass-sdk` embedding APIs.
+- A scenario-launcher black-box or boot-shell proof exists before IJS-6 is
+  marked complete.
+- `JavaPollingWorkerBlackBoxIntegrationTest` is deleted so it no longer looks
+  like the primary Java SDK adoption proof.
 - Any Java integration that bypasses the SDK is either non-platform business
   HTTP, temporary fixture code, dev bootstrap, or test-only proof.
-- `integrations/samples/java` is either removed or explicitly marked as
-  temporary fixture material with a retirement owner.
+- `integrations/samples/java` is removed.
 
 ## Verification Matrix
 
@@ -421,18 +460,8 @@ mvn -pl integrations/xa-mass-scenario-launcher -am -DskipTests package
 Primary proof target after IJS-1:
 
 ```bash
-mvn -pl xa-mass-server -am -Dtest=<scenario-launcher black-box or boot-shell proof> -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -pl xa-mass-server -am -Dtest=JavaScenarioLauncherBlackBoxIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
-
-Transitional proof until that test exists:
-
-```bash
-mvn -pl xa-mass-server -am -Dtest=JavaPollingWorkerBlackBoxIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test
-```
-
-The transitional proof launches `integrations/samples/java/worker-polling`, so
-it must not be treated as the final adoption proof once the roadmap says simple
-Java samples are retirement targets.
 
 After worker-pack consumption changes:
 
@@ -440,11 +469,8 @@ After worker-pack consumption changes:
 mvn -pl integrations/xa-mass-worker-pack -am test
 ```
 
-After Java WebSocket SDK convergence:
-
-```bash
-mvn -pl xa-mass-server -am -Dtest=JavaWebSocketWorkerBlackBoxIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test
-```
+`JavaScenarioLauncherBlackBoxIntegrationTest` covers both polling and WebSocket
+SDK worker sessions.
 
 ## Risks
 
@@ -452,9 +478,9 @@ mvn -pl xa-mass-server -am -Dtest=JavaWebSocketWorkerBlackBoxIntegrationTest -Ds
 | --- | --- | --- |
 | SDK standardization becomes premature publication | compatibility burden before internal proof stabilizes | keep publication in the public-readiness roadmap |
 | Broad raw-HTTP guard blocks legitimate task business calls | samples become harder to write | guard platform route literals, not `HttpClient` itself |
-| Java sample apps remain as parallel product surface | SDK adoption proof stays fragmented | retire or demote `integrations/samples/java` after strategic proof exists |
+| Java sample apps return as a parallel product surface | SDK adoption proof gets fragmented again | keep Java proof in scenario-launcher or future worker-pack SDK consumers |
 | SDK is treated as a showcase helper | project value is proved by toy flows instead of real external registration | center scenario-launcher and worker-pack as internal consumers |
-| Realtime samples are converted before protocol contract | public API freezes unstable frame semantics | keep raw Java realtime code temporary until IJS-4 |
+| Realtime SDK exceeds current protocol contract | public API freezes unsupported semantics | keep socket out of SDK and keep WebSocket session aligned with current adapter contract |
 | Worker-pack adopts SDK because of folder placement only | dependency churn without owner clarity | require real public client/session boilerplate removal |
 | SDK turns into base/common utility module | external API boundary becomes another platform internals bucket | keep SDK pure remote client; extract only proven shared SDK-facing contracts |
 | Server production code starts using Java SDK | external-client proof leaks into product runtime | server production dependency guard remains blocked |
@@ -467,9 +493,8 @@ public task/worker HTTP and polling worker usage. That standard should be
 proved first by `xa-mass-scenario-launcher`, then by `xa-mass-worker-pack`
 where worker-pack has real SDK-owned client/session behavior to consume.
 
-`integrations/samples/java` is no longer a strategic destination. It can be
-removed once scenario-launcher and worker-pack own the Java SDK acceptance
-story. That matches the current server boundary: `xa-mass-server` is a clean
+`integrations/samples/java` is no longer a strategic destination and has been
+removed. That matches the current server boundary: `xa-mass-server` is a clean
 platform host, and task/worker state enters through real external registration,
 submission, session, and result links.
 

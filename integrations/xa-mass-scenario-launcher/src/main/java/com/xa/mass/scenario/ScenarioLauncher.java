@@ -49,10 +49,10 @@ final class ScenarioLauncher {
             List<TaskScenarioSeeder.SeededTask> seededTasks = taskSeeder.seed(files.taskSpecs());
             idleTracker.markActivity();
             if (startedWorkers == 0) {
-                System.out.println("[java-scenario-launcher] no polling workers started; launch complete");
+                System.out.println("[java-scenario-launcher] no worker sessions started; launch complete");
                 return;
             }
-            System.out.printf("[java-scenario-launcher] launch running pollingWorkers=%d idleTimeoutMs=%d%n",
+            System.out.printf("[java-scenario-launcher] launch running workerSessions=%d idleTimeoutMs=%d%n",
                     startedWorkers, options.idleTimeoutMs());
             workerRuntime.awaitShutdownOrIdle(seededTasks);
         }

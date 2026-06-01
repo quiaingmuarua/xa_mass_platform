@@ -542,9 +542,7 @@ High-signal classes:
   - `NodePollingWorkerBlackBoxIntegrationTest`
   - `NodeWebSocketWorkerBlackBoxIntegrationTest`
   - `NodeSocketWorkerBlackBoxIntegrationTest`
-  - `JavaPollingWorkerBlackBoxIntegrationTest`
-  - `JavaWebSocketWorkerBlackBoxIntegrationTest`
-  - `JavaSocketWorkerBlackBoxIntegrationTest`
+  - `JavaScenarioLauncherBlackBoxIntegrationTest`
 - secondary/support only:
   - `SdkTaskApiIntegrationTest`
   - `TaskApiIntegrationTest`

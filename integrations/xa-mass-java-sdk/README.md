@@ -52,6 +52,12 @@ Current implemented surface:
   adapter/node registration, node/group binding, worker registration, online,
   capability/state report, heartbeat, poll, handler dispatch, result submit,
   and best-effort offline on close
+- managed WebSocket worker session:
+  adapter/node registration, node/group binding, realtime worker registration,
+  JDK WebSocket connection, canonical task dispatch frame handling, queued
+  result frame submission, and reconnect attempts. Realtime worker presence is
+  transport-owned; the session does not call polling-only online, heartbeat,
+  capability report, state report, or offline APIs.
 - transport-neutral worker handler runtime:
   event handler registry, handler invocation, deterministic handler failure
   conversion, and session-owned result sink hooks
@@ -67,12 +73,8 @@ Stable public entry points are:
 hatches for diagnostics and temporary route coverage. External callers should
 prefer typed clients; raw HTTP helpers are not a compatibility promise.
 
-Not implemented yet:
-
-- realtime worker client; deferred until a public realtime protocol contract
-  exists
-
-Those are tracked in [../../doc/JAVA_EXTERNAL_SDK_ROADMAP.md](../../doc/JAVA_EXTERNAL_SDK_ROADMAP.md).
+Realtime protocol hardening is tracked in
+[../../doc/JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md](../../doc/JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md).
 
 Public readiness and publication hardening are tracked in
 [../../doc/JAVA_EXTERNAL_SDK_PUBLIC_READINESS_ROADMAP.md](../../doc/JAVA_EXTERNAL_SDK_PUBLIC_READINESS_ROADMAP.md).
@@ -81,10 +83,9 @@ The standalone consumer metadata template is [pom.consumer.xml](pom.consumer.xml
 It documents the dependency shape external consumers should see; normal reactor
 development continues to use [pom.xml](pom.xml).
 
-Runnable sample:
-
-- [../samples/java/worker-polling](../samples/java/worker-polling)
-  uses this SDK's managed `PollingWorkerSession`.
+The internal executable adopter is
+[../xa-mass-scenario-launcher](../xa-mass-scenario-launcher), not standalone
+Java sample apps.
 
 ## Example
 
@@ -195,9 +196,34 @@ try (PollingWorkerSession session = mass.workerSessions().polling()
 is an explicit topology/setup operation through `mass.workers()`.
 
 `PollingWorkerSession` uses the transport-neutral
-`com.xa.mass.client.worker.handler` runtime internally. Future realtime
-sessions should reuse the same `WorkerEventHandlers` and `WorkerResultSink`
-contracts instead of adding transport-local handler execution.
+`com.xa.mass.client.worker.handler` runtime internally. `WebSocketWorkerSession`
+uses the same handler runtime and routes handler results through a session-owned
+outbound frame queue.
+
+Managed WebSocket worker session:
+
+```java
+mass.workers().declareGroup(WorkerGroupSpec.builder()
+        .groupId("realtime-crawler")
+        .bindEvent("crawler.fetch-page", List.of("crawlerApp"))
+        .build());
+
+try (WebSocketWorkerSession session = mass.workerSessions().webSocket()
+        .workerId("crawler-ws-001")
+        .workerGroupId("realtime-crawler")
+        .adapterNodeId("crawler-ws-node-1")
+        .endpoint(URI.create("ws://localhost:18088/ws"))
+        .event("crawler.fetch-page", dispatch -> WorkerResult.success(Map.of(
+                "url", dispatch.input().requiredString("url")
+        )))
+        .start()) {
+    Thread.currentThread().join();
+}
+```
+
+`WebSocketWorkerSession.start()` does not declare WorkerGroups. Group
+declaration remains an explicit topology/setup operation through
+`mass.workers()`.
 
 Lifecycle callbacks:
 
@@ -234,7 +260,7 @@ From repo root:
 ./mvnw -pl integrations/xa-mass-java-sdk dependency:tree
 ./mvnw -pl integrations/xa-mass-java-sdk -DskipTests source:jar javadoc:jar
 ./mvnw -f integrations/xa-mass-java-sdk/pom.consumer.xml -DskipTests package
-./mvnw -pl integrations/samples/java/worker-polling -am -DskipTests package
+./mvnw -pl integrations/xa-mass-scenario-launcher -am -DskipTests package
 ```
 
 ## Boundary

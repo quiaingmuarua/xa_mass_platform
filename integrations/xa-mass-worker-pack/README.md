@@ -78,8 +78,10 @@ sample-worker command paths, not by mutating engine or transport internals.
 Current audit: worker-pack does not duplicate Java raw HTTP client calls for
 `/worker-api/v1` topology or worker-control routes. It discovers dev-shell
 sample workers through embedded `MassSdkApplication` and owns realtime
-WebSocket/socket frame clients plus sample fault behavior. JSDK-5.5 is
-therefore conditional rather than an immediate migration step.
+WebSocket/socket frame clients plus sample fault behavior. IJS-3 in the
+archived `doc/archive/integrations/2026-06-01_INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md`
+is therefore conditional
+rather than an immediate dependency migration.
 
 Future convergence target:
 

@@ -1,7 +1,11 @@
 # Java External SDK Realtime Decision
 
-Status: current JSDK-6 decision record for
-[`JAVA_EXTERNAL_SDK_ROADMAP.md`](./JAVA_EXTERNAL_SDK_ROADMAP.md).
+Status: archived superseded JSDK-6 decision record for
+[`JAVA_EXTERNAL_SDK_ROADMAP.md`](./2026-05-28_JAVA_EXTERNAL_SDK_ROADMAP.md).
+
+Superseded by the active
+[`JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md`](../../JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md),
+which delivered the first WebSocket worker session slice.
 
 ## Decision
 
@@ -70,7 +74,7 @@ until a later realtime contract slice defines:
 ## Next Valid Step
 
 If realtime SDK support becomes a priority, follow the dedicated
-[`JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md`](./JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md)
+[`JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md`](../../JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md)
 before implementation.
 
 That roadmap should choose one of these explicitly:

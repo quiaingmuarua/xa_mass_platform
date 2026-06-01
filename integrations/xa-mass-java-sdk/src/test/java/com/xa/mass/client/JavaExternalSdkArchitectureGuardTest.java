@@ -5,14 +5,21 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class JavaExternalSdkArchitectureGuardTest {
     private static final Path MAIN_SOURCE = Path.of("src/main/java");
     private static final Path WORKER_HANDLER_SOURCE =
             Path.of("src/main/java/com/xa/mass/client/worker/handler");
+    private static final List<String> PUBLIC_PLATFORM_ROUTE_PREFIXES = List.of(
+            "\"/api/v1",
+            "\"/worker-api/v1"
+    );
     private static final List<String> FORBIDDEN_IMPORTS = List.of(
             "import com.xa.mass.engine.",
             "import com.xa.mass.starter.",
@@ -86,5 +93,60 @@ class JavaExternalSdkArchitectureGuardTest {
                         javaFile + " must not import transport types");
             }
         }
+    }
+
+    @Test
+    void integrationsProductionCodeDoesNotHardcodePublicPlatformRouteLiteralsOutsideSdk() throws IOException {
+        Path repoRoot = resolveRepoRoot();
+        Path integrationsRoot = repoRoot.resolve("integrations");
+        List<String> violations = new ArrayList<>();
+
+        try (var paths = Files.walk(integrationsRoot)) {
+            List<Path> javaFiles = paths
+                    .filter(path -> path.toString().endsWith(".java"))
+                    .filter(path -> !hasPathSegment(path, "target"))
+                    .filter(path -> !isAllowedRouteLiteralOwner(repoRoot, path))
+                    .toList();
+            for (Path javaFile : javaFiles) {
+                String source = Files.readString(javaFile);
+                for (String routePrefix : PUBLIC_PLATFORM_ROUTE_PREFIXES) {
+                    if (source.contains(routePrefix)) {
+                        violations.add(repoRoot.relativize(javaFile) + " contains " + routePrefix);
+                    }
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Java integrations must use MassPlatform or worker sessions for /api/v1 and /worker-api/v1 calls. "
+                        + "Only SDK internals/tests and explicit roadmap exceptions may hard-code route literals: "
+                        + violations);
+    }
+
+    private static boolean isAllowedRouteLiteralOwner(Path repoRoot, Path path) {
+        Path relative = repoRoot.relativize(path);
+        String normalized = relative.toString().replace('\\', '/');
+        return normalized.startsWith("integrations/xa-mass-java-sdk/")
+                || normalized.contains("/src/test/");
+    }
+
+    private static boolean hasPathSegment(Path path, String segment) {
+        for (Path part : path) {
+            if (part.toString().equals(segment)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static Path resolveRepoRoot() {
+        Path current = Paths.get("").toAbsolutePath().normalize();
+        for (Path cursor = current; cursor != null; cursor = cursor.getParent()) {
+            if (Files.exists(cursor.resolve("pom.xml"))
+                    && Files.exists(cursor.resolve("integrations/xa-mass-java-sdk/pom.xml"))) {
+                return cursor;
+            }
+        }
+        throw new IllegalStateException("Repo root not found from cwd=" + current);
     }
 }

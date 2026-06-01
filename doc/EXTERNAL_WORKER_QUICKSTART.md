@@ -3,8 +3,8 @@
 Status: current cross-module external-worker quickstart.
 
 Use this file for the shortest current truth about repo-external workers.
-Keep per-language startup and env details in
-`integrations/samples/{java,node}/*/README.md`.
+Keep Node sample startup details in `integrations/samples/node/*/README.md`.
+Java executable SDK usage is owned by `integrations/xa-mass-scenario-launcher`.
 
 ## 1. Current Contract Split
 
@@ -83,9 +83,10 @@ today and Boot-shell E2E proves them:
 
 | Path | adapterId | transportHint | Role |
 | --- | --- | --- | --- |
-| `integrations/samples/*/worker-polling` | `polling` | `polling` | stable public external worker contract |
-| `integrations/samples/*/worker-websocket` | `websocket` | `realtime` | cross-language adapter validation |
-| `integrations/samples/*/worker-socket` | `socket` | `realtime` | cross-language adapter validation |
+| `integrations/samples/node/worker-polling` | `polling` | `polling` | stable public external worker contract fixture |
+| `integrations/samples/node/worker-websocket` | `websocket` | `realtime` | adapter validation fixture |
+| `integrations/samples/node/worker-socket` | `socket` | `realtime` | adapter validation fixture |
+| `integrations/xa-mass-scenario-launcher` | `polling`, `websocket` | `polling`, `realtime` | Java SDK registration and worker-session proof |
 
 For realtime paths:
 
@@ -97,11 +98,12 @@ For realtime paths:
 
 ## 5. Local Validation Entry
 
-Use the real Boot shell plus the sample READMEs:
+Use the real Boot shell plus the sample/launcher READMEs:
 
 - Boot runtime and verified commands: [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
 - sample matrix and black-box role: [../integrations/samples/README.md](../integrations/samples/README.md)
-- per-sample commands: `integrations/samples/{java,node}/*/README.md`
+- per-sample commands: `integrations/samples/node/*/README.md`
+- Java SDK launcher: `integrations/xa-mass-scenario-launcher`
 
 For a CLI-only public-contract smoke against an already running dev server, use:
 
@@ -150,11 +152,9 @@ Current executable external-process coverage:
 
 - `ExternalWorkerParitySuite`
   - `NodePollingWorkerBlackBoxIntegrationTest`
-  - `JavaPollingWorkerBlackBoxIntegrationTest`
   - `NodeWebSocketWorkerBlackBoxIntegrationTest`
-  - `JavaWebSocketWorkerBlackBoxIntegrationTest`
   - `NodeSocketWorkerBlackBoxIntegrationTest`
-  - `JavaSocketWorkerBlackBoxIntegrationTest`
+  - `JavaScenarioLauncherBlackBoxIntegrationTest`
 
 These prove:
 

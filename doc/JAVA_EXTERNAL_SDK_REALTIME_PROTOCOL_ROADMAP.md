@@ -1,8 +1,9 @@
 # Java External SDK Realtime Protocol Roadmap
 
-Status: stable-proposed handler/runtime contract with proposed realtime
-transport follow-up for
-[`JAVA_EXTERNAL_SDK_REALTIME_DECISION.md`](./JAVA_EXTERNAL_SDK_REALTIME_DECISION.md).
+Status: implemented first WebSocket session slice. This roadmap supersedes the
+archived
+[`JAVA_EXTERNAL_SDK_REALTIME_DECISION.md`](./archive/integrations/2026-05-28_JAVA_EXTERNAL_SDK_REALTIME_DECISION.md)
+decision record that deferred realtime SDK support.
 
 This roadmap upgrades the Java external SDK from polling-only worker sessions
 toward a broader worker SDK: polling remains the stable first path, while
@@ -17,9 +18,8 @@ adaptation without redefining platform kernel ownership.
 - `integrations/xa-mass-java-sdk` is the pure external Java client artifact.
   It owns HTTP client ergonomics, worker topology calls, direct polling calls,
   and managed `PollingWorkerSession`.
-- `WorkerSessions` currently exposes polling only. Public realtime Java
-  sessions are intentionally deferred by
-  [`JAVA_EXTERNAL_SDK_REALTIME_DECISION.md`](./JAVA_EXTERNAL_SDK_REALTIME_DECISION.md).
+- `WorkerSessions` exposes polling and WebSocket sessions. Socket remains out
+  of the Java SDK.
 - `com.xa.mass.client.worker.handler` now owns the minimum transport-neutral
   worker event handler runtime: handler definition, immutable handler
   registry, instance-scoped invocation runtime, invocation result, and result
@@ -27,9 +27,11 @@ adaptation without redefining platform kernel ownership.
 - `PollingWorkerSession` adapts polling dispatch into the SDK handler runtime
   and reports through a session-owned result sink backed by worker HTTP submit
   by default.
-- `integrations/samples/java/worker-websocket` is a standalone sample POM that
-  uses JDK `WebSocket` directly. It proves the current adapter path, but it is
-  not yet an SDK-owned session API.
+- `WebSocketWorkerSession` adapts canonical WebSocket dispatch frames into the
+  same SDK handler runtime and sends canonical result frames through a bounded
+  outbound queue.
+- `integrations/samples/java` has been retired. Java WebSocket proof now runs
+  through scenario-launcher and `workerSessions().webSocket()`.
 - `integrations/xa-mass-worker-pack` owns sample/dev worker behavior. Its
   command/fault routes are useful SDK input, but sample fault behavior must not
   become public SDK behavior.
@@ -41,10 +43,9 @@ adaptation without redefining platform kernel ownership.
   `xa-mass-base`, `xa-mass-base` is not a valid production dependency for the
   external Java SDK. Treat that package as current in-repo placement, not as
   the future public SDK contract owner.
-- Current WebSocket/socket realtime samples encode canonical task
-  dispatch/result frames closely enough to justify a protocol design pass, but
-  lifecycle, reconnect, command delivery, acknowledgement, and presence
-  semantics are not yet a stable public SDK contract.
+- Current WebSocket session support covers task dispatch/result frames,
+  reconnect attempts, and adapter-owned presence. Command delivery and socket
+  sessions are not part of the first public SDK contract.
 
 External source candidates to study during WSDK-0:
 
@@ -377,10 +378,12 @@ Verification candidates:
 
 ```powershell
 mvn -pl integrations/xa-mass-java-sdk test
-mvn -pl xa-mass-server -am "-Dtest=JavaPollingWorkerBlackBoxIntegrationTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
+mvn -pl xa-mass-server -am "-Dtest=JavaScenarioLauncherBlackBoxIntegrationTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 ```
 
 ## WSDK-3: Public WebSocket Worker Protocol Contract
+
+Status: implemented minimum contract.
 
 Scope:
 
@@ -420,11 +423,12 @@ Acceptance:
 Verification candidates:
 
 ```powershell
-mvn -pl xa-mass-server -am "-Dtest=JavaWebSocketWorkerBlackBoxIntegrationTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
-mvn -q -f integrations/samples/java/worker-websocket/pom.xml -DskipTests package
+mvn -pl xa-mass-server -am "-Dtest=JavaScenarioLauncherBlackBoxIntegrationTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 ```
 
 ## WSDK-4: Reliable WebSocket Worker Session
+
+Status: implemented first production SDK session.
 
 Scope:
 
@@ -470,22 +474,22 @@ Verification candidates:
 
 ```powershell
 mvn -pl integrations/xa-mass-java-sdk test
-mvn -pl xa-mass-server -am "-Dtest=JavaWebSocketWorkerBlackBoxIntegrationTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
+mvn -pl xa-mass-server -am "-Dtest=JavaScenarioLauncherBlackBoxIntegrationTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 ```
 
-## WSDK-5: Java WebSocket Sample Convergence
+## WSDK-5: Java WebSocket Proof Convergence
+
+Status: implemented through scenario-launcher. Strategic adoption and sample
+retirement were completed by the archived
+[`INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md`](./archive/integrations/2026-06-01_INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md).
 
 Scope:
 
-- update `integrations/samples/java/worker-websocket` to consume
-  `xa-mass-java-sdk` WebSocket worker sessions.
-- make the sample's event handlers use the worker event handler runtime when
-  useful.
-- keep sample output evidence used by black-box tests, including worker
+- if worker-pack or scenario-launcher can provide the same WebSocket proof
+  through an SDK-backed strategic consumer, use that proof instead and demote
+  or remove the standalone Java WebSocket sample.
+- keep output evidence used by black-box tests, including worker
   identity, adapter/transport, eventCode, and integration probe fields.
-- decide intentionally whether the sample remains a standalone `-f` POM or
-  joins the root reactor.
-- update sample README and black-box process paths in the same slice.
 
 Out of scope:
 
@@ -495,18 +499,20 @@ Out of scope:
 
 Acceptance:
 
-- Java WebSocket sample no longer owns raw reconnect/frame boilerplate that the
-  SDK should own.
-- black-box Java WebSocket worker proof still passes.
-- sample build ownership is documented and matches Maven wiring.
+- Java WebSocket proof no longer relies on raw reconnect/frame boilerplate that
+  the SDK should own.
+- black-box Java WebSocket worker proof still passes through either the
+  transitional sample or an SDK-backed strategic consumer.
+- if the standalone sample remains, sample build ownership is documented and
+  matches Maven wiring, and the sample has an explicit retirement trigger in
+  the integrations adoption roadmap.
 - no sample-only helper is promoted into the public SDK without an owner
   decision.
 
 Verification candidates:
 
 ```powershell
-mvn -q -f integrations/samples/java/worker-websocket/pom.xml -DskipTests package
-mvn -pl xa-mass-server -am "-Dtest=JavaWebSocketWorkerBlackBoxIntegrationTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
+mvn -pl xa-mass-server -am "-Dtest=JavaScenarioLauncherBlackBoxIntegrationTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 ```
 
 ## WSDK-6: Worker-Pack Event Handler Runtime Convergence

@@ -1,7 +1,7 @@
 # Java External SDK Roadmap
 
-Status: current mainline complete. JSDK-0 inventory is complete in
-[`JAVA_EXTERNAL_SDK_INVENTORY.md`](./JAVA_EXTERNAL_SDK_INVENTORY.md).
+Status: archived completed mainline roadmap. JSDK-0 inventory is archived in
+[`JAVA_EXTERNAL_SDK_INVENTORY.md`](./2026-05-28_JAVA_EXTERNAL_SDK_INVENTORY.md).
 JSDK-1 module skeleton and HTTP core are implemented under
 [`../integrations/xa-mass-java-sdk`](../integrations/xa-mass-java-sdk).
 JSDK-2 task client mainline is implemented in the same module.
@@ -9,24 +9,23 @@ JSDK-3 worker topology and direct polling worker client are implemented in the
 same module.
 JSDK-4 managed polling worker session mainline is implemented with SDK
 fake-server tests and a real server black-box polling proof.
-JSDK-5 Java polling sample convergence is implemented for
-`integrations/samples/java/worker-polling`: it now builds through the root reactor and uses
-`xa-mass-java-sdk` managed polling sessions. Broad sample path movement is
-implemented by ILC-1 in
-[`INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md`](./INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md).
+JSDK-5 Java polling sample convergence has been superseded by
+[`INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md`](./2026-06-01_INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md):
+standalone Java samples were retired and Java SDK proof moved to
+`integrations/xa-mass-scenario-launcher`.
 JSDK-6 realtime decision is recorded in
-[`JAVA_EXTERNAL_SDK_REALTIME_DECISION.md`](./JAVA_EXTERNAL_SDK_REALTIME_DECISION.md):
-do not add public realtime Java sessions until a dedicated protocol contract
-exists. Follow-up realtime and worker event-handler SDK planning lives in
-[`JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md`](./JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md).
+[`JAVA_EXTERNAL_SDK_REALTIME_DECISION.md`](./2026-05-28_JAVA_EXTERNAL_SDK_REALTIME_DECISION.md):
+WebSocket is now the public realtime Java session; socket remains outside the
+Java SDK. Follow-up realtime and worker event-handler SDK planning lives in
+[`JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md`](../../JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md).
 Follow-up public SDK hardening, versioning, documentation, and publication
 readiness lives in
-[`JAVA_EXTERNAL_SDK_PUBLIC_READINESS_ROADMAP.md`](./JAVA_EXTERNAL_SDK_PUBLIC_READINESS_ROADMAP.md).
+[`JAVA_EXTERNAL_SDK_PUBLIC_READINESS_ROADMAP.md`](../../JAVA_EXTERNAL_SDK_PUBLIC_READINESS_ROADMAP.md).
 Follow-up internal Java adoption across `integrations/` lives in
-[`INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md`](./INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md).
+[`INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md`](./2026-06-01_INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md).
 Broad sample path convergence and clean server demo bootstrap extraction
 continue in
-[`INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md`](./INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md).
+[`INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md`](../../INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md).
 
 This roadmap defines a new `xa-mass-java-sdk` artifact for repo-external Java
 clients. It is intentionally separate from the current `xa-mass-sdk`, and it
@@ -478,7 +477,7 @@ extra failure modes.
 ### Realtime Worker Client
 
 Realtime Java client support is deferred by
-[`JAVA_EXTERNAL_SDK_REALTIME_DECISION.md`](./JAVA_EXTERNAL_SDK_REALTIME_DECISION.md).
+[`JAVA_EXTERNAL_SDK_REALTIME_DECISION.md`](./2026-05-28_JAVA_EXTERNAL_SDK_REALTIME_DECISION.md).
 The current Java WebSocket/socket samples prove protocol feasibility, but the
 SDK must not lock a public realtime API until frame lifecycle, command frames,
 reconnect behavior, and route identity are documented as a stable external
@@ -793,7 +792,9 @@ Acceptance:
 
 ### JSDK-5.5: Worker Pack Integration Convergence
 
-Status: conditional, not currently actionable as a code migration.
+Status: superseded as a follow-up execution track by
+[`INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md`](./2026-06-01_INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md)
+IJS-3. The audit below remains as historical input for that roadmap.
 
 Current audit:
 
@@ -808,8 +809,8 @@ Current audit:
 
 Execution rule: do not add a worker-pack dependency on `xa-mass-java-sdk` until
 there is an actual public HTTP worker-control caller to migrate, or until
-JSDK-6 defines a public realtime Java client contract that worker-pack can
-consume without losing its sample fault/runtime ownership.
+the realtime protocol roadmap delivers a public realtime Java client contract
+that worker-pack can consume without losing its sample fault/runtime ownership.
 
 Scope:
 
@@ -820,7 +821,8 @@ Scope:
   capability/state report, command ack, and other HTTP worker-control calls.
 - keep worker-pack sample command/fault runtime local to worker-pack.
 - keep WebSocket/socket frame transport code on the existing worker-pack sample
-  clients until JSDK-6 defines a public realtime Java client contract.
+  clients until the realtime protocol roadmap defines a public realtime Java
+  client contract.
 - document the expected middle state: worker-pack may still depend on
   `xa-mass-sdk` and transport implementation modules for embedded/realtime
   sample paths while also depending on `xa-mass-java-sdk` for public HTTP
@@ -846,8 +848,9 @@ Acceptance:
   and worker-control boilerplate.
 - mixed worker-pack dependencies are documented as an expected transition
   state; `integrations/` placement does not imply dependency purity.
-- realtime frame handling remains owned by worker-pack samples until JSDK-6
-  lands.
+- realtime frame handling remains owned by worker-pack samples until the
+  realtime protocol roadmap lands a public SDK session and IJS-3/IJS-4 adopts
+  it.
 - all executable sample paths and test launch commands use the new
   `integrations/` locations.
 
@@ -930,7 +933,7 @@ Minimum verification per phase:
 | JSDK-3 | worker topology fake-server tests, Java polling sample compile |
 | JSDK-4 | real server black-box polling worker test |
 | JSDK-5 | end-to-end sample proof through task result read |
-| JSDK-5.5 | worker-pack integration tests and path migration proof |
+| JSDK-5.5 | superseded by IJS-3 in `INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md`; use that roadmap's worker-pack verification |
 | JSDK-6 | protocol contract review plus realtime black-box test |
 
 Full reactor is not required after every phase, but JSDK-4 and later should run
@@ -946,7 +949,7 @@ only visible through dispatch/result convergence.
   registry as part of this completed mainline roadmap. Initial versioning
   follows the platform reactor here; external publication readiness is tracked
   by
-  [`JAVA_EXTERNAL_SDK_PUBLIC_READINESS_ROADMAP.md`](./JAVA_EXTERNAL_SDK_PUBLIC_READINESS_ROADMAP.md).
+  [`JAVA_EXTERNAL_SDK_PUBLIC_READINESS_ROADMAP.md`](../../JAVA_EXTERNAL_SDK_PUBLIC_READINESS_ROADMAP.md).
 - Do not generate a broad OpenAPI client as the first implementation.
 - Do not expose internal debug routes as stable client APIs.
 - Do not make task creation auto-run by default.

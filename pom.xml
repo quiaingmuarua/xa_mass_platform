@@ -43,7 +43,6 @@
         <module>xa-mass-sdk</module>
         <module>integrations/xa-mass-java-sdk</module>
         <module>integrations/xa-mass-scenario-launcher</module>
-        <module>integrations/samples/java/worker-polling</module>
         <module>xa-mass-testing</module>
         <module>integrations/xa-mass-worker-pack</module>
         <module>xa-mass-server</module>

@@ -4,7 +4,6 @@ import com.xa.mass.api.internal.SdkCredentialAuthSupport;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.AbstractTraceObservedE2eTest;
-import com.xa.mass.server.e2e.support.ExternalJavaWorkerProcess;
 import com.xa.mass.server.e2e.support.ExternalNodeWorkerProcess;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.PrincipalContext;
@@ -168,24 +167,8 @@ class ExternalWorkerPublicContractTraceObservedIntegrationTest extends AbstractT
                     spec.workerKey(),
                     spec.workerGroupId()
             );
-            case JAVA_POLLING -> ExternalJavaWorkerProcess.startPollingSample(
-                    baseUrl,
-                    spec.workerId(),
-                    spec.workerKey(),
-                    spec.workerGroupId()
-            );
             case NODE_WEBSOCKET -> ExternalNodeWorkerProcess.startWebSocketSample(spec.workerId(), wsUri);
-            case JAVA_WEBSOCKET -> ExternalJavaWorkerProcess.startWebSocketSample(spec.workerId(), wsUri);
             case NODE_SOCKET -> ExternalNodeWorkerProcess.startSocketSample(
-                    spec.workerId(),
-                    "127.0.0.1",
-                    waitForPositiveIntSystemProperty(
-                            SocketTransportServer.BOUND_PORT_PROPERTY,
-                            "Socket server did not publish a bound port",
-                            20,
-                            100L
-                    ));
-            case JAVA_SOCKET -> ExternalJavaWorkerProcess.startSocketSample(
                     spec.workerId(),
                     "127.0.0.1",
                     waitForPositiveIntSystemProperty(
@@ -198,18 +181,12 @@ class ExternalWorkerPublicContractTraceObservedIntegrationTest extends AbstractT
     }
 
     private void assertWorkerProcessAlive(AutoCloseable process, ExternalWorkerCase spec) {
-        switch (spec.kind()) {
-            case NODE_POLLING, NODE_WEBSOCKET, NODE_SOCKET ->
-                    ((ExternalNodeWorkerProcess) process).assertAlive(spec.workerId() + " exited before reaching ONLINE");
-            case JAVA_POLLING, JAVA_WEBSOCKET, JAVA_SOCKET ->
-                    ((ExternalJavaWorkerProcess) process).assertAlive(spec.workerId() + " exited before reaching ONLINE");
-        }
+        ((ExternalNodeWorkerProcess) process).assertAlive(spec.workerId() + " exited before reaching ONLINE");
     }
 
     private String capturedOutput(AutoCloseable process) {
         return switch (process) {
             case ExternalNodeWorkerProcess node -> node.capturedOutput();
-            case ExternalJavaWorkerProcess javaProcess -> javaProcess.capturedOutput();
             default -> "";
         };
     }
@@ -223,21 +200,15 @@ class ExternalWorkerPublicContractTraceObservedIntegrationTest extends AbstractT
     private static Stream<ExternalWorkerCase> cases() {
         return Stream.of(
                 new ExternalWorkerCase(WorkerKind.NODE_POLLING, "node-polling-public-contract", "node-parity-polling-001", "node-parity-polling-key", "polling", "node-polling-worker", "node-polling-crawler", "node", false),
-                new ExternalWorkerCase(WorkerKind.JAVA_POLLING, "java-polling-public-contract", "java-parity-polling-001", "java-parity-polling-key", "polling", "java-polling-worker", "java-polling-crawler", "java", false),
                 new ExternalWorkerCase(WorkerKind.NODE_WEBSOCKET, "node-websocket-public-contract", "node-parity-websocket-001", "node-parity-websocket-key", "websocket", "node-websocket-worker", "node-websocket-crawler", "node", true),
-                new ExternalWorkerCase(WorkerKind.JAVA_WEBSOCKET, "java-websocket-public-contract", "java-parity-websocket-001", "java-parity-websocket-key", "websocket", "java-websocket-worker", "java-websocket-crawler", "java", true),
-                new ExternalWorkerCase(WorkerKind.NODE_SOCKET, "node-socket-public-contract", "node-parity-socket-001", "node-parity-socket-key", "socket", "node-socket-worker", "node-socket-crawler", "node", true),
-                new ExternalWorkerCase(WorkerKind.JAVA_SOCKET, "java-socket-public-contract", "java-parity-socket-001", "java-parity-socket-key", "socket", "java-socket-worker", "java-socket-crawler", "java", true)
+                new ExternalWorkerCase(WorkerKind.NODE_SOCKET, "node-socket-public-contract", "node-parity-socket-001", "node-parity-socket-key", "socket", "node-socket-worker", "node-socket-crawler", "node", true)
         );
     }
 
     private enum WorkerKind {
         NODE_POLLING,
-        JAVA_POLLING,
         NODE_WEBSOCKET,
-        JAVA_WEBSOCKET,
-        NODE_SOCKET,
-        JAVA_SOCKET
+        NODE_SOCKET
     }
 
     private record ExternalWorkerCase(WorkerKind kind,

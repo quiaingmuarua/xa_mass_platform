@@ -24,9 +24,10 @@ startup-behavior regressions can be isolated.
 
 - `integrations/xa-mass-java-sdk` already exists and is the pure external Java
   client SDK.
-- external worker samples are converging under `integrations/samples` with
-  language-first grouping such as `java/worker-polling`,
-  `node/worker-websocket`, and `dev/scenario`.
+- external worker samples have converged under `integrations/samples`; Java
+  samples were later retired by
+  [`INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md`](./archive/integrations/2026-06-01_INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md),
+  while Node samples and `dev/scenario` remain adapter/dev fixtures.
 - `integrations/xa-mass-worker-pack` is the official worker reference and
   sample/dev capability module; Maven artifactId remains `xa-mass-worker-pack`.
 - The dev sample launcher already uses public task and worker APIs for many
@@ -48,11 +49,8 @@ artifacts:
 integrations/
   xa-mass-java-sdk/
   xa-mass-worker-pack/
+  xa-mass-scenario-launcher/
   samples/
-    java/
-      worker-polling/
-      worker-websocket/
-      worker-socket/
     node/
       worker-polling/
       worker-websocket/
@@ -61,9 +59,11 @@ integrations/
       scenario/
 ```
 
-The exact sample leaf names may be adjusted during inventory, but the grouping
-should be language-first. Transport is an implementation dimension inside each
-language sample, not the top-level repository story.
+Java sample leaves shown in older ILC inventory text were transitional and are
+now retired. Java proof lives in `xa-mass-java-sdk` plus
+`xa-mass-scenario-launcher`; Node samples remain language-first adapter
+fixtures. Transport is an implementation dimension inside each language sample,
+not the top-level repository story.
 
 `integrations/` is an ownership boundary, not a claim that every module under it
 has identical dependency purity. `integrations/xa-mass-java-sdk` must remain a
@@ -126,13 +126,13 @@ Scope:
   docs, CI commands, and test helpers.
 - Produce an authoritative target path table for every moved directory.
 - Split the inventory into Maven module path changes versus plain filesystem
-  reference changes. These are different migration surfaces:
-  `integrations/samples/java/worker-polling` is currently a root reactor module, while Node
-  samples and some Java realtime samples are launched or built by explicit file
-  paths.
+  reference changes. During ILC-1 the Java polling sample was a root reactor
+  module, while Node samples and Java realtime samples were launched or built
+  by explicit file paths. Those Java sample paths are now retired by the Java
+  SDK adoption roadmap.
 - Decide whether Java websocket/socket samples remain standalone POM samples or
-  become root reactor modules after the move. Do not accidentally add them to
-  the reactor as a side effect of directory cleanup.
+  become root reactor modules after the move. This was an ILC-time decision;
+  both Java realtime samples are now removed instead of promoted.
 
 Acceptance:
 
@@ -147,14 +147,17 @@ Acceptance:
 
 ### ILC-1 Move Samples Under `integrations/samples`
 
-Status: complete. Root `samples/` has been removed from tracked files, Java
-samples live under `integrations/samples/java`, Node samples live under
-`integrations/samples/node`, and the dev scenario launcher/configs live under
-`integrations/samples/dev/scenario`.
+Status: complete, then superseded for Java samples. Root `samples/` has been
+removed from tracked files. Node samples live under `integrations/samples/node`,
+and the dev scenario launcher/configs live under
+`integrations/samples/dev/scenario`. The transitional Java samples that lived
+under `integrations/samples/java` were later retired by the Java SDK adoption
+roadmap.
 
 Scope:
 
-- Move Java samples to `integrations/samples/java/...`.
+- Move Java samples to `integrations/samples/java/...` during ILC-1, then
+  retire them once scenario-launcher provides the Java SDK proof.
 - Move Node samples to `integrations/samples/node/...`.
 - Move dev scenario launcher/configs to `integrations/samples/dev/scenario/...`
   or a similarly explicit dev scenario path.
@@ -173,9 +176,10 @@ Scope:
 Acceptance:
 
 - No root-level `samples/` directory remains in tracked files.
-- Root reactor builds the Java polling sample from its new path.
-- Node and Java worker black-box tests resolve their sample paths from the new
-  layout.
+- Root reactor built the Java polling sample from its new path during ILC-1;
+  that module is now removed.
+- Node worker black-box tests resolve their sample paths from the new layout.
+  Java worker black-box proof now uses `JavaScenarioLauncherBlackBoxIntegrationTest`.
 - Node sample movement does not require POM updates; it requires runtime path,
   launcher config, and documentation updates.
 - `rg "samples/"` has no stale root-path references, except historical notes
@@ -377,14 +381,14 @@ Minimum checks after layout phases:
 
 ```bash
 mvn -pl integrations/xa-mass-java-sdk -am test
-mvn -pl integrations/samples/java/worker-polling -am -DskipTests package
+mvn -pl integrations/xa-mass-scenario-launcher -am -DskipTests package
 mvn -pl integrations/xa-mass-worker-pack -am test
 ```
 
 Minimum checks after server bootstrap extraction:
 
 ```bash
-mvn -pl xa-mass-server -am -Dtest=JavaPollingWorkerBlackBoxIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -pl xa-mass-server -am -Dtest=JavaScenarioLauncherBlackBoxIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test
 mvn -pl xa-mass-server -am -Dtest=DevSampleWorkerLauncherIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test
 mvn -pl xa-mass-server -am -Dtest=CleanServerStartupIntegrationTest,ServerMainSourceArchitectureGuardTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```

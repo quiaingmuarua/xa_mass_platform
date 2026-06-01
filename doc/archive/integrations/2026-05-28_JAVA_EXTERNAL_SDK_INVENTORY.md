@@ -1,7 +1,7 @@
 # Java External SDK Inventory
 
-Status: current JSDK-0 inventory for
-[`JAVA_EXTERNAL_SDK_ROADMAP.md`](./JAVA_EXTERNAL_SDK_ROADMAP.md).
+Status: archived JSDK-0 inventory for
+[`JAVA_EXTERNAL_SDK_ROADMAP.md`](./2026-05-28_JAVA_EXTERNAL_SDK_ROADMAP.md).
 
 This inventory is the implementation gate for JSDK-1 through JSDK-4. It records
 the current route set, module placement, dependency decisions, DTO policy, and
@@ -16,7 +16,7 @@ payload API shape for the first `xa-mass-java-sdk` implementation.
 | Public package root | `com.xa.mass.client` |
 | Java baseline | Java 21, matching the platform reactor |
 | First implementation scope | HTTP task client, worker topology client, direct polling worker calls, managed polling worker session |
-| Realtime scope | deferred to JSDK-6 after public frame/protocol contract |
+| Realtime scope | WebSocket worker session implemented by the realtime/adoption follow-up; socket remains outside the Java SDK |
 | Publication | reactor-scoped only; no Maven Central or external registry publication in this roadmap |
 | JSON mapper | Jackson internally, because server JSON is Jackson-shaped and archive streaming benefits from Jackson/core streaming support |
 | Public payload API | SDK-owned `MassPayload` / `PayloadView`; no Jackson `JsonNode` or Gson `JsonElement` in the primary public handler API |
@@ -46,12 +46,9 @@ Root reactor entry:
 <module>integrations/xa-mass-java-sdk</module>
 ```
 
-JSDK-5 also adds the Java polling sample to the root reactor so it can consume
-the local SDK artifact without publishing it:
-
-```xml
-<module>integrations/samples/java/worker-polling</module>
-```
+The former Java polling sample reactor module was retired by the integrations
+adoption roadmap. Java executable SDK proof now lives in
+`integrations/xa-mass-scenario-launcher`.
 
 `integrations/` means external integration ownership: public clients,
 official worker references, runnable sample workers, and black-box integration

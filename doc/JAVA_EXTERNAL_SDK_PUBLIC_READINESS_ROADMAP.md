@@ -2,10 +2,10 @@
 
 Status: current mainline complete for making
 [`../integrations/xa-mass-java-sdk`](../integrations/xa-mass-java-sdk) a real
-external JVM SDK for local/internal staging. Public registry publication and
-realtime WebSocket sessions remain explicit follow-up decisions. Internal Java
-adoption across `integrations/` is tracked separately in
-[`INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md`](./INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md).
+external JVM SDK for local/internal staging. Public registry publication remains
+an explicit follow-up decision. Internal Java adoption across `integrations/`
+was completed in the archived
+[`INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md`](./archive/integrations/2026-06-01_INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md).
 
 Current progress:
 
@@ -31,14 +31,14 @@ mvn -pl integrations/xa-mass-java-sdk dependency:tree
 mvn -pl integrations/xa-mass-java-sdk dependency:list -DincludeScope=runtime -DexcludeTransitive=false
 mvn -pl integrations/xa-mass-java-sdk -DskipTests source:jar javadoc:jar
 mvn -f integrations/xa-mass-java-sdk/pom.consumer.xml -DskipTests package
-mvn -pl integrations/samples/java/worker-polling -am -DskipTests package
 mvn -pl integrations/xa-mass-scenario-launcher -am -DskipTests package
-mvn -pl xa-mass-server -am "-Dtest=JavaPollingWorkerBlackBoxIntegrationTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
+mvn -pl xa-mass-server -am "-Dtest=JavaScenarioLauncherBlackBoxIntegrationTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 ```
 
-The completed [`JAVA_EXTERNAL_SDK_ROADMAP.md`](./JAVA_EXTERNAL_SDK_ROADMAP.md)
+The archived
+[`JAVA_EXTERNAL_SDK_ROADMAP.md`](./archive/integrations/2026-05-28_JAVA_EXTERNAL_SDK_ROADMAP.md)
 created a pure remote Java client and polling worker session. This roadmap is
-the next readiness track: it hardens the artifact, API surface, dependency
+the active readiness track: it hardens the artifact, API surface, dependency
 guards, documentation, and release shape so external callers can depend on it
 without pulling in the platform builder.
 
@@ -49,7 +49,7 @@ without pulling in the platform builder.
   repo-external callers.
 - `integrations/xa-mass-java-sdk` is the correct external SDK owner. It talks
   to a running `xa-mass-server` through public HTTP worker/task APIs and owns
-  managed polling sessions.
+  managed polling and WebSocket sessions.
 - current production dependencies are small: JDK `HttpClient` plus Jackson.
   The module does not currently depend on `xa-mass-sdk`, engine, server,
   worker-runtime, transport adapters, worker-pack, or `xa-mass-base`.
@@ -313,20 +313,19 @@ Acceptance:
 - polling session does not accumulate handler/result logic that WebSocket must
   duplicate later.
 - SDK docs explain which features are stable now and which are planned.
-- realtime WebSocket support remains separately gated by its protocol and
-  lifecycle slices.
+- realtime WebSocket support is implemented in the SDK; socket remains outside
+  the Java public SDK.
 
 Verification candidates:
 
 ```powershell
 mvn -pl integrations/xa-mass-java-sdk test
-mvn -pl xa-mass-server -am "-Dtest=JavaPollingWorkerBlackBoxIntegrationTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
+mvn -pl xa-mass-server -am "-Dtest=JavaScenarioLauncherBlackBoxIntegrationTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 ```
 
 ## PSDK-4: External Documentation And Samples
 
-Status: implemented for current polling SDK documentation and sample build
-proof. Realtime docs remain planned only.
+Status: implemented for current SDK documentation and scenario-launcher proof.
 
 Scope:
 
@@ -341,9 +340,8 @@ Scope:
   `xa-mass-java-sdk` instead of `xa-mass-sdk`.
 - document Java baseline, supported runtime target, dependency expectations,
   and auth modes.
-- ensure samples build from a clean checkout with clear commands.
-- keep realtime docs marked planned until protocol contract and implementation
-  land.
+- ensure the scenario launcher builds from a clean checkout with clear
+  commands.
 
 Out of scope:
 
@@ -361,7 +359,7 @@ Verification candidates:
 
 ```powershell
 mvn -pl integrations/xa-mass-java-sdk test
-mvn -pl integrations/samples/java/worker-polling -am -DskipTests package
+mvn -pl integrations/xa-mass-scenario-launcher -am -DskipTests package
 ```
 
 ## PSDK-5: Release And Publication Readiness

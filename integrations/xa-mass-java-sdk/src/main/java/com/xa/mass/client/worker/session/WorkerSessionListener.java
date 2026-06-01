@@ -16,6 +16,9 @@ public interface WorkerSessionListener {
     default void onPollFailure(WorkerSessionPollFailure failure) {
     }
 
+    default void onConnectionFailure(WorkerSessionConnectionFailure failure) {
+    }
+
     default void onShutdownFailure(String workerId, Throwable failure) {
     }
 }

@@ -12,11 +12,9 @@ import org.junit.platform.suite.api.Suite;
         ExternalWorkerPublicContractTraceObservedIntegrationTest.class,
         ExternalWorkerPollingApiIntegrationTest.class,
         NodePollingWorkerBlackBoxIntegrationTest.class,
-        JavaPollingWorkerBlackBoxIntegrationTest.class,
         NodeWebSocketWorkerBlackBoxIntegrationTest.class,
-        JavaWebSocketWorkerBlackBoxIntegrationTest.class,
         NodeSocketWorkerBlackBoxIntegrationTest.class,
-        JavaSocketWorkerBlackBoxIntegrationTest.class
+        JavaScenarioLauncherBlackBoxIntegrationTest.class
 })
 class ExternalWorkerParitySuite {
 }

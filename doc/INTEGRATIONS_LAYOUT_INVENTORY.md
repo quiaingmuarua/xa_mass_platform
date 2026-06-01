@@ -3,7 +3,11 @@
 Status: ILC-0 complete for
 [`INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md`](./INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md).
 ILC-1 sample movement and ILC-2 worker-pack movement are implemented against
-this inventory.
+this inventory. The Java sample targets recorded here are historical ILC move
+targets; they were later removed by
+[`INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md`](./archive/integrations/2026-06-01_INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md).
+Current Java integration proof lives in `integrations/xa-mass-java-sdk` and
+`integrations/xa-mass-scenario-launcher`, not under `integrations/samples/java`.
 
 Date: 2026-05-28.
 
@@ -17,9 +21,9 @@ files without changing build ownership by accident.
 | Pre-move path | Target path | Kind | ILC slice | Decision |
 | --- | --- | --- | --- | --- |
 | `samples/README.md` | `integrations/samples/README.md` | docs | ILC-1 | move with sample tree |
-| `samples/worker-polling/java` | `integrations/samples/java/worker-polling` | Java sample, root reactor module | ILC-1 | keep in root reactor at new path |
-| `samples/worker-websocket/java` | `integrations/samples/java/worker-websocket` | Java sample, standalone POM | ILC-1 | keep standalone; do not add to root reactor in ILC-1 |
-| `samples/worker-socket/java` | `integrations/samples/java/worker-socket` | Java sample, standalone POM | ILC-1 | keep standalone; do not add to root reactor in ILC-1 |
+| `samples/worker-polling/java` | `integrations/samples/java/worker-polling` | Java sample, historical root reactor module | ILC-1 | moved during ILC-1, later retired by Java SDK adoption |
+| `samples/worker-websocket/java` | `integrations/samples/java/worker-websocket` | Java sample, historical standalone POM | ILC-1 | moved during ILC-1, later retired by Java SDK adoption |
+| `samples/worker-socket/java` | `integrations/samples/java/worker-socket` | Java sample, historical standalone POM | ILC-1 | moved during ILC-1, later retired by Java SDK adoption |
 | `samples/worker-polling/node` | `integrations/samples/node/worker-polling` | Node sample script | ILC-1 | move as filesystem/runtime asset |
 | `samples/worker-websocket/node` | `integrations/samples/node/worker-websocket` | Node sample script | ILC-1 | move as filesystem/runtime asset |
 | `samples/worker-socket/node` | `integrations/samples/node/worker-socket` | Node sample script | ILC-1 | move as filesystem/runtime asset |
@@ -36,7 +40,7 @@ Pre-ILC-1 root reactor entries:
 <module>xa-mass-worker-pack</module>
 ```
 
-ILC-1 should change only the Java polling sample module:
+ILC-1 changed only the Java polling sample module:
 
 ```xml
 <module>integrations/samples/java/worker-polling</module>
@@ -48,15 +52,14 @@ ILC-2 should change worker-pack:
 <module>integrations/xa-mass-worker-pack</module>
 ```
 
-Standalone Java sample POMs:
+Historical standalone Java sample POMs, now removed:
 
 - `integrations/samples/java/worker-websocket/pom.xml`
 - `integrations/samples/java/worker-socket/pom.xml`
 
-Decision: keep them standalone during ILC-1. They are built by
+Decision during ILC-1: keep them standalone. They were built by
 `ExternalJavaWorkerProcess` using `mvn -f ... package`, not by the root reactor.
-Adding them to the root reactor would be a build-ownership change and should be
-handled by a separate roadmap item if needed.
+The Java SDK adoption roadmap later removed those samples and the helper.
 
 Node samples have no Maven ownership. ILC-1 should update script paths and docs
 only.
@@ -68,7 +71,8 @@ only.
 File:
 `xa-mass-server/src/test/java/com/xa/mass/server/e2e/support/ExternalJavaWorkerProcess.java`
 
-Target references after ILC-1:
+Historical target references after ILC-1, before Java SDK adoption removed the
+sample helper:
 
 - `integrations/samples/java/worker-polling/target/worker-polling-java-sample.jar`
 - `integrations/samples/java/worker-websocket/target/worker-websocket-java-sample.jar`
@@ -78,12 +82,15 @@ Target references after ILC-1:
 - `integrations/samples/java/worker-socket/pom.xml`
 - repo-root discovery checks `integrations/samples/java/worker-polling/pom.xml`
 
-ILC-1 action:
+Historical ILC-1 action:
 
 - update all paths to `integrations/samples/java/...`
 - keep polling build as `-pl integrations/samples/java/worker-polling -am`
 - keep websocket/socket builds as standalone `-f integrations/samples/java/.../pom.xml`
 - update repo-root discovery to use the new polling sample POM path
+
+Current action: use `ExternalJavaScenarioLauncherProcess` and
+`JavaScenarioLauncherBlackBoxIntegrationTest` for Java SDK black-box proof.
 
 ### Server E2E Node Sample Helper
 
@@ -161,11 +168,12 @@ ILC-1 updates:
 - `samples/README.md`: move to `integrations/samples/README.md` and update
   all commands
 - `integrations/samples/node/worker-*/README.md`: update `node .../worker.mjs` commands
-- `integrations/samples/java/worker-*/README.md`: update Maven/JAR commands
+- historical `integrations/samples/java/worker-*/README.md`: updated during
+  ILC-1 and later removed by Java SDK adoption
 - `integrations/xa-mass-java-sdk/README.md`: update Java polling sample link
 - `doc/EXTERNAL_WORKER_QUICKSTART.md`: update sample matrix and per-sample
   path text
-- `doc/JAVA_EXTERNAL_SDK_ROADMAP.md` and
+- archived `doc/JAVA_EXTERNAL_SDK_ROADMAP.md` and
   `doc/JAVA_EXTERNAL_SDK_INVENTORY.md`: update current facts once ILC-1 is
   complete
 
@@ -177,7 +185,7 @@ ILC-2 updates:
 - `doc/WORKER_FAULT_MATRIX_ROADMAP.md`
 - `xa-mass-server/README.md`
 - `integrations/xa-mass-worker-pack/README.md` after it moves
-- `doc/JAVA_EXTERNAL_SDK_ROADMAP.md` and
+- archived `doc/JAVA_EXTERNAL_SDK_ROADMAP.md` and
   `doc/JAVA_EXTERNAL_SDK_INVENTORY.md`
 
 ## `samples/dev` Consumer Classification
@@ -228,13 +236,22 @@ server startup path.
 
 ## ILC-1 Verification
 
-Minimum commands:
+Historical ILC-1 commands, no longer current after Java SDK adoption removed
+the Java samples:
 
 ```bash
 mvn -pl integrations/samples/java/worker-polling -am -DskipTests package
 mvn -q -f integrations/samples/java/worker-websocket/pom.xml -DskipTests package
 mvn -q -f integrations/samples/java/worker-socket/pom.xml -DskipTests package
 mvn -pl xa-mass-server -am -Dtest=JavaPollingWorkerBlackBoxIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test
+```
+
+Current Java SDK proof commands:
+
+```bash
+mvn -pl integrations/xa-mass-java-sdk test
+mvn -pl integrations/xa-mass-scenario-launcher -am test
+mvn -pl xa-mass-server -am -Dtest=JavaScenarioLauncherBlackBoxIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Run Node black-box tests if the environment has Node available and the change

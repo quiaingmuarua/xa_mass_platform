@@ -17,11 +17,8 @@ Rules:
 | Sample path | Language | adapterId | transportHint | Entry | Verified black-box test |
 | --- | --- | --- | --- | --- | --- |
 | `worker-polling/node` | Node.js | `polling` | `polling` | `node integrations/samples/node/worker-polling/worker.mjs` | `NodePollingWorkerBlackBoxIntegrationTest` |
-| `worker-polling/java` | Java, via `xa-mass-java-sdk` | `polling` | `polling` | `java -jar integrations/samples/java/worker-polling/target/worker-polling-java-sample.jar` | `JavaPollingWorkerBlackBoxIntegrationTest` |
 | `worker-websocket/node` | Node.js | `websocket` | `realtime` | `node integrations/samples/node/worker-websocket/worker.mjs` | `NodeWebSocketWorkerBlackBoxIntegrationTest` |
-| `worker-websocket/java` | Java | `websocket` | `realtime` | `java -jar integrations/samples/java/worker-websocket/target/worker-websocket-java-sample.jar` | `JavaWebSocketWorkerBlackBoxIntegrationTest` |
 | `worker-socket/node` | Node.js | `socket` | `realtime` | `node integrations/samples/node/worker-socket/worker.mjs` | `NodeSocketWorkerBlackBoxIntegrationTest` |
-| `worker-socket/java` | Java | `socket` | `realtime` | `java -jar integrations/samples/java/worker-socket/target/worker-socket-java-sample.jar` | `JavaSocketWorkerBlackBoxIntegrationTest` |
 
 ## Dev Launcher
 
@@ -62,8 +59,8 @@ realtime sample worker child processes.
 Formal SDK-based scenario registration lives in
 `integrations/xa-mass-scenario-launcher`.
 
-Use it when the goal is to run the dev polling scenario through the Java
-external SDK:
+Use it when the goal is to run task/worker registration plus managed Java SDK
+worker sessions:
 
 ```bash
 ./mvnw -pl integrations/xa-mass-scenario-launcher -am -DskipTests package
@@ -72,14 +69,15 @@ java -jar integrations/xa-mass-scenario-launcher/target/xa-mass-scenario-launche
 
 The Node launcher remains the demo/dev process supervisor for launching sample
 realtime worker child processes. The Java launcher is the formal SDK-composition
-path for WorkerGroup, AdapterNode, NodeGroupBinding, polling Worker runtime, and
-task seeding. Use `--register-only` when you only want control-plane data
-registered and do not want polling worker sessions started.
+path for WorkerGroup, AdapterNode, NodeGroupBinding, polling/WebSocket worker
+sessions, and task seeding. Use `--register-only` when you only want
+control-plane data registered and do not want worker sessions started.
 Task shell/item writes use submitter credentials; task commands such as seal and
 approve use the launcher command credential because task commands are
 operator-style lifecycle actions.
-In launch mode it starts a bounded set of polling workers and auto-approves
-staged tasks that target those started worker groups.
+In launch mode it starts a bounded set of polling workers, starts WebSocket
+workers when `--websocket-url` is supplied, and auto-approves staged tasks that
+target those started worker groups.
 
 Current dev scenario shape:
 
@@ -107,9 +105,8 @@ Every sample should remain provable through an external-process black-box test:
 - polling samples report capability at startup via `:report-capability` and
   bounded worker state via `:report-state`; both go through the public
   `/worker-api/v1` contract
-- the Java polling sample uses `integrations/xa-mass-java-sdk` and its managed
-  `PollingWorkerSession`; raw HTTP polling code should not be reintroduced
-  there
+- Java executable SDK proof lives in `integrations/xa-mass-scenario-launcher`;
+  standalone Java sample apps are not a current product surface
 - polling samples can acknowledge operator-issued worker commands via
   `/commands/{commandId}:ack`
 - engine scheduling still gates task dispatch; samples do not bypass task mainline
@@ -121,7 +118,8 @@ Every sample should remain provable through an external-process black-box test:
 ## Reading Order
 
 - start with [doc/EXTERNAL_WORKER_QUICKSTART.md](../../doc/EXTERNAL_WORKER_QUICKSTART.md)
-- then use the per-sample README under each subdirectory for local commands
+- then use the Node per-sample README or Java scenario-launcher README for
+  local commands
 - use `xa-mass-server` black-box tests as the executable acceptance truth
 
 ## Addition Rule

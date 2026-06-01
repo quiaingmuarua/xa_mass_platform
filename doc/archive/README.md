@@ -10,6 +10,16 @@ code, tests, owner READMEs, and current baseline docs.
 File naming convention: `YYYY-MM-DD_DOCUMENT_NAME.md` where the date is the
 original creation date of the document (not the archive date).
 
+## integrations
+
+| Date | Document | Type |
+| --- | --- | --- |
+| 2026-05-28 | [JAVA_EXTERNAL_SDK_ROADMAP](./integrations/2026-05-28_JAVA_EXTERNAL_SDK_ROADMAP.md) | roadmap |
+| 2026-05-28 | [JAVA_EXTERNAL_SDK_INVENTORY](./integrations/2026-05-28_JAVA_EXTERNAL_SDK_INVENTORY.md) | inventory |
+| 2026-05-28 | [JAVA_EXTERNAL_SDK_REALTIME_DECISION](./integrations/2026-05-28_JAVA_EXTERNAL_SDK_REALTIME_DECISION.md) | decision |
+| 2026-06-01 | [INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP](./integrations/2026-06-01_INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md) | roadmap |
+| 2026-06-01 | [INTEGRATIONS_JAVA_SDK_ADOPTION_INVENTORY](./integrations/2026-06-01_INTEGRATIONS_JAVA_SDK_ADOPTION_INVENTORY.md) | inventory |
+
 ## xa-mass-engine
 
 | Date | Document | Type |

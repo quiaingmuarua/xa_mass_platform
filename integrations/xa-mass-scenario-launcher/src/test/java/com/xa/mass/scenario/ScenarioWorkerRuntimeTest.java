@@ -18,6 +18,7 @@ class ScenarioWorkerRuntimeTest {
     void selectsOnlyPollingLaunchWorkersWithCap() {
         List<WorkerScenarioSpec> selected = ScenarioWorkerRuntime.launchablePollingSpecs(List.of(
                 worker("ws-worker", "websocket", "realtime", null),
+                worker("socket-worker", "socket", "realtime", null),
                 worker("api-worker-1", "polling", "polling", "api-online"),
                 worker("api-worker-2", "polling", "polling", "api-online")
         ), 1);
@@ -34,6 +35,29 @@ class ScenarioWorkerRuntimeTest {
         ), 0);
 
         assertEquals(2, selected.size());
+    }
+
+    @Test
+    void selectsOnlyWebSocketLaunchWorkersWhenEndpointExists() {
+        List<WorkerScenarioSpec> selected = ScenarioWorkerRuntime.launchableWebSocketSpecs(List.of(
+                worker("ws-worker-1", "websocket", "realtime", null),
+                worker("ws-worker-2", "websocket", null, "websocket"),
+                worker("socket-worker", "socket", "realtime", null),
+                worker("api-worker", "polling", "polling", "api-online")
+        ), true);
+
+        assertEquals(2, selected.size());
+        assertEquals("ws-worker-1", selected.get(0).workerId());
+        assertEquals("ws-worker-2", selected.get(1).workerId());
+    }
+
+    @Test
+    void websocketLaunchRequiresEndpoint() {
+        List<WorkerScenarioSpec> selected = ScenarioWorkerRuntime.launchableWebSocketSpecs(List.of(
+                worker("ws-worker", "websocket", "realtime", null)
+        ), false);
+
+        assertTrue(selected.isEmpty());
     }
 
     @Test

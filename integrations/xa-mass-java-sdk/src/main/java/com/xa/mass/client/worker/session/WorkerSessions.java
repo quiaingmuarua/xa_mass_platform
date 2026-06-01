@@ -14,4 +14,8 @@ public final class WorkerSessions {
     public PollingWorkerSession.Builder polling() {
         return PollingWorkerSession.builder(workerClient);
     }
+
+    public WebSocketWorkerSession.Builder webSocket() {
+        return WebSocketWorkerSession.builder(workerClient);
+    }
 }

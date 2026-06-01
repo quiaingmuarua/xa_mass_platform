@@ -1,10 +1,12 @@
 package com.xa.mass.scenario;
 
 import java.nio.file.Path;
+import java.net.URI;
 import java.util.Objects;
 
 record ScenarioLauncherOptions(
         String baseUrl,
+        URI webSocketUrl,
         String taskApiKey,
         String taskCommandApiKey,
         String workerApiKey,
@@ -25,6 +27,7 @@ record ScenarioLauncherOptions(
 
     static ScenarioLauncherOptions parse(String[] args) {
         String baseUrl = envOrDefault("MASS_BASE_URL", DEFAULT_BASE_URL);
+        URI webSocketUrl = optionalUri(System.getenv("MASS_WEBSOCKET_URL"), "MASS_WEBSOCKET_URL");
         String taskApiKey = envOrDefault("MASS_TASK_SUBMITTER_KEY", DEFAULT_TASK_API_KEY);
         String taskCommandApiKey = envOrDefault("MASS_TASK_COMMAND_KEY", DEFAULT_TASK_COMMAND_API_KEY);
         String workerApiKey = System.getenv("MASS_WORKER_API_KEY");
@@ -46,6 +49,11 @@ record ScenarioLauncherOptions(
                 index++;
             } else if (arg.startsWith("--base-url=")) {
                 baseUrl = arg.substring("--base-url=".length());
+            } else if ("--websocket-url".equals(arg)) {
+                webSocketUrl = optionalUri(requiredArg(args, index, arg), arg);
+                index++;
+            } else if (arg.startsWith("--websocket-url=")) {
+                webSocketUrl = optionalUri(arg.substring("--websocket-url=".length()), "--websocket-url");
             } else if ("--task-api-key".equals(arg)) {
                 taskApiKey = requiredArg(args, index, arg);
                 index++;
@@ -93,6 +101,7 @@ record ScenarioLauncherOptions(
         }
         return new ScenarioLauncherOptions(
                 normalizeBaseUrl(baseUrl),
+                webSocketUrl,
                 requireNonBlank(taskApiKey, "taskApiKey"),
                 requireNonBlank(taskCommandApiKey, "taskCommandApiKey"),
                 normalizeOptional(workerApiKey),
@@ -113,6 +122,7 @@ record ScenarioLauncherOptions(
                 Options:
                   --register-only              Register dev catalog, rules, workers, and tasks, then exit without polling workers.
                   --base-url <url>             Server HTTP base URL. Default: MASS_BASE_URL or http://127.0.0.1:8088
+                  --websocket-url <url>        Optional server WebSocket URL for realtime launcher workers. Default: MASS_WEBSOCKET_URL
                   --task-api-key <key>         Default task API key. Default: MASS_TASK_SUBMITTER_KEY or crawler-submitter-key
                   --task-command-api-key <key> Task command API key for seal/approve. Default: MASS_TASK_COMMAND_KEY or public-probe-ops-key
                   --worker-api-key <key>       Optional worker API key override. Default: each worker spec's workerKey
@@ -169,6 +179,18 @@ record ScenarioLauncherOptions(
 
     private static String normalizeOptional(String value) {
         return value == null || value.isBlank() ? null : value;
+    }
+
+    private static URI optionalUri(String value, String name) {
+        String normalized = normalizeOptional(value);
+        if (normalized == null) {
+            return null;
+        }
+        try {
+            return URI.create(normalized);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException(name + " must be a URI: " + value, e);
+        }
     }
 
     private static String requireNonBlank(String value, String fieldName) {

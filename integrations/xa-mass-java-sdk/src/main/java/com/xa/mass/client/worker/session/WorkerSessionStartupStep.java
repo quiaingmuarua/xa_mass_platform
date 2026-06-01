@@ -8,5 +8,7 @@ public enum WorkerSessionStartupStep {
     REPORT_CAPABILITY,
     REPORT_STATE,
     START_HEARTBEAT,
-    START_POLL
+    START_POLL,
+    CONNECT_WEBSOCKET,
+    START_RESULT_SENDER
 }
