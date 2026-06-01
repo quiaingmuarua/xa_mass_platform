@@ -17,8 +17,11 @@ implemented by ILC-1 in
 JSDK-6 realtime decision is recorded in
 [`JAVA_EXTERNAL_SDK_REALTIME_DECISION.md`](./JAVA_EXTERNAL_SDK_REALTIME_DECISION.md):
 do not add public realtime Java sessions until a dedicated protocol contract
-exists. Follow-up realtime and worker-command SDK planning lives in
+exists. Follow-up realtime and worker event-handler SDK planning lives in
 [`JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md`](./JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md).
+Follow-up public SDK hardening, versioning, documentation, and publication
+readiness lives in
+[`JAVA_EXTERNAL_SDK_PUBLIC_READINESS_ROADMAP.md`](./JAVA_EXTERNAL_SDK_PUBLIC_READINESS_ROADMAP.md).
 Broad sample path convergence and clean server demo bootstrap extraction
 continue in
 [`INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md`](./INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md).
@@ -938,9 +941,10 @@ only visible through dispatch/result convergence.
 - Do not merge this client into `xa-mass-sdk`.
 - Do not keep new external integration modules at repo root.
 - Do not publish `xa-mass-java-sdk` to Maven Central or another external
-  registry in this roadmap. Initial versioning follows the platform reactor;
-  external publication needs a separate release/versioning decision after the
-  API shape proves stable.
+  registry as part of this completed mainline roadmap. Initial versioning
+  follows the platform reactor here; external publication readiness is tracked
+  by
+  [`JAVA_EXTERNAL_SDK_PUBLIC_READINESS_ROADMAP.md`](./JAVA_EXTERNAL_SDK_PUBLIC_READINESS_ROADMAP.md).
 - Do not generate a broad OpenAPI client as the first implementation.
 - Do not expose internal debug routes as stable client APIs.
 - Do not make task creation auto-run by default.

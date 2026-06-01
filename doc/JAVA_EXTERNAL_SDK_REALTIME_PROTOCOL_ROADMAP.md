@@ -5,11 +5,11 @@ Status: proposed follow-up roadmap for
 
 This roadmap upgrades the Java external SDK from polling-only worker sessions
 toward a broader worker SDK: polling remains the stable first path, while
-WebSocket realtime sessions and a worker-local command runtime are designed as
-explicit next layers. The goal is not only "support polling workers"; the goal
-is a public external worker SDK that can own client-side session mechanics,
-local command dispatch, and result adaptation without redefining platform
-kernel ownership.
+WebSocket realtime sessions and a worker-local event handler runtime are
+designed as explicit next layers. The goal is not only "support polling
+workers"; the goal is a public external worker SDK that can own client-side
+session mechanics, transport-independent handler invocation, and result
+adaptation without redefining platform kernel ownership.
 
 ## Current Code Observations
 
@@ -41,7 +41,7 @@ kernel ownership.
 External source candidates to study during WSDK-0:
 
 - AgentForge `command` and `clients` code as the source lineage for the worker
-  command runtime concept.
+  event handler runtime concept.
 - AgentForge WebSocket demo client code as a useful state-machine and
   transport-control reference, especially reliable reconnect, message queueing,
   and explicit disconnect-control handling.
@@ -58,9 +58,8 @@ The Java SDK may own:
 - public external worker topology clients over `/worker-api/v1/**`.
 - managed external worker sessions.
 - client-side transport lifecycle for public worker sessions.
-- worker-local command dispatch keyed by `eventCode` or an explicitly
-  documented command frame.
-- conversion from local handler/command response into canonical task result or
+- worker-local event handler invocation keyed by `eventCode`.
+- conversion from local handler response into canonical task result or
   worker-command acknowledgement frames.
 
 The Java SDK must not own:
@@ -90,7 +89,7 @@ xa-mass-java-sdk
   worker topology client      HTTP control-plane calls
   polling worker session      stable polling data-plane loop
   realtime worker session     public WebSocket/socket client lifecycle, later
-  command runtime             worker-local event/command handler registry
+  event handler runtime       transport-independent eventCode handler registry
 
 transport/*-adapter
   server-side delivery adapters and adapter-local runtime mechanics
@@ -99,15 +98,37 @@ integrations/xa-mass-worker-pack
   sample/dev worker capabilities, command routes, fault routes, launchers
 ```
 
-The command runtime should be SDK-owned only as a worker-local execution
+The event handler runtime should be SDK-owned only as a worker-local execution
 library. It must not be named or documented as task lifecycle command truth,
-worker-control command truth, or engine command ownership.
+worker-control command truth, or engine command ownership. Existing
+`command.*` code is source lineage and migration input, not the target public
+SDK name.
 
 Because `xa-mass-java-sdk` must stay a pure external client artifact, command
 runtime convergence cannot be implemented by depending on `xa-mass-base`.
-Useful command concepts may be migrated into SDK-owned packages, or split into
-a later narrow public contract artifact, but `xa-mass-base` should not become
-the dependency bridge for external callers.
+Useful command concepts should be migrated into SDK-owned event handler source
+by default. Splitting a later narrow public contract artifact requires WSDK-0
+evidence of multiple real public/external Java consumers and a separate owner
+decision; it is not the default first move.
+
+## Hard Rules
+
+1. `xa-mass-java-sdk` production code must not depend on `xa-mass-base`,
+   worker-pack, engine, server, transport adapter implementations, or embedded
+   SDK runtime composition.
+2. The worker event handler runtime is transport-independent. Polling,
+   WebSocket, and socket sessions may deliver frames to it, but they must not
+   define handler ownership.
+3. The worker event handler runtime must be instance-scoped, never
+   process-global or static-registry based.
+4. No SDK transport shape may become engine/task kernel truth.
+5. Worker-pack sample/fault behavior must not enter the public SDK surface.
+6. Reconnect must not duplicate a result after the server has accepted it.
+7. Public session APIs must not expose undocumented adapter-local frames as a
+   stable compatibility promise.
+8. Handler completion and result reporting are separate concerns. A handler may
+   return a result directly, or enqueue/report it through a session-owned
+   result sink, but network transports own only delivery of that result.
 
 ## Target Shape
 
@@ -115,10 +136,10 @@ The Java SDK should eventually allow the same handler model to run behind
 polling or realtime sessions:
 
 ```java
-WorkerCommandRuntime commands = WorkerCommandRuntime.builder()
-        .command("crawler.fetch-page", context -> {
+WorkerEventHandlers handlers = WorkerEventHandlers.builder()
+        .event("crawler.fetch-page", context -> {
             URI url = context.input().requiredUri("url");
-            return CommandResult.success(Map.of("url", url.toString()));
+            return WorkerHandlerResult.success(Map.of("url", url.toString()));
         })
         .build();
 
@@ -126,30 +147,37 @@ PollingWorkerSession polling = mass.workerSessions().polling()
         .workerId("crawler-polling-001")
         .workerGroupId("crawler")
         .adapterNodeId("crawler-node-001")
-        .commandRuntime(commands)
+        .eventHandlers(handlers)
+        .resultQueue(WorkerResultQueue.bounded(1024))
         .start();
 
 WebSocketWorkerSession realtime = mass.workerSessions().webSocket()
         .workerId("crawler-ws-001")
         .workerGroupId("crawler")
         .endpoint(URI.create("ws://127.0.0.1:18088/ws"))
-        .commandRuntime(commands)
+        .eventHandlers(handlers)
+        .resultQueue(WorkerResultQueue.bounded(1024))
         .start();
 ```
 
 API names are placeholders until WSDK-1 fixes package and type names.
+The `resultQueue(...)` shape is also a placeholder: the required capability is
+a session-owned result sink/queue that both polling and realtime sessions can
+use, not this exact type name.
 
 Preferred package direction:
 
 ```text
 com.xa.mass.client.worker.session
-com.xa.mass.client.worker.command
+com.xa.mass.client.worker.handler
+com.xa.mass.client.worker.payload
 com.xa.mass.client.worker.transport
 ```
 
 Avoid `com.xa.mass.sdk` because that package already means embedded SDK
-compatibility. Avoid generic `CommandRuntime` as a top-level public name unless
-the worker-local scope is clear from the package.
+compatibility. Avoid generic `CommandRuntime` as a top-level public name. The
+public SDK concept is event handler execution; `command` remains a migration
+term for the current source package and worker command wire frames.
 
 ## Do Not Start With
 
@@ -159,7 +187,8 @@ the SDK.
 Start by fixing the public protocol and instance-owned runtime shape. The
 tempting shortcut is to port the existing client and static command registry,
 then retrofit ownership later. That would freeze adapter-local behavior before
-the public worker session contract is clear.
+the public worker session contract is clear and would mix handler execution
+with network transport concerns.
 
 ## WSDK-0: Inventory And Protocol Classification
 
@@ -172,18 +201,33 @@ Scope:
 - classify whether each command symbol should move into SDK-owned source,
   remain base-owned for embedded/event paths, or be deleted after consumers
   converge.
+- classify `command.event` explicitly as part of the same inventory. It is not
+  part of the worker event handler runtime unless a later owner decision says
+  otherwise.
+- classify every static registration, static dispatch, and singleton context
+  entry point by target lifecycle: SDK instance-scoped, non-SDK static legacy,
+  or residue.
 - inventory worker-pack sample command/fault routes separately from generic
-  command runtime machinery.
+  event handler runtime machinery.
 - inventory AgentForge command and WebSocket client assets as migration
   candidates, classifying Android/OkHttp-specific pieces versus portable
   concepts.
 - classify current realtime frames:
   - task dispatch frame.
   - task result frame.
+  - active result report frame or HTTP submit path.
   - heartbeat/control frame.
   - worker command frame.
   - command acknowledgement path.
   - reconnect/offline/presence behavior.
+- inventory Sekiro-style Java SDK concepts that are useful but should remain
+  SDK/client-side concerns:
+  - action/event handler registration.
+  - request/response style handler completion.
+  - async enqueue/callback invocation.
+  - lifecycle listeners.
+  - configurable handler execution pool.
+  - optional payload/result compression.
 
 Out of scope:
 
@@ -203,6 +247,10 @@ Acceptance:
   classification.
 - every `xa-mass-base` command symbol has a target dependency answer:
   SDK-owned source, base-owned non-SDK source, or residue.
+- every static command registration/dispatch/context entry point has a target
+  lifecycle answer.
+- result reporting has a target shape for both direct handler return and
+  active enqueue/report completion.
 - any gap between current adapter behavior and target public protocol is named
   explicitly.
 
@@ -214,24 +262,30 @@ rg -n "WebSocketWorkerMain|type=worker.command|worker.command|disconnect" integr
 rg -n "com\\.xa\\.mass\\.command" .
 ```
 
-## WSDK-1: Worker Command Runtime Contract
+## WSDK-1: Worker Event Handler Runtime Contract
 
 Scope:
 
-- define worker-local command runtime package, type names, and lifecycle.
-- migrate the useful `command.core/model/runtime` concepts into SDK-owned
-  source or a later narrow public contract artifact; do not reuse them through
-  a production `xa-mass-base` dependency.
+- define worker-local event handler runtime package, type names, and lifecycle.
+- migrate the useful `command.core/model/runtime` concepts into SDK-owned event
+  handler source. Do not reuse them through a production `xa-mass-base`
+  dependency.
+- do not split a new public contract artifact in this slice unless WSDK-0
+  proves multiple real public/external Java consumers and records a separate
+  owner decision.
 - shape the migrated concepts as an instance-scoped SDK contract:
-  - command definition.
+  - event handler definition.
   - handler registry.
   - dispatch context.
   - typed payload access.
-  - command response/result.
+  - handler response/result.
+  - active result sink for asynchronous handler completion.
   - optional batch execution with bounded, documented context sharing.
 - keep local services as explicit runtime configuration, not static global
   process state.
 - define handler error conversion into failed task results for task dispatch.
+- define whether asynchronous handler completion is allowed in WSDK-1 or only
+  reserved as a typed API placeholder for WSDK-2.
 - define separate conversion for worker-command acknowledgement if public
   realtime command frames are included later.
 
@@ -245,12 +299,18 @@ Out of scope:
 
 Acceptance:
 
-- command runtime can be instantiated multiple times in one JVM without shared
-  handlers or mutable context leakage.
-- unknown command/event returns a structured failure.
+- event handler runtime can be instantiated multiple times in one JVM without
+  shared handlers or mutable context leakage.
+- unknown event or worker-command frame returns a structured failure.
 - handler exception behavior is deterministic and test-covered.
 - public names make the worker-local scope clear.
 - `xa-mass-java-sdk` production dependencies do not include `xa-mass-base`.
+- WSDK-1 guard blocks both a Maven dependency on `xa-mass-base` and production
+  imports from `com.xa.mass.command..`.
+- event handler runtime has no dependency on polling, WebSocket, socket, or
+  transport adapter implementation types.
+- active result sink API, if exposed, is transport-independent and can be
+  backed by polling HTTP submit or realtime frame send.
 - worker-pack routes can be future consumers without forcing worker-pack into
   the SDK dependency graph.
 
@@ -261,17 +321,24 @@ mvn -pl integrations/xa-mass-java-sdk -DskipITs test
 rg -n "static .*CommandRegistry|CommandRegistry\\." integrations/xa-mass-java-sdk integrations/xa-mass-worker-pack xa-mass-base
 ```
 
-## WSDK-2: Shared Worker Dispatch Adapter
+## WSDK-2: Worker Event Handler Invocation Layer
 
 Scope:
 
 - extract the common execution path that turns a platform dispatch frame into a
-  worker handler/command invocation and then into a canonical result.
-- make polling session consume the shared adapter without changing polling
-  public behavior.
+  worker event handler invocation and then into a canonical result.
+- make polling session consume the shared invocation layer without changing
+  polling public behavior.
+- add a session-owned result sink/queue abstraction that can accept handler
+  results from direct returns or asynchronous completion.
 - define a small internal frame model for task dispatch/result that can be
   reused by polling and future realtime sessions.
 - keep topology/control-plane calls separate from dispatch execution.
+- keep the invocation layer free of WebSocket/socket/polling-specific lifecycle
+  state. Network sessions adapt frames into this layer; the layer does not own
+  network transport.
+- define queue bounds, overflow behavior, close behavior, and whether
+  backpressure is caller-visible.
 
 Out of scope:
 
@@ -279,6 +346,7 @@ Out of scope:
 - adding realtime transport clients.
 - hiding WorkerGroup declaration inside session startup.
 - adding local retry after the server accepts a result.
+- durable result queueing.
 
 Acceptance:
 
@@ -286,6 +354,9 @@ Acceptance:
 - handler execution and result conversion have focused tests independent of
   polling HTTP loops.
 - no transport-specific shape becomes task kernel truth.
+- handler invocation tests can run without starting any network transport.
+- result sink tests cover direct return, async enqueue, overflow, close, and
+  duplicate-completion behavior without starting any network transport.
 - polling black-box proof still passes after the refactor.
 
 Verification candidates:
@@ -301,6 +372,9 @@ Scope:
 
 - document the public WebSocket worker endpoint and handshake.
 - document task dispatch and task result frames.
+- document whether active result report uses the WebSocket connection, direct
+  HTTP submit, or a transport-neutral session sink backed by adapter-specific
+  delivery.
 - document heartbeat and transport-control frames.
 - document reconnect behavior, duplicate result behavior, offline/presence
   behavior, and close/shutdown semantics.
@@ -323,6 +397,8 @@ Acceptance:
 - connection presence is adapter-owned and not confused with worker
   registration truth.
 - command acknowledgement path is either documented or explicitly deferred.
+- active result reporting path is documented for both immediate and delayed
+  handler completion, or explicitly deferred.
 - protocol contract names every public frame field and retry/idempotency rule.
 - existing Java WebSocket sample behavior can be mapped to the contract or the
   mismatch is listed as a required adapter/sample change.
@@ -350,7 +426,9 @@ Scope:
   - explicit transport-control disconnect handling.
 - receive canonical task dispatch frames and submit canonical task result
   frames through the WebSocket connection.
-- route dispatch through the shared worker command/handler adapter from WSDK-2.
+- route dispatch through the worker event handler invocation layer from WSDK-2.
+- flush results from the shared result sink/queue through the WebSocket
+  session, preserving idempotency rules from WSDK-3.
 - keep lifecycle callbacks observable for startup failure, reconnect, handler
   failure, result send failure, and terminal close.
 
@@ -359,6 +437,7 @@ Out of scope:
 - Android `HandlerThread`, Android `Context`, and OkHttp dependencies in
   `xa-mass-java-sdk`.
 - local durable queueing.
+- unbounded in-memory result queues.
 - socket client support.
 - worker-pack sample fault behavior.
 
@@ -366,9 +445,11 @@ Acceptance:
 
 - WebSocket session is usable without raw frame parsing by normal callers.
 - reconnect does not duplicate a result after the server has accepted it.
+- queued results are either flushed, failed visibly, or rejected according to
+  documented close/backpressure policy.
 - stale socket callbacks cannot mutate the current session state.
-- heartbeat/control frames do not reach the worker command runtime unless the
-  protocol explicitly says they should.
+- heartbeat/control frames do not reach the worker event handler runtime unless
+  the protocol explicitly says they should.
 - session close is idempotent and best-effort offline behavior is documented.
 
 Verification candidates:
@@ -384,7 +465,8 @@ Scope:
 
 - update `integrations/samples/java/worker-websocket` to consume
   `xa-mass-java-sdk` WebSocket worker sessions.
-- make the sample's event handlers use the worker command runtime when useful.
+- make the sample's event handlers use the worker event handler runtime when
+  useful.
 - keep sample output evidence used by black-box tests, including worker
   identity, adapter/transport, eventCode, and integration probe fields.
 - decide intentionally whether the sample remains a standalone `-f` POM or
@@ -413,17 +495,17 @@ mvn -q -f integrations/samples/java/worker-websocket/pom.xml -DskipTests package
 mvn -pl xa-mass-testing -Dtest=JavaWebSocketWorkerBlackBoxIntegrationTest test
 ```
 
-## WSDK-6: Worker-Pack Command Runtime Convergence
+## WSDK-6: Worker-Pack Event Handler Runtime Convergence
 
 Scope:
 
-- retarget worker-pack sample command/fault runtime to the SDK command runtime
-  only after WSDK-1 is stable.
+- retarget worker-pack sample command/fault runtime to the SDK event handler
+  runtime only after WSDK-1 is stable.
 - keep sample command route definitions in worker-pack.
 - keep fault injection behavior in worker-pack and fault-matrix docs.
-- remove duplicated command runtime machinery from worker-pack or base only
-  after all current callers are moved and `command.event` usage is separately
-  classified.
+- remove duplicated event handler runtime machinery from worker-pack or base
+  only after all current callers are moved and `command.event` usage is
+  separately classified.
 
 Out of scope:
 
@@ -434,9 +516,9 @@ Out of scope:
 
 Acceptance:
 
-- worker-pack uses the SDK command runtime as a consumer, not as an owner.
+- worker-pack uses the SDK event handler runtime as a consumer, not as an owner.
 - command/fault sample routes remain clearly sample/dev capabilities.
-- no two live generic command runtimes remain for the same worker-local
+- no two live generic event handler runtimes remain for the same worker-local
   responsibility.
 - base command residue is either removed, narrowed, or documented as still
   owned by an active caller.
@@ -479,7 +561,10 @@ Add or extend guards before public WebSocket session support lands:
   - `com.xa.mass.starter..`
   - `com.xa.mass.worker.runtime..`
   - `com.xa.mass.api.internal..`
+  - `com.xa.mass.command..`
   - transport adapter implementation packages.
+- `xa-mass-java-sdk` Maven dependencies must not include `xa-mass-base` or
+  `xa-mass-worker-pack`.
 - `xa-mass-java-sdk` production code must not depend on worker-pack.
 - `xa-mass-java-sdk` production code must not depend on `xa-mass-base`.
 - `xa-mass-java-sdk` production code must not depend on Android, OkHttp, or
@@ -488,16 +573,19 @@ Add or extend guards before public WebSocket session support lands:
   `xa-mass-java-sdk`.
 - worker-pack and samples may depend on `xa-mass-java-sdk`.
 - public realtime client methods must map to a documented protocol frame.
-- command runtime tests must prove instance isolation.
+- event handler runtime tests must prove instance isolation.
 
 ## Risks
 
 | Risk | Impact | Mitigation |
 | --- | --- | --- |
 | Realtime API freezes adapter-local behavior too early | public compatibility debt | require WSDK-3 protocol contract before WSDK-4 implementation |
-| Static command registry leaks between worker sessions | multi-worker JVM bugs | make command runtime instance-scoped in WSDK-1 |
-| SDK depends on `xa-mass-base` to reuse command code | external SDK inherits internal platform dependency surface | migrate command concepts into SDK-owned source or split a narrow public contract artifact |
-| Command naming collides with task lifecycle commands | owner confusion | use worker-local package and wording consistently |
+| Static command registry leaks between worker sessions | multi-worker JVM bugs | make event handler runtime instance-scoped in WSDK-1 |
+| SDK depends on `xa-mass-base` to reuse command code | external SDK inherits internal platform dependency surface | migrate command concepts into SDK-owned event handler source by default |
+| Event handler runtime absorbs transport lifecycle | handler code becomes WebSocket/polling specific | keep transport sessions as frame adapters into WSDK-2 invocation layer |
+| Result sink becomes hidden local durability | users think queued results survive process death | keep first sink in-memory, bounded, and visibly best-effort unless a later durable design is approved |
+| Async completion reports duplicate results | terminal/result convergence noise | track one completion per dispatch identity and make duplicate completion a visible failure |
+| Command naming collides with task lifecycle commands | owner confusion | use event handler naming for public SDK and keep command as migration/wire-frame term |
 | WebSocket reconnect duplicates accepted results | result convergence noise | document idempotency and test reconnect/result-send edges |
 | Worker-pack fault behavior moves into SDK | public SDK surface becomes sample-specific | keep fault routes in worker-pack |
 | Android/OkHttp code enters pure Java SDK | dependency and platform drift | port concepts, not dependencies |
@@ -508,7 +596,7 @@ Add or extend guards before public WebSocket session support lands:
 | Phase | Verification |
 | --- | --- |
 | WSDK-0 | inventory review and source search only |
-| WSDK-1 | Java SDK unit tests for command runtime isolation and error conversion |
+| WSDK-1 | Java SDK unit tests for event handler runtime isolation and error conversion |
 | WSDK-2 | Java SDK unit tests plus polling black-box proof |
 | WSDK-3 | protocol doc review plus current WebSocket sample black-box baseline |
 | WSDK-4 | Java SDK unit tests plus Java WebSocket black-box proof |
@@ -533,7 +621,8 @@ unit tests alone.
   runtime code.
 - Do not pull Android, OkHttp, or AgentForge host dependencies into the pure
   Java SDK.
-- Do not introduce compatibility aliases for in-repo command runtime movement.
+- Do not introduce compatibility aliases for in-repo event handler runtime
+  movement.
 - Do not hide WorkerGroup declaration inside realtime session startup.
 - Do not collapse `adapterId` and `transportHint` into an implicit transport
   guess.
