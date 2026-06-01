@@ -52,7 +52,7 @@ Worker scheduling read model
   -> WorkerMatchContext
 
 Eligibility and preference
-  -> worker prefilter + QLExpress rules
+  -> worker prefilter + current default QLExpress rule evaluation
   -> WorkerCandidateRanker
 
 Allocation and budget
@@ -86,12 +86,14 @@ Owner-backed worker-control and stage entry surfaces:
   SDK/server integration should call the services through SDK-facing request
   models, not reach into event handlers or mutate owner internals directly.
 
-The current `RuleBasedTaskWorkerMatchingStrategy` still combines rule-based
-eligibility, ranking, capacity reservation, and optional worker-lock acquisition.
-That is the current acquisition path, not a pure policy seam. Do not add more
-mechanism work to it casually; if future distributed capacity or worker-manager
-separation requires a split, introduce a real acquisition owner rather than a
-pass-through wrapper.
+The current `RuleBasedTaskWorkerMatchingStrategy` combines group-first candidate
+acquisition, worker scheduling evidence, QLExpress-backed eligibility rules,
+ranking, capacity reservation, and optional worker-lock acquisition. That is
+the current default matching path, not the strategic endpoint of the platform
+and not a pure policy seam. Future matching work may add worker intrinsic
+metrics, task-type affinity, fairness, historical performance, or
+domain-specific scoring. Add those as explicit scheduling policy inputs or
+owners; do not hide mechanism growth behind pass-through wrappers.
 
 WorkerContext is not scheduling truth in the engine hot path. Runtime,
 transport, projection, SDK/API, server payloads, and canonical trace identity
@@ -389,10 +391,14 @@ Infra ownership:
   from `RuleStorage` plus `RuleEvaluatorRegistry`, not from a broad rule
   manager
 
-## Rule-Matching Surface
+## Matching Policy Surface
 
-Matching enumerates `WorkerSchedulingCandidate` values and evaluates their
-`WorkerSchedulingView` through `WorkerMatchContext` and QLExpress rules.
+Matching is a scheduling policy surface. The current default implementation
+enumerates `WorkerSchedulingCandidate` values, reads `WorkerSchedulingView`
+evidence, evaluates eligibility through `WorkerMatchContext` and QLExpress
+rules, ranks accepted candidates, and reserves/adopts worker admission evidence.
+QLExpress rules are one evaluator implementation, not the final shape of
+matching strategy.
 
 Current owner types:
 
@@ -409,7 +415,7 @@ Current owner types:
 - `src/main/java/com/xa/mass/engine/rules/StorageBackedMatchingRuleSetProvider.java`
 - `src/main/java/com/xa/mass/engine/rules/RuleConfig.java`
 
-Current default rule set:
+Current default bootstrap rule set:
 
 - `basic_worker_check`
 - `worker_scheduling_resource_check`
@@ -442,9 +448,8 @@ Matching boundaries:
 - `Worker.status` is control-plane lifecycle truth, not transport reachability
 - dispatch eligibility must read transport reachability from
   `WorkerReachabilityView`, not local heartbeat-expiry heuristics
-- `workerSchedulingAttributes` is the preferred matching label map for new or
-  migrated rules; legacy `workerContextAttributes` is retired from the engine
-  scheduling rule context
+- `workerSchedulingAttributes` is one matching evidence family for labels,
+  fingerprints, and routing hints; it is not the whole policy model
 - default rules must use `workerScheduling*` / `isWorkerScheduling*` variables;
   legacy `workerContext*` variables are no longer part of the engine rule
   surface
@@ -453,14 +458,19 @@ Matching boundaries:
   evidence; current capacity semantics are worker-declared process-local
   reservation plus the existing worker lock, not distributed capacity
   correctness or shared background execution
+- future matching strategy inputs may include worker intrinsic metrics,
+  task-type affinity, fairness windows, observed performance, and
+  domain-specific scoring; keep these as explicit scheduling evidence rather
+  than smuggling them into worker-resource ownership
 - routing is a task-owned hint currently resolved from
   `Task.sharedConfig["routingCode"]`
 - once a task requires routing, the candidate must expose matching
   `workerSchedulingRoutingTags`; in the current scheduling hot path those tags
   come from worker attributes such as `routingTag` / `routingTags`
 
-If matching semantics change, update `RuleConfig`, `WorkerMatchContext`, and the
-relevant routing/integration coverage together.
+If matching semantics change, update the policy contract, `WorkerMatchContext`
+when rule evaluation is affected, trace evidence, and the relevant
+routing/integration coverage together.
 
 ## Acceptance Focus
 

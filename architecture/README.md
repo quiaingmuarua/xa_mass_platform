@@ -38,14 +38,14 @@ After this directory, use the owner documents for precise contracts:
 
 ## One-Line Model
 
-XA Mass Platform is a distributed task scheduling kernel for structured work
-items:
+XA Mass Platform is reusable distributed scheduling infrastructure for
+structured work items:
 
 ```text
 task shell
   -> append items with eventCode
   -> runtime schedules work
-  -> worker executes by capability
+  -> worker executes the selected event handler
   -> worker submits result
   -> runtime converges item and task state
 ```
@@ -53,6 +53,24 @@ task shell
 The core value is not "store a task row". The core value is reliable runtime
 convergence under worker matching, dispatch, retry, timeout, result callbacks,
 and task-level terminal policy.
+
+The reusable kernel is:
+
+```text
+Task + Worker + Scheduling + Matching
++ lease-based dispatch
++ idempotent result convergence
++ multi-transport delivery
++ retry/repair/backpressure
+= reusable distributed scheduling infrastructure
+```
+
+Matching is a policy surface, not just a fixed rule list. The current default
+uses WorkerGroup-backed candidate acquisition, worker scheduling evidence,
+rule-backed eligibility, ranking, and runtime admission. Future policies can
+add worker metrics, task-type affinity, fairness, historical performance, or
+domain-specific scoring without changing the task/worker/runtime ownership
+model.
 
 ## Current Integration Bias
 

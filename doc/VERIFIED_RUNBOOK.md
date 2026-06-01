@@ -219,7 +219,9 @@ Task create/update:
 Assignment and dispatch:
 
 - `TaskWorkerAssignListener` performs worker matching and delegates policy to `TaskWorkerMatchingStrategy`.
-- `RuleBasedTaskWorkerMatchingStrategy` is the verified default.
+- `RuleBasedTaskWorkerMatchingStrategy` is the verified default implementation,
+  not the platform's final matching model. Treat `TaskWorkerMatchingStrategy`
+  and the engine matching policy surface as the strategic boundary.
 - `batchSize` is a per-worker cap for each dispatch round.
 - `minRequiredWorkerCount` is a real `READY -> RUNNING` gate.
 - unmatched `READY` tasks and refill `RUNNING` tasks are delayed-retried instead of being orphaned.

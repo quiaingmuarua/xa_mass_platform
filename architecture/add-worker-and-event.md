@@ -96,8 +96,11 @@ Important distinction:
 - WorkerGroup declaration owns capability
 - worker registration declares execution identity and node/group membership
 - transport presence declares reachability
-- scheduling still checks runtime state, reachability, rules, capacity, and
-  resource policy before dispatch
+- scheduling still checks runtime state, reachability, matching policy,
+  capacity, ranking, and resource policy before dispatch
+- the current default matching policy includes rule-backed eligibility, but
+  worker attributes are only one evidence family; future policies may also use
+  worker metrics, task-type affinity, fairness, and observed performance
 
 ## 4. Start The Worker Client
 

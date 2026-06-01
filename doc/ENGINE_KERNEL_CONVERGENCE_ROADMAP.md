@@ -64,10 +64,10 @@ convergence plan.
 - `TaskResultService` is the largest active engine class and owns result
   ingestion, lease expiry, visible result commits, retry handling, repair pump,
   trace emission, and some projection-era wording in one implementation.
-- `WorkerCommandLifecycleOwner` lives in engine while worker capability
-  authority and worker state projection owners live in `xa-mass-worker-runtime`.
-  Fixed by EKC-4: command lifecycle truth now lives in worker runtime, while
-  engine keeps dispatch-control side effects and delivery coordination.
+- Worker command lifecycle truth, worker capability authority, and worker state
+  projection owners live in `xa-mass-worker-runtime`. Engine keeps
+  worker-control entry, trace emission, dispatch-control side effects, and
+  delivery coordination.
 - Engine tests no longer use storage-memory implementation fixtures for
   ordinary runtime proof. Storage implementation behavior such as
   `InMemoryTaskShellStore` deadline/index maintenance lives in

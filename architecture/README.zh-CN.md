@@ -26,7 +26,7 @@ XA Mass Platform 的核心是一条运行时主线：
 task shell
   -> append items with eventCode
   -> runtime schedules work
-  -> worker executes by capability
+  -> worker executes the selected event handler
   -> worker submits result
   -> runtime converges item and task state
 ```

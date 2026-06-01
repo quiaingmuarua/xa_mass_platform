@@ -204,9 +204,11 @@ Lifecycle and trace detail live in:
   must consume explicit group selectors, group capability, worker scheduling
   facts, and runtime load/capacity facts, not worker-level capability overrides
   and not `WorkerContext`
-- `WorkerMatchContext` plus rule evaluation is current matching input, but it
-  must stay a scheduling-context object and must not become a replacement
-  worker-resource owner
+- `WorkerMatchContext` plus rule evaluation is the current default matching
+  input path, not the final policy model. Future matching may use worker
+  intrinsic metrics, task-type affinity, fairness, and observed performance,
+  but those inputs must stay explicit scheduling evidence and must not become
+  replacement worker-resource ownership
 - UI pages, mock runtime, and demo APIs must not redefine the kernel
 - do not add full-table, full-task, or full-attempt scans to hot paths
 - new or changed policy seams must keep ownership explicit across matching, assignment, attempt, release, refill, intake, control, and terminal decisions

@@ -33,11 +33,23 @@ commands.
 
 ## What It Is
 
-XA Mass Platform is a general distributed task scheduling platform.
+XA Mass Platform is reusable distributed scheduling infrastructure.
 
-It solves one recurring kernel problem: match a batch of structured work items
-to a batch of heterogeneous, stateful workers, track each result, and
-converge task-level completion state.
+It solves one recurring kernel problem: safely and repeatedly assign structured
+work to heterogeneous, stateful workers, track each result, and converge
+task-level completion state under retries, duplicate delivery, stale replay,
+and worker churn.
+
+The platform primitives are intentionally small:
+
+```text
+Task + Worker + Scheduling + Matching
++ lease-based dispatch
++ idempotent result convergence
++ multi-transport delivery
++ retry/repair/backpressure
+= reusable distributed scheduling infrastructure
+```
 
 Current kernel truth is intentionally narrow:
 
@@ -52,11 +64,18 @@ Current mainline execution path:
 
 - `Task shell -> item append -> runtime enqueue -> dispatch binder -> transport delivery view -> result convergence -> task state`
 
-Common scenarios include IM bots, crawlers, LLM agents, and device/RPA workers.
+Common scenarios include IM bots, crawlers, LLM agents, data pipelines,
+CI/CD runners, device/RPA workers, human-review queues, and GPU/inference
+workers.
 The shared kernel is:
 
-- `stateful worker + capability/routing match + per-item result tracking + task-level convergence`
+- `stateful worker + scheduling evidence + policy-based matching + per-item result tracking + task-level convergence`
 - stable kernel truth: `Task`, assignment, result, audit, and terminal policy
+- matching as a scheduling policy surface: the current default uses group-first
+  candidate acquisition, worker scheduling evidence, QLExpress-backed
+  eligibility rules, ranking, and admission; future strategies may add worker
+  intrinsic metrics, task-type affinity, fairness, historical performance, and
+  domain-specific scoring without changing worker-runtime ownership
 - transport-neutral runtime seams: task dispatch, result ingest, and system events
 - SDK-first runtime entry; server provides a lightweight backend product shell
   for HTTP APIs, auth/IAM, API-key operations, and the control console without

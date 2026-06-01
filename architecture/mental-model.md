@@ -27,11 +27,14 @@ In practical terms:
 1. Create a task shell.
 2. Append one or more work items to the task.
 3. Each item declares an `eventCode`.
-4. The engine narrows worker candidates by capability.
-5. Transport delivers assigned work to the selected worker.
-6. The worker executes local logic for the `eventCode`.
-7. The worker submits a task result.
-8. Runtime state decides retry, finality, resource release, and task
+4. SDK/intake resolves event/project intent into explicit worker-group
+   selectors when needed.
+5. The engine narrows worker candidates through group capability, scheduling
+   evidence, matching policy, ranking, and runtime admission.
+6. Transport delivers assigned work to the selected worker.
+7. The worker executes local logic for the `eventCode`.
+8. The worker submits a task result.
+9. Runtime state decides retry, finality, resource release, and task
    convergence.
 
 ## Core Concepts
@@ -100,8 +103,11 @@ Worker
 
 SDK/intake may resolve `eventCode` and project into explicit
 `workerGroupId(s)` before scheduling. The kernel candidate source starts from
-those group selectors, then applies reachability, rules, ranking, resource
-policy, and runtime admission.
+those group selectors, then applies scheduling evidence, reachability,
+matching policy, ranking, resource policy, and runtime admission. The current
+default policy includes rule-backed eligibility, but matching is not limited to
+rules; future policies may incorporate worker metrics, task-type affinity,
+fairness, historical performance, or domain-specific scoring.
 
 ### Transport
 
@@ -135,6 +141,7 @@ Keep these boundaries in mind:
 | ready/lease/retry | `TaskWorkRuntime` | hot-path executable work truth |
 | public results | `TaskResultRuntime` | stable-final rows and result sequence |
 | capability candidate source | WorkerGroup / WorkerCandidateIndex | declared worker capability narrowing |
+| matching policy | engine | eligibility, ranking, affinity, metrics, and admission orchestration |
 | delivery and presence | transport | adapter routing, delivery, worker reachability |
 | trace | trace/audit plane | evidence, not runtime truth |
 
