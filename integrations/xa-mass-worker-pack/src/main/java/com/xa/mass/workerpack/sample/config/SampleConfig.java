@@ -28,8 +28,6 @@ public class SampleConfig {
     public static class Client {
         private int count = 5;
         private String websocketUri = "ws://localhost:18088/ws";
-        private String socketHost = "127.0.0.1";
-        private int socketPort = 18089;
 
         public int getCount() {
             return count;
@@ -47,21 +45,6 @@ public class SampleConfig {
             this.websocketUri = websocketUri;
         }
 
-        public String getSocketHost() {
-            return socketHost;
-        }
-
-        public void setSocketHost(String socketHost) {
-            this.socketHost = socketHost;
-        }
-
-        public int getSocketPort() {
-            return socketPort;
-        }
-
-        public void setSocketPort(int socketPort) {
-            this.socketPort = socketPort;
-        }
     }
 
     public static class Task {

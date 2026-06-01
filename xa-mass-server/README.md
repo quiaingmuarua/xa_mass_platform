@@ -119,8 +119,6 @@ Sample clients connect through:
 | Property | Default |
 | --- | --- |
 | `sample.client.websocket-uri` | `ws://localhost:${mass.websocket.port}/ws` |
-| `sample.client.socket-host` | `127.0.0.1` |
-| `sample.client.socket-port` | `18089` |
 
 ## Verified Main Entry
 
@@ -193,14 +191,14 @@ For test or explicit fixture paths, embedded sample clients are owned by `xa-mas
 
 - `integrations/xa-mass-worker-pack/src/main/java/com/xa/mass/workerpack/sample/starter/AbstractSampleWorkerClientStarter.java`
 - `integrations/xa-mass-worker-pack/src/main/java/com/xa/mass/workerpack/sample/starter/WebSocketClientStarter.java`
-- `integrations/xa-mass-worker-pack/src/main/java/com/xa/mass/workerpack/sample/starter/SocketClientStarter.java`
 
 Startup behavior:
 
 - enabled in the default dev demo shell through `sample.client.auto-start=true`
 - uses `sample.client.websocket-uri=ws://localhost:${mass.websocket.port}/ws` so the embedded sample clients follow the active WebSocket adapter port
 - triggered by `ApplicationReadyEvent`
-- shared startup orchestration is adapter-aware; websocket and socket specifics stay in their own starters
+- shared startup orchestration is adapter-aware; current embedded Java
+  worker-pack clients are WebSocket fault/command harness clients only
 - discovers sample clients from SDK-registered `Worker` resources
 - only opens adapter-matching clients for workers whose concrete `adapterId` matches the starter
 - does not read a separate worker JSON client list
@@ -348,8 +346,6 @@ Observability:
 | `mass.transport.presence.redis.namespace` | `xa:mass:transport:presence:v1` | Redis namespace prefix when `mass.transport.presence.store=redis` |
 | `sample.client.auto-start` | `true` in `dev` | auto-start embedded sample clients for the default dev demo shell |
 | `sample.client.websocket-uri` | `ws://localhost:${mass.websocket.port}/ws` | target WebSocket adapter address |
-| `sample.client.socket-host` | `127.0.0.1` | target socket adapter host |
-| `sample.client.socket-port` | `18089` | fallback socket adapter port when no bound-port override is published |
 | `sample.client.task-result-status` | `SUCCESS` | force sample result frames to `SUCCESS` or `FAILED` |
 | `sample.bootstrap.api-key` | `dev-bootstrap-key` | sample-only bootstrap credential for `/sample-api/bootstrap/*` |
 | `sample.worker.auto-start` | `false` in `dev` | keep the external sample supervisor off by default; enable explicitly for the separate cross-process sample shell |
@@ -478,7 +474,7 @@ mvn --% -pl xa-mass-server -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegra
 Transport-focused regression command:
 
 ```bash
-mvn --% -pl xa-mass-server -am -Dtest=SampleWorkerSocketClientTest,SocketClientStarterTest,WebSocketClientStarterTest,ExternalWorkerPublicContractTraceObservedIntegrationTest,NodeWebSocketWorkerBlackBoxIntegrationTest,NodeSocketWorkerBlackBoxIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn --% -pl xa-mass-server -am -Dtest=WebSocketClientStarterTest,ExternalWorkerPublicContractTraceObservedIntegrationTest,NodeWebSocketWorkerBlackBoxIntegrationTest,NodeSocketWorkerBlackBoxIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Cross-language sample black-box regression:
@@ -500,12 +496,13 @@ Covered areas:
 - `e2e/results`: failed-result terminal closure, mixed results, callback replay idempotency
 - `e2e/assignment`: delayed worker availability and multi-task assignment behavior
 - `CrawlerPullWorkerSdkRegistrationIntegrationTest`: SDK-created crawler worker resource, pull connect/poll/result, and terminal read-model verification without sample worker JSON
+- `WorkerPackGeoLookupExternalSdkIntegrationTest`: worker-pack `tool.geo.lookup`
+  capability registered and executed through the Java SDK/public HTTP path,
+  without preseeded worker JSON
 - `e2e/audit`: diagnostic task-state validation and terminal metadata consistency through the real runtime path
 - `e2e/assignment`: targeted worker debug, adapter-ambiguity, and storage-compat
   support coverage
 - `WebSocketClientStarterTest`: auto-start and idempotent startup behavior
-- `SocketClientStarterTest`: adapter-aware socket starter wiring and bound-port resolution
-- `SampleWorkerSocketClientTest`: canonical socket dispatch handling, task-result write-back, and disconnect-after-result behavior
 - `SampleWorkerWebSocketClientTest`: task dispatch handling, canonical task-result write-back, delay/drop fault injection, and targeted debug task behavior
 
 ## Boot-Shell E2E Map

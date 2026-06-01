@@ -95,7 +95,10 @@ Default runtime facts:
 - default `dev` startup may register control-console catalog events, projects, and submitters as metadata, but it does not create demo tasks, WorkerGroups, workers, or task items.
 - optional local/demo data is created by external launchers or SDK clients through public task and worker APIs.
 - external sample worker launcher is not part of clean server startup; enable `sample.worker.auto-start=true` explicitly only when validating the separate cross-process sample shell.
-- Sample adapter clients connect through their adapter-local addresses, including `ws://localhost:18088/ws` for WebSocket and `tcp://localhost:18089` for socket when enabled.
+- Worker-pack embedded sample clients connect through
+  `ws://localhost:18088/ws` for the WebSocket fault/command harness. Socket
+  adapter proof uses Node fixtures, transport tests, or scheduled/manual
+  transport diagnostics rather than a worker-pack Java socket client.
 - Pull-style workers can also run without the WebSocket transport server through `MassSdkApplication.pullWorker(...)`.
 - `sample.client.task-result-status=FAILED` forces failed task result write-back for regression tests.
 
@@ -201,6 +204,18 @@ worker offline. It is the preferred local smoke when validating the
 repo-external polling worker API through real HTTP rather than browser or UI
 automation.
 
+Worker-pack SDK capability proof:
+
+```bash
+./mvnw -pl xa-mass-server -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkerPackGeoLookupExternalSdkIntegrationTest test
+```
+
+This verifies that worker-pack's `tool.geo.lookup` capability can register a
+worker group, worker, polling session, task, item, result, and result readback
+through the Java SDK/public HTTP path. The server fixture starts without
+preseeded workers; catalog metadata is test setup, not privileged worker
+startup.
+
 ## 4. Runtime Facts To Trust
 
 Task create/update:
@@ -293,6 +308,12 @@ Cross-language external worker samples:
 
 ```bash
 ./scripts/run-external-worker-samples.sh
+```
+
+Worker-pack SDK capability proof:
+
+```bash
+./mvnw -pl xa-mass-server -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkerPackGeoLookupExternalSdkIntegrationTest test
 ```
 
 Testing-module perf load model:

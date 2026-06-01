@@ -13,15 +13,41 @@ Status: current worker-pack owner README.
 - keep runtime composition SDK-first; worker-pack registers through normal platform APIs
 - keep external process references under `integrations/samples/`
 - do not let worker-pack redefine `xa-mass-server` as the product shell
-- do not add `xa-mass-java-sdk` unless worker-pack has real public HTTP
-  worker-control boilerplate to remove, or a later public realtime Java client
-  contract to consume
+- use `xa-mass-java-sdk` only for real public HTTP worker-control/session
+  paths; do not use it to move worker-pack command/fault behavior into the SDK
 
 ## Start Here
 
 - `src/main/java/com/xa/mass/workerpack/sample/starter/SampleWorkerProcessStarter.java`
 - `src/main/java/com/xa/mass/workerpack/sample/client/SampleWorkerWebSocketClient.java`
 - `src/main/java/com/xa/mass/workerpack/sample/command/runtime/SampleCommandRuntime.java`
+
+## Transport Stance
+
+Worker-pack no longer owns a Java socket demo client. Socket proof belongs to
+Node black-box fixtures, socket adapter tests, and scheduled/manual transport
+diagnostics. The remaining raw WebSocket client is worker-pack fault/command
+harness code, not the public Java SDK worker-session recommendation.
+
+## Worker Capabilities
+
+`tool.geo.lookup` is the first SDK-backed worker-pack capability.
+
+- event code: `tool.geo.lookup`
+- worker group: `worker-pack.tools.geo`
+- input: `query` or `city`
+- output: `city`, `countryCode`, `timeZone`, `currency`, `latitude`,
+  `longitude`, `provider`, `simulated`
+
+`GeoLookupTool` owns the deterministic tool result contract. `GeoLookupWorkerPack`
+owns the external Java SDK bootstrap: it declares the worker group, adapter
+node, node binding, worker identity, online state, polling session, and result
+reporting through `MassPlatform` / `PollingWorkerSession`.
+
+The handler is a Java SDK `WorkerEventHandler`, so business event handling is
+independent of the polling transport. The dev command route
+`ToolCommandRoutes.tool.geo.lookup` delegates to the same tool implementation
+to avoid a second result shape.
 
 ## Sample Fault State
 
@@ -79,12 +105,11 @@ Current direction is tracked by
 `doc/INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_ROADMAP.md`.
 
 Current audit: worker-pack does not duplicate Java raw HTTP client calls for
-`/worker-api/v1` topology or worker-control routes. It discovers dev-shell
-sample workers through embedded `MassSdkApplication` and owns realtime
-WebSocket/socket frame clients plus sample fault behavior. IJS-3 in the
-archived `doc/archive/integrations/2026-06-01_INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md`
-is therefore conditional
-rather than an immediate dependency migration.
+`/worker-api/v1` topology or worker-control routes. Real worker capability
+paths use `xa-mass-java-sdk`; dev-shell sample worker discovery still uses the
+embedded `MassSdkApplication`, and raw WebSocket frame handling remains only as
+command/fault harness substrate. The retired Java socket demo path is documented in
+`doc/INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_INVENTORY.md`.
 
 Future convergence target:
 
@@ -94,6 +119,5 @@ Future convergence target:
 - worker-pack should keep sample command/fault behavior local, but generic
   event dispatch handling should converge on the Java SDK's transport-neutral
   worker handler runtime once realtime sessions can consume it.
-- WebSocket/socket clients should become transport/session adapters into that
-  handler runtime rather than owning business dispatch in transport-specific
-  frame handlers.
+- WebSocket fault-harness code should become a transport/session adapter into
+  the SDK handler runtime when that removes real duplicate handler logic.

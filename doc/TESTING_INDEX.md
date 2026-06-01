@@ -363,6 +363,9 @@ Proves:
 - the host shell exposes the scheduling mainline correctly
 - project/submitter/worker/task flows survive real wiring
 - representative assignment, polling, routing, and worker reuse scenarios survive real server + SDK + engine integration
+- SDK-backed worker-pack capability registration and execution is proven by
+  `WorkerPackGeoLookupExternalSdkIntegrationTest`; it is a worker-pack
+  capability proof, not the generic Java SDK parity owner
 - lifecycle/result convergence gate asserts task aggregate and runtime stats/lease
   truth first; it does not use server review rows as its main
   proof surface
@@ -406,7 +409,8 @@ Primary groups:
 - `ExternalWorkerParitySuite`
 - Java / Node polling
 - Java / Node websocket
-- Java / Node socket
+- Node socket
+- worker-pack SDK capability proof through `tool.geo.lookup`
 
 Proves:
 
