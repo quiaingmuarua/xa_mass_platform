@@ -69,8 +69,9 @@ until a later realtime contract slice defines:
 
 ## Next Valid Step
 
-If realtime SDK support becomes a priority, write a dedicated
-`JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md` before implementation.
+If realtime SDK support becomes a priority, follow the dedicated
+[`JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md`](./JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md)
+before implementation.
 
 That roadmap should choose one of these explicitly:
 
