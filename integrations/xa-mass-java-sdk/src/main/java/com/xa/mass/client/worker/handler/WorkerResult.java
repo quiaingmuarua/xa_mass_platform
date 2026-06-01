@@ -1,4 +1,4 @@
-package com.xa.mass.client.worker.session;
+package com.xa.mass.client.worker.handler;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;

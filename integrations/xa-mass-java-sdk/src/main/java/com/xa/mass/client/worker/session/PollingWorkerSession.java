@@ -11,6 +11,13 @@ import com.xa.mass.client.worker.WorkerRegistrationResult;
 import com.xa.mass.client.worker.WorkerResultSubmitRequest;
 import com.xa.mass.client.worker.WorkerSpec;
 import com.xa.mass.client.worker.WorkerStateReport;
+import com.xa.mass.client.worker.handler.DispatchContext;
+import com.xa.mass.client.worker.handler.WorkerEventHandler;
+import com.xa.mass.client.worker.handler.WorkerEventHandlerRuntime;
+import com.xa.mass.client.worker.handler.WorkerEventHandlers;
+import com.xa.mass.client.worker.handler.WorkerEventInvocation;
+import com.xa.mass.client.worker.handler.WorkerResult;
+import com.xa.mass.client.worker.handler.WorkerResultSink;
 
 import java.time.Duration;
 import java.util.LinkedHashMap;
@@ -35,13 +42,15 @@ public final class PollingWorkerSession implements AutoCloseable {
     private final String pluginVersion;
     private final String deploymentVersion;
     private final Map<String, String> attributes;
-    private final Map<String, WorkerDispatchHandler> handlers;
     private final int maxMessages;
     private final long pollTimeoutMs;
     private final Duration pollInterval;
     private final Duration heartbeatInterval;
     private final Duration maxPollBackoff;
     private final WorkerSessionListener listener;
+    private final WorkerEventHandlers eventHandlers;
+    private final WorkerEventHandlerRuntime handlerRuntime;
+    private final WorkerResultSink resultSink;
     private final ScheduledExecutorService executor;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private volatile boolean offlineOnClose;
@@ -57,13 +66,15 @@ public final class PollingWorkerSession implements AutoCloseable {
         this.pluginVersion = builder.pluginVersion;
         this.deploymentVersion = builder.deploymentVersion;
         this.attributes = Map.copyOf(builder.attributes);
-        this.handlers = Map.copyOf(builder.handlers);
         this.maxMessages = builder.maxMessages;
         this.pollTimeoutMs = builder.pollTimeoutMs;
         this.pollInterval = builder.pollInterval;
         this.heartbeatInterval = builder.heartbeatInterval;
         this.maxPollBackoff = builder.maxPollBackoff;
         this.listener = builder.listener;
+        this.eventHandlers = builder.eventHandlers.build();
+        this.handlerRuntime = new WorkerEventHandlerRuntime(eventHandlers);
+        this.resultSink = builder.resultSink == null ? this::submitResultToWorkerApi : builder.resultSink;
         this.executor = builder.executor == null
                 ? Executors.newScheduledThreadPool(2, new SessionThreadFactory(workerId))
                 : builder.executor;
@@ -109,7 +120,7 @@ public final class PollingWorkerSession implements AutoCloseable {
 
             workerClient.reportCapability(workerId, WorkerCapabilityReport.builder()
                     .workerId(workerId)
-                    .availableEventCodes(handlers.keySet().stream().toList())
+                    .availableEventCodes(eventHandlers.eventCodes().stream().toList())
                     .schedulingAttributes(attributes)
                     .build());
             lastSuccessful = WorkerSessionStartupStep.REPORT_CAPABILITY;
@@ -202,41 +213,30 @@ public final class PollingWorkerSession implements AutoCloseable {
 
     private void handleItem(WorkerDispatchItem item) {
         DispatchContext dispatch = DispatchContext.from(item);
-        WorkerResult result;
-        try {
-            WorkerDispatchHandler handler = handlers.get(item.eventCode());
-            if (handler == null) {
-                result = WorkerResult.failure("NO_HANDLER",
-                        "No handler registered for eventCode " + item.eventCode());
-            } else {
-                result = handler.handle(dispatch);
-                if (result == null) {
-                    result = WorkerResult.failure("HANDLER_NULL_RESULT",
-                            "Handler returned null result");
-                }
-            }
-        } catch (Throwable failure) {
-            listener.onHandlerFailure(new WorkerSessionDispatchFailure(dispatch, failure));
-            result = WorkerResult.failure("HANDLER_ERROR", failure.getMessage(), Map.of(
-                    "exception", failure.getClass().getName()
-            ));
+        WorkerEventInvocation invocation = handlerRuntime.invoke(dispatch);
+        if (invocation.handlerFailed()) {
+            listener.onHandlerFailure(new WorkerSessionDispatchFailure(dispatch, invocation.failure()));
         }
-        submitResult(dispatch, result);
+        submitResult(dispatch, invocation.result());
     }
 
     private void submitResult(DispatchContext dispatch, WorkerResult result) {
         try {
-            workerClient.submitResult(workerId, new WorkerResultSubmitRequest(
-                    dispatch.taskId(),
-                    dispatch.messageId(),
-                    result.success(),
-                    result.detail(),
-                    result.errorCode(),
-                    result.output()
-            ));
+            resultSink.submit(dispatch, result);
         } catch (Throwable failure) {
             listener.onSubmitFailure(new WorkerSessionDispatchFailure(dispatch, failure));
         }
+    }
+
+    private void submitResultToWorkerApi(DispatchContext dispatch, WorkerResult result) {
+        workerClient.submitResult(workerId, new WorkerResultSubmitRequest(
+                dispatch.taskId(),
+                dispatch.messageId(),
+                result.success(),
+                result.detail(),
+                result.errorCode(),
+                result.output()
+        ));
     }
 
     private Duration backoff(int consecutiveFailures) {
@@ -289,13 +289,14 @@ public final class PollingWorkerSession implements AutoCloseable {
         private String pluginVersion;
         private String deploymentVersion;
         private Map<String, String> attributes = new LinkedHashMap<>();
-        private Map<String, WorkerDispatchHandler> handlers = new LinkedHashMap<>();
+        private WorkerEventHandlers.Builder eventHandlers = WorkerEventHandlers.builder();
         private int maxMessages = 1;
         private long pollTimeoutMs = 0L;
         private Duration pollInterval = Duration.ofSeconds(1);
         private Duration heartbeatInterval = Duration.ofSeconds(10);
         private Duration maxPollBackoff = Duration.ofSeconds(30);
         private WorkerSessionListener listener = WorkerSessionListener.NOOP;
+        private WorkerResultSink resultSink;
         private ScheduledExecutorService executor;
 
         private Builder(WorkerClient workerClient) {
@@ -353,7 +354,18 @@ public final class PollingWorkerSession implements AutoCloseable {
         }
 
         public Builder event(String eventCode, WorkerDispatchHandler handler) {
-            this.handlers.put(requireText(eventCode, "eventCode"), Objects.requireNonNull(handler, "handler is required"));
+            Objects.requireNonNull(handler, "handler is required");
+            return eventHandler(eventCode, handler::handle);
+        }
+
+        public Builder eventHandler(String eventCode, WorkerEventHandler handler) {
+            this.eventHandlers.event(requireText(eventCode, "eventCode"),
+                    Objects.requireNonNull(handler, "handler is required"));
+            return this;
+        }
+
+        public Builder eventHandlers(WorkerEventHandlers eventHandlers) {
+            this.eventHandlers.events(eventHandlers);
             return this;
         }
 
@@ -391,6 +403,11 @@ public final class PollingWorkerSession implements AutoCloseable {
 
         public Builder listener(WorkerSessionListener listener) {
             this.listener = listener == null ? WorkerSessionListener.NOOP : listener;
+            return this;
+        }
+
+        public Builder resultSink(WorkerResultSink resultSink) {
+            this.resultSink = Objects.requireNonNull(resultSink, "resultSink is required");
             return this;
         }
 

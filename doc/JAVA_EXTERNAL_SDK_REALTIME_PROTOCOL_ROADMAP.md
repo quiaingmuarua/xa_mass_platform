@@ -1,6 +1,7 @@
 # Java External SDK Realtime Protocol Roadmap
 
-Status: proposed follow-up roadmap for
+Status: stable-proposed handler/runtime contract with proposed realtime
+transport follow-up for
 [`JAVA_EXTERNAL_SDK_REALTIME_DECISION.md`](./JAVA_EXTERNAL_SDK_REALTIME_DECISION.md).
 
 This roadmap upgrades the Java external SDK from polling-only worker sessions
@@ -19,6 +20,13 @@ adaptation without redefining platform kernel ownership.
 - `WorkerSessions` currently exposes polling only. Public realtime Java
   sessions are intentionally deferred by
   [`JAVA_EXTERNAL_SDK_REALTIME_DECISION.md`](./JAVA_EXTERNAL_SDK_REALTIME_DECISION.md).
+- `com.xa.mass.client.worker.handler` now owns the minimum transport-neutral
+  worker event handler runtime: handler definition, immutable handler
+  registry, instance-scoped invocation runtime, invocation result, and result
+  sink.
+- `PollingWorkerSession` adapts polling dispatch into the SDK handler runtime
+  and reports through a session-owned result sink backed by worker HTTP submit
+  by default.
 - `integrations/samples/java/worker-websocket` is a standalone sample POM that
   uses JDK `WebSocket` directly. It proves the current adapter path, but it is
   not yet an SDK-owned session API.
@@ -160,10 +168,11 @@ WebSocketWorkerSession realtime = mass.workerSessions().webSocket()
         .start();
 ```
 
-API names are placeholders until WSDK-1 fixes package and type names.
-The `resultQueue(...)` shape is also a placeholder: the required capability is
-a session-owned result sink/queue that both polling and realtime sessions can
-use, not this exact type name.
+`WorkerEventHandlers` is the stable-proposed handler registry name.
+`resultQueue(...)` remains a placeholder for a later queue abstraction; the
+implemented minimum capability is `WorkerResultSink`, a session-owned result
+reporting target that polling uses now and realtime sessions can back with a
+frame sender later.
 
 Preferred package direction:
 
@@ -264,6 +273,8 @@ rg -n "com\\.xa\\.mass\\.command" .
 
 ## WSDK-1: Worker Event Handler Runtime Contract
 
+Status: minimum implemented in `integrations/xa-mass-java-sdk`.
+
 Scope:
 
 - define worker-local event handler runtime package, type names, and lifecycle.
@@ -323,6 +334,9 @@ rg -n "static .*CommandRegistry|CommandRegistry\\." integrations/xa-mass-java-sd
 
 ## WSDK-2: Worker Event Handler Invocation Layer
 
+Status: minimum implemented for polling frame adaptation and result sink
+delivery. Realtime frame adaptation and result queueing remain follow-up.
+
 Scope:
 
 - extract the common execution path that turns a platform dispatch frame into a
@@ -363,7 +377,7 @@ Verification candidates:
 
 ```powershell
 mvn -pl integrations/xa-mass-java-sdk test
-mvn -pl xa-mass-testing -Dtest=JavaPollingWorkerBlackBoxIntegrationTest test
+mvn -pl xa-mass-server -am "-Dtest=JavaPollingWorkerBlackBoxIntegrationTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 ```
 
 ## WSDK-3: Public WebSocket Worker Protocol Contract
@@ -406,7 +420,7 @@ Acceptance:
 Verification candidates:
 
 ```powershell
-mvn -pl xa-mass-testing -Dtest=JavaWebSocketWorkerBlackBoxIntegrationTest test
+mvn -pl xa-mass-server -am "-Dtest=JavaWebSocketWorkerBlackBoxIntegrationTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 mvn -q -f integrations/samples/java/worker-websocket/pom.xml -DskipTests package
 ```
 
@@ -456,7 +470,7 @@ Verification candidates:
 
 ```powershell
 mvn -pl integrations/xa-mass-java-sdk test
-mvn -pl xa-mass-testing -Dtest=JavaWebSocketWorkerBlackBoxIntegrationTest test
+mvn -pl xa-mass-server -am "-Dtest=JavaWebSocketWorkerBlackBoxIntegrationTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 ```
 
 ## WSDK-5: Java WebSocket Sample Convergence
@@ -492,7 +506,7 @@ Verification candidates:
 
 ```powershell
 mvn -q -f integrations/samples/java/worker-websocket/pom.xml -DskipTests package
-mvn -pl xa-mass-testing -Dtest=JavaWebSocketWorkerBlackBoxIntegrationTest test
+mvn -pl xa-mass-server -am "-Dtest=JavaWebSocketWorkerBlackBoxIntegrationTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 ```
 
 ## WSDK-6: Worker-Pack Event Handler Runtime Convergence

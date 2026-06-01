@@ -8,7 +8,7 @@ import com.xa.mass.client.task.TaskResultReadRequest;
 import com.xa.mass.client.task.TaskResultWindow;
 import com.xa.mass.client.worker.WorkerGroupSpec;
 import com.xa.mass.client.worker.session.PollingWorkerSession;
-import com.xa.mass.client.worker.session.WorkerResult;
+import com.xa.mass.client.worker.handler.WorkerResult;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.auth.SubmitterRegistration;

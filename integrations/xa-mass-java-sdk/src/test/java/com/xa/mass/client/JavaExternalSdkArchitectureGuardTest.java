@@ -11,17 +11,38 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class JavaExternalSdkArchitectureGuardTest {
     private static final Path MAIN_SOURCE = Path.of("src/main/java");
+    private static final Path WORKER_HANDLER_SOURCE =
+            Path.of("src/main/java/com/xa/mass/client/worker/handler");
     private static final List<String> FORBIDDEN_IMPORTS = List.of(
             "import com.xa.mass.engine.",
             "import com.xa.mass.starter.",
             "import com.xa.mass.worker.runtime.",
+            "import com.xa.mass.command.",
+            "import com.xa.mass.kernel.spi.",
+            "import com.xa.mass.base.",
             "import com.xa.mass.api.",
             "import com.xa.mass.transport.runtime.",
+            "import com.xa.mass.transport.websocket.",
+            "import com.xa.mass.transport.socket.",
+            "import com.xa.mass.transport.polling.",
             "import com.xa.mass.sdk.auth.",
             "import com.xa.mass.sdk.authz.",
             "import com.xa.mass.sdk.catalog.",
             "import com.xa.mass.sdk.Task",
             "import com.xa.mass.sdk.Worker"
+    );
+    private static final List<String> FORBIDDEN_ARTIFACT_IDS = List.of(
+            "xa-mass-sdk",
+            "xa-mass-base",
+            "xa-mass-kernel-spi",
+            "xa-mass-worker-pack",
+            "xa-mass-engine",
+            "xa-mass-server",
+            "xa-mass-worker-runtime",
+            "xa-mass-transport-websocket",
+            "xa-mass-transport-socket",
+            "xa-mass-transport-polling",
+            "xa-mass-transport-runtime"
     );
 
     @Test
@@ -36,6 +57,33 @@ class JavaExternalSdkArchitectureGuardTest {
                     assertFalse(source.contains(forbiddenImport),
                             javaFile + " must not contain " + forbiddenImport);
                 }
+            }
+        }
+    }
+
+    @Test
+    void pomDoesNotDependOnRuntimeServerEmbeddedSdkOrBaseArtifacts() throws IOException {
+        for (Path pomPath : List.of(Path.of("pom.xml"), Path.of("pom.consumer.xml"))) {
+            String pom = Files.readString(pomPath);
+            for (String forbiddenArtifactId : FORBIDDEN_ARTIFACT_IDS) {
+                String token = "<artifactId>" + forbiddenArtifactId + "</artifactId>";
+                assertFalse(pom.contains(token), pomPath + " must not contain " + token);
+            }
+        }
+    }
+
+    @Test
+    void workerHandlerRuntimeDoesNotDependOnSessionOrTransportPackages() throws IOException {
+        try (var paths = Files.walk(WORKER_HANDLER_SOURCE)) {
+            List<Path> javaFiles = paths
+                    .filter(path -> path.toString().endsWith(".java"))
+                    .toList();
+            for (Path javaFile : javaFiles) {
+                String source = Files.readString(javaFile);
+                assertFalse(source.contains("import com.xa.mass.client.worker.session."),
+                        javaFile + " must not import worker session types");
+                assertFalse(source.contains("import com.xa.mass.transport."),
+                        javaFile + " must not import transport types");
             }
         }
     }

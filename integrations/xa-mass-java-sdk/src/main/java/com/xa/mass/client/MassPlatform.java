@@ -60,6 +60,7 @@ public final class MassPlatform {
         return requestTimeout;
     }
 
+    @UnstableApi("Raw HTTP escape hatch; prefer tasks(), workers(), and workerSessions().")
     public MassHttpClient http() {
         return httpClient;
     }

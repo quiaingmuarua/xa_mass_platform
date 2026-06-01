@@ -1,4 +1,4 @@
-package com.xa.mass.client.worker.session;
+package com.xa.mass.client.worker.handler;
 
 import com.xa.mass.client.payload.MassPayload;
 import com.xa.mass.client.worker.WorkerDispatchItem;
@@ -12,7 +12,7 @@ public record DispatchContext(
         MassPayload sharedConfig,
         WorkerDispatchItem rawItem
 ) {
-    static DispatchContext from(WorkerDispatchItem item) {
+    public static DispatchContext from(WorkerDispatchItem item) {
         return new DispatchContext(
                 item.taskId(),
                 item.messageId(),

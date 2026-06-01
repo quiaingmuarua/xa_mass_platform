@@ -6,6 +6,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import com.xa.mass.client.MassPlatform;
 import com.xa.mass.client.payload.MassPayloadException;
+import com.xa.mass.client.worker.handler.WorkerResult;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -214,6 +215,90 @@ class PollingWorkerSessionTest {
                 "POST /worker-api/v1/adapter-nodes",
                 "POST /worker-api/v1/node-group-bindings"
         ), observed);
+    }
+
+    @Test
+    void customResultSinkReceivesHandlerResultWithoutHttpSubmit() throws Exception {
+        CountDownLatch resultReported = new CountDownLatch(1);
+        AtomicReference<WorkerResult> reportedResult = new AtomicReference<>();
+        AtomicBoolean firstPoll = new AtomicBoolean(true);
+        startServer(exchange -> {
+            String path = exchange.getRequestURI().getRawPath();
+            readBody(exchange);
+            if ("/worker-api/v1/adapter-nodes".equals(path)) {
+                respond(exchange, 200, """
+                        {"code":0,"msg":"ok","data":{"adapterNodeId":"node-1","adapterType":"polling","endpointId":"node-1","enabled":true,"online":true,"attributes":{}}}
+                        """);
+                return;
+            }
+            if ("/worker-api/v1/node-group-bindings".equals(path)) {
+                respond(exchange, 200, """
+                        {"code":0,"msg":"ok","data":{"adapterNodeId":"node-1","workerGroupId":"group-1","enabled":true,"draining":false,"attributes":{}}}
+                        """);
+                return;
+            }
+            if ("/worker-api/v1/workers".equals(path)) {
+                respond(exchange, 200, """
+                        {"code":0,"msg":"ok","data":{"workerId":"worker-1","adapterNodeId":"node-1","workerGroupId":"group-1","adapterId":"polling","transportHint":"polling"}}
+                        """);
+                return;
+            }
+            if (path.endsWith(":online") || path.endsWith(":heartbeat") || path.endsWith(":offline")) {
+                respond(exchange, 200, """
+                        {"code":0,"msg":"ok","data":{"workerId":"worker-1","action":"accepted","adapterId":"polling","transportHint":"polling"}}
+                        """);
+                return;
+            }
+            if (path.endsWith(":report-capability")) {
+                respond(exchange, 200, """
+                        {"code":0,"msg":"ok","data":{"status":"ACCEPTED","workerId":"worker-1","capabilityVersion":1,"accepted":true,"snapshotChanged":true,"reason":"updated"}}
+                        """);
+                return;
+            }
+            if (path.endsWith(":report-state")) {
+                respond(exchange, 200, """
+                        {"code":0,"msg":"ok","data":{"status":"ACCEPTED","workerId":"worker-1","stateVersion":1,"accepted":true,"projectionChanged":true,"reason":"updated","projection":{"workerId":"worker-1","stateVersion":1,"state":"AVAILABLE"}}}
+                        """);
+                return;
+            }
+            if (path.endsWith(":poll")) {
+                if (firstPoll.getAndSet(false)) {
+                    respond(exchange, 200, """
+                            {"code":0,"msg":"ok","data":{"workerId":"worker-1","total":1,"items":[{"taskId":"task-1","messageId":"msg-1","eventCode":"probe.phone.metadata","workerId":"worker-1","input":{"phone":"+14155550100"},"sharedConfig":{}}]}}
+                            """);
+                } else {
+                    respond(exchange, 200, """
+                            {"code":0,"msg":"ok","data":{"workerId":"worker-1","total":0,"items":[]}}
+                            """);
+                }
+                return;
+            }
+            if (path.endsWith(":submit-result")) {
+                respond(exchange, 500, "HTTP submit should not be used when custom result sink is configured");
+                return;
+            }
+            respond(exchange, 404, "unexpected");
+        });
+
+        try (PollingWorkerSession ignored = platform().workerSessions().polling()
+                .workerId("worker-1")
+                .workerGroupId("group-1")
+                .adapterNodeId("node-1")
+                .eventHandler("probe.phone.metadata", dispatch -> WorkerResult.success(Map.of(
+                        "phone", dispatch.input().requiredString("phone")
+                )))
+                .resultSink((dispatch, result) -> {
+                    reportedResult.set(result);
+                    resultReported.countDown();
+                })
+                .pollInterval(Duration.ofMillis(20))
+                .heartbeatInterval(Duration.ofMillis(50))
+                .start()) {
+            assertTrue(resultReported.await(2, TimeUnit.SECONDS), "result should be reported to custom sink");
+        }
+
+        assertTrue(reportedResult.get().success());
+        assertEquals("+14155550100", reportedResult.get().output().get("phone"));
     }
 
     @Test

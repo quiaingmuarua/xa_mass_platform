@@ -1,9 +1,12 @@
 package com.xa.mass.client.http;
 
+import com.xa.mass.client.UnstableApi;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Objects;
 
+@UnstableApi("Raw HTTP stream response; prefer typed task archive APIs.")
 public final class MassHttpStreamResponse implements AutoCloseable {
     private final int statusCode;
     private final String contentType;

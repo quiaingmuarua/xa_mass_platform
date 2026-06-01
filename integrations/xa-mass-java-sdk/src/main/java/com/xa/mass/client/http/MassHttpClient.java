@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xa.mass.client.UnstableApi;
 import com.xa.mass.client.http.exception.MassApiException;
 import com.xa.mass.client.http.exception.MassClientException;
 import com.xa.mass.client.http.exception.MassHttpException;
@@ -20,6 +21,7 @@ import java.net.http.HttpTimeoutException;
 import java.time.Duration;
 import java.util.Objects;
 
+@UnstableApi("Raw HTTP escape hatch; prefer MassPlatform typed clients.")
 public final class MassHttpClient {
     public static final String MASS_API_KEY_HEADER = "X-Mass-Api-Key";
 

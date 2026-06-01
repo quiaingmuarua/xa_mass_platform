@@ -2,9 +2,9 @@ package com.xa.mass.samples.polling;
 
 import com.xa.mass.client.MassPlatform;
 import com.xa.mass.client.worker.WorkerGroupSpec;
-import com.xa.mass.client.worker.session.DispatchContext;
+import com.xa.mass.client.worker.handler.DispatchContext;
 import com.xa.mass.client.worker.session.PollingWorkerSession;
-import com.xa.mass.client.worker.session.WorkerResult;
+import com.xa.mass.client.worker.handler.WorkerResult;
 
 import java.io.IOException;
 import java.net.URI;
