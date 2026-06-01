@@ -80,3 +80,15 @@ Current audit: worker-pack does not duplicate Java raw HTTP client calls for
 sample workers through embedded `MassSdkApplication` and owns realtime
 WebSocket/socket frame clients plus sample fault behavior. JSDK-5.5 is
 therefore conditional rather than an immediate migration step.
+
+Future convergence target:
+
+- worker-pack may provide curated, real worker groups, but those groups are not
+  privileged platform state; they must register, go online, receive dispatch,
+  and report results through public worker APIs or SDK sessions.
+- worker-pack should keep sample command/fault behavior local, but generic
+  event dispatch handling should converge on the Java SDK's transport-neutral
+  worker handler runtime once realtime sessions can consume it.
+- WebSocket/socket clients should become transport/session adapters into that
+  handler runtime rather than owning business dispatch in transport-specific
+  frame handlers.

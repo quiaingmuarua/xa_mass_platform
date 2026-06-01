@@ -3,7 +3,9 @@
 Status: current mainline complete for making
 [`../integrations/xa-mass-java-sdk`](../integrations/xa-mass-java-sdk) a real
 external JVM SDK for local/internal staging. Public registry publication and
-realtime WebSocket sessions remain explicit follow-up decisions.
+realtime WebSocket sessions remain explicit follow-up decisions. Internal Java
+adoption across `integrations/` is tracked separately in
+[`INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md`](./INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md).
 
 Current progress:
 

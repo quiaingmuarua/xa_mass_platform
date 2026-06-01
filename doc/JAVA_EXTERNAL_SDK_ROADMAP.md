@@ -22,6 +22,8 @@ exists. Follow-up realtime and worker event-handler SDK planning lives in
 Follow-up public SDK hardening, versioning, documentation, and publication
 readiness lives in
 [`JAVA_EXTERNAL_SDK_PUBLIC_READINESS_ROADMAP.md`](./JAVA_EXTERNAL_SDK_PUBLIC_READINESS_ROADMAP.md).
+Follow-up internal Java adoption across `integrations/` lives in
+[`INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md`](./INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md).
 Broad sample path convergence and clean server demo bootstrap extraction
 continue in
 [`INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md`](./INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md).
