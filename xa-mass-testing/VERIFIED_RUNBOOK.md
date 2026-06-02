@@ -15,7 +15,7 @@ minimum verification rules, and CI gate truth. Use
 [../xa-mass-engine/README.md](../xa-mass-engine/README.md) and
 [README.md](./README.md) for module-owned
 test detail, [INTERNAL_API_REFERENCE.md](../xa-mass-server/doc/INTERNAL_API_REFERENCE.md) for
-endpoint shapes, [STATE_MACHINE_BASELINE.md](../doc/STATE_MACHINE_BASELINE.md) for
+endpoint shapes, [TASK_LIFECYCLE_BASELINE.md](../doc/TASK_LIFECYCLE_BASELINE.md) for
 lifecycle rules, and [TRACE_CONTRACT.md](../doc/TRACE_CONTRACT.md) for trace
 semantics.
 

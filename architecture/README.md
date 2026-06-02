@@ -36,7 +36,7 @@ After this directory, use the owner documents for precise contracts:
 - HTTP/API contracts: [`../xa-mass-server/doc/INTERNAL_API_REFERENCE.md`](../xa-mass-server/doc/INTERNAL_API_REFERENCE.md)
 - external worker protocol: [`../sdk/xa-mass-java-sdk/EXTERNAL_WORKER_QUICKSTART.md`](../sdk/xa-mass-java-sdk/EXTERNAL_WORKER_QUICKSTART.md)
 - engine owner truth: [`../xa-mass-engine/README.md`](../xa-mass-engine/README.md)
-- result boundary: [`../doc/RESULT_BOUNDARY_BASELINE.md`](../doc/RESULT_BOUNDARY_BASELINE.md)
+- task lifecycle baseline: [`../doc/TASK_LIFECYCLE_BASELINE.md`](../doc/TASK_LIFECYCLE_BASELINE.md)
 - transport boundary: [`../transport/TRANSPORT_BOUNDARY_BASELINE.md`](../transport/TRANSPORT_BOUNDARY_BASELINE.md)
 
 ## One-Line Model

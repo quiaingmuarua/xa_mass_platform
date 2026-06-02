@@ -10,7 +10,7 @@ Before changing behavior, read:
 
 1. [AGENTS.md](AGENTS.md)
 2. [doc/AGENT_BASELINE.md](doc/AGENT_BASELINE.md)
-3. [doc/STATE_MACHINE_BASELINE.md](doc/STATE_MACHINE_BASELINE.md)
+3. [doc/TASK_LIFECYCLE_BASELINE.md](doc/TASK_LIFECYCLE_BASELINE.md)
 4. [doc/INFRA_TRUTH_LAYERS.md](doc/INFRA_TRUTH_LAYERS.md) when the change
    touches storage, runtime, audit, or observability placement
 5. the owning module README or owner contract

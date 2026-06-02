@@ -13,8 +13,7 @@ Read the fewest files possible:
 | File | Purpose |
 | --- | --- |
 | [AGENT_BASELINE.md](./AGENT_BASELINE.md) | global platform baseline and hard guardrails |
-| [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md) | lifecycle vocabulary and invariants |
-| [RESULT_BOUNDARY_BASELINE.md](./RESULT_BOUNDARY_BASELINE.md) | runtime result owner split, public result boundary, and compatibility residue rules |
+| [TASK_LIFECYCLE_BASELINE.md](./TASK_LIFECYCLE_BASELINE.md) | Task/Worker/Scheduling/Matching lifecycle, result-side ownership, and terminal invariants |
 | [INFRA_TRUTH_LAYERS.md](./INFRA_TRUTH_LAYERS.md) | control-plane/runtime/trace placement matrix plus DB hot-write guardrails |
 | [TRACE_CONTRACT.md](./TRACE_CONTRACT.md) | required trace surface |
 | [TESTING_INDEX.md](./TESTING_INDEX.md) | current proof lanes, E2E boundary, CI truth, and minimum verification map |
@@ -83,6 +82,7 @@ Do not add a new `doc/*` file for:
 - human-facing architecture onboarding guides
 - module-local implementation notes
 - module-local test inventories or command lists
+- module-local measurement or benchmark notes
 - adapter-specific protocol behavior
 - one-module design/refactor notes
 - migration inventory owned by one module

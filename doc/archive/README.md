@@ -16,6 +16,7 @@ original creation date of the document (not the archive date).
 | --- | --- | --- |
 | 2026-06-02 | [DB_STORAGE_PRINCIPLES_SUPERSEDED](./core/2026-06-02_DB_STORAGE_PRINCIPLES_SUPERSEDED.md) | superseded baseline |
 | 2026-06-02 | [E2E_BASELINE_SUPERSEDED](./core/2026-06-02_E2E_BASELINE_SUPERSEDED.md) | superseded baseline |
+| 2026-06-02 | [RESULT_BOUNDARY_BASELINE_SUPERSEDED](./core/2026-06-02_RESULT_BOUNDARY_BASELINE_SUPERSEDED.md) | superseded baseline |
 | 2026-06-02 | [TESTING_BASELINE_SUPERSEDED](./core/2026-06-02_TESTING_BASELINE_SUPERSEDED.md) | superseded baseline |
 
 ## integrations
@@ -83,3 +84,4 @@ original creation date of the document (not the archive date).
 | 2026-05-30 | [ENGINE_STORAGE_API_DETACHMENT_ROADMAP](./xa-mass-engine/2026-05-30_ENGINE_STORAGE_API_DETACHMENT_ROADMAP.md) | roadmap |
 | 2026-06-02 | [ENGINE_KERNEL_CONVERGENCE_ROADMAP](./xa-mass-engine/2026-06-02_ENGINE_KERNEL_CONVERGENCE_ROADMAP.md) | roadmap |
 | 2026-06-02 | [ENGINE_KERNEL_CONVERGENCE_INVENTORY](./xa-mass-engine/2026-06-02_ENGINE_KERNEL_CONVERGENCE_INVENTORY.md) | inventory |
+| 2026-06-02 | [WORKER_DECLARATION_PORT_BOUNDARY_ROADMAP](./xa-mass-engine/2026-06-02_WORKER_DECLARATION_PORT_BOUNDARY_ROADMAP.md) | roadmap |

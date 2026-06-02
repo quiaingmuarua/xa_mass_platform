@@ -102,7 +102,7 @@ Use with:
 
 - [PROOF_REGISTRY.md](./PROOF_REGISTRY.md)
 - [../xa-mass-testing/VERIFIED_RUNBOOK.md](../xa-mass-testing/VERIFIED_RUNBOOK.md)
-- [RESULT_BOUNDARY_BASELINE.md](./RESULT_BOUNDARY_BASELINE.md)
+- [TASK_LIFECYCLE_BASELINE.md](./TASK_LIFECYCLE_BASELINE.md)
 - [TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
 - [../xa-mass-trace/README.md](../xa-mass-trace/README.md)
 - [../xa-mass-engine/README.md](../xa-mass-engine/README.md)

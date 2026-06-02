@@ -8,6 +8,8 @@ entry and place detailed current/future owner docs under this directory.
 ## Layout
 
 - `baseline/`: current truth documents and executable-owner expectations.
+- `measurements/`: local validation records and measurement context; these are
+  evidence notes, not performance guarantees.
 - `roadmap/`: future or deferred direction that is not current behavior.
 - completed historical plans live outside the active engine read map and should
   be used only for changelog-style audits.
@@ -20,6 +22,10 @@ entry and place detailed current/future owner docs under this directory.
 - [RUNTIME_BOUNDARY_BASELINE.md](baseline/RUNTIME_BOUNDARY_BASELINE.md)
 - [STORAGE_BASELINE.md](baseline/STORAGE_BASELINE.md)
 - [EVENT_OWNER_BOUNDARY.md](baseline/EVENT_OWNER_BOUNDARY.md)
+
+## Measurements
+
+- [MATCH_THROUGHPUT_NOTE.md](measurements/MATCH_THROUGHPUT_NOTE.md)
 
 ## Roadmaps
 

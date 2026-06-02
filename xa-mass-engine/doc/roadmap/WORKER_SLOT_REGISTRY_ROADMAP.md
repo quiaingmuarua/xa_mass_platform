@@ -227,7 +227,7 @@ WorkerRegistry
   owns slot metadata, group-local indexes, heartbeat evidence, dispatch gates,
   active/reserved counters, tombstone state, and atomic mutation methods
 
-TaskWorkRuntime / result owners
+TaskWorkRuntime / TaskResultRuntime
   own work lease, result finality, and terminal convergence
 ```
 
@@ -432,7 +432,7 @@ Strong enough:
 - per-worker reserve must not overbook declared capacity
 - confirm/release/final must not produce negative counts
 - gate source clear must not clear other gate sources
-- result finality remains owned by TaskWorkRuntime / result owners
+- result finality remains owned by TaskWorkRuntime / TaskResultRuntime
 - task active worker count must converge after result/expiry
 
 Eventually consistent:

@@ -7,13 +7,22 @@ Fast entry only. Use module owner READMEs and `doc/` contracts for detail.
 ## 0. TL;DR
 
 - XA Mass Platform is a general distributed task scheduling platform.
-- Stable kernel: `Task / assignment / result / audit / terminal policy`.
+- Core primitives: `Task + Worker + Scheduling + Matching`.
+- `Task`: shell, contract, intake window, runtime work, result, and terminal
+  aggregate.
+- `Worker`: execution identity plus WorkerGroup/node membership and scheduling
+  facts.
+- `Scheduling`: decides when work may enter, retry, pause, resume, or leave
+  dispatch competition.
+- `Matching`: selects eligible workers from group capability, scheduling
+  evidence, reachability, runtime load/capacity facts, and policy rules.
 - Kernel truth is currently split across:
   - `Task.contract` for runtime contract
   - `Task.intakeStatus` for intake-window truth
   - `TaskWorkRuntime` for ready/delayed/lease/counter truth
-- result convergence is runtime-first, but the active owner split must be
-  verified from `doc/RESULT_BOUNDARY_BASELINE.md` plus current engine/runtime
+  - `TaskResultRuntime` for stable-final result rows and result-side barriers
+- result convergence is runtime-first, but the lifecycle owner split must be
+  verified from `doc/TASK_LIFECYCLE_BASELINE.md` plus current engine/runtime
   code rather than inferred from historical `TaskWorkRuntime` wording alone
 - Transport is three explicit channels: task dispatch, result ingest, and system events.
 - Runtime entry is SDK-first; server HTTP/UI surfaces provide a lightweight
@@ -23,7 +32,7 @@ Fast entry only. Use module owner READMEs and `doc/` contracts for detail.
 
 Current mainline execution path:
 
-- `Task shell -> item append -> runtime enqueue -> dispatch binder -> transport delivery view -> result convergence -> task state`
+- `Task shell -> item append -> runtime enqueue -> scheduling eligibility -> matching and assignment -> transport dispatch -> result convergence -> task state`
 
 ## 0.1 Abstraction Test
 
@@ -54,7 +63,7 @@ For a new session, read only these before changing behavior:
 
 1. [README.md](README.md)
 2. [doc/AGENT_BASELINE.md](doc/AGENT_BASELINE.md)
-3. [doc/STATE_MACHINE_BASELINE.md](doc/STATE_MACHINE_BASELINE.md)
+3. [doc/TASK_LIFECYCLE_BASELINE.md](doc/TASK_LIFECYCLE_BASELINE.md)
 4. [doc/INFRA_TRUTH_LAYERS.md](doc/INFRA_TRUTH_LAYERS.md) when the change touches storage, runtime, audit, or observability placement
 5. [xa-mass-trace/README.md](xa-mass-trace/README.md) when the change touches
    trace, lifecycle observability, or trace-observed integration testing
@@ -83,8 +92,8 @@ Start here based on the change:
 
 - engine lifecycle, matching, assignment, result, or concurrency:
   [xa-mass-engine/README.md](xa-mass-engine/README.md)
-- result owner split and runtime/public-result boundaries:
-  [doc/RESULT_BOUNDARY_BASELINE.md](doc/RESULT_BOUNDARY_BASELINE.md)
+- task lifecycle, result-side ownership, and runtime/public-result boundaries:
+  [doc/TASK_LIFECYCLE_BASELINE.md](doc/TASK_LIFECYCLE_BASELINE.md)
 - runtime queue/lease/counter ownership or storage/runtime/trace placement:
   [platform_infra/README.md](platform_infra/README.md),
   [doc/INFRA_TRUTH_LAYERS.md](doc/INFRA_TRUTH_LAYERS.md)
@@ -97,7 +106,7 @@ Start here based on the change:
   [doc/PROOF_REGISTRY.md](doc/PROOF_REGISTRY.md) next before jumping to the
   owning lane README or suite
 - lifecycle/trace/E2E contracts:
-  [doc/STATE_MACHINE_BASELINE.md](doc/STATE_MACHINE_BASELINE.md),
+  [doc/TASK_LIFECYCLE_BASELINE.md](doc/TASK_LIFECYCLE_BASELINE.md),
   [doc/TRACE_CONTRACT.md](doc/TRACE_CONTRACT.md),
   [doc/TESTING_INDEX.md](doc/TESTING_INDEX.md)
 - trace operator CLI / local trace diagnosis:
@@ -113,6 +122,8 @@ Start here based on the change:
   [xa-mass-server/doc/INTERNAL_API_REFERENCE.md](xa-mass-server/doc/INTERNAL_API_REFERENCE.md)
 - SDK/integrations boundary guard:
   [doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md](doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md)
+- active cross-module roadmap or decision work:
+  [roadmap/README.md](roadmap/README.md)
 - legacy/compatibility/deprecation work:
   [DEPRECATION_LEDGER.md](DEPRECATION_LEDGER.md)
 
@@ -158,10 +169,13 @@ Planning rule for multi-file or core changes:
 - prefer logs, traces, and bounded diagnostics over model-coupled realtime observability
 - prefer E2E or integration coverage for lifecycle changes
 - when lifecycle semantics change, update
-  [doc/STATE_MACHINE_BASELINE.md](doc/STATE_MACHINE_BASELINE.md),
+  [doc/TASK_LIFECYCLE_BASELINE.md](doc/TASK_LIFECYCLE_BASELINE.md),
   [doc/TRACE_CONTRACT.md](doc/TRACE_CONTRACT.md), and
   [doc/TESTING_INDEX.md](doc/TESTING_INDEX.md) together
 - keep docs concise and current; delete stale notes instead of preserving parallel narratives
 - keep module-owned docs inside the owning module; `doc/` is for global contracts, constraints, indexes, and runbooks
+- do not add new root directories unless they are cross-module entry points
+  linked from this handoff or the root README; otherwise put the material under
+  the owning module or archive it
 - do not document target state as already implemented
 - do not recreate removed archive/v2 code

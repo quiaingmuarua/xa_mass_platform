@@ -1,0 +1,17 @@
+# Server Docs
+
+Status: current server-local documentation index.
+
+Keep server-local API references and server roadmap notes here. Current server
+truth starts from the module root [`README.md`](../README.md); roadmap prose is
+planning context until verified against code, tests, and public contracts.
+
+## Current References
+
+- [INTERNAL_API_REFERENCE.md](INTERNAL_API_REFERENCE.md): current internal HTTP
+  reference for active controller routes.
+
+## Roadmaps
+
+- [IDENTITY_ACCESS_ROADMAP.md](roadmap/IDENTITY_ACCESS_ROADMAP.md): proposed
+  identity/access convergence; not current behavior until verified.

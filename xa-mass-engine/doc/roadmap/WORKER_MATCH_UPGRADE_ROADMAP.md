@@ -514,7 +514,7 @@ Goal: understand and reduce matching throughput bottlenecks without moving
 truth into the wrong owner.
 
 This is a diagnostic / measurement slice first. Its deliverable is a short
-measurement note at `doc/measurements/MATCH_THROUGHPUT_NOTE.md`, before any
+measurement note at `xa-mass-engine/doc/measurements/MATCH_THROUGHPUT_NOTE.md`, before any
 throughput-changing implementation PR. If the measurement note is deliberately
 kept inside this file instead, add it under `## Slice 4 Measurement Record` and
 link to the commit or run artifact that produced the numbers.
@@ -543,7 +543,7 @@ Landed first slice:
 1. `TaskAssignWorker` records assignment duration on `ASSIGNMENT_QUEUE_SNAPSHOT`
    for processed attempts and no-match retry scheduling.
 2. The measurement note lives at
-   [`doc/measurements/MATCH_THROUGHPUT_NOTE.md`](../../../doc/measurements/MATCH_THROUGHPUT_NOTE.md).
+   [`doc/measurements/MATCH_THROUGHPUT_NOTE.md`](../measurements/MATCH_THROUGHPUT_NOTE.md).
 3. No lane parallelism or dispatch concurrency behavior changed in this slice.
 
 ## Slice 5: Warm Candidate Hints

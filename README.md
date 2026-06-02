@@ -6,13 +6,14 @@ Trust code and verified runtime behavior over historical documentation.
 
 ## Start Here
 
+- [AGENTS.md](./AGENTS.md)
+- [doc/AGENT_BASELINE.md](./doc/AGENT_BASELINE.md)
+- [doc/TASK_LIFECYCLE_BASELINE.md](./doc/TASK_LIFECYCLE_BASELINE.md)
+- [doc/README.md](./doc/README.md) - expanded global doc map when needed
+- [transport/AGENTS.md](./transport/AGENTS.md)
 - [architecture/README.md](./architecture/README.md) - human-facing architecture and onboarding guide
 - [README.zh-CN.md](./README.zh-CN.md) - Chinese project introduction for people
 - [architecture/README.zh-CN.md](./architecture/README.zh-CN.md) - Chinese architecture guide
-- [AGENTS.md](./AGENTS.md)
-- [doc/AGENT_BASELINE.md](./doc/AGENT_BASELINE.md)
-- [doc/README.md](./doc/README.md)
-- [transport/AGENTS.md](./transport/AGENTS.md)
 
 Additional current baseline:
 
@@ -56,13 +57,13 @@ Current kernel truth is intentionally narrow:
 - `Task.contract` answers whether the task is `SESSION` or `BATCH`
 - `Task.intakeStatus` answers whether ingress remains `OPEN` or is already `SEALED`
 - `TaskWorkRuntime` answers ready/delayed/lease/counter truth for execution
-- result convergence is runtime-first, but the active owner split is documented
-  in [`doc/RESULT_BOUNDARY_BASELINE.md`](./doc/RESULT_BOUNDARY_BASELINE.md)
+- result convergence is runtime-first, but the lifecycle owner split is documented
+  in [`doc/TASK_LIFECYCLE_BASELINE.md`](./doc/TASK_LIFECYCLE_BASELINE.md)
   and current engine/runtime code rather than frozen in this summary
 
 Current mainline execution path:
 
-- `Task shell -> item append -> runtime enqueue -> dispatch binder -> transport delivery view -> result convergence -> task state`
+- `Task shell -> item append -> runtime enqueue -> scheduling eligibility -> matching and assignment -> transport dispatch -> result convergence -> task state`
 
 Common scenarios include IM bots, crawlers, LLM agents, data pipelines,
 CI/CD runners, device/RPA workers, human-review queues, and GPU/inference
@@ -70,7 +71,7 @@ workers.
 The shared kernel is:
 
 - `stateful worker + scheduling evidence + policy-based matching + per-item result tracking + task-level convergence`
-- stable kernel truth: `Task`, assignment, result, audit, and terminal policy
+- stable kernel truth starts from `Task + Worker + Scheduling + Matching`; result, audit, and terminal policy are lifecycle consequences of that mainline
 - matching as a scheduling policy surface: the current default uses group-first
   candidate acquisition, worker scheduling evidence, QLExpress-backed
   eligibility rules, ranking, and admission; future strategies may add worker
@@ -116,9 +117,9 @@ Current integration boundary rule:
 - Pull-style workers are mainline through `MassSdkApplication.pullWorker(...)` and `/worker-api/v1/**`
 - `Task.project`, `Task.user`, and `Task.sharedConfig` are task-level truth; runtime ingress payload or `payloadRef` is the per-item payload boundary
 - `TaskWorkRuntime` is the current hot-path owner for ready work, active lease, retry scheduling, expiry, and backpressure truth
-- result convergence remains runtime-first; verify the active split between
+- result convergence remains runtime-first; verify the lifecycle split between
   runtime apply truth, stable-final result rows, and compatibility residue from
-  [`doc/RESULT_BOUNDARY_BASELINE.md`](./doc/RESULT_BOUNDARY_BASELINE.md)
+  [`doc/TASK_LIFECYCLE_BASELINE.md`](./doc/TASK_LIFECYCLE_BASELINE.md)
 - Verified lifecycle coverage includes `NEW -> READY -> RUNNING -> TERMINAL`, `NEW -> READY -> PAUSED -> READY`, and `NEW -> BLOCKED -> READY`
 
 ## Module Map
@@ -153,11 +154,19 @@ Current integration boundary rule:
 
 Module truth comes from the root `pom.xml`. Do not treat removed historical modules or top-level directories outside the reactor as current mainline.
 
+Top-level non-reactor directories are intentionally narrow:
+
+- `architecture/`: human-facing onboarding and mental model, linked from this
+  README because it is a cross-module entry point
+- `roadmap/`: active cross-module planning, inventories, and decision records;
+  use only when the task touches planned convergence or future direction, and
+  verify against code before treating it as current truth
+
 ## Pointers
 
 - runtime infra ownership: [platform_infra/README.md](./platform_infra/README.md)
 - trace operator CLI: [xa-mass-trace/README.md](./xa-mass-trace/README.md)
-- result owner baseline: [doc/RESULT_BOUNDARY_BASELINE.md](./doc/RESULT_BOUNDARY_BASELINE.md)
+- task lifecycle baseline: [doc/TASK_LIFECYCLE_BASELINE.md](./doc/TASK_LIFECYCLE_BASELINE.md)
 - storage-jdbc ownership and current drift notes: [platform_infra/mass-storage-jdbc/README.md](./platform_infra/mass-storage-jdbc/README.md)
 - Redis runtime keyspace baseline: [platform_infra/mass-runtime-redis/REDIS_RUNTIME_BASELINE.md](./platform_infra/mass-runtime-redis/REDIS_RUNTIME_BASELINE.md)
 - startup, smoke, and regression commands: [xa-mass-testing/VERIFIED_RUNBOOK.md](./xa-mass-testing/VERIFIED_RUNBOOK.md)

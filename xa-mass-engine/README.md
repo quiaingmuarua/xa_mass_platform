@@ -552,8 +552,8 @@ Engine-local owner docs:
 
 - [`doc/README.md`](./doc/README.md):
   engine-local documentation index. Current truth lives in `doc/baseline/`,
-  future direction in `roadmap/`, and historical plans stay outside the
-  active engine read map.
+  measurement context lives in `doc/measurements/`, future direction lives in
+  `doc/roadmap/`, and historical plans stay outside the active engine read map.
 
 - [`doc/baseline/SCHEDULING_CORRECTNESS_MATRIX.md`](./doc/baseline/SCHEDULING_CORRECTNESS_MATRIX.md):
   current invariant-to-test map for scheduling correctness, proof surfaces, and
@@ -564,6 +564,9 @@ Engine-local owner docs:
 - [`doc/baseline/SCHEDULING_KERNEL_BASELINE.md`](./doc/baseline/SCHEDULING_KERNEL_BASELINE.md):
   current scheduling mainline, worker scheduling surface, policy ownership,
   precedence, boundaries, and proof map
+- [`doc/measurements/MATCH_THROUGHPUT_NOTE.md`](./doc/measurements/MATCH_THROUGHPUT_NOTE.md):
+  current match-throughput instrumentation baseline and local validation
+  record; this is measurement context, not a throughput guarantee
 - [`doc/baseline/RUNTIME_BOUNDARY_BASELINE.md`](./doc/baseline/RUNTIME_BOUNDARY_BASELINE.md):
   current runtime cutover, recovery, and truth-layer boundary
 - [`doc/baseline/STORAGE_BASELINE.md`](./doc/baseline/STORAGE_BASELINE.md):
@@ -576,15 +579,11 @@ Engine-local owner docs:
 - [`doc/baseline/EVENT_OWNER_BOUNDARY.md`](./doc/baseline/EVENT_OWNER_BOUNDARY.md):
   current owner map for descriptor metadata, task-result input, worker
   presence ingress, and future command/state/capability owner slots
-- [`doc/README.md`](./doc/README.md):
-  engine-local documentation index, including links to historical archive
-  documents. Archived roadmaps are changelog-style context only; do not use
-  them as proof of current code behavior.
 
 Global baselines:
 
 - [`../AGENTS.md`](../AGENTS.md)
 - [`../doc/AGENT_BASELINE.md`](../doc/AGENT_BASELINE.md)
-- [`../doc/STATE_MACHINE_BASELINE.md`](../doc/STATE_MACHINE_BASELINE.md)
+- [`../doc/TASK_LIFECYCLE_BASELINE.md`](../doc/TASK_LIFECYCLE_BASELINE.md)
 - [`../doc/TRACE_CONTRACT.md`](../doc/TRACE_CONTRACT.md)
 - [`../doc/TESTING_INDEX.md`](../doc/TESTING_INDEX.md)

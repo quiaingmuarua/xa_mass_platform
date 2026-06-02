@@ -1,6 +1,7 @@
 # Result Boundary Baseline
 
-Status: current result-kernel owner baseline.
+Status: superseded. Current result-side lifecycle ownership is merged into
+`doc/TASK_LIFECYCLE_BASELINE.md`.
 
 Use this with:
 

@@ -1,5 +1,9 @@
 # Worker Declaration Port Boundary Roadmap
 
+Archive status: completed and archived on 2026-06-02. Current worker declaration
+ownership truth lives in `xa-mass-worker-runtime` owner docs and current engine
+baselines; verify against code before using this record as evidence.
+
 Status: implemented direction document.
 
 Progress:

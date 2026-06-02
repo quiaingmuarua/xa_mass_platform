@@ -18,6 +18,10 @@ with [`../doc/TESTING_INDEX.md`](../doc/TESTING_INDEX.md). This README covers
 server-owned HTTP/control-console/IAM host behavior plus Boot-shell E2E,
 black-box, and host-shell validation assets.
 
+Server-local docs live in [`doc/README.md`](./doc/README.md). Use that index
+for the internal HTTP reference and server-owned roadmap notes; verify roadmap
+claims against current code before treating them as behavior.
+
 ## Current Role
 
 - real Spring Boot entrypoint: `com.xa.mass.server.XaMassServerApplication`

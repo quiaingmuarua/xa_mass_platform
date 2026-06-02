@@ -9,7 +9,7 @@ high-density decision table for `control-plane storage`, `runtime state`, and
 Read with:
 
 - [../AGENTS.md](../AGENTS.md)
-- [RESULT_BOUNDARY_BASELINE.md](./RESULT_BOUNDARY_BASELINE.md)
+- [TASK_LIFECYCLE_BASELINE.md](./TASK_LIFECYCLE_BASELINE.md)
 - [TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
 - [../platform_infra/README.md](../platform_infra/README.md)
 

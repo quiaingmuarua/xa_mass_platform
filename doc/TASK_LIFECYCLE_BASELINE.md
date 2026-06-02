@@ -1,10 +1,19 @@
-# State Machine Baseline
+# Task Lifecycle Baseline
 
-Last updated: 2026-05-18 (runtime owns hot-path ready/claim/lease/expiry state; WorkerContext is retired historical vocabulary, not engine scheduling truth)
+Last updated: 2026-06-02
 
-Status: current global lifecycle baseline.
+Status: current global task lifecycle baseline.
 
-This is the short normative baseline for the active mainline.
+This is the short normative baseline for the active task mainline. It covers
+the four core primitives that a new agent must understand first:
+
+```text
+Task + Worker + Scheduling + Matching
+  -> assignment / dispatch
+  -> result apply
+  -> terminal convergence
+```
+
 If lifecycle semantics change, update this file, trace expectations, and
 testing/E2E ownership together.
 
@@ -13,29 +22,54 @@ Use with:
 - [../AGENTS.md](../AGENTS.md)
 - [./TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
 - [./TESTING_INDEX.md](./TESTING_INDEX.md)
-- [./RESULT_BOUNDARY_BASELINE.md](./RESULT_BOUNDARY_BASELINE.md)
 - [../xa-mass-engine/doc/baseline/SCHEDULING_KERNEL_BASELINE.md](../xa-mass-engine/doc/baseline/SCHEDULING_KERNEL_BASELINE.md)
 
-## 1. Global Rules
+## 1. Primitive Map
+
+| Primitive | Current meaning | Primary owner |
+| --- | --- | --- |
+| `Task` | task shell, contract, intake window, aggregate status, terminal reason, and task-level execution policy | engine lifecycle plus kernel-facing task-shell ports |
+| `Worker` | execution identity plus group/node membership and declared worker facts | `xa-mass-worker-runtime` declaration/resource owners |
+| `Scheduling` | deciding when task work may enter competition, dispatch, retry, pause, resume, or close | engine lifecycle and runtime queues |
+| `Matching` | selecting eligible workers from WorkerGroup capability, worker scheduling evidence, reachability, and policy rules | engine matching strategy plus worker-runtime candidate/evidence surfaces |
+
+The current lifecycle mainline is:
+
+```text
+task shell create
+  -> item append
+  -> runtime enqueue
+  -> scheduling eligibility
+  -> matching and assignment
+  -> transport dispatch
+  -> worker result
+  -> runtime result apply
+  -> visible result commit
+  -> task progress / terminal convergence
+```
+
+## 2. Global Rules
 
 1. `TaskStatus`, `TaskHoldReason`, `TaskIntakeStatus`, and `TaskTerminalReason` are the current task lifecycle vocabulary. Per-item runtime state lives in `TaskWorkRuntime`; server review item/attempt statuses are materialized read-model strings, not engine lifecycle truth.
 2. `Task.contract` is the runtime contract truth (`SESSION | BATCH`), and ingress form must not redefine lifecycle, terminal, or retry semantics.
-3. No lifecycle change is complete without:
+3. Worker capability truth is declared through WorkerGroup/event binding plus worker scheduling evidence. Worker rows must not become a second project/event capability source.
+4. Scheduling and matching are task-level policy decisions. Do not reintroduce per-message rule matching or worker-context lifecycle ownership on the hot path.
+5. No lifecycle change is complete without:
    - code change
    - this file update
    - trace update
    - E2E coverage update
-4. `TERMINAL` task semantics are interpreted by `status + terminalReason`, not status alone.
-5. Task closure stays modeled as one final status plus terminal reason. Do not split `TaskStatus` into multiple terminal enums unless API, validation, trace, and E2E baselines are redesigned together.
-6. The logical work-projection status model is a bounded compatibility contract, not a complete transport-event history. Transport-specific delivery phases belong in trace/event data or a dedicated transport model.
-7. The current runtime concurrency model is owned by worker scheduling facts, runtime capacity/reservation state, active worker locks where applicable, and work-runtime leases. `WorkerContext` must not be used as the engine scheduling or resource-lifecycle truth.
-8. Policy changes must preserve ownership boundaries across matching, assignment, attempt, release, refill, intake, control, and terminal decisions.
-9. `TaskWorkRuntime` in `platform_infra/mass-runtime-api` is the current hot-path owner for ready work, active leases, retry scheduling, and lease expiry indexes. `TaskResultRuntime` is the runtime-owned public result read truth for stable-final result rows, repair staging, and result-side attempt-closed/event/progress barriers. Server review/export rows are lagging materialized views and must not drive lifecycle decisions.
-10. `Task.workloadClass` is the explicit task-level runtime optimization field; current engine truth is `INTERACTIVE` or `BULK`, and assignment signal routing resolves from that field rather than free-form `sharedConfig` semantics.
-11. runtime retry budget is seeded at create/append time and consumed from `TaskWorkRuntime`; post-ingest mutation of persisted message-projection retry settings must not redefine retry scheduling or finalization.
-12. result callbacks follow the result-kernel mainline in `RESULT_BOUNDARY_BASELINE.md`: runtime apply truth comes from `TaskWorkRuntime.applyResultWithContext(...)`; stable-final public result rows are committed into `TaskResultRuntime`; server review reports are emitted best-effort after runtime acceptance and are not the result commit point or a public result read source.
+6. `TERMINAL` task semantics are interpreted by `status + terminalReason`, not status alone.
+7. Task closure stays modeled as one final status plus terminal reason. Do not split `TaskStatus` into multiple terminal enums unless API, validation, trace, and E2E baselines are redesigned together.
+8. The logical work-projection status model is a bounded compatibility contract, not a complete transport-event history. Transport-specific delivery phases belong in trace/event data or a dedicated transport model.
+9. The current runtime concurrency model is owned by worker scheduling facts, runtime capacity/reservation state, active worker locks where applicable, and work-runtime leases. `WorkerContext` must not be used as the engine scheduling or resource-lifecycle truth.
+10. Policy changes must preserve ownership boundaries across matching, assignment, attempt, release, refill, intake, control, and terminal decisions.
+11. `TaskWorkRuntime` in `platform_infra/mass-runtime-api` is the current hot-path owner for ready work, active leases, retry scheduling, retry budget, and lease expiry indexes.
+12. `TaskResultRuntime` is the runtime-owned public result read truth for stable-final result rows, repair staging, and result-side attempt-closed/event/progress barriers. Server review/export rows are lagging materialized views and must not drive lifecycle decisions.
+13. `Task.workloadClass` is the explicit task-level runtime optimization field; current engine truth is `INTERACTIVE` or `BULK`, and assignment signal routing resolves from that field rather than free-form `sharedConfig` semantics.
+14. Result callbacks follow the result-side lifecycle mainline: runtime apply truth comes from `TaskWorkRuntime.applyResultWithContext(...)`; stable-final public result rows are committed into `TaskResultRuntime`; server review reports are emitted best-effort after runtime acceptance and are not the result commit point or a public result read source.
 
-## 2. TaskStatus
+## 3. TaskStatus
 
 States:
 
@@ -73,7 +107,7 @@ Must hold:
 - `BLOCKED` task must carry `holdReason`
 - non-`BLOCKED` task must not carry `holdReason`
 
-## 3. Task Intake
+## 4. Task Intake
 
 States:
 
@@ -92,7 +126,61 @@ Must hold:
 - every terminal task must have `intakeStatus=SEALED`
 - `intakeStatus` is the active append-window lifecycle truth for both `SESSION` and `BATCH`
 
-## 4. Server Review Item Status
+## 5. Result-Side Lifecycle Ownership
+
+Result handling is the result-side counterpart to assignment:
+
+```text
+callback / result inbox
+  -> transport ingress normalization
+  -> optional envelope identity gate
+  -> engine result ingest port
+  -> TaskResultService
+  -> TaskResultRuntime.stageCallback(...)
+  -> TaskWorkRuntime.applyResultWithContext(...)
+  -> runtime outcome interpretation
+  -> trace
+  -> TaskResultRuntime.commitVisibleFinal(...)
+  -> result-side event/progress barriers
+  -> server review report emitted for async materialization
+  -> task progress / terminal convergence trigger
+```
+
+Owner split:
+
+| Layer | Owner | Meaning |
+| --- | --- | --- |
+| worker result payload | `TaskResultReport` | worker-submitted result body; does not own retry, finality, or terminal policy |
+| transport ingress metadata | `TransportResultEnvelope` | adapter id, route key, trace id, optional attempt/lease evidence; does not replace worker protocol |
+| engine ingest port | `TaskResultIngestFacade`, `TaskResultIngestPort` | narrow transport-to-engine callable surface |
+| runtime apply truth | `TaskWorkRuntime.applyResultWithContext(...)` | lease-valid apply, retry budget consumption, runtime apply status, counters, and recent receipts |
+| runtime result read truth | `TaskResultRuntime` | staged callback repair anchors, stable-final visible rows, task-local result sequence, and result-side idempotency barriers |
+| engine result orchestration | `TaskResultService` | terminal/duplicate/late classification, runtime outcome interpretation, trace, review report emission, result-side events, and convergence trigger |
+| server review materialization | `TaskReviewReportQueue`, `TaskReviewMaterializer`, `TaskReviewStore` | bounded UI/debug/export read view; not callback acceptance, retry/finality, public result read, or runtime truth |
+
+Must hold:
+
+- callbacks without an active runtime lease are not accepted by the runtime
+  apply path unless recent-final receipt or task terminal state proves the
+  logical result already converged
+- public result reads and archive generation read stable-final rows from
+  `TaskResultRuntime`, not server review rows
+- visible final commit is atomic at the runtime boundary; duplicate visible
+  commit resolves by `taskId + messageId`
+- repair uses staged callback anchors plus runtime final truth; it is bounded
+  runtime recovery, not a durable result ledger
+- result-side attempt-closed, logical-final, and progress barriers are
+  idempotent on runtime-owned keys and must not be inferred from server review
+  side effects
+
+Out of scope for the current lifecycle baseline:
+
+- durable result ledger
+- `outputRef` or blob-backed result storage
+- server-owned transport result endpoints
+- million-scale archive materialization beyond the current streaming contract
+
+## 6. Server Review Item Status
 
 States:
 
@@ -139,7 +227,7 @@ Must hold:
 - `errorCode` is an optional short symbolic code set by the worker alongside `errorMessage`; it is cleared on `resetForRetry()` and must not carry over between attempts
 - richer transport phases must not be silently backfilled into the server review item status model without a baseline redesign
 
-## 5. Server Review Attempt Status
+## 7. Server Review Attempt Status
 
 Server review attempts are materialized summaries of concrete execution
 opportunities. They are not raw transport-event logs and do not own runtime
@@ -182,7 +270,7 @@ Must hold:
   materialization may lag
 - `REVOKED` must not be used as an expiry shortcut; only `EXPIRED` carries expiry and cancellation final reasons
 
-## 6. Legacy WorkerContext Compatibility
+## 8. Legacy WorkerContext Compatibility
 
 `WorkerContextStatus`, WorkerContext CRUD/API/storage surfaces, and context-id
 runtime/transport/projection/trace payloads have been removed. WorkerContext is
@@ -204,7 +292,7 @@ Must hold:
 - deleting or retiring WorkerContext compatibility must not change task status,
   intake, retry, final-result, or terminal semantics
 
-## 7. TaskTerminalReason
+## 9. TaskTerminalReason
 
 Active reasons:
 
@@ -224,7 +312,7 @@ Must hold:
 - persisted terminal task state must always carry `intakeStatus=SEALED`; batch message-convergence reasons still require intake to be sealed before automatic closure
 - `SESSION` tasks do not auto-close to `ALL_MESSAGES_SUCCEEDED` / `ALL_MESSAGES_FAILED` / `MIXED_MESSAGE_RESULTS` just because the current runtime work set drained
 
-## 8. Time-Based Policy Enforcement
+## 10. Time-Based Policy Enforcement
 
 Both policies are enforced by `LeaseExpireWatchdog` (runs every `leaseWatchdogIntervalSeconds`, default 30 s):
 
@@ -251,7 +339,7 @@ Must hold:
 - `terminateTask(reason)` follows the same drain-and-notify path as `cancelTask`; the only
   difference is the `TaskTerminalReason` recorded
 
-## 9. Core Invariants
+## 11. Core Invariants
 
 1. `taskNonSuccessNumber == taskEligibleNumber - taskSuccessNumber` (derived; `setTaskNonSuccessNumber` ignores its argument and recomputes to prevent silent invariant breaks)
 2. late callbacks after manual terminal closure do not mutate task/message state

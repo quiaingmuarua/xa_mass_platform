@@ -22,4 +22,4 @@ This package contains the current lightweight event bus abstractions and platfor
 
 - Do not treat this package as a separate architecture track.
 - Do not reintroduce legacy compatibility packages or historical event bus layers.
-- Keep examples and API notes close to code; keep lifecycle and runtime truth in `doc/STATE_MACHINE_BASELINE.md` and `doc/TRACE_CONTRACT.md`.
+- Keep examples and API notes close to code; keep lifecycle and runtime truth in `doc/TASK_LIFECYCLE_BASELINE.md` and `doc/TRACE_CONTRACT.md`.

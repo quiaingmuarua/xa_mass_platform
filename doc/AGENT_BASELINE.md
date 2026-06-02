@@ -18,13 +18,15 @@ flows, commands, and module-local inventories.
 - XA Mass Platform is a general distributed task scheduling platform
 - the kernel problem is: match structured work items to heterogeneous,
   stateful executors, track per-item result, and converge task-level state
-- stable kernel: `Task / assignment / result / audit / terminal policy`
+- core primitives: `Task + Worker + Scheduling + Matching`
 - kernel truth is explicitly split across:
   - `Task.contract`
   - `Task.intakeStatus`
   - `TaskWorkRuntime` for ready/delayed/lease/counter truth
-- result convergence is runtime-first, but the active owner split must be
-  verified from `RESULT_BOUNDARY_BASELINE.md` plus current engine/runtime code
+- result-side read truth in `TaskResultRuntime` for stable-final result rows,
+  repair staging, and result-side idempotency barriers
+- result convergence is runtime-first, but the lifecycle owner split must be
+  verified from `TASK_LIFECYCLE_BASELINE.md` plus current engine/runtime code
 - runtime seams are transport-neutral: task dispatch, result ingest, and system events
 - runtime entry is SDK-first; server HTTP/UI surfaces form a lightweight
   backend product shell and validation host, but they do not redefine kernel
@@ -58,11 +60,19 @@ Current owner vocabulary:
 - `Task` is the task/control aggregate truth
 - `Task.contract` is the runtime contract truth: `SESSION | BATCH`
 - `Task.intakeStatus` is the intake-window truth: `OPEN | SEALED`
+- `Worker` is execution identity plus group/node membership and declared
+  scheduling/resource facts; worker rows do not own project/event capability
+  truth
+- `Scheduling` decides when task work may enter competition, dispatch, retry,
+  pause, resume, or close
+- `Matching` selects eligible workers from WorkerGroup capability, explicit
+  scheduling evidence, reachability, runtime load/capacity facts, and policy
+  rules
 - `TaskWorkRuntime` is the hot-path owner for ready work, lease, retry, expiry,
   and backpressure truth
 - result apply and visible final-result ownership are runtime-first concerns;
   verify `TaskResultService`, `TaskWorkRuntime.applyResultWithContext(...)`,
-  `TaskResultRuntime`, and `RESULT_BOUNDARY_BASELINE.md` together before
+  `TaskResultRuntime`, and `TASK_LIFECYCLE_BASELINE.md` together before
   documenting the split more narrowly
 - `xa-mass-trace` is the current operator-facing read path for canonical trace
   artifacts; it does not own a second event schema or lifecycle truth
@@ -110,7 +120,7 @@ Boundary rules:
 ## 4. Mainline Reality
 
 - current mainline execution path:
-  - `Task shell -> item append -> runtime enqueue -> dispatch binder -> transport delivery view -> result convergence -> task state`
+  - `Task shell -> item append -> runtime enqueue -> scheduling eligibility -> matching and assignment -> transport dispatch -> result convergence -> task state`
 - real Boot entry: `xa-mass-server`
 - embedded runtime composition: `xa-mass-embedded-sdk`
 - Java baseline: JDK 21 with virtual threads routed through explicit runtime abstractions
@@ -130,7 +140,7 @@ Boundary rules:
   - result convergence is runtime-first and currently crosses
     `TaskResultService`, `TaskWorkRuntime.applyResultWithContext(...)`, and the
     result-runtime/public-result boundary documented in
-    `RESULT_BOUNDARY_BASELINE.md`
+    `TASK_LIFECYCLE_BASELINE.md`
   - `TaskManager` remains the engine-internal orchestration facade; cross-module
     callers should prefer `TaskCommandService`, `TaskQueryService`,
     `TaskResultIngestFacade`, `TaskEventService`, and runtime ports
@@ -148,7 +158,7 @@ Read these before inferring architecture from historical vocabulary:
 3. `xa-mass-engine/src/main/java/com/xa/mass/engine/TaskResultService.java`
 4. `platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/api/TaskWorkRuntime.java`
 5. `platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/api/TaskResultRuntime.java`
-6. `doc/RESULT_BOUNDARY_BASELINE.md`
+6. `doc/TASK_LIFECYCLE_BASELINE.md`
 7. `xa-mass-trace/README.md`
 8. `doc/TRACE_CONTRACT.md`
 
@@ -158,7 +168,7 @@ Read them to verify three things quickly:
   task-message CRUD mainline
 - callback/expiry/result convergence is runtime-first; verify the split between
   runtime apply truth, stable-final result rows, and server-local review
-  materialization from the active result baseline and code
+  materialization from the task lifecycle baseline and code
 - bounded message/attempt review reads are server/API materialization surfaces
   and are not the default engine query model
 - canonical trace diagnosis should start from `xa-mass-trace` over sink output,
@@ -193,7 +203,7 @@ Read them to verify three things quickly:
 
 Lifecycle and trace detail live in:
 
-- [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md)
+- [TASK_LIFECYCLE_BASELINE.md](./TASK_LIFECYCLE_BASELINE.md)
 - [TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
 - [TESTING_INDEX.md](./TESTING_INDEX.md)
 

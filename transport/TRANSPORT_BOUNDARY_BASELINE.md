@@ -74,7 +74,7 @@ reports as reachability truth, or mutate worker capability truth directly from
 the system-event channel.
 
 The completed worker-control owner-baseline roadmap is archived at
-`../doc/archive/xa-mass-engine/EVENT_AND_WORKER_CONTROL_ROADMAP.md`. Current
+`../doc/archive/xa-mass-engine/2026-05-18_EVENT_AND_WORKER_CONTROL_ROADMAP.md`. Current
 owner truth is in `../xa-mass-engine/doc/baseline/EVENT_OWNER_BOUNDARY.md`.
 Transport may carry command delivery later, but it must not own command
 lifecycle state.
@@ -154,7 +154,7 @@ The split runtime uses three transport/runtime channels:
   values and retryable dispatch-failure events to Redis-backed inboxes; the
   engine process drains those inboxes into its local result ingest and
   assignment compensation ports. Result lifecycle ownership is defined in
-  [../doc/RESULT_BOUNDARY_BASELINE.md](../doc/RESULT_BOUNDARY_BASELINE.md).
+  [../doc/TASK_LIFECYCLE_BASELINE.md](../doc/TASK_LIFECYCLE_BASELINE.md).
 
 These queues are runtime-state queues. They must be bounded and must preserve
 backpressure instead of growing without limit. They also must not be treated as

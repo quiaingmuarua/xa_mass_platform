@@ -21,7 +21,7 @@ Use with:
 
 - [AGENT_BASELINE.md](../doc/AGENT_BASELINE.md)
 - [INFRA_TRUTH_LAYERS.md](../doc/INFRA_TRUTH_LAYERS.md)
-- [RESULT_BOUNDARY_BASELINE.md](../doc/RESULT_BOUNDARY_BASELINE.md)
+- [TASK_LIFECYCLE_BASELINE.md](../doc/TASK_LIFECYCLE_BASELINE.md)
 - [INTERNAL_API_REFERENCE.md](../xa-mass-server/doc/INTERNAL_API_REFERENCE.md)
 - [xa-mass-engine/README.md](../xa-mass-engine/README.md)
 
@@ -252,7 +252,7 @@ For current truth, still prefer:
 
 - [AGENT_BASELINE.md](../doc/AGENT_BASELINE.md) for active platform baseline
 - [INFRA_TRUTH_LAYERS.md](../doc/INFRA_TRUTH_LAYERS.md) for truth placement
-- [RESULT_BOUNDARY_BASELINE.md](../doc/RESULT_BOUNDARY_BASELINE.md) for result-owner
+- [TASK_LIFECYCLE_BASELINE.md](../doc/TASK_LIFECYCLE_BASELINE.md) for task lifecycle and result-side ownership
   split
 - [INTERNAL_API_REFERENCE.md](../xa-mass-server/doc/INTERNAL_API_REFERENCE.md) for current HTTP/API
   contract

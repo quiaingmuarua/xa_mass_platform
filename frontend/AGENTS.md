@@ -4,6 +4,10 @@ Status: current frontend owner handoff.
 
 This frontend is a lightweight control console for the orchestration platform. Keep it explicit, domain-shaped, and permission-aware.
 
+Use [CONSOLE_UX_ROADMAP.md](./CONSOLE_UX_ROADMAP.md) only when the task touches
+frontend console UX direction. Treat it as frontend-local planning context, not
+server, SDK, engine, transport, or runtime truth.
+
 ## Rules
 
 - Add new pages under domain folders in `src/pages`.
