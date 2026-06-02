@@ -8,7 +8,8 @@ use them as proof of current implementation behavior; verify against current
 code, tests, owner READMEs, and current baseline docs.
 
 File naming convention: `YYYY-MM-DD_DOCUMENT_NAME.md` where the date is the
-original creation date of the document (not the archive date).
+archive or supersede date. Prefer the date the document left the active reading
+path over the original draft date.
 
 ## core
 

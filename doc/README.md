@@ -86,6 +86,10 @@ Reusable agent skills that can be installed remotely live under
 [skills/](./skills/). These are workflow assets, not platform behavior
 contracts.
 
+`doc/skills/` is the only meta-workflow exception under this directory. Do not
+add platform behavior contracts there, and do not treat skill prose as proof of
+current implementation behavior.
+
 - [roadmap-refinement](./skills/roadmap-refinement/SKILL.md) - roadmap owner
   review, refinement, portfolio classification, and slice execution rules
 - [roadmap-residue-scan](./skills/roadmap-residue-scan/SKILL.md) - post-roadmap
@@ -106,6 +110,9 @@ Do not add a new `doc/*` file for:
 - cross-module roadmap, inventory, decision, or direction documents
 
 Those belong in the owning module or top-level `roadmap/`.
+
+Exception: reusable agent workflow skills may stay under `doc/skills/` while
+they exist only to maintain or refine documentation workflows.
 
 `../architecture/` is the human explanation lane. It may explain the current
 shape at a higher level, but it is not implementation truth, acceptance proof,
