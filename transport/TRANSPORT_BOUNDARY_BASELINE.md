@@ -1,6 +1,6 @@
 # Transport Boundary Baseline
 
-Last updated: 2026-05-13
+Last updated: 2026-06-02
 
 Status: current transport boundary baseline.
 
@@ -61,6 +61,12 @@ Transport should stay centered on these concepts only:
 - `WorkerSystemEventChannel`: transport-neutral ingress seam for worker
   online/offline/heartbeat presence signals. It is not a worker command,
   worker state-report, or capability-report lifecycle owner.
+- `AdapterNodeRecord`: worker registration endpoint and logical adapter
+  deployment identity. It is not `transportNodeId`, not worker capability
+  truth, and not a worker load or lease owner.
+- `NodeGroupBindingRecord`: adapter-node to WorkerGroup hosting relation truth.
+  It gates whether one node may host or drain a group, but it must not own
+  event capability.
 
 Avoid adding new transport model names unless they carry a distinct runtime
 behavior that cannot fit one of these concepts.
@@ -133,6 +139,60 @@ semantics as the in-memory default. A worker may have multiple route owners;
 `findOwners(workerId)` is the route-owner view for dispatch routing. Engine
 must not write presence, read adapter sessions, or treat presence as a schedule
 owner.
+
+## Worker Registration Relation Baseline
+
+The current worker registration relation model is:
+
+```text
+AdapterNode
+  -> NodeGroupBinding
+      -> WorkerGroup
+          -> Worker
+```
+
+Meanings:
+
+- `AdapterNode`: worker registration endpoint, logical adapter deployment
+  identity, callback scope, and node-level diagnostics.
+- `NodeGroupBinding`: adapter node hosts WorkerGroup relation truth.
+- `WorkerGroup`: capability cohort and `eventBindings` truth.
+- `Worker`: platform dispatchable execution identity.
+
+Transport remains a multi-protocol worker data plane. Polling, WebSocket, and
+socket adapters are peer protocol adapters. `adapterId` is concrete adapter
+runtime identity; `transportHint` is only a coarse family hint.
+`routeKey`, `connectionId`, and `transportNodeId` are transport-owned
+route-owner evidence.
+
+Owner boundaries:
+
+- `WorkerGroup.eventBindings` is the only worker capability truth.
+- `AdapterNode`, `NodeGroupBinding`, and raw capability reports must not own a
+  second event-capability model.
+- `NodeGroupBinding.enabled=false` or `draining=true` blocks new work only for
+  that adapter-node/group hosting relation; it does not delete capability.
+- `Worker` remains the smallest schedulable execution identity. `Device`,
+  `AccountSlot`, `AdapterNode`, and transport sessions must not replace it as
+  the scheduling subject.
+- `adapterId`, `adapterNodeId`, and `transportNodeId` are separate identities:
+  adapter/protocol runtime identity, logical adapter deployment identity, and
+  split-runtime route-owner node.
+- Attributes such as `deviceId`, `accountId`, `phoneId`, `devicePool`, `route`,
+  and `region` are scheduling evidence first. They must not silently create
+  device owners, account-slot lifecycle, or implicit locks.
+
+Resolved relation conflict:
+
+- `WorkerGroupRecord.adapterNodeId` is not canonical relation truth.
+- `WorkerRegistrySnapshot.groupIdsByAdapterNodeId(...)` is not a current
+  production relation surface.
+- `WorkerGroupCompatibilityProjection` is retired from node/group relation
+  ownership.
+- If operator history or offline query needs adapter-node, group, route-owner,
+  load, or reachability facts, emit trace/events and let async materialization
+  build durable views. Do not reintroduce direct DB CRUD paths as runtime
+  relation truth.
 
 ## Distributed Transport V1
 

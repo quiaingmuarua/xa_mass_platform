@@ -1,5 +1,10 @@
 # AdapterNode / NodeGroupBinding / Worker Registration Roadmap
 
+Archive status: implemented convergence baseline and archived on 2026-06-02.
+Current AdapterNode / NodeGroupBinding / WorkerGroup / Worker relation truth
+lives in `transport/TRANSPORT_BOUNDARY_BASELINE.md`; verify against code before
+using this record as evidence.
+
 Last updated: 2026-05-20
 
 Status: implemented convergence baseline for AN-0 through AN-6. The deferred

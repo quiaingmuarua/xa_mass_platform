@@ -1,5 +1,10 @@
 # Java External SDK Task-Scoped Invocation Roadmap
 
+Archive status: implemented mainline and archived on 2026-06-02. Current SDK
+task-scoped invocation truth lives in `sdk/xa-mass-java-sdk` docs and tests.
+The deferred append-receipt decision is tracked by
+`roadmap/JAVA_EXTERNAL_SDK_TASK_APPEND_RECEIPT_DECISION.md`.
+
 Status: implemented mainline. TSI-0, TSI-1, and TSI-2 are complete; TSI-3 is
 deferred until append receipts can preserve item/message identity.
 

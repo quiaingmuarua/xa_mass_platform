@@ -1,5 +1,10 @@
 # Java External SDK Realtime Protocol Roadmap
 
+Archive status: first WebSocket session slice implemented and archived on
+2026-06-02. Current Java SDK worker-session truth lives in
+`sdk/xa-mass-java-sdk` docs and tests. Remaining realtime hardening decisions
+are tracked by `roadmap/JAVA_EXTERNAL_SDK_REALTIME_SESSION_HARDENING_DECISION.md`.
+
 Status: implemented first WebSocket session slice. This is not yet final
 long-running realtime SDK hardening. Follow-up lifecycle and worker-pack
 capability hardening is tracked by

@@ -78,8 +78,8 @@ Stable public entry points are:
 hatches for diagnostics and temporary route coverage. External callers should
 prefer typed clients; raw HTTP helpers are not a compatibility promise.
 
-Realtime protocol hardening is tracked in
-[../../roadmap/JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md](../../roadmap/JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md).
+Realtime protocol hardening decisions are tracked in
+[../../roadmap/JAVA_EXTERNAL_SDK_REALTIME_SESSION_HARDENING_DECISION.md](../../roadmap/JAVA_EXTERNAL_SDK_REALTIME_SESSION_HARDENING_DECISION.md).
 
 Public readiness is current for local/internal staging. Public registry
 publication remains an explicit future decision.
