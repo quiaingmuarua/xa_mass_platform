@@ -21,8 +21,6 @@ current authoritative proof surface.
 Use with:
 
 - [TESTING_INDEX.md](./TESTING_INDEX.md)
-- [TESTING_BASELINE.md](./TESTING_BASELINE.md)
-- [E2E_BASELINE.md](./E2E_BASELINE.md)
 - [TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
 - [../xa-mass-engine/doc/baseline/SCHEDULING_CORRECTNESS_MATRIX.md](../xa-mass-engine/doc/baseline/SCHEDULING_CORRECTNESS_MATRIX.md)
 - [../xa-mass-engine/doc/baseline/KERNEL_CONVERGENCE_MATRIX.md](../xa-mass-engine/doc/baseline/KERNEL_CONVERGENCE_MATRIX.md)

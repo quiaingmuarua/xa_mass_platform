@@ -27,12 +27,12 @@ Out of scope:
 - architecture history
 
 For verified startup and validation flows, use
-[VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md).
+[VERIFIED_RUNBOOK.md](../../xa-mass-testing/VERIFIED_RUNBOOK.md).
 
 ## 1. Scope Notes
 
 - This file is an HTTP/API dictionary. For platform and boundary truth, use
-  [AGENT_BASELINE.md](./AGENT_BASELINE.md).
+  [AGENT_BASELINE.md](../../doc/AGENT_BASELINE.md).
 - The HTTP surface validates the kernel; it does not define the kernel.
 - Formal API prefixes are now versioned:
   - `/api/v1/**` for operator and SDK-facing control-plane APIs

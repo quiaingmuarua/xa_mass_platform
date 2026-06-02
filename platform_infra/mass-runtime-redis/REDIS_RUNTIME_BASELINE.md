@@ -22,7 +22,7 @@ Use with:
 
 - [README.md](./README.md)
 - [../README.md](../README.md)
-- [../../doc/HIGH_VOLUME_MODEL_BASELINE.md](../../doc/HIGH_VOLUME_MODEL_BASELINE.md)
+- [../../xa-mass-engine/doc/baseline/HIGH_VOLUME_MODEL_BASELINE.md](../../xa-mass-engine/doc/baseline/HIGH_VOLUME_MODEL_BASELINE.md)
 - [../../doc/STATE_MACHINE_BASELINE.md](../../doc/STATE_MACHINE_BASELINE.md)
 
 ## 1. Scope

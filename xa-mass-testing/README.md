@@ -269,8 +269,7 @@ Look at these first:
 Use repo-level docs only for system-level policy:
 
 - [../doc/TESTING_INDEX.md](../doc/TESTING_INDEX.md)
-- [../doc/TESTING_BASELINE.md](../doc/TESTING_BASELINE.md)
-- [../doc/VERIFIED_RUNBOOK.md](../doc/VERIFIED_RUNBOOK.md)
+- [../xa-mass-testing/VERIFIED_RUNBOOK.md](../xa-mass-testing/VERIFIED_RUNBOOK.md)
 - [../transport/AGENTS.md](../transport/AGENTS.md)
 
 ## Current Chaos Focus

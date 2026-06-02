@@ -552,8 +552,8 @@ Engine-local owner docs:
 
 - [`doc/README.md`](./doc/README.md):
   engine-local documentation index. Current truth lives in `doc/baseline/`,
-  future direction in `doc/roadmap/`, and completed historical plans in the
-  repo-level `../doc/archive/xa-mass-engine/`.
+  future direction in `roadmap/`, and historical plans stay outside the
+  active engine read map.
 
 - [`doc/baseline/SCHEDULING_CORRECTNESS_MATRIX.md`](./doc/baseline/SCHEDULING_CORRECTNESS_MATRIX.md):
   current invariant-to-test map for scheduling correctness, proof surfaces, and
@@ -588,4 +588,3 @@ Global baselines:
 - [`../doc/STATE_MACHINE_BASELINE.md`](../doc/STATE_MACHINE_BASELINE.md)
 - [`../doc/TRACE_CONTRACT.md`](../doc/TRACE_CONTRACT.md)
 - [`../doc/TESTING_INDEX.md`](../doc/TESTING_INDEX.md)
-- [`../doc/TESTING_BASELINE.md`](../doc/TESTING_BASELINE.md)

@@ -79,12 +79,29 @@ Agent rule:
   engine support suite must explicitly own downgraded `secondary-proof`
   coverage instead of leaking into mainline suites
 
+Core proof priority:
+
+1. `Scheduling Correctness`: worker selection, exclusion, contention,
+   redispatch, gating, and contract-aware convergence.
+2. `Kernel Convergence`: lifecycle, retry, expiry, finality, release, and
+   result convergence invariants.
+3. `Platform Viability / Boot-shell E2E`: representative real server, HTTP,
+   SDK, transport, and worker wiring.
+4. `Chaos / Perf / Distributed-readiness`: degraded runtime, pressure,
+   disconnect, replay, and distributed edge behavior.
+
+Boot-shell E2E is release-gate proof when the risk is real host/runtime wiring,
+transport interplay, external worker parity, or distributed edge behavior. It
+is not the full worker-selection competition matrix and must not become
+review-row-first lifecycle proof. A mainline E2E scenario should start the real
+`xa-mass-server` entry, use real HTTP, use the real active transport when
+dispatch/result write-back is the risk, and assert runtime/task state rather
+than mocks or listener calls.
+
 Use with:
 
 - [PROOF_REGISTRY.md](./PROOF_REGISTRY.md)
-- [TESTING_BASELINE.md](./TESTING_BASELINE.md)
-- [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
-- [E2E_BASELINE.md](./E2E_BASELINE.md)
+- [../xa-mass-testing/VERIFIED_RUNBOOK.md](../xa-mass-testing/VERIFIED_RUNBOOK.md)
 - [RESULT_BOUNDARY_BASELINE.md](./RESULT_BOUNDARY_BASELINE.md)
 - [TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
 - [../xa-mass-trace/README.md](../xa-mass-trace/README.md)
@@ -539,8 +556,7 @@ When changing this repo:
 
 ## 8. Read Next
 
-- [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
-- [TESTING_BASELINE.md](./TESTING_BASELINE.md)
+- [../xa-mass-testing/VERIFIED_RUNBOOK.md](../xa-mass-testing/VERIFIED_RUNBOOK.md)
 - [../xa-mass-engine/README.md](../xa-mass-engine/README.md)
 - [../xa-mass-server/README.md](../xa-mass-server/README.md)
 - [../xa-mass-testing/README.md](../xa-mass-testing/README.md)

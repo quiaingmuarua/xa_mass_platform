@@ -2,59 +2,26 @@
 
 Status: current documentation index.
 
-Use [../AGENTS.md](../AGENTS.md) for the fast repo-root handoff. Use this page
-only when you need the expanded reading map inside `doc/`.
+Use [../AGENTS.md](../AGENTS.md) for the fast repo-root handoff. This directory
+keeps only global facts and constraints that help an agent understand the
+current mainline quickly.
 
-## 1. Fast Paths
+## 1. Core Global Docs
 
-Most tasks only need one contract lane plus one owner README:
-
-- human onboarding / project architecture:
-  [../architecture/README.md](../architecture/README.md)
-- lifecycle / trace / E2E:
-  [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md),
-  [TRACE_CONTRACT.md](./TRACE_CONTRACT.md),
-  [E2E_BASELINE.md](./E2E_BASELINE.md)
-- trace operator / trace-observed verification:
-  [../xa-mass-trace/README.md](../xa-mass-trace/README.md),
-  [TRACE_CONTRACT.md](./TRACE_CONTRACT.md),
-  [PROOF_REGISTRY.md](./PROOF_REGISTRY.md),
-  [TESTING_INDEX.md](./TESTING_INDEX.md)
-- result owner split / runtime result truth:
-  [RESULT_BOUNDARY_BASELINE.md](./RESULT_BOUNDARY_BASELINE.md)
-- storage / runtime / trace placement:
-  [INFRA_TRUTH_LAYERS.md](./INFRA_TRUTH_LAYERS.md),
-  [DB_STORAGE_PRINCIPLES.md](./DB_STORAGE_PRINCIPLES.md),
-  [../platform_infra/README.md](../platform_infra/README.md)
-- testing / acceptance:
-  [PROOF_REGISTRY.md](./PROOF_REGISTRY.md),
-  [TESTING_INDEX.md](./TESTING_INDEX.md),
-  [TESTING_BASELINE.md](./TESTING_BASELINE.md),
-  [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
-- HTTP / external shell:
-  [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md),
-  [EXTERNAL_WORKER_QUICKSTART.md](./EXTERNAL_WORKER_QUICKSTART.md)
-
-## 2. Core Global Docs
+Read the fewest files possible:
 
 | File | Purpose |
 | --- | --- |
 | [AGENT_BASELINE.md](./AGENT_BASELINE.md) | global platform baseline and hard guardrails |
 | [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md) | lifecycle vocabulary and invariants |
-| [TRACE_CONTRACT.md](./TRACE_CONTRACT.md) | required trace surface |
-| [PROOF_REGISTRY.md](./PROOF_REGISTRY.md) | authoritative proof ownership and representative trace pairing |
 | [RESULT_BOUNDARY_BASELINE.md](./RESULT_BOUNDARY_BASELINE.md) | runtime result owner split, public result boundary, and compatibility residue rules |
-| [INFRA_TRUTH_LAYERS.md](./INFRA_TRUTH_LAYERS.md) | control-plane/runtime/trace placement matrix |
-| [DB_STORAGE_PRINCIPLES.md](./DB_STORAGE_PRINCIPLES.md) | DB boundary and hot-write guardrail |
-| [TESTING_INDEX.md](./TESTING_INDEX.md) | current testing entry, CI truth, and minimum verification map |
-| [TESTING_BASELINE.md](./TESTING_BASELINE.md) | acceptance lanes and test matrix |
-| [E2E_BASELINE.md](./E2E_BASELINE.md) | Boot-shell E2E scope |
-| [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md) | verified startup and regression commands |
-| [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md) | current HTTP/API contract |
+| [INFRA_TRUTH_LAYERS.md](./INFRA_TRUTH_LAYERS.md) | control-plane/runtime/trace placement matrix plus DB hot-write guardrails |
+| [TRACE_CONTRACT.md](./TRACE_CONTRACT.md) | required trace surface |
+| [TESTING_INDEX.md](./TESTING_INDEX.md) | current proof lanes, E2E boundary, CI truth, and minimum verification map |
+| [PROOF_REGISTRY.md](./PROOF_REGISTRY.md) | authoritative proof ownership and representative trace pairing |
 | [SDK_INTEGRATIONS_BOUNDARY_GUARD.md](./SDK_INTEGRATIONS_BOUNDARY_GUARD.md) | guardrails for SDK modules, public-contract DTOs, integrations, worker-pack, samples, and server startup registration |
-| [HIGH_VOLUME_MODEL_BASELINE.md](./HIGH_VOLUME_MODEL_BASELINE.md) | high-volume runtime facts and guardrails |
 
-## 3. Owner Docs
+## 2. Owner Docs
 
 Use owner docs for module-local truth:
 
@@ -73,41 +40,32 @@ Use owner docs for module-local truth:
 - external Java SDK: [../sdk/xa-mass-java-sdk/README.md](../sdk/xa-mass-java-sdk/README.md)
 - embedded SDK API: [../sdk/xa-mass-embedded-sdk-api/README.md](../sdk/xa-mass-embedded-sdk-api/README.md)
 - embedded SDK runtime: [../sdk/xa-mass-embedded-sdk/README.md](../sdk/xa-mass-embedded-sdk/README.md)
+- verified runbook: [../xa-mass-testing/VERIFIED_RUNBOOK.md](../xa-mass-testing/VERIFIED_RUNBOOK.md)
+- HTTP/API reference: [../xa-mass-server/doc/INTERNAL_API_REFERENCE.md](../xa-mass-server/doc/INTERNAL_API_REFERENCE.md)
+- external worker quickstart: [../sdk/xa-mass-java-sdk/EXTERNAL_WORKER_QUICKSTART.md](../sdk/xa-mass-java-sdk/EXTERNAL_WORKER_QUICKSTART.md)
+- high-volume runtime facts: [../xa-mass-engine/doc/baseline/HIGH_VOLUME_MODEL_BASELINE.md](../xa-mass-engine/doc/baseline/HIGH_VOLUME_MODEL_BASELINE.md)
 
-## 4. Design-Only References
+## 3. Roadmaps And Direction
 
-These are useful only when the task explicitly touches those future directions:
+Active roadmap, inventory, and decision documents live under
+[../roadmap/](../roadmap/). This root index intentionally does not list each
+roadmap; use filename search or `rg` when a task touches planned convergence or
+future direction.
 
-- [ARCHITECTURE_BOUNDARY_DIRECTION.md](./ARCHITECTURE_BOUNDARY_DIRECTION.md)
-- [TASK_WORKER_RUNTIME_HISTORY_BOUNDARY_ROADMAP.md](./TASK_WORKER_RUNTIME_HISTORY_BOUNDARY_ROADMAP.md)
-- [TASK_WORKER_TRACE_ARCHIVE_DIRECTION.md](./TASK_WORKER_TRACE_ARCHIVE_DIRECTION.md)
-- [OBSERVABILITY_AND_TEST_PROOF_ROADMAP.md](./OBSERVABILITY_AND_TEST_PROOF_ROADMAP.md)
-- [WORKER_FAULT_MATRIX_ROADMAP.md](./WORKER_FAULT_MATRIX_ROADMAP.md)
-- [JAVA_EXTERNAL_SDK_TASK_SCOPED_INVOCATION_ROADMAP.md](./JAVA_EXTERNAL_SDK_TASK_SCOPED_INVOCATION_ROADMAP.md)
-- [JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md](./JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md)
-- [JAVA_EXTERNAL_SDK_PUBLIC_SURFACE_INVENTORY.md](./JAVA_EXTERNAL_SDK_PUBLIC_SURFACE_INVENTORY.md)
-- [JAVA_EXTERNAL_SDK_ANDROID_DEVICE_DECISION.md](./JAVA_EXTERNAL_SDK_ANDROID_DEVICE_DECISION.md)
-- [ENGINE_KERNEL_CONVERGENCE_ROADMAP.md](./ENGINE_KERNEL_CONVERGENCE_ROADMAP.md)
-- [ENGINE_KERNEL_CONVERGENCE_INVENTORY.md](./ENGINE_KERNEL_CONVERGENCE_INVENTORY.md)
-- [GRACEFUL_SHUTDOWN_LIFECYCLE_ROADMAP.md](./GRACEFUL_SHUTDOWN_LIFECYCLE_ROADMAP.md)
-- [SERVER_BOOTSTRAP_CLASSIFICATION.md](./SERVER_BOOTSTRAP_CLASSIFICATION.md)
-- [../xa-mass-engine/doc/roadmap/PRODUCTION_SCHEDULING_KERNEL_IMPROVEMENTS.md](../xa-mass-engine/doc/roadmap/PRODUCTION_SCHEDULING_KERNEL_IMPROVEMENTS.md)
-- [../xa-mass-engine/doc/roadmap/TASK_RUNTIME_PROFILE_DESIGN.md](../xa-mass-engine/doc/roadmap/TASK_RUNTIME_PROFILE_DESIGN.md)
-- [../transport/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md](../transport/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md)
+Roadmap execution records should live outside `doc/` until they are archived.
+Do not use roadmap prose as proof of current implementation without verifying
+code, tests, and owner README files.
 
-## 5. Historical Archive
+## 4. Historical Archive
 
 Archived documents are changelog-style historical context only. Do not use them
 as proof of current implementation behavior; verify against current code,
 tests, owner READMEs, and baseline docs.
 
-- archive index: [archive/README.md](./archive/README.md)
-- engine: [archive/xa-mass-engine/](./archive/xa-mass-engine/)
-- integrations: [archive/integrations/](./archive/integrations/)
-- sdk: [archive/sdk/](./archive/sdk/)
-- server: [archive/xa-mass-server/](./archive/xa-mass-server/)
+Archived docs are intentionally not part of the active reading map. Use the
+archive only for historical audits, changelog reconstruction, or residue scans.
 
-## 6. Reusable Codex Skills
+## 5. Reusable Codex Skills
 
 Reusable agent skills that can be installed remotely live under
 [skills/](./skills/). These are workflow assets, not platform behavior
@@ -118,7 +76,7 @@ contracts.
 - [roadmap-residue-scan](./skills/roadmap-residue-scan/SKILL.md) - post-roadmap
   residue, stale status, old-name, and compatibility-path scans
 
-## 7. What Stays Out Of `doc/`
+## 6. What Stays Out Of `doc/`
 
 Do not add a new `doc/*` file for:
 
@@ -128,5 +86,7 @@ Do not add a new `doc/*` file for:
 - adapter-specific protocol behavior
 - one-module design/refactor notes
 - migration inventory owned by one module
+- API dictionaries, runbooks, or quickstarts owned by a module
+- roadmap, inventory, decision, or direction documents
 
-Those belong in the owning module.
+Those belong in the owning module or top-level `roadmap/`.

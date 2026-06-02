@@ -195,7 +195,7 @@ Lifecycle and trace detail live in:
 
 - [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md)
 - [TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
-- [E2E_BASELINE.md](./E2E_BASELINE.md)
+- [TESTING_INDEX.md](./TESTING_INDEX.md)
 
 ## 6. Hard Guardrails
 

@@ -2,7 +2,8 @@
 
 Last updated: 2026-05-12
 
-Status: current global testing baseline.
+Status: superseded. Current testing lane and E2E proof placement is merged into
+`doc/TESTING_INDEX.md`.
 
 System-level map of the testing lanes.
 

@@ -10,14 +10,13 @@ essay, API reference, or changelog.
 Use this file when you need to boot the app, run a smoke flow, or choose a
 focused regression command.
 
-Use [TESTING_INDEX.md](./TESTING_INDEX.md) for current test-layer truth,
+Use [TESTING_INDEX.md](../doc/TESTING_INDEX.md) for current test-layer truth,
 minimum verification rules, and CI gate truth. Use
-[TESTING_BASELINE.md](./TESTING_BASELINE.md) for lane placement,
 [../xa-mass-engine/README.md](../xa-mass-engine/README.md) and
-[../xa-mass-testing/README.md](../xa-mass-testing/README.md) for module-owned
-test detail, [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md) for
-endpoint shapes, [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md) for
-lifecycle rules, and [TRACE_CONTRACT.md](./TRACE_CONTRACT.md) for trace
+[README.md](./README.md) for module-owned
+test detail, [INTERNAL_API_REFERENCE.md](../xa-mass-server/doc/INTERNAL_API_REFERENCE.md) for
+endpoint shapes, [STATE_MACHINE_BASELINE.md](../doc/STATE_MACHINE_BASELINE.md) for
+lifecycle rules, and [TRACE_CONTRACT.md](../doc/TRACE_CONTRACT.md) for trace
 semantics.
 
 This file does not define lane ownership, suite layering, or CI gate policy.
@@ -400,5 +399,5 @@ resource admission, refill, and representative Boot-shell wiring.
 
 When a change touches matching rules, trace evidence, or storage/evaluator
 plumbing, add the owning focused tests named by
-[TESTING_INDEX.md](./TESTING_INDEX.md) or the module README. Do not restore
+[TESTING_INDEX.md](../doc/TESTING_INDEX.md) or the module README. Do not restore
 retired WorkerContext-focused tests as scheduling proof.

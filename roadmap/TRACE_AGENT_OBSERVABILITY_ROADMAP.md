@@ -29,14 +29,14 @@ All 18 existing scenario analyzers are correctness proofs: they verify that a
 specific integrated flow produced the right event sequence with the right
 fields. They answer "did this scenario work correctly?" They do not answer:
 
-- **"Is this task healthy?"** â€” requires combining timeline, stats, progress
+- **"Is this task healthy?"** â€?requires combining timeline, stats, progress
   snapshot, and anomaly detection into one compressed view
-- **"What's wrong with this task?"** â€” requires pattern recognition for
+- **"What's wrong with this task?"** â€?requires pattern recognition for
   operational problems (dispatch stall, retry storm, lease churn, callback
   rejection spike)
-- **"What's happening system-wide?"** â€” no current command operates across
+- **"What's happening system-wide?"** â€?no current command operates across
   tasks; all queries are task-scoped
-- **"What should I do next?"** â€” no current output suggests follow-up
+- **"What should I do next?"** â€?no current output suggests follow-up
   commands or drill-down paths
 
 An agent calling `timeline --task-id X --json` gets up to 500 raw event rows.
@@ -75,7 +75,7 @@ needs compressed findings, not raw evidence.
    must enforce limits.
 
 5. **Start from the CLI, not from HTTP or MCP.**
-   The CLI already works for agent tool loops (Bash â†’ parse JSON). HTTP
+   The CLI already works for agent tool loops (Bash â†?parse JSON). HTTP
    adapter or MCP server is a later optimization. The existing picocli
    structure makes adding subcommands low-friction. Premature HTTP/MCP
    coupling adds dependency and deployment surface before the digest
@@ -162,7 +162,7 @@ xa-mass-engine
   bundles. TAO digest may reference invariant checker results when they
   exist, but TAO must not depend on OBS delivery. TAO operational health
   analyzers are complementary to OBS correctness analyzers.
-- [`TRACE_CONTRACT.md`](./TRACE_CONTRACT.md):
+- [`TRACE_CONTRACT.md`](../doc/TRACE_CONTRACT.md):
   TAO reads canonical events defined by the trace contract. TAO must not
   require contract changes. If TAO discovers that existing event types are
   insufficient for a specific health pattern, the gap should be filed as a
@@ -239,7 +239,7 @@ Acceptance:
 - No field requires the caller to make a second query to interpret the
   summary.
 - `suggestedActions` contains at least one valid CLI command string.
-- DuckDB query count is bounded (target: â‰¤4 queries per digest call).
+- DuckDB query count is bounded (target: â‰? queries per digest call).
 - Existing commands and analyzers are unaffected.
 
 ## TAO-1 Agent Response Envelope
@@ -409,8 +409,8 @@ Acceptance:
 - Query is bounded by `--since` and `--top`; unbounded scan is rejected.
 - `problematicTasks` list includes task IDs with anomaly counts.
 - `suggestedActions` references `digest` for the top problematic task.
-- Total DuckDB queries per overview call is bounded (target: â‰¤3 aggregation
-  queries + N health analyzer runs where N â‰¤ `--top`).
+- Total DuckDB queries per overview call is bounded (target: â‰? aggregation
+  queries + N health analyzer runs where N â‰?`--top`).
 
 ## TAO-4 Agent Tool Adapter
 
@@ -431,9 +431,9 @@ Scope:
   - **Long-running CLI with stdin/stdout JSON-RPC**: avoids process spawn
     overhead without adding HTTP dependency. One process, multiple requests.
 - Decision criteria:
-  - if primary agent consumer is Claude Code â†’ MCP
-  - if multiple heterogeneous agents â†’ HTTP
-  - if latency is the only concern â†’ JSON-RPC stdin/stdout
+  - if primary agent consumer is Claude Code â†?MCP
+  - if multiple heterogeneous agents â†?HTTP
+  - if latency is the only concern â†?JSON-RPC stdin/stdout
 - Regardless of adapter choice, `TraceOperatorService` remains the single
   backend facade. Adapter is a thin protocol translation layer.
 - Borrow engineering patterns from AgentForge where applicable:
@@ -449,8 +449,7 @@ Acceptance:
 - All commands available through CLI are available through the adapter.
 - Adapter does not introduce session state, connection pooling, or background
   processes beyond what the chosen protocol requires.
-- Integration test proves round-trip: request â†’ adapter â†’ operator service â†’
-  DuckDB â†’ response through the adapter protocol.
+- Integration test proves round-trip: request â†?adapter â†?operator service â†?  DuckDB â†?response through the adapter protocol.
 
 ## TAO-5 Guards, Docs, And Proof
 

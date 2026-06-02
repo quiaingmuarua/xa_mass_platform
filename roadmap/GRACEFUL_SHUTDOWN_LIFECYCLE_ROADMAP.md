@@ -242,7 +242,7 @@ and only then decide whether any scheduler is redundant or wasteful.
 
 ## Cross-Roadmap Touchpoints
 
-- [`ENGINE_KERNEL_CONVERGENCE_ROADMAP.md`](./ENGINE_KERNEL_CONVERGENCE_ROADMAP.md):
+- [`ENGINE_KERNEL_CONVERGENCE_ROADMAP.md`](../doc/archive/xa-mass-engine/2026-06-02_ENGINE_KERNEL_CONVERGENCE_ROADMAP.md):
   GSL-2/GSL-3 touch `EngineRuntimeKernel`, `TaskResultRepairPump`, and result
   convergence lifecycle. GSL must not reopen EKC owner decisions or introduce
   new SDK-facing engine internals.
@@ -250,11 +250,11 @@ and only then decide whether any scheduler is redundant or wasteful.
   WSDK worker-session lifecycle and GSL transport/session lifecycle overlap.
   GSL-4 should record any public worker-session lifecycle assumptions before
   changing transport presence or session stop behavior.
-- [`INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md`](./archive/integrations/2026-06-01_INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md):
+- [`INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md`](../doc/archive/integrations/2026-06-01_INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md):
   SDK adoption and worker-pack runs may depend on current polling/WebSocket
   worker session stop behavior. GSL tests should avoid breaking those black-box
   paths without updating their verification lane.
-- [`REVIEW_MATERIALIZATION_PIPELINE_ROADMAP.md`](./archive/xa-mass-engine/2026-05-30_REVIEW_MATERIALIZATION_PIPELINE_ROADMAP.md):
+- [`REVIEW_MATERIALIZATION_PIPELINE_ROADMAP.md`](../doc/archive/xa-mass-engine/2026-05-30_REVIEW_MATERIALIZATION_PIPELINE_ROADMAP.md):
   server-local review report queues are optional materialization infrastructure
   and should stay outside engine shutdown truth. GSL may coordinate their
   stop/drain only as server assembly behavior.
@@ -265,7 +265,7 @@ Goal: produce a current lifecycle and scheduler inventory.
 
 Scope:
 
-- Create `doc/GRACEFUL_SHUTDOWN_LIFECYCLE_INVENTORY.md`.
+- Create `roadmap/GRACEFUL_SHUTDOWN_LIFECYCLE_INVENTORY.md`.
 - List every production `ScheduledExecutorService`, owned thread, drainer,
   runtime executor, `AtomicBoolean running`, `shutdown()`, `stop()`, and
   `close()` in:
@@ -504,7 +504,7 @@ Scope:
   - `doc/PROOF_REGISTRY.md` if new lifecycle proof lanes are added
   - `doc/TESTING_INDEX.md` if lifecycle suites are created or moved
   - `doc/TRACE_CONTRACT.md` if shutdown phase events are added
-  - `doc/VERIFIED_RUNBOOK.md` if shutdown verification commands become part of
+  - `xa-mass-testing/VERIFIED_RUNBOOK.md` if shutdown verification commands become part of
     standard regression
 - Add shutdown phase trace events if accepted by GSL-1, with candidate event
   names such as:

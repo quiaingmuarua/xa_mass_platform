@@ -21,13 +21,12 @@ from regrowing runtime state, history, or analytics queries.
 
 Read with:
 
-- [INFRA_TRUTH_LAYERS.md](./INFRA_TRUTH_LAYERS.md)
-- [DB_STORAGE_PRINCIPLES.md](./DB_STORAGE_PRINCIPLES.md)
-- [TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
-- [../platform_infra/README.md](../platform_infra/README.md)
-- [../xa-mass-engine/doc/baseline/RUNTIME_BOUNDARY_BASELINE.md](../xa-mass-engine/doc/baseline/RUNTIME_BOUNDARY_BASELINE.md)
-- [../xa-mass-worker-runtime/README.md](../xa-mass-worker-runtime/README.md)
-- [../xa-mass-worker-runtime/CONTRACTS.md](../xa-mass-worker-runtime/CONTRACTS.md)
+- [INFRA_TRUTH_LAYERS.md](../doc/INFRA_TRUTH_LAYERS.md)
+- [TRACE_CONTRACT.md](../doc/TRACE_CONTRACT.md)
+- [platform_infra/README.md](../platform_infra/README.md)
+- [xa-mass-engine/doc/baseline/RUNTIME_BOUNDARY_BASELINE.md](../xa-mass-engine/doc/baseline/RUNTIME_BOUNDARY_BASELINE.md)
+- [xa-mass-worker-runtime/README.md](../xa-mass-worker-runtime/README.md)
+- [xa-mass-worker-runtime/CONTRACTS.md](../xa-mass-worker-runtime/CONTRACTS.md)
 
 ## Current Facts
 
@@ -60,7 +59,7 @@ Read with:
 - `WorkerStateProjectionOwner` keeps bounded recent reports as current
   diagnostic evidence. That bounded window is not an archive/history owner and
   must not be treated as durable analytics truth.
-- `DB_STORAGE_PRINCIPLES.md` already bans queue/lease history, worker
+- `INFRA_TRUTH_LAYERS.md` already bans queue/lease history, worker
   online/offline churn, heartbeat streams, locks, reservations, dispatch
   history, result history, and analytics from DB ownership.
 
@@ -328,15 +327,14 @@ Scope:
 - Update global docs after the code rename has landed:
   - `platform_infra/README.md`
   - `INFRA_TRUTH_LAYERS.md`
-  - `DB_STORAGE_PRINCIPLES.md`
   - SDK/server README and API references touched by renamed surfaces
 - Add or update architecture guards for the renamed shell/declaration boundary.
 - Keep this as documentation and guard convergence only.
 
 Acceptance:
 
-- `platform_infra/README.md`, `INFRA_TRUTH_LAYERS.md`, and
-  `DB_STORAGE_PRINCIPLES.md` use shell/declaration vocabulary consistently.
+- `platform_infra/README.md` and `INFRA_TRUTH_LAYERS.md` use
+  shell/declaration vocabulary consistently.
 - New code cannot reintroduce `TaskStorage` / `WorkerStorage` as broad
   runtime/history extension-point names.
 
@@ -625,4 +623,4 @@ task, catalog, and worker APIs plus at least one external worker registration
 E2E.
 
 When trace/archive direction changes, update `TRACE_CONTRACT.md`,
-`INFRA_TRUTH_LAYERS.md`, and `DB_STORAGE_PRINCIPLES.md` in the same change.
+`INFRA_TRUTH_LAYERS.md` in the same change.

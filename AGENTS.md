@@ -87,8 +87,7 @@ Start here based on the change:
   [doc/RESULT_BOUNDARY_BASELINE.md](doc/RESULT_BOUNDARY_BASELINE.md)
 - runtime queue/lease/counter ownership or storage/runtime/trace placement:
   [platform_infra/README.md](platform_infra/README.md),
-  [doc/INFRA_TRUTH_LAYERS.md](doc/INFRA_TRUTH_LAYERS.md),
-  [doc/DB_STORAGE_PRINCIPLES.md](doc/DB_STORAGE_PRINCIPLES.md)
+  [doc/INFRA_TRUTH_LAYERS.md](doc/INFRA_TRUTH_LAYERS.md)
 - transport runtime or adapter work:
   [transport/AGENTS.md](transport/AGENTS.md)
 - understanding the current testing system or deciding where a new test belongs:
@@ -100,18 +99,18 @@ Start here based on the change:
 - lifecycle/trace/E2E contracts:
   [doc/STATE_MACHINE_BASELINE.md](doc/STATE_MACHINE_BASELINE.md),
   [doc/TRACE_CONTRACT.md](doc/TRACE_CONTRACT.md),
-  [doc/E2E_BASELINE.md](doc/E2E_BASELINE.md)
+  [doc/TESTING_INDEX.md](doc/TESTING_INDEX.md)
 - trace operator CLI / local trace diagnosis:
   [xa-mass-trace/README.md](xa-mass-trace/README.md),
   [doc/TRACE_CONTRACT.md](doc/TRACE_CONTRACT.md)
 - perf/concurrency/core acceptance:
-  [doc/TESTING_BASELINE.md](doc/TESTING_BASELINE.md),
+  [doc/TESTING_INDEX.md](doc/TESTING_INDEX.md),
   [xa-mass-testing/README.md](xa-mass-testing/README.md),
   [xa-mass-engine/README.md](xa-mass-engine/README.md)
 - startup/runtime verification:
-  [doc/VERIFIED_RUNBOOK.md](doc/VERIFIED_RUNBOOK.md)
+  [xa-mass-testing/VERIFIED_RUNBOOK.md](xa-mass-testing/VERIFIED_RUNBOOK.md)
 - HTTP/API contracts:
-  [doc/INTERNAL_API_REFERENCE.md](doc/INTERNAL_API_REFERENCE.md)
+  [xa-mass-server/doc/INTERNAL_API_REFERENCE.md](xa-mass-server/doc/INTERNAL_API_REFERENCE.md)
 - SDK/integrations boundary guard:
   [doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md](doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md)
 - legacy/compatibility/deprecation work:
@@ -161,7 +160,7 @@ Planning rule for multi-file or core changes:
 - when lifecycle semantics change, update
   [doc/STATE_MACHINE_BASELINE.md](doc/STATE_MACHINE_BASELINE.md),
   [doc/TRACE_CONTRACT.md](doc/TRACE_CONTRACT.md), and
-  [doc/E2E_BASELINE.md](doc/E2E_BASELINE.md) together
+  [doc/TESTING_INDEX.md](doc/TESTING_INDEX.md) together
 - keep docs concise and current; delete stale notes instead of preserving parallel narratives
 - keep module-owned docs inside the owning module; `doc/` is for global contracts, constraints, indexes, and runbooks
 - do not document target state as already implemented

@@ -114,7 +114,7 @@ policy 收敛状态�?
 
 如果你要接外�?worker�?
 
-- [`../doc/EXTERNAL_WORKER_QUICKSTART.md`](../doc/EXTERNAL_WORKER_QUICKSTART.md)
+- [`../sdk/xa-mass-java-sdk/EXTERNAL_WORKER_QUICKSTART.md`](../sdk/xa-mass-java-sdk/EXTERNAL_WORKER_QUICKSTART.md)
 - [`../integrations/samples/README.md`](../integrations/samples/README.md)
 
 如果你要�?engine�?
@@ -125,7 +125,7 @@ policy 收敛状态�?
 
 如果你要�?HTTP/API�?
 
-- [`../doc/INTERNAL_API_REFERENCE.md`](../doc/INTERNAL_API_REFERENCE.md)
+- [`../xa-mass-server/doc/INTERNAL_API_REFERENCE.md`](../xa-mass-server/doc/INTERNAL_API_REFERENCE.md)
 
 如果你要诊断生命周期�?
 

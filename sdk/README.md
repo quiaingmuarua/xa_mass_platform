@@ -23,7 +23,8 @@ Global boundary guard:
   `xa-mass-java-sdk`.
 - In-process JVM embedding callers should start from `xa-mass-embedded-sdk`.
 - Public HTTP wire DTOs belong in `xa-mass-public-contract` only when the owning
-  Controller method and route role are recorded in the public-contract inventory.
+  Controller method and route role are documented by
+  `xa-mass-public-contract`.
 - Java package names remain intentionally unchanged. `com.xa.mass.client.*`
   belongs to the external Java SDK; `com.xa.mass.sdk.*` belongs to the embedded
   SDK family.
@@ -47,7 +48,5 @@ ownership smoke after SDK layout changes:
 ./mvnw -pl sdk/xa-mass-public-contract,sdk/xa-mass-java-sdk,sdk/xa-mass-embedded-sdk-api,sdk/xa-mass-embedded-sdk -am test
 ```
 
-The completed layout and public-contract extraction record is
-[`../doc/archive/sdk/2026-06-02_SDK_MODULE_LAYOUT_AND_PUBLIC_CONTRACT_ROADMAP.md`](../doc/archive/sdk/2026-06-02_SDK_MODULE_LAYOUT_AND_PUBLIC_CONTRACT_ROADMAP.md).
-The public DTO/controller inventory is
-[`../doc/archive/sdk/2026-06-02_SDK_MODULE_LAYOUT_AND_PUBLIC_CONTRACT_INVENTORY.md`](../doc/archive/sdk/2026-06-02_SDK_MODULE_LAYOUT_AND_PUBLIC_CONTRACT_INVENTORY.md).
+Current public-contract ownership and first-slice DTOs are summarized in
+[`xa-mass-public-contract/README.md`](./xa-mass-public-contract/README.md).

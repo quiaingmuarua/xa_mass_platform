@@ -95,7 +95,7 @@ Use this order for transport changes:
 4. [ADAPTER_NODE_WORKER_REGISTRATION_ROADMAP.md](./ADAPTER_NODE_WORKER_REGISTRATION_ROADMAP.md) when changing worker registration endpoint, adapter-node, or node/group relation design
 5. [TRANSPORT_WORKER_MATCH_SPINE_ROADMAP.md](./TRANSPORT_WORKER_MATCH_SPINE_ROADMAP.md) when changing external-worker registration, group-first dispatch evidence, worker report feedback, or transport worker proof
 6. [TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md](./TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md) for future queue-first/high-volume direction
-7. repo-root [../doc/AGENT_BASELINE.md](../doc/AGENT_BASELINE.md) and [../doc/VERIFIED_RUNBOOK.md](../doc/VERIFIED_RUNBOOK.md) for repo truth and verification
+7. repo-root [../doc/AGENT_BASELINE.md](../doc/AGENT_BASELINE.md) and [../xa-mass-testing/VERIFIED_RUNBOOK.md](../xa-mass-testing/VERIFIED_RUNBOOK.md) for repo truth and verification
 
 ## Fast Verification
 
@@ -104,7 +104,7 @@ Prefer these after transport changes:
 ```bash
 ./mvnw -q -pl transport/transport_runtime -am test -Dsurefire.failIfNoSpecifiedTests=false -Dtest=TransportRuntimeRegistryTest,TransportRegistrationResolverTest,RuntimeTaskResultIngestChannelTest,TransportRoutingTaskMsgDispatchListenerTest
 ./mvnw -q -pl transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter -am test -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WebSocketTaskDispatchChannelTest,SocketTaskDispatchChannelTest,PollingWorkerAdapterTest
-./mvnw -q -pl xa-mass-sdk -am test -Dsurefire.failIfNoSpecifiedTests=false -Dtest=MassSdkTest
+./mvnw -q -pl sdk/xa-mass-embedded-sdk -am test -Dsurefire.failIfNoSpecifiedTests=false -Dtest=MassSdkTest
 ```
 
 Acceptance focus:

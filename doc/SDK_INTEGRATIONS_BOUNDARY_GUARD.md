@@ -33,7 +33,7 @@ replace external registration with privileged task or worker seeding.
   transport implementation modules, Spring Boot, or platform runtime assembly.
 - `xa-mass-public-contract` may only contain Controller-exposed wire
   DTOs/constants that are recorded in
-  [`SDK_MODULE_LAYOUT_AND_PUBLIC_CONTRACT_INVENTORY.md`](./archive/sdk/2026-06-02_SDK_MODULE_LAYOUT_AND_PUBLIC_CONTRACT_INVENTORY.md)
+  [`sdk/xa-mass-public-contract/README.md`](../sdk/xa-mass-public-contract/README.md)
   with the owning Controller method and route role.
 - Do not move control-plane internals, review materialization models,
   diagnostics, bootstrap fixtures, transport frames, embedded runtime assembly,
@@ -114,6 +114,6 @@ the owning roadmap or inventory before changing the boundary.
 
 1. [`sdk/README.md`](../sdk/README.md)
 2. [`integrations/README.md`](../integrations/README.md)
-3. [`SDK_MODULE_LAYOUT_AND_PUBLIC_CONTRACT_INVENTORY.md`](./archive/sdk/2026-06-02_SDK_MODULE_LAYOUT_AND_PUBLIC_CONTRACT_INVENTORY.md)
-4. [`EXTERNAL_WORKER_QUICKSTART.md`](./EXTERNAL_WORKER_QUICKSTART.md)
-5. [`INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_ROADMAP.md`](./archive/integrations/2026-06-01_INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_ROADMAP.md)
+3. [`sdk/xa-mass-public-contract/README.md`](../sdk/xa-mass-public-contract/README.md)
+4. [`EXTERNAL_WORKER_QUICKSTART.md`](../sdk/xa-mass-java-sdk/EXTERNAL_WORKER_QUICKSTART.md)
+5. [`integrations/xa-mass-worker-pack/README.md`](../integrations/xa-mass-worker-pack/README.md)

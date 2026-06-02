@@ -379,7 +379,7 @@ Remove stale naming and old layout references from active docs and guards.
 Scope:
 
 - update root README and `doc/README.md` owner docs to the new `sdk/` paths;
-- update `doc/VERIFIED_RUNBOOK.md`, proof registry, testing index, and active
+- update `xa-mass-testing/VERIFIED_RUNBOOK.md`, proof registry, testing index, and active
   roadmaps that contain executable commands;
 - preserve archive docs as historical unless an archive index link breaks;
 - add a short transition note explaining that `com.xa.mass.sdk.*` packages were

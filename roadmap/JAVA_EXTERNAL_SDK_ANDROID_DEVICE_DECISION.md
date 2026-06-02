@@ -1,7 +1,7 @@
 # Java External SDK Android And Device Host Decision
 
 Status: current PSDK-6 decision record for
-[`JAVA_EXTERNAL_SDK_PUBLIC_READINESS_ROADMAP.md`](./archive/sdk/2026-06-01_JAVA_EXTERNAL_SDK_PUBLIC_READINESS_ROADMAP.md).
+[`JAVA_EXTERNAL_SDK_PUBLIC_READINESS_ROADMAP.md`](../doc/archive/sdk/2026-06-01_JAVA_EXTERNAL_SDK_PUBLIC_READINESS_ROADMAP.md).
 
 ## Decision
 

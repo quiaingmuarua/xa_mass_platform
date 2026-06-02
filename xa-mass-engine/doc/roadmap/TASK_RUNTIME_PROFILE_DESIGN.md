@@ -89,5 +89,5 @@ Keep workload-profile validation aligned with the repo's core acceptance lanes:
 ## Read Next
 
 - [`README.md`](../../README.md)
-- [`../../../doc/HIGH_VOLUME_MODEL_BASELINE.md`](../../../doc/HIGH_VOLUME_MODEL_BASELINE.md)
-- [`../../../doc/TESTING_BASELINE.md`](../../../doc/TESTING_BASELINE.md)
+- [`../../../xa-mass-engine/doc/baseline/HIGH_VOLUME_MODEL_BASELINE.md`](../../../xa-mass-engine/doc/baseline/HIGH_VOLUME_MODEL_BASELINE.md)
+- [`../../../doc/TESTING_INDEX.md`](../../../doc/TESTING_INDEX.md)

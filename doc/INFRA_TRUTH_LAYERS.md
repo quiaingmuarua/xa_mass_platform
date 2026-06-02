@@ -9,7 +9,6 @@ high-density decision table for `control-plane storage`, `runtime state`, and
 Read with:
 
 - [../AGENTS.md](../AGENTS.md)
-- [DB_STORAGE_PRINCIPLES.md](./DB_STORAGE_PRINCIPLES.md)
 - [RESULT_BOUNDARY_BASELINE.md](./RESULT_BOUNDARY_BASELINE.md)
 - [TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
 - [../platform_infra/README.md](../platform_infra/README.md)
@@ -101,7 +100,40 @@ If the answer pattern points to trace but no trace sink exists yet, keep only
 the smallest bounded temporary residue needed for correctness or immediate
 debuggability.
 
-## 5. Temporary Residue Rules
+## 5. DB Storage Guardrail
+
+The control-plane DB is for recoverable, stable truth. It is not the default
+home for runtime event streams, queue state, or high-volume history.
+
+A field or table belongs in DB only when at least one of these is true:
+
+- correct restart recovery requires it
+- it is stable configuration, registration, rule, or credential truth
+- it is a bounded task-level aggregate needed for operator task truth
+
+Current DB scope:
+
+- task shell truth: task identity, project, source/workload intent,
+  `sharedConfig`, task status, terminal reason, and bounded task aggregates
+- worker declaration truth: worker identity, group/node membership,
+  adapter/transport hint, and static worker attributes
+- worker group capability truth: supported projects, event codes, and
+  group-level capability metadata
+- rule definitions
+- principal credential truth
+- optional bounded task-level review/read-model summaries when they do not
+  drive runtime decisions
+
+Do not add DB tables or hot writes for ready queue membership, retry/delay
+indexes, active leases, lane dispatch state, worker online/offline churn,
+worker locks/capacity/reservations, callback/dispatch streams, large item
+history, or attempt timelines. Those belong to runtime state, trace/audit, or
+bounded non-authoritative materialization.
+
+H2 and PostgreSQL use the same boundary. PostgreSQL durability does not justify
+promoting trace-shaped history or runtime churn into control-plane storage.
+
+## 6. Temporary Residue Rules
 
 Temporary residue is acceptable only when all of these are true:
 
@@ -120,7 +152,7 @@ Temporary residue is not acceptable when it becomes:
 - a hidden cross-module dependency that changes ownership
 - a second effective mainline that callers start depending on
 
-## 6. Drift Alarms
+## 7. Drift Alarms
 
 Treat these as regression signals:
 
@@ -131,7 +163,7 @@ Treat these as regression signals:
 - trace-shaped detail is justified with "there is nowhere else to put it"
 - docs describe temporary residue as target architecture
 
-## 7. Decision Outputs
+## 8. Decision Outputs
 
 When an agent makes a placement decision, summarize it in one line:
 

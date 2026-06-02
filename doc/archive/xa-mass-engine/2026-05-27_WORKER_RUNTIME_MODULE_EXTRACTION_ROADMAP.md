@@ -5,7 +5,7 @@ place; remaining work should be treated as follow-up hardening, scale proof, or
 new feature work, not as another live engine-worker migration track.
 
 This was the next convergence line after the active worker-match roadmap at
-[`../../../xa-mass-engine/doc/roadmap/WORKER_MATCH_UPGRADE_ROADMAP.md`](../../../xa-mass-engine/doc/roadmap/WORKER_MATCH_UPGRADE_ROADMAP.md)
+[`../../../xa-mass-engine/roadmap/WORKER_MATCH_UPGRADE_ROADMAP.md`](../../../xa-mass-engine/roadmap/WORKER_MATCH_UPGRADE_ROADMAP.md)
 and the transport worker-match spine. The match roadmap keeps the two-stage
 match strategy healthy; this roadmap made the worker runtime owner explicit so
 later strategy work does not keep accumulating inside `xa-mass-engine`.

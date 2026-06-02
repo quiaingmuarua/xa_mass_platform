@@ -32,5 +32,5 @@ Status: current base module owner README.
 - use these documents before trusting module-local assumptions:
   - [`../AGENTS.md`](../AGENTS.md)
   - [`../doc/AGENT_BASELINE.md`](../doc/AGENT_BASELINE.md)
-  - [`../doc/VERIFIED_RUNBOOK.md`](../doc/VERIFIED_RUNBOOK.md)
+  - [`../xa-mass-testing/VERIFIED_RUNBOOK.md`](../xa-mass-testing/VERIFIED_RUNBOOK.md)
 

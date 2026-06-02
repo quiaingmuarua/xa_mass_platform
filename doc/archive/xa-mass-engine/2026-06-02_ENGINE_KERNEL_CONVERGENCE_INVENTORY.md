@@ -1,7 +1,7 @@
 # Engine Kernel Convergence Inventory
 
 Status: EKC-0 inventory for
-[`ENGINE_KERNEL_CONVERGENCE_ROADMAP.md`](./ENGINE_KERNEL_CONVERGENCE_ROADMAP.md).
+[`ENGINE_KERNEL_CONVERGENCE_ROADMAP.md`](./2026-06-02_ENGINE_KERNEL_CONVERGENCE_ROADMAP.md).
 
 This inventory records code ownership and caller shape as EKC moves or narrows
 runtime-kernel surfaces. EKC-0 captured the baseline; later notes mark landed

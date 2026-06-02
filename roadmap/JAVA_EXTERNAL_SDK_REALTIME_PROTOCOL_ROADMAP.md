@@ -3,10 +3,10 @@
 Status: implemented first WebSocket session slice. This is not yet final
 long-running realtime SDK hardening. Follow-up lifecycle and worker-pack
 capability hardening is tracked by
-[`INTEGRATIONS_EXTERNAL_SDK_WORKER_PACK_HARDENING_ROADMAP.md`](./archive/integrations/2026-06-02_INTEGRATIONS_EXTERNAL_SDK_WORKER_PACK_HARDENING_ROADMAP.md).
+[`INTEGRATIONS_EXTERNAL_SDK_WORKER_PACK_HARDENING_ROADMAP.md`](../doc/archive/integrations/2026-06-02_INTEGRATIONS_EXTERNAL_SDK_WORKER_PACK_HARDENING_ROADMAP.md).
 This roadmap supersedes the
 archived
-[`JAVA_EXTERNAL_SDK_REALTIME_DECISION.md`](./archive/integrations/2026-05-28_JAVA_EXTERNAL_SDK_REALTIME_DECISION.md)
+[`JAVA_EXTERNAL_SDK_REALTIME_DECISION.md`](../doc/archive/integrations/2026-05-28_JAVA_EXTERNAL_SDK_REALTIME_DECISION.md)
 decision record that deferred realtime SDK support.
 
 This roadmap upgrades the Java external SDK from polling-only worker sessions
@@ -488,7 +488,7 @@ mvn -pl xa-mass-server -am "-Dtest=JavaScenarioLauncherBlackBoxIntegrationTest" 
 
 Status: implemented through scenario-launcher. Strategic adoption and sample
 retirement were completed by the archived
-[`INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md`](./archive/integrations/2026-06-01_INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md).
+[`INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md`](../doc/archive/integrations/2026-06-01_INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md).
 
 Scope:
 

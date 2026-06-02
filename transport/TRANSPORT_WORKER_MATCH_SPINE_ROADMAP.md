@@ -784,7 +784,7 @@ Transport/proof tests:
 When implementing this roadmap:
 
 - update `transport/AGENTS.md` reading map
-- update `doc/EXTERNAL_WORKER_QUICKSTART.md` when external worker contract
+- update `sdk/xa-mass-java-sdk/EXTERNAL_WORKER_QUICKSTART.md` when external worker contract
   changes
 - update `doc/TRACE_CONTRACT.md` when evidence fields become authoritative
 - update or retire stale wording that claims `supportedEventCodes` is worker

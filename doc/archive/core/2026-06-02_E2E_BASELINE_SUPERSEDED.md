@@ -2,7 +2,8 @@
 
 Last updated: 2026-05-18
 
-Status: current global E2E baseline.
+Status: superseded. Current E2E proof placement is merged into
+`doc/TESTING_INDEX.md`.
 
 This is the short release-gate baseline for active-mainline E2E coverage.
 Detailed suite inventory stays in [../xa-mass-server/README.md](../xa-mass-server/README.md).

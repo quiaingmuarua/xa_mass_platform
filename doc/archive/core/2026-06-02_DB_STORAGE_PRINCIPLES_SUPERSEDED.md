@@ -1,6 +1,7 @@
 # DB Storage Principles
 
-Status: active boundary for XA Mass control-plane persistence.
+Status: superseded. Current DB/control-plane placement rules are merged into
+`doc/INFRA_TRUTH_LAYERS.md`.
 
 This document exists to prevent repeated storage refactors. Treat it as the
 default policy whenever someone proposes a new table, a new hot-path write, or

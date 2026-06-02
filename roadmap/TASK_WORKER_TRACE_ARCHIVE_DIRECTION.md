@@ -1,6 +1,6 @@
 # Task Worker Trace Archive Direction
 
-Status: design checkpoint for `TASK_WORKER_RUNTIME_HISTORY_BOUNDARY_ROADMAP`
+Status: design checkpoint for `roadmap/TASK_WORKER_RUNTIME_HISTORY_BOUNDARY_ROADMAP.md`
 TWH-5.
 
 This note records the task/worker history events that should feed future

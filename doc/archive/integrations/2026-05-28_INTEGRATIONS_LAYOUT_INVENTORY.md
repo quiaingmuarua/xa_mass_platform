@@ -171,7 +171,7 @@ ILC-1 updates:
 - historical `integrations/samples/java/worker-*/README.md`: updated during
   ILC-1 and later removed by Java SDK adoption
 - `sdk/xa-mass-java-sdk/README.md`: update Java polling sample link
-- `doc/EXTERNAL_WORKER_QUICKSTART.md`: update sample matrix and per-sample
+- `sdk/xa-mass-java-sdk/EXTERNAL_WORKER_QUICKSTART.md`: update sample matrix and per-sample
   path text
 - archived `doc/JAVA_EXTERNAL_SDK_ROADMAP.md` and
   `doc/JAVA_EXTERNAL_SDK_INVENTORY.md`: update current facts once ILC-1 is
@@ -181,7 +181,7 @@ ILC-2 updates:
 
 - `README.md`, `README.zh-CN.md`
 - `doc/README.md`
-- `doc/VERIFIED_RUNBOOK.md`
+- `xa-mass-testing/VERIFIED_RUNBOOK.md`
 - `doc/WORKER_FAULT_MATRIX_ROADMAP.md`
 - `xa-mass-server/README.md`
 - `integrations/xa-mass-worker-pack/README.md` after it moves

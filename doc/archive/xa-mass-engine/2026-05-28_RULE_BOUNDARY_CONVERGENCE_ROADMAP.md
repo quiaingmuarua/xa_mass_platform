@@ -370,7 +370,7 @@ Scope:
 Acceptance:
 
 1. No production bootstrap path needs engine package rule CRUD methods.
-2. `doc/INTERNAL_API_REFERENCE.md` does not describe rule definitions as
+2. `xa-mass-server/doc/INTERNAL_API_REFERENCE.md` does not describe rule definitions as
    runtime truth.
 3. In-repo bootstrap callers use the corrected setup surface; no old manager
    compatibility layer remains.

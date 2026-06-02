@@ -184,4 +184,4 @@ projection residue.
 
 - Add a real worker and event: [Add Worker And Event](./add-worker-and-event.md)
 - Architecture overview: [Mental Model](./mental-model.md)
-- External worker protocol: [`../doc/EXTERNAL_WORKER_QUICKSTART.md`](../doc/EXTERNAL_WORKER_QUICKSTART.md)
+- External worker protocol: [`../sdk/xa-mass-java-sdk/EXTERNAL_WORKER_QUICKSTART.md`](../sdk/xa-mass-java-sdk/EXTERNAL_WORKER_QUICKSTART.md)

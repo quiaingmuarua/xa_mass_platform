@@ -21,13 +21,13 @@ from `xa-mass-worker-runtime` by moving the worker declaration port into the
 worker-runtime owner module.
 
 It is intentionally separate from
-[`PROJECTION_BOUNDARY_CONVERGENCE_ROADMAP.md`](../../../doc/archive/xa-mass-engine/PROJECTION_BOUNDARY_CONVERGENCE_ROADMAP.md)
+[`PROJECTION_BOUNDARY_CONVERGENCE_ROADMAP.md`](../../../doc/archive/xa-mass-engine/2026-05-28_PROJECTION_BOUNDARY_CONVERGENCE_ROADMAP.md)
 (completed, archived) because projection cleanup is task read-model residue in
 `xa-mass-engine`.
 Worker declaration storage is worker lifecycle/control-plane ownership.
 
 It is also separate from the completed rule-boundary convergence record in
-[`../../../doc/archive/xa-mass-engine/RULE_BOUNDARY_CONVERGENCE_ROADMAP.md`](../../../doc/archive/xa-mass-engine/RULE_BOUNDARY_CONVERGENCE_ROADMAP.md)
+[`../../../doc/archive/xa-mass-engine/2026-05-28_RULE_BOUNDARY_CONVERGENCE_ROADMAP.md`](../../../doc/archive/xa-mass-engine/2026-05-28_RULE_BOUNDARY_CONVERGENCE_ROADMAP.md)
 because rule definitions are matching policy data, not worker lifecycle data.
 
 This roadmap depends on the task/worker runtime-history boundary work:
@@ -142,7 +142,7 @@ worker-level supported project/event capability fields.
 ## Non-Goals
 
 1. No projection cleanup. Projection boundary convergence is completed and
-   archived in `doc/archive/xa-mass-engine/PROJECTION_BOUNDARY_CONVERGENCE_ROADMAP.md`.
+   archived in `doc/archive/xa-mass-engine/2026-05-28_PROJECTION_BOUNDARY_CONVERGENCE_ROADMAP.md`.
 2. No rule-definition movement. The completed rule-boundary convergence record
    is historical; track new rule domain/storage work in a follow-up rule-domain
    roadmap.

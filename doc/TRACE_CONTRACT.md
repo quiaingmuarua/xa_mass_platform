@@ -17,7 +17,6 @@ Use with:
 
 - [PROOF_REGISTRY.md](./PROOF_REGISTRY.md)
 - [INFRA_TRUTH_LAYERS.md](./INFRA_TRUTH_LAYERS.md)
-- [DB_STORAGE_PRINCIPLES.md](./DB_STORAGE_PRINCIPLES.md)
 - [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md)
 - [../xa-mass-trace/README.md](../xa-mass-trace/README.md)
 - [../platform_infra/mass-trace-sink/README.md](../platform_infra/mass-trace-sink/README.md)

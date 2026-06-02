@@ -5,13 +5,14 @@ Last updated: 2026-05-18 (runtime owns hot-path ready/claim/lease/expiry state; 
 Status: current global lifecycle baseline.
 
 This is the short normative baseline for the active mainline.
-If lifecycle semantics change, update this file, trace expectations, and E2E coverage together.
+If lifecycle semantics change, update this file, trace expectations, and
+testing/E2E ownership together.
 
 Use with:
 
 - [../AGENTS.md](../AGENTS.md)
 - [./TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
-- [./E2E_BASELINE.md](./E2E_BASELINE.md)
+- [./TESTING_INDEX.md](./TESTING_INDEX.md)
 - [./RESULT_BOUNDARY_BASELINE.md](./RESULT_BOUNDARY_BASELINE.md)
 - [../xa-mass-engine/doc/baseline/SCHEDULING_KERNEL_BASELINE.md](../xa-mass-engine/doc/baseline/SCHEDULING_KERNEL_BASELINE.md)
 

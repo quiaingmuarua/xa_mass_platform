@@ -20,19 +20,18 @@ or integrations.
 
 Do not put control-plane internals, review materialization models, diagnostic
 models, bootstrap fixtures, transport frames, or embedded runtime assembly types
-in this module. A type belongs here only when the inventory records the owning
+in this module. A type belongs here only when this README records the owning
 Controller method and route role.
 
 ## Current First Slice
 
-- `TaskCreateRequest`
-- `TaskExecutionSpec`
-- `TaskItemBatch`
-- `TaskItemSyncRequest`
-- `TaskCommandRequest`
-- `TaskCommand`
-- `TaskContract`
-- `TaskSharedConfigKeys`
-
-The extraction inventory is
-[../../doc/archive/sdk/2026-06-02_SDK_MODULE_LAYOUT_AND_PUBLIC_CONTRACT_INVENTORY.md](../../doc/archive/sdk/2026-06-02_SDK_MODULE_LAYOUT_AND_PUBLIC_CONTRACT_INVENTORY.md).
+| Type | Controller method | Route role |
+| --- | --- | --- |
+| `TaskCreateRequest` | `TaskApiController.createTask` | request body for `POST /api/v1/tasks` |
+| `TaskExecutionSpec` | `TaskApiController.createTask` | nested execution policy field in `TaskCreateRequest` |
+| `TaskItemBatch` | `TaskApiController.appendTaskItems` | request body for `POST /api/v1/tasks/{taskId}/items` |
+| `TaskItemSyncRequest` | `TaskApiController.appendTaskItemSync` | request body for `POST /api/v1/tasks/{taskId}/items:sync` |
+| `TaskCommandRequest` | `TaskApiController.executeTaskCommand` | request body for `POST /api/v1/tasks/{taskId}/commands` |
+| `TaskCommand` | `TaskApiController.executeTaskCommand` | public command value inside `TaskCommandRequest` |
+| `TaskContract` | `TaskApiController.createTask` | public task contract value inside `TaskExecutionSpec` |
+| `TaskSharedConfigKeys` | `TaskApiController.createTask` | public shared-config keys consumed from `TaskCreateRequest.sharedConfig` |

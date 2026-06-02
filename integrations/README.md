@@ -32,9 +32,12 @@ Global boundary guard:
 ## Active Direction
 
 The current direction is to move integrations from simple demonstrations toward
-business-useful worker capabilities and realistic external SDK adoption. The
-worker-pack convergence record is
-[`../doc/archive/integrations/2026-06-01_INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_ROADMAP.md`](../doc/archive/integrations/2026-06-01_INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_ROADMAP.md).
+business-useful worker capabilities and realistic external SDK adoption.
+
+- Scenario launcher is the primary Java SDK adopter.
+- Worker-pack owns reusable capabilities plus separated dev/E2E harness code.
+- Samples remain protocol/dev fixtures and should not grow into a second SDK
+  product surface.
 
 ## Verification
 

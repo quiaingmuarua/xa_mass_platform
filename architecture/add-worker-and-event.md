@@ -112,7 +112,7 @@ session.connect();
 ```
 
 For an external non-JVM worker, use the public polling protocol described in
-[`../doc/EXTERNAL_WORKER_QUICKSTART.md`](../doc/EXTERNAL_WORKER_QUICKSTART.md).
+[`../sdk/xa-mass-java-sdk/EXTERNAL_WORKER_QUICKSTART.md`](../sdk/xa-mass-java-sdk/EXTERNAL_WORKER_QUICKSTART.md).
 
 Realtime workers can use websocket or socket adapters, but the same conceptual
 rules apply: capability registration is separate from online presence, and the

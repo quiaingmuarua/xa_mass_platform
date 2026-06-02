@@ -16,7 +16,7 @@ Trust code and verified runtime behavior over historical documentation.
 
 Additional current baseline:
 
-- [doc/HIGH_VOLUME_MODEL_BASELINE.md](./doc/HIGH_VOLUME_MODEL_BASELINE.md)
+- [xa-mass-engine/doc/baseline/HIGH_VOLUME_MODEL_BASELINE.md](./xa-mass-engine/doc/baseline/HIGH_VOLUME_MODEL_BASELINE.md)
 - [xa-mass-trace/README.md](./xa-mass-trace/README.md)
 
 Local distributed verification:
@@ -28,7 +28,7 @@ docker compose up redis server
 
 Compose runs the already-built server jar with `dev,redis-runtime,h2`: H2 file
 storage for control-plane truth and Redis for engine/transport runtime truth.
-See [doc/VERIFIED_RUNBOOK.md](./doc/VERIFIED_RUNBOOK.md) for reset and smoke
+See [xa-mass-testing/VERIFIED_RUNBOOK.md](./xa-mass-testing/VERIFIED_RUNBOOK.md) for reset and smoke
 commands.
 
 ## What It Is
@@ -160,8 +160,8 @@ Module truth comes from the root `pom.xml`. Do not treat removed historical modu
 - result owner baseline: [doc/RESULT_BOUNDARY_BASELINE.md](./doc/RESULT_BOUNDARY_BASELINE.md)
 - storage-jdbc ownership and current drift notes: [platform_infra/mass-storage-jdbc/README.md](./platform_infra/mass-storage-jdbc/README.md)
 - Redis runtime keyspace baseline: [platform_infra/mass-runtime-redis/REDIS_RUNTIME_BASELINE.md](./platform_infra/mass-runtime-redis/REDIS_RUNTIME_BASELINE.md)
-- startup, smoke, and regression commands: [doc/VERIFIED_RUNBOOK.md](./doc/VERIFIED_RUNBOOK.md)
-- active HTTP contracts: [doc/INTERNAL_API_REFERENCE.md](./doc/INTERNAL_API_REFERENCE.md)
+- startup, smoke, and regression commands: [xa-mass-testing/VERIFIED_RUNBOOK.md](./xa-mass-testing/VERIFIED_RUNBOOK.md)
+- active HTTP contracts: [xa-mass-server/doc/INTERNAL_API_REFERENCE.md](./xa-mass-server/doc/INTERNAL_API_REFERENCE.md)
 - transport ownership and verification: [transport/AGENTS.md](./transport/AGENTS.md)
 - SDK module map: [sdk/README.md](./sdk/README.md)
 - integrations module map: [integrations/README.md](./integrations/README.md)
@@ -171,6 +171,6 @@ Module truth comes from the root `pom.xml`. Do not treat removed historical modu
 - embedded SDK contract ownership: [sdk/xa-mass-embedded-sdk-api/README.md](./sdk/xa-mass-embedded-sdk-api/README.md)
 - embedded SDK runtime composition: [sdk/xa-mass-embedded-sdk/README.md](./sdk/xa-mass-embedded-sdk/README.md)
 - human architecture guide: [architecture/README.md](./architecture/README.md)
-- external worker onboarding: [doc/EXTERNAL_WORKER_QUICKSTART.md](./doc/EXTERNAL_WORKER_QUICKSTART.md)
+- external worker onboarding: [sdk/xa-mass-java-sdk/EXTERNAL_WORKER_QUICKSTART.md](./sdk/xa-mass-java-sdk/EXTERNAL_WORKER_QUICKSTART.md)
 - fixture samples: [integrations/samples/](./integrations/samples/) (protocol/dev
   fixtures only, not the public SDK product surface)

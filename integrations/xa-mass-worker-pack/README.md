@@ -147,18 +147,12 @@ sample-worker command paths, not by mutating engine or transport internals.
 
 ## Java External SDK Convergence
 
-The external SDK/worker-pack hardening work is recorded in
-`doc/archive/integrations/2026-06-02_INTEGRATIONS_EXTERNAL_SDK_WORKER_PACK_HARDENING_ROADMAP.md`.
-The prior SDK convergence work is recorded in
-`doc/archive/integrations/2026-06-01_INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_ROADMAP.md`.
-
 Current audit: worker-pack does not duplicate Java raw HTTP client calls for
 `/worker-api/v1` topology or worker-control routes. Real worker capability
 paths use `xa-mass-java-sdk`; dev-shell sample worker discovery still uses
 `xa-mass-embedded-sdk` `MassSdkApplication`, and raw WebSocket frame handling
-remains only as active command/fault E2E harness substrate. The retired Java
-socket demo path is documented in
-`doc/archive/integrations/2026-06-01_INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_INVENTORY.md`.
+remains only as active command/fault E2E harness substrate. Java socket demo
+client code is no longer a worker-pack capability path.
 
 Current hardening baseline:
 

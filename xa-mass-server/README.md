@@ -11,7 +11,7 @@ Use this module for end-to-end validation of:
 - the embedded transport adapters, backend-hosted control console, and frontend shell
 - SDK-created worker resources, fixture bootstrap inputs, and result write-back
 
-Repository-level startup instructions in [`../doc/VERIFIED_RUNBOOK.md`](../doc/VERIFIED_RUNBOOK.md) are the source of truth.
+Repository-level startup instructions in [`../xa-mass-testing/VERIFIED_RUNBOOK.md`](../xa-mass-testing/VERIFIED_RUNBOOK.md) are the source of truth.
 
 For current test-layer truth, minimum verification, and CI gate truth, start
 with [`../doc/TESTING_INDEX.md`](../doc/TESTING_INDEX.md). This README covers
@@ -386,7 +386,7 @@ JDBC storage scope:
   server profile, for example `-Dspring.profiles.active=dev,h2`; this writes to
   `./data/xa-mass-h2/xa_mass` by default through `application-h2.yml`
 - the non-test Spring Boot entry
-  [XaMassServerApplication.java](/D:/code_project/geekrun/xa_mass_platform/xa-mass-server/src/main/java/com/xa/mass/server/XaMassServerApplication.java)
+  [XaMassServerApplication.java](./src/main/java/com/xa/mass/server/XaMassServerApplication.java)
   already supports this profile directly; local persistent H2 verification does
   not require a separate test-only bootstrap path
 - local PostgreSQL verification can use the `postgres` profile together with the

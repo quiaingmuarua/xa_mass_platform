@@ -1,7 +1,7 @@
 # Engine Kernel Convergence Roadmap
 
 Status: active. EKC-0 inventory is captured in
-[`ENGINE_KERNEL_CONVERGENCE_INVENTORY.md`](./ENGINE_KERNEL_CONVERGENCE_INVENTORY.md).
+[`ENGINE_KERNEL_CONVERGENCE_INVENTORY.md`](./2026-06-02_ENGINE_KERNEL_CONVERGENCE_INVENTORY.md).
 EKC-1A has moved default runtime scheduling assembly out of SDK `MassEngine`
 and into engine-owned `EngineRuntimeKernel`. EKC-1B removed SDK main references
 to engine listener/watchdog/util implementation packages. EKC-1C moved
@@ -28,7 +28,7 @@ rule definition ports, and removed the engine test dependency on
 `mass-storage-memory`.
 
 This roadmap continues after
-[`ENGINE_STORAGE_API_DETACHMENT_ROADMAP.md`](./archive/xa-mass-engine/2026-05-30_ENGINE_STORAGE_API_DETACHMENT_ROADMAP.md).
+[`ENGINE_STORAGE_API_DETACHMENT_ROADMAP.md`](./2026-05-30_ENGINE_STORAGE_API_DETACHMENT_ROADMAP.md).
 ESD removed the engine production dependency on storage APIs. The next
 convergence target is smaller: keep the engine runtime kernel clear while
 shrinking public surfaces, moving callers to intent-shaped ports, and removing

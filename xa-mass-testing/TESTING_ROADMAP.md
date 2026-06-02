@@ -12,7 +12,6 @@ coverage truth, or the repo-wide testing map.
 Read current-state truth from:
 
 - [../doc/TESTING_INDEX.md](../doc/TESTING_INDEX.md)
-- [../doc/TESTING_BASELINE.md](../doc/TESTING_BASELINE.md)
 - [../README.md](../README.md)
 - [README.md](./README.md) for module-local runner inventory
 

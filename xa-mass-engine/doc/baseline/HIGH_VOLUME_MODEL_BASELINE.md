@@ -6,11 +6,11 @@ Status: current high-volume runtime facts.
 
 Trust: code and verified behavior override this summary.
 
-- [../AGENTS.md](../AGENTS.md)
-- [./AGENT_BASELINE.md](./AGENT_BASELINE.md)
-- [../xa-mass-engine/doc/roadmap/TASK_RUNTIME_PROFILE_DESIGN.md](../xa-mass-engine/doc/roadmap/TASK_RUNTIME_PROFILE_DESIGN.md)
-- [../transport/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md](../transport/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md)
-- [./TESTING_BASELINE.md](./TESTING_BASELINE.md)
+- [../../../AGENTS.md](../../../AGENTS.md)
+- [../../../doc/AGENT_BASELINE.md](../../../doc/AGENT_BASELINE.md)
+- [../roadmap/TASK_RUNTIME_PROFILE_DESIGN.md](../roadmap/TASK_RUNTIME_PROFILE_DESIGN.md)
+- [../../../transport/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md](../../../transport/TRANSPORT_HIGH_VOLUME_EVENT_DESIGN.md)
+- [../../../doc/TESTING_INDEX.md](../../../doc/TESTING_INDEX.md)
 
 ## 1. Current Status
 

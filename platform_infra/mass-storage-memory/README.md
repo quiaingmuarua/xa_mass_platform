@@ -35,7 +35,7 @@ Read with:
 
 - [../README.md](../README.md)
 - [../mass-storage-jdbc/README.md](../mass-storage-jdbc/README.md)
-- [../../doc/DB_STORAGE_PRINCIPLES.md](../../doc/DB_STORAGE_PRINCIPLES.md)
+- [../../doc/INFRA_TRUTH_LAYERS.md](../../doc/INFRA_TRUTH_LAYERS.md)
 
 Non-goals for this slice:
 
