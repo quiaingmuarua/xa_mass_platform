@@ -290,7 +290,7 @@ Scope:
   - `MassApplicationBuilder.EngineBuilder`
   - `MassEngineBuilder`
   - `EngineConfig`
-  - `xa-mass-sdk/README.md`
+  - `sdk/xa-mass-embedded-sdk/README.md`
 - Add a concise migration table, for example:
   - `taskStorage(...)` -> `taskShellStore(...)`
   - `workerStorage(...)` -> `workerDeclarationStore(...)`
@@ -617,7 +617,7 @@ Minimum local checks per implementation slice:
 
 ```bash
 mvn -pl platform_infra/mass-storage-api,platform_infra/mass-storage-memory,platform_infra/mass-storage-jdbc,xa-mass-engine,xa-mass-worker-runtime -am test
-mvn -pl xa-mass-sdk,xa-mass-server -am -DskipTests compile
+mvn -pl xa-mass-embedded-sdk,xa-mass-server -am -DskipTests compile
 ```
 
 When server task/worker read models change, also run focused server tests around

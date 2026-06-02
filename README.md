@@ -84,8 +84,13 @@ The shared kernel is:
 
 Current integration boundary rule:
 
-- `xa-mass-sdk` is the stable integration boundary for workers, embedding
-  clients, and external automation
+- `sdk/xa-mass-java-sdk` is the external Java SDK boundary for task producers,
+  external workers, and automation that talks to a running server over public
+  HTTP routes
+- `sdk/xa-mass-public-contract` owns the narrow Controller-exposed wire
+  DTO/constants shared by the server and external SDKs
+- `xa-mass-embedded-sdk` is the stable JVM embedding boundary for in-process
+  runtime composition
 - `xa-mass-server` is the reference host and lightweight backend product
   skeleton for HTTP/auth/project/tenant/user/API-key/console surfaces; it may
   evolve those host surfaces without redefining engine-kernel semantics
@@ -99,7 +104,8 @@ Current integration boundary rule:
 ## Current Facts
 
 - Boot entry: `xa-mass-server`
-- SDK entry: `xa-mass-sdk` / `MassSdk`
+- External Java SDK entry: `sdk/xa-mass-java-sdk` / `MassPlatform`
+- Embedded SDK entry: `sdk/xa-mass-embedded-sdk` / `MassSdk`
 - Java baseline: JDK 21 with virtual threads used through explicit runtime abstractions
 - Runtime model: task dispatch, result ingest, and system events are explicit transport seams
 - Active transport adapters: polling, websocket, and socket
@@ -133,8 +139,10 @@ Current integration boundary rule:
 - `transport/websocket-adapter`: WebSocket worker transport adapter
 - `xa-mass-worker-runtime`: worker-plane lifecycle/resource owner for WorkerGroup, AdapterNode, NodeGroupBinding, worker declaration ports, candidate source, scheduling evidence, admission, dispatch gates, and warm hints
 - `xa-mass-engine`: lifecycle, assignment, result handling, and policy seams
-- `xa-mass-sdk-api`: stable SDK-facing auth, catalog, event, and model contracts
-- `xa-mass-sdk`: embedding entry and runtime composition for JVM callers
+- `sdk/xa-mass-public-contract`: narrow public HTTP wire DTOs/constants shared by server and external SDKs
+- `sdk/xa-mass-java-sdk`: external Java client/session/handler SDK for task producers and external workers
+- `sdk/xa-mass-embedded-sdk-api`: embedded SDK-facing auth, catalog, event, and model contracts
+- `sdk/xa-mass-embedded-sdk`: embedding entry and runtime composition for JVM callers
 - `xa-mass-testing`: acceptance tooling, load harnesses, and chaos probes
 - `integrations/xa-mass-worker-pack`: official builtin/sample/dev worker
   capabilities, sample clients, launchers, and worker-side command runtime
@@ -153,8 +161,10 @@ Module truth comes from the root `pom.xml`. Do not treat removed historical modu
 - startup, smoke, and regression commands: [doc/VERIFIED_RUNBOOK.md](./doc/VERIFIED_RUNBOOK.md)
 - active HTTP contracts: [doc/INTERNAL_API_REFERENCE.md](./doc/INTERNAL_API_REFERENCE.md)
 - transport ownership and verification: [transport/AGENTS.md](./transport/AGENTS.md)
-- SDK contract ownership: [xa-mass-sdk-api/README.md](./xa-mass-sdk-api/README.md)
-- SDK embedding/runtime composition: [xa-mass-sdk/README.md](./xa-mass-sdk/README.md)
+- public HTTP contract ownership: [sdk/xa-mass-public-contract](./sdk/xa-mass-public-contract)
+- external Java SDK: [sdk/xa-mass-java-sdk/README.md](./sdk/xa-mass-java-sdk/README.md)
+- embedded SDK contract ownership: [sdk/xa-mass-embedded-sdk-api/README.md](./sdk/xa-mass-embedded-sdk-api/README.md)
+- embedded SDK runtime composition: [sdk/xa-mass-embedded-sdk/README.md](./sdk/xa-mass-embedded-sdk/README.md)
 - human architecture guide: [architecture/README.md](./architecture/README.md)
 - external worker onboarding: [doc/EXTERNAL_WORKER_QUICKSTART.md](./doc/EXTERNAL_WORKER_QUICKSTART.md)
 - samples: [integrations/samples/](./integrations/samples/)

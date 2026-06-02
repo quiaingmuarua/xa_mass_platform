@@ -624,14 +624,14 @@ Environment-dependent skips:
 Residue scans:
 
 ```powershell
-rg "TaskDetailStore|TaskMessageProjection|TaskMessageAttemptProjection|TaskMessageStats|TaskMessageAttemptStats|com\.xa\.mass\.storage\.api\.projection|ProjectionAwareTaskManager|ProjectionTestSupport|CompatibilityProjectionAwait|TaskCompatibilityProjectionAccess" -n -g "*.java" platform_infra xa-mass-engine xa-mass-testing transport xa-mass-server xa-mass-sdk integrations
+rg "TaskDetailStore|TaskMessageProjection|TaskMessageAttemptProjection|TaskMessageStats|TaskMessageAttemptStats|com\.xa\.mass\.storage\.api\.projection|ProjectionAwareTaskManager|ProjectionTestSupport|CompatibilityProjectionAwait|TaskCompatibilityProjectionAccess" -n -g "*.java" platform_infra xa-mass-engine xa-mass-testing transport xa-mass-server xa-mass-embedded-sdk integrations
 ```
 
 Expected result after PIR-5: only architecture guard forbidden-token strings
 in tests.
 
 ```powershell
-rg "TaskDetailStore|TaskMessageProjection|TaskMessageAttemptProjection|ProjectionTestViews|CompatibilityMessageView|CompatibilityAttemptView|compatibilityProjection|message projection|attempt projection" -n README.md README.zh-CN.md doc platform_infra/README.md platform_infra/mass-storage-api/README.md xa-mass-engine/doc xa-mass-sdk/README.md xa-mass-testing/README.md -g "*.md" -g "!doc/archive/**" -g "!*ROADMAP.md" -g "!*INVENTORY.md"
+rg "TaskDetailStore|TaskMessageProjection|TaskMessageAttemptProjection|ProjectionTestViews|CompatibilityMessageView|CompatibilityAttemptView|compatibilityProjection|message projection|attempt projection" -n README.md README.zh-CN.md doc platform_infra/README.md platform_infra/mass-storage-api/README.md xa-mass-engine/doc sdk/xa-mass-embedded-sdk/README.md xa-mass-testing/README.md -g "*.md" -g "!doc/archive/**" -g "!*ROADMAP.md" -g "!*INVENTORY.md"
 ```
 
 Expected result after PIR-5: no output.

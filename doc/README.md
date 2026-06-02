@@ -66,8 +66,10 @@ Use owner docs for module-local truth:
 - testing: [../xa-mass-testing/README.md](../xa-mass-testing/README.md)
 - server: [../xa-mass-server/README.md](../xa-mass-server/README.md)
 - worker pack: [../integrations/xa-mass-worker-pack/README.md](../integrations/xa-mass-worker-pack/README.md)
-- SDK API: [../xa-mass-sdk-api/README.md](../xa-mass-sdk-api/README.md)
-- SDK embedding: [../xa-mass-sdk/README.md](../xa-mass-sdk/README.md)
+- public HTTP contract: [../sdk/xa-mass-public-contract/README.md](../sdk/xa-mass-public-contract/README.md)
+- external Java SDK: [../sdk/xa-mass-java-sdk/README.md](../sdk/xa-mass-java-sdk/README.md)
+- embedded SDK API: [../sdk/xa-mass-embedded-sdk-api/README.md](../sdk/xa-mass-embedded-sdk-api/README.md)
+- embedded SDK runtime: [../sdk/xa-mass-embedded-sdk/README.md](../sdk/xa-mass-embedded-sdk/README.md)
 
 ## 4. Design-Only References
 
@@ -81,6 +83,8 @@ These are useful only when the task explicitly touches those future directions:
 - [JAVA_EXTERNAL_SDK_TASK_SCOPED_INVOCATION_ROADMAP.md](./JAVA_EXTERNAL_SDK_TASK_SCOPED_INVOCATION_ROADMAP.md)
 - [JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md](./JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md)
 - [JAVA_EXTERNAL_SDK_PUBLIC_READINESS_ROADMAP.md](./JAVA_EXTERNAL_SDK_PUBLIC_READINESS_ROADMAP.md)
+- [SDK_MODULE_LAYOUT_AND_PUBLIC_CONTRACT_ROADMAP.md](./SDK_MODULE_LAYOUT_AND_PUBLIC_CONTRACT_ROADMAP.md)
+- [SDK_MODULE_LAYOUT_AND_PUBLIC_CONTRACT_INVENTORY.md](./SDK_MODULE_LAYOUT_AND_PUBLIC_CONTRACT_INVENTORY.md)
 - [JAVA_EXTERNAL_SDK_PUBLIC_SURFACE_INVENTORY.md](./JAVA_EXTERNAL_SDK_PUBLIC_SURFACE_INVENTORY.md)
 - [JAVA_EXTERNAL_SDK_ANDROID_DEVICE_DECISION.md](./JAVA_EXTERNAL_SDK_ANDROID_DEVICE_DECISION.md)
 - [REVIEW_MATERIALIZATION_PIPELINE_ROADMAP.md](./REVIEW_MATERIALIZATION_PIPELINE_ROADMAP.md)

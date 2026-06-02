@@ -4,7 +4,7 @@ Status: implemented mainline. TSI-0, TSI-1, and TSI-2 are complete; TSI-3 is
 deferred until append receipts can preserve item/message identity.
 
 This roadmap adds task-scoped invocation conveniences to
-`integrations/xa-mass-java-sdk`.
+`sdk/xa-mass-java-sdk`.
 
 Related roadmap:
 [`INTEGRATIONS_EXTERNAL_SDK_WORKER_PACK_HARDENING_ROADMAP.md`](./archive/integrations/2026-06-02_INTEGRATIONS_EXTERNAL_SDK_WORKER_PACK_HARDENING_ROADMAP.md).
@@ -90,7 +90,7 @@ an open intake window.
 
 ## Owner Decision
 
-Task-scoped invocation ergonomics belong to `integrations/xa-mass-java-sdk`.
+Task-scoped invocation ergonomics belong to `sdk/xa-mass-java-sdk`.
 
 The SDK may own:
 
@@ -227,7 +227,7 @@ starting contract for implementation:
 ## Target Shape
 
 ```text
-integrations/xa-mass-java-sdk
+sdk/xa-mass-java-sdk
   TaskCreateRequest.Builder
     workerGroupId(...)
     workerGroupIds(...)
@@ -329,7 +329,7 @@ Acceptance:
 Verification:
 
 ```powershell
-rg -n "appendItemSync|TaskCreateRequest|workerGroupId|workerGroupIds|targetWorkerAttributes" integrations/xa-mass-java-sdk doc
+rg -n "appendItemSync|TaskCreateRequest|workerGroupId|workerGroupIds|targetWorkerAttributes" sdk/xa-mass-java-sdk doc
 ```
 
 ## TSI-1: Typed Task Routing Helpers
@@ -390,7 +390,7 @@ Acceptance:
 Verification:
 
 ```powershell
-mvn -pl integrations/xa-mass-java-sdk "-Dtest=TaskClientTest" test
+mvn -pl sdk/xa-mass-java-sdk "-Dtest=TaskClientTest" test
 ```
 
 ## TSI-2: Task-Scoped Handle And Documentation
@@ -442,8 +442,8 @@ Acceptance:
 Verification:
 
 ```powershell
-rg -n "mass\\.invoke|workerGroupId|appendItemSync|forTask" integrations/xa-mass-java-sdk doc
-mvn -pl integrations/xa-mass-java-sdk "-Dtest=TaskClientTest" test
+rg -n "mass\\.invoke|workerGroupId|appendItemSync|forTask" sdk/xa-mass-java-sdk doc
+mvn -pl sdk/xa-mass-java-sdk "-Dtest=TaskClientTest" test
 mvn -pl xa-mass-server -am "-Dtest=JavaExternalSdkTaskScopedInvocationIntegrationTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 ```
 
@@ -481,7 +481,7 @@ Acceptance:
 Verification:
 
 ```powershell
-rg -n "record TaskAppendResult|chunks\\(|appendItems\\(" integrations/xa-mass-java-sdk integrations/xa-mass-scenario-launcher
+rg -n "record TaskAppendResult|chunks\\(|appendItems\\(" sdk/xa-mass-java-sdk integrations/xa-mass-scenario-launcher
 ```
 
 ## Conditional Integrated Proof

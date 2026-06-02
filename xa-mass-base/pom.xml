@@ -87,8 +87,8 @@
                                     <excludes>
                                         <exclude>com.xa.mass:xa-mass-engine</exclude>
                                         <exclude>com.xa.mass:xa-mass-transport-websocket</exclude>
-                                        <exclude>com.xa.mass:xa-mass-sdk</exclude>
-                                        <exclude>com.xa.mass:xa-mass-sdk-api</exclude>
+                                        <exclude>com.xa.mass:xa-mass-embedded-sdk</exclude>
+                                        <exclude>com.xa.mass:xa-mass-embedded-sdk-api</exclude>
                                         <exclude>com.xa.mass:xa-mass-server</exclude>
                                         <exclude>org.springframework.boot:spring-boot-starter-web</exclude>
                                         <exclude>io.netty:netty-all</exclude>

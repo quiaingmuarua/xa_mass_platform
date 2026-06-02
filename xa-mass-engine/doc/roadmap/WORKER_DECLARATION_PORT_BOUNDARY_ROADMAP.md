@@ -171,7 +171,7 @@ Scope:
    - storage adapter implementation
    - test fixture
    - stale documentation
-3. Explicitly classify `xa-mass-sdk` `EngineConfig` as the SDK primary
+3. Explicitly classify `xa-mass-embedded-sdk` `EngineConfig` as the SDK primary
    assembly caller, including its default `InMemoryWorkerDeclarationStore`
    initialization.
 4. Confirm whether the moved names stay as `WorkerDeclarationStore` and
@@ -325,5 +325,5 @@ mvn -pl platform_infra/mass-storage-api,platform_infra/mass-storage-memory -am '
 ```
 
 ```powershell
-mvn -pl xa-mass-sdk,xa-mass-server -am -DskipTests compile
+mvn -pl xa-mass-embedded-sdk,xa-mass-server -am -DskipTests compile
 ```

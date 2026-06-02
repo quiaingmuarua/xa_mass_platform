@@ -108,7 +108,7 @@ Boundary rules:
 - current mainline execution path:
   - `Task shell -> item append -> runtime enqueue -> dispatch binder -> transport delivery view -> result convergence -> task state`
 - real Boot entry: `xa-mass-server`
-- embedded runtime composition: `xa-mass-sdk`
+- embedded runtime composition: `xa-mass-embedded-sdk`
 - Java baseline: JDK 21 with virtual threads routed through explicit runtime abstractions
 - current runtime/storage split:
   - `platform_infra/mass-runtime-api` owns queue/lease/counter contracts plus

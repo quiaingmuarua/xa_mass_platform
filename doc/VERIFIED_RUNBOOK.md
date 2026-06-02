@@ -27,8 +27,8 @@ This file does not define lane ownership, suite layering, or CI gate policy.
 Current runtime entry:
 
 - Spring Boot app: `xa-mass-server/src/main/java/com/xa/mass/server/XaMassServerApplication.java`
-- SDK entry: `xa-mass-sdk/src/main/java/com/xa/mass/sdk/MassSdk.java`
-- Embedded runtime composition: `xa-mass-sdk/src/main/java/com/xa/mass/starter/MassApplication.java`
+- SDK entry: `sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/MassSdk.java`
+- Embedded runtime composition: `sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/MassApplication.java`
 - Java baseline: JDK 21 / `maven.compiler.release=21`
 
 Current runnable path includes the reactor modules declared in the root
@@ -46,7 +46,7 @@ Run from repo root:
 java -version
 ./mvnw -DskipTests compile
 cd frontend && corepack pnpm build && cd ..
-java -cp "xa-mass-server/target/classes:integrations/xa-mass-worker-pack/target/classes:xa-mass-sdk/target/classes:xa-mass-sdk-api/target/classes:xa-mass-engine/target/classes:transport/websocket-adapter/target/classes:transport/socket-adapter/target/classes:transport/transport_api/target/classes:transport/polling-adapter/target/classes:transport/transport_runtime/target/classes:xa-mass-base/target/classes:<runtime-classpath>" \
+java -cp "xa-mass-server/target/classes:integrations/xa-mass-worker-pack/target/classes:sdk/xa-mass-embedded-sdk/target/classes:sdk/xa-mass-embedded-sdk-api/target/classes:xa-mass-engine/target/classes:transport/websocket-adapter/target/classes:transport/socket-adapter/target/classes:transport/transport_api/target/classes:transport/polling-adapter/target/classes:transport/transport_runtime/target/classes:xa-mass-base/target/classes:<runtime-classpath>" \
   com.xa.mass.server.XaMassServerApplication
 ```
 

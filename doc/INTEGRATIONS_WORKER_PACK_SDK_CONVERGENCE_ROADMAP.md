@@ -7,7 +7,7 @@ Successor roadmap:
 
 This roadmap follows the Java SDK adoption work. The main question is no
 longer whether Java can call the platform from outside the server. That proof
-now lives in `integrations/xa-mass-java-sdk` and
+now lives in `sdk/xa-mass-java-sdk` and
 `integrations/xa-mass-scenario-launcher`.
 
 The next question is what `integrations/xa-mass-worker-pack` should still own.
@@ -33,14 +33,14 @@ Execution stance:
 
 ## Current Code Observations
 
-- `integrations/xa-mass-worker-pack` depends on `xa-mass-sdk` for embedded
+- `integrations/xa-mass-worker-pack` depends on `xa-mass-embedded-sdk` for embedded
   dev-shell support and on `xa-mass-java-sdk` only for the SDK-backed
   `tool.geo.lookup` capability path.
 - The retired worker-pack Java socket demo path was
   `SocketClientStarter` plus `SampleWorkerSocketClient`. It existed to run an
   embedded Java socket sample client, not to provide a public Java SDK worker
   path.
-- `integrations/xa-mass-java-sdk` owns the external Java entry point:
+- `sdk/xa-mass-java-sdk` owns the external Java entry point:
   `MassPlatform`, typed task and worker clients, `workerSessions().polling()`,
   and `workerSessions().webSocket()`.
 - `integrations/xa-mass-scenario-launcher` is the strategic Java SDK consumer.
@@ -147,7 +147,7 @@ The priority order is therefore:
 
 ```text
 external Java task / worker process
-  -> integrations/xa-mass-java-sdk
+  -> sdk/xa-mass-java-sdk
       -> MassPlatform
       -> tasks()
       -> workers() / worker topology declarations

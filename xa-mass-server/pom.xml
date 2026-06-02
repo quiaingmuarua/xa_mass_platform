@@ -82,7 +82,12 @@
     <dependencies>
         <dependency>
             <groupId>com.xa.mass</groupId>
-            <artifactId>xa-mass-sdk</artifactId>
+            <artifactId>xa-mass-public-contract</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.xa.mass</groupId>
+            <artifactId>xa-mass-embedded-sdk</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>

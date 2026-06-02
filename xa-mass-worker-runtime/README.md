@@ -67,7 +67,7 @@ Allowed:
 
 - `xa-mass-engine -> xa-mass-worker-runtime -> mass-runtime-api`
 - `transport/* -> xa-mass-worker-runtime` for lookup/evidence contracts
-- `xa-mass-sdk/server -> xa-mass-worker-runtime` for worker shell assembly
+- `sdk/xa-mass-embedded-sdk/server -> xa-mass-worker-runtime` for worker shell assembly
 
 Forbidden:
 

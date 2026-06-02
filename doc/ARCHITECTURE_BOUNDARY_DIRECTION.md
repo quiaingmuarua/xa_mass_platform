@@ -205,8 +205,8 @@ Must not own:
 
 Current repo anchors:
 
-- `xa-mass-sdk-api`
-- `xa-mass-sdk`
+- `xa-mass-embedded-sdk-api`
+- `xa-mass-embedded-sdk`
 - `xa-mass-server`
 
 This plane is separate from the operator plane because product/API hosting and

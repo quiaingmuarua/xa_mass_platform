@@ -15,8 +15,8 @@ cd "${REPO_ROOT}"
 
 MODULE_CLASSES=(
   "xa-mass-testing/target/classes"
-  "xa-mass-sdk/target/classes"
-  "xa-mass-sdk-api/target/classes"
+  "sdk/xa-mass-embedded-sdk/target/classes"
+  "sdk/xa-mass-embedded-sdk-api/target/classes"
   "xa-mass-engine/target/classes"
   "xa-mass-base/target/classes"
   "transport/transport_runtime/target/classes"

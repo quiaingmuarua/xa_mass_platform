@@ -86,7 +86,7 @@ Testing-policy note:
 
 ## Commands
 
-When a runner depends on current `xa-mass-engine` / `xa-mass-sdk` changes, refresh sibling artifacts first:
+When a runner depends on current `xa-mass-engine` / `xa-mass-embedded-sdk` changes, refresh sibling artifacts first:
 
 ```bash
 ./mvnw -pl xa-mass-testing -am -DskipTests install

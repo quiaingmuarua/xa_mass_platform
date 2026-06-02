@@ -18,7 +18,7 @@
         </dependency>
         <dependency>
             <groupId>com.xa.mass</groupId>
-            <artifactId>xa-mass-sdk</artifactId>
+            <artifactId>xa-mass-embedded-sdk</artifactId>
             <version>0.0.1-SNAPSHOT</version>
         </dependency>
         <dependency>

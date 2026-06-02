@@ -1,7 +1,7 @@
 # Java External SDK Public Readiness Roadmap
 
 Status: current mainline complete for making
-[`../integrations/xa-mass-java-sdk`](../integrations/xa-mass-java-sdk) a real
+[`../sdk/xa-mass-java-sdk`](../sdk/xa-mass-java-sdk) a real
 external JVM SDK for local/internal staging. Public registry publication remains
 an explicit follow-up decision. Internal Java adoption across `integrations/`
 was completed in the archived
@@ -16,7 +16,7 @@ Current progress:
 - PSDK-2 raw HTTP access is marked with `UnstableApi` and documented as an
   advanced escape hatch, not the primary stable API.
 - PSDK-5 local/internal publication metadata shape is recorded in
-  [`../integrations/xa-mass-java-sdk/pom.consumer.xml`](../integrations/xa-mass-java-sdk/pom.consumer.xml).
+  [`../sdk/xa-mass-java-sdk/pom.consumer.xml`](../sdk/xa-mass-java-sdk/pom.consumer.xml).
 - PSDK-6 Android/device host decision is recorded in
   [`JAVA_EXTERNAL_SDK_ANDROID_DEVICE_DECISION.md`](./JAVA_EXTERNAL_SDK_ANDROID_DEVICE_DECISION.md).
 - PSDK-3 minimum transport-neutral worker handler runtime is implemented in
@@ -26,11 +26,11 @@ Current progress:
 Current verified commands:
 
 ```powershell
-mvn -pl integrations/xa-mass-java-sdk test
-mvn -pl integrations/xa-mass-java-sdk dependency:tree
-mvn -pl integrations/xa-mass-java-sdk dependency:list -DincludeScope=runtime -DexcludeTransitive=false
-mvn -pl integrations/xa-mass-java-sdk -DskipTests source:jar javadoc:jar
-mvn -f integrations/xa-mass-java-sdk/pom.consumer.xml -DskipTests package
+mvn -pl sdk/xa-mass-java-sdk test
+mvn -pl sdk/xa-mass-java-sdk dependency:tree
+mvn -pl sdk/xa-mass-java-sdk dependency:list -DincludeScope=runtime -DexcludeTransitive=false
+mvn -pl sdk/xa-mass-java-sdk -DskipTests source:jar javadoc:jar
+mvn -f sdk/xa-mass-java-sdk/pom.consumer.xml -DskipTests package
 mvn -pl integrations/xa-mass-scenario-launcher -am -DskipTests package
 mvn -pl xa-mass-server -am "-Dtest=JavaScenarioLauncherBlackBoxIntegrationTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 ```
@@ -44,14 +44,14 @@ without pulling in the platform builder.
 
 ## Current Facts
 
-- `xa-mass-sdk` is an embedded runtime composition SDK. It can assemble engine,
+- `xa-mass-embedded-sdk` is an embedded runtime composition SDK. It can assemble engine,
   transports, and server/runtime surfaces, so it is not the right artifact for
   repo-external callers.
-- `integrations/xa-mass-java-sdk` is the correct external SDK owner. It talks
+- `sdk/xa-mass-java-sdk` is the correct external SDK owner. It talks
   to a running `xa-mass-server` through public HTTP worker/task APIs and owns
   managed polling and WebSocket sessions.
 - current production dependencies are small: JDK `HttpClient` plus Jackson.
-  The module does not currently depend on `xa-mass-sdk`, engine, server,
+  The module does not currently depend on `xa-mass-embedded-sdk`, engine, server,
   worker-runtime, transport adapters, worker-pack, or `xa-mass-base`.
 - current versioning follows the platform reactor as `0.0.1-SNAPSHOT`.
 - current root POM metadata and module POM metadata are not publication-ready:
@@ -61,7 +61,7 @@ without pulling in the platform builder.
   reactor development, but external publication must not require consumers to
   resolve or inherit the platform parent.
 - current local/internal consumer POM template is
-  `integrations/xa-mass-java-sdk/pom.consumer.xml`. It is not a public-registry
+  `sdk/xa-mass-java-sdk/pom.consumer.xml`. It is not a public-registry
   publish action.
 - current architecture guard blocks forbidden production imports and direct
   SDK POM dependencies for embedded/runtime/server/base/kernel/transport
@@ -75,7 +75,7 @@ without pulling in the platform builder.
 
 ## Owner Review
 
-Public external Java SDK readiness belongs to `integrations/xa-mass-java-sdk`.
+Public external Java SDK readiness belongs to `sdk/xa-mass-java-sdk`.
 
 The SDK may own:
 
@@ -102,8 +102,8 @@ engine, transport runtime, or embedded SDK production code.
 
 ## Hard Rules
 
-1. Do not merge `xa-mass-java-sdk` into `xa-mass-sdk`.
-2. Do not make `xa-mass-java-sdk` depend on `xa-mass-sdk`, `xa-mass-base`,
+1. Do not merge `xa-mass-java-sdk` into `xa-mass-embedded-sdk`.
+2. Do not make `xa-mass-java-sdk` depend on `xa-mass-embedded-sdk`, `xa-mass-base`,
    worker-pack, engine, server, worker-runtime, or transport adapter
    implementation modules.
 3. Do not expose embedded runtime builders, server startup, or platform
@@ -174,8 +174,8 @@ Acceptance:
 Verification candidates:
 
 ```powershell
-rg -n "^public " integrations/xa-mass-java-sdk/src/main/java
-rg -n "public MassHttpClient http|public Builder objectMapper|public Builder httpClient" integrations/xa-mass-java-sdk/src/main/java
+rg -n "^public " sdk/xa-mass-java-sdk/src/main/java
+rg -n "public MassHttpClient http|public Builder objectMapper|public Builder httpClient" sdk/xa-mass-java-sdk/src/main/java
 ```
 
 ## PSDK-1: Dependency And Boundary Guards
@@ -193,7 +193,7 @@ Scope:
   - engine, server, embedded SDK, worker-runtime, and transport runtime
     packages.
 - add a Maven dependency guard that fails if production dependencies include:
-  - `com.xa.mass:xa-mass-sdk`
+  - `com.xa.mass:xa-mass-embedded-sdk`
   - `com.xa.mass:xa-mass-base`
   - `com.xa.mass:xa-mass-kernel-spi`
   - `com.xa.mass:xa-mass-worker-pack`
@@ -217,8 +217,8 @@ Acceptance:
 Verification candidates:
 
 ```powershell
-mvn -pl integrations/xa-mass-java-sdk validate test
-mvn -pl integrations/xa-mass-java-sdk dependency:tree
+mvn -pl sdk/xa-mass-java-sdk validate test
+mvn -pl sdk/xa-mass-java-sdk dependency:tree
 ```
 
 ## PSDK-2: Public API Hardening
@@ -265,8 +265,8 @@ Acceptance:
 Verification candidates:
 
 ```powershell
-mvn -pl integrations/xa-mass-java-sdk test
-rg -n "http\\(\\)|MassHttpClient|@Deprecated|deprecated|internal" integrations/xa-mass-java-sdk/src/main/java integrations/xa-mass-java-sdk/README.md
+mvn -pl sdk/xa-mass-java-sdk test
+rg -n "http\\(\\)|MassHttpClient|@Deprecated|deprecated|internal" sdk/xa-mass-java-sdk/src/main/java sdk/xa-mass-java-sdk/README.md
 ```
 
 ## PSDK-3: Worker SDK Ergonomics
@@ -319,7 +319,7 @@ Acceptance:
 Verification candidates:
 
 ```powershell
-mvn -pl integrations/xa-mass-java-sdk test
+mvn -pl sdk/xa-mass-java-sdk test
 mvn -pl xa-mass-server -am "-Dtest=JavaScenarioLauncherBlackBoxIntegrationTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 ```
 
@@ -337,7 +337,7 @@ Scope:
   - error handling.
   - timeouts and lifecycle callbacks.
 - add a migration note that explains why external callers should use
-  `xa-mass-java-sdk` instead of `xa-mass-sdk`.
+  `xa-mass-java-sdk` instead of `xa-mass-embedded-sdk`.
 - document Java baseline, supported runtime target, dependency expectations,
   and auth modes.
 - ensure the scenario launcher builds from a clean checkout with clear
@@ -358,7 +358,7 @@ Acceptance:
 Verification candidates:
 
 ```powershell
-mvn -pl integrations/xa-mass-java-sdk test
+mvn -pl sdk/xa-mass-java-sdk test
 mvn -pl integrations/xa-mass-scenario-launcher -am -DskipTests package
 ```
 
@@ -410,9 +410,9 @@ Acceptance:
 Verification candidates:
 
 ```powershell
-mvn -pl integrations/xa-mass-java-sdk -DskipTests package
-mvn -pl integrations/xa-mass-java-sdk -DskipTests source:jar javadoc:jar
-mvn -f integrations/xa-mass-java-sdk/pom.consumer.xml -DskipTests package
+mvn -pl sdk/xa-mass-java-sdk -DskipTests package
+mvn -pl sdk/xa-mass-java-sdk -DskipTests source:jar javadoc:jar
+mvn -f sdk/xa-mass-java-sdk/pom.consumer.xml -DskipTests package
 ```
 
 ## PSDK-6: Android And Device Host Decision
@@ -472,8 +472,8 @@ Acceptance:
 
 ## Non-Goals
 
-- Do not replace or rename `xa-mass-sdk`.
-- Do not merge external SDK behavior into `xa-mass-sdk`.
+- Do not replace or rename `xa-mass-embedded-sdk`.
+- Do not merge external SDK behavior into `xa-mass-embedded-sdk`.
 - Do not publish externally before publication readiness is reviewed and
   explicitly approved.
 - Do not add engine, server, worker-runtime, transport adapter, worker-pack, or

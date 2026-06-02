@@ -21,9 +21,9 @@ black-box, and host-shell validation assets.
 ## Current Role
 
 - real Spring Boot entrypoint: `com.xa.mass.server.XaMassServerApplication`
-- starts runtime through `xa-mass-sdk` and directly owns the backend-hosted control console, JSON APIs, IAM/API-key/submitter-viewer host surfaces, and frontend shell under `com.xa.mass.api`
+- starts runtime through `xa-mass-embedded-sdk` and directly owns the backend-hosted control console, JSON APIs, IAM/API-key/submitter-viewer host surfaces, and frontend shell under `com.xa.mass.api`
 - acts as a reference host and lightweight backend product skeleton; server HTTP/auth/IAM/API-key/project/tenant/user surfaces may evolve for host needs, but they must not redefine engine-kernel semantics or replace SDK contracts as the stable integration boundary
-- acts as the HTTP/security host adapter: request headers and routes resolve to `PrincipalContext` plus `AuthorizationRequest`, while authorization truth lives in `xa-mass-sdk-api` / `xa-mass-sdk`
+- acts as the HTTP/security host adapter: request headers and routes resolve to `PrincipalContext` plus `AuthorizationRequest`, while authorization truth lives in `xa-mass-embedded-sdk-api` / `xa-mass-embedded-sdk`
 - worker, task, and rule resources are created through the embedded SDK runtime
 - owner-backed worker control and task-stage evidence HTTP routes adapt to SDK
   operation interfaces; controllers must not call engine handlers or concrete
@@ -126,7 +126,7 @@ Start from the repository root:
 
 ```bash
 ./mvnw -DskipTests compile
-java -cp "xa-mass-server/target/classes:integrations/xa-mass-worker-pack/target/classes:xa-mass-sdk/target/classes:xa-mass-sdk-api/target/classes:xa-mass-engine/target/classes:transport/websocket-adapter/target/classes:transport/socket-adapter/target/classes:transport/transport_api/target/classes:transport/polling-adapter/target/classes:transport/transport_runtime/target/classes:xa-mass-base/target/classes:<runtime-classpath>" \
+java -cp "xa-mass-server/target/classes:integrations/xa-mass-worker-pack/target/classes:sdk/xa-mass-embedded-sdk/target/classes:sdk/xa-mass-embedded-sdk-api/target/classes:xa-mass-engine/target/classes:transport/websocket-adapter/target/classes:transport/socket-adapter/target/classes:transport/transport_api/target/classes:transport/polling-adapter/target/classes:transport/transport_runtime/target/classes:xa-mass-base/target/classes:<runtime-classpath>" \
   com.xa.mass.server.XaMassServerApplication
 ```
 

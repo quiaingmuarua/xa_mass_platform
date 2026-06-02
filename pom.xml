@@ -39,9 +39,10 @@
         <module>transport/socket-adapter</module>
         <module>xa-mass-engine</module>
         <module>transport/websocket-adapter</module>
-        <module>xa-mass-sdk-api</module>
-        <module>xa-mass-sdk</module>
-        <module>integrations/xa-mass-java-sdk</module>
+        <module>sdk/xa-mass-public-contract</module>
+        <module>sdk/xa-mass-embedded-sdk-api</module>
+        <module>sdk/xa-mass-embedded-sdk</module>
+        <module>sdk/xa-mass-java-sdk</module>
         <module>integrations/xa-mass-scenario-launcher</module>
         <module>xa-mass-testing</module>
         <module>integrations/xa-mass-worker-pack</module>

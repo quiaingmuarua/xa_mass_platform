@@ -6,7 +6,7 @@ ILC-1 sample movement and ILC-2 worker-pack movement are implemented against
 this inventory. The Java sample targets recorded here are historical ILC move
 targets; they were later removed by
 [`INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md`](./archive/integrations/2026-06-01_INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md).
-Current Java integration proof lives in `integrations/xa-mass-java-sdk` and
+Current Java integration proof lives in `sdk/xa-mass-java-sdk` and
 `integrations/xa-mass-scenario-launcher`, not under `integrations/samples/java`.
 
 Date: 2026-05-28.
@@ -35,7 +35,7 @@ files without changing build ownership by accident.
 Pre-ILC-1 root reactor entries:
 
 ```xml
-<module>integrations/xa-mass-java-sdk</module>
+<module>sdk/xa-mass-java-sdk</module>
 <module>samples/worker-polling/java</module>
 <module>xa-mass-worker-pack</module>
 ```
@@ -170,7 +170,7 @@ ILC-1 updates:
 - `integrations/samples/node/worker-*/README.md`: update `node .../worker.mjs` commands
 - historical `integrations/samples/java/worker-*/README.md`: updated during
   ILC-1 and later removed by Java SDK adoption
-- `integrations/xa-mass-java-sdk/README.md`: update Java polling sample link
+- `sdk/xa-mass-java-sdk/README.md`: update Java polling sample link
 - `doc/EXTERNAL_WORKER_QUICKSTART.md`: update sample matrix and per-sample
   path text
 - archived `doc/JAVA_EXTERNAL_SDK_ROADMAP.md` and
@@ -249,7 +249,7 @@ mvn -pl xa-mass-server -am -Dtest=JavaPollingWorkerBlackBoxIntegrationTest -Dsur
 Current Java SDK proof commands:
 
 ```bash
-mvn -pl integrations/xa-mass-java-sdk test
+mvn -pl sdk/xa-mass-java-sdk test
 mvn -pl integrations/xa-mass-scenario-launcher -am test
 mvn -pl xa-mass-server -am -Dtest=JavaScenarioLauncherBlackBoxIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```

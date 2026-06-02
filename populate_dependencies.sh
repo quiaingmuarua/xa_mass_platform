@@ -11,8 +11,10 @@ MODULES=(
   "transport/transport_runtime"
   "xa-mass-engine"
   "transport/websocket-adapter"
-  "xa-mass-sdk-api"
-  "xa-mass-sdk"
+  "sdk/xa-mass-public-contract"
+  "sdk/xa-mass-embedded-sdk-api"
+  "sdk/xa-mass-embedded-sdk"
+  "sdk/xa-mass-java-sdk"
   "xa-mass-testing"
   "xa-mass-server"
 )

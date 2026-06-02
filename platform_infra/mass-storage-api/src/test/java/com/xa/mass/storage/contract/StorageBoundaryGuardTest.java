@@ -175,7 +175,7 @@ class StorageBoundaryGuardTest {
                 repoRoot.resolve("platform_infra/mass-storage-memory/src/main/java"),
                 repoRoot.resolve("platform_infra/mass-storage-jdbc/src/main/java"),
                 repoRoot.resolve("xa-mass-engine/src/main/java"),
-                repoRoot.resolve("xa-mass-sdk/src/main/java"),
+                repoRoot.resolve("sdk/xa-mass-embedded-sdk/src/main/java"),
                 repoRoot.resolve("xa-mass-server/src/main/java"),
                 repoRoot.resolve("xa-mass-worker-runtime/src/main/java"),
                 repoRoot.resolve("transport"),

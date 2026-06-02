@@ -27,17 +27,17 @@ Package ownership:
   bootstrap. It must not import `workerpack.sample.*`, `com.xa.mass.sdk.*`, or
   transport internals.
 - `com.xa.mass.workerpack.sample.*`: dev-shell bootstrap, command runtime, and
-  fault harness. It may use embedded runtime APIs because it is not the public
-  external SDK path.
+  fault harness. It may use embedded runtime APIs because it is active server
+  E2E harness support, not the public external SDK capability path.
 - `src/test/java`: verification fixtures for both package families.
 
 Dependency ownership:
 
 - `xa-mass-java-sdk`: production external worker/task entry point for
   SDK-backed capabilities such as `tool.geo.lookup`.
-- `xa-mass-sdk`: dev-shell/sample bootstrap and legacy worker-control harness
-  only; its transitive transport dependencies do not define public worker-pack
-  capability shape.
+- `xa-mass-embedded-sdk`: dev-shell/sample bootstrap and legacy worker-control
+  harness only; its transitive transport dependencies do not define public
+  worker-pack capability shape.
 - `spring-boot-starter-web`: sample bootstrap controller.
 - `gson`: sample WebSocket command/fault frame parsing.
 - `lettuce-core`: sample/dev Redis wiring inherited from worker-pack harness.
@@ -151,9 +151,10 @@ The prior SDK convergence work is recorded in
 
 Current audit: worker-pack does not duplicate Java raw HTTP client calls for
 `/worker-api/v1` topology or worker-control routes. Real worker capability
-paths use `xa-mass-java-sdk`; dev-shell sample worker discovery still uses the
-embedded `MassSdkApplication`, and raw WebSocket frame handling remains only as
-command/fault harness substrate. The retired Java socket demo path is documented in
+paths use `xa-mass-java-sdk`; dev-shell sample worker discovery still uses
+`xa-mass-embedded-sdk` `MassSdkApplication`, and raw WebSocket frame handling
+remains only as active command/fault E2E harness substrate. The retired Java
+socket demo path is documented in
 `doc/INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_INVENTORY.md`.
 
 Current hardening baseline:

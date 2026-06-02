@@ -22,7 +22,7 @@ startup-behavior regressions can be isolated.
 
 ## Current Facts
 
-- `integrations/xa-mass-java-sdk` already exists and is the pure external Java
+- `sdk/xa-mass-java-sdk` already exists and is the pure external Java
   client SDK.
 - external worker samples have converged under `integrations/samples`; Java
   samples were later retired by
@@ -66,7 +66,7 @@ fixtures. Transport is an implementation dimension inside each language sample,
 not the top-level repository story.
 
 `integrations/` is an ownership boundary, not a claim that every module under it
-has identical dependency purity. `integrations/xa-mass-java-sdk` must remain a
+has identical dependency purity. `sdk/xa-mass-java-sdk` must remain a
 pure remote client. `integrations/xa-mass-worker-pack` may temporarily keep
 embedded SDK or transport dependencies where it still hosts reference realtime
 worker paths.
@@ -163,7 +163,7 @@ Scope:
   or a similarly explicit dev scenario path.
 - Update root Maven modules, sample POM relative paths, server black-box process
   helpers, sample README commands, and launcher path resolution.
-- Update `integrations/xa-mass-java-sdk` docs to point at the new Java sample
+- Update `sdk/xa-mass-java-sdk` docs to point at the new Java sample
   path.
 - Treat Node samples as filesystem/runtime assets, not Maven reactor modules:
   update launcher configs, process-helper paths, and README commands, but do
@@ -291,7 +291,7 @@ Scope:
 - The external scenario launcher must use public HTTP/API contracts or a pure
   external SDK client. The current Node launcher uses raw public HTTP APIs; a
   future Java launcher may use `xa-mass-java-sdk`. It must not import
-  `xa-mass-sdk`, `MassSdkApplication`, `MassRuntimeControl`, or server
+  `xa-mass-embedded-sdk`, `MassSdkApplication`, `MassRuntimeControl`, or server
   bootstrap classes.
 - Use API keys and public task/worker endpoints for scenario work and worker
   topology.
@@ -380,7 +380,7 @@ mixed into the directory move commit.
 Minimum checks after layout phases:
 
 ```bash
-mvn -pl integrations/xa-mass-java-sdk -am test
+mvn -pl sdk/xa-mass-java-sdk -am test
 mvn -pl integrations/xa-mass-scenario-launcher -am -DskipTests package
 mvn -pl integrations/xa-mass-worker-pack -am test
 ```

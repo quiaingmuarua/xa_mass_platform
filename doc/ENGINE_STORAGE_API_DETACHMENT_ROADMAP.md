@@ -96,7 +96,7 @@ xa-mass-engine -> xa-mass-kernel-spi -> xa-mass-base
 mass-storage-api -> xa-mass-kernel-spi       only if RuleStorage remains and
                                              references moved rule values
 mass-storage-memory/jdbc -> xa-mass-kernel-spi
-xa-mass-sdk/server -> xa-mass-engine + storage implementations
+sdk/xa-mass-embedded-sdk/server -> xa-mass-engine + storage implementations
 ```
 
 The SPI module is not an engine implementation module, not a DB module, and
@@ -213,7 +213,7 @@ Scope:
 
 1. Record every `xa-mass-engine/src/main` import from
    `com.xa.mass.storage.*`.
-2. Record every `xa-mass-sdk/src/main` and `xa-mass-server/src/main` caller
+2. Record every `sdk/xa-mass-embedded-sdk/src/main` and `xa-mass-server/src/main` caller
    that exposes or wires `TaskShellStore`, `TaskShellLifecycleQuery`,
    `RuleStorage`, or `com.xa.mass.kernel.spi.rule.*`.
 3. Record every storage implementation that implements task-shell or rule
@@ -316,13 +316,13 @@ Acceptance:
 1. SPI module compiles and depends only on stable lower modules such as
    `xa-mass-base`.
 2. SPI module has no dependency on `mass-storage-*`, `xa-mass-engine`,
-   `xa-mass-sdk`, or `xa-mass-server`.
+   `xa-mass-embedded-sdk`, or `xa-mass-server`.
 3. No production behavior changes.
 4. There is no second live rule-value class family with the same semantic
    shape.
 5. Any required `mass-storage-api -> SPI` dependency for `RuleStorage`
    signatures is explicit and does not introduce an engine -> storage path.
-6. `xa-mass-engine`, `xa-mass-sdk`, `xa-mass-server`, `mass-storage-api`,
+6. `xa-mass-engine`, `xa-mass-embedded-sdk`, `xa-mass-server`, `mass-storage-api`,
    `mass-storage-memory`, and `mass-storage-jdbc` compile after the rule value
    move.
 
@@ -498,11 +498,11 @@ starts. No "break now, fix later" intermediate state.
 After ESD-1:
 
 ```powershell
-mvn -pl xa-mass-engine,xa-mass-sdk,xa-mass-server,platform_infra/mass-storage-api,platform_infra/mass-storage-memory,platform_infra/mass-storage-jdbc -am -DskipTests compile
+mvn -pl xa-mass-engine,xa-mass-embedded-sdk,xa-mass-server,platform_infra/mass-storage-api,platform_infra/mass-storage-memory,platform_infra/mass-storage-jdbc -am -DskipTests compile
 ```
 
 ```powershell
-rg "com\.xa\.mass\.storage\.rule" xa-mass-engine/src/main xa-mass-sdk/src/main xa-mass-server/src/main platform_infra/mass-storage-api/src/main platform_infra/mass-storage-memory/src/main platform_infra/mass-storage-jdbc/src/main
+rg "com\.xa\.mass\.storage\.rule" xa-mass-engine/src/main sdk/xa-mass-embedded-sdk/src/main xa-mass-server/src/main platform_infra/mass-storage-api/src/main platform_infra/mass-storage-memory/src/main platform_infra/mass-storage-jdbc/src/main
 ```
 
 Expected result after ESD-1: no production source imports from the old storage
@@ -517,7 +517,7 @@ mvn -pl platform_infra/mass-storage-memory,platform_infra/mass-storage-jdbc -am 
 After ESD-3:
 
 ```powershell
-mvn -pl xa-mass-engine,xa-mass-sdk -am -DskipTests compile
+mvn -pl xa-mass-engine,xa-mass-embedded-sdk -am -DskipTests compile
 ```
 
 ```powershell
@@ -533,7 +533,7 @@ mvn -pl xa-mass-engine -am test
 ```
 
 ```powershell
-mvn -pl xa-mass-sdk,xa-mass-server,platform_infra/mass-storage-memory,platform_infra/mass-storage-jdbc -am test
+mvn -pl xa-mass-embedded-sdk,xa-mass-server,platform_infra/mass-storage-memory,platform_infra/mass-storage-jdbc -am test
 ```
 
 ```powershell
@@ -554,7 +554,7 @@ fixture dependencies must be explicitly classified if still present.
 Verified on 2026-05-30:
 
 ```powershell
-mvn -pl xa-mass-engine,xa-mass-sdk,xa-mass-server,platform_infra/mass-storage-api,platform_infra/mass-storage-memory,platform_infra/mass-storage-jdbc -am -DskipTests compile
+mvn -pl xa-mass-engine,xa-mass-embedded-sdk,xa-mass-server,platform_infra/mass-storage-api,platform_infra/mass-storage-memory,platform_infra/mass-storage-jdbc -am -DskipTests compile
 ```
 
 Result: passed.
@@ -572,7 +572,7 @@ mvn -pl platform_infra/mass-runtime-redis -am clean test
 Result: passed.
 
 ```powershell
-mvn -pl xa-mass-sdk,xa-mass-server,platform_infra/mass-storage-jdbc -am test
+mvn -pl xa-mass-embedded-sdk,xa-mass-server,platform_infra/mass-storage-jdbc -am test
 ```
 
 Result: passed.
@@ -582,7 +582,7 @@ Residue checks:
 ```powershell
 rg -n "com\.xa\.mass\.storage" xa-mass-engine/src/main
 rg -n "com\.xa\.mass\.storage\.rule|package com\.xa\.mass\.storage\.rule" .
-rg -n "StorageBackedMatchingRuleSetProvider" xa-mass-engine/src/main xa-mass-sdk/src/main
+rg -n "StorageBackedMatchingRuleSetProvider" xa-mass-engine/src/main sdk/xa-mass-embedded-sdk/src/main
 rg -n "mass-storage-(api|memory|jdbc)" xa-mass-engine/pom.xml
 ```
 

@@ -269,7 +269,7 @@ Scope:
 - List every production `ScheduledExecutorService`, owned thread, drainer,
   runtime executor, `AtomicBoolean running`, `shutdown()`, `stop()`, and
   `close()` in:
-  - `xa-mass-sdk`
+  - `xa-mass-embedded-sdk`
   - `xa-mass-engine`
   - `xa-mass-server`
   - `transport`
@@ -545,18 +545,18 @@ GSL-0 and GSL-1 are complete.
 Inventory and source scans:
 
 ```bash
-rg -n "ScheduledExecutorService|newSingleThreadScheduledExecutor|scheduleAtFixedRate|scheduleWithFixedDelay|new Thread|Thread.ofVirtual|AtomicBoolean running|shutdown\\(|shutdownNow\\(|close\\(|stop\\(" xa-mass-sdk xa-mass-engine xa-mass-server transport platform_infra xa-mass-worker-runtime -S
+rg -n "ScheduledExecutorService|newSingleThreadScheduledExecutor|scheduleAtFixedRate|scheduleWithFixedDelay|new Thread|Thread.ofVirtual|AtomicBoolean running|shutdown\\(|shutdownNow\\(|close\\(|stop\\(" xa-mass-embedded-sdk xa-mass-engine xa-mass-server transport platform_infra xa-mass-worker-runtime -S
 ```
 
 Targeted tests after implementation will be refined by GSL-0. Initial
 candidates:
 
 ```bash
-mvn -pl xa-mass-engine,xa-mass-sdk,xa-mass-server,transport/transport_runtime,transport/websocket-adapter,transport/socket-adapter,platform_infra/mass-runtime-redis -am "-Dtest=*Lifecycle*,*Shutdown*,*Watchdog*,*RuntimeReady*,*TaskResultRepair*,*TransportNode*" "-Dsurefire.failIfNoSpecifiedTests=false" test
+mvn -pl xa-mass-engine,xa-mass-embedded-sdk,xa-mass-server,transport/transport_runtime,transport/websocket-adapter,transport/socket-adapter,platform_infra/mass-runtime-redis -am "-Dtest=*Lifecycle*,*Shutdown*,*Watchdog*,*RuntimeReady*,*TaskResultRepair*,*TransportNode*" "-Dsurefire.failIfNoSpecifiedTests=false" test
 ```
 
 Full regression candidate for lifecycle-sensitive changes:
 
 ```bash
-mvn -pl xa-mass-engine,xa-mass-sdk,xa-mass-server,transport/transport_runtime,transport/websocket-adapter,transport/socket-adapter,platform_infra/mass-runtime-redis,xa-mass-testing -am test
+mvn -pl xa-mass-engine,xa-mass-embedded-sdk,xa-mass-server,transport/transport_runtime,transport/websocket-adapter,transport/socket-adapter,platform_infra/mass-runtime-redis,xa-mass-testing -am test
 ```

@@ -1,12 +1,12 @@
 package com.xa.mass.server.e2e.assignment;
 
 import com.xa.mass.client.MassPlatform;
-import com.xa.mass.client.task.TaskContract;
-import com.xa.mass.client.task.TaskCreateRequest;
-import com.xa.mass.client.task.TaskExecutionSpec;
-import com.xa.mass.client.task.TaskItemBatch;
 import com.xa.mass.client.task.TaskResultReadRequest;
 import com.xa.mass.client.task.TaskResultWindow;
+import com.xa.mass.contract.task.TaskContract;
+import com.xa.mass.contract.task.TaskCreateRequest;
+import com.xa.mass.contract.task.TaskExecutionSpec;
+import com.xa.mass.contract.task.TaskItemBatch;
 import com.xa.mass.client.worker.session.PollingWorkerSession;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.kernel.spi.rule.RuleType;

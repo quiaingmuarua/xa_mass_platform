@@ -19,7 +19,7 @@ adaptation without redefining platform kernel ownership.
 
 ## Current Code Observations
 
-- `integrations/xa-mass-java-sdk` is the pure external Java client artifact.
+- `sdk/xa-mass-java-sdk` is the pure external Java client artifact.
   It owns HTTP client ergonomics, worker topology calls, direct polling calls,
   and managed `PollingWorkerSession`.
 - `WorkerSessions` exposes polling and WebSocket sessions. Socket remains out
@@ -67,7 +67,7 @@ Mass SDK already owns those capabilities.
 
 ## Owner Review
 
-External worker SDK capability belongs to `integrations/xa-mass-java-sdk`.
+External worker SDK capability belongs to `sdk/xa-mass-java-sdk`.
 
 The Java SDK may own:
 
@@ -83,7 +83,7 @@ The Java SDK must not own:
 - engine scheduling, matching, lease, result convergence, or terminal policy.
 - transport server adapter implementation.
 - worker-pack sample fault semantics.
-- embedded runtime assembly from `xa-mass-sdk`.
+- embedded runtime assembly from `xa-mass-embedded-sdk`.
 - `xa-mass-base` as an upstream public SDK dependency.
 - undocumented adapter-local realtime frames as a public compatibility
   promise.
@@ -95,7 +95,7 @@ a dependency of the SDK.
 
 ## Boundary Decision
 
-Create a worker SDK layer inside `integrations/xa-mass-java-sdk` rather than a
+Create a worker SDK layer inside `sdk/xa-mass-java-sdk` rather than a
 new platform-kernel module.
 
 The target split is:
@@ -274,14 +274,14 @@ Acceptance:
 Verification candidates:
 
 ```powershell
-rg -n "workerSessions|PollingWorkerSession|WorkerDispatchHandler|WorkerResult" integrations/xa-mass-java-sdk
+rg -n "workerSessions|PollingWorkerSession|WorkerDispatchHandler|WorkerResult" sdk/xa-mass-java-sdk
 rg -n "WebSocketWorkerMain|type=worker.command|worker.command|disconnect" integrations transport xa-mass-testing
 rg -n "com\\.xa\\.mass\\.command" .
 ```
 
 ## WSDK-1: Worker Event Handler Runtime Contract
 
-Status: minimum implemented in `integrations/xa-mass-java-sdk`.
+Status: minimum implemented in `sdk/xa-mass-java-sdk`.
 
 Scope:
 
@@ -336,8 +336,8 @@ Acceptance:
 Verification candidates:
 
 ```powershell
-mvn -pl integrations/xa-mass-java-sdk -DskipITs test
-rg -n "static .*CommandRegistry|CommandRegistry\\." integrations/xa-mass-java-sdk integrations/xa-mass-worker-pack xa-mass-base
+mvn -pl sdk/xa-mass-java-sdk -DskipITs test
+rg -n "static .*CommandRegistry|CommandRegistry\\." sdk/xa-mass-java-sdk integrations/xa-mass-worker-pack xa-mass-base
 ```
 
 ## WSDK-2: Worker Event Handler Invocation Layer
@@ -384,7 +384,7 @@ Acceptance:
 Verification candidates:
 
 ```powershell
-mvn -pl integrations/xa-mass-java-sdk test
+mvn -pl sdk/xa-mass-java-sdk test
 mvn -pl xa-mass-server -am "-Dtest=JavaScenarioLauncherBlackBoxIntegrationTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 ```
 
@@ -480,7 +480,7 @@ Acceptance:
 Verification candidates:
 
 ```powershell
-mvn -pl integrations/xa-mass-java-sdk test
+mvn -pl sdk/xa-mass-java-sdk test
 mvn -pl xa-mass-server -am "-Dtest=JavaScenarioLauncherBlackBoxIntegrationTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 ```
 

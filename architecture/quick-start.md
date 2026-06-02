@@ -19,7 +19,7 @@ app.start();
 ```
 
 For detailed transport options, read
-[`../xa-mass-sdk/README.md`](../xa-mass-sdk/README.md).
+[`../sdk/xa-mass-embedded-sdk/README.md`](../sdk/xa-mass-embedded-sdk/README.md).
 
 ## 2. Register An Event
 

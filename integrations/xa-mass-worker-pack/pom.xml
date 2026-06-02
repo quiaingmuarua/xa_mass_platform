@@ -19,7 +19,7 @@
     <dependencies>
         <dependency>
             <groupId>com.xa.mass</groupId>
-            <artifactId>xa-mass-sdk</artifactId>
+            <artifactId>xa-mass-embedded-sdk</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>

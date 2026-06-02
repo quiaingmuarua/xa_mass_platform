@@ -1854,7 +1854,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         Path memoryStoragePath = root.resolve(
                 "platform_infra/mass-storage-memory/src/main/java/com/xa/mass/storage/memory/InMemoryWorkerDeclarationStore.java");
         Path sdkDiagnosticsPath = root.resolve(
-                "xa-mass-sdk/src/main/java/com/xa/mass/sdk/DefaultRuntimeDiagnosticsOperations.java");
+                "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/DefaultRuntimeDiagnosticsOperations.java");
 
         List<String> violations = new ArrayList<>();
         String workerStorage = Files.readString(workerStoragePath, StandardCharsets.UTF_8);
@@ -1919,9 +1919,9 @@ class EngineSchedulingCoreArchitectureGuardTest {
             violations.add(inMemoryWorkerLoadViewPath + " still exists as a mutable occupancy owner");
         }
         for (Path sourcePath : List.of(
-                Path.of("..", "xa-mass-sdk", "src", "main", "java", "com", "xa", "mass", "starter", "config",
+                Path.of("..", "sdk", "xa-mass-embedded-sdk", "src", "main", "java", "com", "xa", "mass", "starter", "config",
                         "EngineConfig.java"),
-                Path.of("..", "xa-mass-sdk", "src", "main", "java", "com", "xa", "mass", "starter", "builder",
+                Path.of("..", "sdk", "xa-mass-embedded-sdk", "src", "main", "java", "com", "xa", "mass", "starter", "builder",
                         "MassEngineBuilder.java")
         )) {
             String sdkSource = Files.readString(sourcePath, StandardCharsets.UTF_8);
@@ -2007,14 +2007,14 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
     @Test
     void sdkApplicationUsesWorkerRuntimeAccessorsForWorkerShellOperations() throws IOException {
-        Path sdkApplicationPath = Path.of("..", "xa-mass-sdk", "src", "main", "java",
+        Path sdkApplicationPath = Path.of("..", "sdk", "xa-mass-embedded-sdk", "src", "main", "java",
                 "com", "xa", "mass", "sdk", "MassSdkApplication.java");
-        Path diagnosticsPath = Path.of("..", "xa-mass-sdk", "src", "main", "java",
+        Path diagnosticsPath = Path.of("..", "sdk", "xa-mass-embedded-sdk", "src", "main", "java",
                 "com", "xa", "mass", "sdk", "DefaultRuntimeDiagnosticsOperations.java");
-        Path massEnginePath = Path.of("..", "xa-mass-sdk", "src", "main", "java",
+        Path massEnginePath = Path.of("..", "sdk", "xa-mass-embedded-sdk", "src", "main", "java",
                 "com", "xa", "mass", "starter", "MassEngine.java");
         Path runtimeKernelPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/EngineRuntimeKernel.java");
-        Path engineConfigPath = Path.of("..", "xa-mass-sdk", "src", "main", "java",
+        Path engineConfigPath = Path.of("..", "sdk", "xa-mass-embedded-sdk", "src", "main", "java",
                 "com", "xa", "mass", "starter", "config", "EngineConfig.java");
         String sdkSource = Files.readString(sdkApplicationPath, StandardCharsets.UTF_8);
         String diagnosticsSource = Files.readString(diagnosticsPath, StandardCharsets.UTF_8);
@@ -2072,9 +2072,9 @@ class EngineSchedulingCoreArchitectureGuardTest {
     @Test
     void sdkRuntimeBridgeDoesNotRequireFullWorkerManager() throws IOException {
         List<Path> bridgePaths = List.of(
-                Path.of("..", "xa-mass-sdk", "src", "main", "java",
+                Path.of("..", "sdk", "xa-mass-embedded-sdk", "src", "main", "java",
                         "com", "xa", "mass", "starter", "EngineRuntimeBridge.java"),
-                Path.of("..", "xa-mass-sdk", "src", "main", "java",
+                Path.of("..", "sdk", "xa-mass-embedded-sdk", "src", "main", "java",
                         "com", "xa", "mass", "starter", "RuntimeEventBusEngineBridge.java")
         );
 
@@ -2723,7 +2723,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 repo.resolve("platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/api/TaskResultRuntimeRow.java"),
                 repo.resolve("platform_infra/mass-runtime-memory/src/main/java/com/xa/mass/runtime/memory/InMemoryTaskResultRuntime.java"),
                 repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/TaskResultService.java"),
-                repo.resolve("xa-mass-sdk/src/main/java/com/xa/mass/sdk/MassSdkApplication.java"),
+                repo.resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/MassSdkApplication.java"),
                 repo.resolve("xa-mass-server/src/main/java/com/xa/mass/api/internal/TaskApiController.java")
         );
 
@@ -2871,10 +2871,10 @@ class EngineSchedulingCoreArchitectureGuardTest {
     private static List<Path> repositoryProductionSourceRoots() {
         Path repo = repositoryRoot();
         return List.of(
-                repo.resolve("xa-mass-sdk-api/src/main/java"),
+                repo.resolve("sdk/xa-mass-embedded-sdk-api/src/main/java"),
                 repo.resolve("xa-mass-base/src/main/java"),
                 repo.resolve("xa-mass-engine/src/main/java"),
-                repo.resolve("xa-mass-sdk/src/main/java"),
+                repo.resolve("sdk/xa-mass-embedded-sdk/src/main/java"),
                 repo.resolve("xa-mass-server/src/main/java"),
                 repo.resolve("transport/transport_api/src/main/java"),
                 repo.resolve("transport/transport_runtime/src/main/java"),

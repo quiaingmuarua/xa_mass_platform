@@ -29,7 +29,8 @@ Use this guide when you want to answer practical questions:
 
 After this directory, use the owner documents for precise contracts:
 
-- SDK embedding: [`../xa-mass-sdk/README.md`](../xa-mass-sdk/README.md)
+- external Java SDK: [`../sdk/xa-mass-java-sdk/README.md`](../sdk/xa-mass-java-sdk/README.md)
+- SDK embedding: [`../sdk/xa-mass-embedded-sdk/README.md`](../sdk/xa-mass-embedded-sdk/README.md)
 - HTTP/API contracts: [`../doc/INTERNAL_API_REFERENCE.md`](../doc/INTERNAL_API_REFERENCE.md)
 - external worker protocol: [`../doc/EXTERNAL_WORKER_QUICKSTART.md`](../doc/EXTERNAL_WORKER_QUICKSTART.md)
 - engine owner truth: [`../xa-mass-engine/README.md`](../xa-mass-engine/README.md)
@@ -76,7 +77,10 @@ model.
 
 Use the SDK first:
 
-- `xa-mass-sdk` is the recommended JVM embedding surface.
+- `xa-mass-java-sdk` is the recommended external Java surface for task
+  producers and worker processes that connect to a running server.
+- `xa-mass-embedded-sdk` is the recommended JVM embedding surface for in-process
+  runtime composition.
 - `xa-mass-server` is the reference Boot host and lightweight backend product
   skeleton for HTTP APIs, auth/IAM, API keys, and the control console.
 - `xa-mass-engine` is the runtime kernel owner, not a CRUD backend API.

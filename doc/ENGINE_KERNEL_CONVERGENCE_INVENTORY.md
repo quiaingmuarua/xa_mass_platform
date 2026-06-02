@@ -26,7 +26,7 @@ The convergence target is visibility:
 ## Cross-Module Engine Import Classification
 
 Current production cross-module imports from `com.xa.mass.engine.*` are in
-`xa-mass-sdk`. Server production has no direct engine implementation imports.
+`xa-mass-embedded-sdk`. Server production has no direct engine implementation imports.
 `platform_infra/mass-runtime-redis` imports engine types only from tests.
 
 Update after EKC-1A/EKC-1B:
@@ -73,13 +73,13 @@ leaks in EKC-0.
 
 | Caller | Engine symbols | Classification |
 | --- | --- | --- |
-| `xa-mass-sdk/.../RuntimeEventBusEngineBridge.java` | `TaskEventListenerRegistrar` | Approved event-listener registration seam. |
-| `xa-mass-sdk/.../EngineRuntimeBridge.java` | `TaskEventListenerRegistrar` | Approved event-listener registration seam. |
-| `xa-mass-sdk/.../MassEngine.java` | `TaskAssignmentRuntimePort`, `TaskCommandService`, `TaskDispatchWakeupPort`, `TaskDispatchWakeupBridge`, `TaskEventListenerRegistrar`, `TaskEventService`, `TaskLeaseMaintenancePort`, `TaskRuntimeRecoveryPort`, `TaskShellLifecycleMaintenancePort` | Approved SDK assembly/runtime ports. |
-| `xa-mass-sdk/.../config/EngineConfig.java` | `TaskManager`, `TaskCommandService`, `TaskEventService`, `TaskAssignmentRuntimePort`, `TaskDispatchWakeupPort`, `TaskLeaseMaintenancePort`, `TaskQueryService`, `TaskManagerResultIngestFacade`, `TaskRuntimeRecoveryPort`, `TaskShellLifecycleMaintenancePort`, `WorkerControlRuntime` | Approved SDK assembly surface. `TaskManager` remains the composition root, not an external app contract. |
-| `xa-mass-sdk/.../DefaultTaskDiagnosticOperations.java` | `TaskQueryService`, task diagnostic result models | Approved diagnostic read surface. |
-| `xa-mass-sdk/.../TaskDiagnosticOperations.java` | task diagnostic result models | Approved SDK diagnostic API until EKC-1 decides whether these models need a public SDK copy. |
-| `xa-mass-sdk/.../MassSdkApplication.java` | `TaskQueryService`, `TaskCommandService`, `TaskEventService`, `WorkerControlRuntime` | Approved SDK runtime application surface. |
+| `sdk/xa-mass-embedded-sdk/.../RuntimeEventBusEngineBridge.java` | `TaskEventListenerRegistrar` | Approved event-listener registration seam. |
+| `sdk/xa-mass-embedded-sdk/.../EngineRuntimeBridge.java` | `TaskEventListenerRegistrar` | Approved event-listener registration seam. |
+| `sdk/xa-mass-embedded-sdk/.../MassEngine.java` | `TaskAssignmentRuntimePort`, `TaskCommandService`, `TaskDispatchWakeupPort`, `TaskDispatchWakeupBridge`, `TaskEventListenerRegistrar`, `TaskEventService`, `TaskLeaseMaintenancePort`, `TaskRuntimeRecoveryPort`, `TaskShellLifecycleMaintenancePort` | Approved SDK assembly/runtime ports. |
+| `sdk/xa-mass-embedded-sdk/.../config/EngineConfig.java` | `TaskManager`, `TaskCommandService`, `TaskEventService`, `TaskAssignmentRuntimePort`, `TaskDispatchWakeupPort`, `TaskLeaseMaintenancePort`, `TaskQueryService`, `TaskManagerResultIngestFacade`, `TaskRuntimeRecoveryPort`, `TaskShellLifecycleMaintenancePort`, `WorkerControlRuntime` | Approved SDK assembly surface. `TaskManager` remains the composition root, not an external app contract. |
+| `sdk/xa-mass-embedded-sdk/.../DefaultTaskDiagnosticOperations.java` | `TaskQueryService`, task diagnostic result models | Approved diagnostic read surface. |
+| `sdk/xa-mass-embedded-sdk/.../TaskDiagnosticOperations.java` | task diagnostic result models | Approved SDK diagnostic API until EKC-1 decides whether these models need a public SDK copy. |
+| `sdk/xa-mass-embedded-sdk/.../MassSdkApplication.java` | `TaskQueryService`, `TaskCommandService`, `TaskEventService`, `WorkerControlRuntime` | Approved SDK runtime application surface. |
 
 ### Implementation Imports To Converge In EKC-1
 
@@ -89,16 +89,16 @@ owner-boundary reason or stop being cross-module imports.
 
 | Caller | Engine symbols | Target classification |
 | --- | --- | --- |
-| `xa-mass-sdk/.../MassEngine.java` | `SimpleTaskDispatchBinder`, `TaskAssignWorker`, `TaskResourceReleaseListener`, `TaskWorkerAssignListener` | Fixed in EKC-1A. Runtime scheduling implementation is assembled by `EngineRuntimeKernel`. |
-| `xa-mass-sdk/.../MassEngine.java` | `LeaseExpireWatchdog`, `RuntimeReadyDispatchPump`, `WorkerCommandMaintenanceWatchdog` | Fixed in EKC-1A. Maintenance implementation is assembled by `EngineRuntimeKernel`. |
-| `xa-mass-sdk/.../MassEngine.java` | `RuleBasedTaskWorkerMatchingStrategy` | Fixed in EKC-1A. Default matching strategy is selected inside `EngineRuntimeKernel`; custom strategy remains a config extension point for now. |
-| `xa-mass-sdk/.../MassEngine.java`, `EngineConfig.java`, `MassEngineBuilder.java` | `TaskWorkerMatchingStrategy` | `MassEngine` fixed in EKC-1A. `EngineConfig`/builder remain extension-point candidates; EKC-1C should decide whether this stays an approved assembly contract or moves to a narrower public package. |
-| `xa-mass-sdk/.../MassEngine.java`, `MassApplication.java` | `LogUtils`, `TraceEventLogger` | `MassEngine` fixed in EKC-1A. `MassApplication` no longer imports `LogUtils` after EKC-1B. `TraceEventLogger` moved to the engine root in EKC-1C as an explicit lifecycle-trace contract. |
-| `xa-mass-sdk/.../config/EngineConfig.java` | `DefaultWorkerDispatchAvailabilityPolicy`, `WorkerControlService`, `WorkerDispatchAvailabilityPolicy` | Worker dispatch-control implementation/extension mix. Target: classify policy as extension surface or keep worker control assembly internal. |
-| `xa-mass-sdk/.../config/EngineConfig.java` | `TaskStageEvidenceOwner`, `TaskStageEvidenceService` | Stage-evidence assembly implementation. Target: approved runtime port only if cross-module caller needs direct stage operations. |
-| `xa-mass-sdk/.../config/EngineConfig.java` | `RegistryBackedMatchingRuleEvaluator`, `RuleConfig`, `RuleEvaluatorRegistry`, `RuleEvaluatorRegistries`, `MatchingRuleEvaluator`, `MatchingRuleSetProvider` | Rule/matching assembly contracts. They belong to kernel matching assembly, not general SDK API. Keep only explicit provider/evaluator contracts visible. |
-| `xa-mass-sdk/.../config/EngineConfig.java`, `MassEngineBuilder.java` | `AssignmentDiagnosticRecorder`, `AssignmentRecordService` | Diagnostic implementation. Target: explicit diagnostics config surface or engine-internal default. |
-| `xa-mass-sdk/.../config/EngineConfig.java`, `MassApplicationBuilder.java`, `MassSdk.java` | `PollingIdleBackoffPolicy`, `ExponentialPollingIdleBackoffPolicy` | Configuration extension candidate. Keep only if SDK intentionally exposes idle-backoff tuning. |
+| `sdk/xa-mass-embedded-sdk/.../MassEngine.java` | `SimpleTaskDispatchBinder`, `TaskAssignWorker`, `TaskResourceReleaseListener`, `TaskWorkerAssignListener` | Fixed in EKC-1A. Runtime scheduling implementation is assembled by `EngineRuntimeKernel`. |
+| `sdk/xa-mass-embedded-sdk/.../MassEngine.java` | `LeaseExpireWatchdog`, `RuntimeReadyDispatchPump`, `WorkerCommandMaintenanceWatchdog` | Fixed in EKC-1A. Maintenance implementation is assembled by `EngineRuntimeKernel`. |
+| `sdk/xa-mass-embedded-sdk/.../MassEngine.java` | `RuleBasedTaskWorkerMatchingStrategy` | Fixed in EKC-1A. Default matching strategy is selected inside `EngineRuntimeKernel`; custom strategy remains a config extension point for now. |
+| `sdk/xa-mass-embedded-sdk/.../MassEngine.java`, `EngineConfig.java`, `MassEngineBuilder.java` | `TaskWorkerMatchingStrategy` | `MassEngine` fixed in EKC-1A. `EngineConfig`/builder remain extension-point candidates; EKC-1C should decide whether this stays an approved assembly contract or moves to a narrower public package. |
+| `sdk/xa-mass-embedded-sdk/.../MassEngine.java`, `MassApplication.java` | `LogUtils`, `TraceEventLogger` | `MassEngine` fixed in EKC-1A. `MassApplication` no longer imports `LogUtils` after EKC-1B. `TraceEventLogger` moved to the engine root in EKC-1C as an explicit lifecycle-trace contract. |
+| `sdk/xa-mass-embedded-sdk/.../config/EngineConfig.java` | `DefaultWorkerDispatchAvailabilityPolicy`, `WorkerControlService`, `WorkerDispatchAvailabilityPolicy` | Worker dispatch-control implementation/extension mix. Target: classify policy as extension surface or keep worker control assembly internal. |
+| `sdk/xa-mass-embedded-sdk/.../config/EngineConfig.java` | `TaskStageEvidenceOwner`, `TaskStageEvidenceService` | Stage-evidence assembly implementation. Target: approved runtime port only if cross-module caller needs direct stage operations. |
+| `sdk/xa-mass-embedded-sdk/.../config/EngineConfig.java` | `RegistryBackedMatchingRuleEvaluator`, `RuleConfig`, `RuleEvaluatorRegistry`, `RuleEvaluatorRegistries`, `MatchingRuleEvaluator`, `MatchingRuleSetProvider` | Rule/matching assembly contracts. They belong to kernel matching assembly, not general SDK API. Keep only explicit provider/evaluator contracts visible. |
+| `sdk/xa-mass-embedded-sdk/.../config/EngineConfig.java`, `MassEngineBuilder.java` | `AssignmentDiagnosticRecorder`, `AssignmentRecordService` | Diagnostic implementation. Target: explicit diagnostics config surface or engine-internal default. |
+| `sdk/xa-mass-embedded-sdk/.../config/EngineConfig.java`, `MassApplicationBuilder.java`, `MassSdk.java` | `PollingIdleBackoffPolicy`, `ExponentialPollingIdleBackoffPolicy` | Configuration extension candidate. Keep only if SDK intentionally exposes idle-backoff tuning. |
 
 ### Public SDK Operation Models Still From Engine
 

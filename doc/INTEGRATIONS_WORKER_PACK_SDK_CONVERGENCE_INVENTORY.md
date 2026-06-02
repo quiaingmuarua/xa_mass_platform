@@ -47,7 +47,7 @@ Remaining socket proof after worker-pack Java socket removal:
 
 | Dependency | Current use | Decision |
 | --- | --- | --- |
-| `xa-mass-sdk` | embedded dev-shell SDK application, worker discovery, worker-control command ACK/state report models | Keep. It is the older in-repo embedded SDK, not the public Java external SDK. |
+| `xa-mass-embedded-sdk` | embedded dev-shell SDK application, worker discovery, worker-control command ACK/state report models used by active server E2E fault/command harnesses | Keep for the active harness only. It is the in-repo embedded SDK, not the public Java external SDK or a worker-pack capability dependency. |
 | `xa-mass-java-sdk` | `GeoLookupWorkerPack` declares topology, starts polling, and reports results through public Java SDK clients/sessions | Keep for real worker-pack external capability paths. Do not use it for server startup or fault-harness command ownership. |
 | `xa-mass-transport-socket` | only `SampleWorkerSocketClient` and `SocketClientStarter` | Remove with WPC-1. |
 | `gson` | frame parsing and command payload handling | Keep while raw WebSocket command/fault harness remains. |

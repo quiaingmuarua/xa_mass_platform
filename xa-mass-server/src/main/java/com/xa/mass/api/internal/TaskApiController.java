@@ -19,12 +19,13 @@ import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskResultItem;
 import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskResultWindow;
 import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskSyncAppendOutcome;
 import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskUpdateOutcome;
-import com.xa.mass.api.model.task.TaskCommandApiRequest;
-import com.xa.mass.api.model.task.TaskItemBatchIngestApiRequest;
-import com.xa.mass.api.model.task.TaskItemSyncIngestApiRequest;
 import com.xa.mass.api.model.task.TaskStageEvidenceApiRequest;
-import com.xa.mass.api.model.task.TaskShellCreateApiRequest;
 import com.xa.mass.api.model.task.TaskUpdateApiRequest;
+import com.xa.mass.contract.task.TaskCommandRequest;
+import com.xa.mass.contract.task.TaskCreateRequest;
+import com.xa.mass.contract.task.TaskExecutionSpec;
+import com.xa.mass.contract.task.TaskItemBatch;
+import com.xa.mass.contract.task.TaskItemSyncRequest;
 import com.xa.mass.api.review.TaskReviewReadModelWriter;
 import com.xa.mass.api.sync.SyncTaskResultBridge;
 import com.xa.mass.api.sync.TaskSyncRequestSupervisor;
@@ -267,7 +268,7 @@ public class TaskApiController {
             @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
             HttpServletRequest httpRequest,
-            @RequestBody TaskShellCreateApiRequest requestBody) {
+            @RequestBody TaskCreateRequest requestBody) {
         return executeApi("Task shell create failed", () -> {
             validateKnownFields(requestBody, "task shell create");
 
@@ -291,7 +292,7 @@ public class TaskApiController {
                 try {
                     return ok(taskApiContractAssembler.toCreateOutcome(
                             task,
-                            requestBody.getExecutionSpec(),
+                            toEmbeddedExecutionSpec(requestBody.getExecutionSpec()),
                             submitterTaskCreate.principal().getPrincipalId(),
                             "Task shell created"
                     ));
@@ -308,7 +309,7 @@ public class TaskApiController {
             ));
             return ok(taskApiContractAssembler.toCreateOutcome(
                     task,
-                    requestBody.getExecutionSpec(),
+                    toEmbeddedExecutionSpec(requestBody.getExecutionSpec()),
                     operator.getPrincipalId(),
                     "Task shell created"
             ));
@@ -364,7 +365,7 @@ public class TaskApiController {
                                                                              @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
                                                                              @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
                                                                              @PathVariable String taskId,
-                                                                             @RequestBody TaskItemBatchIngestApiRequest requestBody) {
+                                                                             @RequestBody TaskItemBatch requestBody) {
         return executeApi("Append items failed", () -> {
             validateKnownFields(requestBody, "task append items");
             TaskAccessSnapshot task = requireTaskAccess(taskId);
@@ -423,7 +424,7 @@ public class TaskApiController {
             @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
             @PathVariable String taskId,
-            @RequestBody TaskItemSyncIngestApiRequest requestBody) {
+            @RequestBody TaskItemSyncRequest requestBody) {
         TaskSyncRequestSupervisor.SyncLease syncLease = null;
         ApiUsageAcceptedContext usage = null;
         try {
@@ -554,7 +555,7 @@ public class TaskApiController {
     public ResponseEntity<ApiResponse<ApiTaskCommandOutcome>> executeTaskCommand(HttpServletRequest httpRequest,
                                                                                  @Parameter(description = "Task id")
                                                                                  @PathVariable String taskId,
-                                                                                 @RequestBody TaskCommandApiRequest requestBody) {
+                                                                                 @RequestBody TaskCommandRequest requestBody) {
         return executeApi("Task command failed", () -> {
             validateKnownFields(requestBody, "task command");
             TaskCommandAuthorization authorization = resolveTaskCommandAuthorization(requestBody.getCommand());
@@ -819,11 +820,11 @@ public class TaskApiController {
         }
     }
 
-    private MassTaskShellCreateRequest toMassTaskShellCreateRequest(TaskShellCreateApiRequest requestBody) {
+    private MassTaskShellCreateRequest toMassTaskShellCreateRequest(TaskCreateRequest requestBody) {
         return toMassTaskShellCreateRequest(requestBody, requestBody.getProject(), requestBody.getUserId());
     }
 
-    private MassTaskShellCreateRequest toMassTaskShellCreateRequest(TaskShellCreateApiRequest requestBody,
+    private MassTaskShellCreateRequest toMassTaskShellCreateRequest(TaskCreateRequest requestBody,
                                                                     String resolvedProject,
                                                                     String resolvedUserId) {
         requireBusinessBindings(resolvedProject, resolvedUserId);
@@ -833,9 +834,35 @@ public class TaskApiController {
                 .project(resolvedProject)
                 .contract(requestBody.getContract())
                 .sharedConfig(taskSecurityViewSupport.sanitizeSharedConfig(requestBody.getSharedConfig()))
-                .executionSpec(TaskExecutionOptions.normalized(requestBody.getExecutionSpec()))
+                .executionSpec(toEmbeddedExecutionSpec(requestBody.getExecutionSpec()))
                 .sourceRef(requestBody.getSourceRef())
                 .build();
+    }
+
+    private TaskExecutionOptions toEmbeddedExecutionSpec(TaskExecutionSpec executionSpec) {
+        TaskExecutionOptions options = new TaskExecutionOptions();
+        if (executionSpec == null) {
+            return options;
+        }
+        if (executionSpec.getProfile() != null) {
+            options.setProfile(executionSpec.getProfile());
+        }
+        if (executionSpec.getWorkloadClass() != null) {
+            options.setWorkloadClass(executionSpec.getWorkloadClass());
+        }
+        if (executionSpec.getBatchSize() != null) {
+            options.setBatchSize(executionSpec.getBatchSize());
+        }
+        if (executionSpec.getMaxRuntimeSeconds() != null) {
+            options.setMaxRuntimeSeconds(executionSpec.getMaxRuntimeSeconds());
+        }
+        if (executionSpec.getDefaultMaxRetryCount() != null) {
+            options.setDefaultMaxRetryCount(executionSpec.getDefaultMaxRetryCount());
+        }
+        if (executionSpec.getForeground() != null) {
+            options.setForeground(executionSpec.getForeground());
+        }
+        return options;
     }
 
     private MassTaskUpdateRequest toTaskUpdateRequest(TaskUpdateApiRequest requestBody) {
@@ -852,7 +879,7 @@ public class TaskApiController {
                 .build();
     }
 
-    private MassTaskCommandRequest toMassTaskCommandRequest(TaskCommandApiRequest requestBody) {
+    private MassTaskCommandRequest toMassTaskCommandRequest(TaskCommandRequest requestBody) {
         return MassTaskCommandRequest.builder()
                 .command(requestBody.getCommand())
                 .reason(requestBody.getReason())
@@ -860,7 +887,7 @@ public class TaskApiController {
                 .build();
     }
 
-    private boolean isEmptyCreateRequest(TaskShellCreateApiRequest requestBody) {
+    private boolean isEmptyCreateRequest(TaskCreateRequest requestBody) {
         return requestBody.getUserId() == null
                 && requestBody.getProject() == null
                 && requestBody.getContract() == null
@@ -1033,7 +1060,7 @@ public class TaskApiController {
 
     private ApiAuthorizationService.AuthorizedSubmitterTaskCreate resolveSubmitterTaskCreate(String apiKeyHeader,
                                                                                              String authorizationHeader,
-                                                                                             TaskShellCreateApiRequest requestBody) {
+                                                                                             TaskCreateRequest requestBody) {
         try {
             return apiAuthorizationService.resolveAuthorizedSubmitterTaskCreate(
                     apiKeyHeader,
@@ -1176,7 +1203,7 @@ public class TaskApiController {
         return userId.trim();
     }
 
-    private void validateKnownFields(TaskShellCreateApiRequest requestBody, String operationName) {
+    private void validateKnownFields(TaskCreateRequest requestBody, String operationName) {
         if (requestBody == null || isEmptyCreateRequest(requestBody)) {
             throw new IllegalArgumentException("task request body is required");
         }
@@ -1196,7 +1223,7 @@ public class TaskApiController {
         }
     }
 
-    private void validateKnownFields(TaskItemBatchIngestApiRequest requestBody, String operationName) {
+    private void validateKnownFields(TaskItemBatch requestBody, String operationName) {
         if (requestBody == null) {
             throw new IllegalArgumentException("task request body is required");
         }
@@ -1206,7 +1233,7 @@ public class TaskApiController {
         }
     }
 
-    private void validateKnownFields(TaskItemSyncIngestApiRequest requestBody, String operationName) {
+    private void validateKnownFields(TaskItemSyncRequest requestBody, String operationName) {
         if (requestBody == null) {
             throw new IllegalArgumentException("task request body is required");
         }
@@ -1216,7 +1243,7 @@ public class TaskApiController {
         }
     }
 
-    private void validateKnownFields(TaskCommandApiRequest requestBody, String operationName) {
+    private void validateKnownFields(TaskCommandRequest requestBody, String operationName) {
         if (requestBody == null || requestBody.getCommand() == null || requestBody.getCommand().isBlank()) {
             throw new IllegalArgumentException("task request body is required");
         }
@@ -1236,7 +1263,7 @@ public class TaskApiController {
         }
     }
 
-    private List<String> resolveAppendEventCodes(TaskItemBatchIngestApiRequest requestBody,
+    private List<String> resolveAppendEventCodes(TaskItemBatch requestBody,
                                                  List<Object> items) {
         return resolveAppendEventCodes(requestBody != null ? requestBody.getEventCode() : null, items);
     }
@@ -1270,14 +1297,14 @@ public class TaskApiController {
         return normalizeEventCode(String.valueOf(rawEventCode));
     }
 
-    private Object requireSyncItem(TaskItemSyncIngestApiRequest requestBody) {
+    private Object requireSyncItem(TaskItemSyncRequest requestBody) {
         if (requestBody == null || requestBody.getItem() == null) {
             throw badRequestError("item is required");
         }
         return requestBody.getItem();
     }
 
-    private String resolveSingleSyncEventCode(TaskItemSyncIngestApiRequest requestBody,
+    private String resolveSingleSyncEventCode(TaskItemSyncRequest requestBody,
                                               Object item) {
         List<String> eventCodes = resolveAppendEventCodes(
                 requestBody != null ? requestBody.getEventCode() : null,

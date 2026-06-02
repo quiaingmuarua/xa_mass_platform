@@ -47,7 +47,7 @@ convergence plan.
 - `xa-mass-engine/src/main` still has a broad public surface. Many types under
   listener, watchdog, strategy, command, and stage packages are public
   because SDK assembly currently imports concrete engine internals directly.
-- `xa-mass-sdk/src/main/java/com/xa/mass/starter/MassEngine.java` assembles
+- `sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/MassEngine.java` assembles
   engine internals directly: `TaskAssignWorker`, `TaskWorkerAssignListener`,
   `SimpleTaskDispatchBinder`, watchdogs, matching strategy, and trace logger.
 - Server production source already has no engine implementation package
@@ -474,21 +474,21 @@ must be task/profile configurable, not a hard global removal.
 After EKC-1:
 
 ```powershell
-mvn -pl xa-mass-engine,xa-mass-sdk,xa-mass-server -am -DskipTests compile
+mvn -pl xa-mass-engine,xa-mass-embedded-sdk,xa-mass-server -am -DskipTests compile
 ```
 
 ```powershell
-rg -n "com\.xa\.mass\.engine\.(listener|watchdog|strategy|util)" xa-mass-sdk/src/main xa-mass-server/src/main transport platform_infra
+rg -n "com\.xa\.mass\.engine\.(listener|watchdog|strategy|util)" sdk/xa-mass-embedded-sdk/src/main xa-mass-server/src/main transport platform_infra
 ```
 
 After EKC-2:
 
 ```powershell
-mvn -pl xa-mass-engine,xa-mass-sdk,xa-mass-server -am test
+mvn -pl xa-mass-engine,xa-mass-embedded-sdk,xa-mass-server -am test
 ```
 
 ```powershell
-rg -n "updateTask\(task\)|updateTask\(.*Task" xa-mass-sdk/src/main xa-mass-server/src/main
+rg -n "updateTask\(task\)|updateTask\(.*Task" sdk/xa-mass-embedded-sdk/src/main xa-mass-server/src/main
 ```
 
 After EKC-3:
@@ -500,7 +500,7 @@ mvn -pl xa-mass-engine,platform_infra/mass-runtime-redis,xa-mass-server -am test
 After EKC-4:
 
 ```powershell
-mvn -pl xa-mass-engine,xa-mass-worker-runtime,xa-mass-sdk,xa-mass-server -am test
+mvn -pl xa-mass-engine,xa-mass-worker-runtime,xa-mass-embedded-sdk,xa-mass-server -am test
 ```
 
 ```powershell

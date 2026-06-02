@@ -6,7 +6,7 @@ This module is the formal Java SDK based launcher for registering dev scenario
 worker topology, starting HTTP/polling sample workers, and creating sample tasks
 against a running `xa-mass-server`.
 
-It composes `integrations/xa-mass-java-sdk`; it does not redefine server,
+It composes `sdk/xa-mass-java-sdk`; it does not redefine server,
 engine, worker-pack, or transport ownership.
 
 ## Current Scope

@@ -74,9 +74,9 @@ The read side can remain `TaskDetailStoreTaskReviewReadModel` during RMP.
 | `platform_infra/mass-storage-jdbc/.../JdbcTaskCompatibilityProjection.java` | stores JDBC projection rows and stats | JDBC implementation detail for current `TaskDetailStore` | keep; PIR may revisit after RMP |
 | `platform_infra/mass-storage-jdbc/.../JdbcStorageRuntime.java` | exposes `taskDetailStore()` by casting configured task shell store | JDBC assembly backing lookup | keep in RMP; do not move DDL/schema ownership |
 | `xa-mass-server/src/main/java/com/xa/mass/server/XaMassServerApplication.java` | creates `TaskDetailStore` bean from JDBC runtime or task shell store | server wiring for current backing | keep backing; writer bean changes in RMP-3 |
-| `xa-mass-sdk/src/main/java/com/xa/mass/starter/config/EngineConfig.java` | carries optional `TaskDetailStore` for current assembly | SDK/engine config residue required by current server wiring | keep in RMP; PIR may remove later |
-| `xa-mass-sdk/src/main/java/com/xa/mass/starter/builder/MassEngineBuilder.java` | exposes `taskDetailStore(TaskDetailStore)` | SDK/starter builder residue | keep in RMP |
-| `xa-mass-sdk/src/main/java/com/xa/mass/sdk/MassSdk.java` | exposes `EngineOptions.taskDetailStore(...)` | SDK facade residue | keep in RMP |
+| `sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/config/EngineConfig.java` | carries optional `TaskDetailStore` for current assembly | SDK/engine config residue required by current server wiring | keep in RMP; PIR may remove later |
+| `sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/builder/MassEngineBuilder.java` | exposes `taskDetailStore(TaskDetailStore)` | SDK/starter builder residue | keep in RMP |
+| `sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/MassSdk.java` | exposes `EngineOptions.taskDetailStore(...)` | SDK facade residue | keep in RMP |
 
 ## Required Field Coverage
 

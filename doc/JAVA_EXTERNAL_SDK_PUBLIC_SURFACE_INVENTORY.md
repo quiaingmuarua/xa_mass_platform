@@ -4,7 +4,7 @@ Status: current PSDK-0 inventory for
 [`JAVA_EXTERNAL_SDK_PUBLIC_READINESS_ROADMAP.md`](./JAVA_EXTERNAL_SDK_PUBLIC_READINESS_ROADMAP.md).
 
 This inventory classifies the current public source surface under
-`integrations/xa-mass-java-sdk/src/main/java/com/xa/mass/client`.
+`sdk/xa-mass-java-sdk/src/main/java/com/xa/mass/client`.
 
 ## Decisions
 

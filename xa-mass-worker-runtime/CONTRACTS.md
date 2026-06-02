@@ -9,7 +9,7 @@ protocol/session mechanics. The boundary is:
 ```text
 xa-mass-engine       -> xa-mass-worker-runtime -> mass-runtime-api
 transport/*         -> xa-mass-worker-runtime -> mass-runtime-api
-xa-mass-sdk/server  -> xa-mass-worker-runtime -> mass-runtime-api
+sdk/xa-mass-embedded-sdk/server  -> xa-mass-worker-runtime -> mass-runtime-api
 
 platform_infra/mass-runtime-memory -> mass-runtime-api
 platform_infra/mass-runtime-redis  -> mass-runtime-api

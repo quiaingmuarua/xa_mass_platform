@@ -2,13 +2,13 @@ package com.xa.mass.scenario;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xa.mass.client.MassPlatform;
-import com.xa.mass.client.task.TaskCommand;
-import com.xa.mass.client.task.TaskCommandRequest;
-import com.xa.mass.client.task.TaskContract;
-import com.xa.mass.client.task.TaskCreateRequest;
 import com.xa.mass.client.task.TaskCreateResult;
-import com.xa.mass.client.task.TaskExecutionSpec;
-import com.xa.mass.client.task.TaskItemBatch;
+import com.xa.mass.contract.task.TaskCommand;
+import com.xa.mass.contract.task.TaskCommandRequest;
+import com.xa.mass.contract.task.TaskContract;
+import com.xa.mass.contract.task.TaskCreateRequest;
+import com.xa.mass.contract.task.TaskExecutionSpec;
+import com.xa.mass.contract.task.TaskItemBatch;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

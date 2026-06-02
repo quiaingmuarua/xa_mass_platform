@@ -9,7 +9,7 @@ classifications and records post-slice deltas below.
 Authoritative scan:
 
 ```powershell
-rg "TaskDetailStore|TaskMessageProjection|TaskMessageAttemptProjection|TaskMessageStats|TaskMessageAttemptStats|com\.xa\.mass\.storage\.api\.projection|taskDetailStore\(" -l -g "*.java" platform_infra xa-mass-server xa-mass-sdk xa-mass-engine xa-mass-testing integrations transport
+rg "TaskDetailStore|TaskMessageProjection|TaskMessageAttemptProjection|TaskMessageStats|TaskMessageAttemptStats|com\.xa\.mass\.storage\.api\.projection|taskDetailStore\(" -l -g "*.java" platform_infra xa-mass-server xa-mass-embedded-sdk xa-mass-engine xa-mass-testing integrations transport
 ```
 
 ## Summary Decision
@@ -122,10 +122,10 @@ sections above.
 | `xa-mass-server/src/main/java/com/xa/mass/api/review/TaskDetailStoreTaskReviewReadModel.java` | server review read-model implementation | Reads review preview, attempts, and stats from `TaskDetailStore`; also still implements the legacy direct writer | Replace in PIR-2 with a server-local `TaskReviewStore` backed by server-owned records; delete this class or reduce it to a temporary adapter only during migration |
 | `xa-mass-server/src/main/java/com/xa/mass/api/review/TaskDetailStoreReviewMaterializer.java` | server review materializer | Applies queued RMP events into `TaskDetailStore` rows | Replace in PIR-2 with a materializer targeting the server-local review store |
 | `xa-mass-server/src/main/java/com/xa/mass/server/XaMassServerApplication.java` | server wiring/bean creation | Creates `TaskDetailStore` from `JdbcStorageRuntime.taskDetailStore()` or `TaskShellStore instanceof TaskDetailStore`; wires read model, materializer, and SDK engine builder with `taskDetailStore` | Replace in PIR-2/PIR-3 with server-local review store creation and remove SDK/engine config wiring |
-| `xa-mass-sdk/src/main/java/com/xa/mass/starter/config/EngineConfig.java` | SDK builder/config wiring | Holds optional `TaskDetailStore`, copies it, exposes getter/setter | Remove in PIR-3; engine runtime must not require review materialization store config |
-| `xa-mass-sdk/src/main/java/com/xa/mass/starter/builder/MassEngineBuilder.java` | SDK builder/config wiring | Public `.taskDetailStore(TaskDetailStore)` API and forwards to `EngineConfig` | Remove in PIR-3 |
-| `xa-mass-sdk/src/main/java/com/xa/mass/starter/builder/MassApplicationBuilder.java` | SDK builder/config wiring | Public engine builder `.taskDetailStore(TaskDetailStore)` API | Remove in PIR-3 |
-| `xa-mass-sdk/src/main/java/com/xa/mass/sdk/MassSdk.java` | SDK public facade | Public `EngineOptions.taskDetailStore(TaskDetailStore)` API | Remove in PIR-3 |
+| `sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/config/EngineConfig.java` | SDK builder/config wiring | Holds optional `TaskDetailStore`, copies it, exposes getter/setter | Remove in PIR-3; engine runtime must not require review materialization store config |
+| `sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/builder/MassEngineBuilder.java` | SDK builder/config wiring | Public `.taskDetailStore(TaskDetailStore)` API and forwards to `EngineConfig` | Remove in PIR-3 |
+| `sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/builder/MassApplicationBuilder.java` | SDK builder/config wiring | Public engine builder `.taskDetailStore(TaskDetailStore)` API | Remove in PIR-3 |
+| `sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/MassSdk.java` | SDK public facade | Public `EngineOptions.taskDetailStore(TaskDetailStore)` API | Remove in PIR-3 |
 | `platform_infra/mass-storage-api/src/main/java/com/xa/mass/storage/api/TaskDetailStore.java` | shared infra projection contract | Defines projection CRUD methods, stats, inner row records | Delete in PIR-4 after PIR-2 and PIR-3 migrate production callers |
 | `platform_infra/mass-storage-api/src/main/java/com/xa/mass/storage/api/projection/*.java` | shared infra projection enums | Projection statuses and final reasons | Move semantics into server-local review records if still needed; delete package in PIR-4 |
 | `platform_infra/mass-storage-memory/src/main/java/com/xa/mass/storage/memory/InMemoryTaskShellStore.java` | storage implementation | Implements `TaskShellStore`, `TaskShellLifecycleQuery`, and `TaskDetailStore` in one class | Remove projection methods and `TaskDetailStore` implementation in PIR-4; server creates its own in-memory review store in PIR-2 |
@@ -164,8 +164,8 @@ production runtime.
 | `xa-mass-server/src/test/java/com/xa/mass/api/internal/TaskApiControllerTest.java` | server API test | Mocks `TaskDetailStoreTaskReviewReadModel` backing data | Retarget to server-local review read model fixtures in PIR-2 |
 | `xa-mass-server/src/test/java/com/xa/mass/server/support/ServerMainSourceArchitectureGuardTest.java` | server architecture guard | Currently requires `TaskDetailStoreReviewMaterializer` in server wiring | Update in PIR-2 to require queue + server-local materializer and forbid shared projection imports |
 | `xa-mass-server/src/test/java/com/xa/mass/server/e2e/support/ServerMainlineE2eArchitectureGuardTest.java` | server architecture guard | Contains projection/review source rules | Update in PIR-2/PIR-5 |
-| `xa-mass-sdk/src/test/java/com/xa/mass/sdk/MassSdkTest.java` | SDK test | Previously covered `taskDetailStore` optional wiring and missing getter behavior | Updated in PIR-3 to assert engine runtime does not require review storage wiring |
-| `xa-mass-sdk/src/test/java/com/xa/mass/starter/MassEngineStartRecoveryTest.java` | SDK/start recovery test | Previously read `config.getTaskDetailStore()` projections | Projection assertion removed in PIR-3; dispatch/runtime recovery assertions remain |
+| `sdk/xa-mass-embedded-sdk/src/test/java/com/xa/mass/sdk/MassSdkTest.java` | SDK test | Previously covered `taskDetailStore` optional wiring and missing getter behavior | Updated in PIR-3 to assert engine runtime does not require review storage wiring |
+| `sdk/xa-mass-embedded-sdk/src/test/java/com/xa/mass/starter/MassEngineStartRecoveryTest.java` | SDK/start recovery test | Previously read `config.getTaskDetailStore()` projections | Projection assertion removed in PIR-3; dispatch/runtime recovery assertions remain |
 | `xa-mass-engine/src/test/java/com/xa/mass/engine/TaskManagerLifecycleTest.java` | engine test residue | Large compatibility projection assertions and helpers | Migrate to runtime-based assertions or server-local review test support in PIR-4 |
 | `xa-mass-engine/src/test/java/com/xa/mass/engine/TaskCompatibilityProjectionAccess.java` | engine test residue | Test helper over `TaskDetailStore` projection views | Retire in PIR-4 |
 | `xa-mass-engine/src/test/java/com/xa/mass/engine/ProjectionAwareTaskManager.java` | engine test residue | Test manager wrapper for projection access | Retire in PIR-4 |
