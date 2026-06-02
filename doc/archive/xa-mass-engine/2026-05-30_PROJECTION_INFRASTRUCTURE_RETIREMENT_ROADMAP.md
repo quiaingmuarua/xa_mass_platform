@@ -3,7 +3,7 @@
 Status: PIR-0 inventory, PIR-2 server review storage localization, PIR-3
 SDK `taskDetailStore(...)` removal, PIR-4 shared-infra deletion, and PIR-5
 guard/baseline updates are implemented in the current worktree. See
-[`PROJECTION_INFRASTRUCTURE_RETIREMENT_INVENTORY.md`](./PROJECTION_INFRASTRUCTURE_RETIREMENT_INVENTORY.md).
+[`PROJECTION_INFRASTRUCTURE_RETIREMENT_INVENTORY.md`](./2026-05-30_PROJECTION_INFRASTRUCTURE_RETIREMENT_INVENTORY.md).
 The prerequisite
 `REVIEW_MATERIALIZATION_PIPELINE_ROADMAP.md` has landed: production
 review/export writes now flow through the queued materializer. Server review
@@ -17,7 +17,7 @@ module carries projection row types or projection query/write methods.
 
 This is a deletion roadmap, not the replacement pipeline roadmap. The
 server-owned review report queue from
-[`REVIEW_MATERIALIZATION_PIPELINE_ROADMAP.md`](./REVIEW_MATERIALIZATION_PIPELINE_ROADMAP.md)
+[`REVIEW_MATERIALIZATION_PIPELINE_ROADMAP.md`](./2026-05-30_REVIEW_MATERIALIZATION_PIPELINE_ROADMAP.md)
 must remain the write boundary while this roadmap removes the old shared
 projection contracts.
 

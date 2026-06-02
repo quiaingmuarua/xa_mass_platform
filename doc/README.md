@@ -51,6 +51,7 @@ Most tasks only need one contract lane plus one owner README:
 | [E2E_BASELINE.md](./E2E_BASELINE.md) | Boot-shell E2E scope |
 | [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md) | verified startup and regression commands |
 | [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md) | current HTTP/API contract |
+| [SDK_INTEGRATIONS_BOUNDARY_GUARD.md](./SDK_INTEGRATIONS_BOUNDARY_GUARD.md) | guardrails for SDK modules, public-contract DTOs, integrations, worker-pack, samples, and server startup registration |
 | [HIGH_VOLUME_MODEL_BASELINE.md](./HIGH_VOLUME_MODEL_BASELINE.md) | high-volume runtime facts and guardrails |
 
 ## 3. Owner Docs
@@ -65,6 +66,8 @@ Use owner docs for module-local truth:
   [../xa-mass-worker-runtime/CONTRACTS.md](../xa-mass-worker-runtime/CONTRACTS.md)
 - testing: [../xa-mass-testing/README.md](../xa-mass-testing/README.md)
 - server: [../xa-mass-server/README.md](../xa-mass-server/README.md)
+- SDK directory: [../sdk/README.md](../sdk/README.md)
+- integrations directory: [../integrations/README.md](../integrations/README.md)
 - worker pack: [../integrations/xa-mass-worker-pack/README.md](../integrations/xa-mass-worker-pack/README.md)
 - public HTTP contract: [../sdk/xa-mass-public-contract/README.md](../sdk/xa-mass-public-contract/README.md)
 - external Java SDK: [../sdk/xa-mass-java-sdk/README.md](../sdk/xa-mass-java-sdk/README.md)
@@ -82,20 +85,11 @@ These are useful only when the task explicitly touches those future directions:
 - [WORKER_FAULT_MATRIX_ROADMAP.md](./WORKER_FAULT_MATRIX_ROADMAP.md)
 - [JAVA_EXTERNAL_SDK_TASK_SCOPED_INVOCATION_ROADMAP.md](./JAVA_EXTERNAL_SDK_TASK_SCOPED_INVOCATION_ROADMAP.md)
 - [JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md](./JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md)
-- [JAVA_EXTERNAL_SDK_PUBLIC_READINESS_ROADMAP.md](./JAVA_EXTERNAL_SDK_PUBLIC_READINESS_ROADMAP.md)
-- [SDK_MODULE_LAYOUT_AND_PUBLIC_CONTRACT_ROADMAP.md](./SDK_MODULE_LAYOUT_AND_PUBLIC_CONTRACT_ROADMAP.md)
-- [SDK_MODULE_LAYOUT_AND_PUBLIC_CONTRACT_INVENTORY.md](./SDK_MODULE_LAYOUT_AND_PUBLIC_CONTRACT_INVENTORY.md)
 - [JAVA_EXTERNAL_SDK_PUBLIC_SURFACE_INVENTORY.md](./JAVA_EXTERNAL_SDK_PUBLIC_SURFACE_INVENTORY.md)
 - [JAVA_EXTERNAL_SDK_ANDROID_DEVICE_DECISION.md](./JAVA_EXTERNAL_SDK_ANDROID_DEVICE_DECISION.md)
-- [REVIEW_MATERIALIZATION_PIPELINE_ROADMAP.md](./REVIEW_MATERIALIZATION_PIPELINE_ROADMAP.md)
-- [PROJECTION_INFRASTRUCTURE_RETIREMENT_ROADMAP.md](./PROJECTION_INFRASTRUCTURE_RETIREMENT_ROADMAP.md)
 - [ENGINE_KERNEL_CONVERGENCE_ROADMAP.md](./ENGINE_KERNEL_CONVERGENCE_ROADMAP.md)
 - [ENGINE_KERNEL_CONVERGENCE_INVENTORY.md](./ENGINE_KERNEL_CONVERGENCE_INVENTORY.md)
 - [GRACEFUL_SHUTDOWN_LIFECYCLE_ROADMAP.md](./GRACEFUL_SHUTDOWN_LIFECYCLE_ROADMAP.md)
-- [INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md](./INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md)
-- [INTEGRATIONS_LAYOUT_INVENTORY.md](./INTEGRATIONS_LAYOUT_INVENTORY.md)
-- [INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_ROADMAP.md](./INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_ROADMAP.md) - completed convergence record; successor is archived as `archive/integrations/2026-06-02_INTEGRATIONS_EXTERNAL_SDK_WORKER_PACK_HARDENING_ROADMAP.md`
-- [INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_INVENTORY.md](./INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_INVENTORY.md) - completed WPC inventory
 - [SERVER_BOOTSTRAP_CLASSIFICATION.md](./SERVER_BOOTSTRAP_CLASSIFICATION.md)
 - [../xa-mass-engine/doc/roadmap/PRODUCTION_SCHEDULING_KERNEL_IMPROVEMENTS.md](../xa-mass-engine/doc/roadmap/PRODUCTION_SCHEDULING_KERNEL_IMPROVEMENTS.md)
 - [../xa-mass-engine/doc/roadmap/TASK_RUNTIME_PROFILE_DESIGN.md](../xa-mass-engine/doc/roadmap/TASK_RUNTIME_PROFILE_DESIGN.md)
@@ -110,6 +104,7 @@ tests, owner READMEs, and baseline docs.
 - archive index: [archive/README.md](./archive/README.md)
 - engine: [archive/xa-mass-engine/](./archive/xa-mass-engine/)
 - integrations: [archive/integrations/](./archive/integrations/)
+- sdk: [archive/sdk/](./archive/sdk/)
 - server: [archive/xa-mass-server/](./archive/xa-mass-server/)
 
 ## 6. Reusable Codex Skills

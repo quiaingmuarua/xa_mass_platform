@@ -5,6 +5,8 @@ Status: current cross-module external-worker quickstart.
 Use this file for the shortest current truth about repo-external workers.
 Keep Node sample startup details in `integrations/samples/node/*/README.md`.
 Java executable SDK usage is owned by `integrations/xa-mass-scenario-launcher`.
+SDK product module ownership is summarized in `sdk/README.md`; integration
+module ownership is summarized in `integrations/README.md`.
 
 ## 1. Current Contract Split
 
@@ -83,7 +85,7 @@ today and Boot-shell E2E proves them:
 
 | Path | adapterId | transportHint | Role |
 | --- | --- | --- | --- |
-| `integrations/samples/node/worker-polling` | `polling` | `polling` | stable public external worker contract fixture |
+| `integrations/samples/node/worker-polling` | `polling` | `polling` | polling protocol validation fixture |
 | `integrations/samples/node/worker-websocket` | `websocket` | `realtime` | adapter validation fixture |
 | `integrations/samples/node/worker-socket` | `socket` | `realtime` | adapter validation fixture |
 | `integrations/xa-mass-scenario-launcher` | `polling`, `websocket` | `polling`, `realtime` | Java SDK registration and worker-session proof |
@@ -101,9 +103,11 @@ For realtime paths:
 Use the real Boot shell plus the sample/launcher READMEs:
 
 - Boot runtime and verified commands: [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
+- integrations module map: [../integrations/README.md](../integrations/README.md)
 - sample matrix and black-box role: [../integrations/samples/README.md](../integrations/samples/README.md)
 - per-sample commands: `integrations/samples/node/*/README.md`
-- Java SDK launcher: `integrations/xa-mass-scenario-launcher`
+- external Java SDK: [../sdk/xa-mass-java-sdk/README.md](../sdk/xa-mass-java-sdk/README.md)
+- Java SDK launcher: [../integrations/xa-mass-scenario-launcher/README.md](../integrations/xa-mass-scenario-launcher/README.md)
 
 For a CLI-only public-contract smoke against an already running dev server, use:
 

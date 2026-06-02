@@ -254,7 +254,7 @@ and only then decide whether any scheduler is redundant or wasteful.
   SDK adoption and worker-pack runs may depend on current polling/WebSocket
   worker session stop behavior. GSL tests should avoid breaking those black-box
   paths without updating their verification lane.
-- [`REVIEW_MATERIALIZATION_PIPELINE_ROADMAP.md`](./REVIEW_MATERIALIZATION_PIPELINE_ROADMAP.md):
+- [`REVIEW_MATERIALIZATION_PIPELINE_ROADMAP.md`](./archive/xa-mass-engine/2026-05-30_REVIEW_MATERIALIZATION_PIPELINE_ROADMAP.md):
   server-local review report queues are optional materialization infrastructure
   and should stay outside engine shutdown truth. GSL may coordinate their
   stop/drain only as server assembly behavior.

@@ -5,6 +5,12 @@ Status: current sample worker owner README.
 This directory holds runnable third-party worker references used by executable
 black-box acceptance.
 
+Samples are protocol/dev fixtures. They are not the long-term public SDK product
+surface. Java SDK-backed external execution is owned by
+[`../xa-mass-scenario-launcher`](../xa-mass-scenario-launcher/README.md), and
+directory-level integration ownership is summarized in
+[`../README.md`](../README.md).
+
 Rules:
 
 - samples stay outside embedded SDK/demo runtime internals
@@ -118,6 +124,7 @@ Every sample should remain provable through an external-process black-box test:
 ## Reading Order
 
 - start with [doc/EXTERNAL_WORKER_QUICKSTART.md](../../doc/EXTERNAL_WORKER_QUICKSTART.md)
+- use [integrations/README.md](../README.md) for module ownership
 - then use the Node per-sample README or Java scenario-launcher README for
   local commands
 - use `xa-mass-server` black-box tests as the executable acceptance truth

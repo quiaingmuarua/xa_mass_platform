@@ -2,7 +2,7 @@
 
 Status: SBE-0 inventory, updated after SBE-1 removal of server main-source
 scenario seeding for
-[`INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md`](./INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md).
+[`INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md`](./archive/integrations/2026-05-28_INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md).
 
 Date: 2026-05-28.
 

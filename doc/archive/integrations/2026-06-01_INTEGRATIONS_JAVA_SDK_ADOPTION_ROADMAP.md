@@ -3,7 +3,7 @@
 Status: archived implemented mainline.
 
 This roadmap follows the completed local/public-readiness slice for
-[`integrations/xa-mass-java-sdk`](../integrations/xa-mass-java-sdk). Its goal is
+[`sdk/xa-mass-java-sdk`](../../../sdk/xa-mass-java-sdk). Its goal is
 not immediate external publication and not a sample-gallery expansion.
 `xa-mass-java-sdk` exists so external Java task producers and worker processes
 can conveniently register with a running `xa-mass-server`, submit work, poll or
@@ -309,7 +309,7 @@ Acceptance:
 Status: implemented audit keeps worker-pack explicitly non-adopting for the
 current mainline. See
 [INTEGRATIONS_JAVA_SDK_ADOPTION_INVENTORY.md](./2026-06-01_INTEGRATIONS_JAVA_SDK_ADOPTION_INVENTORY.md)
-and [../integrations/xa-mass-worker-pack/README.md](../integrations/xa-mass-worker-pack/README.md).
+and [integrations/xa-mass-worker-pack/README.md](../../../integrations/xa-mass-worker-pack/README.md).
 
 Scope:
 

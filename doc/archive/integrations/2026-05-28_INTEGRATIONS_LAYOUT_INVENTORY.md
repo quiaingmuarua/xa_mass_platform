@@ -1,11 +1,11 @@
 # Integrations Layout Inventory
 
 Status: ILC-0 complete for
-[`INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md`](./INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md).
+[`INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md`](./2026-05-28_INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md).
 ILC-1 sample movement and ILC-2 worker-pack movement are implemented against
 this inventory. The Java sample targets recorded here are historical ILC move
 targets; they were later removed by
-[`INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md`](./archive/integrations/2026-06-01_INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md).
+[`INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md`](./2026-06-01_INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md).
 Current Java integration proof lives in `sdk/xa-mass-java-sdk` and
 `integrations/xa-mass-scenario-launcher`, not under `integrations/samples/java`.
 

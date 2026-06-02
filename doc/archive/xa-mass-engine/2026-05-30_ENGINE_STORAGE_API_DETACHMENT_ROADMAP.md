@@ -4,7 +4,7 @@ Status: implemented.
 
 This roadmap removes the remaining production dependency from
 `xa-mass-engine` to `mass-storage-api`. It follows
-[`PROJECTION_INFRASTRUCTURE_RETIREMENT_ROADMAP.md`](./PROJECTION_INFRASTRUCTURE_RETIREMENT_ROADMAP.md):
+[`PROJECTION_INFRASTRUCTURE_RETIREMENT_ROADMAP.md`](./2026-05-30_PROJECTION_INFRASTRUCTURE_RETIREMENT_ROADMAP.md):
 PIR deleted review/projection infrastructure, but it intentionally left the
 non-projection engine storage dependency in place. This roadmap handles that
 next boundary.

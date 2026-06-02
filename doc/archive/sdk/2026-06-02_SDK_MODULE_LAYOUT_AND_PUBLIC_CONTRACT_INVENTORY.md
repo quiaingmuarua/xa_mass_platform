@@ -1,7 +1,7 @@
 # SDK Module Layout And Public Contract Inventory
 
 Status: implemented inventory for
-`doc/SDK_MODULE_LAYOUT_AND_PUBLIC_CONTRACT_ROADMAP.md`.
+`doc/archive/sdk/2026-06-02_SDK_MODULE_LAYOUT_AND_PUBLIC_CONTRACT_ROADMAP.md`.
 
 This inventory records SDK module layout facts and the first implemented
 Controller-exposed public-contract candidates. It is intentionally narrow:

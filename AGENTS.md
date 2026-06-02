@@ -112,6 +112,8 @@ Start here based on the change:
   [doc/VERIFIED_RUNBOOK.md](doc/VERIFIED_RUNBOOK.md)
 - HTTP/API contracts:
   [doc/INTERNAL_API_REFERENCE.md](doc/INTERNAL_API_REFERENCE.md)
+- SDK/integrations boundary guard:
+  [doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md](doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md)
 - legacy/compatibility/deprecation work:
   [DEPRECATION_LEDGER.md](DEPRECATION_LEDGER.md)
 
@@ -144,6 +146,10 @@ Planning rule for multi-file or core changes:
 - do not add scan-heavy observability or reconciliation loops to hot paths
 - trace and query concerns must not reverse-drive runtime ownership or mainline lifecycle design
 - bias transport and lifecycle writes toward idempotent operations and retry safety
+- for SDK or integrations changes, read
+  [doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md](doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md)
+  before adding dependencies, DTOs, samples, worker-pack capability paths, or
+  server bootstrap behavior
 
 ## 6. Working Defaults
 

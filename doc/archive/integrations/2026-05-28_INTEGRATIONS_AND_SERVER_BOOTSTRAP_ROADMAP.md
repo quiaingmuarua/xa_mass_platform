@@ -1,7 +1,7 @@
 # Integrations Layout And Server Bootstrap Roadmap
 
 Status: implemented mainline direction. ILC-0 layout inventory is complete in
-[`INTEGRATIONS_LAYOUT_INVENTORY.md`](./INTEGRATIONS_LAYOUT_INVENTORY.md).
+[`INTEGRATIONS_LAYOUT_INVENTORY.md`](./2026-05-28_INTEGRATIONS_LAYOUT_INVENTORY.md).
 ILC-1 sample path convergence, ILC-2 worker-pack movement, SBE-0 server
 bootstrap classification, and SBE-1 server main-source scenario seeding removal
 are complete. SBE-2 test fixture preservation and SBE-3 external scenario
@@ -26,7 +26,7 @@ startup-behavior regressions can be isolated.
   client SDK.
 - external worker samples have converged under `integrations/samples`; Java
   samples were later retired by
-  [`INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md`](./archive/integrations/2026-06-01_INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md),
+  [`INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md`](./2026-06-01_INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md),
   while Node samples and `dev/scenario` remain adapter/dev fixtures.
 - `integrations/xa-mass-worker-pack` is the official worker reference and
   sample/dev capability module; Maven artifactId remains `xa-mass-worker-pack`.
@@ -116,7 +116,7 @@ until an external actor registers capabilities and submits work.
 ### ILC-0 Inventory
 
 Status: complete. See
-[`INTEGRATIONS_LAYOUT_INVENTORY.md`](./INTEGRATIONS_LAYOUT_INVENTORY.md).
+[`INTEGRATIONS_LAYOUT_INVENTORY.md`](./2026-05-28_INTEGRATIONS_LAYOUT_INVENTORY.md).
 
 Scope:
 
@@ -215,7 +215,7 @@ Acceptance:
 ### SBE-0 Bootstrap Classification
 
 Status: complete. See
-[`SERVER_BOOTSTRAP_CLASSIFICATION.md`](./SERVER_BOOTSTRAP_CLASSIFICATION.md).
+[`SERVER_BOOTSTRAP_CLASSIFICATION.md`](../../SERVER_BOOTSTRAP_CLASSIFICATION.md).
 
 Scope:
 

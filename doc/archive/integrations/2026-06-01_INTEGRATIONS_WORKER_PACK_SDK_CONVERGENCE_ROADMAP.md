@@ -179,7 +179,7 @@ Priority: immediate.
 
 Decision record:
 
-- `doc/INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_INVENTORY.md` records the
+- `doc/archive/integrations/2026-06-01_INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_INVENTORY.md` records the
   worker-pack surface and dependency classification.
 - Worker-pack Java socket code has no unique current proof value that must
   remain in worker-pack.
@@ -291,7 +291,7 @@ Status: implemented as classification and documentation.
 
 Decision record:
 
-- `doc/INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_INVENTORY.md` classifies the
+- `doc/archive/integrations/2026-06-01_INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_INVENTORY.md` classifies the
   raw WebSocket code by happy-path dispatch/result behavior, command frame
   handling, fault result mutation, disconnect behavior, and reconnect/session
   support.
@@ -434,7 +434,7 @@ Status: implemented as classification and owner cleanup.
 
 Decision record:
 
-- `doc/INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_INVENTORY.md` separates
+- `doc/archive/integrations/2026-06-01_INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_INVENTORY.md` separates
   `command.core/model/runtime`, `command.event`, and `base.exception` usage.
 - Worker-pack command/fault behavior remains the owner for sample command
   routes, `fault.*` state, and deterministic tool routes.

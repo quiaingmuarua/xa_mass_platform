@@ -84,6 +84,8 @@ The shared kernel is:
 
 Current integration boundary rule:
 
+- detailed guardrails for this boundary live in
+  [doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md](./doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md)
 - `sdk/xa-mass-java-sdk` is the external Java SDK boundary for task producers,
   external workers, and automation that talks to a running server over public
   HTTP routes
@@ -144,8 +146,8 @@ Current integration boundary rule:
 - `sdk/xa-mass-embedded-sdk-api`: embedded SDK-facing auth, catalog, event, and model contracts
 - `sdk/xa-mass-embedded-sdk`: embedding entry and runtime composition for JVM callers
 - `xa-mass-testing`: acceptance tooling, load harnesses, and chaos probes
-- `integrations/xa-mass-worker-pack`: official builtin/sample/dev worker
-  capabilities, sample clients, launchers, and worker-side command runtime
+- `integrations/xa-mass-worker-pack`: official worker capability pack, dev/E2E
+  harness support, and worker-side command runtime
 - `xa-mass-server`: Boot reference host, HTTP controllers, lightweight backend
   product skeleton, backend-hosted control console, and frontend shell
 
@@ -161,10 +163,14 @@ Module truth comes from the root `pom.xml`. Do not treat removed historical modu
 - startup, smoke, and regression commands: [doc/VERIFIED_RUNBOOK.md](./doc/VERIFIED_RUNBOOK.md)
 - active HTTP contracts: [doc/INTERNAL_API_REFERENCE.md](./doc/INTERNAL_API_REFERENCE.md)
 - transport ownership and verification: [transport/AGENTS.md](./transport/AGENTS.md)
-- public HTTP contract ownership: [sdk/xa-mass-public-contract](./sdk/xa-mass-public-contract)
+- SDK module map: [sdk/README.md](./sdk/README.md)
+- integrations module map: [integrations/README.md](./integrations/README.md)
+- SDK/integrations boundary guard: [doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md](./doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md)
+- public HTTP contract ownership: [sdk/xa-mass-public-contract/README.md](./sdk/xa-mass-public-contract/README.md)
 - external Java SDK: [sdk/xa-mass-java-sdk/README.md](./sdk/xa-mass-java-sdk/README.md)
 - embedded SDK contract ownership: [sdk/xa-mass-embedded-sdk-api/README.md](./sdk/xa-mass-embedded-sdk-api/README.md)
 - embedded SDK runtime composition: [sdk/xa-mass-embedded-sdk/README.md](./sdk/xa-mass-embedded-sdk/README.md)
 - human architecture guide: [architecture/README.md](./architecture/README.md)
 - external worker onboarding: [doc/EXTERNAL_WORKER_QUICKSTART.md](./doc/EXTERNAL_WORKER_QUICKSTART.md)
-- samples: [integrations/samples/](./integrations/samples/)
+- fixture samples: [integrations/samples/](./integrations/samples/) (protocol/dev
+  fixtures only, not the public SDK product surface)

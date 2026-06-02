@@ -4,13 +4,16 @@ Status: current worker-pack owner README.
 
 ## Role
 
-- official builtin, sample, and dev worker capabilities
-- sample worker clients, worker launchers, and worker-side command runtime
+- official worker capability pack
+- separated dev/E2E harness support for sample worker clients, launchers, and
+  worker-side command runtime
 - sample-only bootstrap surfaces that support dev-shell acceptance flows
 
 ## Boundaries
 
 - keep runtime composition SDK-first; worker-pack registers through normal platform APIs
+- follow the global guard in
+  [`../../doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md`](../../doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md)
 - keep external process references under `integrations/samples/`
 - do not let worker-pack redefine `xa-mass-server` as the product shell
 - use `xa-mass-java-sdk` only for real public HTTP worker-control/session
@@ -147,7 +150,7 @@ sample-worker command paths, not by mutating engine or transport internals.
 The external SDK/worker-pack hardening work is recorded in
 `doc/archive/integrations/2026-06-02_INTEGRATIONS_EXTERNAL_SDK_WORKER_PACK_HARDENING_ROADMAP.md`.
 The prior SDK convergence work is recorded in
-`doc/INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_ROADMAP.md`.
+`doc/archive/integrations/2026-06-01_INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_ROADMAP.md`.
 
 Current audit: worker-pack does not duplicate Java raw HTTP client calls for
 `/worker-api/v1` topology or worker-control routes. Real worker capability
@@ -155,7 +158,7 @@ paths use `xa-mass-java-sdk`; dev-shell sample worker discovery still uses
 `xa-mass-embedded-sdk` `MassSdkApplication`, and raw WebSocket frame handling
 remains only as active command/fault E2E harness substrate. The retired Java
 socket demo path is documented in
-`doc/INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_INVENTORY.md`.
+`doc/archive/integrations/2026-06-01_INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_INVENTORY.md`.
 
 Current hardening baseline:
 

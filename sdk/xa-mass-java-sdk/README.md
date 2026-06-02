@@ -82,7 +82,7 @@ Realtime protocol hardening is tracked in
 [../../doc/JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md](../../doc/JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md).
 
 Public readiness and publication hardening are tracked in
-[../../doc/JAVA_EXTERNAL_SDK_PUBLIC_READINESS_ROADMAP.md](../../doc/JAVA_EXTERNAL_SDK_PUBLIC_READINESS_ROADMAP.md).
+[../../doc/archive/sdk/2026-06-01_JAVA_EXTERNAL_SDK_PUBLIC_READINESS_ROADMAP.md](../../doc/archive/sdk/2026-06-01_JAVA_EXTERNAL_SDK_PUBLIC_READINESS_ROADMAP.md).
 
 The standalone consumer metadata template is [pom.consumer.xml](pom.consumer.xml).
 It documents the dependency shape external consumers should see; normal reactor

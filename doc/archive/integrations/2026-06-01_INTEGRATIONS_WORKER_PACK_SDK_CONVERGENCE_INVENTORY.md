@@ -3,7 +3,7 @@
 Status: completed WPC inventory.
 
 This inventory supports
-`doc/INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_ROADMAP.md`.
+`doc/archive/integrations/2026-06-01_INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_ROADMAP.md`.
 
 ## WPC-0 Decision
 

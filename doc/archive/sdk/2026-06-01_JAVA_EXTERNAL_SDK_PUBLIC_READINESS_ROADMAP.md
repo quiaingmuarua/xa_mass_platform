@@ -1,24 +1,24 @@
 # Java External SDK Public Readiness Roadmap
 
 Status: current mainline complete for making
-[`../sdk/xa-mass-java-sdk`](../sdk/xa-mass-java-sdk) a real
+[`sdk/xa-mass-java-sdk`](../../../sdk/xa-mass-java-sdk) a real
 external JVM SDK for local/internal staging. Public registry publication remains
 an explicit follow-up decision. Internal Java adoption across `integrations/`
 was completed in the archived
-[`INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md`](./archive/integrations/2026-06-01_INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md).
+[`INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md`](../integrations/2026-06-01_INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md).
 
 Current progress:
 
 - PSDK-0 public surface inventory is recorded in
-  [`JAVA_EXTERNAL_SDK_PUBLIC_SURFACE_INVENTORY.md`](./JAVA_EXTERNAL_SDK_PUBLIC_SURFACE_INVENTORY.md).
+  [`JAVA_EXTERNAL_SDK_PUBLIC_SURFACE_INVENTORY.md`](../../JAVA_EXTERNAL_SDK_PUBLIC_SURFACE_INVENTORY.md).
 - PSDK-1 source/dependency guards are implemented in
   `JavaExternalSdkArchitectureGuardTest`.
 - PSDK-2 raw HTTP access is marked with `UnstableApi` and documented as an
   advanced escape hatch, not the primary stable API.
 - PSDK-5 local/internal publication metadata shape is recorded in
-  [`../sdk/xa-mass-java-sdk/pom.consumer.xml`](../sdk/xa-mass-java-sdk/pom.consumer.xml).
+  [`sdk/xa-mass-java-sdk/pom.consumer.xml`](../../../sdk/xa-mass-java-sdk/pom.consumer.xml).
 - PSDK-6 Android/device host decision is recorded in
-  [`JAVA_EXTERNAL_SDK_ANDROID_DEVICE_DECISION.md`](./JAVA_EXTERNAL_SDK_ANDROID_DEVICE_DECISION.md).
+  [`JAVA_EXTERNAL_SDK_ANDROID_DEVICE_DECISION.md`](../../JAVA_EXTERNAL_SDK_ANDROID_DEVICE_DECISION.md).
 - PSDK-3 minimum transport-neutral worker handler runtime is implemented in
   `com.xa.mass.client.worker.handler`; polling now adapts dispatch frames into
   that runtime and can report through a session-owned `WorkerResultSink`.
@@ -36,7 +36,7 @@ mvn -pl xa-mass-server -am "-Dtest=JavaScenarioLauncherBlackBoxIntegrationTest" 
 ```
 
 The archived
-[`JAVA_EXTERNAL_SDK_ROADMAP.md`](./archive/integrations/2026-05-28_JAVA_EXTERNAL_SDK_ROADMAP.md)
+[`JAVA_EXTERNAL_SDK_ROADMAP.md`](../integrations/2026-05-28_JAVA_EXTERNAL_SDK_ROADMAP.md)
 created a pure remote Java client and polling worker session. This roadmap is
 the active readiness track: it hardens the artifact, API surface, dependency
 guards, documentation, and release shape so external callers can depend on it
@@ -71,7 +71,7 @@ without pulling in the platform builder.
   dispatch into the transport-neutral SDK handler runtime under
   `com.xa.mass.client.worker.handler`.
 - realtime WebSocket sessions remain tracked in
-  [`JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md`](./JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md).
+  [`JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md`](../../JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md).
 
 ## Owner Review
 
@@ -291,7 +291,7 @@ Implemented now:
 Scope:
 
 - align with
-  [`JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md`](./JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md)
+  [`JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md`](../../JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md)
   for:
   - transport-independent event handler runtime.
   - result sink/queue.
@@ -418,7 +418,7 @@ mvn -f sdk/xa-mass-java-sdk/pom.consumer.xml -DskipTests package
 ## PSDK-6: Android And Device Host Decision
 
 Status: decision recorded in
-[`JAVA_EXTERNAL_SDK_ANDROID_DEVICE_DECISION.md`](./JAVA_EXTERNAL_SDK_ANDROID_DEVICE_DECISION.md).
+[`JAVA_EXTERNAL_SDK_ANDROID_DEVICE_DECISION.md`](../../JAVA_EXTERNAL_SDK_ANDROID_DEVICE_DECISION.md).
 
 Scope:
 

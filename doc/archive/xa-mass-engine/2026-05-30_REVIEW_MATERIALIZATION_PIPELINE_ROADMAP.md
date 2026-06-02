@@ -1,7 +1,7 @@
 # Review Materialization Pipeline Roadmap
 
 Status: complete. RMP-0 inventory is captured in
-[`REVIEW_MATERIALIZATION_PIPELINE_INVENTORY.md`](./REVIEW_MATERIALIZATION_PIPELINE_INVENTORY.md).
+[`REVIEW_MATERIALIZATION_PIPELINE_INVENTORY.md`](./2026-05-30_REVIEW_MATERIALIZATION_PIPELINE_INVENTORY.md).
 RMP-1 through RMP-5 have landed: production server review writes now flow
 through the server-local bounded report queue, `TaskDetailStore` remains the
 temporary persistence backing, memory/JDBC backing paths are proven, and

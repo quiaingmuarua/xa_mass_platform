@@ -48,6 +48,10 @@ SDK-first boundary rules:
   read-models instead of freezing internal `Task` / `Worker` / runtime types
 - SDK snapshots are contract read-models only; engine/runtime logic must not
   consume SDK snapshots as decision input
+- detailed SDK/integrations guardrails live in
+  [SDK_INTEGRATIONS_BOUNDARY_GUARD.md](./SDK_INTEGRATIONS_BOUNDARY_GUARD.md);
+  read it before changing `sdk/`, `integrations/`, public Controller DTOs,
+  external worker contracts, or server startup registration behavior
 
 Current owner vocabulary:
 

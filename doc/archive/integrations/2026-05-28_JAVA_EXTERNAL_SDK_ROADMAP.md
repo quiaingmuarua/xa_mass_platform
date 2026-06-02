@@ -3,7 +3,7 @@
 Status: archived completed mainline roadmap. JSDK-0 inventory is archived in
 [`JAVA_EXTERNAL_SDK_INVENTORY.md`](./2026-05-28_JAVA_EXTERNAL_SDK_INVENTORY.md).
 JSDK-1 module skeleton and HTTP core are implemented under
-[`../integrations/xa-mass-java-sdk`](../integrations/xa-mass-java-sdk).
+[`sdk/xa-mass-java-sdk`](../../../sdk/xa-mass-java-sdk).
 JSDK-2 task client mainline is implemented in the same module.
 JSDK-3 worker topology and direct polling worker client are implemented in the
 same module.
@@ -25,7 +25,7 @@ Follow-up internal Java adoption across `integrations/` lives in
 [`INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md`](./2026-06-01_INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md).
 Broad sample path convergence and clean server demo bootstrap extraction
 continue in
-[`INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md`](../../INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md).
+[`INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md`](./2026-05-28_INTEGRATIONS_AND_SERVER_BOOTSTRAP_ROADMAP.md).
 
 This roadmap defines a new `xa-mass-java-sdk` artifact for repo-external Java
 clients. It is intentionally separate from the current `xa-mass-sdk`, and it

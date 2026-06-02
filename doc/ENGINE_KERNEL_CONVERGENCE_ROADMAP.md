@@ -28,7 +28,7 @@ rule definition ports, and removed the engine test dependency on
 `mass-storage-memory`.
 
 This roadmap continues after
-[`ENGINE_STORAGE_API_DETACHMENT_ROADMAP.md`](./ENGINE_STORAGE_API_DETACHMENT_ROADMAP.md).
+[`ENGINE_STORAGE_API_DETACHMENT_ROADMAP.md`](./archive/xa-mass-engine/2026-05-30_ENGINE_STORAGE_API_DETACHMENT_ROADMAP.md).
 ESD removed the engine production dependency on storage APIs. The next
 convergence target is smaller: keep the engine runtime kernel clear while
 shrinking public surfaces, moving callers to intent-shaped ports, and removing

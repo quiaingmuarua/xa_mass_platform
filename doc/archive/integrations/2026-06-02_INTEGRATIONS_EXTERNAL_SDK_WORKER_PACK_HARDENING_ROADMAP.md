@@ -22,7 +22,7 @@ external SDK contract and turn worker-pack from a proof scaffold into a
 capability package that can support real business-facing workers.
 
 This roadmap owns the post-convergence work. The completed
-`doc/INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_ROADMAP.md` records the decision
+`doc/archive/integrations/2026-06-01_INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_ROADMAP.md` records the decision
 to retire worker-pack raw Java socket demo paths and keep worker-pack focused on
 real capabilities plus fault harness behavior. This roadmap turns that decision
 into a harder external actor contract.

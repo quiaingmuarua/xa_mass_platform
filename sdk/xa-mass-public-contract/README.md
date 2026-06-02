@@ -35,4 +35,4 @@ Controller method and route role.
 - `TaskSharedConfigKeys`
 
 The extraction inventory is
-[../../doc/SDK_MODULE_LAYOUT_AND_PUBLIC_CONTRACT_INVENTORY.md](../../doc/SDK_MODULE_LAYOUT_AND_PUBLIC_CONTRACT_INVENTORY.md).
+[../../doc/archive/sdk/2026-06-02_SDK_MODULE_LAYOUT_AND_PUBLIC_CONTRACT_INVENTORY.md](../../doc/archive/sdk/2026-06-02_SDK_MODULE_LAYOUT_AND_PUBLIC_CONTRACT_INVENTORY.md).

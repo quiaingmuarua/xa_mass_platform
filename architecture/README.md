@@ -30,6 +30,8 @@ Use this guide when you want to answer practical questions:
 After this directory, use the owner documents for precise contracts:
 
 - external Java SDK: [`../sdk/xa-mass-java-sdk/README.md`](../sdk/xa-mass-java-sdk/README.md)
+- SDK module map: [`../sdk/README.md`](../sdk/README.md)
+- integrations module map: [`../integrations/README.md`](../integrations/README.md)
 - SDK embedding: [`../sdk/xa-mass-embedded-sdk/README.md`](../sdk/xa-mass-embedded-sdk/README.md)
 - HTTP/API contracts: [`../doc/INTERNAL_API_REFERENCE.md`](../doc/INTERNAL_API_REFERENCE.md)
 - external worker protocol: [`../doc/EXTERNAL_WORKER_QUICKSTART.md`](../doc/EXTERNAL_WORKER_QUICKSTART.md)
@@ -79,6 +81,10 @@ Use the SDK first:
 
 - `xa-mass-java-sdk` is the recommended external Java surface for task
   producers and worker processes that connect to a running server.
+- `integrations/xa-mass-scenario-launcher` is the primary executable proof of
+  that external Java SDK path.
+- `integrations/xa-mass-worker-pack` owns reusable worker capability code and
+  dev/E2E harness support; it is not an SDK module.
 - `xa-mass-embedded-sdk` is the recommended JVM embedding surface for in-process
   runtime composition.
 - `xa-mass-server` is the reference Boot host and lightweight backend product
