@@ -153,7 +153,7 @@ lease behavior, and the matching chaos runners cover real runtime recovery.
 ## Phase 4 - Transport And Storage Breadth
 
 Goal: transport adapters and persistent storage paths have broader parity with
-the default memory and current adapter paths.
+the embedded memory, Redis runtime, and current adapter paths.
 
 | Item | Lane | Scope |
 | --- | --- | --- |
@@ -213,7 +213,7 @@ Phase 1 stays highest priority because unrun probes do not protect mainline.
 
 ## Non-Goals
 
-- treating Redis runtime as the default verified runtime path
+- silently replacing the embedded memory default with Redis in every test lane
 - frontend or GUI testing beyond existing lint, type, unit, and build lanes
 - bigger-scale load expansion before the current perf smoke baselines become
   insufficient

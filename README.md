@@ -139,7 +139,8 @@ Current integration boundary rule:
 - `Task.project`, `Task.user`, and `Task.sharedConfig` are task-level truth; runtime ingress payload or `payloadRef` is the per-item payload boundary
 - `TaskWorkRuntime` is the current hot-path owner for ready work, active lease, retry scheduling, expiry, and backpressure truth
 - result convergence remains runtime-first; verify the lifecycle split between
-  runtime apply truth, stable-final result rows, and compatibility residue from
+  runtime apply truth, stable-final result rows, and server-local review
+  materialization from
   [`doc/TASK_LIFECYCLE_BASELINE.md`](./doc/TASK_LIFECYCLE_BASELINE.md)
 - Verified lifecycle coverage includes `NEW -> READY -> RUNNING -> TERMINAL`, `NEW -> READY -> PAUSED -> READY`, and `NEW -> BLOCKED -> READY`
 
@@ -148,8 +149,8 @@ Current integration boundary rule:
 - `xa-mass-base`: shared base models, enums, utility infrastructure, and low-level channel primitives used across the reactor
 - `platform_infra/mass-queue-primitives`: narrow keyed queue/blocking-poll/backpressure primitive used by runtime modules that should not own queue bookkeeping directly
 - `platform_infra/mass-runtime-api`: shared runtime queue/lease/counter contracts plus the active result-runtime boundary used by engine, transport, server, and test shells
-- `platform_infra/mass-runtime-memory`: in-memory runtime implementations for the current default embedded path and focused runtime tests
-- `platform_infra/mass-runtime-redis`: Redis-backed runtime implementations plus their keyspace/index baseline; explicit opt-in, not the current default verified runtime path
+- `platform_infra/mass-runtime-memory`: in-memory runtime implementations for the embedded default path and focused runtime tests
+- `platform_infra/mass-runtime-redis`: Redis-backed runtime implementations plus their keyspace/index baseline; used by the compose/local distributed verification path and explicit Redis runtime profiles
 - `xa-mass-kernel-spi`: kernel-facing task shell runtime ports and matching rule value contracts used to keep engine production detached from storage modules
 - `platform_infra/mass-storage-api`: persistence/control-plane task shell and rule storage contracts; not a kernel-facing engine dependency and not a worker declaration owner
 - `platform_infra/mass-storage-memory`: in-memory control-plane task shell storage, worker declaration adapter, and rule-definition storage used by SDK/server defaults and focused tests

@@ -23,6 +23,19 @@ models, bootstrap fixtures, transport frames, or embedded runtime assembly types
 in this module. A type belongs here only when this README records the owning
 Controller method and route role.
 
+## DTO Shape Decision
+
+Task request DTOs in the current first slice remain Java classes with
+JavaBean setters plus builder helpers. This is intentional for the current
+internal staging level because server-side Controller binding and
+`UnknownFieldRequest` capture are part of the public wire-contract validation
+path.
+
+Do not fork these request DTOs into immutable Java-SDK-local copies. If this
+shape becomes unsuitable for public registry publication, create a separate
+public-contract DTO-shape roadmap before changing `UnknownFieldRequest` or the
+task request class model.
+
 ## Current First Slice
 
 | Type | Controller method | Route role |

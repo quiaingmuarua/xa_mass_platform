@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -31,6 +32,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WebSocketWorkerSessionTest {
@@ -129,6 +131,82 @@ class WebSocketWorkerSessionTest {
         assertFalse(observed.contains("POST /worker-api/v1/workers/ws-worker-001:offline"));
         assertFalse(observed.contains("POST /worker-api/v1/workers/ws-worker-001:report-capability"));
         assertFalse(observed.contains("POST /worker-api/v1/workers/ws-worker-001:report-state"));
+        assertTrue(webSocket.isOutputClosed(), "close should send a best-effort WebSocket close frame");
+    }
+
+    @Test
+    void webSocketBuilderInheritsPlatformConnectionClientAndMapperDefaults() {
+        HttpClient platformHttpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(123))
+                .build();
+        ObjectMapper platformMapper = new ObjectMapper().findAndRegisterModules();
+        MassPlatform platform = MassPlatform.builder()
+                .baseUrl("http://localhost:8088")
+                .apiKey("mass_sk_worker")
+                .connectTimeout(Duration.ofMillis(321))
+                .httpClient(platformHttpClient)
+                .objectMapper(platformMapper)
+                .build();
+
+        WebSocketWorkerSession session = platform.workerSessions().webSocket()
+                .workerId("ws-worker-001")
+                .workerGroupId("realtime-probe")
+                .adapterNodeId("ws-node-sg-1")
+                .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
+                .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of()))
+                .buildUnstarted();
+
+        assertEquals(Duration.ofMillis(321), session.connectTimeout());
+        assertSame(platformHttpClient, session.httpClient());
+        assertSame(platformMapper, session.objectMapper());
+    }
+
+    @Test
+    void explicitWebSocketBuilderOverridesWinOverPlatformDefaults() {
+        HttpClient platformHttpClient = HttpClient.newHttpClient();
+        ObjectMapper platformMapper = new ObjectMapper().findAndRegisterModules();
+        HttpClient overrideHttpClient = HttpClient.newHttpClient();
+        ObjectMapper overrideMapper = new ObjectMapper().findAndRegisterModules();
+        MassPlatform platform = MassPlatform.builder()
+                .baseUrl("http://localhost:8088")
+                .apiKey("mass_sk_worker")
+                .connectTimeout(Duration.ofMillis(321))
+                .httpClient(platformHttpClient)
+                .objectMapper(platformMapper)
+                .build();
+
+        WebSocketWorkerSession session = platform.workerSessions().webSocket()
+                .workerId("ws-worker-001")
+                .workerGroupId("realtime-probe")
+                .adapterNodeId("ws-node-sg-1")
+                .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
+                .connectTimeout(Duration.ofMillis(654))
+                .httpClient(overrideHttpClient)
+                .objectMapper(overrideMapper)
+                .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of()))
+                .buildUnstarted();
+
+        assertEquals(Duration.ofMillis(654), session.connectTimeout());
+        assertSame(overrideHttpClient, session.httpClient());
+        assertSame(overrideMapper, session.objectMapper());
+    }
+
+    @Test
+    void reconnectBackoffReachesConfiguredMaximum() {
+        WebSocketWorkerSession session = WebSocketWorkerSession.builder(dummyWorkerClient())
+                .workerId("ws-worker-001")
+                .workerGroupId("realtime-probe")
+                .adapterNodeId("ws-node-sg-1")
+                .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
+                .reconnectBackoff(Duration.ofMillis(500))
+                .maxReconnectBackoff(Duration.ofSeconds(10))
+                .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of()))
+                .buildUnstarted();
+
+        assertEquals(Duration.ofMillis(500), session.connectionBackoff(1));
+        assertEquals(Duration.ofSeconds(8), session.connectionBackoff(5));
+        assertEquals(Duration.ofSeconds(10), session.connectionBackoff(6));
+        assertEquals(Duration.ofSeconds(10), session.connectionBackoff(20));
     }
 
     @Test
@@ -156,6 +234,52 @@ class WebSocketWorkerSessionTest {
                     """, true).toCompletableFuture().get(1, TimeUnit.SECONDS);
 
             assertFalse(resultSent.await(150, TimeUnit.MILLISECONDS), "control frame should not emit a result");
+            assertTrue(webSocket.sentTexts().isEmpty());
+        }
+    }
+
+    @Test
+    void invalidFrameReportsFrameFailureWithoutConnectionFailure() throws Exception {
+        CountDownLatch frameFailed = new CountDownLatch(1);
+        AtomicReference<WebSocket.Listener> listenerRef = new AtomicReference<>();
+        AtomicReference<WorkerSessionFrameFailure> frameFailure = new AtomicReference<>();
+        AtomicReference<WorkerSessionConnectionFailure> connectionFailure = new AtomicReference<>();
+        RecordingWebSocket webSocket = new RecordingWebSocket(new CountDownLatch(1));
+        startRealtimeControlPlaneServer();
+
+        try (WebSocketWorkerSession ignored = platform().workerSessions().webSocket()
+                .workerId("ws-worker-001")
+                .workerGroupId("realtime-probe")
+                .adapterNodeId("ws-node-sg-1")
+                .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
+                .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of()))
+                .connectTimeout(Duration.ofSeconds(1))
+                .listener(new WorkerSessionListener() {
+                    @Override
+                    public void onFrameFailure(WorkerSessionFrameFailure failure) {
+                        frameFailure.set(failure);
+                        frameFailed.countDown();
+                    }
+
+                    @Override
+                    public void onConnectionFailure(WorkerSessionConnectionFailure failure) {
+                        connectionFailure.set(failure);
+                    }
+                })
+                .webSocketConnector((uri, listener) -> {
+                    listenerRef.set(listener);
+                    listener.onOpen(webSocket);
+                    return CompletableFuture.completedFuture(webSocket);
+                })
+                .start()) {
+            listenerRef.get().onText(webSocket, "{not-json", true)
+                    .toCompletableFuture().get(1, TimeUnit.SECONDS);
+
+            assertTrue(frameFailed.await(2, TimeUnit.SECONDS), "invalid frame should be reported");
+            assertEquals("ws-worker-001", frameFailure.get().workerId());
+            assertEquals("{not-json", frameFailure.get().frame());
+            assertNotNull(frameFailure.get().cause());
+            assertEquals(null, connectionFailure.get(), "frame decode failure must not be connection failure");
             assertTrue(webSocket.sentTexts().isEmpty());
         }
     }
@@ -326,11 +450,66 @@ class WebSocketWorkerSessionTest {
         }
     }
 
+    @Test
+    void successfulReconnectReportsConnectionRecovered() throws Exception {
+        CountDownLatch recovered = new CountDownLatch(1);
+        AtomicInteger connectAttempts = new AtomicInteger();
+        AtomicReference<WebSocket.Listener> listenerRef = new AtomicReference<>();
+        RecordingWebSocket firstSocket = new RecordingWebSocket(new CountDownLatch(1));
+        RecordingWebSocket secondSocket = new RecordingWebSocket(new CountDownLatch(1));
+        startRealtimeControlPlaneServer();
+
+        WebSocketWorkerSession session = platform().workerSessions().webSocket()
+                .workerId("ws-worker-001")
+                .workerGroupId("realtime-probe")
+                .adapterNodeId("ws-node-sg-1")
+                .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
+                .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of()))
+                .connectTimeout(Duration.ofMillis(100))
+                .reconnectBackoff(Duration.ofMillis(10))
+                .listener(new WorkerSessionListener() {
+                    @Override
+                    public void onConnectionRecovered(String workerId) {
+                        if ("ws-worker-001".equals(workerId)) {
+                            recovered.countDown();
+                        }
+                    }
+                })
+                .webSocketConnector((uri, listener) -> {
+                    int attempt = connectAttempts.incrementAndGet();
+                    listenerRef.set(listener);
+                    if (attempt == 1) {
+                        listener.onOpen(firstSocket);
+                        return CompletableFuture.completedFuture(firstSocket);
+                    }
+                    listener.onOpen(secondSocket);
+                    return CompletableFuture.completedFuture(secondSocket);
+                })
+                .start();
+        try {
+            listenerRef.get().onClose(firstSocket, 1006, "test-disconnect").toCompletableFuture()
+                    .get(1, TimeUnit.SECONDS);
+
+            assertTrue(recovered.await(2, TimeUnit.SECONDS), "successful reconnect should report recovery");
+            assertEquals(2, connectAttempts.get());
+            assertTrue(session.isRunning());
+        } finally {
+            session.close();
+        }
+    }
+
     private MassPlatform platform() {
         return MassPlatform.builder()
                 .baseUrl("http://127.0.0.1:" + server.getAddress().getPort())
                 .apiKey("mass_sk_worker")
                 .build();
+    }
+
+    private static com.xa.mass.client.worker.WorkerClient dummyWorkerClient() {
+        return MassPlatform.builder()
+                .baseUrl("http://localhost:8088")
+                .build()
+                .workers();
     }
 
     private void startRealtimeControlPlaneServer() throws IOException {

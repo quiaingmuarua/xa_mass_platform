@@ -1,6 +1,18 @@
 # Java External SDK Public Hardening Roadmap
 
-Status: proposed implementation roadmap.
+Archived: 2026-06-02.
+
+Current truth owner:
+
+- `sdk/xa-mass-java-sdk/README.md`
+- `sdk/xa-mass-java-sdk/EXTERNAL_SDK_QUICKSTART.md`
+- `sdk/xa-mass-public-contract/README.md`
+- `roadmap/JAVA_EXTERNAL_SDK_REALTIME_SESSION_HARDENING_DECISION.md`
+
+Do not use this archived roadmap as proof of current behavior. Verify current
+code, tests, owner READMEs, and the active realtime session decision.
+
+Status: archived implemented roadmap.
 
 This roadmap hardens `sdk/xa-mass-java-sdk` from an internally usable external
 SDK into a more reliable public-facing Java SDK surface. It is scoped to SDK
@@ -12,6 +24,13 @@ Companion inventory:
 
 Related direction:
 [JAVA_EXTERNAL_SDK_REALTIME_SESSION_HARDENING_DECISION.md](./JAVA_EXTERNAL_SDK_REALTIME_SESSION_HARDENING_DECISION.md).
+
+Execution note:
+
+- Keep the companion inventory current during every slice.
+- Do not treat inventory maintenance as a standalone implementation slice.
+- If a slice changes a public SDK method, callback, DTO, or verification
+  command, update README/quickstart examples in the same slice.
 
 ## Current Code Observations
 
@@ -115,45 +134,27 @@ public-contract DTO classes to records. First fix the concrete public SDK
 contract failures: compile-ready docs, listener semantics, platform config
 propagation, and managed-session consistency.
 
-## JSDKH-0 Inventory And Baseline Verification
-
-Scope:
-
-- Keep `JAVA_EXTERNAL_SDK_PUBLIC_HARDENING_INVENTORY.md` current while executing
-  this roadmap.
-- Confirm current code observations against source before each implementation
-  slice.
-- Establish the clean-checkout verification command.
-
-Acceptance:
-
-- Inventory lists first-slice symbols and target owner for each issue.
-- README verification uses `./mvnw -pl sdk/xa-mass-java-sdk -am test` as the
-  default SDK test command.
-- Current single-module command failure is either removed from README or
-  documented only as requiring a preinstalled `xa-mass-public-contract`.
-
-Verification:
-
-```powershell
-./mvnw -pl sdk/xa-mass-java-sdk -am test
-```
-
 ## JSDKH-1 Compile-Ready Public Docs
 
 Scope:
 
+- Confirm current code observations against source and keep the companion
+  inventory aligned with any first-slice changes.
 - Fix `sdk/xa-mass-java-sdk/README.md` stale examples:
   - use `TaskResultItem.output()`
   - replace nonexistent `onDispatchFailure` with real listener callbacks
   - use `WorkerSessionDispatchFailure.cause()` or explicit dispatch context
     access instead of nonexistent `message()`
 - Review `EXTERNAL_SDK_QUICKSTART.md` for the same API drift.
+- Replace the default README SDK verification command with
+  `./mvnw -pl sdk/xa-mass-java-sdk -am test`, or document the single-module
+  command only as requiring a preinstalled `xa-mass-public-contract`.
 - Keep SDK user lane references in root README, `sdk/README.md`, and
   `integrations/README.md` consistent.
 
 Acceptance:
 
+- Inventory lists first-slice symbols and target owner for each issue.
 - No active Markdown under `sdk/xa-mass-java-sdk` references nonexistent SDK
   methods from this inventory.
 - README verification commands are clean-checkout safe.
@@ -163,7 +164,7 @@ Acceptance:
 Verification:
 
 ```powershell
-rg -n "item\\.result\\(|onDispatchFailure|failure\\.message\\(" sdk/xa-mass-java-sdk -g "*.md"
+rg -n "item\\.result\\(|\\bonDispatchFailure\\s*\\(|failure\\.message\\(" sdk/xa-mass-java-sdk -g "*.md"
 ./mvnw -pl sdk/xa-mass-java-sdk -am test
 ```
 
@@ -174,6 +175,10 @@ Scope:
 - Add or reshape listener failure records so heartbeat failure, poll failure,
   connection failure, connection recovery, and frame/protocol failure are
   distinct enough for external callers.
+- Add `WorkerSessionListener.onConnectionRecovered(String workerId)` as the
+  public recovery callback for successful WebSocket reconnects. Keep it a
+  default no-op method so existing listener implementations remain source
+  compatible.
 - Update `PollingWorkerSession.heartbeatOnce()` so heartbeat failure no longer
   reports as poll failure with count `1`.
 - Update `WebSocketWorkerSession.handleFrame()` so frame decode/protocol
@@ -188,23 +193,28 @@ Acceptance:
   consecutive failure count if counted.
 - WebSocket frame/protocol failures are observable but do not trigger reconnect
   exhaustion by themselves.
+- Successful WebSocket reconnect calls `onConnectionRecovered(workerId)` after
+  the replacement connection is established and before queued-result sending
+  relies on the recovered socket.
 - Existing listener methods remain coherent; if methods are renamed or added,
   README and quickstart examples are updated in the same slice.
 - Tests cover heartbeat failure classification and WebSocket frame decode
-  classification.
+  classification, plus reconnect recovery callback behavior.
 
 Verification:
 
 ```powershell
-./mvnw -pl sdk/xa-mass-java-sdk -am "-Dtest=PollingWorkerSessionTest,WebSocketWorkerSessionTest,JavaExternalSdkArchitectureGuardTest" test
+./mvnw -pl sdk/xa-mass-java-sdk -am "-Dtest=PollingWorkerSessionTest,WebSocketWorkerSessionTest,JavaExternalSdkArchitectureGuardTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 ```
 
 ## JSDKH-3 Platform Configuration Propagation
 
 Scope:
 
-- Extend `WorkerSessions` construction so platform-level defaults can reach
-  session builders.
+- Change `WorkerSessions` construction to accept platform-level
+  `connectTimeout`, `HttpClient`, and `ObjectMapper` defaults.
+- Update `MassPlatform.build()` to construct `WorkerSessions` with the same
+  platform defaults used by `MassHttpClient`.
 - Propagate platform `connectTimeout` into `WebSocketWorkerSession.Builder`
   default unless the caller overrides it.
 - Propagate platform `HttpClient` into the default WebSocket connector unless
@@ -225,7 +235,7 @@ Acceptance:
 Verification:
 
 ```powershell
-./mvnw -pl sdk/xa-mass-java-sdk -am "-Dtest=MassPlatformTest,WebSocketWorkerSessionTest" test
+./mvnw -pl sdk/xa-mass-java-sdk -am "-Dtest=MassPlatformTest,WebSocketWorkerSessionTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 ```
 
 ## JSDKH-4 Managed Worker Registration Consistency
@@ -248,7 +258,7 @@ Acceptance:
 Verification:
 
 ```powershell
-./mvnw -pl sdk/xa-mass-java-sdk -am "-Dtest=PollingWorkerSessionTest,WebSocketWorkerSessionTest,WorkerClientTest" test
+./mvnw -pl sdk/xa-mass-java-sdk -am "-Dtest=PollingWorkerSessionTest,WebSocketWorkerSessionTest,WorkerClientTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 ```
 
 ## JSDKH-5 WebSocket Lifecycle And Result Queue Hardening
@@ -272,7 +282,7 @@ Acceptance:
 Verification:
 
 ```powershell
-./mvnw -pl sdk/xa-mass-java-sdk -am "-Dtest=WebSocketWorkerSessionTest" test
+./mvnw -pl sdk/xa-mass-java-sdk -am "-Dtest=WebSocketWorkerSessionTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 ```
 
 ## JSDKH-6 Public-Contract DTO Shape Decision
@@ -300,6 +310,13 @@ Acceptance:
 Verification:
 
 ```powershell
+rg -n "UnknownFieldRequest|mutable|unknown-field|unknown field" sdk/xa-mass-public-contract -g "*.md"
+rg -n "class Task.*Request extends UnknownFieldRequest|record Task.*Request" sdk/xa-mass-public-contract/src/main/java -g "*.java"
+```
+
+Secondary smoke if the decision changes public-contract docs or tests:
+
+```powershell
 ./mvnw -pl sdk/xa-mass-public-contract,sdk/xa-mass-java-sdk -am test
 ```
 
@@ -321,8 +338,8 @@ Acceptance:
 
 - Architecture guard still passes.
 - No active Markdown references stale `EXTERNAL_WORKER_QUICKSTART`,
-  `onDispatchFailure`, `item.result()`, or other removed listener/result
-  vocabulary.
+  `onDispatchFailure(...)`, `item.result()`, or other removed listener/result
+  method vocabulary.
 - Owner README files match implemented behavior.
 - Roadmap status can be changed to implemented only after residue scan and
   proof commands pass.
@@ -330,7 +347,7 @@ Acceptance:
 Verification:
 
 ```powershell
-rg -n "EXTERNAL_WORKER_QUICKSTART|onDispatchFailure|item\\.result\\(|failure\\.message\\(" -g "*.md" -g "!doc/archive/**" -g "!**/target/**"
+rg -n "EXTERNAL_WORKER_QUICKSTART|\\bonDispatchFailure\\s*\\(|item\\.result\\(|failure\\.message\\(" -g "*.md" -g "!doc/archive/**" -g "!**/target/**"
 ./mvnw -pl sdk/xa-mass-java-sdk -am test
 ./mvnw -pl integrations/xa-mass-scenario-launcher -am -DskipTests package
 ```

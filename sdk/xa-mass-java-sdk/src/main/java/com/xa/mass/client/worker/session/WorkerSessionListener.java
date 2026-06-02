@@ -22,7 +22,16 @@ public interface WorkerSessionListener {
     default void onPollFailure(WorkerSessionPollFailure failure) {
     }
 
+    default void onHeartbeatFailure(WorkerSessionHeartbeatFailure failure) {
+    }
+
     default void onConnectionFailure(WorkerSessionConnectionFailure failure) {
+    }
+
+    default void onConnectionRecovered(String workerId) {
+    }
+
+    default void onFrameFailure(WorkerSessionFrameFailure failure) {
     }
 
     default void onShutdownFailure(String workerId, Throwable failure) {

@@ -18,11 +18,21 @@ Current decision:
 - Worker-pack may consume SDK handler/session APIs, but worker-pack
   command/fault behavior must not become public SDK behavior.
 
+Current Java SDK WebSocket session hardening:
+
+- frame/protocol failures are reported through session listener callbacks and
+  do not increment connection-failure counters
+- successful reconnect reports `onConnectionRecovered(workerId)`
+- queued-result close and reconnect-exhaustion terminal outcomes are reported
+  through `onQueuedResultAbandoned(...)`
+- queue-full outcomes are reported through `onQueuedResultDropped(...)`
+- close sends a best-effort WebSocket close frame before terminal result
+  abandonment
+- platform `connectTimeout`, `HttpClient`, and `ObjectMapper` defaults flow
+  into WebSocket session builders unless explicitly overridden
+
 Open hardening topics:
 
-- queued-result close semantics
-- reconnect terminal outcomes
-- queue-full behavior
 - WebSocket result idempotency under reconnect
 - socket and Android host decisions
 - worker-pack convergence as an SDK consumer, not an SDK dependency
@@ -30,6 +40,6 @@ Open hardening topics:
 Verification before promotion:
 
 ```powershell
-mvn -pl sdk/xa-mass-java-sdk test
+mvn -pl sdk/xa-mass-java-sdk -am test
 mvn -pl xa-mass-server -am "-Dtest=JavaScenarioLauncherBlackBoxIntegrationTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 ```

@@ -53,6 +53,7 @@ public final class PollingWorkerSession implements AutoCloseable {
     private final WorkerResultSink resultSink;
     private final ScheduledExecutorService executor;
     private final AtomicBoolean running = new AtomicBoolean(false);
+    private final AtomicInteger consecutiveHeartbeatFailures = new AtomicInteger();
     private volatile boolean offlineOnClose;
 
     private PollingWorkerSession(Builder builder) {
@@ -109,6 +110,7 @@ public final class PollingWorkerSession implements AutoCloseable {
                     .workerId(workerId)
                     .adapterNodeId(adapterNodeId)
                     .workerGroupId(workerGroupId)
+                    .adapterId(adapterType)
                     .polling()
                     .attributes(attributes)
                     .build());
@@ -185,8 +187,10 @@ public final class PollingWorkerSession implements AutoCloseable {
         }
         try {
             workerClient.heartbeat(workerId, "polling-session-heartbeat");
+            consecutiveHeartbeatFailures.set(0);
         } catch (Throwable failure) {
-            listener.onPollFailure(new WorkerSessionPollFailure(workerId, 1, failure));
+            int failures = consecutiveHeartbeatFailures.incrementAndGet();
+            listener.onHeartbeatFailure(new WorkerSessionHeartbeatFailure(workerId, failures, failure));
         }
     }
 

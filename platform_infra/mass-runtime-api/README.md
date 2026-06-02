@@ -34,7 +34,9 @@ Status: current shared runtime contract module.
 - this module was extracted conservatively from `xa-mass-engine`
 - engine consumes this API directly and now requires runtime injection at `TaskManager` construction time
 - sdk/server bootstrap currently provide the default in-memory runtime implementation
-- `mass-runtime-memory` and `mass-runtime-redis` both implement this contract; the default verified embedded path remains in-memory
+- `mass-runtime-memory` and `mass-runtime-redis` both implement this contract;
+  the embedded default path remains in-memory, while compose/local distributed
+  verification uses Redis
 - `mass-runtime-memory` provides the JVM `InMemoryWorkerRegistry`
   implementation while the shared worker registry contract lives here
 - high-level worker-plane contracts live in

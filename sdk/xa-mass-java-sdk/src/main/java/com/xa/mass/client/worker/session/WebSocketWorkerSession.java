@@ -41,7 +41,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class WebSocketWorkerSession implements AutoCloseable {
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().findAndRegisterModules();
+    private static final ObjectMapper DEFAULT_OBJECT_MAPPER = new ObjectMapper().findAndRegisterModules();
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
 
@@ -64,6 +64,8 @@ public final class WebSocketWorkerSession implements AutoCloseable {
     private final WorkerSessionListener listener;
     private final WorkerEventHandlers eventHandlers;
     private final WorkerEventHandlerRuntime handlerRuntime;
+    private final ObjectMapper objectMapper;
+    private final HttpClient httpClient;
     private final WebSocketConnector webSocketConnector;
     private final ScheduledExecutorService executor;
     private final LinkedBlockingDeque<OutboundResult> outboundResults;
@@ -73,6 +75,7 @@ public final class WebSocketWorkerSession implements AutoCloseable {
     private final AtomicInteger consecutiveConnectionFailures = new AtomicInteger();
     private final AtomicLong connectionGeneration = new AtomicLong();
     private final AtomicReference<WebSocket> webSocket = new AtomicReference<>();
+    private final AtomicReference<QueuedResultTermination> queuedResultTermination = new AtomicReference<>();
 
     private WebSocketWorkerSession(Builder builder) {
         this.workerClient = builder.workerClient;
@@ -94,6 +97,8 @@ public final class WebSocketWorkerSession implements AutoCloseable {
         this.listener = builder.listener;
         this.eventHandlers = builder.eventHandlers.build();
         this.handlerRuntime = new WorkerEventHandlerRuntime(eventHandlers);
+        this.objectMapper = builder.objectMapper;
+        this.httpClient = builder.httpClient;
         this.webSocketConnector = builder.webSocketConnector == null
                 ? new DefaultWebSocketConnector(builder.httpClient, connectTimeout)
                 : builder.webSocketConnector;
@@ -164,12 +169,27 @@ public final class WebSocketWorkerSession implements AutoCloseable {
         return outboundResults.size();
     }
 
+    Duration connectTimeout() {
+        return connectTimeout;
+    }
+
+    HttpClient httpClient() {
+        return httpClient;
+    }
+
+    ObjectMapper objectMapper() {
+        return objectMapper;
+    }
+
     @Override
     public void close() {
         if (!running.getAndSet(false)) {
             return;
         }
         closing.set(true);
+        queuedResultTermination.compareAndSet(null, new QueuedResultTermination(
+                WorkerSessionQueuedResultFailure.Reason.SESSION_CLOSED,
+                new IllegalStateException("websocket session closed before queued result was sent")));
         WebSocket socket = webSocket.getAndSet(null);
         if (socket != null) {
             try {
@@ -188,8 +208,8 @@ public final class WebSocketWorkerSession implements AutoCloseable {
             Thread.currentThread().interrupt();
             executor.shutdownNow();
         }
-        abandonQueuedResults(WorkerSessionQueuedResultFailure.Reason.SESSION_CLOSED,
-                new IllegalStateException("websocket session closed before queued result was sent"));
+        QueuedResultTermination termination = queuedResultTermination.get();
+        abandonQueuedResults(termination.reason(), termination.cause());
     }
 
     private WebSocket connectWebSocket() throws ExecutionException, InterruptedException, TimeoutException {
@@ -207,6 +227,7 @@ public final class WebSocketWorkerSession implements AutoCloseable {
         }
         try {
             WebSocket socket = connectWebSocket();
+            listener.onConnectionRecovered(workerId);
             webSocket.set(socket);
         } catch (Throwable failure) {
             int failures = consecutiveConnectionFailures.incrementAndGet();
@@ -239,13 +260,13 @@ public final class WebSocketWorkerSession implements AutoCloseable {
                 if (outbound == null) {
                     continue;
                 }
-                WebSocket socket = webSocket.get();
-                if (socket == null) {
-                    if (!running.get() || closing.get()) {
-                        abandonResult(outbound, WorkerSessionQueuedResultFailure.Reason.SESSION_CLOSED,
-                                new IllegalStateException("websocket session closed before queued result was sent"));
-                        continue;
-                    }
+                    WebSocket socket = webSocket.get();
+                    if (socket == null) {
+                        if (!running.get() || closing.get()) {
+                            QueuedResultTermination termination = queuedResultTermination();
+                            abandonResult(outbound, termination.reason(), termination.cause());
+                            continue;
+                        }
                     outboundResults.offerFirst(outbound);
                     sleep(Duration.ofMillis(100L));
                     continue;
@@ -279,8 +300,7 @@ public final class WebSocketWorkerSession implements AutoCloseable {
         try {
             item = decodeDispatch(frame);
         } catch (Throwable failure) {
-            int failures = consecutiveConnectionFailures.incrementAndGet();
-            listener.onConnectionFailure(new WorkerSessionConnectionFailure(workerId, failures, failure));
+            listener.onFrameFailure(new WorkerSessionFrameFailure(workerId, frame, failure));
             return;
         }
         if (item == null) {
@@ -313,7 +333,7 @@ public final class WebSocketWorkerSession implements AutoCloseable {
     }
 
     private WorkerDispatchItem decodeDispatch(String frame) throws JsonProcessingException {
-        JsonNode root = OBJECT_MAPPER.readTree(frame);
+        JsonNode root = objectMapper.readTree(frame);
         String taskId = text(root, "taskId");
         String messageId = text(root, "messageId");
         if (taskId == null || messageId == null) {
@@ -338,7 +358,7 @@ public final class WebSocketWorkerSession implements AutoCloseable {
         );
     }
 
-    private static String encodeResult(DispatchContext dispatch, WorkerResult result) throws JsonProcessingException {
+    private String encodeResult(DispatchContext dispatch, WorkerResult result) throws JsonProcessingException {
         Map<String, Object> frame = new LinkedHashMap<>();
         frame.put("messageId", dispatch.messageId());
         frame.put("taskId", dispatch.taskId());
@@ -346,7 +366,7 @@ public final class WebSocketWorkerSession implements AutoCloseable {
         frame.put("detail", result.detail());
         frame.put("errorCode", result.errorCode());
         frame.put("output", result.output());
-        return OBJECT_MAPPER.writeValueAsString(frame);
+        return objectMapper.writeValueAsString(frame);
     }
 
     private URI connectUri() {
@@ -356,8 +376,9 @@ public final class WebSocketWorkerSession implements AutoCloseable {
                 + "&routeKey=" + encodeQuery(routeKey));
     }
 
-    private Duration connectionBackoff(int consecutiveFailures) {
-        long multiplier = Math.max(1L, Math.min(10L, consecutiveFailures));
+    Duration connectionBackoff(int consecutiveFailures) {
+        int exponent = Math.max(0, Math.min(30, consecutiveFailures - 1));
+        long multiplier = 1L << exponent;
         long millis = Math.min(maxReconnectBackoff.toMillis(), reconnectBackoff.toMillis() * multiplier);
         return Duration.ofMillis(Math.max(1L, millis));
     }
@@ -367,6 +388,8 @@ public final class WebSocketWorkerSession implements AutoCloseable {
     }
 
     private void stopAfterReconnectExhausted(Throwable cause) {
+        queuedResultTermination.compareAndSet(null, new QueuedResultTermination(
+                WorkerSessionQueuedResultFailure.Reason.RECONNECT_EXHAUSTED, cause));
         running.set(false);
         closing.set(true);
         WebSocket socket = webSocket.getAndSet(null);
@@ -374,6 +397,16 @@ public final class WebSocketWorkerSession implements AutoCloseable {
             socket.abort();
         }
         abandonQueuedResults(WorkerSessionQueuedResultFailure.Reason.RECONNECT_EXHAUSTED, cause);
+    }
+
+    private QueuedResultTermination queuedResultTermination() {
+        QueuedResultTermination termination = queuedResultTermination.get();
+        if (termination != null) {
+            return termination;
+        }
+        return new QueuedResultTermination(
+                WorkerSessionQueuedResultFailure.Reason.SESSION_CLOSED,
+                new IllegalStateException("websocket session closed before queued result was sent"));
     }
 
     private void abandonQueuedResults(WorkerSessionQueuedResultFailure.Reason reason, Throwable cause) {
@@ -401,11 +434,11 @@ public final class WebSocketWorkerSession implements AutoCloseable {
         }
     }
 
-    private static Map<String, Object> objectMap(JsonNode node) {
+    private Map<String, Object> objectMap(JsonNode node) {
         if (node == null || node.isNull() || node.isMissingNode()) {
             return Map.of();
         }
-        return OBJECT_MAPPER.convertValue(node, MAP_TYPE);
+        return objectMapper.convertValue(node, MAP_TYPE);
     }
 
     private static String text(JsonNode node, String fieldName) {
@@ -473,6 +506,7 @@ public final class WebSocketWorkerSession implements AutoCloseable {
         private WorkerEventHandlers.Builder eventHandlers = WorkerEventHandlers.builder();
         private WorkerSessionListener listener = WorkerSessionListener.NOOP;
         private HttpClient httpClient;
+        private ObjectMapper objectMapper = DEFAULT_OBJECT_MAPPER;
         private WebSocketConnector webSocketConnector;
         private ScheduledExecutorService executor;
 
@@ -597,6 +631,11 @@ public final class WebSocketWorkerSession implements AutoCloseable {
             return this;
         }
 
+        public Builder objectMapper(ObjectMapper objectMapper) {
+            this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper is required");
+            return this;
+        }
+
         Builder webSocketConnector(WebSocketConnector webSocketConnector) {
             this.webSocketConnector = Objects.requireNonNull(webSocketConnector, "webSocketConnector is required");
             return this;
@@ -673,6 +712,9 @@ public final class WebSocketWorkerSession implements AutoCloseable {
     }
 
     private record OutboundResult(DispatchContext dispatch, String frame) {
+    }
+
+    private record QueuedResultTermination(WorkerSessionQueuedResultFailure.Reason reason, Throwable cause) {
     }
 
     private static final class DefaultWebSocketConnector implements WebSocketConnector {

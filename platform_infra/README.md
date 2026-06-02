@@ -47,11 +47,11 @@ Current truth for this conservative first slice:
   `WorkerRegistry` / `WorkerSlot` contract and low-level worker registry
   primitives used by memory and Redis worker registry implementations. Higher
   level worker-plane contracts live in `xa-mass-worker-runtime`
-- `mass-runtime-memory` owns the current in-memory runtime implementations and
-  their focused tests
+- `mass-runtime-memory` owns the in-memory runtime implementations used by the
+  embedded default path and focused runtime tests
 - `mass-runtime-redis` now owns the Redis-backed runtime implementations plus
-  their keyspace/index baseline; it remains an explicit opt-in path outside the
-  verified default runtime mainline
+  their keyspace/index baseline; it is the current compose/local distributed
+  verification path and an explicit embedded/server runtime selection
 - `../xa-mass-kernel-spi` owns the kernel-facing task shell ports and
   worker-matching rule value contracts consumed by engine/runtime callers
 - `mass-storage-api` owns persistence/control-plane storage contracts such as

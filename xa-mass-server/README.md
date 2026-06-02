@@ -337,7 +337,7 @@ Observability:
 | `mass.storage.jdbc.url` | `jdbc:h2:mem:xa_mass;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false` | JDBC URL used when `mass.storage.mode` is a JDBC mode |
 | `mass.storage.jdbc.username` | `sa` | JDBC username |
 | `mass.storage.jdbc.password` | empty | JDBC password |
-| `mass.runtime.mode` | `memory` | engine runtime backend; `memory` is the default verified embedded path, `redis` opts into Redis-backed work/result runtime |
+| `mass.runtime.mode` | `memory` | engine runtime backend; `memory` is the embedded default, while `redis` selects Redis-backed work/result runtime used by the compose/local distributed verification path |
 | `mass.runtime.redis.namespace` | `xa:mass:runtime:v1` | Redis namespace prefix when `mass.runtime.mode=redis` |
 | `mass.runtime.redis.max-queued-items` | `1000000` | runtime work backpressure cap for the Redis-backed work runtime |
 | `mass.transport.node-id` | random UUID | server transport runtime node id; set explicitly when comparing Redis presence across restarts |
@@ -385,7 +385,7 @@ JDBC storage scope:
   contract
 - backend-parity tests should share one scenario body and vary only
   `mass.runtime.mode` plus backend-specific connection properties; do not copy
-  the same runtime semantics into separate memory-only and redis-only tests
+  the same runtime semantics into backend-specific duplicate tests
 - server-local persistence can use the `h2` profile together with the runnable
   server profile, for example `-Dspring.profiles.active=dev,h2`; this writes to
   `./data/xa-mass-h2/xa_mass` by default through `application-h2.yml`

@@ -1,7 +1,7 @@
 # mass-runtime-redis
 
-Status: current Redis runtime implementation for embedded/local opt-in use; not
-the default verified runtime mainline.
+Status: current Redis runtime implementation for compose/local distributed
+verification and explicit embedded/server runtime selection.
 
 ## Role
 
@@ -13,7 +13,10 @@ the default verified runtime mainline.
 
 ## Current Truth
 
-- the active verified runtime mainline is still `mass-runtime-memory`
+- Redis-backed runtime is the current compose/local distributed verification
+  path through the `redis-runtime` profile
+- embedded/server bootstrap still defaults to memory unless Redis is selected by
+  profile or builder wiring
 - this module now provides a real Redis-backed `TaskWorkRuntime`
 - this module now provides a contract-tested Redis-backed `WorkerRegistry`
   foundation using group-partitioned worker slot hashes and route buckets
@@ -42,4 +45,5 @@ the default verified runtime mainline.
 - preserve `WorkerRegistry` group-partitioned key ownership; do not introduce
   one global worker table or DB-row-style worker CRUD state here
 - keep Redis key/index ownership behind this module rather than spreading Redis-specific logic across engine, sdk, or server
-- do not silently replace the in-memory default; Redis remains explicit opt-in until broader runtime/perf verification says otherwise
+- do not silently replace the embedded in-memory default; Redis selection must
+  remain explicit through profile or builder wiring

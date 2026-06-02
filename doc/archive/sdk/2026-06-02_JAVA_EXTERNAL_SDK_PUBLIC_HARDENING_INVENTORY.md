@@ -1,6 +1,18 @@
 # Java External SDK Public Hardening Inventory
 
-Status: current code inventory for `JAVA_EXTERNAL_SDK_PUBLIC_HARDENING_ROADMAP.md`.
+Archived: 2026-06-02.
+
+Current truth owner:
+
+- `sdk/xa-mass-java-sdk/README.md`
+- `sdk/xa-mass-java-sdk/EXTERNAL_SDK_QUICKSTART.md`
+- `sdk/xa-mass-public-contract/README.md`
+- `roadmap/JAVA_EXTERNAL_SDK_REALTIME_SESSION_HARDENING_DECISION.md`
+
+Do not use this archived inventory as proof of current behavior. Verify current
+code, tests, owner READMEs, and the active realtime session decision.
+
+Status: archived implemented inventory for `JAVA_EXTERNAL_SDK_PUBLIC_HARDENING_ROADMAP.md`.
 
 This inventory records the first hardening set for `sdk/xa-mass-java-sdk` as
 verified from current source on 2026-06-02. It is not proof that the target

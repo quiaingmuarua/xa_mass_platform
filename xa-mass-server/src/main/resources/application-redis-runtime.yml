@@ -1,4 +1,5 @@
-# Redis-backed runtime profile for local observability and restart diagnostics.
+# Redis-backed runtime profile for local distributed verification,
+# observability, and restart diagnostics.
 #
 # Use with the runnable server profile, for example:
 #   -Dspring.profiles.active=dev,redis-runtime

@@ -127,7 +127,11 @@ Boundary rules:
 - current runtime/storage split:
   - `platform_infra/mass-runtime-api` owns queue/lease/counter contracts plus
     the active result-runtime boundary
-  - `platform_infra/mass-runtime-memory` is the current verified runtime implementation
+  - `platform_infra/mass-runtime-memory` owns the embedded default runtime
+    implementation and focused runtime contract tests
+  - `platform_infra/mass-runtime-redis` owns the Redis-backed runtime used by
+    the current local distributed verification path and Redis parity/restart
+    proof
   - `xa-mass-kernel-spi` owns kernel-facing task shell ports and matching rule
     value contracts
   - `platform_infra/mass-storage-api` owns persistence/control-plane task shell

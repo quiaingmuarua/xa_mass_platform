@@ -172,6 +172,8 @@ For realtime paths:
 - online presence comes from the transport connection, not the register call
 - keep local handler resolution keyed by `eventCode`
 - do not treat adapter frame fields as a second business capability model
+- Java SDK session listeners distinguish heartbeat, poll, frame/protocol,
+  connection, recovery, submit, and queued-result terminal outcomes
 
 ## 6. Local Validation Entry
 

@@ -59,7 +59,8 @@ Current implemented surface:
   adapter/node registration, node/group binding, realtime worker registration,
   JDK WebSocket connection, canonical task dispatch frame handling, queued
   result frame submission, bounded reconnect attempts, queue-full reporting,
-  and queued-result terminal callbacks on close or reconnect exhaustion.
+  heartbeat/frame/connection lifecycle callbacks, and queued-result terminal
+  callbacks on close or reconnect exhaustion.
   Realtime worker presence is transport-owned; the session does not call
   polling-only online, heartbeat, capability report, state report, or offline
   APIs.
@@ -164,7 +165,7 @@ TaskResultWindow window = mass.tasks().results(task.taskId(),
                 .build());
 
 for (TaskResultItem item : window.items()) {
-    System.out.println(item.result());
+    System.out.println(item.output());
 }
 ```
 
@@ -241,7 +242,12 @@ uses the same handler runtime and routes handler results through a session-owned
 outbound frame queue. Queue-full outcomes are reported through
 `WorkerSessionListener.onQueuedResultDropped(...)`; queued results that cannot
 be submitted because the session closes or reconnect is exhausted are reported
-through `WorkerSessionListener.onQueuedResultAbandoned(...)`.
+through `WorkerSessionListener.onQueuedResultAbandoned(...)`. WebSocket close
+uses a best-effort close frame and then drains or abandons queued results
+according to the session terminal reason.
+Session lifecycle callbacks distinguish poll failure, heartbeat failure,
+connection failure, connection recovery, frame/protocol failure, handler
+failure, submit failure, queued-result drop, and queued-result abandonment.
 
 Managed WebSocket worker session:
 
@@ -278,8 +284,13 @@ PollingWorkerSession session = mass.workerSessions().polling()
         .adapterNodeId("phone-poll-node-sg-1")
         .listener(new WorkerSessionListener() {
             @Override
-            public void onDispatchFailure(WorkerSessionDispatchFailure failure) {
-                System.err.println(failure.message());
+            public void onHandlerFailure(WorkerSessionDispatchFailure failure) {
+                System.err.println(failure.cause().getMessage());
+            }
+
+            @Override
+            public void onSubmitFailure(WorkerSessionDispatchFailure failure) {
+                System.err.println(failure.cause().getMessage());
             }
         })
         .event("probe.phone.metadata", dispatch -> WorkerResult.success(Map.of()))
@@ -300,9 +311,9 @@ Timeouts and remote errors are reported through
 From repo root:
 
 ```bash
-./mvnw -pl sdk/xa-mass-java-sdk test
-./mvnw -pl sdk/xa-mass-java-sdk dependency:tree
-./mvnw -pl sdk/xa-mass-java-sdk -DskipTests source:jar javadoc:jar
+./mvnw -pl sdk/xa-mass-java-sdk -am test
+./mvnw -pl sdk/xa-mass-java-sdk -am dependency:tree
+./mvnw -pl sdk/xa-mass-java-sdk -am -DskipTests source:jar javadoc:jar
 ./mvnw -f sdk/xa-mass-java-sdk/pom.consumer.xml -DskipTests package
 ./mvnw -pl integrations/xa-mass-scenario-launcher -am -DskipTests package
 ```

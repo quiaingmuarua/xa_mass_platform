@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -75,6 +76,8 @@ class PollingWorkerSessionTest {
                 JsonNode request = OBJECT_MAPPER.readTree(body);
                 assertEquals("phone-worker-sg-001", request.get("workerId").asText());
                 assertEquals("phone-device-probe", request.get("workerGroupId").asText());
+                assertEquals("polling", request.get("adapterId").asText());
+                assertEquals("polling", request.get("transportHint").asText());
                 assertEquals("fp-android-13-sg", request.get("attributes").get("fingerprint").asText());
                 respond(exchange, 200, """
                         {"code":0,"msg":"ok","data":{"workerId":"phone-worker-sg-001","adapterNodeId":"phone-node-sg-1","workerGroupId":"phone-device-probe","adapterId":"polling","transportHint":"polling"}}
@@ -215,6 +218,85 @@ class PollingWorkerSessionTest {
                 "POST /worker-api/v1/adapter-nodes",
                 "POST /worker-api/v1/node-group-bindings"
         ), observed);
+    }
+
+    @Test
+    void heartbeatFailureUsesDedicatedCallbackAndDoesNotReportPollFailure() throws Exception {
+        CountDownLatch heartbeatFailed = new CountDownLatch(1);
+        AtomicReference<WorkerSessionHeartbeatFailure> heartbeatFailure = new AtomicReference<>();
+        AtomicBoolean pollFailureReported = new AtomicBoolean(false);
+        AtomicInteger heartbeatAttempts = new AtomicInteger();
+        startServer(exchange -> {
+            String path = exchange.getRequestURI().getRawPath();
+            readBody(exchange);
+            if ("/worker-api/v1/adapter-nodes".equals(path)) {
+                respond(exchange, 200, """
+                        {"code":0,"msg":"ok","data":{"adapterNodeId":"node-1","adapterType":"polling","endpointId":"node-1","enabled":true,"online":true,"attributes":{}}}
+                        """);
+                return;
+            }
+            if ("/worker-api/v1/node-group-bindings".equals(path)) {
+                respond(exchange, 200, """
+                        {"code":0,"msg":"ok","data":{"adapterNodeId":"node-1","workerGroupId":"group-1","enabled":true,"draining":false,"attributes":{}}}
+                        """);
+                return;
+            }
+            if ("/worker-api/v1/workers".equals(path)) {
+                respond(exchange, 200, """
+                        {"code":0,"msg":"ok","data":{"workerId":"worker-1","adapterNodeId":"node-1","workerGroupId":"group-1","adapterId":"polling","transportHint":"polling"}}
+                        """);
+                return;
+            }
+            if (path.endsWith(":online") || path.endsWith(":report-capability") || path.endsWith(":report-state")
+                    || path.endsWith(":offline")) {
+                respond(exchange, 200, """
+                        {"code":0,"msg":"ok","data":{"workerId":"worker-1","accepted":true}}
+                        """);
+                return;
+            }
+            if (path.endsWith(":heartbeat")) {
+                heartbeatAttempts.incrementAndGet();
+                respond(exchange, 500, "heartbeat failed");
+                return;
+            }
+            if (path.endsWith(":poll")) {
+                respond(exchange, 200, """
+                        {"code":0,"msg":"ok","data":{"workerId":"worker-1","total":0,"items":[]}}
+                        """);
+                return;
+            }
+            respond(exchange, 404, "unexpected " + path);
+        });
+
+        WorkerSessionListener listener = new WorkerSessionListener() {
+            @Override
+            public void onHeartbeatFailure(WorkerSessionHeartbeatFailure failure) {
+                heartbeatFailure.set(failure);
+                heartbeatFailed.countDown();
+            }
+
+            @Override
+            public void onPollFailure(WorkerSessionPollFailure failure) {
+                pollFailureReported.set(true);
+            }
+        };
+
+        try (PollingWorkerSession ignored = platform().workerSessions().polling()
+                .workerId("worker-1")
+                .workerGroupId("group-1")
+                .adapterNodeId("node-1")
+                .event("probe.phone.metadata", dispatch -> WorkerResult.success(Map.of()))
+                .pollInterval(Duration.ofMillis(20))
+                .heartbeatInterval(Duration.ofMillis(20))
+                .listener(listener)
+                .start()) {
+            assertTrue(heartbeatFailed.await(2, TimeUnit.SECONDS), "heartbeat failure should be reported");
+        }
+
+        assertEquals("worker-1", heartbeatFailure.get().workerId());
+        assertEquals(1, heartbeatFailure.get().consecutiveFailures());
+        assertTrue(heartbeatAttempts.get() >= 1);
+        assertFalse(pollFailureReported.get(), "heartbeat failure must not be reported as poll failure");
     }
 
     @Test

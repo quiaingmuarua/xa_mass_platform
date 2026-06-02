@@ -1,6 +1,7 @@
 # Redis Runtime Baseline
 
-Status: design/refactor reference, not current verified runtime behavior.
+Status: Redis keyspace/design reference. Verify current behavior through the
+implementation and runtime contract tests.
 
 This file documents the Redis ownership model for the Redis-backed
 `TaskWorkRuntime` implementation so the runtime path can evolve without

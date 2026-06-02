@@ -41,7 +41,7 @@ public final class MassPlatform {
         );
         this.taskClient = new TaskClient(httpClient);
         this.workerClient = new WorkerClient(httpClient);
-        this.workerSessions = new WorkerSessions(workerClient);
+        this.workerSessions = new WorkerSessions(workerClient, connectTimeout, client, objectMapper);
     }
 
     public static Builder builder() {
