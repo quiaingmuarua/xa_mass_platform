@@ -1,6 +1,6 @@
 # XA Mass Platform Verified Runbook
 
-Last updated: 2026-05-18
+Last updated: 2026-06-02
 
 Status: current verified runtime runbook.
 
@@ -350,6 +350,47 @@ Polling worker mode:
 xa-mass-testing/scripts/run-sdk-transport-load.sh -Dmass.sdk.load.transport=polling
 ```
 
+Polling mode-specific scenario row, verified from `xa-mass-testing/` module directory:
+
+```bash
+cd xa-mass-testing
+..\mvnw.cmd -Dexec.classpathScope=compile -Dmaven.test.skip=true -Dmass.sdk.load.forceExit=false -Dmass.sdk.load.scenarioId=sdk-transport-load-polling -Dmass.sdk.load.tasks=1 -Dmass.sdk.load.messagesPerTask=1 -Dmass.sdk.load.workers=1 -Dmass.sdk.load.batchSize=1 -Dmass.sdk.load.pollBatchSize=1 -Dmass.sdk.load.timeoutSeconds=20 -Dmass.sdk.load.processingDelayMillis=0 compile org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.concurrency.SdkTransportLoadRunner
+```
+
+Verified evidence:
+
+- report: `xa-mass-testing/target/concurrency-reports/sdk-transport-load-polling-*.json`
+- `scenarioId=sdk-transport-load-polling`
+- top-level `transport=polling`
+- `actualTransport=polling`
+- `config.scenarioId=sdk-transport-load-polling`
+- `runtimeBackend=memory`
+- `workerProfile=NORMAL`
+- `faultShape=delivery-diagnostics`
+- one terminal task with `ALL_MESSAGES_SUCCEEDED`
+
+WebSocket transport churn scenario row, verified from `xa-mass-testing/` module directory:
+
+```bash
+cd xa-mass-testing
+..\mvnw.cmd -Dexec.classpathScope=compile -Dmaven.test.skip=true -Dmass.sdk.load.forceExit=false -Dmass.sdk.load.scenarioId=sdk-transport-load-websocket-churn -Dmass.sdk.load.tasks=1 -Dmass.sdk.load.messagesPerTask=1 -Dmass.sdk.load.workers=1 -Dmass.sdk.load.batchSize=1 -Dmass.sdk.load.workerProcessingThreads=1 -Dmass.sdk.load.processingDelayMillis=20 -Dmass.sdk.load.timeoutSeconds=25 compile org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.concurrency.SdkTransportLoadRunner
+```
+
+Verified evidence:
+
+- report: `xa-mass-testing/target/concurrency-reports/sdk-transport-load-websocket-*.json`
+- `scenarioId=sdk-transport-load-websocket-churn`
+- top-level `transport=websocket`
+- `actualTransport=websocket`
+- `config.scenarioId=sdk-transport-load-websocket-churn`
+- `runtimeBackend=memory`
+- `workerProfile=FLAKY_TRANSPORT`
+- `faultShape=transport-connection-churn`
+- `workerMetrics.transportChurnDisconnects=1`
+- `workerMetrics.transportChurnReconnects=1`
+- one terminal task with `ALL_MESSAGES_SUCCEEDED`
+- `deliveryQueue.directFailedItems=0`
+
 WebSocket worker mode:
 
 ```bash
@@ -361,6 +402,26 @@ Socket worker mode:
 ```bash
 xa-mass-testing/scripts/run-sdk-transport-load.sh -Dmass.sdk.load.transport=socket
 ```
+
+SDK polling scheduling soak noisy mixed-result row:
+
+Verified from `xa-mass-testing/` module directory:
+
+```bash
+cd xa-mass-testing
+..\mvnw.cmd -Dexec.classpathScope=compile -Dmaven.test.skip=true -Dmass.soak.forceExit=false -Dmass.soak.scenarioId=polling-soak-noisy-mixed-result -Dmass.soak.durationSeconds=1 -Dmass.soak.workerCount=1 -Dmass.soak.initialWorkerCount=1 -Dmass.soak.groupCount=1 -Dmass.soak.eventCodeCount=1 -Dmass.soak.submitRatePerSecond=1 -Dmass.soak.messagesPerTask=5 -Dmass.soak.pollBatchSize=1 -Dmass.soak.processingDelayMillis=0 -Dmass.soak.trace=false compile org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.soak.SdkPollingSchedulingSoakRunner
+```
+
+Verified evidence:
+
+- report: `xa-mass-testing/target/soak-reports/polling-scheduling-soak-*.json`
+- `config.scenarioId=polling-soak-noisy-mixed-result`
+- `proof.matrixProfile.scenarioId=polling-soak-noisy-mixed-result`
+- `workerProfile=NOISY`
+- `faultShape=noisy-mixed-result`
+- `failureProfile=every-5`
+- `processingJitterSeed=20260602`
+- one terminal mixed-result task with five visible results, four successes, and one synthetic failure
 
 SDK WebSocket disconnect/reconnect chaos harness:
 
@@ -377,10 +438,66 @@ cd xa-mass-testing
 ..\mvnw.cmd -Dexec.classpathScope=compile -Dmaven.test.skip=true -Dmass.sdk.chaos.taskMessageLeaseSeconds=2 -Dmass.sdk.chaos.timeoutSeconds=30 org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.chaos.SdkWebSocketLeaseExpiryRedispatchChaosRunner
 ```
 
+SDK polling Redis runtime owner restart/reconnect chaos harness:
+
+Verified from `xa-mass-testing/` module directory:
+
+```bash
+cd xa-mass-testing
+..\mvnw.cmd -Dexec.classpathScope=compile -Dmaven.test.skip=true -Dmass.sdk.chaos.forceExit=false -Dmass.sdk.chaos.taskMessageLeaseSeconds=2 -Dmass.sdk.chaos.timeoutSeconds=30 compile org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.chaos.SdkPollingRedisRestartRecoveryChaosRunner
+```
+
+Verified evidence:
+
+- report: `xa-mass-testing/target/chaos-reports/sdk-polling-redis-restart-recovery-chaos-*.json`
+- `runtimeBackend=redis`
+- task reaches `TERMINAL` with `ALL_MESSAGES_SUCCEEDED`
+- final receipt shows `attempts=2` and `retryCount=1`
+- runtime counters show one successful final result and zero active leases
+- trace `droppedCount=0`
+- analyzer `lease-expiry-redispatch` returns `ok=true`
+
+Current PR chaos scenario-id gate:
+
+The current `chaos-smokes` gate resolves these scenario ids through
+`WorkerFaultScenarioCli` and source-guards their runner classes before
+execution:
+
+- `polling-lease-expiry-redispatch`
+- `websocket-lease-expiry-redispatch`
+- `websocket-late-stale-result-replay`
+
+Local direct `WorkerFaultScenarioCli` verification passed for all three rows
+with `mass.sdk.chaos.timeoutSeconds=30` and
+`mass.sdk.chaos.processingDelayMillis=10`. GitHub Actions runs the same gate in
+`.github/workflows/maven.yml` and uploads `target/chaos-reports`.
+
+Dropped-result/retry scenario alias:
+
+Verified from `xa-mass-testing/` module directory:
+
+```bash
+cd xa-mass-testing
+..\mvnw.cmd -Dexec.classpathScope=compile -Dmaven.test.skip=true -Dmass.sdk.chaos.forceExit=false -Dmass.sdk.chaos.timeoutSeconds=30 -Dmass.sdk.chaos.processingDelayMillis=10 compile org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.workerfault.WorkerFaultScenarioCli -Dexec.args=fault.dropped-result-retry
+```
+
+Verified evidence:
+
+- report: `xa-mass-testing/target/chaos-reports/sdk-polling-lease-expiry-redispatch-chaos-*.json`
+- `scenarioId=fault.dropped-result-retry`
+- `transport=polling`
+- `runtimeBackend=memory`
+- `workerProfile=STALL_LEASE_TAKEOVER`
+- `faultShape=dropped-result-retry`
+- task reaches `TERMINAL` with `ALL_MESSAGES_SUCCEEDED`
+- trace `droppedCount=0`
+- analyzer `lease-expiry-redispatch` returns `ok=true`
+
 Artifacts:
 
 - `perf`: `xa-mass-testing/target/perf-reports/`
 - SDK transport harness: `xa-mass-testing/target/concurrency-reports/`
+- polling soak: `xa-mass-testing/target/soak-reports/`
 - `chaos`: `xa-mass-testing/target/chaos-reports/`
 
 ## 6. Focused Regression Gate

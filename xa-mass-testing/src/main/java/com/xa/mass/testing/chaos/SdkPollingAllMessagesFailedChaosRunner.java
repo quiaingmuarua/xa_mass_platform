@@ -158,7 +158,8 @@ public final class SdkPollingAllMessagesFailedChaosRunner {
                 List<TraceAnalyzeResponse> analyses = ChaosTraceAnalysisPlanner.analyze(
                         traceArtifacts.outputDir(),
                         ChaosTraceAnalysisPlanner.ChaosProofProfile.ALL_FAILED_TERMINAL_CONVERGENCE,
-                        task.getTaskId()
+                        task.getTaskId(),
+                        traceArtifacts.droppedCount()
                 );
                 ChaosTraceAnalysisPlanner.requireAllOk(analyses);
 

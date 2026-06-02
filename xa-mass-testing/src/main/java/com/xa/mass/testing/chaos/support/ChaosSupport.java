@@ -134,6 +134,14 @@ public final class ChaosSupport {
         return Boolean.parseBoolean(raw.trim());
     }
 
+    public static String stringProperty(String key, String defaultValue) {
+        String raw = System.getProperty(key);
+        if (raw == null || raw.isBlank()) {
+            return defaultValue;
+        }
+        return raw.trim();
+    }
+
     public static double nanosToMillis(long nanos) {
         return nanos / 1_000_000.0d;
     }

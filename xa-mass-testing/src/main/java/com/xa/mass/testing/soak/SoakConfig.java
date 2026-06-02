@@ -1,5 +1,7 @@
 package com.xa.mass.testing.soak;
 
+import com.xa.mass.testing.workerfault.WorkerFaultScenarioIndex;
+
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -18,12 +20,15 @@ final class SoakConfig {
     static final int DEFAULT_EMPTY_POLL_BACKOFF_MILLIS = 20;
     static final int DEFAULT_PROCESSING_DELAY_MILLIS = 5;
     static final int DEFAULT_PROCESSING_JITTER_MILLIS = 0;
+    static final long DEFAULT_PROCESSING_JITTER_SEED = 0L;
     static final int DEFAULT_FAILURE_EVERY_NTH = 0;
     static final int DEFAULT_DRAIN_TIMEOUT_SECONDS = 60;
     static final int DEFAULT_RESULT_WINDOW_LIMIT = 64;
     static final int DEFAULT_TRACE_QUEUE_CAPACITY = 65_536;
     static final int DEFAULT_TRACE_ROTATE_AFTER_LINES = 100_000;
+    static final long NOISY_MIXED_RESULT_SEED = 20260602L;
 
+    private final WorkerFaultScenarioIndex.Scenario scenario;
     private final int durationSeconds;
     private final int workerCount;
     private final int groupCount;
@@ -37,6 +42,7 @@ final class SoakConfig {
     private final int emptyPollBackoffMillis;
     private final int processingDelayMillis;
     private final int processingJitterMillis;
+    private final long processingJitterSeed;
     private final int failureEveryNth;
     private final int drainTimeoutSeconds;
     private final int resultWindowLimit;
@@ -45,7 +51,8 @@ final class SoakConfig {
     private final int traceRotateAfterLines;
     private final boolean forceExit;
 
-    private SoakConfig(int durationSeconds,
+    private SoakConfig(WorkerFaultScenarioIndex.Scenario scenario,
+                       int durationSeconds,
                        int workerCount,
                        int groupCount,
                        int eventCodeCount,
@@ -58,6 +65,7 @@ final class SoakConfig {
                        int emptyPollBackoffMillis,
                        int processingDelayMillis,
                        int processingJitterMillis,
+                       long processingJitterSeed,
                        int failureEveryNth,
                        int drainTimeoutSeconds,
                        int resultWindowLimit,
@@ -65,6 +73,7 @@ final class SoakConfig {
                        int traceQueueCapacity,
                        int traceRotateAfterLines,
                        boolean forceExit) {
+        this.scenario = scenario;
         this.durationSeconds = durationSeconds;
         this.workerCount = workerCount;
         this.groupCount = groupCount;
@@ -78,6 +87,7 @@ final class SoakConfig {
         this.emptyPollBackoffMillis = emptyPollBackoffMillis;
         this.processingDelayMillis = processingDelayMillis;
         this.processingJitterMillis = processingJitterMillis;
+        this.processingJitterSeed = processingJitterSeed;
         this.failureEveryNth = failureEveryNth;
         this.drainTimeoutSeconds = drainTimeoutSeconds;
         this.resultWindowLimit = resultWindowLimit;
@@ -92,22 +102,31 @@ final class SoakConfig {
     }
 
     static SoakConfig from(Properties properties) {
+        WorkerFaultScenarioIndex.Scenario scenario = scenarioProperty(properties);
+        ScenarioDefaults scenarioDefaults = ScenarioDefaults.forScenario(scenario);
         int workerCount = intProperty(properties, "mass.soak.workerCount", DEFAULT_WORKER_COUNT);
         SoakConfig config = new SoakConfig(
+                scenario,
                 intProperty(properties, "mass.soak.durationSeconds", DEFAULT_DURATION_SECONDS),
                 workerCount,
                 intProperty(properties, "mass.soak.groupCount", DEFAULT_GROUP_COUNT),
                 intProperty(properties, "mass.soak.eventCodeCount", DEFAULT_EVENT_CODE_COUNT),
                 intProperty(properties, "mass.soak.initialWorkerCount", workerCount),
-                intProperty(properties, "mass.soak.lateWorkerStartAfterMillis", DEFAULT_LATE_WORKER_START_AFTER_MILLIS),
-                booleanProperty(properties, "mass.soak.requireLateWorkerWork", false),
+                intProperty(properties, "mass.soak.lateWorkerStartAfterMillis",
+                        scenarioDefaults.lateWorkerStartAfterMillis()),
+                booleanProperty(properties, "mass.soak.requireLateWorkerWork",
+                        scenarioDefaults.requireLateWorkerWork()),
                 intProperty(properties, "mass.soak.submitRatePerSecond", DEFAULT_SUBMIT_RATE_PER_SECOND),
                 intProperty(properties, "mass.soak.messagesPerTask", DEFAULT_MESSAGES_PER_TASK),
                 intProperty(properties, "mass.soak.pollBatchSize", DEFAULT_POLL_BATCH_SIZE),
                 intProperty(properties, "mass.soak.emptyPollBackoffMillis", DEFAULT_EMPTY_POLL_BACKOFF_MILLIS),
-                intProperty(properties, "mass.soak.processingDelayMillis", DEFAULT_PROCESSING_DELAY_MILLIS),
-                intProperty(properties, "mass.soak.processingJitterMillis", DEFAULT_PROCESSING_JITTER_MILLIS),
-                intProperty(properties, "mass.soak.failureEveryNth", DEFAULT_FAILURE_EVERY_NTH),
+                intProperty(properties, "mass.soak.processingDelayMillis",
+                        scenarioDefaults.processingDelayMillis()),
+                intProperty(properties, "mass.soak.processingJitterMillis",
+                        scenarioDefaults.processingJitterMillis()),
+                longProperty(properties, "mass.soak.processingJitterSeed",
+                        scenarioDefaults.processingJitterSeed()),
+                intProperty(properties, "mass.soak.failureEveryNth", scenarioDefaults.failureEveryNth()),
                 intProperty(properties, "mass.soak.drainTimeoutSeconds", DEFAULT_DRAIN_TIMEOUT_SECONDS),
                 intProperty(properties, "mass.soak.resultWindowLimit", DEFAULT_RESULT_WINDOW_LIMIT),
                 booleanProperty(properties, "mass.soak.trace", true),
@@ -138,6 +157,7 @@ final class SoakConfig {
         require(emptyPollBackoffMillis >= 0, "emptyPollBackoffMillis must not be negative");
         require(processingDelayMillis >= 0, "processingDelayMillis must not be negative");
         require(processingJitterMillis >= 0, "processingJitterMillis must not be negative");
+        require(processingJitterSeed >= 0L, "processingJitterSeed must not be negative");
         require(failureEveryNth >= 0, "failureEveryNth must not be negative");
         require(drainTimeoutSeconds > 0, "drainTimeoutSeconds must be positive");
         require(resultWindowLimit > 0, "resultWindowLimit must be positive");
@@ -147,6 +167,7 @@ final class SoakConfig {
 
     Map<String, Object> toMap() {
         Map<String, Object> values = new LinkedHashMap<>();
+        values.put("scenarioId", scenario.scenarioId());
         values.put("durationSeconds", durationSeconds);
         values.put("workerCount", workerCount);
         values.put("groupCount", groupCount);
@@ -160,6 +181,7 @@ final class SoakConfig {
         values.put("emptyPollBackoffMillis", emptyPollBackoffMillis);
         values.put("processingDelayMillis", processingDelayMillis);
         values.put("processingJitterMillis", processingJitterMillis);
+        values.put("processingJitterSeed", processingJitterSeed);
         values.put("failureEveryNth", failureEveryNth);
         values.put("drainTimeoutSeconds", drainTimeoutSeconds);
         values.put("resultWindowLimit", resultWindowLimit);
@@ -170,6 +192,7 @@ final class SoakConfig {
         return Map.copyOf(values);
     }
 
+    WorkerFaultScenarioIndex.Scenario scenario() { return scenario; }
     int durationSeconds() { return durationSeconds; }
     int workerCount() { return workerCount; }
     int groupCount() { return groupCount; }
@@ -183,6 +206,7 @@ final class SoakConfig {
     int emptyPollBackoffMillis() { return emptyPollBackoffMillis; }
     int processingDelayMillis() { return processingDelayMillis; }
     int processingJitterMillis() { return processingJitterMillis; }
+    long processingJitterSeed() { return processingJitterSeed; }
     int failureEveryNth() { return failureEveryNth; }
     int drainTimeoutSeconds() { return drainTimeoutSeconds; }
     int resultWindowLimit() { return resultWindowLimit; }
@@ -190,6 +214,23 @@ final class SoakConfig {
     int traceQueueCapacity() { return traceQueueCapacity; }
     int traceRotateAfterLines() { return traceRotateAfterLines; }
     boolean forceExit() { return forceExit; }
+
+    private static WorkerFaultScenarioIndex.Scenario scenarioProperty(Properties properties) {
+        String scenarioId = properties.getProperty("mass.soak.scenarioId");
+        WorkerFaultScenarioIndex.Scenario scenario;
+        if (scenarioId == null || scenarioId.isBlank()) {
+            scenario = WorkerFaultScenarioIndex.Scenario.POLLING_SCHEDULING_SOAK;
+        } else {
+            scenario = WorkerFaultScenarioIndex.scenarioForId(scenarioId)
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "unknown mass.soak.scenarioId: " + scenarioId.trim()));
+        }
+        if (scenario.runnerFamily() != WorkerFaultScenarioIndex.RunnerFamily.SDK_POLLING_SCHEDULING_SOAK) {
+            throw new IllegalArgumentException("mass.soak.scenarioId must reference an SDK polling soak scenario: "
+                    + scenario.scenarioId());
+        }
+        return scenario;
+    }
 
     private static int intProperty(Properties properties, String key, int defaultValue) {
         String value = properties.getProperty(key);
@@ -211,9 +252,49 @@ final class SoakConfig {
         return Boolean.parseBoolean(value.trim());
     }
 
+    private static long longProperty(Properties properties, String key, long defaultValue) {
+        String value = properties.getProperty(key);
+        if (value == null || value.isBlank()) {
+            return defaultValue;
+        }
+        try {
+            return Long.parseLong(value.trim());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(key + " must be a long: " + value, e);
+        }
+    }
+
     private static void require(boolean condition, String message) {
         if (!condition) {
             throw new IllegalArgumentException(message);
+        }
+    }
+
+    private record ScenarioDefaults(int lateWorkerStartAfterMillis,
+                                    boolean requireLateWorkerWork,
+                                    int processingDelayMillis,
+                                    int processingJitterMillis,
+                                    long processingJitterSeed,
+                                    int failureEveryNth) {
+        private static ScenarioDefaults forScenario(WorkerFaultScenarioIndex.Scenario scenario) {
+            return switch (scenario) {
+                case POLLING_SOAK_NOISY_MIXED_RESULT -> new ScenarioDefaults(
+                        DEFAULT_LATE_WORKER_START_AFTER_MILLIS,
+                        false,
+                        DEFAULT_PROCESSING_DELAY_MILLIS,
+                        25,
+                        NOISY_MIXED_RESULT_SEED,
+                        5
+                );
+                default -> new ScenarioDefaults(
+                        DEFAULT_LATE_WORKER_START_AFTER_MILLIS,
+                        false,
+                        DEFAULT_PROCESSING_DELAY_MILLIS,
+                        DEFAULT_PROCESSING_JITTER_MILLIS,
+                        DEFAULT_PROCESSING_JITTER_SEED,
+                        DEFAULT_FAILURE_EVERY_NTH
+                );
+            };
         }
     }
 }

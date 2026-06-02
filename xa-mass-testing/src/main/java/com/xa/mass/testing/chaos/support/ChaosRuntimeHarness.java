@@ -22,6 +22,8 @@ import com.xa.mass.runtime.api.RecentFinalWorkReceipt;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
+import com.xa.mass.runtime.redis.RedisTaskResultRuntime;
+import com.xa.mass.runtime.redis.RedisTaskWorkRuntime;
 import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.testing.support.WorkerRegistrationSpineSupport;
 import com.xa.mass.trace.sink.ExecutionEventSink;
@@ -43,17 +45,26 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
 
     private final MassSdkApplication app;
     private final TaskWorkRuntime taskWorkRuntime;
+    private final InMemoryTaskShellStore taskStorage;
     private final int transportPort;
     private final String endpointPath;
+    private final ExecutionEventSink traceSink;
+    private final PollingRedisRuntimeConfig pollingRedisConfig;
 
     private ChaosRuntimeHarness(MassSdkApplication app,
                                 TaskWorkRuntime taskWorkRuntime,
+                                InMemoryTaskShellStore taskStorage,
                                 int transportPort,
-                                String endpointPath) {
+                                String endpointPath,
+                                ExecutionEventSink traceSink,
+                                PollingRedisRuntimeConfig pollingRedisConfig) {
         this.app = app;
         this.taskWorkRuntime = taskWorkRuntime;
+        this.taskStorage = taskStorage;
         this.transportPort = transportPort;
         this.endpointPath = endpointPath;
+        this.traceSink = traceSink;
+        this.pollingRedisConfig = pollingRedisConfig;
     }
 
     public static ChaosRuntimeHarness createWebSocket(WebSocketRuntimeConfig config) {
@@ -86,7 +97,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                         engine.executionEventSink(traceSink);
                     }
                 });
-        return createBootstrappedHarness(builder.build(), taskWorkRuntime, transportPort, config.endpointPath());
+        return createBootstrappedHarness(builder.build(), taskWorkRuntime, taskStorage, transportPort, config.endpointPath(), traceSink, null);
     }
 
     public static ChaosRuntimeHarness createPolling(PollingRuntimeConfig config) {
@@ -117,15 +128,59 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                         engine.executionEventSink(traceSink);
                     }
                 });
-        return createBootstrappedHarness(builder.build(), taskWorkRuntime, 0, "");
+        return createBootstrappedHarness(builder.build(), taskWorkRuntime, taskStorage, 0, "", traceSink, null);
+    }
+
+    public static ChaosRuntimeHarness createPollingRedis(PollingRedisRuntimeConfig config,
+                                                         ExecutionEventSink traceSink) {
+        return createPollingRedis(config, new InMemoryTaskShellStore(), traceSink);
+    }
+
+    private static ChaosRuntimeHarness createPollingRedis(PollingRedisRuntimeConfig config,
+                                                          InMemoryTaskShellStore taskStorage,
+                                                          ExecutionEventSink traceSink) {
+        TaskWorkRuntime taskWorkRuntime = new RedisTaskWorkRuntime(
+                config.redisUri(),
+                config.redisNamespace(),
+                config.maxQueuedItems()
+        );
+        RedisTaskResultRuntime taskResultRuntime = new RedisTaskResultRuntime(
+                config.redisUri(),
+                config.redisNamespace() + ":result"
+        );
+        MassSdk.Builder builder = MassSdk.builder()
+                .transport(transport -> transport
+                        .webSocketAdapter(webSocket -> webSocket
+                                .enabled(false)
+                                .serverEnabled(false))
+                        .inputQueue(new InMemoryMessageQueue<>(config.queuePrefix() + "-input", String.class))
+                        .outputQueue(new InMemoryMessageQueue<>(config.queuePrefix() + "-output", TransportOutboundMessage.class))
+                        .queueMode())
+                .engine(engine -> {
+                    engine.enabled(true)
+                            .workerThreads(config.workerThreads())
+                            .assignmentRetryDelayMillis(config.assignmentRetryDelayMillis())
+                            .leaseWatchdogIntervalSeconds(config.leaseWatchdogIntervalSeconds())
+                            .taskMessageLeaseSeconds(config.taskMessageLeaseSeconds())
+                            .taskShellStore(taskStorage)
+                            .taskWorkRuntime(taskWorkRuntime)
+                            .taskResultRuntime(taskResultRuntime);
+                    if (traceSink != null) {
+                        engine.executionEventSink(traceSink);
+                    }
+                });
+        return createBootstrappedHarness(builder.build(), taskWorkRuntime, taskStorage, 0, "", traceSink, config);
     }
 
     private static ChaosRuntimeHarness createBootstrappedHarness(MassSdkApplication app,
                                                                  TaskWorkRuntime taskWorkRuntime,
+                                                                 InMemoryTaskShellStore taskStorage,
                                                                  int transportPort,
-                                                                 String endpointPath) {
+                                                                 String endpointPath,
+                                                                 ExecutionEventSink traceSink,
+                                                                 PollingRedisRuntimeConfig pollingRedisConfig) {
         bootstrapCatalog(app);
-        return new ChaosRuntimeHarness(app, taskWorkRuntime, transportPort, endpointPath);
+        return new ChaosRuntimeHarness(app, taskWorkRuntime, taskStorage, transportPort, endpointPath, traceSink, pollingRedisConfig);
     }
 
     private static void bootstrapCatalog(MassSdkApplication app) {
@@ -228,6 +283,12 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
 
     public void start() {
         app.start();
+    }
+
+    public ChaosRuntimeHarness restartPollingRedisRuntime() {
+        ChaosSupport.require(pollingRedisConfig != null, "harness is not backed by Redis polling runtime");
+        close();
+        return createPollingRedis(pollingRedisConfig, taskStorage, traceSink);
     }
 
     public void registerRealtimeWorker(String workerId,
@@ -436,6 +497,16 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                                        long assignmentRetryDelayMillis,
                                        long leaseWatchdogIntervalSeconds,
                                        long taskMessageLeaseSeconds) {
+    }
+
+    public record PollingRedisRuntimeConfig(String queuePrefix,
+                                            int workerThreads,
+                                            long assignmentRetryDelayMillis,
+                                            long leaseWatchdogIntervalSeconds,
+                                            long taskMessageLeaseSeconds,
+                                            String redisUri,
+                                            String redisNamespace,
+                                            int maxQueuedItems) {
     }
 
     public record TaskCreateSpec(String userId,

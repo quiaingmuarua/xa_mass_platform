@@ -17,7 +17,8 @@ final class ChaosTraceAnalysisPlanner {
 
     static List<TraceAnalyzeResponse> analyze(Path traceDir,
                                               ChaosProofProfile profile,
-                                              String taskId) throws Exception {
+                                              String taskId,
+                                              long droppedCount) throws Exception {
         TraceOperatorService traceOperator = new TraceOperatorService();
         List<TraceAnalysisPlan> plans = plan(profile, taskId);
         java.util.ArrayList<TraceAnalyzeResponse> responses = new java.util.ArrayList<>(plans.size());
@@ -25,7 +26,8 @@ final class ChaosTraceAnalysisPlanner {
             responses.add(traceOperator.analyze(new TraceAnalyzeRequest(
                     traceDir.toString(),
                     plan.scenarioId(),
-                    plan.sourceId()
+                    plan.sourceId(),
+                    droppedCount
             )));
         }
         return List.copyOf(responses);

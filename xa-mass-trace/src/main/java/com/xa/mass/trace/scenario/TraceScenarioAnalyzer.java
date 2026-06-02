@@ -7,6 +7,10 @@ public interface TraceScenarioAnalyzer {
 
     String id();
 
+    default boolean requiresCompleteTraceForOk() {
+        return true;
+    }
+
     TraceScenarioReport analyze(TraceQueryBackend queryBackend,
                                 TraceSource source,
                                 String taskId) throws Exception;

@@ -79,10 +79,11 @@ Testing-policy note:
 | `chaos: websocket lease-expiry redispatch` | `com.xa.mass.testing.chaos.SdkWebSocketLeaseExpiryRedispatchChaosRunner` | disconnect without result, watchdog expiry, retry reset, takeover by another websocket worker | `target/chaos-reports/`, `target/chaos-traces/` |
 | `chaos: websocket late stale result after lease expiry` | `com.xa.mass.testing.chaos.SdkWebSocketLateResultAfterLeaseExpiryChaosRunner` | original worker disconnects, lease expires, takeover succeeds, then the stale worker reconnects and replays a late result that must not overwrite runtime finality | `target/chaos-reports/`, `target/chaos-traces/` |
 | `chaos: polling lease-expiry redispatch` | `com.xa.mass.testing.chaos.SdkPollingLeaseExpiryRedispatchChaosRunner` | polling worker claims work, stalls without a result, goes offline, watchdog expiry resets runtime work, and another polling worker takes over to finish successfully | `target/chaos-reports/`, `target/chaos-traces/` |
+| `chaos: polling Redis runtime restart recovery` | `com.xa.mass.testing.chaos.SdkPollingRedisRestartRecoveryChaosRunner` | Redis-backed polling runtime owner is rebuilt with the same Redis namespace during active leased work, then another polling worker takes over after lease expiry | `target/chaos-reports/`, `target/chaos-traces/` |
 | `chaos: polling all messages failed` | `com.xa.mass.testing.chaos.SdkPollingAllMessagesFailedChaosRunner` | polling worker always submits failure with no retries; all messages converge to FAILED and the task closes with ALL_MESSAGES_FAILED | `target/chaos-reports/` |
 | `chaos: polling mixed results` | `com.xa.mass.testing.chaos.SdkPollingMixedResultsChaosRunner` | multi-message task where some messages succeed and some fail (driven by per-message `shouldFail` input flag); task closes with MIXED_MESSAGE_RESULTS | `target/chaos-reports/` |
 | `chaos: polling message retry exhausted` | `com.xa.mass.testing.chaos.SdkPollingMessageRetryExhaustedChaosRunner` | polling worker always fails; each message has `maxRetryCount=2` and burns 3 total attempts before `RETRY_EXHAUSTED` finalization; task closes with ALL_MESSAGES_FAILED; `TASK_WORK_RETRY_RESET` events verified in trace | `target/chaos-reports/` |
-| `chaos smoke bundle (CI gate)` | `scripts/run-chaos-smokes.sh` | fast CI gate for the three distributed-edge runtime recovery probes: polling lease-expiry redispatch, websocket lease-expiry redispatch, and websocket late stale result replay | `target/chaos-reports/` |
+| `chaos smoke bundle (CI gate)` | `scripts/run-chaos-smokes.sh` | fast scenario-id CI gate for the three distributed-edge runtime recovery probes: polling lease-expiry redispatch, websocket lease-expiry redispatch, and websocket late stale result replay | `target/chaos-reports/` |
 
 ## Commands
 
@@ -123,7 +124,9 @@ Override them with environment variables:
 Current perf smoke modeling:
 
 - workload mix uses a lane-aware matcher with one reserved interactive worker; bulk still creates background pressure, but it cannot consume every worker and turn the smoke into a starvation test
+- workload mix reads project support from WorkerGroup capability truth, not from worker declaration residue
 - workload mix uses a one-item interactive task because the smoke measures first-dispatch latency, not multi-round dispatch
+- set `-Dmass.workload.smoke.scenarioId=workload-mix-slow-bulk-interactive-isolation` to select the current slow-bulk matrix row; the runner writes `workerProfile=SLOW_BULK` and `faultShape=slow-bulk-interactive-isolation` in the report
 - interactive retry wakeup starts `RuntimeReadyDispatchPump`; delayed retry visibility is therefore proven through runtime ready truth
 
 Perf load model:
@@ -168,6 +171,13 @@ cd xa-mass-testing
 ..\mvnw.cmd -Dexec.classpathScope=compile -Dmaven.test.skip=true compile org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.perf.TaskWorkloadMixSmokeRunner
 ```
 
+Slow-bulk workload mix scenario row:
+
+```bash
+cd xa-mass-testing
+..\mvnw.cmd -Dexec.classpathScope=compile -Dmaven.test.skip=true -Dmass.workload.smoke.scenarioId=workload-mix-slow-bulk-interactive-isolation compile org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.perf.TaskWorkloadMixSmokeRunner
+```
+
 Interactive retry wakeup perf smoke:
 
 ```bash
@@ -183,7 +193,14 @@ xa-mass-testing/scripts/run-sdk-transport-load.sh -Dmass.sdk.load.transport=webs
 xa-mass-testing/scripts/run-sdk-transport-load.sh -Dmass.sdk.load.transport=socket -Dmass.sdk.load.workloadClass=BULK
 ```
 
-`scripts/run-sdk-transport-load.sh` enforces the same source-level rule as the PR smoke scripts: the transport load runner must not import review/projection helpers, projection-derived stats, or direct detail-store access. Its report uses `runtimeWork`, delivery diagnostics, and worker metrics as the correctness surface.
+`scripts/run-sdk-transport-load.sh` enforces the same source-level rule as the PR smoke scripts: the transport load runner must not import review/projection helpers, projection-derived stats, or direct detail-store access. Its report uses `runtimeWork`, delivery diagnostics, and worker metrics as the correctness surface. Set `-Dmass.sdk.load.scenarioId=sdk-transport-load-polling`, `sdk-transport-load-websocket`, or `sdk-transport-load-socket` to select a current mode-specific delivery-diagnostics row inside the runner. The aggregate `sdk-transport-load` row still keeps top-level `transport=multi` and records the concrete run mode as `actualTransport`; mode-specific rows write the concrete top-level `transport` axis. These mode-specific rows are current transport diagnostics, not transport churn proof. Set `-Dmass.sdk.load.scenarioId=sdk-transport-load-websocket-churn` to run the current scheduled/manual WebSocket churn row; it performs a real WebSocket close/reconnect and records `workerMetrics.transportChurnDisconnects` / `workerMetrics.transportChurnReconnects`.
+
+WebSocket transport churn row:
+
+```bash
+cd xa-mass-testing
+..\mvnw.cmd -Dexec.classpathScope=compile -Dmaven.test.skip=true -Dmass.sdk.load.forceExit=false -Dmass.sdk.load.scenarioId=sdk-transport-load-websocket-churn -Dmass.sdk.load.tasks=1 -Dmass.sdk.load.messagesPerTask=1 -Dmass.sdk.load.workers=1 -Dmass.sdk.load.batchSize=1 -Dmass.sdk.load.workerProcessingThreads=1 -Dmass.sdk.load.processingDelayMillis=20 -Dmass.sdk.load.timeoutSeconds=25 compile org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.concurrency.SdkTransportLoadRunner
+```
 
 Polling scheduling soak:
 
@@ -192,7 +209,7 @@ xa-mass-testing/scripts/run-polling-scheduling-soak.sh -Dmass.soak.durationSecon
 xa-mass-testing/scripts/run-polling-scheduling-fast-soak.sh
 ```
 
-The polling scheduling soak is a manual or scheduled lane, not a PR gate. It drives SDK polling workers through the engine scheduling mainline and writes report JSON plus canonical trace JSONL under `target/soak-reports/` and `target/soak-traces/`. Its pass/fail proof is runtime/aggregate/result/trace-first: task terminal state, `TaskWorkRuntime` counters, active lease drain, SDK result windows, worker metrics, `JsonlExecutionEventSink` drop count, and `xa-mass-trace` validation/stats. The report includes `proof.runtimeInvariants`, a structured issue list that identifies whether failure came from task terminal count, runtime work counters, visible results, active lease drain, trace validation/drop, late-worker participation, trace analyzer failure, or worker failures. The `proof` bundle also groups `resultSequentialRead`, `workerMetrics`, `workerLifecycle`, `deliveryDiagnostics`, `trace`, and `failureSamples` so scheduled runs have one stable diagnostic entry point. Set `-Dmass.soak.failureEveryNth=N` to run mixed-result or all-failed profiles; the runner verifies expected terminal reasons and success/failed runtime counters from that profile and, when trace is enabled, binds a representative sample task into the named `mixed-result-terminal-convergence` or `all-failed-terminal-convergence` analyzer. Set `-Dmass.soak.initialWorkerCount=N -Dmass.soak.lateWorkerStartAfterMillis=M -Dmass.soak.requireLateWorkerWork=true` to run a late-worker-join profile where only part of the polling fleet is online at the start; when trace is enabled, the runner records an actual late-worker task sample and runs the `late-worker-backfill` trace analyzer into `proof.trace.analyses`. See [`SOAK_TESTING_ROADMAP.md`](SOAK_TESTING_ROADMAP.md).
+The polling scheduling soak is a manual or scheduled lane, not a PR gate. It drives SDK polling workers through the engine scheduling mainline and writes report JSON plus canonical trace JSONL under `target/soak-reports/` and `target/soak-traces/`. Its pass/fail proof is runtime/aggregate/result/trace-first: task terminal state, `TaskWorkRuntime` counters, active lease drain, SDK result windows, worker metrics, `JsonlExecutionEventSink` drop count, and `xa-mass-trace` validation/stats. The report includes `proof.runtimeInvariants`, a structured issue list that identifies whether failure came from task terminal count, runtime work counters, visible results, active lease drain, trace validation/drop, late-worker participation, trace analyzer failure, or worker failures. The `proof` bundle also groups `resultSequentialRead`, `workerMetrics`, `workerLifecycle`, `deliveryDiagnostics`, `trace`, and `failureSamples` so scheduled runs have one stable diagnostic entry point. Set `-Dmass.soak.failureEveryNth=N` to run mixed-result or all-failed profiles; the runner verifies expected terminal reasons and success/failed runtime counters from that profile and, when trace is enabled, binds a representative sample task into the named `mixed-result-terminal-convergence` or `all-failed-terminal-convergence` analyzer. Set `-Dmass.soak.processingJitterMillis=N -Dmass.soak.processingJitterSeed=S` to make processing jitter deterministic and report-visible in `config` and `proof.matrixProfile`. Set `-Dmass.soak.scenarioId=polling-soak-noisy-mixed-result` to select the current scenario-ledger noisy mixed-result row inside the runner; it defaults to deterministic jitter seed `20260602`, jitter bound `25ms`, and `failureEveryNth=5`, while explicit JVM properties still override those defaults. This row is seeded mixed-result soak proof, not dropped-result/retry proof. Set `-Dmass.soak.initialWorkerCount=N -Dmass.soak.lateWorkerStartAfterMillis=M -Dmass.soak.requireLateWorkerWork=true` to run a late-worker-join profile where only part of the polling fleet is online at the start; when trace is enabled, the runner records an actual late-worker task sample and runs the `late-worker-backfill` trace analyzer into `proof.trace.analyses`. Named soak analyzers receive the trace sink dropped count, so known dropped trace events cannot silently pass analyzer proof. See [`SOAK_TESTING_ROADMAP.md`](SOAK_TESTING_ROADMAP.md).
 
 WebSocket disconnect chaos:
 
@@ -235,6 +252,13 @@ cd xa-mass-testing
 ..\mvnw.cmd -Dexec.classpathScope=compile -Dmaven.test.skip=true -Dmass.sdk.chaos.taskMessageLeaseSeconds=2 -Dmass.sdk.chaos.timeoutSeconds=30 compile org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.chaos.SdkPollingLeaseExpiryRedispatchChaosRunner
 ```
 
+Polling Redis runtime owner restart/reconnect recovery chaos:
+
+```bash
+cd xa-mass-testing
+..\mvnw.cmd -Dexec.classpathScope=compile -Dmaven.test.skip=true -Dmass.sdk.chaos.forceExit=false -Dmass.sdk.chaos.taskMessageLeaseSeconds=2 -Dmass.sdk.chaos.timeoutSeconds=30 compile org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.chaos.SdkPollingRedisRestartRecoveryChaosRunner
+```
+
 Per-message retry exhaustion chaos:
 
 ```bash
@@ -260,6 +284,11 @@ Direct scenario-id entrypoint for a single existing probe:
 xa-mass-testing/scripts/run-worker-fault-scenario.sh polling-lease-expiry-redispatch
 ```
 
+`fault.dropped-result-retry` is a current scenario-ledger alias for the same
+polling lease-expiry runner. It records the selected scenario id and
+`faultShape=dropped-result-retry` in the report, but it does not introduce a
+second runner or a separate PR gate row.
+
 ## Reading Rule
 
 Start from the runner class, then read the matching report artifact.
@@ -267,7 +296,8 @@ Start from the runner class, then read the matching report artifact.
 Look at these first:
 
 - perf: `wallClock.totalMillis`, release cost, runtime work counters
-- SDK transport harness: `runtime.transport`, `tasks.terminalReasons`, `workerMetrics`
+- SDK transport harness: top-level `transport` matrix axis, `actualTransport`,
+  `tasks.terminalReasons`, `runtimeWork`, `deliveryQueue`, `workerMetrics`
 - chaos: `task.runtime` counters, active lease count, task terminal reason, trace `byType`, then worker online/offline transitions
 - chaos report field `task.reviewMessages` is residue/report context when
   present; do not treat it as the runner's primary correctness proof
@@ -292,9 +322,10 @@ Additional scheduled/manual chaos probes cover support scenario branches:
 - all messages fail with no retries; runtime counters finalize all work as failed and task closes with `ALL_MESSAGES_FAILED`
 - multi-message task with partial success and partial failure; runtime counters prove the split and task closes with `MIXED_MESSAGE_RESULTS`
 - per-message retry budget exhaustion (`maxRetryCount=2`, 3 total attempts per message); runtime counters finalize all work as failed, task closes with `ALL_MESSAGES_FAILED`, and `TASK_WORK_RETRY_RESET` events are verified in trace
+- Redis-backed runtime owner restart/reconnect during active leased work; the runner reuses `sched.retry-redispatch` and analyzer `lease-expiry-redispatch`. Redis process kill, partition/failover, and lease-clock skew are not covered by this probe and need `../roadmap/WORKER_FAULT_MATRIX_INFRA_FAULT_DECISION.md` to resolve the environment/seam decision before this module can claim worker-fault matrix proof for them.
 
-The PR-gated chaos probes are the three distributed-edge runtime recovery paths: polling lease-expiry redispatch, websocket lease-expiry redispatch, and websocket late-result replay. Their main assertions are runtime/aggregate/trace-first; compatibility projection is kept in reports only for bounded diagnosis. Result-shape probes such as all-failed, mixed-results, and retry-exhausted remain scheduled/manual support because their primary proof lives in the engine/server/trace convergence chain. Websocket disconnect/reconnect also remains a useful manual probe until it is reduced to one crisp mechanism invariant instead of a mixed behavior bundle. All chaos probes still write report JSON under `target/chaos-reports/`.
+The PR-gated chaos probes are the three distributed-edge runtime recovery paths: polling lease-expiry redispatch, websocket lease-expiry redispatch, and websocket late-result replay. Their main assertions are runtime/aggregate/trace-first; compatibility projection is kept in reports only for bounded diagnosis. `fault.dropped-result-retry` is a report-visible alias over the polling lease-expiry proof, not a fourth PR bundle entry. Result-shape probes such as all-failed, mixed-results, and retry-exhausted remain scheduled/manual support because their primary proof lives in the engine/server/trace convergence chain. Websocket disconnect/reconnect also remains a useful manual probe until it is reduced to one crisp mechanism invariant instead of a mixed behavior bundle. All chaos probes still write report JSON under `target/chaos-reports/`.
 
-`scripts/run-chaos-smokes.sh` enforces this source-level rule before running the probes: PR-gated chaos smoke runners must not import or call compatibility projection helpers or projection-derived stats such as `TaskMessageStats`, `TaskMessageAttemptStats`, `getTaskMessage*`, or direct detail-store access. Report/audit helpers may still live under `chaos.support`, but their primary correctness proof must stay runtime/trace-first.
+`scripts/run-chaos-smokes.sh` resolves its PR scenario ids through `WorkerFaultScenarioCli` and enforces this source-level rule before running the probes: PR-gated chaos smoke runners must not import or call compatibility projection helpers or projection-derived stats such as `TaskMessageStats`, `TaskMessageAttemptStats`, `getTaskMessage*`, or direct detail-store access. Report/audit helpers may still live under `chaos.support`, but their primary correctness proof must stay runtime/trace-first.
 
 These probes stay at the SDK embedded-runtime layer. Matching Boot-shell HTTP behavior should be verified separately under `xa-mass-server` E2E.

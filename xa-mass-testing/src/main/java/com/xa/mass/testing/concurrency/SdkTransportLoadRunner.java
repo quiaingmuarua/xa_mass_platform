@@ -62,6 +62,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.LongAccumulator;
 import java.util.concurrent.atomic.LongAdder;
 
@@ -154,10 +155,16 @@ public final class SdkTransportLoadRunner {
                 for (int i = 0; i < config.taskCount(); i++) {
                     TaskShellSnapshot task = createTask(app, buildTaskRequest(i));
                     taskIds.add(task.getTaskId());
-                    require(app.approveTask(task.getTaskId()), "task approval should succeed for " + task.getTaskId());
+                }
+
+                AtomicReference<Throwable> churnFailure = new AtomicReference<>();
+                Thread churnThread = startTransportChurnThread(app, workers, churnFailure);
+                for (String taskId : taskIds) {
+                    require(app.approveTask(taskId), "task approval should succeed for " + taskId);
                 }
 
                 waitForTerminalTasks(app, taskIds);
+                waitForTransportChurn(churnThread, churnFailure);
 
                 long wallNanos = System.nanoTime() - wallStartNanos;
                 FinalTaskStats finalTaskStats = collectFinalTaskStats(app, taskIds);
@@ -202,6 +209,51 @@ public final class SdkTransportLoadRunner {
                 }
                 app.stop();
             }
+        }
+
+        private Thread startTransportChurnThread(MassSdkApplication app,
+                                                 List<WorkerDriver> workers,
+                                                 AtomicReference<Throwable> churnFailure) {
+            if (!config.transportChurnEnabled()) {
+                return null;
+            }
+            Thread thread = new Thread(() -> {
+                try {
+                    Thread.sleep(config.transportChurnInitialDelayMillis());
+                    int workerLimit = Math.min(config.transportChurnWorkerCount(), workers.size());
+                    for (int cycle = 0; cycle < config.transportChurnCycles(); cycle++) {
+                        for (int i = 0; i < workerLimit; i++) {
+                            workers.get(i).injectTransportChurn();
+                            if (config.transportChurnReconnectDelayMillis() > 0) {
+                                Thread.sleep(config.transportChurnReconnectDelayMillis());
+                            }
+                        }
+                    }
+                    waitForRealtimeWorkersReady(app, workers);
+                } catch (Throwable t) {
+                    churnFailure.set(t);
+                }
+            }, "SdkTransportLoad-churn");
+            thread.setDaemon(true);
+            thread.start();
+            return thread;
+        }
+
+        private void waitForTransportChurn(Thread churnThread, AtomicReference<Throwable> churnFailure)
+                throws InterruptedException {
+            if (churnThread == null) {
+                return;
+            }
+            churnThread.join(TimeUnit.SECONDS.toMillis(config.timeoutSeconds()));
+            require(!churnThread.isAlive(), "transport churn thread did not finish before timeout");
+            Throwable failure = churnFailure.get();
+            if (failure != null) {
+                throw new IllegalStateException("transport churn failed", failure);
+            }
+            require(metrics.transportChurnDisconnects.sum() >= config.transportChurnCycles(),
+                    "transport churn did not record a disconnect");
+            require(metrics.transportChurnReconnects.sum() >= config.transportChurnCycles(),
+                    "transport churn did not record a reconnect");
         }
 
         private EmbeddedRuntime buildRuntime(LoadConfig config) {
@@ -531,11 +583,11 @@ public final class SdkTransportLoadRunner {
                                         long wallNanos,
                                         RuntimeMetricsSnapshot metrics) throws Exception {
             Map<String, Object> report = new LinkedHashMap<>(WorkerFaultReportMetadata.topLevel(
-                    WorkerFaultScenarioIndex.Scenario.SDK_TRANSPORT_LOAD));
-            report.put("transport", config.transport().label());
+                    config.scenario()));
+            report.put("actualTransport", config.transport().label());
             report.put("config", config.toMap());
             report.put("runtime", Map.of(
-                    "transport", config.transport().label(),
+                    "actualTransport", config.transport().label(),
                     "transportPort", runtime.transportPort(),
                     "boundTransportPort", runtime.boundTransportPort(config.transport()),
                     "endpointPath", runtime.endpointPath()
@@ -557,6 +609,10 @@ public final class SdkTransportLoadRunner {
 
     private interface WorkerDriver extends AutoCloseable {
         void start() throws Exception;
+
+        default void injectTransportChurn() throws Exception {
+            throw new UnsupportedOperationException("transport churn is not supported by this worker driver");
+        }
 
         default void refreshReadySignal() {
             // Most transports complete registration during start.
@@ -679,6 +735,20 @@ public final class SdkTransportLoadRunner {
             if (!processingExecutor.awaitTermination(10, TimeUnit.SECONDS)) {
                 processingExecutor.shutdownNow();
             }
+        }
+
+        @Override
+        public synchronized void injectTransportChurn() throws Exception {
+            if (client != null) {
+                client.closeBlocking();
+                metrics.transportChurnDisconnects.increment();
+            }
+            WorkerSocketClient nextClient = new WorkerSocketClient(serverUri);
+            require(nextClient.connectBlocking(5, TimeUnit.SECONDS),
+                    "websocket worker failed to reconnect during transport churn: "
+                            + workerId + " uri=" + serverUri);
+            client = nextClient;
+            metrics.transportChurnReconnects.increment();
         }
 
         private final class WorkerSocketClient extends WebSocketClient {
@@ -1074,6 +1144,8 @@ public final class SdkTransportLoadRunner {
         private final LongAdder receivedDispatchItems = new LongAdder();
         private final LongAdder resultSubmissions = new LongAdder();
         private final LongAdder syntheticRetryFailures = new LongAdder();
+        private final LongAdder transportChurnDisconnects = new LongAdder();
+        private final LongAdder transportChurnReconnects = new LongAdder();
         private final LongAdder totalProcessingNanos = new LongAdder();
         private final AtomicInteger concurrentProcessing = new AtomicInteger();
         private final AtomicInteger maxConcurrentProcessing = new AtomicInteger();
@@ -1114,6 +1186,8 @@ public final class SdkTransportLoadRunner {
                     receivedDispatchItems.sum(),
                     resultSubmissions.sum(),
                     syntheticRetryFailures.sum(),
+                    transportChurnDisconnects.sum(),
+                    transportChurnReconnects.sum(),
                     nanosToMillis(totalProcessingNanos.sum()),
                     maxReceivedBatchSize.get(),
                     maxConcurrentProcessing.get()
@@ -1126,6 +1200,8 @@ public final class SdkTransportLoadRunner {
                                           long receivedDispatchItems,
                                           long resultSubmissions,
                                           long syntheticRetryFailures,
+                                          long transportChurnDisconnects,
+                                          long transportChurnReconnects,
                                           double totalProcessingMillis,
                                           long maxReceivedBatchSize,
                                           int maxConcurrentProcessing) {
@@ -1136,6 +1212,8 @@ public final class SdkTransportLoadRunner {
                     "receivedDispatchItems", receivedDispatchItems,
                     "resultSubmissions", resultSubmissions,
                     "syntheticRetryFailures", syntheticRetryFailures,
+                    "transportChurnDisconnects", transportChurnDisconnects,
+                    "transportChurnReconnects", transportChurnReconnects,
                     "totalProcessingMillis", totalProcessingMillis,
                     "maxReceivedBatchSize", maxReceivedBatchSize,
                     "maxConcurrentProcessing", maxConcurrentProcessing
@@ -1209,7 +1287,8 @@ public final class SdkTransportLoadRunner {
         }
     }
 
-    private record LoadConfig(WorkerTransportMode transport,
+    private record LoadConfig(WorkerFaultScenarioIndex.Scenario scenario,
+                              WorkerTransportMode transport,
                               int taskCount,
                               int messagesPerTask,
                               int workerCount,
@@ -1220,10 +1299,18 @@ public final class SdkTransportLoadRunner {
                               String workloadClass,
                               int retryFailureEveryNth,
                               int maxRetryCount,
-                              int timeoutSeconds) {
+                              int timeoutSeconds,
+                              boolean transportChurnEnabled,
+                              int transportChurnCycles,
+                              int transportChurnWorkerCount,
+                              int transportChurnInitialDelayMillis,
+                              int transportChurnReconnectDelayMillis) {
         private static LoadConfig fromSystemProperties() {
+            WorkerFaultScenarioIndex.Scenario scenario = scenarioProperty();
+            boolean scenarioChurnEnabled = isTransportChurnScenario(scenario);
             LoadConfig config = new LoadConfig(
-                    WorkerTransportMode.fromProperty(System.getProperty("mass.sdk.load.transport")),
+                    scenario,
+                    transportForScenario(scenario, System.getProperty("mass.sdk.load.transport")),
                     intProperty("mass.sdk.load.tasks", 16),
                     intProperty("mass.sdk.load.messagesPerTask", 32),
                     intProperty("mass.sdk.load.workers", 8),
@@ -1234,7 +1321,12 @@ public final class SdkTransportLoadRunner {
                     workloadClassProperty("mass.sdk.load.workloadClass", "BULK"),
                     intProperty("mass.sdk.load.retryFailureEveryNth", 0),
                     intProperty("mass.sdk.load.maxRetryCount", 2),
-                    intProperty("mass.sdk.load.timeoutSeconds", 60)
+                    intProperty("mass.sdk.load.timeoutSeconds", 60),
+                    booleanProperty("mass.sdk.load.transportChurn.enabled", scenarioChurnEnabled),
+                    intProperty("mass.sdk.load.transportChurn.cycles", scenarioChurnEnabled ? 1 : 0),
+                    intProperty("mass.sdk.load.transportChurn.workerCount", scenarioChurnEnabled ? 1 : 0),
+                    intProperty("mass.sdk.load.transportChurn.initialDelayMillis", scenarioChurnEnabled ? 10 : 0),
+                    intProperty("mass.sdk.load.transportChurn.reconnectDelayMillis", 0)
             );
             require(config.taskCount > 0, "taskCount must be positive");
             require(config.messagesPerTask > 0, "messagesPerTask must be positive");
@@ -1244,16 +1336,33 @@ public final class SdkTransportLoadRunner {
             require(config.workerProcessingThreads > 0, "workerProcessingThreads must be positive");
             require(config.processingDelayMillis >= 0, "processingDelayMillis must not be negative");
             require(config.timeoutSeconds > 0, "timeoutSeconds must be positive");
+            require(config.transportChurnCycles >= 0, "transportChurnCycles must not be negative");
+            require(config.transportChurnWorkerCount >= 0, "transportChurnWorkerCount must not be negative");
+            require(config.transportChurnInitialDelayMillis >= 0,
+                    "transportChurnInitialDelayMillis must not be negative");
+            require(config.transportChurnReconnectDelayMillis >= 0,
+                    "transportChurnReconnectDelayMillis must not be negative");
             if (config.retryFailureEveryNth > 0) {
                 require(config.maxRetryCount > 0,
                         "maxRetryCount must be positive when retryFailureEveryNth is enabled");
+            }
+            if (config.transportChurnEnabled) {
+                require(config.transport == WorkerTransportMode.WEBSOCKET,
+                        "current SDK transport churn row supports websocket only");
+                require(config.transportChurnCycles > 0,
+                        "transportChurnCycles must be positive when transport churn is enabled");
+                require(config.transportChurnWorkerCount > 0,
+                        "transportChurnWorkerCount must be positive when transport churn is enabled");
+                require(config.transportChurnWorkerCount <= config.workerCount,
+                        "transportChurnWorkerCount must not exceed workerCount");
             }
             return config;
         }
 
         private Map<String, Object> toMap() {
             Map<String, Object> values = new LinkedHashMap<>();
-            values.put("transport", transport.label());
+            values.put("scenarioId", scenario.scenarioId());
+            values.put("actualTransport", transport.label());
             values.put("taskCount", taskCount);
             values.put("messagesPerTask", messagesPerTask);
             values.put("workerCount", workerCount);
@@ -1265,7 +1374,56 @@ public final class SdkTransportLoadRunner {
             values.put("retryFailureEveryNth", retryFailureEveryNth);
             values.put("maxRetryCount", maxRetryCount);
             values.put("timeoutSeconds", timeoutSeconds);
+            values.put("transportChurnEnabled", transportChurnEnabled);
+            values.put("transportChurnCycles", transportChurnCycles);
+            values.put("transportChurnWorkerCount", transportChurnWorkerCount);
+            values.put("transportChurnInitialDelayMillis", transportChurnInitialDelayMillis);
+            values.put("transportChurnReconnectDelayMillis", transportChurnReconnectDelayMillis);
             return Map.copyOf(values);
+        }
+
+        private static WorkerFaultScenarioIndex.Scenario scenarioProperty() {
+            String scenarioId = System.getProperty("mass.sdk.load.scenarioId");
+            WorkerFaultScenarioIndex.Scenario scenario;
+            if (scenarioId == null || scenarioId.isBlank()) {
+                scenario = WorkerFaultScenarioIndex.Scenario.SDK_TRANSPORT_LOAD;
+            } else {
+                scenario = WorkerFaultScenarioIndex.scenarioForId(scenarioId)
+                        .orElseThrow(() -> new IllegalArgumentException(
+                                "unknown mass.sdk.load.scenarioId: " + scenarioId.trim()));
+            }
+            if (scenario.runnerFamily() != WorkerFaultScenarioIndex.RunnerFamily.SDK_TRANSPORT_LOAD) {
+                throw new IllegalArgumentException(
+                        "mass.sdk.load.scenarioId must reference an SDK transport load scenario: "
+                                + scenario.scenarioId());
+            }
+            return scenario;
+        }
+
+        private static boolean isTransportChurnScenario(WorkerFaultScenarioIndex.Scenario scenario) {
+            return "transport-connection-churn".equals(scenario.faultShape());
+        }
+
+        private static WorkerTransportMode transportForScenario(WorkerFaultScenarioIndex.Scenario scenario,
+                                                                String explicitTransport) {
+            WorkerTransportMode scenarioTransport = switch (scenario.transport()) {
+                case "polling" -> WorkerTransportMode.POLLING;
+                case "websocket" -> WorkerTransportMode.WEBSOCKET;
+                case "socket" -> WorkerTransportMode.SOCKET;
+                case "multi" -> null;
+                default -> throw new IllegalArgumentException("unsupported SDK transport load scenario transport: "
+                        + scenario.transport());
+            };
+            WorkerTransportMode configuredTransport = WorkerTransportMode.fromProperty(explicitTransport);
+            if (scenarioTransport == null) {
+                return configuredTransport;
+            }
+            if (explicitTransport != null && !explicitTransport.isBlank()
+                    && configuredTransport != scenarioTransport) {
+                throw new IllegalArgumentException("mass.sdk.load.transport=" + configuredTransport.label()
+                        + " conflicts with mass.sdk.load.scenarioId=" + scenario.scenarioId());
+            }
+            return scenarioTransport;
         }
     }
 

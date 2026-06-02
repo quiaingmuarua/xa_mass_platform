@@ -3,6 +3,7 @@ package com.xa.mass.trace.operator;
 import com.xa.mass.trace.sink.ExecutionEvent;
 import com.xa.mass.trace.sink.ExecutionEventType;
 import com.xa.mass.trace.sink.JsonlExecutionEventSink;
+import com.xa.mass.trace.sink.OverflowPolicy;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -185,6 +186,59 @@ class TraceOperatorServiceIntegrationTest {
         assertTrue(response.ok());
         assertEquals("duplicate-callback-replay", response.scenarioId());
         assertEquals("task-replay", response.taskId());
+        assertEquals(1L, response.eventTypeCounts().get("CALLBACK_IGNORED_DUPLICATE"));
+    }
+
+    @Test
+    void analyzeFailsIncompleteWhenCallerReportsDroppedTraceEvents() throws Exception {
+        writeDuplicateReplayTrace(tempDir);
+        awaitJsonlFiles(tempDir, 1);
+
+        TraceAnalyzeResponse response = operatorService.analyze(
+                new TraceAnalyzeRequest(tempDir.toString(), "duplicate-callback-replay", "task-replay", 1L));
+
+        assertFalse(response.ok());
+        assertTrue(response.issues().stream()
+                .anyMatch(issue -> "TRACE_INCOMPLETE".equals(issue.code())));
+    }
+
+    @Test
+    void analyzeAcceptsExplicitZeroDroppedTraceEvents() throws Exception {
+        writeDuplicateReplayTrace(tempDir);
+        awaitJsonlFiles(tempDir, 1);
+
+        TraceAnalyzeResponse response = operatorService.analyze(
+                new TraceAnalyzeRequest(tempDir.toString(), "duplicate-callback-replay", "task-replay", 0L));
+
+        assertTrue(response.ok(), response.issues().toString());
+    }
+
+    @Test
+    void analyzeFailsIncompleteWhenDropPolicyDroppedEventsEvenIfTargetTraceLooksComplete() throws Exception {
+        long droppedCount = writeDropOverflowFixtureWithCompleteReplayTrace(tempDir);
+        awaitJsonlFiles(tempDir, 1);
+
+        assertTrue(droppedCount > 0, "DROP fixture must prove sink overflow happened");
+
+        TraceAnalyzeResponse response = operatorService.analyze(
+                new TraceAnalyzeRequest(tempDir.toString(), "duplicate-callback-replay", "task-replay", droppedCount));
+
+        assertFalse(response.ok());
+        assertTrue(response.issues().stream()
+                .anyMatch(issue -> "TRACE_INCOMPLETE".equals(issue.code())));
+    }
+
+    @Test
+    void analyzePassesWhenFallbackSyncPreservesOverflowedTraceEvents() throws Exception {
+        long droppedCount = writeFallbackSyncReplayTrace(tempDir);
+        awaitJsonlFiles(tempDir, 1);
+
+        assertEquals(0L, droppedCount, "FALLBACK_SYNC fixture must preserve trace events");
+
+        TraceAnalyzeResponse response = operatorService.analyze(
+                new TraceAnalyzeRequest(tempDir.toString(), "duplicate-callback-replay", "task-replay", droppedCount));
+
+        assertTrue(response.ok(), response.issues().toString());
         assertEquals(1L, response.eventTypeCounts().get("CALLBACK_IGNORED_DUPLICATE"));
     }
 
@@ -628,42 +682,77 @@ class TraceOperatorServiceIntegrationTest {
 
     private void writeDuplicateReplayTrace(Path outputDir) throws Exception {
         try (JsonlExecutionEventSink sink = new JsonlExecutionEventSink(outputDir.toString(), 128, 10_000)) {
+            emitDuplicateReplayTrace(sink);
+        }
+    }
+
+    private long writeDropOverflowFixtureWithCompleteReplayTrace(Path outputDir) throws Exception {
+        long droppedCount;
+        try (JsonlExecutionEventSink sink = new JsonlExecutionEventSink(
+                outputDir.toString(), 1, 10_000, OverflowPolicy.DROP, 5_000)) {
+            emitFillerWorkerOnlineEvents(sink, 100);
+            droppedCount = sink.getDroppedCount();
+        }
+        writeDuplicateReplayTrace(outputDir);
+        return droppedCount;
+    }
+
+    private long writeFallbackSyncReplayTrace(Path outputDir) throws Exception {
+        try (JsonlExecutionEventSink sink = new JsonlExecutionEventSink(
+                outputDir.toString(), 1, 10_000, OverflowPolicy.FALLBACK_SYNC, 5_000)) {
+            emitFillerWorkerOnlineEvents(sink, 20);
+            emitDuplicateReplayTrace(sink);
+            return sink.getDroppedCount();
+        }
+    }
+
+    private void emitFillerWorkerOnlineEvents(JsonlExecutionEventSink sink, int count) {
+        for (int i = 0; i < count; i++) {
+            int index = i;
             sink.emit(ExecutionEvent.builder()
-                    .eventType(ExecutionEventType.TASK_STATUS_TRANSITION)
-                    .traceId("trace-replay")
-                    .identity(identity -> identity.taskId("task-replay"))
-                    .transition("READY", "RUNNING", "assignment-success")
-                    .attrs(Map.of("reason", "assignment-success", "source", "TaskManager"))
-                    .build());
-            sink.emit(ExecutionEvent.builder()
-                    .eventType(ExecutionEventType.CALLBACK_ACCEPTED)
-                    .traceId("trace-replay")
-                    .identity(identity -> identity.taskId("task-replay").messageId("msg-1").attemptId("attempt-1"))
-                    .outcome(true, null, "accepted")
-                    .attrs(Map.of("reason", "accepted", "source", "TaskResultService"))
-                    .build());
-            sink.emit(ExecutionEvent.builder()
-                    .eventType(ExecutionEventType.CALLBACK_ACCEPTED)
-                    .traceId("trace-replay")
-                    .identity(identity -> identity.taskId("task-replay").messageId("msg-2").attemptId("attempt-2"))
-                    .outcome(true, null, "accepted")
-                    .attrs(Map.of("reason", "accepted", "source", "TaskResultService"))
-                    .build());
-            sink.emit(ExecutionEvent.builder()
-                    .eventType(ExecutionEventType.TASK_TERMINAL_CLOSED)
-                    .traceId("trace-replay")
-                    .identity(identity -> identity.taskId("task-replay"))
-                    .transition("RUNNING", "TERMINAL", "ALL_MESSAGES_SUCCEEDED")
-                    .attrs(Map.of("reason", "all work converged", "source", "TaskManager", "terminalReason", "ALL_MESSAGES_SUCCEEDED"))
-                    .build());
-            sink.emit(ExecutionEvent.builder()
-                    .eventType(ExecutionEventType.CALLBACK_IGNORED_DUPLICATE)
-                    .traceId("trace-replay")
-                    .identity(identity -> identity.taskId("task-replay").messageId("msg-1").attemptId("attempt-1"))
-                    .outcome(true, null, "duplicate callback suppressed")
-                    .attrs(Map.of("reason", "duplicate callback suppressed", "source", "TaskManager"))
+                    .eventType(ExecutionEventType.WORKER_ONLINE)
+                    .traceId("trace-overflow-filler")
+                    .identity(identity -> identity.workerId("overflow-worker-" + index))
                     .build());
         }
+    }
+
+    private void emitDuplicateReplayTrace(JsonlExecutionEventSink sink) {
+        sink.emit(ExecutionEvent.builder()
+                .eventType(ExecutionEventType.TASK_STATUS_TRANSITION)
+                .traceId("trace-replay")
+                .identity(identity -> identity.taskId("task-replay"))
+                .transition("READY", "RUNNING", "assignment-success")
+                .attrs(Map.of("reason", "assignment-success", "source", "TaskManager"))
+                .build());
+        sink.emit(ExecutionEvent.builder()
+                .eventType(ExecutionEventType.CALLBACK_ACCEPTED)
+                .traceId("trace-replay")
+                .identity(identity -> identity.taskId("task-replay").messageId("msg-1").attemptId("attempt-1"))
+                .outcome(true, null, "accepted")
+                .attrs(Map.of("reason", "accepted", "source", "TaskResultService"))
+                .build());
+        sink.emit(ExecutionEvent.builder()
+                .eventType(ExecutionEventType.CALLBACK_ACCEPTED)
+                .traceId("trace-replay")
+                .identity(identity -> identity.taskId("task-replay").messageId("msg-2").attemptId("attempt-2"))
+                .outcome(true, null, "accepted")
+                .attrs(Map.of("reason", "accepted", "source", "TaskResultService"))
+                .build());
+        sink.emit(ExecutionEvent.builder()
+                .eventType(ExecutionEventType.TASK_TERMINAL_CLOSED)
+                .traceId("trace-replay")
+                .identity(identity -> identity.taskId("task-replay"))
+                .transition("RUNNING", "TERMINAL", "ALL_MESSAGES_SUCCEEDED")
+                .attrs(Map.of("reason", "all work converged", "source", "TaskManager", "terminalReason", "ALL_MESSAGES_SUCCEEDED"))
+                .build());
+        sink.emit(ExecutionEvent.builder()
+                .eventType(ExecutionEventType.CALLBACK_IGNORED_DUPLICATE)
+                .traceId("trace-replay")
+                .identity(identity -> identity.taskId("task-replay").messageId("msg-1").attemptId("attempt-1"))
+                .outcome(true, null, "duplicate callback suppressed")
+                .attrs(Map.of("reason", "duplicate callback suppressed", "source", "TaskManager"))
+                .build());
     }
 
     private void writeLateStaleResultReplayTrace(Path outputDir,

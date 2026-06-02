@@ -9,7 +9,9 @@ import com.xa.mass.trace.query.TraceValidationReport;
 import com.xa.mass.trace.query.TraceValidationService;
 import com.xa.mass.trace.scenario.TraceScenarioRegistry;
 import com.xa.mass.trace.scenario.TraceScenarioReport;
+import com.xa.mass.trace.scenario.TraceScenarioIssue;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public final class TraceOperatorService {
@@ -131,16 +133,31 @@ public final class TraceOperatorService {
         TraceSource source = TraceSourceResolver.resolve(request.path());
         String scenarioId = requireText(request.scenarioId(), "scenarioId");
         String taskId = requireText(request.taskId(), "taskId");
-        TraceScenarioReport report = scenarioRegistry.require(scenarioId)
-                .analyze(queryBackend, source, taskId);
+        Long droppedCount = request.droppedCount();
+        if (droppedCount != null && droppedCount < 0L) {
+            throw new IllegalArgumentException("droppedCount must be >= 0");
+        }
+        var analyzer = scenarioRegistry.require(scenarioId);
+        TraceScenarioReport report = analyzer.analyze(queryBackend, source, taskId);
+        List<TraceScenarioIssue> issues = report.issues();
+        boolean ok = report.ok();
+        if (ok && droppedCount != null && droppedCount > 0L && analyzer.requiresCompleteTraceForOk()) {
+            ArrayList<TraceScenarioIssue> incompleteIssues = new ArrayList<>(issues);
+            incompleteIssues.add(new TraceScenarioIssue(
+                    "TRACE_INCOMPLETE",
+                    "Trace analyzer result cannot prove absence-based invariants because trace sink dropped "
+                            + droppedCount + " event(s)"));
+            issues = List.copyOf(incompleteIssues);
+            ok = false;
+        }
         return new TraceAnalyzeResponse(
                 report.scenarioId(),
                 report.taskId(),
                 report.source(),
-                report.ok(),
+                ok,
                 report.eventCount(),
                 report.eventTypeCounts(),
-                report.issues()
+                issues
         );
     }
 

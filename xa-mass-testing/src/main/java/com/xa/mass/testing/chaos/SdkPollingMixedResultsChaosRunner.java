@@ -176,7 +176,8 @@ public final class SdkPollingMixedResultsChaosRunner {
                 List<TraceAnalyzeResponse> analyses = ChaosTraceAnalysisPlanner.analyze(
                         traceArtifacts.outputDir(),
                         ChaosTraceAnalysisPlanner.ChaosProofProfile.MIXED_RESULT_TERMINAL_CONVERGENCE,
-                        task.getTaskId()
+                        task.getTaskId(),
+                        traceArtifacts.droppedCount()
                 );
                 ChaosTraceAnalysisPlanner.requireAllOk(analyses);
 

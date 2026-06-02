@@ -191,7 +191,8 @@ public final class SdkWebSocketLateResultAfterLeaseExpiryChaosRunner {
                 List<TraceAnalyzeResponse> analyses = ChaosTraceAnalysisPlanner.analyze(
                         traceArtifacts.outputDir(),
                         ChaosTraceAnalysisPlanner.ChaosProofProfile.LATE_STALE_RESULT_REPLAY,
-                        task.getTaskId()
+                        task.getTaskId(),
+                        traceArtifacts.droppedCount()
                 );
                 ChaosTraceAnalysisPlanner.requireAllOk(analyses);
 

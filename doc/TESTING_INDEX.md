@@ -1,6 +1,6 @@
 # Testing Index
 
-Last updated: 2026-05-18
+Last updated: 2026-06-02
 
 Status: current project-level testing index.
 
@@ -471,6 +471,20 @@ Proves:
   websocket stale late-result replay. Result-shape variants remain
   scheduled/manual support because their primary proof lives in
   engine/server/trace convergence lanes.
+- scheduled/manual infra chaos now includes Redis-backed runtime owner
+  restart/reconnect recovery for the existing `sched.retry-redispatch`
+  invariant. Redis process kill, partition/failover, and lease-clock skew are
+  not current proof rows and need
+  `../roadmap/WORKER_FAULT_MATRIX_INFRA_FAULT_DECISION.md` to resolve the
+  required environment/seam decision before they can become worker-fault matrix
+  proof.
+- `fault.dropped-result-retry` is a current scenario-ledger alias over the
+  polling lease-expiry redispatch chaos runner. It makes the dropped-result /
+  retry shape report-visible, but it is not a fourth `chaos-smokes` PR bundle
+  entry.
+- `WorkerFaultScenarioIndex` proof-owner labels are not CI bundle membership.
+  The current `chaos-smokes` job still runs only the three scenario ids named
+  by `run-chaos-smokes.sh`.
 
 Report-only support:
 
@@ -487,6 +501,23 @@ Report-only support:
   interactive lane worker so the smoke measures lane isolation under bulk
   pressure, and interactive retry wakeup starts `RuntimeReadyDispatchPump` so
   delayed retry visibility is consumed from `TaskWorkRuntime`.
+- workload-mix perf matching uses WorkerGroup capability truth for project
+  support. `workload-mix-slow-bulk-interactive-isolation` is a current
+  scenario-ledger row selected through `mass.workload.smoke.scenarioId`; it is
+  scheduled/manual perf-smoke evidence, not a PR chaos row.
+- SDK transport load includes current mode-specific delivery-diagnostics rows
+  selected through `mass.sdk.load.scenarioId`: polling, websocket, and socket.
+  These rows make matrix-axis reporting explicit; they are not transport churn
+  proof until the runner injects real transport degradation.
+- SDK transport load includes the current WebSocket churn row
+  `sdk-transport-load-websocket-churn`. It performs a real WebSocket
+  close/reconnect through the worker client surface and records churn
+  disconnect/reconnect counters in `workerMetrics`.
+- scheduled/manual polling soak includes the current
+  `polling-soak-noisy-mixed-result` worker-fault row. It selects seeded jitter
+  and every-N synthetic failure through `mass.soak.scenarioId`, records the
+  scenario/profile/seed in `config` and `proof.matrixProfile`, and remains
+  mixed-result soak proof rather than dropped-result/retry proof.
 - when chaos/perf runners claim trace coverage, consume canonical trace through
   `xa-mass-trace` or the same query backend path rather than grepping raw logs
 
@@ -536,7 +567,7 @@ Use first when:
 | retry / expiry / finality / result ingest | engine acceptance/concurrency + Boot-shell E2E | chaos for late replay / disconnect / lease expiry |
 | trace schema / event emission / operator trace query | sink or emitter tests + `xa-mass-trace` integration tests against canonical output | Boot-shell or chaos trace-observed scenario when integrated lifecycle visibility changed |
 | `TaskResultRuntime` / stable-final result rows / repair barriers / result read window | runtime contract tests for memory + Redis implementations, plus engine result convergence coverage | Boot-shell `/results` or archive E2E when public result/API shape changes |
-| runtime backend parity (`memory` vs `redis`) | shared runtime contract tests plus one shared Boot-shell scenario with backend-specific subclasses; Redis tests must use isolated namespace prefixes and explicit fixture cleanup, not `shutdown()` cleanup | add backend-specific tests only for implementation-only keyspace/script behavior, namespace isolation, or restart recovery tied to an existing invariant such as `sched.retry-redispatch` |
+| runtime backend parity (`memory` vs `redis`) | shared runtime contract tests plus one shared Boot-shell scenario with backend-specific subclasses; Redis tests must use isolated namespace prefixes and explicit fixture cleanup, not `shutdown()` cleanup | add backend-specific tests only for implementation-only keyspace/script behavior, namespace isolation, or restart recovery tied to an existing invariant such as `sched.retry-redispatch`; Redis-backed runtime owner restart/reconnect has scheduled/manual chaos coverage, while process kill and partition/failover require `../roadmap/WORKER_FAULT_MATRIX_INFRA_FAULT_DECISION.md` before proof claims |
 | transport runtime / adapter / routing / result ingress | transport module tests + Boot-shell E2E | chaos for recovery behavior |
 | host page / filter / shell read model | server integration tests or frontend tests | one Boot-shell smoke if host behavior can drift into mainline |
 | hot-path performance / runtime counters | perf smoke + targeted engine acceptance | Boot-shell smoke if external behavior can drift |

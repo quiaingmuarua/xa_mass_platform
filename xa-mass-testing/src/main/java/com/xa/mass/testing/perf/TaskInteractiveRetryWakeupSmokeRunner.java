@@ -462,7 +462,10 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                 }
                 if (!PerfWorkerMatchingSupport.workerAvailable(worker)
                         || !workerGroupSelector.contains(worker.workerGroupId())
-                        || !PerfWorkerMatchingSupport.supportsProject(worker, task.getProject())) {
+                        || !PerfWorkerMatchingSupport.supportsProject(
+                                workerSchedulingViewRuntime,
+                                worker,
+                                task.getProject())) {
                     continue;
                 }
                 WorkerSchedulingCandidate candidate =

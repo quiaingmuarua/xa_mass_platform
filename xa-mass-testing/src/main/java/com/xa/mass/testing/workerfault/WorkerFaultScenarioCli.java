@@ -21,6 +21,7 @@ public final class WorkerFaultScenarioCli {
             return;
         }
         WorkerFaultScenarioIndex.Scenario scenario = resolveScenario(args);
+        System.setProperty("mass.workerFault.scenarioId", scenario.scenarioId());
         System.setProperty(
                 "mass.sdk.chaos.forceExit",
                 System.getProperty("mass.sdk.chaos.forceExit", "false")

@@ -3,45 +3,49 @@ package com.xa.mass.testing.chaos;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.testing.chaos.support.ChaosProofAssertions;
-import com.xa.mass.testing.chaos.support.ChaosTraceArtifacts;
 import com.xa.mass.testing.chaos.support.ChaosReportWriter;
 import com.xa.mass.testing.chaos.support.ChaosRuntimeHarness;
 import com.xa.mass.testing.chaos.support.ChaosSupport;
+import com.xa.mass.testing.chaos.support.ChaosTraceArtifacts;
 import com.xa.mass.testing.chaos.support.TaskOutcomeSnapshot;
 import com.xa.mass.testing.chaos.support.TraceEventAssertions;
 import com.xa.mass.testing.workerfault.WorkerFaultReportMetadata;
 import com.xa.mass.testing.workerfault.WorkerFaultScenarioIndex;
 import com.xa.mass.trace.operator.TraceAnalyzeResponse;
 import com.xa.mass.transport.model.TaskDispatchItem;
+import io.lettuce.core.RedisClient;
+import io.lettuce.core.api.StatefulRedisConnection;
 
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
+public final class SdkPollingRedisRestartRecoveryChaosRunner {
 
     private static final String PROJECT_CODE = "demoApp";
     private static final String ROUTING_CODE = "us";
-    private static final String CHAOS_WORKER_ID = "sdk-polling-chaos-worker-0";
-    private static final String STEADY_WORKER_ID = "sdk-polling-chaos-worker-1";
+    private static final String CHAOS_WORKER_ID = "sdk-polling-redis-restart-worker-0";
+    private static final String STEADY_WORKER_ID = "sdk-polling-redis-restart-worker-1";
 
-    private SdkPollingLeaseExpiryRedispatchChaosRunner() {
+    private SdkPollingRedisRestartRecoveryChaosRunner() {
     }
 
     public static void main(String[] args) throws Exception {
         int exitCode = 0;
         try {
             ChaosConfig config = ChaosConfig.fromSystemProperties();
+            cleanupRedisNamespace(config.redisUri(), config.redisNamespace(), config.cleanupRedisNamespace());
             ChaosReport report = new ScenarioRunner(config).run();
             System.out.println(report.toConsoleSummary());
-            System.out.println("SDK polling lease-expiry chaos report written to: " + report.reportPath());
+            System.out.println("SDK polling Redis restart recovery chaos report written to: " + report.reportPath());
         } catch (Throwable t) {
             exitCode = 1;
             throw t;
@@ -61,25 +65,16 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
 
         private ChaosReport run() throws Exception {
             ChaosTraceArtifacts traceArtifacts = ChaosTraceArtifacts.create(
-                    "sdk-polling-lease-expiry-redispatch-chaos");
-            ChaosRuntimeHarness runtime = ChaosRuntimeHarness.createPolling(
-                    new ChaosRuntimeHarness.PollingRuntimeConfig(
-                            "sdk-polling-lease-chaos",
-                            4,
-                            config.assignmentRetryDelayMillis(),
-                            config.leaseWatchdogIntervalSeconds(),
-                            config.taskMessageLeaseSeconds()
-                    ),
-                    traceArtifacts
-            );
+                    "sdk-polling-redis-restart-recovery-chaos");
+            ChaosRuntimeHarness runtime = null;
             PollingWorkerDriver chaosWorker = null;
             PollingWorkerDriver steadyWorker = null;
             long wallStartNanos = System.nanoTime();
 
             try {
+                runtime = ChaosRuntimeHarness.createPollingRedis(config.toHarnessConfig(), traceArtifacts);
                 runtime.start();
-                runtime.registerPollingWorker(CHAOS_WORKER_ID, "sdk-polling-chaos", PROJECT_CODE, ROUTING_CODE);
-                runtime.registerPollingWorker(STEADY_WORKER_ID, "sdk-polling-chaos", PROJECT_CODE, ROUTING_CODE);
+                runtime.registerPollingWorker(CHAOS_WORKER_ID, "sdk-polling-redis-chaos", PROJECT_CODE, ROUTING_CODE);
 
                 chaosWorker = new PollingWorkerDriver(
                         CHAOS_WORKER_ID,
@@ -88,34 +83,27 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
                         WorkerMode.STALL_WITHOUT_RESULT
                 );
                 PollingWorkerDriver activeChaosWorker = chaosWorker;
-                steadyWorker = new PollingWorkerDriver(
-                        STEADY_WORKER_ID,
-                        runtime.pullWorker(STEADY_WORKER_ID),
-                        config,
-                        WorkerMode.NORMAL
-                );
-
                 chaosWorker.start();
                 runtime.waitForWorkerOnline(
                         CHAOS_WORKER_ID,
                         config.timeoutSeconds(),
-                        "chaos polling worker should be online before scenario starts"
+                        "chaos polling worker should be online before Redis runtime restart scenario starts"
                 );
 
                 TaskShellSnapshot task = runtime.createApprovedTask(ChaosRuntimeHarness.TaskCreateSpec.singleMessage(
                         "sdk-chaos",
                         PROJECT_CODE,
-                        "sdk-polling-chaos-lease-expiry-redispatch",
+                        "sdk-polling-redis-restart-recovery",
                         ROUTING_CODE,
                         1,
                         config.timeoutSeconds(),
-                        Map.of("source", "SdkPollingLeaseExpiryRedispatchChaosRunner")
+                        Map.of("source", "SdkPollingRedisRestartRecoveryChaosRunner")
                 ));
 
                 ChaosSupport.waitForCondition(
                         () -> activeChaosWorker.stalledDispatches() >= 1,
                         config.timeoutSeconds(),
-                        "chaos polling worker should claim one dispatch and stall without a result"
+                        "chaos polling worker should claim one dispatch before Redis runtime restart"
                 );
                 String messageId = activeChaosWorker.stalledMessageId();
                 ChaosSupport.require(messageId != null && !messageId.isBlank(),
@@ -125,21 +113,30 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
                         messageId,
                         CHAOS_WORKER_ID,
                         config.timeoutSeconds(),
-                        "first active attempt should stay bound to the polling chaos worker before lease expiry"
+                        "first active attempt should stay bound before Redis runtime restart"
                 );
 
                 chaosWorker.disconnect();
                 runtime.waitForWorkerOffline(
                         CHAOS_WORKER_ID,
                         config.timeoutSeconds(),
-                        "runtime should observe the chaos polling worker offline after disconnect"
+                        "runtime should observe the chaos polling worker offline before Redis runtime restart"
                 );
+                runtime = runtime.restartPollingRedisRuntime();
+                runtime.start();
+                runtime.registerPollingWorker(STEADY_WORKER_ID, "sdk-polling-redis-chaos", PROJECT_CODE, ROUTING_CODE);
 
+                steadyWorker = new PollingWorkerDriver(
+                        STEADY_WORKER_ID,
+                        runtime.pullWorker(STEADY_WORKER_ID),
+                        config,
+                        WorkerMode.NORMAL
+                );
                 steadyWorker.start();
                 runtime.waitForWorkerOnline(
                         STEADY_WORKER_ID,
                         config.timeoutSeconds(),
-                        "steady polling worker should come online before redispatch"
+                        "steady polling worker should be online after Redis runtime restart"
                 );
 
                 runtime.waitForAttemptCount(
@@ -147,7 +144,7 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
                         messageId,
                         2,
                         config.timeoutSeconds(),
-                        "second attempt should appear after watchdog expiry and polling redispatch"
+                        "second attempt should appear after Redis runtime restart and lease expiry"
                 );
 
                 ChaosProofAssertions.TerminalRuntimeProof proof = ChaosProofAssertions.requireSuccessfulTerminalRuntime(
@@ -156,7 +153,7 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
                         messageId,
                         1,
                         config.timeoutSeconds(),
-                        "polling lease-expiry redispatch"
+                        "polling Redis runtime restart recovery"
                 );
                 TaskOutcomeSnapshot outcome = proof.outcome();
                 var finalReceipt = proof.finalReceipt();
@@ -170,34 +167,38 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
                 );
                 ChaosTraceAnalysisPlanner.requireAllOk(analyses);
 
-                Path reportPath = ChaosReportWriter.write("sdk-polling-lease-expiry-redispatch-chaos",
+                Path reportPath = ChaosReportWriter.write("sdk-polling-redis-restart-recovery-chaos",
                         WorkerFaultReportMetadata.merge(
-                                reportScenario(),
+                                WorkerFaultScenarioIndex.Scenario.POLLING_REDIS_RESTART_RECOVERY,
                                 Map.of(
-                        "config", config.toMap(),
-                        "runtime", Map.of(
-                                "transport", "polling",
-                                "adapterId", "polling"
-                        ),
-                        "wallClock", Map.of("totalMillis", ChaosSupport.nanosToMillis(System.nanoTime() - wallStartNanos)),
-                        "leaseWindow", Map.of(
-                                "taskMessageLeaseSeconds", config.taskMessageLeaseSeconds(),
-                                "finalReceiptRetryCount", finalReceipt.retryCount()
-                        ),
-                        "trace", Map.of(
-                                "summary", TraceEventAssertions.of(traceArtifacts.captureSink()).summaryMap(task.getTaskId()),
-                                "jsonlPath", traceArtifacts.outputDir().toString(),
-                                "droppedCount", traceArtifacts.droppedCount(),
-                                "analyses", analyses.stream()
-                                        .map(SdkPollingLeaseExpiryRedispatchChaosRunner::analysisMap)
-                                        .toList()
-                        ),
-                        "task", outcome.toMap(),
-                        "workers", Map.of(
-                                "chaosWorker", chaosWorker.snapshot().toMap(),
-                                "steadyWorker", steadyWorker.snapshot().toMap()
-                        )
-                )));
+                                        "config", config.toMap(),
+                                        "runtime", Map.of(
+                                                "transport", "polling",
+                                                "adapterId", "polling",
+                                                "redisUri", config.redisUri(),
+                                                "redisNamespace", config.redisNamespace(),
+                                                "restartMode", "runtime-owner-reconnect"
+                                        ),
+                                        "wallClock", Map.of("totalMillis",
+                                                ChaosSupport.nanosToMillis(System.nanoTime() - wallStartNanos)),
+                                        "leaseWindow", Map.of(
+                                                "taskMessageLeaseSeconds", config.taskMessageLeaseSeconds(),
+                                                "finalReceiptRetryCount", finalReceipt.retryCount()
+                                        ),
+                                        "trace", Map.of(
+                                                "summary", TraceEventAssertions.of(traceArtifacts.captureSink()).summaryMap(task.getTaskId()),
+                                                "jsonlPath", traceArtifacts.outputDir().toString(),
+                                                "droppedCount", traceArtifacts.droppedCount(),
+                                                "analyses", analyses.stream()
+                                                        .map(SdkPollingRedisRestartRecoveryChaosRunner::analysisMap)
+                                                        .toList()
+                                        ),
+                                        "task", outcome.toMap(),
+                                        "workers", Map.of(
+                                                "chaosWorker", chaosWorker.snapshot().toMap(),
+                                                "steadyWorker", steadyWorker.snapshot().toMap()
+                                        )
+                                )));
 
                 return new ChaosReport(
                         task.getTaskId(),
@@ -214,24 +215,10 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
                 closeQuietly(traceArtifacts);
                 closeQuietly(chaosWorker);
                 closeQuietly(steadyWorker);
-                runtime.close();
+                closeQuietly(runtime);
+                cleanupRedisNamespace(config.redisUri(), config.redisNamespace(), config.cleanupRedisNamespace());
             }
         }
-    }
-
-    private static WorkerFaultScenarioIndex.Scenario reportScenario() {
-        String scenarioId = System.getProperty("mass.workerFault.scenarioId");
-        if (scenarioId == null || scenarioId.isBlank()) {
-            return WorkerFaultScenarioIndex.Scenario.POLLING_LEASE_EXPIRY_REDISPATCH;
-        }
-        WorkerFaultScenarioIndex.Scenario scenario = WorkerFaultScenarioIndex.scenarioForId(scenarioId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "unknown mass.workerFault.scenarioId: " + scenarioId.trim()));
-        if (scenario.runnerFamily() != WorkerFaultScenarioIndex.RunnerFamily.SDK_POLLING_LEASE_EXPIRY_REDISPATCH_CHAOS) {
-            throw new IllegalArgumentException("mass.workerFault.scenarioId must reference a polling lease-expiry runner scenario: "
-                    + scenario.scenarioId());
-        }
-        return scenario;
     }
 
     private enum WorkerMode {
@@ -268,17 +255,17 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
         }
 
         private void start() {
-            session.connect("sdk-polling-chaos-start");
+            session.connect("sdk-polling-redis-restart-start");
             connected.set(true);
             running.set(true);
-            pollThread = new Thread(this::runLoop, "SdkPollingChaosWorker-" + workerId);
+            pollThread = new Thread(this::runLoop, "SdkPollingRedisRestartWorker-" + workerId);
             pollThread.setDaemon(true);
             pollThread.start();
         }
 
         private void disconnect() {
             if (connected.compareAndSet(true, false)) {
-                session.disconnect("sdk-polling-chaos-disconnect");
+                session.disconnect("sdk-polling-redis-restart-disconnect");
             }
             running.set(false);
         }
@@ -362,7 +349,7 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
                 }
                 stopped.await(5, TimeUnit.SECONDS);
                 if (connected.compareAndSet(true, false)) {
-                    session.disconnect("sdk-polling-chaos-stop");
+                    session.disconnect("sdk-polling-redis-restart-stop");
                 }
             }
         }
@@ -394,21 +381,46 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
                                long assignmentRetryDelayMillis,
                                long leaseWatchdogIntervalSeconds,
                                long taskMessageLeaseSeconds,
-                               int timeoutSeconds) {
+                               int timeoutSeconds,
+                               String redisUri,
+                               String redisNamespace,
+                               int maxQueuedItems,
+                               boolean cleanupRedisNamespace) {
         private static ChaosConfig fromSystemProperties() {
             ChaosConfig config = new ChaosConfig(
                     ChaosSupport.intProperty("mass.sdk.chaos.processingDelayMillis", 25),
                     ChaosSupport.longProperty("mass.sdk.chaos.assignmentRetryDelayMillis", 100L),
                     ChaosSupport.longProperty("mass.sdk.chaos.leaseWatchdogIntervalSeconds", 1L),
                     ChaosSupport.longProperty("mass.sdk.chaos.taskMessageLeaseSeconds", 2L),
-                    ChaosSupport.intProperty("mass.sdk.chaos.timeoutSeconds", 25)
+                    ChaosSupport.intProperty("mass.sdk.chaos.timeoutSeconds", 30),
+                    ChaosSupport.stringProperty("mass.sdk.chaos.redisUri", "redis://127.0.0.1:6379/0"),
+                    ChaosSupport.stringProperty("mass.sdk.chaos.redisNamespace",
+                            "xa:mass:chaos:redis-restart:" + UUID.randomUUID()),
+                    ChaosSupport.intProperty("mass.sdk.chaos.maxQueuedItems", 1024),
+                    ChaosSupport.booleanProperty("mass.sdk.chaos.cleanupRedisNamespace", true)
             );
             ChaosSupport.require(config.processingDelayMillis >= 0, "processingDelayMillis must not be negative");
             ChaosSupport.require(config.assignmentRetryDelayMillis > 0, "assignmentRetryDelayMillis must be positive");
             ChaosSupport.require(config.leaseWatchdogIntervalSeconds > 0, "leaseWatchdogIntervalSeconds must be positive");
             ChaosSupport.require(config.taskMessageLeaseSeconds > 0, "taskMessageLeaseSeconds must be positive");
             ChaosSupport.require(config.timeoutSeconds > 0, "timeoutSeconds must be positive");
+            ChaosSupport.require(!config.redisUri.isBlank(), "redisUri must not be blank");
+            ChaosSupport.require(!config.redisNamespace.isBlank(), "redisNamespace must not be blank");
+            ChaosSupport.require(config.maxQueuedItems > 0, "maxQueuedItems must be positive");
             return config;
+        }
+
+        private ChaosRuntimeHarness.PollingRedisRuntimeConfig toHarnessConfig() {
+            return new ChaosRuntimeHarness.PollingRedisRuntimeConfig(
+                    "sdk-polling-redis-restart-chaos",
+                    4,
+                    assignmentRetryDelayMillis,
+                    leaseWatchdogIntervalSeconds,
+                    taskMessageLeaseSeconds,
+                    redisUri,
+                    redisNamespace,
+                    maxQueuedItems
+            );
         }
 
         private Map<String, Object> toMap() {
@@ -418,6 +430,10 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
             map.put("leaseWatchdogIntervalSeconds", leaseWatchdogIntervalSeconds);
             map.put("taskMessageLeaseSeconds", taskMessageLeaseSeconds);
             map.put("timeoutSeconds", timeoutSeconds);
+            map.put("redisUri", redisUri);
+            map.put("redisNamespace", redisNamespace);
+            map.put("maxQueuedItems", maxQueuedItems);
+            map.put("cleanupRedisNamespace", cleanupRedisNamespace);
             return Map.copyOf(map);
         }
     }
@@ -433,7 +449,7 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
                                Path reportPath) {
         private String toConsoleSummary() {
             return String.format(Locale.ROOT,
-                    "SdkPollingLeaseExpiryChaos task=%s message=%s stalledDispatches=%d steadyResults=%d "
+                    "SdkPollingRedisRestartRecoveryChaos task=%s message=%s stalledDispatches=%d steadyResults=%d "
                             + "attempts=%d retryCount=%d terminalReason=%s wall=%.3fms report=%s",
                     taskId,
                     messageId,
@@ -445,6 +461,21 @@ public final class SdkPollingLeaseExpiryRedispatchChaosRunner {
                     wallClockMillis,
                     reportPath
             );
+        }
+    }
+
+    private static void cleanupRedisNamespace(String redisUri, String namespace, boolean enabled) {
+        if (!enabled || namespace == null || namespace.isBlank()) {
+            return;
+        }
+        RedisClient client = RedisClient.create(redisUri);
+        try (StatefulRedisConnection<String, String> connection = client.connect()) {
+            List<String> keys = connection.sync().keys(namespace + "*");
+            if (!keys.isEmpty()) {
+                connection.sync().del(keys.toArray(String[]::new));
+            }
+        } finally {
+            client.shutdown();
         }
     }
 

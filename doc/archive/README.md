@@ -63,6 +63,12 @@ path over the original draft date.
 | --- | --- | --- |
 | 2026-05-20 | [ADAPTER_NODE_WORKER_REGISTRATION_ROADMAP](./transport/2026-05-20_ADAPTER_NODE_WORKER_REGISTRATION_ROADMAP.md) | roadmap |
 
+## xa-mass-testing
+
+| Date | Document | Type |
+| --- | --- | --- |
+| 2026-06-02 | [WORKER_FAULT_MATRIX_ROADMAP](./xa-mass-testing/2026-06-02_WORKER_FAULT_MATRIX_ROADMAP.md) | roadmap |
+
 ## xa-mass-engine
 
 | Date | Document | Type |

@@ -11,6 +11,7 @@ public final class WorkerFaultScenarioIndex {
 
     public enum ProofLineOwner {
         PR_CHAOS_SMOKE,
+        SCHEDULED_INFRA_CHAOS,
         PERF_SMOKE,
         FULL_PERF_MODEL,
         SDK_TRANSPORT_LOAD,
@@ -26,6 +27,8 @@ public final class WorkerFaultScenarioIndex {
                 "com.xa.mass.testing.chaos.SdkPollingMessageRetryExhaustedChaosRunner"),
         SDK_POLLING_LEASE_EXPIRY_REDISPATCH_CHAOS(
                 "com.xa.mass.testing.chaos.SdkPollingLeaseExpiryRedispatchChaosRunner"),
+        SDK_POLLING_REDIS_RESTART_RECOVERY_CHAOS(
+                "com.xa.mass.testing.chaos.SdkPollingRedisRestartRecoveryChaosRunner"),
         SDK_WEBSOCKET_DISCONNECT_CHAOS(
                 "com.xa.mass.testing.chaos.SdkWebSocketDisconnectChaosRunner"),
         SDK_WEBSOCKET_LEASE_EXPIRY_REDISPATCH_CHAOS(
@@ -113,6 +116,26 @@ public final class WorkerFaultScenarioIndex {
                 "lease-expiry-redispatch",
                 List.of(TraceAnalyzerScenario.LEASE_EXPIRY_REDISPATCH)
         ),
+        FAULT_DROPPED_RESULT_RETRY(
+                "fault.dropped-result-retry",
+                ProofLineOwner.PR_CHAOS_SMOKE,
+                RunnerFamily.SDK_POLLING_LEASE_EXPIRY_REDISPATCH_CHAOS,
+                "polling",
+                "memory",
+                "STALL_LEASE_TAKEOVER",
+                "dropped-result-retry",
+                List.of(TraceAnalyzerScenario.LEASE_EXPIRY_REDISPATCH)
+        ),
+        POLLING_REDIS_RESTART_RECOVERY(
+                "polling-redis-restart-recovery",
+                ProofLineOwner.SCHEDULED_INFRA_CHAOS,
+                RunnerFamily.SDK_POLLING_REDIS_RESTART_RECOVERY_CHAOS,
+                "polling",
+                "redis",
+                "STALL_RESTART_TAKEOVER",
+                "redis-runtime-restart-recovery",
+                List.of(TraceAnalyzerScenario.LEASE_EXPIRY_REDISPATCH)
+        ),
         WEBSOCKET_DISCONNECT_RECONNECT(
                 "websocket-disconnect-reconnect",
                 ProofLineOwner.PR_CHAOS_SMOKE,
@@ -153,6 +176,16 @@ public final class WorkerFaultScenarioIndex {
                 "lane-isolation",
                 List.of()
         ),
+        WORKLOAD_MIX_SLOW_BULK_INTERACTIVE_ISOLATION(
+                "workload-mix-slow-bulk-interactive-isolation",
+                ProofLineOwner.PERF_SMOKE,
+                RunnerFamily.TASK_WORKLOAD_MIX_SMOKE,
+                "embedded",
+                "memory",
+                "SLOW_BULK",
+                "slow-bulk-interactive-isolation",
+                List.of()
+        ),
         INTERACTIVE_RETRY_WAKEUP(
                 "interactive-retry-wakeup",
                 ProofLineOwner.PERF_SMOKE,
@@ -183,6 +216,46 @@ public final class WorkerFaultScenarioIndex {
                 "delivery-diagnostics",
                 List.of()
         ),
+        SDK_TRANSPORT_LOAD_POLLING(
+                "sdk-transport-load-polling",
+                ProofLineOwner.SDK_TRANSPORT_LOAD,
+                RunnerFamily.SDK_TRANSPORT_LOAD,
+                "polling",
+                "memory",
+                "NORMAL",
+                "delivery-diagnostics",
+                List.of()
+        ),
+        SDK_TRANSPORT_LOAD_WEBSOCKET(
+                "sdk-transport-load-websocket",
+                ProofLineOwner.SDK_TRANSPORT_LOAD,
+                RunnerFamily.SDK_TRANSPORT_LOAD,
+                "websocket",
+                "memory",
+                "NORMAL",
+                "delivery-diagnostics",
+                List.of()
+        ),
+        SDK_TRANSPORT_LOAD_WEBSOCKET_CHURN(
+                "sdk-transport-load-websocket-churn",
+                ProofLineOwner.SDK_TRANSPORT_LOAD,
+                RunnerFamily.SDK_TRANSPORT_LOAD,
+                "websocket",
+                "memory",
+                "FLAKY_TRANSPORT",
+                "transport-connection-churn",
+                List.of()
+        ),
+        SDK_TRANSPORT_LOAD_SOCKET(
+                "sdk-transport-load-socket",
+                ProofLineOwner.SDK_TRANSPORT_LOAD,
+                RunnerFamily.SDK_TRANSPORT_LOAD,
+                "socket",
+                "memory",
+                "NORMAL",
+                "delivery-diagnostics",
+                List.of()
+        ),
         POLLING_SCHEDULING_SOAK(
                 "polling-scheduling-soak",
                 ProofLineOwner.POLLING_SOAK,
@@ -193,6 +266,19 @@ public final class WorkerFaultScenarioIndex {
                 "scheduling-soak",
                 List.of(
                         TraceAnalyzerScenario.LATE_WORKER_BACKFILL,
+                        TraceAnalyzerScenario.ALL_FAILED_TERMINAL_CONVERGENCE,
+                        TraceAnalyzerScenario.MIXED_RESULT_TERMINAL_CONVERGENCE
+                )
+        ),
+        POLLING_SOAK_NOISY_MIXED_RESULT(
+                "polling-soak-noisy-mixed-result",
+                ProofLineOwner.POLLING_SOAK,
+                RunnerFamily.SDK_POLLING_SCHEDULING_SOAK,
+                "polling",
+                "memory",
+                "NOISY",
+                "noisy-mixed-result",
+                List.of(
                         TraceAnalyzerScenario.ALL_FAILED_TERMINAL_CONVERGENCE,
                         TraceAnalyzerScenario.MIXED_RESULT_TERMINAL_CONVERGENCE
                 )

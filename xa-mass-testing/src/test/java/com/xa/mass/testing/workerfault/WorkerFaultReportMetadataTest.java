@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class WorkerFaultReportMetadataTest {
 
@@ -29,5 +30,20 @@ class WorkerFaultReportMetadataTest {
         assertEquals("websocket-disconnect-reconnect", report.get("scenarioId"));
         assertEquals("websocket", report.get("transport"));
         assertEquals(Map.of("transport", "websocket"), report.get("runtime"));
+    }
+
+    @Test
+    void mergeRejectsConflictingMatrixMetadata() {
+        assertThrows(IllegalArgumentException.class, () -> WorkerFaultReportMetadata.merge(
+                WorkerFaultScenarioIndex.Scenario.SDK_TRANSPORT_LOAD,
+                Map.of("transport", "polling")));
+    }
+
+    @Test
+    void transportLoadScenarioKeepsMatrixTransportSeparateFromActualTransport() {
+        Map<String, Object> metadata = WorkerFaultReportMetadata.topLevel(
+                WorkerFaultScenarioIndex.Scenario.SDK_TRANSPORT_LOAD);
+
+        assertEquals("multi", metadata.get("transport"));
     }
 }

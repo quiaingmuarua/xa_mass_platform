@@ -48,11 +48,11 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -568,7 +568,8 @@ public final class SdkPollingSchedulingSoakRunner {
                 analyses.add(traceOperator.analyze(new TraceAnalyzeRequest(
                         traceDir.toString(),
                         plan.scenarioId(),
-                        plan.sourceId()
+                        plan.sourceId(),
+                        dropped
                 )));
             }
             return new TraceProof(true, traceDir.toString(), validate, stats, dropped, List.copyOf(analyses));
@@ -622,11 +623,12 @@ public final class SdkPollingSchedulingSoakRunner {
 
         private Map<String, Object> soakMatrixProfile() {
             Map<String, Object> profile = new LinkedHashMap<>(WorkerFaultReportMetadata.topLevel(
-                    WorkerFaultScenarioIndex.Scenario.POLLING_SCHEDULING_SOAK));
+                    config.scenario()));
             profile.put("failureProfile", config.failureEveryNth() > 0 ? "every-" + config.failureEveryNth() : "none");
             profile.put("lateWorkerProfile", config.requireLateWorkerWork() ? "required" : "optional");
             profile.put("processingDelayMillis", config.processingDelayMillis());
             profile.put("processingJitterMillis", config.processingJitterMillis());
+            profile.put("processingJitterSeed", config.processingJitterSeed());
             return Map.copyOf(profile);
         }
 
@@ -776,7 +778,7 @@ public final class SdkPollingSchedulingSoakRunner {
             try {
                 int delay = config.processingDelayMillis();
                 if (config.processingJitterMillis() > 0) {
-                    delay += ThreadLocalRandom.current().nextInt(config.processingJitterMillis() + 1);
+                    delay += deterministicJitterMillis(item);
                 }
                 if (delay > 0) {
                     Thread.sleep(delay);
@@ -816,6 +818,22 @@ public final class SdkPollingSchedulingSoakRunner {
                 return number.longValue();
             }
             return Math.abs((long) item.getMessageId().hashCode());
+        }
+
+        private int deterministicJitterMillis(TaskDispatchItem item) {
+            int jitterBound = config.processingJitterMillis();
+            if (jitterBound <= 0) {
+                return 0;
+            }
+            int hash = Objects.hash(
+                    config.processingJitterSeed(),
+                    workerId,
+                    item.getTaskId(),
+                    item.getMessageId(),
+                    item.attemptId(),
+                    item.getRetryCount()
+            );
+            return Math.floorMod(hash, jitterBound + 1);
         }
 
         @Override

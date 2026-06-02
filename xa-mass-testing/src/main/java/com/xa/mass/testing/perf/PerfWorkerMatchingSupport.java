@@ -61,6 +61,24 @@ final class PerfWorkerMatchingSupport {
                 && worker.supportedProjects().contains(projectCode);
     }
 
+    static boolean supportsProject(WorkerSchedulingViewRuntime schedulingViewRuntime,
+                                   WorkerResourceRecord worker,
+                                   String projectCode) {
+        if (projectCode == null || projectCode.isBlank()) {
+            return false;
+        }
+        if (supportsProject(worker, projectCode)) {
+            return true;
+        }
+        if (schedulingViewRuntime == null || worker == null || worker.workerGroupId() == null
+                || worker.workerGroupId().isBlank()) {
+            return false;
+        }
+        return schedulingViewRuntime.workerGroupReadView(worker.workerGroupId())
+                .map(view -> view.projectCodes().contains(projectCode))
+                .orElse(false);
+    }
+
     private static WorkerSchedulingCandidate candidate(WorkerSchedulingViewRuntime schedulingViewRuntime,
                                                        WorkerResourceRecord worker) {
         String workerId = worker.workerId();

@@ -57,6 +57,84 @@ class WorkerFaultScenarioIndexTest {
     }
 
     @Test
+    void mapsSlowBulkInteractiveIsolationScenarioToWorkloadMixRunner() {
+        WorkerFaultScenarioIndex.Scenario scenario = WorkerFaultScenarioIndex.scenarioForId(
+                "workload-mix-slow-bulk-interactive-isolation").orElseThrow();
+
+        assertEquals(WorkerFaultScenarioIndex.ProofLineOwner.PERF_SMOKE, scenario.proofLineOwner());
+        assertEquals(WorkerFaultScenarioIndex.RunnerFamily.TASK_WORKLOAD_MIX_SMOKE, scenario.runnerFamily());
+        assertEquals("embedded", scenario.transport());
+        assertEquals("memory", scenario.runtimeBackend());
+        assertEquals("SLOW_BULK", scenario.workerProfile());
+        assertEquals("slow-bulk-interactive-isolation", scenario.faultShape());
+    }
+
+    @Test
+    void mapsTransportLoadModeScenariosToTransportLoadRunner() {
+        WorkerFaultScenarioIndex.Scenario polling = WorkerFaultScenarioIndex.scenarioForId(
+                "sdk-transport-load-polling").orElseThrow();
+        WorkerFaultScenarioIndex.Scenario websocket = WorkerFaultScenarioIndex.scenarioForId(
+                "sdk-transport-load-websocket").orElseThrow();
+        WorkerFaultScenarioIndex.Scenario socket = WorkerFaultScenarioIndex.scenarioForId(
+                "sdk-transport-load-socket").orElseThrow();
+        WorkerFaultScenarioIndex.Scenario websocketChurn = WorkerFaultScenarioIndex.scenarioForId(
+                "sdk-transport-load-websocket-churn").orElseThrow();
+
+        assertEquals(WorkerFaultScenarioIndex.RunnerFamily.SDK_TRANSPORT_LOAD, polling.runnerFamily());
+        assertEquals("polling", polling.transport());
+        assertEquals("websocket", websocket.transport());
+        assertEquals("socket", socket.transport());
+        assertEquals("delivery-diagnostics", polling.faultShape());
+        assertEquals("delivery-diagnostics", websocket.faultShape());
+        assertEquals("delivery-diagnostics", socket.faultShape());
+        assertEquals("websocket", websocketChurn.transport());
+        assertEquals("FLAKY_TRANSPORT", websocketChurn.workerProfile());
+        assertEquals("transport-connection-churn", websocketChurn.faultShape());
+    }
+
+    @Test
+    void mapsNoisyMixedResultSoakScenarioToPollingSoakRunner() {
+        WorkerFaultScenarioIndex.Scenario scenario = WorkerFaultScenarioIndex.scenarioForId(
+                "polling-soak-noisy-mixed-result").orElseThrow();
+
+        assertEquals(WorkerFaultScenarioIndex.ProofLineOwner.POLLING_SOAK, scenario.proofLineOwner());
+        assertEquals(WorkerFaultScenarioIndex.RunnerFamily.SDK_POLLING_SCHEDULING_SOAK, scenario.runnerFamily());
+        assertEquals("polling", scenario.transport());
+        assertEquals("memory", scenario.runtimeBackend());
+        assertEquals("NOISY", scenario.workerProfile());
+        assertEquals("noisy-mixed-result", scenario.faultShape());
+    }
+
+    @Test
+    void mapsRedisRestartRecoveryAsScheduledInfraChaos() {
+        WorkerFaultScenarioIndex.Scenario scenario = WorkerFaultScenarioIndex.scenarioForId(
+                "polling-redis-restart-recovery").orElseThrow();
+
+        assertEquals(WorkerFaultScenarioIndex.ProofLineOwner.SCHEDULED_INFRA_CHAOS,
+                scenario.proofLineOwner());
+        assertEquals(WorkerFaultScenarioIndex.RunnerFamily.SDK_POLLING_REDIS_RESTART_RECOVERY_CHAOS,
+                scenario.runnerFamily());
+        assertEquals("redis", scenario.runtimeBackend());
+        assertEquals("redis-runtime-restart-recovery", scenario.faultShape());
+        assertEquals("lease-expiry-redispatch", scenario.traceAnalyzers().getFirst().scenarioId());
+    }
+
+    @Test
+    void mapsDroppedResultRetryAliasToPollingLeaseExpiryRunner() {
+        WorkerFaultScenarioIndex.Scenario scenario = WorkerFaultScenarioIndex.scenarioForId(
+                "fault.dropped-result-retry").orElseThrow();
+
+        assertEquals(WorkerFaultScenarioIndex.ProofLineOwner.PR_CHAOS_SMOKE, scenario.proofLineOwner());
+        assertEquals(WorkerFaultScenarioIndex.RunnerFamily.SDK_POLLING_LEASE_EXPIRY_REDISPATCH_CHAOS,
+                scenario.runnerFamily());
+        assertEquals("polling", scenario.transport());
+        assertEquals("memory", scenario.runtimeBackend());
+        assertEquals("STALL_LEASE_TAKEOVER", scenario.workerProfile());
+        assertEquals("dropped-result-retry", scenario.faultShape());
+        assertEquals("lease-expiry-redispatch", scenario.traceAnalyzers().getFirst().scenarioId());
+    }
+
+    @Test
     void resolvesScenarioIdToExecutableRunnerMainClass() {
         WorkerFaultScenarioIndex.Scenario scenario = WorkerFaultScenarioIndex.scenarioForId(
                 "polling-lease-expiry-redispatch").orElseThrow();
@@ -94,6 +172,14 @@ class WorkerFaultScenarioIndexTest {
                 "STALL_LEASE_TAKEOVER",
                 "lease-expiry-redispatch")));
         assertTrue(scenarios.contains(String.join("\t",
+                "fault.dropped-result-retry",
+                "PR_CHAOS_SMOKE",
+                "SDK_POLLING_LEASE_EXPIRY_REDISPATCH_CHAOS",
+                "polling",
+                "memory",
+                "STALL_LEASE_TAKEOVER",
+                "dropped-result-retry")));
+        assertTrue(scenarios.contains(String.join("\t",
                 "sdk-transport-load",
                 "SDK_TRANSPORT_LOAD",
                 "SDK_TRANSPORT_LOAD",
@@ -101,5 +187,45 @@ class WorkerFaultScenarioIndexTest {
                 "memory",
                 "NORMAL",
                 "delivery-diagnostics")));
+        assertTrue(scenarios.contains(String.join("\t",
+                "workload-mix-slow-bulk-interactive-isolation",
+                "PERF_SMOKE",
+                "TASK_WORKLOAD_MIX_SMOKE",
+                "embedded",
+                "memory",
+                "SLOW_BULK",
+                "slow-bulk-interactive-isolation")));
+        assertTrue(scenarios.contains(String.join("\t",
+                "sdk-transport-load-polling",
+                "SDK_TRANSPORT_LOAD",
+                "SDK_TRANSPORT_LOAD",
+                "polling",
+                "memory",
+                "NORMAL",
+                "delivery-diagnostics")));
+        assertTrue(scenarios.contains(String.join("\t",
+                "sdk-transport-load-websocket-churn",
+                "SDK_TRANSPORT_LOAD",
+                "SDK_TRANSPORT_LOAD",
+                "websocket",
+                "memory",
+                "FLAKY_TRANSPORT",
+                "transport-connection-churn")));
+        assertTrue(scenarios.contains(String.join("\t",
+                "polling-redis-restart-recovery",
+                "SCHEDULED_INFRA_CHAOS",
+                "SDK_POLLING_REDIS_RESTART_RECOVERY_CHAOS",
+                "polling",
+                "redis",
+                "STALL_RESTART_TAKEOVER",
+                "redis-runtime-restart-recovery")));
+        assertTrue(scenarios.contains(String.join("\t",
+                "polling-soak-noisy-mixed-result",
+                "POLLING_SOAK",
+                "SDK_POLLING_SCHEDULING_SOAK",
+                "polling",
+                "memory",
+                "NOISY",
+                "noisy-mixed-result")));
     }
 }

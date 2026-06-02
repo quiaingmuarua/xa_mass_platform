@@ -1,6 +1,6 @@
 # Trace Contract
 
-Last updated: 2026-05-18
+Last updated: 2026-06-02
 
 Status: current global trace contract.
 
@@ -252,6 +252,14 @@ Proof pairing rule:
 - when a critical invariant claims trace pairing, use
   [PROOF_REGISTRY.md](./PROOF_REGISTRY.md) to find the authoritative engine or
   server proof that the trace scenario must pair with
+- when a caller knows the trace sink dropped events, scenario analysis must not
+  silently pass absence-based proof; known dropped events produce
+  `TRACE_INCOMPLETE` instead of a passing analyzer result
+- `TRACE_INCOMPLETE` means the trace artifact is insufficient proof, not that
+  runtime behavior is necessarily incorrect
+- verified overflow policy pairing: `DROP` must feed dropped-count completeness
+  into analyzer proof, while `FALLBACK_SYNC` must preserve the selected trace
+  enough for analyzer pass when runtime evidence is otherwise valid
 
 Legacy traces may also contain `WORKER_CONTEXT_STATUS_TRANSITION`. Operators may
 use it to diagnose compatibility paths, but analyzers must not require it as

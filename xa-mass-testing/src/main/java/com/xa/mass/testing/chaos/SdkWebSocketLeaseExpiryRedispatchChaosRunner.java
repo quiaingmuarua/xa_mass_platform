@@ -197,7 +197,8 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                 List<TraceAnalyzeResponse> analyses = ChaosTraceAnalysisPlanner.analyze(
                         traceArtifacts.outputDir(),
                         ChaosTraceAnalysisPlanner.ChaosProofProfile.LEASE_EXPIRY_REDISPATCH,
-                        task.getTaskId()
+                        task.getTaskId(),
+                        traceArtifacts.droppedCount()
                 );
                 ChaosTraceAnalysisPlanner.requireAllOk(analyses);
 
