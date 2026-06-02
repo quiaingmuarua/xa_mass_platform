@@ -7,9 +7,9 @@ the default verified runtime mainline.
 
 - owns the Redis-backed `TaskWorkRuntime` implementation
 - owns the first-slice Redis-backed `WorkerRegistry` implementation
-- keeps Redis queue/lease/counter ownership under `platform_infra` instead of leaking back into engine or server shells
-- fixes Redis runtime keyspace/index ownership before a real implementation is
-  spread across other modules
+- keeps Redis queue/lease/counter ownership under `platform_infra` instead of
+  leaking back into engine or server shells
+- fixes Redis runtime keyspace/index ownership inside this module
 
 ## Current Truth
 
@@ -25,12 +25,12 @@ the default verified runtime mainline.
   Redis-scripted atomic operations for `enqueue`, `claimReady`, `applyResult`,
   `pollExpiredLeases`, and `discardTask`
 - bounded delayed promotion and stats/query reads still use straightforward
-  Redis commands around that hot-path truth; further fine-grained optimization
-  remains future work, not a second runtime contract
+  Redis commands around that hot-path truth; fine-grained optimization is not a
+  second runtime contract
 - Redis `WorkerRegistry` uses `WATCH` / `MULTI` / `EXEC` over the group-local
   slot hash for first-slice reserve, confirm, release, final, gate, and lease
-  mutations; broader server/runtime switching and finer-grained Lua mutation
-  remain later roadmap phases
+  mutations; broader server/runtime switching and finer-grained Lua mutation are
+  outside the current implementation
 - Redis and memory worker registries share the same runtime-api route-bucket
   default policy; workers with approved route attributes are indexed into both
   `default` and attribute buckets.

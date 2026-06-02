@@ -14,7 +14,7 @@ composition SDK.
 - Production dependencies are JDK `HttpClient` and Jackson.
 - No Spring Boot, engine, server, embedded SDK, worker runtime, transport
   adapter, worker-pack, or `xa-mass-base` production dependency.
-- Android/device worker-host support is a separate future artifact decision.
+- Android/device worker-host support is outside this JVM SDK module.
 
 ## Authentication
 
@@ -82,7 +82,7 @@ Realtime protocol hardening decisions are tracked in
 [../../roadmap/JAVA_EXTERNAL_SDK_REALTIME_SESSION_HARDENING_DECISION.md](../../roadmap/JAVA_EXTERNAL_SDK_REALTIME_SESSION_HARDENING_DECISION.md).
 
 Public readiness is current for local/internal staging. Public registry
-publication remains an explicit future decision.
+publication is outside the current module scope.
 
 The standalone consumer metadata template is [pom.consumer.xml](pom.consumer.xml).
 It documents the dependency shape external consumers should see; normal reactor
@@ -312,5 +312,5 @@ From repo root:
 Production code in this module must not depend on engine, server, embedded SDK,
 worker runtime, or transport implementation modules.
 
-`xa-mass-java-sdk` is a JVM SDK. Android/device worker-host support is a
-separate future artifact decision, not part of this module.
+`xa-mass-java-sdk` is a JVM SDK. Android/device worker-host support is outside
+this module.

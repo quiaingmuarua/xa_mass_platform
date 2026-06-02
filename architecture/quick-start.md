@@ -177,8 +177,8 @@ for (var row : window.getItems()) {
 }
 ```
 
-Result reads use runtime-owned stable-final rows. They do not read task message
-projection residue.
+Result reads use runtime-owned stable-final rows. They do not read server
+review/export materialization.
 
 ## Next Docs
 

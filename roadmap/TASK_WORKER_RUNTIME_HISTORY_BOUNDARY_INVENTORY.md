@@ -104,7 +104,7 @@ storage implementation exists in this inventory.
 | `tid`, project, event code, contract, intake status, shared config, create/update timestamps | stable task shell/control-plane truth | Owned by task shell store and lifecycle services |
 | runtime item payloads and payload refs | runtime/input boundary | Ingested explicitly through runtime item APIs |
 | ready/delayed/lease/counter state | runtime current state | Owned by `TaskWorkRuntime` |
-| result apply window/final receipts | runtime result state | Owned by `TaskResultRuntime` and compatibility projection residue where still present |
+| result apply window/final receipts | runtime result state | Owned by `TaskResultRuntime`; review/export materialization is not result truth |
 | cross-task timelines, attempts, dispatch history, analytics | history/read model | Trace -> queue -> archive, not shell storage |
 
 ## Worker Field Classification

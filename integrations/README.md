@@ -34,10 +34,7 @@ Global boundary guard:
 - Server startup must not seed production task/worker truth as a substitute for
   external registration.
 
-## Active Direction
-
-The current direction is to move integrations from simple demonstrations toward
-business-useful worker capabilities and realistic external SDK adoption.
+## Current Role
 
 - Scenario launcher is the primary Java SDK adopter.
 - Worker-pack owns reusable capabilities plus separated dev/E2E harness code.

@@ -61,7 +61,7 @@ Testing-policy note:
 - do not use this module as the first home for ordinary worker/task matching correctness; that belongs in engine acceptance first
 - do not add local projection-first tests in engine/transport when the real risk belongs here
 - compatibility projection may still appear in reports or explicit audit/residue checks, but it is not the primary correctness surface for runtime convergence
-- chaos smoke correctness assertions must be runtime/aggregate/trace first: `TaskWorkRuntime` stats, active leases, task terminal state, and `ExecutionEvent` transitions are the proof surface; compatibility message/attempt views are report payload only unless the runner is explicitly about projection residue
+- chaos smoke correctness assertions must be runtime/aggregate/trace first: `TaskWorkRuntime` stats, active leases, task terminal state, and `ExecutionEvent` transitions are the proof surface; compatibility message/attempt views are report payload only unless the runner is explicitly about legacy projection audit
 - transport load correctness assertions must use task terminal state, `TaskWorkRuntime` final counters, delivery diagnostics, and worker receive/result metrics; compatibility projection must not define transport-load pass/fail
 
 ## Runner Map

@@ -115,18 +115,16 @@ Current worker-pack fault-adjacent controls:
 - `mock.disconnect`
 - `mock.reset`
 
-Current gaps:
+Current fault-proof distribution:
 
-- proof lines are real but not yet organized by one resource fault matrix
-- PR chaos probes are hand-written scenario runners, not matrix-selected rows
-- sample fault controls are command-specific and dev-oriented rather than a
-  reusable `fault.*` model
-- worker delay is mostly fixed or very small by default outside soak/perf
-- result-loss, duplicate, malformed, wrong identity, partial receive/result,
-  capacity flap, and state flap are not all represented as first-class worker
-  profiles
-- perf smoke and soak have useful timing/jitter controls, but those controls are
-  not yet shared with chaos or worker-pack sample execution
+- proof lines are real across engine, server E2E, trace analyzers, and chaos
+  runners
+- PR chaos probes are hand-written scenario runners
+- sample fault controls are command-specific and dev-oriented
+- worker delay controls are strongest in soak/perf paths
+- first-class worker profiles cover the active runner set, while some fault
+  modes remain scenario-specific controls
+- perf smoke and soak own timing/jitter controls
 
 ## 4. Resource Dependency Matrix
 

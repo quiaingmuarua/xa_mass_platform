@@ -75,9 +75,9 @@ Agent rule:
   `ServerLifecycleResultConvergenceSuite`, and `ExternalWorkerParitySuite`, but
   `secondary-proof` or support-suite coverage must not leak back in
 - engine mainline suites are mechanically guarded against support leakage as
-  well: engine projection residue suites have been retired, and any future
+  well: retired engine support suites must not leak back in, and any future
   engine support suite must explicitly own downgraded `secondary-proof`
-  coverage instead of leaking into mainline suites
+  coverage instead of entering mainline suites
 
 Core proof priority:
 

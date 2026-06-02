@@ -178,9 +178,9 @@ Read this before interpreting engine tests.
 - project-level proof pairing lives in
   [../doc/PROOF_REGISTRY.md](../doc/PROOF_REGISTRY.md)
 - `EngineKernelConvergenceSuite` is the runtime-first gate for deterministic
-  lifecycle and convergence facts that do not need projection residue
-- engine projection residue helper classes and secondary projection suites have
-  been retired; current convergence proof should stay runtime/result-first
+  lifecycle and convergence facts
+- legacy projection helper classes and secondary support suites have been
+  retired; current convergence proof should stay runtime/result-first
 - do not recreate projection-aware mixed classes to recover old assertions
 
 ## Start Here
@@ -321,8 +321,8 @@ Keep these facts fixed unless the owning global baselines change:
 - `TaskStateValidator` owns runtime aggregate validation only; scan-heavy
   compatibility projection audit is no longer part of the engine kernel
   diagnostic surface
-- engine projection residue helpers, storage projection row types, and
-  `TaskDetailStore` have been retired from engine/runtime ownership
+- legacy projection helpers, storage projection row types, and `TaskDetailStore`
+  have been retired from engine/runtime ownership
 - public result reads must use `TaskResultRuntime`; server-local review rows
   and retired projection rows must not source `/results`, SDK result query, or
   archive generation
@@ -458,10 +458,8 @@ Matching boundaries:
   evidence; current capacity semantics are worker-declared process-local
   reservation plus the existing worker lock, not distributed capacity
   correctness or shared background execution
-- future matching strategy inputs may include worker intrinsic metrics,
-  task-type affinity, fairness windows, observed performance, and
-  domain-specific scoring; keep these as explicit scheduling evidence rather
-  than smuggling them into worker-resource ownership
+- matching strategy inputs must stay explicit scheduling evidence rather than
+  being smuggled into worker-resource ownership
 - routing is a task-owned hint currently resolved from
   `Task.sharedConfig["routingCode"]`
 - once a task requires routing, the candidate must expose matching
@@ -539,28 +537,21 @@ Current scheduling-matrix scenarios include:
   outside its transitional lifecycle owner, or retired context-first matching
   handoff types return
 
-Current projection residue state:
-
-- engine projection residue helpers and support suites have been retired
-- `EngineProofOwnershipGuardTest` still guards against future regression:
-  mainline suites may not include `secondary-proof` classes, and any future
-  engine support suite must explicitly own downgraded coverage
-
 ## Read Map
 
 Engine-local owner docs:
 
 - [`doc/README.md`](./doc/README.md):
   engine-local documentation index. Current truth lives in `doc/baseline/`,
-  measurement context lives in `doc/measurements/`, future direction lives in
+  measurement context lives in `doc/measurements/`, direction notes live in
   `doc/roadmap/`, and historical plans stay outside the active engine read map.
 
 - [`doc/baseline/SCHEDULING_CORRECTNESS_MATRIX.md`](./doc/baseline/SCHEDULING_CORRECTNESS_MATRIX.md):
   current invariant-to-test map for scheduling correctness, proof surfaces, and
-  known deterministic coverage gaps
+  coverage placement notes
 - [`doc/baseline/KERNEL_CONVERGENCE_MATRIX.md`](./doc/baseline/KERNEL_CONVERGENCE_MATRIX.md):
   current invariant-to-test map for lifecycle/result convergence, proof
-  surfaces, and the remaining extraction gap from mixed legacy tests
+  surfaces, and mixed legacy test extraction notes
 - [`doc/baseline/SCHEDULING_KERNEL_BASELINE.md`](./doc/baseline/SCHEDULING_KERNEL_BASELINE.md):
   current scheduling mainline, worker scheduling surface, policy ownership,
   precedence, boundaries, and proof map
@@ -572,13 +563,13 @@ Engine-local owner docs:
 - [`doc/baseline/STORAGE_BASELINE.md`](./doc/baseline/STORAGE_BASELINE.md):
   current engine-facing storage/runtime boundary
 - [`doc/roadmap/TASK_RUNTIME_PROFILE_DESIGN.md`](./doc/roadmap/TASK_RUNTIME_PROFILE_DESIGN.md):
-  design/refactor note for the remaining workload-profile evolution only
+  design/refactor note for workload-profile boundaries
 - [`doc/roadmap/PRODUCTION_SCHEDULING_KERNEL_IMPROVEMENTS.md`](./doc/roadmap/PRODUCTION_SCHEDULING_KERNEL_IMPROVEMENTS.md):
-  future improvement notes for production-grade scheduling gaps. This is not
-  current behavior or an implementation plan.
+  non-baseline production scheduling improvement notes. This is not current
+  behavior or an implementation plan.
 - [`doc/baseline/EVENT_OWNER_BOUNDARY.md`](./doc/baseline/EVENT_OWNER_BOUNDARY.md):
   current owner map for descriptor metadata, task-result input, worker
-  presence ingress, and future command/state/capability owner slots
+  presence ingress, and command/state/capability owner slots
 
 Global baselines:
 

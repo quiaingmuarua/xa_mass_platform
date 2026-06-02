@@ -4,13 +4,13 @@ Status: current project summary.
 
 Trust code and verified runtime behavior over historical documentation.
 
+Documentation is agent-first. Human-facing architecture docs exist for
+explanation and onboarding, but current implementation truth is maintained
+through `AGENTS.md`, owner baselines, module READMEs, proof registries, verified
+runbooks, and current code. Do not reorder the root reading path to optimize
+human-first browsing at the expense of agent execution accuracy.
+
 ## Start Here
-
-For humans:
-
-- [architecture/README.md](./architecture/README.md) - human-facing architecture and onboarding guide
-- [architecture/quick-start.md](./architecture/quick-start.md) - shortest practical path to run the mainline
-- [README.zh-CN.md](./README.zh-CN.md) - Chinese project introduction for people
 
 For agents and contributors:
 
@@ -19,6 +19,12 @@ For agents and contributors:
 - [doc/TASK_LIFECYCLE_BASELINE.md](./doc/TASK_LIFECYCLE_BASELINE.md)
 - [doc/README.md](./doc/README.md) - expanded global doc map when needed
 - [transport/AGENTS.md](./transport/AGENTS.md)
+
+For humans:
+
+- [architecture/README.md](./architecture/README.md) - human-facing architecture and onboarding guide
+- [architecture/quick-start.md](./architecture/quick-start.md) - embedded mental-model path
+- [README.zh-CN.md](./README.zh-CN.md) - Chinese project introduction for people
 
 For SDK and integration users:
 

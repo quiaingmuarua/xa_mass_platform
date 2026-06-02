@@ -438,4 +438,4 @@ Trace-observed integration rule:
 - do not treat MDC string logs, ad hoc grep output, or compatibility projection
   rows as a substitute for canonical trace observation
 - schedule/assignment analyzer tests must assert canonical JSONL query output,
-  not logger MDC capture or projection residue
+  not logger MDC capture or legacy projection rows

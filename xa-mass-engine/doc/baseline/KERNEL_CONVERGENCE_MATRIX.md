@@ -56,14 +56,14 @@ Logical ownership is defined by this matrix and suite membership first.
 | Callback / expiry races produce one logical final outcome and coalesced progress | result ingest + task concurrency owner | `TaskResultConcurrencyConvergenceTest` | task aggregate, event counts, runtime/result finality | Covered |
 | Kernel mainline suite must stay free of compatibility projection proof | suite guard | `EngineKernelConvergenceArchitectureGuardTest` | selected-suite source scan | Covered |
 
-## Known Gaps
+## Testing Structure Notes
 
-These are testing-structure gaps, not known product-behavior gaps.
+These notes describe proof ownership and guardrails, not product-behavior gaps.
 
-- Engine projection residue helpers and suites have been retired. If an old
-  projection-style assertion is rediscovered, migrate it to runtime/result
-  truth or server-local review materialization proof instead of recreating an
-  engine projection support lane.
+- Retired engine support helpers and suites must not return. If an old
+  projection-style assertion is rediscovered, migrate it to runtime/result truth
+  or server-local review materialization proof instead of recreating an engine
+  projection support lane.
 - Scheduling scenarios already prove some convergence invariants. Do not clone
   them into lifecycle-only tests unless the owner boundary changes or the
   scheduling scenario becomes too noisy to isolate the kernel fact.
@@ -75,7 +75,7 @@ When adding a kernel-convergence test:
 1. Pick an invariant in this matrix or add a new one.
 2. Prefer runtime truth, lease truth, result-runtime truth, and task aggregate
    truth as the pass/fail surface.
-3. Do not add projection residue back to engine tests. Review/export
-   materialization proof belongs to server-local review tests.
+3. Do not add compatibility projection proof back to engine tests.
+   Review/export materialization proof belongs to server-local review tests.
 4. Use scheduling tests when the real risk is worker choice or competition;
    use soak/chaos when the real risk is timing, disconnect, or replay.

@@ -52,5 +52,5 @@ Options:
 
 - `xa-mass-java-sdk` stays a pure external API client.
 - dev-only bootstrap helpers stay local to this module.
-- `xa-mass-worker-pack` may provide worker capability descriptors later, but it
-  must not own task creation or scenario orchestration.
+- `xa-mass-worker-pack` owns worker capabilities, not task creation or scenario
+  orchestration.

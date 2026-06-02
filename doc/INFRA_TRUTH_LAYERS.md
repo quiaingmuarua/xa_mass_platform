@@ -22,7 +22,7 @@ more implemented than another.
 - missing trace implementation does not make trace-shaped data become DB truth
 - missing trace implementation does not justify unbounded runtime residue
 - temporary residue is allowed only when it is bounded, clearly non-authoritative,
-  and kept smaller than the future trace surface it stands in for
+  and kept smaller than the trace/audit surface it substitutes for
 
 ## 2. Ownership Matrix
 
@@ -56,13 +56,14 @@ message/lease state first, then let server materialization lag if needed.
 Recent duplicate receipts for already-finalized work belong to bounded runtime
 state as well; they are not an excuse to promote review rows back into
 mainline callback acceptance. If runtime no longer has an active lease and no
-recent final receipt exists, callback acceptance must not fall back to message
-projection residue to recover a second acceptance truth.
+recent final receipt exists, callback acceptance must not fall back to review
+materialization or legacy message projections to recover a second acceptance
+truth.
 Public result reads come from `TaskResultRuntime` committed stable-final rows.
 Server-local review rows remain operator/debug material and must not be used for
 `/results`, archive generation, or SDK result query.
 A durable result ledger or archive materialized view still requires a separate
-design and must not be implied by result ingress or projection residue.
+design and must not be implied by result ingress or review materialization.
 
 ## 3. Current Repo Reality
 
@@ -158,7 +159,7 @@ Treat these as regression signals:
 
 - storage module imports engine policy assembly or default policy factories
 - infra implementation module exports `com.xa.mass.sdk.*` surface
-- control-plane JDBC writes are proposed for callback, retry, lease, or dispatch history
+- control-plane JDBC writes are added for callback, retry, lease, or dispatch history
 - runtime state starts carrying large-scale historical reads "for observability"
 - trace-shaped detail is justified with "there is nowhere else to put it"
 - docs describe temporary residue as target architecture

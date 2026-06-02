@@ -493,7 +493,7 @@ Contract rules:
 - timeout only ends the HTTP wait; the appended item continues running
 - response includes `taskId`, `messageId`, `synced`, `timedOut`, `timeoutMs`,
   and when available the stable-final result payload fields
-- this route reads final truth from runtime result state, not projection residue
+- this route reads final truth from runtime result state, not server review rows
 
 ### 4.7 Task Command Surface
 

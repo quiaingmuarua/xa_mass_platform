@@ -29,8 +29,9 @@ Primary scheduling correctness proof must stay engine-local and runtime-first:
 - assignment records and canonical scheduling trace evidence
 
 Do not use compatibility projection as the pass/fail truth for scheduling
-correctness. Engine projection residue suites have been retired; scan-heavy
-projection audit is no longer part of the engine kernel diagnostic surface.
+correctness. Retired engine support suites must not return as scheduling proof;
+scan-heavy projection audit is no longer part of the engine kernel diagnostic
+surface.
 
 ## Test Lanes
 
@@ -79,10 +80,10 @@ visibility expansion or same-module wrapper seams.
 | Result finality must release worker lock/capacity/resource | result convergence + resource releaser | `TaskSchedulingContentionTest`, `TaskRedispatchCompetitionTest`, `TaskResourceReleaseListenerTest` | task terminal, worker unlock/load release, waiting task dispatch | Covered |
 | Scheduling-core tests must stay runtime/aggregate/trace-first | suite guard | `EngineSchedulingCoreArchitectureGuardTest` | selected suite source scan | Covered |
 
-## Known Gaps
+## Coverage Placement Notes
 
-These are gaps in deterministic engine-matrix coverage, not necessarily product
-behavior gaps.
+These notes describe where current proof belongs before adding another
+deterministic engine-matrix test.
 
 - Reconnect-before-expiry is mainly covered by `xa-mass-testing` chaos; add an
   engine-local deterministic test only if the reachability/lease owner boundary

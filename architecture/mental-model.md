@@ -106,8 +106,8 @@ SDK/intake may resolve `eventCode` and project into explicit
 those group selectors, then applies scheduling evidence, reachability,
 matching policy, ranking, resource policy, and runtime admission. The current
 default policy includes rule-backed eligibility, but matching is not limited to
-rules; future policies may incorporate worker metrics, task-type affinity,
-fairness, historical performance, or domain-specific scoring.
+rules. Additional matching inputs must remain explicit scheduling evidence and
+must not redefine worker ownership.
 
 ### Transport
 
@@ -128,8 +128,8 @@ still owns worker matching and assignment.
 Public result reads are runtime-owned stable-final rows from
 `TaskResultRuntime`.
 
-Projection residue can still exist for compatibility, debug, and audit, but it
-must not be the public `/results` or SDK result query truth.
+Server review/export materialization is lagging operator material. It must not
+be the public `/results` or SDK result query truth.
 
 ## Owner Boundaries
 

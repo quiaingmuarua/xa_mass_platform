@@ -99,8 +99,8 @@ Important distinction:
 - scheduling still checks runtime state, reachability, matching policy,
   capacity, ranking, and resource policy before dispatch
 - the current default matching policy includes rule-backed eligibility, but
-  worker attributes are only one evidence family; future policies may also use
-  worker metrics, task-type affinity, fairness, and observed performance
+  worker attributes are only one evidence family and must remain explicit
+  scheduling evidence
 
 ## 4. Start The Worker Client
 

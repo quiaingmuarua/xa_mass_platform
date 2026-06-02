@@ -440,8 +440,8 @@ Runtime executor diagnostics for transport and optional event-handler execution
 are surfaced through the explicit operator/runtime `app.runtimeDiagnostics().getQueueDetail()`
 view and the Boot-shell `/api/v1/runtime/queues` response. Delivery-store diagnostics also expose
 `app.runtimeDiagnostics().getQueueDetail().deliveryDiagnostics.queueByAdapter`, which is the adapter-neutral
-per-`adapterId` queue breakdown intended to survive a later Redis/JDBC store
-replacement. Realtime direct-send counters are intentionally separate under
+per-`adapterId` queue breakdown and is not tied to one store implementation.
+Realtime direct-send counters are intentionally separate under
 `app.runtimeDiagnostics().getQueueDetail().deliveryDiagnostics.directByAdapter`; they share delivery outcome
 language with queued delivery but they do not imply queue ownership, dequeue,
 or durable backlog state.

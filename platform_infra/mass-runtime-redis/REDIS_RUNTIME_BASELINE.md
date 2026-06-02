@@ -2,8 +2,8 @@
 
 Status: design/refactor reference, not current verified runtime behavior.
 
-This file fixes the intended Redis ownership model for the future
-`TaskWorkRuntime` implementation so the runtime path can grow without
+This file documents the Redis ownership model for the Redis-backed
+`TaskWorkRuntime` implementation so the runtime path can evolve without
 reintroducing scans, engine-local Redis logic, or conflicting queue truth.
 
 Current implementation note:
@@ -204,7 +204,7 @@ Must validate the active lease first.
 - read their lease hashes and return active lease records
 - current phase should mirror memory-runtime semantics:
   - expired members are popped from the expiry index before engine finalization
-  - crash-safe replay hardening is a later phase, not hidden behavior in this one
+  - crash-safe replay hardening is outside the current implementation
 
 ### discardTask(taskId)
 
@@ -311,8 +311,8 @@ Per-task worker occupancy indexes:
 
 First-slice constraints:
 
-- Redis 7.4 hash field TTL may optimize cleanup later but is not required for
-  correctness.
+- Redis 7.4 hash field TTL is an optional cleanup optimization, not required
+  for correctness.
 - `WorkerRegistry.tryReserve(...)` re-validates slot existence, removing flag,
   heartbeat freshness, dispatch gates, exclusive lease, and capacity inside the
   Redis mutation path. The first slice uses `WATCH` on the group-local slot hash;
