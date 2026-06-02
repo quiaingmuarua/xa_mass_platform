@@ -1,6 +1,6 @@
 # Integrations Worker Pack SDK Convergence Inventory
 
-Status: active WPC inventory.
+Status: completed WPC inventory.
 
 This inventory supports
 `doc/INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_ROADMAP.md`.

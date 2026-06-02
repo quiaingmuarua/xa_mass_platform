@@ -1,6 +1,10 @@
 # Java External SDK Realtime Protocol Roadmap
 
-Status: implemented first WebSocket session slice. This roadmap supersedes the
+Status: implemented first WebSocket session slice. This is not yet final
+long-running realtime SDK hardening. Follow-up lifecycle and worker-pack
+capability hardening is tracked by
+[`INTEGRATIONS_EXTERNAL_SDK_WORKER_PACK_HARDENING_ROADMAP.md`](./INTEGRATIONS_EXTERNAL_SDK_WORKER_PACK_HARDENING_ROADMAP.md).
+This roadmap supersedes the
 archived
 [`JAVA_EXTERNAL_SDK_REALTIME_DECISION.md`](./archive/integrations/2026-05-28_JAVA_EXTERNAL_SDK_REALTIME_DECISION.md)
 decision record that deferred realtime SDK support.
@@ -43,9 +47,12 @@ adaptation without redefining platform kernel ownership.
   `xa-mass-base`, `xa-mass-base` is not a valid production dependency for the
   external Java SDK. Treat that package as current in-repo placement, not as
   the future public SDK contract owner.
-- Current WebSocket session support covers task dispatch/result frames,
-  reconnect attempts, and adapter-owned presence. Command delivery and socket
-  sessions are not part of the first public SDK contract.
+- Current WebSocket session support covers realtime worker registration, task
+  dispatch/result frames, reconnect attempts, and adapter-owned presence. The
+  scenario-launcher black-box proof covers the normal happy path. Close
+  behavior with queued results, reconnect terminal outcomes, queue-full
+  handling, and command/fault harness behavior are not final public SDK
+  guarantees.
 
 External source candidates to study during WSDK-0:
 

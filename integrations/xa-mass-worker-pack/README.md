@@ -101,7 +101,9 @@ sample-worker command paths, not by mutating engine or transport internals.
 
 ## Java External SDK Convergence
 
-Current direction is tracked by
+Current hardening direction is tracked by
+`doc/INTEGRATIONS_EXTERNAL_SDK_WORKER_PACK_HARDENING_ROADMAP.md`.
+The prior SDK convergence work is recorded in
 `doc/INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_ROADMAP.md`.
 
 Current audit: worker-pack does not duplicate Java raw HTTP client calls for
@@ -111,13 +113,21 @@ embedded `MassSdkApplication`, and raw WebSocket frame handling remains only as
 command/fault harness substrate. The retired Java socket demo path is documented in
 `doc/INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_INVENTORY.md`.
 
-Future convergence target:
+Current hardening target:
 
-- worker-pack may provide curated, real worker groups, but those groups are not
-  privileged platform state; they must register, go online, receive dispatch,
-  and report results through public worker APIs or SDK sessions.
+- worker-pack may provide curated WorkerGroup capabilities, but those groups
+  are not privileged platform state; they must register, go online, receive
+  dispatch, and report results through public worker APIs or SDK sessions.
+- scenario-derived probe capabilities such as `probe.phone.metadata`,
+  `probe.url.dns`, `probe.csv.validate`, and `probe.json.schema` should land
+  as worker-pack capability implementations, not as server-owned hidden
+  workers.
 - worker-pack should keep sample command/fault behavior local, but generic
   event dispatch handling should converge on the Java SDK's transport-neutral
   worker handler runtime once realtime sessions can consume it.
+- normal WebSocket capability workers may use Java SDK WebSocket sessions only
+  after SDK lifecycle hardening covers close, reconnect, queue-full, and
+  queued-result terminal outcomes.
 - WebSocket fault-harness code should become a transport/session adapter into
-  the SDK handler runtime when that removes real duplicate handler logic.
+  the SDK handler runtime only when the SDK has an explicit hook for that
+  behavior; raw harness code is not public Java SDK usage.

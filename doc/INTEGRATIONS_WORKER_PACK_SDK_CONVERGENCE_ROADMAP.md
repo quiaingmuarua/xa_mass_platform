@@ -1,6 +1,9 @@
 # Integrations Worker Pack SDK Convergence Roadmap
 
-Status: active roadmap.
+Status: completed convergence record.
+
+Successor roadmap:
+`doc/INTEGRATIONS_EXTERNAL_SDK_WORKER_PACK_HARDENING_ROADMAP.md`.
 
 This roadmap follows the Java SDK adoption work. The main question is no
 longer whether Java can call the platform from outside the server. That proof
@@ -11,6 +14,11 @@ The next question is what `integrations/xa-mass-worker-pack` should still own.
 Worker-pack should become a real integration capability pack and fault harness,
 not a place to preserve raw Java transport demos that the public Java SDK does
 not support.
+
+This document records the completed worker-pack convergence decision. Follow-up
+hardening of the external SDK public contract, worker session lifecycle,
+WorkerGroup topology proof, and worker-pack capability productization belongs to
+the successor roadmap above.
 
 Execution stance:
 
@@ -50,16 +58,36 @@ Execution stance:
 
 ## Direction
 
-`xa-mass-java-sdk` is the standard Java entry point for external worker and
-task processes. It is allowed to create tasks because external producers and
-worker launchers both need a public client surface. It should remain a pure
-remote client and must not depend on worker-pack, server, engine, transport
-implementations, or `xa-mass-base`.
+`xa-mass-java-sdk` is the standard Java entry point for external platform
+actors, not a worker-loop-only SDK. External actors include task producers,
+worker topology declarers, worker runtime processes, and operator/test harnesses
+that need the public remote contract. It is allowed to create tasks because
+external producers and worker launchers both need a public client surface. It
+should remain a pure remote client and must not depend on worker-pack, server,
+engine, transport implementations, or `xa-mass-base`.
+
+The worker-facing part of the SDK has three separate responsibilities that must
+not collapse into one "worker session" concept:
+
+- WorkerGroup capability declaration: event bindings, default attributes, and
+  default concurrency. This is scheduling candidate-source truth, not transport
+  or process identity.
+- Worker topology registration: AdapterNode endpoint identity,
+  NodeGroupBinding placement relation, and Worker execution identity. This is
+  the external registration path for platform topology.
+- Worker session runtime: polling or realtime transport lifecycle, dispatch
+  receipt, handler invocation, result submit, and presence/reconnect semantics.
+  This is transport/session behavior, not capability truth.
 
 `xa-mass-scenario-launcher` is the first repository consumer proving the SDK
 story end to end. That is the right shape: an external Java process uses the
 SDK to register topology, start worker sessions, submit tasks, and report
 results.
+
+The task-producing part of the SDK must remain first-class. A worker-pack
+capability proof is only meaningful when an external actor can also create task
+shells, append items, set the worker-group selector through the public task
+contract, and observe result convergence without server startup seeding.
 
 `xa-mass-worker-pack` should only keep code that has one of these jobs:
 
@@ -85,6 +113,13 @@ The priority order is therefore:
 
 - Do not add socket support to `xa-mass-java-sdk` just to keep worker-pack
   socket code alive.
+- Do not narrow `xa-mass-java-sdk` into a worker-session-only SDK. Task
+  producer APIs, worker topology declaration APIs, and worker session APIs are
+  all part of the external Java contract, even if their implementation lives
+  under separate client facets.
+- Do not treat WorkerGroup as transport-specific. WebSocket, polling, and
+  future transports bind to Worker instances and AdapterNodes; WorkerGroup
+  remains capability and candidate-source truth.
 - Do not keep `xa-mass-transport-socket` as a worker-pack dependency unless a
   current worker-pack-owned proof requires a Java socket harness that cannot be
   covered by Node socket fixtures or transport adapter tests.
@@ -115,7 +150,7 @@ external Java task / worker process
   -> integrations/xa-mass-java-sdk
       -> MassPlatform
       -> tasks()
-      -> workers()
+      -> workers() / worker topology declarations
       -> workerSessions().polling()
       -> workerSessions().webSocket()
 
@@ -124,7 +159,7 @@ integrations/xa-mass-scenario-launcher
   -> task producer plus external polling/WebSocket worker sessions
 
 integrations/xa-mass-worker-pack
-  -> real worker capability pack and sample fault harness
+  -> real WorkerGroup capability pack and sample fault harness
   -> may consume xa-mass-java-sdk for public client/session behavior
   -> does not preserve raw Java socket demos
   -> keeps sample command/fault behavior local
@@ -354,6 +389,12 @@ Scope:
   scenario-launcher or a one-off sample.
 - Register its WorkerGroup, AdapterNode, worker identity, presence/session, and
   result reporting through public APIs or `xa-mass-java-sdk`.
+- Keep the registration order explicit in code and docs:
+  WorkerGroup capability declaration, AdapterNode registration,
+  NodeGroupBinding registration, Worker execution identity registration, then
+  concrete session startup.
+- Ensure any WebSocket/polling wording describes transport-backed Worker
+  instances, not transport-specific WorkerGroups.
 - Add `xa-mass-java-sdk` as a worker-pack dependency only if this removes real
   public client/session boilerplate.
 - Keep server startup clean: no server-owned task, worker, WorkerGroup,
@@ -373,9 +414,19 @@ Acceptance:
   a transport or SDK demonstration purpose.
 - The built-in worker group can start as an external integration package and
   register through public routes or SDK sessions.
+- The implemented proof demonstrates first external actor behavior as well as
+  worker session behavior: task shell creation, item append, dispatch, result
+  submit, and result readback go through the public contract.
 - It does not require `xa-mass-server` production code to call the SDK.
 - Worker-pack's dependency on `xa-mass-java-sdk`, if added, is justified by a
   concrete public client/session path.
+
+Follow-up:
+
+- Stronger external actor proof, including explicit WorkerGroup selector
+  assertions, topology registration order, and long-running session semantics,
+  belongs to
+  `doc/INTEGRATIONS_EXTERNAL_SDK_WORKER_PACK_HARDENING_ROADMAP.md`.
 
 ### WPC-4: Command And Fault Runtime Boundary Cleanup
 

@@ -1,6 +1,11 @@
 # Control Console Realistic Scenario Inventory
 
-Last updated: 2026-05-26
+Last updated: 2026-06-02
+
+Status: completed and archived migration inventory.
+
+Archived on 2026-06-02 with the completed control-console realistic scenario
+roadmap. This inventory is historical context only.
 
 This inventory records the old demo-shaped defaults before the control-console
 scenario migration. It is a guardrail for the migration, not a compatibility
@@ -52,4 +57,6 @@ demo-worker-*
 ```
 
 Use the probe scenario names from
-`CONTROL_CONSOLE_REALISTIC_SCENARIO_ROADMAP.md` for new default console data.
+[`2026-05-26_CONTROL_CONSOLE_REALISTIC_SCENARIO_ROADMAP.md`](./2026-05-26_CONTROL_CONSOLE_REALISTIC_SCENARIO_ROADMAP.md)
+for historical context. Active worker capability hardening belongs to
+[`../../../INTEGRATIONS_EXTERNAL_SDK_WORKER_PACK_HARDENING_ROADMAP.md`](../../../INTEGRATIONS_EXTERNAL_SDK_WORKER_PACK_HARDENING_ROADMAP.md).

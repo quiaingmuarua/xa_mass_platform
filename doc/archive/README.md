@@ -20,6 +20,13 @@ original creation date of the document (not the archive date).
 | 2026-06-01 | [INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP](./integrations/2026-06-01_INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md) | roadmap |
 | 2026-06-01 | [INTEGRATIONS_JAVA_SDK_ADOPTION_INVENTORY](./integrations/2026-06-01_INTEGRATIONS_JAVA_SDK_ADOPTION_INVENTORY.md) | inventory |
 
+## xa-mass-server
+
+| Date | Document | Type |
+| --- | --- | --- |
+| 2026-05-26 | [CONTROL_CONSOLE_REALISTIC_SCENARIO_ROADMAP](./xa-mass-server/2026-05-26_CONTROL_CONSOLE_REALISTIC_SCENARIO_ROADMAP.md) | roadmap |
+| 2026-05-26 | [CONTROL_CONSOLE_REALISTIC_SCENARIO_INVENTORY](./xa-mass-server/2026-05-26_CONTROL_CONSOLE_REALISTIC_SCENARIO_INVENTORY.md) | inventory |
+
 ## xa-mass-engine
 
 | Date | Document | Type |
