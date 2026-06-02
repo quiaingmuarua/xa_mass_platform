@@ -39,6 +39,12 @@ Global boundary guard:
   assembly types into `xa-mass-public-contract`.
 - Do not move worker capability code into SDK modules. Capability packs belong
   under [`../integrations`](../integrations/README.md).
+- Any SDK, public-contract, or integrations boundary change must update this
+  README and [`../integrations/README.md`](../integrations/README.md) together.
+  Update `xa-mass-java-sdk/EXTERNAL_SDK_QUICKSTART.md` when external caller
+  behavior changes, and update
+  [`../doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md`](../doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md)
+  when dependency or ownership rules change.
 
 ## Verification
 

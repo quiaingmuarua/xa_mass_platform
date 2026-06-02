@@ -179,3 +179,25 @@ Planning rule for multi-file or core changes:
   the owning module or archive it
 - do not document target state as already implemented
 - do not recreate removed archive/v2 code
+
+## 7. Documentation Governance
+
+Hard rules for new or updated docs:
+
+- new cross-module roadmap, inventory, decision, or direction records go under
+  [roadmap/](roadmap/), not under global `doc/`
+- when a roadmap is complete, run a residue scan, move still-current facts into
+  the owning README/baseline, then archive the completed record under
+  `doc/archive/<owner>/YYYY-MM-DD_NAME.md`
+- module-local implementation truth belongs in the owning module README,
+  module `doc/README.md`, or owner baseline; do not promote it into global
+  `doc/` unless it is a cross-module contract or constraint
+- root [README.md](README.md) is only for current facts, entry lanes, and
+  top-level directory rationale; do not grow it into a roadmap or design log
+- [architecture/](architecture/README.md) is human-facing explanation and
+  onboarding material, not implementation truth or acceptance proof
+- SDK, public-contract, or integrations boundary changes must update
+  [sdk/README.md](sdk/README.md) and
+  [integrations/README.md](integrations/README.md) in the same change; update
+  the external SDK quickstart and boundary guard when caller behavior or
+  dependency rules change

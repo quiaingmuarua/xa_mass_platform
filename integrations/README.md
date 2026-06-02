@@ -33,6 +33,11 @@ Global boundary guard:
   dev-shell reasons, not as the public external worker path.
 - Server startup must not seed production task/worker truth as a substitute for
   external registration.
+- Any SDK, public-contract, or integrations boundary change must update this
+  README and [`../sdk/README.md`](../sdk/README.md) together. Update the
+  external SDK quickstart when external task/worker caller behavior changes,
+  and update the global boundary guard when dependency or ownership rules
+  change.
 
 ## Current Role
 

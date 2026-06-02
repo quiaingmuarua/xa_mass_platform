@@ -59,6 +59,18 @@ Active roadmap execution records should live outside the global `doc/` root.
 Do not use roadmap prose as proof of current implementation without verifying
 code, tests, and owner README files.
 
+Completion flow:
+
+1. run a residue scan for stale names, stale status, old active links, and
+   leftover compatibility paths
+2. move still-current facts into the owning README, owner baseline, or module
+   `doc/README.md`
+3. archive the completed roadmap under
+   `doc/archive/<owner>/YYYY-MM-DD_NAME.md`
+
+Do not leave implemented roadmap prose in the active reading path as current
+truth. Keep only the extracted owner facts.
+
 ## 4. Historical Archive
 
 Archived documents are changelog-style historical context only. Do not use them
@@ -94,3 +106,7 @@ Do not add a new `doc/*` file for:
 - cross-module roadmap, inventory, decision, or direction documents
 
 Those belong in the owning module or top-level `roadmap/`.
+
+`../architecture/` is the human explanation lane. It may explain the current
+shape at a higher level, but it is not implementation truth, acceptance proof,
+or a replacement for code, tests, owner READMEs, and baseline docs.
