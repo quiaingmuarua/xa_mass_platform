@@ -92,6 +92,9 @@ The internal executable adopter is
 [../../integrations/xa-mass-scenario-launcher](../../integrations/xa-mass-scenario-launcher),
 not standalone Java sample apps.
 
+For the short task-producer plus worker-session onboarding path, use
+[EXTERNAL_SDK_QUICKSTART.md](./EXTERNAL_SDK_QUICKSTART.md).
+
 ## Example
 
 ```java

@@ -41,17 +41,21 @@ Use owner docs for module-local truth:
 - embedded SDK runtime: [../sdk/xa-mass-embedded-sdk/README.md](../sdk/xa-mass-embedded-sdk/README.md)
 - verified runbook: [../xa-mass-testing/VERIFIED_RUNBOOK.md](../xa-mass-testing/VERIFIED_RUNBOOK.md)
 - HTTP/API reference: [../xa-mass-server/doc/INTERNAL_API_REFERENCE.md](../xa-mass-server/doc/INTERNAL_API_REFERENCE.md)
-- external worker quickstart: [../sdk/xa-mass-java-sdk/EXTERNAL_WORKER_QUICKSTART.md](../sdk/xa-mass-java-sdk/EXTERNAL_WORKER_QUICKSTART.md)
+- external Java SDK quickstart: [../sdk/xa-mass-java-sdk/EXTERNAL_SDK_QUICKSTART.md](../sdk/xa-mass-java-sdk/EXTERNAL_SDK_QUICKSTART.md)
 - high-volume runtime facts: [../xa-mass-engine/doc/baseline/HIGH_VOLUME_MODEL_BASELINE.md](../xa-mass-engine/doc/baseline/HIGH_VOLUME_MODEL_BASELINE.md)
 
 ## 3. Roadmaps And Direction
 
-Active roadmap, inventory, and decision documents live under
-[../roadmap/](../roadmap/). This root index intentionally does not list each
-roadmap; use filename search or `rg` when a task touches planned convergence or
-future direction.
+Cross-module active roadmap, inventory, and decision documents live under
+[../roadmap/](../roadmap/). Module-local roadmap or measurement notes stay in
+the owning module, such as `xa-mass-engine/doc/roadmap/` or
+`xa-mass-server/doc/roadmap/`, and must be reachable from that module's owner
+README or local `doc/README.md`.
 
-Roadmap execution records should live outside `doc/` until they are archived.
+This root index intentionally does not list each roadmap; use filename search
+or `rg` when a task touches planned convergence or future direction.
+
+Active roadmap execution records should live outside the global `doc/` root.
 Do not use roadmap prose as proof of current implementation without verifying
 code, tests, and owner README files.
 
@@ -87,6 +91,6 @@ Do not add a new `doc/*` file for:
 - one-module design/refactor notes
 - migration inventory owned by one module
 - API dictionaries, runbooks, or quickstarts owned by a module
-- roadmap, inventory, decision, or direction documents
+- cross-module roadmap, inventory, decision, or direction documents
 
 Those belong in the owning module or top-level `roadmap/`.

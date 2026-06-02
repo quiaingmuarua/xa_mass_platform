@@ -1,6 +1,6 @@
 # Deprecation Ledger
 
-Last updated: 2026-05-22
+Last updated: 2026-06-02
 
 Status: current repo-level deprecation and compatibility index.
 
@@ -22,8 +22,8 @@ Rules:
 
 | Symbol or seam | Current location | Mainline replacement / source of truth | Constraint | Removal condition |
 | --- | --- | --- | --- | --- |
-| `WorkerAdminOperations.updateWorkerSupportedProjects(...)` | `xa-mass-sdk/src/main/java/com/xa/mass/sdk/WorkerAdminOperations.java` | worker capability update through owner-backed capability report / event-binding registration flow | Do not add sibling coarse mutation methods such as `updateSupportedEventCodes`. | Capability self-report / registration update flow covers current callers. |
-| `MassRuntimeControl` task shortcut methods (`approveTask`, `rejectTask`, `blockTask`, `pauseTask`, `resumeTask`, `cancelTask`, `terminateTask`, `sealTask`) | `xa-mass-sdk/src/main/java/com/xa/mass/sdk/MassRuntimeControl.java` | `executeTaskCommand(taskId, MassTaskCommandRequest)` | Keep for transitional bootstrap/dev code only. Do not add new lifecycle shortcut methods. | Bootstrap/dev callers migrate to `executeTaskCommand(...)`. |
-| `DefaultProjectEventCatalogFactory.createDefaultCatalog()` | `xa-mass-sdk-api/src/main/java/com/xa/mass/sdk/catalog/DefaultProjectEventCatalogFactory.java` | `createDefaultProjectRegistry()` | Naming compatibility only. Do not use in new code. | Existing callers migrate to the registry-named factory. |
+| `WorkerAdminOperations.updateWorkerSupportedProjects(...)` | `sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/WorkerAdminOperations.java` | worker capability update through owner-backed capability report / event-binding registration flow | Do not add sibling coarse mutation methods such as `updateSupportedEventCodes`. | Capability self-report / registration update flow covers current callers. |
+| `MassRuntimeControl` task shortcut methods (`approveTask`, `rejectTask`, `blockTask`, `pauseTask`, `resumeTask`, `cancelTask`, `terminateTask`, `sealTask`) | `sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/MassRuntimeControl.java` | `executeTaskCommand(taskId, MassTaskCommandRequest)` | Keep for transitional bootstrap/dev code only. Do not add new lifecycle shortcut methods. | Bootstrap/dev callers migrate to `executeTaskCommand(...)`. |
+| `DefaultProjectEventCatalogFactory.createDefaultCatalog()` | `sdk/xa-mass-embedded-sdk-api/src/main/java/com/xa/mass/sdk/catalog/DefaultProjectEventCatalogFactory.java` | `createDefaultProjectRegistry()` | Naming compatibility only. Do not use in new code. | Existing callers migrate to the registry-named factory. |
 
 Current tracked compatibility residue: none beyond the table above.

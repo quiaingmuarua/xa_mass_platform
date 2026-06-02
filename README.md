@@ -6,14 +6,30 @@ Trust code and verified runtime behavior over historical documentation.
 
 ## Start Here
 
+For humans:
+
+- [architecture/README.md](./architecture/README.md) - human-facing architecture and onboarding guide
+- [architecture/quick-start.md](./architecture/quick-start.md) - shortest practical path to run the mainline
+- [README.zh-CN.md](./README.zh-CN.md) - Chinese project introduction for people
+
+For agents and contributors:
+
 - [AGENTS.md](./AGENTS.md)
 - [doc/AGENT_BASELINE.md](./doc/AGENT_BASELINE.md)
 - [doc/TASK_LIFECYCLE_BASELINE.md](./doc/TASK_LIFECYCLE_BASELINE.md)
 - [doc/README.md](./doc/README.md) - expanded global doc map when needed
 - [transport/AGENTS.md](./transport/AGENTS.md)
-- [architecture/README.md](./architecture/README.md) - human-facing architecture and onboarding guide
-- [README.zh-CN.md](./README.zh-CN.md) - Chinese project introduction for people
-- [architecture/README.zh-CN.md](./architecture/README.zh-CN.md) - Chinese architecture guide
+
+For SDK and integration users:
+
+- [sdk/README.md](./sdk/README.md)
+- [sdk/xa-mass-java-sdk/README.md](./sdk/xa-mass-java-sdk/README.md)
+- [sdk/xa-mass-java-sdk/EXTERNAL_SDK_QUICKSTART.md](./sdk/xa-mass-java-sdk/EXTERNAL_SDK_QUICKSTART.md) - shortest task producer plus worker session path
+- [integrations/README.md](./integrations/README.md)
+
+Chinese architecture entry:
+
+- [architecture/README.zh-CN.md](./architecture/README.zh-CN.md)
 
 Additional current baseline:
 
@@ -74,9 +90,8 @@ The shared kernel is:
 - stable kernel truth starts from `Task + Worker + Scheduling + Matching`; result, audit, and terminal policy are lifecycle consequences of that mainline
 - matching as a scheduling policy surface: the current default uses group-first
   candidate acquisition, worker scheduling evidence, QLExpress-backed
-  eligibility rules, ranking, and admission; future strategies may add worker
-  intrinsic metrics, task-type affinity, fairness, historical performance, and
-  domain-specific scoring without changing worker-runtime ownership
+  eligibility rules, ranking, and admission without changing worker-runtime
+  ownership
 - transport-neutral runtime seams: task dispatch, result ingest, and system events
 - SDK-first runtime entry; server provides a lightweight backend product shell
   for HTTP APIs, auth/IAM, API-key operations, and the control console without
@@ -180,6 +195,6 @@ Top-level non-reactor directories are intentionally narrow:
 - embedded SDK contract ownership: [sdk/xa-mass-embedded-sdk-api/README.md](./sdk/xa-mass-embedded-sdk-api/README.md)
 - embedded SDK runtime composition: [sdk/xa-mass-embedded-sdk/README.md](./sdk/xa-mass-embedded-sdk/README.md)
 - human architecture guide: [architecture/README.md](./architecture/README.md)
-- external worker onboarding: [sdk/xa-mass-java-sdk/EXTERNAL_WORKER_QUICKSTART.md](./sdk/xa-mass-java-sdk/EXTERNAL_WORKER_QUICKSTART.md)
+- external Java SDK onboarding: [sdk/xa-mass-java-sdk/EXTERNAL_SDK_QUICKSTART.md](./sdk/xa-mass-java-sdk/EXTERNAL_SDK_QUICKSTART.md)
 - fixture samples: [integrations/samples/](./integrations/samples/) (protocol/dev
   fixtures only, not the public SDK product surface)

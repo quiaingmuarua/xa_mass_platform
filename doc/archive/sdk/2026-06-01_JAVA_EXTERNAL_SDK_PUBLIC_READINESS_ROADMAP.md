@@ -10,7 +10,7 @@ was completed in the archived
 Current progress:
 
 - PSDK-0 public surface inventory is recorded in
-  [`JAVA_EXTERNAL_SDK_PUBLIC_SURFACE_INVENTORY.md`](../../JAVA_EXTERNAL_SDK_PUBLIC_SURFACE_INVENTORY.md).
+  [`JAVA_EXTERNAL_SDK_PUBLIC_SURFACE_INVENTORY.md`](./2026-06-01_JAVA_EXTERNAL_SDK_PUBLIC_SURFACE_INVENTORY.md).
 - PSDK-1 source/dependency guards are implemented in
   `JavaExternalSdkArchitectureGuardTest`.
 - PSDK-2 raw HTTP access is marked with `UnstableApi` and documented as an
@@ -18,7 +18,7 @@ Current progress:
 - PSDK-5 local/internal publication metadata shape is recorded in
   [`sdk/xa-mass-java-sdk/pom.consumer.xml`](../../../sdk/xa-mass-java-sdk/pom.consumer.xml).
 - PSDK-6 Android/device host decision is recorded in
-  [`JAVA_EXTERNAL_SDK_ANDROID_DEVICE_DECISION.md`](../../JAVA_EXTERNAL_SDK_ANDROID_DEVICE_DECISION.md).
+  [`JAVA_EXTERNAL_SDK_ANDROID_DEVICE_DECISION.md`](./2026-06-01_JAVA_EXTERNAL_SDK_ANDROID_DEVICE_DECISION.md).
 - PSDK-3 minimum transport-neutral worker handler runtime is implemented in
   `com.xa.mass.client.worker.handler`; polling now adapts dispatch frames into
   that runtime and can report through a session-owned `WorkerResultSink`.
@@ -71,7 +71,7 @@ without pulling in the platform builder.
   dispatch into the transport-neutral SDK handler runtime under
   `com.xa.mass.client.worker.handler`.
 - realtime WebSocket sessions remain tracked in
-  [`JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md`](../../JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md).
+  [`JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md`](./2026-06-02_JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md).
 
 ## Owner Review
 
@@ -291,7 +291,7 @@ Implemented now:
 Scope:
 
 - align with
-  [`JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md`](../../JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md)
+  [`JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md`](./2026-06-02_JAVA_EXTERNAL_SDK_REALTIME_PROTOCOL_ROADMAP.md)
   for:
   - transport-independent event handler runtime.
   - result sink/queue.
@@ -418,7 +418,7 @@ mvn -f sdk/xa-mass-java-sdk/pom.consumer.xml -DskipTests package
 ## PSDK-6: Android And Device Host Decision
 
 Status: decision recorded in
-[`JAVA_EXTERNAL_SDK_ANDROID_DEVICE_DECISION.md`](../../JAVA_EXTERNAL_SDK_ANDROID_DEVICE_DECISION.md).
+[`JAVA_EXTERNAL_SDK_ANDROID_DEVICE_DECISION.md`](./2026-06-01_JAVA_EXTERNAL_SDK_ANDROID_DEVICE_DECISION.md).
 
 Scope:
 

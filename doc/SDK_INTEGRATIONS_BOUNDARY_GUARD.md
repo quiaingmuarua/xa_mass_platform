@@ -115,5 +115,5 @@ the owning roadmap or inventory before changing the boundary.
 1. [`sdk/README.md`](../sdk/README.md)
 2. [`integrations/README.md`](../integrations/README.md)
 3. [`sdk/xa-mass-public-contract/README.md`](../sdk/xa-mass-public-contract/README.md)
-4. [`EXTERNAL_WORKER_QUICKSTART.md`](../sdk/xa-mass-java-sdk/EXTERNAL_WORKER_QUICKSTART.md)
+4. [`EXTERNAL_SDK_QUICKSTART.md`](../sdk/xa-mass-java-sdk/EXTERNAL_SDK_QUICKSTART.md)
 5. [`integrations/xa-mass-worker-pack/README.md`](../integrations/xa-mass-worker-pack/README.md)

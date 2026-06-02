@@ -41,7 +41,7 @@ XA Mass Platform 是一个通用的分布式任务调度平台�?
    - 如何添加 event �?worker capability
 4. [sdk/README.md](./sdk/README.md)
    - SDK 嵌入式使用入�?
-5. [sdk/xa-mass-java-sdk/EXTERNAL_WORKER_QUICKSTART.md](./sdk/xa-mass-java-sdk/EXTERNAL_WORKER_QUICKSTART.md)
+5. [sdk/xa-mass-java-sdk/EXTERNAL_SDK_QUICKSTART.md](./sdk/xa-mass-java-sdk/EXTERNAL_SDK_QUICKSTART.md)
    - 外部 worker / polling worker 接入入口
 6. [doc/README.md](./doc/README.md)
    - 内核 contract、baseline、runbook 索引
@@ -245,7 +245,7 @@ register event
 
 如果你要接外�?worker�?
 
-- �?[sdk/xa-mass-java-sdk/EXTERNAL_WORKER_QUICKSTART.md](./sdk/xa-mass-java-sdk/EXTERNAL_WORKER_QUICKSTART.md)
+- �?[sdk/xa-mass-java-sdk/EXTERNAL_SDK_QUICKSTART.md](./sdk/xa-mass-java-sdk/EXTERNAL_SDK_QUICKSTART.md)
 - 再看 [integrations/samples/README.md](./integrations/samples/README.md)
 
 如果你要改内核：

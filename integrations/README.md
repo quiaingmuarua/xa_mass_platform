@@ -6,6 +6,11 @@ This directory owns real external adopters, worker capability packs, and
 historical/sample fixtures. SDK product modules live under
 [`../sdk`](../sdk/README.md).
 
+SDK users should start from
+[`../sdk/xa-mass-java-sdk/EXTERNAL_SDK_QUICKSTART.md`](../sdk/xa-mass-java-sdk/EXTERNAL_SDK_QUICKSTART.md).
+This directory proves and packages those external paths; it is not the SDK
+product owner.
+
 Global boundary guard:
 [`../doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md`](../doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md).
 

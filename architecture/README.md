@@ -34,7 +34,7 @@ After this directory, use the owner documents for precise contracts:
 - integrations module map: [`../integrations/README.md`](../integrations/README.md)
 - SDK embedding: [`../sdk/xa-mass-embedded-sdk/README.md`](../sdk/xa-mass-embedded-sdk/README.md)
 - HTTP/API contracts: [`../xa-mass-server/doc/INTERNAL_API_REFERENCE.md`](../xa-mass-server/doc/INTERNAL_API_REFERENCE.md)
-- external worker protocol: [`../sdk/xa-mass-java-sdk/EXTERNAL_WORKER_QUICKSTART.md`](../sdk/xa-mass-java-sdk/EXTERNAL_WORKER_QUICKSTART.md)
+- external Java SDK quickstart: [`../sdk/xa-mass-java-sdk/EXTERNAL_SDK_QUICKSTART.md`](../sdk/xa-mass-java-sdk/EXTERNAL_SDK_QUICKSTART.md)
 - engine owner truth: [`../xa-mass-engine/README.md`](../xa-mass-engine/README.md)
 - task lifecycle baseline: [`../doc/TASK_LIFECYCLE_BASELINE.md`](../doc/TASK_LIFECYCLE_BASELINE.md)
 - transport boundary: [`../transport/TRANSPORT_BOUNDARY_BASELINE.md`](../transport/TRANSPORT_BOUNDARY_BASELINE.md)

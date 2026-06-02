@@ -111,8 +111,9 @@ var session = app.pullWorker("image-worker-1");
 session.connect();
 ```
 
-For an external non-JVM worker, use the public polling protocol described in
-[`../sdk/xa-mass-java-sdk/EXTERNAL_WORKER_QUICKSTART.md`](../sdk/xa-mass-java-sdk/EXTERNAL_WORKER_QUICKSTART.md).
+For external task producers and workers, use the Java SDK and public worker
+protocol overview in
+[`../sdk/xa-mass-java-sdk/EXTERNAL_SDK_QUICKSTART.md`](../sdk/xa-mass-java-sdk/EXTERNAL_SDK_QUICKSTART.md).
 
 Realtime workers can use websocket or socket adapters, but the same conceptual
 rules apply: capability registration is separate from online presence, and the

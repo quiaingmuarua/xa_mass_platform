@@ -180,9 +180,8 @@ Read them to verify three things quickly:
 - `project` and `userId` are required business bindings on create
 - shell create runs in single-tenant mode with tenant-aware semantics; current
   default tenant is `default`
-- `Task.project` is the task-owned business container; capability/event auth is
-  expected to converge on project grant plus explicit ingest declaration rather
-  than task-level event truth
+- `Task.project` is the task-owned business container; task-level event truth
+  is not the scheduling candidate source
 - `taskName` is a server-derived display field, not a client-provided shell
   truth field
 - work-item materialization is explicit through `POST /api/v1/tasks/{taskId}/items`
@@ -219,10 +218,8 @@ Lifecycle and trace detail live in:
   facts, and runtime load/capacity facts, not worker-level capability overrides
   and not `WorkerContext`
 - `WorkerMatchContext` plus rule evaluation is the current default matching
-  input path, not the final policy model. Future matching may use worker
-  intrinsic metrics, task-type affinity, fairness, and observed performance,
-  but those inputs must stay explicit scheduling evidence and must not become
-  replacement worker-resource ownership
+  input path. Matching inputs must stay explicit scheduling evidence and must
+  not become replacement worker-resource ownership
 - UI pages, mock runtime, and demo APIs must not redefine the kernel
 - do not add full-table, full-task, or full-attempt scans to hot paths
 - new or changed policy seams must keep ownership explicit across matching, assignment, attempt, release, refill, intake, control, and terminal decisions

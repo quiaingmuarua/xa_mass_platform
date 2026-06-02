@@ -20,7 +20,8 @@ Global boundary guard:
 ## Boundaries
 
 - External callers that talk to a running server should start from
-  `xa-mass-java-sdk`.
+  `xa-mass-java-sdk` and its
+  [`EXTERNAL_SDK_QUICKSTART.md`](./xa-mass-java-sdk/EXTERNAL_SDK_QUICKSTART.md).
 - In-process JVM embedding callers should start from `xa-mass-embedded-sdk`.
 - Public HTTP wire DTOs belong in `xa-mass-public-contract` only when the owning
   Controller method and route role are documented by

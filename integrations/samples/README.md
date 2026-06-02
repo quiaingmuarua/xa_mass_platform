@@ -123,7 +123,7 @@ Every sample should remain provable through an external-process black-box test:
 
 ## Reading Order
 
-- start with [sdk/xa-mass-java-sdk/EXTERNAL_WORKER_QUICKSTART.md](../../sdk/xa-mass-java-sdk/EXTERNAL_WORKER_QUICKSTART.md)
+- start with [sdk/xa-mass-java-sdk/EXTERNAL_SDK_QUICKSTART.md](../../sdk/xa-mass-java-sdk/EXTERNAL_SDK_QUICKSTART.md)
 - use [integrations/README.md](../README.md) for module ownership
 - then use the Node per-sample README or Java scenario-launcher README for
   local commands
