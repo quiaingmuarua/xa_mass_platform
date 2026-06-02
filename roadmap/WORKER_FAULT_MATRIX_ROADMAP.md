@@ -31,6 +31,11 @@ Current implementation state:
 - WF-5 and later remain active roadmap work: noisy fleets, transport churn rows,
   Redis runtime restart recovery, long-run matrix sweeps, and broader gate
   promotion are not complete.
+- Infra-fault rows remain active roadmap work: Redis process restart recovery
+  currently has Redis runtime contract coverage and representative Redis E2E
+  coverage, but no dedicated chaos runner; Redis partition/failover,
+  non-monotonic lease-clock behavior, trace sink overflow analyzer semantics,
+  and multi-node transport presence flap are not current distributed-edge proof.
 
 ## 1. Problem
 
@@ -161,6 +166,29 @@ Current fault-proof distribution:
 - capacity flap is not a current control because public worker-pack capability
   reporting does not own `maxConcurrentWork`; wait for a real capacity owner
   surface before implementing that row
+
+Current infra-fault proof boundary:
+
+- worker-behavior distributed-edge proof is represented by current chaos
+  runners for lease-expiry redispatch, all-failed convergence, mixed-result
+  convergence, retry exhaustion, websocket disconnect, stale late replay, and
+  polling soak late-worker backfill
+- Redis runtime restart recovery is covered by Redis runtime contract tests and
+  representative Redis E2E, but not by a dedicated chaos runner that injects
+  restart as the failure mode during a full task flow
+- Redis partition/failover and non-monotonic lease-clock behavior are not
+  current proof rows
+- trace sink overflow has sink-level `DROP` / `FALLBACK_SYNC` behavior tests,
+  but no trace-analyzer proof that missing events produce an explicit
+  incomplete/failure decision instead of a silent pass
+- chaos reports record trace `droppedCount`, but current chaos analyzer pass
+  does not use it as a completeness gate; polling soak already reports dropped
+  trace events as an invariant issue
+- multi-node transport routing competition and same-worker presence flap across
+  nodes are not current proof rows
+- these infra-fault rows belong in this roadmap rather than a parallel roadmap
+  because they extend the same distributed-edge proof matrix without changing
+  engine, transport, runtime, or trace ownership
 
 ## 4. Resource Dependency Matrix
 
@@ -366,6 +394,9 @@ PR candidates should be promoted in this order:
 | `fault.bulk-interactive-isolation` | slow bulk lane plus interactive lane | interactive latency stays bounded |
 | `fault.redis-runtime-restart-recovery` | Redis runtime profile with restart/reconnect | retry/dispatch recovery preserves invariants |
 | `fault.trace-under-chaos` | high event count with trace enabled | trace validates, dropped count explained |
+| `fault.redis-partition-recovery` | Redis runtime connection interruption or failover drill | scenario reports bounded recovery or explicit unsupported failure mode |
+| `fault.lease-clock-skew` | lease expiry observes non-monotonic or skewed clock input | no double assignment; skew behavior is explicit and bounded |
+| `fault.multi-node-presence-flap` | same worker identity flaps across node/presence observations | no stale routing, duplicate assignment, or orphaned ready work |
 
 Scheduled candidates should reuse soak and SDK transport load before adding a
 new runner:
@@ -382,6 +413,7 @@ new runner:
 | `fault.long-run-noisy-polling` | polling workers with mixed delays and loss over 30m+ | no runtime residue, stable result windows |
 | `fault.long-run-realtime-churn` | websocket/socket reconnect churn | delivery and result ingest remain bounded |
 | `fault.archive-under-fault-load` | high result count plus failures | sequential read and archive behavior stay correct |
+| `fault.redis-failover-drill` | Redis partition/failover or external restart drill | recovery behavior is explicit; no silent double assignment |
 
 ## 9. Assertion Surface
 
@@ -403,11 +435,26 @@ are pass/fail evidence.
 
 Execution rule:
 
-- WF-0 and WF-1 must land before behavior changes
+- WF-0 and WF-1 are baseline convergence work and must stay ahead of behavior
+  changes that depend on scenario ids or report-visible matrix axes
+- infra-fault fast track is independent of the worker-pack `fault.*` framework:
+  run WF-11 first, then WF-9, then WF-10
+- WF-11 comes first because trace completeness is the proof system's evidence
+  gate; absence-based analyzer claims are unsafe until dropped-event semantics
+  are explicit
+- WF-9 follows because proof-ledger closure should fail before more registry
+  claims are added
+- WF-10 follows because Redis restart recovery is a real distributed-runtime
+  gap and can reuse existing retry/redispatch proof surfaces without waiting for
+  worker-profile DSL work
 - WF-2 and WF-3 are worker-pack / test-harness surfaces only; they must not add
-  engine or transport runtime ownership
+  engine or transport runtime ownership and must not block WF-9 through WF-11
 - WF-4 is the point where existing proof lines begin moving behind matrix rows
-- WF-5 and later add new behavior coverage only after report-visible parity
+- WF-5 and later add new worker-behavior coverage only after report-visible
+  parity
+- WF-10 and later infra-fault rows must keep Redis, trace, transport, and
+  runtime ownership explicit instead of smuggling infra behavior into engine
+  state-machine tests
 
 ### WF-0: Proof-Line Scenario Ledger
 
@@ -460,6 +507,18 @@ Acceptance:
 
 Add a reusable fault profile model to worker-pack sample state.
 
+Framework gate:
+
+- do not expand the shared profile model just because the matrix axes are
+  available on paper
+- prefer direct runner-local setup when a new scenario can be expressed cleanly
+  without a shared DSL
+- expand this profile model only after at least two new PR-gate candidate rows
+  would otherwise duplicate incompatible delay, drop, duplicate, malformed, or
+  disconnect semantics across proof lines
+- the deliverable is cleaner proof rows, deterministic replay, and shared report
+  semantics; the profile framework itself is not proof
+
 Acceptance:
 
 - existing `mock.*` behavior remains available
@@ -476,6 +535,16 @@ Acceptance:
 Add `fault.*` sample/worker events that configure profile and phase behavior.
 Use this to make worker execution non-ideal through normal command paths rather
 than by mutating runtime internals.
+
+Framework gate:
+
+- do not add a new `fault.*` command unless an active scenario needs to express
+  that behavior through a normal worker-pack or harness owner surface
+- if a hand-written chaos runner can express the scenario with lower owner
+  risk, use the runner first and add the command later only when reuse is proven
+- the `fault.*` surface must reduce duplicated scenario setup or make seed
+  replay/reporting materially clearer; otherwise it is infrastructure for
+  infrastructure
 
 Acceptance:
 
@@ -569,6 +638,111 @@ Acceptance:
 - proof ownership stays linked from `PROOF_REGISTRY.md` if the scenario becomes
   a critical invariant
 
+### WF-9: Proof Registry Closure Guard
+
+Add a reverse proof-ledger guard so `doc/PROOF_REGISTRY.md` cannot name
+nonexistent proof surfaces.
+
+This is a guard slice, not a new proof lane. Existing guards already prevent
+some weak or duplicate tests from entering mainline suites; this slice checks
+the opposite direction: registry claims must resolve to real analyzer ids and
+real classes.
+
+Acceptance:
+
+- parse the `doc/PROOF_REGISTRY.md` critical-invariants table enough to extract
+  rows, status, trace analyzer ids, and named Java proof classes
+- for `status=covered` rows, primary, representative integrated, and trace
+  proof cells must be non-empty and must not be placeholder-only prose
+- analyzer ids named with `analyzer <id>` or equivalent registry wording must
+  resolve through `TraceScenarioRegistry.require(id)`
+- named chaos runner, suite, and integration-test classes in proof cells must
+  exist on the test classpath or be explicitly marked as non-class prose
+- the guard must not enforce `Last updated` against git history; that check is
+  too brittle for rebases, shallow clones, and timezone differences
+- failure messages identify the invariant id and the unresolved analyzer or
+  class token
+
+### WF-10: Redis Runtime Restart Recovery Chaos
+
+Promote Redis runtime restart recovery from contract/E2E coverage into a
+distributed-edge chaos row when restart is the injected failure mode.
+
+This row belongs to the existing `sched.retry-redispatch` invariant. It must not
+create a Redis-specific invariant id unless restart recovery proves a distinct
+scheduling rule that the current retry/redispatch invariant cannot express.
+
+Acceptance:
+
+- add a scheduled/manual chaos runner or scenario row for
+  `fault.redis-runtime-restart-recovery`
+- the scenario runs a full task flow through normal task, dispatch, runtime,
+  result, and trace paths while Redis runtime state is restarted or
+  reconnected during active work
+- proof uses runtime counters, active lease drain, final result visibility,
+  task terminal state, and trace evidence
+- reuse `lease-expiry-redispatch` or add a narrowly named analyzer only if the
+  restart sequence has a distinct observable contract
+- update `doc/PROOF_REGISTRY.md` so Redis restart is described as current
+  contract/E2E coverage until the chaos runner lands, and as distributed-edge
+  proof only after it lands
+- CI placement starts as scheduled/manual; PR promotion requires deterministic
+  runtime and environment control
+
+### WF-11: Trace Overflow Incomplete-Proof Semantics
+
+Prove analyzer behavior when trace sink overflow causes missing events.
+
+Sink-level tests already cover `DROP` and `FALLBACK_SYNC` write behavior. This
+slice covers proof semantics: an analyzer must either make a valid decision from
+the remaining trace or report an explicit incomplete/failure result. It must not
+silently pass a scenario whose required evidence was dropped.
+
+The critical case is absence-based proof. A missing required event is usually a
+safe failure, but an analyzer that proves "event X did not happen" cannot
+distinguish a true absence from a dropped event unless it first consumes a trace
+completeness signal. For those analyzer paths, `droppedCount` or an equivalent
+sequence/watermark completeness signal is part of the proof gate, not report
+metadata.
+
+Acceptance:
+
+- add a trace/operator test or trace-observed fixture that removes required
+  events from a known scenario trace
+- analyzer output must not silently pass when required events are absent
+- analyzer paths that use absence assertions such as unexpected-event rejection
+  must require trace completeness first; if completeness is unknown or
+  `droppedCount > 0`, they must return an explicit incomplete/failure result
+  instead of pass
+- chaos runners that execute named trace analyzers must treat trace
+  completeness as a proof input, not only as report metadata; current
+  `droppedCount` fields are insufficient when they do not gate analyzer pass
+- introduce or reuse an explicit incomplete/failure issue code such as
+  `trace-incomplete` if current analyzer result shape supports it
+- `FALLBACK_SYNC` path proves full trace preservation for the selected fixture
+- `DROP` path proves either correct remaining-evidence decision or explicit
+  incomplete/failure decision
+- update `TRACE_CONTRACT.md` only if a new canonical incomplete result code is
+  introduced
+
+### WF-12: Scheduled Infra Fault Rows
+
+Add higher-cost infra-fault rows only after WF-9 through WF-11 clarify proof
+ownership and report semantics.
+
+Acceptance:
+
+- Redis partition/failover rows remain scheduled/manual until environment
+  control is deterministic
+- lease-clock skew/non-monotonic clock behavior is tested through an explicit
+  clock/runtime seam, not by mutating runtime internals after the fact
+- multi-node transport presence flap uses transport/node presence owner
+  surfaces; it must not directly mutate scheduling runtime state
+- each row records whether failure means platform bug, unsupported environment
+  condition, or incomplete proof evidence
+- no row is promoted to PR until it has deterministic setup, bounded runtime,
+  stable issue codes, and report-visible scenario metadata
+
 ## 11. CI Placement
 
 Recommended placement:
@@ -581,7 +755,8 @@ Recommended placement:
 | scheduled/manual `perf-smokes` | current workload mix and retry wakeup proof plus latency/delay distribution regression |
 | scheduled/manual `sdk-transport-load` | polling/websocket/socket delivery diagnostics plus transport-churn fault rows |
 | scheduled/manual polling soak | current runtime/result/trace proof plus noisy fleet, result loss, and late-worker profiles |
-| manual | large matrix sweeps, Redis/restart fault drills, and overnight soak |
+| scheduled/manual infra-fault | Redis runtime restart recovery, trace overflow proof semantics, Redis partition/failover, lease-clock skew, and multi-node presence flap |
+| manual | large matrix sweeps, Redis/failover drills, and overnight soak |
 
 Socket fault rows start in scheduled/manual `sdk-transport-load`. They must not
 be promoted into PR `chaos-smokes` until `SdkTransportLoadRunner` has equivalent
@@ -608,7 +783,8 @@ This roadmap does not introduce:
 When this roadmap starts landing, update:
 
 - `doc/TESTING_INDEX.md` for lane placement and minimum verification
-- `doc/PROOF_REGISTRY.md` only for promoted critical invariants
+- `doc/PROOF_REGISTRY.md` for promoted critical invariants and for wording that
+  distinguishes current contract/E2E coverage from distributed-edge chaos proof
 - `xa-mass-testing/README.md` for runner commands and report schema
 - `integrations/xa-mass-worker-pack/README.md` for `fault.*` worker event behavior
 - `doc/TRACE_CONTRACT.md` if new canonical event fields are required
