@@ -16,6 +16,33 @@ Status: current worker-pack owner README.
 - use `xa-mass-java-sdk` only for real public HTTP worker-control/session
   paths; do not use it to move worker-pack command/fault behavior into the SDK
 
+## Package And Dependency Ownership
+
+Current first step is package-level separation inside this artifact. A Maven
+split is deferred until package boundaries stop being enough evidence.
+
+Package ownership:
+
+- `com.xa.mass.workerpack.tool.*`: production capability runtime and SDK-backed
+  bootstrap. It must not import `workerpack.sample.*`, `com.xa.mass.sdk.*`, or
+  transport internals.
+- `com.xa.mass.workerpack.sample.*`: dev-shell bootstrap, command runtime, and
+  fault harness. It may use embedded runtime APIs because it is not the public
+  external SDK path.
+- `src/test/java`: verification fixtures for both package families.
+
+Dependency ownership:
+
+- `xa-mass-java-sdk`: production external worker/task entry point for
+  SDK-backed capabilities such as `tool.geo.lookup`.
+- `xa-mass-sdk`: dev-shell/sample bootstrap and legacy worker-control harness
+  only; its transitive transport dependencies do not define public worker-pack
+  capability shape.
+- `spring-boot-starter-web`: sample bootstrap controller.
+- `gson`: sample WebSocket command/fault frame parsing.
+- `lettuce-core`: sample/dev Redis wiring inherited from worker-pack harness.
+- `spring-boot-starter-test`: module tests.
+
 ## Start Here
 
 - `src/main/java/com/xa/mass/workerpack/sample/starter/SampleWorkerProcessStarter.java`
@@ -31,7 +58,11 @@ harness code, not the public Java SDK worker-session recommendation.
 
 ## Worker Capabilities
 
-`tool.geo.lookup` is the first SDK-backed worker-pack capability.
+Worker-pack capabilities are production-oriented handlers plus SDK-backed
+bootstrap helpers. They register through the same public worker/task paths used
+by external actors; server startup does not seed privileged workers.
+
+`tool.geo.lookup` is a provider-configurable SDK-backed capability.
 
 - event code: `tool.geo.lookup`
 - worker group: `worker-pack.tools.geo`
@@ -39,15 +70,27 @@ harness code, not the public Java SDK worker-session recommendation.
 - output: `city`, `countryCode`, `timeZone`, `currency`, `latitude`,
   `longitude`, `provider`, `simulated`
 
-`GeoLookupTool` owns the deterministic tool result contract. `GeoLookupWorkerPack`
-owns the external Java SDK bootstrap: it declares the worker group, adapter
-node, node binding, worker identity, online state, polling session, and result
-reporting through `MassPlatform` / `PollingWorkerSession`.
+`GeoLookupProvider` owns provider lookup. `DeterministicGeoLookupProvider`
+keeps CI deterministic, while `GeoLookupWorkerPack` owns the external Java SDK
+bootstrap: it declares the worker group, adapter node, node binding, worker
+identity, online state, polling session, and result reporting through
+`MassPlatform` / `PollingWorkerSession`.
+
+`ProbeWorkerPack` carries scenario-derived local probe capabilities:
+
+- `probe.phone.metadata` on WorkerGroup `phone-device-probe`
+- `probe.url.dns` on WorkerGroup `public-probe`
+- `probe.csv.validate` on WorkerGroup `data-quality-probe`
+- `probe.json.schema` on WorkerGroup `data-quality-probe`
 
 The handler is a Java SDK `WorkerEventHandler`, so business event handling is
-independent of the polling transport. The dev command route
-`ToolCommandRoutes.tool.geo.lookup` delegates to the same tool implementation
-to avoid a second result shape.
+independent of the polling transport. The phone-device Stage-2 proof uses
+`ProbeWorkerPack.phoneDevicePolling(...)` to run real external polling workers
+through the Java SDK and proves WorkerGroup/worker-attribute selection without
+server-side worker seeding.
+
+The dev command route `ToolCommandRoutes.tool.geo.lookup` delegates to the same
+tool implementation to avoid a second result shape.
 
 ## Sample Fault State
 
@@ -101,8 +144,8 @@ sample-worker command paths, not by mutating engine or transport internals.
 
 ## Java External SDK Convergence
 
-Current hardening direction is tracked by
-`doc/INTEGRATIONS_EXTERNAL_SDK_WORKER_PACK_HARDENING_ROADMAP.md`.
+The external SDK/worker-pack hardening work is recorded in
+`doc/archive/integrations/2026-06-02_INTEGRATIONS_EXTERNAL_SDK_WORKER_PACK_HARDENING_ROADMAP.md`.
 The prior SDK convergence work is recorded in
 `doc/INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_ROADMAP.md`.
 
@@ -113,21 +156,20 @@ embedded `MassSdkApplication`, and raw WebSocket frame handling remains only as
 command/fault harness substrate. The retired Java socket demo path is documented in
 `doc/INTEGRATIONS_WORKER_PACK_SDK_CONVERGENCE_INVENTORY.md`.
 
-Current hardening target:
+Current hardening baseline:
 
 - worker-pack may provide curated WorkerGroup capabilities, but those groups
   are not privileged platform state; they must register, go online, receive
   dispatch, and report results through public worker APIs or SDK sessions.
 - scenario-derived probe capabilities such as `probe.phone.metadata`,
-  `probe.url.dns`, `probe.csv.validate`, and `probe.json.schema` should land
-  as worker-pack capability implementations, not as server-owned hidden
-  workers.
-- worker-pack should keep sample command/fault behavior local, but generic
-  event dispatch handling should converge on the Java SDK's transport-neutral
-  worker handler runtime once realtime sessions can consume it.
-- normal WebSocket capability workers may use Java SDK WebSocket sessions only
-  after SDK lifecycle hardening covers close, reconnect, queue-full, and
-  queued-result terminal outcomes.
+  `probe.url.dns`, `probe.csv.validate`, and `probe.json.schema` live as
+  worker-pack capability implementations, not server-owned hidden workers.
+- worker-pack keeps sample command/fault behavior local, while generic event
+  dispatch handling uses the Java SDK's transport-neutral worker handler
+  runtime for SDK-backed capabilities.
+- normal WebSocket capability workers may use Java SDK WebSocket sessions after
+  SDK lifecycle hardening covers close, reconnect, queue-full, and queued-result
+  terminal outcomes.
 - WebSocket fault-harness code should become a transport/session adapter into
   the SDK handler runtime only when the SDK has an explicit hook for that
   behavior; raw harness code is not public Java SDK usage.

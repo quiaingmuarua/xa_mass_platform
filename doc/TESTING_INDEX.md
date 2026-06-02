@@ -364,8 +364,9 @@ Proves:
 - project/submitter/worker/task flows survive real wiring
 - representative assignment, polling, routing, and worker reuse scenarios survive real server + SDK + engine integration
 - SDK-backed worker-pack capability registration and execution is proven by
-  `WorkerPackGeoLookupExternalSdkIntegrationTest`; it is a worker-pack
-  capability proof, not the generic Java SDK parity owner
+  `WorkerPackGeoLookupExternalSdkIntegrationTest` and the phone-device Stage-2
+  proof in `PhoneDeviceWorkerPackExternalSdkIntegrationTest`; these are
+  worker-pack capability proofs, not the generic Java SDK parity owner
 - lifecycle/result convergence gate asserts task aggregate and runtime stats/lease
   truth first; it does not use server review rows as its main
   proof surface
@@ -410,7 +411,8 @@ Primary groups:
 - Java / Node polling
 - Java / Node websocket
 - Node socket
-- worker-pack SDK capability proof through `tool.geo.lookup`
+- worker-pack SDK capability proof through `tool.geo.lookup` and
+  scenario-derived probe capabilities such as `probe.phone.metadata`
 
 Proves:
 

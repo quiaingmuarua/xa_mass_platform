@@ -55,9 +55,11 @@ Current implemented surface:
 - managed WebSocket worker session:
   adapter/node registration, node/group binding, realtime worker registration,
   JDK WebSocket connection, canonical task dispatch frame handling, queued
-  result frame submission, and reconnect attempts. Realtime worker presence is
-  transport-owned; the session does not call polling-only online, heartbeat,
-  capability report, state report, or offline APIs.
+  result frame submission, bounded reconnect attempts, queue-full reporting,
+  and queued-result terminal callbacks on close or reconnect exhaustion.
+  Realtime worker presence is transport-owned; the session does not call
+  polling-only online, heartbeat, capability report, state report, or offline
+  APIs.
 - transport-neutral worker handler runtime:
   event handler registry, handler invocation, deterministic handler failure
   conversion, and session-owned result sink hooks
@@ -117,7 +119,7 @@ mass.tasks().seal(task.taskId());
 Result reading:
 
 ```java
-TaskResultWindow window = mass.tasks().readResults(task.taskId(),
+TaskResultWindow window = mass.tasks().results(task.taskId(),
         TaskResultReadRequest.builder()
                 .afterSeq(0L)
                 .limit(100)
@@ -198,7 +200,10 @@ is an explicit topology/setup operation through `mass.workers()`.
 `PollingWorkerSession` uses the transport-neutral
 `com.xa.mass.client.worker.handler` runtime internally. `WebSocketWorkerSession`
 uses the same handler runtime and routes handler results through a session-owned
-outbound frame queue.
+outbound frame queue. Queue-full outcomes are reported through
+`WorkerSessionListener.onQueuedResultDropped(...)`; queued results that cannot
+be submitted because the session closes or reconnect is exhausted are reported
+through `WorkerSessionListener.onQueuedResultAbandoned(...)`.
 
 Managed WebSocket worker session:
 
@@ -213,6 +218,7 @@ try (WebSocketWorkerSession session = mass.workerSessions().webSocket()
         .workerGroupId("realtime-crawler")
         .adapterNodeId("crawler-ws-node-1")
         .endpoint(URI.create("ws://localhost:18088/ws"))
+        .maxReconnectAttempts(10)
         .event("crawler.fetch-page", dispatch -> WorkerResult.success(Map.of(
                 "url", dispatch.input().requiredString("url")
         )))

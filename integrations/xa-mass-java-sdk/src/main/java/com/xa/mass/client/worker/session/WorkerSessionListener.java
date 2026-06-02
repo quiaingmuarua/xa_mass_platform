@@ -13,6 +13,12 @@ public interface WorkerSessionListener {
     default void onSubmitFailure(WorkerSessionDispatchFailure failure) {
     }
 
+    default void onQueuedResultDropped(WorkerSessionQueuedResultFailure failure) {
+    }
+
+    default void onQueuedResultAbandoned(WorkerSessionQueuedResultFailure failure) {
+    }
+
     default void onPollFailure(WorkerSessionPollFailure failure) {
     }
 

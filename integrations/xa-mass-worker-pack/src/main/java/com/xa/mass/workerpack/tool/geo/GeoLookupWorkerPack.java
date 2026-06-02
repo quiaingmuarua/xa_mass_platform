@@ -24,25 +24,40 @@ public final class GeoLookupWorkerPack {
     }
 
     public static WorkerGroupSpec groupSpec(List<String> projectCodes) {
+        return groupSpec(projectCodes, GeoLookupTool.defaultProvider());
+    }
+
+    public static WorkerGroupSpec groupSpec(List<String> projectCodes, GeoLookupProvider provider) {
+        GeoLookupProvider resolvedProvider = Objects.requireNonNull(provider, "provider is required");
         return WorkerGroupSpec.builder()
                 .groupId(WORKER_GROUP_ID)
                 .bindEvent(GeoLookupTool.EVENT_CODE, projectCodes == null ? List.of() : List.copyOf(projectCodes))
                 .defaultAttribute("capability", GeoLookupTool.EVENT_CODE)
-                .defaultAttribute("provider", GeoLookupTool.PROVIDER)
+                .defaultAttribute("provider", resolvedProvider.providerId())
                 .defaultAttribute("simulated", "true")
                 .defaultMaxConcurrentWork(4)
                 .build();
     }
 
     public static WorkerEventHandler handler() {
+        return handler(GeoLookupTool.defaultProvider());
+    }
+
+    public static WorkerEventHandler handler(GeoLookupProvider provider) {
+        GeoLookupProvider resolvedProvider = Objects.requireNonNull(provider, "provider is required");
         return dispatch -> {
             String query = dispatch.input().getString("query")
                     .or(() -> dispatch.input().getString("city"))
                     .orElse("");
             try {
-                return WorkerResult.success("geo lookup resolved", GeoLookupTool.lookup(query));
+                return WorkerResult.success("geo lookup resolved", GeoLookupTool.lookup(query, resolvedProvider));
             } catch (IllegalArgumentException e) {
                 return WorkerResult.failure("INVALID_GEO_QUERY", e.getMessage());
+            } catch (GeoLookupProviderException e) {
+                return WorkerResult.failure(e.errorCode(), e.getMessage(), Map.of(
+                        "query", query,
+                        "provider", resolvedProvider.providerId()
+                ));
             }
         };
     }
@@ -52,6 +67,7 @@ public final class GeoLookupWorkerPack {
         private String workerId;
         private String adapterNodeId;
         private List<String> projectCodes = List.of();
+        private GeoLookupProvider provider = GeoLookupTool.defaultProvider();
         private Map<String, String> attributes = defaultAttributes();
         private int maxMessages = 4;
         private Duration pollTimeout = Duration.ofMillis(250);
@@ -74,6 +90,12 @@ public final class GeoLookupWorkerPack {
 
         public Builder projectCodes(List<String> projectCodes) {
             this.projectCodes = projectCodes == null ? List.of() : List.copyOf(projectCodes);
+            return this;
+        }
+
+        public Builder provider(GeoLookupProvider provider) {
+            this.provider = Objects.requireNonNull(provider, "provider is required");
+            this.attributes.put("provider", provider.providerId());
             return this;
         }
 
@@ -110,14 +132,14 @@ public final class GeoLookupWorkerPack {
         public PollingWorkerSession startPolling() {
             String resolvedWorkerId = requireText(workerId, "workerId");
             String resolvedAdapterNodeId = requireText(adapterNodeId, "adapterNodeId");
-            platform.workers().declareGroup(groupSpec(projectCodes));
+            platform.workers().declareGroup(groupSpec(projectCodes, provider));
             return platform.workerSessions().polling()
                     .workerId(resolvedWorkerId)
                     .workerGroupId(WORKER_GROUP_ID)
                     .adapterNodeId(resolvedAdapterNodeId)
                     .adapterType(DEFAULT_ADAPTER_TYPE)
                     .attributes(attributes)
-                    .eventHandler(GeoLookupTool.EVENT_CODE, handler())
+                    .eventHandler(GeoLookupTool.EVENT_CODE, handler(provider))
                     .maxMessages(maxMessages)
                     .pollTimeout(pollTimeout)
                     .pollInterval(pollInterval)

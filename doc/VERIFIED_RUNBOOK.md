@@ -207,14 +207,16 @@ automation.
 Worker-pack SDK capability proof:
 
 ```bash
-./mvnw -pl xa-mass-server -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkerPackGeoLookupExternalSdkIntegrationTest test
+./mvnw -pl xa-mass-server -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkerPackGeoLookupExternalSdkIntegrationTest,PhoneDeviceWorkerPackExternalSdkIntegrationTest test
 ```
 
 This verifies that worker-pack's `tool.geo.lookup` capability can register a
 worker group, worker, polling session, task, item, result, and result readback
-through the Java SDK/public HTTP path. The server fixture starts without
-preseeded workers; catalog metadata is test setup, not privileged worker
-startup.
+through the Java SDK/public HTTP path. It also verifies the phone-device
+Stage-2 worker-pack proof where two external polling workers join the same
+WorkerGroup and scheduling selects the worker whose attributes satisfy the
+task's fingerprint requirement. The server fixture starts without preseeded
+workers; catalog metadata is test setup, not privileged worker startup.
 
 ## 4. Runtime Facts To Trust
 
@@ -313,7 +315,7 @@ Cross-language external worker samples:
 Worker-pack SDK capability proof:
 
 ```bash
-./mvnw -pl xa-mass-server -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkerPackGeoLookupExternalSdkIntegrationTest test
+./mvnw -pl xa-mass-server -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkerPackGeoLookupExternalSdkIntegrationTest,PhoneDeviceWorkerPackExternalSdkIntegrationTest test
 ```
 
 Testing-module perf load model:

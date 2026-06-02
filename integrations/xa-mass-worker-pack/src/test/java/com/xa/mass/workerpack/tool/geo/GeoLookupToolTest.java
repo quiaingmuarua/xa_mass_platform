@@ -81,4 +81,39 @@ class GeoLookupToolTest {
         assertFalse(result.success());
         assertEquals("INVALID_GEO_QUERY", result.errorCode());
     }
+
+    @Test
+    void handlerClassifiesProviderFailureAsBusinessResult() throws Exception {
+        GeoLookupProvider provider = new GeoLookupProvider() {
+            @Override
+            public String providerId() {
+                return "geo-provider-test";
+            }
+
+            @Override
+            public GeoLookupResult lookup(GeoLookupRequest request) {
+                throw new GeoLookupProviderException("GEO_PROVIDER_TIMEOUT", "geo provider timed out");
+            }
+        };
+
+        WorkerResult result = GeoLookupWorkerPack.handler(provider).handle(DispatchContext.from(new WorkerDispatchItem(
+                "task-1",
+                "msg-1",
+                GeoLookupTool.EVENT_CODE,
+                null,
+                "workerPackApp",
+                "agent",
+                0,
+                null,
+                "worker-1",
+                null,
+                Map.of("query", "Singapore"),
+                Map.of()
+        )));
+
+        assertFalse(result.success());
+        assertEquals("GEO_PROVIDER_TIMEOUT", result.errorCode());
+        assertEquals("Singapore", result.output().get("query"));
+        assertEquals("geo-provider-test", result.output().get("provider"));
+    }
 }

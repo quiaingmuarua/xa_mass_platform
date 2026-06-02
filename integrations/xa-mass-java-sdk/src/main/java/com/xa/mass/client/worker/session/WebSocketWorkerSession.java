@@ -60,6 +60,7 @@ public final class WebSocketWorkerSession implements AutoCloseable {
     private final Duration connectTimeout;
     private final Duration reconnectBackoff;
     private final Duration maxReconnectBackoff;
+    private final int maxReconnectAttempts;
     private final WorkerSessionListener listener;
     private final WorkerEventHandlers eventHandlers;
     private final WorkerEventHandlerRuntime handlerRuntime;
@@ -89,6 +90,7 @@ public final class WebSocketWorkerSession implements AutoCloseable {
         this.connectTimeout = builder.connectTimeout;
         this.reconnectBackoff = builder.reconnectBackoff;
         this.maxReconnectBackoff = builder.maxReconnectBackoff;
+        this.maxReconnectAttempts = builder.maxReconnectAttempts;
         this.listener = builder.listener;
         this.eventHandlers = builder.eventHandlers.build();
         this.handlerRuntime = new WorkerEventHandlerRuntime(eventHandlers);
@@ -186,6 +188,8 @@ public final class WebSocketWorkerSession implements AutoCloseable {
             Thread.currentThread().interrupt();
             executor.shutdownNow();
         }
+        abandonQueuedResults(WorkerSessionQueuedResultFailure.Reason.SESSION_CLOSED,
+                new IllegalStateException("websocket session closed before queued result was sent"));
     }
 
     private WebSocket connectWebSocket() throws ExecutionException, InterruptedException, TimeoutException {
@@ -206,7 +210,12 @@ public final class WebSocketWorkerSession implements AutoCloseable {
             webSocket.set(socket);
         } catch (Throwable failure) {
             int failures = consecutiveConnectionFailures.incrementAndGet();
-            listener.onConnectionFailure(new WorkerSessionConnectionFailure(workerId, failures, unwrap(failure)));
+            Throwable cause = unwrap(failure);
+            listener.onConnectionFailure(new WorkerSessionConnectionFailure(workerId, failures, cause));
+            if (reconnectAttemptsExhausted(failures)) {
+                stopAfterReconnectExhausted(cause);
+                return;
+            }
             scheduleReconnect();
         }
     }
@@ -232,6 +241,11 @@ public final class WebSocketWorkerSession implements AutoCloseable {
                 }
                 WebSocket socket = webSocket.get();
                 if (socket == null) {
+                    if (!running.get() || closing.get()) {
+                        abandonResult(outbound, WorkerSessionQueuedResultFailure.Reason.SESSION_CLOSED,
+                                new IllegalStateException("websocket session closed before queued result was sent"));
+                        continue;
+                    }
                     outboundResults.offerFirst(outbound);
                     sleep(Duration.ofMillis(100L));
                     continue;
@@ -242,13 +256,18 @@ public final class WebSocketWorkerSession implements AutoCloseable {
                 Thread.currentThread().interrupt();
                 running.set(false);
             } catch (Throwable failure) {
+                Throwable cause = unwrap(failure);
                 if (outbound != null) {
-                    listener.onSubmitFailure(new WorkerSessionDispatchFailure(outbound.dispatch(), unwrap(failure)));
+                    listener.onSubmitFailure(new WorkerSessionDispatchFailure(outbound.dispatch(), cause));
                     outboundResults.offerFirst(outbound);
                 }
                 webSocket.set(null);
                 int failures = consecutiveConnectionFailures.incrementAndGet();
-                listener.onConnectionFailure(new WorkerSessionConnectionFailure(workerId, failures, unwrap(failure)));
+                listener.onConnectionFailure(new WorkerSessionConnectionFailure(workerId, failures, cause));
+                if (reconnectAttemptsExhausted(failures)) {
+                    stopAfterReconnectExhausted(cause);
+                    return;
+                }
                 scheduleReconnect();
                 sleep(connectionBackoff(failures));
             }
@@ -279,7 +298,14 @@ public final class WebSocketWorkerSession implements AutoCloseable {
         try {
             String frame = encodeResult(dispatch, result);
             if (!outboundResults.offer(new OutboundResult(dispatch, frame))) {
-                throw new IllegalStateException("websocket result queue is full");
+                IllegalStateException failure = new IllegalStateException("websocket result queue is full");
+                WorkerSessionQueuedResultFailure queuedFailure = new WorkerSessionQueuedResultFailure(
+                        workerId,
+                        dispatch,
+                        WorkerSessionQueuedResultFailure.Reason.QUEUE_FULL,
+                        failure);
+                listener.onQueuedResultDropped(queuedFailure);
+                throw failure;
             }
         } catch (Throwable failure) {
             listener.onSubmitFailure(new WorkerSessionDispatchFailure(dispatch, failure));
@@ -334,6 +360,36 @@ public final class WebSocketWorkerSession implements AutoCloseable {
         long multiplier = Math.max(1L, Math.min(10L, consecutiveFailures));
         long millis = Math.min(maxReconnectBackoff.toMillis(), reconnectBackoff.toMillis() * multiplier);
         return Duration.ofMillis(Math.max(1L, millis));
+    }
+
+    private boolean reconnectAttemptsExhausted(int failures) {
+        return failures >= maxReconnectAttempts;
+    }
+
+    private void stopAfterReconnectExhausted(Throwable cause) {
+        running.set(false);
+        closing.set(true);
+        WebSocket socket = webSocket.getAndSet(null);
+        if (socket != null) {
+            socket.abort();
+        }
+        abandonQueuedResults(WorkerSessionQueuedResultFailure.Reason.RECONNECT_EXHAUSTED, cause);
+    }
+
+    private void abandonQueuedResults(WorkerSessionQueuedResultFailure.Reason reason, Throwable cause) {
+        OutboundResult outbound;
+        while ((outbound = outboundResults.poll()) != null) {
+            abandonResult(outbound, reason, cause);
+        }
+    }
+
+    private void abandonResult(OutboundResult outbound, WorkerSessionQueuedResultFailure.Reason reason,
+                               Throwable cause) {
+        listener.onQueuedResultAbandoned(new WorkerSessionQueuedResultFailure(
+                workerId,
+                outbound.dispatch(),
+                reason,
+                cause));
     }
 
     private void sleep(Duration duration) {
@@ -412,6 +468,7 @@ public final class WebSocketWorkerSession implements AutoCloseable {
         private Duration connectTimeout = Duration.ofSeconds(10);
         private Duration reconnectBackoff = Duration.ofMillis(500);
         private Duration maxReconnectBackoff = Duration.ofSeconds(10);
+        private int maxReconnectAttempts = 10;
         private int outboundQueueCapacity = 1024;
         private WorkerEventHandlers.Builder eventHandlers = WorkerEventHandlers.builder();
         private WorkerSessionListener listener = WorkerSessionListener.NOOP;
@@ -511,6 +568,14 @@ public final class WebSocketWorkerSession implements AutoCloseable {
 
         public Builder maxReconnectBackoff(Duration maxReconnectBackoff) {
             this.maxReconnectBackoff = requirePositive(maxReconnectBackoff, "maxReconnectBackoff");
+            return this;
+        }
+
+        public Builder maxReconnectAttempts(int maxReconnectAttempts) {
+            if (maxReconnectAttempts <= 0) {
+                throw new IllegalArgumentException("maxReconnectAttempts must be positive");
+            }
+            this.maxReconnectAttempts = maxReconnectAttempts;
             return this;
         }
 

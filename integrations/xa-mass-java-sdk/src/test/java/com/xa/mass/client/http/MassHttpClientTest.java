@@ -17,6 +17,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class MassHttpClientTest {
@@ -41,6 +42,27 @@ class MassHttpClientTest {
 
         assertEquals("ready", data.value());
         assertEquals("mass_sk_success", observedApiKey.get());
+    }
+
+    @Test
+    void noAuthClientOmitsSdkManagedAuthHeader() throws Exception {
+        AtomicReference<String> observedApiKey = new AtomicReference<>();
+        AtomicReference<String> observedAuthorization = new AtomicReference<>();
+        startServer(exchange -> {
+            observedApiKey.set(exchange.getRequestHeaders().getFirst(MassHttpClient.MASS_API_KEY_HEADER));
+            observedAuthorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            respond(exchange, 200, "{\"code\":0,\"msg\":\"ok\",\"data\":{\"value\":\"ready\"}}");
+        });
+
+        TestData data = MassPlatform.builder()
+                .baseUrl("http://127.0.0.1:" + server.getAddress().getPort())
+                .build()
+                .http()
+                .get("/ok", TestData.class);
+
+        assertEquals("ready", data.value());
+        assertNull(observedApiKey.get());
+        assertNull(observedAuthorization.get());
     }
 
     @Test

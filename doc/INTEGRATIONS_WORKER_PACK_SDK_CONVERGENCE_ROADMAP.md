@@ -3,7 +3,7 @@
 Status: completed convergence record.
 
 Successor roadmap:
-`doc/INTEGRATIONS_EXTERNAL_SDK_WORKER_PACK_HARDENING_ROADMAP.md`.
+`doc/archive/integrations/2026-06-02_INTEGRATIONS_EXTERNAL_SDK_WORKER_PACK_HARDENING_ROADMAP.md`.
 
 This roadmap follows the Java SDK adoption work. The main question is no
 longer whether Java can call the platform from outside the server. That proof
@@ -426,7 +426,7 @@ Follow-up:
 - Stronger external actor proof, including explicit WorkerGroup selector
   assertions, topology registration order, and long-running session semantics,
   belongs to
-  `doc/INTEGRATIONS_EXTERNAL_SDK_WORKER_PACK_HARDENING_ROADMAP.md`.
+  `doc/archive/integrations/2026-06-02_INTEGRATIONS_EXTERNAL_SDK_WORKER_PACK_HARDENING_ROADMAP.md`.
 
 ### WPC-4: Command And Fault Runtime Boundary Cleanup
 

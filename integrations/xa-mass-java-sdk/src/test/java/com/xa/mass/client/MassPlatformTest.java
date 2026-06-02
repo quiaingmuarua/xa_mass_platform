@@ -5,7 +5,6 @@ import org.junit.jupiter.api.Test;
 import java.time.Duration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class MassPlatformTest {
     @Test
@@ -24,10 +23,11 @@ class MassPlatformTest {
     }
 
     @Test
-    void builderRequiresAuthToken() {
-        MassPlatform.Builder builder = MassPlatform.builder()
-                .baseUrl("http://localhost:8088");
+    void builderAllowsExplicitNoAuthClient() {
+        MassPlatform platform = MassPlatform.builder()
+                .baseUrl("http://localhost:8088")
+                .build();
 
-        assertThrows(IllegalStateException.class, builder::build);
+        assertEquals("http://localhost:8088/", platform.baseUri().toString());
     }
 }

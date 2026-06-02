@@ -57,11 +57,11 @@ public final class MassHttpClient {
 
     public MassHttpStreamResponse getStream(String path) {
         Objects.requireNonNull(path, "path is required");
-        HttpRequest request = HttpRequest.newBuilder(resolve(path))
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(resolve(path))
                 .timeout(requestTimeout)
-                .header(authHeader.name(), authHeader.value())
-                .GET()
-                .build();
+                .GET();
+        authHeader.applyTo(requestBuilder);
+        HttpRequest request = requestBuilder.build();
         HttpResponse<InputStream> response;
         try {
             response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
@@ -119,8 +119,8 @@ public final class MassHttpClient {
     private HttpRequest buildRequest(String method, URI uri, Object body) {
         HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
                 .timeout(requestTimeout)
-                .header(authHeader.name(), authHeader.value())
                 .header("Accept", "application/json");
+        authHeader.applyTo(builder);
         if ("GET".equals(method)) {
             return builder.GET().build();
         }
@@ -193,20 +193,41 @@ public final class MassHttpClient {
 
     public record AuthHeader(String name, String value) {
         public AuthHeader {
-            if (name == null || name.isBlank()) {
-                throw new IllegalArgumentException("auth header name is required");
-            }
-            if (value == null || value.isBlank()) {
-                throw new IllegalArgumentException("auth token is required");
+            if ((name == null || name.isBlank()) && (value == null || value.isBlank())) {
+                name = null;
+                value = null;
+            } else {
+                if (name == null || name.isBlank()) {
+                    throw new IllegalArgumentException("auth header name is required");
+                }
+                if (value == null || value.isBlank()) {
+                    throw new IllegalArgumentException("auth token is required");
+                }
             }
         }
 
         public static AuthHeader of(String name, String value) {
+            if (value == null || value.isBlank()) {
+                return none();
+            }
             return new AuthHeader(name, value);
+        }
+
+        public static AuthHeader none() {
+            return new AuthHeader(null, null);
+        }
+
+        public void applyTo(HttpRequest.Builder builder) {
+            if (name != null) {
+                builder.header(name, value);
+            }
         }
 
         public String redact(String text) {
             if (text == null || text.isEmpty()) {
+                return text;
+            }
+            if (value == null || value.isEmpty()) {
                 return text;
             }
             return text.replace(value, "[REDACTED]");

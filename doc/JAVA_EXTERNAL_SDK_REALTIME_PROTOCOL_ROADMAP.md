@@ -3,7 +3,7 @@
 Status: implemented first WebSocket session slice. This is not yet final
 long-running realtime SDK hardening. Follow-up lifecycle and worker-pack
 capability hardening is tracked by
-[`INTEGRATIONS_EXTERNAL_SDK_WORKER_PACK_HARDENING_ROADMAP.md`](./INTEGRATIONS_EXTERNAL_SDK_WORKER_PACK_HARDENING_ROADMAP.md).
+[`INTEGRATIONS_EXTERNAL_SDK_WORKER_PACK_HARDENING_ROADMAP.md`](./archive/integrations/2026-06-02_INTEGRATIONS_EXTERNAL_SDK_WORKER_PACK_HARDENING_ROADMAP.md).
 This roadmap supersedes the
 archived
 [`JAVA_EXTERNAL_SDK_REALTIME_DECISION.md`](./archive/integrations/2026-05-28_JAVA_EXTERNAL_SDK_REALTIME_DECISION.md)

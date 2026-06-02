@@ -141,9 +141,6 @@ public final class MassPlatform {
         }
 
         public MassPlatform build() {
-            if (authToken == null || authToken.isBlank()) {
-                throw new IllegalStateException("apiKey or bearerToken is required");
-            }
             return new MassPlatform(this);
         }
 

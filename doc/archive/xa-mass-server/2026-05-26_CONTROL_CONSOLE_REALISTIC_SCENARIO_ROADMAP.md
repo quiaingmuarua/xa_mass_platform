@@ -7,7 +7,7 @@ Status: completed and archived server/control-console convergence roadmap.
 Archived on 2026-06-02 after the realistic scenario baseline landed in current
 server/frontend/integrations code. This document is historical context only.
 Future worker capability hardening belongs to
-[`../../../INTEGRATIONS_EXTERNAL_SDK_WORKER_PACK_HARDENING_ROADMAP.md`](../../../INTEGRATIONS_EXTERNAL_SDK_WORKER_PACK_HARDENING_ROADMAP.md).
+[`../integrations/2026-06-02_INTEGRATIONS_EXTERNAL_SDK_WORKER_PACK_HARDENING_ROADMAP.md`](../integrations/2026-06-02_INTEGRATIONS_EXTERNAL_SDK_WORKER_PACK_HARDENING_ROADMAP.md).
 
 This roadmap turns the backend-hosted console from early demo-shaped seed data
 into a small but real platform scenario. It is server-owned because the work is

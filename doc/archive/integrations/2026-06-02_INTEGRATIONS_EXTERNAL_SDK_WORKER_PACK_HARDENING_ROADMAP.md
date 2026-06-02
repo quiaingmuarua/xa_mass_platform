@@ -1,6 +1,6 @@
 # Integrations External SDK And Worker-Pack Hardening Roadmap
 
-Status: proposed integrations hardening roadmap.
+Status: completed 2026-06-02; archived after EWH-7 verification.
 
 This roadmap follows the completed Java SDK adoption, worker-pack SDK
 convergence, and control-console realistic scenario work.
@@ -27,36 +27,33 @@ to retire worker-pack raw Java socket demo paths and keep worker-pack focused on
 real capabilities plus fault harness behavior. This roadmap turns that decision
 into a harder external actor contract.
 
-## Current Facts
+## Completed Facts
 
-- `MassPlatform.builder()` is the stable SDK entry point, but its current auth
-  behavior conflicts with the SDK README: docs say unauthenticated requests are
-  allowed, while the builder requires `apiKey` or `bearerToken`.
-- the Java SDK README contains at least one non-compiling example:
-  `mass.tasks().readResults(...)` does not match the current `TaskClient`
-  method name `results(...)`.
+- `MassPlatform.builder()` is the stable SDK entry point and supports explicit
+  no-auth clients by omitting SDK-managed auth headers when neither `apiKey`
+  nor `bearerToken` is configured.
+- the Java SDK README examples use the current `TaskClient.results(...)`
+  method name.
 - `PollingWorkerSession` has a working public worker loop and uses the
   transport-neutral SDK handler runtime.
-- `WebSocketWorkerSession` has first-slice support for realtime worker
-  registration, WebSocket connection, canonical dispatch/result frames,
-  reconnect attempts, and an outbound result queue. `JavaScenarioLauncherBlackBoxIntegrationTest`
-  proves the Java SDK WebSocket happy path through scenario-launcher. It is not
-  yet a mature long-running realtime SDK contract because close/reconnect/queue
-  terminal semantics still need hardening.
-- `GeoLookupTool` is useful as a first proof, but it is still deterministic and
-  simulated. It should either become a provider-configurable capability or be
-  explicitly demoted to fixture scaffolding once scenario-derived probe
-  capabilities land.
-- worker-pack still mixes real capabilities, embedded dev-shell support,
-  Spring sample bootstrap, raw WebSocket command/fault harness code, and test
-  fixture dependencies in one artifact.
-- the Java SDK already exposes task clients, worker topology clients, and
-  worker session clients, but the hardening proof must keep those as separate
-  public responsibilities rather than collapsing the SDK into a worker-loop-only
-  library.
-- the completed control-console scenario is server-owned. It provides the
-  target vocabulary and proof goals, but it must not become worker-pack
-  implementation ownership by accident.
+- `WebSocketWorkerSession` supports realtime worker registration, JDK
+  WebSocket connection, canonical dispatch/result frames, bounded reconnect
+  attempts, result queue full callbacks, and queued-result abandoned callbacks
+  on close or reconnect exhaustion.
+- `GeoLookupTool` is now provider-configurable through `GeoLookupProvider`,
+  with a deterministic CI provider as the default.
+- `ProbeWorkerPack` carries scenario-derived local probe capabilities for
+  phone metadata, URL DNS, CSV validation, and JSON schema validation.
+- worker-pack still contains sample/dev-shell harness code in the same Maven
+  artifact, but package ownership and architecture guards prevent production
+  capability packages from importing sample, embedded SDK, or transport
+  internals.
+- the Java SDK exposes task clients, worker topology clients, and worker
+  session clients as separate public responsibilities rather than collapsing
+  into a worker-loop-only library.
+- the completed control-console scenario remains server-owned. Its probe
+  catalog is used as capability requirements for worker-pack, not as active
+  worker-pack implementation ownership.
 
 ## Owner Review
 
@@ -123,6 +120,60 @@ external Java actor process
 
 Do not split into separate roadmaps until the SDK contract hardening and
 worker-pack capability boundary are stable enough to progress independently.
+
+## Concept Model
+
+Keep the external SDK model broader than worker sessions:
+
+- task producer: creates task shells, appends items, seals work, and reads
+  results through public task APIs. It may run in the same process as a worker
+  launcher, but it is a distinct SDK facet.
+- WorkerGroup: capability and scheduling candidate-source truth. It declares
+  what a group can handle, such as event bindings and default capability
+  attributes. It is not polling-specific, WebSocket-specific, socket-specific,
+  or tied to one process.
+- AdapterNode: external endpoint and placement identity. It describes the
+  runtime node that can host Worker executions and transport sessions. It is
+  not the capability itself.
+- NodeGroupBinding: placement relation between an AdapterNode and a WorkerGroup.
+  It says a node may host workers for that group; it does not imply a live
+  worker session.
+- Worker: execution identity within a WorkerGroup and AdapterNode. Worker
+  online/offline state, heartbeat, capacity, and attributes are runtime
+  execution evidence.
+- worker session: the live polling or realtime transport loop for a Worker. It
+  owns dispatch receipt, handler invocation, result delivery, reconnect, close,
+  and queued-result behavior. It must not redefine WorkerGroup capability truth.
+- transport worker: if the term is used, treat it as a session/transport-facing
+  Worker execution, not as a new platform owner. Prefer the explicit terms
+  Worker, AdapterNode, WorkerGroup, and worker session in public docs.
+- event handler: business dispatch handling. It must stay transport-neutral so
+  polling and WebSocket sessions can share the same handler contract.
+
+This means the SDK public surface is at least four facets: task clients, worker
+topology clients, worker sessions, and handler/runtime helpers. Worker sessions
+are important, but they are not the whole SDK.
+
+## Hard Rules
+
+- Do not narrow `integrations/xa-mass-java-sdk` into a worker-session SDK.
+  Task producer clients and worker topology clients are equally public external
+  actor surfaces.
+- Do not model WorkerGroup as a transport-specific entity. Polling,
+  WebSocket, and any future transport bind at Worker/session level.
+- Do not let AdapterNode become capability truth. Capability truth belongs to
+  WorkerGroup and worker-pack capability contracts; AdapterNode is placement and
+  endpoint identity.
+- Do not add privileged server startup for built-in worker groups. Repository
+  provided workers must register through the same public APIs or SDK clients as
+  external workers.
+- Do not keep compatibility aliases or compact fallback demo paths for retired
+  integrations. This project has not launched publicly; replace or remove old
+  in-repo paths directly.
+- Do not promote worker-pack command/fault harness semantics into the SDK unless
+  a separate public adapter hook is explicitly designed.
+- Do not use WebSocket support as proof that raw TCP socket is part of the Java
+  SDK. They are separate transports with separate public-contract decisions.
 
 ## WebSocket Support Classification
 
@@ -197,7 +248,7 @@ worker-pack surfaces, and add at least one scenario-derived capability proof.
 
 - No public registry publication.
 - No Node SDK track.
-- No Java socket SDK support.
+- No raw TCP socket Java SDK support.
 - No server/control-console scenario rewrite.
 - No engine/runtime scheduling semantic changes.
 - No new task terminal states for business probe outcomes.
@@ -242,7 +293,7 @@ Acceptance:
 Verification:
 
 ```powershell
-rg -n "readResults|apiKey or bearerToken is required|WebSocket WorkerGroup|Polling WorkerGroup|Socket WorkerGroup|tool.geo.lookup|probe.phone.metadata|probe.url.dns" integrations doc xa-mass-server
+rg -n --glob "!doc/archive/**" "readResults|apiKey or bearerToken is required|WebSocket WorkerGroup|Polling WorkerGroup|Socket WorkerGroup" integrations doc xa-mass-server
 ```
 
 ## EWH-1: SDK Public Contract Correctness
@@ -474,9 +525,29 @@ Acceptance:
 Verification:
 
 ```powershell
-rg -n "readResults|public SDK usage|CONTROL_CONSOLE_REALISTIC_SCENARIO_ROADMAP|WebSocket WorkerGroup|Polling WorkerGroup|Socket WorkerGroup|tool.geo.lookup" doc integrations xa-mass-server
+rg -n --glob "!doc/archive/**" "readResults|public SDK usage|CONTROL_CONSOLE_REALISTIC_SCENARIO_ROADMAP|WebSocket WorkerGroup|Polling WorkerGroup|Socket WorkerGroup" doc integrations xa-mass-server
 mvn -pl integrations/xa-mass-java-sdk,integrations/xa-mass-worker-pack -am test
+mvn -pl xa-mass-server -am "-Dtest=WorkerPackGeoLookupExternalSdkIntegrationTest,PhoneDeviceWorkerPackExternalSdkIntegrationTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 ```
+
+## Risks And Visibility
+
+- SDK becomes worker-loop-only: mitigated by EWH-0/EWH-1 examples that show task
+  producer APIs, topology APIs, and session APIs as separate facets.
+- WorkerGroup becomes transport wording: mitigated by docs and guards that fail
+  on WebSocket/Polling/Socket WorkerGroup phrasing.
+- AdapterNode becomes hidden server privilege: mitigated by proofs that register
+  AdapterNode, NodeGroupBinding, Worker, and session state through public SDK/API
+  paths.
+- Worker-pack remains a mixed demo jar: mitigated by EWH-3 package/dependency
+  classification before any Maven split.
+- Java SDK WebSocket is over-positioned too early: mitigated by EWH-2 terminal
+  semantics before worker-pack uses WebSocket for normal capabilities.
+- `tool.geo.lookup` remains only a fixture: mitigated by EWH-4 provider contract
+  or explicit demotion once scenario-derived probe capabilities land.
+- Control-console scenario ownership leaks into worker-pack: mitigated by
+  treating archived scenario events as capability requirements, not active
+  server work.
 
 ## Suggested Implementation Order
 

@@ -25,6 +25,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -190,6 +191,141 @@ class WebSocketWorkerSessionTest {
         }
     }
 
+    @Test
+    void closeAbandonsQueuedResultWhenSocketIsUnavailable() throws Exception {
+        CountDownLatch abandoned = new CountDownLatch(1);
+        AtomicReference<WebSocket.Listener> listenerRef = new AtomicReference<>();
+        AtomicReference<WorkerSessionQueuedResultFailure> failureRef = new AtomicReference<>();
+        RecordingWebSocket webSocket = new RecordingWebSocket(new CountDownLatch(1));
+        startRealtimeControlPlaneServer();
+
+        WebSocketWorkerSession session = platform().workerSessions().webSocket()
+                .workerId("ws-worker-001")
+                .workerGroupId("realtime-probe")
+                .adapterNodeId("ws-node-sg-1")
+                .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
+                .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of()))
+                .connectTimeout(Duration.ofMillis(100))
+                .listener(new WorkerSessionListener() {
+                    @Override
+                    public void onQueuedResultAbandoned(WorkerSessionQueuedResultFailure failure) {
+                        failureRef.set(failure);
+                        abandoned.countDown();
+                    }
+                })
+                .webSocketConnector((uri, listener) -> {
+                    listenerRef.set(listener);
+                    listener.onOpen(webSocket);
+                    return CompletableFuture.completedFuture(webSocket);
+                })
+                .start();
+        try {
+            listenerRef.get().onClose(webSocket, 1006, "test-disconnect").toCompletableFuture()
+                    .get(1, TimeUnit.SECONDS);
+            listenerRef.get().onText(webSocket, """
+                    {"messageId":"msg-close","taskId":"task-close","eventCode":"probe.realtime.metadata","workerId":"ws-worker-001","input":{},"sharedConfig":{}}
+                    """, true).toCompletableFuture().get(1, TimeUnit.SECONDS);
+
+            session.close();
+
+            assertTrue(abandoned.await(2, TimeUnit.SECONDS), "close should abandon queued result");
+            assertEquals(WorkerSessionQueuedResultFailure.Reason.SESSION_CLOSED, failureRef.get().reason());
+            assertEquals("msg-close", failureRef.get().dispatch().messageId());
+        } finally {
+            session.close();
+        }
+    }
+
+    @Test
+    void fullQueueDropsResultWithSpecificCallback() throws Exception {
+        CountDownLatch dropped = new CountDownLatch(1);
+        AtomicReference<WebSocket.Listener> listenerRef = new AtomicReference<>();
+        AtomicReference<WorkerSessionQueuedResultFailure> failureRef = new AtomicReference<>();
+        BlockingWebSocket webSocket = new BlockingWebSocket();
+        startRealtimeControlPlaneServer();
+
+        try (WebSocketWorkerSession ignored = platform().workerSessions().webSocket()
+                .workerId("ws-worker-001")
+                .workerGroupId("realtime-probe")
+                .adapterNodeId("ws-node-sg-1")
+                .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
+                .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of()))
+                .connectTimeout(Duration.ofSeconds(1))
+                .outboundQueueCapacity(1)
+                .listener(new WorkerSessionListener() {
+                    @Override
+                    public void onQueuedResultDropped(WorkerSessionQueuedResultFailure failure) {
+                        failureRef.set(failure);
+                        dropped.countDown();
+                    }
+                })
+                .webSocketConnector((uri, listener) -> {
+                    listenerRef.set(listener);
+                    listener.onOpen(webSocket);
+                    return CompletableFuture.completedFuture(webSocket);
+                })
+                .start()) {
+            for (int i = 1; i <= 3; i++) {
+                listenerRef.get().onText(webSocket, """
+                        {"messageId":"msg-%d","taskId":"task-drop","eventCode":"probe.realtime.metadata","workerId":"ws-worker-001","input":{},"sharedConfig":{}}
+                        """.formatted(i), true).toCompletableFuture().get(1, TimeUnit.SECONDS);
+            }
+
+            assertTrue(dropped.await(2, TimeUnit.SECONDS), "full queue should drop a result");
+            assertEquals(WorkerSessionQueuedResultFailure.Reason.QUEUE_FULL, failureRef.get().reason());
+        }
+    }
+
+    @Test
+    void reconnectExhaustionAbandonsQueuedResult() throws Exception {
+        CountDownLatch abandoned = new CountDownLatch(1);
+        AtomicInteger connectAttempts = new AtomicInteger();
+        AtomicReference<WebSocket.Listener> listenerRef = new AtomicReference<>();
+        AtomicReference<WorkerSessionQueuedResultFailure> failureRef = new AtomicReference<>();
+        RecordingWebSocket webSocket = new RecordingWebSocket(new CountDownLatch(1));
+        startRealtimeControlPlaneServer();
+
+        WebSocketWorkerSession session = platform().workerSessions().webSocket()
+                .workerId("ws-worker-001")
+                .workerGroupId("realtime-probe")
+                .adapterNodeId("ws-node-sg-1")
+                .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
+                .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of()))
+                .connectTimeout(Duration.ofMillis(100))
+                .reconnectBackoff(Duration.ofMillis(10))
+                .maxReconnectAttempts(1)
+                .listener(new WorkerSessionListener() {
+                    @Override
+                    public void onQueuedResultAbandoned(WorkerSessionQueuedResultFailure failure) {
+                        failureRef.set(failure);
+                        abandoned.countDown();
+                    }
+                })
+                .webSocketConnector((uri, listener) -> {
+                    if (connectAttempts.incrementAndGet() == 1) {
+                        listenerRef.set(listener);
+                        listener.onOpen(webSocket);
+                        return CompletableFuture.completedFuture(webSocket);
+                    }
+                    return CompletableFuture.failedFuture(new IOException("connect failed"));
+                })
+                .start();
+        try {
+            listenerRef.get().onClose(webSocket, 1006, "test-disconnect").toCompletableFuture()
+                    .get(1, TimeUnit.SECONDS);
+            listenerRef.get().onText(webSocket, """
+                    {"messageId":"msg-reconnect","taskId":"task-reconnect","eventCode":"probe.realtime.metadata","workerId":"ws-worker-001","input":{},"sharedConfig":{}}
+                    """, true).toCompletableFuture().get(1, TimeUnit.SECONDS);
+
+            assertTrue(abandoned.await(2, TimeUnit.SECONDS), "reconnect exhaustion should abandon queued result");
+            assertEquals(WorkerSessionQueuedResultFailure.Reason.RECONNECT_EXHAUSTED, failureRef.get().reason());
+            assertEquals("msg-reconnect", failureRef.get().dispatch().messageId());
+            assertFalse(session.isRunning());
+        } finally {
+            session.close();
+        }
+    }
+
     private MassPlatform platform() {
         return MassPlatform.builder()
                 .baseUrl("http://127.0.0.1:" + server.getAddress().getPort())
@@ -252,7 +388,7 @@ class WebSocketWorkerSessionTest {
         void handle(HttpExchange exchange) throws IOException;
     }
 
-    private static final class RecordingWebSocket implements WebSocket {
+    private static class RecordingWebSocket implements WebSocket {
         private final CountDownLatch sendLatch;
         private final List<String> sentTexts = new ArrayList<>();
         private volatile boolean outputClosed;
@@ -318,6 +454,18 @@ class WebSocketWorkerSessionTest {
         public void abort() {
             inputClosed = true;
             outputClosed = true;
+        }
+    }
+
+    private static final class BlockingWebSocket extends RecordingWebSocket {
+        private BlockingWebSocket() {
+            super(new CountDownLatch(1));
+        }
+
+        @Override
+        public CompletableFuture<WebSocket> sendText(CharSequence data, boolean last) {
+            assertTrue(last);
+            return new CompletableFuture<>();
         }
     }
 }
