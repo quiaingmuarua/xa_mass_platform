@@ -42,6 +42,9 @@ Current implemented surface:
 - Jackson-based `ApiResponse<T>` envelope handling
 - typed client exceptions
 - task shell, item ingest, command, result window, and archive clients
+- typed task-create routing helpers for WorkerGroup selectors, routing code,
+  route attributes, and target worker attributes
+- task-scoped `TaskHandle` for repeated operations against one existing task
 - worker topology client:
   adapter node registration, WorkerGroup declaration, node/group binding, and
   worker execution identity registration
@@ -105,15 +108,47 @@ var task = mass.tasks().create(TaskCreateRequest.builder()
         .project("crawlerApp")
         .userId("agent")
         .contract(TaskContract.BATCH)
-        .sharedConfig("routingCode", "us")
+        .workerGroupId("crawler-workers")
+        .routingCode("us")
         .build());
 
-mass.tasks().appendItems(task.taskId(), TaskItemBatch.builder()
+TaskHandle handle = mass.tasks().forTask(task.taskId());
+
+handle.appendItems(TaskItemBatch.builder()
         .eventCode("crawler.fetch-page")
         .item(Map.of("url", "https://example.com"))
         .build());
 
-mass.tasks().seal(task.taskId());
+handle.seal();
+```
+
+Task-scoped interactive invocation:
+
+```java
+var task = mass.tasks().create(TaskCreateRequest.builder()
+        .project("crawlerApp")
+        .userId("agent")
+        .contract(TaskContract.SESSION)
+        .workerGroupId("crawler-workers")
+        .targetWorkerAttribute("region", "us")
+        .executionSpec(TaskExecutionSpec.builder()
+                .workloadClass("INTERACTIVE")
+                .batchSize(1)
+                .build())
+        .build());
+
+TaskHandle handle = mass.tasks().forTask(task.taskId());
+handle.approve();
+
+TaskSyncAppendResult result = handle.appendItemSync(TaskItemSyncRequest.builder()
+        .eventCode("crawler.fetch-page")
+        .item(Map.of("url", "https://example.com"))
+        .timeoutMs(5000L)
+        .build());
+
+TaskResultWindow window = handle.results(TaskResultReadRequest.builder()
+        .limit(100)
+        .build());
 ```
 
 Result reading:

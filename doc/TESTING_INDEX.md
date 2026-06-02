@@ -363,6 +363,10 @@ Proves:
 - the host shell exposes the scheduling mainline correctly
 - project/submitter/worker/task flows survive real wiring
 - representative assignment, polling, routing, and worker reuse scenarios survive real server + SDK + engine integration
+- Java external SDK task-scoped invocation is proven by
+  `JavaExternalSdkTaskScopedInvocationIntegrationTest`: an external producer
+  creates a WorkerGroup-scoped `SESSION` task, approves it, calls
+  `TaskHandle.appendItemSync(...)`, and reads results through public APIs
 - SDK-backed worker-pack capability registration and execution is proven by
   `WorkerPackGeoLookupExternalSdkIntegrationTest` and the phone-device Stage-2
   proof in `PhoneDeviceWorkerPackExternalSdkIntegrationTest`; these are

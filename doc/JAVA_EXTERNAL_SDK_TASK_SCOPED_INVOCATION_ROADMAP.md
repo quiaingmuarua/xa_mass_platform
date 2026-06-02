@@ -1,6 +1,7 @@
 # Java External SDK Task-Scoped Invocation Roadmap
 
-Status: proposed SDK ergonomics roadmap.
+Status: implemented mainline. TSI-0, TSI-1, and TSI-2 are complete; TSI-3 is
+deferred until append receipts can preserve item/message identity.
 
 This roadmap adds task-scoped invocation conveniences to
 `integrations/xa-mass-java-sdk`.
@@ -13,8 +14,8 @@ Relationship to EWH:
 - EWH is complete and archived. It owns SDK public-contract correctness,
   including auth behavior and stale README result-read method names.
 - This roadmap owns task-scoped invocation ergonomics: typed task routing
-  helpers, task-bound SDK calls, and bulk append helpers proven by current
-  scenario-launcher usage.
+  helpers, task-bound SDK calls, and the decision record for future
+  scenario-proven bulk append ergonomics.
 - TSI examples must consume EWH's corrected method names and may update only
   snippets directly touched by task-scoped invocation.
 
@@ -37,7 +38,7 @@ Pattern A: task-scoped interactive invocation
   workloadClass = INTERACTIVE
   intake remains OPEN
   task is approved to READY before sync append
-  repeated appendItemSync / appendAndWait against the same task
+  repeated appendItemSync against the same task
 
 Pattern B: high-volume producer
   contract = BATCH
@@ -55,14 +56,18 @@ an open intake window.
 
 - `TaskClient` already exposes:
   - `create(TaskCreateRequest)`
+  - `forTask(String taskId)`
   - `appendItems(String taskId, TaskItemBatch)`
   - `appendItemSync(String taskId, TaskItemSyncRequest)`
   - `seal(String taskId)`
   - `results(String taskId, TaskResultReadRequest)`
+- `TaskHandle` provides task-scoped delegation for append, sync append,
+  command, approve, seal, result window, and archive operations. It stores only
+  `taskId` plus the `TaskClient`.
 - `TaskCreateRequest` and server `TaskShellCreateApiRequest` carry
-  `sharedConfig`, but the Java SDK does not provide typed helpers for task
-  routing selectors such as `workerGroupId`, `workerGroupIds`,
-  `targetWorkerAttributes`, or route attributes.
+  `sharedConfig`; the Java SDK now provides typed create helpers for
+  `workerGroupId`, `workerGroupIds`, `targetWorkerAttributes`, `routingCode`,
+  and route attributes.
 - Engine matching already consumes task-level worker selectors through
   `Task.sharedConfig.workerGroupId` / `workerGroupIds`.
 - The current public sync wait remains message-scoped: `taskId + messageId`.
@@ -78,6 +83,10 @@ an open intake window.
   pattern and currently carries local chunking code:
   `TaskScenarioSeeder.DEFAULT_ITEM_BATCH_SIZE = 500` and a manual
   `chunks(...)` loop before repeated `appendItems(...)` calls.
+- `TaskAppendResult` currently reports task-level append status
+  (`taskId`, `added`, `status`, `intakeStatus`, `message`) and does not expose
+  per-item message ids. A generic SDK bulk helper must not hide identity it
+  cannot return.
 
 ## Owner Decision
 
@@ -88,8 +97,9 @@ The SDK may own:
 - typed request builders that map external Java names to public task API JSON;
 - task routing helper methods for `workerGroupId`, `workerGroupIds`,
   `targetWorkerAttributes`, `routingCode`, and route attributes;
-- advanced/manual narrowing helper methods only when they preserve the current
-  kernel meaning; `targetWorkerId` is not a normal business-routing selector;
+- advanced/manual narrowing helper methods only in a future roadmap where they
+  preserve the current kernel meaning; `targetWorkerId` is not part of this
+  roadmap and is not a normal business-routing selector;
 - a task-scoped handle or facade that keeps the caller anchored to one task id;
 - documentation and snippet tests proving the intended usage pattern.
 
@@ -157,10 +167,62 @@ and runtime result wait.
 
 `invokeSync(...)` and a new `TaskItemInvocation` type are intentionally not the
 preferred first-slice shape. They pull callers toward RPC vocabulary and create
-`payload` vs `item` wording drift. If the final API uses `invokeSync(...)`, the
-method documentation must state that it appends one item to an existing task and
-waits for that item's stable-final result. First implementation should prefer
-`TaskItemSyncRequest`.
+`payload` vs `item` wording drift. If a future roadmap promotes
+`invokeSync(...)`, the method documentation must state that it appends one item
+to an existing task and waits for that item's stable-final result.
+
+## TSI-0 Decisions
+
+These decisions are part of this roadmap baseline and should be treated as the
+starting contract for implementation:
+
+- Task-scoped facade name: `TaskHandle`.
+- Task-scoped entry point: `TaskClient.forTask(String taskId)`.
+- Sync request type: reuse `TaskItemSyncRequest`; do not introduce
+  `TaskItemInvocation` in this roadmap.
+- First sync method name: `appendItemSync(...)`. Do not add
+  `appendAndWait(...)` in the first slice; avoid creating two new names for
+  the same route.
+- Typed routing helpers live on `TaskCreateRequest.Builder` in this roadmap.
+  Do not add matching `TaskUpdateRequest.Builder` helpers until task routing
+  mutation semantics are explicitly reviewed.
+- Include first-slice helpers for `workerGroupId`, `workerGroupIds`,
+  `targetWorkerAttribute(s)`, `routingCode`, and `routeAttribute(s)`.
+- Do not add `targetWorkerId(...)` in this roadmap. It remains an
+  advanced/manual debug narrowing concept and should get a separate SDK review
+  if it is promoted later.
+- Do not add `adapterNodeId(...)`; AdapterNode remains placement/runtime
+  registration truth, not task capability truth.
+- SDK helper constants are SDK-owned literals and must not import
+  `xa-mass-base`.
+- TSI-3 bulk helper is deferred because current append receipts do not expose
+  per-item message ids. Scenario-launcher may keep local chunking until the
+  public append receipt contract can preserve identity.
+
+## Slice State
+
+| Slice | State | Execution Meaning |
+| --- | --- | --- |
+| TSI-0 | complete | Naming and API shape are fixed by this roadmap revision. |
+| TSI-1 | complete | Typed `TaskCreateRequest.Builder` helpers and focused SDK tests are implemented. |
+| TSI-2 | complete | `TaskHandle`, README snippets, SDK tests, and one server E2E proof are implemented. |
+| TSI-3 | deferred | Do not add a bulk helper until append receipts expose item/message identity. |
+| Conditional integrated proof | conditional | Use only when scenario-launcher or worker-pack adopts new task-scoped APIs. |
+
+## Implementation Evidence
+
+- `TaskCreateRequest.Builder` owns SDK literals for WorkerGroup/routing helper
+  keys and does not import `xa-mass-base`.
+- `TaskClient.forTask(...)` returns `TaskHandle`; the handle delegates to
+  existing public task routes and does not create task shells implicitly.
+- `TaskCommandRequest.approve()` backs `TaskHandle.approve()`.
+- Java SDK README examples use typed routing helpers and task-scoped sync
+  invocation.
+- `JavaExternalSdkTaskScopedInvocationIntegrationTest` proves create
+  `SESSION` task -> approve -> `TaskHandle.appendItemSync(...)` -> results
+  against a real server and external polling worker.
+- `TaskAppendResult` still lacks per-item message ids, so TSI-3 remains
+  deferred by design.
 
 ## Target Shape
 
@@ -173,15 +235,13 @@ integrations/xa-mass-java-sdk
     targetWorkerAttributes(...)
     routingCode(...)
     routeAttribute(...)
-    targetWorkerId(...) as an advanced/manual narrowing helper only if TSI-0
-      records the guardrails
 
   TaskClient
-    forTask(taskId) -> TaskHandle / BoundTaskClient
+    forTask(taskId) -> TaskHandle
 
-  Task-scoped handle
+  TaskHandle
     appendItems(...)
-    appendAndWait(...) or appendItemSync(...)
+    appendItemSync(...)
     command(...)
     approve()
     seal()
@@ -194,10 +254,23 @@ integrations/xa-mass-java-sdk
     clientRequestId
 ```
 
-Naming is a slice decision. The important contract is that the facade is scoped
-to an existing task id. Do not use `TaskSession`: this is not a runtime session
-and should not collide with `TaskContract.SESSION`, `PollingWorkerSession`, or
+Do not use `TaskSession`: this is not a runtime session and should not collide
+with `TaskContract.SESSION`, `PollingWorkerSession`, or
 `WebSocketWorkerSession`.
+
+## Hard Rules
+
+- Do not add a server invocation route or global SDK `mass.invoke(...)`.
+- Do not hide task lifecycle. Create, approve, append, seal, and result reads
+  remain visible operations.
+- Do not import `TaskSharedConfig` or any `xa-mass-base` type into
+  `xa-mass-java-sdk` for these helpers.
+- WorkerGroup selection belongs on task creation through `sharedConfig`;
+  `eventCode` stays item-level dispatch evidence.
+- Do not add task-level `adapterNodeId(...)` or `targetWorkerId(...)` helpers
+  in this roadmap.
+- Do not add a bulk append helper until append receipts expose enough identity
+  for the SDK to return what it submits.
 
 ## Non-Goals
 
@@ -224,36 +297,30 @@ handle so task lifecycle remains visible.
 
 ## TSI-0: API Inventory And Naming Decision
 
-Goal: decide the SDK public shape before adding convenience methods.
+Goal: document the SDK public shape before adding convenience methods.
 
 Scope:
 
 - inventory current `TaskClient`, task request builders, and README examples;
-- decide task-scoped facade name:
-  `TaskHandle`, `BoundTaskClient`, or equivalent;
+- use `TaskHandle` as the task-scoped facade name;
 - explicitly reject `TaskSession` unless a later design gives it real runtime
   session ownership, which is not part of this roadmap;
-- decide whether invocation payload type reuses `TaskItemSyncRequest` or adds a
-  smaller `TaskItemInvocation` wrapper; first-slice default is to reuse
-  `TaskItemSyncRequest`;
-- decide final sync method naming: prefer `appendAndWait(...)`,
-  `appendItemSync(...)`, or equivalent task/item vocabulary over RPC-like
-  `invokeSync(...)`;
-- decide whether typed routing helpers live on `TaskCreateRequest.Builder`
-  only, or also on `TaskUpdateRequest.Builder`;
+- reuse `TaskItemSyncRequest`; do not add `TaskItemInvocation`;
+- use `appendItemSync(...)` as the first task-scoped sync method name;
+- put typed routing helpers on `TaskCreateRequest.Builder` only;
 - explicitly keep `adapterNodeId(...)` out of task-create helpers for this
   roadmap because AdapterNode is not task capability truth;
-- decide whether `targetWorkerId(...)` is included as an advanced/manual
-  narrowing helper. It must be documented as group-scoped and must not be
+- keep `targetWorkerId(...)` out of this roadmap. If promoted later, it must
+  be documented as group-scoped advanced/manual narrowing and must not be
   presented beside `workerGroupId(s)` as a normal business-routing selector;
 - document that SDK routing helper constants are SDK-owned literals and must
   not import `xa-mass-base`.
-- record the execution relationship with completed EWH so README/example cleanup is not
-  double-owned.
+- record the execution relationship with completed EWH so README/example
+  cleanup is not double-owned.
 
 Acceptance:
 
-- the selected API shape is recorded in this roadmap or an inventory;
+- the selected API shape is recorded in this roadmap;
 - no code behavior changes are required in this slice;
 - the selected naming keeps task scope visible.
 - EWH overlap is resolved: EWH owns broad stale README cleanup, and this
@@ -276,11 +343,11 @@ Scope:
 - add `TaskCreateRequest.Builder.workerGroupIds(Collection<String>)`;
 - add `TaskCreateRequest.Builder.targetWorkerAttribute(String, String)` and
   `targetWorkerAttributes(Map<String, String>)`;
-- add `TaskCreateRequest.Builder.targetWorkerId(String)` only if TSI-0 records
-  it as an advanced/manual narrowing helper with explicit WorkerGroup selector
-  guardrails;
-- add route/routing helpers only if current server/engine contracts already
-  support them through `sharedConfig`;
+- add `TaskCreateRequest.Builder.routingCode(String)`,
+  `routeAttribute(String, String)`, and
+  `routeAttributes(Map<String, String>)` because current server/engine
+  contracts already support them through `sharedConfig`;
+- do not add `targetWorkerId(String)` in this roadmap;
 - do not add `adapterNodeId(String)` in this roadmap;
 - preserve existing `sharedConfig(...)` escape hatch for advanced callers;
 - do not import `TaskSharedConfig` from `xa-mass-base`.
@@ -295,27 +362,28 @@ Scope:
   - repeated `targetWorkerAttribute(k, v)` merges one key at a time;
   - route attributes follow the same replace-vs-merge rule as target
     attributes.
-- validate or document that `targetWorkerId(...)` requires an explicit
-  `workerGroupId(...)` or `workerGroupIds(...)` selector.
+- define null/blank semantics explicitly:
+  - blank or null `workerGroupId` removes `workerGroupId` and still clears
+    `workerGroupIds`;
+  - blank or null `workerGroupIds` entries are ignored, and an empty
+    normalized collection removes `workerGroupIds` while clearing
+    `workerGroupId`;
+  - blank attribute keys are invalid;
+  - blank or null attribute values remove that attribute key.
 
 Acceptance:
 
 - generated JSON still contains the public task API shape:
   `sharedConfig.workerGroupId`, `sharedConfig.workerGroupIds`,
   and `sharedConfig.targetWorkerAttributes`;
-- if `targetWorkerId(...)` is added, generated JSON contains
-  `sharedConfig.targetWorkerId` and docs mark it as advanced/manual narrowing;
 - helper merge/override behavior is fixed by call order and covered by tests;
 - tests cover single WorkerGroup, multiple WorkerGroups, and fingerprint-like
   target attributes;
-- tests cover target worker id only if the advanced/manual helper is added;
+- tests cover `routingCode` and route attributes;
 - tests cover `workerGroupId` / `workerGroupIds` mutual exclusion;
 - tests cover typed-helper-before-raw-map and raw-map-before-typed-helper
   ordering;
 - tests cover null/blank handling for selector helper values;
-- if `targetWorkerId(...)` is added, tests cover its explicit WorkerGroup
-  selector requirement or document why validation is intentionally deferred to
-  server/engine;
 - README examples no longer require raw `sharedConfig("workerGroupId", ...)`
   for ordinary WorkerGroup routing.
 
@@ -335,8 +403,7 @@ Scope:
 - add `TaskClient.forTask(String taskId)` returning a task-scoped handle;
 - expose task-scoped methods:
   - `appendItems(TaskItemBatch)`
-  - `appendAndWait(TaskItemSyncRequest)` / `appendItemSync(...)` or equivalent
-    task/item vocabulary
+  - `appendItemSync(TaskItemSyncRequest)`
   - `command(TaskCommandRequest)`
   - `approve()`
   - `seal()`
@@ -356,7 +423,8 @@ Acceptance:
 - the handle does not create task shells implicitly;
 - every handle method delegates to existing public server routes;
 - tests prove path construction and JSON shape;
-- no server code changes are required.
+- no server runtime code changes are required. A server E2E test may be added
+  to prove the SDK flow against a real host.
 - task-scoped sync examples show that the task is already `READY`/`RUNNING`
   with intake `OPEN`;
 - examples must not call `seal()` before `appendItemSync(...)`;
@@ -368,47 +436,52 @@ Acceptance:
 - server E2E proves the promoted create -> approve -> sync append flow through
   Java SDK calls against a real host:
   create a `SESSION` task, approve it to `READY` while intake is `OPEN`, call
-  task-scoped `appendItemSync(...)` / `appendAndWait(...)`, and read the
-  result through `results(...)`.
+  task-scoped `appendItemSync(...)`, and read the result through
+  `results(...)`.
 
 Verification:
 
 ```powershell
-rg -n "mass\\.invoke|workerGroupId|appendItemSync|appendAndWait|forTask" integrations/xa-mass-java-sdk doc
+rg -n "mass\\.invoke|workerGroupId|appendItemSync|forTask" integrations/xa-mass-java-sdk doc
 mvn -pl integrations/xa-mass-java-sdk "-Dtest=TaskClientTest" test
 mvn -pl xa-mass-server -am "-Dtest=JavaExternalSdkTaskScopedInvocationIntegrationTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 ```
 
 ## TSI-3: Scenario-Proven Bulk Append Ergonomics
 
-Goal: support the preferred high-volume pattern only where current code already
-proves repeated boilerplate: one task shell, many items.
+Goal: support the preferred high-volume pattern only after the SDK can preserve
+append identity. Current state is deferred.
 
 Scope:
 
-- inventory `TaskScenarioSeeder` chunking and confirm whether an SDK helper can
-  remove real duplicated append/chunk logic without hiding message ids;
-- add an SDK helper for chunking item appends against one task only if it can
-  replace that current scenario-launcher boilerplate;
-- make chunk size caller-configurable and default to the known public ingest
-  limit only if the SDK can keep the default aligned with server docs;
+- inventory `TaskScenarioSeeder` chunking before any future bulk helper work;
+- do not add an SDK helper while `TaskAppendResult` lacks per-item message id
+  or equivalent receipt identity;
+- if the public append receipt contract later exposes identity, add a helper
+  for chunking item appends against one task only if it can replace current
+  scenario-launcher boilerplate in the same slice;
+- make chunk size caller-configurable and default to a documented public ingest
+  limit only if the SDK can keep that default aligned with server docs;
 - return append receipts without hiding message ids;
 - do not auto-seal unless the method name explicitly says it seals.
 
 Acceptance:
 
-- helper never creates one task per item;
-- helper preserves item/message identity returned by server receipts;
-- tests cover chunking boundaries and empty input;
-- docs explain bulk append as the default high-volume pattern.
-- if the helper is implemented, scenario-launcher consumes it in the same
-  slice. If scenario-launcher cannot consume it, do not add the helper yet;
-  record the reason and leave the roadmap at TSI-2.
+- this roadmap records that TSI-3 is deferred under the current
+  `TaskAppendResult` contract;
+- no SDK bulk helper is added until it can preserve item/message identity;
+- if the helper is implemented in a future slice, it never creates one task
+  per item;
+- if the helper is implemented in a future slice, tests cover chunking
+  boundaries and empty input;
+- if the helper is implemented in a future slice, scenario-launcher consumes it
+  in the same slice. If scenario-launcher cannot consume it, do not add the
+  helper yet.
 
 Verification:
 
 ```powershell
-mvn -pl integrations/xa-mass-java-sdk "-Dtest=TaskClientTest" test
+rg -n "record TaskAppendResult|chunks\\(|appendItems\\(" integrations/xa-mass-java-sdk integrations/xa-mass-scenario-launcher
 ```
 
 ## Conditional Integrated Proof
@@ -444,8 +517,9 @@ mvn -pl xa-mass-server -am "-Dtest=JavaScenarioLauncherBlackBoxIntegrationTest,W
 1. TSI-0 naming decision.
 2. TSI-1 typed task routing helpers.
 3. TSI-2 task-scoped handle and documentation.
-4. TSI-3 scenario-proven bulk append ergonomics, only if current launcher
-   boilerplate justifies it.
+4. Record TSI-3 as deferred under the current append receipt contract. Reopen
+   it only after append receipts expose item/message identity and
+   scenario-launcher can consume the helper in the same slice.
 5. Conditional integrated proof only if wrapper adoption changes a real
    integration path.
 

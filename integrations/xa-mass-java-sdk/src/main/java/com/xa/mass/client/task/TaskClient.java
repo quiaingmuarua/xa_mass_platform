@@ -26,6 +26,10 @@ public final class TaskClient {
                 TaskCreateResult.class);
     }
 
+    public TaskHandle forTask(String taskId) {
+        return new TaskHandle(this, taskId);
+    }
+
     public TaskGetResult get(String taskId) {
         return httpClient.get("/api/v1/tasks/" + encode(taskId), TaskGetResult.class);
     }

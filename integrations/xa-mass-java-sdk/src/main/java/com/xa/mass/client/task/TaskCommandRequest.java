@@ -7,6 +7,10 @@ public record TaskCommandRequest(TaskCommand command, String reason, Map<String,
         return new TaskCommandRequest(TaskCommand.SEAL, null, Map.of());
     }
 
+    public static TaskCommandRequest approve() {
+        return new TaskCommandRequest(TaskCommand.APPROVE, null, Map.of());
+    }
+
     public static Builder builder(TaskCommand command) {
         return new Builder(command);
     }
