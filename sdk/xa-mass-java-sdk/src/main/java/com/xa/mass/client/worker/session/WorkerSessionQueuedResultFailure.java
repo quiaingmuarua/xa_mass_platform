@@ -11,6 +11,7 @@ public record WorkerSessionQueuedResultFailure(
     public enum Reason {
         QUEUE_FULL,
         SESSION_CLOSED,
-        RECONNECT_EXHAUSTED
+        RECONNECT_EXHAUSTED,
+        REQUEUE_FAILED
     }
 }

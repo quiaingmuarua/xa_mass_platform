@@ -80,4 +80,26 @@ class WorkerFaultScenarioIndexTest {
         assertEquals("com.xa.mass.testing.chaos.SdkPollingAllMessagesFailedChaosRunner",
                 WorkerFaultScenarioCli.runnerClassName("polling-all-failed-terminal-convergence"));
     }
+
+    @Test
+    void scenarioCliListsLedgerRowsForDiscovery() {
+        String scenarios = WorkerFaultScenarioCli.scenarioList();
+
+        assertTrue(scenarios.contains(String.join("\t",
+                "polling-lease-expiry-redispatch",
+                "PR_CHAOS_SMOKE",
+                "SDK_POLLING_LEASE_EXPIRY_REDISPATCH_CHAOS",
+                "polling",
+                "memory",
+                "STALL_LEASE_TAKEOVER",
+                "lease-expiry-redispatch")));
+        assertTrue(scenarios.contains(String.join("\t",
+                "sdk-transport-load",
+                "SDK_TRANSPORT_LOAD",
+                "SDK_TRANSPORT_LOAD",
+                "multi",
+                "memory",
+                "NORMAL",
+                "delivery-diagnostics")));
+    }
 }

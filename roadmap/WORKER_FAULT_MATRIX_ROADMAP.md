@@ -1,14 +1,36 @@
 # Worker Fault Matrix Roadmap
 
-Last updated: 2026-05-22
+Last updated: 2026-06-02
 
-Status: current direction document.
+Status: active roadmap; partially implemented.
 
 This roadmap defines how XA Mass Platform should move from mostly ideal worker
 execution proof toward systematic resource and worker-fault proof.
 
-It is a target-direction document. It must not be cited as proof that the
-current implementation already has these fault profiles, runners, or CI gates.
+This is partly current implementation and partly remaining roadmap. Current
+facts are called out explicitly below; remaining WF-* sections are not proof
+that the implementation already has every row, runner, or CI gate.
+
+Current implementation state:
+
+- WF-0 is largely landed: `WorkerFaultScenarioIndex` owns scenario ids, proof
+  line owners, runner families, matrix axes, and trace analyzer mappings.
+- WF-1 is partially landed: chaos, perf, transport-load, and soak reports write
+  top-level matrix metadata through `WorkerFaultReportMetadata`.
+- WF-2 is landed for the worker-pack sample surface: `SampleWorkerFaultProfile`
+  owns deterministic profile state for delay, stall, drop, duplicate, late,
+  malformed, wrong-identity, and disconnect behavior.
+- WF-3 is partially landed: worker-pack sample commands expose the current
+  `fault.*` execution/result/transport/state controls. `fault.worker.capacity.flap`
+  is intentionally not implemented until an explicit capacity owner surface
+  exists; do not fake it through capability attributes.
+- WF-4 is partially landed: existing proof lines can be entered by scenario id,
+  `run-worker-fault-scenario.sh` exposes a single-scenario entrypoint, and
+  `list-worker-fault-scenarios.sh` / `WorkerFaultScenarioCli --list` expose the
+  current Java ledger rows.
+- WF-5 and later remain active roadmap work: noisy fleets, transport churn rows,
+  Redis runtime restart recovery, long-run matrix sweeps, and broader gate
+  promotion are not complete.
 
 ## 1. Problem
 
@@ -107,13 +129,24 @@ Current source guardrails:
 - SDK transport load must stay runtime/aggregate/transport-diagnostics first
 - polling scheduling soak must stay runtime/result/trace-first
 
-Current worker-pack fault-adjacent controls:
+Current worker-pack fault controls:
 
 - `mock.delay.response`
 - `mock.drop.outbound`
 - `mock.task.result.status`
 - `mock.disconnect`
 - `mock.reset`
+- `fault.execution.profile`
+- `fault.execution.delay`
+- `fault.execution.stall`
+- `fault.result.drop`
+- `fault.result.duplicate`
+- `fault.result.late`
+- `fault.result.malformed`
+- `fault.result.identity`
+- `fault.transport.disconnect`
+- `fault.worker.state.flap`
+- `fault.reset`
 
 Current fault-proof distribution:
 
@@ -125,6 +158,9 @@ Current fault-proof distribution:
 - first-class worker profiles cover the active runner set, while some fault
   modes remain scenario-specific controls
 - perf smoke and soak own timing/jitter controls
+- capacity flap is not a current control because public worker-pack capability
+  reporting does not own `maxConcurrentWork`; wait for a real capacity owner
+  surface before implementing that row
 
 ## 4. Resource Dependency Matrix
 
@@ -193,7 +229,7 @@ Initial event families:
 | `fault.result.malformed` | `kind`, `seed` | submits missing or invalid result fields |
 | `fault.result.identity` | `kind=wrongTask/wrongMessage/wrongWorker/wrongLease` | submits with invalid correlation identity |
 | `fault.transport.disconnect` | `phase`, `reconnectAfterMs` | disconnects before/after receive or before/after result |
-| `fault.worker.capacity.flap` | `targetCapacity` or `toggle`, `stateVersion` | one-shot capacity/capability advertisement flip driven by the harness |
+| `fault.worker.capacity.flap` | `targetCapacity` or `toggle`, `stateVersion` | deferred until a public capacity owner surface exists; do not implement by faking capability attributes |
 | `fault.worker.state.flap` | `state=AVAILABLE/DRAINING/OFFLINE/DEGRADED`, `stateVersion` | one-shot state report flip driven by the harness |
 | `fault.reset` | `scope=worker/all` | clears test-harness fault state for one worker or all sample workers |
 
@@ -448,11 +484,12 @@ Acceptance:
 - the harness may send `fault.*` commands before dispatch or during a scenario;
   the worker stores command state and applies it when the next matching worker
   execution, result-submit, state-report, or capability-report phase occurs
-- worker state/capacity/reachability effects are applied through existing
-  owner surfaces, not direct runtime mutation
-- `fault.worker.state.flap` and `fault.worker.capacity.flap` are stateless
-  one-shot commands driven by the harness; repeated flap loops are modeled by
-  repeated commands, not by a worker-local timer
+- worker state, capacity, and reachability effects are applied through existing
+  owner surfaces, not direct runtime mutation; capacity flap stays deferred
+  while there is no public capacity owner surface
+- `fault.worker.state.flap` is a stateless one-shot command driven by the
+  harness; repeated flap loops are modeled by repeated commands, not by a
+  worker-local timer
 - fault state can be read and reset
 - event names are grep-friendly and documented
 - invalid fault config fails fast with explicit error codes

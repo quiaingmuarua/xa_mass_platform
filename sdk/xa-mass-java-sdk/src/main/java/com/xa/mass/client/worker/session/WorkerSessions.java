@@ -1,6 +1,7 @@
 package com.xa.mass.client.worker.session;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xa.mass.client.UnstableApi;
 import com.xa.mass.client.worker.WorkerClient;
 
 import java.net.http.HttpClient;
@@ -13,10 +14,12 @@ public final class WorkerSessions {
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
 
+    @UnstableApi("Prefer MassPlatform.workerSessions(); direct WorkerSessions construction is advanced/internal wiring.")
     public WorkerSessions(WorkerClient workerClient) {
         this(workerClient, Duration.ofSeconds(10), null, new ObjectMapper().findAndRegisterModules());
     }
 
+    @UnstableApi("Prefer MassPlatform.workerSessions(); direct WorkerSessions construction is advanced/internal wiring.")
     public WorkerSessions(WorkerClient workerClient,
                           Duration connectTimeout,
                           HttpClient httpClient,

@@ -277,10 +277,51 @@ class WebSocketWorkerSessionTest {
 
             assertTrue(frameFailed.await(2, TimeUnit.SECONDS), "invalid frame should be reported");
             assertEquals("ws-worker-001", frameFailure.get().workerId());
-            assertEquals("{not-json", frameFailure.get().frame());
+            assertEquals("{not-json", frameFailure.get().framePreview());
+            assertEquals("{not-json".length(), frameFailure.get().frameLength());
             assertNotNull(frameFailure.get().cause());
             assertEquals(null, connectionFailure.get(), "frame decode failure must not be connection failure");
             assertTrue(webSocket.sentTexts().isEmpty());
+        }
+    }
+
+    @Test
+    void invalidLongFrameReportsBoundedFramePreview() throws Exception {
+        CountDownLatch frameFailed = new CountDownLatch(1);
+        AtomicReference<WebSocket.Listener> listenerRef = new AtomicReference<>();
+        AtomicReference<WorkerSessionFrameFailure> frameFailure = new AtomicReference<>();
+        RecordingWebSocket webSocket = new RecordingWebSocket(new CountDownLatch(1));
+        startRealtimeControlPlaneServer();
+
+        try (WebSocketWorkerSession ignored = platform().workerSessions().webSocket()
+                .workerId("ws-worker-001")
+                .workerGroupId("realtime-probe")
+                .adapterNodeId("ws-node-sg-1")
+                .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
+                .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of()))
+                .connectTimeout(Duration.ofSeconds(1))
+                .listener(new WorkerSessionListener() {
+                    @Override
+                    public void onFrameFailure(WorkerSessionFrameFailure failure) {
+                        frameFailure.set(failure);
+                        frameFailed.countDown();
+                    }
+                })
+                .webSocketConnector((uri, listener) -> {
+                    listenerRef.set(listener);
+                    listener.onOpen(webSocket);
+                    return CompletableFuture.completedFuture(webSocket);
+                })
+                .start()) {
+            String frame = "x".repeat(700);
+            listenerRef.get().onText(webSocket, frame, true)
+                    .toCompletableFuture().get(1, TimeUnit.SECONDS);
+
+            assertTrue(frameFailed.await(2, TimeUnit.SECONDS), "invalid frame should be reported");
+            assertEquals(512, frameFailure.get().framePreview().length());
+            assertEquals(frame.substring(0, 512), frameFailure.get().framePreview());
+            assertEquals(frame.length(), frameFailure.get().frameLength());
+            assertNotNull(frameFailure.get().cause());
         }
     }
 
@@ -397,6 +438,56 @@ class WebSocketWorkerSessionTest {
 
             assertTrue(dropped.await(2, TimeUnit.SECONDS), "full queue should drop a result");
             assertEquals(WorkerSessionQueuedResultFailure.Reason.QUEUE_FULL, failureRef.get().reason());
+        }
+    }
+
+    @Test
+    void sendFailureRequeueFailureIsReportedWhenQueueRefills() throws Exception {
+        CountDownLatch abandoned = new CountDownLatch(1);
+        CountDownLatch sendStarted = new CountDownLatch(1);
+        CountDownLatch allowFailure = new CountDownLatch(1);
+        AtomicReference<WebSocket.Listener> listenerRef = new AtomicReference<>();
+        AtomicReference<WorkerSessionQueuedResultFailure> failureRef = new AtomicReference<>();
+        CoordinatedFailingWebSocket webSocket = new CoordinatedFailingWebSocket(sendStarted, allowFailure);
+        startRealtimeControlPlaneServer();
+
+        try (WebSocketWorkerSession ignored = platform().workerSessions().webSocket()
+                .workerId("ws-worker-001")
+                .workerGroupId("realtime-probe")
+                .adapterNodeId("ws-node-sg-1")
+                .endpoint(URI.create("ws://127.0.0.1:18080/ws"))
+                .event("probe.realtime.metadata", dispatch -> WorkerResult.success(Map.of()))
+                .connectTimeout(Duration.ofSeconds(1))
+                .outboundQueueCapacity(1)
+                .listener(new WorkerSessionListener() {
+                    @Override
+                    public void onQueuedResultAbandoned(WorkerSessionQueuedResultFailure failure) {
+                        failureRef.set(failure);
+                        abandoned.countDown();
+                    }
+                })
+                .webSocketConnector((uri, listener) -> {
+                    listenerRef.set(listener);
+                    listener.onOpen(webSocket);
+                    return CompletableFuture.completedFuture(webSocket);
+                })
+                .start()) {
+            listenerRef.get().onText(webSocket, """
+                    {"messageId":"msg-requeue-1","taskId":"task-requeue","eventCode":"probe.realtime.metadata","workerId":"ws-worker-001","input":{},"sharedConfig":{}}
+                    """, true).toCompletableFuture().get(1, TimeUnit.SECONDS);
+
+            assertTrue(sendStarted.await(2, TimeUnit.SECONDS), "first send should be in progress");
+
+            listenerRef.get().onText(webSocket, """
+                    {"messageId":"msg-requeue-2","taskId":"task-requeue","eventCode":"probe.realtime.metadata","workerId":"ws-worker-001","input":{},"sharedConfig":{}}
+                    """, true).toCompletableFuture().get(1, TimeUnit.SECONDS);
+
+            allowFailure.countDown();
+
+            assertTrue(abandoned.await(2, TimeUnit.SECONDS), "failed requeue should abandon the original result");
+            assertEquals(WorkerSessionQueuedResultFailure.Reason.REQUEUE_FAILED, failureRef.get().reason());
+            assertEquals("msg-requeue-1", failureRef.get().dispatch().messageId());
+            assertNotNull(failureRef.get().cause());
         }
     }
 
@@ -645,6 +736,32 @@ class WebSocketWorkerSessionTest {
         public CompletableFuture<WebSocket> sendText(CharSequence data, boolean last) {
             assertTrue(last);
             return new CompletableFuture<>();
+        }
+    }
+
+    private static final class CoordinatedFailingWebSocket extends RecordingWebSocket {
+        private final CountDownLatch sendStarted;
+        private final CountDownLatch allowFailure;
+
+        private CoordinatedFailingWebSocket(CountDownLatch sendStarted, CountDownLatch allowFailure) {
+            super(new CountDownLatch(1));
+            this.sendStarted = sendStarted;
+            this.allowFailure = allowFailure;
+        }
+
+        @Override
+        public CompletableFuture<WebSocket> sendText(CharSequence data, boolean last) {
+            assertTrue(last);
+            sendStarted.countDown();
+            try {
+                if (!allowFailure.await(2, TimeUnit.SECONDS)) {
+                    return CompletableFuture.failedFuture(new AssertionError("send failure was not released"));
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return CompletableFuture.failedFuture(e);
+            }
+            return CompletableFuture.failedFuture(new IOException("send failed"));
         }
     }
 }

@@ -4,6 +4,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Locale;
+import java.util.stream.Collectors;
 
 public final class WorkerFaultScenarioCli {
 
@@ -11,6 +12,10 @@ public final class WorkerFaultScenarioCli {
     }
 
     public static void main(String[] args) throws Exception {
+        if (isScenarioListQuery(args)) {
+            System.out.print(scenarioList());
+            return;
+        }
         if (isRunnerClassQuery(args)) {
             System.out.println(runnerClassName(args[1]));
             return;
@@ -30,10 +35,27 @@ public final class WorkerFaultScenarioCli {
                 .mainClassName();
     }
 
+    static String scenarioList() {
+        return WorkerFaultScenarioIndex.scenarios().stream()
+                .map(WorkerFaultScenarioCli::scenarioRow)
+                .collect(Collectors.joining(System.lineSeparator(), "", System.lineSeparator()));
+    }
+
     static WorkerFaultScenarioIndex.Scenario resolveScenario(String[] args) {
         String scenarioId = scenarioIdFromArgs(args);
         return WorkerFaultScenarioIndex.scenarioForId(scenarioId)
                 .orElseThrow(() -> new IllegalArgumentException("unknown worker fault scenarioId: " + scenarioId));
+    }
+
+    private static String scenarioRow(WorkerFaultScenarioIndex.Scenario scenario) {
+        return String.join("\t",
+                scenario.scenarioId(),
+                scenario.proofLineOwner().name(),
+                scenario.runnerFamily().name(),
+                scenario.transport(),
+                scenario.runtimeBackend(),
+                scenario.workerProfile(),
+                scenario.faultShape());
     }
 
     private static String scenarioIdFromArgs(String[] args) {
@@ -57,6 +79,12 @@ public final class WorkerFaultScenarioCli {
         return args != null
                 && args.length == 2
                 && "--runner-class".equals(args[0]);
+    }
+
+    private static boolean isScenarioListQuery(String[] args) {
+        return args != null
+                && args.length == 1
+                && ("--list".equals(args[0]) || "--list-scenarios".equals(args[0]));
     }
 
     private static String[] tailArgs(String[] args) {

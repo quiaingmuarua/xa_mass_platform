@@ -58,12 +58,15 @@ Current implemented surface:
 - managed WebSocket worker session:
   adapter/node registration, node/group binding, realtime worker registration,
   JDK WebSocket connection, canonical task dispatch frame handling, queued
-  result frame submission, bounded reconnect attempts, queue-full reporting,
+  result frame submission, bounded reconnect attempts, queue-full/requeue
+  failure reporting,
   heartbeat/frame/connection lifecycle callbacks, and queued-result terminal
   callbacks on close or reconnect exhaustion.
   Realtime worker presence is transport-owned; the session does not call
   polling-only online, heartbeat, capability report, state report, or offline
-  APIs.
+  APIs. Polling is the stable third-party worker protocol; WebSocket is an
+  implemented JVM session and internal staging validation path while its wire
+  shape continues hardening.
 - transport-neutral worker handler runtime:
   event handler registry, handler invocation, deterministic handler failure
   conversion, and session-owned result sink hooks
@@ -78,6 +81,10 @@ Stable public entry points are:
 `mass.http()` and `com.xa.mass.client.http.*` are advanced unstable escape
 hatches for diagnostics and temporary route coverage. External callers should
 prefer typed clients; raw HTTP helpers are not a compatibility promise.
+
+Use `MassPlatform.workerSessions()` as the stable session factory. Direct
+`new WorkerSessions(...)` construction is marked `@UnstableApi` and is reserved
+for advanced or internal wiring.
 
 Realtime protocol hardening decisions are tracked in
 [../../roadmap/JAVA_EXTERNAL_SDK_REALTIME_SESSION_HARDENING_DECISION.md](../../roadmap/JAVA_EXTERNAL_SDK_REALTIME_SESSION_HARDENING_DECISION.md).
@@ -241,13 +248,17 @@ is an explicit topology/setup operation through `mass.workers()`.
 uses the same handler runtime and routes handler results through a session-owned
 outbound frame queue. Queue-full outcomes are reported through
 `WorkerSessionListener.onQueuedResultDropped(...)`; queued results that cannot
-be submitted because the session closes or reconnect is exhausted are reported
-through `WorkerSessionListener.onQueuedResultAbandoned(...)`. WebSocket close
-uses a best-effort close frame and then drains or abandons queued results
-according to the session terminal reason.
+be requeued after send failure, or cannot be submitted because the session
+closes or reconnect is exhausted, are reported through
+`WorkerSessionListener.onQueuedResultAbandoned(...)`. WebSocket close uses a
+best-effort close frame and then drains or abandons queued results according to
+the session terminal reason.
 Session lifecycle callbacks distinguish poll failure, heartbeat failure,
 connection failure, connection recovery, frame/protocol failure, handler
 failure, submit failure, queued-result drop, and queued-result abandonment.
+Frame/protocol failures expose a bounded `framePreview` and `frameLength`
+rather than the complete raw frame. The preview can still contain payload
+fragments, so do not log it blindly in production.
 
 Managed WebSocket worker session:
 

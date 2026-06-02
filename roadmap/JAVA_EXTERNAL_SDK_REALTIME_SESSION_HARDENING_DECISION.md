@@ -22,9 +22,13 @@ Current Java SDK WebSocket session hardening:
 
 - frame/protocol failures are reported through session listener callbacks and
   do not increment connection-failure counters
+- frame/protocol failure callbacks expose bounded `framePreview` plus
+  `frameLength`, not the complete raw frame
 - successful reconnect reports `onConnectionRecovered(workerId)`
 - queued-result close and reconnect-exhaustion terminal outcomes are reported
   through `onQueuedResultAbandoned(...)`
+- send-failure requeue failures are terminal queued-result outcomes reported as
+  `REQUEUE_FAILED` through `onQueuedResultAbandoned(...)`
 - queue-full outcomes are reported through `onQueuedResultDropped(...)`
 - close sends a best-effort WebSocket close frame before terminal result
   abandonment

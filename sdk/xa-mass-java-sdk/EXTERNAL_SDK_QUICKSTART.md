@@ -172,8 +172,13 @@ For realtime paths:
 - online presence comes from the transport connection, not the register call
 - keep local handler resolution keyed by `eventCode`
 - do not treat adapter frame fields as a second business capability model
+- keep polling as the stable third-party worker protocol; Java SDK WebSocket is
+  an implemented JVM session and internal staging validation path while its
+  wire shape continues hardening
 - Java SDK session listeners distinguish heartbeat, poll, frame/protocol,
   connection, recovery, submit, and queued-result terminal outcomes
+- frame/protocol failures expose bounded `framePreview` plus `frameLength`, not
+  the complete raw frame; previews can still contain payload fragments
 
 ## 6. Local Validation Entry
 

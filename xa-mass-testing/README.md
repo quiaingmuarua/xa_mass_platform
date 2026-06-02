@@ -248,10 +248,16 @@ Chaos smoke bundle (three PR-gated distributed-edge scenario ids):
 xa-mass-testing/scripts/run-chaos-smokes.sh
 ```
 
+List current worker-fault scenario ledger rows:
+
+```bash
+xa-mass-testing/scripts/list-worker-fault-scenarios.sh
+```
+
 Direct scenario-id entrypoint for a single existing probe:
 
 ```bash
-./mvnw -pl xa-mass-testing -am -Dexec.classpathScope=compile -Dmaven.test.skip=true compile org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.workerfault.WorkerFaultScenarioCli -Dexec.args=polling-lease-expiry-redispatch
+xa-mass-testing/scripts/run-worker-fault-scenario.sh polling-lease-expiry-redispatch
 ```
 
 ## Reading Rule

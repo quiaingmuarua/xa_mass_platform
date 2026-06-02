@@ -42,6 +42,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 public final class WebSocketWorkerSession implements AutoCloseable {
     private static final ObjectMapper DEFAULT_OBJECT_MAPPER = new ObjectMapper().findAndRegisterModules();
+    private static final int FRAME_FAILURE_PREVIEW_LIMIT = 512;
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
 
@@ -260,18 +261,18 @@ public final class WebSocketWorkerSession implements AutoCloseable {
                 if (outbound == null) {
                     continue;
                 }
-                    WebSocket socket = webSocket.get();
-                    if (socket == null) {
-                        if (!running.get() || closing.get()) {
-                            QueuedResultTermination termination = queuedResultTermination();
-                            abandonResult(outbound, termination.reason(), termination.cause());
-                            continue;
-                        }
-                    outboundResults.offerFirst(outbound);
+                WebSocket socket = webSocket.get();
+                if (socket == null) {
+                    if (!running.get() || closing.get()) {
+                        QueuedResultTermination termination = queuedResultTermination();
+                        abandonResult(outbound, termination.reason(), termination.cause());
+                        continue;
+                    }
+                    requeueOrAbandon(outbound, new IllegalStateException("websocket is unavailable"));
                     sleep(Duration.ofMillis(100L));
                     continue;
                 }
-                socket.sendText(outbound.frame(), true)
+                socket.sendText(outbound.resultFrame(), true)
                         .get(connectTimeout.toMillis(), TimeUnit.MILLISECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -280,7 +281,7 @@ public final class WebSocketWorkerSession implements AutoCloseable {
                 Throwable cause = unwrap(failure);
                 if (outbound != null) {
                     listener.onSubmitFailure(new WorkerSessionDispatchFailure(outbound.dispatch(), cause));
-                    outboundResults.offerFirst(outbound);
+                    requeueOrAbandon(outbound, cause);
                 }
                 webSocket.set(null);
                 int failures = consecutiveConnectionFailures.incrementAndGet();
@@ -300,7 +301,7 @@ public final class WebSocketWorkerSession implements AutoCloseable {
         try {
             item = decodeDispatch(frame);
         } catch (Throwable failure) {
-            listener.onFrameFailure(new WorkerSessionFrameFailure(workerId, frame, failure));
+            listener.onFrameFailure(frameFailure(frame, failure));
             return;
         }
         if (item == null) {
@@ -330,6 +331,22 @@ public final class WebSocketWorkerSession implements AutoCloseable {
         } catch (Throwable failure) {
             listener.onSubmitFailure(new WorkerSessionDispatchFailure(dispatch, failure));
         }
+    }
+
+    private void requeueOrAbandon(OutboundResult outbound, Throwable cause) {
+        if (!outboundResults.offerFirst(outbound)) {
+            abandonResult(outbound,
+                    WorkerSessionQueuedResultFailure.Reason.REQUEUE_FAILED,
+                    cause);
+        }
+    }
+
+    private WorkerSessionFrameFailure frameFailure(String frame, Throwable cause) {
+        String safeFrame = frame == null ? "" : frame;
+        String preview = safeFrame.length() <= FRAME_FAILURE_PREVIEW_LIMIT
+                ? safeFrame
+                : safeFrame.substring(0, FRAME_FAILURE_PREVIEW_LIMIT);
+        return new WorkerSessionFrameFailure(workerId, preview, safeFrame.length(), cause);
     }
 
     private WorkerDispatchItem decodeDispatch(String frame) throws JsonProcessingException {
@@ -711,7 +728,7 @@ public final class WebSocketWorkerSession implements AutoCloseable {
         }
     }
 
-    private record OutboundResult(DispatchContext dispatch, String frame) {
+    private record OutboundResult(DispatchContext dispatch, String resultFrame) {
     }
 
     private record QueuedResultTermination(WorkerSessionQueuedResultFailure.Reason reason, Throwable cause) {
