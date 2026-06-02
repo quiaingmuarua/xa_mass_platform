@@ -62,12 +62,17 @@ A task item is the executable unit inside a task. It carries:
 - input payload
 - retry budget and runtime lease state
 
+It does not carry worker matching policy. The item decides which handler should
+run and what payload that handler receives; task dispatch intent and
+WorkerGroup capability decide where work may be dispatched.
+
 Public final result reads are item-level stable-final rows.
 
 ### Event
 
 An event is the capability identity and invocation language. For normal task
 work, `eventCode` tells the worker which local handler should process the item.
+It is handler/capability identity, not a worker selector.
 
 Current event metadata includes:
 
@@ -102,12 +107,28 @@ Worker
 ```
 
 SDK/intake may resolve `eventCode` and project into explicit
-`workerGroupId(s)` before scheduling. The kernel candidate source starts from
-those group selectors, then applies scheduling evidence, reachability,
-matching policy, ranking, resource policy, and runtime admission. The current
-default policy includes rule-backed eligibility, but matching is not limited to
-rules. Additional matching inputs must remain explicit scheduling evidence and
-must not redefine worker ownership.
+`workerGroupId(s)` before scheduling by validating against WorkerGroup
+capability. The kernel candidate source starts from those group selectors, then
+applies scheduling evidence, reachability, matching policy, ranking, resource
+policy, and runtime admission. The current default policy includes rule-backed
+eligibility, but matching is not limited to rules. Additional matching inputs
+must remain explicit scheduling evidence and must not redefine worker
+ownership.
+
+The preferred boundary is:
+
+```text
+project / workload-profile -> target default scheduling policy owner
+task dispatch intent       -> chosen group selector, route, and optional target constraints
+WorkerGroup                -> capability boundary
+worker                     -> runtime execution slot and evidence
+item                       -> eventCode plus payload only
+```
+
+The project/workload policy owner is a target direction, not a complete current
+implementation. Today those policy concerns still live across task runtime
+profile, explicit group selectors, matching rules, assignment policy,
+backpressure, and admission behavior.
 
 ### Transport
 
@@ -151,7 +172,8 @@ Avoid these interpretations:
 
 - Worker registration is not worker online state.
 - Transport presence is not worker capability truth.
-- `eventCode` is not a task type; it is capability identity.
+- `eventCode` is not a task type or worker selector; it is handler/capability identity.
+- Item payload is not worker matching policy.
 - Result projection is not public result truth.
 - Trace evidence is not lifecycle ownership.
 - A unified event language does not imply one mandatory event runtime or one

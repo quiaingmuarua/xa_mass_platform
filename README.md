@@ -87,6 +87,29 @@ Current mainline execution path:
 
 - `Task shell -> item append -> runtime enqueue -> scheduling eligibility -> matching and assignment -> transport dispatch -> result convergence -> task state`
 
+Scheduling and matching boundary:
+
+- target direction: project / workload-profile owns the default scheduling
+  policy, such as allowed WorkerGroups, default group selector, fairness,
+  quota, priority, backpressure, and matching rule-set references
+- current implementation: that policy is not yet centralized as a
+  `ProjectSchedulingPolicy`; today it is still distributed across task runtime
+  profile, explicit worker group selectors, matching rule sets, assignment
+  policy, and runtime backpressure/admission behavior
+- `TaskDispatchIntent` is the task-level dispatch intent: project,
+  `workerGroupId(s)` or selector, `routingCode`, route attributes,
+  optional `targetWorkerId`, and optional constrained target worker attributes
+- `WorkerGroup` owns capability boundary: project bindings, event bindings,
+  default group attributes, and capacity/concurrency defaults
+- runtime worker selection happens inside an already selected WorkerGroup using
+  online/presence/load/admission/draining/lease evidence
+- work items do not own worker matching policy. An item carries `eventCode`
+  plus input or `payloadRef`; `eventCode` is handler/capability identity, not a
+  worker selector
+- correct path: `item.eventCode -> validate selected WorkerGroup supports the
+  event -> worker executes local handler by eventCode`; do not scan all workers
+  from item payload or eventCode
+
 Common scenarios include IM bots, crawlers, LLM agents, data pipelines,
 CI/CD runners, device/RPA workers, human-review queues, and GPU/inference
 workers.

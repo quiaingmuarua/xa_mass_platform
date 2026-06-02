@@ -39,6 +39,7 @@ app.registerEventDefinition(EventDefinition.builder()
 Rules:
 
 - `code` / `eventCode` is the stable capability identity.
+- It is handler/capability identity, not a worker selector.
 - Event metadata is descriptive. It does not directly own queue placement or
   result finality.
 - Worker-side code should dispatch local handlers by `eventCode`.
@@ -55,6 +56,13 @@ app.registerProject(ProjectDefinition.builder()
 
 The project is the business container. Task creation and worker capability both
 use project membership when deciding eligibility.
+
+Target direction: project / workload-profile should own default scheduling
+policy such as allowed WorkerGroups, default selector, fairness, quota,
+priority, backpressure, and matching rule-set references. That full
+`ProjectSchedulingPolicy` owner is not yet implemented; current behavior still
+uses task runtime profile, explicit group selectors, matching rules, assignment
+policy, backpressure, and admission behavior.
 
 ## 3. Declare Capability And Register The Worker
 
@@ -96,6 +104,10 @@ Important distinction:
 - WorkerGroup declaration owns capability
 - worker registration declares execution identity and node/group membership
 - transport presence declares reachability
+- task dispatch intent chooses the candidate WorkerGroup selector, route, and
+  optional target constraints
+- item `eventCode` only selects the worker-side handler after group capability
+  has been validated
 - scheduling still checks runtime state, reachability, matching policy,
   capacity, ranking, and resource policy before dispatch
 - the current default matching policy includes rule-backed eligibility, but
@@ -132,8 +144,9 @@ app.appendTaskItems(taskId, MassTaskItemBatchAppendRequest.builder()
         .build());
 ```
 
-The event code on appended items must match a registered event and a worker
-capability binding.
+The event code on appended items must match a registered event and a selected
+WorkerGroup capability binding. It must not be used as an instruction to scan
+all workers or infer worker capability from item payload.
 
 ## 6. Execute By Event Code
 

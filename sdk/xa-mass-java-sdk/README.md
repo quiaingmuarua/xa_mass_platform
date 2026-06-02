@@ -256,6 +256,10 @@ the session terminal reason.
 Session lifecycle callbacks distinguish poll failure, heartbeat failure,
 connection failure, connection recovery, frame/protocol failure, handler
 failure, submit failure, queued-result drop, and queued-result abandonment.
+Heartbeat failures are reported only through `onHeartbeatFailure(...)`, not as
+poll failures. `onSubmitFailure(...)` is an attempt-level signal; a queued
+result can later emit terminal `onQueuedResultAbandoned(...)`, including
+`REQUEUE_FAILED` after the same failed send attempt.
 Frame/protocol failures expose a bounded `framePreview` and `frameLength`
 rather than the complete raw frame. The preview can still contain payload
 fragments, so do not log it blindly in production.

@@ -544,10 +544,11 @@ class WebSocketWorkerSessionTest {
     @Test
     void successfulReconnectReportsConnectionRecovered() throws Exception {
         CountDownLatch recovered = new CountDownLatch(1);
+        CountDownLatch recoveryResultSent = new CountDownLatch(1);
         AtomicInteger connectAttempts = new AtomicInteger();
         AtomicReference<WebSocket.Listener> listenerRef = new AtomicReference<>();
         RecordingWebSocket firstSocket = new RecordingWebSocket(new CountDownLatch(1));
-        RecordingWebSocket secondSocket = new RecordingWebSocket(new CountDownLatch(1));
+        RecordingWebSocket secondSocket = new RecordingWebSocket(recoveryResultSent);
         startRealtimeControlPlaneServer();
 
         WebSocketWorkerSession session = platform().workerSessions().webSocket()
@@ -562,6 +563,9 @@ class WebSocketWorkerSessionTest {
                     @Override
                     public void onConnectionRecovered(String workerId) {
                         if ("ws-worker-001".equals(workerId)) {
+                            listenerRef.get().onText(secondSocket, """
+                                    {"messageId":"msg-recovered","taskId":"task-recovered","eventCode":"probe.realtime.metadata","workerId":"ws-worker-001","input":{},"sharedConfig":{}}
+                                    """, true);
                             recovered.countDown();
                         }
                     }
@@ -582,6 +586,10 @@ class WebSocketWorkerSessionTest {
                     .get(1, TimeUnit.SECONDS);
 
             assertTrue(recovered.await(2, TimeUnit.SECONDS), "successful reconnect should report recovery");
+            assertTrue(recoveryResultSent.await(2, TimeUnit.SECONDS),
+                    "recovery callback should see the live replacement socket");
+            JsonNode result = OBJECT_MAPPER.readTree(secondSocket.sentTexts().get(0));
+            assertEquals("msg-recovered", result.get("messageId").asText());
             assertEquals(2, connectAttempts.get());
             assertTrue(session.isRunning());
         } finally {

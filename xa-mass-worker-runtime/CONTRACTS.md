@@ -262,6 +262,16 @@ These low-level types stay in
 `EventKey` is a project-scoped worker capability key for registry binding. It
 is not a globally unique business event identity.
 
+Public `eventCode` is handler/capability identity. It validates that a selected
+WorkerGroup can execute the requested handler and tells the worker which local
+handler to run. It is not a worker selector and must not cause engine matching
+to scan all workers from item payload.
+
+WorkerGroup owns project/event capability truth. Worker registration and
+runtime state provide execution identity, group/node membership, reachability,
+load, admission, draining, lease, and other scheduling evidence for selection
+inside the selected group.
+
 Engine matching code should not import registry primitives except where the
 module assembly explicitly wires a registry implementation into
 `WorkerManager`.

@@ -61,6 +61,20 @@ com.xa.mass.worker.runtime            implementation owners and assembly
 WorkerGroup owns capability truth. Worker-level supported project/event fields
 are compatibility read hints only.
 
+WorkerGroup capability boundary:
+
+- WorkerGroup declares project/event capability through event bindings and
+  group-level defaults such as attributes and capacity/concurrency hints.
+- Worker registration declares execution identity, group/node membership,
+  transport hints, static worker attributes, and runtime evidence.
+- Worker rows must not become the source of project/event capability truth.
+- `eventCode` is handler/capability identity for work items. It validates
+  against WorkerGroup event bindings and tells the worker which local handler
+  to run; it is not a worker selector.
+- Runtime worker selection happens inside an already selected WorkerGroup from
+  reachability, load, admission, draining, lease, and explicit scheduling
+  evidence. It must not reinterpret item payload as matching policy.
+
 ## Dependency Rules
 
 Allowed:

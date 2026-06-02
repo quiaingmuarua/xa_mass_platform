@@ -228,8 +228,8 @@ public final class WebSocketWorkerSession implements AutoCloseable {
         }
         try {
             WebSocket socket = connectWebSocket();
-            listener.onConnectionRecovered(workerId);
             webSocket.set(socket);
+            listener.onConnectionRecovered(workerId);
         } catch (Throwable failure) {
             int failures = consecutiveConnectionFailures.incrementAndGet();
             Throwable cause = unwrap(failure);

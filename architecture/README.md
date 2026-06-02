@@ -75,6 +75,19 @@ add worker metrics, task-type affinity, fairness, historical performance, or
 domain-specific scoring without changing the task/worker/runtime ownership
 model.
 
+Scheduling policy boundary:
+
+- target direction: project / workload-profile owns default scheduling policy,
+  including allowed WorkerGroups, default selector, fairness, quota, priority,
+  backpressure, and matching rule-set references
+- current implementation: this is not yet centralized as
+  `ProjectSchedulingPolicy`; policy still lives across task runtime profile,
+  explicit group selectors, matching rules, assignment policy, backpressure,
+  and admission behavior
+- task decides dispatch intent, WorkerGroup decides capability boundary, worker
+  is the runtime execution slot, and item only decides `eventCode` plus payload
+- `eventCode` is handler/capability identity, not a worker selector
+
 ## Current Integration Bias
 
 Use the SDK first:

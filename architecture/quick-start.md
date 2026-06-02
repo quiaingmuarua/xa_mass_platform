@@ -44,8 +44,9 @@ app.registerEventDefinition(EventDefinition.builder()
 ```
 
 `eventCode` is the worker-side handler identity. SDK/intake may use it to
-resolve an explicit worker-group selector, but the scheduling kernel dispatches
-from `workerGroupId(s)`, not from event metadata.
+validate WorkerGroup capability and resolve an explicit worker-group selector,
+but the scheduling kernel dispatches from `workerGroupId(s)`, not from event
+metadata. It is not a worker selector.
 
 ## 3. Register A Project
 
@@ -103,7 +104,8 @@ app.registerWorker(WorkerRegistration.builder()
 
 Capability is declared on `WorkerGroupDeclaration.eventBindings`. Worker
 registration only declares execution identity, adapter-node/group membership,
-transport, and worker attributes.
+transport, and worker attributes. Item payload and `eventCode` do not own
+worker matching policy.
 
 ## 5. Create A Task And Append Items
 

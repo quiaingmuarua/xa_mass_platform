@@ -30,8 +30,23 @@ Use with:
 | --- | --- | --- |
 | `Task` | task shell, contract, intake window, aggregate status, terminal reason, and task-level execution policy | engine lifecycle plus kernel-facing task-shell ports |
 | `Worker` | execution identity plus group/node membership and declared worker facts | `xa-mass-worker-runtime` declaration/resource owners |
-| `Scheduling` | deciding when task work may enter competition, dispatch, retry, pause, resume, or close | engine lifecycle and runtime queues |
-| `Matching` | selecting eligible workers from WorkerGroup capability, worker scheduling evidence, reachability, and policy rules | engine matching strategy plus worker-runtime candidate/evidence surfaces |
+| `Scheduling` | deciding when task work may enter competition, dispatch, retry, pause, resume, or close. Target direction is project / workload-profile default policy ownership; current policy remains distributed across task runtime profile, selectors, assignment policy, matching rules, backpressure, and admission | engine lifecycle and runtime queues today; future project/workload policy owner when implemented |
+| `Matching` | matching task dispatch intent to WorkerGroup capability and policy eligibility, then selecting a runtime worker inside the selected group from evidence and admission state | engine matching strategy plus worker-runtime candidate/evidence surfaces |
+
+Architecture boundary:
+
+```text
+project/workload policy -> task dispatch intent -> WorkerGroup capability
+  -> runtime worker selection -> item event handler execution
+```
+
+The first node is a target owner boundary. A complete
+`ProjectSchedulingPolicy` module does not exist yet. Current policy is still
+spread across runtime profile, explicit selectors, matching rules, assignment
+policy, backpressure, and admission behavior. The rest of the chain is the
+current active direction: task intent narrows groups, WorkerGroup declares
+capability, runtime evidence selects a worker, and the item tells the worker
+which handler to execute.
 
 The current lifecycle mainline is:
 
@@ -53,7 +68,7 @@ task shell create
 1. `TaskStatus`, `TaskHoldReason`, `TaskIntakeStatus`, and `TaskTerminalReason` are the current task lifecycle vocabulary. Per-item runtime state lives in `TaskWorkRuntime`; server review item/attempt statuses are materialized read-model strings, not engine lifecycle truth.
 2. `Task.contract` is the runtime contract truth (`SESSION | BATCH`), and ingress form must not redefine lifecycle, terminal, or retry semantics.
 3. Worker capability truth is declared through WorkerGroup/event binding plus worker scheduling evidence. Worker rows must not become a second project/event capability source.
-4. Scheduling and matching are task-level policy decisions. Do not reintroduce per-message rule matching or worker-context lifecycle ownership on the hot path.
+4. Scheduling and matching are task-level policy decisions, but item payload is not a worker-matching policy source. Do not reintroduce per-message rule matching, worker-context lifecycle ownership, or item-level worker capability scans on the hot path.
 5. No lifecycle change is complete without:
    - code change
    - this file update
@@ -68,6 +83,8 @@ task shell create
 12. `TaskResultRuntime` is the runtime-owned public result read truth for stable-final result rows, repair staging, and result-side attempt-closed/event/progress barriers. Server review/export rows are lagging materialized views and must not drive lifecycle decisions.
 13. `Task.workloadClass` is the explicit task-level runtime optimization field; current engine truth is `INTERACTIVE` or `BULK`, and assignment signal routing resolves from that field rather than free-form `sharedConfig` semantics.
 14. Result callbacks follow the result-side lifecycle mainline: runtime apply truth comes from `TaskWorkRuntime.applyResultWithContext(...)`; stable-final public result rows are committed into `TaskResultRuntime`; server review reports are emitted best-effort after runtime acceptance and are not the result commit point or a public result read source.
+15. `eventCode` is handler/capability identity. It validates that the selected WorkerGroup supports the item's handler and tells the worker which local handler to invoke. It is not a worker selector.
+16. The preferred abstraction boundary is: project/workload policy decides default scheduling strategy as a future owner, task decides dispatch intent, WorkerGroup decides capability boundary, worker is a runtime execution slot, and item decides only the event handler plus payload.
 
 ## 3. TaskStatus
 

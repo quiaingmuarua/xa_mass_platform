@@ -95,6 +95,25 @@ metrics, task-type affinity, fairness, historical performance, or
 domain-specific scoring. Add those as explicit scheduling policy inputs or
 owners; do not hide mechanism growth behind pass-through wrappers.
 
+Policy abstraction boundary:
+
+- target direction: project / workload-profile should own default scheduling
+  policy, including allowed WorkerGroups, default group selector, fairness,
+  quota, priority, backpressure, and matching rule-set references. This is not
+  yet a complete implemented `ProjectSchedulingPolicy` module.
+- current implementation: scheduling policy remains distributed across task
+  runtime profile, explicit group selectors, matching rule sets, assignment
+  allocation, runtime backpressure, and admission behavior.
+- task-level dispatch intent narrows the target: project, `workerGroupId(s)` or
+  selector, `routingCode`, route attributes, optional `targetWorkerId`, and
+  optional constrained target worker attributes.
+- WorkerGroup owns capability boundary. Worker rows are runtime execution slots
+  and evidence carriers, not project/event capability truth.
+- item `eventCode` is handler/capability identity. It validates against the
+  selected WorkerGroup event binding and tells the worker which local handler to
+  invoke. It must not be interpreted as a worker selector or as a reason to
+  scan all workers.
+
 WorkerContext is not scheduling truth in the engine hot path. Runtime,
 transport, projection, SDK/API, server payloads, and canonical trace identity
 are worker-level.
@@ -126,11 +145,13 @@ Current WorkerGroup / group-selector scheduling baseline:
   load, lock, or rule checks
 - event-code-only and project-only tasks do not match workers in the kernel;
   SDK/intake may resolve event metadata to `workerGroupId(s)` before assignment
+  by validating project/event bindings against WorkerGroup capability
 - `WorkerRegistrySnapshot` may retain WorkerGroup `EventBinding` read caches
   for catalog/report-ceiling flows, but event bindings are not the scheduling
   candidate-source key
 - Stage 2 scheduling capability evidence is materialized from
-  `WorkerGroupRecord`, and explicit AdapterNode/NodeGroupBinding registration
+  `WorkerGroupRecord`; group-level capability remains the boundary for
+  supported event handlers and projects, and explicit AdapterNode/NodeGroupBinding registration
   is required before adapter-node scoped worker registration
 - `WorkerSchedulingCandidateEnumerator` is a strategy-package implementation
   detail, not a public extension point

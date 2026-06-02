@@ -177,6 +177,10 @@ For realtime paths:
   wire shape continues hardening
 - Java SDK session listeners distinguish heartbeat, poll, frame/protocol,
   connection, recovery, submit, and queued-result terminal outcomes
+- heartbeat failures report only through `onHeartbeatFailure(...)`, not through
+  `onPollFailure(...)`
+- `onSubmitFailure(...)` is an attempt-level signal; queued-result abandonment
+  is the terminal signal for results that cannot be retained or delivered
 - frame/protocol failures expose bounded `framePreview` plus `frameLength`, not
   the complete raw frame; previews can still contain payload fragments
 

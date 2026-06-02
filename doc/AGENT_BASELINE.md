@@ -16,8 +16,9 @@ flows, commands, and module-local inventories.
 ## 2. Platform Definition
 
 - XA Mass Platform is a general distributed task scheduling platform
-- the kernel problem is: match structured work items to heterogeneous,
-  stateful executors, track per-item result, and converge task-level state
+- the kernel problem is: schedule task work to heterogeneous, stateful
+  executors through task/group dispatch intent, track per-item result, and
+  converge task-level state
 - core primitives: `Task + Worker + Scheduling + Matching`
 - kernel truth is explicitly split across:
   - `Task.contract`
@@ -60,14 +61,30 @@ Current owner vocabulary:
 - `Task` is the task/control aggregate truth
 - `Task.contract` is the runtime contract truth: `SESSION | BATCH`
 - `Task.intakeStatus` is the intake-window truth: `OPEN | SEALED`
+- target direction: `ProjectSchedulingPolicy` should own project /
+  workload-profile default scheduling strategy, including allowed WorkerGroups,
+  default group selector, fairness, quota, priority, backpressure, and matching
+  rule-set references. This is an architectural boundary target, not a fully
+  implemented current module.
 - `Worker` is execution identity plus group/node membership and declared
   scheduling/resource facts; worker rows do not own project/event capability
   truth
 - `Scheduling` decides when task work may enter competition, dispatch, retry,
-  pause, resume, or close
-- `Matching` selects eligible workers from WorkerGroup capability, explicit
-  scheduling evidence, reachability, runtime load/capacity facts, and policy
-  rules
+  pause, resume, or close. Current scheduling policy remains distributed across
+  task runtime profile, group selectors, assignment policy, matching rule sets,
+  runtime backpressure, and admission behavior.
+- `Matching` first matches task-level dispatch intent against WorkerGroup
+  capability and policy eligibility, then worker selection chooses a concrete
+  worker inside the selected group from reachability, runtime load/capacity,
+  admission, draining, lease, and explicit scheduling evidence
+- `TaskDispatchIntent` is the task-level dispatch intent: project,
+  `workerGroupId(s)` or selector, `routingCode`, route attributes, optional
+  `targetWorkerId`, and optional constrained target worker attributes
+- `Item` is the executable work unit: `eventCode` plus input or `payloadRef`;
+  it does not own worker matching policy
+- `eventCode` is handler/capability identity. It validates against the selected
+  WorkerGroup event binding and tells the worker which local handler to run; it
+  is not a worker selector and must not trigger all-worker capability scans
 - `TaskWorkRuntime` is the hot-path owner for ready work, lease, retry, expiry,
   and backpressure truth
 - result apply and visible final-result ownership are runtime-first concerns;
@@ -83,11 +100,31 @@ Current owner vocabulary:
   SDK/server/storage/trace truth. It is not an engine scheduling truth and must
   not be reintroduced as the worker capability or resource-lifecycle owner.
 
+Platform scheduling abstraction boundary:
+
+| Layer | Role | Current status |
+| --- | --- | --- |
+| `ProjectSchedulingPolicy` | target owner for project/workload default strategy: allowed WorkerGroups, default selector, fairness, quota, priority, backpressure, and matching rule-set reference | target direction, not fully implemented |
+| `TaskDispatchIntent` | task-level dispatch target and constraints: project, WorkerGroup selector, route, optional target worker, and optional target attributes | current concept implemented through task fields/shared config/selectors rather than a single named object |
+| `WorkerGroupCapability` | group-level capability boundary: project bindings, event bindings, group defaults, and capacity hints | current worker-runtime resource truth |
+| `RuntimeWorkerSelection` | concrete worker choice inside the selected group from online/presence/load/admission/draining/lease evidence | current engine + worker-runtime matching/admission path |
+| `Item` | executable work unit: `eventCode` plus input or `payloadRef` | current runtime work-item boundary; not matching policy |
+
+The intended flow is:
+
+```text
+project/workload policy -> task dispatch intent -> WorkerGroup capability
+  -> runtime worker selection -> item event handler execution
+```
+
+Do not invert that flow by letting item payload, `eventCode`, worker row
+attributes, SDK snapshots, or rule DSL become the owner of scheduling policy.
+
 Stable kernel slots:
 
 - worker: `Worker`
-- worker scheduling view: worker registration, event bindings, scheduling
-  attributes, reachability, and runtime load/capacity facts
+- worker scheduling view: worker registration, WorkerGroup event-binding
+  evidence, scheduling attributes, reachability, and runtime load/capacity facts
 - task contract boundary: `Task.contract`
 - task intake boundary: `Task.intakeStatus`
 - task-level workload boundary: `Task.workloadClass`
@@ -221,6 +258,10 @@ Lifecycle and trace detail live in:
   must consume explicit group selectors, group capability, worker scheduling
   facts, and runtime load/capacity facts, not worker-level capability overrides
   and not `WorkerContext`
+- project decides scheduling policy as a target owner boundary, task decides
+  dispatch intent, WorkerGroup decides capability boundary, worker is a runtime
+  execution slot, and item only decides which event handler is invoked. Do not
+  turn item payload, `eventCode`, or worker rows into policy owners.
 - `WorkerMatchContext` plus rule evaluation is the current default matching
   input path. Matching inputs must stay explicit scheduling evidence and must
   not become replacement worker-resource ownership

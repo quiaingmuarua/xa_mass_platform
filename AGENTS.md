@@ -153,6 +153,14 @@ Planning rule for multi-file or core changes:
 - task shell create enters through `POST /api/v1/tasks`, and work-item ingest is explicit through `POST /api/v1/tasks/{taskId}/items`
 - `eventCode` is business/intake/runtime evidence; scheduling candidate truth
   is explicit `workerGroupId` / `workerGroupIds`
+- `eventCode` is handler/capability identity, not a worker selector; it should
+  validate selected WorkerGroup event binding and drive worker-local handler
+  dispatch, not scan all workers or reinterpret item payload as matching policy
+- target direction: project / workload-profile owns default scheduling policy
+  such as allowed WorkerGroups, default selector, fairness, quota, priority,
+  backpressure, and matching rule-set references. This is not fully implemented
+  yet; current policy is still distributed across task runtime profile, group
+  selectors, matching rules, assignment policy, backpressure, and admission
 - do not add scan-heavy observability or reconciliation loops to hot paths
 - trace and query concerns must not reverse-drive runtime ownership or mainline lifecycle design
 - bias transport and lifecycle writes toward idempotent operations and retry safety

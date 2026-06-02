@@ -29,6 +29,8 @@ Current Java SDK WebSocket session hardening:
   through `onQueuedResultAbandoned(...)`
 - send-failure requeue failures are terminal queued-result outcomes reported as
   `REQUEUE_FAILED` through `onQueuedResultAbandoned(...)`
+- `onSubmitFailure(...)` is an attempt-level callback; a queued result may
+  still later report a terminal `onQueuedResultAbandoned(...)`
 - queue-full outcomes are reported through `onQueuedResultDropped(...)`
 - close sends a best-effort WebSocket close frame before terminal result
   abandonment
@@ -38,6 +40,8 @@ Current Java SDK WebSocket session hardening:
 Open hardening topics:
 
 - WebSocket result idempotency under reconnect
+- malformed frame flood ceiling, for example a future
+  `maxConsecutiveFrameFailures` policy
 - socket and Android host decisions
 - worker-pack convergence as an SDK consumer, not an SDK dependency
 
