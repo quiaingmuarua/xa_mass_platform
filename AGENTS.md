@@ -15,10 +15,15 @@ Fast entry only. Use module owner READMEs and `doc/` contracts for detail.
 - `Scheduling Plane`: decides when work may enter, retry, pause, resume, or
   leave dispatch competition, which worker universe it may compete in, and
   which concrete worker receives it.
-- Target abstraction:
-  `SchedulingPolicyCatalog -> ProjectSchedulingBinding -> task dispatch intent
-  -> TaskSchedulingPolicyExecution -> WorkerSchedulingPolicyResolution
-  -> WorkerGroup capability -> RuntimeWorkerSelection -> item handler execution`.
+- Scheduling Plane owners:
+  `TaskSchedulingPolicyExecution + WorkerSchedulingPolicyResolution +
+  RuntimeWorkerSelection`.
+- Scheduling Plane inputs and constraints:
+  `SchedulingPolicyCatalog / ProjectSchedulingBinding` select and configure
+  allowed/default policies; `TaskDispatchIntent` narrows selected policies,
+  route, and target constraints; `WorkerGroupCapability` remains external
+  project/event capability truth; item `eventCode` plus payload select only the
+  worker-local handler invocation.
 - Scheduling-related ownership has three separate categories:
   `TaskSchedulingPolicy` for competition admission/cadence/priority/fairness/
   budget, `WorkerSchedulingPolicy` for worker resource-universe selection and

@@ -61,12 +61,12 @@ Current owner vocabulary:
 - `Task` is the task/control aggregate truth
 - `Task.contract` is the runtime contract truth: `SESSION | BATCH`
 - `Task.intakeStatus` is the intake-window truth: `OPEN | SEALED`
-- target direction: scheduling-related ownership is split into three categories:
+- Scheduling Plane ownership is split into three first-class categories:
   `TaskSchedulingPolicy` for competition admission/cadence/priority/fairness/
   budget, `WorkerSchedulingPolicy` for worker resource-universe selection and
   pool constraints, and `RuntimeWorkerSelection` for concrete worker choice
-  from live evidence and admission state. This is an architectural boundary
-  target, not a fully implemented current module.
+  from live evidence and admission state. This is an architectural boundary,
+  not a fully implemented current module.
 - `Worker` is execution identity plus group/node membership and declared
   scheduling/resource facts; worker rows do not own project/event capability
   truth
@@ -107,22 +107,33 @@ Platform scheduling abstraction boundary:
 
 | Layer | Role | Current status |
 | --- | --- | --- |
-| `SchedulingPolicyCatalog` | target owner for reusable task scheduling policy definitions and worker scheduling policy definitions | target direction, not fully implemented |
-| `ProjectSchedulingBinding` | target owner for project/workload allowed/default task policies, allowed/default worker policies, per-policy config, and quota/fairness scope | target direction, not fully implemented |
+| `TaskSchedulingPolicyExecution` | task-side competition admission, cadence, priority, quota/fairness, and task-level budget execution | Scheduling Plane owner; target contract not fully implemented |
+| `WorkerSchedulingPolicyResolution` | worker-side resource-universe, group selector, route, target override, and worker-pool constraint resolution | Scheduling Plane owner; target contract not fully implemented |
+| `RuntimeWorkerSelection` | concrete worker choice inside the selected group from online/presence/load/admission/draining/lease evidence | Scheduling Plane owner; current engine + worker-runtime matching/admission path |
+
+Inputs and constraints around the Scheduling Plane:
+
+| Layer | Role | Current status |
+| --- | --- | --- |
+| `SchedulingPolicyCatalog` | reusable task scheduling policy definitions and worker scheduling policy definitions | target owner boundary, not fully implemented |
+| `ProjectSchedulingBinding` | project/workload allowed/default task policies, allowed/default worker policies, per-policy config, and quota/fairness scope | target owner boundary, not fully implemented |
 | `TaskDispatchIntent` | task-level dispatch target and constraints: selected/inherited task policy, selected/inherited worker policy, project, WorkerGroup selector, route, optional target worker, and optional target attributes | current concept implemented through task fields/shared config/selectors rather than a single named object |
-| `TaskSchedulingPolicyExecution` | task-side competition admission, cadence, priority, quota/fairness, and task-level budget execution | target direction, not fully implemented |
-| `WorkerSchedulingPolicyResolution` | worker-side resource-universe, group selector, route, target override, and worker-pool constraint resolution | target direction, not fully implemented |
-| `WorkerGroupCapability` | group-level capability boundary: project bindings, event bindings, group defaults, and capacity hints | current worker-runtime resource truth |
-| `RuntimeWorkerSelection` | concrete worker choice inside the selected group from online/presence/load/admission/draining/lease evidence | current engine + worker-runtime matching/admission path |
+| `WorkerGroupCapability` | external group-level capability truth: project bindings, event bindings, group defaults, and capacity hints | current worker-runtime resource truth; constrains worker scheduling resolution |
 | `Item` | executable work unit: `eventCode` plus input or `payloadRef` | current runtime work-item boundary; not worker-selection policy |
 
-The intended flow is:
+The intended boundary is:
 
 ```text
-SchedulingPolicyCatalog -> ProjectSchedulingBinding -> task dispatch intent
-  -> TaskSchedulingPolicyExecution -> WorkerSchedulingPolicyResolution
-  -> WorkerGroup capability -> RuntimeWorkerSelection
-  -> item event handler execution
+Scheduling Plane
+  TaskSchedulingPolicyExecution
+  WorkerSchedulingPolicyResolution
+  RuntimeWorkerSelection
+
+External inputs and constraints
+  SchedulingPolicyCatalog / ProjectSchedulingBinding
+  TaskDispatchIntent
+  WorkerGroupCapability
+  Item eventCode + payload
 ```
 
 Do not invert that flow by letting item payload, `eventCode`, worker row
