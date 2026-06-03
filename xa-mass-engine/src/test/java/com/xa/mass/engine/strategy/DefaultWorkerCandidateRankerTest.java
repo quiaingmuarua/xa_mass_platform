@@ -10,6 +10,7 @@ import com.xa.mass.worker.runtime.evidence.WorkerLoadSnapshot;
 import com.xa.mass.engine.model.WorkerMatchContext;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.model.WorkerSchedulingView;
+import com.xa.mass.engine.runtime.scheduling.TaskDispatchIntent;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -29,7 +30,7 @@ class DefaultWorkerCandidateRankerTest {
         WorkerMatchContext lowLoad = context("worker-low", null, 0, 4);
         List<WorkerMatchContext> input = List.of(highLoad, lowLoad);
 
-        List<WorkerMatchContext> ranked = ranker.rank(input, task);
+        List<WorkerMatchContext> ranked = ranker.rank(input, TaskDispatchIntent.fromTask(task));
 
         assertEquals("worker-low", ranked.get(0).getCandidateRow().workerId());
         assertEquals("worker-high", ranked.get(1).getCandidateRow().workerId());
@@ -43,7 +44,10 @@ class DefaultWorkerCandidateRankerTest {
         WorkerMatchContext partialAffinity = context("worker-partial", Set.of("us-east"), 1, 4);
         WorkerMatchContext exactAffinity = context("worker-exact", Set.of("us"), 1, 4);
 
-        List<WorkerMatchContext> ranked = ranker.rank(List.of(partialAffinity, exactAffinity), task);
+        List<WorkerMatchContext> ranked = ranker.rank(
+                List.of(partialAffinity, exactAffinity),
+                TaskDispatchIntent.fromTask(task)
+        );
 
         assertEquals("worker-exact", ranked.get(0).getCandidateRow().workerId());
         assertEquals("worker-partial", ranked.get(1).getCandidateRow().workerId());
@@ -57,7 +61,10 @@ class DefaultWorkerCandidateRankerTest {
         WorkerMatchContext lowLoadNoAffinity = context("worker-low-load", Set.of("eu"), 0, 4);
         WorkerMatchContext highLoadExactAffinity = context("worker-exact", Set.of("us"), 4, 4);
 
-        List<WorkerMatchContext> ranked = ranker.rank(List.of(lowLoadNoAffinity, highLoadExactAffinity), task);
+        List<WorkerMatchContext> ranked = ranker.rank(
+                List.of(lowLoadNoAffinity, highLoadExactAffinity),
+                TaskDispatchIntent.fromTask(task)
+        );
 
         assertEquals("worker-exact", ranked.get(0).getCandidateRow().workerId());
         assertEquals("worker-low-load", ranked.get(1).getCandidateRow().workerId());
@@ -81,8 +88,10 @@ class DefaultWorkerCandidateRankerTest {
                 false,
                 new WorkerLoadSnapshot(workerId, activeLeaseCount, 0, declaredCapacity)
         );
+        Task task = task("task", null);
         return new WorkerMatchContext(new WorkerSchedulingCandidate(TestWorkerCandidateRows.from(worker), view),
-                task("task", null));
+                task,
+                TaskDispatchIntent.fromTask(task));
     }
 
     private Task task(String taskId, String routingCode) {

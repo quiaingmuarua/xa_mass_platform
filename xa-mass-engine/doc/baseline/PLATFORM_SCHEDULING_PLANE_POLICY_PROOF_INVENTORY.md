@@ -1,6 +1,6 @@
 # Platform Scheduling Plane Policy Proof Inventory
 
-Status: current PP-0 inventory for
+Status: current PP-0 through PP-5 inventory for
 `roadmap/PLATFORM_SCHEDULING_PLANE_POLICY_PROOF_HARDENING_ROADMAP.md`.
 
 This inventory classifies current computed-default Scheduling Plane facts. It
@@ -11,8 +11,13 @@ the roadmap can claim hard policy proof.
 
 ## Current Owner Decisions
 
-- The next implementation slice is binding-entry bypass proof, not policy
-  product work and not a broader worker-side perturbation matrix.
+- PP-3A binding-entry bypass proof is complete for retry/wakeup,
+  runtime-ready pump, and lease-expiry redispatch.
+- PP-3B migrated-consumer bypass closure is complete for current production
+  matching consumers.
+- PP-4 explainability closure uses existing runtime counters, assignment
+  records, dispatch binding evidence, and trace fields; no new trace gap is
+  required for the current hard-proven outcomes.
 - `TaskSchedulingTestHarness` may be extended for test-only entry drivers.
   Production bridge/facade/wrapper paths remain out of scope.
 - `routeAttributes` remains `resolved-only/unproven`; do not implement or
@@ -39,7 +44,7 @@ the roadmap can claim hard policy proof.
 | `targetWorkerAttributes` | `Task.sharedConfig.targetWorkerAttributes` | `TaskDispatchIntent`, `ResolvedWorkerSchedulingPolicy` | Stage-2 prefilter via `WorkerMatchContext` snapshot | hard-proven | `TaskSchedulingGateAndTargetingTest#targetWorkerAttributesRemainStableUnderContention` observes accepted gold worker, rejected silver record, locked gold conflict | Attribute matching can drift if rule context and prefilter context split | Keep `WorkerMatchContextTest` as boundary guard for context separation |
 | `routingCode` | `Task.sharedConfig.routingCode` | `TaskDispatchIntent`, `ResolvedWorkerSchedulingPolicy` | Stage-2 prefilter and rule context | hard-proven | `TaskWorkerEligibilityTest#workerPrefilterExcludesUnreachableLockedOccupiedAndRoutingMismatchCandidates` and min-worker gate tests observe routing mismatch records, active leases, locks, status, and counters | `eventCode` or item payload must not replace routing as worker selector | Keep existing proof; do not add selector field-copy tests |
 | `routeAttributes` | `Task.sharedConfig.routeAttributes` | `TaskDispatchIntent`, `ResolvedWorkerSchedulingPolicy` | route bucket policy / worker route buckets where configured | resolved-only/unproven in engine-local policy proof | Worker-runtime index and server trace tests cover route-bucket mechanics, but current engine-local harness does not produce a distinct route-attribute scheduling outcome | Easy to overclaim because resolver tests assert map copying | Keep `resolved-only/unproven`; do not implement or test route-attribute scheduling without a separate owner decision |
-| `routeBucketKeys` | worker routing policy derived from task route facts | `ResolvedWorkerSchedulingPolicy` | `WorkerTaskSelectorFactory#fromPolicy` -> worker candidate runtime warm/cold source | support-regression | Candidate source stats exist in assignment records, and worker-runtime index tests cover bucket mechanics, but current engine-local hard proof is tied to group/routing outcomes rather than bucket-key perturbation alone | Warm/cold source guard can look proven by source scans only | Keep residue scans as sanity; add hard proof only when route-bucket behavior changes runtime assignment outcome |
+| `routeBucketKeys` | worker routing policy derived from task route facts | `ResolvedWorkerSchedulingPolicy` | `WorkerTaskSelectorFactory#fromPolicy` -> worker candidate runtime warm/cold source | support-regression; hard outcome unproven | Candidate source stats exist in assignment records, and worker-runtime index tests cover bucket mechanics, but current engine-local hard proof is tied to group/routing outcomes rather than bucket-key perturbation alone | Warm/cold source guard can look proven by source scans only | Keep outside hard policy proof until route-bucket perturbation changes runtime assignment outcome without turning `routeAttributes` into an implicit policy product |
 | `adapterNodeId` | `Task.sharedConfig.adapterNodeId` | `TaskDispatchIntent`, `ResolvedWorkerSchedulingPolicy` | `WorkerTaskSelectorFactory#fromPolicy` selector; binder records adapter evidence from worker scheduling view | resolved-only/unproven | No current integrated test proves adapter-node perturbation changes candidate outcome | Field may be mistaken for public policy before there is a caller-visible outcome | Keep classified only; do not add placeholder test |
 | `eventCode` | SDK metadata under `Task.sharedConfig._sdk.eventCode` and runtime item event binding | `TaskDispatchIntent`, `ResolvedWorkerSchedulingPolicy` | worker group/event capability checks and dispatch binding | not-policy-truth | Capability and handler identity are covered by scheduling/dispatch tests, but `eventCode` is not worker policy truth | Reusing event code as worker selector would violate Scheduling Plane boundary | Keep as capability identity, not policy proof |
 | `workloadClass` | `Task.executionSpec.workloadClass` | `ResolvedTaskSchedulingPolicy`; also runtime profile | `DefaultWorkerBudgetPolicy`, retry/profile resolvers, lane/profile owners | hard-proven for current outcomes; mixed carrier | `TaskSchedulingContentionTest#largeBulkTaskIsCappedAndLeavesWorkersForInteractiveTask` observes bulk cap, remaining ready/inflight counts, interactive lease; `TaskAssignWorkerTest#retryDelayUsesResolvedWorkloadPolicy` observes retry delay trace | Some runtime owners still resolve profile from task, so not every workload outcome is resolved-record proof | Keep hard proof for budget/retry outcomes; PP-2 must not overclaim profile-derived mechanisms as resolved-record proof |
@@ -60,6 +65,7 @@ the roadmap can claim hard policy proof.
 | `TaskSchedulingGateAndTargetingTest` | hard proof | keep in `EngineSchedulingCoreSuite` | Observes worker-group, target, min-worker, lease, lock, task status, and runtime counters. |
 | `TaskWorkerEligibilityTest` | hard proof | keep in `EngineSchedulingCoreSuite` | Observes runtime eligibility outcomes, rejection records, active leases, and worker state. |
 | `TaskSchedulingContentionTest` | hard proof | keep in `EngineSchedulingCoreSuite` | Observes contention, budgets, sharing, locks, ready/inflight counters, and release/refill. |
+| `TaskSchedulingBindingEntryBypassTest` | hard proof | keep in `EngineSchedulingCoreSuite` | Observes non-direct binding entries re-enter policy-sensitive selection: runtime-ready pump group selection, worker-availability wakeup target selection, and lease-expiry redispatch target selection. |
 | `TaskRedispatchCompetitionTest` | hard proof | keep in `EngineSchedulingCoreSuite` | Observes retry/lease-expiry redispatch and stale-result lifecycle outcomes. |
 | `TaskDelayedAvailabilitySchedulingTest` | hard proof | keep in `EngineSchedulingCoreSuite` | Observes late worker availability moving READY work into dispatch. |
 | `TaskRuntimeRecoveryPortTest` | hard proof | keep in `EngineSchedulingCoreSuite` | Exercises recovery owner path for runtime scheduling state. |
@@ -69,6 +75,8 @@ the roadmap can claim hard policy proof.
 | `WorkerSchedulingCandidateEnumeratorTest` | support regression | keep in suite only as owner-boundary guard | Protects candidate scheduling-view enumeration; not standalone policy proof. |
 | `RuleBasedTaskWorkerMatchingStrategyTest` | support/boundary regression | keep in suite only as matching boundary guard | Protects rule/prefilter behavior and behavior-neutral assertion audit; not enough by itself for policy proof. |
 | `WorkerMatchContextTest` | essential boundary guard | keep in `EngineSchedulingCoreSuite` | Protects approved rule-readable context and prevents live runtime evidence from entering rule evaluation. |
+| `EngineSchedulingCoreArchitectureGuardTest` | residue/owner sanity guard | keep outside `EngineSchedulingCoreSuite` | Source-shape/path scans are useful residue sanity only; they are not runtime policy proof. |
+| `EngineProofOwnershipGuardTest` | residue/owner sanity guard | keep outside `EngineSchedulingCoreSuite` | Suite/source ownership scans protect proof taxonomy but must not count as scheduling runtime proof. |
 | `DefaultAssignmentAllocationPolicyTest` | delete candidate | deleted | Object/plan field assertions are covered by stronger integrated gate, budget, and dispatch-count outcomes. |
 | `DefaultWorkerBudgetPolicyTest` | delete candidate | deleted | Budget field assertions are covered by integrated budget/contention outcomes. |
 | `DefaultSchedulingPlaneResolverTest` | support regression | keep outside mainline policy proof | Resolver value construction drift check only; not runtime outcome proof. |
@@ -89,10 +97,10 @@ the roadmap can claim hard policy proof.
 ## Binding Entry Inventory
 
 This table records the current production entries that can move work toward a
-worker binding. It is a bypass proof inventory, not a completed bypass proof
-and not a source-shape guard. Full PP-3 completion still requires
-entry-specific perturbation tests that prove these entries cannot bypass policy
-facts while binding work.
+worker binding. It is a bypass proof inventory and not a source-shape guard.
+For current code, PP-3 entry proof is complete for the non-direct entries below;
+future production binding entries must add entry-specific perturbation tests
+before policy proof can be claimed for them.
 
 ```text
 scheduling eligibility
@@ -106,30 +114,49 @@ scheduling eligibility
 | Entry | Current owner path | Existing evidence | Proof status | Residue or blocker |
 | --- | --- | --- | --- | --- |
 | Direct task assignment | `TaskAssignWorker#submit` queues a dispatchable task by resolved lane/priority, then `TaskWorkerAssignListener#onTaskAssign` checks status/runtime-ready work, matches candidates, allocates, and calls `TaskDispatchBinder#bindDispatches`. | `TaskSchedulingGateAndTargetingTest`, `TaskSchedulingContentionTest`, and `TaskWorkerEligibilityTest` observe task status, active leases, locks/load, assignment records, and ready/inflight counters. | control path; existing scheduling proof, not PP-3A completion credit | Use only as the control path for comparing non-direct entries. Do not spend PP-3A quota on another direct-entry-only test. |
-| Retry redispatch | `TaskAssignWorker` schedules retry or requeue only for tasks that remained dispatchable after an assignment attempt, then re-enters `onTaskAssign`. | `TaskAssignWorkerTest#wakeWaitingRetriesRequeuesKnownRetryWithoutWaitingForDelay` proves bounded retry wakeup ownership; `TaskRedispatchCompetitionTest` proves redispatch competition and stale-result rejection outcomes. | inventoried; existing lifecycle proof, not complete policy-bypass proof | Needs a retry-entry perturbation test with a policy-sensitive outcome after retry re-entry. Retry delay/profile carrier is mixed. |
-| Runtime-ready pump | `RuntimeReadyDispatchPump` reads runtime-owned dispatchable tasks and invokes the injected dispatch attempt, currently wired by `EngineRuntimeKernel` as `TaskWorkerAssignListener::onTaskAssign`. The pump does not select or bind workers. | `TaskRuntimeRecoveryPortTest` proves runtime-ready task source behavior; `RuntimeReadyDispatchPumpTest` proves pump admission/wakeup mechanics. | inventoried; support-mechanism evidence only | Needs an integrated runtime-ready-pump scenario proving worker policy constraints still decide the final binding after pump entry. |
-| Lease-expiry redispatch | `LeaseExpireWatchdog` calls `TaskLeaseMaintenancePort#expireLeasedWork`; runtime lease ownership requeues retryable work, which later re-enters assignment through runtime-ready or assignment signal paths. | `TaskRedispatchCompetitionTest#leaseExpiryReentersBatchTaskIntoCompetitionPoolAndRedispatchesSameWorkOnce`, `#leaseExpiryReleasesWorkerForWaitingTaskCompetition`, and `#expiredWorkWaitsUnderCompetitionAndRedispatchesAfterWorkerRelease` observe lease token behavior, counters, worker release, and later assignment. | inventoried; lifecycle proof, not complete policy-bypass proof | Needs a lease-expiry redispatch perturbation proving policy selection is reapplied and cannot bind through stale/old selection state. |
-| Worker-availability wakeup | `TaskDispatchWakeupBridge` fans out to `TaskAssignWorker#wakeWaitingRetries` and `RuntimeReadyDispatchPump#wakeIdleAdmissions`; it does not scan tasks, select workers, or bind work. | `TaskDispatchWakeupBridgeTest` proves fanout ownership; `TaskAssignWorkerTest#wakeWaitingRetriesRequeuesKnownRetryWithoutWaitingForDelay` proves bounded retry acceleration; `TaskDelayedAvailabilitySchedulingTest` proves late eligible workers can move READY work into dispatch. | inventoried; existing trigger proof, not complete policy-bypass proof | Needs wakeup-entry perturbation proving the woken task still honors target/group/routing policy before binding. |
-| Target-worker dispatch | Targeting enters as a worker-side policy fact in `ResolvedWorkerSchedulingPolicy`; matching narrows candidates and still flows through allocation and binder. | `TaskSchedulingGateAndTargetingTest#targetWorkerIdWaitingTaskDoesNotDriftToBackupWorkerAfterContentionClears` observes no backup binding, target conflict, later target lease, task status, and counters. | hard worker-side fact proof; entry-bypass proof still partial | Needs coverage that target behavior remains true across retry/wakeup/redispatch entries, not only direct assignment. |
+| Retry redispatch | `TaskAssignWorker` schedules retry or requeue only for tasks that remained dispatchable after an assignment attempt, then re-enters `onTaskAssign`. | `TaskSchedulingBindingEntryBypassTest#workerAvailabilityWakeupRetryHonorsTargetWorkerPolicyBeforeBinding` proves a waiting retry re-enters through wakeup and binds only `targetWorkerId`; `TaskAssignWorkerTest#wakeWaitingRetriesRequeuesKnownRetryWithoutWaitingForDelay` remains bounded retry ownership support. | PP-3A hard-proven for wakeup retry; profile carrier still mixed | Keep retry-delay/profile carrier classification separate from binding-entry bypass proof. |
+| Runtime-ready pump | `RuntimeReadyDispatchPump` reads runtime-owned dispatchable tasks and invokes the injected dispatch attempt, currently wired by `EngineRuntimeKernel` as `TaskWorkerAssignListener::onTaskAssign`. The pump does not select or bind workers. | `TaskSchedulingBindingEntryBypassTest#runtimeReadyPumpHonorsWorkerGroupPolicyBeforeBinding` proves a pump-discovered task binds only the selected `workerGroupIds` group and excludes the other group from records, `MSG_ASSIGN`, dispatch binding, and lock. | PP-3A hard-proven | Keep `RuntimeReadyDispatchPumpTest` as support-mechanism evidence only. |
+| Lease-expiry redispatch | `LeaseExpireWatchdog` calls `TaskLeaseMaintenancePort#expireLeasedWork`; runtime lease ownership requeues retryable work, which later re-enters assignment through runtime-ready or assignment signal paths. | `TaskSchedulingBindingEntryBypassTest#leaseExpiryRedispatchReappliesTargetPolicyAndDoesNotBindBackup` proves expired work re-enters policy-sensitive target selection under stable policy and does not bind a backup worker; existing `TaskRedispatchCompetitionTest` methods prove lifecycle retry/lease-token behavior. | PP-3A hard-proven for target policy redispatch; lifecycle proof remains in `TaskRedispatchCompetitionTest` | Keep lease-profile carrier classification separate from binding-entry bypass proof. |
+| Worker-availability wakeup | `TaskDispatchWakeupBridge` fans out to `TaskAssignWorker#wakeWaitingRetries` and `RuntimeReadyDispatchPump#wakeIdleAdmissions`; it does not scan tasks, select workers, or bind work. | `TaskSchedulingBindingEntryBypassTest#workerAvailabilityWakeupRetryHonorsTargetWorkerPolicyBeforeBinding` proves the wakeup branch accelerates a known retry and still honors `targetWorkerId` before binding. | PP-3A hard-proven for waiting-retry wakeup | Idle-admission wake remains covered through runtime-ready pump scan proof, not as a separate product behavior. |
+| Target-worker dispatch | Targeting enters as a worker-side policy fact in `ResolvedWorkerSchedulingPolicy`; matching narrows candidates and still flows through allocation and binder. | `TaskSchedulingGateAndTargetingTest#targetWorkerIdWaitingTaskDoesNotDriftToBackupWorkerAfterContentionClears` observes direct-path target behavior; `TaskSchedulingBindingEntryBypassTest` extends target behavior across wakeup retry and lease-expiry redispatch. | hard worker-side fact proof; PP-3A target-entry proof complete for non-direct retry/expiry entries | Direct target dispatch remains control evidence; do not count another direct-only target test as PP-3A work. |
 
 ## PP-3A Entry Proof Targets
 
-The next proof slice should add or materially strengthen runtime outcome tests
-for these entries. Completion requires tests, not only this table.
+PP-3A added or materially strengthened runtime outcome tests for these entries.
+Completion required tests, not only this table.
 
 | Entry | Preferred policy-sensitive fact | Required runtime outcome | Recommended test surface |
 | --- | --- | --- | --- |
 | Direct assignment / target dispatch control | `workerGroupIds` or `targetWorkerId` | selected worker lease/binding follows the policy fact; disallowed worker has no assignment record, no lock, no `MSG_ASSIGN`, and no dispatch binding | `TaskSchedulingGateAndTargetingTest` via existing harness; control only, does not count toward PP-3A completion |
-| Retry / waiting-retry wakeup | `targetWorkerId` | retried or woken task does not drift to backup worker, then binds target after target becomes available | `TaskAssignWorker` or `TaskDispatchWakeupBridge` -> `TaskAssignWorker#wakeWaitingRetries` through an extended `TaskSchedulingTestHarness` |
-| Runtime-ready pump scan / idle-admission wake | `workerGroupIds` | pump-triggered dispatch binds only selected group, with non-selected group excluded from assignment records, locks, `MSG_ASSIGN`, and dispatch bindings | `RuntimeReadyDispatchPump` through an extended deterministic `TaskSchedulingTestHarness`; no unbounded sleep |
-| Lease-expiry redispatch | `workerGroupIds` or `targetWorkerId` | expired/requeued work re-enters policy-sensitive selection and cannot reuse stale/old selection to bind a disallowed worker | runtime lease expiry surfaces through an extended `TaskSchedulingTestHarness`; avoid invalid mid-run policy mutation |
+| Retry / waiting-retry wakeup | `targetWorkerId` | retried or woken task does not drift to backup worker, then binds target after target becomes available | Implemented by `TaskSchedulingBindingEntryBypassTest#workerAvailabilityWakeupRetryHonorsTargetWorkerPolicyBeforeBinding` |
+| Runtime-ready pump scan / idle-admission wake | `workerGroupIds` | pump-triggered dispatch binds only selected group, with non-selected group excluded from assignment records, locks, `MSG_ASSIGN`, and dispatch bindings | Implemented by `TaskSchedulingBindingEntryBypassTest#runtimeReadyPumpHonorsWorkerGroupPolicyBeforeBinding` |
+| Lease-expiry redispatch | `workerGroupIds` or `targetWorkerId` | expired/requeued work re-enters policy-sensitive selection and cannot reuse stale/old selection to bind a disallowed worker | Implemented by `TaskSchedulingBindingEntryBypassTest#leaseExpiryRedispatchReappliesTargetPolicyAndDoesNotBindBackup` |
 
 `routeAttributes` is intentionally absent from this table because its current
 classification is `resolved-only/unproven`.
 
-PP-3A completion requires the three non-direct categories above: retry/wakeup,
-runtime-ready pump, and lease-expiry redispatch. Direct assignment remains the
-control path only.
+PP-3A is complete for the three non-direct categories above. Direct assignment
+remains the control path only.
+
+## Raw-Field Consumer Residue
+
+PP-3A proves non-direct binding entries do not bypass policy-sensitive
+selection before binding. It does not prove every migrated fact consumer has
+stopped reading raw task fields. The following current raw reads are classified
+before any full PP-3 promotion:
+
+| Site | Current raw read | Classification | Required follow-up |
+| --- | --- | --- | --- |
+| `WorkerMatchContext` production path | worker-group, target, target-attribute, and routing decision fields | converged production consumer | Production matching passes the same `TaskDispatchIntent` into context construction and context snapshots. Task-only production constructors/static helpers were removed so this class cannot silently recompute dispatch intent in production. |
+| `DefaultWorkerCandidateRanker` production path | routing decision field | converged production consumer | Ranking now receives `TaskDispatchIntent` and uses its routing code. Keep ranking policy separate from live load evidence if configurable ranking variants are introduced later. |
+| `SimpleTaskDispatchBinder` | worker group selector, target worker id, adapter node id for `workerCandidateSource` evidence | dispatch evidence residue | Diagnostic evidence only; retarget to resolved dispatch evidence in a later consumer-convergence slice if this becomes proof-critical. |
+| `AssignmentRecordService` | routing code for assignment worker snapshot | assignment evidence residue | Evidence only; retarget if PP-4 requires all assignment snapshots to consume resolved dispatch evidence. |
+| `TraceEventLogger` | worker group selector, target worker id, adapter node id, routing/profile fields | trace/evidence residue | Trace remains read-side evidence, not policy truth. Retarget only through bounded PP-4 proof gaps. |
+| `DefaultSchedulingPlaneResolver` / `TaskDispatchIntent` | task shared-config fields | resolver owner | Expected current owner read; this is where raw task truth enters resolved views. |
+
+PP-3B is complete for the current production matching consumer path. Remaining
+raw reads are evidence, trace, mechanism, resolver-owner, or test-helper reads;
+they are not production policy consumer bypasses.
 
 ## Explainability Inventory
 
@@ -151,8 +178,6 @@ every policy entry.
 | retry / lease-expiry redispatch | lease token changes, stale result rejection, ready/inflight/final counters, worker release and later assignment | task work attempt transitions, assignment retry scheduled trace, dispatch binding summary, result/lease diagnostics | no new gap |
 | worker-availability wakeup | delayed/late availability moves eligible READY work through normal assignment path | assignment queue snapshot, worker availability wakeup fanout tests, later assignment records | no new gap |
 
-The bounded trace gap file remains unchanged by this inventory because the
-current scheduling outcomes can be explained from existing assignment records,
-runtime counters, and trace fields. PP-4 is not complete until the next proof
-slice ties these explanation surfaces to the actual perturbation and entry
-tests.
+The bounded trace gap file records this PP-4 closure without adding a new gap
+because current scheduling outcomes can be explained from existing assignment
+records, runtime counters, dispatch binding evidence, and trace fields.

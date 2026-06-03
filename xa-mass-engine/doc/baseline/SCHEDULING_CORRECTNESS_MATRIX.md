@@ -37,7 +37,7 @@ surface.
 
 | Lane | Owner | Intent |
 | --- | --- | --- |
-| `EngineSchedulingCoreSuite` | `xa-mass-engine` | Primary PR gate for deterministic scheduling correctness and owner-boundary guards |
+| `EngineSchedulingCoreSuite` | `xa-mass-engine` | Primary PR gate for deterministic scheduling correctness and runtime/lifecycle boundary behavior |
 | `xa-mass-testing` soak/chaos | `xa-mass-testing` | Runtime pressure and distributed edge proof; not a substitute for deterministic scheduling matrix coverage |
 | `xa-mass-server` E2E | `xa-mass-server` | Host/API wiring proof; not the full scheduling matrix |
 
@@ -67,6 +67,7 @@ visibility expansion or same-module wrapper seams.
 | Worker eligibility excludes unreachable, locked, capacity-exhausted, routing-mismatch, and target-attribute mismatch candidates | worker scheduling view + rule/rank/admission path | `TaskWorkerEligibilityTest`, `TaskSchedulingGateAndTargetingTest`, `TaskSchedulingContentionTest` | assignment records, active leases, worker lock/load | Covered |
 | Candidate narrowing must use explicit WorkerGroup selector truth and must not fall back to event/project/all-worker scans | worker registry snapshot + `WorkerCandidateIndex` + candidate enumerator | `TaskSchedulingGateAndTargetingTest`; `WorkerCandidateIndexTest` and `WorkerSchedulingCandidateEnumeratorTest` are support regressions | selected worker lease/binding, non-selected group has no assignment or lock, residue scan for removed fallback paths | Covered |
 | `targetWorkerId` is a group-scoped direct lookup shortcut, not a policy bypass | candidate index + Stage-2 admission | `TaskSchedulingGateAndTargetingTest`, `WorkerCandidateIndexTest`, `WorkerSchedulingCandidateEnumeratorTest` | no backup candidate, required group selector, lock/resource state | Covered |
+| Non-direct binding entries must not bypass policy-sensitive worker selection | assignment signal retry/wakeup + runtime-ready pump + lease expiry redispatch | `TaskSchedulingBindingEntryBypassTest` | active lease, ready/inflight counters, no disallowed worker record, no disallowed `MSG_ASSIGN`, no disallowed dispatch binding, no disallowed lock | Covered for PP-3A entries |
 | Multiple tasks competing for one worker must not double assign or lose ready work | worker lock/capacity + runtime ready truth | `TaskSchedulingContentionTest` | active leases, assignment conflict records, ready/inflight counts | Covered |
 | Stateless/background workers can share capacity only up to declared capacity | worker load view + resource policy | `TaskSchedulingContentionTest` | active lease count, quota rejection, task status | Covered |
 | Partial assignment leaves remaining work ready for later refill | runtime ready truth + allocation/binder | `TaskSchedulingContentionTest`, `TaskSchedulingGateAndTargetingTest` | ready/inflight counts, active leases, later successful assignment | Covered |
@@ -79,7 +80,7 @@ visibility expansion or same-module wrapper seams.
 | Retry-exhausted expiry finalizes and releases resources for waiting work | runtime retry policy + terminal convergence + resource release | `TaskRedispatchCompetitionTest` | terminal reason, expired/final counters, worker unlock, later assignment | Covered |
 | Minimum-worker gate must avoid half-dispatch and release skipped candidates | allocation policy + assignment listener cleanup | `TaskSchedulingGateAndTargetingTest`, `TaskWorkerEligibilityTest` | READY state, zero active leases, worker unlocked, later dispatch when enough eligible workers exist | Covered |
 | Result finality must release worker lock/capacity/resource | result convergence + resource releaser | `TaskSchedulingContentionTest`, `TaskRedispatchCompetitionTest`, `TaskResourceReleaseListenerTest` | task terminal, worker unlock/load release, waiting task dispatch | Covered |
-| Scheduling-core tests must stay runtime/aggregate/trace-first | suite guard | `EngineSchedulingCoreArchitectureGuardTest` | selected suite source scan as proof-surface drift prevention only | Covered support guard |
+| Scheduling-core tests must stay runtime/aggregate/trace-first | suite membership + support residue guard | `EngineSchedulingCoreSuite`; `EngineSchedulingCoreArchitectureGuardTest` is support-only when run directly | suite membership plus source scan as residue sanity only, not runtime proof | Covered; architecture guard is outside core proof suite |
 
 ## Coverage Placement Notes
 

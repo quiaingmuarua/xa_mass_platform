@@ -169,7 +169,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                 continue;
             }
 
-            WorkerMatchContext matchContext = new WorkerMatchContext(candidate, task);
+            WorkerMatchContext matchContext = new WorkerMatchContext(candidate, task, dispatchIntent);
 
             if (log.isDebugEnabled()) {
                 log.debug("[Debug] WorkerId={}, workerGroupId={}, status={}, locked={}, supportedProjects={}",
@@ -244,7 +244,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
             contextsToRank.add(passedCandidate.matchContext());
             passedByContext.put(passedCandidate.matchContext(), passedCandidate);
         }
-        List<WorkerMatchContext> rankedContexts = candidateRanker.rank(contextsToRank, task);
+        List<WorkerMatchContext> rankedContexts = candidateRanker.rank(contextsToRank, dispatchIntent);
         int rank = 0;
         for (WorkerMatchContext rankedContext : rankedContexts) {
             RulePassedCandidate passedCandidate = passedByContext.get(rankedContext);
@@ -259,7 +259,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
             }
             WorkerSchedulingCandidate candidate = passedCandidate.candidate();
             WorkerCandidateRow worker = candidate.getCandidateRow();
-            double candidateScore = rankScore(rankedContext, task);
+            double candidateScore = rankScore(rankedContext, dispatchIntent);
             boolean exclusiveWorkerLock = resourcePolicy.usageForCandidate(task, candidate).exclusiveWorkerLock();
             WorkerAdmissionResult reserveResult = admissionRuntime.reserveWorkerCapacity(worker.workerId(), task.getTid());
             if (!reserveResult.accepted()) {
@@ -334,9 +334,9 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
         return matchedWorkers;
     }
 
-    private double rankScore(WorkerMatchContext context, Task task) {
+    private double rankScore(WorkerMatchContext context, TaskDispatchIntent dispatchIntent) {
         if (candidateRanker instanceof DefaultWorkerCandidateRanker defaultRanker) {
-            return defaultRanker.score(context, task);
+            return defaultRanker.score(context, dispatchIntent);
         }
         return Double.NaN;
     }
@@ -405,7 +405,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                                                 WorkerSchedulingCandidate candidate) {
         WorkerSchedulingView schedulingView = candidate.getSchedulingView();
         WorkerReachabilityState reachability = schedulingView.reachability();
-        Map<String, Object> contextSnapshot = WorkerMatchContext.contextSnapshot(candidate, task);
+        Map<String, Object> contextSnapshot = WorkerMatchContext.contextSnapshot(candidate, task, dispatchIntent);
         if (!schedulingView.dispatchEnabled()) {
             return PrefilterDecision.reject(AssignmentResult.RESOURCE_UNAVAILABLE,
                     "worker unavailable", contextSnapshot, false, REJECTION_OWNER_DISPATCH_GATE);

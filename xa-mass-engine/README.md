@@ -320,11 +320,11 @@ Keep these facts fixed unless the owning global baselines change:
   paths resolve lock release through `usageForCandidate(...)`; attempt cleanup
   paths resolve it through `usageForAttempt(...)`.
 - `EngineSchedulingCoreArchitectureGuardTest` is an executable owner-boundary
-  guard for the scheduling kernel. It keeps scheduling-core tests off
-  compatibility projection proof helpers, prevents listener/binder
-  orchestration from calling dispatch cleanup primitives directly, prevents
-  WorkerContext runtime state mutation from returning to the engine mainline,
-  and prevents the retired context-first matching handoff types from returning.
+  residue guard for the scheduling kernel, but it is not scheduling runtime
+  proof and is not selected by `EngineSchedulingCoreSuite`. It can still be run
+  directly to check projection-proof leakage, dispatch cleanup primitive
+  residue, WorkerContext runtime state mutation residue, and retired matching
+  handoff types.
 - `ExecutionSpec.foreground` is currently a scheduling-mode declaration carried
   through task model/API/trace surfaces; `foreground=true` is the default
   exclusive worker-lock path, while `foreground=false` skips the long-lived
@@ -530,7 +530,8 @@ Useful starting tests:
 - `TaskKernelLifecycleTest`
 - `TaskResultRuntimeConvergenceTest`
 - `TaskResultConcurrencyConvergenceTest`
-- `EngineSchedulingCoreArchitectureGuardTest`
+- `EngineSchedulingCoreArchitectureGuardTest` (support-only residue guard; not
+  selected by `EngineSchedulingCoreSuite`)
 - `TaskContractTerminalBehaviorTest`
 - `TaskContractSchedulingBehaviorTest`
 - `TaskSchedulingContentionTest`

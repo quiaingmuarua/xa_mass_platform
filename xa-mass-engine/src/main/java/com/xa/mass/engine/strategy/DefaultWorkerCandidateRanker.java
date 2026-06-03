@@ -1,9 +1,8 @@
 package com.xa.mass.engine.strategy;
 
-import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.engine.model.WorkerMatchContext;
 import com.xa.mass.engine.model.WorkerSchedulingView;
+import com.xa.mass.engine.runtime.scheduling.TaskDispatchIntent;
 
 import java.util.Comparator;
 import java.util.List;
@@ -36,30 +35,30 @@ public final class DefaultWorkerCandidateRanker implements WorkerCandidateRanker
     }
 
     @Override
-    public List<WorkerMatchContext> rank(List<WorkerMatchContext> candidates, Task task) {
+    public List<WorkerMatchContext> rank(List<WorkerMatchContext> candidates, TaskDispatchIntent dispatchIntent) {
         if (candidates == null || candidates.isEmpty()) {
             return List.of();
         }
         return candidates.stream()
-                .sorted(Comparator.comparingDouble(candidate -> score(candidate, task)))
+                .sorted(Comparator.comparingDouble(candidate -> score(candidate, dispatchIntent)))
                 .toList();
     }
 
-    double score(WorkerMatchContext candidate, Task task) {
+    double score(WorkerMatchContext candidate, TaskDispatchIntent dispatchIntent) {
         if (candidate == null) {
             return Double.POSITIVE_INFINITY;
         }
         WorkerSchedulingView view = candidate.getSchedulingView();
         double loadRatio = view != null ? view.estimatedLoadRatio() : 1.0d;
-        double affinityScore = affinityScore(view, task);
+        double affinityScore = affinityScore(view, dispatchIntent);
         double availabilityPenalty = availabilityPenalty(view);
         return policy.loadWeight() * loadRatio
                 + policy.affinityWeight() * (1.0d - affinityScore)
                 + policy.availabilityWeight() * availabilityPenalty;
     }
 
-    private double affinityScore(WorkerSchedulingView view, Task task) {
-        String routingCode = TaskSharedConfig.routingCode(task);
+    private double affinityScore(WorkerSchedulingView view, TaskDispatchIntent dispatchIntent) {
+        String routingCode = dispatchIntent == null ? null : dispatchIntent.routingCode();
         if (routingCode == null || routingCode.isBlank()) {
             return 1.0d;
         }

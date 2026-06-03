@@ -2,6 +2,7 @@ package com.xa.mass.engine.model;
 
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
+import com.xa.mass.engine.runtime.scheduling.TaskDispatchIntent;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
 
 import java.util.LinkedHashMap;
@@ -24,37 +25,48 @@ public class WorkerMatchContext {
     private final Map<String, Object> context;
     private final Map<String, Object> ruleContext;
 
-    public WorkerMatchContext(WorkerSchedulingCandidate candidate, Task task) {
+    public WorkerMatchContext(WorkerSchedulingCandidate candidate,
+                              Task task,
+                              TaskDispatchIntent dispatchIntent) {
         Objects.requireNonNull(candidate, "candidate");
+        Objects.requireNonNull(task, "task");
+        Objects.requireNonNull(dispatchIntent, "dispatchIntent");
         this.candidateRow = candidate.getCandidateRow();
         this.task = task;
         this.schedulingView = candidate.getSchedulingView();
-        this.context = buildContext(candidate, task);
-        this.ruleContext = buildRuleContext(candidate, task);
+        this.context = buildContext(candidate, task, dispatchIntent);
+        this.ruleContext = buildRuleContext(candidate, task, dispatchIntent);
     }
 
-    public static Map<String, Object> contextSnapshot(WorkerSchedulingCandidate candidate, Task task) {
+    public static Map<String, Object> contextSnapshot(WorkerSchedulingCandidate candidate,
+                                                      Task task,
+                                                      TaskDispatchIntent dispatchIntent) {
         Objects.requireNonNull(candidate, "candidate");
         Objects.requireNonNull(task, "task");
-        return buildContext(candidate, task);
+        return buildContext(candidate, task, dispatchIntent);
     }
 
-    public static Map<String, Object> ruleContextSnapshot(WorkerSchedulingCandidate candidate, Task task) {
+    public static Map<String, Object> ruleContextSnapshot(WorkerSchedulingCandidate candidate,
+                                                          Task task,
+                                                          TaskDispatchIntent dispatchIntent) {
         Objects.requireNonNull(candidate, "candidate");
         Objects.requireNonNull(task, "task");
-        return buildRuleContext(candidate, task);
+        return buildRuleContext(candidate, task, dispatchIntent);
     }
 
-    private static Map<String, Object> buildContext(WorkerSchedulingCandidate candidate, Task task) {
+    private static Map<String, Object> buildContext(WorkerSchedulingCandidate candidate,
+                                                    Task task,
+                                                    TaskDispatchIntent dispatchIntent) {
         WorkerSchedulingView schedulingView = candidate.getSchedulingView();
         Map<String, Object> ctx = new LinkedHashMap<>();
 
         putWorkerSchedulingFields(ctx, schedulingView);
 
-        String routingCode = TaskSharedConfig.routingCode(task);
+        Objects.requireNonNull(dispatchIntent, "dispatchIntent");
+        String routingCode = dispatchIntent.routingCode();
         String taskEventCode = TaskSharedConfig.sdkEventCode(task);
-        String targetWorkerId = TaskSharedConfig.targetWorkerId(task);
-        Map<String, String> targetWorkerAttributes = TaskSharedConfig.targetWorkerAttributes(task);
+        String targetWorkerId = dispatchIntent.targetWorkerId();
+        Map<String, String> targetWorkerAttributes = dispatchIntent.targetWorkerAttributes();
         boolean taskHasRoutingRequirement = routingCode != null && !routingCode.isBlank();
         boolean taskUsesEventCapability = taskEventCode != null && !taskEventCode.isBlank();
         java.util.Set<String> routingTags = schedulingView.schedulingRoutingTags();
@@ -91,14 +103,17 @@ public class WorkerMatchContext {
         return ctx;
     }
 
-    private static Map<String, Object> buildRuleContext(WorkerSchedulingCandidate candidate, Task task) {
+    private static Map<String, Object> buildRuleContext(WorkerSchedulingCandidate candidate,
+                                                        Task task,
+                                                        TaskDispatchIntent dispatchIntent) {
         WorkerSchedulingView schedulingView = candidate.getSchedulingView();
         Map<String, Object> ctx = new LinkedHashMap<>();
 
-        String routingCode = TaskSharedConfig.routingCode(task);
+        Objects.requireNonNull(dispatchIntent, "dispatchIntent");
+        String routingCode = dispatchIntent.routingCode();
         String taskEventCode = TaskSharedConfig.sdkEventCode(task);
-        String targetWorkerId = TaskSharedConfig.targetWorkerId(task);
-        Map<String, String> targetWorkerAttributes = TaskSharedConfig.targetWorkerAttributes(task);
+        String targetWorkerId = dispatchIntent.targetWorkerId();
+        Map<String, String> targetWorkerAttributes = dispatchIntent.targetWorkerAttributes();
         boolean taskHasRoutingRequirement = routingCode != null && !routingCode.isBlank();
         boolean taskUsesEventCapability = taskEventCode != null && !taskEventCode.isBlank();
         java.util.Set<String> routingTags = schedulingView.schedulingRoutingTags();
