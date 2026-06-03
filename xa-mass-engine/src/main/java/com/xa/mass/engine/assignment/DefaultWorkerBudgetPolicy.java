@@ -1,7 +1,7 @@
 package com.xa.mass.engine.assignment;
 
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
-import com.xa.mass.base.model.Task;
+import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy;
 
 /**
  * Default per-task worker budget policy.
@@ -15,18 +15,18 @@ public final class DefaultWorkerBudgetPolicy implements WorkerBudgetPolicy {
     public static final int DEFAULT_BULK_MAX_WORKERS = 20;
 
     @Override
-    public WorkerBudgetDecision resolve(Task task, int desiredDispatchWorkerCount, int currentTaskWorkerCount) {
-        int budget = budgetFor(task);
+    public WorkerBudgetDecision resolve(ResolvedTaskSchedulingPolicy taskPolicy,
+                                        int desiredDispatchWorkerCount,
+                                        int currentTaskWorkerCount) {
+        int budget = budgetFor(taskPolicy);
         int activeCount = Math.max(0, currentTaskWorkerCount);
         int available = Math.max(0, budget - activeCount);
         boolean limited = desiredDispatchWorkerCount > available;
         return new WorkerBudgetDecision(budget, activeCount, available, limited);
     }
 
-    private int budgetFor(Task task) {
-        TaskWorkloadClass workloadClass = task != null && task.getExecutionSpec() != null
-                ? task.getExecutionSpec().getWorkloadClass()
-                : null;
+    private int budgetFor(ResolvedTaskSchedulingPolicy taskPolicy) {
+        TaskWorkloadClass workloadClass = taskPolicy == null ? null : taskPolicy.workloadClass();
         if (workloadClass == TaskWorkloadClass.INTERACTIVE) {
             return DEFAULT_INTERACTIVE_MAX_WORKERS;
         }

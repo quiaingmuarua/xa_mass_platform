@@ -1,11 +1,13 @@
 package com.xa.mass.engine.assignment;
 
-import com.xa.mass.base.model.Task;
+import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy;
 
 /**
  * Engine-internal owner for per-task worker budget decisions.
  */
 public interface WorkerBudgetPolicy {
 
-    WorkerBudgetDecision resolve(Task task, int desiredDispatchWorkerCount, int currentTaskWorkerCount);
+    WorkerBudgetDecision resolve(ResolvedTaskSchedulingPolicy taskPolicy,
+                                 int desiredDispatchWorkerCount,
+                                 int currentTaskWorkerCount);
 }

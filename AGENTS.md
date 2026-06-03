@@ -19,17 +19,20 @@ Fast entry only. Use module owner READMEs and `doc/` contracts for detail.
   `TaskSchedulingPolicyExecution + WorkerSchedulingPolicyResolution +
   RuntimeWorkerSelection`.
 - Scheduling Plane inputs and constraints:
-  `SchedulingPolicyCatalog / ProjectSchedulingBinding` select and configure
-  allowed/default policies; `TaskDispatchIntent` narrows selected policies,
-  route, and target constraints; `WorkerGroupCapability` remains external
-  project/event capability truth; item `eventCode` plus payload select only the
-  worker-local handler invocation.
+  `TaskDispatchIntent`, `ResolvedTaskSchedulingPolicy`, and
+  `ResolvedWorkerSchedulingPolicy` are current engine-facing value contracts
+  derived from task fields and shared config; `SchedulingPolicyCatalog` /
+  `ProjectSchedulingBinding` remain target-only policy product boundaries until
+  a successor decision proves caller, cost, storage owner, and runtime consumer;
+  `WorkerGroupCapability` remains external project/event capability truth; item
+  `eventCode` plus payload select only the worker-local handler invocation.
 - Scheduling-related ownership has three separate categories:
   `TaskSchedulingPolicy` for competition admission/cadence/priority/fairness/
   budget, `WorkerSchedulingPolicy` for worker resource-universe selection and
   pool constraints, and `RuntimeWorkerSelection` for concrete worker choice
-  from live evidence and admission state. None of these are complete current
-  modules yet.
+  from live evidence and admission state. Current resolved views cover part of
+  this boundary; catalog/binding/configurable policy modules are not
+  implemented.
 - Canonical shorthand:
   - `TaskSchedulingPolicy` = how work enters dispatch competition
   - `WorkerSchedulingPolicy` = which worker universe work competes in

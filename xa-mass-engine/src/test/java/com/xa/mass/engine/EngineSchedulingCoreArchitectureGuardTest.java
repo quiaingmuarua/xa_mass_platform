@@ -454,11 +454,69 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "com/xa/mass/engine/strategy/RuleBasedTaskWorkerMatchingStrategy.java");
         String source = Files.readString(strategyPath, StandardCharsets.UTF_8);
 
-        assertFalse(source.contains("ruleEvaluator.evaluate(rule, matchContext.getContext())"),
+        Pattern fullContextEvaluation = Pattern.compile(
+                "ruleEvaluator\\.evaluate\\s*\\([^;]*getContext\\s*\\(",
+                Pattern.DOTALL);
+        Pattern declarativeContextEvaluation = Pattern.compile(
+                "ruleEvaluator\\.evaluate\\s*\\([^;]*getRuleContext\\s*\\(",
+                Pattern.DOTALL);
+
+        assertFalse(fullContextEvaluation.matcher(source).find(),
                 "Rule evaluation must not consume the full diagnostic WorkerMatchContext snapshot. "
                         + "Runtime evidence belongs to prefilter, rank, reserve, and diagnostics.");
-        assertTrue(source.contains("ruleEvaluator.evaluate(rule, matchContext.getRuleContext())"),
+        assertTrue(declarativeContextEvaluation.matcher(source).find(),
                 "RuleBasedTaskWorkerMatchingStrategy must evaluate the declarative rule context.");
+    }
+
+    @Test
+    void ruleBasedMatchingDoesNotRecomputeDispatchIntentThroughSelectorFactory() throws IOException {
+        Path strategyPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/strategy/RuleBasedTaskWorkerMatchingStrategy.java");
+        String source = Files.readString(strategyPath, StandardCharsets.UTF_8);
+
+        assertFalse(source.contains("TaskDispatchIntent.fromTask("),
+                "RuleBasedTaskWorkerMatchingStrategy must use one SchedulingPlaneResolution per dispatch pass "
+                        + "instead of recomputing TaskDispatchIntent directly.");
+        assertFalse(source.contains("WorkerTaskSelectorFactory.fromTask("),
+                "RuleBasedTaskWorkerMatchingStrategy must pass the resolved worker scheduling view to "
+                        + "WorkerTaskSelectorFactory.fromPolicy(...) instead of resolving from Task again.");
+        assertTrue(source.contains("WorkerTaskSelectorFactory.fromPolicy(resolution.workerSchedulingPolicy())"),
+                "RuleBasedTaskWorkerMatchingStrategy must build WorkerTaskSelector from the resolved "
+                        + "worker scheduling policy.");
+    }
+
+    @Test
+    void warmCandidateHintsUseResolvedWorkerSchedulingPolicy() throws IOException {
+        Path listenerPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/listener/TaskWorkerAssignListener.java");
+        String source = Files.readString(listenerPath, StandardCharsets.UTF_8);
+
+        assertFalse(source.contains("WorkerTaskSelectorFactory.fromTask("),
+                "TaskWorkerAssignListener warm-candidate hint recording must not rebuild the selector "
+                        + "from raw Task fields.");
+        assertTrue(source.contains("WorkerTaskSelectorFactory.fromPolicy(\n"
+                        + "                schedulingPlaneResolver.resolve(task).workerSchedulingPolicy())"),
+                "TaskWorkerAssignListener must build warm-candidate selectors from the resolved "
+                        + "worker scheduling policy.");
+    }
+
+    @Test
+    void workloadClassBudgetConsumerUsesResolvedTaskSchedulingPolicy() throws IOException {
+        Path budgetPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/assignment/DefaultWorkerBudgetPolicy.java");
+        Path allocationPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/assignment/DefaultAssignmentAllocationPolicy.java");
+        String budgetSource = Files.readString(budgetPath, StandardCharsets.UTF_8);
+        String allocationSource = Files.readString(allocationPath, StandardCharsets.UTF_8);
+
+        assertFalse(budgetSource.contains("getExecutionSpec().getWorkloadClass()"),
+                "DefaultWorkerBudgetPolicy must consume ResolvedTaskSchedulingPolicy.workloadClass(), "
+                        + "not rediscover workloadClass from raw Task.");
+        assertTrue(budgetSource.contains("ResolvedTaskSchedulingPolicy"),
+                "DefaultWorkerBudgetPolicy must make the resolved task scheduling view its input.");
+        assertTrue(allocationSource.contains("workerBudgetPolicy.resolve(\n                taskPolicy,"),
+                "DefaultAssignmentAllocationPolicy must pass the resolved task scheduling policy into "
+                        + "worker budget resolution.");
     }
 
     @Test

@@ -16,15 +16,19 @@ import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.resource.DefaultWorkerDispatchResourcePolicy;
 import com.xa.mass.engine.resource.WorkerDispatchResourceReleaser;
 import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
+import com.xa.mass.engine.runtime.scheduling.SchedulingPlaneResolver;
+import com.xa.mass.engine.strategy.DefaultSchedulingPlaneResolver;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.engine.TraceEventLogger;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
 import com.xa.mass.worker.runtime.admission.WorkerWarmHintRuntime;
+import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -43,6 +47,7 @@ public class TaskWorkerAssignListener {
     private final AssignmentAllocationPolicy allocationPolicy;
     private final WorkerDispatchResourcePolicy resourcePolicy;
     private final WorkerDispatchResourceReleaser resourceReleaser;
+    private final SchedulingPlaneResolver schedulingPlaneResolver;
 
     public TaskWorkerAssignListener(TaskWorkerMatchingStrategy matchingStrategy,
                                     WorkerAdmissionRuntime workerAdmissionRuntime,
@@ -99,10 +104,27 @@ public class TaskWorkerAssignListener {
                              TaskDispatchBinder dispatchBinder,
                              TaskAssignmentRuntimePort assignmentRuntime,
                              TaskAssignmentEventSink assignmentEventSink,
+                              TraceEventLogger traceEventLogger,
+                              AssignmentAllocationPolicy allocationPolicy,
+                              WorkerDispatchResourcePolicy resourcePolicy,
+                              WorkerDispatchResourceReleaser resourceReleaser) {
+        this(matchingStrategy, workerAdmissionRuntime, workerWarmHintRuntime,
+                dispatchBinder, assignmentRuntime, assignmentEventSink,
+                traceEventLogger, allocationPolicy, resourcePolicy, resourceReleaser,
+                new DefaultSchedulingPlaneResolver());
+    }
+
+    TaskWorkerAssignListener(TaskWorkerMatchingStrategy matchingStrategy,
+                             WorkerAdmissionRuntime workerAdmissionRuntime,
+                             WorkerWarmHintRuntime workerWarmHintRuntime,
+                             TaskDispatchBinder dispatchBinder,
+                             TaskAssignmentRuntimePort assignmentRuntime,
+                             TaskAssignmentEventSink assignmentEventSink,
                              TraceEventLogger traceEventLogger,
                              AssignmentAllocationPolicy allocationPolicy,
                              WorkerDispatchResourcePolicy resourcePolicy,
-                             WorkerDispatchResourceReleaser resourceReleaser) {
+                             WorkerDispatchResourceReleaser resourceReleaser,
+                             SchedulingPlaneResolver schedulingPlaneResolver) {
         this.matchingStrategy = matchingStrategy;
         this.workerAdmissionRuntime = workerAdmissionRuntime;
         this.workerWarmHintRuntime = workerWarmHintRuntime;
@@ -115,6 +137,7 @@ public class TaskWorkerAssignListener {
         this.resourceReleaser = resourceReleaser == null
                 ? new WorkerDispatchResourceReleaser(workerAdmissionRuntime, this.resourcePolicy, traceEventLogger)
                 : resourceReleaser;
+        this.schedulingPlaneResolver = Objects.requireNonNull(schedulingPlaneResolver, "schedulingPlaneResolver");
     }
 
     /**
@@ -287,15 +310,15 @@ public class TaskWorkerAssignListener {
         if (usedWorkerIds.isEmpty()) {
             return;
         }
+        WorkerTaskSelector selector = WorkerTaskSelectorFactory.fromPolicy(
+                schedulingPlaneResolver.resolve(task).workerSchedulingPolicy());
         Set<String> recordedWorkerIds = new LinkedHashSet<>();
         for (WorkerSchedulingCandidate candidate : dispatchCandidates) {
             if (candidate == null || candidate.getWorkerId() == null || candidate.getWorkerId().isBlank()) {
                 continue;
             }
             if (usedWorkerIds.contains(candidate.getWorkerId()) && recordedWorkerIds.add(candidate.getWorkerId())) {
-                workerWarmHintRuntime.recordWarmCandidate(
-                        WorkerTaskSelectorFactory.fromTask(task),
-                        candidate.getCandidateRow());
+                workerWarmHintRuntime.recordWarmCandidate(selector, candidate.getCandidateRow());
             }
         }
     }
