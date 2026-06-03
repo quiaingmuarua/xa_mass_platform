@@ -77,7 +77,7 @@ task/worker/runtime ownership model.
 
 Scheduling policy boundary:
 
-- target direction: scheduling-related ownership is split into
+- Scheduling Plane ownership is split into
   `TaskSchedulingPolicy`, `WorkerSchedulingPolicy`, and
   `RuntimeWorkerSelection`; project / workload binding chooses allowed/default
   task and worker policies plus scoped configuration
@@ -85,8 +85,9 @@ Scheduling policy boundary:
   catalog/binding/resolved-policy path; policy still lives across task runtime
   profile, explicit group selectors, matching rules, assignment policy,
   backpressure, and admission behavior
-- task decides dispatch intent, WorkerGroup decides capability boundary, worker
-  is the runtime execution slot, and item only decides `eventCode` plus payload
+- task decides dispatch intent, WorkerGroup supplies external capability truth
+  for selected project/event support, worker is the runtime execution slot, and
+  item only decides `eventCode` plus payload
 - `eventCode` is handler/capability identity, not a worker selector
 
 ## Current Integration Bias

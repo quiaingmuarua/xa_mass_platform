@@ -89,7 +89,7 @@ Current mainline execution path:
 
 Scheduling Plane Boundary:
 
-- target direction: scheduling-related ownership is split into three categories:
+- Scheduling Plane ownership is split into three first-class categories:
   `TaskSchedulingPolicy` for competition admission/cadence/priority/fairness/
   budget, `WorkerSchedulingPolicy` for worker resource-universe selection and
   pool constraints, and `RuntimeWorkerSelection` for concrete worker choice
@@ -103,7 +103,9 @@ Scheduling Plane Boundary:
   `workerGroupId(s)` or selector, `routingCode`, route attributes,
   optional `targetWorkerId`, and optional constrained target worker attributes
 - `WorkerGroup` owns capability boundary: project bindings, event bindings,
-  default group attributes, and capacity/concurrency defaults
+  default group attributes, and capacity/concurrency defaults. It constrains
+  worker scheduling resolution, but it is not an internal Scheduling Plane
+  strategy owner
 - runtime worker selection happens inside an already selected WorkerGroup using
   online/presence/load/admission/draining/lease evidence
 - work items do not own worker-selection policy. An item carries `eventCode`

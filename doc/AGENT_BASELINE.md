@@ -61,24 +61,30 @@ Current owner vocabulary:
 - `Task` is the task/control aggregate truth
 - `Task.contract` is the runtime contract truth: `SESSION | BATCH`
 - `Task.intakeStatus` is the intake-window truth: `OPEN | SEALED`
+- Scheduling Plane ownership is split into three first-class categories:
+  `TaskSchedulingPolicy` for competition admission/cadence/priority/fairness/
+  budget, `WorkerSchedulingPolicy` for worker resource-universe selection and
+  pool constraints, and `RuntimeWorkerSelection` for concrete worker choice
+  from live evidence and admission state. This is an architectural boundary,
+  not a fully implemented current module.
+- Canonical shorthand:
+  - `TaskSchedulingPolicy` = how work enters dispatch competition
+  - `WorkerSchedulingPolicy` = which worker universe work competes in
+  - `RuntimeWorkerSelection` = which currently eligible workers are selected
+    inside that universe
 - `Worker` is execution identity plus group/node membership and declared
   scheduling/resource facts; worker rows do not own project/event capability
   truth
-- `Scheduling Plane` is the first-class scheduling owner, with three co-equal
-  first-class members:
-  - `TaskSchedulingPolicy`: competition admission, cadence, priority,
-    quota/fairness, and task-level budget.
-  - `WorkerSchedulingPolicy`: worker resource-universe selection, group
-    selector, route, target override, and worker-pool constraints.
-  - `RuntimeWorkerSelection`: concrete worker choice inside the resolved
-    resource universe from live online/presence/load/admission/draining/lease
-    evidence. First-class inside Scheduling Plane; not a sub-detail of
-    WorkerSchedulingPolicy and not a top-level peer of Task or Worker.
-  None of the three are complete current modules; current scheduling behavior
-  is distributed across task runtime profile, group selectors, assignment
-  policy, matching rule sets, runtime backpressure, and admission.
-- `Matching` is current worker-selection mechanism vocabulary inside Scheduling
-  Plane; it is not a top-level policy owner.
+- `Scheduling Plane` decides when task work may enter competition, dispatch,
+  retry, pause, resume, or close; which worker universe it may compete in; and
+  which concrete worker receives it. Current scheduling policy remains
+  distributed across task runtime profile, group selectors, assignment policy,
+  matching rule sets, runtime backpressure, and admission behavior.
+- `Matching` is current worker-selection mechanism vocabulary, not a top-level
+  policy owner. Worker scheduling policy resolves the resource universe, and
+  RuntimeWorkerSelection chooses a concrete worker inside the selected group
+  from reachability, runtime load/capacity, admission, draining, lease, and
+  explicit scheduling evidence.
 - `TaskDispatchIntent` is the task-level dispatch intent: project,
   `workerGroupId(s)` or selector, `routingCode`, route attributes, optional
   `targetWorkerId`, and optional constrained target worker attributes
@@ -102,38 +108,55 @@ Current owner vocabulary:
   SDK/server/storage/trace truth. It is not an engine scheduling truth and must
   not be reintroduced as the worker capability or resource-lifecycle owner.
 
-Scheduling Plane structure:
+Platform scheduling abstraction boundary:
 
-The Scheduling Plane owns three co-equal first-class members. `RuntimeWorkerSelection`
-is first-class inside the Plane; it is not a sub-detail of `WorkerSchedulingPolicy`
-and is not a top-level peer of `Task` or `Worker`.
-
-| Scheduling Plane member | Role | Current status |
+| Layer | Role | Current status |
 | --- | --- | --- |
-| `TaskSchedulingPolicy` | competition admission, cadence, priority, quota/fairness, and task-level budget. Implementation nodes: `SchedulingPolicyCatalog` (policy definitions), `ProjectSchedulingBinding` (project/workload policy bindings + quota scope), `TaskSchedulingPolicyExecution` (admission + budget execution at task dispatch) | not fully implemented; behavior distributed across task runtime profile, workload class, and execution spec |
-| `WorkerSchedulingPolicy` | worker resource-universe selection: group selector, route, target override, and worker-pool constraints. Implementation nodes: `TaskDispatchIntent` (task-level declared intent), `WorkerSchedulingPolicyResolution` (universe resolution at dispatch) | not fully implemented; behavior distributed across explicit workerGroupId(s), selectors, and assignment policy |
-| `RuntimeWorkerSelection` | concrete worker choice inside the resolved resource universe from live online/presence/load/admission/draining/lease evidence | current engine + worker-runtime matching/admission path |
+| `TaskSchedulingPolicyExecution` | task-side competition admission, cadence, priority, quota/fairness, and task-level budget execution | Scheduling Plane owner; target contract not fully implemented |
+| `WorkerSchedulingPolicyResolution` | worker-side resource-universe, group selector, route, target override, and worker-pool constraint resolution | Scheduling Plane owner; target contract not fully implemented |
+| `RuntimeWorkerSelection` | concrete worker choice inside the selected group from online/presence/load/admission/draining/lease evidence | Scheduling Plane owner; current engine + worker-runtime matching/admission path |
 
-Fixed boundaries outside the Scheduling Plane:
+Inputs and constraints around the Scheduling Plane:
 
-| Boundary | Role | Current status |
+| Layer | Role | Current status |
 | --- | --- | --- |
-| `WorkerGroupCapability` | group-level capability boundary: project bindings, event bindings, group defaults, and capacity hints. Feeds into WorkerSchedulingPolicy resolution; not a scheduling policy owner | current worker-runtime resource truth |
-| `Item` | executable work unit: `eventCode` plus input or `payloadRef`; not worker-selection policy | current runtime work-item boundary |
+| `SchedulingPolicyCatalog` | reusable task scheduling policy definitions and worker scheduling policy definitions | target owner boundary, not fully implemented |
+| `ProjectSchedulingBinding` | project/workload allowed/default task policies, allowed/default worker policies, per-policy config, and quota/fairness scope | target owner boundary, not fully implemented |
+| `TaskDispatchIntent` | task-level dispatch target and constraints: selected/inherited task policy, selected/inherited worker policy, project, WorkerGroup selector, route, optional target worker, and optional target attributes | current concept implemented through task fields/shared config/selectors rather than a single named object |
+| `WorkerGroupCapability` | external group-level capability truth: project bindings, event bindings, group defaults, and capacity hints | current worker-runtime resource truth; constrains worker scheduling resolution |
+| `Item` | executable work unit: `eventCode` plus input or `payloadRef` | current runtime work-item boundary; not worker-selection policy |
 
-The intended flow is:
+The intended boundary is:
 
 ```text
-Task
-  -> Scheduling Plane:
-       TaskSchedulingPolicy   (when and with what budget work enters competition)
-       WorkerSchedulingPolicy (which worker universe the work competes in)
-       RuntimeWorkerSelection (which concrete worker inside that universe)
-  -> item event handler execution
+Scheduling Plane
+  TaskSchedulingPolicyExecution
+  WorkerSchedulingPolicyResolution
+  RuntimeWorkerSelection
+
+External inputs and constraints
+  SchedulingPolicyCatalog / ProjectSchedulingBinding
+  TaskDispatchIntent
+  WorkerGroupCapability
+  Item eventCode + payload
 ```
 
 Do not invert that flow by letting item payload, `eventCode`, worker row
 attributes, SDK snapshots, or rule DSL become the owner of scheduling policy.
+
+Example boundary:
+
+```text
+TaskSchedulingPolicy:
+  BULK_THROUGHPUT cadence, refill timing, task-side worker budget
+
+WorkerSchedulingPolicy:
+  crawler worker groups, region route, target constraints, rule-set reference
+
+RuntimeWorkerSelection:
+  online workers only, reject locked/draining/capacity-full workers, rank,
+  reserve, and dispatch
+```
 
 Stable kernel slots:
 

@@ -116,26 +116,32 @@ two-stage worker-selection mechanism, not a top-level policy owner. Additional
 selection inputs must remain explicit scheduling evidence and must not redefine
 worker ownership.
 
-The preferred boundary is:
+Scheduling Plane has three first-class owners:
 
 ```text
-SchedulingPolicyCatalog       -> reusable task/worker scheduling policy strategy
-ProjectSchedulingBinding      -> allowed/default policies and scoped config
-task dispatch intent          -> selected/inherited policies, route, and target constraints
 TaskSchedulingPolicyExecution -> competition admission, cadence, priority, fairness, budget
 WorkerSchedulingPolicyResolution -> worker universe, group selector, route, pool constraints
-WorkerGroup                   -> capability boundary
 RuntimeWorkerSelection        -> live evidence, ranking, reserve, admission
-item                          -> eventCode plus payload only
 ```
 
-The catalog/binding policy path is a target direction, not a complete current
-implementation. Today those policy concerns still live across task runtime
-profile, explicit group selectors, matching rules, assignment policy,
-backpressure, and admission behavior. Project/workload owns binding and scoped
-configuration, not the reusable scheduling algorithm itself. Worker scheduling
-policy must not absorb runtime worker selection; live evidence, ranking,
-reserve, locks, and admission result stay in `RuntimeWorkerSelection`.
+Those owners consume explicit inputs and constraints:
+
+```text
+SchedulingPolicyCatalog / ProjectSchedulingBinding -> allowed/default policy selection
+task dispatch intent                               -> selected/inherited policies, route, target constraints
+WorkerGroupCapability                              -> project/event capability truth
+item                                               -> eventCode plus payload only
+```
+
+The catalog/binding policy path is not a complete current implementation.
+Today those policy concerns still live across task runtime profile, explicit
+group selectors, matching rules, assignment policy, backpressure, and admission
+behavior. Project/workload owns binding and scoped configuration, not the
+reusable scheduling algorithm itself. WorkerGroupCapability is an external
+capability truth that constrains worker scheduling resolution, not an internal
+Scheduling Plane strategy. Worker scheduling policy must not absorb runtime
+worker selection; live evidence, ranking, reserve, locks, and admission result
+stay in `RuntimeWorkerSelection`.
 
 ### Transport
 

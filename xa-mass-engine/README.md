@@ -98,11 +98,11 @@ mechanism growth behind pass-through wrappers.
 
 Policy abstraction boundary:
 
-- target direction: scheduling-related ownership is split into
+- Scheduling Plane ownership is split into three first-class owners:
   `TaskSchedulingPolicy`, `WorkerSchedulingPolicy`, and
   `RuntimeWorkerSelection`. Project / workload binding chooses allowed/default
-  task and worker policies plus scoped configuration. This is not yet a
-  complete implemented catalog/binding/resolved-policy path.
+  task and worker policies plus scoped configuration. A complete implemented
+  catalog/binding/resolved-policy path does not exist yet.
 - current implementation: policy remains distributed across task runtime
   profile, explicit group selectors, matching rule sets, assignment allocation,
   runtime backpressure, and admission behavior.

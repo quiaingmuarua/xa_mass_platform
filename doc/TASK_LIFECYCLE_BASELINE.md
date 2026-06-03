@@ -1,6 +1,6 @@
 # Task Lifecycle Baseline
 
-Last updated: 2026-06-02
+Last updated: 2026-06-03
 
 Status: current global task lifecycle baseline.
 
@@ -30,16 +30,30 @@ Use with:
 | --- | --- | --- |
 | `Task` | task shell, contract, intake window, aggregate status, terminal reason, and task-level execution policy | engine lifecycle plus kernel-facing task-shell ports |
 | `Worker` | execution identity plus group/node membership and declared worker facts | `xa-mass-worker-runtime` declaration/resource owners |
-| `Scheduling Plane` | deciding when task work may enter competition, dispatch, retry, pause, resume, or close; which worker universe it may compete in; and which concrete worker receives it. Target direction splits this into task scheduling policy, worker scheduling policy, and runtime worker selection; current policy remains distributed across task runtime profile, selectors, assignment policy, matching rules, backpressure, and admission | engine lifecycle and runtime queues today; future scheduling-policy catalog plus project/workload binding when implemented |
-| `Matching` | current worker-selection mechanism vocabulary inside Scheduling Plane; not a top-level owner | engine matching strategy plus worker-runtime candidate/evidence surfaces |
+| `Scheduling Plane` | deciding when task work may enter competition, dispatch, retry, pause, resume, or close; which worker universe it may compete in; and which concrete worker receives it. It has three first-class owners: task scheduling policy, worker scheduling policy, and runtime worker selection. Current policy remains distributed across task runtime profile, selectors, assignment policy, matching rules, backpressure, and admission | engine lifecycle and runtime queues today; future scheduling-policy catalog plus project/workload binding when implemented |
+
+Mechanism note:
+
+- `Matching` is current worker-selection mechanism vocabulary inside Scheduling
+  Plane, not a top-level primitive or owner. Current matching code combines
+  candidate source, rule-backed eligibility, ranking, reserve/lock, and runtime
+  admission. Future work should classify those pieces under worker scheduling
+  policy, runtime worker selection, or diagnostics instead of preserving
+  `Matching` as a fourth primitive.
 
 Architecture boundary:
 
 ```text
-SchedulingPolicyCatalog -> ProjectSchedulingBinding -> task dispatch intent
-  -> TaskSchedulingPolicyExecution -> WorkerSchedulingPolicyResolution
-  -> WorkerGroup capability -> RuntimeWorkerSelection
-  -> item event handler execution
+Scheduling Plane
+  TaskSchedulingPolicyExecution
+  WorkerSchedulingPolicyResolution
+  RuntimeWorkerSelection
+
+External inputs and constraints
+  SchedulingPolicyCatalog / ProjectSchedulingBinding  -> allowed/default policy selection
+  TaskDispatchIntent                                  -> selected policies, route, target constraints
+  WorkerGroupCapability                               -> project/event capability truth
+  Item                                                -> eventCode plus payload only
 ```
 
 The first two nodes are target owner boundaries. A complete scheduling policy
@@ -48,12 +62,13 @@ is still spread across runtime profile, explicit selectors, matching rules,
 assignment policy, backpressure, and admission behavior. The intended target is
 that reusable platform policies define task scheduling and worker scheduling
 strategy modes, project/workload binding chooses allowed/default policies and
-configuration, task intent selects or inherits policies and narrows groups,
-task scheduling execution handles competition admission/cadence/priority/
-fairness/budget, worker scheduling resolution handles resource-universe and
-pool constraints, WorkerGroup declares capability, RuntimeWorkerSelection
-chooses a worker from live evidence/admission, and the item tells the worker
-which handler to execute.
+configuration, task intent selects or inherits policies and narrows groups.
+Inside the Scheduling Plane, task scheduling execution handles competition
+admission/cadence/priority/fairness/budget, worker scheduling resolution handles
+resource-universe and pool constraints, and RuntimeWorkerSelection chooses a
+worker from live evidence/admission. WorkerGroup capability remains an external
+capability truth that constrains worker scheduling resolution, and the item only
+tells the worker which handler to execute.
 
 The current lifecycle mainline is:
 
@@ -91,7 +106,7 @@ task shell create
 13. `Task.workloadClass` is the explicit task-level runtime optimization field; current engine truth is `INTERACTIVE` or `BULK`, and assignment signal routing resolves from that field rather than free-form `sharedConfig` semantics.
 14. Result callbacks follow the result-side lifecycle mainline: runtime apply truth comes from `TaskWorkRuntime.applyResultWithContext(...)`; stable-final public result rows are committed into `TaskResultRuntime`; server review reports are emitted best-effort after runtime acceptance and are not the result commit point or a public result read source.
 15. `eventCode` is handler/capability identity. It validates that the selected WorkerGroup supports the item's handler and tells the worker which local handler to invoke. It is not a worker selector.
-16. The preferred abstraction boundary is: task scheduling policy decides competition admission/cadence/priority/fairness/budget, worker scheduling policy decides resource-universe and pool constraints, project/workload binding decides allowed/default policies and configuration, task decides dispatch intent and selected policies, WorkerGroup decides capability boundary, RuntimeWorkerSelection chooses a concrete worker from live evidence/admission, and item decides only the event handler plus payload.
+16. The architecture boundary is: task scheduling policy decides competition admission/cadence/priority/fairness/budget; worker scheduling policy decides resource-universe and pool constraints; RuntimeWorkerSelection chooses a concrete worker from live evidence/admission. Project/workload binding selects and configures allowed/default policies, task dispatch intent narrows selected policies/route/target constraints, WorkerGroup capability constrains project/event eligibility, and item decides only the event handler plus payload.
 
 ## 3. TaskStatus
 
