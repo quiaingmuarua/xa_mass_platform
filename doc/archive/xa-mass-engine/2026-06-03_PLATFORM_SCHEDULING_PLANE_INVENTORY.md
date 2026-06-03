@@ -1,6 +1,8 @@
 # Platform Scheduling Plane Inventory
 
-Status: PSP-0 inventory / classification.
+Status: archived PSP-0 inventory / classification.
+
+Archived: 2026-06-03 after PSP mainline implementation and active-link cleanup.
 
 Source roadmap: `roadmap/PLATFORM_SCHEDULING_PLANE_ROADMAP.md`.
 

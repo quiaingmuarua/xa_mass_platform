@@ -402,7 +402,8 @@ new owner.
 
 Scope:
 
-- Create `roadmap/PLATFORM_SCHEDULING_PLANE_INVENTORY.md`.
+- Create the PSP-0 inventory, now archived at
+  `doc/archive/xa-mass-engine/2026-06-03_PLATFORM_SCHEDULING_PLANE_INVENTORY.md`.
 - Inventory current source and tests for:
   - `TaskRuntimeProfile`
   - `Task.workloadClass`
