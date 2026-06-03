@@ -6,6 +6,8 @@ import com.xa.mass.engine.runtime.scheduling.SchedulingPlaneResolution;
 import com.xa.mass.engine.runtime.scheduling.SchedulingPlaneResolver;
 import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
 
+import java.util.Objects;
+
 /**
  * Engine-side adapter from resolved worker scheduling policy to worker runtime
  * selector input.
@@ -19,13 +21,17 @@ public final class WorkerTaskSelectorFactory {
 
     public static WorkerTaskSelector fromTask(Task task) {
         SchedulingPlaneResolution resolution = DEFAULT_RESOLVER.resolve(task);
-        ResolvedWorkerSchedulingPolicy workerPolicy = resolution.workerSchedulingPolicy();
+        return fromPolicy(resolution.workerSchedulingPolicy());
+    }
+
+    public static WorkerTaskSelector fromPolicy(ResolvedWorkerSchedulingPolicy workerPolicy) {
+        ResolvedWorkerSchedulingPolicy resolvedPolicy = Objects.requireNonNull(workerPolicy, "workerPolicy");
         return new WorkerTaskSelector(
-                workerPolicy.taskId(),
-                workerPolicy.workerGroupIds(),
-                workerPolicy.adapterNodeId(),
-                workerPolicy.targetWorkerId(),
-                workerPolicy.routeBucketKeys()
+                resolvedPolicy.taskId(),
+                resolvedPolicy.workerGroupIds(),
+                resolvedPolicy.adapterNodeId(),
+                resolvedPolicy.targetWorkerId(),
+                resolvedPolicy.routeBucketKeys()
         );
     }
 }

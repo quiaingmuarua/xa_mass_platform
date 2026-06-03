@@ -10,6 +10,7 @@ import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.worker.runtime.evidence.WorkerLoadSnapshot;
 import org.junit.jupiter.api.Test;
 
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -160,6 +161,58 @@ public class WorkerMatchContextTest {
         assertEquals(Set.of("shared", "us"), snapshot.get("workerSchedulingRoutingTags"));
         assertNoRuntimeRuleEvidence(ruleSnapshot);
         assertNoWorkerContextRuleFields(snapshot);
+    }
+
+    @Test
+    void fullContextOnlyKeysAreDiagnosticAndAbsentFromRuleEvaluationContext() {
+        Worker worker = new Worker();
+        worker.setWorkerId("worker-diagnostic-only");
+        worker.setStatus(WorkerStatus.ONLINE);
+        worker.setWorkerGroupId("pool-a");
+        worker.setSupportedProjects(List.of("demoApp"));
+        worker.setSupportedEventCodes(List.of("demo.dispatch"));
+        worker.setAgentVersion("1.2.3");
+        worker.setAttributes(Map.of("routingTags", "shared,us", "country", "us"));
+
+        Task task = new Task();
+        task.setTid("task-diagnostic-only");
+        task.setProject("demoApp");
+        task.setSharedConfig(Map.of("routingCode", "us", "_sdk", Map.of("eventCode", "demo.dispatch")));
+        task.setStatus(TaskStatus.READY);
+        task.setTaskTargetNumber(10);
+        task.getExecutionSpec().setBatchSize(2);
+        task.setMinRequiredWorkerCount(3);
+
+        WorkerMatchContext context = new WorkerMatchContext(candidate(worker), task);
+        Set<String> diagnosticOnlyKeys = new LinkedHashSet<>(context.getContext().keySet());
+        diagnosticOnlyKeys.removeAll(context.getRuleContext().keySet());
+
+        assertEquals(Set.of(
+                "taskSharedConfig",
+                "taskStatus",
+                "taskTargetNumber",
+                "batchSize",
+                "minRequiredWorkerCount",
+                "appCount",
+                "workerStatus",
+                "transportReachability",
+                "isTransportReachable",
+                "agentVersion",
+                "isWorkerAvailable",
+                "isWorkerLocked",
+                "workerActiveLeaseCount",
+                "workerReservedCount",
+                "workerDeclaredCapacity",
+                "workerEstimatedLoadRatio",
+                "currentActiveLeaseCount",
+                "estimatedLoadRatio",
+                "isWorkerSchedulingResourceAllocatable",
+                "isWorkerSchedulingResourceAvailable",
+                "isWorkerSchedulingResourceUsable",
+                "isWorkerSchedulingResourceReserved",
+                "isWorkerSchedulingResourceOccupied"
+        ), diagnosticOnlyKeys);
+        assertNoRuntimeRuleEvidence(context.getRuleContext());
     }
 
     @Test

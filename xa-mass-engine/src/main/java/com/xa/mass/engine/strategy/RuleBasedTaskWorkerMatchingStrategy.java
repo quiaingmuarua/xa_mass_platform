@@ -2,6 +2,8 @@ package com.xa.mass.engine.strategy;
 
 import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.engine.runtime.scheduling.SchedulingPlaneResolution;
+import com.xa.mass.engine.runtime.scheduling.SchedulingPlaneResolver;
 import com.xa.mass.engine.runtime.scheduling.TaskDispatchIntent;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateBatch;
@@ -54,6 +56,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
     private final WorkerCandidateRanker candidateRanker;
     private final WorkerDispatchResourcePolicy resourcePolicy;
     private final WorkerSchedulingCandidateEnumerator candidateEnumerator;
+    private final SchedulingPlaneResolver schedulingPlaneResolver;
 
     public RuleBasedTaskWorkerMatchingStrategy(MatchingRuleSetProvider ruleSetProvider,
                                                MatchingRuleEvaluator<Map<String, Object>> ruleEvaluator,
@@ -63,7 +66,8 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                                                AssignmentDiagnosticRecorder recordService,
                                                TraceEventLogger traceEventLogger) {
         this(ruleSetProvider, ruleEvaluator, candidateRuntime, admissionRuntime, schedulingViewRuntime, recordService,
-                traceEventLogger, new DefaultWorkerCandidateRanker(), new DefaultWorkerDispatchResourcePolicy(), null);
+                traceEventLogger, new DefaultSchedulingPlaneResolver(),
+                new DefaultWorkerCandidateRanker(), new DefaultWorkerDispatchResourcePolicy(), null);
     }
 
     RuleBasedTaskWorkerMatchingStrategy(MatchingRuleSetProvider ruleSetProvider,
@@ -76,12 +80,31 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                                         WorkerCandidateRanker candidateRanker,
                                         WorkerDispatchResourcePolicy resourcePolicy,
                                         WorkerSchedulingCandidateEnumerator candidateEnumerator) {
+        this(ruleSetProvider, ruleEvaluator, candidateRuntime, admissionRuntime, schedulingViewRuntime, recordService,
+                traceEventLogger, new DefaultSchedulingPlaneResolver(), candidateRanker, resourcePolicy,
+                candidateEnumerator);
+    }
+
+    RuleBasedTaskWorkerMatchingStrategy(MatchingRuleSetProvider ruleSetProvider,
+                                        MatchingRuleEvaluator<Map<String, Object>> ruleEvaluator,
+                                        WorkerCandidateRuntime candidateRuntime,
+                                        WorkerAdmissionRuntime admissionRuntime,
+                                        WorkerSchedulingViewRuntime schedulingViewRuntime,
+                                        AssignmentDiagnosticRecorder recordService,
+                                        TraceEventLogger traceEventLogger,
+                                        SchedulingPlaneResolver schedulingPlaneResolver,
+                                        WorkerCandidateRanker candidateRanker,
+                                        WorkerDispatchResourcePolicy resourcePolicy,
+                                        WorkerSchedulingCandidateEnumerator candidateEnumerator) {
         this.ruleSetProvider = Objects.requireNonNull(ruleSetProvider, "ruleSetProvider");
         this.ruleEvaluator = Objects.requireNonNull(ruleEvaluator, "ruleEvaluator");
         this.candidateRuntime = Objects.requireNonNull(candidateRuntime, "candidateRuntime");
         this.admissionRuntime = Objects.requireNonNull(admissionRuntime, "admissionRuntime");
         this.recordService = recordService;
         this.traceEventLogger = traceEventLogger;
+        this.schedulingPlaneResolver = schedulingPlaneResolver == null
+                ? new DefaultSchedulingPlaneResolver()
+                : schedulingPlaneResolver;
         this.candidateRanker = candidateRanker != null ? candidateRanker : new DefaultWorkerCandidateRanker();
         this.resourcePolicy = resourcePolicy == null ? new DefaultWorkerDispatchResourcePolicy() : resourcePolicy;
         WorkerSchedulingViewRuntime schedulingRuntime =
@@ -97,8 +120,9 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
         if (maxWorkerCount <= 0) {
             return matchedWorkers;
         }
-        TaskDispatchIntent dispatchIntent = TaskDispatchIntent.fromTask(task);
-        WorkerTaskSelector selector = WorkerTaskSelectorFactory.fromTask(task);
+        SchedulingPlaneResolution resolution = schedulingPlaneResolver.resolve(task);
+        TaskDispatchIntent dispatchIntent = resolution.dispatchIntent();
+        WorkerTaskSelector selector = WorkerTaskSelectorFactory.fromPolicy(resolution.workerSchedulingPolicy());
         WorkerCandidateBatch<WorkerCandidateRow> candidateBatch = candidateRuntime.findWorkerCandidateBatch(
                 selector,
                 candidateAcquisitionLimit(dispatchIntent, maxWorkerCount)

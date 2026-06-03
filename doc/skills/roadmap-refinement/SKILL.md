@@ -1,6 +1,6 @@
 ---
 name: roadmap-refinement
-description: Review, refine, create, or repair architecture and implementation roadmaps with code-first owner review, boundary analysis, executable slices, inventory planning, acceptance criteria, guardrails, and verification commands. Use when the user asks to review or update a roadmap, assess whether a roadmap is executable, decide whether work belongs in an existing roadmap or a separate one, create a module-boundary roadmap, perform owner review, or produce/update a caller/dependency/boundary inventory before implementation.
+description: Converge architecture or implementation roadmap work into an executable, code-grounded plan with owner review, boundary analysis, proof surfaces, guardrails, and verification commands. Use when the user asks for roadmap review, roadmap repair, executable slice planning, owner-boundary review, proof/guard design, roadmap residue follow-up, merge/split decisions between roadmaps, or caller/dependency/boundary inventory before implementation. Do not trigger for open-ended brainstorming, early product/architecture ideation, or casual discussion unless the user asks to turn the idea into a roadmap, review, proof plan, or implementation plan.
 ---
 
 # Roadmap Refinement
@@ -8,6 +8,11 @@ description: Review, refine, create, or repair architecture and implementation r
 Use this skill to turn vague or drifting roadmap work into an executable,
 code-grounded plan. Default to owner review: validate the real code path first,
 then refine the roadmap.
+
+Do not use this skill as a fixed template for early exploration. If the user is
+brainstorming, asking "what could this be?", or explicitly wants free-form
+architecture discussion, stay in normal reasoning mode until they ask to
+converge on a roadmap, review, proof plan, or implementation plan.
 
 ## Mode Rule
 
@@ -391,6 +396,10 @@ When executing a roadmap slice:
 10. After a rename, dependency, boundary, or compatibility-removal slice,
     suggest or run `roadmap-residue-scan` when available before declaring the
     slice complete.
+11. If implementation changes close a roadmap's own `Known gaps`, `current
+    site`, `Scope`, or verification assumptions, update that roadmap from
+    plan-state wording to evidence-state wording in the same slice. Do not
+    leave a completed issue described as a current gap.
 
 ### 12. Review Delivery Format
 
@@ -478,6 +487,8 @@ Before finishing a roadmap refinement:
 - Portfolio state was classified when the request involves many roadmaps.
 - Mode was respected: review-only did not edit files.
 - Companion docs referenced by the roadmap exist and do not contradict it.
+- The roadmap's own current-gap and known-site wording matches the code after
+  implementation.
 - Related roadmap Non-Goals and acceptance criteria do not conflict.
 - Public SDK/API breaking changes are called out when present.
 - File, class, method, and route names match current code.

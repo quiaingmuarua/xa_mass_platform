@@ -5,6 +5,11 @@ import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.TestWorkerCandidateRows;
+import com.xa.mass.engine.runtime.TaskRuntimeProfile;
+import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy;
+import com.xa.mass.engine.runtime.scheduling.ResolvedWorkerSchedulingPolicy;
+import com.xa.mass.engine.runtime.scheduling.SchedulingPlaneResolution;
+import com.xa.mass.engine.runtime.scheduling.TaskDispatchIntent;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
 import com.xa.mass.engine.model.WorkerSchedulingView;
@@ -15,7 +20,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class DefaultAssignmentAllocationPolicyTest {
+public class DefaultAssignmentAllocationPolicyTest {
 
     private final DefaultAssignmentAllocationPolicy policy = new DefaultAssignmentAllocationPolicy();
 
@@ -91,6 +96,24 @@ class DefaultAssignmentAllocationPolicyTest {
     }
 
     @Test
+    void planUsesResolvedTaskSchedulingPolicyInsteadOfRawTaskFields() {
+        Task task = task(40, 1, 1, TaskStatus.READY);
+        task.getExecutionSpec().setWorkloadClass(TaskWorkloadClass.BULK);
+        DefaultAssignmentAllocationPolicy resolvedPolicy = new DefaultAssignmentAllocationPolicy(
+                new DefaultWorkerBudgetPolicy(),
+                ignored -> resolution(task, TaskWorkloadClass.INTERACTIVE, 10, 3)
+        );
+
+        AssignmentAllocationPlan plan = resolvedPolicy.plan(new AssignmentAllocationRequest(
+                task, TaskStatus.READY, 40, 0));
+
+        assertEquals(4, plan.rawDesiredDispatchWorkerCount());
+        assertEquals(3, plan.requiredStartWorkerCount());
+        assertEquals(4, plan.desiredDispatchWorkerCount());
+        assertEquals(DefaultWorkerBudgetPolicy.DEFAULT_INTERACTIVE_MAX_WORKERS, plan.workerBudget());
+    }
+
+    @Test
     void exhaustedBudgetProducesExplicitDecision() {
         Task task = task(10, 1, 1, TaskStatus.RUNNING);
 
@@ -110,7 +133,7 @@ class DefaultAssignmentAllocationPolicyTest {
     @Test
     void finiteBudgetCapsMatchRequestAndDispatchLimitWithoutChangingMinimumGate() {
         DefaultAssignmentAllocationPolicy cappedPolicy = new DefaultAssignmentAllocationPolicy(
-                (task, desiredDispatchWorkerCount, currentTaskWorkerCount) ->
+                (taskPolicy, desiredDispatchWorkerCount, currentTaskWorkerCount) ->
                         new WorkerBudgetDecision(3, currentTaskWorkerCount, 1, true)
         );
         Task task = task(10, 2, 2, TaskStatus.READY);
@@ -195,6 +218,29 @@ class DefaultAssignmentAllocationPolicyTest {
         task.setMinRequiredWorkerCount(minWorkerCount);
         task.setStatus(status);
         return task;
+    }
+
+    private SchedulingPlaneResolution resolution(Task task,
+                                                 TaskWorkloadClass workloadClass,
+                                                 int batchSize,
+                                                 int minWorkerCount) {
+        TaskDispatchIntent intent = TaskDispatchIntent.fromTask(task);
+        return new SchedulingPlaneResolution(
+                intent,
+                new ResolvedTaskSchedulingPolicy(
+                        task.getTid(),
+                        workloadClass,
+                        TaskRuntimeProfile.DispatchLane.BULK,
+                        TaskRuntimeProfile.DispatchPriority.NORMAL,
+                        TaskRuntimeProfile.BatchPolicy.LARGE,
+                        TaskRuntimeProfile.LeaseProfile.NORMAL,
+                        TaskRuntimeProfile.BackpressureClass.BULK,
+                        batchSize,
+                        0,
+                        minWorkerCount
+                ),
+                ResolvedWorkerSchedulingPolicy.from(intent, null)
+        );
     }
 
     private WorkerSchedulingCandidate matched(String workerId) {

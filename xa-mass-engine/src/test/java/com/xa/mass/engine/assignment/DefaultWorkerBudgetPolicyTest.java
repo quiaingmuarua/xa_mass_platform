@@ -1,20 +1,20 @@
 package com.xa.mass.engine.assignment;
 
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
-import com.xa.mass.base.model.Task;
+import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class DefaultWorkerBudgetPolicyTest {
+public class DefaultWorkerBudgetPolicyTest {
 
     private final DefaultWorkerBudgetPolicy policy = new DefaultWorkerBudgetPolicy();
 
     @Test
     void interactiveWorkloadUsesSmallDefaultBudget() {
-        WorkerBudgetDecision decision = policy.resolve(task(TaskWorkloadClass.INTERACTIVE), 3, 1);
+        WorkerBudgetDecision decision = policy.resolve(taskPolicy(TaskWorkloadClass.INTERACTIVE), 3, 1);
 
         assertEquals(DefaultWorkerBudgetPolicy.DEFAULT_INTERACTIVE_MAX_WORKERS, decision.workerBudget());
         assertEquals(1, decision.currentTaskWorkerCount());
@@ -24,8 +24,8 @@ class DefaultWorkerBudgetPolicyTest {
 
     @Test
     void bulkAndUnknownWorkloadUseBulkDefaultBudget() {
-        WorkerBudgetDecision bulk = policy.resolve(task(TaskWorkloadClass.BULK), 30, 0);
-        WorkerBudgetDecision unknown = policy.resolve(task(null), 30, 0);
+        WorkerBudgetDecision bulk = policy.resolve(taskPolicy(TaskWorkloadClass.BULK), 30, 0);
+        WorkerBudgetDecision unknown = policy.resolve(taskPolicy(null), 30, 0);
 
         assertEquals(DefaultWorkerBudgetPolicy.DEFAULT_BULK_MAX_WORKERS, bulk.workerBudget());
         assertEquals(DefaultWorkerBudgetPolicy.DEFAULT_BULK_MAX_WORKERS, unknown.workerBudget());
@@ -35,7 +35,7 @@ class DefaultWorkerBudgetPolicyTest {
 
     @Test
     void currentTaskWorkerCountReducesAvailableBudget() {
-        WorkerBudgetDecision decision = policy.resolve(task(TaskWorkloadClass.BULK), 5, 19);
+        WorkerBudgetDecision decision = policy.resolve(taskPolicy(TaskWorkloadClass.BULK), 5, 19);
 
         assertEquals(DefaultWorkerBudgetPolicy.DEFAULT_BULK_MAX_WORKERS, decision.workerBudget());
         assertEquals(19, decision.currentTaskWorkerCount());
@@ -45,16 +45,24 @@ class DefaultWorkerBudgetPolicyTest {
 
     @Test
     void exhaustedBudgetHasNoAvailableWorkers() {
-        WorkerBudgetDecision decision = policy.resolve(task(TaskWorkloadClass.INTERACTIVE), 1, 5);
+        WorkerBudgetDecision decision = policy.resolve(taskPolicy(TaskWorkloadClass.INTERACTIVE), 1, 5);
 
         assertEquals(0, decision.availableWorkerCount());
         assertTrue(decision.budgetLimited());
     }
 
-    private Task task(TaskWorkloadClass workloadClass) {
-        Task task = new Task();
-        task.setTid("task-1");
-        task.getExecutionSpec().setWorkloadClass(workloadClass);
-        return task;
+    private ResolvedTaskSchedulingPolicy taskPolicy(TaskWorkloadClass workloadClass) {
+        return new ResolvedTaskSchedulingPolicy(
+                "task-1",
+                workloadClass,
+                null,
+                null,
+                null,
+                null,
+                null,
+                1,
+                0,
+                0
+        );
     }
 }

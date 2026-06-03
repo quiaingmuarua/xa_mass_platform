@@ -7,6 +7,8 @@ import com.xa.mass.engine.runtime.TaskRuntimeProfileResolver;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicy;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
 import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy;
+import com.xa.mass.engine.runtime.scheduling.SchedulingPlaneResolver;
+import com.xa.mass.engine.strategy.DefaultSchedulingPlaneResolver;
 import com.xa.mass.engine.TraceEventLogger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,6 +16,7 @@ import org.slf4j.LoggerFactory;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -40,7 +43,7 @@ public class TaskAssignWorker {
     private final long retryDelayMillis;
     private final int assignmentQueueCapacity;
     private final TaskRuntimeRetryPolicyResolver taskRuntimeRetryPolicyResolver;
-    private final TaskRuntimeProfileResolver taskRuntimeProfileResolver;
+    private final SchedulingPlaneResolver schedulingPlaneResolver;
     private final TraceEventLogger traceEventLogger;
     private final Map<TaskRuntimeProfile.DispatchLane, LaneState> laneStates =
             new EnumMap<>(TaskRuntimeProfile.DispatchLane.class);
@@ -95,23 +98,37 @@ public class TaskAssignWorker {
                 retryDelayMillis,
                 assignmentQueueCapacity,
                 taskRuntimeRetryPolicyResolver,
-                TASK_RUNTIME_PROFILE_RESOLVER,
+                new DefaultSchedulingPlaneResolver(TASK_RUNTIME_PROFILE_RESOLVER, null),
                 TraceEventLogger.noop());
+    }
+
+    TaskAssignWorker(TaskWorkerAssignListener workerAssignListener,
+                      long retryDelayMillis,
+                      int assignmentQueueCapacity,
+                      TaskRuntimeRetryPolicyResolver taskRuntimeRetryPolicyResolver,
+                      TaskRuntimeProfileResolver taskRuntimeProfileResolver,
+                      TraceEventLogger traceEventLogger) {
+        this(workerAssignListener,
+                retryDelayMillis,
+                assignmentQueueCapacity,
+                taskRuntimeRetryPolicyResolver,
+                new DefaultSchedulingPlaneResolver(taskRuntimeProfileResolver, null),
+                traceEventLogger);
     }
 
     TaskAssignWorker(TaskWorkerAssignListener workerAssignListener,
                      long retryDelayMillis,
                      int assignmentQueueCapacity,
                      TaskRuntimeRetryPolicyResolver taskRuntimeRetryPolicyResolver,
-                     TaskRuntimeProfileResolver taskRuntimeProfileResolver,
+                     SchedulingPlaneResolver schedulingPlaneResolver,
                      TraceEventLogger traceEventLogger) {
         this.workerAssignListener = workerAssignListener;
         this.retryDelayMillis = retryDelayMillis;
         this.assignmentQueueCapacity = Math.max(1, assignmentQueueCapacity);
         this.taskRuntimeRetryPolicyResolver = taskRuntimeRetryPolicyResolver;
-        this.taskRuntimeProfileResolver = taskRuntimeProfileResolver != null
-                ? taskRuntimeProfileResolver
-                : TASK_RUNTIME_PROFILE_RESOLVER;
+        this.schedulingPlaneResolver = schedulingPlaneResolver == null
+                ? new DefaultSchedulingPlaneResolver(TASK_RUNTIME_PROFILE_RESOLVER, null)
+                : schedulingPlaneResolver;
         this.traceEventLogger = traceEventLogger;
     }
 
@@ -124,7 +141,7 @@ public class TaskAssignWorker {
                 retryDelayMillis,
                 assignmentQueueCapacity,
                 taskRuntimeRetryPolicyResolver,
-                TASK_RUNTIME_PROFILE_RESOLVER,
+                new DefaultSchedulingPlaneResolver(TASK_RUNTIME_PROFILE_RESOLVER, null),
                 traceEventLogger);
     }
 
@@ -560,7 +577,8 @@ public class TaskAssignWorker {
     }
 
     private ResolvedTaskSchedulingPolicy resolveTaskSchedulingPolicy(Task task) {
-        return ResolvedTaskSchedulingPolicy.from(task, taskRuntimeProfileResolver.resolve(task));
+        return Objects.requireNonNull(schedulingPlaneResolver.resolve(task).taskSchedulingPolicy(),
+                "taskSchedulingPolicy");
     }
 
     private int totalQueueDepth() {

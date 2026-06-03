@@ -56,12 +56,14 @@ External inputs and constraints
   Item                                                -> eventCode plus payload only
 ```
 
-The first two nodes are target owner boundaries. A complete scheduling policy
-catalog or project/workload binding module does not exist yet. Current policy
-is still spread across runtime profile, explicit selectors, matching rules,
-assignment policy, backpressure, and admission behavior. The intended target is
-that reusable platform policies define task scheduling and worker scheduling
-strategy modes, project/workload binding chooses allowed/default policies and
+The first two nodes are target owner boundaries. Current engine-facing value
+contracts exist for `TaskDispatchIntent`, `ResolvedTaskSchedulingPolicy`, and
+`ResolvedWorkerSchedulingPolicy`, but a complete scheduling policy catalog or
+project/workload binding module does not exist yet. Current policy is still
+spread across runtime profile, explicit selectors, matching rules, assignment
+policy, backpressure, and admission behavior. The intended target is that
+reusable platform policies define task scheduling and worker scheduling strategy
+modes, project/workload binding chooses allowed/default policies and
 configuration, task intent selects or inherits policies and narrows groups.
 Inside the Scheduling Plane, task scheduling execution handles competition
 admission/cadence/priority/fairness/budget, worker scheduling resolution handles

@@ -3,22 +3,32 @@ package com.xa.mass.engine.assignment;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.model.WorkerSchedulingCandidate;
-import com.xa.mass.engine.runtime.TaskRuntimeProfileResolver;
 import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy;
+import com.xa.mass.engine.runtime.scheduling.SchedulingPlaneResolver;
+import com.xa.mass.engine.strategy.DefaultSchedulingPlaneResolver;
 
 import java.util.List;
+import java.util.Objects;
 
 public final class DefaultAssignmentAllocationPolicy implements AssignmentAllocationPolicy {
 
     private final WorkerBudgetPolicy workerBudgetPolicy;
-    private final TaskRuntimeProfileResolver taskRuntimeProfileResolver = new TaskRuntimeProfileResolver();
+    private final SchedulingPlaneResolver schedulingPlaneResolver;
 
     public DefaultAssignmentAllocationPolicy() {
         this(new DefaultWorkerBudgetPolicy());
     }
 
     public DefaultAssignmentAllocationPolicy(WorkerBudgetPolicy workerBudgetPolicy) {
+        this(workerBudgetPolicy, new DefaultSchedulingPlaneResolver());
+    }
+
+    DefaultAssignmentAllocationPolicy(WorkerBudgetPolicy workerBudgetPolicy,
+                                      SchedulingPlaneResolver schedulingPlaneResolver) {
         this.workerBudgetPolicy = workerBudgetPolicy == null ? new DefaultWorkerBudgetPolicy() : workerBudgetPolicy;
+        this.schedulingPlaneResolver = schedulingPlaneResolver == null
+                ? new DefaultSchedulingPlaneResolver()
+                : schedulingPlaneResolver;
     }
 
     @Override
@@ -29,7 +39,7 @@ public final class DefaultAssignmentAllocationPolicy implements AssignmentAlloca
         int rawDesiredDispatchWorkerCount = Math.max(1,
                 (int) Math.ceil((double) Math.max(request.readyWorkCount(), 1) / batchSize));
         WorkerBudgetDecision budgetDecision = workerBudgetPolicy.resolve(
-                task,
+                taskPolicy,
                 rawDesiredDispatchWorkerCount,
                 request.currentTaskWorkerCount()
         );
@@ -62,7 +72,8 @@ public final class DefaultAssignmentAllocationPolicy implements AssignmentAlloca
     }
 
     private ResolvedTaskSchedulingPolicy resolveTaskSchedulingPolicy(Task task) {
-        return ResolvedTaskSchedulingPolicy.from(task, taskRuntimeProfileResolver.resolve(task));
+        return Objects.requireNonNull(schedulingPlaneResolver.resolve(task).taskSchedulingPolicy(),
+                "taskSchedulingPolicy");
     }
 
     @Override

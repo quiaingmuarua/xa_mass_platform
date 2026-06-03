@@ -101,8 +101,10 @@ Policy abstraction boundary:
 - Scheduling Plane ownership is split into three first-class owners:
   `TaskSchedulingPolicy`, `WorkerSchedulingPolicy`, and
   `RuntimeWorkerSelection`. Project / workload binding chooses allowed/default
-  task and worker policies plus scoped configuration. A complete implemented
-  catalog/binding/resolved-policy path does not exist yet.
+  task and worker policies plus scoped configuration. Current engine-facing
+  value contracts exist for `TaskDispatchIntent`,
+  `ResolvedTaskSchedulingPolicy`, and `ResolvedWorkerSchedulingPolicy`; a
+  catalog/binding/configurable policy path is not implemented yet.
 - current implementation: policy remains distributed across task runtime
   profile, explicit group selectors, matching rule sets, assignment allocation,
   runtime backpressure, and admission behavior.

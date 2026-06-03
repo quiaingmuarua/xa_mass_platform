@@ -1,6 +1,6 @@
 # Platform Scheduling Plane Stabilization And Proof Roadmap
 
-Status: proposed stabilization / proof roadmap.
+Status: active stabilization / proof roadmap.
 
 Predecessors:
 
@@ -150,18 +150,18 @@ and guards.
 ## Known Proof Gaps
 
 The first Scheduling Plane implementation introduced resolved views and moved
-some consumers onto them, but the proof is not yet strong enough to treat the
-boundary as stable.
+some consumers onto them. This roadmap strengthens the proof before the
+boundary can be treated as a feature-expansion base.
 
 Known gaps:
 
 - `behavior-neutral` is currently supported by updated tests, not by a
   before/after characterization or golden diff.
-- Worker-side selector construction consumes `ResolvedWorkerSchedulingPolicy`,
-  but consumers are not yet guarded from bypassing resolved views and reading
-  migrated task fields directly.
-- `TaskDispatchIntent` is currently computed in more than one place in a
-  dispatch pass.
+- Worker-side selector construction consumes `ResolvedWorkerSchedulingPolicy`;
+  architecture guards must prevent migrated consumers from bypassing resolved
+  views and reading raw task fields directly.
+- `TaskDispatchIntent` and `WorkerTaskSelector` construction must stay behind
+  the single Scheduling Plane resolution boundary in production dispatch paths.
 - `workloadClass` is the clearest current strategy fact and must be used as the
   first duplicate-truth / bypass-guard sample.
 - `ProjectSchedulingBinding` remains a target name, but the future binding
@@ -203,9 +203,9 @@ Acceptance:
 - No active doc implies persisted catalog/binding already exists.
 - Superseded truth is either removed, reclassified as diagnostic/derived, or
   recorded as a named residue item.
-- `doc/AGENT_BASELINE.md`, `doc/TASK_LIFECYCLE_BASELINE.md`, and
-  `xa-mass-engine/README.md` are consistent on the current Scheduling Plane
-  shape.
+- `AGENTS.md`, `doc/AGENT_BASELINE.md`, `doc/TASK_LIFECYCLE_BASELINE.md`,
+  and `xa-mass-engine/README.md` are consistent on the current Scheduling
+  Plane shape.
 
 Suggested residue checks:
 
@@ -246,10 +246,10 @@ Scope:
   - perturb a resolved worker scheduling field and prove worker-side consumer
     behavior changes,
   - prove the same consumer is not silently reading the old raw task field.
-- Collapse readonly duplicate resolution in the matching path so a dispatch
-  pass computes `TaskDispatchIntent` / `SchedulingPlaneResolution` once and
-  threads the resolved inputs down to selector construction and candidate
-  acquisition.
+- Keep readonly duplicate resolution collapsed in the matching path so a
+  dispatch pass computes `TaskDispatchIntent` / `SchedulingPlaneResolution`
+  once and threads the resolved inputs down to selector construction and
+  candidate acquisition.
 - Avoid introducing a new orchestration owner.
 
 Acceptance:
@@ -271,6 +271,10 @@ mvn -pl xa-mass-engine "-Dtest=DefaultSchedulingPlaneResolverTest,DefaultAssignm
 rg -n "TaskDispatchIntent\\.fromTask\\(|ResolvedTaskSchedulingPolicy\\.from\\(|ResolvedWorkerSchedulingPolicy\\.from\\(|WorkerTaskSelectorFactory\\.fromTask\\(" xa-mass-engine/src/main/java --glob '!**/target/**'
 rg -n "getExecutionSpec\\(\\)\\.getWorkloadClass\\(|getWorkloadClass\\(" xa-mass-engine/src/main/java --glob '!**/target/**'
 ```
+
+Behavior-neutral assertion audit:
+
+- `xa-mass-engine/doc/baseline/PLATFORM_SCHEDULING_PLANE_BEHAVIOR_NEUTRAL_AUDIT.md`
 
 ## SPSP-2 Rule Context Stability
 
@@ -297,8 +301,9 @@ Acceptance:
   context boundary and covers variable passing / helper extraction / evaluator
   overloads, not only one literal inline call shape.
 - Any remaining diagnostic-only keys are named and justified.
-- No PSP-5 residue item remains that can silently change matching behavior
-  after policy code exists.
+- No diagnostic-only key in `WorkerMatchContext#getContext()` that is absent
+  from `WorkerMatchContext#getRuleContext()` can silently alter rule evaluation
+  outcomes.
 
 Suggested proof:
 
@@ -316,6 +321,11 @@ Goal: turn the PSP-4 "no duplicate policy truth" rule into an auditable proof
 surface.
 
 Scope:
+
+This stage adds automated guard coverage for writable duplicate truth and
+records readonly resolution sites as named residue if they were not fixed in
+SPSP-1. SPSP-1 owns fixing duplicated resolution in the matching path; SPSP-3
+owns preventing that duplication from becoming an untracked boundary leak.
 
 - Add architecture guard coverage for source-detectable duplicate truth:
   - no production `SchedulingPolicyCatalog` implementation,
@@ -385,6 +395,8 @@ Acceptance:
 - A matching proof can explain why a candidate was accepted, rejected, or
   admitted.
 - Trace does not introduce any new writable policy field.
+- Any identified trace gaps are recorded as a bounded list with a named owner;
+  no unbounded trace enrichment is added.
 - Proof registry entries point to one primary proof and avoid duplicate
   happy-path tests.
 
@@ -394,6 +406,12 @@ Suggested proof surfaces:
 mvn -pl xa-mass-engine "-Dtest=EngineSchedulingCoreSuite,TaskSchedulingGateAndTargetingTest,TaskContractSchedulingBehaviorTest,TaskSchedulingContentionTest" test
 rg -n "dispatchIntent|taskSchedulingPolicy|workerSchedulingPolicy|candidateSource|rule.*detail|admission" xa-mass-engine xa-mass-trace doc roadmap --glob '!**/target/**'
 ```
+
+Evidence checkpoint:
+
+- `xa-mass-engine/doc/baseline/PLATFORM_SCHEDULING_PLANE_TRACE_PROOF_GAPS.md`
+  records current trace evidence and bounded trace gaps. It is not approval for
+  open-ended trace enrichment.
 
 ## SPSP-5 Public Vocabulary Checkpoint
 
@@ -425,6 +443,12 @@ Acceptance:
 - Engine docs do not hide current public scheduling inputs.
 - Any future public vocabulary needs a successor decision with caller and proof.
 
+Evidence checkpoint:
+
+- `xa-mass-engine/doc/baseline/PLATFORM_SCHEDULING_PLANE_PUBLIC_VOCABULARY_CHECKPOINT.md`
+  classifies the current ambiguous vocabulary and preserves the no-new-public-
+  fields boundary.
+
 ## SPSP-6 Successor Decision Gate
 
 Goal: prevent the next roadmap from starting before the proof gap is closed.
@@ -448,11 +472,17 @@ produces all of the following evidence:
 Without that evidence, the successor should remain a cleanup/proof roadmap, not
 a policy product roadmap.
 
+Current gate result: not satisfied. Current code and docs prove computed-default
+resolved views and selected consumers, but they do not prove two concrete policy
+variants with caller-visible cost, a persisted selection owner, or a settled
+binding subject. A successor roadmap may continue cleanup/proof work; it must
+not introduce policy product configuration from this roadmap alone.
+
 ## Verification Matrix
 
 | Area | Minimum proof |
 | --- | --- |
-| Behavior neutrality | characterization/golden diff or landing-commit assertion audit |
+| Behavior neutrality | `xa-mass-engine/doc/baseline/PLATFORM_SCHEDULING_PLANE_BEHAVIOR_NEUTRAL_AUDIT.md` or a future characterization/golden diff |
 | Resolver behavior | `DefaultSchedulingPlaneResolverTest` |
 | Resolved-view perturbation | targeted consumer perturbation tests for migrated facts |
 | Single resolution boundary | source guard for duplicate `TaskDispatchIntent` / resolution computation |
@@ -461,6 +491,9 @@ a policy product roadmap.
 | Rule boundary | `WorkerMatchContextTest`, `RuleConfigTest`, `QLExpressRuleEvaluatorTest` |
 | Architecture guard | `EngineSchedulingCoreArchitectureGuardTest` |
 | Scheduling E2E behavior | `EngineSchedulingCoreSuite`, task scheduling behavior tests |
+| Trace proof boundary | `xa-mass-engine/doc/baseline/PLATFORM_SCHEDULING_PLANE_TRACE_PROOF_GAPS.md` plus `doc/TRACE_CONTRACT.md` analyzer fields |
+| Public vocabulary | `xa-mass-engine/doc/baseline/PLATFORM_SCHEDULING_PLANE_PUBLIC_VOCABULARY_CHECKPOINT.md` |
+| Successor gate | SPSP-6 current gate result remains not satisfied |
 | Docs and residue | `rg` checks plus active doc review |
 
 ## Risks
