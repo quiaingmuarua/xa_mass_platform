@@ -54,15 +54,15 @@ app.registerProject(ProjectDefinition.builder()
         .build());
 ```
 
-The project is the business container. Task creation and worker capability both
-use project membership when deciding eligibility.
+The project is the business container. Task creation and WorkerGroup capability
+both use project membership when deciding eligibility.
 
-Target direction: project / workload-profile should own default scheduling
-policy such as allowed WorkerGroups, default selector, fairness, quota,
-priority, backpressure, and matching rule-set references. That full
-`ProjectSchedulingPolicy` owner is not yet implemented; current behavior still
-uses task runtime profile, explicit group selectors, matching rules, assignment
-policy, backpressure, and admission behavior.
+Target direction: scheduling-related ownership is split into task scheduling
+policy, worker scheduling policy, and runtime worker selection. A project /
+workload binding chooses allowed/default task and worker policies plus scoped
+configuration. That catalog/binding/resolved-policy path is not yet implemented;
+current behavior still uses task runtime profile, explicit group selectors,
+matching rules, assignment policy, backpressure, and admission behavior.
 
 ## 3. Declare Capability And Register The Worker
 
@@ -108,11 +108,11 @@ Important distinction:
   optional target constraints
 - item `eventCode` only selects the worker-side handler after group capability
   has been validated
-- scheduling still checks runtime state, reachability, matching policy,
-  capacity, ranking, and resource policy before dispatch
-- the current default matching policy includes rule-backed eligibility, but
+- scheduling still checks runtime state, reachability, worker scheduling policy,
+  capacity, ranking, reserve/admission, and explicit evidence before dispatch
+- the current worker-selection mechanism includes rule-backed eligibility, but
   worker attributes are only one evidence family and must remain explicit
-  scheduling evidence
+  selection evidence
 
 ## 4. Start The Worker Client
 

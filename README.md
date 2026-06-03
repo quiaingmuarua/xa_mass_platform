@@ -89,13 +89,16 @@ Current mainline execution path:
 
 Scheduling and matching boundary:
 
-- target direction: project / workload-profile owns the default scheduling
-  policy, such as allowed WorkerGroups, default group selector, fairness,
-  quota, priority, backpressure, and matching rule-set references
-- current implementation: that policy is not yet centralized as a
-  `ProjectSchedulingPolicy`; today it is still distributed across task runtime
-  profile, explicit worker group selectors, matching rule sets, assignment
-  policy, and runtime backpressure/admission behavior
+- target direction: scheduling-related ownership is split into three categories:
+  `TaskSchedulingPolicy` for competition admission/cadence/priority/fairness/
+  budget, `WorkerSchedulingPolicy` for worker resource-universe selection and
+  pool constraints, and `RuntimeWorkerSelection` for concrete worker choice
+  from live evidence and admission state
+- current implementation: policy resolution is not yet centralized into a
+  catalog/binding/resolved task-policy/resolved worker-policy path; today it is
+  still distributed across task runtime profile, explicit worker group
+  selectors, matching rule sets, assignment policy, and runtime
+  backpressure/admission behavior
 - `TaskDispatchIntent` is the task-level dispatch intent: project,
   `workerGroupId(s)` or selector, `routingCode`, route attributes,
   optional `targetWorkerId`, and optional constrained target worker attributes
@@ -103,7 +106,7 @@ Scheduling and matching boundary:
   default group attributes, and capacity/concurrency defaults
 - runtime worker selection happens inside an already selected WorkerGroup using
   online/presence/load/admission/draining/lease evidence
-- work items do not own worker matching policy. An item carries `eventCode`
+- work items do not own worker-selection policy. An item carries `eventCode`
   plus input or `payloadRef`; `eventCode` is handler/capability identity, not a
   worker selector
 - correct path: `item.eventCode -> validate selected WorkerGroup supports the
@@ -115,12 +118,12 @@ CI/CD runners, device/RPA workers, human-review queues, and GPU/inference
 workers.
 The shared kernel is:
 
-- `stateful worker + scheduling evidence + policy-based matching + per-item result tracking + task-level convergence`
+- `stateful worker + scheduling evidence + worker-selection mechanism + per-item result tracking + task-level convergence`
 - stable kernel truth starts from `Task + Worker + Scheduling + Matching`; result, audit, and terminal policy are lifecycle consequences of that mainline
-- matching as a scheduling policy surface: the current default uses group-first
-  candidate acquisition, worker scheduling evidence, QLExpress-backed
-  eligibility rules, ranking, and admission without changing worker-runtime
-  ownership
+- matching as current worker-selection mechanism: the current default uses
+  group-first candidate acquisition, worker scheduling evidence,
+  QLExpress-backed eligibility rules, ranking, and admission without changing
+  worker-runtime ownership. It is not a top-level policy owner.
 - transport-neutral runtime seams: task dispatch, result ingest, and system events
 - SDK-first runtime entry; server provides a lightweight backend product shell
   for HTTP APIs, auth/IAM, API-key operations, and the control console without

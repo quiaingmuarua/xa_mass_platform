@@ -29,8 +29,9 @@ In practical terms:
 3. Each item declares an `eventCode`.
 4. SDK/intake resolves event/project intent into explicit worker-group
    selectors when needed.
-5. The engine narrows worker candidates through group capability, scheduling
-   evidence, matching policy, ranking, and runtime admission.
+5. The engine narrows worker candidates through group capability, worker
+   scheduling policy, runtime evidence, rule-backed eligibility, ranking, and
+   runtime admission.
 6. Transport delivers assigned work to the selected worker.
 7. The worker executes local logic for the `eventCode`.
 8. The worker submits a task result.
@@ -62,8 +63,8 @@ A task item is the executable unit inside a task. It carries:
 - input payload
 - retry budget and runtime lease state
 
-It does not carry worker matching policy. The item decides which handler should
-run and what payload that handler receives; task dispatch intent and
+It does not carry worker-selection policy. The item decides which handler
+should run and what payload that handler receives; task dispatch intent and
 WorkerGroup capability decide where work may be dispatched.
 
 Public final result reads are item-level stable-final rows.
@@ -109,26 +110,32 @@ Worker
 SDK/intake may resolve `eventCode` and project into explicit
 `workerGroupId(s)` before scheduling by validating against WorkerGroup
 capability. The kernel candidate source starts from those group selectors, then
-applies scheduling evidence, reachability, matching policy, ranking, resource
-policy, and runtime admission. The current default policy includes rule-backed
-eligibility, but matching is not limited to rules. Additional matching inputs
-must remain explicit scheduling evidence and must not redefine worker
-ownership.
+applies worker scheduling policy, runtime reachability/evidence, rule-backed
+eligibility, ranking, reserve, and runtime admission. Matching is the current
+two-stage worker-selection mechanism, not a top-level policy owner. Additional
+selection inputs must remain explicit scheduling evidence and must not redefine
+worker ownership.
 
 The preferred boundary is:
 
 ```text
-project / workload-profile -> target default scheduling policy owner
-task dispatch intent       -> chosen group selector, route, and optional target constraints
-WorkerGroup                -> capability boundary
-worker                     -> runtime execution slot and evidence
-item                       -> eventCode plus payload only
+SchedulingPolicyCatalog       -> reusable task/worker scheduling policy strategy
+ProjectSchedulingBinding      -> allowed/default policies and scoped config
+task dispatch intent          -> selected/inherited policies, route, and target constraints
+TaskSchedulingPolicyExecution -> competition admission, cadence, priority, fairness, budget
+WorkerSchedulingPolicyResolution -> worker universe, group selector, route, pool constraints
+WorkerGroup                   -> capability boundary
+RuntimeWorkerSelection        -> live evidence, ranking, reserve, admission
+item                          -> eventCode plus payload only
 ```
 
-The project/workload policy owner is a target direction, not a complete current
+The catalog/binding policy path is a target direction, not a complete current
 implementation. Today those policy concerns still live across task runtime
 profile, explicit group selectors, matching rules, assignment policy,
-backpressure, and admission behavior.
+backpressure, and admission behavior. Project/workload owns binding and scoped
+configuration, not the reusable scheduling algorithm itself. Worker scheduling
+policy must not absorb runtime worker selection; live evidence, ranking,
+reserve, locks, and admission result stay in `RuntimeWorkerSelection`.
 
 ### Transport
 
@@ -162,7 +169,7 @@ Keep these boundaries in mind:
 | ready/lease/retry | `TaskWorkRuntime` | hot-path executable work truth |
 | public results | `TaskResultRuntime` | stable-final rows and result sequence |
 | capability candidate source | WorkerGroup / WorkerCandidateIndex | declared worker capability narrowing |
-| matching policy | engine | eligibility, ranking, affinity, metrics, and admission orchestration |
+| runtime worker selection | engine + worker runtime | eligibility component, ranking, affinity, metrics, reserve, and admission orchestration |
 | delivery and presence | transport | adapter routing, delivery, worker reachability |
 | trace | trace/audit plane | evidence, not runtime truth |
 
@@ -173,7 +180,7 @@ Avoid these interpretations:
 - Worker registration is not worker online state.
 - Transport presence is not worker capability truth.
 - `eventCode` is not a task type or worker selector; it is handler/capability identity.
-- Item payload is not worker matching policy.
+- Item payload is not worker-selection policy.
 - Result projection is not public result truth.
 - Trace evidence is not lifecycle ownership.
 - A unified event language does not imply one mandatory event runtime or one

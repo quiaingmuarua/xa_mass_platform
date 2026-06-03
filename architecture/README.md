@@ -68,22 +68,23 @@ Task + Worker + Scheduling + Matching
 = reusable distributed scheduling infrastructure
 ```
 
-Matching is a policy surface, not just a fixed rule list. The current default
-uses WorkerGroup-backed candidate acquisition, worker scheduling evidence,
-rule-backed eligibility, ranking, and runtime admission. Future policies can
-add worker metrics, task-type affinity, fairness, historical performance, or
-domain-specific scoring without changing the task/worker/runtime ownership
-model.
+Matching is the current worker-selection mechanism, not a top-level policy
+owner. The current default uses WorkerGroup-backed candidate acquisition, worker
+scheduling evidence, rule-backed eligibility, ranking, and runtime admission.
+Future worker-selection work can add worker metrics, task-type affinity,
+historical performance, or domain-specific scoring without changing the
+task/worker/runtime ownership model.
 
 Scheduling policy boundary:
 
-- target direction: project / workload-profile owns default scheduling policy,
-  including allowed WorkerGroups, default selector, fairness, quota, priority,
-  backpressure, and matching rule-set references
-- current implementation: this is not yet centralized as
-  `ProjectSchedulingPolicy`; policy still lives across task runtime profile,
-  explicit group selectors, matching rules, assignment policy, backpressure,
-  and admission behavior
+- target direction: scheduling-related ownership is split into
+  `TaskSchedulingPolicy`, `WorkerSchedulingPolicy`, and
+  `RuntimeWorkerSelection`; project / workload binding chooses allowed/default
+  task and worker policies plus scoped configuration
+- current implementation: policy resolution is not yet centralized into a
+  catalog/binding/resolved-policy path; policy still lives across task runtime
+  profile, explicit group selectors, matching rules, assignment policy,
+  backpressure, and admission behavior
 - task decides dispatch intent, WorkerGroup decides capability boundary, worker
   is the runtime execution slot, and item only decides `eventCode` plus payload
 - `eventCode` is handler/capability identity, not a worker selector

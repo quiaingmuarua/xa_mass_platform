@@ -1,0 +1,587 @@
+# Platform Scheduling Policy Roadmap
+
+Status: proposed direction roadmap.
+
+This roadmap defines how XA Mass should converge toward reusable platform-level
+scheduling policies without treating any policy owner as already implemented.
+It separates three related but different owners:
+
+- `TaskSchedulingPolicy`: task-side competition admission, cadence, priority,
+  quota/fairness, and task-level budget.
+- `WorkerSchedulingPolicy`: worker-side resource-universe selection, group
+  selector, route, target override, and worker-pool constraints.
+- `RuntimeWorkerSelection`: concrete worker choice inside the resolved worker
+  universe from live runtime evidence and admission state.
+
+The target architecture is:
+
+```text
+SchedulingPolicyCatalog
+  -> ProjectSchedulingBinding
+  -> TaskDispatchIntent
+  -> TaskSchedulingPolicyExecution
+  -> WorkerSchedulingPolicyResolution
+  -> WorkerGroupCapability
+  -> RuntimeWorkerSelection
+  -> item event handler execution
+```
+
+The policy catalog and project binding nodes are target owner boundaries, not
+current modules. Current policy is still distributed across task runtime
+profile, explicit group selectors, assignment/allocation policy, matching rule
+providers, runtime queue/backpressure behavior, and admission.
+
+## Current Facts
+
+- Scheduling policy is documented as a target boundary in `AGENTS.md`,
+  `doc/AGENT_BASELINE.md`, and `doc/TASK_LIFECYCLE_BASELINE.md`, but a complete
+  policy catalog or project binding module does not exist yet.
+- Scheduling-related ownership has three categories:
+  - `TaskSchedulingPolicy`: decides whether, when, and with what task-level
+    budget/priority/fairness a work batch enters dispatch competition.
+  - `WorkerSchedulingPolicy`: decides which worker resource universe the work
+    competes in, including WorkerGroup selector, route, target override, and
+    pool constraints.
+  - `RuntimeWorkerSelection`: selects a concrete worker inside the resolved
+    worker universe from live online/presence/load/admission/draining/lease
+    evidence.
+- Task scheduling strategies such as `LOW_LATENCY`, `BULK_THROUGHPUT`,
+  `FAIR_SHARE`, or future `SLA_DEADLINE` modes are cross-project platform
+  capabilities. Worker scheduling strategies such as `DEDICATED_GROUP`,
+  `TARGETED_GROUP`, `REGIONAL_ROUTE`, or `CAPABILITY_POOL` are also
+  cross-project platform capabilities. A project should bind and configure
+  allowed policies; it should not own the scheduling algorithms themselves.
+- Existing names such as `STANDARD`, `INTERACTIVE`, and `BULK` are current
+  runtime profile / workload tuning vocabulary. PSP-0 must classify whether
+  each maps to a future policy, remains runtime tuning, or becomes binding
+  config. Do not assume they are final scheduling policy names.
+- Current task creation and runtime use task-level fields and configuration
+  such as `project`, `workloadClass`, `executionSpec`, `sharedConfig`, and
+  explicit `workerGroupId(s)` / selector inputs.
+- WorkerGroup capability is worker-runtime truth. Worker rows are execution
+  slots and evidence carriers, not project/event capability truth.
+- Current matching starts from explicit WorkerGroup selectors, validates
+  WorkerGroup capability, enumerates worker scheduling candidates, evaluates
+  rule-backed eligibility, ranks candidates, and reserves/adopts admission
+  evidence. This two-stage match is the current worker-selection mechanism, not
+  the definition of either task scheduling policy or worker scheduling policy.
+- `eventCode` is handler/capability identity. It validates selected
+  WorkerGroup capability and drives worker-local handler dispatch. It is not a
+  worker selector and item payload is not worker-selection policy.
+- Current scheduling-like behavior is spread across:
+  - task runtime profile / workload class
+  - task execution spec
+  - assignment allocation policy
+  - assignment refill policy
+  - minimum / maximum worker gates
+  - batch size and lane policy
+  - matching rule-set provider and evaluator
+  - explicit WorkerGroup selector inputs
+  - `routingCode` / route attributes
+  - `targetWorkerId` / target worker attributes
+  - runtime-ready dispatch policy
+  - queue/backpressure/admission behavior
+  - retry, delay, and lease timing where they affect dispatch cadence
+
+## Owner Review
+
+1. **Scheduling policy is platform-level, not project-local.**
+   Projects should not each grow their own scheduling algorithm. They should
+   bind reusable policies, choose defaults, and supply scoped configuration.
+
+2. **TaskSchedulingPolicy, WorkerSchedulingPolicy, and RuntimeWorkerSelection
+   must stay separate.**
+   Task scheduling policy controls competition admission, cadence, priority,
+   quota, fairness, and task-level budget. Worker scheduling policy controls
+   the worker resource universe, WorkerGroup selector, route, target override,
+   and worker-pool constraints. Runtime worker selection controls live worker
+   evidence, ranking, reservation, locks, and admission result.
+
+3. **Project/workload binding is not runtime truth.**
+   Binding defines what a project/workload may use and what it defaults to.
+   Runtime truth remains in task lifecycle, `TaskWorkRuntime`,
+   `TaskResultRuntime`, worker-runtime admission/evidence, and trace/audit.
+
+4. **TaskDispatchIntent remains task-level.**
+   A task selects allowed task/worker scheduling policies or inherits the
+   project/workload defaults, then narrows actual dispatch through explicit
+   group selector, route, target worker override, and target attributes.
+
+5. **WorkerGroupCapability remains capability truth.**
+   Worker scheduling policy may allow or prefer groups, but WorkerGroup declares
+   which projects/events it can actually serve.
+
+6. **Runtime policy execution owns stateful cost.**
+   If a task scheduling policy requires quota ledgers, fairness counters,
+   priority queues, deadline/SLA state, or cost budgets, that state belongs to a
+   runtime policy execution owner, not to project binding or task payload.
+   Worker scheduling policy should not absorb live worker evidence or admission
+   state.
+
+7. **RuntimeWorkerSelection remains the third owner, not a worker policy detail.**
+   No worker scheduling policy can bypass online/presence/load/admission/
+   draining/lease checks inside the selected group. Those checks, rank weights,
+   reservation, locks, and admission result belong to runtime worker selection.
+
+8. **Two-stage match is mechanism, not policy ownership.**
+   Task and worker scheduling policies resolve the competition and resource
+   boundaries. The current two-stage match executes candidate acquisition,
+   filtering, ranking, and reservation inside those boundaries.
+
+9. **Matching rules are not the strategy owner.**
+   Rule sets can be referenced by worker scheduling policy, but rule DSL must
+   not become the hidden place where platform scheduling ownership lives.
+
+10. **Item payload is outside scheduling ownership.**
+   Item payload and `eventCode` choose handler invocation and input. They must
+   not become worker-selection policy.
+
+## Boundary Decision
+
+Target owners:
+
+```text
+SchedulingPolicyCatalog
+  - platform-level reusable policy definitions / modes
+  - owns two policy families:
+      TaskSchedulingPolicyDefinition
+      WorkerSchedulingPolicyDefinition
+  - task examples: LOW_LATENCY, BULK_THROUGHPUT, FAIR_SHARE, SLA_DEADLINE
+  - worker examples: DEDICATED_GROUP, TARGETED_GROUP, REGIONAL_ROUTE,
+    CAPABILITY_POOL
+  - defines policy family, shape, and cost class
+
+ProjectSchedulingBinding
+  - project/workload allowed task scheduling policies
+  - project/workload default task scheduling policy
+  - project/workload allowed worker scheduling policies
+  - project/workload default worker scheduling policy
+  - per-policy config overrides
+  - quota/fairness scope, if task scheduling policies need one
+
+TaskDispatchIntent
+  - selected taskSchedulingPolicyRef or inherited default
+  - selected workerSchedulingPolicyRef or inherited default
+  - WorkerGroup selector
+  - routingCode / route attributes
+  - optional targetWorkerId
+  - optional targetWorkerAttributes
+
+ResolvedTaskSchedulingPolicy
+  - engine-facing task competition view
+  - produced from catalog + project/workload binding + task dispatch intent
+
+ResolvedWorkerSchedulingPolicy
+  - engine-facing worker resource-universe view
+  - produced from catalog + project/workload binding + task dispatch intent
+
+TaskSchedulingPolicyExecution
+  - applies task scheduling policy behavior at runtime
+  - owns stateful ledgers/counters/queues only when the task policy cost
+    requires it
+
+WorkerSchedulingPolicyResolution
+  - resolves WorkerGroup/resource-pool scope and worker eligibility constraints
+  - does not own live worker evidence, worker admission, or result convergence
+
+RuntimeWorkerSelection
+  - selects concrete workers after task and worker scheduling policies resolve
+  - owns live online/presence/load/admission/draining/lease evidence, ranking,
+    reserve/lock, and admission result
+  - is not stored in the policy catalog and is not project binding
+```
+
+The engine should eventually consume `ResolvedTaskSchedulingPolicy`,
+`ResolvedWorkerSchedulingPolicy`, and `TaskDispatchIntent`, not a storage entity
+and not a generic `sharedConfig` bag. SDK/server/control-plane assembly may own
+catalog/binding persistence and resolution if PSP-1 decides persistence is
+required.
+
+Scheduling policy should not own:
+
+- task runtime truth
+- per-item payload interpretation
+- WorkerGroup project/event capability truth
+- worker runtime evidence or admission state
+- result convergence
+- transport delivery
+- trace/audit history
+- the two-stage match mechanism itself
+
+## Owner And Cost Classification
+
+Every policy-like input must first be classified by owner:
+
+| Owner Class | Meaning | Example |
+| --- | --- | --- |
+| `task-scheduling-policy` | controls whether/when work enters competition and with what task-level budget or fairness | low-latency admission, bulk throughput cadence, retry/delay cadence, project fair-share |
+| `worker-scheduling-policy` | controls worker resource universe and pool constraints before live worker selection | dedicated group, targeted group, route attributes, target worker override policy |
+| `runtime-worker-selection` | selects concrete workers from live evidence inside the resolved worker universe | online/presence/load/draining/lease checks, ranking, reserve/lock |
+| `binding-or-intent` | chooses allowed/default policy or task-level override but does not execute policy | project defaults, task selected policy refs |
+| `not-policy` | belongs elsewhere | item payload, result finality, WorkerGroup capability truth |
+
+Then every policy-like input must be classified by cost:
+
+| Cost Class | Meaning | Example |
+| --- | --- | --- |
+| `preset-only` | pure strategy parameters, no new runtime state | low-latency defaults, bulk-throughput defaults, default selector |
+| `resolved-view` | needs catalog/binding/task resolution but no mutable runtime ledger | selected worker policy, selected task policy, default rule set |
+| `runtime-stateful` | needs mutable runtime state | fair-share counters, quota ledger, project priority queues |
+| `storage-backed` | needs durable control-plane record | project/workload binding, named policy config |
+| `not-policy` | belongs elsewhere | item payload, result finality, worker capability truth |
+
+## Hard Rules
+
+1. Do not introduce a class or record named `ProjectSchedulingPolicy` as the
+   main owner. The target is platform policy plus project binding.
+2. Do not introduce `SchedulingPolicyCatalog`, `ProjectSchedulingBinding`, or
+   resolved task/worker scheduling policy classes before PSP-1 owner decision.
+3. PSP-0 is inventory/classification only. No code movement.
+4. Every current scheduling-like input must receive exactly one owner
+   classification and one cost classification.
+5. Do not collapse `TaskSchedulingPolicy`, `WorkerSchedulingPolicy`, and
+   `RuntimeWorkerSelection` into one policy bag.
+6. Existing `STANDARD`, `INTERACTIVE`, `BULK`, and `workloadClass` vocabulary
+   are inventory subjects, not final policy names.
+7. Do not move item payload or `eventCode` into scheduling policy.
+8. Do not let worker rows become project/event capability truth.
+9. Do not make engine depend on DB/control-plane storage to fetch policy.
+10. Do not encode policy ownership in rule DSL alone.
+11. Do not preserve two live policy tracks after convergence. Update in-repo
+   callers rather than adding compatibility aliases.
+
+## Non-Goals
+
+1. No scheduling behavior change in PSP-0/PSP-1.
+2. No public SDK/API compatibility promise for internal policy names.
+3. No rule-engine replacement.
+4. No worker-runtime ownership expansion into task scheduling decisions.
+5. No new DB-backed policy table until PSP-1 decides persistence ownership.
+6. No item-level matching or per-item policy execution.
+7. No change to result convergence, transport delivery, or worker command
+   lifecycle.
+
+## PSP-0 Inventory And Classification
+
+Goal: classify all current scheduling-policy-like inputs before creating any
+new policy owner.
+
+Scope:
+
+- Create `roadmap/PLATFORM_SCHEDULING_POLICY_INVENTORY.md`.
+- Inventory current source and tests for:
+  - `TaskRuntimeProfile`
+  - `Task.workloadClass`
+  - `TaskExecutionSpec`
+  - SDK/public-contract task execution options
+  - SDK/public-contract shared config keys
+  - server task create/update DTOs and controller mapping
+  - task `sharedConfig` keys used for dispatch or routing
+  - assignment allocation policy
+  - assignment refill policy
+  - min/max worker gates
+  - batch size and lane policy
+  - matching rule-set provider / evaluator inputs
+  - WorkerGroup selector inputs
+  - `workerGroupId` / `workerGroupIds`
+  - `routingCode` / route attributes
+  - `targetWorkerId`
+  - target worker attributes
+  - runtime-ready dispatch pump policy
+  - retry/delay/lease timing that affects dispatch cadence
+  - queue/backpressure/admission knobs
+  - trace fields that expose scheduling decisions
+- Classify each item as exactly one owner:
+  - task scheduling policy candidate
+  - worker scheduling policy candidate
+  - project/workload scheduling binding
+  - task dispatch intent
+  - WorkerGroup capability boundary
+  - runtime worker selection evidence
+  - runtime admission/backpressure
+  - engine lifecycle/repair policy
+  - matching evaluator input
+  - trace/diagnostic evidence
+  - not scheduling policy
+- Classify each item by cost:
+  - `preset-only`
+  - `resolved-view`
+  - `runtime-stateful`
+  - `storage-backed`
+  - `not-policy`
+- Identify current tests and trace analyzers that would break if the item
+  moved.
+- Identify whether the item is persisted, computed, task-level, group-level,
+  runtime-only, or trace-only.
+- Separate internal runtime tuning vocabulary from external API vocabulary.
+  Public SDK/server fields may remain stable caller vocabulary even when the
+  internal owner changes.
+
+Acceptance:
+
+- Inventory accounts for every current scheduling-like input found by source
+  search.
+- No code behavior changes.
+- Every item has one owner classification, one cost classification, and a
+  short rationale.
+- Inventory explicitly lists which items are candidates for
+  `TaskSchedulingPolicyDefinition`, which are candidates for
+  `WorkerSchedulingPolicyDefinition`, which belong to
+  `ProjectSchedulingBinding`, which remain `TaskDispatchIntent`, which remain
+  `WorkerGroupCapability`, which belong to `RuntimeWorkerSelection`, and which
+  stay runtime/admission internals.
+- Inventory identifies all known `sharedConfig` keys that currently affect
+  routing or scheduling.
+- Inventory lists SDK/public-contract/server surfaces that expose workload,
+  routing, group selection, target worker, or policy-like configuration.
+
+## PSP-1 Owner, Binding, And Persistence Decision
+
+Goal: decide what the policy catalog, project/workload binding, resolved task
+policy view, resolved worker policy view, and runtime worker selection are
+allowed to own.
+
+Scope:
+
+- Decide whether policy catalog and project/workload binding are:
+  - persisted control-plane data
+  - SDK/server assembly defaults
+  - computed read views
+  - engine-local resolved views
+  - some combination with one canonical truth per layer
+- Decide module ownership:
+  - policy catalog owner
+  - project/workload binding owner
+  - SDK/server assembly resolver
+  - engine-facing resolved task scheduling policy contract
+  - engine-facing resolved worker scheduling policy contract
+  - task scheduling policy execution owner for stateful task policies
+  - runtime worker selection owner for live evidence/rank/reserve/admission
+  - public SDK request/snapshot exposure, if any
+- Decide how binding references task scheduling policy:
+  - allowed task scheduling policies
+  - default task scheduling policy
+  - task scheduling config overrides
+  - workload/runtime profile defaults
+  - backpressure/fairness/priority/quota policy
+- Decide how binding references worker scheduling policy:
+  - allowed worker scheduling policies
+  - default worker scheduling policy
+  - allowed WorkerGroups
+  - default WorkerGroup selector
+  - matching rule-set reference
+- Decide task override rules:
+  - which task scheduling policies a task may select
+  - which worker scheduling policies a task may select
+  - what task dispatch intent may override for task scheduling
+  - what task dispatch intent may override for worker scheduling
+  - what ProjectSchedulingBinding may reject
+  - what WorkerGroup capability may reject
+  - what runtime admission may always reject
+- Decide whether task creation, task approval, or runtime assignment resolves
+  the current policy view.
+
+Acceptance:
+
+- Decision document or updated roadmap section declares one owner for each
+  layer: catalog, project/workload binding, resolved task scheduling view,
+  resolved worker scheduling view, task policy execution, and runtime worker
+  selection.
+- Engine-facing contracts are resolved views, not DB/storage entities.
+- Task dispatch intent task-policy selection, worker-policy selection, and
+  override rules are explicit.
+- WorkerGroup capability remains authoritative for project/event support.
+- Runtime admission remains authoritative for current execution eligibility.
+- No implementation class is introduced without the owner decision.
+
+## PSP-2 Contract Shape And Resolution Path
+
+Goal: define minimal contracts after PSP-1 decides ownership.
+
+Scope:
+
+- Introduce only the necessary value/contract names, for example:
+  - `SchedulingPolicyCatalog`
+  - `TaskSchedulingPolicyDefinition`
+  - `WorkerSchedulingPolicyDefinition`
+  - `ProjectSchedulingBinding`
+  - `ResolvedTaskSchedulingPolicy`
+  - `ResolvedWorkerSchedulingPolicy`
+  - `SchedulingPolicyResolver`
+  - `TaskDispatchIntent`
+  - `TaskSchedulingPolicyExecution`
+  - `RuntimeWorkerSelection`
+- Keep names if PSP-1 chooses different ones, but preserve the boundary.
+- Define how a task obtains resolved task and worker scheduling views:
+  - task create time
+  - task approve time
+  - assignment time
+  - hybrid with immutable task dispatch intent plus current policy view
+- Define how catalog, binding, selected task policy, selected worker policy,
+  task intent, and runtime worker selection are represented in trace.
+
+Acceptance:
+
+- Contracts compile without changing scheduling behavior.
+- Engine consumes only resolved task/worker scheduling and task-intent
+  contracts.
+- Contracts do not expose item payload as policy input.
+- Contracts do not require engine production to import storage/control-plane
+  modules.
+
+## PSP-3 Retarget Existing Defaults
+
+Goal: move selected defaults behind the resolved scheduling policy without
+changing behavior.
+
+Scope:
+
+- Retarget only items classified in PSP-0 and approved in PSP-1.
+- Likely task scheduling candidates:
+  - default task scheduling policy
+  - default priority/fairness/quota/backpressure reference
+  - default runtime profile or workload tuning reference
+  - task-level min/max worker budget, if PSP-1 classifies it as task budget
+- Likely worker scheduling candidates:
+  - default worker scheduling policy
+  - default allowed WorkerGroups
+  - default group selector
+  - default route/routing attribute policy
+  - default matching rule-set reference
+- Preserve task-level explicit selectors and overrides.
+- Preserve runtime/admission rejection behavior.
+
+Acceptance:
+
+- Existing scheduling tests pass unchanged or with assertion updates only for
+  renamed fields.
+- Explicit task dispatch intent still overrides policy/binding defaults only
+  where PSP-1 allowed it.
+- Project/workload binding rejects a task-selected task or worker policy that
+  is not allowed.
+- WorkerGroup capability can reject a policy or task intent that references an
+  unsupported event/project.
+- Trace shows catalog policy, project/workload binding, selected task policy,
+  selected worker policy, and task-level override when more than one layer
+  contributes to the resolved view.
+
+## PSP-4 Selected Policy Implementation Path
+
+Goal: implement only the policy path selected by PSP-1 after contract shape is
+stable.
+
+Scope:
+
+- PSP-4 is not a promise to implement all possible branches in one PR. It
+  implements only the PSP-1 selected path. If PSP-1 selects multiple unrelated
+  cost classes, split PSP-4 into named sub-slices or successor roadmaps.
+- If PSP-1 selected persisted catalog/binding:
+  - add control-plane storage/API/SDK surfaces in the owner module
+  - keep engine consuming resolved view only
+- If PSP-1 selected assembly defaults:
+  - add SDK/server configuration path
+  - keep storage out of policy truth
+- If PSP-1 selected runtime-stateful policies:
+  - add runtime owner for the specific ledger/counter/queue
+  - keep state scoped by policy cost, for example project, tenant, workload, or
+    WorkerGroup
+- Add validation for:
+  - referenced scheduling policy exists
+  - selected task scheduling policy is allowed by project/workload binding
+  - selected worker scheduling policy is allowed by project/workload binding
+  - referenced WorkerGroups exist
+  - referenced events are supported by selected WorkerGroups
+  - referenced rule-set exists, if rule-set reference is enabled
+  - unsupported task override is rejected or falls back according to binding
+
+Acceptance:
+
+- PSP-4 scope explicitly names which PSP-1-selected branch is being
+  implemented.
+- Engine production has no storage dependency for scheduling policy.
+- Policy validation fails before runtime dispatch where possible.
+- Stateful task policy runtime has one owner and does not duplicate admission
+  truth.
+- Worker scheduling policy does not absorb runtime worker selection evidence,
+  ranking, reserve, locks, or admission result.
+- No duplicate policy truth exists across storage, SDK config, engine resolved
+  view, and runtime state.
+
+## PSP-5 Guards, Proof, And Residue Scan
+
+Goal: prevent policy ownership from decaying into bags or item-level matching.
+
+Scope:
+
+- Add minimum automated guards:
+  - no engine production dependency on policy storage/control-plane module
+  - no item payload access in policy resolution
+  - no `eventCode -> all workers` matching path
+  - no worker row project/event capability truth
+  - no worker scheduling policy class owns live worker selection evidence,
+    ranking, reserve, locks, or admission result
+  - no new scheduling-like `sharedConfig` keys without owner classification
+  - no class named `ProjectSchedulingPolicy` acting as the root owner
+- Add process / residue checks for areas that cannot be enforced cleanly by
+  source guard:
+  - stale docs that describe `ProjectSchedulingPolicy` as implemented
+  - stale examples that imply `eventCode` or item payload selects workers
+  - duplicate policy names that preserve old and new owner tracks together
+- Update:
+  - `AGENTS.md`
+  - `doc/AGENT_BASELINE.md`
+  - `doc/TASK_LIFECYCLE_BASELINE.md`
+  - `xa-mass-engine/README.md`
+  - `xa-mass-worker-runtime/README.md` / `CONTRACTS.md`
+  - `doc/PROOF_REGISTRY.md` if new proof lanes are added
+  - `doc/TESTING_INDEX.md` if suites move
+- Run roadmap residue scan for old policy names and stale target/current
+  wording.
+
+Acceptance:
+
+- Minimum automated guards fail for item-level worker matching, worker-row
+  capability truth, worker-policy ownership of runtime selection, engine
+  policy-storage imports, and root `ProjectSchedulingPolicy` ownership.
+- Docs distinguish current implementation from target policy owner.
+- Residue scan finds no stale statement that a single
+  `ProjectSchedulingPolicy` is the implemented root owner.
+
+## Risks
+
+| Risk | Impact | Mitigation |
+| --- | --- | --- |
+| Project binding becomes a project-local algorithm bag | policy reuse disappears and project records absorb runtime strategy | keep reusable strategy in `SchedulingPolicyCatalog`; binding only selects/configures |
+| Policy catalog becomes a static enum too early | future stateful policies need another migration | classify policy cost in PSP-0 and separate preset-only from runtime-stateful |
+| Engine consumes persisted policy directly | storage/control-plane dependency returns to engine | resolved view contract only; guard engine production imports |
+| Task and worker policy collapse into one policy bag | task lifecycle cadence and worker-pool constraints become hard to reason about | classify every input as task policy, worker policy, runtime selection, binding/intent, or not-policy |
+| Worker scheduling policy absorbs runtime worker selection | live evidence, ranking, reserve, and admission become hidden inside a static policy owner | keep `RuntimeWorkerSelection` as the third owner and guard policy classes from owning live selection state |
+| Rule DSL becomes hidden policy owner | strategy decisions become opaque and hard to reason about | policy references rule sets but owns default strategy shape |
+| WorkerGroup capability is bypassed | unsupported event/project can dispatch | capability validation remains mandatory after policy resolution |
+| Runtime admission is bypassed | offline/draining/capacity-exhausted workers receive work | runtime worker selection and admission remain final execution eligibility gate |
+| Task overrides become unrestricted | task sharedConfig turns into all-purpose policy bag | explicit override matrix in PSP-1 |
+
+## Suggested Implementation Order
+
+1. PSP-0 inventory and classification.
+2. PSP-1 owner, binding, and persistence decision.
+3. PSP-2 contract shape and resolution path.
+4. PSP-3 behavior-neutral retargeting.
+5. PSP-4 selected policy implementation path, if approved.
+6. PSP-5 guards, proof, and residue scan.
+
+Do not begin PSP-2 until PSP-0 and PSP-1 are complete.
+
+## Verification Candidates
+
+Inventory source search:
+
+```bash
+rg -n "TaskRuntimeProfile|workloadClass|TaskExecutionSpec|sharedConfig|workerGroupId|workerGroupIds|routingCode|routeAttributes|targetWorkerId|targetWorkerAttributes|MatchingRuleSetProvider|AssignmentAllocationPolicy|AssignmentRefillPolicy|backpressure|admission|RuntimeReadyDispatchPump|retryDelay|lease" xa-mass-engine xa-mass-worker-runtime sdk xa-mass-server platform_infra transport -S
+```
+
+Likely targeted regression after implementation slices:
+
+```bash
+mvn -pl xa-mass-engine,xa-mass-worker-runtime,xa-mass-server,sdk/xa-mass-java-sdk -am "-Dtest=TaskWorkerEligibilityTest,TaskSchedulingGateAndTargetingTest,TaskSchedulingContentionTest,TaskDelayedAvailabilitySchedulingTest,RuleBasedTaskWorkerMatchingStrategyTest,WorkerCandidateIndexTest,*Scheduling*IntegrationTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
+```

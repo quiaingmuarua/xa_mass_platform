@@ -61,11 +61,12 @@ Current owner vocabulary:
 - `Task` is the task/control aggregate truth
 - `Task.contract` is the runtime contract truth: `SESSION | BATCH`
 - `Task.intakeStatus` is the intake-window truth: `OPEN | SEALED`
-- target direction: `ProjectSchedulingPolicy` should own project /
-  workload-profile default scheduling strategy, including allowed WorkerGroups,
-  default group selector, fairness, quota, priority, backpressure, and matching
-  rule-set references. This is an architectural boundary target, not a fully
-  implemented current module.
+- target direction: scheduling-related ownership is split into three categories:
+  `TaskSchedulingPolicy` for competition admission/cadence/priority/fairness/
+  budget, `WorkerSchedulingPolicy` for worker resource-universe selection and
+  pool constraints, and `RuntimeWorkerSelection` for concrete worker choice
+  from live evidence and admission state. This is an architectural boundary
+  target, not a fully implemented current module.
 - `Worker` is execution identity plus group/node membership and declared
   scheduling/resource facts; worker rows do not own project/event capability
   truth
@@ -73,15 +74,16 @@ Current owner vocabulary:
   pause, resume, or close. Current scheduling policy remains distributed across
   task runtime profile, group selectors, assignment policy, matching rule sets,
   runtime backpressure, and admission behavior.
-- `Matching` first matches task-level dispatch intent against WorkerGroup
-  capability and policy eligibility, then worker selection chooses a concrete
-  worker inside the selected group from reachability, runtime load/capacity,
-  admission, draining, lease, and explicit scheduling evidence
+- `Matching` is current worker-selection mechanism vocabulary, not a top-level
+  policy owner. Worker scheduling policy resolves the resource universe, and
+  RuntimeWorkerSelection chooses a concrete worker inside the selected group
+  from reachability, runtime load/capacity, admission, draining, lease, and
+  explicit scheduling evidence.
 - `TaskDispatchIntent` is the task-level dispatch intent: project,
   `workerGroupId(s)` or selector, `routingCode`, route attributes, optional
   `targetWorkerId`, and optional constrained target worker attributes
 - `Item` is the executable work unit: `eventCode` plus input or `payloadRef`;
-  it does not own worker matching policy
+  it does not own worker-selection policy
 - `eventCode` is handler/capability identity. It validates against the selected
   WorkerGroup event binding and tells the worker which local handler to run; it
   is not a worker selector and must not trigger all-worker capability scans
@@ -104,17 +106,22 @@ Platform scheduling abstraction boundary:
 
 | Layer | Role | Current status |
 | --- | --- | --- |
-| `ProjectSchedulingPolicy` | target owner for project/workload default strategy: allowed WorkerGroups, default selector, fairness, quota, priority, backpressure, and matching rule-set reference | target direction, not fully implemented |
-| `TaskDispatchIntent` | task-level dispatch target and constraints: project, WorkerGroup selector, route, optional target worker, and optional target attributes | current concept implemented through task fields/shared config/selectors rather than a single named object |
+| `SchedulingPolicyCatalog` | target owner for reusable task scheduling policy definitions and worker scheduling policy definitions | target direction, not fully implemented |
+| `ProjectSchedulingBinding` | target owner for project/workload allowed/default task policies, allowed/default worker policies, per-policy config, and quota/fairness scope | target direction, not fully implemented |
+| `TaskDispatchIntent` | task-level dispatch target and constraints: selected/inherited task policy, selected/inherited worker policy, project, WorkerGroup selector, route, optional target worker, and optional target attributes | current concept implemented through task fields/shared config/selectors rather than a single named object |
+| `TaskSchedulingPolicyExecution` | task-side competition admission, cadence, priority, quota/fairness, and task-level budget execution | target direction, not fully implemented |
+| `WorkerSchedulingPolicyResolution` | worker-side resource-universe, group selector, route, target override, and worker-pool constraint resolution | target direction, not fully implemented |
 | `WorkerGroupCapability` | group-level capability boundary: project bindings, event bindings, group defaults, and capacity hints | current worker-runtime resource truth |
 | `RuntimeWorkerSelection` | concrete worker choice inside the selected group from online/presence/load/admission/draining/lease evidence | current engine + worker-runtime matching/admission path |
-| `Item` | executable work unit: `eventCode` plus input or `payloadRef` | current runtime work-item boundary; not matching policy |
+| `Item` | executable work unit: `eventCode` plus input or `payloadRef` | current runtime work-item boundary; not worker-selection policy |
 
 The intended flow is:
 
 ```text
-project/workload policy -> task dispatch intent -> WorkerGroup capability
-  -> runtime worker selection -> item event handler execution
+SchedulingPolicyCatalog -> ProjectSchedulingBinding -> task dispatch intent
+  -> TaskSchedulingPolicyExecution -> WorkerSchedulingPolicyResolution
+  -> WorkerGroup capability -> RuntimeWorkerSelection
+  -> item event handler execution
 ```
 
 Do not invert that flow by letting item payload, `eventCode`, worker row
@@ -258,13 +265,18 @@ Lifecycle and trace detail live in:
   must consume explicit group selectors, group capability, worker scheduling
   facts, and runtime load/capacity facts, not worker-level capability overrides
   and not `WorkerContext`
-- project decides scheduling policy as a target owner boundary, task decides
-  dispatch intent, WorkerGroup decides capability boundary, worker is a runtime
-  execution slot, and item only decides which event handler is invoked. Do not
-  turn item payload, `eventCode`, or worker rows into policy owners.
-- `WorkerMatchContext` plus rule evaluation is the current default matching
-  input path. Matching inputs must stay explicit scheduling evidence and must
-  not become replacement worker-resource ownership
+- task scheduling policy decides competition admission/cadence/priority/
+  fairness/budget, worker scheduling policy decides resource-universe and pool
+  constraints, project/workload binding decides allowed/default policies and
+  scoped config, task decides dispatch intent and selected/inherited policies,
+  WorkerGroup decides capability boundary, RuntimeWorkerSelection chooses a
+  concrete worker from live evidence/admission, and item only decides which
+  event handler is invoked. Do not turn item payload, `eventCode`, or worker
+  rows into policy owners.
+- `WorkerMatchContext` plus rule evaluation is the current default rule-backed
+  eligibility/scoring component inside worker selection. Matching inputs must
+  stay explicit scheduling evidence and must not become replacement worker
+  scheduling policy or runtime worker selection ownership.
 - UI pages, mock runtime, and demo APIs must not redefine the kernel
 - do not add full-table, full-task, or full-attempt scans to hot paths
 - new or changed policy seams must keep ownership explicit across matching, assignment, attempt, release, refill, intake, control, and terminal decisions
