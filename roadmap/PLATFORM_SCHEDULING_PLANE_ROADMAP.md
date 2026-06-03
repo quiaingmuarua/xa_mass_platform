@@ -7,7 +7,7 @@ platform-level Scheduling Plane without treating any target owner as already
 implemented. The Scheduling Plane is the parent owner for task-side scheduling
 policy, worker-side scheduling policy, and runtime worker selection.
 
-It separates three related but different owners:
+It separates three related but different owner families:
 
 - `TaskSchedulingPolicy`: task-side competition admission, cadence, priority,
   quota/fairness, and task-level budget.
@@ -15,6 +15,23 @@ It separates three related but different owners:
   selector, route, target override, and worker-pool constraints.
 - `RuntimeWorkerSelection`: concrete worker choice inside the resolved worker
   universe from live runtime evidence and admission state.
+
+Name convention:
+
+- `TaskSchedulingPolicy` and `WorkerSchedulingPolicy` are conceptual policy
+  families.
+- `TaskSchedulingPolicyDefinition` and `WorkerSchedulingPolicyDefinition` are
+  catalog/config shapes for reusable policy definitions, if PSP-1 selects a
+  catalog path.
+- `ResolvedTaskSchedulingPolicy` and `ResolvedWorkerSchedulingPolicy` are
+  engine-facing resolved views produced from catalog/binding/defaults plus task
+  dispatch intent.
+- `TaskSchedulingPolicyExecution` and `WorkerSchedulingPolicyResolution` are
+  runtime owner names used in the Scheduling Plane architecture. The former
+  executes task-side competition/cadence/budget behavior; the latter resolves
+  worker universe and eligibility constraints before runtime worker selection.
+- `RuntimeWorkerSelection` is both the conceptual owner family and the runtime
+  owner name because it is already runtime/evidence focused.
 
 The target architecture is:
 
@@ -160,7 +177,9 @@ matching rule providers, runtime queue/backpressure behavior, and admission.
    It is the current rule/diagnostic snapshot. Any future rule-readable context
    must be narrowed so declarative task/worker policy inputs do not silently
    absorb live runtime evidence such as reachability, load, lease, lock, reserve,
-   or admission state.
+   or admission state. The expected default is that declarative rules do not
+   read live load, lease, reserve, lock, or admission evidence; exceptions must
+   be named and justified by PSP-1.
 
 13. **Task scheduling policy may parameterize runtime cadence, but it does not
    own runtime work truth.**
@@ -168,6 +187,14 @@ matching rule providers, runtime queue/backpressure behavior, and admission.
    visibility, active leases, retry scheduling, retry budget, lease expiry
    indexes, and queue/backpressure truth. Task scheduling policy may resolve
    options consumed by that owner; it must not become a second queue/lease owner.
+
+14. **Task scheduling policy may parameterize worker gates, but assignment
+   policy enforces them.**
+   Min/max worker budget and minimum-start-gate values may be task scheduling
+   policy parameters. The act of holding, dispatching, retrying, releasing, or
+   refilling assignment remains owned by assignment/runtime mechanisms such as
+   `AssignmentAllocationPolicy`, assignment refill, runtime-ready recovery, and
+   worker admission.
 
 ## Boundary Decision
 
@@ -203,10 +230,12 @@ TaskDispatchIntent
 ResolvedTaskSchedulingPolicy
   - engine-facing task competition view
   - produced from catalog + project/workload binding + task dispatch intent
+  - does not execute queue, lease, retry, expiry, or backpressure truth
 
 ResolvedWorkerSchedulingPolicy
   - engine-facing worker resource-universe view
   - produced from catalog + project/workload binding + task dispatch intent
+  - does not own live worker evidence or admission
 
 TaskSchedulingPolicyExecution
   - applies task scheduling policy behavior at runtime
@@ -247,6 +276,12 @@ and not a generic `sharedConfig` bag. SDK/server/control-plane assembly may own
 catalog/binding persistence and resolution if PSP-1 decides persistence is
 required.
 
+Resolved policy views are intermediate runtime inputs. They are not persistence
+truth and not standalone owners: task scheduling execution consumes the resolved
+task view, worker scheduling resolution consumes the resolved worker view, and
+runtime worker selection consumes only the already resolved worker universe plus
+live evidence/admission state.
+
 Scheduling Plane should not own:
 
 - task runtime truth
@@ -260,15 +295,33 @@ Scheduling Plane should not own:
 
 ## Owner And Cost Classification
 
-Every Scheduling Plane related input must first be classified by owner:
+Every Scheduling Plane related input must first be classified by exactly one
+normative owner class:
 
 | Owner Class | Meaning | Example |
 | --- | --- | --- |
 | `task-scheduling-policy` | controls whether/when work enters competition and with what task-level budget or fairness | low-latency admission, bulk throughput cadence, retry/delay cadence, project fair-share |
 | `worker-scheduling-policy` | controls worker resource universe and pool constraints before live worker selection | dedicated group, targeted group, route attributes, target worker override policy |
 | `runtime-worker-selection` | selects concrete workers from live evidence inside the resolved worker universe | online/presence/load/draining/lease checks, ranking, reserve/lock |
-| `binding-or-intent` | chooses allowed/default policy or task-level override but does not execute policy | project defaults, task selected policy refs |
-| `not-policy` | belongs elsewhere | item payload, result finality, WorkerGroup capability truth |
+| `project-workload-binding` | chooses allowed/default policy and scoped configuration but does not execute policy | project defaults, allowed policies, scoped quota/fairness config |
+| `task-dispatch-intent` | task-level dispatch target or explicit override | selected policy refs, WorkerGroup selector, route, target worker |
+| `worker-group-capability` | external project/event capability truth that constrains worker scheduling | event binding, project binding, group defaults |
+| `runtime-admission-backpressure` | runtime execution gate or capacity/backpressure truth outside policy definition | admission result, queue pressure, capacity unavailable |
+| `engine-lifecycle-repair` | lifecycle, repair, watchdog, or maintenance behavior that is not scheduling policy | repair pump, lease watchdog trigger, runtime-ready recovery |
+| `matching-evaluator-input` | declarative rule/evaluator input after PSP-1 explicitly allows it | narrowed eligibility context field |
+| `trace-diagnostic-evidence` | observation-only evidence that must not drive policy | assignment trace field, diagnostic snapshot |
+| `not-scheduling-policy` | belongs elsewhere | item payload, result finality, transport delivery |
+
+The short owner families used in the introduction map into the normative
+classes above:
+
+| Short family | Normative classes |
+| --- | --- |
+| `TaskSchedulingPolicy` | `task-scheduling-policy` |
+| `WorkerSchedulingPolicy` | `worker-scheduling-policy` |
+| `RuntimeWorkerSelection` | `runtime-worker-selection` |
+| Inputs / constraints | `project-workload-binding`, `task-dispatch-intent`, `worker-group-capability` |
+| Runtime and non-policy support | `runtime-admission-backpressure`, `engine-lifecycle-repair`, `matching-evaluator-input`, `trace-diagnostic-evidence`, `not-scheduling-policy` |
 
 Then every Scheduling Plane related input must be classified by cost:
 
@@ -283,7 +336,9 @@ Then every Scheduling Plane related input must be classified by cost:
 ## Hard Rules
 
 1. Do not introduce a class or record named `ProjectSchedulingPolicy` as the
-   main owner. The target is platform policy plus project binding.
+   main owner. The intended name is `ProjectSchedulingBinding`;
+   `ProjectSchedulingPolicy` conflates project binding with platform policy
+   definitions.
 2. Do not introduce `SchedulingPolicyCatalog`, `ProjectSchedulingBinding`, or
    resolved task/worker scheduling policy classes before PSP-1 owner decision.
 3. PSP-0 is inventory/classification only. No code movement.
@@ -310,6 +365,12 @@ Then every Scheduling Plane related input must be classified by cost:
    backpressure truth. `TaskWorkRuntime` remains the runtime execution owner.
 16. Do not add persisted catalog/binding tables before PSP-1 proves that
    assembly defaults or computed resolved views are insufficient.
+17. Do not let declarative rule inputs read live worker load, lease, reserve,
+   lock, or admission evidence by default. Such fields belong to
+   `RuntimeWorkerSelection` unless PSP-1 names and proves an exception.
+18. Do not let task scheduling policy enforce min/max worker gates, assignment
+   holds, refills, releases, or dispatch retries. It may resolve parameters;
+   assignment/runtime mechanisms execute them.
 
 ## Non-Goals
 
@@ -353,27 +414,32 @@ Scope:
   - retry/delay/lease timing that affects dispatch cadence
   - queue/backpressure/admission knobs
   - trace fields that expose scheduling decisions
+- For min/max worker gates and worker budget fields, record:
+  - which value is a task scheduling policy parameter
+  - which component currently enforces the gate or budget
+  - whether enforcement belongs to assignment allocation, refill,
+    runtime-ready recovery, worker admission, or diagnostics
+  - whether any mutable state is involved
 - For every `WorkerMatchContext` key, record:
   - key name
   - source method / owner object
-  - whether it is task dispatch intent, WorkerGroup capability, worker
-    scheduling policy input, runtime worker selection evidence,
-    runtime admission/backpressure, trace/diagnostic-only, or not-policy
+  - its normative owner class from the Owner And Cost Classification table
   - whether rule evaluation may continue reading it
   - whether it should move to a declarative policy context, runtime selection
     evidence view, diagnostic-only snapshot, or be removed
-- Classify each item as exactly one owner:
-  - task scheduling policy candidate
-  - worker scheduling policy candidate
-  - project/workload scheduling binding
-  - task dispatch intent
-  - WorkerGroup capability boundary
-  - runtime worker selection evidence
-  - runtime admission/backpressure
-  - engine lifecycle/repair policy
-  - matching evaluator input
-  - trace/diagnostic evidence
-  - not scheduling policy
+- Classify each item as exactly one normative owner class from the Owner And
+  Cost Classification table:
+  - `task-scheduling-policy`
+  - `worker-scheduling-policy`
+  - `runtime-worker-selection`
+  - `project-workload-binding`
+  - `task-dispatch-intent`
+  - `worker-group-capability`
+  - `runtime-admission-backpressure`
+  - `engine-lifecycle-repair`
+  - `matching-evaluator-input`
+  - `trace-diagnostic-evidence`
+  - `not-scheduling-policy`
 - Classify each item by cost:
   - `preset-only`
   - `resolved-view`
@@ -395,12 +461,11 @@ Acceptance:
 - No code behavior changes.
 - Every item has one owner classification, one cost classification, and a
   short rationale.
-- Inventory explicitly lists which items are candidates for
-  `TaskSchedulingPolicyDefinition`, which are candidates for
-  `WorkerSchedulingPolicyDefinition`, which belong to
-  `ProjectSchedulingBinding`, which remain `TaskDispatchIntent`, which remain
-  `WorkerGroupCapability`, which belong to `RuntimeWorkerSelection`, and which
-  stay runtime/admission internals.
+- Inventory explicitly groups items by the normative owner classes above and
+  then separately calls out which items are candidates for
+  `TaskSchedulingPolicyDefinition`, `WorkerSchedulingPolicyDefinition`,
+  `ProjectSchedulingBinding`, `TaskDispatchIntent`, `WorkerGroupCapability`,
+  `RuntimeWorkerSelection`, and runtime/admission internals.
 - Inventory identifies all known `sharedConfig` keys that currently affect
   routing or scheduling.
 - Inventory lists SDK/public-contract/server surfaces that expose workload,
@@ -411,6 +476,9 @@ Acceptance:
   migration recommendation per key.
 - Inventory explicitly separates declarative rule inputs from live runtime
   selection/admission evidence.
+- Inventory explicitly separates min/max worker gate parameters from the
+  assignment/runtime mechanisms that enforce hold, dispatch, refill, release,
+  or retry behavior.
 - Inventory names where `TaskWorkRuntime` currently owns ready/delayed/lease/
   retry/expiry/backpressure truth and which policy inputs merely parameterize
   that owner.
@@ -460,20 +528,36 @@ Scope:
   - what runtime admission may always reject
 - Decide whether task creation, task approval, or runtime assignment resolves
   the current policy view.
+- Decide whether a named `SchedulingPolicyResolver` is needed. If it is needed,
+  it is an assembly/resolution component that produces
+  `ResolvedTaskSchedulingPolicy` and `ResolvedWorkerSchedulingPolicy` from
+  catalog/defaults, project/workload binding, and `TaskDispatchIntent`. It is
+  not itself a policy owner, runtime selector, or storage truth.
 - Decide the rule-readable context boundary:
   - which fields may remain in a declarative worker policy / eligibility
     context
   - which fields must move to runtime worker selection evidence
   - which fields are diagnostic-only and must not drive rule decisions
-  - whether live reachability/load/lease/reserve/lock/admission facts are
-    allowed in matching rules at all, or only in runtime worker selection
+  - the expected default is that live load/lease/reserve/lock/admission facts
+    are excluded from declarative matching rules and stay in
+    `RuntimeWorkerSelection` or admission
+  - any exception that lets a rule read live evidence must name the field, the
+    policy need, the caller/proof evidence, and why ranking/admission cannot own
+    the decision instead
+- Decide the min/max worker gate boundary:
+  - which values are task scheduling policy parameters
+  - which current or future assignment/runtime component enforces the start
+    gate, max worker budget, hold, refill, release, and dispatch retry behavior
+  - whether any stateful policy ledger is needed, or whether existing
+    assignment/runtime mechanisms remain the only execution owner
 - Decide whether PSP-2 should create separate names for:
   - declarative policy eligibility context
   - runtime worker selection evidence
   - assignment diagnostics snapshot
 - Decide the default first implementation cost: assembly defaults / computed
-  resolved views first unless PSP-1 identifies at least two concrete policies
-  that require persisted catalog or runtime-stateful ledgers.
+  resolved views first unless PSP-1 identifies named concrete policy needs plus
+  caller/proof evidence that require persisted catalog or runtime-stateful
+  ledgers.
 
 Acceptance:
 
@@ -489,9 +573,13 @@ Acceptance:
 - No implementation class is introduced without the owner decision.
 - Rule-readable live evidence policy is explicit; no future implementation may
   infer it from the legacy `WorkerMatchContext` shape.
+- Rule-readable live evidence is excluded by default. Any exception is recorded
+  with named fields, policy need, caller/proof evidence, and owner rationale.
+- Min/max worker gate parameter ownership and enforcement ownership are
+  explicitly separated.
 - The decision records that the default first implementation is assembly
   defaults or computed resolved views unless persisted/stateful cost is
-  justified by named policies.
+  justified by named policy needs and caller/proof evidence.
 
 ## PSP-2 Contract Shape And Resolution Path
 
@@ -509,8 +597,14 @@ Scope:
   - `SchedulingPolicyResolver`
   - `TaskDispatchIntent`
   - `TaskSchedulingPolicyExecution`
+  - `WorkerSchedulingPolicyResolution`
   - `RuntimeWorkerSelection`
 - Keep names if PSP-1 chooses different ones, but preserve the boundary.
+- If `SchedulingPolicyResolver` is introduced, keep it on the side selected by
+  PSP-1 ownership: SDK/server/control-plane assembly when persistence/config is
+  outside engine, or engine-local assembly only if PSP-1 explicitly keeps
+  resolved views engine-local. It must produce resolved views for engine
+  consumption and must not make engine import storage/control-plane modules.
 - Define how a task obtains resolved task and worker scheduling views:
   - task create time
   - task approve time
@@ -524,6 +618,15 @@ Scope:
 - Define how `TaskSchedulingPolicyExecution` passes cadence/budget options to
   `TaskWorkRuntime` without taking ownership of queue, lease, retry, expiry, or
   backpressure truth.
+- Define how `TaskSchedulingPolicyExecution` passes min/max worker budget and
+  minimum-start-gate parameters to assignment allocation/refill/runtime-ready
+  mechanisms without taking ownership of assignment holds, refills, releases,
+  dispatch retries, or worker admission.
+- Define how `WorkerSchedulingPolicyResolution` consumes
+  `ResolvedWorkerSchedulingPolicy`, `TaskDispatchIntent`, and
+  `WorkerGroupCapability` to produce a worker universe / eligibility constraint
+  view without consuming live reachability, load, lease, reserve, lock, or
+  admission evidence.
 
 Acceptance:
 
@@ -536,6 +639,12 @@ Acceptance:
 - Contracts do not expose live worker selection/admission evidence as
   declarative policy input unless PSP-1 explicitly allowed that field class.
 - Contracts preserve `TaskWorkRuntime` as the runtime work truth owner.
+- Contracts preserve `WorkerSchedulingPolicyResolution` as resource-universe
+  and eligibility-constraint resolution only; live worker evidence remains in
+  `RuntimeWorkerSelection`.
+- Contracts preserve assignment/runtime mechanisms as the enforcement owner for
+  min/max worker gates, refills, releases, dispatch retries, and worker
+  admission.
 
 ## PSP-3 Retarget Existing Defaults
 
@@ -549,7 +658,8 @@ Scope:
   - default task scheduling policy
   - default priority/fairness/quota/backpressure reference
   - default runtime profile or workload tuning reference
-  - task-level min/max worker budget, if PSP-1 classifies it as task budget
+  - task-level min/max worker budget parameters, if PSP-1 classifies the
+    values as task scheduling policy parameters
 - Likely worker scheduling candidates:
   - default worker scheduling policy
   - default allowed WorkerGroups
@@ -558,9 +668,17 @@ Scope:
   - default matching rule-set reference
 - Preserve task-level explicit selectors and overrides.
 - Preserve runtime/admission rejection behavior.
+- Preserve assignment allocation/refill enforcement behavior unless PSP-1
+  explicitly selected a behavior-changing policy implementation path.
 - Retarget current prefilter/rule/rank/reserve behavior only after PSP-0
   classified each condition as declarative eligibility, runtime worker
   selection evidence, admission/backpressure, or diagnostics.
+- Treat rule context narrowing as an explicit PSP-3 sub-scope:
+  - PSP-3 may narrow or split the current rule-readable context only for fields
+    classified by PSP-0 and approved by PSP-1.
+  - If PSP-1 does not approve rule context narrowing in PSP-3, PSP-3 must leave
+    behavior unchanged and document the remaining `WorkerMatchContext` residue
+    as a PSP-5 guard/residue target.
 - Do not rename `RuleBasedTaskWorkerMatchingStrategy` into a policy owner. If
   it remains, describe it as the current runtime worker selection mechanism.
 
@@ -579,8 +697,12 @@ Acceptance:
   contributes to the resolved view.
 - Live reachability/load/lease/reserve/lock/admission checks remain in runtime
   worker selection or admission, not in worker scheduling policy.
+- Min/max worker gate values may be resolved from task scheduling policy, but
+  gate enforcement remains in assignment/runtime mechanisms.
 - Rule-backed eligibility no longer receives unclassified live evidence through
-  a catch-all context map.
+  a catch-all context map, or PSP-3 explicitly records why behavior-neutral
+  rule context narrowing was deferred and which PSP-5 guard/residue item owns
+  the remaining risk.
 
 ## PSP-4 Selected Policy Implementation Path
 
@@ -676,21 +798,23 @@ Acceptance:
 
 ## Risks
 
-| Risk | Impact | Mitigation |
-| --- | --- | --- |
-| Project binding becomes a project-local algorithm bag | policy reuse disappears and project records absorb runtime strategy | keep reusable strategy in `SchedulingPolicyCatalog`; binding only selects/configures |
-| Policy catalog becomes a static enum too early | future stateful policies need another migration | classify policy cost in PSP-0 and separate preset-only from runtime-stateful |
-| Engine consumes persisted policy directly | storage/control-plane dependency returns to engine | resolved view contract only; guard engine production imports |
-| Task and worker policy collapse into one policy bag | task lifecycle cadence and worker-pool constraints become hard to reason about | classify every input as task policy, worker policy, runtime selection, binding/intent, or not-policy |
-| Worker scheduling policy absorbs runtime worker selection | live evidence, ranking, reserve, and admission become hidden inside a static policy owner | keep `RuntimeWorkerSelection` as the third owner and guard policy classes from owning live selection state |
-| Legacy `WorkerMatchContext` becomes the future policy contract | rule DSL keeps seeing mixed declarative and live evidence fields, so owner split decays immediately | PSP-0 key-by-key inventory; PSP-1 rule-readable boundary decision; guard unclassified context fields |
-| Scheduling Plane becomes a new catch-all module | policy, runtime selection, DB storage, and runtime queues get centralized by name rather than ownership | keep plane as conceptual owner boundary; introduce only PSP-1-approved contracts |
-| Task scheduling policy duplicates `TaskWorkRuntime` | queue/lease/retry/expiry truth splits across policy and runtime | policy resolves options only; `TaskWorkRuntime` remains execution truth |
-| Persisted policy catalog appears before policy cost is proven | DB/control-plane work lands before there is a real second policy requiring it | default to assembly defaults or computed views until PSP-1 names persisted/stateful need |
-| Rule DSL becomes hidden policy owner | strategy decisions become opaque and hard to reason about | policy references rule sets but owns default strategy shape |
-| WorkerGroup capability is bypassed | unsupported event/project can dispatch | capability validation remains mandatory after policy resolution |
-| Runtime admission is bypassed | offline/draining/capacity-exhausted workers receive work | runtime worker selection and admission remain final execution eligibility gate |
-| Task overrides become unrestricted | task sharedConfig turns into all-purpose policy bag | explicit override matrix in PSP-1 |
+| Risk | Responsible slice | Impact | Mitigation |
+| --- | --- | --- | --- |
+| Project binding becomes a project-local algorithm bag | PSP-1 | policy reuse disappears and project records absorb runtime strategy | keep reusable strategy in `SchedulingPolicyCatalog`; binding only selects/configures |
+| Policy catalog becomes a static enum too early | PSP-0 / PSP-1 | future stateful policies need another migration | classify policy cost in PSP-0 and separate preset-only from runtime-stateful |
+| Engine consumes persisted policy directly | PSP-2 / PSP-5 | storage/control-plane dependency returns to engine | resolved view contract only; guard engine production imports |
+| Task and worker policy collapse into one policy bag | PSP-0 / PSP-1 | task lifecycle cadence and worker-pool constraints become hard to reason about | classify every input by normative owner class |
+| Worker scheduling policy absorbs runtime worker selection | PSP-1 / PSP-3 / PSP-5 | live evidence, ranking, reserve, and admission become hidden inside a static policy owner | keep `RuntimeWorkerSelection` as the third owner and guard policy classes from owning live selection state |
+| Legacy `WorkerMatchContext` becomes the future policy contract | PSP-0 / PSP-1 / PSP-5 | rule DSL keeps seeing mixed declarative and live evidence fields, so owner split decays immediately | PSP-0 key-by-key inventory; PSP-1 rule-readable boundary decision; guard unclassified context fields |
+| Rule-readable live evidence remains open by default | PSP-1 / PSP-3 / PSP-5 | current load/lease/admission fields keep pulling runtime worker selection back into rule DSL | default to declarative-only rules; require named proof for exceptions |
+| Scheduling Plane becomes a new catch-all module | PSP-1 / PSP-2 / PSP-5 | policy, runtime selection, DB storage, and runtime queues get centralized by name rather than ownership | keep plane as conceptual owner boundary; introduce only PSP-1-approved contracts |
+| Task scheduling policy duplicates `TaskWorkRuntime` | PSP-1 / PSP-2 / PSP-5 | queue/lease/retry/expiry truth splits across policy and runtime | policy resolves options only; `TaskWorkRuntime` remains execution truth |
+| Task scheduling policy absorbs assignment gate execution | PSP-0 / PSP-1 / PSP-3 | min/max worker gate values drag hold/refill/release/retry execution state into policy owner | classify value vs enforcement separately; keep assignment/runtime mechanisms as enforcement owners |
+| Persisted policy catalog appears before policy cost is proven | PSP-1 / PSP-4 | DB/control-plane work lands before there is caller/proof evidence requiring it | default to assembly defaults or computed views until PSP-1 names concrete persisted/stateful need |
+| Rule DSL becomes hidden policy owner | PSP-0 / PSP-1 / PSP-3 | strategy decisions become opaque and hard to reason about | policy references rule sets but owns default strategy shape |
+| WorkerGroup capability is bypassed | PSP-1 / PSP-3 / PSP-5 | unsupported event/project can dispatch | capability validation remains mandatory after policy resolution |
+| Runtime admission is bypassed | PSP-1 / PSP-3 / PSP-5 | offline/draining/capacity-exhausted workers receive work | runtime worker selection and admission remain final execution eligibility gate |
+| Task overrides become unrestricted | PSP-1 / PSP-4 | task sharedConfig turns into all-purpose policy bag | explicit override matrix in PSP-1 |
 
 ## Suggested Implementation Order
 
