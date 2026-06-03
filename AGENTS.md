@@ -12,21 +12,18 @@ Fast entry only. Use module owner READMEs and `doc/` contracts for detail.
   aggregate.
 - `Worker`: execution identity plus WorkerGroup/node membership and scheduling
   facts.
-- `Scheduling Plane`: decides when work may enter, retry, pause, resume, or
-  leave dispatch competition, which worker universe it may compete in, and
-  which concrete worker receives it.
-- Target abstraction:
-  `SchedulingPolicyCatalog -> ProjectSchedulingBinding -> task dispatch intent
-  -> TaskSchedulingPolicyExecution -> WorkerSchedulingPolicyResolution
-  -> WorkerGroup capability -> RuntimeWorkerSelection -> item handler execution`.
-- Scheduling-related ownership has three separate categories:
-  `TaskSchedulingPolicy` for competition admission/cadence/priority/fairness/
-  budget, `WorkerSchedulingPolicy` for worker resource-universe selection and
-  pool constraints, and `RuntimeWorkerSelection` for concrete worker choice
-  from live evidence and admission state. None of these are complete current
-  modules yet.
-- `Matching` is the current worker-selection mechanism inside Scheduling Plane,
-  not a top-level owner.
+- `Scheduling Plane`: the first-class scheduling owner with three co-equal
+  first-class members:
+  - `TaskSchedulingPolicy`: competition admission, cadence, priority,
+    quota/fairness, and task-level budget.
+  - `WorkerSchedulingPolicy`: worker resource-universe selection, group
+    selector, route, target override, and worker-pool constraints.
+  - `RuntimeWorkerSelection`: concrete worker choice inside the resolved
+    resource universe from live evidence and admission state. First-class
+    inside Scheduling Plane; not a sub-detail of WorkerSchedulingPolicy and
+    not a top-level peer of Task or Worker.
+  None of the three are complete current modules. `Matching` is the current
+  worker-selection mechanism inside Scheduling Plane, not a top-level owner.
 - Kernel truth is currently split across:
   - `Task.contract` for runtime contract
   - `Task.intakeStatus` for intake-window truth

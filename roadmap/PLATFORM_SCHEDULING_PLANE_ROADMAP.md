@@ -4,30 +4,38 @@ Status: proposed direction roadmap.
 
 This roadmap defines how XA Mass should converge toward a clear
 platform-level Scheduling Plane without treating any target owner as already
-implemented. The Scheduling Plane is the parent owner for task-side scheduling
-policy, worker-side scheduling policy, and runtime worker selection.
+implemented.
 
-It separates three related but different owners:
+The Scheduling Plane owns three co-equal first-class members:
 
-- `TaskSchedulingPolicy`: task-side competition admission, cadence, priority,
+- `TaskSchedulingPolicy`: competition admission, cadence, priority,
   quota/fairness, and task-level budget.
-- `WorkerSchedulingPolicy`: worker-side resource-universe selection, group
+- `WorkerSchedulingPolicy`: worker resource-universe selection, group
   selector, route, target override, and worker-pool constraints.
-- `RuntimeWorkerSelection`: concrete worker choice inside the resolved worker
-  universe from live runtime evidence and admission state.
+- `RuntimeWorkerSelection`: concrete worker choice inside the resolved
+  resource universe from live runtime evidence and admission state.
+  First-class inside Scheduling Plane; not a sub-detail of
+  WorkerSchedulingPolicy and not a top-level peer of Task or Worker.
 
-The target architecture is:
+The target dispatch flow is:
 
 ```text
-SchedulingPolicyCatalog
-  -> ProjectSchedulingBinding
-  -> TaskDispatchIntent
-  -> TaskSchedulingPolicyExecution
-  -> WorkerSchedulingPolicyResolution
-  -> WorkerGroupCapability
-  -> RuntimeWorkerSelection
+Task
+  -> Scheduling Plane:
+       TaskSchedulingPolicy   (when and with what budget work enters competition)
+       WorkerSchedulingPolicy (which worker universe the work competes in,
+                               via TaskDispatchIntent + WorkerSchedulingPolicyResolution)
+       RuntimeWorkerSelection (which concrete worker inside that universe)
   -> item event handler execution
 ```
+
+Detailed implementation nodes within each member:
+
+- `TaskSchedulingPolicy` nodes: `SchedulingPolicyCatalog` (policy definitions),
+  `ProjectSchedulingBinding` (project/workload policy bindings + quota scope),
+  `TaskSchedulingPolicyExecution` (admission + budget execution at dispatch)
+- `WorkerSchedulingPolicy` nodes: `TaskDispatchIntent` (task-level declared
+  intent), `WorkerSchedulingPolicyResolution` (universe resolution at dispatch)
 
 The policy catalog and project binding nodes are target owner boundaries, not
 current modules. Current Scheduling Plane behavior is still distributed across

@@ -61,25 +61,24 @@ Current owner vocabulary:
 - `Task` is the task/control aggregate truth
 - `Task.contract` is the runtime contract truth: `SESSION | BATCH`
 - `Task.intakeStatus` is the intake-window truth: `OPEN | SEALED`
-- target direction: scheduling-related ownership is split into three categories:
-  `TaskSchedulingPolicy` for competition admission/cadence/priority/fairness/
-  budget, `WorkerSchedulingPolicy` for worker resource-universe selection and
-  pool constraints, and `RuntimeWorkerSelection` for concrete worker choice
-  from live evidence and admission state. This is an architectural boundary
-  target, not a fully implemented current module.
 - `Worker` is execution identity plus group/node membership and declared
   scheduling/resource facts; worker rows do not own project/event capability
   truth
-- `Scheduling Plane` decides when task work may enter competition, dispatch,
-  retry, pause, resume, or close; which worker universe it may compete in; and
-  which concrete worker receives it. Current scheduling policy remains
-  distributed across task runtime profile, group selectors, assignment policy,
-  matching rule sets, runtime backpressure, and admission behavior.
-- `Matching` is current worker-selection mechanism vocabulary, not a top-level
-  policy owner. Worker scheduling policy resolves the resource universe, and
-  RuntimeWorkerSelection chooses a concrete worker inside the selected group
-  from reachability, runtime load/capacity, admission, draining, lease, and
-  explicit scheduling evidence.
+- `Scheduling Plane` is the first-class scheduling owner, with three co-equal
+  first-class members:
+  - `TaskSchedulingPolicy`: competition admission, cadence, priority,
+    quota/fairness, and task-level budget.
+  - `WorkerSchedulingPolicy`: worker resource-universe selection, group
+    selector, route, target override, and worker-pool constraints.
+  - `RuntimeWorkerSelection`: concrete worker choice inside the resolved
+    resource universe from live online/presence/load/admission/draining/lease
+    evidence. First-class inside Scheduling Plane; not a sub-detail of
+    WorkerSchedulingPolicy and not a top-level peer of Task or Worker.
+  None of the three are complete current modules; current scheduling behavior
+  is distributed across task runtime profile, group selectors, assignment
+  policy, matching rule sets, runtime backpressure, and admission.
+- `Matching` is current worker-selection mechanism vocabulary inside Scheduling
+  Plane; it is not a top-level policy owner.
 - `TaskDispatchIntent` is the task-level dispatch intent: project,
   `workerGroupId(s)` or selector, `routingCode`, route attributes, optional
   `targetWorkerId`, and optional constrained target worker attributes
@@ -103,25 +102,33 @@ Current owner vocabulary:
   SDK/server/storage/trace truth. It is not an engine scheduling truth and must
   not be reintroduced as the worker capability or resource-lifecycle owner.
 
-Platform scheduling abstraction boundary:
+Scheduling Plane structure:
 
-| Layer | Role | Current status |
+The Scheduling Plane owns three co-equal first-class members. `RuntimeWorkerSelection`
+is first-class inside the Plane; it is not a sub-detail of `WorkerSchedulingPolicy`
+and is not a top-level peer of `Task` or `Worker`.
+
+| Scheduling Plane member | Role | Current status |
 | --- | --- | --- |
-| `SchedulingPolicyCatalog` | target owner for reusable task scheduling policy definitions and worker scheduling policy definitions | target direction, not fully implemented |
-| `ProjectSchedulingBinding` | target owner for project/workload allowed/default task policies, allowed/default worker policies, per-policy config, and quota/fairness scope | target direction, not fully implemented |
-| `TaskDispatchIntent` | task-level dispatch target and constraints: selected/inherited task policy, selected/inherited worker policy, project, WorkerGroup selector, route, optional target worker, and optional target attributes | current concept implemented through task fields/shared config/selectors rather than a single named object |
-| `TaskSchedulingPolicyExecution` | task-side competition admission, cadence, priority, quota/fairness, and task-level budget execution | target direction, not fully implemented |
-| `WorkerSchedulingPolicyResolution` | worker-side resource-universe, group selector, route, target override, and worker-pool constraint resolution | target direction, not fully implemented |
-| `WorkerGroupCapability` | group-level capability boundary: project bindings, event bindings, group defaults, and capacity hints | current worker-runtime resource truth |
-| `RuntimeWorkerSelection` | concrete worker choice inside the selected group from online/presence/load/admission/draining/lease evidence | current engine + worker-runtime matching/admission path |
-| `Item` | executable work unit: `eventCode` plus input or `payloadRef` | current runtime work-item boundary; not worker-selection policy |
+| `TaskSchedulingPolicy` | competition admission, cadence, priority, quota/fairness, and task-level budget. Implementation nodes: `SchedulingPolicyCatalog` (policy definitions), `ProjectSchedulingBinding` (project/workload policy bindings + quota scope), `TaskSchedulingPolicyExecution` (admission + budget execution at task dispatch) | not fully implemented; behavior distributed across task runtime profile, workload class, and execution spec |
+| `WorkerSchedulingPolicy` | worker resource-universe selection: group selector, route, target override, and worker-pool constraints. Implementation nodes: `TaskDispatchIntent` (task-level declared intent), `WorkerSchedulingPolicyResolution` (universe resolution at dispatch) | not fully implemented; behavior distributed across explicit workerGroupId(s), selectors, and assignment policy |
+| `RuntimeWorkerSelection` | concrete worker choice inside the resolved resource universe from live online/presence/load/admission/draining/lease evidence | current engine + worker-runtime matching/admission path |
+
+Fixed boundaries outside the Scheduling Plane:
+
+| Boundary | Role | Current status |
+| --- | --- | --- |
+| `WorkerGroupCapability` | group-level capability boundary: project bindings, event bindings, group defaults, and capacity hints. Feeds into WorkerSchedulingPolicy resolution; not a scheduling policy owner | current worker-runtime resource truth |
+| `Item` | executable work unit: `eventCode` plus input or `payloadRef`; not worker-selection policy | current runtime work-item boundary |
 
 The intended flow is:
 
 ```text
-SchedulingPolicyCatalog -> ProjectSchedulingBinding -> task dispatch intent
-  -> TaskSchedulingPolicyExecution -> WorkerSchedulingPolicyResolution
-  -> WorkerGroup capability -> RuntimeWorkerSelection
+Task
+  -> Scheduling Plane:
+       TaskSchedulingPolicy   (when and with what budget work enters competition)
+       WorkerSchedulingPolicy (which worker universe the work competes in)
+       RuntimeWorkerSelection (which concrete worker inside that universe)
   -> item event handler execution
 ```
 
