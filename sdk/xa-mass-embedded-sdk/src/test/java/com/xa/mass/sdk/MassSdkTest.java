@@ -3082,7 +3082,7 @@ class MassSdkTest {
             rule.setId("polling-online-project");
             rule.setName("polling-online-project");
             rule.setType(RuleType.QL_EXPRESS);
-            rule.setContent("isWorkerAvailable && supportsProject");
+            rule.setContent("supportsProject == true && supportsEvent == true");
             app.replaceDefaultRules(List.of(rule));
 
             app.declareWorkerGroup(WorkerGroupDeclaration.builder()

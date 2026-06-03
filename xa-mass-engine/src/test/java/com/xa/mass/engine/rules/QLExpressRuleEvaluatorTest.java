@@ -15,10 +15,14 @@ class QLExpressRuleEvaluatorTest {
 
     @Test
     void evaluatesBooleanExpression() throws Exception {
-        RuleDefinition rule = rule("available", "isWorkerAvailable == true && appCount < 10");
+        RuleDefinition rule = rule("eligible", "hasWorkerSchedulingResource == true && matchesTargetWorkerAttributes == true");
 
-        assertTrue(evaluator.evaluate(rule, Map.of("isWorkerAvailable", true, "appCount", 3)));
-        assertFalse(evaluator.evaluate(rule, Map.of("isWorkerAvailable", true, "appCount", 12)));
+        assertTrue(evaluator.evaluate(rule, Map.of(
+                "hasWorkerSchedulingResource", true,
+                "matchesTargetWorkerAttributes", true)));
+        assertFalse(evaluator.evaluate(rule, Map.of(
+                "hasWorkerSchedulingResource", true,
+                "matchesTargetWorkerAttributes", false)));
     }
 
     private RuleDefinition rule(String id, String content) {

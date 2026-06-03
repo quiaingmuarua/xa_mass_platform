@@ -64,8 +64,8 @@ class WorkerPackGeoLookupExternalSdkIntegrationTest extends AbstractSampleE2eTes
         registerTaskSubmitter("worker-pack-geo-submitter", submitterKey);
         registerWorkerSubmitter("worker-pack-geo-worker", workerKey, workerId);
         sdkApp().replaceDefaultRules(List.of(
-                rule("worker-pack-geo-online", "isWorkerAvailable == true && isWorkerLocked == false"),
-                rule("worker-pack-geo-routing", "isWorkerSchedulingResourceAllocatable == true && workerSchedulingMatchesRoutingCode == true")
+                rule("worker-pack-geo-online", "hasWorkerSchedulingResource == true"),
+                rule("worker-pack-geo-routing", "workerSchedulingMatchesRoutingCode == true")
         ));
 
         MassPlatform workerMass = platform(workerKey);

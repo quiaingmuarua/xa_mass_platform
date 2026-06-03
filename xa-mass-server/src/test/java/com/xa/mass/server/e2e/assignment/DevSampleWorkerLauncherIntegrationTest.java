@@ -76,7 +76,15 @@ class DevSampleWorkerLauncherIntegrationTest extends ReviewReadModelSampleE2eTes
         assertTrue(stockWorker.getAttributes().containsKey("routingTags"));
         assertTrue(app.getProject("crawlerApp") != null);
         assertTrue(app.getEvent("stock.quote.fetch") != null);
-        assertEquals(5, app.listDefaultRules().size());
+        List<String> ruleIds = app.listDefaultRules().stream()
+                .map(rule -> String.valueOf(rule.get("ruleId")))
+                .sorted()
+                .toList();
+        assertEquals(List.of(
+                "basic_worker_check",
+                "routing_country_match",
+                "target_worker_attributes_check"
+        ), ruleIds);
         waitForSeedTaskContaining("sample-crawler-fetch-page", "TERMINAL");
         waitForSeedTaskContaining("sample-stock-quote-stream", "RUNNING");
 

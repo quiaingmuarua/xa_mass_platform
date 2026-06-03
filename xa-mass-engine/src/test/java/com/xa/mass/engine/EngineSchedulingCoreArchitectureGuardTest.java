@@ -449,6 +449,52 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void ruleBasedMatchingEvaluatesDeclarativeRuleContextOnly() throws IOException {
+        Path strategyPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/strategy/RuleBasedTaskWorkerMatchingStrategy.java");
+        String source = Files.readString(strategyPath, StandardCharsets.UTF_8);
+
+        assertFalse(source.contains("ruleEvaluator.evaluate(rule, matchContext.getContext())"),
+                "Rule evaluation must not consume the full diagnostic WorkerMatchContext snapshot. "
+                        + "Runtime evidence belongs to prefilter, rank, reserve, and diagnostics.");
+        assertTrue(source.contains("ruleEvaluator.evaluate(rule, matchContext.getRuleContext())"),
+                "RuleBasedTaskWorkerMatchingStrategy must evaluate the declarative rule context.");
+    }
+
+    @Test
+    void computedSchedulingPlaneDoesNotIntroduceWritablePolicyTruth() throws IOException {
+        List<String> forbiddenTypes = List.of(
+                "ProjectSchedulingPolicy",
+                "SchedulingPolicyCatalog",
+                "ProjectSchedulingBinding",
+                "TaskSchedulingPolicyDefinition",
+                "WorkerSchedulingPolicyDefinition",
+                "TaskSchedulingPolicyRepository",
+                "WorkerSchedulingPolicyRepository",
+                "SchedulingPolicyStore",
+                "SchedulingPolicyDao"
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Path path : javaSourceFiles(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine"))) {
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            for (String forbiddenType : forbiddenTypes) {
+                Pattern typeDeclaration = Pattern.compile(
+                        "\\b(class|interface|record|enum)\\s+" + Pattern.quote(forbiddenType) + "\\b");
+                if (typeDeclaration.matcher(source).find()) {
+                    violations.add(path + " declares storage/catalog policy truth type: " + forbiddenType);
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Current Scheduling Plane path is computed defaults plus resolved views. "
+                        + "Do not add root ProjectSchedulingPolicy, catalog/binding, or writable policy truth "
+                        + "inside engine until a successor PSP decision names a concrete caller and owner:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void workerSchedulingResourcePresenceDoesNotDependOnWorkerContextPresence() throws IOException {
         Path contextPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/model/WorkerMatchContext.java");
         String source = Files.readString(contextPath, StandardCharsets.UTF_8);
@@ -1824,6 +1870,9 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
         if (ruleConfig.contains("worker_capability_check") || ruleConfig.contains("supportsEvent")) {
             violations.add(ruleConfigPath + " keeps event/project capability as default eligibility truth");
+        }
+        if (ruleConfig.contains("appCount") || ruleConfig.contains("agentVersion")) {
+            violations.add(ruleConfigPath + " keeps aggregate worker metadata as default eligibility truth");
         }
         if (assignmentListener.contains("usesTaskLevelEventCapability")
                 || assignmentListener.contains("TaskSharedConfig.sdkEventCode(task)")) {

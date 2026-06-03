@@ -257,8 +257,8 @@ final class TaskSchedulingTestHarness {
 
     private void installDefaultSchedulingRules() {
         ruleStorage.addRules(List.of(
-                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
-                rule("worker_scheduling_resource_check", "isWorkerSchedulingResourceAllocatable == true"),
+                rule("basic_worker_check", "supportsProject == true && supportsEvent == true"),
+                rule("worker_scheduling_resource_check", "hasWorkerSchedulingResource == true"),
                 rule("routing_code_match", "taskHasRoutingRequirement == false || workerSchedulingMatchesRoutingCode == true"),
                 rule("app_support_check", "supportsProject == true"),
                 rule("target_worker_attributes_check", "matchesTargetWorkerAttributes == true")

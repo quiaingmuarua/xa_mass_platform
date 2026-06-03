@@ -53,8 +53,8 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                 strategy(ruleStorage, workerManager, recordService);
 
         ruleStorage.addRules(List.of(
-                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
-                rule("worker_scheduling_resource_check", "isWorkerSchedulingResourceAllocatable == true"),
+                rule("basic_worker_check", "supportsProject == true && supportsEvent == true"),
+                rule("worker_scheduling_resource_check", "hasWorkerSchedulingResource == true"),
                 rule("app_support_check", "supportsProject == true"),
                 rule("worker_scheduling_attribute_country", "workerSchedulingAttributes['country'] == routingCode")
         ));
@@ -94,8 +94,8 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                 strategy(ruleStorage, workerManager, recordService);
 
         ruleStorage.addRules(List.of(
-                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
-                rule("worker_scheduling_resource_check", "isWorkerSchedulingResourceAllocatable == true"),
+                rule("basic_worker_check", "supportsProject == true && supportsEvent == true"),
+                rule("worker_scheduling_resource_check", "hasWorkerSchedulingResource == true"),
                 rule("worker_scheduling_attribute_country", "workerSchedulingAttributes['country'] == routingCode")
         ));
 
@@ -138,8 +138,8 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                 strategy(ruleStorage, workerManager, recordService);
 
         ruleStorage.addRules(List.of(
-                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
-                rule("worker_scheduling_resource_check", "isWorkerSchedulingResourceAllocatable == true"),
+                rule("basic_worker_check", "supportsProject == true && supportsEvent == true"),
+                rule("worker_scheduling_resource_check", "hasWorkerSchedulingResource == true"),
                 rule("app_support_check", "supportsProject == true")
         ));
 
@@ -181,8 +181,8 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                 strategy(ruleStorage, workerManager, recordService);
 
         ruleStorage.addRules(List.of(
-                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
-                rule("worker_scheduling_resource_check", "isWorkerSchedulingResourceAllocatable == true"),
+                rule("basic_worker_check", "supportsProject == true && supportsEvent == true"),
+                rule("worker_scheduling_resource_check", "hasWorkerSchedulingResource == true"),
                 rule("routing_code_match", "taskHasRoutingRequirement == false || workerSchedulingMatchesRoutingCode == true"),
                 rule("app_support_check", "supportsProject == true")
         ));
@@ -257,7 +257,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                 strategy(ruleStorage, workerManager, recordService);
 
         ruleStorage.addRules(List.of(
-                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
+                rule("basic_worker_check", "supportsProject == true && supportsEvent == true"),
                 rule("app_support_check", "supportsProject == true")
         ));
 
@@ -295,8 +295,8 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                 strategy(ruleStorage, workerManager, recordService);
 
         ruleStorage.addRules(List.of(
-                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
-                rule("worker_scheduling_resource_check", "isWorkerSchedulingResourceAllocatable == true"),
+                rule("basic_worker_check", "supportsProject == true && supportsEvent == true"),
+                rule("worker_scheduling_resource_check", "hasWorkerSchedulingResource == true"),
                 rule("routing_code_match", "taskHasRoutingRequirement == false || workerSchedulingMatchesRoutingCode == true"),
                 rule("app_support_check", "supportsProject == true")
         ));
@@ -325,8 +325,8 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                 strategy(ruleStorage, workerManager, recordService);
 
         ruleStorage.addRules(List.of(
-                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
-                rule("worker_scheduling_resource_check", "isWorkerSchedulingResourceAllocatable == true"),
+                rule("basic_worker_check", "supportsProject == true && supportsEvent == true"),
+                rule("worker_scheduling_resource_check", "hasWorkerSchedulingResource == true"),
                 rule("routing_code_match", "taskHasRoutingRequirement == false || workerSchedulingMatchesRoutingCode == true"),
                 rule("app_support_check", "supportsProject == true")
         ));
@@ -358,7 +358,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                 strategy(ruleStorage, workerManager, recordService);
 
         ruleStorage.addRules(List.of(
-                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
+                rule("basic_worker_check", "supportsProject == true && supportsEvent == true"),
                 rule("worker_capability_check",
                         "((taskEventCode == null || taskEventCode == '') && supportsProject == true) "
                                 + "|| ((taskEventCode != null && taskEventCode != '') && supportsEvent == true)")
@@ -397,7 +397,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                 strategy(ruleStorage, workerManager, recordService);
 
         ruleStorage.addRules(List.of(
-                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
+                rule("basic_worker_check", "supportsProject == true && supportsEvent == true"),
                 rule("worker_capability_check",
                         "((taskEventCode == null || taskEventCode == '') && supportsProject == true) "
                                 + "|| ((taskEventCode != null && taskEventCode != '') && supportsEvent == true)")
@@ -438,7 +438,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                 strategy(ruleStorage, workerManager, recordService);
 
         ruleStorage.addRules(List.of(
-                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
+                rule("basic_worker_check", "supportsProject == true && supportsEvent == true"),
                 rule("app_support_check", "supportsProject == true"),
                 rule("target_worker_check", "matchesTargetWorkerId == true")
         ));
@@ -475,7 +475,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                 strategy(ruleStorage, workerManager, recordService);
 
         ruleStorage.addRules(List.of(
-                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
+                rule("basic_worker_check", "supportsProject == true && supportsEvent == true"),
                 rule("app_support_check", "supportsProject == true"),
                 rule("target_worker_attributes_check", "matchesTargetWorkerAttributes == true")
         ));
@@ -528,7 +528,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                 strategy(ruleStorage, workerManager, recordService);
 
         ruleStorage.addRules(List.of(
-                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
+                rule("basic_worker_check", "supportsProject == true && supportsEvent == true"),
                 rule("app_support_check", "supportsProject == true")
         ));
 
@@ -569,7 +569,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                 strategy(ruleStorage, workerManager, recordService);
 
         ruleStorage.addRules(List.of(
-                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
+                rule("basic_worker_check", "supportsProject == true && supportsEvent == true"),
                 rule("app_support_check", "supportsProject == true")
         ));
 
@@ -611,7 +611,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                 strategy(ruleStorage, workerManager, recordService);
 
         ruleStorage.addRules(List.of(
-                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
+                rule("basic_worker_check", "supportsProject == true && supportsEvent == true"),
                 rule("app_support_check", "supportsProject == true")
         ));
 
@@ -651,7 +651,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                 strategy(ruleStorage, workerManager, recordService);
 
         ruleStorage.addRules(List.of(
-                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
+                rule("basic_worker_check", "supportsProject == true && supportsEvent == true"),
                 rule("app_support_check", "supportsProject == true")
         ));
 
@@ -686,7 +686,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                 strategy(ruleStorage, workerManager, recordService);
 
         ruleStorage.addRules(List.of(
-                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
+                rule("basic_worker_check", "supportsProject == true && supportsEvent == true"),
                 rule("app_support_check", "supportsProject == true")
         ));
 
@@ -732,7 +732,7 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
                 strategy(ruleStorage, workerManager, recordService);
 
         ruleStorage.addRules(List.of(
-                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
+                rule("basic_worker_check", "supportsProject == true && supportsEvent == true"),
                 rule("app_support_check", "supportsProject == true")
         ));
 

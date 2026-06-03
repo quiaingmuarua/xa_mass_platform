@@ -56,8 +56,8 @@ class NodePollingWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2eT
     @Test
     void externalNodePollingWorkerQuickstartScriptRegistersCapabilityAndCompletesTask() throws Exception {
         app.replaceDefaultRules(List.of(
-                rule("crawler-online-project", "isWorkerAvailable == true && isWorkerLocked == false && supportsProject == true"),
-                rule("crawler-scheduling-routing", "isWorkerSchedulingResourceAllocatable == true && workerSchedulingMatchesRoutingCode == true")
+                rule("crawler-online-project", "supportsProject == true"),
+                rule("crawler-scheduling-routing", "workerSchedulingMatchesRoutingCode == true")
         ));
         String baseUrl = "http://127.0.0.1:" + port;
         try (ExternalNodeWorkerProcess workerProcess =

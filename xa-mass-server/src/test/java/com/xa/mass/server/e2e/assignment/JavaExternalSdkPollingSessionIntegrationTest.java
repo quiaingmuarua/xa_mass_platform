@@ -60,8 +60,8 @@ class JavaExternalSdkPollingSessionIntegrationTest extends AbstractSampleE2eTest
         registerTaskSubmitter("java-sdk-task-submitter", submitterKey);
         registerWorkerSubmitter("java-sdk-polling-worker", workerKey, workerId);
         sdkApp().replaceDefaultRules(List.of(
-                rule("java-sdk-online-project", "isWorkerAvailable == true && isWorkerLocked == false && supportsProject == true"),
-                rule("java-sdk-routing", "isWorkerSchedulingResourceAllocatable == true && workerSchedulingMatchesRoutingCode == true")
+                rule("java-sdk-online-project", "supportsProject == true"),
+                rule("java-sdk-routing", "workerSchedulingMatchesRoutingCode == true")
         ));
 
         MassPlatform workerMass = platform(workerKey);

@@ -64,8 +64,8 @@ class TaskApiWorkerAttributeRoutingTraceObservedIntegrationTest extends Abstract
     @Test
     void workerAttributeRoutingIsObservedWithoutWorkerContextEvidence() throws Exception {
         app.replaceDefaultRules(List.of(
-                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
-                rule("worker_scheduling_resource_check", "isWorkerSchedulingResourceAllocatable == true"),
+                rule("basic_worker_check", "hasWorkerSchedulingResource == true"),
+                rule("worker_scheduling_resource_check", "hasWorkerSchedulingResource == true"),
                 rule("app_support_check", "supportsProject == true"),
                 rule("worker_scheduling_attribute_country", "workerSchedulingAttributes['country'] == routingCode")
         ));
@@ -142,8 +142,8 @@ class TaskApiWorkerAttributeRoutingTraceObservedIntegrationTest extends Abstract
     @Test
     void routeAttributesNarrowStageOneCandidatesBeforeRuleAdmission() throws Exception {
         app.replaceDefaultRules(List.of(
-                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
-                rule("worker_scheduling_resource_check", "isWorkerSchedulingResourceAllocatable == true"),
+                rule("basic_worker_check", "hasWorkerSchedulingResource == true"),
+                rule("worker_scheduling_resource_check", "hasWorkerSchedulingResource == true"),
                 rule("app_support_check", "supportsProject == true")
         ));
 
@@ -201,11 +201,10 @@ class TaskApiWorkerAttributeRoutingTraceObservedIntegrationTest extends Abstract
     void phoneDeviceFingerprintMatchHappensInsideSelectedWorkerGroup() throws Exception {
         registerDeviceProbeCatalog();
         app.replaceDefaultRules(List.of(
-                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
-                rule("worker_scheduling_resource_check", "isWorkerSchedulingResourceAllocatable == true"),
+                rule("basic_worker_check", "hasWorkerSchedulingResource == true"),
+                rule("worker_scheduling_resource_check", "hasWorkerSchedulingResource == true"),
                 rule("app_support_check", "supportsProject == true"),
-                rule("worker_fingerprint_match",
-                        "workerSchedulingAttributes['fingerprintProfile'] == taskSharedConfig['requiredFingerprintProfile']")
+                rule("worker_fingerprint_match", "matchesTargetWorkerAttributes == true")
         ));
 
         registerSdkStatelessWorkerWithAttributes(
@@ -357,6 +356,8 @@ class TaskApiWorkerAttributeRoutingTraceObservedIntegrationTest extends Abstract
         Map<String, Object> sharedConfig = new java.util.LinkedHashMap<>();
         sharedConfig.put("textContent", textContent);
         sharedConfig.put(TaskSharedConfig.WORKER_GROUP_ID, "phone-device-probe");
+        sharedConfig.put(TaskSharedConfig.TARGET_WORKER_ATTRIBUTES,
+                Map.of("fingerprintProfile", requiredFingerprintProfile));
         sharedConfig.put("requiredFingerprintProfile", requiredFingerprintProfile);
         sharedConfig.put("requiredNetworkOperatorMccMnc", "52501");
         sharedConfig.put(TaskSharedConfig.SDK_METADATA, Map.of(TaskSharedConfig.SDK_EVENT_CODE, "probe.phone.metadata"));

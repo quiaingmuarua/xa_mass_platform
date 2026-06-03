@@ -2,7 +2,7 @@ package com.xa.mass.engine.strategy;
 
 import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskSharedConfig;
+import com.xa.mass.engine.runtime.scheduling.TaskDispatchIntent;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateBatch;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
@@ -97,10 +97,11 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
         if (maxWorkerCount <= 0) {
             return matchedWorkers;
         }
+        TaskDispatchIntent dispatchIntent = TaskDispatchIntent.fromTask(task);
         WorkerTaskSelector selector = WorkerTaskSelectorFactory.fromTask(task);
         WorkerCandidateBatch<WorkerCandidateRow> candidateBatch = candidateRuntime.findWorkerCandidateBatch(
                 selector,
-                candidateAcquisitionLimit(task, maxWorkerCount)
+                candidateAcquisitionLimit(dispatchIntent, maxWorkerCount)
         );
         List<WorkerCandidateRow> candidates = candidateBatch.candidates();
         List<RuleDefinition> rules = ruleSetProvider.activeWorkerMatchingRules();
@@ -108,7 +109,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
 
         log.info("[WorkerAssign] Matching workers for task {} (routingCode: {}, candidates: {}, "
                         + "warmCandidates: {}, coldCandidates: {}, warmRejected: {}, rules: {})",
-                task.getTid(), TaskSharedConfig.routingCode(task), candidates.size(),
+                task.getTid(), dispatchIntent.routingCode(), candidates.size(),
                 candidateBatch.warmCandidateCount(), candidateBatch.coldCandidateCount(),
                 candidateBatch.warmSourceGuardRejectedCount(), rules.size());
 
@@ -127,7 +128,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                 continue;
             }
 
-            PrefilterDecision prefilterDecision = prefilterCandidate(task, candidate);
+            PrefilterDecision prefilterDecision = prefilterCandidate(task, dispatchIntent, candidate);
             if (!prefilterDecision.passed()) {
                 traceEventLogger.workerMatchRejected(task.getTid(), candidate, prefilterDecision.reason(),
                         null, null);
@@ -340,8 +341,8 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
         };
     }
 
-    private int candidateAcquisitionLimit(Task task, int maxWorkerCount) {
-        if (TaskSharedConfig.targetWorkerId(task) != null) {
+    private int candidateAcquisitionLimit(TaskDispatchIntent dispatchIntent, int maxWorkerCount) {
+        if (dispatchIntent != null && dispatchIntent.targetWorkerId() != null) {
             return 1;
         }
         int sampleMin = Math.max(1, DEFAULT_STAGE_ONE_SAMPLE_MIN);
@@ -375,7 +376,9 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
         return Collections.unmodifiableMap(snapshot);
     }
 
-    private PrefilterDecision prefilterCandidate(Task task, WorkerSchedulingCandidate candidate) {
+    private PrefilterDecision prefilterCandidate(Task task,
+                                                TaskDispatchIntent dispatchIntent,
+                                                WorkerSchedulingCandidate candidate) {
         WorkerSchedulingView schedulingView = candidate.getSchedulingView();
         WorkerReachabilityState reachability = schedulingView.reachability();
         Map<String, Object> contextSnapshot = WorkerMatchContext.contextSnapshot(candidate, task);
@@ -392,8 +395,10 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
             return PrefilterDecision.reject(AssignmentResult.CONFLICT,
                     "worker locked", contextSnapshot, true, REJECTION_OWNER_RESERVE);
         }
-        String targetWorkerId = TaskSharedConfig.targetWorkerId(task);
-        Map<String, String> targetWorkerAttributes = TaskSharedConfig.targetWorkerAttributes(task);
+        String targetWorkerId = dispatchIntent == null ? null : dispatchIntent.targetWorkerId();
+        Map<String, String> targetWorkerAttributes = dispatchIntent == null
+                ? Map.of()
+                : dispatchIntent.targetWorkerAttributes();
         if (targetWorkerId != null && !targetWorkerId.equals(schedulingView.workerId())) {
             return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
                     "target worker mismatch", contextSnapshot, false, REJECTION_OWNER_STAGE2_POLICY);
@@ -404,7 +409,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
                     "target worker attributes mismatch", contextSnapshot, false, REJECTION_OWNER_STAGE2_POLICY);
         }
 
-        String routingCode = TaskSharedConfig.routingCode(task);
+        String routingCode = dispatchIntent == null ? null : dispatchIntent.routingCode();
         boolean taskHasRoutingRequirement = routingCode != null && !routingCode.isBlank();
         if (taskHasRoutingRequirement && !schedulingView.schedulingRoutingTagsContain(routingCode)) {
             return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
@@ -422,7 +427,7 @@ public final class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatc
             String result = "false";
 
             try {
-                passed = ruleEvaluator.evaluate(rule, matchContext.getContext());
+                passed = ruleEvaluator.evaluate(rule, matchContext.getRuleContext());
                 result = String.valueOf(passed);
 
                 if (!passed) {

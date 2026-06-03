@@ -34,6 +34,34 @@ class RuleConfigTest {
                     "rule should not use legacy workerContext surface: " + id + " -> " + content);
             assertFalse(combined.contains("worker_context"),
                     "rule should not use legacy worker_context surface: " + id + " -> " + content);
+            assertFalse(combined.contains("supportsproject"),
+                    "default rules should not replace WorkerGroup project capability truth: "
+                            + id + " -> " + content);
+            assertFalse(combined.contains("supportsevent"),
+                    "default rules should not replace WorkerGroup event capability truth: "
+                            + id + " -> " + content);
+            assertFalse(combined.contains("isworkeravailable"),
+                    "rule should not read runtime availability evidence: " + id + " -> " + content);
+            assertFalse(combined.contains("isworkerlocked"),
+                    "rule should not read runtime lock evidence: " + id + " -> " + content);
+            assertFalse(combined.contains("isworkerschedulingresourceallocatable"),
+                    "rule should not read runtime admission evidence: " + id + " -> " + content);
+            assertFalse(combined.contains("workerestimatedloadratio"),
+                    "rule should not read runtime load evidence: " + id + " -> " + content);
+            assertFalse(combined.contains("estimatedloadratio"),
+                    "rule should not read runtime load evidence: " + id + " -> " + content);
+            assertFalse(combined.contains("workeractiveleasecount"),
+                    "rule should not read runtime lease evidence: " + id + " -> " + content);
+            assertFalse(combined.contains("workerreservedcount"),
+                    "rule should not read runtime reserve evidence: " + id + " -> " + content);
+            assertFalse(combined.contains("lastusedtime"),
+                    "rule should not read runtime usage history evidence: " + id + " -> " + content);
+            assertFalse(combined.contains("appcount"),
+                    "rule should not read aggregate worker support counts as eligibility policy: "
+                            + id + " -> " + content);
+            assertFalse(combined.contains("agentversion"),
+                    "rule should not read agent version as default eligibility policy: "
+                            + id + " -> " + content);
         }
     }
 }

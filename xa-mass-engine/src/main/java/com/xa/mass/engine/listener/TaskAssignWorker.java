@@ -6,6 +6,7 @@ import com.xa.mass.engine.runtime.TaskRuntimeProfile;
 import com.xa.mass.engine.runtime.TaskRuntimeProfileResolver;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicy;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
+import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy;
 import com.xa.mass.engine.TraceEventLogger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -383,11 +384,11 @@ public class TaskAssignWorker {
         if (task == null || !running || laneState == null) {
             return false;
         }
-        TaskRuntimeProfile profile = taskRuntimeProfileResolver.resolve(task);
+        ResolvedTaskSchedulingPolicy taskPolicy = resolveTaskSchedulingPolicy(task);
         return laneState.offer(new TaskAssignmentSignal(
                 task,
                 reason,
-                profile.dispatchPriority().ordinal(),
+                taskPolicy.dispatchPriority().ordinal(),
                 signalSequence.getAndIncrement()
         ));
     }
@@ -555,7 +556,11 @@ public class TaskAssignWorker {
     }
 
     private TaskRuntimeProfile.DispatchLane resolveDispatchLane(Task task) {
-        return taskRuntimeProfileResolver.resolve(task).dispatchLane();
+        return resolveTaskSchedulingPolicy(task).dispatchLane();
+    }
+
+    private ResolvedTaskSchedulingPolicy resolveTaskSchedulingPolicy(Task task) {
+        return ResolvedTaskSchedulingPolicy.from(task, taskRuntimeProfileResolver.resolve(task));
     }
 
     private int totalQueueDepth() {
