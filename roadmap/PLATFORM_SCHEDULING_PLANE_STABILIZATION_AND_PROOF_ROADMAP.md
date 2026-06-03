@@ -147,6 +147,27 @@ Runtime worker selection
 This roadmap should keep that consumption relationship visible in docs, tests,
 and guards.
 
+## Known Proof Gaps
+
+The first Scheduling Plane implementation introduced resolved views and moved
+some consumers onto them, but the proof is not yet strong enough to treat the
+boundary as stable.
+
+Known gaps:
+
+- `behavior-neutral` is currently supported by updated tests, not by a
+  before/after characterization or golden diff.
+- Worker-side selector construction consumes `ResolvedWorkerSchedulingPolicy`,
+  but consumers are not yet guarded from bypassing resolved views and reading
+  migrated task fields directly.
+- `TaskDispatchIntent` is currently computed in more than one place in a
+  dispatch pass.
+- `workloadClass` is the clearest current strategy fact and must be used as the
+  first duplicate-truth / bypass-guard sample.
+- `ProjectSchedulingBinding` remains a target name, but the future binding
+  subject is not yet decided: project may be governance/quota scope while
+  workload remains the actual scheduling axis.
+
 ## Out Of Scope
 
 - implementing `SchedulingPolicyCatalog`
@@ -208,17 +229,38 @@ Scope:
   - route code and route attributes,
   - target worker and target attributes,
   - empty/default shared config.
+- Add behavior-neutral proof that is independent of the implementation commit:
+  - either freeze pre-Scheduling Plane matching behavior as a characterization
+    / golden baseline and diff current behavior against it,
+  - or audit the Scheduling Plane landing commit assertion-by-assertion for
+    accept/reject result, rule count, rejection owner, and rejection reason
+    changes.
 - Strengthen consumer tests where current behavior depends on resolved policy:
   - assignment allocation,
   - `TaskAssignWorker`,
   - rule-backed matching,
   - candidate acquisition limits.
+- Add perturbation proof for migrated facts:
+  - perturb a resolved task scheduling field and prove task-side consumer
+    behavior changes,
+  - perturb a resolved worker scheduling field and prove worker-side consumer
+    behavior changes,
+  - prove the same consumer is not silently reading the old raw task field.
+- Collapse readonly duplicate resolution in the matching path so a dispatch
+  pass computes `TaskDispatchIntent` / `SchedulingPlaneResolution` once and
+  threads the resolved inputs down to selector construction and candidate
+  acquisition.
 - Avoid introducing a new orchestration owner.
 
 Acceptance:
 
-- Resolver output matches existing behavior for all current inputs.
+- Resolver output matches existing behavior for all current inputs, proven by
+  characterization/golden diff or explicit landing-commit assertion audit.
 - Execution owners consume resolved views but still own execution decisions.
+- Migrated facts have at least one perturbation test showing that the resolved
+  view, not the old raw field read, drives the consumer decision.
+- A dispatch pass does not recompute the same `TaskDispatchIntent` through
+  parallel helper paths.
 - No test has to mock a persisted catalog or project binding.
 - No production engine dependency on a policy storage/control-plane module.
 
@@ -226,6 +268,8 @@ Suggested proof:
 
 ```powershell
 mvn -pl xa-mass-engine "-Dtest=DefaultSchedulingPlaneResolverTest,DefaultAssignmentAllocationPolicyTest,TaskAssignWorkerTest,RuleBasedTaskWorkerMatchingStrategyTest,EngineSchedulingCoreArchitectureGuardTest" test
+rg -n "TaskDispatchIntent\\.fromTask\\(|ResolvedTaskSchedulingPolicy\\.from\\(|ResolvedWorkerSchedulingPolicy\\.from\\(|WorkerTaskSelectorFactory\\.fromTask\\(" xa-mass-engine/src/main/java --glob '!**/target/**'
+rg -n "getExecutionSpec\\(\\)\\.getWorkloadClass\\(|getWorkloadClass\\(" xa-mass-engine/src/main/java --glob '!**/target/**'
 ```
 
 ## SPSP-2 Rule Context Stability
@@ -249,6 +293,9 @@ Acceptance:
 
 - Rule evaluator production calls use `getRuleContext()`, not the full context.
 - Tests prove unapproved live evidence is absent from rule context.
+- `EngineSchedulingCoreArchitectureGuardTest` is the primary proof for the rule
+  context boundary and covers variable passing / helper extraction / evaluator
+  overloads, not only one literal inline call shape.
 - Any remaining diagnostic-only keys are named and justified.
 - No PSP-5 residue item remains that can silently change matching behavior
   after policy code exists.
@@ -259,6 +306,9 @@ Suggested proof:
 mvn -pl xa-mass-engine "-Dtest=WorkerMatchContextTest,RuleConfigTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,EngineSchedulingCoreArchitectureGuardTest" test
 rg -n "evaluate\\([^,]+,\\s*[^)]*getContext\\(|getContext\\(\\).*rule|rule.*getContext\\(" xa-mass-engine/src/main/java xa-mass-engine/src/test/java --glob '!**/target/**'
 ```
+
+The `rg` check is only a sanity scan. The architecture guard must carry the
+actual boundary proof.
 
 ## SPSP-3 Policy Truth Duplicate Guard
 
@@ -274,6 +324,14 @@ Scope:
   - no writable scheduling policy state in SDK/server config,
   - no runtime owner stores the same policy fact already represented by task
     shell, shared config, or resolved views.
+- Use `workloadClass` as the first concrete policy-truth sample:
+  - writable truth remains the task shell execution spec,
+  - resolved task scheduling view carries it to task-side consumers,
+  - assignment allocation, worker budget, lane selection, and retry policy must
+    not each rediscover it through separate raw task reads once migrated.
+- Track readonly duplicate resolution separately from writable duplicate truth.
+  Recomputing the same intent in parallel helper paths is not a second writable
+  source of truth, but it is still a Scheduling Plane boundary failure.
 - Maintain a policy-truth ownership table in the active owner doc if code
   introduces or renames any Scheduling Plane field.
 - Document non-automatable review checks explicitly instead of pretending the
@@ -283,6 +341,10 @@ Acceptance:
 
 - Architecture guard fails when a second writable owner is introduced for a
   current policy fact.
+- Architecture guard or targeted tests fail when a migrated fact such as
+  `workloadClass` is consumed by bypassing the resolved task scheduling view.
+- Readonly duplicate resolution sites are either removed or recorded as named
+  residue with owner and follow-up.
 - Source searches show no catalog/binding production implementation.
 - Any intentionally duplicated read model is labeled as derived evidence, not
   truth.
@@ -295,6 +357,7 @@ Suggested guard searches:
 rg -n "class .*SchedulingPolicyCatalog|interface .*SchedulingPolicyCatalog|record .*SchedulingPolicyCatalog|class .*ProjectSchedulingBinding|interface .*ProjectSchedulingBinding|record .*ProjectSchedulingBinding" xa-mass-engine xa-mass-server sdk platform_infra --glob '!**/target/**'
 rg -n "SchedulingPolicyCatalog|ProjectSchedulingBinding" xa-mass-engine/src/main/java xa-mass-server/src/main/java sdk --glob '!**/target/**'
 rg -n "policy.*storage|storage.*policy|scheduling.*catalog|project.*binding" xa-mass-engine/src/main/java xa-mass-server/src/main/java platform_infra --glob '!**/target/**'
+rg -n "getExecutionSpec\\(\\)\\.getWorkloadClass\\(|getWorkloadClass\\(" xa-mass-engine/src/main/java --glob '!**/target/**'
 ```
 
 ## SPSP-4 Trace And E2E Proof Bundle
@@ -373,6 +436,12 @@ produces all of the following evidence:
 - the caller that selects or configures them,
 - the owner that stores the selection,
 - the runtime owner that consumes the resolved view,
+- the future binding subject decision:
+  - whether `ProjectSchedulingBinding` means project-governance binding,
+    project-quota scope, workload scheduling binding, or a two-level
+    project/workload binding,
+  - why that subject matches the proven scheduling axis instead of preserving a
+    misleading target name,
 - a proof that current computed defaults are insufficient,
 - a rollback or migration plan for existing task behavior.
 
@@ -383,7 +452,10 @@ a policy product roadmap.
 
 | Area | Minimum proof |
 | --- | --- |
+| Behavior neutrality | characterization/golden diff or landing-commit assertion audit |
 | Resolver behavior | `DefaultSchedulingPlaneResolverTest` |
+| Resolved-view perturbation | targeted consumer perturbation tests for migrated facts |
+| Single resolution boundary | source guard for duplicate `TaskDispatchIntent` / resolution computation |
 | Task-side consumers | `DefaultAssignmentAllocationPolicyTest`, `TaskAssignWorkerTest` |
 | Worker-side consumers | `RuleBasedTaskWorkerMatchingStrategyTest`, `WorkerMatchContextTest` |
 | Rule boundary | `WorkerMatchContextTest`, `RuleConfigTest`, `QLExpressRuleEvaluatorTest` |
@@ -397,9 +469,12 @@ a policy product roadmap.
 | --- | --- | --- |
 | Stabilization becomes feature expansion | Adds policy truth before proof exists | Hard rule: no catalog, binding, SDK config, or second variant |
 | Resolved views become execution owners | Blurs input vs runtime ownership | Keep consumer relationship explicit in docs and tests |
+| Resolved views become decoration | Consumers can keep reading raw task fields while tests still pass | perturbation proof plus bypass guards for migrated facts |
+| Readonly resolution duplication spreads | Strategy facts remain scattered even without writable duplicate truth | resolve once per dispatch pass and thread inputs through |
 | Trace becomes source of truth | Reverses runtime ownership | Treat trace as derived evidence only |
 | Rule context re-expands | Reintroduces catch-all matching policy | Guard rule-readable keys and live evidence |
 | Duplicate policy truth survives | Storage, SDK config, resolved views, and runtime state can diverge | Add architecture guard plus review checklist |
+| Binding target name misleads implementation | `ProjectSchedulingBinding` can preserve a project-first name even if workload is the proven scheduling axis | require binding subject decision before successor feature work |
 | Docs overclaim implementation | Agents start coding target state as current truth | SPSP-0 active-doc alignment before new feature work |
 
 ## Exit Criteria
@@ -408,11 +483,17 @@ This roadmap is complete when:
 
 1. Active docs describe the implemented Scheduling Plane contracts accurately.
 2. Archived inventory links are not used as active proof.
-3. Resolver and consumer tests prove computed-default behavior.
-4. Rule context guards prevent unclassified live evidence from being
+3. Resolver and consumer tests prove computed-default behavior by differential
+   or audited characterization evidence, not only by updated tests passing.
+4. Perturbation tests prove migrated facts are carried by resolved views.
+5. Matching and selector construction do not recompute dispatch intent through
+   parallel helper paths.
+6. Rule context guards prevent unclassified live evidence from being
    rule-readable.
-5. Duplicate policy truth has an automated guard and a review checklist.
-6. Trace/E2E proof explains scheduling and matching outcomes without becoming
+7. Duplicate policy truth has an automated guard and a review checklist.
+8. `workloadClass` has an explicit truth/consumer proof and no migrated
+   consumer bypasses the resolved task scheduling view.
+9. Trace/E2E proof explains scheduling and matching outcomes without becoming
    truth.
-7. Any successor feature roadmap starts from a written decision, not from
+10. Any successor feature roadmap starts from a written decision, not from
    implicit pressure to keep expanding the abstraction.
