@@ -4,7 +4,7 @@ Status: PSP-1 owner / binding / persistence decision.
 
 Source roadmap: `roadmap/PLATFORM_SCHEDULING_PLANE_ROADMAP.md`.
 
-Inventory: `roadmap/PLATFORM_SCHEDULING_PLANE_INVENTORY.md`.
+Inventory: `doc/archive/xa-mass-engine/2026-06-03_PLATFORM_SCHEDULING_PLANE_INVENTORY.md`.
 
 This decision authorizes PSP-2 contract-shape work. It does not authorize a
 persisted policy catalog, storage-backed project binding table, or behavior
