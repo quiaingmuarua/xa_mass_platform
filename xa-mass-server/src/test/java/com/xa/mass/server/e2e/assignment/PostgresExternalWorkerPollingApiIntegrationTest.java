@@ -82,8 +82,8 @@ class PostgresExternalWorkerPollingApiIntegrationTest extends ReviewReadModelSam
         String submitterCredential = "polling-pg-submitter-key";
 
         app.replaceDefaultRules(List.of(
-                rule("crawler-online-project", "isWorkerAvailable == true && isWorkerLocked == false && supportsProject == true"),
-                rule("crawler-scheduling-routing", "isWorkerSchedulingResourceAllocatable == true && workerSchedulingMatchesRoutingCode == true")
+                rule("crawler-online-project", "supportsProject == true"),
+                rule("crawler-scheduling-routing", "workerSchedulingMatchesRoutingCode == true")
         ));
         registerExternalWorkerSubmitter(
                 "polling-pg-worker",

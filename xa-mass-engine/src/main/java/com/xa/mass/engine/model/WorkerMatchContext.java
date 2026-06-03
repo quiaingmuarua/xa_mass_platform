@@ -9,17 +9,20 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Rule-evaluation context for worker matching.
+ * Diagnostic and rule-evaluation context for worker matching.
  *
- * <p>The routing signal is task-owned input, and scheduling truth is read from
- * worker-level attributes/capabilities. Worker group remains exposed only as a
- * diagnostic signal.
+ * <p>The full context keeps runtime evidence for assignment records and traces.
+ * The rule context is narrower: it exposes declarative task intent, worker
+ * capability, and static worker metadata only. Live admission, load, lease,
+ * lock, and reachability evidence belongs to prefilter, ranking, reserve, and
+ * diagnostic paths instead of rule evaluation.
  */
 public class WorkerMatchContext {
     private final WorkerCandidateRow candidateRow;
     private final Task task;
     private final WorkerSchedulingView schedulingView;
     private final Map<String, Object> context;
+    private final Map<String, Object> ruleContext;
 
     public WorkerMatchContext(WorkerSchedulingCandidate candidate, Task task) {
         Objects.requireNonNull(candidate, "candidate");
@@ -27,12 +30,19 @@ public class WorkerMatchContext {
         this.task = task;
         this.schedulingView = candidate.getSchedulingView();
         this.context = buildContext(candidate, task);
+        this.ruleContext = buildRuleContext(candidate, task);
     }
 
     public static Map<String, Object> contextSnapshot(WorkerSchedulingCandidate candidate, Task task) {
         Objects.requireNonNull(candidate, "candidate");
         Objects.requireNonNull(task, "task");
         return buildContext(candidate, task);
+    }
+
+    public static Map<String, Object> ruleContextSnapshot(WorkerSchedulingCandidate candidate, Task task) {
+        Objects.requireNonNull(candidate, "candidate");
+        Objects.requireNonNull(task, "task");
+        return buildRuleContext(candidate, task);
     }
 
     private static Map<String, Object> buildContext(WorkerSchedulingCandidate candidate, Task task) {
@@ -81,6 +91,56 @@ public class WorkerMatchContext {
         return ctx;
     }
 
+    private static Map<String, Object> buildRuleContext(WorkerSchedulingCandidate candidate, Task task) {
+        WorkerSchedulingView schedulingView = candidate.getSchedulingView();
+        Map<String, Object> ctx = new LinkedHashMap<>();
+
+        String routingCode = TaskSharedConfig.routingCode(task);
+        String taskEventCode = TaskSharedConfig.sdkEventCode(task);
+        String targetWorkerId = TaskSharedConfig.targetWorkerId(task);
+        Map<String, String> targetWorkerAttributes = TaskSharedConfig.targetWorkerAttributes(task);
+        boolean taskHasRoutingRequirement = routingCode != null && !routingCode.isBlank();
+        boolean taskUsesEventCapability = taskEventCode != null && !taskEventCode.isBlank();
+        java.util.Set<String> routingTags = schedulingView.schedulingRoutingTags();
+        boolean workerSchedulingProjectMatchesTaskProject =
+                schedulingView.schedulingProject() != null
+                        && Objects.equals(schedulingView.schedulingProject(), task.getProject());
+        boolean workerSchedulingMatchesRoutingCode =
+                taskHasRoutingRequirement && !routingTags.isEmpty() && routingTags.contains(routingCode);
+
+        ctx.put("taskId", task.getTid());
+        ctx.put("taskName", task.getTaskName());
+        ctx.put("taskProject", task.getProject());
+        ctx.put("taskEventCode", taskEventCode);
+        ctx.put("taskUsesEventCapability", taskUsesEventCapability);
+        ctx.put("taskTargetWorkerId", targetWorkerId);
+        ctx.put("taskTargetWorkerAttributes", targetWorkerAttributes);
+        ctx.put("routingCode", routingCode);
+        ctx.put("taskHasRoutingRequirement", taskHasRoutingRequirement);
+
+        ctx.put("workerId", schedulingView.workerId());
+        ctx.put("workerGroupId", schedulingView.workerGroupId());
+        ctx.put("workerAttributes", schedulingView.workerAttributes());
+        ctx.put("supportedProjects", schedulingView.supportedProjects());
+        ctx.put("supportedEventCodes", schedulingView.supportedEventCodes());
+
+        ctx.put("workerSchedulingResourceId", schedulingView.schedulingResourceId());
+        ctx.put("workerSchedulingProject", schedulingView.schedulingProject());
+        ctx.put("workerSchedulingRoutingTags", schedulingView.schedulingRoutingTags());
+        ctx.put("workerSchedulingAttributes", schedulingView.schedulingAttributes());
+        ctx.put("hasWorkerSchedulingResource", schedulingView.schedulingResourceId() != null);
+
+        ctx.put("supportsProject", schedulingView.supportsProject(task.getProject()));
+        ctx.put("supportsEvent", !taskUsesEventCapability || schedulingView.supportsEvent(taskEventCode));
+        ctx.put("matchesTargetWorkerId", targetWorkerId == null || Objects.equals(schedulingView.workerId(), targetWorkerId));
+        ctx.put("matchesTargetWorkerAttributes", targetWorkerAttributes.isEmpty()
+                || workerAttributesMatch(schedulingView.workerAttributes(), targetWorkerAttributes));
+        ctx.put("workerSchedulingProjectMatchesTaskProject", workerSchedulingProjectMatchesTaskProject);
+        ctx.put("workerSchedulingMatchesRoutingCode", workerSchedulingMatchesRoutingCode);
+
+        return ctx;
+    }
+
     public WorkerCandidateRow getCandidateRow() {
         return candidateRow;
     }
@@ -95,6 +155,10 @@ public class WorkerMatchContext {
 
     public Map<String, Object> getContext() {
         return context;
+    }
+
+    public Map<String, Object> getRuleContext() {
+        return ruleContext;
     }
 
     private static boolean workerAttributesMatch(Map<String, String> workerAttributes,

@@ -1,27 +1,31 @@
 package com.xa.mass.engine.strategy;
 
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskSharedConfig;
+import com.xa.mass.engine.runtime.scheduling.ResolvedWorkerSchedulingPolicy;
+import com.xa.mass.engine.runtime.scheduling.SchedulingPlaneResolution;
+import com.xa.mass.engine.runtime.scheduling.SchedulingPlaneResolver;
 import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
 
-import java.util.Set;
-
 /**
- * Engine-side adapter from Task shared config to worker runtime selector input.
+ * Engine-side adapter from resolved worker scheduling policy to worker runtime
+ * selector input.
  */
 public final class WorkerTaskSelectorFactory {
+
+    private static final SchedulingPlaneResolver DEFAULT_RESOLVER = new DefaultSchedulingPlaneResolver();
 
     private WorkerTaskSelectorFactory() {
     }
 
     public static WorkerTaskSelector fromTask(Task task) {
-        Set<String> routeBucketKeys = WorkerRoutingPolicy.defaultPolicy().routeBucketKeysForTask(task);
+        SchedulingPlaneResolution resolution = DEFAULT_RESOLVER.resolve(task);
+        ResolvedWorkerSchedulingPolicy workerPolicy = resolution.workerSchedulingPolicy();
         return new WorkerTaskSelector(
-                task == null ? null : task.getTid(),
-                TaskSharedConfig.workerGroupSelector(task),
-                TaskSharedConfig.adapterNodeId(task),
-                TaskSharedConfig.targetWorkerId(task),
-                routeBucketKeys
+                workerPolicy.taskId(),
+                workerPolicy.workerGroupIds(),
+                workerPolicy.adapterNodeId(),
+                workerPolicy.targetWorkerId(),
+                workerPolicy.routeBucketKeys()
         );
     }
 }

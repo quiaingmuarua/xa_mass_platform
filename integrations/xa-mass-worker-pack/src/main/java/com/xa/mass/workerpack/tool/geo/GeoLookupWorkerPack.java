@@ -14,7 +14,7 @@ import java.util.Objects;
 
 public final class GeoLookupWorkerPack {
     public static final String WORKER_GROUP_ID = "worker-pack.tools.geo";
-    public static final String DEFAULT_ADAPTER_TYPE = "worker-pack-polling";
+    public static final String DEFAULT_ADAPTER_TYPE = "polling";
 
     private GeoLookupWorkerPack() {
     }

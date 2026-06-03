@@ -419,10 +419,11 @@ Infra ownership:
 Matching is current worker-selection mechanism vocabulary, not a top-level
 policy owner. The current default implementation enumerates
 `WorkerSchedulingCandidate` values, reads `WorkerSchedulingView` evidence,
-evaluates eligibility through `WorkerMatchContext` and QLExpress rules, ranks
-accepted candidates, and reserves/adopts worker admission evidence. QLExpress
-rules are one eligibility/scoring component, not the final shape of worker
-scheduling policy or runtime worker selection.
+evaluates declarative eligibility through `WorkerMatchContext#getRuleContext()`
+and QLExpress rules, ranks accepted candidates, and reserves/adopts worker
+admission evidence. The full `WorkerMatchContext` snapshot remains diagnostic
+evidence for records and traces. QLExpress rules are one eligibility component,
+not the final shape of worker scheduling policy or runtime worker selection.
 
 Current owner types:
 
@@ -444,7 +445,6 @@ Current default bootstrap rule set:
 - `basic_worker_check`
 - `worker_scheduling_resource_check`
 - `routing_code_match`
-- `worker_capability_check`
 - `worker_load_check`
 
 Worker selection boundaries:
@@ -456,9 +456,10 @@ Worker selection boundaries:
   `WorkerContext` storage into candidates
 - worker-level assignment diagnostics consume `WorkerSchedulingCandidate`;
   candidate handoff no longer carries a nullable `WorkerContext` payload
-- `WorkerMatchContext` owns the rule and diagnostic snapshot field map;
-  `RuleBasedTaskWorkerMatchingStrategy` consumes that read model for prefilter
-  records instead of maintaining a duplicate snapshot builder
+- `WorkerMatchContext` owns both the full diagnostic snapshot and the narrower
+  declarative rule context; `RuleBasedTaskWorkerMatchingStrategy` evaluates
+  rules against the declarative rule context and keeps the full snapshot for
+  prefilter, assignment records, and trace diagnostics
 - assignment records snapshot `WorkerSchedulingView` evidence through
   `WorkerSchedulingSnapshot`; account-slot identity is not the diagnostic
   subject
@@ -474,14 +475,15 @@ Worker selection boundaries:
   `WorkerReachabilityView`, not local heartbeat-expiry heuristics
 - `workerSchedulingAttributes` is one worker-selection evidence family for labels,
   fingerprints, and routing hints; it is not the whole policy model
-- default rules must use `workerScheduling*` / `isWorkerScheduling*` variables;
-  legacy `workerContext*` variables are no longer part of the engine rule
-  surface
+- default rules must use declarative task intent, worker capability, and static
+  worker metadata variables; legacy `workerContext*` variables and live runtime
+  evidence such as availability, lock, admission, reserve, and load are not part
+  of the engine rule surface
 - worker load variables such as `workerActiveLeaseCount`,
   `workerReservedCount`, and `workerEstimatedLoadRatio` are scheduling
-  evidence; current capacity semantics are worker-declared process-local
-  reservation plus the existing worker lock, not distributed capacity
-  correctness or shared background execution
+  diagnostics and ranking evidence; current capacity semantics are
+  worker-declared process-local reservation plus the existing worker lock, not
+  distributed capacity correctness or shared background execution
 - worker-selection inputs must stay explicit scheduling evidence rather than
   being smuggled into worker-resource ownership or worker scheduling policy
 - routing is a task-owned hint currently resolved from

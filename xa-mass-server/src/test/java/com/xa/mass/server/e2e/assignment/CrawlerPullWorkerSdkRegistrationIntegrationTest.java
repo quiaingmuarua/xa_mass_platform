@@ -63,8 +63,8 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends ReviewReadModelSam
     void crawlerPullWorkerCreatedViaSdkRegistrationCompletesTaskEndToEnd() throws Exception {
         String workerId = "crawler-worker-001";
         app.replaceDefaultRules(List.of(
-                rule("crawler-online-project", "isWorkerAvailable == true && isWorkerLocked == false && supportsProject == true"),
-                rule("crawler-scheduling-routing", "isWorkerSchedulingResourceAllocatable == true && workerSchedulingMatchesRoutingCode == true")
+                rule("crawler-online-project", "supportsProject == true"),
+                rule("crawler-scheduling-routing", "workerSchedulingMatchesRoutingCode == true")
         ));
         app.declareWorkerGroup(WorkerGroupDeclaration.builder()
                 .groupId("crawler")

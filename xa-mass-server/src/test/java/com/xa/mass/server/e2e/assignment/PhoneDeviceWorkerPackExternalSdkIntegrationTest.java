@@ -66,11 +66,10 @@ class PhoneDeviceWorkerPackExternalSdkIntegrationTest extends AbstractSampleE2eT
         registerWorkerSubmitter("phone-device-probe-worker-a", matchedWorkerKey, matchedWorkerId);
         registerWorkerSubmitter("phone-device-probe-worker-b", otherWorkerKey, otherWorkerId);
         sdkApp().replaceDefaultRules(List.of(
-                rule("phone-worker-online", "isWorkerAvailable == true && isWorkerLocked == false"),
-                rule("phone-worker-capacity", "isWorkerSchedulingResourceAllocatable == true"),
+                rule("phone-worker-online", "hasWorkerSchedulingResource == true"),
+                rule("phone-worker-capacity", "hasWorkerSchedulingResource == true"),
                 rule("phone-worker-project", "supportsProject == true"),
-                rule("phone-worker-fingerprint",
-                        "workerSchedulingAttributes['fingerprintProfile'] == taskSharedConfig['requiredFingerprintProfile']")
+                rule("phone-worker-fingerprint", "matchesTargetWorkerAttributes == true")
         ));
 
         MassPlatform matchedWorkerMass = platform(matchedWorkerKey);
@@ -103,6 +102,7 @@ class PhoneDeviceWorkerPackExternalSdkIntegrationTest extends AbstractSampleE2eT
                     .contract(TaskContract.BATCH)
                     .sharedConfig("requiredFingerprintProfile", "fp-android-sg-a")
                     .sharedConfig("requiredNetworkOperatorMccMnc", "52501")
+                    .targetWorkerAttributes(Map.of("fingerprintProfile", "fp-android-sg-a"))
                     .executionSpec(TaskExecutionSpec.builder()
                             .batchSize(1)
                             .build())

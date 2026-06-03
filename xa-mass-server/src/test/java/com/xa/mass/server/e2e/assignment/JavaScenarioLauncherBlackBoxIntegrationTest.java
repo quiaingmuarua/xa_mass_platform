@@ -198,7 +198,7 @@ class JavaScenarioLauncherBlackBoxIntegrationTest extends ReviewReadModelSampleE
                       "id": "ijs-worker-online",
                       "name": "IJS worker online",
                       "type": "QL_EXPRESS",
-                      "content": "isWorkerAvailable == true && isWorkerLocked == false",
+                      "content": "hasWorkerSchedulingResource == true",
                       "priority": 1,
                       "enabled": true
                     },
@@ -319,7 +319,7 @@ class JavaScenarioLauncherBlackBoxIntegrationTest extends ReviewReadModelSampleE
                       "id": "ijs-ws-worker-online",
                       "name": "IJS websocket worker online",
                       "type": "QL_EXPRESS",
-                      "content": "isWorkerAvailable == true && isWorkerLocked == false",
+                      "content": "hasWorkerSchedulingResource == true",
                       "priority": 1,
                       "enabled": true
                     },

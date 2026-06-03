@@ -61,6 +61,10 @@ public class WorkerMatchContextTest {
         assertEquals(true, context.getContext().get("taskHasRoutingRequirement"));
         assertEquals(false, context.getContext().get("workerSchedulingProjectMatchesTaskProject"));
         assertEquals(true, context.getContext().get("workerSchedulingMatchesRoutingCode"));
+        assertEquals(true, context.getRuleContext().get("workerSchedulingMatchesRoutingCode"));
+        assertEquals(true, context.getRuleContext().get("supportsProject"));
+        assertEquals(true, context.getRuleContext().get("supportsEvent"));
+        assertNoRuntimeRuleEvidence(context.getRuleContext());
         assertNoWorkerContextRuleFields(context.getContext());
         assertFalse(context.getContext().containsKey("workerGroupIdEqualsRoutingCode"));
         assertFalse(context.getContext().containsKey("workerContextChannelMatchesRoutingCode"));
@@ -142,13 +146,19 @@ public class WorkerMatchContextTest {
         WorkerSchedulingCandidate candidate = candidate(worker);
         WorkerMatchContext context = new WorkerMatchContext(candidate, task);
         Map<String, Object> snapshot = WorkerMatchContext.contextSnapshot(candidate, task);
+        Map<String, Object> ruleSnapshot = WorkerMatchContext.ruleContextSnapshot(candidate, task);
 
         assertEquals(context.getContext(), snapshot);
+        assertEquals(context.getRuleContext(), ruleSnapshot);
         assertEquals(true, snapshot.get("taskUsesEventCapability"));
         assertEquals("demo.dispatch", snapshot.get("taskEventCode"));
         assertEquals(true, snapshot.get("supportsEvent"));
+        assertEquals(true, ruleSnapshot.get("taskUsesEventCapability"));
+        assertEquals("demo.dispatch", ruleSnapshot.get("taskEventCode"));
+        assertEquals(true, ruleSnapshot.get("supportsEvent"));
         assertEquals("worker-snapshot", snapshot.get("workerSchedulingResourceId"));
         assertEquals(Set.of("shared", "us"), snapshot.get("workerSchedulingRoutingTags"));
+        assertNoRuntimeRuleEvidence(ruleSnapshot);
         assertNoWorkerContextRuleFields(snapshot);
     }
 
@@ -230,6 +240,7 @@ public class WorkerMatchContextTest {
         assertEquals(2.0, context.getContext().get("workerEstimatedLoadRatio"));
         assertEquals(3, context.getContext().get("currentActiveLeaseCount"));
         assertEquals(2.0, context.getContext().get("estimatedLoadRatio"));
+        assertNoRuntimeRuleEvidence(context.getRuleContext());
     }
 
     private WorkerSchedulingCandidate candidate(Worker worker) {
@@ -262,5 +273,25 @@ public class WorkerMatchContextTest {
         assertTrue(context.keySet().stream().noneMatch(key -> key.startsWith("workerContext")
                 || key.startsWith("isWorkerContext")
                 || key.equals("hasWorkerContext")));
+    }
+
+    private void assertNoRuntimeRuleEvidence(Map<String, Object> context) {
+        assertFalse(context.containsKey("isWorkerAvailable"));
+        assertFalse(context.containsKey("isTransportReachable"));
+        assertFalse(context.containsKey("transportReachability"));
+        assertFalse(context.containsKey("isWorkerLocked"));
+        assertFalse(context.containsKey("workerActiveLeaseCount"));
+        assertFalse(context.containsKey("workerReservedCount"));
+        assertFalse(context.containsKey("workerDeclaredCapacity"));
+        assertFalse(context.containsKey("workerEstimatedLoadRatio"));
+        assertFalse(context.containsKey("currentActiveLeaseCount"));
+        assertFalse(context.containsKey("estimatedLoadRatio"));
+        assertFalse(context.containsKey("isWorkerSchedulingResourceAllocatable"));
+        assertFalse(context.containsKey("isWorkerSchedulingResourceAvailable"));
+        assertFalse(context.containsKey("isWorkerSchedulingResourceUsable"));
+        assertFalse(context.containsKey("isWorkerSchedulingResourceReserved"));
+        assertFalse(context.containsKey("isWorkerSchedulingResourceOccupied"));
+        assertFalse(context.containsKey("appCount"));
+        assertFalse(context.containsKey("agentVersion"));
     }
 }

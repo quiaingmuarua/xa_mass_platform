@@ -362,7 +362,7 @@ public final class ProbeWorkerPack {
                     .workerId(resolvedWorkerId)
                     .workerGroupId(PHONE_DEVICE_GROUP_ID)
                     .adapterNodeId(resolvedAdapterNodeId)
-                    .adapterType("worker-pack-polling")
+                    .adapterType("polling")
                     .attributes(attributes)
                     .eventHandler(PHONE_METADATA_EVENT, phoneMetadataHandler())
                     .pollInterval(pollInterval)

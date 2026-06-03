@@ -17,15 +17,15 @@ public class RuleConfig {
         RuleDefinition basicRule = new RuleDefinition();
         basicRule.setId("basic_worker_check");
         basicRule.setType(RuleType.QL_EXPRESS);
-        basicRule.setContent("isWorkerAvailable == true && isWorkerLocked == false");
-        basicRule.setDescription("Worker must be available and unlocked");
+        basicRule.setContent("hasWorkerSchedulingResource == true");
+        basicRule.setDescription("Worker scheduling resource identity must be known");
         rules.add(basicRule);
 
         RuleDefinition schedulingResourceRule = new RuleDefinition();
         schedulingResourceRule.setId("worker_scheduling_resource_check");
         schedulingResourceRule.setType(RuleType.QL_EXPRESS);
-        schedulingResourceRule.setContent("isWorkerSchedulingResourceAllocatable == true");
-        schedulingResourceRule.setDescription("Worker scheduling resource must be allocatable");
+        schedulingResourceRule.setContent("matchesTargetWorkerAttributes == true");
+        schedulingResourceRule.setDescription("Target worker attributes, when required, must match worker attributes");
         rules.add(schedulingResourceRule);
 
         RuleDefinition routingRule = new RuleDefinition();
@@ -36,49 +36,15 @@ public class RuleConfig {
         routingRule.setDescription("Routing code, when required, must match one of the worker scheduling routing tags");
         rules.add(routingRule);
 
-        RuleDefinition loadRule = new RuleDefinition();
-        loadRule.setId("worker_load_check");
-        loadRule.setType(RuleType.QL_EXPRESS);
-        loadRule.setContent("appCount < 10");
-        loadRule.setDescription("Worker-supported project count must stay below 10");
-        rules.add(loadRule);
-
         return rules;
     }
 
     public static List<RuleDefinition> getAdvancedWorkerMatchRules() {
-        List<RuleDefinition> rules = getDefaultWorkerMatchRules();
-
-        RuleDefinition versionRule = new RuleDefinition();
-        versionRule.setId("agent_version_check");
-        versionRule.setType(RuleType.QL_EXPRESS);
-        versionRule.setContent("agentVersion != null && agentVersion.startsWith('1.')");
-        versionRule.setDescription("Agent version must be 1.x");
-        rules.add(versionRule);
-
-        RuleDefinition frequencyRule = new RuleDefinition();
-        frequencyRule.setId("usage_frequency_check");
-        frequencyRule.setType(RuleType.QL_EXPRESS);
-        frequencyRule.setContent("lastUsedTime == null || (System.currentTimeMillis() - lastUsedTime.toEpochSecond(java.time.ZoneOffset.UTC) * 1000) > 300000");
-        frequencyRule.setDescription("Worker must not have been used within the last 5 minutes");
-        rules.add(frequencyRule);
-
-        return rules;
+        return getDefaultWorkerMatchRules();
     }
 
     public static List<RuleDefinition> getProjectSpecificRules(String projectName) {
-        List<RuleDefinition> rules = getDefaultWorkerMatchRules();
-
-        if ("demoApp".equals(projectName)) {
-            RuleDefinition demoRule = new RuleDefinition();
-            demoRule.setId("demo_app_specific");
-            demoRule.setType(RuleType.QL_EXPRESS);
-            demoRule.setContent("appCount <= 5 && agentVersion.startsWith('1.0')");
-            demoRule.setDescription("demoApp requires appCount <= 5 and agentVersion 1.0.x");
-            rules.add(demoRule);
-        }
-
-        return rules;
+        return getDefaultWorkerMatchRules();
     }
 
     public static List<RuleDefinition> getLooseWorkerMatchRules() {
@@ -87,8 +53,8 @@ public class RuleConfig {
         RuleDefinition basicRule = new RuleDefinition();
         basicRule.setId("basic_worker_check");
         basicRule.setType(RuleType.QL_EXPRESS);
-        basicRule.setContent("isWorkerAvailable == true");
-        basicRule.setDescription("Worker must be available");
+        basicRule.setContent("hasWorkerSchedulingResource == true");
+        basicRule.setDescription("Worker scheduling resource identity must be known");
         rules.add(basicRule);
 
         RuleDefinition routingRule = new RuleDefinition();

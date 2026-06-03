@@ -100,8 +100,8 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         String credential = "node-worker-key";
         String submitterCredential = "crawler-submitter-key";
         app.replaceDefaultRules(List.of(
-                rule("crawler-online-project", "isWorkerAvailable == true && isWorkerLocked == false && supportsProject == true"),
-                rule("crawler-scheduling-routing", "isWorkerSchedulingResourceAllocatable == true && workerSchedulingMatchesRoutingCode == true")
+                rule("crawler-online-project", "supportsProject == true"),
+                rule("crawler-scheduling-routing", "workerSchedulingMatchesRoutingCode == true")
         ));
         HttpHeaders workerHeaders = credentialHeaders(credential);
         HttpHeaders submitterHeaders = credentialHeaders(submitterCredential);
@@ -353,8 +353,8 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractSampleE2eTest {
         String credential = "node-worker-draining-key";
         String submitterCredential = "crawler-submitter-key";
         app.replaceDefaultRules(List.of(
-                rule("crawler-online-project", "isWorkerAvailable == true && isWorkerLocked == false && supportsProject == true"),
-                rule("crawler-scheduling-routing", "isWorkerSchedulingResourceAllocatable == true && workerSchedulingMatchesRoutingCode == true")
+                rule("crawler-online-project", "supportsProject == true"),
+                rule("crawler-scheduling-routing", "workerSchedulingMatchesRoutingCode == true")
         ));
         registerExternalWorkerSubmitter(
                 "node-worker-draining",

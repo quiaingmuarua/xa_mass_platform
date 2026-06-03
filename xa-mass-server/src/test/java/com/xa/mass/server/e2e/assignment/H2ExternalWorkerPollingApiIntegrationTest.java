@@ -71,8 +71,8 @@ class H2ExternalWorkerPollingApiIntegrationTest extends ReviewReadModelSampleE2e
         String submitterCredential = "polling-h2-submitter-key";
 
         app.replaceDefaultRules(List.of(
-                rule("crawler-online-project", "isWorkerAvailable == true && isWorkerLocked == false && supportsProject == true"),
-                rule("crawler-scheduling-routing", "isWorkerSchedulingResourceAllocatable == true && workerSchedulingMatchesRoutingCode == true")
+                rule("crawler-online-project", "supportsProject == true"),
+                rule("crawler-scheduling-routing", "workerSchedulingMatchesRoutingCode == true")
         ));
         registerExternalWorkerSubmitter(
                 "polling-h2-worker",

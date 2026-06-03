@@ -64,8 +64,8 @@ class JavaExternalSdkTaskScopedInvocationIntegrationTest extends AbstractSampleE
         registerTaskSubmitter("java-sdk-task-handle-submitter", submitterKey);
         registerWorkerSubmitter("java-sdk-task-handle-worker", workerKey, workerId);
         sdkApp().replaceDefaultRules(List.of(
-                rule("java-sdk-task-handle-online", "isWorkerAvailable == true && isWorkerLocked == false && supportsProject == true"),
-                rule("java-sdk-task-handle-routing", "isWorkerSchedulingResourceAllocatable == true && workerSchedulingMatchesRoutingCode == true")
+                rule("java-sdk-task-handle-online", "supportsProject == true"),
+                rule("java-sdk-task-handle-routing", "workerSchedulingMatchesRoutingCode == true")
         ));
 
         MassPlatform workerMass = platform(workerKey);
