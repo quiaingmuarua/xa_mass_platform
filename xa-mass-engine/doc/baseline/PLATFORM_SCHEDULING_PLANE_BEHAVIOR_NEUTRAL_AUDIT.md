@@ -55,14 +55,17 @@ implementation.
 
 ## Follow-Up Proof
 
-The remaining stabilization proof is covered by targeted tests and guards:
+The remaining stabilization proof must be carried by characterization evidence
+or integrated scheduling tests that change accepted/rejected workers,
+assignment results, lifecycle state, or runtime ownership outcomes.
+
+Support regressions may still cover resolver or allocation construction drift,
+but those tests are not behavior-neutral proof by themselves:
 
 - `DefaultSchedulingPlaneResolverTest`
 - `DefaultAssignmentAllocationPolicyTest`
 - `DefaultWorkerBudgetPolicyTest`
-- `WorkerTaskSelectorFactoryTest`
 - `RuleBasedTaskWorkerMatchingStrategyTest`
-- `EngineSchedulingCoreArchitectureGuardTest`
 
 If future Scheduling Plane changes alter accepted/rejected workers, assignment
 result categories, rejection reasons, or rule evaluation counts, this audit is

@@ -13,6 +13,7 @@ import com.xa.mass.command.event.CoreEventResponse;
 import com.xa.mass.command.event.InMemoryMassEventRuntime;
 import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleOwner;
 import com.xa.mass.engine.event.KernelEventHandlerRegistry;
+import com.xa.mass.engine.strategy.DefaultSchedulingPlaneResolver;
 import com.xa.mass.engine.strategy.WorkerTaskSelectorFactory;
 import com.xa.mass.engine.testutil.RecordingEventSink;
 import com.xa.mass.engine.TraceEventLogger;
@@ -124,7 +125,8 @@ public class WorkerCapabilityReportEventHandlerTest {
     }
 
     private static List<WorkerCandidateRow> workerRows(WorkerManager workerManager, Task task) {
-        return workerManager.findWorkerCandidateBatch(WorkerTaskSelectorFactory.fromTask(task), 512).candidates();
+        return workerManager.findWorkerCandidateBatch(WorkerTaskSelectorFactory.fromPolicy(
+                new DefaultSchedulingPlaneResolver().resolve(task).workerSchedulingPolicy()), 512).candidates();
     }
 
     private static Worker worker(String workerId, String workerGroupId) {

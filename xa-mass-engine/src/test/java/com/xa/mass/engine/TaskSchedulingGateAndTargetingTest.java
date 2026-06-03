@@ -21,6 +21,36 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class TaskSchedulingGateAndTargetingTest {
 
     @Test
+    void workerGroupSelectorNarrowsCandidatePoolBeforeRuntimeSelection() {
+        TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
+        harness.addWorker("worker-selected", "pool-selected", "us", Map.of());
+        harness.addWorker("worker-other", "pool-other", "us", Map.of());
+        Task task = harness.createBatchTask(
+                "worker-group-selector",
+                List.of(harness.item("selected-group")),
+                0,
+                1,
+                Map.of(
+                        TaskSharedConfig.ROUTING_CODE, "us",
+                        TaskSharedConfig.WORKER_GROUP_ID, "pool-selected"
+                ),
+                1
+        );
+        assertTrue(harness.taskManager.approveTask(task.getTid()));
+
+        assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
+
+        List<ActiveLeaseRecord> activeLeases = harness.activeLeases(task.getTid());
+        assertEquals(1, activeLeases.size());
+        assertEquals("worker-selected", activeLeases.getFirst().workerId());
+        assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(task.getTid()).getStatus());
+        assertEquals(0, harness.stats(task.getTid()).readyCount());
+        assertEquals(1, harness.stats(task.getTid()).inflightCount());
+        assertTrue(harness.workerRecords(task.getTid(), "worker-other").isEmpty());
+        assertFalse(harness.workerManager.hasWorkerExclusiveLease("worker-other"));
+    }
+
+    @Test
     void minimumWorkerGateKeepsTaskReadyUntilEnoughEligibleWorkersExist() {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
         harness.addWorker("worker-us-1", "us");

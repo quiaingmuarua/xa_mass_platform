@@ -53,8 +53,9 @@ visibility expansion or same-module wrapper seams.
 - Owner-local tests should live under the owner package when they can do so
   without changing production visibility, for example `worker`, `strategy`,
   `listener`, `resource`, `assignment`, `runtime`, and `guard`.
-- Architecture and source guards belong under `com.xa.mass.engine.guard` unless
-  they are part of the scheduling-core suite guard itself.
+- Boundary and residue guards belong under `com.xa.mass.engine.guard` unless
+  they are part of the scheduling-core suite guard itself. They prevent proof
+  surface drift; they are not runtime-behavior proof.
 - Do not introduce a test-only bridge, facade, or public accessor just to make a
   directory move possible.
 
@@ -64,7 +65,7 @@ visibility expansion or same-module wrapper seams.
 | --- | --- | --- | --- | --- |
 | A task that is not schedulable must not dispatch even if ready work exists | task lifecycle + assignment signal admission | `TaskSchedulingContentionTest`, `TaskContractSchedulingBehaviorTest` | task status, runtime ready/inflight, no active lease | Covered |
 | Worker eligibility excludes unreachable, locked, capacity-exhausted, routing-mismatch, and target-attribute mismatch candidates | worker scheduling view + rule/rank/admission path | `TaskWorkerEligibilityTest`, `TaskSchedulingGateAndTargetingTest`, `TaskSchedulingContentionTest` | assignment records, active leases, worker lock/load | Covered |
-| Candidate narrowing must use explicit WorkerGroup selector truth and must not fall back to event/project/all-worker scans | worker registry snapshot + `WorkerCandidateIndex` + candidate enumerator | `WorkerCandidateIndexTest`, `WorkerManagerTest`, `WorkerSchedulingCandidateEnumeratorTest`, `EngineSchedulingCoreArchitectureGuardTest` | indexed group selector source, source guards, assignment trace fields | Covered |
+| Candidate narrowing must use explicit WorkerGroup selector truth and must not fall back to event/project/all-worker scans | worker registry snapshot + `WorkerCandidateIndex` + candidate enumerator | `TaskSchedulingGateAndTargetingTest`; `WorkerCandidateIndexTest` and `WorkerSchedulingCandidateEnumeratorTest` are support regressions | selected worker lease/binding, non-selected group has no assignment or lock, residue scan for removed fallback paths | Covered |
 | `targetWorkerId` is a group-scoped direct lookup shortcut, not a policy bypass | candidate index + Stage-2 admission | `TaskSchedulingGateAndTargetingTest`, `WorkerCandidateIndexTest`, `WorkerSchedulingCandidateEnumeratorTest` | no backup candidate, required group selector, lock/resource state | Covered |
 | Multiple tasks competing for one worker must not double assign or lose ready work | worker lock/capacity + runtime ready truth | `TaskSchedulingContentionTest` | active leases, assignment conflict records, ready/inflight counts | Covered |
 | Stateless/background workers can share capacity only up to declared capacity | worker load view + resource policy | `TaskSchedulingContentionTest`, `DefaultWorkerBudgetPolicyTest` | active lease count, quota rejection, task status | Covered |
@@ -78,7 +79,7 @@ visibility expansion or same-module wrapper seams.
 | Retry-exhausted expiry finalizes and releases resources for waiting work | runtime retry policy + terminal convergence + resource release | `TaskRedispatchCompetitionTest` | terminal reason, expired/final counters, worker unlock, later assignment | Covered |
 | Minimum-worker gate must avoid half-dispatch and release skipped candidates | allocation policy + assignment listener cleanup | `TaskSchedulingGateAndTargetingTest`, `TaskWorkerEligibilityTest` | READY state, zero active leases, worker unlocked, later dispatch when enough eligible workers exist | Covered |
 | Result finality must release worker lock/capacity/resource | result convergence + resource releaser | `TaskSchedulingContentionTest`, `TaskRedispatchCompetitionTest`, `TaskResourceReleaseListenerTest` | task terminal, worker unlock/load release, waiting task dispatch | Covered |
-| Scheduling-core tests must stay runtime/aggregate/trace-first | suite guard | `EngineSchedulingCoreArchitectureGuardTest` | selected suite source scan | Covered |
+| Scheduling-core tests must stay runtime/aggregate/trace-first | suite guard | `EngineSchedulingCoreArchitectureGuardTest` | selected suite source scan as proof-surface drift prevention only | Covered support guard |
 
 ## Coverage Placement Notes
 

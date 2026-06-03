@@ -196,7 +196,16 @@ final class TaskSchedulingTestHarness {
     Worker addWorker(String workerId,
                      String routingCode,
                      Map<String, String> attributes) {
+        return addWorker(workerId, DEFAULT_WORKER_GROUP_ID, routingCode, attributes);
+    }
+
+    Worker addWorker(String workerId,
+                     String workerGroupId,
+                     String routingCode,
+                     Map<String, String> attributes) {
+        installWorkerGroup(workerGroupId);
         Worker worker = worker(workerId);
+        worker.setWorkerGroupId(workerGroupId);
         worker.setAttributes(workerAttributes(routingCode, attributes));
         workerManager.addWorker(workerResource(worker));
         return worker;
@@ -307,9 +316,6 @@ final class TaskSchedulingTestHarness {
     }
 
     private void installDefaultWorkerRegistrationSpine() {
-        workerManager.upsertWorkerGroup(WorkerGroupRecord.builder(DEFAULT_WORKER_GROUP_ID)
-                .projectCodes(List.of("demoApp"))
-                .build());
         workerManager.registerAdapterNode(new AdapterNodeRecord(
                 DEFAULT_ADAPTER_NODE_ID,
                 "test",
@@ -321,9 +327,16 @@ final class TaskSchedulingTestHarness {
                 null,
                 Map.of()
         ));
+        installWorkerGroup(DEFAULT_WORKER_GROUP_ID);
+    }
+
+    private void installWorkerGroup(String workerGroupId) {
+        workerManager.upsertWorkerGroup(WorkerGroupRecord.builder(workerGroupId)
+                .projectCodes(List.of("demoApp"))
+                .build());
         workerManager.bindNodeGroup(new NodeGroupBindingRecord(
                 DEFAULT_ADAPTER_NODE_ID,
-                DEFAULT_WORKER_GROUP_ID,
+                workerGroupId,
                 "test-plugin",
                 "test-deployment",
                 true,

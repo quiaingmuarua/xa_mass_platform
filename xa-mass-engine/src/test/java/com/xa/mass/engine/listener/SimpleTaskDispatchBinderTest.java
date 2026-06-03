@@ -128,6 +128,33 @@ public class SimpleTaskDispatchBinderTest {
     }
 
     @Test
+    void dispatchSubmitFailureCompensatesRuntimeClaimAndReleasesWorkerResources() {
+        Task task = createTask(1);
+        task.getExecutionSpec().setBatchSize(1);
+        AtomicReference<List<TaskDispatchBinding>> failedBindings = new AtomicReference<>();
+        listener = new SimpleTaskDispatchBinder(
+                taskManager,
+                workerManager,
+                recordService,
+                (context, bindings) -> {
+                    failedBindings.set(bindings);
+                    throw new IllegalStateException("transport down");
+                }
+        );
+
+        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched("d1")));
+
+        assertTrue(dispatched.isEmpty());
+        assertNotNull(failedBindings.get());
+        assertEquals(1, failedBindings.get().size());
+        assertEquals(1, taskWorkRuntime.stats(task.getTid()).readyCount());
+        assertEquals(0, taskWorkRuntime.stats(task.getTid()).inflightCount());
+        verify(workerManager).confirmWorkerReservation("d1", task.getTid());
+        verify(workerManager).recordWorkFinal("d1", task.getTid());
+        verify(workerManager).releaseWorkerExclusiveLease("d1");
+    }
+
+    @Test
     void interactiveWorkloadUsesSmallPerWorkerClaimWindow() {
         Task task = createTask(5);
         task.getExecutionSpec().setBatchSize(4);
