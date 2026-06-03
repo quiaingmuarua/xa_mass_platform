@@ -1,6 +1,6 @@
 # Proof Registry
 
-Last updated: 2026-06-02
+Last updated: 2026-06-03
 
 Status: current project-level proof ledger.
 
@@ -23,6 +23,7 @@ Use with:
 - [TESTING_INDEX.md](./TESTING_INDEX.md)
 - [TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
 - [../xa-mass-engine/doc/baseline/SCHEDULING_CORRECTNESS_MATRIX.md](../xa-mass-engine/doc/baseline/SCHEDULING_CORRECTNESS_MATRIX.md)
+- [../xa-mass-engine/doc/baseline/PLATFORM_SCHEDULING_PLANE_POLICY_PROOF_INVENTORY.md](../xa-mass-engine/doc/baseline/PLATFORM_SCHEDULING_PLANE_POLICY_PROOF_INVENTORY.md)
 - [../xa-mass-engine/doc/baseline/KERNEL_CONVERGENCE_MATRIX.md](../xa-mass-engine/doc/baseline/KERNEL_CONVERGENCE_MATRIX.md)
 - [../xa-mass-trace/README.md](../xa-mass-trace/README.md)
 
@@ -81,6 +82,11 @@ Mainline rule:
   be treated as the reason to add another duplicate test in a mainline suite
 - tests tagged `secondary-proof` are explicitly downgraded support coverage
   unless they are promoted into this ledger in a later change
+- computed-default Scheduling Plane policy facts are classified in
+  `xa-mass-engine/doc/baseline/PLATFORM_SCHEDULING_PLANE_POLICY_PROOF_INVENTORY.md`;
+  they are not evidence that `SchedulingPolicyCatalog`,
+  `ProjectSchedulingBinding`, SDK policy config, policy ids, or multiple policy
+  variants exist
 
 When a representative E2E or black-box flow fails:
 

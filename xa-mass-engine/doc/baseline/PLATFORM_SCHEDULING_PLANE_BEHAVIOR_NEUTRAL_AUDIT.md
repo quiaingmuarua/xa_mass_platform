@@ -59,13 +59,17 @@ The remaining stabilization proof must be carried by characterization evidence
 or integrated scheduling tests that change accepted/rejected workers,
 assignment results, lifecycle state, or runtime ownership outcomes.
 
-Support regressions may still cover resolver or allocation construction drift,
-but those tests are not behavior-neutral proof by themselves:
+Support regressions may still cover resolver construction drift, but those
+tests are not behavior-neutral proof by themselves:
 
 - `DefaultSchedulingPlaneResolverTest`
-- `DefaultAssignmentAllocationPolicyTest`
-- `DefaultWorkerBudgetPolicyTest`
 - `RuleBasedTaskWorkerMatchingStrategyTest`
+
+Allocation and budget object-shape tests are not listed here because they do
+not prove behavior-neutrality or runtime policy outcomes. If allocation or
+budget semantics need protection, use integrated scheduling outcomes such as
+ready/inflight counters, active leases, assignment records, worker load, or
+task status.
 
 If future Scheduling Plane changes alter accepted/rejected workers, assignment
 result categories, rejection reasons, or rule evaluation counts, this audit is

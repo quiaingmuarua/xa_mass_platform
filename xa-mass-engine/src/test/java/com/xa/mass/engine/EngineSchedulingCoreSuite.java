@@ -1,7 +1,5 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.engine.assignment.DefaultAssignmentAllocationPolicyTest;
-import com.xa.mass.engine.assignment.DefaultWorkerBudgetPolicyTest;
 import com.xa.mass.engine.listener.TaskAssignWorkerTest;
 import com.xa.mass.engine.listener.TaskResourceReleaseListenerTest;
 import com.xa.mass.engine.listener.TaskWorkerAssignListenerTest;
@@ -29,8 +27,6 @@ import org.junit.platform.suite.api.Suite;
         TaskResourceReleaseListenerTest.class,
         TaskAssignWorkerTest.class,
         TaskWorkerAssignListenerTest.class,
-        DefaultAssignmentAllocationPolicyTest.class,
-        DefaultWorkerBudgetPolicyTest.class,
         WorkerSchedulingCandidateEnumeratorTest.class,
         RuleBasedTaskWorkerMatchingStrategyTest.class,
         WorkerMatchContextTest.class

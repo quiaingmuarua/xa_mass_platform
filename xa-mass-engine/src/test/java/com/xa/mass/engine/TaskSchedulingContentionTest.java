@@ -181,6 +181,63 @@ class TaskSchedulingContentionTest {
     }
 
     @Test
+    void batchSizeChangesDispatchWorkerCountWithoutLosingReadyWork() {
+        TaskSchedulingTestHarness singleItemBatch = new TaskSchedulingTestHarness();
+        for (int i = 0; i < 4; i++) {
+            singleItemBatch.addWorker("worker-single-batch-" + i, "us");
+        }
+        Task batchSizeOneTask = singleItemBatch.createBatchTask(
+                "batch-size-one",
+                List.of(
+                        singleItemBatch.item("one-a"),
+                        singleItemBatch.item("one-b"),
+                        singleItemBatch.item("one-c"),
+                        singleItemBatch.item("one-d")
+                ),
+                0,
+                1
+        );
+        assertTrue(singleItemBatch.taskManager.approveTask(batchSizeOneTask.getTid()));
+
+        assertTrue(singleItemBatch.assignListener.onTaskAssign(
+                singleItemBatch.taskManager.getTask(batchSizeOneTask.getTid())));
+
+        Set<String> singleBatchWorkers = singleItemBatch.activeLeases(batchSizeOneTask.getTid()).stream()
+                .map(ActiveLeaseRecord::workerId)
+                .collect(Collectors.toSet());
+        assertEquals(4, singleBatchWorkers.size());
+        assertEquals(0, singleItemBatch.stats(batchSizeOneTask.getTid()).readyCount());
+        assertEquals(4, singleItemBatch.stats(batchSizeOneTask.getTid()).inflightCount());
+
+        TaskSchedulingTestHarness twoItemBatch = new TaskSchedulingTestHarness();
+        for (int i = 0; i < 4; i++) {
+            twoItemBatch.addWorker("worker-two-batch-" + i, "us");
+        }
+        Task batchSizeTwoTask = twoItemBatch.createBatchTask(
+                "batch-size-two",
+                List.of(
+                        twoItemBatch.item("two-a"),
+                        twoItemBatch.item("two-b"),
+                        twoItemBatch.item("two-c"),
+                        twoItemBatch.item("two-d")
+                ),
+                0,
+                2
+        );
+        assertTrue(twoItemBatch.taskManager.approveTask(batchSizeTwoTask.getTid()));
+
+        assertTrue(twoItemBatch.assignListener.onTaskAssign(
+                twoItemBatch.taskManager.getTask(batchSizeTwoTask.getTid())));
+
+        Set<String> twoBatchWorkers = twoItemBatch.activeLeases(batchSizeTwoTask.getTid()).stream()
+                .map(ActiveLeaseRecord::workerId)
+                .collect(Collectors.toSet());
+        assertEquals(2, twoBatchWorkers.size());
+        assertEquals(0, twoItemBatch.stats(batchSizeTwoTask.getTid()).readyCount());
+        assertEquals(4, twoItemBatch.stats(batchSizeTwoTask.getTid()).inflightCount());
+    }
+
+    @Test
     void pausedBlockedAndTerminatedTasksDoNotDispatchEvenWhenReadyWorkExists() {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
         harness.addWorker("worker-gate", "us");

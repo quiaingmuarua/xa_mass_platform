@@ -267,7 +267,7 @@ Acceptance:
 Suggested proof:
 
 ```powershell
-mvn -pl xa-mass-engine "-Dtest=DefaultSchedulingPlaneResolverTest,DefaultAssignmentAllocationPolicyTest,TaskAssignWorkerTest,RuleBasedTaskWorkerMatchingStrategyTest,EngineSchedulingCoreArchitectureGuardTest" test
+mvn -pl xa-mass-engine "-Dtest=DefaultSchedulingPlaneResolverTest,TaskSchedulingGateAndTargetingTest,TaskSchedulingContentionTest,TaskAssignWorkerTest,RuleBasedTaskWorkerMatchingStrategyTest,EngineSchedulingCoreArchitectureGuardTest" test
 rg -n "TaskDispatchIntent\\.fromTask\\(|ResolvedTaskSchedulingPolicy\\.from\\(|ResolvedWorkerSchedulingPolicy\\.from\\(|WorkerTaskSelectorFactory\\.fromTask\\(" xa-mass-engine/src/main/java --glob '!**/target/**'
 rg -n "getExecutionSpec\\(\\)\\.getWorkloadClass\\(|getWorkloadClass\\(" xa-mass-engine/src/main/java --glob '!**/target/**'
 ```
@@ -486,7 +486,7 @@ not introduce policy product configuration from this roadmap alone.
 | Resolver behavior | `DefaultSchedulingPlaneResolverTest` |
 | Resolved-view perturbation | targeted consumer perturbation tests for migrated facts |
 | Single resolution boundary | source guard for duplicate `TaskDispatchIntent` / resolution computation |
-| Task-side consumers | `DefaultAssignmentAllocationPolicyTest`, `TaskAssignWorkerTest` |
+| Task-side consumers | `TaskSchedulingGateAndTargetingTest`, `TaskSchedulingContentionTest`, `TaskAssignWorkerTest`; resolver/allocation construction tests are support only |
 | Worker-side consumers | `RuleBasedTaskWorkerMatchingStrategyTest`, `WorkerMatchContextTest` |
 | Rule boundary | `WorkerMatchContextTest`, `RuleConfigTest`, `QLExpressRuleEvaluatorTest` |
 | Architecture guard | `EngineSchedulingCoreArchitectureGuardTest` |
