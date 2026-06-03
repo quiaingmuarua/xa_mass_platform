@@ -469,38 +469,6 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void ruleBasedMatchingDoesNotRecomputeDispatchIntentThroughSelectorFactory() throws IOException {
-        Path strategyPath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/strategy/RuleBasedTaskWorkerMatchingStrategy.java");
-        String source = Files.readString(strategyPath, StandardCharsets.UTF_8);
-
-        assertFalse(source.contains("TaskDispatchIntent.fromTask("),
-                "RuleBasedTaskWorkerMatchingStrategy must use one SchedulingPlaneResolution per dispatch pass "
-                        + "instead of recomputing TaskDispatchIntent directly.");
-        assertFalse(source.contains("WorkerTaskSelectorFactory.fromTask("),
-                "RuleBasedTaskWorkerMatchingStrategy must pass the resolved worker scheduling view to "
-                        + "WorkerTaskSelectorFactory.fromPolicy(...) instead of resolving from Task again.");
-        assertTrue(source.contains("WorkerTaskSelectorFactory.fromPolicy(resolution.workerSchedulingPolicy())"),
-                "RuleBasedTaskWorkerMatchingStrategy must build WorkerTaskSelector from the resolved "
-                        + "worker scheduling policy.");
-    }
-
-    @Test
-    void warmCandidateHintsUseResolvedWorkerSchedulingPolicy() throws IOException {
-        Path listenerPath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/listener/TaskWorkerAssignListener.java");
-        String source = Files.readString(listenerPath, StandardCharsets.UTF_8);
-
-        assertFalse(source.contains("WorkerTaskSelectorFactory.fromTask("),
-                "TaskWorkerAssignListener warm-candidate hint recording must not rebuild the selector "
-                        + "from raw Task fields.");
-        assertTrue(source.contains("WorkerTaskSelectorFactory.fromPolicy(\n"
-                        + "                schedulingPlaneResolver.resolve(task).workerSchedulingPolicy())"),
-                "TaskWorkerAssignListener must build warm-candidate selectors from the resolved "
-                        + "worker scheduling policy.");
-    }
-
-    @Test
     void workloadClassBudgetConsumerUsesResolvedTaskSchedulingPolicy() throws IOException {
         Path budgetPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/assignment/DefaultWorkerBudgetPolicy.java");

@@ -1,6 +1,6 @@
 # Platform Scheduling Plane Runtime Selection Proof Roadmap
 
-Status: proposed proof roadmap.
+Status: implemented with integration-proof model repaired.
 
 Predecessors:
 
@@ -14,7 +14,7 @@ Predecessors:
 The Scheduling Plane now has engine-facing resolved views, but the next proof
 step should not be a policy-product roadmap.
 
-This roadmap proves `RuntimeWorkerSelection` as the concrete worker-choice
+This roadmap targets proof of `RuntimeWorkerSelection` as the concrete worker-choice
 owner inside the Scheduling Plane. It keeps strategy and mechanism separate:
 resolved worker policy defines the static worker universe and caller/default
 constraints, while runtime worker selection owns live reachability, load,
@@ -145,7 +145,7 @@ Owner review findings:
 
 Owner review proof surfaces:
 
-- source guards for forbidden imports and call sites,
+- residue scans for forbidden imports and revived call sites,
 - perturbation tests that separate resolved static inputs from runtime evidence,
 - order-contract tests for prefilter, rule evaluation, ranking, reserve, lock,
   admission, and release,
@@ -196,14 +196,18 @@ Execution order:
 3. Remove residue:
    - delete superseded helpers when no external contract requires them,
    - restrict unavoidable helpers to test-only or documented non-owner use,
-   - add source guards that prevent production callers from reviving the old
-     path,
+   - keep source residue scans that detect old-path revival without treating
+     them as runtime proof,
    - update docs so target, current truth, and residue are not mixed.
 
-For the current code, `WorkerTaskSelectorFactory#fromTask` is an existing
-convenience path to classify during RS-0. It should be removed or guarded out
-of production during convergence unless RS-0 proves it is the single owned path
-for a real caller.
+At roadmap start, `WorkerTaskSelectorFactory#fromTask` was an existing
+convenience path to classify during RS-0. The implemented repair removed it
+from production instead of preserving a compatibility bridge.
+
+`TaskDispatchWakeupBridge` is pre-classified as an existing engine-owned wakeup
+fanout, not worker-selection truth. RS-0 should still verify that it does not
+bind work directly or select candidates, but its `Bridge` suffix alone is not
+residue.
 
 ## Hard Rules
 
@@ -257,9 +261,9 @@ for a real caller.
   pairing is not yet a named architecture invariant across all failure exits.
 - Ranking policy and ranking evidence are not yet separated as explicit future
   strategy-vs-mechanism concepts.
-- Existing convenience or helper paths, such as `WorkerTaskSelectorFactory#fromTask`,
-  still need residue classification so they do not become alternate production
-  truth.
+- Convenience or helper paths that compute selection facts, such as the removed
+  `WorkerTaskSelectorFactory#fromTask`, need residue classification so they do
+  not become alternate production truth.
 - Trace explains several scheduling facts, but trace coverage should stay a
   bounded proof surface rather than an invitation to add broad observability.
 - Future policy-product work could start too early if the roadmap does not keep
@@ -301,6 +305,8 @@ Scope:
   - `TaskDispatchBinder#bindDispatches`.
 - Inventory helper, convenience, and compatibility-like paths that can compute
   or imply worker-selection facts, including `WorkerTaskSelectorFactory#fromTask`.
+- Treat `TaskDispatchWakeupBridge` as an approved current wakeup fanout unless
+  inventory finds direct worker binding or candidate selection.
 - Classify each fact as one of:
   - resolved worker policy input,
   - candidate-source constraint,
@@ -334,7 +340,7 @@ Suggested checks:
 ```powershell
 rg -n "ResolvedWorkerSchedulingPolicy|WorkerTaskSelectorFactory|RuleBasedTaskWorkerMatchingStrategy|WorkerMatchContext|WorkerCandidateRanker|WorkerAdmissionRuntime|WorkerWarmHintRuntime|WorkerDispatchResourcePolicy|AssignmentRecordService" xa-mass-engine xa-mass-worker-runtime --glob '!**/target/**'
 rg -n "TaskAssignWorker|TaskWorkerAssignListener|TaskDispatchWakeupBridge|RuntimeReadyDispatchPump|LeaseExpireWatchdog|TaskDispatchBinder|bindDispatches|submit\\(|onTaskAssign|expireLeasedWork" xa-mass-engine/src/main/java --glob '!**/target/**'
-rg -n "fromTask\\(|bridge|adapter|fallback|compat|legacy" xa-mass-engine/src/main/java xa-mass-worker-runtime/src/main/java --glob '!**/target/**'
+rg -n "fromTask\\(|Compatibility|Legacy|Fallback|Facade|Deprecated|compatibility|legacy|fallback|deprecated" xa-mass-engine/src/main/java xa-mass-worker-runtime/src/main/java --glob '!**/target/**'
 rg -n "RuntimeWorkerSelection" README.md AGENTS.md doc xa-mass-engine roadmap --glob '!**/target/**'
 ```
 
@@ -363,18 +369,17 @@ Acceptance:
   `WorkerWarmHintRuntime`, reserve, lock, or release mutation APIs.
 - `ResolvedWorkerSchedulingPolicy` may later carry static ranking policy only
   after RS-5; it must never carry ranking evidence.
-- `WorkerTaskSelectorFactory#fromTask` is either removed, restricted to
-  test-only/non-owner use, or guarded with zero production call sites. It must
-  not remain as a second production selection path.
-- Existing resolved policy tests still cover worker group, route, adapter node,
-  target worker, and target attributes.
+- `WorkerTaskSelectorFactory#fromTask` is removed rather than retained as a
+  production bridge. Residue scans should remain empty.
+- Integrated scheduling tests cover migrated worker-policy facts by changing
+  actual candidate and binding outcomes.
 
 Suggested proof:
 
 ```powershell
-mvn -pl xa-mass-engine "-Dtest=DefaultSchedulingPlaneResolverTest,WorkerTaskSelectorFactoryTest,EngineSchedulingCoreArchitectureGuardTest" test
-rg -n "WorkerTaskSelectorFactory\\.fromTask\\(|getWorkerGroupIds\\(|getTargetWorkerId\\(|getAdapterNodeId\\(" xa-mass-engine/src/main/java --glob '!**/target/**'
-rg -n "WorkerAdmissionRuntime|WorkerWarmHintRuntime|WorkerDispatchResourcePolicy" xa-mass-engine/src/main/java/com/xa/mass/engine/runtime/scheduling xa-mass-engine/src/main/java/com/xa/mass/engine/strategy --glob '!**/target/**'
+mvn -pl xa-mass-engine "-Dtest=TaskSchedulingGateAndTargetingTest" test
+rg -n "WorkerTaskSelectorFactory\\.fromTask\\(" xa-mass-engine/src/main/java --glob '!**/target/**'
+rg -n "WorkerAdmissionRuntime|WorkerWarmHintRuntime|WorkerDispatchResourcePolicy" xa-mass-engine/src/main/java/com/xa/mass/engine/runtime/scheduling xa-mass-engine/src/main/java/com/xa/mass/engine/strategy/DefaultSchedulingPlaneResolver.java --glob '!**/target/**'
 ```
 
 ## RS-2 Runtime Evidence Perturbation Proof
@@ -513,7 +518,7 @@ Suggested proof:
 
 ```powershell
 rg -n "workerGroup|targetWorker|route|admission|reject|release|rank|candidate" xa-mass-engine/src/main/java/com/xa/mass/engine xa-mass-trace --glob '!**/target/**'
-rg -n "fromTask\\(|bridge|adapter|fallback|compat|legacy" xa-mass-engine/src/main/java xa-mass-engine/src/test/java xa-mass-worker-runtime/src/main/java --glob '!**/target/**'
+rg -n "fromTask\\(|Compatibility|Legacy|Fallback|Facade|Deprecated|compatibility|legacy|fallback|deprecated" xa-mass-engine/src/main/java xa-mass-engine/src/test/java xa-mass-worker-runtime/src/main/java --glob '!**/target/**'
 rg -n "TraceEventLogger|AssignmentRecordService|assignment diagnostic|match" xa-mass-engine/src/test xa-mass-testing --glob '!**/target/**'
 ```
 
@@ -553,13 +558,13 @@ Output:
 
 | Proof Surface | Primary Evidence | Commands |
 | --- | --- | --- |
-| Runtime fact inventory | Current code and owner classification | `rg -n "ResolvedWorkerSchedulingPolicy|WorkerAdmissionRuntime|WorkerDispatchResourcePolicy" xa-mass-engine xa-mass-worker-runtime --glob '!**/target/**'` |
-| Binding entry completeness | Entry inventory and approved flow proof | `rg -n "TaskAssignWorker|TaskWorkerAssignListener|TaskDispatchWakeupBridge|RuntimeReadyDispatchPump|LeaseExpireWatchdog|TaskDispatchBinder|bindDispatches|submit\\(|onTaskAssign|expireLeasedWork" xa-mass-engine/src/main/java --glob '!**/target/**'` |
-| Resolved policy purity | Resolver, selector, architecture guard tests | `mvn -pl xa-mass-engine "-Dtest=DefaultSchedulingPlaneResolverTest,WorkerTaskSelectorFactoryTest,EngineSchedulingCoreArchitectureGuardTest" test` |
+| Runtime fact inventory | Current code and owner classification | `xa-mass-engine/doc/baseline/PLATFORM_SCHEDULING_PLANE_RUNTIME_SELECTION_BOUNDARY.md` |
+| Binding entry completeness | Integrated scheduling and redispatch tests | `mvn -pl xa-mass-engine "-Dtest=TaskSchedulingGateAndTargetingTest,TaskSchedulingContentionTest,TaskDelayedAvailabilitySchedulingTest,TaskRedispatchCompetitionTest" test` |
+| Resolved policy purity | Integrated group selector behavior; resolver construction tests are support regression only | `mvn -pl xa-mass-engine "-Dtest=TaskSchedulingGateAndTargetingTest" test` |
 | Rule context boundary | `WorkerMatchContext` and rule evaluator tests | `mvn -pl xa-mass-engine "-Dtest=WorkerMatchContextTest,RuleConfigTest,QLExpressRuleEvaluatorTest,EngineSchedulingCoreArchitectureGuardTest" test` |
 | Runtime perturbation | Matching, ranking, contention, targeting tests | `mvn -pl xa-mass-engine "-Dtest=RuleBasedTaskWorkerMatchingStrategyTest,DefaultWorkerCandidateRankerTest,TaskSchedulingContentionTest,TaskSchedulingGateAndTargetingTest" test` |
-| Selection order and release pairing | Matching, assignment, release, guard tests | `mvn -pl xa-mass-engine "-Dtest=RuleBasedTaskWorkerMatchingStrategyTest,TaskWorkerAssignListenerTest,TaskSchedulingContentionTest,EngineSchedulingCoreArchitectureGuardTest" test` |
-| Residue cleanup | Source scans and owner guards | `rg -n "fromTask\\(|bridge|adapter|fallback|compat|legacy" xa-mass-engine/src/main/java xa-mass-worker-runtime/src/main/java --glob '!**/target/**'` |
+| Selection order and release pairing | Integrated scheduling plus binder failure regression | `mvn -pl xa-mass-engine "-Dtest=TaskSchedulingContentionTest,TaskSchedulingGateAndTargetingTest,SimpleTaskDispatchBinderTest" test` |
+| Residue cleanup | Source scan sanity only | `rg -n "WorkerTaskSelectorFactory\\.fromTask\\(" xa-mass-engine/src/main/java xa-mass-worker-runtime/src/main/java --glob '!**/target/**'` |
 | Trace evidence | Trace proof gaps and focused trace tests | `rg -n "TraceEventLogger|AssignmentRecordService|admission|release|candidate" xa-mass-engine xa-mass-trace xa-mass-testing --glob '!**/target/**'` |
 
 ## Risks

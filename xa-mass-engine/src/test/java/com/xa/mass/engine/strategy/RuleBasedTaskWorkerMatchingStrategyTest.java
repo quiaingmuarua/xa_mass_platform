@@ -741,7 +741,9 @@ public class RuleBasedTaskWorkerMatchingStrategyTest {
         registerWorker(workerManager, worker);
 
         Task task = backgroundTask("task-warm-diagnostics");
-        workerManager.recordWarmCandidate(WorkerTaskSelectorFactory.fromTask(task), TestWorkerCandidateRows.from(worker));
+        workerManager.recordWarmCandidate(WorkerTaskSelectorFactory.fromPolicy(
+                new DefaultSchedulingPlaneResolver().resolve(task).workerSchedulingPolicy()),
+                TestWorkerCandidateRows.from(worker));
         assertEquals(1, strategy.matchWorkers(task, 1).size());
 
         assertTrue(recordService.getRecordsByTaskId("task-warm-diagnostics").stream()
