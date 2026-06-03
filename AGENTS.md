@@ -30,6 +30,11 @@ Fast entry only. Use module owner READMEs and `doc/` contracts for detail.
   pool constraints, and `RuntimeWorkerSelection` for concrete worker choice
   from live evidence and admission state. None of these are complete current
   modules yet.
+- Canonical shorthand:
+  - `TaskSchedulingPolicy` = how work enters dispatch competition
+  - `WorkerSchedulingPolicy` = which worker universe work competes in
+  - `RuntimeWorkerSelection` = which currently eligible workers are selected
+    inside that universe
 - `Matching` is the current worker-selection mechanism inside Scheduling Plane,
   not a top-level owner.
 - Kernel truth is currently split across:

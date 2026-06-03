@@ -1,6 +1,6 @@
 # Task Lifecycle Baseline
 
-Last updated: 2026-06-02
+Last updated: 2026-06-03
 
 Status: current global task lifecycle baseline.
 
@@ -31,7 +31,15 @@ Use with:
 | `Task` | task shell, contract, intake window, aggregate status, terminal reason, and task-level execution policy | engine lifecycle plus kernel-facing task-shell ports |
 | `Worker` | execution identity plus group/node membership and declared worker facts | `xa-mass-worker-runtime` declaration/resource owners |
 | `Scheduling Plane` | deciding when task work may enter competition, dispatch, retry, pause, resume, or close; which worker universe it may compete in; and which concrete worker receives it. It has three first-class owners: task scheduling policy, worker scheduling policy, and runtime worker selection. Current policy remains distributed across task runtime profile, selectors, assignment policy, matching rules, backpressure, and admission | engine lifecycle and runtime queues today; future scheduling-policy catalog plus project/workload binding when implemented |
-| `Matching` | current worker-selection mechanism vocabulary inside Scheduling Plane; not a top-level owner | engine matching strategy plus worker-runtime candidate/evidence surfaces |
+
+Mechanism note:
+
+- `Matching` is current worker-selection mechanism vocabulary inside Scheduling
+  Plane, not a top-level primitive or owner. Current matching code combines
+  candidate source, rule-backed eligibility, ranking, reserve/lock, and runtime
+  admission. Future work should classify those pieces under worker scheduling
+  policy, runtime worker selection, or diagnostics instead of preserving
+  `Matching` as a fourth primitive.
 
 Architecture boundary:
 

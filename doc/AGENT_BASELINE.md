@@ -67,6 +67,11 @@ Current owner vocabulary:
   pool constraints, and `RuntimeWorkerSelection` for concrete worker choice
   from live evidence and admission state. This is an architectural boundary,
   not a fully implemented current module.
+- Canonical shorthand:
+  - `TaskSchedulingPolicy` = how work enters dispatch competition
+  - `WorkerSchedulingPolicy` = which worker universe work competes in
+  - `RuntimeWorkerSelection` = which currently eligible workers are selected
+    inside that universe
 - `Worker` is execution identity plus group/node membership and declared
   scheduling/resource facts; worker rows do not own project/event capability
   truth
@@ -138,6 +143,20 @@ External inputs and constraints
 
 Do not invert that flow by letting item payload, `eventCode`, worker row
 attributes, SDK snapshots, or rule DSL become the owner of scheduling policy.
+
+Example boundary:
+
+```text
+TaskSchedulingPolicy:
+  BULK_THROUGHPUT cadence, refill timing, task-side worker budget
+
+WorkerSchedulingPolicy:
+  crawler worker groups, region route, target constraints, rule-set reference
+
+RuntimeWorkerSelection:
+  online workers only, reject locked/draining/capacity-full workers, rank,
+  reserve, and dispatch
+```
 
 Stable kernel slots:
 
