@@ -19,7 +19,7 @@ flows, commands, and module-local inventories.
 - the kernel problem is: schedule task work to heterogeneous, stateful
   executors through task/group dispatch intent, track per-item result, and
   converge task-level state
-- core primitives: `Task + Worker + Scheduling + Matching`
+- core primitives: `Task + Worker + Scheduling Plane`
 - kernel truth is explicitly split across:
   - `Task.contract`
   - `Task.intakeStatus`
@@ -70,10 +70,11 @@ Current owner vocabulary:
 - `Worker` is execution identity plus group/node membership and declared
   scheduling/resource facts; worker rows do not own project/event capability
   truth
-- `Scheduling` decides when task work may enter competition, dispatch, retry,
-  pause, resume, or close. Current scheduling policy remains distributed across
-  task runtime profile, group selectors, assignment policy, matching rule sets,
-  runtime backpressure, and admission behavior.
+- `Scheduling Plane` decides when task work may enter competition, dispatch,
+  retry, pause, resume, or close; which worker universe it may compete in; and
+  which concrete worker receives it. Current scheduling policy remains
+  distributed across task runtime profile, group selectors, assignment policy,
+  matching rule sets, runtime backpressure, and admission behavior.
 - `Matching` is current worker-selection mechanism vocabulary, not a top-level
   policy owner. Worker scheduling policy resolves the resource universe, and
   RuntimeWorkerSelection chooses a concrete worker inside the selected group
@@ -157,14 +158,14 @@ Boundary rules:
 - do not let server view DTOs or SDK snapshots become kernel runtime truth
 - task contract owns lifecycle, terminal, and default dispatch expectation
 - task runtime scheduling semantics resolve from `Task.workloadClass`, not from free-form `sharedConfig`
-- task orchestration and worker matching belong at task or task-slice level; do not reintroduce per-message rule matching on the hot path
+- task orchestration and worker selection belong at task or task-slice level; do not reintroduce per-message rule matching on the hot path
 - message/attempt read surfaces are bounded compatibility or audit helpers, not
   the production business-detail query model
 
 ## 4. Mainline Reality
 
 - current mainline execution path:
-  - `Task shell -> item append -> runtime enqueue -> scheduling eligibility -> matching and assignment -> transport dispatch -> result convergence -> task state`
+  - `Task shell -> item append -> runtime enqueue -> scheduling eligibility -> worker selection and assignment -> transport dispatch -> result convergence -> task state`
 - real Boot entry: `xa-mass-server`
 - embedded runtime composition: `xa-mass-embedded-sdk`
 - Java baseline: JDK 21 with virtual threads routed through explicit runtime abstractions

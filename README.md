@@ -66,7 +66,7 @@ and worker churn.
 The platform primitives are intentionally small:
 
 ```text
-Task + Worker + Scheduling + Matching
+Task + Worker + Scheduling Plane
 + lease-based dispatch
 + idempotent result convergence
 + multi-transport delivery
@@ -85,9 +85,9 @@ Current kernel truth is intentionally narrow:
 
 Current mainline execution path:
 
-- `Task shell -> item append -> runtime enqueue -> scheduling eligibility -> matching and assignment -> transport dispatch -> result convergence -> task state`
+- `Task shell -> item append -> runtime enqueue -> scheduling eligibility -> worker selection and assignment -> transport dispatch -> result convergence -> task state`
 
-Scheduling and matching boundary:
+Scheduling Plane Boundary:
 
 - target direction: scheduling-related ownership is split into three categories:
   `TaskSchedulingPolicy` for competition admission/cadence/priority/fairness/
@@ -119,7 +119,7 @@ workers.
 The shared kernel is:
 
 - `stateful worker + scheduling evidence + worker-selection mechanism + per-item result tracking + task-level convergence`
-- stable kernel truth starts from `Task + Worker + Scheduling + Matching`; result, audit, and terminal policy are lifecycle consequences of that mainline
+- stable kernel truth starts from `Task + Worker + Scheduling Plane`; result, audit, and terminal policy are lifecycle consequences of that mainline
 - matching as current worker-selection mechanism: the current default uses
   group-first candidate acquisition, worker scheduling evidence,
   QLExpress-backed eligibility rules, ranking, and admission without changing

@@ -1,9 +1,12 @@
-# Platform Scheduling Policy Roadmap
+# Platform Scheduling Plane Roadmap
 
 Status: proposed direction roadmap.
 
-This roadmap defines how XA Mass should converge toward reusable platform-level
-scheduling policies without treating any policy owner as already implemented.
+This roadmap defines how XA Mass should converge toward a clear
+platform-level Scheduling Plane without treating any target owner as already
+implemented. The Scheduling Plane is the parent owner for task-side scheduling
+policy, worker-side scheduling policy, and runtime worker selection.
+
 It separates three related but different owners:
 
 - `TaskSchedulingPolicy`: task-side competition admission, cadence, priority,
@@ -27,13 +30,13 @@ SchedulingPolicyCatalog
 ```
 
 The policy catalog and project binding nodes are target owner boundaries, not
-current modules. Current policy is still distributed across task runtime
-profile, explicit group selectors, assignment/allocation policy, matching rule
-providers, runtime queue/backpressure behavior, and admission.
+current modules. Current Scheduling Plane behavior is still distributed across
+task runtime profile, explicit group selectors, assignment/allocation policy,
+matching rule providers, runtime queue/backpressure behavior, and admission.
 
 ## Current Facts
 
-- Scheduling policy is documented as a target boundary in `AGENTS.md`,
+- Scheduling Plane is documented as a target boundary in `AGENTS.md`,
   `doc/AGENT_BASELINE.md`, and `doc/TASK_LIFECYCLE_BASELINE.md`, but a complete
   policy catalog or project binding module does not exist yet.
 - Scheduling-related ownership has three categories:
@@ -85,11 +88,17 @@ providers, runtime queue/backpressure behavior, and admission.
 
 ## Owner Review
 
-1. **Scheduling policy is platform-level, not project-local.**
+1. **Scheduling Plane is the top-level owner, not Scheduling Policy.**
+   Scheduling policy refers only to `TaskSchedulingPolicy` and
+   `WorkerSchedulingPolicy`. `RuntimeWorkerSelection` is a first-class runtime
+   owner inside Scheduling Plane, not a policy family and not a detail of
+   `WorkerSchedulingPolicy`.
+
+2. **Scheduling policy is platform-level, not project-local.**
    Projects should not each grow their own scheduling algorithm. They should
    bind reusable policies, choose defaults, and supply scoped configuration.
 
-2. **TaskSchedulingPolicy, WorkerSchedulingPolicy, and RuntimeWorkerSelection
+3. **TaskSchedulingPolicy, WorkerSchedulingPolicy, and RuntimeWorkerSelection
    must stay separate.**
    Task scheduling policy controls competition admission, cadence, priority,
    quota, fairness, and task-level budget. Worker scheduling policy controls
@@ -97,42 +106,42 @@ providers, runtime queue/backpressure behavior, and admission.
    and worker-pool constraints. Runtime worker selection controls live worker
    evidence, ranking, reservation, locks, and admission result.
 
-3. **Project/workload binding is not runtime truth.**
+4. **Project/workload binding is not runtime truth.**
    Binding defines what a project/workload may use and what it defaults to.
    Runtime truth remains in task lifecycle, `TaskWorkRuntime`,
    `TaskResultRuntime`, worker-runtime admission/evidence, and trace/audit.
 
-4. **TaskDispatchIntent remains task-level.**
+5. **TaskDispatchIntent remains task-level.**
    A task selects allowed task/worker scheduling policies or inherits the
    project/workload defaults, then narrows actual dispatch through explicit
    group selector, route, target worker override, and target attributes.
 
-5. **WorkerGroupCapability remains capability truth.**
+6. **WorkerGroupCapability remains capability truth.**
    Worker scheduling policy may allow or prefer groups, but WorkerGroup declares
    which projects/events it can actually serve.
 
-6. **Runtime policy execution owns stateful cost.**
+7. **Runtime policy execution owns stateful cost.**
    If a task scheduling policy requires quota ledgers, fairness counters,
    priority queues, deadline/SLA state, or cost budgets, that state belongs to a
    runtime policy execution owner, not to project binding or task payload.
    Worker scheduling policy should not absorb live worker evidence or admission
    state.
 
-7. **RuntimeWorkerSelection remains the third owner, not a worker policy detail.**
+8. **RuntimeWorkerSelection remains the third owner, not a worker policy detail.**
    No worker scheduling policy can bypass online/presence/load/admission/
    draining/lease checks inside the selected group. Those checks, rank weights,
    reservation, locks, and admission result belong to runtime worker selection.
 
-8. **Two-stage match is mechanism, not policy ownership.**
+9. **Two-stage match is mechanism, not policy ownership.**
    Task and worker scheduling policies resolve the competition and resource
    boundaries. The current two-stage match executes candidate acquisition,
    filtering, ranking, and reservation inside those boundaries.
 
-9. **Matching rules are not the strategy owner.**
+10. **Matching rules are not the strategy owner.**
    Rule sets can be referenced by worker scheduling policy, but rule DSL must
    not become the hidden place where platform scheduling ownership lives.
 
-10. **Item payload is outside scheduling ownership.**
+11. **Item payload is outside scheduling ownership.**
    Item payload and `eventCode` choose handler invocation and input. They must
    not become worker-selection policy.
 
@@ -197,7 +206,7 @@ and not a generic `sharedConfig` bag. SDK/server/control-plane assembly may own
 catalog/binding persistence and resolution if PSP-1 decides persistence is
 required.
 
-Scheduling policy should not own:
+Scheduling Plane should not own:
 
 - task runtime truth
 - per-item payload interpretation
@@ -210,7 +219,7 @@ Scheduling policy should not own:
 
 ## Owner And Cost Classification
 
-Every policy-like input must first be classified by owner:
+Every Scheduling Plane related input must first be classified by owner:
 
 | Owner Class | Meaning | Example |
 | --- | --- | --- |
@@ -220,7 +229,7 @@ Every policy-like input must first be classified by owner:
 | `binding-or-intent` | chooses allowed/default policy or task-level override but does not execute policy | project defaults, task selected policy refs |
 | `not-policy` | belongs elsewhere | item payload, result finality, WorkerGroup capability truth |
 
-Then every policy-like input must be classified by cost:
+Then every Scheduling Plane related input must be classified by cost:
 
 | Cost Class | Meaning | Example |
 | --- | --- | --- |
@@ -241,13 +250,15 @@ Then every policy-like input must be classified by cost:
    classification and one cost classification.
 5. Do not collapse `TaskSchedulingPolicy`, `WorkerSchedulingPolicy`, and
    `RuntimeWorkerSelection` into one policy bag.
-6. Existing `STANDARD`, `INTERACTIVE`, `BULK`, and `workloadClass` vocabulary
+6. Do not describe `RuntimeWorkerSelection` as a scheduling policy family. It
+   is first-class inside Scheduling Plane, but it is a runtime selection owner.
+7. Existing `STANDARD`, `INTERACTIVE`, `BULK`, and `workloadClass` vocabulary
    are inventory subjects, not final policy names.
-7. Do not move item payload or `eventCode` into scheduling policy.
-8. Do not let worker rows become project/event capability truth.
-9. Do not make engine depend on DB/control-plane storage to fetch policy.
-10. Do not encode policy ownership in rule DSL alone.
-11. Do not preserve two live policy tracks after convergence. Update in-repo
+8. Do not move item payload or `eventCode` into scheduling policy.
+9. Do not let worker rows become project/event capability truth.
+10. Do not make engine depend on DB/control-plane storage to fetch policy.
+11. Do not encode policy ownership in rule DSL alone.
+12. Do not preserve two live policy tracks after convergence. Update in-repo
    callers rather than adding compatibility aliases.
 
 ## Non-Goals
@@ -263,12 +274,12 @@ Then every policy-like input must be classified by cost:
 
 ## PSP-0 Inventory And Classification
 
-Goal: classify all current scheduling-policy-like inputs before creating any
-new policy owner.
+Goal: classify all current Scheduling Plane related inputs before creating any
+new owner.
 
 Scope:
 
-- Create `roadmap/PLATFORM_SCHEDULING_POLICY_INVENTORY.md`.
+- Create `roadmap/PLATFORM_SCHEDULING_PLANE_INVENTORY.md`.
 - Inventory current source and tests for:
   - `TaskRuntimeProfile`
   - `Task.workloadClass`
@@ -333,7 +344,8 @@ Acceptance:
 - Inventory identifies all known `sharedConfig` keys that currently affect
   routing or scheduling.
 - Inventory lists SDK/public-contract/server surfaces that expose workload,
-  routing, group selection, target worker, or policy-like configuration.
+  routing, group selection, target worker, or Scheduling Plane related
+  configuration.
 
 ## PSP-1 Owner, Binding, And Persistence Decision
 
@@ -540,7 +552,7 @@ Scope:
 
 Acceptance:
 
-- Minimum automated guards fail for item-level worker matching, worker-row
+- Minimum automated guards fail for item-level worker selection, worker-row
   capability truth, worker-policy ownership of runtime selection, engine
   policy-storage imports, and root `ProjectSchedulingPolicy` ownership.
 - Docs distinguish current implementation from target policy owner.

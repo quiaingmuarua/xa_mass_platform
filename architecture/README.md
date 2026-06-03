@@ -54,13 +54,13 @@ task shell
 ```
 
 The core value is not "store a task row". The core value is reliable runtime
-convergence under worker matching, dispatch, retry, timeout, result callbacks,
+convergence under worker selection, dispatch, retry, timeout, result callbacks,
 and task-level terminal policy.
 
 The reusable kernel is:
 
 ```text
-Task + Worker + Scheduling + Matching
+Task + Worker + Scheduling Plane
 + lease-based dispatch
 + idempotent result convergence
 + multi-transport delivery

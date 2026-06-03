@@ -7,16 +7,14 @@ Fast entry only. Use module owner READMEs and `doc/` contracts for detail.
 ## 0. TL;DR
 
 - XA Mass Platform is a general distributed task scheduling platform.
-- Core primitives: `Task + Worker + Scheduling + Matching`.
+- Core primitives: `Task + Worker + Scheduling Plane`.
 - `Task`: shell, contract, intake window, runtime work, result, and terminal
   aggregate.
 - `Worker`: execution identity plus WorkerGroup/node membership and scheduling
   facts.
-- `Scheduling`: decides when work may enter, retry, pause, resume, or leave
-  dispatch competition.
-- `Matching`: matches task dispatch intent to WorkerGroup capability and policy
-  eligibility, then selects a concrete worker inside the selected group from
-  runtime evidence and admission state.
+- `Scheduling Plane`: decides when work may enter, retry, pause, resume, or
+  leave dispatch competition, which worker universe it may compete in, and
+  which concrete worker receives it.
 - Target abstraction:
   `SchedulingPolicyCatalog -> ProjectSchedulingBinding -> task dispatch intent
   -> TaskSchedulingPolicyExecution -> WorkerSchedulingPolicyResolution
@@ -27,6 +25,8 @@ Fast entry only. Use module owner READMEs and `doc/` contracts for detail.
   pool constraints, and `RuntimeWorkerSelection` for concrete worker choice
   from live evidence and admission state. None of these are complete current
   modules yet.
+- `Matching` is the current worker-selection mechanism inside Scheduling Plane,
+  not a top-level owner.
 - Kernel truth is currently split across:
   - `Task.contract` for runtime contract
   - `Task.intakeStatus` for intake-window truth
@@ -43,7 +43,7 @@ Fast entry only. Use module owner READMEs and `doc/` contracts for detail.
 
 Current mainline execution path:
 
-- `Task shell -> item append -> runtime enqueue -> scheduling eligibility -> matching and assignment -> transport dispatch -> result convergence -> task state`
+- `Task shell -> item append -> runtime enqueue -> scheduling eligibility -> worker selection and assignment -> transport dispatch -> result convergence -> task state`
 
 ## 0.1 Abstraction Test
 

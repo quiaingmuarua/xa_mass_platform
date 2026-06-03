@@ -2,7 +2,7 @@
 
 Status: current engine owner README.
 
-This module owns kernel orchestration semantics: lifecycle, matching,
+This module owns kernel orchestration semantics: lifecycle, worker selection,
 assignment, result handling, and terminal convergence. It does not own runtime
 implementation modules or storage implementations.
 
@@ -15,9 +15,9 @@ covers engine-owned assets and when to use them.
 `engine` is a runtime kernel, not a CRUD backend module.
 
 - task lifecycle transitions and terminal convergence
-- task-level worker matching and assignment orchestration
+- task-level worker selection and assignment orchestration
 - result ingest application and retry/finality decisions
-- engine-local policy ownership across matching, assignment, attempt, release,
+- engine-local policy ownership across worker selection, assignment, attempt, release,
   refill, intake, and terminal decisions
 
 Assignment allocation is engine-internal policy ownership:
@@ -260,7 +260,7 @@ Keep these facts fixed unless the owning global baselines change:
   runtime retry budget decides `retry reset` vs `FAILED + RETRY_EXHAUSTED`
 - `Task.workloadClass` is the explicit workload tuning input; scheduling
   semantics must not drift back into free-form `sharedConfig`
-- worker matching is task-level orchestration; do not fall back to per-message
+- worker selection is task-level orchestration; do not fall back to per-message
   matching on the hot path
 - fixed scheduling mainlines are documented in
   `doc/baseline/SCHEDULING_KERNEL_BASELINE.md`; scheduling changes must preserve those
@@ -293,7 +293,7 @@ Keep these facts fixed unless the owning global baselines change:
   acquisition; rules remain the eligibility gate, and the default ranker uses
   observed load plus routing affinity as preference signals
 - `WorkerRegistry` owns worker slot capacity, reservation, active lease, and
-  exclusive execution-lane evidence. Matching reserves one unit of
+  exclusive execution-lane evidence. Worker selection reserves one unit of
   worker-declared capacity before exclusive lease acquisition, and dispatch
   binding confirms or releases that reservation around runtime claim outcomes.
 - `WorkerBudgetPolicy` is the internal owner for task-level worker budget
@@ -305,8 +305,8 @@ Keep these facts fixed unless the owning global baselines change:
   and consumes that decision instead of owning refill formulas
 - `WorkerDispatchResourcePolicy` owns dispatch resource usage semantics:
   whether a task/candidate uses the long-lived worker-level exclusive lock.
-  Matching, assignment listener cleanup, binder compensation, and resource
-  release consume this decision instead of each re-deriving foreground
+  Worker selection, assignment listener cleanup, binder compensation, and
+  resource release consume this decision instead of each re-deriving foreground
   behavior. WorkerContext identity is no longer a resource policy input; only
   `foreground=true` keeps the long-lived lock, while `foreground=false` relies
   on capacity reservation.

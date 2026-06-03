@@ -149,7 +149,7 @@ Current adapters include:
 - socket
 
 Transport presence answers whether a worker route is reachable. The engine
-still owns worker matching and assignment.
+still owns worker selection and assignment.
 
 ### Result
 

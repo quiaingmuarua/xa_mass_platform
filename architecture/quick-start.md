@@ -105,7 +105,7 @@ app.registerWorker(WorkerRegistration.builder()
 Capability is declared on `WorkerGroupDeclaration.eventBindings`. Worker
 registration only declares execution identity, adapter-node/group membership,
 transport, and worker attributes. Item payload and `eventCode` do not own
-worker matching policy.
+worker-selection policy.
 
 ## 5. Create A Task And Append Items
 

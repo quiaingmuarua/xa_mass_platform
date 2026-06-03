@@ -5,10 +5,10 @@ Last updated: 2026-06-02
 Status: current global task lifecycle baseline.
 
 This is the short normative baseline for the active task mainline. It covers
-the four core primitives that a new agent must understand first:
+the three top-level owners that a new agent must understand first:
 
 ```text
-Task + Worker + Scheduling + Matching
+Task + Worker + Scheduling Plane
   -> assignment / dispatch
   -> result apply
   -> terminal convergence
@@ -30,8 +30,8 @@ Use with:
 | --- | --- | --- |
 | `Task` | task shell, contract, intake window, aggregate status, terminal reason, and task-level execution policy | engine lifecycle plus kernel-facing task-shell ports |
 | `Worker` | execution identity plus group/node membership and declared worker facts | `xa-mass-worker-runtime` declaration/resource owners |
-| `Scheduling` | deciding when task work may enter competition, dispatch, retry, pause, resume, or close. Target direction splits scheduling-related ownership into task scheduling policy, worker scheduling policy, and runtime worker selection; current policy remains distributed across task runtime profile, selectors, assignment policy, matching rules, backpressure, and admission | engine lifecycle and runtime queues today; future scheduling-policy catalog plus project/workload binding when implemented |
-| `Matching` | current worker-selection mechanism vocabulary: worker scheduling policy resolves resource universe and rule-backed eligibility, then RuntimeWorkerSelection selects a concrete worker from evidence/admission | engine matching strategy plus worker-runtime candidate/evidence surfaces |
+| `Scheduling Plane` | deciding when task work may enter competition, dispatch, retry, pause, resume, or close; which worker universe it may compete in; and which concrete worker receives it. Target direction splits this into task scheduling policy, worker scheduling policy, and runtime worker selection; current policy remains distributed across task runtime profile, selectors, assignment policy, matching rules, backpressure, and admission | engine lifecycle and runtime queues today; future scheduling-policy catalog plus project/workload binding when implemented |
+| `Matching` | current worker-selection mechanism vocabulary inside Scheduling Plane; not a top-level owner | engine matching strategy plus worker-runtime candidate/evidence surfaces |
 
 Architecture boundary:
 
@@ -62,7 +62,7 @@ task shell create
   -> item append
   -> runtime enqueue
   -> scheduling eligibility
-  -> matching and assignment
+  -> worker selection and assignment
   -> transport dispatch
   -> worker result
   -> runtime result apply
