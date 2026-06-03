@@ -94,10 +94,12 @@ Scheduling Plane Boundary:
   budget, `WorkerSchedulingPolicy` for worker resource-universe selection and
   pool constraints, and `RuntimeWorkerSelection` for concrete worker choice
   from live evidence and admission state
-- current implementation: policy resolution is not yet centralized into a
-  catalog/binding/resolved task-policy/resolved worker-policy path; today it is
-  still distributed across task runtime profile, explicit worker group
-  selectors, matching rule sets, assignment policy, and runtime
+- current implementation: engine-facing value contracts exist for
+  `TaskDispatchIntent`, `ResolvedTaskSchedulingPolicy`, and
+  `ResolvedWorkerSchedulingPolicy`; persisted catalog/binding and configurable
+  policy modules are not implemented yet
+- current policy remains distributed across task runtime profile, explicit
+  worker group selectors, matching rule sets, assignment policy, and runtime
   backpressure/admission behavior
 - `TaskDispatchIntent` is the task-level dispatch intent: project,
   `workerGroupId(s)` or selector, `routingCode`, route attributes,

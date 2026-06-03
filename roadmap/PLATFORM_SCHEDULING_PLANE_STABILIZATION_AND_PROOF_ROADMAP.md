@@ -150,18 +150,18 @@ and guards.
 ## Known Proof Gaps
 
 The first Scheduling Plane implementation introduced resolved views and moved
-some consumers onto them, but the proof is not yet strong enough to treat the
-boundary as stable.
+some consumers onto them. This roadmap strengthens the proof before the
+boundary can be treated as a feature-expansion base.
 
 Known gaps:
 
 - `behavior-neutral` is currently supported by updated tests, not by a
   before/after characterization or golden diff.
-- Worker-side selector construction consumes `ResolvedWorkerSchedulingPolicy`,
-  but consumers are not yet guarded from bypassing resolved views and reading
-  migrated task fields directly.
-- `TaskDispatchIntent` is currently computed in more than one place in a
-  dispatch pass.
+- Worker-side selector construction consumes `ResolvedWorkerSchedulingPolicy`;
+  architecture guards must prevent migrated consumers from bypassing resolved
+  views and reading raw task fields directly.
+- `TaskDispatchIntent` and `WorkerTaskSelector` construction must stay behind
+  the single Scheduling Plane resolution boundary in production dispatch paths.
 - `workloadClass` is the clearest current strategy fact and must be used as the
   first duplicate-truth / bypass-guard sample.
 - `ProjectSchedulingBinding` remains a target name, but the future binding
@@ -246,14 +246,10 @@ Scope:
   - perturb a resolved worker scheduling field and prove worker-side consumer
     behavior changes,
   - prove the same consumer is not silently reading the old raw task field.
-- Collapse readonly duplicate resolution in the matching path so a dispatch
-  pass computes `TaskDispatchIntent` / `SchedulingPlaneResolution` once and
-  threads the resolved inputs down to selector construction and candidate
-  acquisition.
-  Known current site: `RuleBasedTaskWorkerMatchingStrategy.matchWorkers()`
-  computes `TaskDispatchIntent.fromTask(task)` and then calls
-  `WorkerTaskSelectorFactory.fromTask(task)`, which resolves from the task
-  again.
+- Keep readonly duplicate resolution collapsed in the matching path so a
+  dispatch pass computes `TaskDispatchIntent` / `SchedulingPlaneResolution`
+  once and threads the resolved inputs down to selector construction and
+  candidate acquisition.
 - Avoid introducing a new orchestration owner.
 
 Acceptance:

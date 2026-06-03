@@ -82,16 +82,19 @@ Classify every hit:
    docs as historical unless active docs link to them as current truth.
 5. Check roadmap status against source code, tests, guards, and recent commits
    when available.
-6. Check for compatibility aliases, adapters, wrappers, and fallbacks that keep
+6. Check the roadmap's own `Known gaps`, `current site`, `Scope`, and
+   verification text against the implementation. A completed issue still
+   described as current residue is doc residue.
+7. Check for compatibility aliases, adapters, wrappers, and fallbacks that keep
    the old path alive.
-7. Check tests for hidden compatibility tracks: old helper names, old route
+8. Check tests for hidden compatibility tracks: old helper names, old route
    names, old storage names, or assertions against removed read models.
-8. Verify guards promised by the relevant slice or guard/proof section:
+9. Verify guards promised by the relevant slice or guard/proof section:
    - the guard exists as an actual test or build rule
    - it checks the stated violation condition, not only happy path behavior
    - the roadmap verification commands include or reference the guard
-9. Run or recommend the roadmap's verification commands. Missing, stale, or
-   broken verification commands are residue.
+10. Run or recommend the roadmap's verification commands. Missing, stale, or
+    broken verification commands are residue.
 
 If review findings are persisted in files, PR comments, issue comments, or a
 roadmap review section, check whether the findings required before execution
@@ -212,6 +215,7 @@ Before declaring a roadmap complete:
 - No compatibility alias remains unless explicitly required.
 - Tests do not preserve old vocabulary as a second API.
 - Current docs and indexes point to the new owner/path.
+- The roadmap itself no longer describes resolved work as a current gap.
 - Roadmap status matches code and proof.
 - Archive docs are not referenced as current truth.
 - Promised guards exist and test the stated violation conditions.

@@ -15,6 +15,28 @@ documents the same owner split.
 - Trace/archive owns durable history and analytics evidence, not hot-path
   runtime truth.
 
+## Scheduling Plane Rules
+
+- Scheduling Plane work must preserve strategy/mechanism separation. Strategy
+  owns resolved scheduling intent and limits; runtime mechanisms own queue,
+  lease, retry, candidate enumeration, ranking, reservation, locks, live worker
+  evidence, and admission.
+- A single computed default strategy is acceptable. Do not start by adding a
+  catalog, binding table, plug-in framework, or public policy configuration
+  until at least two concrete variants, caller-visible cost, storage owner,
+  runtime consumer, and proof are named.
+- `TaskDispatchIntent`, `ResolvedTaskSchedulingPolicy`, and
+  `ResolvedWorkerSchedulingPolicy` are engine-facing value contracts. They are
+  not storage truth, not trace truth, and not proof that public policy products
+  exist.
+- `SchedulingPolicyCatalog` and `ProjectSchedulingBinding` are target product
+  boundaries until a successor decision proves the caller, cost, owner, and
+  binding subject.
+- `RuntimeWorkerSelection` is a first-class Scheduling Plane owner. It must not
+  be collapsed into worker scheduling policy or rule DSL.
+- Trace, assignment records, and diagnostics may prove a Scheduling Plane
+  decision, but they must not become the source of scheduling truth.
+
 Apply the repo handoff and module README/CONTRACTS files first. If those files
 contradict this reference, report the gap and follow current code plus active
 repo contracts.

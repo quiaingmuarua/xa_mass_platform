@@ -80,6 +80,10 @@ Current owner vocabulary:
   which concrete worker receives it. Current scheduling policy remains
   distributed across task runtime profile, group selectors, assignment policy,
   matching rule sets, runtime backpressure, and admission behavior.
+- Current engine-facing scheduling value contracts already exist:
+  `TaskDispatchIntent`, `ResolvedTaskSchedulingPolicy`, and
+  `ResolvedWorkerSchedulingPolicy`. They are resolved views and execution
+  inputs, not storage truth or public policy products.
 - `Matching` is current worker-selection mechanism vocabulary, not a top-level
   policy owner. Worker scheduling policy resolves the resource universe, and
   RuntimeWorkerSelection chooses a concrete worker inside the selected group
@@ -116,7 +120,7 @@ Platform scheduling abstraction boundary:
 | `WorkerSchedulingPolicyResolution` | worker-side resource-universe, group selector, route, target override, and worker-pool constraint resolution | Scheduling Plane owner; current engine consumes `ResolvedWorkerSchedulingPolicy` for selected worker-universe inputs; broader target contract not fully implemented |
 | `RuntimeWorkerSelection` | concrete worker choice inside the selected group from online/presence/load/admission/draining/lease evidence | Scheduling Plane owner; current engine + worker-runtime matching/admission path |
 
-Inputs and constraints around the Scheduling Plane:
+Scheduling Plane inputs, resolved views, and constraints:
 
 | Layer | Role | Current status |
 | --- | --- | --- |
@@ -136,11 +140,15 @@ Scheduling Plane
   WorkerSchedulingPolicyResolution
   RuntimeWorkerSelection
 
-External inputs and constraints
+Target policy products
   SchedulingPolicyCatalog / ProjectSchedulingBinding
+
+Resolved engine-facing values
   TaskDispatchIntent
   ResolvedTaskSchedulingPolicy
   ResolvedWorkerSchedulingPolicy
+
+External constraints
   WorkerGroupCapability
   Item eventCode + payload
 ```
