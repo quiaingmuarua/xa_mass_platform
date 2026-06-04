@@ -1,6 +1,8 @@
 # Server Control-Plane Store Infra Convergence Roadmap
 
-Status: proposed direction document.
+Status: proposed direction document; API-key lifecycle store execution is
+deferred until `SUBMITTER_AUTH_MODEL_CONVERGENCE_ROADMAP.md` Slices 1-2 add
+the credential projection port and retarget API-key lifecycle writes.
 
 ## Current Code Observations
 
@@ -28,6 +30,16 @@ Status: proposed direction document.
 Detailed inventory:
 `roadmap/SERVER_CONTROL_PLANE_STORE_INFRA_CONVERGENCE_INVENTORY.md`.
 
+Prerequisite:
+`roadmap/SUBMITTER_AUTH_MODEL_CONVERGENCE_ROADMAP.md`.
+
+Do not start JDBC API-key lifecycle implementation before that roadmap splits
+API-key lifecycle projection writes away from broad `SubmitterOperations`.
+Facade rename, runtime scope behavior migration, and viewer-session principal
+type are not prerequisites for this store roadmap unless they become schema
+inputs. This roadmap should persist the projection-port model, not the current
+over-broad `Submitter*` write path.
+
 ## Owner Review
 
 Server IAM, API-key workflow, submitter-viewer sessions, and usage ledgers are
@@ -38,6 +50,14 @@ host-side stores and adapters.
 stores need JDBC backing. `platform_infra/mass-storage-jdbc` may continue to
 own generic task shell/rule/principal migration support, but richer server
 API-key and IAM lifecycle stores should stay server-owned.
+
+Server-owned JDBC store schema must also stay server-owned. Do not add
+API-key, IAM, submitter-viewer session, or API-usage tables under
+`platform_infra/mass-storage-jdbc` just because that module currently launches
+Flyway for generic control-plane tables. If server-owned store migrations share
+the same Flyway location, the resources still belong to `xa-mass-server`; an
+alternative server-owned migrator is also acceptable. Either path must keep
+`platform_infra` free of server API/IAM schema concepts.
 
 `SubmitterRegistry` remains the SDK auth projection consumed by server and
 external worker/task APIs. API-key lifecycle storage must converge with that
@@ -53,6 +73,10 @@ Use one server-owned store assembly boundary:
   server control-plane stores by default.
 - Optional explicit overrides may exist only as startup/debug tools, for
   example `mass.server.control-plane.store=memory|jdbc`.
+- Slice 0 must decide whether to implement that override immediately or derive
+  only from `mass.storage.mode` for this roadmap. If implemented, the override
+  must be logged as a debug/startup override and must not change public API
+  behavior.
 
 The backing implementation is selectable. The public server routes and SDK
 contracts do not change.
@@ -65,8 +89,11 @@ contracts do not change.
 - Add server-owned JDBC implementations for stable control-plane stores:
   `ApiKeyApplicationStore`, `ApiKeyCredentialStore`,
   `UserRolePermissionStore`, and `ApiUsageLedgerStore`.
-- Keep `SubmitterViewerSessionStore` memory by default unless explicitly
-  promoted in a later slice; document it as session/runtime convenience state.
+- Add server-owned migrations/schema for those implementations. The schema
+  owner is `xa-mass-server`, not `platform_infra/mass-storage-jdbc`.
+- Keep `SubmitterViewerSessionStore` memory-only. If cross-process viewer
+  sessions become necessary later, that is a runtime/Redis session decision,
+  not a JDBC/control-plane store decision.
 - Keep sync wait bridge and sync request counters memory-only.
 - Keep SQLite as the normal prod control-plane DB and Redis as runtime truth.
 - Do not add DB tables for runtime queues, active leases, worker online churn,
@@ -76,9 +103,12 @@ contracts do not change.
 
 - Do not split a new server infra module.
 - Do not move server IAM/API-key store contracts into `platform_infra`.
+- Do not put server API-key, IAM, session, or usage schemas in
+  `platform_infra/mass-storage-jdbc`.
 - Do not replace SDK `SubmitterRegistry`, `AuthProvider`, or
   `PrincipalDirectory` contracts.
 - Do not add compatibility aliases or duplicate active API-key lifecycle paths.
+- Do not persist `SubmitterViewerSessionStore` in SQLite/JDBC.
 - Do not persist sync wait futures, in-flight counters, runtime queues, leases,
   or worker presence in SQLite.
 - Do not add commercial schema-history migration guarantees in this roadmap.
@@ -105,6 +135,10 @@ Scope:
   configuration class.
 - Move store bean creation from `@Component` scanning to explicit `@Bean`
   methods.
+- Decide and document the effective mode rule:
+  derive server store mode from `mass.storage.mode` only, or add
+  `mass.server.control-plane.store` as a startup/debug override. This decision
+  must be made before Slice 1 starts.
 - Keep current effective backing memory-only for IAM/API-key/session/usage in
   this slice.
 - Add a guard that concrete in-memory server control-plane stores are not
@@ -116,14 +150,22 @@ Acceptance:
   `InMemoryApiKeyCredentialStore`, `InMemoryUserRolePermissionStore`,
   `InMemorySubmitterViewerSessionStore`, or
   `InMemoryApiUsageLedgerStore` class carries `@Component`.
-- Spring startup still creates the same store beans in `dev`.
+- A Spring context/assembly test proves `dev` startup creates exactly one bean
+  for each server control-plane store contract after removing `@Component`.
 - Store selection is centralized in one server assembly class.
+- The mode decision is recorded in this roadmap and the inventory.
 - Focused auth/IAM tests still pass.
 
 Verification candidates:
 
 ```bash
 mvn --% -pl xa-mass-server -Dtest=ApiKeyControllerTest,ApiKeyApplicationControllerTest,IdentityAccessControllerTest,SubmitterViewerSessionControllerTest,ApiUsageControllerTest -Dsurefire.failIfNoSpecifiedTests=false test
+```
+
+Add a focused Spring assembly test, for example:
+
+```text
+ServerControlPlaneStoreConfigurationTest
 ```
 
 ## Slice 1 - JDBC API-Key Lifecycle Stores
@@ -137,7 +179,8 @@ Scope:
 
 - Add server-owned JDBC implementations for `ApiKeyApplicationStore` and
   `ApiKeyCredentialStore`.
-- Add control-plane migration tables for application and credential records.
+- Add server-owned control-plane migration tables for application and
+  credential records. Do not place these migrations in `platform_infra`.
 - Store full records, including status, review metadata, expiry, revoke
   metadata, scopes, permissions, attributes, key prefix, and credential hash.
 - Ensure `ApiKeyCredentialService.validateAuthenticatedPrincipal(...)` works
@@ -145,6 +188,9 @@ Scope:
 - Decide whether `xa_principal` and API-key credential rows are written in the
   same transaction or through a clearly ordered best-effort sequence. Record the
   chosen failure behavior in tests.
+- If a best-effort sequence is chosen, define the split-brain repair behavior:
+  either roll back the lifecycle row when projection fails, or persist a visible
+  projection-failed/repair-needed state that cannot authenticate as active.
 
 Acceptance:
 
@@ -154,6 +200,9 @@ Acceptance:
   `validateAuthenticatedPrincipal(...)`.
 - Revocation, disabling by user, and expiry update both lifecycle store and
   submitter auth projection.
+- A forced lifecycle/projection partial failure cannot leave a key that is
+  authenticated by `SubmitterRegistry` but rejected or invisible to
+  `ApiKeyCredentialStore` without a visible repair state.
 - Duplicate principal and duplicate key constraints are enforced in JDBC.
 - H2 and SQLite pass the same store contract tests.
 
@@ -179,8 +228,9 @@ current built-in bootstrap defaults.
 Scope:
 
 - Add a JDBC implementation for `UserRolePermissionStore`.
-- Add control-plane migration tables for users, roles, and user-role bindings,
-  or an equivalent normalized-plus-JSON layout.
+- Add server-owned control-plane migration tables for users, roles, and
+  user-role bindings, or an equivalent normalized-plus-JSON layout. Do not
+  place these migrations in `platform_infra`.
 - Define bootstrap behavior for default operator users/roles:
   seed-if-empty is acceptable; overwriting existing operator data is not.
 - Keep `DefaultOperatorPrincipalDirectory` dependent only on
@@ -217,12 +267,16 @@ turning it into runtime or trace history.
 Scope:
 
 - Add a JDBC implementation for `ApiUsageLedgerStore`.
-- Add a migration table for usage records with indexes for `keyId`,
-  `principalId`, task id, status, operation, and created time.
+- Add a server-owned migration table for usage records with indexes for
+  `keyId`, `principalId`, task id, status, operation, and created time. Do not
+  place this migration in `platform_infra`.
 - Preserve append idempotency by `usageId`.
 - Keep usage ledger writes best-effort only if controller behavior already
   treats them as non-authoritative. Otherwise document and test failure
   behavior explicitly.
+- Define a bounded query and retention decision. A cleanup implementation is
+  not required in this slice, but the table must not be documented as
+  unbounded audit or trace history.
 
 Acceptance:
 
@@ -230,6 +284,8 @@ Acceptance:
 - `ApiUsageController` can query usage after store restart.
 - Usage ledger does not write per-dispatch, per-heartbeat, per-lease, or trace
   events.
+- Query/read behavior has a documented bound or retention/open-cleanup
+  decision.
 
 Verification candidates:
 
@@ -256,8 +312,7 @@ Scope:
   if needed.
 - Default JDBC storage modes to JDBC server stores.
 - Default memory storage mode to memory server stores.
-- Keep `SubmitterViewerSessionStore` mode decision explicit:
-  memory by default, optional JDBC only if Slice 4 promotes it.
+- Keep `SubmitterViewerSessionStore` explicitly memory-only.
 - Add startup proof that `prod` uses SQLite-backed server control-plane stores
   and fails visibly when Redis is unavailable for runtime surfaces.
 
@@ -267,6 +322,9 @@ Acceptance:
   IAM/API-key/usage surfaces.
 - `application-dev.yml` behavior is explicit and no longer depends on concrete
   in-memory `@Component` scanning.
+- If `mass.server.control-plane.store` exists, tests prove it is a startup/debug
+  override only. If it does not exist, docs state that server store mode derives
+  only from `mass.storage.mode`.
 - Server startup logs or diagnostics expose selected control-plane store mode.
 - Architecture guard fails if an in-memory stable control-plane store is
   component-selected in main source.
@@ -319,6 +377,8 @@ Prevent this class of rough server store wiring from returning.
 Scope:
 
 - Add source guard coverage for stable server control-plane store assembly.
+- Add source guard coverage that server API-key/IAM/session/usage schema names
+  do not appear under `platform_infra/mass-storage-jdbc` migration resources.
 - Update `xa-mass-server/README.md` key config/store section to describe
   server control-plane stores separately from engine runtime and transport
   stores.
@@ -329,6 +389,8 @@ Scope:
 Acceptance:
 
 - Guard blocks `@Component` on stable concrete in-memory server stores.
+- Guard blocks server-owned API-key/IAM/session/usage migrations from being
+  added to `platform_infra/mass-storage-jdbc`.
 - README states which server stores are JDBC-backed under prod and which remain
   memory-only by design.
 - No doc claims SQLite owns runtime queue/lease/result/trace truth.
@@ -354,12 +416,15 @@ mvn --% -pl xa-mass-server -Dtest=ServerMainSourceArchitectureGuardTest -Dsurefi
 
 - Whether API-key lifecycle rows and `xa_principal` projection should share one
   table family or remain separate tables with explicit reconciliation rules.
-- Whether `SubmitterViewerSessionStore` should stay memory-only or gain optional
-  JDBC backing for console convenience.
+  Must resolve in Slice 1.
+- Whether `SubmitterViewerSessionStore` should move to Redis for cross-process
+  sessions is deferred outside this roadmap. JDBC backing is not an option for
+  the current control-plane store convergence.
 - Whether API usage ledger write failures should fail the request or remain
-  best-effort with visible diagnostics.
+  best-effort with visible diagnostics. Must resolve in Slice 3.
 - Whether store mode should be derived only from `mass.storage.mode` or exposed
-  through `mass.server.control-plane.store`.
+  through `mass.server.control-plane.store`. Must resolve in Slice 0 before
+  any JDBC store implementation starts.
 
 ## Completion Criteria
 
@@ -374,4 +439,3 @@ The roadmap is complete when:
 - request-local sync bridge/counters remain clearly memory-only;
 - source guards prevent implicit concrete in-memory store component scanning
   from returning.
-

@@ -19,13 +19,13 @@ materialization, or worker scheduling decisions.
 | --- | --- | --- | --- | --- |
 | `TaskShellStore` | `platform_infra/mass-storage-api`, assembled by server | `JdbcStorageRuntime.taskShellStore()` for JDBC modes, `InMemoryTaskShellStore` fallback | control-plane storage | Keep current profile-based switching. |
 | `RuleStorage` | `platform_infra/mass-storage-api`, assembled through embedded SDK/server | `JdbcStorageRuntime.ruleStorage()` for JDBC modes | control-plane storage | Keep current JDBC-backed seed/import path. |
-| `SubmitterRegistry` / `SubmitterOperations` | SDK auth surface, host persistence adapter in server | `JdbcSubmitterRegistry` when JDBC storage is enabled; SDK memory registry otherwise | principal credential truth | Keep as the authentication projection, but converge API-key lifecycle store so it does not split from this projection after restart. |
+| `SubmitterRegistry` / `SubmitterOperations` | SDK auth surface, host persistence adapter in server | `JdbcSubmitterRegistry` when JDBC storage is enabled; SDK memory registry otherwise | principal credential truth | Wait for `SUBMITTER_AUTH_MODEL_CONVERGENCE_ROADMAP.md` Slices 1-2 so API-key lifecycle writes through a projection port instead of broad `SubmitterOperations`. |
 | `TaskReviewStore` | server review/read-model owner | `JdbcTaskReviewStore` for JDBC modes, `InMemoryTaskReviewStore` fallback | server-local review materialization | Keep server-owned and selectable; do not promote to runtime result truth. |
 | `ApiKeyApplicationStore` | server IAM/API-key owner | `InMemoryApiKeyApplicationStore` via `@Component` | stable API-key request workflow truth | Add JDBC implementation and explicit store assembly. |
 | `ApiKeyCredentialStore` | server IAM/API-key owner | `InMemoryApiKeyCredentialStore` via `@Component` | stable API-key lifecycle truth | Add JDBC implementation and make it consistent with `SubmitterRegistry` projection. |
 | `UserRolePermissionStore` | server IAM owner | `InMemoryUserRolePermissionStore` via `@Component` with bootstrap defaults | stable operator/user/role truth | Add JDBC implementation with explicit bootstrap/seed defaults. |
 | `ApiUsageLedgerStore` | server usage/audit owner | `InMemoryApiUsageLedgerStore` via `@Component` | append-only API usage ledger | Add JDBC implementation for inspectable low-volume usage evidence. Do not use it for runtime event streams. |
-| `SubmitterViewerSessionStore` | server submitter-viewer session owner | `InMemorySubmitterViewerSessionStore` via `@Component` | session/runtime convenience state | Keep memory by default or add optional JDBC; do not block core credential durability on this. |
+| `SubmitterViewerSessionStore` | server submitter-viewer session owner | `InMemorySubmitterViewerSessionStore` via `@Component` | session/runtime convenience state | Keep memory-only. Future cross-process sharing, if needed, belongs to runtime/Redis session design, not JDBC. |
 | `SyncTaskResultBridge.pendingByMessage` | server sync HTTP bridge | in-process `ConcurrentHashMap` | request-local wait state | Keep memory-only; it is not restart-required truth. |
 | `TaskSyncRequestSupervisor` counters | server sync HTTP guardrail | in-process counters + Micrometer metrics | request-local admission/metrics state | Keep memory-only; optionally make limits Spring properties. |
 | `FrontendConsoleRoutingService.LEGACY_ROUTE_MAPPING` | server console route owner | static map | route alias mapping | Keep static; not store infra. |
@@ -63,9 +63,9 @@ materialization, or worker scheduling decisions.
   operator identity, roles, and permissions.
 - `ApiUsageLedgerStore`: layer=control-plane storage for bounded API usage
   audit; reason=operator/billing inspection, not runtime correctness.
-- `SubmitterViewerSessionStore`: layer=runtime/session state unless explicitly
-  promoted; reason=sessions can be recreated and are not the source of
-  credential truth.
+- `SubmitterViewerSessionStore`: layer=runtime/session state; reason=sessions
+  can be recreated and are not the source of credential truth. Keep memory-only
+  for this roadmap.
 - `SyncTaskResultBridge` and `TaskSyncRequestSupervisor`: layer=temporary
   request-local runtime state; reason=blocking HTTP wait coordination and
   in-flight counters.
@@ -84,6 +84,11 @@ materialization, or worker scheduling decisions.
    implicit and hard to guard.
 6. Existing JDBC `xa_principal` stores submitter profiles but does not directly
    represent the richer `ApiKeyCredentialRecord` lifecycle fields.
+7. Submitter/auth projection-port convergence is a prerequisite before durable
+   API-key lifecycle tables are added; see
+   `SUBMITTER_AUTH_MODEL_CONVERGENCE_ROADMAP.md` Slices 1-2. Facade rename,
+   runtime scope behavior migration, and viewer-session principal type are not
+   store-infra blockers unless they become schema inputs.
 
 ## Existing Proof Surfaces
 
@@ -95,4 +100,3 @@ materialization, or worker scheduling decisions.
 | `IdentityAccessControllerTest` | unit proof for user/role operations and API-key disabling | Keep and add JDBC store parity. |
 | `ApiUsageControllerTest` / `TaskApiControllerTest` | usage ledger behavior with memory store | Add JDBC ledger parity and one server wiring proof. |
 | `ServerMainSourceArchitectureGuardTest` | source guard for server boundaries | Add guard that in-memory stores are not component-selected in production mainline. |
-
