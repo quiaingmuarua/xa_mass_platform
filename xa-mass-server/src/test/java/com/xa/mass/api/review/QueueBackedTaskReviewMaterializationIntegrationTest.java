@@ -23,11 +23,13 @@ class QueueBackedTaskReviewMaterializationIntegrationTest {
                 new TaskReviewStoreMaterializer(store), 8)) {
             QueueBackedTaskReviewReadModelWriter writer = new QueueBackedTaskReviewReadModelWriter(
                     queue,
-                    TaskReviewMaterializationPolicy.terminalDefault());
+                    TaskReviewMaterializationPolicy.offDefault());
+            Map<String, Object> reviewEnabledConfig =
+                    Map.of(TaskReviewMaterializationPolicy.SHARED_CONFIG_KEY, "terminal");
 
             writer.recordItemsAccepted(
                     "task-001",
-                    Map.of(),
+                    reviewEnabledConfig,
                     List.of(Map.of("eventCode", "probe.weather", "city", "shenzhen")),
                     new TaskItemBatchAppendReceipt("task-001", 1, List.of("msg-001")),
                     3);
@@ -40,7 +42,7 @@ class QueueBackedTaskReviewMaterializationIntegrationTest {
 
             writer.recordWorkFinal(new TaskWorkFinalNotification(
                     "task-001",
-                    Map.of(),
+                    reviewEnabledConfig,
                     new TaskWorkFinalSnapshot(
                             "task-001",
                             "msg-001",

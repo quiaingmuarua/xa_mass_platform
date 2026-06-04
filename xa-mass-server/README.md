@@ -411,6 +411,22 @@ JDBC storage scope:
 - JDBC storage persists task shell truth, rule definitions, and low-frequency
   principal credential truth used by submitter and external worker API-key
   authentication
+
+Server control-plane store hard rules:
+
+- server-owned API-key lifecycle, IAM/user-role, API usage ledger, and
+  submitter-viewer session store decisions stay in `xa-mass-server`
+- do not add server API-key, IAM, submitter-viewer session, or usage tables or
+  schema concepts to `platform_infra/mass-storage-jdbc`
+- server-owned JDBC stores may share the configured JDBC `DataSource`, but
+  migration resources and migration execution for server API/IAM/usage schemas
+  must be owned by `xa-mass-server`
+- submitter-viewer sessions remain memory-only in the current phase; future
+  cross-process sharing belongs to runtime/Redis session design, not SQLite or
+  JDBC control-plane storage
+- DB schema changes may require deleting/recreating local/prod DBs in this
+  pre-release phase; validation proves clean DB creation and current-schema
+  restart behavior, not historical upgrade compatibility
 - server API-key lifecycle storage must project authentication state through
   the embedded SDK's narrow `CredentialAuthProjectionWriter` contract, not
   broad submitter resource operations; API-key lifecycle schema must distinguish

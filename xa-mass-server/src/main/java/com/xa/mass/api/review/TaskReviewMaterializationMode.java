@@ -20,7 +20,7 @@ public enum TaskReviewMaterializationMode {
 
     public static TaskReviewMaterializationMode parse(String value) {
         if (value == null || value.isBlank()) {
-            return TERMINAL;
+            return OFF;
         }
         String normalized = value.trim()
                 .replace('-', '_')

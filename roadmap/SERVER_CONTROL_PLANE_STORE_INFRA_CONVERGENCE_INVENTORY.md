@@ -19,7 +19,7 @@ materialization, or worker scheduling decisions.
 | --- | --- | --- | --- | --- |
 | `TaskShellStore` | `platform_infra/mass-storage-api`, assembled by server | `JdbcStorageRuntime.taskShellStore()` for JDBC modes, `InMemoryTaskShellStore` fallback | control-plane storage | Keep current profile-based switching. |
 | `RuleStorage` | `platform_infra/mass-storage-api`, assembled through embedded SDK/server | `JdbcStorageRuntime.ruleStorage()` for JDBC modes | control-plane storage | Keep current JDBC-backed seed/import path. |
-| `SubmitterRegistry` / `SubmitterOperations` / `CredentialAuthProjectionWriter` | SDK auth surface, host persistence adapter in server | `JdbcSubmitterRegistry` when JDBC storage is enabled; SDK memory registry otherwise | principal credential truth | API-key lifecycle now writes through `CredentialAuthProjectionWriter`; durable lifecycle schema can proceed without depending on broad `SubmitterOperations`. |
+| `CredentialAuthProjectionWriter` / `JdbcSubmitterRegistry` | SDK auth projection contract, host persistence adapter in server | `JdbcSubmitterRegistry` when JDBC storage is enabled; SDK memory registry otherwise | principal credential truth | Durable lifecycle schema can proceed without depending on broad `SubmitterOperations`. |
 | `TaskReviewStore` | server review/read-model owner | `JdbcTaskReviewStore` for JDBC modes, `InMemoryTaskReviewStore` fallback | server-local review materialization | Keep server-owned and selectable; do not promote to runtime result truth. |
 | `ApiKeyApplicationStore` | server IAM/API-key owner | `InMemoryApiKeyApplicationStore` via `@Component` | stable API-key request workflow truth | Add JDBC implementation and explicit store assembly. |
 | `ApiKeyCredentialStore` | server IAM/API-key owner | `InMemoryApiKeyCredentialStore` via `@Component` | stable API-key lifecycle truth | Add JDBC implementation and make it consistent with `SubmitterRegistry` projection. |
@@ -38,10 +38,9 @@ materialization, or worker scheduling decisions.
   because the in-memory implementations carry `@Component`.
 - `ApiKeyCredentialService.createOperatorKey(...)` writes an
   `ApiKeyCredentialRecord` into `ApiKeyCredentialStore`, then projects the
-  generated secret into `SubmitterOperations`.
-- In JDBC storage mode, `SubmitterOperations` is backed by
-  `JdbcSubmitterRegistry` and persists submitter principal truth in
-  `xa_principal`.
+  generated secret through `CredentialAuthProjectionWriter`.
+- In JDBC storage mode, `JdbcSubmitterRegistry` can persist the credential
+  auth projection in `xa_principal`.
 - After restart, `JdbcSubmitterRegistry` can reload and authenticate the
   credential, but `InMemoryApiKeyCredentialStore` is empty. The later
   `ApiKeyCredentialService.validateAuthenticatedPrincipal(...)` lookup by
@@ -52,6 +51,13 @@ materialization, or worker scheduling decisions.
 - `ApiUsageLedgerStore` is low-volume server audit/usage evidence. It should
   be durable for product inspection, but it must not become a high-volume
   runtime or trace event table.
+- Current shared JDBC migration execution lives in
+  `platform_infra/mass-storage-jdbc` and runs
+  `classpath:db/migration/control-plane`. Server API-key/IAM/usage schema does
+  not yet have a server-owned migration runner/location.
+- API-key credential records currently carry `projectScopes` and `eventScopes`
+  as lists. A durable schema must add an explicit mode or equivalent contract
+  so omitted, wildcard, and bounded scopes are distinguishable.
 
 ## Store Placement Decisions
 
@@ -88,6 +94,10 @@ materialization, or worker scheduling decisions.
    API-key lifecycle table design to proceed. Facade rename, runtime scope
    behavior migration, and viewer-session principal type are not store-infra
    blockers unless they become schema inputs.
+8. Server-owned migrations need an execution owner before Slice 1 adds JDBC
+   API-key/IAM/usage tables.
+9. DB schema changes may delete/recreate local/prod DBs in this pre-release
+   stage; there is no historical upgrade compatibility requirement.
 
 ## Existing Proof Surfaces
 
