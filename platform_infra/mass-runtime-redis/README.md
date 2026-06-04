@@ -1,7 +1,8 @@
 # mass-runtime-redis
 
-Status: current Redis runtime implementation for compose/local distributed
-verification and explicit embedded/server runtime selection.
+Status: current Redis runtime implementation for prod runtime selection,
+compose/local distributed verification, and explicit embedded/server runtime
+selection.
 
 ## Role
 
@@ -13,10 +14,11 @@ verification and explicit embedded/server runtime selection.
 
 ## Current Truth
 
-- Redis-backed runtime is the current compose/local distributed verification
-  path through the `redis-runtime` profile
+- Redis-backed runtime is the current `prod` runtime backend and remains the
+  compose/local distributed verification path while compose still uses the
+  legacy `redis-runtime` profile
 - embedded/server bootstrap still defaults to memory unless Redis is selected by
-  profile or builder wiring
+  the `prod` profile, property override, or builder wiring
 - this module now provides a real Redis-backed `TaskWorkRuntime`
 - this module now provides a contract-tested Redis-backed `WorkerRegistry`
   foundation using group-partitioned worker slot hashes and route buckets

@@ -153,6 +153,18 @@ public final class JdbcSubmitterRegistry implements SubmitterRegistry {
                       enabled = EXCLUDED.enabled,
                       json = EXCLUDED.json
                     """;
+            case JDBC_SQLITE -> """
+                    INSERT INTO xa_principal(principal_id, principal_type, credential_hash, key_prefix, user_id, project_scope, enabled, json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(principal_id) DO UPDATE SET
+                      principal_type = excluded.principal_type,
+                      credential_hash = excluded.credential_hash,
+                      key_prefix = excluded.key_prefix,
+                      user_id = excluded.user_id,
+                      project_scope = excluded.project_scope,
+                      enabled = excluded.enabled,
+                      json = excluded.json
+                    """;
             case MEMORY -> throw new IllegalStateException("memory mode does not use JDBC submitter persistence");
         };
     }

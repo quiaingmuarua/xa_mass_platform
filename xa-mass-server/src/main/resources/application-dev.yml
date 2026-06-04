@@ -1,12 +1,25 @@
 # Development profile overrides for the verified server shell.
 mass:
+  storage:
+    mode: jdbc-h2
+    jdbc:
+      url: jdbc:h2:file:./data/xa-mass-h2/xa_mass;MODE=PostgreSQL;DATABASE_TO_UPPER=false
+      username: sa
+      password:
   control-console:
     scenario:
       enabled: true
   runtime:
+    mode: memory
     event-handler-timeout-ms: 5000
     transport-max-pending-tasks: 10000
     event-max-pending-tasks: 2000
+  transport:
+    node-id: local-dev-server
+    delivery:
+      store: memory
+    presence:
+      store: memory
   websocket:
     port: 18088
     max-connections: 1000

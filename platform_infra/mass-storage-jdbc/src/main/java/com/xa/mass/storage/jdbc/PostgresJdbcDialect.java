@@ -5,12 +5,13 @@ final class PostgresJdbcDialect implements JdbcDialect {
     @Override
     public String taskUpsertSql() {
         return """
-                INSERT INTO xa_task(task_id, status, project, schedulable, max_runtime_deadline, json)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO xa_task(task_id, status, project, schedulable, create_time, max_runtime_deadline, json)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (task_id) DO UPDATE SET
                   status = EXCLUDED.status,
                   project = EXCLUDED.project,
                   schedulable = EXCLUDED.schedulable,
+                  create_time = EXCLUDED.create_time,
                   max_runtime_deadline = EXCLUDED.max_runtime_deadline,
                   json = EXCLUDED.json
                 """;

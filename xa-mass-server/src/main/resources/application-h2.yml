@@ -1,7 +1,7 @@
-# H2 persistence profile for local/server storage verification.
+# Legacy H2 persistence overlay retained for compose until compose startup is
+# converged separately.
 #
-# Use with the runnable server profile, for example:
-#   -Dspring.profiles.active=dev,h2
+# Normal local server startup uses application-dev.yml directly.
 #
 # Tests should keep using isolated in-memory H2 URLs through DynamicPropertySource.
 mass:

@@ -333,11 +333,11 @@ Observability:
 | `mass.engine.runtime-ready-dispatch-idle-backoff-max-millis` | `30000` | max idle backoff for the default runtime-ready dispatch polling fallback policy |
 | `mass.engine.lease-watchdog-interval-seconds` | `30` | interval for scanning active task-message leases and expiring stalled in-flight attempts |
 | `mass.engine.task-message-lease-seconds` | `300` | lease duration for an in-flight task message before the engine may redispatch it |
-| `mass.storage.mode` | `memory` | server storage mode; use `jdbc-h2` for local/CI verification or `jdbc-postgres` through `mass-storage-jdbc` for durable control-plane storage |
+| `mass.storage.mode` | `memory` | server storage mode; normal `dev` uses `jdbc-h2`, normal `prod` uses `jdbc-sqlite`, and manual property overrides may still select `jdbc-postgres` |
 | `mass.storage.jdbc.url` | `jdbc:h2:mem:xa_mass;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false` | JDBC URL used when `mass.storage.mode` is a JDBC mode |
 | `mass.storage.jdbc.username` | `sa` | JDBC username |
 | `mass.storage.jdbc.password` | empty | JDBC password |
-| `mass.runtime.mode` | `memory` | engine runtime backend; `memory` is the embedded default, while `redis` selects Redis-backed work/result runtime used by the compose/local distributed verification path |
+| `mass.runtime.mode` | `memory` | engine runtime backend; normal `dev` uses `memory`, while normal `prod` uses Redis-backed work/result runtime |
 | `mass.runtime.redis.namespace` | `xa:mass:runtime:v1` | Redis namespace prefix when `mass.runtime.mode=redis` |
 | `mass.runtime.redis.max-queued-items` | `1000000` | runtime work backpressure cap for the Redis-backed work runtime |
 | `mass.transport.node-id` | random UUID | server transport runtime node id; set explicitly when comparing Redis presence across restarts |
@@ -356,11 +356,17 @@ Observability:
 
 JDBC storage scope:
 
-- PostgreSQL is the intended control-plane truth store; H2 remains a local/CI
-  verification dialect for the same JDBC storage path
-- default runtime stays `memory`; opt into H2 explicitly with
-  `mass.storage.mode=jdbc-h2`
-- opt into PostgreSQL with `mass.storage.mode=jdbc-postgres`
+- `dev` is the default no-arg server profile. It uses file-backed H2 for
+  control-plane storage and memory runtime/transport so local development is
+  resident and inspectable without Redis.
+- `prod` is the current single-node inspectable production baseline. It uses
+  SQLite for control-plane storage and Redis for runtime work/result, worker
+  registry, transport delivery, and transport presence.
+- `prod` requires Redis. A local startup without Redis should fail visibly
+  instead of falling back to process memory.
+- PostgreSQL remains a manual property override path with
+  `mass.storage.mode=jdbc-postgres`; it is not one of the normal server
+  profiles after profile convergence.
 - task-work runtime backend, transport delivery-store backend, and transport
   presence backend are configured separately; `mass.runtime.mode` controls
   engine work/result runtime, `mass.transport.delivery.store` controls dispatch
@@ -374,9 +380,6 @@ JDBC storage scope:
   presence evidence across a server process restart, while expired leases and
   stale presence should still converge through timeout/retry rather than
   requiring every intermediate state to be durable
-- the bundled `redis-runtime` profile applies those three Redis runtime
-  switches for local diagnosis; run it with the normal server profile, for
-  example `-Dspring.profiles.active=dev,redis-runtime`
 - root `compose.yaml` is the preferred local distributed-verification shell:
   build the jar first with
   `./mvnw -pl xa-mass-server -am -DskipTests package`, then
@@ -386,27 +389,26 @@ JDBC storage scope:
 - backend-parity tests should share one scenario body and vary only
   `mass.runtime.mode` plus backend-specific connection properties; do not copy
   the same runtime semantics into backend-specific duplicate tests
-- server-local persistence can use the `h2` profile together with the runnable
-  server profile, for example `-Dspring.profiles.active=dev,h2`; this writes to
-  `./data/xa-mass-h2/xa_mass` by default through `application-h2.yml`
 - the non-test Spring Boot entry
   [XaMassServerApplication.java](./src/main/java/com/xa/mass/server/XaMassServerApplication.java)
-  already supports this profile directly; local persistent H2 verification does
-  not require a separate test-only bootstrap path
-- local PostgreSQL verification can use the `postgres` profile together with the
-  runnable server profile, for example `-Dspring.profiles.active=dev,postgres`
+  defaults to `dev` when no active profile is supplied, and respects explicit
+  profiles from `-Dspring.profiles.active`, `SPRING_PROFILES_ACTIVE`, command
+  line arguments, and normal Spring config
 - integration tests should keep using isolated in-memory H2 JDBC URLs so DB
   assertions are repeatable and do not depend on a developer's persisted data
-- JDBC storage persists task truth, worker registration truth, and rule
-  definitions
-- JDBC storage also persists low-frequency principal credential truth used by
-  submitter and external worker API-key authentication
-- `TaskMsg`, `TaskMsgAttempt`, worker locks, and heartbeat churn stay
-  process-local runtime projection state
+- JDBC storage persists task shell truth, rule definitions, and low-frequency
+  principal credential truth used by submitter and external worker API-key
+  authentication
+- `TaskMsg`, `TaskMsgAttempt`, runtime queues, leases, worker locks, worker
+  registry churn, and heartbeat/presence churn stay in runtime backends, with
+  Redis as the current inspectable `prod` runtime backend
 - do not use JDBC storage as a cross-task message-status analytics surface;
   large-scale message history, attempt history, heartbeat streams, and failure
   analysis should flow through queues, trace, audit sinks, or downstream
   analytical storage
+- trace/audit is a separate infra layer. Future trace data may be queued into a
+  trace-owned database writer, but server profile convergence does not add trace
+  tables or trace DB ingestion.
 
 Mock-data loading order:
 

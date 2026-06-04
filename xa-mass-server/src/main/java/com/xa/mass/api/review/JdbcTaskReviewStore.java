@@ -216,62 +216,64 @@ public final class JdbcTaskReviewStore implements TaskReviewStore {
     }
 
     private void initializeSchema() {
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement items = conn.prepareStatement("""
-                     CREATE TABLE IF NOT EXISTS xa_task_review_item (
-                       task_id VARCHAR(128) NOT NULL,
-                       message_id VARCHAR(128) NOT NULL,
-                       event_code VARCHAR(256),
-                       status VARCHAR(64),
-                       final_reason VARCHAR(128),
-                       payload_ref VARCHAR(512),
-                       retry_count INT NOT NULL,
-                       max_retry_count INT NOT NULL,
-                       create_time TIMESTAMP,
-                       assigned_time TIMESTAMP,
-                       start_time TIMESTAMP,
-                       complete_time TIMESTAMP,
-                       update_time TIMESTAMP,
-                       input_json TEXT,
-                       worker_id VARCHAR(128),
-                       batch_id VARCHAR(128),
-                       attempt_id VARCHAR(128),
-                       error_code VARCHAR(128),
-                       error_message TEXT,
-                       output_json TEXT,
-                       PRIMARY KEY(task_id, message_id)
-                     )
-                     """);
-             PreparedStatement attempts = conn.prepareStatement("""
-                     CREATE TABLE IF NOT EXISTS xa_task_review_attempt (
-                       task_id VARCHAR(128) NOT NULL,
-                       message_id VARCHAR(128) NOT NULL,
-                       attempt_id VARCHAR(128) NOT NULL,
-                       attempt_no INT NOT NULL,
-                       worker_id VARCHAR(128),
-                       batch_id VARCHAR(128),
-                       status VARCHAR(64),
-                       final_reason VARCHAR(128),
-                       error_code VARCHAR(128),
-                       error_message TEXT,
-                       output_json TEXT,
-                       PRIMARY KEY(task_id, message_id, attempt_id)
-                     )
-                     """);
-             PreparedStatement itemIndex = conn.prepareStatement("""
-                     CREATE INDEX IF NOT EXISTS idx_xa_task_review_item_task
-                     ON xa_task_review_item(task_id, create_time)
-                     """);
-             PreparedStatement attemptIndex = conn.prepareStatement("""
-                     CREATE INDEX IF NOT EXISTS idx_xa_task_review_attempt_message
-                     ON xa_task_review_attempt(task_id, message_id, attempt_no)
-                     """)) {
-            items.executeUpdate();
-            attempts.executeUpdate();
-            itemIndex.executeUpdate();
-            attemptIndex.executeUpdate();
+        try (Connection conn = dataSource.getConnection()) {
+            execute(conn, """
+                    CREATE TABLE IF NOT EXISTS xa_task_review_item (
+                      task_id VARCHAR(128) NOT NULL,
+                      message_id VARCHAR(128) NOT NULL,
+                      event_code VARCHAR(256),
+                      status VARCHAR(64),
+                      final_reason VARCHAR(128),
+                      payload_ref VARCHAR(512),
+                      retry_count INT NOT NULL,
+                      max_retry_count INT NOT NULL,
+                      create_time TIMESTAMP,
+                      assigned_time TIMESTAMP,
+                      start_time TIMESTAMP,
+                      complete_time TIMESTAMP,
+                      update_time TIMESTAMP,
+                      input_json TEXT,
+                      worker_id VARCHAR(128),
+                      batch_id VARCHAR(128),
+                      attempt_id VARCHAR(128),
+                      error_code VARCHAR(128),
+                      error_message TEXT,
+                      output_json TEXT,
+                      PRIMARY KEY(task_id, message_id)
+                    )
+                    """);
+            execute(conn, """
+                    CREATE TABLE IF NOT EXISTS xa_task_review_attempt (
+                      task_id VARCHAR(128) NOT NULL,
+                      message_id VARCHAR(128) NOT NULL,
+                      attempt_id VARCHAR(128) NOT NULL,
+                      attempt_no INT NOT NULL,
+                      worker_id VARCHAR(128),
+                      batch_id VARCHAR(128),
+                      status VARCHAR(64),
+                      final_reason VARCHAR(128),
+                      error_code VARCHAR(128),
+                      error_message TEXT,
+                      output_json TEXT,
+                      PRIMARY KEY(task_id, message_id, attempt_id)
+                    )
+                    """);
+            execute(conn, """
+                    CREATE INDEX IF NOT EXISTS idx_xa_task_review_item_task
+                    ON xa_task_review_item(task_id, create_time)
+                    """);
+            execute(conn, """
+                    CREATE INDEX IF NOT EXISTS idx_xa_task_review_attempt_message
+                    ON xa_task_review_attempt(task_id, message_id, attempt_no)
+                    """);
         } catch (Exception e) {
             throw new IllegalStateException("Failed to initialize task review JDBC schema", e);
+        }
+    }
+
+    private static void execute(Connection conn, String sql) throws Exception {
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.executeUpdate();
         }
     }
 

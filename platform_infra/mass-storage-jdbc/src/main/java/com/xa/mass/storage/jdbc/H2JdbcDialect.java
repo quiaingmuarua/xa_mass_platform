@@ -5,8 +5,9 @@ final class H2JdbcDialect implements JdbcDialect {
     @Override
     public String taskUpsertSql() {
         return """
-                MERGE INTO xa_task KEY(task_id)
-                VALUES (?, ?, ?, ?, ?, ?)
+                MERGE INTO xa_task(task_id, status, project, schedulable, create_time, max_runtime_deadline, json)
+                KEY(task_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """;
     }
 

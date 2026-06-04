@@ -202,6 +202,48 @@ class ServerMainSourceArchitectureGuardTest {
     }
 
     @Test
+    void serverProfileDefaultDoesNotOverrideExplicitSpringProfiles() throws IOException {
+        Path application = SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/server/XaMassServerApplication.java");
+        String source = Files.readString(application, StandardCharsets.UTF_8);
+        Path applicationYml = Path.of("src/main/resources/application.yml");
+        String applicationConfig = Files.readString(applicationYml, StandardCharsets.UTF_8);
+
+        assertTrue(applicationConfig.contains("default: dev"),
+                "application.yml must use Spring's default profile support for no-arg dev startup");
+        assertTrue(!applicationConfig.contains("active: local"),
+                "application.yml must not activate the old local profile");
+        assertTrue(!source.contains("System.setProperty(\"spring.profiles.active\""),
+                "server main must not overwrite explicit profiles from env, args, or Spring config");
+    }
+
+    @Test
+    void serverRunnableBeansAreAvailableForDevAndProd() throws IOException {
+        Path application = SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/server/XaMassServerApplication.java");
+        String source = Files.readString(application, StandardCharsets.UTF_8);
+
+        assertTrue(source.contains("@Profile({\"dev\", \"prod\"})"),
+                "server runtime beans must be selectable through both dev and prod profiles");
+        assertTrue(!source.contains("@Profile(\"dev\")\n    public JdbcStorageRuntime"),
+                "server JDBC storage runtime must not be dev-only");
+        assertTrue(!source.contains("@Profile(\"dev\")\n    public MassSdkApplication"),
+                "embedded SDK runtime application must not be dev-only");
+    }
+
+    @Test
+    void prodProfileKeepsStorageRuntimeAndTraceLayersSeparate() throws IOException {
+        String prodConfig = Files.readString(Path.of("src/main/resources/application-prod.yml"), StandardCharsets.UTF_8);
+
+        assertTrue(prodConfig.contains("mode: jdbc-sqlite"),
+                "prod profile must select SQLite control-plane storage");
+        assertTrue(prodConfig.contains("mode: redis"),
+                "prod profile must select Redis runtime");
+        assertTrue(prodConfig.contains("store: redis"),
+                "prod profile must select Redis transport delivery/presence stores");
+        assertTrue(!prodConfig.contains("trace"),
+                "prod profile convergence must not add trace DB ingestion settings");
+    }
+
+    @Test
     void reviewQueueApiDoesNotGrowRuntimeDecisionVocabulary() throws IOException {
         Path reviewRoot = SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/api/review");
         List<String> violations = new ArrayList<>();

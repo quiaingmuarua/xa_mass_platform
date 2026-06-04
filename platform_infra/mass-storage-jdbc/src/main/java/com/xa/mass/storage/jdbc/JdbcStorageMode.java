@@ -3,7 +3,8 @@ package com.xa.mass.storage.jdbc;
 public enum JdbcStorageMode {
     MEMORY(false),
     JDBC_H2(true),
-    JDBC_POSTGRES(true);
+    JDBC_POSTGRES(true),
+    JDBC_SQLITE(true);
 
     private final boolean jdbc;
 
@@ -19,6 +20,7 @@ public enum JdbcStorageMode {
         return switch (this) {
             case JDBC_H2 -> new H2JdbcDialect();
             case JDBC_POSTGRES -> new PostgresJdbcDialect();
+            case JDBC_SQLITE -> new SQLiteJdbcDialect();
             case MEMORY -> throw new IllegalStateException("memory mode does not have a JDBC dialect");
         };
     }
@@ -31,6 +33,7 @@ public enum JdbcStorageMode {
             case "memory" -> MEMORY;
             case "jdbc-h2" -> JDBC_H2;
             case "jdbc-postgres" -> JDBC_POSTGRES;
+            case "jdbc-sqlite" -> JDBC_SQLITE;
             default -> throw new IllegalArgumentException("Unsupported mass.storage.mode: " + rawValue);
         };
     }
