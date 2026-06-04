@@ -130,7 +130,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     }
 
     @Override
-    public void upsertSlot(WorkerMeta meta, int declaredCapacity, Set<EventKey> eventBindingCeiling) {
+    public synchronized void upsertSlot(WorkerMeta meta, int declaredCapacity, Set<EventKey> eventBindingCeiling) {
         Objects.requireNonNull(meta, "meta");
         String workerId = meta.workerId();
         String groupId = meta.groupId();
@@ -167,7 +167,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     }
 
     @Override
-    public boolean markSlotRemoving(String groupId, String workerId, String reason) {
+    public synchronized boolean markSlotRemoving(String groupId, String workerId, String reason) {
         String normalizedGroupId = normalizeNullable(groupId);
         String normalizedWorkerId = normalizeNullable(workerId);
         if (normalizedGroupId == null || normalizedWorkerId == null) {
@@ -197,7 +197,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     }
 
     @Override
-    public CleanupSummary cleanupRemovedSlots(String groupId, int limit) {
+    public synchronized CleanupSummary cleanupRemovedSlots(String groupId, int limit) {
         String normalizedGroupId = normalizeNullable(groupId);
         if (normalizedGroupId == null || limit <= 0) {
             return CleanupSummary.empty();
@@ -227,7 +227,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     }
 
     @Override
-    public Optional<WorkerSlot> slot(String groupId, String workerId) {
+    public synchronized Optional<WorkerSlot> slot(String groupId, String workerId) {
         String normalizedGroupId = normalizeNullable(groupId);
         String normalizedWorkerId = normalizeNullable(workerId);
         if (normalizedGroupId == null || normalizedWorkerId == null) {
@@ -237,7 +237,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     }
 
     @Override
-    public Optional<WorkerSlot> slotByWorkerId(String workerId) {
+    public synchronized Optional<WorkerSlot> slotByWorkerId(String workerId) {
         String normalizedWorkerId = normalizeNullable(workerId);
         if (normalizedWorkerId == null) {
             return Optional.empty();
@@ -247,7 +247,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     }
 
     @Override
-    public Set<String> workerIdsByGroupId(String groupId) {
+    public synchronized Set<String> workerIdsByGroupId(String groupId) {
         String normalizedGroupId = normalizeNullable(groupId);
         if (normalizedGroupId == null) {
             return Set.of();
@@ -256,7 +256,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     }
 
     @Override
-    public Set<String> workerIdsByAdapterNodeGroup(String adapterNodeId, String groupId) {
+    public synchronized Set<String> workerIdsByAdapterNodeGroup(String adapterNodeId, String groupId) {
         String normalizedAdapterNodeId = normalizeNullable(adapterNodeId);
         String normalizedGroupId = normalizeNullable(groupId);
         if (normalizedAdapterNodeId == null || normalizedGroupId == null) {
@@ -279,12 +279,12 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     }
 
     @Override
-    public List<String> acquireCandidates(String groupId, String routeBucketKey, int maxCandidateCount) {
+    public synchronized List<String> acquireCandidates(String groupId, String routeBucketKey, int maxCandidateCount) {
         return acquireCandidates(groupId, null, routeBucketKey, maxCandidateCount);
     }
 
     @Override
-    public List<String> acquireCandidates(String groupId,
+    public synchronized List<String> acquireCandidates(String groupId,
                                           String adapterNodeId,
                                           String routeBucketKey,
                                           int maxCandidateCount) {
@@ -307,7 +307,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     }
 
     @Override
-    public ReserveResult tryReserve(String groupId, String workerId, String taskId, int permits, long nowMillis) {
+    public synchronized ReserveResult tryReserve(String groupId, String workerId, String taskId, int permits, long nowMillis) {
         String normalizedGroupId = normalizeNullable(groupId);
         String normalizedWorkerId = normalizeNullable(workerId);
         int normalizedPermits = Math.max(1, permits);
@@ -348,7 +348,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     }
 
     @Override
-    public boolean confirmReservation(String groupId, String workerId, String taskId, int permits) {
+    public synchronized boolean confirmReservation(String groupId, String workerId, String taskId, int permits) {
         String normalizedTaskId = normalizeNullable(taskId);
         String normalizedWorkerId = normalizeNullable(workerId);
         int normalizedPermits = Math.max(1, permits);
@@ -376,7 +376,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     }
 
     @Override
-    public void releaseReservation(String groupId, String workerId, String taskId, int permits) {
+    public synchronized void releaseReservation(String groupId, String workerId, String taskId, int permits) {
         int normalizedPermits = Math.max(1, permits);
         updateSlot(groupId, workerId, current -> {
             if (current == null) {
@@ -398,7 +398,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     }
 
     @Override
-    public void recordWorkClaimed(String groupId, String workerId, String taskId, int permits) {
+    public synchronized void recordWorkClaimed(String groupId, String workerId, String taskId, int permits) {
         String normalizedTaskId = normalizeNullable(taskId);
         String normalizedWorkerId = normalizeNullable(workerId);
         int normalizedPermits = Math.max(1, permits);
@@ -425,7 +425,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     }
 
     @Override
-    public void recordWorkFinal(String groupId, String workerId, String taskId, int permits) {
+    public synchronized void recordWorkFinal(String groupId, String workerId, String taskId, int permits) {
         String normalizedTaskId = normalizeNullable(taskId);
         String normalizedWorkerId = normalizeNullable(workerId);
         int normalizedPermits = Math.max(1, permits);
@@ -457,7 +457,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     }
 
     @Override
-    public boolean tryAcquireExclusiveLease(String groupId, String workerId) {
+    public synchronized boolean tryAcquireExclusiveLease(String groupId, String workerId) {
         MutationResult result = updateSlot(groupId, workerId, current -> {
             if (current == null || current.removing() || current.exclusiveLeaseHeld()) {
                 return SlotUpdate.noop(current, false);
@@ -480,7 +480,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     }
 
     @Override
-    public void releaseExclusiveLease(String groupId, String workerId) {
+    public synchronized void releaseExclusiveLease(String groupId, String workerId) {
         String normalizedWorkerId = normalizeNullable(workerId);
         updateSlot(groupId, workerId, current -> {
             if (current == null || !current.exclusiveLeaseHeld()) {
@@ -503,20 +503,20 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     }
 
     @Override
-    public boolean hasExclusiveLease(String workerId) {
+    public synchronized boolean hasExclusiveLease(String workerId) {
         String normalizedWorkerId = normalizeNullable(workerId);
         return normalizedWorkerId != null && Boolean.TRUE.equals(commands.sismember(keyspace.exclusiveLeasesSet(), normalizedWorkerId));
     }
 
     @Override
-    public List<String> exclusiveLeaseWorkerIds() {
+    public synchronized List<String> exclusiveLeaseWorkerIds() {
         List<String> workerIds = new ArrayList<>(commands.smembers(keyspace.exclusiveLeasesSet()));
         workerIds.sort(String::compareTo);
         return List.copyOf(workerIds);
     }
 
     @Override
-    public boolean disableDispatch(String groupId, String workerId, DispatchAvailabilitySource source) {
+    public synchronized boolean disableDispatch(String groupId, String workerId, DispatchAvailabilitySource source) {
         Objects.requireNonNull(source, "source");
         MutationResult result = updateSlot(groupId, workerId, current -> {
             if (current == null) {
@@ -542,7 +542,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     }
 
     @Override
-    public boolean clearDispatchDisable(String groupId, String workerId, DispatchAvailabilitySource source) {
+    public synchronized boolean clearDispatchDisable(String groupId, String workerId, DispatchAvailabilitySource source) {
         Objects.requireNonNull(source, "source");
         MutationResult result = updateSlot(groupId, workerId, current -> {
             if (current == null) {
@@ -568,7 +568,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     }
 
     @Override
-    public Set<String> activeWorkerIdsByTask(String taskId) {
+    public synchronized Set<String> activeWorkerIdsByTask(String taskId) {
         String normalizedTaskId = normalizeNullable(taskId);
         if (normalizedTaskId == null) {
             return Set.of();
@@ -577,12 +577,12 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     }
 
     @Override
-    public int activeWorkerCountForTask(String taskId) {
+    public synchronized int activeWorkerCountForTask(String taskId) {
         return activeWorkerIdsByTask(taskId).size();
     }
 
     @Override
-    public int activeLeaseCountByTaskWorker(String taskId, String workerId) {
+    public synchronized int activeLeaseCountByTaskWorker(String taskId, String workerId) {
         String normalizedTaskId = normalizeNullable(taskId);
         String normalizedWorkerId = normalizeNullable(workerId);
         if (normalizedTaskId == null || normalizedWorkerId == null) {
@@ -593,12 +593,12 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     }
 
     @Override
-    public void markCandidateStale(String groupId, String workerId, String reason) {
+    public synchronized void markCandidateStale(String groupId, String workerId, String reason) {
         removeFromBuckets(normalizeNullable(groupId), normalizeNullable(workerId));
     }
 
     @Override
-    public CleanupSummary cleanupExpiredHeartbeats(long nowMillis, int limit) {
+    public synchronized CleanupSummary cleanupExpiredHeartbeats(long nowMillis, int limit) {
         if (limit <= 0) {
             return CleanupSummary.empty();
         }
@@ -632,7 +632,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     }
 
     @Override
-    public CleanupSummary cleanupStaleBucketMembers(String groupId, int limit) {
+    public synchronized CleanupSummary cleanupStaleBucketMembers(String groupId, int limit) {
         String normalizedGroupId = normalizeNullable(groupId);
         if (normalizedGroupId == null || limit <= 0) {
             return CleanupSummary.empty();
@@ -656,7 +656,7 @@ public final class RedisWorkerRegistry implements WorkerRegistry, AutoCloseable 
     }
 
     @Override
-    public void close() {
+    public synchronized void close() {
         if (connection.isOpen()) {
             connection.close();
         }
