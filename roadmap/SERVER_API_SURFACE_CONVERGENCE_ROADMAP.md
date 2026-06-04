@@ -15,11 +15,13 @@ Out of scope:
 - broad auth/IAM feature expansion, except where endpoint exposure requires a
   minimal route-boundary decision
 
-Related roadmap:
+Related owner docs:
 
-- [`SERVER_CONTROL_PLANE_STORE_INFRA_CONVERGENCE_ROADMAP.md`](./SERVER_CONTROL_PLANE_STORE_INFRA_CONVERGENCE_ROADMAP.md)
-  is separate. Store backing is an infra concern; this roadmap decides whether
-  the HTTP route should exist and which surface may consume it.
+- `xa-mass-server/README.md` and
+  `xa-mass-server/src/main/resources/db/schema/server-control-plane/README.md`
+  own current server control-plane store truth. Store backing is an infra
+  concern; this roadmap decides whether the HTTP route should exist and which
+  surface may consume it.
 
 ## Current Mainline Shape
 

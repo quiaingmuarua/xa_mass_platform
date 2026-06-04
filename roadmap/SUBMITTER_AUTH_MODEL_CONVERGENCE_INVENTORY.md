@@ -8,9 +8,10 @@ Status: implemented code inventory for
 This inventory covers the current `Submitter*`, API-key, principal, and
 submitter-viewer session model across the embedded SDK and `xa-mass-server`.
 
-It does not cover JDBC durability implementation. That remains owned by
-`SERVER_CONTROL_PLANE_STORE_INFRA_CONVERGENCE_ROADMAP.md` after this model
-convergence lands.
+It does not cover JDBC durability implementation. Current server store truth is
+owned by `xa-mass-server/README.md` and
+`xa-mass-server/src/main/resources/db/schema/server-control-plane/README.md`
+after this model convergence lands.
 
 ## Symbols
 

@@ -155,7 +155,12 @@ public class ApiKeyCredentialService {
                 Map.copyOf(attributes)
         );
         credentialStore.create(record);
-        projectActiveCredential(record, rawSecret);
+        try {
+            projectActiveCredential(record, rawSecret);
+        } catch (RuntimeException e) {
+            credentialStore.revoke(record.keyId(), "system", "auth projection failed: " + e.getMessage());
+            throw e;
+        }
         return new CreatedApiKey(record, rawSecret);
     }
 

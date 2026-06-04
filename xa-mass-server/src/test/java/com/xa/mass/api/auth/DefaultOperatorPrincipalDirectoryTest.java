@@ -1,5 +1,6 @@
 package com.xa.mass.api.auth;
 
+import com.xa.mass.api.auth.iam.InMemoryUserRolePermissionStore;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import org.junit.jupiter.api.Test;
 
@@ -12,7 +13,8 @@ class DefaultOperatorPrincipalDirectoryTest {
 
     @Test
     void resolvesBuiltInUsersFromUserRolePermissionStore() {
-        DefaultOperatorPrincipalDirectory directory = new DefaultOperatorPrincipalDirectory();
+        DefaultOperatorPrincipalDirectory directory = new DefaultOperatorPrincipalDirectory(
+                InMemoryUserRolePermissionStore.bootstrapDefaults());
 
         PrincipalContext admin = directory.getPrincipal("ops-admin");
         PrincipalContext viewer = directory.getPrincipal("ops-viewer");
@@ -30,7 +32,8 @@ class DefaultOperatorPrincipalDirectoryTest {
 
     @Test
     void unknownUserReturnsNull() {
-        DefaultOperatorPrincipalDirectory directory = new DefaultOperatorPrincipalDirectory();
+        DefaultOperatorPrincipalDirectory directory = new DefaultOperatorPrincipalDirectory(
+                InMemoryUserRolePermissionStore.bootstrapDefaults());
 
         assertNull(directory.getPrincipal("missing-user"));
     }

@@ -1,13 +1,10 @@
 package com.xa.mass.api.auth.session;
 
-import org.springframework.stereotype.Component;
-
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
-@Component
 public class InMemorySubmitterViewerSessionStore implements SubmitterViewerSessionStore {
 
     private final Map<String, SubmitterViewerSessionRecord> bySessionId = new LinkedHashMap<>();

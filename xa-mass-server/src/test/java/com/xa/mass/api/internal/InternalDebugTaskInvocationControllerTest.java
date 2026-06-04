@@ -1,5 +1,6 @@
 package com.xa.mass.api.internal;
 
+import com.xa.mass.api.auth.ApiAuthTestSupport;
 import com.xa.mass.api.auth.ApiAuthService;
 import com.xa.mass.api.auth.TaskSecurityViewSupport;
 import com.xa.mass.api.sync.SyncTaskResultBridge;
@@ -33,7 +34,7 @@ class InternalDebugTaskInvocationControllerTest {
         MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new InternalDebugTaskInvocationController(
                 taskAdmin,
                 DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(),
-                new ApiAuthService(),
+                ApiAuthTestSupport.defaultOperatorAuthService(),
                 new TaskSecurityViewSupport(),
                 syncBridge
         )).build();

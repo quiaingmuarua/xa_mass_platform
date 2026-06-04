@@ -58,10 +58,12 @@ There are four different owners hidden behind the current Submitter vocabulary:
 - Task producer / external worker credential caller: public credential user,
   not an owner of auth storage internals.
 
-The model should converge before
-`SERVER_CONTROL_PLANE_STORE_INFRA_CONVERGENCE_ROADMAP.md` implements JDBC
-server stores. Otherwise the old Submitter vocabulary and split responsibility
-will become table and API names.
+The model had to converge before server JDBC control-plane stores landed.
+Current store truth is now owned by `xa-mass-server/README.md` and
+`xa-mass-server/src/main/resources/db/schema/server-control-plane/README.md`;
+the completed store-infra roadmap is historical context only. Otherwise the old
+Submitter vocabulary and split responsibility would have become table and API
+names.
 
 ## Boundary Decision
 
@@ -182,9 +184,8 @@ Scope:
   - `SubmitterRegistry`
 - Record that `PrincipalType.SESSION` is a non-blocking viewer-session identity
   improvement; delegated-session attributes may remain.
-- Mark `SERVER_CONTROL_PLANE_STORE_INFRA_CONVERGENCE_ROADMAP.md` as dependent
-  only on the projection-port and API-key retargeting slices, not on facade
-  rename or scope behavior migration.
+- Record that server store infra depended only on the projection-port and
+  API-key retargeting slices, not on facade rename or scope behavior migration.
 
 Acceptance:
 
@@ -263,12 +264,11 @@ Acceptance:
 - Revocation, user disable, and expiry project a disabled auth state.
 - A projection write failure cannot silently leave lifecycle and auth
   projection inconsistent without visible failure semantics.
-- `SERVER_CONTROL_PLANE_STORE_INFRA_CONVERGENCE_ROADMAP.md` is unblocked for
-  API-key lifecycle store design after this slice, provided Slice 0 recorded
-  the remaining facade/scope/session work as deferred or non-blocking and the
-  JDBC schema design still honors the scope-representation rule in this
-  roadmap. Slice 3 remains required for roadmap completion and guard coverage,
-  but not for starting API-key lifecycle store schema/design.
+- Server API-key lifecycle store design is unblocked after this slice, provided
+  Slice 0 recorded the remaining facade/scope/session work as deferred or
+  non-blocking and the JDBC schema design still honors the scope-representation
+  rule in this roadmap. Slice 3 remains required for roadmap completion and
+  guard coverage, but not for starting API-key lifecycle store schema/design.
 
 Verification candidates:
 
@@ -438,10 +438,9 @@ Scope:
   - Submitter-viewer sessions are not JDBC/control-plane stores.
 - Update `sdk/README.md`, embedded SDK README, server docs, and active
   roadmaps.
-- Update `SERVER_CONTROL_PLANE_STORE_INFRA_CONVERGENCE_ROADMAP.md` so it can
-  proceed from the converged credential projection model while listing facade
-  rename, scope behavior migration, and session principal type as deferred if
-  they remain open.
+- Update server store owner docs so they proceed from the converged credential
+  projection model while listing facade rename, scope behavior migration, and
+  session principal type as deferred if they remain open.
 
 Acceptance:
 

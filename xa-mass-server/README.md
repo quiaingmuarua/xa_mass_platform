@@ -408,9 +408,15 @@ JDBC storage scope:
   line arguments, and normal Spring config
 - integration tests should keep using isolated in-memory H2 JDBC URLs so DB
   assertions are repeatable and do not depend on a developer's persisted data
-- JDBC storage persists task shell truth, rule definitions, and low-frequency
-  principal credential truth used by submitter and external worker API-key
-  authentication
+- JDBC storage currently persists task shell truth, rule definitions, the
+  low-frequency principal auth projection used by submitter and external worker
+  API-key authentication, server-owned API-key application/credential lifecycle
+  rows, operator IAM users/roles/bindings, and low-volume API usage ledger
+  rows. `SubmitterViewerSessionStore` remains memory-only by design.
+- task review DB rows are task opt-in. To write terminal review rows, set
+  `sharedConfig.reviewMaterializationMode` to `terminal`; to include
+  attempt-level diagnostic rows, set it to `diagnostic`. Leaving the key absent
+  uses the current default `OFF`.
 
 Server control-plane store hard rules:
 
@@ -418,9 +424,19 @@ Server control-plane store hard rules:
   submitter-viewer session store decisions stay in `xa-mass-server`
 - do not add server API-key, IAM, submitter-viewer session, or usage tables or
   schema concepts to `platform_infra/mass-storage-jdbc`
+- server-owned schema notes live under
+  `src/main/resources/db/schema/server-control-plane`, and executable
+  server-owned Flyway SQL lives under
+  `src/main/resources/db/migration/server-control-plane`
 - server-owned JDBC stores may share the configured JDBC `DataSource`, but
   migration resources and migration execution for server API/IAM/usage schemas
-  must be owned by `xa-mass-server`
+  must be owned by `xa-mass-server`; current execution owner is
+  `ServerControlPlaneMigrationRunner` using
+  `classpath:db/migration/server-control-plane` and
+  `flyway_server_control_plane_schema_history`. Because the generic platform
+  control-plane Flyway usually initializes the schema first, the server-owned
+  runner baselines its own history table at version `0` before applying server
+  migrations.
 - submitter-viewer sessions remain memory-only in the current phase; future
   cross-process sharing belongs to runtime/Redis session design, not SQLite or
   JDBC control-plane storage

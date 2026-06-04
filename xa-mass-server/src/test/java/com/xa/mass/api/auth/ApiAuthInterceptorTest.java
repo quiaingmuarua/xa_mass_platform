@@ -42,7 +42,7 @@ class ApiAuthInterceptorTest {
                 .eventScopes(java.util.List.of(PrincipalContext.WILDCARD_SCOPE))
                 .build());
         ApiAuthInterceptor interceptor = new ApiAuthInterceptor(
-                new ApiAuthService(),
+                ApiAuthTestSupport.defaultOperatorAuthService(),
                 new ObjectMapper(),
                 new ApiAuthorizationService(authProvider, null),
                 new ApiRouteAuthorizationCatalog()

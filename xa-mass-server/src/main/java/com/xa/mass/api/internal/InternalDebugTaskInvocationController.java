@@ -36,6 +36,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
@@ -62,7 +63,7 @@ public class InternalDebugTaskInvocationController {
                                                  SyncTaskResultBridge syncBridge) {
         this.taskAdmin = taskAdmin;
         this.catalog = catalog == null ? DefaultProjectEventCatalogFactory.createDefaultProjectRegistry() : catalog;
-        this.apiAuthService = apiAuthService == null ? new ApiAuthService() : apiAuthService;
+        this.apiAuthService = Objects.requireNonNull(apiAuthService, "apiAuthService");
         this.taskSecurityViewSupport = taskSecurityViewSupport == null ? new TaskSecurityViewSupport() : taskSecurityViewSupport;
         this.syncBridge = syncBridge;
     }

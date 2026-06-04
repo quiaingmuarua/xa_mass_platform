@@ -1,6 +1,9 @@
 package com.xa.mass.api.internal;
 
 import com.xa.mass.api.auth.ApiAuthInterceptor;
+import com.xa.mass.api.auth.ApiAuthTestSupport;
+import com.xa.mass.api.auth.ApiAuthorizationService;
+import com.xa.mass.api.auth.TaskSecurityViewSupport;
 import com.xa.mass.api.auth.apikey.ApiKeyCredentialService;
 import com.xa.mass.api.auth.usage.ApiUsageLedgerRecord;
 import com.xa.mass.api.auth.usage.ApiUsageLedgerService;
@@ -123,7 +126,8 @@ class TaskApiControllerTest {
         usageStore = new InMemoryApiUsageLedgerStore();
         taskReviewStore = new InMemoryTaskReviewStore();
         controller = new TaskApiController(taskQueries, taskResultQueries, taskAdmin, createTaskCatalog(),
-                authProvider, syncTaskResultBridge, taskSyncRequestSupervisor, taskStageEvidence);
+                ApiAuthTestSupport.defaultOperatorAuthService(), new ApiAuthorizationService(authProvider, null),
+                new TaskSecurityViewSupport(), syncTaskResultBridge, taskSyncRequestSupervisor, taskStageEvidence);
         controller.setApiUsageLedgerService(new ApiUsageLedgerService(usageStore));
         controller.setTaskReviewReadModelWriter(directReviewWriter());
         mockMvc = MockMvcBuilders.standaloneSetup(
@@ -900,7 +904,8 @@ class TaskApiControllerTest {
         zeroCapacitySupervisor.acquire("demoApp", TASK_ID);
         MockMvc capacityMvc = MockMvcBuilders.standaloneSetup(
                 new TaskApiController(taskQueries, taskResultQueries, taskAdmin, createTaskCatalog(),
-                        authProvider, syncTaskResultBridge, zeroCapacitySupervisor),
+                        ApiAuthTestSupport.defaultOperatorAuthService(), new ApiAuthorizationService(authProvider, null),
+                        new TaskSecurityViewSupport(), syncTaskResultBridge, zeroCapacitySupervisor, null),
                 new InternalTaskReviewController(taskQueries, reviewReadModel())
         ).build();
 

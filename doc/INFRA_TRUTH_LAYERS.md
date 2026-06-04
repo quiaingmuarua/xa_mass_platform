@@ -82,7 +82,7 @@ design and must not be implied by result ingress or review materialization.
 | Area | Current code truth | Interpretation |
 | --- | --- | --- |
 | `platform_infra/mass-storage-jdbc` | persists task shell/rule/principal truth; no JDBC worker declaration implementation currently exists | correct control-plane role |
-| SQLite control-plane storage | target lightweight persistence direction for new-environment control-plane setup; not yet a runtime backend | may host stable project/rule/catalog/credential truth when implemented; not a queue, lease, heartbeat, result-convergence, or trace store |
+| SQLite control-plane storage | lightweight persistence direction for new-environment control-plane setup; currently backs generic control-plane tables plus server API-key lifecycle, operator IAM, and low-volume usage evidence in JDBC modes; not a runtime backend | may host stable project/rule/catalog/credential truth; not a queue, lease, heartbeat, result-convergence, or trace store |
 | JDBC-local worker lock residue | process-local runtime residue | not durable worker-runtime truth; worker locks/capacity must not become control-plane storage truth |
 | `platform_infra/mass-storage-memory` | in-memory task shell, worker declaration adapter, and rule definition storage | current embedded/test implementation |
 | `mass-runtime-*` modules | queue/lease/counter semantics | canonical runtime-state home |
@@ -158,6 +158,12 @@ Current product-stage DB rules:
   submitter-viewer session store decisions belong to `xa-mass-server`.
   `platform_infra` may own generic storage primitives and generic task/rule/
   principal migrations, but it must not grow server API/IAM table concepts.
+- Server-owned schema notes belong under
+  `xa-mass-server/src/main/resources/db/schema/server-control-plane`, and
+  executable server-owned Flyway SQL belongs under
+  `xa-mass-server/src/main/resources/db/migration/server-control-plane`.
+  Generic platform storage SQL remains under
+  `platform_infra/mass-storage-jdbc`.
 - Submitter-viewer sessions are runtime/session convenience state. They must
   not be persisted in SQLite/JDBC as control-plane truth; future cross-process
   sharing belongs to a runtime/Redis session design.

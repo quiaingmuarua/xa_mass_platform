@@ -198,6 +198,10 @@ Planning rule for multi-file or core changes:
 - server-owned API-key, IAM, usage, and submitter-viewer schema/store decisions
   stay in `xa-mass-server`; do not add server API/IAM tables or concepts to
   `platform_infra`, and do not persist viewer sessions in JDBC/SQLite
+- server-owned DB resources belong under
+  `xa-mass-server/src/main/resources/db/schema/server-control-plane` and
+  `xa-mass-server/src/main/resources/db/migration/server-control-plane`; generic
+  platform storage SQL stays under `platform_infra/mass-storage-jdbc`
 - during the current pre-release stage, DB schema changes may require
   deleting/recreating local/prod DBs; prove clean DB creation and current-schema
   restart behavior, not historical upgrade compatibility

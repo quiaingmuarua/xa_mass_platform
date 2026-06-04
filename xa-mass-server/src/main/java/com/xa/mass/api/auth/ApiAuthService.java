@@ -30,11 +30,6 @@ public class ApiAuthService {
     private final PrincipalDirectory principalDirectory;
     private final HeaderPrincipalContextFactory headerPrincipalContextFactory;
 
-    public ApiAuthService() {
-        this(new CompositePrincipalDirectory(List.of(new DefaultOperatorPrincipalDirectory())),
-                new HeaderPrincipalContextFactory());
-    }
-
     @Autowired
     public ApiAuthService(PrincipalDirectory principalDirectory,
                           HeaderPrincipalContextFactory headerPrincipalContextFactory) {

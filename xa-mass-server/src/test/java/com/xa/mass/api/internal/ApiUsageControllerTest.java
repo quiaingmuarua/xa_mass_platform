@@ -2,6 +2,7 @@ package com.xa.mass.api.internal;
 
 import com.xa.mass.api.auth.ApiAuthInterceptor;
 import com.xa.mass.api.auth.ApiAuthService;
+import com.xa.mass.api.auth.ApiAuthTestSupport;
 import com.xa.mass.api.auth.ApiAuthorizationService;
 import com.xa.mass.api.auth.ApiRouteAuthorizationCatalog;
 import com.xa.mass.api.auth.apikey.ApiKeyCredentialService;
@@ -33,7 +34,7 @@ class ApiUsageControllerTest {
         submitters = new InMemorySubmitterOperations();
         usageLedgerService = new ApiUsageLedgerService(new InMemoryApiUsageLedgerStore());
         ApiAuthInterceptor interceptor = new ApiAuthInterceptor(
-                new ApiAuthService(),
+                ApiAuthTestSupport.defaultOperatorAuthService(),
                 new com.fasterxml.jackson.databind.ObjectMapper(),
                 new ApiAuthorizationService(),
                 new ApiRouteAuthorizationCatalog()
