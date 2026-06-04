@@ -12,6 +12,8 @@ context compaction, and roadmap handoff.
 `sdk/` owns reusable caller contracts. `integrations/` owns real adopters,
 worker capability packs, and protocol/dev fixtures. Server startup must not
 replace external registration with privileged task or worker seeding.
+Dev/prod may differ by infrastructure, seed source, logging, and operational
+defaults, but they must not expose different public API contracts.
 
 ## Owner Map
 
@@ -52,6 +54,13 @@ replace external registration with privileged task or worker seeding.
 - `xa-mass-server` production startup must not seed task, worker, WorkerGroup,
   AdapterNode, or NodeGroupBinding truth as a substitute for external
   registration.
+- Do not add or extend dev-only HTTP APIs such as sample bootstrap routes to
+  prepare project/rule/catalog/credential data. New-environment setup belongs
+  to explicit control-plane seed/import tooling, not to SDK/integrations
+  runtime paths.
+- SQLite-backed seed/import work may initialize only control-plane storage.
+  Redis/runtime truth and trace/audit materialization remain separate infra
+  layers; see [`INFRA_TRUTH_LAYERS.md`](./INFRA_TRUTH_LAYERS.md).
 - Transport-specific frame shapes must not redefine event-handler,
   WorkerGroup, AdapterNode, task, result, or scheduling semantics.
 
@@ -66,6 +75,10 @@ replace external registration with privileged task or worker seeding.
 - `integrations/xa-mass-scenario-launcher` may compose SDK calls into an
   executable scenario that proves real external registration, worker sessions,
   task creation, item append, and result convergence.
+- Scenario-launcher should assume the target server environment has already
+  been initialized through real control-plane storage or explicit seed/import;
+  it should not call server-owned sample bootstrap APIs as part of the SDK
+  proof path.
 - `integrations/xa-mass-worker-pack` may provide reusable business
   capabilities such as `tool.geo.lookup`, plus separated harness packages for
   dev/E2E proof.
@@ -90,6 +103,11 @@ Stop and review the boundary if a change does any of the following:
 - treats samples as the Java SDK adoption path;
 - adds server startup code that silently creates production task or worker
   truth;
+- adds a dev/prod API split for project, rule, catalog, credential, task, or
+  worker setup instead of changing only infrastructure, seed source, or
+  operational defaults;
+- exposes raw worker or bootstrap platform APIs from worker-pack instead of
+  routing real worker behavior through the Java SDK;
 - introduces a transport-specific handler runtime that changes event-handler
   semantics instead of adapting transport to the handler contract;
 - preserves old and new SDK/integration paths as parallel live tracks after an

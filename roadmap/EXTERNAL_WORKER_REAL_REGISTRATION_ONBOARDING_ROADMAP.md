@@ -3,6 +3,13 @@
 Status: implemented mainline on 2026-06-04; archive after the next roadmap
 residue pass.
 
+Follow-up decision: this roadmap proved real SDK-backed registration while
+leaving sample bootstrap as an explicit dev fixture. The current owner decision
+is stricter: dev/prod may differ by infrastructure and seed source, not by API
+contract. `DevBootstrapClient` and `SampleBootstrapController` are therefore
+retirement targets for
+`CONTROL_PLANE_SEED_AND_SAMPLE_BOOTSTRAP_RETIREMENT_ROADMAP.md`.
+
 This roadmap converges external worker onboarding from dev/sample bootstrap
 toward real SDK-driven registration against a running server. It keeps the
 session focus on `sdk/` and `integrations/`, while treating server prod/dev
@@ -36,9 +43,11 @@ API key credential
   -> task submission/result convergence
 ```
 
-`SampleBootstrapController` and dev fixture launchers may remain local
-validation helpers, but they must not be the path that proves production-style
-worker registration.
+This roadmap left `SampleBootstrapController` and dev fixture launchers as
+local validation helpers, but they must not be the path that proves
+production-style worker registration. The follow-up target is to remove that
+sample HTTP bootstrap path and replace it with explicit environment
+seed/import into control-plane storage.
 
 ## Current Facts
 
@@ -55,9 +64,10 @@ worker registration.
   permission, project scope, event scope, and submitter-auth projection.
 - `integrations/xa-mass-scenario-launcher` registers WorkerGroup,
   AdapterNode, NodeGroupBinding, and Worker through `MassPlatform`.
-  Dev fixture runs may prepare catalog/rules through `DevBootstrapClient`,
+  Dev fixture runs can still prepare catalog/rules through `DevBootstrapClient`,
   while real-proof black-box runs use pre-created host metadata and
-  `--skip-dev-bootstrap`.
+  `--skip-dev-bootstrap`. This is implemented residue, not the target external
+  SDK shape.
 - `WorkerPackGeoLookupExternalSdkIntegrationTest` already proves one
   worker-pack capability through Java SDK worker-session registration and task
   result convergence; remaining worker-pack work is proof hardening, doc sync,
@@ -79,6 +89,9 @@ worker registration.
 - Do not add server startup seeding for WorkerGroup, AdapterNode,
   NodeGroupBinding, Worker, task shell, or task item truth.
 - Do not expand `SampleBootstrapController` into a production onboarding API.
+- Do not preserve dev/prod API divergence as a product pattern. Dev/prod may
+  differ by infra backend, seed source, logging, and operational defaults, not
+  by public task/worker/control-plane API surface.
 - Do not move server MVC bootstrap endpoints into worker-pack, and do not move
   worker-pack capability code into server bootstrap endpoints.
 - Prod must not enable sample bootstrap by default.
@@ -104,7 +117,8 @@ callers.
 
 ## Target Shape
 
-- Dev fixture bootstrap remains explicitly local and visibly non-product.
+- Dev fixture bootstrap is implemented residue to retire after explicit
+  control-plane seed/import exists.
 - Prod-like startup boots a clean platform shell with no sample bootstrap
   surface unless explicitly enabled.
 - Operator/API-key flow can mint or approve credentials that are sufficient for
@@ -273,11 +287,14 @@ Scope:
 - Keep the existing `WorkerScenarioRegistrar` SDK registration chain as the
   registration owner path.
 - Split scenario-launcher catalog/rule/credential preparation from worker/task
-  registration so real-proof runs can skip `DevBootstrapClient`.
+  registration so real-proof runs can skip `DevBootstrapClient`. This roadmap
+  stopped at decoupling; the successor roadmap owns deleting
+  `DevBootstrapClient`.
 - Make the real-proof path accept already prepared server metadata and API
   keys, then execute the existing worker registration and task path.
-- Keep dev fixture runs able to call `DevBootstrapClient` explicitly when a
-  local scenario needs sample catalog/rule setup.
+- The implemented dev fixture path can still call `DevBootstrapClient`
+  explicitly when a local scenario needs sample catalog/rule setup, but that is
+  implemented residue rather than target shape.
 - Do not introduce a second "real mode" that duplicates WorkerGroup,
   AdapterNode, NodeGroupBinding, Worker, session, and task orchestration.
 - The real-proof path must not call `/sample-api/bootstrap/**`.
@@ -289,7 +306,8 @@ Acceptance:
 - The proof works without server startup seeding.
 - The proof uses the Java SDK typed client/session surface.
 - The launcher has one registration mainline; dev/sample bootstrap is only an
-  optional preparation step, not a parallel launcher mode.
+  optional preparation step in this completed slice and is scheduled for
+  retirement by the control-plane seed/import roadmap.
 
 Verification:
 

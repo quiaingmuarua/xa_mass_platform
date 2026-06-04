@@ -19,6 +19,17 @@ XA Mass infra has three truth layers: control-plane storage, runtime state, and
 trace / audit stream. Do not collapse them just because one layer is currently
 more implemented than another.
 
+- dev/prod profiles may change infrastructure, seed source, logging, and
+  operational defaults; they must not change public task, worker, credential,
+  project, rule, or control-plane API contracts
+- SQLite-first persistence is a control-plane storage direction only; it must
+  not be read as moving runtime queues, leases, heartbeat, result convergence,
+  or trace/audit streams into SQLite
+- Redis remains the current cross-process runtime-truth direction for queues,
+  leases, counters, worker presence, dispatch handoff, and result ingress
+- trace-owned DB materialization may be added later through a trace-owned queue
+  or sink, but it is a deferred analysis/read-model path, not control-plane
+  storage and not runtime truth
 - missing trace implementation does not make trace-shaped data become DB truth
 - missing trace implementation does not justify unbounded runtime residue
 - temporary residue is allowed only when it is bounded, clearly non-authoritative,
@@ -34,6 +45,7 @@ more implemented than another.
 | worker runtime route-owner view | runtime state | volatile online/reachability truth owned by transport adapters and nodes | Redis/in-memory presence records with lease expiry | control-plane worker declaration or dispatch queues |
 | rule definitions | control-plane storage | stable policy input | in-process evaluator cache | engine-only hidden defaults inside storage modules |
 | principal / submitter credential truth | control-plane storage | stable auth binding truth | in-process auth cache | infra module exporting SDK surface |
+| environment seed metadata for project/rule/catalog/credential initialization | control-plane storage | explicit new-environment setup record | one-shot importer state guarded by config | dev-only HTTP bootstrap APIs or runtime/trace state |
 | ready queue membership | runtime state | hot-path scheduling state | none beyond bounded mirrors | JDBC durable truth |
 | delayed visibility / retry timing | runtime state | runtime scheduling truth | bounded mirrors for debug only | JDBC durable truth |
 | active lease ownership / expiry | runtime state | hot-path callback and expiry truth | bounded mirrors for debug only | JDBC durable truth |
@@ -70,6 +82,7 @@ design and must not be implied by result ingress or review materialization.
 | Area | Current code truth | Interpretation |
 | --- | --- | --- |
 | `platform_infra/mass-storage-jdbc` | persists task shell/rule/principal truth; no JDBC worker declaration implementation currently exists | correct control-plane role |
+| SQLite control-plane storage | target lightweight persistence direction for new-environment control-plane setup; not yet a runtime backend | may host stable project/rule/catalog/credential truth when implemented; not a queue, lease, heartbeat, result-convergence, or trace store |
 | JDBC-local worker lock residue | process-local runtime residue | not durable worker-runtime truth; worker locks/capacity must not become control-plane storage truth |
 | `platform_infra/mass-storage-memory` | in-memory task shell, worker declaration adapter, and rule definition storage | current embedded/test implementation |
 | `mass-runtime-*` modules | queue/lease/counter semantics | canonical runtime-state home |
@@ -122,6 +135,7 @@ Current DB scope:
   group-level capability metadata
 - rule definitions
 - principal credential truth
+- explicit environment seed/import metadata for new control-plane setup
 - optional bounded task-level review/read-model summaries when they do not
   drive runtime decisions
 
@@ -131,8 +145,23 @@ worker locks/capacity/reservations, callback/dispatch streams, large item
 history, or attempt timelines. Those belong to runtime state, trace/audit, or
 bounded non-authoritative materialization.
 
-H2 and PostgreSQL use the same boundary. PostgreSQL durability does not justify
-promoting trace-shaped history or runtime churn into control-plane storage.
+H2, SQLite, and PostgreSQL use the same boundary. PostgreSQL durability does
+not justify promoting trace-shaped history or runtime churn into control-plane
+storage, and SQLite convenience does not justify collapsing runtime truth into
+the control-plane DB.
+
+Current product-stage DB rules:
+
+- SQLite is the preferred lightweight control-plane DB direction; PostgreSQL is
+  not a required mainline dependency at this stage.
+- Initial data loading is an explicit environment bootstrap import, not a
+  public API and not an automatic migration path.
+- Seed/import is off by default and should be enabled only for a new
+  environment or an explicit local/test fixture.
+- The project does not currently promise commercial-history migration or
+  backwards-compatible schema evolution. A future schema-version check should
+  fail fast with a clear "recreate or reseed this environment" message instead
+  of half-running against stale local data.
 
 ## 6. Temporary Residue Rules
 

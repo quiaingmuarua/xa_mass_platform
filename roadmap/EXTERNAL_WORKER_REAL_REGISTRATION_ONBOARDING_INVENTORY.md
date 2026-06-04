@@ -11,8 +11,8 @@ launcher or worker-pack paths.
 
 | Symbol / path | Current owner | Current role | Classification | Target |
 | --- | --- | --- | --- | --- |
-| `SampleBootstrapController` | `xa-mass-server` | Optional `/sample-api/bootstrap/**` catalog/rule/submitter fixture endpoint | dev fixture / server-owned MVC surface | Keep property-gated, prod default off, not worker onboarding |
-| `sample.bootstrap.enabled` in `application-dev.yml` | `xa-mass-server` | Enables sample bootstrap for dev scenario launchers | dev fixture | Keep explicit dev fixture support |
+| `SampleBootstrapController` | `xa-mass-server` | Optional `/sample-api/bootstrap/**` catalog/rule/submitter fixture endpoint | dev fixture / server-owned MVC surface / implemented residue | Retire after control-plane seed/import replaces HTTP bootstrap |
+| `sample.bootstrap.enabled` in `application-dev.yml` | `xa-mass-server` | Enables sample bootstrap for dev scenario launchers | dev fixture / implemented residue | Retire with sample bootstrap HTTP surface |
 | `sample.bootstrap.enabled` in `application-prod.yml` | `xa-mass-server` | Set to `false` | implemented prod guard | Keep prod default off |
 | `ApiKeyCredentialService` | `xa-mass-server` | API key create/application/approval/revoke/expiry and submitter-auth projection | production host API | Reuse for worker onboarding; do not add new credential storage unless proven necessary |
 | `ExternalWorkerApiController` | `xa-mass-server` | `/worker-api/v1/**` external worker registration and polling surface | production host API | Keeps shared `workerId` credential binding check |
@@ -20,7 +20,7 @@ launcher or worker-pack paths.
 | `WorkerClient` | `sdk/xa-mass-java-sdk` | Typed owner of `/worker-api/v1/**` route literals | SDK typed route owner | Allowed to keep route literals |
 | `WorkerScenarioRegistrar` | `integrations/xa-mass-scenario-launcher` | Registers WorkerGroup, AdapterNode, NodeGroupBinding, and Worker through `MassPlatform` | implemented integration adopter path | Reuse; do not duplicate in a new launcher mode |
 | `ScenarioLauncher` | `integrations/xa-mass-scenario-launcher` | Calls dev bootstrap only when enabled; real-proof runs can use `--skip-dev-bootstrap` | implemented decoupling | Keep one registration mainline through `WorkerScenarioRegistrar` |
-| `DevBootstrapClient` | `integrations/xa-mass-scenario-launcher` | Calls `/sample-api/bootstrap/catalog` and `/rules` | dev fixture client | Keep for explicit dev preparation only |
+| `DevBootstrapClient` | `integrations/xa-mass-scenario-launcher` | Calls `/sample-api/bootstrap/catalog` and `/rules` | dev fixture client / implemented residue | Delete after scenario-launcher assumes explicit environment seed/import |
 | `ScenarioWorkerRuntime` | `integrations/xa-mass-scenario-launcher` | Starts SDK polling/WebSocket worker sessions | implemented integration adopter path | Reuse |
 | `WorkerPackGeoLookupExternalSdkIntegrationTest` | `xa-mass-server` E2E over worker-pack | Proves worker-pack `tool.geo.lookup` as Java SDK polling worker | implemented representative proof | Harden docs/guards only unless a gap is found |
 | `GeoLookupWorkerPack` | `integrations/xa-mass-worker-pack` | Builds Java SDK polling worker session for geo lookup | worker capability pack | Keep in worker-pack; do not move to SDK |
@@ -32,9 +32,9 @@ launcher or worker-pack paths.
 | --- | --- | --- | --- | --- |
 | `sdk/xa-mass-java-sdk` | `/worker-api/v1/**` literals in `WorkerClient` | production SDK | Typed route owner | Allowed |
 | `integrations/xa-mass-scenario-launcher` | `sdk/xa-mass-java-sdk` | production integration adopter | Real Java SDK proof | Keep |
-| `integrations/xa-mass-scenario-launcher` | `/sample-api/bootstrap/**` through `DevBootstrapClient` | dev fixture | Catalog/rule/submitter prep | Remove from real-proof path |
+| `integrations/xa-mass-scenario-launcher` | `/sample-api/bootstrap/**` through `DevBootstrapClient` | dev fixture / implemented residue | Catalog/rule/submitter prep | Retire after control-plane seed/import exists |
 | `integrations/xa-mass-worker-pack` | `sdk/xa-mass-java-sdk` | production capability proof | Worker-pack external worker session | Keep |
-| `xa-mass-server` | `SampleBootstrapController` | dev fixture MVC endpoint | Local scenario bootstrap | Keep server-owned and prod default off |
+| `xa-mass-server` | `SampleBootstrapController` | dev fixture MVC endpoint | Local scenario bootstrap | Retire; do not replace with another HTTP bootstrap API |
 
 ## Decisions
 
@@ -49,3 +49,7 @@ launcher or worker-pack paths.
   happy path was added.
 - EWR-6 route-literal guards must exclude SDK typed route owners such as
   `WorkerClient` and focus on adopter modules.
+- Follow-up owner decision: dev/prod differs by infra and seed source, not by
+  API surface. `DevBootstrapClient`, `SampleBootstrapController`, and
+  `sample.bootstrap.*` are retirement targets owned by
+  `CONTROL_PLANE_SEED_AND_SAMPLE_BOOTSTRAP_RETIREMENT_ROADMAP.md`.
