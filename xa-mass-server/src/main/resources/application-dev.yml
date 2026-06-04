@@ -44,6 +44,7 @@ sample:
     auto-start: true
     websocket-uri: ws://localhost:${mass.websocket.port}/ws
   bootstrap:
+    enabled: true
     api-key: dev-bootstrap-key
   worker:
     auto-start: false

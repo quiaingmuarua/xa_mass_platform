@@ -176,8 +176,10 @@ local/demo data is created by external launchers, SDK clients, or test fixtures.
   created through public worker/task APIs or SDK clients
 - JSON fixture bootstrap remains a test-only input path; packaged fixture files
   are not a server startup source
-- sample-only bootstrap writes stay behind `/sample-api/bootstrap/*` protected
-  by `X-Sample-Bootstrap-Key`
+- server-owned sample-only bootstrap writes stay behind `/sample-api/bootstrap/*`
+  protected by `X-Sample-Bootstrap-Key`; they are enabled by default in `dev`
+  and disabled by default in `prod` unless `sample.bootstrap.enabled=true` is
+  set explicitly
 
 To populate the local control console after the server is running, use the
 external dev scenario launcher:
@@ -351,6 +353,7 @@ Observability:
 | `sample.client.auto-start` | `true` in `dev` | auto-start embedded sample clients for the default dev demo shell |
 | `sample.client.websocket-uri` | `ws://localhost:${mass.websocket.port}/ws` | target WebSocket adapter address |
 | `sample.client.task-result-status` | `SUCCESS` | force sample result frames to `SUCCESS` or `FAILED` |
+| `sample.bootstrap.enabled` | `true` in `dev`, `false` in `prod` | enable sample-only `/sample-api/bootstrap/*` writes for scenario launchers |
 | `sample.bootstrap.api-key` | `dev-bootstrap-key` | sample-only bootstrap credential for `/sample-api/bootstrap/*` |
 | `sample.worker.auto-start` | `false` in `dev` | keep the external sample supervisor off by default; enable explicitly for the separate cross-process sample shell |
 

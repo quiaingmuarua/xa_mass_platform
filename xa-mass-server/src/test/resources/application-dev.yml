@@ -4,3 +4,6 @@ mass:
   demo:
     bootstrap:
       enabled: false
+sample:
+  bootstrap:
+    enabled: true

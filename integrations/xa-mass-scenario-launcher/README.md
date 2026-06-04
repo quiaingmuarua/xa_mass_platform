@@ -12,8 +12,10 @@ engine, worker-pack, or transport ownership.
 ## Current Scope
 
 - reads the existing scenario JSON files under `integrations/samples/dev/scenario`
-- bootstraps dev catalog and runtime rules through the dev-only
-  `/sample-api/bootstrap/**` endpoints
+- bootstraps dev catalog and runtime rules through server-owned sample-only
+  `/sample-api/bootstrap/**` endpoints; these endpoints are enabled by default
+  in the server `dev` profile and require `sample.bootstrap.enabled=true` when
+  used against `prod`
 - registers WorkerGroups, AdapterNodes, NodeGroupBindings, and Workers through
   public worker APIs via `xa-mass-java-sdk`
 - creates tasks, appends items, seals, and approves through public task APIs via

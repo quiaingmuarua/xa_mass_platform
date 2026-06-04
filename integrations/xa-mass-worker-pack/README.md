@@ -7,7 +7,6 @@ Status: current worker-pack owner README.
 - official worker capability pack
 - separated dev/E2E harness support for sample worker clients, launchers, and
   worker-side command runtime
-- sample-only bootstrap surfaces that support dev-shell acceptance flows
 
 ## Boundaries
 
@@ -29,19 +28,18 @@ Package ownership:
 - `com.xa.mass.workerpack.tool.*`: production capability runtime and SDK-backed
   bootstrap. It must not import `workerpack.sample.*`, `com.xa.mass.sdk.*`, or
   transport internals.
-- `com.xa.mass.workerpack.sample.*`: dev-shell bootstrap, command runtime, and
-  fault harness. It may use embedded runtime APIs because it is active server
-  E2E harness support, not the public external SDK capability path.
+- `com.xa.mass.workerpack.sample.*`: dev-shell worker clients, command runtime,
+  and fault harness. It may use embedded runtime APIs because it is active
+  server E2E harness support, not the public external SDK capability path.
 - `src/test/java`: verification fixtures for both package families.
 
 Dependency ownership:
 
 - `xa-mass-java-sdk`: production external worker/task entry point for
   SDK-backed capabilities such as `tool.geo.lookup`.
-- `xa-mass-embedded-sdk`: dev-shell/sample bootstrap and legacy worker-control
-  harness only; its transitive transport dependencies do not define public
-  worker-pack capability shape.
-- `spring-boot-starter-web`: sample bootstrap controller.
+- `xa-mass-embedded-sdk`: dev-shell/sample worker-control harness only; its
+  transitive transport dependencies do not define public worker-pack capability
+  shape.
 - `gson`: sample WebSocket command/fault frame parsing.
 - `lettuce-core`: sample/dev Redis wiring inherited from worker-pack harness.
 - `spring-boot-starter-test`: module tests.
@@ -51,6 +49,10 @@ Dependency ownership:
 - `src/main/java/com/xa/mass/workerpack/sample/starter/SampleWorkerProcessStarter.java`
 - `src/main/java/com/xa/mass/workerpack/sample/client/SampleWorkerWebSocketClient.java`
 - `src/main/java/com/xa/mass/workerpack/sample/command/runtime/SampleCommandRuntime.java`
+
+Sample/scenario HTTP bootstrap endpoints are server-owned under
+`xa-mass-server`; worker-pack supplies capabilities and harness clients, not
+Spring MVC controllers.
 
 ## Transport Stance
 

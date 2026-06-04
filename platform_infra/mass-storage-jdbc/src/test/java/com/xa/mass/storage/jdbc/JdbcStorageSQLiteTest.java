@@ -44,6 +44,26 @@ class JdbcStorageSQLiteTest {
         }
     }
 
+    @Test
+    void runtimeCreatesMissingSqliteParentDirectory() throws Exception {
+        var db = Files.createTempDirectory("xa-mass-sqlite-runtime")
+                .resolve("missing")
+                .resolve("nested")
+                .resolve("xa_mass.db");
+        assertThat(Files.exists(db.getParent())).isFalse();
+
+        try (JdbcStorageRuntime runtime = JdbcStorageRuntime.create(
+                JdbcStorageMode.JDBC_SQLITE,
+                "jdbc:sqlite:" + db,
+                "",
+                "")) {
+            assertThat(runtime.isEnabled()).isTrue();
+        }
+
+        assertThat(Files.exists(db.getParent())).isTrue();
+        assertThat(Files.exists(db)).isTrue();
+    }
+
     private RuleDefinition testRule() {
         RuleDefinition rule = new RuleDefinition();
         rule.setId("sqlite_worker_check");

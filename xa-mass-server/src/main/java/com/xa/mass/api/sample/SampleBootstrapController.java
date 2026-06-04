@@ -1,8 +1,6 @@
-package com.xa.mass.workerpack.sample.api;
+package com.xa.mass.api.sample;
 
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
-import com.xa.mass.workerpack.sample.api.model.SampleCatalogBootstrapRequest;
-import com.xa.mass.workerpack.sample.api.model.SampleRuleBootstrapRequest;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.catalog.PayloadType;
@@ -10,7 +8,7 @@ import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.event.EventDefinition;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Profile;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -26,13 +24,13 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Sample-only bootstrap write surface used by the external dev launcher.
+ * Server-owned sample/scenario bootstrap write surface.
  *
- * <p>This is intentionally scoped to the dev shell rather than promoted as a
- * platform-wide control-plane contract.
+ * <p>This remains an optional local verification endpoint, not a stable
+ * platform control-plane contract.
  */
 @RestController
-@Profile("dev")
+@ConditionalOnProperty(prefix = "sample.bootstrap", name = "enabled", havingValue = "true")
 @RequestMapping("/sample-api/bootstrap")
 public class SampleBootstrapController {
 

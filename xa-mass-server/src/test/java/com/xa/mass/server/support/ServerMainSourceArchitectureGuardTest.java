@@ -244,6 +244,29 @@ class ServerMainSourceArchitectureGuardTest {
     }
 
     @Test
+    void sampleBootstrapIsProdSelectableButNotProdDefault() throws IOException {
+        Path repoRoot = Path.of("..").toAbsolutePath().normalize();
+        Path serverController = SERVER_MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/api/sample/SampleBootstrapController.java");
+        Path workerPackController = repoRoot.resolve(
+                "integrations/xa-mass-worker-pack/src/main/java/com/xa/mass/workerpack/sample/api/SampleBootstrapController.java");
+        String controllerSource = Files.readString(serverController, StandardCharsets.UTF_8);
+        String devConfig = Files.readString(Path.of("src/main/resources/application-dev.yml"), StandardCharsets.UTF_8);
+        String prodConfig = Files.readString(Path.of("src/main/resources/application-prod.yml"), StandardCharsets.UTF_8);
+
+        assertTrue(!Files.exists(workerPackController),
+                "sample bootstrap HTTP controller must stay server-owned, not worker-pack-owned");
+        assertTrue(!controllerSource.contains("@Profile("),
+                "sample bootstrap must not create dev/prod code-path forks; use property selection instead");
+        assertTrue(controllerSource.contains("@ConditionalOnProperty(prefix = \"sample.bootstrap\", name = \"enabled\""),
+                "sample bootstrap must remain property-gated rather than becoming an unconditional prod endpoint");
+        assertTrue(devConfig.contains("bootstrap:\n    enabled: true"),
+                "dev profile should keep sample bootstrap enabled for the scenario launcher");
+        assertTrue(prodConfig.contains("bootstrap:\n    enabled: false"),
+                "prod profile must not expose sample bootstrap unless explicitly enabled");
+    }
+
+    @Test
     void reviewQueueApiDoesNotGrowRuntimeDecisionVocabulary() throws IOException {
         Path reviewRoot = SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/api/review");
         List<String> violations = new ArrayList<>();
