@@ -39,4 +39,4 @@ logging:
 
 sample:
   bootstrap:
-    enabled: true
+    enabled: false

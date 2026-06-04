@@ -16,11 +16,15 @@ public final class ScenarioLauncherMain {
         }
         ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
         ScenarioFiles files = ScenarioFiles.load(options.scenarioDir(), objectMapper);
+        HttpClient httpClient = HttpClient.newHttpClient();
+        DevBootstrapClient bootstrapClient = options.devBootstrapEnabled()
+                ? new DevBootstrapClient(options.baseUrl(), options.bootstrapKey(), httpClient, objectMapper)
+                : null;
         ScenarioLauncher launcher = new ScenarioLauncher(
                 options,
                 objectMapper,
-                new ScenarioClientFactory(options.baseUrl(), HttpClient.newHttpClient(), objectMapper),
-                new DevBootstrapClient(options.baseUrl(), options.bootstrapKey(), HttpClient.newHttpClient(), objectMapper)
+                new ScenarioClientFactory(options.baseUrl(), httpClient, objectMapper),
+                bootstrapClient
         );
         if (options.registerOnly()) {
             launcher.registerOnly(files);

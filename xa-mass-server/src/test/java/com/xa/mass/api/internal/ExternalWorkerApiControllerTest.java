@@ -289,6 +289,23 @@ class ExternalWorkerApiControllerTest {
     }
 
     @Test
+    void registerWorkerRejectsWorkerIdBindingMismatch() throws Exception {
+        mockMvc.perform(post("/worker-api/v1/workers")
+                        .contentType("application/json")
+                        .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
+                        .content("""
+                                {
+                                  "workerId": "other-worker",
+                                  "adapterNodeId": "node-a",
+                                  "workerGroupId": "node-runtime"
+                                }
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(403))
+                .andExpect(jsonPath("$.msg").value("Worker credential binding denied: other-worker"));
+    }
+
+    @Test
     void registerWorkerRejectsMissingWorkerGroupId() throws Exception {
         mockMvc.perform(post("/worker-api/v1/workers")
                         .contentType("application/json")

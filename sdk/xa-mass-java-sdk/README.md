@@ -31,6 +31,11 @@ Use `bearerToken(...)` instead of `apiKey(...)` when the server deployment
 expects bearer auth. If neither is set, requests are sent without SDK-managed
 auth headers.
 
+Worker API keys may be bound by server credential attributes. When the
+authenticated principal has `attributes.workerId`, worker registration,
+presence, polling, result submit, state/capability report, command ack, and
+offline calls must use that same worker id.
+
 ## Scope
 
 Current implemented surface:
@@ -98,7 +103,9 @@ development continues to use [pom.xml](pom.xml).
 
 The internal executable adopter is
 [../../integrations/xa-mass-scenario-launcher](../../integrations/xa-mass-scenario-launcher),
-not standalone Java sample apps.
+not standalone Java sample apps. It can skip server-owned dev bootstrap with
+`--skip-dev-bootstrap` when catalog, rules, and credentials are pre-created for
+a real external-registration proof.
 
 For the short task-producer plus worker-session onboarding path, use
 [EXTERNAL_SDK_QUICKSTART.md](./EXTERNAL_SDK_QUICKSTART.md).

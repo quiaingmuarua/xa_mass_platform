@@ -1,5 +1,14 @@
 package com.xa.mass.server.e2e.assignment;
 
+import com.xa.mass.kernel.spi.rule.RuleDefinition;
+import com.xa.mass.kernel.spi.rule.RuleType;
+import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.sdk.auth.PrincipalContext;
+import com.xa.mass.sdk.auth.SubmitterRegistration;
+import com.xa.mass.sdk.catalog.PayloadType;
+import com.xa.mass.sdk.catalog.ProjectDefinition;
+import com.xa.mass.sdk.catalog.TaskMode;
+import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.server.XaMassServerApplication;
 import com.xa.mass.server.e2e.support.ExternalJavaScenarioLauncherProcess;
 import com.xa.mass.server.e2e.support.ReviewReadModelSampleE2eTest;
@@ -14,6 +23,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 
@@ -31,7 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         }
 )
 @ActiveProfiles("dev")
-@DirtiesContext
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class JavaScenarioLauncherBlackBoxIntegrationTest extends ReviewReadModelSampleE2eTest {
     private static final int WEBSOCKET_PORT = findFreePort();
     private static final String TASK_API_KEY = "ijs-task-key";
@@ -51,15 +61,18 @@ class JavaScenarioLauncherBlackBoxIntegrationTest extends ReviewReadModelSampleE
     void scenarioLauncherRegistersTopologySeedsTaskAndCompletesPollingDispatch(@TempDir Path scenarioDir)
             throws Exception {
         writePollingScenario(scenarioDir);
+        registerPollingHostFixture();
 
         String output;
         String baseUrl = "http://127.0.0.1:" + port;
         try (ExternalJavaScenarioLauncherProcess launcher = ExternalJavaScenarioLauncherProcess.start(
                 baseUrl,
+                null,
                 scenarioDir,
                 TASK_API_KEY,
                 TASK_COMMAND_API_KEY,
-                500L)) {
+                500L,
+                true)) {
             output = launcher.awaitExit(Duration.ofSeconds(90), "Java scenario launcher");
         }
 
@@ -93,6 +106,7 @@ class JavaScenarioLauncherBlackBoxIntegrationTest extends ReviewReadModelSampleE
     void scenarioLauncherCompletesWebSocketDispatchThroughSdkSession(@TempDir Path scenarioDir)
             throws Exception {
         writeWebSocketScenario(scenarioDir);
+        registerWebSocketHostFixture();
 
         String output;
         String baseUrl = "http://127.0.0.1:" + port;
@@ -103,7 +117,8 @@ class JavaScenarioLauncherBlackBoxIntegrationTest extends ReviewReadModelSampleE
                 scenarioDir,
                 TASK_API_KEY,
                 TASK_COMMAND_API_KEY,
-                500L)) {
+                500L,
+                true)) {
             output = launcher.awaitExit(Duration.ofSeconds(90), "Java scenario launcher websocket");
         }
 
@@ -140,6 +155,109 @@ class JavaScenarioLauncherBlackBoxIntegrationTest extends ReviewReadModelSampleE
             throw new AssertionError("Scenario launcher did not report a created task. Output:\n" + output);
         }
         return matcher.group(1);
+    }
+
+    private void registerPollingHostFixture() {
+        registerScenarioCatalog(
+                "ijsApp",
+                "IJS App",
+                "Scenario launcher black-box proof project.",
+                "ijs.polling.echo",
+                "IJS Polling Echo",
+                "Minimal scenario-launcher polling proof event.");
+        registerScenarioSubmitters("ijsApp", "ijs.polling.echo", "ijs-worker-key", WORKER_ID);
+        replaceScenarioRules("ijs-worker-online", "ijs-event-capability");
+    }
+
+    private void registerWebSocketHostFixture() {
+        registerScenarioCatalog(
+                "ijsWsApp",
+                "IJS WebSocket App",
+                "Scenario launcher websocket black-box proof project.",
+                "ijs.websocket.echo",
+                "IJS WebSocket Echo",
+                "Minimal scenario-launcher websocket proof event.");
+        registerScenarioSubmitters("ijsWsApp", "ijs.websocket.echo", "ijs-ws-worker-key", WEBSOCKET_WORKER_ID);
+        replaceScenarioRules("ijs-ws-worker-online", "ijs-ws-event-capability");
+    }
+
+    private void registerScenarioCatalog(String projectCode,
+                                         String projectName,
+                                         String projectDescription,
+                                         String eventCode,
+                                         String eventName,
+                                         String eventDescription) {
+        sdkApp().registerEventDefinition(EventDefinition.builder()
+                .code(eventCode)
+                .name(eventName)
+                .description(eventDescription)
+                .payloadTypes(List.of(PayloadType.JSON))
+                .taskModes(List.of(TaskMode.SINGLE_RUN))
+                .projectCodes(List.of(projectCode))
+                .build());
+        sdkApp().registerProject(ProjectDefinition.builder()
+                .code(projectCode)
+                .name(projectName)
+                .description(projectDescription)
+                .eventCodes(List.of(eventCode))
+                .build());
+    }
+
+    private void registerScenarioSubmitters(String projectCode,
+                                            String eventCode,
+                                            String workerCredential,
+                                            String workerId) {
+        sdkApp().registerSubmitter(SubmitterRegistration.builder()
+                .principalId("ijs-task-submitter")
+                .credential(TASK_API_KEY)
+                .permissions(List.of(PrincipalContext.TASK_CREATE_PERMISSION))
+                .projectScopes(List.of(projectCode))
+                .eventScopes(List.of(eventCode))
+                .build());
+        sdkApp().registerSubmitter(SubmitterRegistration.builder()
+                .principalId("ijs-task-command")
+                .credential(TASK_COMMAND_API_KEY)
+                .permissions(List.of(
+                        PrincipalContext.TASK_CREATE_PERMISSION,
+                        "task:edit",
+                        "task:control",
+                        "task:govern"
+                ))
+                .projectScopes(List.of(projectCode))
+                .eventScopes(List.of(eventCode))
+                .build());
+        sdkApp().registerSubmitter(SubmitterRegistration.builder()
+                .principalId(workerId)
+                .credential(workerCredential)
+                .permissions(List.of(PrincipalContext.EXTERNAL_WORKER_PERMISSION))
+                .projectScopes(List.of(projectCode))
+                .eventScopes(List.of(eventCode))
+                .attributes(Map.of("workerId", workerId))
+                .build());
+    }
+
+    private void replaceScenarioRules(String onlineRuleId, String capabilityRuleId) {
+        sdkApp().replaceDefaultRules(List.of(
+                rule(onlineRuleId, "hasWorkerSchedulingResource == true"),
+                rule(capabilityRuleId, "supportsEvent == true")
+        ));
+    }
+
+    private RuleDefinition rule(String id, String content) {
+        RuleDefinition rule = new RuleDefinition();
+        rule.setId(id);
+        rule.setName(id);
+        rule.setType(RuleType.QL_EXPRESS);
+        rule.setContent(content);
+        rule.setEnabled(true);
+        return rule;
+    }
+
+    private MassSdkApplication sdkApp() {
+        if (app == null) {
+            throw new IllegalStateException("MassSdkApplication is not available for this E2E fixture");
+        }
+        return app;
     }
 
     private static void writePollingScenario(Path scenarioDir) throws Exception {

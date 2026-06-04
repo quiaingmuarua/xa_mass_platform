@@ -71,6 +71,9 @@ replace external registration with privileged task or worker seeding.
   dev/E2E proof.
 - `integrations/samples` may keep Node/polling/WebSocket/socket fixtures for
   cross-language protocol validation.
+- `sdk/xa-mass-java-sdk` typed clients, such as `WorkerClient`, may own public
+  platform route literals. Adopter modules should call those typed clients or
+  sessions instead of hard-coding the same routes.
 
 ## Forbidden Drift
 
@@ -100,8 +103,9 @@ new drift:
 - SDK production dependency guard for `xa-mass-java-sdk`.
 - Public-contract candidate guard against non-Controller DTOs and missing
   inventory rows.
-- Integration source guard against hard-coded platform route literals when a
-  typed SDK client/session exists.
+- Integration source guard against hard-coded platform route literals in
+  adopter modules when a typed SDK client/session exists. The SDK typed route
+  owner itself is the allowlisted location for those literals.
 - Worker-pack package guard that keeps production capability packages separate
   from sample/dev harness packages.
 - Server startup guard that prevents production boot seeding of task/worker
