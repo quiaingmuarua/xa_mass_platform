@@ -20,8 +20,8 @@ task-dispatch and task-result frames.
 
 For the dev Spring Boot shell, `integrations/samples/dev/scenario/launch-workers.mjs` can register
 and launch the curated WebSocket sample workers automatically. In that flow the
-launcher first bootstraps sample catalog resources and rules through
-`/sample-api/bootstrap/*`, then registers workers through `/worker-api/v1/*`.
+launcher assumes catalog resources and rules were prepared through explicit
+server seed/import, then registers workers through `/worker-api/v1/*`.
 The worker script itself only needs `WORKER_ID` and `WS_URL`.
 
 ## Async Stock Quote RPC

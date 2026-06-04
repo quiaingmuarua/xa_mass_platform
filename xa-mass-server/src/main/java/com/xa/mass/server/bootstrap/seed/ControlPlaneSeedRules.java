@@ -1,14 +1,13 @@
-package com.xa.mass.api.sample;
+package com.xa.mass.server.bootstrap.seed;
 
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
 
 import java.util.List;
 
-public class SampleRuleBootstrapRequest {
-
+final class ControlPlaneSeedRules {
     private List<RuleDefinition> rules = List.of();
 
-    public List<RuleDefinition> getRules() {
+    List<RuleDefinition> getRules() {
         return rules;
     }
 

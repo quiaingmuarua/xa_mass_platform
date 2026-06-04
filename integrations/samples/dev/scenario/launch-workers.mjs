@@ -15,12 +15,9 @@ const baseUrl = normalizeBaseUrl(args.baseUrl ?? process.env.MASS_BASE_URL ?? "h
 const wsUrl = args.wsUrl ?? process.env.MASS_WS_URL ?? "ws://127.0.0.1:18088/ws";
 const nodeBin = process.env.NODE_BIN ?? process.execPath;
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
-const bootstrapConfigPath = resolve(repoRoot, "integrations/samples/dev/scenario/bootstrap.json");
-const ruleConfigPath = resolve(repoRoot, "integrations/samples/dev/scenario/rules.json");
 const workerConfigPath = resolve(repoRoot, "integrations/samples/dev/scenario/workers.json");
 const taskConfigPath = resolve(repoRoot, "integrations/samples/dev/scenario/tasks.json");
 const taskSubmitterKey = process.env.MASS_TASK_SUBMITTER_KEY ?? "crawler-submitter-key";
-const bootstrapKey = process.env.SAMPLE_BOOTSTRAP_KEY ?? "dev-bootstrap-key";
 
 const children = [];
 let shuttingDown = false;
@@ -35,17 +32,14 @@ main().catch(async (error) => {
 });
 
 async function main() {
-  const bootstrapSpec = expandBootstrapSpec(await readJson(bootstrapConfigPath));
-  const ruleSpec = await readJson(ruleConfigPath);
   const workerSpecs = expandWorkerSpecs(await readJson(workerConfigPath));
   const taskSpecs = expandTaskSpecs(await readJson(taskConfigPath));
   const managedWorkerSpecs = workerSpecs.filter((spec) => spec.startMode !== "api-online");
   const apiOnlineWorkerSpecs = workerSpecs.filter((spec) => spec.startMode === "api-online");
   const approvedTaskSpecs = taskSpecs.filter((spec) => spec.approve === true);
   const stagedTaskSpecs = taskSpecs.filter((spec) => spec.approve !== true);
-  await bootstrapCatalog(bootstrapSpec);
-  await bootstrapRules(ruleSpec);
   console.log(`[sample-launcher] mode=${args.registerOnly ? "register-only" : "launch"} baseUrl=${baseUrl} wsUrl=${wsUrl}`);
+  console.log("[sample-launcher] using initialized server catalog, rules, and credentials");
   console.log(`[sample-launcher] registering ${workerSpecs.length} sample workers`);
   for (const spec of managedWorkerSpecs) {
     await registerWorker(spec);
@@ -78,16 +72,6 @@ async function main() {
   process.on("SIGINT", () => void shutdown(0));
   process.on("SIGTERM", () => void shutdown(0));
   keepAliveTimer = setInterval(() => {}, 60_000);
-}
-
-async function bootstrapCatalog(spec) {
-  const response = await post("/sample-api/bootstrap/catalog", bootstrapKey, spec, "X-Sample-Bootstrap-Key");
-  console.log(`[sample-launcher] bootstrapped catalog: ${JSON.stringify(response.data)}`);
-}
-
-async function bootstrapRules(spec) {
-  const response = await post("/sample-api/bootstrap/rules", bootstrapKey, spec, "X-Sample-Bootstrap-Key");
-  console.log(`[sample-launcher] bootstrapped rules: ${JSON.stringify(response.data)}`);
 }
 
 function startWorker(spec) {
@@ -321,18 +305,6 @@ function chunks(items, chunkSize) {
     result.push(items.slice(index, index + normalizedChunkSize));
   }
   return result;
-}
-
-function expandBootstrapSpec(spec) {
-  if (!spec || typeof spec !== "object") {
-    return {};
-  }
-  return {
-    ...spec,
-    events: Array.isArray(spec.events) ? spec.events.flatMap((entry) => expandCountedSpec(entry)) : spec.events,
-    projects: Array.isArray(spec.projects) ? spec.projects.flatMap((entry) => expandCountedSpec(entry)) : spec.projects,
-    submitters: Array.isArray(spec.submitters) ? spec.submitters.flatMap((entry) => expandCountedSpec(entry)) : spec.submitters,
-  };
 }
 
 function expandWorkerSpecs(specs) {

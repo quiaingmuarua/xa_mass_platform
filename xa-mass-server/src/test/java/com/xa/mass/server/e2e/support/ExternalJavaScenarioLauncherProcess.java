@@ -35,7 +35,7 @@ public final class ExternalJavaScenarioLauncherProcess implements AutoCloseable 
                                                             String taskApiKey,
                                                             String taskCommandApiKey,
                                                             long idleTimeoutMs) throws Exception {
-        return start(baseUrl, null, scenarioDir, taskApiKey, taskCommandApiKey, idleTimeoutMs, false);
+        return start(baseUrl, null, scenarioDir, taskApiKey, taskCommandApiKey, idleTimeoutMs);
     }
 
     public static ExternalJavaScenarioLauncherProcess start(String baseUrl,
@@ -44,16 +44,6 @@ public final class ExternalJavaScenarioLauncherProcess implements AutoCloseable 
                                                             String taskApiKey,
                                                             String taskCommandApiKey,
                                                             long idleTimeoutMs) throws Exception {
-        return start(baseUrl, webSocketUrl, scenarioDir, taskApiKey, taskCommandApiKey, idleTimeoutMs, false);
-    }
-
-    public static ExternalJavaScenarioLauncherProcess start(String baseUrl,
-                                                            String webSocketUrl,
-                                                            Path scenarioDir,
-                                                            String taskApiKey,
-                                                            String taskCommandApiKey,
-                                                            long idleTimeoutMs,
-                                                            boolean skipDevBootstrap) throws Exception {
         Objects.requireNonNull(baseUrl, "baseUrl");
         Objects.requireNonNull(scenarioDir, "scenarioDir");
         Objects.requireNonNull(taskApiKey, "taskApiKey");
@@ -80,9 +70,6 @@ public final class ExternalJavaScenarioLauncherProcess implements AutoCloseable 
         command.add(String.valueOf(idleTimeoutMs));
         command.add("--max-polling-workers");
         command.add("1");
-        if (skipDevBootstrap) {
-            command.add("--skip-dev-bootstrap");
-        }
         ProcessBuilder processBuilder = new ProcessBuilder(command);
         processBuilder.redirectErrorStream(true);
         processBuilder.directory(resolveRepoRoot().toFile());

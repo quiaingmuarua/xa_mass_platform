@@ -1,47 +1,55 @@
-package com.xa.mass.api.sample;
+package com.xa.mass.server.bootstrap.seed;
 
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
-public class SampleCatalogBootstrapRequest {
+final class ControlPlaneSeedCatalog {
+    private List<ProjectSeed> projects = List.of();
+    private List<EventSeed> events = List.of();
+    private List<SubmitterSeed> submitters = List.of();
 
-    private List<ProjectRegistration> projects = List.of();
-    private List<EventRegistration> events = List.of();
-    private List<SubmitterResource> submitters = List.of();
-
-    public List<ProjectRegistration> getProjects() {
+    List<ProjectSeed> getProjects() {
         return projects;
     }
 
-    public void setProjects(List<ProjectRegistration> projects) {
+    public void setProjects(List<ProjectSeed> projects) {
         this.projects = projects != null ? projects : List.of();
     }
 
-    public List<EventRegistration> getEvents() {
+    List<EventSeed> getEvents() {
         return events;
     }
 
-    public void setEvents(List<EventRegistration> events) {
+    public void setEvents(List<EventSeed> events) {
         this.events = events != null ? events : List.of();
     }
 
-    public List<SubmitterResource> getSubmitters() {
+    List<SubmitterSeed> getSubmitters() {
         return submitters;
     }
 
-    public void setSubmitters(List<SubmitterResource> submitters) {
+    public void setSubmitters(List<SubmitterSeed> submitters) {
         this.submitters = submitters != null ? submitters : List.of();
     }
 
-    public static class ProjectRegistration {
+    static final class ProjectSeed {
+        private int count = 1;
         private String code;
         private String name;
         private String description;
         private boolean enabled = true;
         private List<String> eventCodes = List.of();
 
-        public String getCode() {
+        int getCount() {
+            return count;
+        }
+
+        public void setCount(int count) {
+            this.count = count;
+        }
+
+        String getCode() {
             return code;
         }
 
@@ -49,7 +57,7 @@ public class SampleCatalogBootstrapRequest {
             this.code = code;
         }
 
-        public String getName() {
+        String getName() {
             return name;
         }
 
@@ -57,7 +65,7 @@ public class SampleCatalogBootstrapRequest {
             this.name = name;
         }
 
-        public String getDescription() {
+        String getDescription() {
             return description;
         }
 
@@ -65,7 +73,7 @@ public class SampleCatalogBootstrapRequest {
             this.description = description;
         }
 
-        public boolean isEnabled() {
+        boolean isEnabled() {
             return enabled;
         }
 
@@ -73,7 +81,7 @@ public class SampleCatalogBootstrapRequest {
             this.enabled = enabled;
         }
 
-        public List<String> getEventCodes() {
+        List<String> getEventCodes() {
             return eventCodes;
         }
 
@@ -82,7 +90,8 @@ public class SampleCatalogBootstrapRequest {
         }
     }
 
-    public static class EventRegistration {
+    static final class EventSeed {
+        private int count = 1;
         private String code;
         private String name;
         private String description;
@@ -92,7 +101,15 @@ public class SampleCatalogBootstrapRequest {
         private String defaultRoutingCode;
         private List<String> projectCodes = List.of();
 
-        public String getCode() {
+        int getCount() {
+            return count;
+        }
+
+        public void setCount(int count) {
+            this.count = count;
+        }
+
+        String getCode() {
             return code;
         }
 
@@ -100,7 +117,7 @@ public class SampleCatalogBootstrapRequest {
             this.code = code;
         }
 
-        public String getName() {
+        String getName() {
             return name;
         }
 
@@ -108,7 +125,7 @@ public class SampleCatalogBootstrapRequest {
             this.name = name;
         }
 
-        public String getDescription() {
+        String getDescription() {
             return description;
         }
 
@@ -116,7 +133,7 @@ public class SampleCatalogBootstrapRequest {
             this.description = description;
         }
 
-        public List<String> getPayloadTypes() {
+        List<String> getPayloadTypes() {
             return payloadTypes;
         }
 
@@ -124,7 +141,7 @@ public class SampleCatalogBootstrapRequest {
             this.payloadTypes = payloadTypes != null ? payloadTypes : List.of();
         }
 
-        public List<String> getTaskModes() {
+        List<String> getTaskModes() {
             return taskModes;
         }
 
@@ -132,7 +149,7 @@ public class SampleCatalogBootstrapRequest {
             this.taskModes = taskModes != null ? taskModes : List.of();
         }
 
-        public boolean isEnabled() {
+        boolean isEnabled() {
             return enabled;
         }
 
@@ -140,7 +157,7 @@ public class SampleCatalogBootstrapRequest {
             this.enabled = enabled;
         }
 
-        public String getDefaultRoutingCode() {
+        String getDefaultRoutingCode() {
             return defaultRoutingCode;
         }
 
@@ -148,7 +165,7 @@ public class SampleCatalogBootstrapRequest {
             this.defaultRoutingCode = defaultRoutingCode;
         }
 
-        public List<String> getProjectCodes() {
+        List<String> getProjectCodes() {
             return projectCodes;
         }
 
@@ -157,7 +174,8 @@ public class SampleCatalogBootstrapRequest {
         }
     }
 
-    public static class SubmitterResource {
+    static final class SubmitterSeed {
+        private int count = 1;
         private String principalId;
         private String credential;
         private String keyPrefix;
@@ -169,7 +187,15 @@ public class SampleCatalogBootstrapRequest {
         private boolean enabled = true;
         private Map<String, String> attributes = Collections.emptyMap();
 
-        public String getPrincipalId() {
+        int getCount() {
+            return count;
+        }
+
+        public void setCount(int count) {
+            this.count = count;
+        }
+
+        String getPrincipalId() {
             return principalId;
         }
 
@@ -177,7 +203,7 @@ public class SampleCatalogBootstrapRequest {
             this.principalId = principalId;
         }
 
-        public String getCredential() {
+        String getCredential() {
             return credential;
         }
 
@@ -185,7 +211,7 @@ public class SampleCatalogBootstrapRequest {
             this.credential = credential;
         }
 
-        public String getKeyPrefix() {
+        String getKeyPrefix() {
             return keyPrefix;
         }
 
@@ -193,7 +219,7 @@ public class SampleCatalogBootstrapRequest {
             this.keyPrefix = keyPrefix;
         }
 
-        public String getUserId() {
+        String getUserId() {
             return userId;
         }
 
@@ -201,7 +227,7 @@ public class SampleCatalogBootstrapRequest {
             this.userId = userId;
         }
 
-        public String getProjectScope() {
+        String getProjectScope() {
             return projectScope;
         }
 
@@ -209,7 +235,7 @@ public class SampleCatalogBootstrapRequest {
             this.projectScope = projectScope;
         }
 
-        public List<String> getPermissions() {
+        List<String> getPermissions() {
             return permissions;
         }
 
@@ -217,7 +243,7 @@ public class SampleCatalogBootstrapRequest {
             this.permissions = permissions != null ? permissions : List.of();
         }
 
-        public List<String> getProjectScopes() {
+        List<String> getProjectScopes() {
             return projectScopes;
         }
 
@@ -225,7 +251,7 @@ public class SampleCatalogBootstrapRequest {
             this.projectScopes = projectScopes != null ? projectScopes : List.of();
         }
 
-        public List<String> getEventScopes() {
+        List<String> getEventScopes() {
             return eventScopes;
         }
 
@@ -233,7 +259,7 @@ public class SampleCatalogBootstrapRequest {
             this.eventScopes = eventScopes != null ? eventScopes : List.of();
         }
 
-        public boolean isEnabled() {
+        boolean isEnabled() {
             return enabled;
         }
 
@@ -241,7 +267,7 @@ public class SampleCatalogBootstrapRequest {
             this.enabled = enabled;
         }
 
-        public Map<String, String> getAttributes() {
+        Map<String, String> getAttributes() {
             return attributes;
         }
 

@@ -104,14 +104,11 @@ class ServerMainSourceArchitectureGuardTest {
                 "com/xa/mass/server/bootstrap/ControlConsoleScenarioBootstrapDataProvider.java");
         Path configuration = SERVER_MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/server/ControlConsoleScenarioBootstrapConfiguration.java");
-        String configurationSource = Files.readString(configuration, StandardCharsets.UTF_8);
 
         assertTrue(!Files.exists(provider),
                 "control-console task/worker scenario data must live outside server main source");
-        assertTrue(!configurationSource.contains("loadInto("),
-                "control-console server bootstrap must not call scenario data loadInto from startup");
-        assertTrue(!configurationSource.contains("MassBootstrapDataProvider"),
-                "control-console server bootstrap must not register a scenario MassBootstrapDataProvider");
+        assertTrue(!Files.exists(configuration),
+                "control-console scenario metadata must use explicit control-plane seed/import, not dev startup configuration");
     }
 
     @Test
@@ -244,26 +241,45 @@ class ServerMainSourceArchitectureGuardTest {
     }
 
     @Test
-    void sampleBootstrapIsProdSelectableButNotProdDefault() throws IOException {
+    void sampleBootstrapHttpIsNotActiveServerApi() throws IOException {
         Path repoRoot = Path.of("..").toAbsolutePath().normalize();
         Path serverController = SERVER_MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/api/sample/SampleBootstrapController.java");
         Path workerPackController = repoRoot.resolve(
                 "integrations/xa-mass-worker-pack/src/main/java/com/xa/mass/workerpack/sample/api/SampleBootstrapController.java");
-        String controllerSource = Files.readString(serverController, StandardCharsets.UTF_8);
         String devConfig = Files.readString(Path.of("src/main/resources/application-dev.yml"), StandardCharsets.UTF_8);
         String prodConfig = Files.readString(Path.of("src/main/resources/application-prod.yml"), StandardCharsets.UTF_8);
+        List<String> violations = new ArrayList<>();
+        try (Stream<Path> paths = Files.walk(SERVER_MAIN_SOURCE_ROOT)) {
+            paths.filter(Files::isRegularFile)
+                    .filter(path -> path.toString().endsWith(".java"))
+                    .forEach(path -> {
+                        try {
+                            String source = Files.readString(path, StandardCharsets.UTF_8);
+                            if (source.contains("/sample-api/bootstrap")
+                                    || source.contains("X-Sample-Bootstrap-Key")
+                                    || source.contains("sample.bootstrap")) {
+                                violations.add(path + " contains retired sample bootstrap HTTP vocabulary");
+                            }
+                        } catch (IOException e) {
+                            violations.add(path + " could not be read: " + e.getMessage());
+                        }
+                    });
+        }
 
+        assertTrue(!Files.exists(serverController),
+                "sample bootstrap HTTP controller must not remain active server API");
         assertTrue(!Files.exists(workerPackController),
                 "sample bootstrap HTTP controller must stay server-owned, not worker-pack-owned");
-        assertTrue(!controllerSource.contains("@Profile("),
-                "sample bootstrap must not create dev/prod code-path forks; use property selection instead");
-        assertTrue(controllerSource.contains("@ConditionalOnProperty(prefix = \"sample.bootstrap\", name = \"enabled\""),
-                "sample bootstrap must remain property-gated rather than becoming an unconditional prod endpoint");
-        assertTrue(devConfig.contains("bootstrap:\n    enabled: true"),
-                "dev profile should keep sample bootstrap enabled for the scenario launcher");
-        assertTrue(prodConfig.contains("bootstrap:\n    enabled: false"),
-                "prod profile must not expose sample bootstrap unless explicitly enabled");
+        assertTrue(violations.isEmpty(),
+                "server main source must not expose retired sample bootstrap HTTP path:\n"
+                        + String.join("\n", violations));
+        assertTrue(!devConfig.contains("sample.bootstrap")
+                        && !devConfig.contains("bootstrap:\n    enabled: true"),
+                "dev profile must not enable retired sample bootstrap HTTP");
+        assertTrue(!prodConfig.contains("sample.bootstrap")
+                        && !prodConfig.contains("bootstrap:\n    enabled: false"),
+                "prod profile must not carry retired sample bootstrap HTTP config");
     }
 
     @Test

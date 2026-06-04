@@ -71,8 +71,7 @@ class JavaScenarioLauncherBlackBoxIntegrationTest extends ReviewReadModelSampleE
                 scenarioDir,
                 TASK_API_KEY,
                 TASK_COMMAND_API_KEY,
-                500L,
-                true)) {
+                500L)) {
             output = launcher.awaitExit(Duration.ofSeconds(90), "Java scenario launcher");
         }
 
@@ -117,8 +116,7 @@ class JavaScenarioLauncherBlackBoxIntegrationTest extends ReviewReadModelSampleE
                 scenarioDir,
                 TASK_API_KEY,
                 TASK_COMMAND_API_KEY,
-                500L,
-                true)) {
+                500L)) {
             output = launcher.awaitExit(Duration.ofSeconds(90), "Java scenario launcher websocket");
         }
 

@@ -1,7 +1,15 @@
+> Archived: 2026-06-04
+>
+> Current truth owner: `xa-mass-server/README.md`, `integrations/README.md`,
+> `sdk/xa-mass-java-sdk/README.md`,
+> `sdk/xa-mass-java-sdk/EXTERNAL_SDK_QUICKSTART.md`, and current code/tests.
+>
+> Do not use this archived roadmap as current behavior proof.
+
 # Control-Plane Seed And Sample Bootstrap Retirement Roadmap
 
-Status: proposed successor to
-`EXTERNAL_WORKER_REAL_REGISTRATION_ONBOARDING_ROADMAP.md`.
+Status: implemented mainline on 2026-06-04; archive after residue scan and
+handoff link cleanup.
 
 This roadmap retires the remaining dev-only sample bootstrap API and replaces
 it with explicit new-environment control-plane seed/import. It is the next
@@ -44,8 +52,8 @@ API key -> WorkerGroup -> AdapterNode -> NodeGroupBinding -> Worker
 - `doc/INFRA_TRUTH_LAYERS.md`
 - `doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md`
 - `platform_infra/README.md`
-- `roadmap/EXTERNAL_WORKER_REAL_REGISTRATION_ONBOARDING_ROADMAP.md`
-- `roadmap/EXTERNAL_WORKER_REAL_REGISTRATION_ONBOARDING_INVENTORY.md`
+- `doc/archive/integrations/2026-06-04_EXTERNAL_WORKER_REAL_REGISTRATION_ONBOARDING_ROADMAP.md`
+- `doc/archive/integrations/2026-06-04_EXTERNAL_WORKER_REAL_REGISTRATION_ONBOARDING_INVENTORY.md`
 - `sdk/xa-mass-java-sdk/EXTERNAL_SDK_QUICKSTART.md`
 - `integrations/README.md`
 - `integrations/xa-mass-scenario-launcher/README.md`
@@ -54,36 +62,35 @@ API key -> WorkerGroup -> AdapterNode -> NodeGroupBinding -> Worker
 
 ## Current Code Facts
 
-- `SampleBootstrapController` is still active server main source under
-  `xa-mass-server/src/main/java/com/xa/mass/api/sample`.
-- `SampleBootstrapController` writes event definitions, projects, submitters,
-  and rules through `MassSdkApplication` and is exposed as
-  `/sample-api/bootstrap/catalog` plus `/sample-api/bootstrap/rules` when
-  `sample.bootstrap.enabled=true`.
-- `DevBootstrapClient` is still active scenario-launcher main source and calls
-  `/sample-api/bootstrap/**` using `X-Sample-Bootstrap-Key`.
-- `application-prod.yml` now uses `mass.storage.mode=jdbc-sqlite`,
-  Redis runtime/delivery/presence, and `sample.bootstrap.enabled=false`.
-- `application-dev.yml` still uses H2/memory runtime and enables
-  `sample.bootstrap.enabled=true`.
-- `ControlConsoleScenarioBootstrapConfiguration` is a dev-profile
-  `CommandLineRunner` that seeds probe projects/events/submitters through
-  `MassSdkApplication`. It is not HTTP bootstrap, but it is still startup data
-  injection and must be converted to the same explicit seed/import contract or
-  moved out of mainline startup. It must not survive as a hidden second seed
-  path.
-- `ServerMainSourceArchitectureGuardTest.sampleBootstrapIsProdSelectableButNotProdDefault`
-  currently protects the old transitional rule: property-gated sample
-  bootstrap may exist and dev enables it.
-- `CleanServerStartupIntegrationTest` currently proves no task/worker runtime
-  truth is created at startup, but it must also be updated to prove seed/import
-  disabled startup does not create sample catalog, project, submitter, or rule
-  metadata.
-- `platform_infra/mass-storage-jdbc` already has SQLite dialect/runtime tests
-  for task shell and rule truth; current evidence does not prove every seed
-  target has its final SQLite-backed control-plane owner.
-- Worker-pack already has SDK-backed capability proofs, but must keep raw
-  platform API clients and bootstrap HTTP surfaces out of production code.
+- `SampleBootstrapController`, `SampleCatalogBootstrapRequest`, and
+  `SampleRuleBootstrapRequest` have been deleted from server main source.
+- `DevBootstrapClient`, `--skip-dev-bootstrap`, `--dev-bootstrap`,
+  `MASS_SCENARIO_DEV_BOOTSTRAP`, `SAMPLE_BOOTSTRAP_KEY`, and bootstrap-key
+  scenario-launcher options have been deleted.
+- `sample.bootstrap.*`, `/sample-api/bootstrap/**`, and
+  `X-Sample-Bootstrap-Key` are removed from active server and integration
+  mainline.
+- `ControlConsoleScenarioBootstrapConfiguration` has been deleted. Dev startup
+  no longer seeds control-console/sample metadata by default.
+- `ControlPlaneSeedImportConfiguration` provides an explicit default-off
+  `mass.control-plane.seed.*` runner for dev/prod profiles.
+- `ControlPlaneSeedImporter` reads catalog/rules resources and applies events,
+  projects, submitters, and rules through `MassSdkApplication`.
+- `application-prod.yml` uses `mass.storage.mode=jdbc-sqlite` plus Redis
+  runtime/delivery/presence. `application-dev.yml` keeps H2/memory runtime as
+  an allowed infra difference.
+- Dev/prod API parity is protected by
+  `ServerMainSourceArchitectureGuardTest.sampleBootstrapHttpIsNotActiveServerApi`.
+- `CleanServerStartupIntegrationTest` proves dev startup with seed/import
+  disabled creates no sample/control-console metadata and no task/worker
+  runtime truth.
+- `ControlPlaneSeedImportIntegrationTest` proves explicit seed/import applies
+  event, project, submitter, and rule metadata.
+- SQLite remains the lightweight control-plane storage direction, but this
+  roadmap does not claim complete SQLite persistence for every seed target.
+  The inventory records which targets remain current readback proof only.
+- Worker-pack remains an SDK-backed capability/runtime adopter and owns no raw
+  platform or bootstrap HTTP surface in production source.
 
 ## Hard Rules
 
@@ -180,6 +187,9 @@ Acceptance:
 - Inventory names which current source replaces `SampleBootstrapController`.
 - Inventory states whether dev H2 remains allowed or whether SQLite becomes
   the dev/prod control-plane default in this roadmap.
+- If the inventory selects SQLite as the dev control-plane default, record that
+  as a named CPSR-2 scope extension with explicit persistence proof
+  expectations. Do not let an inventory decision silently expand CPSR-2.
 - Inventory names the first tests that must move off sample HTTP.
 
 Verification:
@@ -250,6 +260,9 @@ Scope:
 - Update clean startup proof so seed/import disabled startup creates no sample
   catalog, project, submitter, or rule metadata. This is separate from the
   existing no task/worker/runtime truth assertion.
+- The clean startup proof must cover the dev profile path that currently loads
+  `ControlConsoleScenarioBootstrapConfiguration`; dev startup with seed/import
+  disabled must not create control-console/sample metadata by default.
 - Add enabled-import proof showing the same metadata appears only after
   explicit seed/import.
 - For every seed target, either prove SQLite restart readability or record in
@@ -262,6 +275,9 @@ Acceptance:
 - A clean startup without seed/import creates no task/worker/runtime truth.
 - A clean startup without seed/import creates no sample catalog, project,
   submitter, or rule metadata.
+- The no-metadata clean startup proof covers dev profile startup, not only
+  prod-like startup, because the current hidden seed residue is dev-profile
+  `CommandLineRunner` metadata injection.
 - Explicit seed/import prepares only control-plane metadata.
 - Explicit seed/import has per-target persistence evidence:
   events/projects/submitters/rules are readable after SQLite restart, or the
@@ -362,8 +378,10 @@ Goal: keep worker-pack as capability/runtime adopter, not platform API owner.
 Scope:
 
 - Scan worker-pack production source for raw `/worker-api/v1`,
-  `/sample-api/bootstrap`, `HttpClient` platform callers, and server MVC
-  controller packages.
+  `/sample-api/bootstrap`, `HttpClient` platform callers, and platform route
+  ownership such as `@RequestMapping("/worker-api/v1")` or
+  `@RequestMapping("/sample-api/bootstrap")`. Do not treat a generic
+  `@RestController` as a violation unless it exposes platform/bootstrap routes.
 - Move any protocol fixture that must remain into test/harness ownership, or
   delete it if it only demonstrates an obsolete path.
 - Add or extend an architecture guard proving worker-pack production code:
@@ -381,7 +399,7 @@ Verification:
 
 ```powershell
 ./mvnw -pl integrations/xa-mass-worker-pack,xa-mass-server -am "-Dtest=*WorkerPack*,*ArchitectureGuard*" "-Dsurefire.failIfNoSpecifiedTests=false" test
-rg -n "/worker-api/v1|/sample-api/bootstrap|RestController|HttpClient|SampleBootstrap" integrations/xa-mass-worker-pack/src/main -g "*.java" -g "*.md"
+rg -n "/worker-api/v1|/sample-api/bootstrap|@RequestMapping\\(\\\"/worker-api/v1|@RequestMapping\\(\\\"/sample-api/bootstrap|HttpClient|SampleBootstrap" integrations/xa-mass-worker-pack/src/main -g "*.java" -g "*.md"
 ```
 
 ## CPSR-6: Owner Docs, Guards, And Residue Scan
@@ -404,8 +422,8 @@ Scope:
   - no scenario-launcher sample bootstrap client,
   - no worker-pack raw API surface,
   - dev/prod API contract parity.
-- Archive `EXTERNAL_WORKER_REAL_REGISTRATION_ONBOARDING_ROADMAP.md` and its
-  inventory only after this successor roadmap owns all remaining residue.
+- Archived `EXTERNAL_WORKER_REAL_REGISTRATION_ONBOARDING_ROADMAP.md` and its
+  inventory after this successor roadmap owned the remaining residue.
 
 Verification:
 

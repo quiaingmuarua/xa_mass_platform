@@ -12,12 +12,8 @@ engine, worker-pack, or transport ownership.
 ## Current Scope
 
 - reads the existing scenario JSON files under `integrations/samples/dev/scenario`
-- can bootstrap dev catalog and runtime rules through server-owned sample-only
-  `/sample-api/bootstrap/**` endpoints for local development; these endpoints
-  are enabled by default only in the server `dev` profile
-- can skip dev bootstrap with `--skip-dev-bootstrap` so real-proof runs use
-  pre-created catalog/rules/credentials and still exercise the same SDK-backed
-  worker topology and task paths
+- assumes catalog, rules, and submitter credentials already exist through
+  explicit server seed/import or test fixtures
 - registers WorkerGroups, AdapterNodes, NodeGroupBindings, and Workers through
   public worker APIs via `xa-mass-java-sdk`
 - creates tasks, appends items, seals, and approves through public task APIs via
@@ -28,8 +24,8 @@ engine, worker-pack, or transport ownership.
 - launch mode auto-approves staged tasks whose `sharedConfig.workerGroupId`
   matches a started polling worker group, so the default command can execute
   the polling scenario
-- `--register-only` keeps the old seed-and-exit behavior for control-plane-only
-  setup
+- `--register-only` registers worker topology and tasks, then exits without
+  starting worker sessions
 
 ## Usage
 
@@ -46,9 +42,6 @@ Options:
 - `--task-api-key`: default task API key. Default: `MASS_TASK_SUBMITTER_KEY` or `crawler-submitter-key`
 - `--task-command-api-key`: task command API key for seal/approve. Default: `MASS_TASK_COMMAND_KEY` or `public-probe-ops-key`
 - `--worker-api-key`: optional worker API key override. Default: each worker spec's `workerKey`
-- `--bootstrap-key`: dev bootstrap key. Default: `SAMPLE_BOOTSTRAP_KEY` or `dev-bootstrap-key`
-- `--skip-dev-bootstrap`: do not call sample-only `/sample-api/bootstrap/**`; use pre-created catalog/rules
-- `--dev-bootstrap[=true|false]`: explicitly enable or disable dev bootstrap. Default: `MASS_SCENARIO_DEV_BOOTSTRAP` or `true`
 - `--scenario-dir`: scenario JSON directory. Default: `integrations/samples/dev/scenario`
 - `--idle-timeout-ms`: exit launch mode after continuous idle time once launcher-managed polling tasks are terminal. Default: `60000`; `0` disables idle exit
 - `--max-polling-workers`: maximum polling workers to start in launch mode. Default: `25`; `0` disables the cap
@@ -57,8 +50,7 @@ Options:
 ## Boundary
 
 - `xa-mass-java-sdk` stays a pure external API client.
-- dev-only bootstrap helpers stay local to this module and are optional; they
-  are not a production prerequisite for WorkerGroup, AdapterNode, Worker, or
-  task registration.
+- catalog/rule/credential preparation is not owned by this module; use
+  server-owned seed/import or real control-plane setup before running it.
 - `xa-mass-worker-pack` owns worker capabilities, not task creation or scenario
   orchestration.

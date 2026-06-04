@@ -1,5 +1,14 @@
 # External Worker Real Registration Onboarding Inventory
 
+Archived: 2026-06-04.
+
+Current truth owner: `CONTROL_PLANE_SEED_AND_SAMPLE_BOOTSTRAP_RETIREMENT_ROADMAP.md`,
+`xa-mass-server/README.md`, `integrations/README.md`, and current code/tests.
+
+This document is historical context only. Do not use it as proof of current
+sample bootstrap, scenario-launcher, seed/import, or worker registration
+behavior.
+
 Status: current code inventory for
 `EXTERNAL_WORKER_REAL_REGISTRATION_ONBOARDING_ROADMAP.md`.
 

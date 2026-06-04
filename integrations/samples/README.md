@@ -31,8 +31,8 @@ Rules:
 For the dev Spring Boot shell there is now a sample supervisor script at
 `integrations/samples/dev/scenario/launch-workers.mjs`.
 
-- it bootstraps sample project/event/submitter catalog through `/sample-api/bootstrap/catalog`
-- it replaces runtime default rules through `/sample-api/bootstrap/rules`
+- it assumes project/event/submitter catalog and runtime default rules were
+  prepared through server-owned seed/import or an equivalent test fixture
 - it registers the curated sample worker set through `/worker-api/v1/**`
 - it creates curated sample tasks through `POST /api/v1/tasks` plus explicit item append
 - it starts the external sample worker processes
@@ -47,9 +47,10 @@ node integrations/samples/dev/scenario/launch-workers.mjs --register-only
 ```
 
 Use this when you want the console populated without starting managed realtime
-sample worker processes. It registers catalog metadata, rules, WorkerGroups,
-adapter nodes, workers, online API-polling workers, and sample tasks through
-public HTTP APIs, then exits.
+sample worker processes. It registers WorkerGroups, adapter nodes, workers,
+online API-polling workers, and sample tasks through public HTTP APIs, then
+exits. Catalog metadata and rules are explicit seed/import inputs, not launcher
+writes.
 
 Full external sample launch:
 
@@ -91,8 +92,9 @@ Current dev scenario shape:
 - 100 polling phone-device workers are registered and marked online through the
   public worker API. They model a larger device fleet for matching review
   without starting 100 local processes.
-- `bootstrap.json` defines dev-only submitter credentials, including per-worker
-  `worker:poll` credentials for the 100 generated polling workers.
+- `bootstrap.json` is the explicit seed/import catalog source for dev-only
+  submitter credentials, including per-worker `worker:poll` credentials for the
+  100 generated polling workers.
 - `tasks.json` creates normal approved realtime sample tasks plus a sealed but
   unapproved `deviceProbe/probe.phone.metadata` task with 1000 generated items.
 - The phone-device task uses

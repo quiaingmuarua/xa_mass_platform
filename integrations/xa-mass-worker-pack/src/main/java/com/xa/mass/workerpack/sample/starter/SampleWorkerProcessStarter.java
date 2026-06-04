@@ -44,9 +44,6 @@ public class SampleWorkerProcessStarter {
     @Value("${sample.worker.launcher-script:integrations/samples/dev/scenario/launch-workers.mjs}")
     private String launcherScript;
 
-    @Value("${sample.bootstrap.api-key:dev-bootstrap-key}")
-    private String bootstrapApiKey;
-
     private volatile Process launcherProcess;
     private volatile Thread outputPump;
 
@@ -72,7 +69,6 @@ public class SampleWorkerProcessStarter {
             processBuilder.redirectErrorStream(true);
             processBuilder.environment().put("MASS_BASE_URL", baseUrl);
             processBuilder.environment().put("MASS_WS_URL", wsUrl);
-            processBuilder.environment().put("SAMPLE_BOOTSTRAP_KEY", bootstrapApiKey);
             processBuilder.environment().putIfAbsent("NODE_BIN", nodeBin);
             launcherProcess = processBuilder.start();
             outputPump = new Thread(this::pumpOutput, "sample-worker-launcher-output");

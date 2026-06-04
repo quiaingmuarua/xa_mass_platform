@@ -10,8 +10,10 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(
@@ -24,13 +26,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "mass.mock.bootstrap.register-dev-catalog=false",
                 "mass.mock.bootstrap.register-dev-submitters=false",
                 "mass.mock.bootstrap.load-rules=false",
-                "mass.control-plane.seed.enabled=false"
+                "mass.control-plane.seed.enabled=true",
+                "mass.control-plane.seed.catalog-location=file:../integrations/samples/dev/scenario/bootstrap.json",
+                "mass.control-plane.seed.rules-location=file:../integrations/samples/dev/scenario/rules.json"
         }
 )
 @ActiveProfiles("dev")
 @DirtiesContext
 @Tag("secondary-proof")
-public class CleanServerStartupIntegrationTest extends AbstractSampleE2eTest {
+public class ControlPlaneSeedImportIntegrationTest extends AbstractSampleE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
 
@@ -40,18 +44,29 @@ public class CleanServerStartupIntegrationTest extends AbstractSampleE2eTest {
     }
 
     @Test
-    void devStartupWithSeedDisabledCreatesNoMetadataOrWorkload() {
-        assertNotNull(app);
-        assertNull(app.getProject("crawlerApp"));
-        assertNull(app.getEvent("crawler.fetch-page"));
-        assertTrue(app.listSubmitters().isEmpty(),
-                "clean dev startup must not create submitter credentials");
+    void explicitSeedImportCreatesControlPlaneMetadataOnly() {
+        assertNotNull(app.getProject("crawlerApp"));
+        assertNotNull(app.getEvent("stock.quote.fetch"));
+        assertNotNull(app.getSubmitter("crawler-submitter"));
+        assertNotNull(app.getSubmitter("phone-device-probe-poll-sg-001"));
+        assertEquals("fp-sg-alpha",
+                app.getSubmitter("phone-device-probe-poll-sg-001").getAttributes().get("fingerprintProfile"));
+
+        List<String> ruleIds = app.listDefaultRules().stream()
+                .map(rule -> String.valueOf(rule.get("ruleId")))
+                .sorted()
+                .toList();
+        assertEquals(List.of(
+                "basic_worker_check",
+                "routing_country_match",
+                "target_worker_attributes_check"
+        ), ruleIds);
 
         assertTrue(app.listTaskSummaries(0, 10).isEmpty(),
-                "clean dev startup must not create task shells");
+                "seed/import must not create task shells");
         assertTrue(app.getAllWorkers().isEmpty(),
-                "clean dev startup must not register workers");
+                "seed/import must not register workers");
         assertTrue(app.listWorkerGroups().isEmpty(),
-                "clean dev startup must not declare WorkerGroups");
+                "seed/import must not declare WorkerGroups");
     }
 }

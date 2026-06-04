@@ -198,10 +198,10 @@ Use the real Boot shell plus the sample/launcher READMEs:
 - external Java SDK: [README.md](./README.md)
 - Java SDK launcher: [../../integrations/xa-mass-scenario-launcher/README.md](../../integrations/xa-mass-scenario-launcher/README.md)
 
-For real external-registration proof, run the Java SDK launcher with
-`--skip-dev-bootstrap` after catalog, rules, and API keys are created through
-the normal host setup. The sample-only `/sample-api/bootstrap/**` endpoints are
-local development fixtures, not SDK prerequisites.
+For real external-registration proof, prepare catalog, rules, and API keys
+through server-owned seed/import or the normal host setup, then run the Java SDK
+launcher. The launcher does not own server metadata preparation; it proves
+SDK-backed WorkerGroup, AdapterNode, Worker, task, and worker-session paths.
 
 For a CLI-only public-contract smoke against an already running dev server, use:
 

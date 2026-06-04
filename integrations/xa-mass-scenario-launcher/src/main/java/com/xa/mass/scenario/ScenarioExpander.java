@@ -11,26 +11,6 @@ final class ScenarioExpander {
     private ScenarioExpander() {
     }
 
-    @SuppressWarnings("unchecked")
-    static Map<String, Object> expandBootstrapSpec(Map<String, Object> spec) {
-        Map<String, Object> result = new LinkedHashMap<>(spec == null ? Map.of() : spec);
-        for (String key : List.of("events", "projects", "submitters")) {
-            Object value = result.get(key);
-            if (value instanceof List<?> entries) {
-                List<Object> expanded = new ArrayList<>();
-                for (Object entry : entries) {
-                    if (entry instanceof Map<?, ?> map) {
-                        expanded.addAll(expandCountedSpec((Map<String, Object>) map));
-                    } else {
-                        expanded.add(entry);
-                    }
-                }
-                result.put(key, expanded);
-            }
-        }
-        return result;
-    }
-
     static List<WorkerScenarioSpec> expandWorkerSpecs(List<Map<String, Object>> specs, ObjectMapper objectMapper) {
         return expandSpecs(specs).stream()
                 .map(spec -> objectMapper.convertValue(spec, WorkerScenarioSpec.class))
