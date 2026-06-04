@@ -8,7 +8,7 @@ on:
       - "platform_infra/mass-runtime-api/**"
       - "platform_infra/mass-queue-primitives/**"
       - "xa-mass-engine/**"
-      - "xa-mass-sdk/**"
+      - "sdk/**"
       - "xa-mass-server/**"
       - ".github/workflows/redis-runtime.yml"
   pull_request:
@@ -18,7 +18,7 @@ on:
       - "platform_infra/mass-runtime-api/**"
       - "platform_infra/mass-queue-primitives/**"
       - "xa-mass-engine/**"
-      - "xa-mass-sdk/**"
+      - "sdk/**"
       - "xa-mass-server/**"
       - ".github/workflows/redis-runtime.yml"
   workflow_dispatch:

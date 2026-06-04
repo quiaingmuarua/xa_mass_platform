@@ -36,10 +36,12 @@ jobs:
         run: ./mvnw -B -pl integrations/xa-mass-worker-pack -am test
       - name: Compile xa-mass-testing (compilation gate)
         run: ./mvnw -q -pl xa-mass-testing -am -DskipTests compile
-      - name: Check xa-mass-sdk public API compatibility
+      - name: Check SDK public API compatibility
         if: ${{ vars.XA_MASS_SDK_API_BASELINE_VERSION != '' }}
         run: >-
-          ./mvnw -q -pl xa-mass-sdk -am
+          ./mvnw -q
+          -pl xa-mass-kernel-spi,xa-mass-worker-runtime,sdk/xa-mass-public-contract,sdk/xa-mass-java-sdk,sdk/xa-mass-embedded-sdk-api,sdk/xa-mass-embedded-sdk
+          -am
           -DskipTests
           -Dmass.sdk.api.baselineVersion=${{ vars.XA_MASS_SDK_API_BASELINE_VERSION }}
           verify
