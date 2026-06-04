@@ -11,6 +11,7 @@ record ScenarioLauncherOptions(
         String taskCommandApiKey,
         String workerApiKey,
         String bootstrapKey,
+        boolean devBootstrapEnabled,
         Path scenarioDir,
         long idleTimeoutMs,
         int maxPollingWorkers,
@@ -32,6 +33,7 @@ record ScenarioLauncherOptions(
         String taskCommandApiKey = envOrDefault("MASS_TASK_COMMAND_KEY", DEFAULT_TASK_COMMAND_API_KEY);
         String workerApiKey = System.getenv("MASS_WORKER_API_KEY");
         String bootstrapKey = envOrDefault("SAMPLE_BOOTSTRAP_KEY", DEFAULT_BOOTSTRAP_KEY);
+        boolean devBootstrapEnabled = booleanEnvOrDefault("MASS_SCENARIO_DEV_BOOTSTRAP", true);
         Path scenarioDir = DEFAULT_SCENARIO_DIR;
         long idleTimeoutMs = longEnvOrDefault("MASS_SCENARIO_IDLE_TIMEOUT_MS", DEFAULT_IDLE_TIMEOUT_MS);
         int maxPollingWorkers = intEnvOrDefault("MASS_SCENARIO_MAX_POLLING_WORKERS", DEFAULT_MAX_POLLING_WORKERS);
@@ -44,6 +46,12 @@ record ScenarioLauncherOptions(
                 help = true;
             } else if ("--register-only".equals(arg)) {
                 registerOnly = true;
+            } else if ("--skip-dev-bootstrap".equals(arg)) {
+                devBootstrapEnabled = false;
+            } else if ("--dev-bootstrap".equals(arg)) {
+                devBootstrapEnabled = true;
+            } else if (arg.startsWith("--dev-bootstrap=")) {
+                devBootstrapEnabled = parseBoolean(arg.substring("--dev-bootstrap=".length()), "--dev-bootstrap");
             } else if ("--base-url".equals(arg)) {
                 baseUrl = requiredArg(args, index, arg);
                 index++;
@@ -106,6 +114,7 @@ record ScenarioLauncherOptions(
                 requireNonBlank(taskCommandApiKey, "taskCommandApiKey"),
                 normalizeOptional(workerApiKey),
                 requireNonBlank(bootstrapKey, "bootstrapKey"),
+                devBootstrapEnabled,
                 scenarioDir,
                 idleTimeoutMs,
                 maxPollingWorkers,
@@ -127,6 +136,8 @@ record ScenarioLauncherOptions(
                   --task-command-api-key <key> Task command API key for seal/approve. Default: MASS_TASK_COMMAND_KEY or public-probe-ops-key
                   --worker-api-key <key>       Optional worker API key override. Default: each worker spec's workerKey
                   --bootstrap-key <key>        Dev bootstrap key. Default: SAMPLE_BOOTSTRAP_KEY or dev-bootstrap-key
+                  --skip-dev-bootstrap         Do not call sample-only /sample-api/bootstrap/** endpoints; use pre-created catalog/rules.
+                  --dev-bootstrap[=true|false] Enable or disable dev bootstrap explicitly. Default: MASS_SCENARIO_DEV_BOOTSTRAP or true
                   --scenario-dir <path>        Scenario JSON directory. Default: integrations/samples/dev/scenario
                   --idle-timeout-ms <ms>       Exit after this much continuous idle time in launch mode. Default: 60000. Use 0 to disable.
                   --max-polling-workers <n>    Max polling workers to start in launch mode. Default: 25. Use 0 for no cap.
@@ -154,6 +165,21 @@ record ScenarioLauncherOptions(
     private static int intEnvOrDefault(String name, int defaultValue) {
         String value = System.getenv(name);
         return value == null || value.isBlank() ? defaultValue : parseInt(value, name);
+    }
+
+    private static boolean booleanEnvOrDefault(String name, boolean defaultValue) {
+        String value = System.getenv(name);
+        return value == null || value.isBlank() ? defaultValue : parseBoolean(value, name);
+    }
+
+    private static boolean parseBoolean(String value, String name) {
+        if ("true".equalsIgnoreCase(value) || "yes".equalsIgnoreCase(value) || "1".equals(value)) {
+            return true;
+        }
+        if ("false".equalsIgnoreCase(value) || "no".equalsIgnoreCase(value) || "0".equals(value)) {
+            return false;
+        }
+        throw new IllegalArgumentException(name + " must be true or false: " + value);
     }
 
     private static long parseLong(String value, String name) {

@@ -9,7 +9,7 @@ spring:
     port: 6379
     database: 0
   profiles:
-    active: local
+    default: dev
 
 server:
   port: 8088

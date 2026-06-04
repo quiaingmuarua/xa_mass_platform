@@ -51,6 +51,12 @@
             <scope>runtime</scope>
         </dependency>
         <dependency>
+            <groupId>org.xerial</groupId>
+            <artifactId>sqlite-jdbc</artifactId>
+            <version>3.45.3.0</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
             <groupId>com.xa.mass</groupId>
             <artifactId>mass-storage-api</artifactId>
             <version>${project.version}</version>

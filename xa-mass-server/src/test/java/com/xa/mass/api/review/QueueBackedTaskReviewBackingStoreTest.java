@@ -32,6 +32,14 @@ class QueueBackedTaskReviewBackingStoreTest {
         }
     }
 
+    @Test
+    void queuedMaterializerWorksWithSqliteReviewStoreBacking() throws Exception {
+        var db = java.nio.file.Files.createTempDirectory("xa-mass-review-sqlite").resolve("xa_mass.db");
+        try (JdbcStorageRuntime runtime = JdbcStorageRuntime.create(JdbcStorageMode.JDBC_SQLITE, "jdbc:sqlite:" + db, "", "")) {
+            assertQueuedMaterialization(new JdbcTaskReviewStore(runtime.dataSource()));
+        }
+    }
+
     private static void assertQueuedMaterialization(TaskReviewStore store) {
         TaskReviewReadModel readModel = new TaskReviewStoreTaskReviewReadModel(store);
         try (InProcessTaskReviewReportQueue queue = new InProcessTaskReviewReportQueue(

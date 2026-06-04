@@ -105,6 +105,9 @@ Every external worker path must preserve the same kernel behavior:
 
 Keep these rules:
 
+- server credentials may bind an API key to one worker through
+  `attributes.workerId`; when present, every worker registration, presence,
+  poll, result, report, command ack, and offline call must use that worker id
 - registration is not equivalent to being online
 - transport presence is not equivalent to matching eligibility
 - engine scheduling remains the only path that gives task work
@@ -194,6 +197,11 @@ Use the real Boot shell plus the sample/launcher READMEs:
 - per-sample commands: `integrations/samples/node/*/README.md`
 - external Java SDK: [README.md](./README.md)
 - Java SDK launcher: [../../integrations/xa-mass-scenario-launcher/README.md](../../integrations/xa-mass-scenario-launcher/README.md)
+
+For real external-registration proof, run the Java SDK launcher with
+`--skip-dev-bootstrap` after catalog, rules, and API keys are created through
+the normal host setup. The sample-only `/sample-api/bootstrap/**` endpoints are
+local development fixtures, not SDK prerequisites.
 
 For a CLI-only public-contract smoke against an already running dev server, use:
 

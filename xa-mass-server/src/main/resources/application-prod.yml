@@ -1,9 +1,22 @@
 # Production-like profile overrides for the verified server shell.
 mass:
+  storage:
+    mode: jdbc-sqlite
+    jdbc:
+      url: jdbc:sqlite:./data/xa-mass-sqlite/xa_mass.db
+      username:
+      password:
   runtime:
+    mode: redis
     event-handler-timeout-ms: 5000
     transport-max-pending-tasks: 20000
     event-max-pending-tasks: 5000
+  transport:
+    node-id: local-prod-server
+    delivery:
+      store: redis
+    presence:
+      store: redis
   websocket:
     port: 18088
     max-connections: 5000
@@ -23,3 +36,7 @@ logging:
     com.xa.mass.engine: INFO
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+sample:
+  bootstrap:
+    enabled: false

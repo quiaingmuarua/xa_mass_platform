@@ -5,6 +5,7 @@ import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.TestWorkerCandidateRows;
+import com.xa.mass.engine.runtime.scheduling.TaskDispatchIntent;
 import com.xa.mass.worker.runtime.evidence.WorkerGroupCapabilityView;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.worker.runtime.evidence.WorkerLoadSnapshot;
@@ -34,7 +35,7 @@ public class WorkerMatchContextTest {
         task.setSharedConfig(Map.of("routingCode", "us"));
         task.setStatus(TaskStatus.READY);
 
-        WorkerMatchContext context = new WorkerMatchContext(candidate(worker), task);
+        WorkerMatchContext context = new WorkerMatchContext(candidate(worker), task, dispatchIntent(task));
 
         assertEquals(Map.of("pool", "warmup", "country", "us", "routingTags", "shared,us"),
                 context.getContext().get("workerAttributes"));
@@ -87,7 +88,7 @@ public class WorkerMatchContextTest {
         task.setSharedConfig(Map.of("routingCode", "us"));
         task.setStatus(TaskStatus.READY);
 
-        WorkerMatchContext context = new WorkerMatchContext(candidate(worker), task);
+        WorkerMatchContext context = new WorkerMatchContext(candidate(worker), task, dispatchIntent(task));
 
         assertEquals("worker-2", context.getContext().get("workerSchedulingResourceId"));
         assertEquals(null, context.getContext().get("workerSchedulingProject"));
@@ -119,7 +120,7 @@ public class WorkerMatchContextTest {
         task.setSharedConfig(Map.of("routingCode", "us"));
         task.setStatus(TaskStatus.READY);
 
-        WorkerMatchContext context = new WorkerMatchContext(candidate(worker), task);
+        WorkerMatchContext context = new WorkerMatchContext(candidate(worker), task, dispatchIntent(task));
 
         assertEquals("worker-worker-attrs", context.getContext().get("workerSchedulingResourceId"));
         assertEquals(Set.of("shared", "us"), context.getContext().get("workerSchedulingRoutingTags"));
@@ -145,9 +146,10 @@ public class WorkerMatchContextTest {
         task.setStatus(TaskStatus.READY);
 
         WorkerSchedulingCandidate candidate = candidate(worker);
-        WorkerMatchContext context = new WorkerMatchContext(candidate, task);
-        Map<String, Object> snapshot = WorkerMatchContext.contextSnapshot(candidate, task);
-        Map<String, Object> ruleSnapshot = WorkerMatchContext.ruleContextSnapshot(candidate, task);
+        TaskDispatchIntent dispatchIntent = dispatchIntent(task);
+        WorkerMatchContext context = new WorkerMatchContext(candidate, task, dispatchIntent);
+        Map<String, Object> snapshot = WorkerMatchContext.contextSnapshot(candidate, task, dispatchIntent);
+        Map<String, Object> ruleSnapshot = WorkerMatchContext.ruleContextSnapshot(candidate, task, dispatchIntent);
 
         assertEquals(context.getContext(), snapshot);
         assertEquals(context.getRuleContext(), ruleSnapshot);
@@ -183,7 +185,7 @@ public class WorkerMatchContextTest {
         task.getExecutionSpec().setBatchSize(2);
         task.setMinRequiredWorkerCount(3);
 
-        WorkerMatchContext context = new WorkerMatchContext(candidate(worker), task);
+        WorkerMatchContext context = new WorkerMatchContext(candidate(worker), task, dispatchIntent(task));
         Set<String> diagnosticOnlyKeys = new LinkedHashSet<>(context.getContext().keySet());
         diagnosticOnlyKeys.removeAll(context.getRuleContext().keySet());
 
@@ -229,7 +231,7 @@ public class WorkerMatchContextTest {
         task.setSharedConfig(Map.of("routingCode", "us"));
         task.setStatus(TaskStatus.READY);
 
-        WorkerMatchContext context = new WorkerMatchContext(candidate(worker), task);
+        WorkerMatchContext context = new WorkerMatchContext(candidate(worker), task, dispatchIntent(task));
 
         assertTrue((Boolean) context.getContext().get("isWorkerSchedulingResourceAllocatable"));
         assertTrue((Boolean) context.getContext().get("isWorkerSchedulingResourceAvailable"));
@@ -253,7 +255,7 @@ public class WorkerMatchContextTest {
         task.setSharedConfig(Map.of());
         task.setStatus(TaskStatus.READY);
 
-        WorkerMatchContext context = new WorkerMatchContext(candidate(worker), task);
+        WorkerMatchContext context = new WorkerMatchContext(candidate(worker), task, dispatchIntent(task));
 
         assertEquals(false, context.getContext().get("taskHasRoutingRequirement"));
         assertEquals(false, context.getContext().get("workerSchedulingMatchesRoutingCode"));
@@ -284,7 +286,8 @@ public class WorkerMatchContextTest {
         );
         WorkerMatchContext context = new WorkerMatchContext(
                 new WorkerSchedulingCandidate(TestWorkerCandidateRows.from(worker), schedulingView),
-                task
+                task,
+                dispatchIntent(task)
         );
 
         assertEquals(3, context.getContext().get("workerActiveLeaseCount"));
@@ -304,6 +307,10 @@ public class WorkerMatchContextTest {
                         true, false,
                         WorkerLoadSnapshot.empty(worker.getWorkerId()))
         );
+    }
+
+    private TaskDispatchIntent dispatchIntent(Task task) {
+        return TaskDispatchIntent.fromTask(task);
     }
 
     private WorkerGroupCapabilityView groupFromWorker(Worker worker) {

@@ -1,4 +1,9 @@
 mass:
+  storage:
+    mode: memory
   demo:
     bootstrap:
       enabled: false
+sample:
+  bootstrap:
+    enabled: true

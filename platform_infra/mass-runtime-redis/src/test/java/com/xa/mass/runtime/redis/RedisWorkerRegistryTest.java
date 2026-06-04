@@ -2,6 +2,7 @@ package com.xa.mass.runtime.redis;
 
 import com.xa.mass.runtime.contract.WorkerRegistryContractTest;
 import com.xa.mass.runtime.worker.CleanupSummary;
+import com.xa.mass.runtime.worker.DispatchAvailabilitySource;
 import com.xa.mass.runtime.worker.EventKey;
 import com.xa.mass.runtime.worker.ReserveStatus;
 import com.xa.mass.runtime.worker.WorkerCandidateSamplingPolicy;
@@ -20,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -320,6 +322,71 @@ class RedisWorkerRegistryTest extends WorkerRegistryContractTest {
                 10
         ).isEmpty());
         assertTrue(workerRegistry.acquireCandidates("group-a", "attr:region=us", 10).isEmpty());
+    }
+
+    @Test
+    void concurrentReadsDoNotEnterSharedConnectionTransaction() throws InterruptedException {
+        WorkerRegistry workerRegistry = createRegistry();
+        workerRegistry.upsertSlot(metaWithRegion("worker-1", "group-a", "us"), 1, Set.of(eventKey()));
+        int readers = 4;
+        int iterations = 100;
+        CountDownLatch ready = new CountDownLatch(readers + 1);
+        CountDownLatch start = new CountDownLatch(1);
+        AtomicBoolean stop = new AtomicBoolean(false);
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        List<Thread> threads = new ArrayList<>();
+
+        Thread mutator = new Thread(() -> {
+            ready.countDown();
+            try {
+                start.await();
+                for (int index = 0; index < iterations; index++) {
+                    workerRegistry.disableDispatch("group-a", "worker-1", DispatchAvailabilitySource.NODE_GROUP_BINDING);
+                    workerRegistry.clearDispatchDisable("group-a", "worker-1", DispatchAvailabilitySource.NODE_GROUP_BINDING);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } catch (Throwable t) {
+                failure.compareAndSet(null, t);
+            } finally {
+                stop.set(true);
+            }
+        });
+        threads.add(mutator);
+        mutator.start();
+
+        for (int readerIndex = 0; readerIndex < readers; readerIndex++) {
+            Thread reader = new Thread(() -> {
+                ready.countDown();
+                try {
+                    start.await();
+                    while (!stop.get()) {
+                        workerRegistry.slotByWorkerId("worker-1");
+                        workerRegistry.workerIdsByAdapterNodeGroup("node-a", "group-a");
+                        workerRegistry.acquireCandidates("group-a", RedisWorkerRegistry.DEFAULT_ROUTE_BUCKET_KEY, 10);
+                        workerRegistry.hasExclusiveLease("worker-1");
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } catch (Throwable t) {
+                    failure.compareAndSet(null, t);
+                    stop.set(true);
+                }
+            });
+            threads.add(reader);
+            reader.start();
+        }
+
+        ready.await();
+        start.countDown();
+        for (Thread thread : threads) {
+            thread.join();
+        }
+        if (failure.get() != null) {
+            fail(failure.get());
+        }
+        assertEquals(List.of("worker-1"),
+                workerRegistry.acquireCandidates("group-a", RedisWorkerRegistry.DEFAULT_ROUTE_BUCKET_KEY, 10));
     }
 
     private WorkerMeta meta(String workerId, String groupId, long lastHeartbeatMillis) {

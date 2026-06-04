@@ -154,8 +154,9 @@ public class JdbcTaskShellStore extends JdbcStorageSupport implements TaskShellS
         ps.setString(2, task.getStatus() == null ? null : task.getStatus().name());
         ps.setString(3, task.getProject());
         ps.setBoolean(4, task.isSchedulable());
-        setTimestamp(ps, 5, maxRuntimeDeadline(task));
-        ps.setString(6, json(task));
+        setTimestamp(ps, 5, task.getCreateTime());
+        setTimestamp(ps, 6, maxRuntimeDeadline(task));
+        ps.setString(7, json(task));
     }
 
     private void bindArgs(PreparedStatement ps, String... args) throws Exception {

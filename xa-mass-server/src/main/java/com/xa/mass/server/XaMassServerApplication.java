@@ -58,6 +58,7 @@ import org.springframework.core.env.Environment;
 import org.springframework.core.annotation.Order;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 
@@ -165,17 +166,12 @@ public class XaMassServerApplication {
     private String redisPassword;
 
     public static void main(String[] args) {
-        String profile = System.getProperty("spring.profiles.active");
-        if (profile == null || profile.isBlank()) {
-            profile = "dev";
-            System.setProperty("spring.profiles.active", profile);
-        }
-
         log.info("Starting XA Mass server");
-        log.info("Active profile: {}", profile);
 
-        ConfigurableApplicationContext context = SpringApplication.run(XaMassServerApplication.class, args);
+        SpringApplication application = new SpringApplication(XaMassServerApplication.class);
+        ConfigurableApplicationContext context = application.run(args);
         Environment environment = context.getEnvironment();
+        log.info("Effective profiles: {}", Arrays.toString(effectiveProfiles(environment)));
         String httpPort = environment.getProperty("local.server.port",
                 environment.getProperty("server.port", "8088"));
         String webSocketPort = environment.getProperty("mass.websocket.port", "18088");
@@ -194,7 +190,7 @@ public class XaMassServerApplication {
     }
 
     @Bean(destroyMethod = "close")
-    @Profile("dev")
+    @Profile({"dev", "prod"})
     public JdbcStorageRuntime jdbcStorageRuntime() {
         return JdbcStorageRuntime.create(
                 JdbcStorageMode.parse(storageMode),
@@ -205,7 +201,7 @@ public class XaMassServerApplication {
     }
 
     @Bean
-    @Profile("dev")
+    @Profile({"dev", "prod"})
     public TaskShellStore taskShellStore(JdbcStorageRuntime jdbcStorageRuntime) {
         if (jdbcStorageRuntime.isEnabled()) {
             return jdbcStorageRuntime.taskShellStore();
@@ -214,7 +210,7 @@ public class XaMassServerApplication {
     }
 
     @Bean
-    @Profile("dev")
+    @Profile({"dev", "prod"})
     public TaskReviewStore taskReviewStore(JdbcStorageRuntime jdbcStorageRuntime) {
         if (jdbcStorageRuntime.isEnabled()) {
             return new JdbcTaskReviewStore(jdbcStorageRuntime.dataSource());
@@ -222,41 +218,46 @@ public class XaMassServerApplication {
         return new InMemoryTaskReviewStore();
     }
 
+    private static String[] effectiveProfiles(Environment environment) {
+        String[] activeProfiles = environment.getActiveProfiles();
+        return activeProfiles.length == 0 ? environment.getDefaultProfiles() : activeProfiles;
+    }
+
     @Bean
-    @Profile("dev")
+    @Profile({"dev", "prod"})
     public TaskReviewReadModel taskReviewReadModel(TaskReviewStore taskReviewStore) {
         return new TaskReviewStoreTaskReviewReadModel(taskReviewStore);
     }
 
     @Bean
-    @Profile("dev")
+    @Profile({"dev", "prod"})
     public TaskReviewMaterializer taskReviewMaterializer(TaskReviewStore taskReviewStore) {
         return new TaskReviewStoreMaterializer(taskReviewStore);
     }
 
     @Bean(destroyMethod = "close")
-    @Profile("dev")
+    @Profile({"dev", "prod"})
     public TaskReviewReportQueue taskReviewReportQueue(TaskReviewMaterializer taskReviewMaterializer) {
         return new InProcessTaskReviewReportQueue(taskReviewMaterializer);
     }
 
     @Bean
     @Primary
-    @Profile("dev")
+    @Profile({"dev", "prod"})
     public TaskReviewMaterializationPolicy taskReviewMaterializationPolicy() {
         return TaskReviewMaterializationPolicy.fromDefaultMode(taskReviewMaterializationMode);
     }
 
     @Bean
     @Primary
-    @Profile("dev")
+    @Profile({"dev", "prod"})
     public TaskReviewReadModelWriter taskReviewReadModelWriter(TaskReviewReportQueue taskReviewReportQueue,
                                                               TaskReviewMaterializationPolicy policy) {
         return new QueueBackedTaskReviewReadModelWriter(taskReviewReportQueue, policy);
     }
 
     @Bean(destroyMethod = "shutdown")
-    @Profile("dev")
+    @Profile({"dev", "prod"})
     public TaskWorkRuntime taskWorkRuntime() {
         String normalizedMode = runtimeMode == null ? "memory" : runtimeMode.trim().toLowerCase(Locale.ROOT);
         return switch (normalizedMode) {
@@ -267,7 +268,7 @@ public class XaMassServerApplication {
     }
 
     @Bean(destroyMethod = "shutdown")
-    @Profile("dev")
+    @Profile({"dev", "prod"})
     public TaskResultRuntime taskResultRuntime() {
         String normalizedMode = runtimeMode == null ? "memory" : runtimeMode.trim().toLowerCase(Locale.ROOT);
         return switch (normalizedMode) {
@@ -278,7 +279,7 @@ public class XaMassServerApplication {
     }
 
     @Bean(destroyMethod = "stop")
-    @Profile("dev")
+    @Profile({"dev", "prod"})
     public MassSdkApplication fullStackRuntimeApplication(ObjectProvider<MassBootstrapDataProvider> bootstrapDataProvider,
                                                           JdbcStorageRuntime jdbcStorageRuntime,
                                                           TaskShellStore taskShellStore,
@@ -369,7 +370,7 @@ public class XaMassServerApplication {
     }
 
     @Bean
-    @Profile("dev")
+    @Profile({"dev", "prod"})
     @Order(0)
     public CommandLineRunner fullStackStarter(MassSdkApplication app, JdbcStorageRuntime jdbcStorageRuntime) {
         return args -> {
@@ -409,7 +410,7 @@ public class XaMassServerApplication {
     }
 
     @Bean
-    @Profile("dev")
+    @Profile({"dev", "prod"})
     @Order(1)
     public CommandLineRunner taskReviewReadModelFinalityListener(MassSdkApplication app,
                                                                  @Qualifier("taskReviewReadModelWriter")
@@ -429,7 +430,7 @@ public class XaMassServerApplication {
     }
 
     @Bean
-    @Profile("dev")
+    @Profile({"dev", "prod"})
     @Order(1)
     public CommandLineRunner taskReviewReadModelAttemptClosedListener(MassSdkApplication app,
                                                                       @Qualifier("taskReviewReadModelWriter")
@@ -478,14 +479,14 @@ public class XaMassServerApplication {
      */
     @Bean
     @Primary
-    @Profile("dev")
-    public ControlPlaneCatalog devAppCatalog(MassSdkApplication app) {
+    @Profile({"dev", "prod"})
+    public ControlPlaneCatalog serverControlPlaneCatalog(MassSdkApplication app) {
         return app.catalog();
     }
 
     @Bean
     @Primary
-    @Profile("dev")
+    @Profile({"dev", "prod"})
     public PrincipalDirectory serverPrincipalDirectory(DefaultOperatorPrincipalDirectory operatorPrincipalDirectory,
                                                        MassSdkApplication app) {
         return new CompositePrincipalDirectory(List.of(operatorPrincipalDirectory, app));
@@ -493,7 +494,7 @@ public class XaMassServerApplication {
 
     @Bean
     @Primary
-    @Profile("dev")
+    @Profile({"dev", "prod"})
     public RuntimeDiagnosticsOperations serverRuntimeDiagnosticsOperations(MassSdkApplication app) {
         return app.runtimeDiagnostics();
     }

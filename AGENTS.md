@@ -51,7 +51,9 @@ Fast entry only. Use module owner READMEs and `doc/` contracts for detail.
 - Transport is three explicit channels: task dispatch, result ingest, and system events.
 - Runtime entry is SDK-first; server HTTP/UI surfaces provide a lightweight
   backend product shell and validation host without redefining kernel ownership.
-- Infra truth is three-layered: control-plane storage, runtime state, and trace/audit stream.
+- Infra truth is three-layered: control-plane storage, runtime state, and
+  trace/audit stream. SQLite-first means control-plane storage only; Redis is
+  runtime truth; trace DB materialization is trace-owned and deferred.
 - Core acceptance is `perf + concurrency + Boot-shell E2E`.
 
 Current mainline execution path:
@@ -190,6 +192,9 @@ Planning rule for multi-file or core changes:
   selectors, matching rules, assignment policy, backpressure, and admission
 - do not add scan-heavy observability or reconciliation loops to hot paths
 - trace and query concerns must not reverse-drive runtime ownership or mainline lifecycle design
+- SQLite/control-plane storage must not absorb runtime queue, lease, heartbeat,
+  dispatch, result convergence, or trace/audit truth; dev/prod may change
+  infra and seed source, not public API contracts
 - bias transport and lifecycle writes toward idempotent operations and retry safety
 - for SDK or integrations changes, read
   [doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md](doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md)

@@ -1,8 +1,7 @@
-# Redis-backed runtime profile for local distributed verification,
-# observability, and restart diagnostics.
+# Legacy Redis-backed runtime overlay retained for compose until compose startup
+# is converged separately.
 #
-# Use with the runnable server profile, for example:
-#   -Dspring.profiles.active=dev,redis-runtime
+# Normal prod startup uses application-prod.yml directly.
 #
 # This keeps task work/result runtime, worker registry runtime, transport
 # delivery queues, and transport presence evidence in Redis. It is not a

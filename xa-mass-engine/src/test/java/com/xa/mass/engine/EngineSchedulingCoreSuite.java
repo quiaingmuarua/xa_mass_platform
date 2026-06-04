@@ -14,13 +14,12 @@ import org.junit.platform.suite.api.Suite;
 
 @Suite
 @SelectClasses({
-        EngineSchedulingCoreArchitectureGuardTest.class,
-        EngineProofOwnershipGuardTest.class,
         TaskKernelLifecycleTest.class,
         TaskContractTerminalBehaviorTest.class,
         TaskContractSchedulingBehaviorTest.class,
         TaskSchedulingContentionTest.class,
         TaskWorkerEligibilityTest.class,
+        TaskSchedulingBindingEntryBypassTest.class,
         TaskRedispatchCompetitionTest.class,
         TaskSchedulingGateAndTargetingTest.class,
         TaskDelayedAvailabilitySchedulingTest.class,

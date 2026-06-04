@@ -1,4 +1,4 @@
-package com.xa.mass.workerpack.sample.api.model;
+package com.xa.mass.api.sample;
 
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
 

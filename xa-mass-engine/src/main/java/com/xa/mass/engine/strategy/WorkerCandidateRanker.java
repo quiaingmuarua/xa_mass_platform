@@ -1,7 +1,7 @@
 package com.xa.mass.engine.strategy;
 
-import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.model.WorkerMatchContext;
+import com.xa.mass.engine.runtime.scheduling.TaskDispatchIntent;
 
 import java.util.List;
 
@@ -13,5 +13,5 @@ import java.util.List;
  */
 public interface WorkerCandidateRanker {
 
-    List<WorkerMatchContext> rank(List<WorkerMatchContext> candidates, Task task);
+    List<WorkerMatchContext> rank(List<WorkerMatchContext> candidates, TaskDispatchIntent dispatchIntent);
 }

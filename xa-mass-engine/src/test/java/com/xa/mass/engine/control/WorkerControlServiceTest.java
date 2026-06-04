@@ -13,6 +13,7 @@ import com.xa.mass.worker.runtime.command.WorkerCommandDeliveryResult;
 import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleOwner;
 import com.xa.mass.worker.runtime.command.WorkerCommandRequest;
 import com.xa.mass.worker.runtime.command.WorkerCommandStatus;
+import com.xa.mass.engine.strategy.DefaultSchedulingPlaneResolver;
 import com.xa.mass.engine.strategy.WorkerTaskSelectorFactory;
 import com.xa.mass.engine.testutil.RecordingEventSink;
 import com.xa.mass.engine.TraceEventLogger;
@@ -465,7 +466,8 @@ public class WorkerControlServiceTest {
                 TaskSharedConfig.WORKER_GROUP_ID, groupId,
                 TaskSharedConfig.SDK_METADATA, Map.of(TaskSharedConfig.SDK_EVENT_CODE, eventCode)
         ));
-        return workerManager.findWorkerCandidateBatch(WorkerTaskSelectorFactory.fromTask(task), 512)
+        return workerManager.findWorkerCandidateBatch(WorkerTaskSelectorFactory.fromPolicy(
+                        new DefaultSchedulingPlaneResolver().resolve(task).workerSchedulingPolicy()), 512)
                 .candidates()
                 .getFirst();
     }

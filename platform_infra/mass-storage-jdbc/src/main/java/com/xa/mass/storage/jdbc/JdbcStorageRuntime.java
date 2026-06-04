@@ -7,6 +7,9 @@ import com.xa.mass.storage.api.TaskShellStore;
 import org.flywaydb.core.Flyway;
 
 import javax.sql.DataSource;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 public final class JdbcStorageRuntime implements AutoCloseable {
 
@@ -36,6 +39,7 @@ public final class JdbcStorageRuntime implements AutoCloseable {
         if (mode == null || !mode.isJdbc()) {
             return disabled();
         }
+        prepareFilesystemJdbcTarget(mode, jdbcUrl);
         HikariDataSource dataSource = createDataSource(jdbcUrl, username, password);
         Flyway.configure()
                 .dataSource(dataSource)
@@ -61,6 +65,33 @@ public final class JdbcStorageRuntime implements AutoCloseable {
         config.setMinimumIdle(1);
         config.setPoolName("xa-mass-jdbc-storage");
         return new HikariDataSource(config);
+    }
+
+    private static void prepareFilesystemJdbcTarget(JdbcStorageMode mode, String jdbcUrl) {
+        String prefix = "jdbc:sqlite:";
+        if (mode != JdbcStorageMode.JDBC_SQLITE || jdbcUrl == null || !jdbcUrl.startsWith(prefix)) {
+            return;
+        }
+        String rawPath = jdbcUrl.substring(prefix.length()).trim();
+        if (rawPath.isBlank() || rawPath.equals(":memory:") || rawPath.startsWith("file::memory:")) {
+            return;
+        }
+        int queryIndex = rawPath.indexOf('?');
+        if (queryIndex >= 0) {
+            rawPath = rawPath.substring(0, queryIndex);
+        }
+        if (rawPath.startsWith("file:")) {
+            rawPath = rawPath.substring("file:".length());
+        }
+        Path parent = Paths.get(rawPath).toAbsolutePath().normalize().getParent();
+        if (parent == null) {
+            return;
+        }
+        try {
+            Files.createDirectories(parent);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to create SQLite storage directory: " + parent, e);
+        }
     }
 
     public boolean isEnabled() {

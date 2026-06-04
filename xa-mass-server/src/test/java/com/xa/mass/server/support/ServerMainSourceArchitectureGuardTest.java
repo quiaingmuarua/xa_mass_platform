@@ -202,6 +202,71 @@ class ServerMainSourceArchitectureGuardTest {
     }
 
     @Test
+    void serverProfileDefaultDoesNotOverrideExplicitSpringProfiles() throws IOException {
+        Path application = SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/server/XaMassServerApplication.java");
+        String source = Files.readString(application, StandardCharsets.UTF_8);
+        Path applicationYml = Path.of("src/main/resources/application.yml");
+        String applicationConfig = Files.readString(applicationYml, StandardCharsets.UTF_8);
+
+        assertTrue(applicationConfig.contains("default: dev"),
+                "application.yml must use Spring's default profile support for no-arg dev startup");
+        assertTrue(!applicationConfig.contains("active: local"),
+                "application.yml must not activate the old local profile");
+        assertTrue(!source.contains("System.setProperty(\"spring.profiles.active\""),
+                "server main must not overwrite explicit profiles from env, args, or Spring config");
+    }
+
+    @Test
+    void serverRunnableBeansAreAvailableForDevAndProd() throws IOException {
+        Path application = SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/server/XaMassServerApplication.java");
+        String source = Files.readString(application, StandardCharsets.UTF_8);
+
+        assertTrue(source.contains("@Profile({\"dev\", \"prod\"})"),
+                "server runtime beans must be selectable through both dev and prod profiles");
+        assertTrue(!source.contains("@Profile(\"dev\")\n    public JdbcStorageRuntime"),
+                "server JDBC storage runtime must not be dev-only");
+        assertTrue(!source.contains("@Profile(\"dev\")\n    public MassSdkApplication"),
+                "embedded SDK runtime application must not be dev-only");
+    }
+
+    @Test
+    void prodProfileKeepsStorageRuntimeAndTraceLayersSeparate() throws IOException {
+        String prodConfig = Files.readString(Path.of("src/main/resources/application-prod.yml"), StandardCharsets.UTF_8);
+
+        assertTrue(prodConfig.contains("mode: jdbc-sqlite"),
+                "prod profile must select SQLite control-plane storage");
+        assertTrue(prodConfig.contains("mode: redis"),
+                "prod profile must select Redis runtime");
+        assertTrue(prodConfig.contains("store: redis"),
+                "prod profile must select Redis transport delivery/presence stores");
+        assertTrue(!prodConfig.contains("trace"),
+                "prod profile convergence must not add trace DB ingestion settings");
+    }
+
+    @Test
+    void sampleBootstrapIsProdSelectableButNotProdDefault() throws IOException {
+        Path repoRoot = Path.of("..").toAbsolutePath().normalize();
+        Path serverController = SERVER_MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/api/sample/SampleBootstrapController.java");
+        Path workerPackController = repoRoot.resolve(
+                "integrations/xa-mass-worker-pack/src/main/java/com/xa/mass/workerpack/sample/api/SampleBootstrapController.java");
+        String controllerSource = Files.readString(serverController, StandardCharsets.UTF_8);
+        String devConfig = Files.readString(Path.of("src/main/resources/application-dev.yml"), StandardCharsets.UTF_8);
+        String prodConfig = Files.readString(Path.of("src/main/resources/application-prod.yml"), StandardCharsets.UTF_8);
+
+        assertTrue(!Files.exists(workerPackController),
+                "sample bootstrap HTTP controller must stay server-owned, not worker-pack-owned");
+        assertTrue(!controllerSource.contains("@Profile("),
+                "sample bootstrap must not create dev/prod code-path forks; use property selection instead");
+        assertTrue(controllerSource.contains("@ConditionalOnProperty(prefix = \"sample.bootstrap\", name = \"enabled\""),
+                "sample bootstrap must remain property-gated rather than becoming an unconditional prod endpoint");
+        assertTrue(devConfig.contains("bootstrap:\n    enabled: true"),
+                "dev profile should keep sample bootstrap enabled for the scenario launcher");
+        assertTrue(prodConfig.contains("bootstrap:\n    enabled: false"),
+                "prod profile must not expose sample bootstrap unless explicitly enabled");
+    }
+
+    @Test
     void reviewQueueApiDoesNotGrowRuntimeDecisionVocabulary() throws IOException {
         Path reviewRoot = SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/api/review");
         List<String> violations = new ArrayList<>();

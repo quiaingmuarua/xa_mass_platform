@@ -5,6 +5,7 @@ import com.zaxxer.hikari.HikariDataSource;
 import org.flywaydb.core.Flyway;
 import org.testcontainers.containers.PostgreSQLContainer;
 
+import java.nio.file.Files;
 import java.sql.DriverManager;
 import java.util.UUID;
 
@@ -32,6 +33,24 @@ final class JdbcContractTestFixture {
                 .load()
                 .migrate();
         return ds;
+    }
+
+    static HikariDataSource sqliteDataSource() {
+        try {
+            var db = Files.createTempDirectory("xa-mass-sqlite-contract").resolve("xa_mass.db");
+            HikariConfig config = new HikariConfig();
+            config.setJdbcUrl("jdbc:sqlite:" + db);
+            config.setMaximumPoolSize(1);
+            HikariDataSource ds = new HikariDataSource(config);
+            Flyway.configure()
+                    .dataSource(ds)
+                    .locations("classpath:db/migration/control-plane")
+                    .load()
+                    .migrate();
+            return ds;
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to create SQLite contract fixture", e);
+        }
     }
 
     static HikariDataSource postgresDataSource(PostgreSQLContainer<?> container) {

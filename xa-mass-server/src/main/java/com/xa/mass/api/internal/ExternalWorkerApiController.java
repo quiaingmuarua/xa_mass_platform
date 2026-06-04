@@ -41,6 +41,7 @@ import java.util.Set;
 @Tag(name = "External Worker API", description = "External worker registration, polling, presence, and result submit APIs")
 public class ExternalWorkerApiController {
     private static final long MAX_WORKER_POLL_TIMEOUT_MS = 30_000L;
+    private static final String WORKER_ID_BINDING_ATTRIBUTE = "workerId";
     private static final List<String> ALLOWED_EXTERNAL_WORKER_STATES = List.of(
             "AVAILABLE",
             "DEGRADED",
@@ -670,7 +671,15 @@ public class ExternalWorkerApiController {
     }
 
     private String requireBoundWorkerId(PrincipalContext submitter, String requestedWorkerId) {
-        return requireNonBlank(requestedWorkerId, "workerId");
+        String normalizedWorkerId = requireNonBlank(requestedWorkerId, "workerId");
+        if (submitter == null || submitter.getAttributes() == null) {
+            return normalizedWorkerId;
+        }
+        String boundWorkerId = blankToNull(submitter.getAttributes().get(WORKER_ID_BINDING_ATTRIBUTE));
+        if (boundWorkerId != null && !boundWorkerId.equals(normalizedWorkerId)) {
+            throw new ApiForbiddenException("Worker credential binding denied: " + normalizedWorkerId);
+        }
+        return normalizedWorkerId;
     }
 
     private PrincipalContext requireAuthorizedWorkerSubmitter(String apiKeyHeader,

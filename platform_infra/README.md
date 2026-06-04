@@ -24,6 +24,19 @@ Think about infra through three truth layers:
 2. runtime state
 3. trace / audit stream
 
+Current boundary shorthand:
+
+- SQLite is the preferred lightweight direction for control-plane storage only:
+  project, rule, catalog, credential, submitter, and explicit environment seed
+  metadata. It must not become the runtime queue/lease/heartbeat/result store.
+- Redis remains the cross-process runtime-truth direction for queue, lease,
+  counter, worker presence, dispatch handoff, and result ingress state. Redis
+  data may be exported for offline analysis, but analysis output must not
+  reverse-drive runtime truth.
+- Trace/audit DB materialization is a trace-owned future path, likely fed by a
+  trace queue or sink. It is lower priority than the current worker onboarding
+  work and does not redefine control-plane storage or runtime ownership.
+
 This directory contains modules for all three layers. The trace layer is
 currently represented by `mass-trace-sink`, which owns the canonical execution
 event model and default JSONL sink. That does not make trace a lifecycle or
@@ -65,7 +78,12 @@ Current truth for this conservative first slice:
   implements the kernel-facing task shell ports;
   rule evaluator registry and the default QLExpress rule evaluator are now
   engine rule-runtime assembly concerns
-- `mass-storage-jdbc` owns the JDBC control-plane storage implementation plus H2/PostgreSQL dialect wiring, migrations, and residue-recovery helpers; engine manager assembly stays outside this module
+- `mass-storage-jdbc` owns the JDBC control-plane storage implementation plus
+  current H2/PostgreSQL dialect wiring and residue-recovery helpers; engine
+  manager assembly stays outside this module. Do not infer a product migration
+  commitment from local schema helpers: current new-environment setup should
+  prefer explicit seed/import and may use SQLite as the lightweight
+  control-plane DB direction.
 - worker registry slot state, dispatch availability, route buckets, and
   candidate sampling are runtime state, not control-plane DB CRUD state. Higher
   level worker resource/candidate/evidence contracts such as
