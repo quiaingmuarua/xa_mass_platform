@@ -61,11 +61,23 @@ Read-model rule:
 ## Security Contract Surface
 
 - `com.xa.mass.sdk.auth.PrincipalContext` is the shared authenticated caller shape
+- `com.xa.mass.sdk.auth.CredentialAuthProjectionWriter` is the narrow
+  lifecycle-to-auth-projection write port. API-key lifecycle owners should use
+  this port instead of broad submitter resource operations.
+- `com.xa.mass.sdk.auth.SubmitterRegistry` is the embedded submitter resource
+  registry only. Authentication (`AuthProvider`), principal lookup
+  (`PrincipalDirectory`), and auth projection writes are separate contracts even
+  when one backend implements all of them.
 - `com.xa.mass.sdk.authz.AuthorizationRequest` + `AuthorizationPolicy` are the unified control-plane authorization entrypoint
 - `AuthorizationDecision` now carries both human-readable `reason` and structured `AuthorizationReasonCode`, so hosts do not need to infer deny semantics from string prefixes
 - `PlatformResourceType` and `PlatformAction` provide the current minimal platform resource/action vocabulary
 - `TaskOwnershipStamp` is the minimal framework-owned task ownership envelope currently persisted under the reserved internal key `Task.sharedConfig._massSecurity`; hosts should expose an explicit derived read model instead of teaching callers to parse that envelope directly
 - `xa-mass-server` and other hosts should adapt transport or HTTP details into these contracts instead of inventing host-local permission truth
+- Current `PrincipalContext` empty project/event scope lists remain a temporary
+  broad-access compatibility behavior. Durable credential storage must not
+  encode omitted, wildcard, and bounded scopes as the same empty list; use an
+  explicit scope-mode field or equivalent representation before adding API-key
+  lifecycle schema.
 
 ## Start Here
 

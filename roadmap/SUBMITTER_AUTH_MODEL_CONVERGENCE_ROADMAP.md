@@ -1,29 +1,51 @@
 # Submitter Auth Model Convergence Roadmap
 
-Status: proposed prerequisite roadmap.
+Status: implemented; archive candidate after owner handoff.
 
 ## Current Code Observations
 
-- `SubmitterRegistration`, `SubmitterProfile`, `SubmitterOperations`, and
-  `SubmitterRegistry` are used as the embedded SDK credential model.
-- The same `Submitter*` vocabulary now covers task producers, external worker
-  credentials, service accounts, API-key lifecycle projection, and submitter
-  viewer sessions.
-- `SubmitterRegistry` combines credential registration, credential
-  authentication, and principal lookup by extending both `AuthProvider` and
-  `PrincipalDirectory`.
-- `SubmitterOperations` exposes both resource methods and
-  `authenticateSubmitter(...)`.
-- `ApiKeyCredentialService` owns API-key lifecycle state but projects active or
-  disabled credentials through `SubmitterOperations.registerSubmitter(...)`.
-- `PrincipalContext` treats empty project/event scope lists as broad access.
-  Explicit wildcard is not required.
-- `SubmitterViewerSessionStore` is volatile session state. It should stay
-  memory-only for now; future cross-process sharing belongs to a runtime/Redis
-  session decision, not SQLite/JDBC control-plane storage.
+- `CredentialAuthProjectionWriter` is the narrow auth-projection write port for
+  API-key lifecycle code.
+- `ApiKeyCredentialService` owns API-key lifecycle state and now projects
+  active or disabled credentials through `CredentialAuthProjectionWriter`, not
+  broad embedded SDK resource operations.
+- `SubmitterRegistry` is now only the embedded SDK resource registry contract;
+  it no longer extends `AuthProvider` or `PrincipalDirectory`.
+- Current in-memory/JDBC credential backends may still implement
+  `SubmitterRegistry`, `CredentialAuthProjectionWriter`, `AuthProvider`, and
+  `PrincipalDirectory`, but they do so as explicit narrow contracts rather than
+  through one all-in-one registry interface.
+- `SubmitterOperations` still exposes embedded resource methods plus
+  `authenticateSubmitter(...)`, but it is no longer required by server API-key
+  lifecycle or auth projection writes.
+- `SubmitterRegistration` and `SubmitterProfile` remain the only credential DTO
+  shapes: write-with-secret and read/profile-without-secret.
+- `PrincipalContext` still treats empty project/event scope lists as broad
+  access. This compatibility behavior is tested and must not be encoded as the
+  only durable representation for wildcard, omitted, and bounded scopes.
+- `SubmitterViewerSessionStore` remains volatile session state. It stays
+  memory-only; future cross-process sharing belongs to a runtime/Redis session
+  decision, not SQLite/JDBC control-plane storage.
 
 Detailed inventory:
 `roadmap/SUBMITTER_AUTH_MODEL_CONVERGENCE_INVENTORY.md`.
+
+Implemented decisions:
+
+- Projection port name: `CredentialAuthProjectionWriter`.
+- Store-infra unblock point: after `ApiKeyCredentialService` writes auth
+  projection through `CredentialAuthProjectionWriter`; full
+  auth/directory/write guard cleanup remains part of this roadmap's completion.
+- Facade naming: keep `Submitter*` as embedded resource vocabulary for now.
+  It is acceptable because server API-key lifecycle no longer depends on it and
+  durable schema work must use credential/principal vocabulary.
+- Scope storage representation: future API-key lifecycle schema must use an
+  explicit mode representation for project and event scopes, for example
+  `project_scope_mode` / `event_scope_mode` with `OMITTED`, `WILDCARD`, and
+  `BOUNDED` values plus bounded-value storage. Runtime empty-scope behavior
+  remains temporary broad-access compatibility and is covered by tests.
+- Viewer session identity: no `PrincipalType.SESSION` is required now; current
+  delegated-session attributes remain the accepted representation.
 
 ## Owner Review
 
@@ -48,8 +70,10 @@ will become table and API names.
 - The minimal blocker for server store infra is not a broad rename. It is a
   narrow credential auth-projection/write port that lets API-key lifecycle code
   stop depending on broad `SubmitterOperations`.
-- Split credential projection writes, authentication, and principal lookup
-  contracts before durable API-key lifecycle tables are added.
+- Add the projection port and retarget API-key lifecycle writes before durable
+  API-key lifecycle tables are added. Full auth/directory/write coupling
+  cleanup remains required for this roadmap completion and guards, but it is
+  not the first store-infra implementation blocker once Slice 2 lands.
 - Embedded SDK facade naming and public `Submitter*` vocabulary can converge
   after the projection port is in place. Rename only when it removes a real
   owner ambiguity; do not create a second facade just to make names cleaner.
@@ -86,6 +110,11 @@ will become table and API names.
   distinguish wildcard, omitted, and bounded values. Runtime empty-scope
   behavior may remain unchanged until a dedicated authorization slice changes
   it with tests.
+- Before JDBC API-key lifecycle schema is designed, choose a durable scope
+  representation that distinguishes omitted, wildcard, and bounded values. The
+  representation may be `scopeMode`, an explicit `*` sentinel, or an equivalent
+  field contract. Do not persist the current normalized empty list as the only
+  representation of all three states.
 - Submitter viewer sessions remain short-lived volatile delegated credentials.
 
 ## Hard Rules
@@ -98,6 +127,8 @@ will become table and API names.
 - Do not broaden API-key or worker credential scope as part of a rename.
 - Do not make empty project/event scope deny-by-default as part of the
   projection-port split. That is a separate authorization semantics change.
+- Do not design API-key lifecycle JDBC scope columns until the durable scope
+  representation distinguishes omitted, wildcard, and bounded values.
 - Do not use rename-only churn without also changing the owner boundary.
 - Do not add more than two credential DTO shapes for the same auth credential:
   write request with secret, and read/profile without secret.
@@ -141,7 +172,7 @@ Scope:
   - facade/name cleanup
   - authorization semantics follow-up
   - session identity follow-up
-- Record the minimum projection-port name used by Slices 1 and 2. Candidate:
+- Record the minimum projection-port name used by Slices 1 and 2:
   `CredentialAuthProjectionWriter`.
 - Record that the exact replacement names for these symbols are non-blocking
   unless the implementation slice proves otherwise:
@@ -234,7 +265,10 @@ Acceptance:
   projection inconsistent without visible failure semantics.
 - `SERVER_CONTROL_PLANE_STORE_INFRA_CONVERGENCE_ROADMAP.md` is unblocked for
   API-key lifecycle store design after this slice, provided Slice 0 recorded
-  the remaining facade/scope/session work as deferred or non-blocking.
+  the remaining facade/scope/session work as deferred or non-blocking and the
+  JDBC schema design still honors the scope-representation rule in this
+  roadmap. Slice 3 remains required for roadmap completion and guard coverage,
+  but not for starting API-key lifecycle store schema/design.
 
 Verification candidates:
 
@@ -297,9 +331,12 @@ Scope:
 
 Acceptance:
 
-- A recorded decision says rename now or defer facade naming.
+- A recorded decision says rename now or keep current facade naming.
 - If renamed, old names are removed or kept only as explicitly transitional
   edge methods with removal acceptance in this roadmap.
+- If not renamed, the slice records an owner decision that current facade names
+  are acceptable embedded resource vocabulary and are no longer misleading for
+  storage schema or API surface work.
 - Credential DTO shape count does not grow beyond write-with-secret and
   read-without-secret.
 - Store-infra remains unblocked either way because API-key lifecycle already
@@ -338,6 +375,8 @@ Acceptance:
 - Scope semantics are no longer implicit in roadmap prose.
 - Durable credential schema design can represent wildcard, omitted, and bounded
   scope states without forcing a runtime behavior change in the same slice.
+- Before API-key lifecycle JDBC schema is designed, a concrete durable
+  representation is chosen for wildcard, omitted, and bounded scopes.
 - If runtime behavior changes, empty project/event scopes no longer authorize
   arbitrary scoped resources and intentional broad access uses explicit `*`.
 - If runtime behavior is deferred, a follow-up decision is recorded and tests
@@ -433,16 +472,9 @@ mvn --% -pl sdk/xa-mass-embedded-sdk-api,sdk/xa-mass-embedded-sdk,xa-mass-server
 
 ## Open Decisions
 
-- Exact name for the projection/write port. Must resolve in Slice 0.
-- Exact replacement names for `Submitter*` contracts. Non-blocking unless Slice
-  4 proves current names still mislead schema/API work.
-- Whether `PrincipalType.SESSION` is needed now. Non-blocking; may resolve in
-  Slice 6.
-- Whether empty scope denial is immediate or a short-lived compatibility
-  exception. Must resolve before Slice 5 starts, but it does not block Slices
-  1-3 or store-infra schema design if schema distinguishes scope states.
-- Whether transitional edge methods are allowed on `MassSdkApplication`.
-  Resolve only if Slice 4 renames facade methods; avoid two live mainlines.
+- No open blocker remains for the store-infra first implementation slice.
+- Runtime empty-scope denial remains a future authorization behavior migration,
+  not part of this roadmap's implemented mainline.
 
 ## Completion Criteria
 
@@ -454,8 +486,9 @@ The roadmap is complete when:
 - API-key lifecycle no longer depends on broad submitter resource operations;
 - credential DTO shape does not grow beyond write-with-secret and
   read-without-secret;
-- facade naming is either converged or explicitly recorded as deferred
-  non-blocking cleanup;
+- facade naming is converged, or Slice 4 records an owner decision that current
+  names are acceptable embedded resource vocabulary and are no longer
+  misleading for storage schema or API surface work;
 - scope semantics either require explicit wildcard for broad access or document
   a tested bounded compatibility exception;
 - submitter-viewer session storage is memory-only and no active roadmap points

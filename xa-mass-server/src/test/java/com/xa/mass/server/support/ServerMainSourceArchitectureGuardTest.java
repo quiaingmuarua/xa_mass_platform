@@ -301,6 +301,56 @@ class ServerMainSourceArchitectureGuardTest {
     }
 
     @Test
+    void apiKeyLifecycleDoesNotDependOnBroadSubmitterResourceOperations() throws IOException {
+        Path service = SERVER_MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/api/auth/apikey/ApiKeyCredentialService.java");
+        String source = Files.readString(service, StandardCharsets.UTF_8);
+
+        assertTrue(!source.contains("import com.xa.mass.sdk.SubmitterOperations"),
+                "ApiKeyCredentialService must write auth projection through a narrow projection port, "
+                        + "not broad SubmitterOperations");
+        assertTrue(source.contains("CredentialAuthProjectionWriter"),
+                "ApiKeyCredentialService must depend on CredentialAuthProjectionWriter for auth projection writes");
+    }
+
+    @Test
+    void submitterRegistryInterfaceDoesNotOwnWriteAuthAndDirectoryTogether() throws IOException {
+        Path registry = REPO_ROOT.resolve(
+                "sdk/xa-mass-embedded-sdk-api/src/main/java/com/xa/mass/sdk/auth/SubmitterRegistry.java");
+        String source = Files.readString(registry, StandardCharsets.UTF_8);
+
+        assertTrue(!source.contains("extends AuthProvider")
+                        && !source.contains("extends PrincipalDirectory")
+                        && !source.contains("AuthProvider, PrincipalDirectory"),
+                "SubmitterRegistry must stay a resource registry; auth provider, principal directory, "
+                        + "and auth projection writes are separate contracts");
+    }
+
+    @Test
+    void submitterViewerSessionsAreNotJdbcControlPlaneStores() throws IOException {
+        List<String> violations = new ArrayList<>();
+        try (Stream<Path> paths = Files.walk(SERVER_MAIN_SOURCE_ROOT)) {
+            paths.filter(Files::isRegularFile)
+                    .filter(path -> path.toString().endsWith(".java"))
+                    .forEach(path -> {
+                        try {
+                            String source = Files.readString(path, StandardCharsets.UTF_8);
+                            if (source.contains("SubmitterViewerSessionStore")
+                                    && (source.contains("Jdbc") || source.contains("DataSource"))) {
+                                violations.add(path + " treats SubmitterViewerSessionStore as JDBC/control-plane storage");
+                            }
+                        } catch (IOException e) {
+                            violations.add(path + " could not be read: " + e.getMessage());
+                        }
+                    });
+        }
+
+        assertTrue(violations.isEmpty(),
+                "submitter-viewer sessions must remain volatile session state, not JDBC stores:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void reviewQueueApiDoesNotGrowRuntimeDecisionVocabulary() throws IOException {
         Path reviewRoot = SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/api/review");
         List<String> violations = new ArrayList<>();

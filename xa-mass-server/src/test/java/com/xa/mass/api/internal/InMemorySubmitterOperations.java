@@ -2,6 +2,7 @@ package com.xa.mass.api.internal;
 
 import com.xa.mass.sdk.SubmitterOperations;
 import com.xa.mass.sdk.auth.AuthProvider;
+import com.xa.mass.sdk.auth.CredentialAuthProjectionWriter;
 import com.xa.mass.sdk.auth.InMemorySubmitterRegistry;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.auth.SubmitterProfile;
@@ -9,13 +10,23 @@ import com.xa.mass.sdk.auth.SubmitterRegistration;
 
 import java.util.List;
 
-final class InMemorySubmitterOperations implements SubmitterOperations, AuthProvider {
+final class InMemorySubmitterOperations implements SubmitterOperations, CredentialAuthProjectionWriter, AuthProvider {
 
     private final InMemorySubmitterRegistry registry = new InMemorySubmitterRegistry();
 
     @Override
     public void registerSubmitter(SubmitterRegistration submitterRegistration) {
         registry.register(submitterRegistration);
+    }
+
+    @Override
+    public void projectCredential(SubmitterRegistration submitterRegistration) {
+        registry.projectCredential(submitterRegistration);
+    }
+
+    @Override
+    public boolean hasProjectedCredential(String principalId) {
+        return registry.hasProjectedCredential(principalId);
     }
 
     @Override

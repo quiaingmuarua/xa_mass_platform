@@ -4,8 +4,8 @@ import com.xa.mass.api.auth.ApiPermissionNames;
 import com.xa.mass.api.auth.iam.UserRecord;
 import com.xa.mass.api.auth.iam.UserRolePermissionStore;
 import com.xa.mass.api.auth.iam.UserStatus;
-import com.xa.mass.sdk.SubmitterOperations;
 import com.xa.mass.sdk.auth.CredentialHashing;
+import com.xa.mass.sdk.auth.CredentialAuthProjectionWriter;
 import com.xa.mass.sdk.auth.PrincipalType;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
@@ -34,16 +34,19 @@ public class ApiKeyCredentialService {
     private final ApiKeyApplicationStore applicationStore;
     private final ApiKeyCredentialStore credentialStore;
     private final UserRolePermissionStore userStore;
-    private final SubmitterOperations submitterOperations;
+    private final CredentialAuthProjectionWriter credentialProjectionWriter;
 
     public ApiKeyCredentialService(ApiKeyApplicationStore applicationStore,
                                    ApiKeyCredentialStore credentialStore,
                                    UserRolePermissionStore userStore,
-                                   SubmitterOperations submitterOperations) {
+                                   CredentialAuthProjectionWriter credentialProjectionWriter) {
         this.applicationStore = Objects.requireNonNull(applicationStore, "applicationStore");
         this.credentialStore = Objects.requireNonNull(credentialStore, "credentialStore");
         this.userStore = Objects.requireNonNull(userStore, "userStore");
-        this.submitterOperations = Objects.requireNonNull(submitterOperations, "submitterOperations");
+        this.credentialProjectionWriter = Objects.requireNonNull(
+                credentialProjectionWriter,
+                "credentialProjectionWriter"
+        );
     }
 
     public ApiKeyApplicationRecord createApplication(CreateApplicationCommand command) {
@@ -122,7 +125,7 @@ public class ApiKeyCredentialService {
         if (credentialStore.getByPrincipalId(normalized.principalId()) != null) {
             throw new IllegalArgumentException("principal already has an API key credential: " + normalized.principalId());
         }
-        if (submitterOperations.hasSubmitter(normalized.principalId())) {
+        if (credentialProjectionWriter.hasProjectedCredential(normalized.principalId())) {
             throw new IllegalArgumentException("principal already exists in submitter auth projection: " + normalized.principalId());
         }
         String rawSecret = generateSecret();
@@ -227,7 +230,7 @@ public class ApiKeyCredentialService {
     }
 
     private void projectActiveCredential(ApiKeyCredentialRecord record, String rawSecret) {
-        submitterOperations.registerSubmitter(SubmitterRegistration.builder()
+        credentialProjectionWriter.projectCredential(SubmitterRegistration.builder()
                 .principalId(record.principalId())
                 .principalType(PrincipalType.SERVICE)
                 .credential(rawSecret)
@@ -242,7 +245,7 @@ public class ApiKeyCredentialService {
     }
 
     private void projectDisabledCredential(ApiKeyCredentialRecord record) {
-        submitterOperations.registerSubmitter(SubmitterRegistration.builder()
+        credentialProjectionWriter.projectCredential(SubmitterRegistration.builder()
                 .principalId(record.principalId())
                 .principalType(PrincipalType.SERVICE)
                 .credential("revoked-" + record.keyId() + "-" + UUID.randomUUID())

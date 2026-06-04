@@ -411,6 +411,11 @@ JDBC storage scope:
 - JDBC storage persists task shell truth, rule definitions, and low-frequency
   principal credential truth used by submitter and external worker API-key
   authentication
+- server API-key lifecycle storage must project authentication state through
+  the embedded SDK's narrow `CredentialAuthProjectionWriter` contract, not
+  broad submitter resource operations; API-key lifecycle schema must distinguish
+  omitted, wildcard, and bounded project/event scopes with explicit mode fields
+  or an equivalent representation
 - `TaskMsg`, `TaskMsgAttempt`, runtime queues, leases, worker locks, worker
   registry churn, and heartbeat/presence churn stay in runtime backends, with
   Redis as the current inspectable `prod` runtime backend

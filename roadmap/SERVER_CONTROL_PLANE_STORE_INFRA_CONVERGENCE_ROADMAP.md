@@ -1,8 +1,7 @@
 # Server Control-Plane Store Infra Convergence Roadmap
 
-Status: proposed direction document; API-key lifecycle store execution is
-deferred until `SUBMITTER_AUTH_MODEL_CONVERGENCE_ROADMAP.md` Slices 1-2 add
-the credential projection port and retarget API-key lifecycle writes.
+Status: proposed direction document; API-key lifecycle store execution is no
+longer blocked by Submitter/Auth projection coupling.
 
 ## Current Code Observations
 
@@ -30,15 +29,20 @@ the credential projection port and retarget API-key lifecycle writes.
 Detailed inventory:
 `roadmap/SERVER_CONTROL_PLANE_STORE_INFRA_CONVERGENCE_INVENTORY.md`.
 
-Prerequisite:
+Prerequisite satisfied:
 `roadmap/SUBMITTER_AUTH_MODEL_CONVERGENCE_ROADMAP.md`.
 
-Do not start JDBC API-key lifecycle implementation before that roadmap splits
-API-key lifecycle projection writes away from broad `SubmitterOperations`.
-Facade rename, runtime scope behavior migration, and viewer-session principal
-type are not prerequisites for this store roadmap unless they become schema
-inputs. This roadmap should persist the projection-port model, not the current
-over-broad `Submitter*` write path.
+API-key lifecycle projection writes now go through
+`CredentialAuthProjectionWriter` instead of broad `SubmitterOperations`. Facade
+rename, runtime scope behavior migration, and viewer-session principal type are
+not prerequisites for this store roadmap unless they become schema inputs. This
+roadmap should persist the projection-port model, not the historical
+`Submitter*` resource facade write path.
+
+API-key lifecycle JDBC schema must also honor the scope-representation decision
+from `SUBMITTER_AUTH_MODEL_CONVERGENCE_ROADMAP.md`: wildcard, omitted, and
+bounded project/event scopes must be distinguishable before scope fields are
+persisted.
 
 ## Owner Review
 

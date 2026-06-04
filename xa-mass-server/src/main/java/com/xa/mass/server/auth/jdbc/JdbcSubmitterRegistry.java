@@ -3,8 +3,11 @@ package com.xa.mass.server.auth.jdbc;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xa.mass.sdk.auth.CredentialHashing;
+import com.xa.mass.sdk.auth.CredentialAuthProjectionWriter;
+import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.InMemorySubmitterRegistry;
 import com.xa.mass.sdk.auth.PrincipalContext;
+import com.xa.mass.sdk.auth.PrincipalDirectory;
 import com.xa.mass.sdk.auth.PrincipalType;
 import com.xa.mass.sdk.auth.SubmitterProfile;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
@@ -23,7 +26,8 @@ import java.util.Objects;
  * <p>Auth contracts stay owned by the SDK surface; this class is only a host-side
  * persistence adapter and intentionally does not live under platform_infra.
  */
-public final class JdbcSubmitterRegistry implements SubmitterRegistry {
+public final class JdbcSubmitterRegistry
+        implements SubmitterRegistry, CredentialAuthProjectionWriter, AuthProvider, PrincipalDirectory {
 
     private final DataSource dataSource;
     private final JdbcStorageMode mode;
@@ -65,6 +69,17 @@ public final class JdbcSubmitterRegistry implements SubmitterRegistry {
             throw new IllegalStateException("Failed to save submitter " + registration.getPrincipalId(), e);
         }
         runtimeProjection.register(registration);
+    }
+
+    @Override
+    public void projectCredential(SubmitterRegistration submitterRegistration) {
+        register(submitterRegistration);
+    }
+
+    @Override
+    public synchronized boolean hasProjectedCredential(String principalId) {
+        ensureLoaded();
+        return runtimeProjection.getSubmitter(principalId) != null;
     }
 
     @Override

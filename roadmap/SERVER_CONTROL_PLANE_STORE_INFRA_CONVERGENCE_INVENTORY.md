@@ -19,7 +19,7 @@ materialization, or worker scheduling decisions.
 | --- | --- | --- | --- | --- |
 | `TaskShellStore` | `platform_infra/mass-storage-api`, assembled by server | `JdbcStorageRuntime.taskShellStore()` for JDBC modes, `InMemoryTaskShellStore` fallback | control-plane storage | Keep current profile-based switching. |
 | `RuleStorage` | `platform_infra/mass-storage-api`, assembled through embedded SDK/server | `JdbcStorageRuntime.ruleStorage()` for JDBC modes | control-plane storage | Keep current JDBC-backed seed/import path. |
-| `SubmitterRegistry` / `SubmitterOperations` | SDK auth surface, host persistence adapter in server | `JdbcSubmitterRegistry` when JDBC storage is enabled; SDK memory registry otherwise | principal credential truth | Wait for `SUBMITTER_AUTH_MODEL_CONVERGENCE_ROADMAP.md` Slices 1-2 so API-key lifecycle writes through a projection port instead of broad `SubmitterOperations`. |
+| `SubmitterRegistry` / `SubmitterOperations` / `CredentialAuthProjectionWriter` | SDK auth surface, host persistence adapter in server | `JdbcSubmitterRegistry` when JDBC storage is enabled; SDK memory registry otherwise | principal credential truth | API-key lifecycle now writes through `CredentialAuthProjectionWriter`; durable lifecycle schema can proceed without depending on broad `SubmitterOperations`. |
 | `TaskReviewStore` | server review/read-model owner | `JdbcTaskReviewStore` for JDBC modes, `InMemoryTaskReviewStore` fallback | server-local review materialization | Keep server-owned and selectable; do not promote to runtime result truth. |
 | `ApiKeyApplicationStore` | server IAM/API-key owner | `InMemoryApiKeyApplicationStore` via `@Component` | stable API-key request workflow truth | Add JDBC implementation and explicit store assembly. |
 | `ApiKeyCredentialStore` | server IAM/API-key owner | `InMemoryApiKeyCredentialStore` via `@Component` | stable API-key lifecycle truth | Add JDBC implementation and make it consistent with `SubmitterRegistry` projection. |
@@ -84,11 +84,10 @@ materialization, or worker scheduling decisions.
    implicit and hard to guard.
 6. Existing JDBC `xa_principal` stores submitter profiles but does not directly
    represent the richer `ApiKeyCredentialRecord` lifecycle fields.
-7. Submitter/auth projection-port convergence is a prerequisite before durable
-   API-key lifecycle tables are added; see
-   `SUBMITTER_AUTH_MODEL_CONVERGENCE_ROADMAP.md` Slices 1-2. Facade rename,
-   runtime scope behavior migration, and viewer-session principal type are not
-   store-infra blockers unless they become schema inputs.
+7. Submitter/auth projection-port convergence is complete enough for durable
+   API-key lifecycle table design to proceed. Facade rename, runtime scope
+   behavior migration, and viewer-session principal type are not store-infra
+   blockers unless they become schema inputs.
 
 ## Existing Proof Surfaces
 
