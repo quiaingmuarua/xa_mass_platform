@@ -1,6 +1,8 @@
 # Server API Surface Convergence Roadmap
 
-Status: proposed direction document.
+Status: implemented mainline; keep
+[`SERVER_API_SURFACE_CONVERGENCE_INVENTORY.md`](./SERVER_API_SURFACE_CONVERGENCE_INVENTORY.md)
+as the active route-category owner truth.
 
 Scope: `xa-mass-server` HTTP endpoint design, public/internal/console boundary,
 runtime snapshot exposure, and route-contract guards.
@@ -19,7 +21,7 @@ Related roadmap:
   is separate. Store backing is an infra concern; this roadmap decides whether
   the HTTP route should exist and which surface may consume it.
 
-## Current Code Observations
+## Current Mainline Shape
 
 Current route groups in `xa-mass-server/src/main/java/com/xa/mass/api/internal`:
 
@@ -27,30 +29,36 @@ Current route groups in `xa-mass-server/src/main/java/com/xa/mass/api/internal`:
 | --- | --- | --- |
 | Task public API | `/api/v1/tasks`, `/api/v1/tasks/{taskId}`, `/api/v1/tasks/{taskId}/items`, `/api/v1/tasks/{taskId}/items:sync`, `/api/v1/tasks/{taskId}/results`, archive, stage evidence | mixed task shell, runtime append, result read, and review/export reads |
 | External worker data-plane | `/worker-api/v1/**` | external worker registration, polling, result submit, capability/state report, command ack |
-| Runtime worker API | `/api/v1/runtime/workers/**` | composite worker snapshots, state projections, capability/state report, command request/list/get/ack |
+| Runtime worker API | `/api/v1/runtime/workers/**` | composite worker diagnostics, state projections, command request/list/get; worker self-report and command ack live only under `/worker-api/v1/**` |
 | Runtime diagnostics | `/api/v1/runtime/sessions`, `/api/v1/runtime/sessions:stats`, `/api/v1/runtime/queues`, `/api/v1/runtime/queues/metrics`, `/api/v1/runtime/config/projects` | runtime/session/queue/config snapshots and metrics |
 | Catalog/project API | `/api/v1/catalog/**`, `/api/v1/projects/**` | control-plane metadata and capability read views |
 | Identity/API-key API | `/api/v1/users`, `/api/v1/roles`, `/api/v1/permissions`, `/api/v1/api-keys`, `/api/v1/api-key-applications`, `/api/v1/submitter-sessions` | server-owned operator and API-key lifecycle |
 | Internal review/debug | `/internal/v1/review/tasks/**`, `/internal/v1/debug/task-invocations:sync` | console/review export and debug sync invocation |
 
-Specific current gaps already observed:
+Implemented convergence facts:
 
-- `POST /api/v1/tasks/{taskId}/items:sync` resolves `eventCode` from request or
-  `item.eventCode`, but append/review still pass `requestBody.getEventCode()`.
-- `/internal/v1/debug/task-invocations:sync` is documented as internal debug,
-  but route authorization allows submitter SDK credentials and the controller
-  creates, seals, approves, and waits for a task.
-- `/api/v1/runtime/workers/**` exposes heavy runtime snapshot and CRUD-shaped
-  operations that overlap with `/worker-api/v1/**`.
-- `/api/v1/runtime/sessions` and `/api/v1/runtime/queues` expose runtime
-  snapshot/detail views before a durable history/read-model owner exists.
-- Frontend real API callers already depend on runtime routes such as
-  `/api/v1/runtime/workers` and `/api/v1/runtime/config/projects`; `rules.real`
-  currently calls `/api/v1/runtime/rules` while the server-owned rule route is
-  `/api/v1/admin/rules`. Treat this as caller drift to classify in API-0, not
-  as proof that the runtime rules route exists.
-- `xa-mass-server/doc/INTERNAL_API_REFERENCE.md` has API dictionary drift and
-  needs to be updated together with route changes.
+- `POST /api/v1/tasks/{taskId}/items:sync` resolves a single `eventCode` at the
+  controller boundary and passes that identity to append and review.
+- `/internal/v1/debug/task-invocations:sync` is operator-only internal debug;
+  SDK submitter credentials are rejected instead of treated as a hidden public
+  invoke path.
+- `/api/v1/runtime/workers/{workerId}/capability-reports`,
+  `/api/v1/runtime/workers/{workerId}/state-reports`, and
+  `/api/v1/runtime/workers/{workerId}/commands/{commandId}/ack` were removed
+  from the runtime worker controller. The surviving worker data-plane owners
+  are `/worker-api/v1/workers/{workerId}:report-capability`,
+  `/worker-api/v1/workers/{workerId}:report-state`, and
+  `/worker-api/v1/workers/{workerId}/commands/{commandId}:ack`.
+- Frontend rule reads now call `/api/v1/admin/rules` and
+  `/api/v1/admin/rules/meta`; no compatibility alias was added for
+  `/api/v1/runtime/rules`.
+- Runtime worker/session/state/command list diagnostics remain operator/console
+  routes with response windows. The current embedded diagnostics/query owner
+  still reads live lists before server-side response limiting; owner-side
+  pagination is a future diagnostics-interface hardening item, not public API
+  truth.
+- `xa-mass-server/doc/INTERNAL_API_REFERENCE.md` records removed routes,
+  operator-only debug semantics, and diagnostic `limit` behavior.
 
 ## Owner Review
 
@@ -96,23 +104,23 @@ behavior:
 | `internal-debug` | test/debug helper | internal/operator-only; not SDK contract |
 | `remove-or-merge` | duplicate, stale, or value-weak endpoint | remove after callers are retargeted |
 
-Initial target classification proposal:
+Implemented target classification summary:
 
 | Route family | Proposed target |
 | --- | --- |
 | `POST /api/v1/tasks` | `public-sdk-ingress` |
 | `POST /api/v1/tasks/{taskId}/items` | `public-sdk-ingress` |
-| `POST /api/v1/tasks/{taskId}/items:sync` | `public-sdk-ingress`; fix resolved-event contract |
+| `POST /api/v1/tasks/{taskId}/items:sync` | `public-sdk-ingress`; resolved-event contract fixed |
 | `GET /api/v1/tasks/{taskId}/results` and archive routes | `public-sdk-read` only if backed by bounded result runtime/archive owner |
-| `GET /api/v1/tasks` | classify in API-0; likely console/review read rather than broad public runtime list |
-| `GET /api/v1/tasks/{taskId}` | classify in API-0; task shell read may remain, but avoid item/runtime snapshots |
+| `GET /api/v1/tasks` | bounded `public-sdk-read` for current SDK/frontend callers; future split needs a caller decision |
+| `GET /api/v1/tasks/{taskId}` | bounded shell-oriented `public-sdk-read`; avoid item/runtime snapshots |
 | `PATCH /api/v1/tasks/{taskId}` | `operator-command` or pre-dispatch definition patch; not generic CRUD |
 | `POST /api/v1/tasks/{taskId}/commands` | `operator-command` |
 | `/worker-api/v1/**` | `public-sdk-ingress` for external workers |
-| `/api/v1/runtime/workers/{workerId}/capability-reports` and `state-reports` | `remove-or-merge`; worker self-report belongs to `/worker-api/v1/**` |
+| `/api/v1/runtime/workers/{workerId}/capability-reports` and `state-reports` | `remove-or-merge`; these are worker write/report ingress paths and worker self-report belongs to `/worker-api/v1/**` |
 | `/api/v1/runtime/workers/{workerId}/commands` | `operator-command` if kept |
 | `/api/v1/runtime/workers/{workerId}/commands/{commandId}/ack` | `remove-or-merge`; worker ack belongs to `/worker-api/v1/**` |
-| `/api/v1/runtime/workers`, `/workers/states`, command list/get | `console-diagnostics`; bound or internalize |
+| `/api/v1/runtime/workers`, `/workers/{workerId}/state`, `/workers/states`, command list/get | `console-diagnostics`; response-windowed operator diagnostics |
 | `/api/v1/runtime/sessions`, `/runtime/queues` | `console-diagnostics`; prefer stats/metrics over full detail |
 | `/internal/v1/debug/task-invocations:sync` | `internal-debug`; operator-only |
 | `/internal/v1/review/tasks/**` | `console-diagnostics` or review/export read model, not runtime truth |
@@ -123,7 +131,9 @@ Initial target classification proposal:
    has an explicit caller value and bounded cost.
 2. Do not add CRUD-shaped runtime task or worker endpoints. Runtime mutation must
    be expressed as task/worker command intent or external worker data-plane
-   ingress.
+   ingress. `PATCH` is acceptable only when it expresses a bounded task
+   definition patch owner's intent; it must not expose arbitrary task state as
+   writable fields.
 3. Do not treat current runtime views as historical data APIs. Historical query
    routes wait for DB-backed materialization or explicit review/export owner.
 4. Do not let console convenience become SDK/public contract by default.
@@ -154,6 +164,9 @@ are follow-up concerns after the endpoint surface is narrowed.
 
 ## API-0: Route Inventory And Value Classification
 
+Status: implemented. Current output:
+[`SERVER_API_SURFACE_CONVERGENCE_INVENTORY.md`](./SERVER_API_SURFACE_CONVERGENCE_INVENTORY.md).
+
 Goal: produce an executable route inventory from current code.
 
 Scope:
@@ -177,6 +190,9 @@ Scope:
 - flag unbounded runtime snapshot and duplicate mutation paths
 - flag duplicate model shapes, especially `View`, `Viewer`, `Snapshot`, and
   controller-local response objects that restate an existing public contract
+- classify API-0 output into two sections:
+  - required route-category truth that unlocks API-1 and API-2
+  - deferred questions with explicit owner, target slice, and verification need
 
 Acceptance:
 
@@ -191,6 +207,12 @@ Acceptance:
   caller should exist
 - duplicated model shapes are listed with an owner decision: keep as contract,
   flatten, merge, or delete
+- the API-0 inventory marks which decisions are required before API-1/API-2
+  can start and which decisions may defer to API-3/API-4/API-5 without blocking
+  the route guard or current contract bug fixes
+- worker write/report routes and worker read/diagnostic routes are separated;
+  `capability-reports`, `state-reports`, and command ack are not reviewed as
+  read-only diagnostics
 - no code behavior changes in this slice
 
 Verification candidates:
@@ -205,6 +227,8 @@ rg -n "class .*View|class .*Viewer|class .*Snapshot|record .*View|record .*Snaps
 
 ## API-1: Route Boundary Guard
 
+Status: implemented in `ServerMainSourceArchitectureGuardTest`.
+
 Goal: make route additions fail code review when they bypass classification.
 
 Scope:
@@ -212,9 +236,11 @@ Scope:
 - add or extend a server architecture guard that scans controller route
   annotations
 - require each server route family to appear in an allowlist/category map
-- make the API-0 inventory the route-category owner truth; any hard-coded
-  guard table must be mechanically cross-checkable against the inventory route
-  list, so the guard does not become a second drifting source of truth
+- make the API-0 inventory the route-category owner truth
+- implement guard synchronization with the inventory explicitly: either parse a
+  machine-readable inventory route table directly, or add a dedicated sync test
+  that compares the guard allowlist/category map against the inventory route
+  list. Do not maintain an unconstrained second route table.
 - fail if new `/api/v1/runtime/**` routes are added without an explicit
   `console-diagnostics` or `operator-command` category
 - fail if new `/internal/v1/**` routes allow SDK submitter credentials without
@@ -240,12 +266,16 @@ mvn -pl xa-mass-server -Dtest=ServerMainSourceArchitectureGuardTest test
 
 ## API-2: Fix Current Contract Bugs Before Surface Moves
 
+Status: implemented.
+
 Goal: remove high-risk contract mismatches before route movement creates extra
 noise.
 
 Scope:
 
-- fix `items:sync` so append and review use the resolved single `eventCode`
+- fix `items:sync` at the controller boundary so it resolves one `eventCode`
+  before calling append/review and passes only that resolved value downstream,
+  instead of letting append and review consume separate request/item sources
 - add a successful test for `items:sync` with only `item.eventCode`
 - make `/internal/v1/debug/task-invocations:sync` operator-only or record a
   deliberate owner decision if it is promoted out of internal debug
@@ -271,6 +301,9 @@ mvn -pl xa-mass-server -Dtest=TaskApiControllerTest,InternalDebugTaskInvocationC
 
 ## API-3: Downgrade Runtime Snapshot Routes To Console Diagnostics
 
+Status: implemented for route classification, frontend drift, and response
+windowing. Deferred cost: owner-side paging for diagnostics/query SDK surfaces.
+
 Goal: prevent live runtime views from becoming stable public API.
 
 Scope:
@@ -281,6 +314,9 @@ Scope:
 - fix or classify frontend caller drift discovered in API-0, including
   frontend calls to `/api/v1/runtime/rules` when the current server rule route
   is `/api/v1/admin/rules`
+- do not add compatibility aliases, redirects, or duplicate server routes to
+  accommodate stale frontend callers; update the caller to the correct route
+  owner or record the caller as removed/stale
 - review `/api/v1/runtime/workers`, `/workers/states`, command list/get,
   `/sessions`, and `/queues`
 - prefer aggregate stats/metrics over full list/detail where product value is
@@ -307,6 +343,8 @@ mvn -pl xa-mass-server -Dtest=ApiAuthInterceptorTest,ServerMainSourceArchitectur
 ```
 
 ## API-4: Merge Duplicate Worker Runtime Mutation Paths
+
+Status: implemented.
 
 Goal: keep worker data-plane ingress and operator command intent separate.
 
@@ -335,6 +373,10 @@ mvn -pl xa-mass-server -Dtest=ExternalWorkerPollingApiIntegrationTest test
 ```
 
 ## API-5: Public Task Read Surface Narrowing
+
+Status: implemented as classification and current-shell documentation. Task
+list/detail remain bounded `public-sdk-read` routes for current SDK/frontend
+callers; future split requires a separate caller/value decision.
 
 Goal: keep task reads useful without turning runtime state into broad list
 snapshots.
@@ -365,6 +407,10 @@ rg -n "GET /api/v1/tasks|/api/v1/tasks" sdk integrations xa-mass-server/doc -g "
 ```
 
 ## API-6: Documentation And Residue Cleanup
+
+Status: implemented for active server docs, guard/inventory sync, and residue
+scans. Removed route strings may remain in roadmap/inventory, archive docs, and
+negative auth tests only.
 
 Goal: make docs, tests, and guards match the narrowed API surface.
 
@@ -405,19 +451,22 @@ mvn -pl xa-mass-server test
 6. API-5 task read narrowing.
 7. API-6 docs and residue cleanup.
 
-## Open Decisions
+## Resolved And Deferred Decisions
 
-1. Whether `GET /api/v1/tasks` is a public SDK read or console/review read.
-2. Whether `GET /api/v1/tasks/{taskId}` is acceptable as bounded shell detail
-   for SDK submitters, or should be split into shell-only public and richer
-   console detail.
-3. Whether console diagnostics should stay under `/api/v1/runtime/**` with
-   operator-only route category, or move under `/internal/v1/diagnostics/**`.
-4. Whether worker command list/get is a real operator workflow now or should
-   wait for durable command/history materialization.
+1. `GET /api/v1/tasks` remains a bounded `public-sdk-read` route because
+   current Java SDK and frontend callers use it.
+2. `GET /api/v1/tasks/{taskId}` remains bounded shell-oriented public detail.
+   A richer console-only detail split is deferred until a caller/value decision
+   exists.
+3. Console diagnostics stay under `/api/v1/runtime/**` for now with
+   operator/console category and response windows.
+4. Worker command list/get remain current operator diagnostics. Worker command
+   ack belongs only to `/worker-api/v1/**`.
+5. Deferred: owner-side paging for diagnostics/query SDK surfaces if
+   controller-level response windows are not enough for production load.
 
-## Execution Readiness
+## Current Truth Owner
 
-This roadmap is executable after API-0 completes. API-0 is intentionally the
-first slice because the endpoint surface is broad and current docs/tests may
-encode stale or convenience-only route assumptions.
+The executable route-category truth is the inventory file, because the server
+architecture guard parses it directly. Update that inventory together with
+controller route changes; do not treat this roadmap prose as the route table.

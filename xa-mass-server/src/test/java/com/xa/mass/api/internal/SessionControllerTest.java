@@ -53,6 +53,26 @@ class SessionControllerTest {
     }
 
     @Test
+    void listSessionsAppliesDiagnosticResponseLimit() throws Exception {
+        when(runtimeDiagnostics.listSessions()).thenReturn(List.of(
+                Map.of(
+                        "workerId", "worker-1",
+                        "connections", List.of()
+                ),
+                Map.of(
+                        "workerId", "worker-2",
+                        "connections", List.of()
+                )
+        ));
+
+        mockMvc.perform(get("/api/v1/runtime/sessions").param("limit", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].workerId").value("worker-1"));
+    }
+
+    @Test
     void sessionStatsUseSdkCounts() throws Exception {
         when(runtimeDiagnostics.getSessionStats()).thenReturn(Map.of(
                 "activeConnections", 2,

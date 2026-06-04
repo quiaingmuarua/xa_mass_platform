@@ -687,11 +687,15 @@ Current behavior:
 - Method: `GET`
 - Path: `/api/v1/runtime/sessions`
 - Status: `Implemented`
+- Query:
+  - `limit` optional response window, default `200`, maximum `500`
 
 Current meaning:
 
 - returns transport endpoint snapshots, not a kernel worker truth source
 - session diagnostics are operator-only read surfaces
+- the response window bounds payload size; the current diagnostics owner still
+  reads the live session list before the server applies the window
 
 ### 5.4 Session Stats
 
@@ -722,6 +726,8 @@ Behavior:
 - Method: `GET`
 - Path: `/api/v1/runtime/workers`
 - Status: `Implemented`
+- Query:
+  - `limit` optional response window, default `200`, maximum `500`
 
 Notes:
 
@@ -733,25 +739,25 @@ Notes:
 - each row includes `fieldSources`, a field-to-owner label map. Expected
   owners are `declaration`, `runtime`, `transport`,
   `declarationOrTransport`, and review materialization evidence.
+- this is an operator/console diagnostic response, not public SDK worker
+  browsing. The response window bounds payload size; deeper owner-side paging is
+  still a diagnostics-interface concern.
 
 ### 5.7 Worker Capability And State Reports
 
-- Methods:
+- Paths:
   - `POST /api/v1/runtime/workers/{workerId}/capability-reports`
   - `POST /api/v1/runtime/workers/{workerId}/state-reports`
-- Status: `Implemented`
+- Status: `Removed`
 
 Behavior:
 
-- reports owner-backed worker capability and state through the SDK
-  `WorkerControlOperations` surface
-- these endpoints are runtime/report ingress, not worker CRUD or device/account
-  management
-- path `workerId` is the identity truth; a body `workerId`, when supplied, must
-  match the path
-- capability reports update the worker capability authority through the SDK
-  owner-backed path
-- state reports update the bounded worker state projection owner
+- worker capability and state self-reporting belongs to the external worker
+  data-plane:
+  - `POST /worker-api/v1/workers/{workerId}:report-capability`
+  - `POST /worker-api/v1/workers/{workerId}:report-state`
+- runtime worker routes are diagnostics and operator command surfaces, not
+  worker self-report ingress.
 
 ### 5.8 Worker State Projection Reads
 
@@ -763,25 +769,33 @@ Behavior:
 Behavior:
 
 - reads bounded worker state projections through SDK `WorkerControlOperations`
-- list response uses `{items}` in the shared `ApiResponse` envelope
+- list response uses `{items,total,limit}` in the shared `ApiResponse` envelope
+- `GET /api/v1/runtime/workers/states` accepts optional `limit`, default `200`,
+  maximum `500`
 - this is a read model and not scheduling truth
 
 ### 5.9 Worker Command Control And Reads
 
 - Methods:
   - `POST /api/v1/runtime/workers/{workerId}/commands`
-  - `POST /api/v1/runtime/workers/{workerId}/commands/{commandId}/ack`
   - `GET /api/v1/runtime/workers/{workerId}/commands`
   - `GET /api/v1/runtime/workers/commands/{commandId}`
 - Status: `Implemented`
 
 Behavior:
 
-- submits and acknowledges worker commands through SDK
-  `WorkerControlOperations`
-- command status and acknowledgements do not enter task result runtime
-- list response uses `{items,total}` in the shared `ApiResponse` envelope
+- submits operator worker commands through SDK `WorkerControlOperations`
+- command acknowledgements belong to the external worker data-plane:
+  `POST /worker-api/v1/workers/{workerId}/commands/{commandId}:ack`
+- command status does not enter task result runtime
+- list response uses `{items,total,limit}` in the shared `ApiResponse` envelope
+- `GET /api/v1/runtime/workers/{workerId}/commands` accepts optional `limit`,
+  default `200`, maximum `500`
 - path `workerId` is the target identity for command submit/list
+
+Removed duplicate path:
+
+- `POST /api/v1/runtime/workers/{workerId}/commands/{commandId}/ack`
 
 ### 5.10 Worker Context Runtime View
 
@@ -986,6 +1000,8 @@ Purpose:
 
 Contract rules:
 
+- operator authentication is required; SDK submitter credentials are rejected
+  for this route
 - request uses an internal debug-only invocation DTO on this route
 - exactly one item is required
 - `mode`, when provided, must be `SINGLE_RUN`

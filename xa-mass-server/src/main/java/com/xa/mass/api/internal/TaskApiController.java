@@ -446,13 +446,13 @@ public class TaskApiController {
             TaskSyncRequestSupervisor.SyncLease acquiredLease = syncLease;
 
             TaskItemBatchAppendReceipt receipt = taskAdmin.appendTaskItemsWithReceipt(taskId, MassTaskItemBatchAppendRequest.builder()
-                    .eventCode(requestBody.getEventCode())
+                    .eventCode(eventCode)
                     .items(items)
                     .build());
             String messageId = requireSingleMessageId(receipt);
             recordReviewItemsAccepted(taskId,
                     task.getSharedConfig(),
-                    normalizeAppendItemsForReview(items, requestBody.getEventCode()),
+                    normalizeAppendItemsForReview(items, eventCode),
                     receipt,
                     resolveDefaultMaxRetryCount(taskId));
             usage = recordApiUsage(

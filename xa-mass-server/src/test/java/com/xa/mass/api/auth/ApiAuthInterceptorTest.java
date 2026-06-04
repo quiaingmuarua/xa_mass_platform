@@ -136,7 +136,7 @@ class ApiAuthInterceptorTest {
     }
 
     @Test
-    void sdkCredentialAttemptCanReachInternalSyncWithoutOperatorPermission() throws Exception {
+    void sdkCredentialAttemptCannotReachInternalSyncWithoutOperatorPermission() throws Exception {
         mockMvc.perform(post("/internal/v1/debug/task-invocations:sync")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header(ApiAuthService.USER_MODE_HEADER, "anonymous")
@@ -148,8 +148,8 @@ class ApiAuthInterceptorTest {
                                   "items":[{"url":"https://example.test"}]
                                 }
                                 """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.ok").value(true));
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(401));
     }
 
     @Test
@@ -246,7 +246,7 @@ class ApiAuthInterceptorTest {
     }
 
     @Test
-    void viewerCanReachWorkerControlReadRoutesAndEditorCanReachWriteRoutes() throws Exception {
+    void viewerCanReachWorkerControlReadRoutesAndEditorCanRequestWorkerCommand() throws Exception {
         mockMvc.perform(get("/api/v1/runtime/workers/worker-001/state")
                         .header(ApiAuthService.USER_MODE_HEADER, "viewer"))
                 .andExpect(status().isOk())
@@ -267,26 +267,6 @@ class ApiAuthInterceptorTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.ok").value(true));
 
-        mockMvc.perform(post("/api/v1/runtime/workers/worker-001/capability-reports")
-                        .header(ApiAuthService.USER_MODE_HEADER, "custom")
-                        .header(ApiAuthService.USER_ID_HEADER, "worker-editor")
-                        .header(ApiAuthService.USER_NAME_HEADER, "Worker Editor")
-                        .header(ApiAuthService.USER_PERMISSIONS_HEADER, ApiPermissionNames.WORKER_EDIT)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"capabilityVersion\":1}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.ok").value(true));
-
-        mockMvc.perform(post("/api/v1/runtime/workers/worker-001/state-reports")
-                        .header(ApiAuthService.USER_MODE_HEADER, "custom")
-                        .header(ApiAuthService.USER_ID_HEADER, "worker-editor")
-                        .header(ApiAuthService.USER_NAME_HEADER, "Worker Editor")
-                        .header(ApiAuthService.USER_PERMISSIONS_HEADER, ApiPermissionNames.WORKER_EDIT)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"stateVersion\":1,\"state\":\"READY\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.ok").value(true));
-
         mockMvc.perform(post("/api/v1/runtime/workers/worker-001/commands")
                         .header(ApiAuthService.USER_MODE_HEADER, "custom")
                         .header(ApiAuthService.USER_ID_HEADER, "worker-editor")
@@ -296,6 +276,29 @@ class ApiAuthInterceptorTest {
                         .content("{\"commandType\":\"DRAIN\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.ok").value(true));
+    }
+
+    @Test
+    void runtimeWorkerDataPlaneDuplicateRoutesAreNotAuthorized() throws Exception {
+        mockMvc.perform(post("/api/v1/runtime/workers/worker-001/capability-reports")
+                        .header(ApiAuthService.USER_MODE_HEADER, "custom")
+                        .header(ApiAuthService.USER_ID_HEADER, "worker-editor")
+                        .header(ApiAuthService.USER_NAME_HEADER, "Worker Editor")
+                        .header(ApiAuthService.USER_PERMISSIONS_HEADER, ApiPermissionNames.WORKER_EDIT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"capabilityVersion\":1}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(403));
+
+        mockMvc.perform(post("/api/v1/runtime/workers/worker-001/state-reports")
+                        .header(ApiAuthService.USER_MODE_HEADER, "custom")
+                        .header(ApiAuthService.USER_ID_HEADER, "worker-editor")
+                        .header(ApiAuthService.USER_NAME_HEADER, "Worker Editor")
+                        .header(ApiAuthService.USER_PERMISSIONS_HEADER, ApiPermissionNames.WORKER_EDIT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"stateVersion\":1,\"state\":\"READY\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(403));
 
         mockMvc.perform(post("/api/v1/runtime/workers/worker-001/commands/cmd-001/ack")
                         .header(ApiAuthService.USER_MODE_HEADER, "custom")
@@ -304,16 +307,6 @@ class ApiAuthInterceptorTest {
                         .header(ApiAuthService.USER_PERMISSIONS_HEADER, ApiPermissionNames.WORKER_EDIT)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"ACKED\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.ok").value(true));
-    }
-
-    @Test
-    void viewerCannotReachWorkerControlWriteRoutes() throws Exception {
-        mockMvc.perform(post("/api/v1/runtime/workers/worker-001/capability-reports")
-                        .header(ApiAuthService.USER_MODE_HEADER, "viewer")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"capabilityVersion\":1}"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value(403));
     }

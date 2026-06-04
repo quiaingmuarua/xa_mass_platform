@@ -3,8 +3,7 @@ package com.xa.mass.api.internal;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xa.mass.api.auth.ApiAuthService;
-import com.xa.mass.api.auth.ApiAuthorizationService;
-import com.xa.mass.api.auth.ApiSecurityScenario;
+import com.xa.mass.api.auth.ApiUnauthenticatedException;
 import com.xa.mass.api.auth.TaskSecurityViewSupport;
 import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.api.model.task.InternalDebugTaskInvocationApiRequest;
@@ -52,7 +51,6 @@ public class InternalDebugTaskInvocationController {
     private final TaskAdminOperations taskAdmin;
     private final ControlPlaneCatalog catalog;
     private final ApiAuthService apiAuthService;
-    private final ApiAuthorizationService apiAuthorizationService;
     private final TaskSecurityViewSupport taskSecurityViewSupport;
     private final SyncTaskResultBridge syncBridge;
 
@@ -60,13 +58,11 @@ public class InternalDebugTaskInvocationController {
     public InternalDebugTaskInvocationController(TaskAdminOperations taskAdmin,
                                                  ControlPlaneCatalog catalog,
                                                  ApiAuthService apiAuthService,
-                                                 ApiAuthorizationService apiAuthorizationService,
                                                  TaskSecurityViewSupport taskSecurityViewSupport,
                                                  SyncTaskResultBridge syncBridge) {
         this.taskAdmin = taskAdmin;
         this.catalog = catalog == null ? DefaultProjectEventCatalogFactory.createDefaultProjectRegistry() : catalog;
         this.apiAuthService = apiAuthService == null ? new ApiAuthService() : apiAuthService;
-        this.apiAuthorizationService = apiAuthorizationService == null ? new ApiAuthorizationService() : apiAuthorizationService;
         this.taskSecurityViewSupport = taskSecurityViewSupport == null ? new TaskSecurityViewSupport() : taskSecurityViewSupport;
         this.syncBridge = syncBridge;
     }
@@ -87,22 +83,14 @@ public class InternalDebugTaskInvocationController {
             validateIngestGuardrails(requestBody.getItems());
 
             long resolvedTimeoutMs = resolveTimeoutMs(timeoutMs);
-            ApiAuthorizationService.AuthorizedSubmitterTaskCreate submitterTaskCreate =
-                    resolveSubmitterTaskCreate(apiKeyHeader, authorizationHeader, requestBody);
-            TaskShellSnapshot task;
-            if (submitterTaskCreate != null) {
-                task = taskAdmin.createTaskShell(TaskOwnershipSupport.stamp(
-                        toMassTaskShellCreateRequest(requestBody, submitterTaskCreate.project(),
-                                submitterTaskCreate.userId()),
-                        submitterTaskCreate.principal()
-                ));
-            } else {
-                PrincipalContext operator = apiAuthService.requireAuthenticated(httpRequest);
-                task = taskAdmin.createTaskShell(TaskOwnershipSupport.stamp(
-                        toMassTaskShellCreateRequest(requestBody, requestBody.getProject(), requestBody.getUserId()),
-                        operator
-                ));
+            if (SdkCredentialAuthSupport.hasCredentialAttempt(apiKeyHeader, authorizationHeader)) {
+                throw new SecurityException("Internal debug sync invocation is operator-only; use public task APIs for SDK calls");
             }
+            PrincipalContext operator = apiAuthService.requireAuthenticated(httpRequest);
+            TaskShellSnapshot task = taskAdmin.createTaskShell(TaskOwnershipSupport.stamp(
+                    toMassTaskShellCreateRequest(requestBody, requestBody.getProject(), requestBody.getUserId()),
+                    operator
+            ));
 
             TaskItemBatchAppendReceipt receipt = taskAdmin.appendTaskItemsWithReceipt(task.getTaskId(), MassTaskItemBatchAppendRequest.builder()
                     .eventCode(requestBody.getEventCode())
@@ -142,7 +130,7 @@ public class InternalDebugTaskInvocationController {
                                                                         ApiResponseSupplier action) {
         try {
             return action.execute();
-        } catch (SdkUnauthenticatedException e) {
+        } catch (ApiUnauthenticatedException e) {
             return ResponseEntity.status(401).body(ApiResponse.error(401, e.getMessage()));
         } catch (SecurityException e) {
             return ResponseEntity.status(403).body(ApiResponse.error(403, e.getMessage()));
@@ -203,27 +191,6 @@ public class InternalDebugTaskInvocationController {
             return SyncTaskResultBridge.DEFAULT_TIMEOUT_MS;
         }
         return Math.min(requested, SyncTaskResultBridge.MAX_TIMEOUT_MS);
-    }
-
-    private ApiAuthorizationService.AuthorizedSubmitterTaskCreate resolveSubmitterTaskCreate(String apiKeyHeader,
-                                                                                             String authorizationHeader,
-                                                                                             InternalDebugTaskInvocationApiRequest requestBody) {
-        try {
-            return apiAuthorizationService.resolveAuthorizedSubmitterTaskCreate(
-                    apiKeyHeader,
-                    authorizationHeader,
-                    requestBody != null ? requestBody.getProject() : null,
-                    requestBody != null ? requestBody.getEventCode() : null,
-                    requestBody != null ? requestBody.getUserId() : null,
-                    Map.of(
-                            "mode", requestBody != null ? String.valueOf(requestBody.getMode()) : "",
-                            "eventCode", requestBody != null ? String.valueOf(requestBody.getEventCode()) : "",
-                            "scenario", ApiSecurityScenario.SUBMITTER_TASK_CREATE.name()
-                    )
-            );
-        } catch (com.xa.mass.api.auth.ApiUnauthenticatedException ex) {
-            throw new SdkUnauthenticatedException(ex.getMessage());
-        }
     }
 
     private void requireBusinessBindings(String project, String userId) {
@@ -303,12 +270,6 @@ public class InternalDebugTaskInvocationController {
             throw new IllegalArgumentException("userId is required");
         }
         return userId.trim();
-    }
-
-    private static final class SdkUnauthenticatedException extends RuntimeException {
-        private SdkUnauthenticatedException(String message) {
-            super(message);
-        }
     }
 
     @FunctionalInterface

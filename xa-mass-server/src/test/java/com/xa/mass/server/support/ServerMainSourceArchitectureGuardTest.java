@@ -7,8 +7,13 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -16,6 +21,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ServerMainSourceArchitectureGuardTest {
 
     private static final Path SERVER_MAIN_SOURCE_ROOT = Path.of("src/main/java");
+    private static final Path REPO_ROOT = Path.of("..").toAbsolutePath().normalize();
+    private static final Pattern TABLE_ROW = Pattern.compile("^\\|\\s*([^|]+?)\\s*\\|\\s*([^|]+?)\\s*\\|\\s*([^|]+?)\\s*\\|\\s*([^|]+?)\\s*\\|.*$");
+    private static final Pattern CLASS_REQUEST_MAPPING = Pattern.compile("@RequestMapping\\((?:value\\s*=\\s*)?\"([^\"]*)\"\\)");
+    private static final Pattern METHOD_MAPPING = Pattern.compile("@(GetMapping|PostMapping|PatchMapping|DeleteMapping)(?:\\(([^)]*)\\))?");
+    private static final Pattern FIRST_QUOTED_VALUE = Pattern.compile("\"([^\"]*)\"");
+    private static final Set<String> API_ROUTE_CATEGORIES = Set.of(
+            "public-sdk-ingress",
+            "public-sdk-read",
+            "operator-command",
+            "console-diagnostics",
+            "internal-debug",
+            "remove-or-merge"
+    );
 
     private static final Map<String, String> FORBIDDEN_IMPORT_FRAGMENTS = Map.of(
             "base", "import com.xa.mass.base.",
@@ -315,6 +333,51 @@ class ServerMainSourceArchitectureGuardTest {
                         + String.join("\n", violations));
     }
 
+    @Test
+    void serverApiRoutesStayClassifiedByApiSurfaceInventory() throws IOException {
+        Path inventory = REPO_ROOT.resolve("roadmap/SERVER_API_SURFACE_CONVERGENCE_INVENTORY.md");
+        Map<String, String> inventoryRoutes = readRouteInventory(inventory);
+        Set<String> controllerRoutes = collectControllerApiRoutes();
+        List<String> violations = new ArrayList<>();
+
+        controllerRoutes.forEach(route -> {
+            if (!inventoryRoutes.containsKey(route)) {
+                violations.add(route + " is missing from " + REPO_ROOT.relativize(inventory));
+            }
+        });
+        inventoryRoutes.keySet().forEach(route -> {
+            if (!controllerRoutes.contains(route)) {
+                violations.add(route + " is listed in " + REPO_ROOT.relativize(inventory)
+                        + " but has no matching controller route");
+            }
+        });
+        inventoryRoutes.forEach((route, category) -> {
+            if (!API_ROUTE_CATEGORIES.contains(category)) {
+                violations.add(route + " uses unknown API route category " + category);
+            }
+            String path = route.substring(route.indexOf(' ') + 1);
+            if (path.startsWith("/api/v1/runtime/")
+                    && !Set.of("console-diagnostics", "operator-command", "remove-or-merge").contains(category)) {
+                violations.add(route + " is a runtime route but is categorized as " + category);
+            }
+            if (path.startsWith("/internal/v1/")
+                    && !Set.of("internal-debug", "console-diagnostics").contains(category)) {
+                violations.add(route + " is an internal route but is categorized as " + category);
+            }
+            if (path.startsWith("/api/v1/runtime/workers/")
+                    && (path.endsWith("/capability-reports")
+                    || path.endsWith("/state-reports")
+                    || path.matches("^/api/v1/runtime/workers/\\{workerId}/commands/\\{commandId}/ack$"))
+                    && !"remove-or-merge".equals(category)) {
+                violations.add(route + " duplicates worker data-plane ingress and must stay remove-or-merge");
+            }
+        });
+
+        assertTrue(violations.isEmpty(),
+                "server API routes must stay classified by the active API surface inventory:\n"
+                        + String.join("\n", violations));
+    }
+
     private static void collectViolations(Path path, List<String> violations) {
         String source;
         try {
@@ -329,5 +392,113 @@ class ServerMainSourceArchitectureGuardTest {
                 violations.add(path + " imports forbidden " + label + " type");
             }
         });
+    }
+
+    private static Map<String, String> readRouteInventory(Path inventory) throws IOException {
+        String source = Files.readString(inventory, StandardCharsets.UTF_8);
+        Map<String, String> routes = new LinkedHashMap<>();
+        boolean inRouteInventory = false;
+        for (String line : source.split("\\R")) {
+            if (line.equals("## Route Inventory")) {
+                inRouteInventory = true;
+                continue;
+            }
+            if (inRouteInventory && line.startsWith("## ")) {
+                break;
+            }
+            if (!inRouteInventory || !line.startsWith("|")) {
+                continue;
+            }
+            Matcher matcher = TABLE_ROW.matcher(line);
+            if (!matcher.matches()) {
+                continue;
+            }
+            String method = matcher.group(1).trim();
+            String route = matcher.group(2).trim();
+            String category = matcher.group(4).trim();
+            if ("Method".equals(method) || "---".equals(method)) {
+                continue;
+            }
+            routes.put(method + " " + route, category);
+        }
+        return routes;
+    }
+
+    private static Set<String> collectControllerApiRoutes() throws IOException {
+        Set<String> routes = new LinkedHashSet<>();
+        Path controllerRoot = SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/api/internal");
+        try (Stream<Path> paths = Files.walk(controllerRoot)) {
+            paths.filter(Files::isRegularFile)
+                    .filter(path -> path.toString().endsWith("Controller.java"))
+                    .filter(path -> !path.getFileName().toString().equals("FrontendConsoleController.java"))
+                    .forEach(path -> collectControllerApiRoutes(path, routes));
+        }
+        return routes;
+    }
+
+    private static void collectControllerApiRoutes(Path path, Set<String> routes) {
+        String source;
+        try {
+            source = Files.readString(path, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new IllegalStateException("could not read " + path + ": " + e.getMessage(), e);
+        }
+        String basePath = "";
+        Matcher classMapping = CLASS_REQUEST_MAPPING.matcher(source);
+        if (classMapping.find()) {
+            basePath = classMapping.group(1);
+        }
+        Matcher methodMapping = METHOD_MAPPING.matcher(source);
+        while (methodMapping.find()) {
+            String annotation = methodMapping.group(1);
+            String mappingArguments = methodMapping.group(2);
+            String methodPath = extractMethodPath(mappingArguments);
+            if (methodPath == null) {
+                continue;
+            }
+            String route = joinPaths(basePath, methodPath);
+            if (route.startsWith("/api/v1/")
+                    || route.startsWith("/internal/v1/")
+                    || route.startsWith("/worker-api/v1/")) {
+                routes.add(httpMethod(annotation) + " " + route);
+            }
+        }
+    }
+
+    private static String extractMethodPath(String mappingArguments) {
+        if (mappingArguments == null || mappingArguments.isBlank()) {
+            return "";
+        }
+        Matcher matcher = FIRST_QUOTED_VALUE.matcher(mappingArguments);
+        if (!matcher.find()) {
+            return "";
+        }
+        return matcher.group(1);
+    }
+
+    private static String joinPaths(String basePath, String methodPath) {
+        if (methodPath == null || methodPath.isBlank()) {
+            return basePath;
+        }
+        if (basePath == null || basePath.isBlank()) {
+            return methodPath;
+        }
+        if (basePath.endsWith("/") && methodPath.startsWith("/")) {
+            return basePath + methodPath.substring(1);
+        }
+        if (!basePath.endsWith("/") && !methodPath.startsWith("/")) {
+            return basePath + "/" + methodPath;
+        }
+        return basePath + methodPath;
+    }
+
+    private static String httpMethod(String annotation) {
+        return switch (annotation) {
+            case "GetMapping" -> "GET";
+            case "PostMapping" -> "POST";
+            case "PatchMapping" -> "PATCH";
+            case "DeleteMapping" -> "DELETE";
+            default -> throw new IllegalArgumentException("Unsupported mapping annotation: " + annotation);
+        };
     }
 }

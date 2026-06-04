@@ -438,7 +438,8 @@ direct runtime handlers in bounded virtual-thread execution; timeout returns an
 remain interrupt-aware and use bounded I/O.
 Runtime executor diagnostics for transport and optional event-handler execution
 are surfaced through the explicit operator/runtime `app.runtimeDiagnostics().getQueueDetail()`
-view and the Boot-shell `/api/v1/runtime/queues` response. Delivery-store diagnostics also expose
+view and the Boot-shell `/api/v1/runtime/queues` response. That HTTP route is
+operator/console diagnostics, not an external public SDK contract. Delivery-store diagnostics also expose
 `app.runtimeDiagnostics().getQueueDetail().deliveryDiagnostics.queueByAdapter`, which is the adapter-neutral
 per-`adapterId` queue breakdown and is not tied to one store implementation.
 Realtime direct-send counters are intentionally separate under
