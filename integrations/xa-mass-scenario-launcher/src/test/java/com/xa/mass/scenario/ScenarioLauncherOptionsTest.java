@@ -18,8 +18,6 @@ class ScenarioLauncherOptionsTest {
                 "--task-api-key=task-key",
                 "--task-command-api-key", "command-key",
                 "--worker-api-key", "worker-key",
-                "--bootstrap-key=bootstrap-key",
-                "--skip-dev-bootstrap",
                 "--scenario-dir", "custom/scenario",
                 "--idle-timeout-ms", "1234",
                 "--max-polling-workers=7"
@@ -30,8 +28,6 @@ class ScenarioLauncherOptionsTest {
         assertEquals("task-key", options.taskApiKey());
         assertEquals("command-key", options.taskCommandApiKey());
         assertEquals("worker-key", options.workerApiKey());
-        assertEquals("bootstrap-key", options.bootstrapKey());
-        assertFalse(options.devBootstrapEnabled());
         assertEquals(Path.of("custom/scenario"), options.scenarioDir());
         assertEquals(1234L, options.idleTimeoutMs());
         assertEquals(7, options.maxPollingWorkers());
@@ -51,19 +47,6 @@ class ScenarioLauncherOptionsTest {
         assertFalse(options.registerOnly());
         assertEquals(60_000L, options.idleTimeoutMs());
         assertEquals(25, options.maxPollingWorkers());
-        assertTrue(options.devBootstrapEnabled());
-    }
-
-    @Test
-    void parsesExplicitDevBootstrapToggle() {
-        ScenarioLauncherOptions disabled = ScenarioLauncherOptions.parse(new String[]{"--dev-bootstrap=false"});
-        ScenarioLauncherOptions enabled = ScenarioLauncherOptions.parse(new String[]{
-                "--skip-dev-bootstrap",
-                "--dev-bootstrap"
-        });
-
-        assertFalse(disabled.devBootstrapEnabled());
-        assertTrue(enabled.devBootstrapEnabled());
     }
 
     @Test

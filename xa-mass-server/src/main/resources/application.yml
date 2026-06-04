@@ -23,6 +23,12 @@ sample:
       interval: 30000
 
 mass:
+  control-plane:
+    seed:
+      enabled: false
+      mode: apply
+      catalog-location:
+      rules-location:
   runtime:
     mode: memory
     event-handler-timeout-ms: 5000

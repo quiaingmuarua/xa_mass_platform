@@ -8,7 +8,7 @@ mass:
       password:
   control-console:
     scenario:
-      enabled: true
+      enabled: false
   runtime:
     mode: memory
     event-handler-timeout-ms: 5000
@@ -43,8 +43,5 @@ sample:
   client:
     auto-start: true
     websocket-uri: ws://localhost:${mass.websocket.port}/ws
-  bootstrap:
-    enabled: true
-    api-key: dev-bootstrap-key
   worker:
     auto-start: false

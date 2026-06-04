@@ -9,20 +9,17 @@ final class ScenarioLauncher {
     private final ScenarioLauncherOptions options;
     private final ObjectMapper objectMapper;
     private final ScenarioClientFactory clientFactory;
-    private final DevBootstrapClient bootstrapClient;
 
     ScenarioLauncher(ScenarioLauncherOptions options,
                      ObjectMapper objectMapper,
-                     ScenarioClientFactory clientFactory,
-                     DevBootstrapClient bootstrapClient) {
+                     ScenarioClientFactory clientFactory) {
         this.options = Objects.requireNonNull(options, "options is required");
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper is required");
         this.clientFactory = Objects.requireNonNull(clientFactory, "clientFactory is required");
-        this.bootstrapClient = bootstrapClient;
     }
 
     void registerOnly(ScenarioFiles files) {
-        runDevBootstrap(files);
+        System.out.println("[java-scenario-launcher] using initialized server catalog, rules, and credentials");
         WorkerScenarioRegistrar workerRegistrar = new WorkerScenarioRegistrar(options, clientFactory);
         workerRegistrar.register(files.workerSpecs(), true);
         TaskScenarioSeeder taskSeeder = new TaskScenarioSeeder(options, objectMapper, clientFactory);
@@ -32,7 +29,7 @@ final class ScenarioLauncher {
     }
 
     void launch(ScenarioFiles files) throws InterruptedException {
-        runDevBootstrap(files);
+        System.out.println("[java-scenario-launcher] using initialized server catalog, rules, and credentials");
         WorkerScenarioRegistrar workerRegistrar = new WorkerScenarioRegistrar(options, clientFactory);
         workerRegistrar.register(files.workerSpecs(), false);
         ScenarioIdleTracker idleTracker = new ScenarioIdleTracker();
@@ -54,17 +51,5 @@ final class ScenarioLauncher {
                     startedWorkers, options.idleTimeoutMs());
             workerRuntime.awaitShutdownOrIdle(seededTasks);
         }
-    }
-
-    private void runDevBootstrap(ScenarioFiles files) {
-        if (!options.devBootstrapEnabled()) {
-            System.out.println("[java-scenario-launcher] dev bootstrap skipped; using pre-created catalog and rules");
-            return;
-        }
-        if (bootstrapClient == null) {
-            throw new IllegalStateException("dev bootstrap client is required when dev bootstrap is enabled");
-        }
-        bootstrapClient.bootstrapCatalog(files.bootstrapSpec());
-        bootstrapClient.bootstrapRules(files.ruleSpec());
     }
 }

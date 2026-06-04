@@ -35,7 +35,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "mass.mock.bootstrap.load-rules=false",
                 "mass.mock.data.workers=mock/test_mock_workers_empty.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
-                "mass.mock.data.rules=mock/test_mock_rules.json"
+                "mass.mock.data.rules=mock/test_mock_rules.json",
+                "mass.control-plane.seed.enabled=true",
+                "mass.control-plane.seed.catalog-location=file:../integrations/samples/dev/scenario/bootstrap.json",
+                "mass.control-plane.seed.rules-location=file:../integrations/samples/dev/scenario/rules.json"
         }
 )
 @ActiveProfiles("dev")

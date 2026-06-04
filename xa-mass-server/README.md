@@ -159,37 +159,44 @@ Everything below this section is intentionally dev/demo/sample wiring. It is
 useful for local validation, Boot-shell E2E, and black-box debugging, but it is
 not the stable definition of platform ownership.
 
-### Dev Metadata Bootstrap
+### Control-Plane Seed Import
 
-When `spring.profiles.active=dev` and
-`mass.control-console.scenario.enabled=true`, the server may register
-control-console catalog and submitter metadata.
+The default server startup path boots a clean platform shell. It does not
+create sample catalog, project, submitter, rule, task, WorkerGroup, adapter
+node, or worker truth.
 
-The server no longer owns demo task or worker scenario seeding in main source.
-The default server startup path should boot a clean platform shell; optional
-local/demo data is created by external launchers, SDK clients, or test fixtures.
+New-environment metadata is prepared explicitly through the server-owned
+control-plane seed/import runner:
 
-- control-console dev metadata may register catalog events, projects, and
-  submitters only when explicitly enabled with
-  `mass.control-console.scenario.enabled=true`
-- WorkerGroups, adapter nodes, workers, task shells, and task items must be
-  created through public worker/task APIs or SDK clients
-- JSON fixture bootstrap remains a test-only input path; packaged fixture files
-  are not a server startup source
-- server-owned sample-only bootstrap writes stay behind `/sample-api/bootstrap/*`
-  protected by `X-Sample-Bootstrap-Key`; they are enabled by default in `dev`
-  and disabled by default in `prod` unless `sample.bootstrap.enabled=true` is
-  set explicitly
+- `mass.control-plane.seed.enabled=false` by default in every profile
+- `mass.control-plane.seed.catalog-location` reads event, project, and
+  submitter metadata
+- `mass.control-plane.seed.rules-location` reads default scheduling rules
+- `mass.control-plane.seed.mode=apply` writes metadata; `validate` parses and
+  counts without writing
 
-To populate the local control console after the server is running, use the
+Example local seed:
+
+```bash
+java -jar xa-mass-server/target/xa-mass-server.jar \
+  --mass.control-plane.seed.enabled=true \
+  --mass.control-plane.seed.catalog-location=file:integrations/samples/dev/scenario/bootstrap.json \
+  --mass.control-plane.seed.rules-location=file:integrations/samples/dev/scenario/rules.json
+```
+
+WorkerGroups, adapter nodes, workers, task shells, and task items are never
+seed/import targets. They must be created through public worker/task APIs or
+SDK clients.
+
+To populate the local control console after metadata is seeded, use the
 external dev scenario launcher:
 
 ```bash
 node integrations/samples/dev/scenario/launch-workers.mjs
 ```
 
-That launcher uses public sample bootstrap, task, and worker APIs. It is an
-integration asset, not server startup logic.
+That launcher uses public task and worker APIs. It is an integration asset, not
+server startup logic.
 
 ### Effective Sample Client Startup
 
@@ -350,11 +357,13 @@ Observability:
 | `mass.transport.presence.store` | `memory` | embedded transport worker-presence backend; `memory` or `redis` |
 | `mass.transport.presence.lease-millis` | `30000` | worker transport presence lease before stale/offline pruning may treat the route as unavailable |
 | `mass.transport.presence.redis.namespace` | `xa:mass:transport:presence:v1` | Redis namespace prefix when `mass.transport.presence.store=redis` |
+| `mass.control-plane.seed.enabled` | `false` | explicitly apply or validate catalog/rule/credential seed files during startup |
+| `mass.control-plane.seed.mode` | `apply` | `apply` writes parsed seed metadata; `validate` parses/counts without writing |
+| `mass.control-plane.seed.catalog-location` | empty | resource location for event/project/submitter seed JSON |
+| `mass.control-plane.seed.rules-location` | empty | resource location for default rule seed JSON |
 | `sample.client.auto-start` | `true` in `dev` | auto-start embedded sample clients for the default dev demo shell |
 | `sample.client.websocket-uri` | `ws://localhost:${mass.websocket.port}/ws` | target WebSocket adapter address |
 | `sample.client.task-result-status` | `SUCCESS` | force sample result frames to `SUCCESS` or `FAILED` |
-| `sample.bootstrap.enabled` | `true` in `dev`, `false` in `prod` | enable sample-only `/sample-api/bootstrap/*` writes for scenario launchers |
-| `sample.bootstrap.api-key` | `dev-bootstrap-key` | sample-only bootstrap credential for `/sample-api/bootstrap/*` |
 | `sample.worker.auto-start` | `false` in `dev` | keep the external sample supervisor off by default; enable explicitly for the separate cross-process sample shell |
 
 JDBC storage scope:

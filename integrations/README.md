@@ -18,7 +18,7 @@ Global boundary guard:
 
 | Module | Artifact | Role |
 | --- | --- | --- |
-| [`xa-mass-scenario-launcher`](./xa-mass-scenario-launcher/README.md) | `xa-mass-scenario-launcher` | primary Java external SDK adopter for registering topology, starting polling workers, and submitting scenario tasks to a running server; dev bootstrap is optional and can be skipped for real external-registration proof |
+| [`xa-mass-scenario-launcher`](./xa-mass-scenario-launcher/README.md) | `xa-mass-scenario-launcher` | primary Java external SDK adopter for registering topology, starting polling workers, and submitting scenario tasks to an explicitly initialized server |
 | [`xa-mass-worker-pack`](./xa-mass-worker-pack/README.md) | `xa-mass-worker-pack` | worker capability pack and active server E2E harness support |
 | [`samples`](./samples/README.md) | none | historical/dev fixtures only; not a long-term public SDK product surface |
 
@@ -42,9 +42,10 @@ Global boundary guard:
 ## Current Role
 
 - Scenario launcher is the primary Java SDK adopter.
-- Scenario launcher real-proof runs should use pre-created catalog/rules and
-  API keys with `--skip-dev-bootstrap`; its WorkerGroup, AdapterNode, Worker,
-  and task flows remain SDK-backed external calls.
+- Scenario launcher runs require catalog/rules and API keys to be prepared by
+  server-owned seed/import, real control-plane setup, or test fixtures; its
+  WorkerGroup, AdapterNode, Worker, and task flows remain SDK-backed external
+  calls.
 - Worker-pack owns reusable capabilities plus separated dev/E2E harness code.
 - Samples remain protocol/dev fixtures and should not grow into a second SDK
   product surface.

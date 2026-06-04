@@ -103,9 +103,10 @@ development continues to use [pom.xml](pom.xml).
 
 The internal executable adopter is
 [../../integrations/xa-mass-scenario-launcher](../../integrations/xa-mass-scenario-launcher),
-not standalone Java sample apps. It can skip server-owned dev bootstrap with
-`--skip-dev-bootstrap` when catalog, rules, and credentials are pre-created for
-a real external-registration proof.
+not standalone Java sample apps. It assumes catalog, rules, and credentials are
+prepared by server-owned seed/import, real control-plane setup, or test
+fixtures before it registers worker topology and tasks through SDK-backed
+external calls.
 
 For the short task-producer plus worker-session onboarding path, use
 [EXTERNAL_SDK_QUICKSTART.md](./EXTERNAL_SDK_QUICKSTART.md).
