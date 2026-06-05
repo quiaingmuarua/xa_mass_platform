@@ -12,6 +12,8 @@ planning context until verified against code, tests, and public contracts.
   route-category owner truth used by server route boundary guards.
 - [INTERNAL_API_REFERENCE.md](INTERNAL_API_REFERENCE.md): current internal HTTP
   reference for active controller routes.
+- [../../doc/FRONTEND_BACKEND_CONTRACT.md](../../doc/FRONTEND_BACKEND_CONTRACT.md):
+  shared server/frontend API, auth, DTO, and control-console boundary contract.
 
 ## Roadmaps
 

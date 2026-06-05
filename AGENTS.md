@@ -148,6 +148,8 @@ Start here based on the change:
   [xa-mass-server/doc/INTERNAL_API_REFERENCE.md](xa-mass-server/doc/INTERNAL_API_REFERENCE.md)
 - SDK/integrations boundary guard:
   [doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md](doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md)
+- server/frontend API and control-console boundary:
+  [doc/FRONTEND_BACKEND_CONTRACT.md](doc/FRONTEND_BACKEND_CONTRACT.md)
 - active cross-module roadmap or decision work:
   [roadmap/README.md](roadmap/README.md)
 - legacy/compatibility/deprecation work:
@@ -216,6 +218,12 @@ Planning rule for multi-file or core changes:
   [doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md](doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md)
   before adding dependencies, DTOs, samples, worker-pack capability paths, or
   server bootstrap behavior
+- this repo is currently server + SDK first. Frontend is the control-console
+  consumer and validation surface; if a UI need requires new data/action, define
+  the backend contract and owner proof first instead of inventing frontend-only
+  models, permissions, route aliases, or mock-only production behavior.
+  Maintain [doc/FRONTEND_BACKEND_CONTRACT.md](doc/FRONTEND_BACKEND_CONTRACT.md)
+  when server/frontend API, auth, permission, DTO, or console ownership changes
 
 ## 6. Working Defaults
 
