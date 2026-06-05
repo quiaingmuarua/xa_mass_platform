@@ -30,29 +30,28 @@ Project/event catalog metadata is stable control-plane truth: it defines which
 projects exist and which event capabilities are legal for those projects. It is
 not runtime queue state, worker presence, dispatch history, or trace/audit.
 
-The key owner decision is whether durable catalog storage is:
+Durable catalog storage is a platform control-plane storage concern:
 
-- server-owned product metadata under `xa-mass-server`, similar to API-key/IAM
-  schema; or
-- generic platform control-plane storage under `platform_infra/mass-storage-*`,
-  because embedded SDK and other hosts may need the same catalog persistence
-  contract.
+- the narrow catalog store contract belongs under
+  `platform_infra/mass-storage-api`;
+- memory/JDBC implementations belong beside the existing storage adapters under
+  `platform_infra/mass-storage-memory` and
+  `platform_infra/mass-storage-jdbc`;
+- `xa-mass-server` owns wiring, explicit seed/import orchestration, startup
+  restore, route exposure, and Flyway assembly for the selected control-plane
+  database.
 
-Do not assume the answer from the current in-memory class location. The current
-`ProjectEventCatalogRegistry` lives in the SDK API because it is a bootstrap
-registry and read facade, not because SDK API should own server DB schema.
+The current `ProjectEventCatalogRegistry` lives in the SDK API because it is a
+bootstrap registry and read facade, not because SDK API should own durable
+server DB schema. Server-owned API-key/IAM/usage schema remains server-owned;
+catalog metadata is not another server-private product table family.
 
-## Boundary Decision To Reach
+## Boundary Decision
 
-Choose a single durable catalog write owner before implementation:
+Single durable catalog write owner for this roadmap:
+`platform_infra/mass-storage-*`.
 
-- If server-owned: add server-owned catalog store contracts/adapters and
-  server-owned migration/schema notes under `xa-mass-server`.
-- If platform-infra-owned: add a narrow generic catalog storage contract under
-  `platform_infra/mass-storage-api` and JDBC/memory implementations beside the
-  existing storage adapters.
-
-Either way, the runtime shape should be:
+The runtime shape should be:
 
 1. Durable project/event catalog store owns restart-readable metadata.
 2. Startup restores catalog metadata from the durable store.
@@ -85,6 +84,14 @@ Either way, the runtime shape should be:
   projection and must be restored from durable catalog data.
 - Do not require seed/import to run on every dev/prod startup.
 - Do not add a hidden sample/bootstrap path. Initialization must stay explicit.
+- Do not allow server dev/prod startup or route constructors to silently fall
+  back to `DefaultProjectEventCatalogFactory` when durable catalog mode is
+  active. Default catalog fallback is allowed only for explicitly local
+  embedded/test/bootstrap paths.
+- `eventCode` remains the globally unique capability/handler identity.
+  Project-event binding is separate scope metadata. Do not persist event
+  definitions as per-project duplicates, and do not mix project-event catalog
+  metadata with WorkerGroup topology, worker selection, or runtime presence.
 - Do not duplicate event/project DTO shapes unnecessarily. Reuse existing SDK
   public-contract definitions where they are the actual controller/API shape;
   introduce persistence records only where schema shape requires it.
@@ -116,7 +123,7 @@ truth has no store and no startup restore path.
 
 Goal:
 
-Freeze the current facts and choose the durable catalog owner before writing
+Freeze the current facts and close fallback/restore decisions before writing
 schema or adapters.
 
 Scope:
@@ -124,18 +131,27 @@ Scope:
 - Keep `SERVER_CATALOG_METADATA_PERSISTENCE_INVENTORY.md` current.
 - Inventory all project/event catalog writers, readers, and startup projection
   points.
-- Decide server-owned versus platform-infra-owned durable catalog storage.
+- Record `platform_infra/mass-storage-*` as the durable catalog storage owner
+  and `xa-mass-server` as the wiring/seed/import/route owner.
+- Inventory all current default catalog fallback paths, including Spring
+  fallback beans and controller constructor fallbacks.
 - Record which existing DTOs/definitions are reused for persisted shape and
   where persistence-only records are allowed.
 - Record seed/import conflict semantics: insert-only, replace-by-code, or
   explicit replace mode.
+- Record seed/import reference integrity semantics for project-event bindings.
 
 Acceptance:
 
-- The roadmap records a single durable catalog owner.
+- The roadmap records `platform_infra/mass-storage-*` as the single durable
+  catalog store owner.
 - The inventory lists all current catalog write paths and read paths.
+- The inventory lists all current default catalog fallback paths and their
+  target disposition.
 - The first implementation slice has a predetermined module owner and target
   package.
+- The first implementation slice can prove restored catalog metadata comes from
+  durable storage, not from seed/import replay or default catalog fallback.
 - No code behavior changes are made in this slice unless they are guard/docs
   only.
 
@@ -154,10 +170,13 @@ catalog metadata.
 
 Scope:
 
-- Add memory and JDBC implementations for the chosen catalog store owner.
+- Add memory and JDBC implementations for the platform-infra catalog store
+  owner.
 - Persist projects by project code.
-- Persist event definitions by event code with project bindings and all fields
-  required by runtime validation/display.
+- Persist event definitions by global event code.
+- Persist project-event bindings separately from event definitions and from
+  worker topology.
+- Persist all fields required by runtime validation/display.
 - Keep rule definitions in `RuleStorage`; only reference or coordinate with
   rules if seed/import ordering requires it.
 - Add schema notes in the owner module's DB/schema directory.
@@ -171,6 +190,8 @@ Acceptance:
   event capability metadata required by current controllers.
 - No worker topology, runtime state, trace, or task item history is added to
   catalog tables.
+- No per-project duplicate event definition rows are required to express
+  project membership.
 
 Verification:
 
@@ -178,7 +199,8 @@ Verification:
 ./mvnw -pl xa-mass-server -am -Dtest=*Catalog*StoreTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
-Adjust the module in the command if CAT-0 chooses `platform_infra` as the owner.
+The contract and storage tests should run in the owning `platform_infra`
+modules; the server test command remains the route/restore proof.
 
 ## CAT-2 - Startup Restore And Runtime Projection
 
@@ -204,8 +226,13 @@ Acceptance:
   capability views read restored catalog state.
 - Startup does not silently fall back to default demo catalog when durable
   catalog rows exist.
+- Server dev/prod durable catalog mode does not use
+  `DefaultProjectEventCatalogFactory` as route-visible catalog truth.
 - Clean startup with no seed/import remains clean; no sample projects/events are
   hidden-bootstrap-created.
+- Restored catalog metadata drives worker capability/read views without
+  persisting WorkerGroup, adapter-node, worker, heartbeat, or topology data in
+  catalog tables.
 
 Verification:
 
@@ -227,6 +254,7 @@ Scope:
 - Preserve submitter/API-key and rule import behavior under their existing
   owners.
 - Implement the conflict behavior chosen in CAT-0.
+- Validate project-event references before writing durable project metadata.
 - Ensure imports are explicit and default-off.
 
 Acceptance:
@@ -234,6 +262,9 @@ Acceptance:
 - Running seed/import once creates durable project/event catalog metadata.
 - Restart reads the catalog without rerunning seed/import.
 - Re-running seed/import follows the recorded conflict semantics.
+- A project seed that references an unknown event code is rejected or reported
+  as an explicit import failure; it must not leave partially persisted project
+  catalog metadata.
 - Seed/import does not create task/worker/runtime truth by default.
 
 Verification:
@@ -254,9 +285,13 @@ Scope:
 - Add source guards for schema placement.
 - Add guard or focused test proving server JDBC mode does not assemble only
   `new ProjectEventCatalogRegistry()` as durable catalog truth.
+- Add guard or focused test proving server dev/prod durable catalog mode does
+  not expose `DefaultProjectEventCatalogFactory` fallback catalog as current
+  route truth.
 - Update owner docs:
   - `xa-mass-server/README.md`
-  - owner schema README if server-owned
+  - `platform_infra/mass-storage-jdbc/README.md`
+  - owner schema README under the selected storage module
   - `doc/INFRA_TRUTH_LAYERS.md` if global storage truth changes
   - `sdk/README.md` only if SDK public boundary changes
 - Archive this roadmap only after residue scan and current facts are moved to
@@ -266,6 +301,8 @@ Acceptance:
 
 - Active docs state project/event catalog restart behavior precisely.
 - Guards prevent catalog DB schema from being placed in the wrong module.
+- Guards prevent default/demo catalog fallback from satisfying durable
+  dev/prod catalog proof.
 - No active README treats archived roadmap prose as current truth.
 - Residue scan finds no stale "must rerun import every startup" language for
   persisted catalog metadata.
@@ -282,7 +319,10 @@ git diff --check
 
 This roadmap is complete when:
 
-- project/event catalog metadata has a chosen durable owner and store contract;
+- project/event catalog metadata has a platform-infra durable owner and store
+  contract;
+- default/demo catalog fallback cannot masquerade as durable dev/prod catalog
+  truth;
 - SQLite restart proof shows catalog metadata survives process restart without
   repeated seed/import;
 - runtime/SDK projection is restored from durable catalog metadata before
@@ -292,4 +332,3 @@ This roadmap is complete when:
 - rules remain under `RuleStorage`;
 - worker topology/runtime/trace truth remains out of catalog tables;
 - owner docs and guards encode the boundary.
-
