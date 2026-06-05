@@ -1,5 +1,7 @@
 package com.xa.mass.server.e2e.assignment;
 
+import com.xa.mass.server.e2e.bootstrap.CatalogMetadataSQLiteRestartIntegrationTest;
+import com.xa.mass.server.e2e.bootstrap.CatalogRestoreWorkerCapabilityViewIntegrationTest;
 import org.junit.platform.suite.api.SelectClasses;
 import org.junit.platform.suite.api.Suite;
 
@@ -11,6 +13,8 @@ import org.junit.platform.suite.api.Suite;
  */
 @Suite
 @SelectClasses({
+        CatalogMetadataSQLiteRestartIntegrationTest.class,
+        CatalogRestoreWorkerCapabilityViewIntegrationTest.class,
         H2ExternalWorkerPollingApiIntegrationTest.class,
         PostgresExternalWorkerPollingApiIntegrationTest.class
 })
