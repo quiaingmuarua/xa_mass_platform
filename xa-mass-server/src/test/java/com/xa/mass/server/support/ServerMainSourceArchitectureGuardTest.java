@@ -259,6 +259,41 @@ class ServerMainSourceArchitectureGuardTest {
     }
 
     @Test
+    void prodInfraAssemblyFailsClosedInsteadOfFallingBackToMemory() throws IOException {
+        Path application = SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/server/XaMassServerApplication.java");
+        String applicationSource = Files.readString(application, StandardCharsets.UTF_8);
+        Path storeConfiguration = SERVER_MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/server/config/ServerControlPlaneStoreConfiguration.java");
+        String storeConfigurationSource = Files.readString(storeConfiguration, StandardCharsets.UTF_8);
+        String disabledJdbcFallback = "JdbcStorageRuntime" + "::disabled";
+        String taskWorkFallback = "getIfAvailable(" + "InMemoryTaskWorkRuntime::new)";
+        String taskResultFallback = "getIfAvailable(" + "InMemoryTaskResultRuntime::new)";
+        String memoryNullSwitch = "case \"\", \"memory\" -> " + "null";
+        String memoryRuntimeSwitch = "case \"\", \"memory\" -> " + "new InMemory";
+
+        assertTrue(!storeConfigurationSource.contains("ObjectProvider<JdbcStorageRuntime>"),
+                "server control-plane stores must require JdbcStorageRuntime directly");
+        assertTrue(!storeConfigurationSource.contains(disabledJdbcFallback),
+                "server control-plane stores must not synthesize a disabled JDBC runtime fallback");
+        assertTrue(!applicationSource.contains(taskWorkFallback),
+                "prod runtime assembly must not fallback to in-memory task work runtime when the bean is missing");
+        assertTrue(!applicationSource.contains(taskResultFallback),
+                "prod runtime assembly must not fallback to in-memory task result runtime when the bean is missing");
+        assertTrue(!applicationSource.contains(memoryNullSwitch),
+                "prod transport resolver must not encode memory as a null/default factory fallback");
+        assertTrue(!applicationSource.contains(memoryRuntimeSwitch),
+                "prod runtime resolver must not encode memory as the default runtime branch");
+        assertTrue(applicationSource.contains("prod requires mass.storage.mode to be JDBC-enabled"),
+                "prod storage mode must fail closed when it is memory or disabled");
+        assertTrue(applicationSource.contains("requireNonProdMode(\"mass.runtime.mode\", \"redis\""),
+                "prod runtime mode must fail closed unless Redis is selected");
+        assertTrue(applicationSource.contains("requireNonProdMode(\"mass.transport.delivery.store\", \"redis\""),
+                "prod transport delivery must fail closed unless Redis is selected");
+        assertTrue(applicationSource.contains("requireNonProdMode(\"mass.transport.presence.store\", \"redis\""),
+                "prod transport presence must fail closed unless Redis is selected");
+    }
+
+    @Test
     void sampleBootstrapHttpIsNotActiveServerApi() throws IOException {
         Path repoRoot = Path.of("..").toAbsolutePath().normalize();
         Path serverController = SERVER_MAIN_SOURCE_ROOT.resolve(
@@ -402,6 +437,46 @@ class ServerMainSourceArchitectureGuardTest {
     }
 
     @Test
+    void startupReadinessRunsBeforeFullStackRuntimeStart() throws IOException {
+        String serverSource = Files.readString(
+                SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/server/XaMassServerApplication.java"),
+                StandardCharsets.UTF_8);
+        String seedSource = Files.readString(
+                SERVER_MAIN_SOURCE_ROOT.resolve(
+                        "com/xa/mass/server/bootstrap/seed/ControlPlaneSeedImportConfiguration.java"),
+                StandardCharsets.UTF_8);
+        String readinessSource = Files.readString(
+                SERVER_MAIN_SOURCE_ROOT.resolve(
+                        "com/xa/mass/api/auth/operator/OperatorAuthReadinessGuard.java"),
+                StandardCharsets.UTF_8);
+
+        assertTrue(Pattern.compile("@Order\\(0\\)\\s+@ConditionalOnProperty[\\s\\S]*controlPlaneEarlySeedImportRunner")
+                        .matcher(seedSource)
+                        .find(),
+                "catalog/operator seed import must run before auth readiness and runtime startup");
+        assertTrue(Pattern.compile("@Order\\(1\\)\\s+public final class OperatorAuthReadinessGuard")
+                        .matcher(readinessSource)
+                        .find(),
+                "operator auth readiness must fail before full-stack runtime startup");
+        assertTrue(Pattern.compile("@Order\\(2\\)\\s+public CommandLineRunner fullStackStarter")
+                        .matcher(serverSource)
+                        .find(),
+                "full-stack runtime must start after seed/import and startup readiness checks");
+        assertTrue(Pattern.compile("@Order\\(3\\)\\s+@ConditionalOnProperty[\\s\\S]*controlPlaneRuleSeedImportRunner")
+                        .matcher(seedSource)
+                        .find(),
+                "rule seed import must run after full-stack runtime startup");
+        assertTrue(Pattern.compile("@Order\\(4\\)[\\s\\S]*taskReviewReadModelFinalityListener")
+                        .matcher(serverSource)
+                        .find(),
+                "review finality listener must register after runtime startup and rule seed import");
+        assertTrue(Pattern.compile("@Order\\(4\\)[\\s\\S]*taskReviewReadModelAttemptClosedListener")
+                        .matcher(serverSource)
+                        .find(),
+                "review attempt listener must register after runtime startup and rule seed import");
+    }
+
+    @Test
     void serverApiIamUsageSchemaDoesNotMoveToPlatformInfraMigrations() throws IOException {
         List<String> violations = new ArrayList<>();
         Path platformMigrations = REPO_ROOT.resolve(
@@ -413,9 +488,10 @@ class ServerMainSourceArchitectureGuardTest {
                             String source = Files.readString(path, StandardCharsets.UTF_8);
                             if (source.contains("xa_api_key_")
                                     || source.contains("xa_iam_")
+                                    || source.contains("xa_operator_credential")
                                     || source.contains("xa_api_usage_")
                                     || source.contains("submitter_viewer_session")) {
-                                violations.add(path + " contains server-owned API/IAM/session/usage schema");
+                                violations.add(path + " contains server-owned API/IAM/operator/session/usage schema");
                             }
                         } catch (IOException e) {
                             violations.add(path + " could not be read: " + e.getMessage());
@@ -440,7 +516,7 @@ class ServerMainSourceArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "server-owned API-key/IAM/usage schema must stay in xa-mass-server and "
+                "server-owned API-key/IAM/operator/usage schema must stay in xa-mass-server and "
                         + "submitter-viewer sessions must stay out of JDBC:\n"
                         + String.join("\n", violations));
     }

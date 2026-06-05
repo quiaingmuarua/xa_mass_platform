@@ -18,6 +18,11 @@ agents.
   tests, guards, and owner README files.
 - Treat `current direction`, `target direction`, and `active deferred decision`
   as constraints or decisions, not as proof of implemented behavior.
+- Roadmaps that touch server profiles, `@Configuration`, component-scanned
+  beans, constructor `@Value`/`Environment` injection, startup guards,
+  seed/import, fail-closed infra checks, or `XaMassServerApplication` assembly
+  must include startup/context proof in acceptance. Unit tests that instantiate
+  classes directly are not enough for Spring production wiring.
 - Move completed records to `doc/archive/` with a date prefix after residue
   scan and link cleanup.
 

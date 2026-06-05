@@ -1,6 +1,8 @@
 package com.xa.mass.server.bootstrap.seed;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xa.mass.api.auth.operator.OperatorCredentialRecord;
+import com.xa.mass.api.auth.operator.OperatorCredentialStore;
 import com.xa.mass.server.catalog.CatalogMetadataProjection;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.sdk.MassSdkApplication;
@@ -27,15 +29,19 @@ final class ControlPlaneSeedImporter {
 
     private final MassSdkApplication app;
     private final CatalogMetadataStore catalogMetadataStore;
+    private final OperatorCredentialStore operatorCredentialStore;
     private final ObjectMapper objectMapper;
     private final ResourceLoader resourceLoader;
 
     ControlPlaneSeedImporter(MassSdkApplication app,
                              CatalogMetadataStore catalogMetadataStore,
+                             OperatorCredentialStore operatorCredentialStore,
                              ObjectMapper objectMapper,
                              ResourceLoader resourceLoader) {
         this.app = Objects.requireNonNull(app, "app is required");
         this.catalogMetadataStore = Objects.requireNonNull(catalogMetadataStore, "catalogMetadataStore is required");
+        this.operatorCredentialStore = Objects.requireNonNull(operatorCredentialStore,
+                "operatorCredentialStore is required");
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper is required");
         this.resourceLoader = Objects.requireNonNull(resourceLoader, "resourceLoader is required");
     }
@@ -51,17 +57,27 @@ final class ControlPlaneSeedImporter {
         ControlPlaneSeedRules rules = request.rulesLocation() == null
                 ? new ControlPlaneSeedRules()
                 : read(request.rulesLocation(), ControlPlaneSeedRules.class);
+        ControlPlaneOperatorCredentialSeed credentialSeed = request.operatorCredentialsLocation() == null
+                ? new ControlPlaneOperatorCredentialSeed()
+                : read(request.operatorCredentialsLocation(), ControlPlaneOperatorCredentialSeed.class);
 
         List<EventDefinition> events = toEventDefinitions(catalog);
         List<ProjectDefinition> projects = toProjectDefinitions(catalog);
         List<SubmitterRegistration> submitters = toSubmitterRegistrations(catalog);
         List<RuleDefinition> ruleDefinitions = List.copyOf(rules.getRules());
+        List<OperatorCredentialRecord> operatorCredentials = toOperatorCredentials(credentialSeed);
 
-        SeedImportResult result = new SeedImportResult(events.size(), projects.size(), submitters.size(), ruleDefinitions.size());
+        SeedImportResult result = new SeedImportResult(
+                events.size(),
+                projects.size(),
+                submitters.size(),
+                ruleDefinitions.size(),
+                operatorCredentials.size()
+        );
         CatalogMetadataProjection.validateUpsert(catalogMetadataStore, events, projects);
         if (request.validateOnly()) {
-            log.info("Validated control-plane seed catalogLocation={} rulesLocation={} result={}",
-                    request.catalogLocation(), request.rulesLocation(), result);
+            log.info("Validated control-plane seed catalogLocation={} rulesLocation={} operatorCredentialsLocation={} result={}",
+                    request.catalogLocation(), request.rulesLocation(), request.operatorCredentialsLocation(), result);
             return result;
         }
 
@@ -72,8 +88,9 @@ final class ControlPlaneSeedImporter {
         if (!ruleDefinitions.isEmpty()) {
             app.replaceDefaultRules(ruleDefinitions);
         }
-        log.info("Applied control-plane seed catalogLocation={} rulesLocation={} result={}",
-                request.catalogLocation(), request.rulesLocation(), result);
+        operatorCredentials.forEach(operatorCredentialStore::upsert);
+        log.info("Applied control-plane seed catalogLocation={} rulesLocation={} operatorCredentialsLocation={} result={}",
+                request.catalogLocation(), request.rulesLocation(), request.operatorCredentialsLocation(), result);
         return result;
     }
 
@@ -117,6 +134,12 @@ final class ControlPlaneSeedImporter {
             }
         }
         return List.copyOf(registrations);
+    }
+
+    private List<OperatorCredentialRecord> toOperatorCredentials(ControlPlaneOperatorCredentialSeed seed) {
+        return seed.getOperatorCredentials().stream()
+                .map(ControlPlaneOperatorCredentialSeed.CredentialSeed::toRecord)
+                .toList();
     }
 
     private EventDefinition toEventDefinition(ControlPlaneSeedCatalog.EventSeed seed, Map<String, String> placeholders) {
@@ -212,9 +235,12 @@ final class ControlPlaneSeedImporter {
         return result;
     }
 
-    record ControlPlaneSeedImportRequest(String catalogLocation, String rulesLocation, String mode) {
+    record ControlPlaneSeedImportRequest(String catalogLocation,
+                                         String rulesLocation,
+                                         String operatorCredentialsLocation,
+                                         String mode) {
         boolean hasAnyLocation() {
-            return catalogLocation != null || rulesLocation != null;
+            return catalogLocation != null || rulesLocation != null || operatorCredentialsLocation != null;
         }
 
         boolean validateOnly() {
@@ -228,6 +254,6 @@ final class ControlPlaneSeedImporter {
         }
     }
 
-    record SeedImportResult(int events, int projects, int submitters, int rules) {
+    record SeedImportResult(int events, int projects, int submitters, int rules, int operatorCredentials) {
     }
 }

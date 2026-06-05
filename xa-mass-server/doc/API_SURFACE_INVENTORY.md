@@ -41,8 +41,10 @@ Deferred decisions:
 
 | Method | Route | Controller | Category | Auth Mode | Target Owner | Value / Performance | Current Callers | Target |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| GET | /api/v1/auth/me | AuthController | console-diagnostics | no current catalog entry | server auth/session | keep; bounded principal read | frontend | keep |
-| POST | /api/v1/auth/logout | AuthController | operator-command | no current catalog entry | server auth/session | keep; bounded operator session command | frontend | keep |
+| GET | /api/v1/auth/config | AuthController | console-diagnostics | public auth config | server auth/mode discovery | keep; non-sensitive mode flags only | frontend | keep |
+| POST | /api/v1/auth/login | AuthController | operator-command | public credential exchange | server auth/session | keep; bounded login; sets HttpOnly session cookie and returns CSRF token | frontend | keep |
+| GET | /api/v1/auth/me | AuthController | console-diagnostics | operator auth-only | server auth/session | keep; bounded principal read | frontend | keep |
+| POST | /api/v1/auth/logout | AuthController | operator-command | operator auth-only + CSRF in session mode | server auth/session | keep; bounded operator session command | frontend | keep |
 | GET | /api/v1/submitters/me | CurrentSubmitterController | public-sdk-read | SDK credential bypass or TASK_VIEW | submitter credential owner | keep; bounded current-principal read | frontend, SDK users | keep |
 | GET | /api/v1/submitters/me/usage | ApiUsageController | public-sdk-read | SDK credential bypass only | API usage owner | keep; bounded current credential usage | frontend | keep |
 | POST | /api/v1/submitter-sessions | SubmitterViewerSessionController | public-sdk-ingress | SDK credential bypass only | submitter viewer session owner | keep; bounded session create | frontend | keep |

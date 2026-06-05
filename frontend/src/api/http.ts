@@ -1,5 +1,9 @@
-import {getAppConfig} from '@/app/config'
-import {currentOperatorModeHeader} from '@/auth/operator-mode'
+import { getAppConfig } from '@/app/config'
+import {
+    currentBackendAuthConfig,
+    currentOperatorCsrfHeader,
+} from '@/auth/backend-auth'
+import { currentOperatorModeHeader } from '@/auth/operator-mode'
 
 interface ApiResponseEnvelope<T> {
     code: number
@@ -33,11 +37,23 @@ export async function requestJson<T>(
         headers,
         ...fetchInit
     } = init ?? {}
+    const attachOperatorSession = shouldAttachOperatorSession(
+        includeOperatorAuth,
+        submitterCredential,
+    )
     const response = await fetch(buildApiUrl(input), {
         ...fetchInit,
+        credentials:
+            fetchInit.credentials ??
+            (attachOperatorSession ? 'same-origin' : 'omit'),
         headers: {
             'Content-Type': 'application/json',
-            ...(includeOperatorAuth ? operatorModeHeader() : {}),
+            ...operatorModeHeader(includeOperatorAuth, submitterCredential),
+            ...csrfHeader(
+                fetchInit.method,
+                includeOperatorAuth,
+                submitterCredential,
+            ),
             ...submitterCredentialHeader(submitterCredential),
             ...(headers ?? {}),
         },
@@ -73,8 +89,16 @@ export async function requestApiData<T>(
     return payload.data
 }
 
-function operatorModeHeader(): Record<string, string> {
-    if (getAppConfig().useMockAuth) {
+function operatorModeHeader(
+    includeOperatorAuth: boolean,
+    submitterCredential: string | undefined,
+): Record<string, string> {
+    if (
+        getAppConfig().useMockAuth ||
+        !includeOperatorAuth ||
+        hasSubmitterCredential(submitterCredential) ||
+        !currentBackendAuthConfig().operatorHeaderSupported
+    ) {
         return {}
     }
 
@@ -94,6 +118,48 @@ function submitterCredentialHeader(
     return {
         'X-Mass-Api-Key': normalized,
     }
+}
+
+function csrfHeader(
+    method: string | undefined,
+    includeOperatorAuth: boolean,
+    submitterCredential: string | undefined,
+): Record<string, string> {
+    if (
+        !shouldAttachOperatorSession(
+            includeOperatorAuth,
+            submitterCredential,
+        ) ||
+        isSafeMethod(method)
+    ) {
+        return {}
+    }
+    return currentOperatorCsrfHeader()
+}
+
+function shouldAttachOperatorSession(
+    includeOperatorAuth: boolean,
+    submitterCredential: string | undefined,
+): boolean {
+    return (
+        !getAppConfig().useMockAuth &&
+        includeOperatorAuth &&
+        !hasSubmitterCredential(submitterCredential) &&
+        currentBackendAuthConfig().sessionCookieSupported
+    )
+}
+
+function hasSubmitterCredential(credential: string | undefined): boolean {
+    return credential !== undefined && credential.trim().length > 0
+}
+
+function isSafeMethod(method: string | undefined): boolean {
+    const normalized = method?.trim().toUpperCase() ?? 'GET'
+    return (
+        normalized === 'GET' ||
+        normalized === 'HEAD' ||
+        normalized === 'OPTIONS'
+    )
 }
 
 function isApiResponseEnvelope<T>(

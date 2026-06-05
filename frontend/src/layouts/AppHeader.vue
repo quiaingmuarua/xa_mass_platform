@@ -12,7 +12,7 @@
     </div>
     <div class="header-user">
       <el-select
-        v-if="!useMockAuth"
+        v-if="showOperatorModeSelect"
         :model-value="operatorMode"
         class="operator-select"
         size="small"
@@ -28,18 +28,21 @@
           {{ user?.permissions.length ?? 0 }} permissions
         </div>
       </div>
+      <el-button size="small" text @click="handleLogout">Logout</el-button>
     </div>
   </header>
 </template>
 
 <script setup lang="ts">
-import {computed} from 'vue'
-import {useRoute} from 'vue-router'
-import {getAppConfig} from '@/app/config'
-import {initializeAuth, useAuth} from '@/auth/use-auth'
-import {type OperatorMode, useOperatorMode} from '@/auth/operator-mode'
+import { computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { getAppConfig } from '@/app/config'
+import { isDevHeaderAuth, operatorAuthMode } from '@/auth/backend-auth'
+import { initializeAuth, logout, useAuth } from '@/auth/use-auth'
+import { type OperatorMode, useOperatorMode } from '@/auth/operator-mode'
 
 const route = useRoute()
+const router = useRouter()
 const { user } = useAuth()
 const { operatorMode, setOperatorMode } = useOperatorMode()
 
@@ -48,9 +51,14 @@ const integrationMode = computed(() =>
   getAppConfig().useMockApi ? 'Mock API' : 'Backend API',
 )
 const authMode = computed(() =>
-  getAppConfig().useMockAuth ? 'Mock auth' : 'Backend auth',
+  getAppConfig().useMockAuth
+    ? 'Mock auth'
+    : `Backend ${operatorAuthMode.value}`,
 )
 const useMockAuth = computed(() => getAppConfig().useMockAuth)
+const showOperatorModeSelect = computed(
+  () => !useMockAuth.value && isDevHeaderAuth.value,
+)
 const modeBadgeClass = computed(() =>
   getAppConfig().useMockApi ? 'is-mock' : 'is-backend',
 )
@@ -58,6 +66,11 @@ const modeBadgeClass = computed(() =>
 function changeOperatorMode(mode: OperatorMode): void {
   setOperatorMode(mode)
   void initializeAuth()
+}
+
+async function handleLogout(): Promise<void> {
+  await logout()
+  await router.push('/login')
 }
 </script>
 

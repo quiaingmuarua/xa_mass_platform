@@ -22,6 +22,10 @@ more implemented than another.
 - dev/prod profiles may change infrastructure, seed source, logging, and
   operational defaults; they must not change public task, worker, credential,
   project, rule, or control-plane API contracts
+- `prod` profile infra is fail-closed: control-plane storage must be
+  JDBC-enabled, runtime state must use Redis, and transport delivery/presence
+  must use Redis. Misconfiguration must fail startup instead of silently
+  reverting to process memory.
 - SQLite-first persistence is a control-plane storage direction only; it must
   not be read as moving runtime queues, leases, heartbeat, result convergence,
   or trace/audit streams into SQLite
@@ -172,6 +176,9 @@ Current product-stage DB rules:
 - Submitter-viewer sessions are runtime/session convenience state. They must
   not be persisted in SQLite/JDBC as control-plane truth; future cross-process
   sharing belongs to a runtime/Redis session design.
+- Submitter-viewer sessions are the current prod-facing memory exception. They
+  must not be used as precedent for memory fallback in control-plane storage,
+  runtime queues/results, transport delivery, or transport presence.
 - Server API-key lifecycle schema must keep auth projection separate from
   lifecycle truth and must distinguish omitted, wildcard, and bounded
   project/event scopes before persisting scope fields.

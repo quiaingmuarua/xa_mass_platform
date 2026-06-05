@@ -1,6 +1,23 @@
-import type {AppRouteRecordRaw} from '@/router/types'
+import type { AppRouteRecordRaw } from '@/router/types'
 
 export const utilityRoutes: AppRouteRecordRaw[] = [
+    {
+        path: 'login',
+        name: 'login',
+        component: () => import('@/pages/app/LoginPage.vue'),
+        meta: {
+            shell: 'public',
+            navGroup: 'public',
+            title: 'Operator Login',
+            icon: 'Lock',
+            order: 10,
+            hidden: true,
+            keepAlive: false,
+            requiresAuth: false,
+            permissions: [],
+            menuVisible: false,
+        },
+    },
     {
         path: 'submitter-viewer',
         name: 'submitter-viewer',

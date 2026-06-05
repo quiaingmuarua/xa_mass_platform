@@ -12,6 +12,18 @@ public class ApiRouteAuthorizationCatalog {
         String uri = request.getRequestURI();
         String method = request.getMethod().toUpperCase();
 
+        if (uri.equals("/api/v1/auth/config") && "GET".equals(method)) {
+            return route(PlatformResourceType.USER, PlatformAction.VIEW, ApiAuthInterceptor.PUBLIC_ROUTE);
+        }
+        if (uri.equals("/api/v1/auth/login") && "POST".equals(method)) {
+            return route(PlatformResourceType.USER, PlatformAction.VIEW, ApiAuthInterceptor.PUBLIC_ROUTE);
+        }
+        if (uri.equals("/api/v1/auth/me") && "GET".equals(method)) {
+            return route(PlatformResourceType.USER, PlatformAction.VIEW, ApiAuthInterceptor.OPERATOR_AUTH_ONLY);
+        }
+        if (uri.equals("/api/v1/auth/logout") && "POST".equals(method)) {
+            return route(PlatformResourceType.USER, PlatformAction.VIEW, ApiAuthInterceptor.OPERATOR_AUTH_ONLY);
+        }
         if (uri.equals("/api/v1/tasks")) {
             return switch (method) {
                 case "GET" -> sdkCredentialAttempt
