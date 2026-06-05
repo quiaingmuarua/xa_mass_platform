@@ -31,6 +31,24 @@ mass:
       mode: apply
       catalog-location:
       rules-location:
+      # Optional hash-only operator credential seed.
+      # In prod + operator session auth, startup fails unless at least one
+      # ACTIVE operator credential exists after this seed/import step.
+      # Seed files must use passwordHash; plaintext password is rejected.
+      operator-credentials-location:
+  auth:
+    operator:
+      # Blank means profile default: dev -> dev-header, prod -> session.
+      # Explicit values: dev-header, session, disabled.
+      mode:
+      allow-unsafe-dev-header-in-prod: false
+      bootstrap:
+        # Local escape hatch only. Keep false for normal prod startup:
+        # prod session auth should fail closed when credentials are missing.
+        allow-empty-before-seed: false
+      session:
+        ttl: 8h
+        cookie-secure:
   runtime:
     mode: memory
     event-handler-timeout-ms: 5000

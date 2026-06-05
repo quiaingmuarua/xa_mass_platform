@@ -1,5 +1,7 @@
 package com.xa.mass.api.auth;
 
+import com.xa.mass.api.auth.operator.OperatorSessionRecord;
+import com.xa.mass.api.auth.operator.OperatorSessionService;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.auth.PrincipalDirectory;
 import jakarta.servlet.http.HttpServletRequest;
@@ -29,15 +31,38 @@ public class ApiAuthService {
 
     private final PrincipalDirectory principalDirectory;
     private final HeaderPrincipalContextFactory headerPrincipalContextFactory;
+    private final OperatorAuthProperties operatorAuthProperties;
+    private final OperatorSessionService operatorSessionService;
+
+    public ApiAuthService(PrincipalDirectory principalDirectory,
+                          HeaderPrincipalContextFactory headerPrincipalContextFactory) {
+        this(principalDirectory, headerPrincipalContextFactory, OperatorAuthProperties.devHeaderForTests(), null);
+    }
 
     @Autowired
     public ApiAuthService(PrincipalDirectory principalDirectory,
-                          HeaderPrincipalContextFactory headerPrincipalContextFactory) {
+                          HeaderPrincipalContextFactory headerPrincipalContextFactory,
+                          OperatorAuthProperties operatorAuthProperties,
+                          OperatorSessionService operatorSessionService) {
         this.principalDirectory = Objects.requireNonNull(principalDirectory, "principalDirectory");
         this.headerPrincipalContextFactory = Objects.requireNonNull(headerPrincipalContextFactory, "headerPrincipalContextFactory");
+        this.operatorAuthProperties = Objects.requireNonNull(operatorAuthProperties, "operatorAuthProperties");
+        this.operatorSessionService = operatorSessionService;
+    }
+
+    public ApiAuthService(PrincipalDirectory principalDirectory,
+                          HeaderPrincipalContextFactory headerPrincipalContextFactory,
+                          OperatorAuthProperties operatorAuthProperties) {
+        this(principalDirectory, headerPrincipalContextFactory, operatorAuthProperties, null);
     }
 
     public PrincipalContext resolveCurrentPrincipal(HttpServletRequest request) {
+        if (operatorAuthProperties.mode() == OperatorAuthMode.SESSION) {
+            return resolveSessionPrincipal(request);
+        }
+        if (operatorAuthProperties.mode() == OperatorAuthMode.DISABLED) {
+            return null;
+        }
         String explicitMode = readTrimmed(request.getHeader(USER_MODE_HEADER));
         if (explicitMode == null && hasCustomHeaders(request)) {
             return buildCustomPrincipal(request);
@@ -71,6 +96,15 @@ public class ApiAuthService {
             throw new ApiForbiddenException("Missing permission: " + permission);
         }
         return principal;
+    }
+
+    public void requireCsrf(HttpServletRequest request) {
+        if (operatorAuthProperties.mode() != OperatorAuthMode.SESSION || isSafeMethod(request.getMethod())) {
+            return;
+        }
+        if (operatorSessionService == null || !operatorSessionService.csrfMatches(request)) {
+            throw new ApiForbiddenException("Missing or invalid CSRF token");
+        }
     }
 
     private boolean hasCustomHeaders(HttpServletRequest request) {
@@ -109,12 +143,33 @@ public class ApiAuthService {
         return headerPrincipalContextFactory.buildOperatorPrincipal(request);
     }
 
+    public PrincipalContext requireKnownOperatorPrincipal(String principalId) {
+        return requireKnownPrincipal(principalId);
+    }
+
+    private PrincipalContext resolveSessionPrincipal(HttpServletRequest request) {
+        if (operatorSessionService == null) {
+            return null;
+        }
+        OperatorSessionRecord session = operatorSessionService.resolve(request);
+        if (session == null) {
+            return null;
+        }
+        return principalDirectory.getPrincipal(session.userId());
+    }
+
     private PrincipalContext requireKnownPrincipal(String principalId) {
         PrincipalContext principal = principalDirectory.getPrincipal(principalId);
         if (principal == null) {
             throw new IllegalStateException("Missing principal definition: " + principalId);
         }
         return principal;
+    }
+
+    private boolean isSafeMethod(String method) {
+        return "GET".equalsIgnoreCase(method)
+                || "HEAD".equalsIgnoreCase(method)
+                || "OPTIONS".equalsIgnoreCase(method);
     }
 
     private List<String> parseCsvAttribute(String value, String defaultValue) {

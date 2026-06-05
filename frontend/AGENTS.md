@@ -4,9 +4,11 @@ Status: current frontend owner handoff.
 
 This frontend is a lightweight control console for the orchestration platform. Keep it explicit, domain-shaped, and permission-aware.
 
-Use [CONSOLE_UX_ROADMAP.md](./CONSOLE_UX_ROADMAP.md) only when the task touches
-frontend console UX direction. Treat it as frontend-local planning context, not
-server, SDK, engine, transport, or runtime truth.
+Use
+[CONSOLE_FRONTEND_PRODUCTIONIZATION_ROADMAP.md](./CONSOLE_FRONTEND_PRODUCTIONIZATION_ROADMAP.md)
+when the task touches frontend console shell, UX, page maturity, or
+productionization direction. Treat it as frontend-local planning context, not
+server, SDK, engine, transport, runtime, or trace truth.
 
 ## Rules
 

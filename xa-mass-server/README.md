@@ -66,6 +66,26 @@ What this module does not own:
 
 - operator, submitter credential, and external worker HTTP entrypoints now converge on the shared SDK authorization contract
 - `ApiAuthInterceptor` resolves operator principals and forwards route permission checks to `AuthorizationPolicy`
+- operator auth mode is explicit through `mass.auth.operator.mode=dev-header|session|disabled`
+- `dev-header` keeps local/test `X-Mass-User-Mode` fixtures; `session` and
+  `disabled` fail closed for operator headers and missing headers
+- `prod` defaults to `session`; `prod + dev-header` requires the deliberately
+  named unsafe override `mass.auth.operator.allow-unsafe-dev-header-in-prod=true`
+- `GET /api/v1/auth/config` is the public browser contract for operator auth
+  mode discovery and exposes only non-sensitive mode flags
+- operator password credential lifecycle is server-owned through
+  `OperatorCredentialStore` and `xa_operator_credential`; password hashes stay
+  out of `UserRecord.attributes`
+- control-plane seed import may load operator credentials from
+  `mass.control-plane.seed.operator-credentials-location`; seed files must use
+  `passwordHash` and plaintext `password` is rejected
+- `prod + session` fails startup when no active login-capable operator
+  credential exists after seed/import
+- `POST /api/v1/auth/login` verifies `OperatorCredentialStore` password hashes,
+  sets an HttpOnly `XA_MASS_OPERATOR_SESSION` cookie, and returns the
+  session-bound CSRF token for mutating cookie-backed operator routes
+- `POST /api/v1/auth/logout` revokes the operator session and clears the cookie;
+  mutating session-mode operator routes require `X-Mass-Csrf-Token`
 - `TaskApiController` keeps the existing HTTP contract but routes submitter credential create checks through the shared policy
 - `TaskApiController` now also supports submitter credential task read on `list / detail / messages` through centralized ownership checks derived from the internal task ownership stamp
 - `ExternalWorkerApiController` keeps the existing worker HTTP contract but routes worker credential checks through the same policy
@@ -77,7 +97,9 @@ What this module does not own:
 - task create paths stamp framework-owned ownership metadata into the reserved internal envelope `Task.sharedConfig._massSecurity`
 - task read APIs strip `_massSecurity` from HTTP `sharedConfig` and expose the supported ownership read model through `data.security`
 - current ownership stamp is intentionally minimal: `createdByPrincipalId` and `createdByPrincipalType`
-- default dev trust remains intentionally permissive in this phase; this change is framework convergence, not production trust tightening
+- default dev-header trust remains intentionally permissive for local tests, but
+  prod operator auth is fail-closed and no longer treats missing headers as
+  implicit `ops-admin`
 
 Current boundary note:
 

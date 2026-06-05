@@ -1,7 +1,7 @@
-import {computed, unref} from 'vue'
-import {getAuthProvider} from '@/auth/provider'
-import {useAuthState} from '@/stores/auth'
-import type {AuthUser} from '@/types/auth'
+import { computed, unref } from 'vue'
+import { getAuthProvider, type LoginCredentials } from '@/auth/provider'
+import { useAuthState } from '@/stores/auth'
+import type { AuthUser } from '@/types/auth'
 
 export async function initializeAuth(): Promise<void> {
     const { setCurrentUser, markInitialized } = useAuthState()
@@ -11,9 +11,12 @@ export async function initializeAuth(): Promise<void> {
     markInitialized(true)
 }
 
-export async function login(): Promise<void> {
+export async function login(credentials: LoginCredentials): Promise<void> {
+    const { setCurrentUser, markInitialized } = useAuthState()
     const provider = getAuthProvider()
-    await provider.login()
+    const user = await provider.login(credentials)
+    setCurrentUser(user)
+    markInitialized(true)
 }
 
 export async function logout(): Promise<void> {

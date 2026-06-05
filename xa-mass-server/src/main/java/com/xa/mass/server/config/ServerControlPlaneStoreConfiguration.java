@@ -10,6 +10,9 @@ import com.xa.mass.api.auth.apikey.JdbcApiKeyCredentialStore;
 import com.xa.mass.api.auth.iam.InMemoryUserRolePermissionStore;
 import com.xa.mass.api.auth.iam.JdbcUserRolePermissionStore;
 import com.xa.mass.api.auth.iam.UserRolePermissionStore;
+import com.xa.mass.api.auth.operator.InMemoryOperatorCredentialStore;
+import com.xa.mass.api.auth.operator.JdbcOperatorCredentialStore;
+import com.xa.mass.api.auth.operator.OperatorCredentialStore;
 import com.xa.mass.api.auth.session.InMemorySubmitterViewerSessionStore;
 import com.xa.mass.api.auth.session.SubmitterViewerSessionStore;
 import com.xa.mass.api.auth.usage.ApiUsageLedgerStore;
@@ -70,6 +73,17 @@ public class ServerControlPlaneStoreConfiguration {
     @Bean
     public DefaultOperatorPrincipalDirectory defaultOperatorPrincipalDirectory(UserRolePermissionStore store) {
         return new DefaultOperatorPrincipalDirectory(store);
+    }
+
+    @Bean
+    public OperatorCredentialStore operatorCredentialStore(JdbcStorageRuntime jdbcStorageRuntime,
+                                                           ObjectProvider<ServerControlPlaneMigrationRunner> migrationRunnerProvider) {
+        if (jdbcStorageRuntime.isEnabled()) {
+            migrationRunnerProvider.getObject();
+            return new JdbcOperatorCredentialStore(jdbcStorageRuntime.dataSource());
+        }
+        requireNonProdMemoryStore();
+        return new InMemoryOperatorCredentialStore();
     }
 
     @Bean

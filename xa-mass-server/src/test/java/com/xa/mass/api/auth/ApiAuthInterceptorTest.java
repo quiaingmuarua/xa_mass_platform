@@ -1,8 +1,12 @@
 package com.xa.mass.api.auth;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xa.mass.api.auth.operator.InMemoryOperatorSessionStore;
+import com.xa.mass.api.auth.operator.OperatorSessionRecord;
+import com.xa.mass.api.auth.operator.OperatorSessionService;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.PrincipalContext;
+import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -27,10 +31,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ApiAuthInterceptorTest {
 
     private MockMvc mockMvc;
+    private AuthProvider authProvider;
 
     @BeforeEach
     void setUp() {
-        AuthProvider authProvider = mock(AuthProvider.class);
+        authProvider = mock(AuthProvider.class);
         when(authProvider.authenticate("sdk-key")).thenReturn(PrincipalContext.builder()
                 .principalId("sdk-reader")
                 .projectScopes(java.util.List.of("demoApp"))
@@ -41,13 +46,17 @@ class ApiAuthInterceptorTest {
                 .projectScopes(java.util.List.of(PrincipalContext.WILDCARD_SCOPE))
                 .eventScopes(java.util.List.of(PrincipalContext.WILDCARD_SCOPE))
                 .build());
+        mockMvc = mockMvc(ApiAuthTestSupport.defaultOperatorAuthService(), authProvider);
+    }
+
+    private MockMvc mockMvc(ApiAuthService authService, AuthProvider authProvider) {
         ApiAuthInterceptor interceptor = new ApiAuthInterceptor(
-                ApiAuthTestSupport.defaultOperatorAuthService(),
+                authService,
                 new ObjectMapper(),
                 new ApiAuthorizationService(authProvider, null),
                 new ApiRouteAuthorizationCatalog()
         );
-        mockMvc = MockMvcBuilders.standaloneSetup(new ProtectedApiController())
+        return MockMvcBuilders.standaloneSetup(new ProtectedApiController())
                 .addInterceptors(interceptor)
                 .build();
     }
@@ -89,6 +98,122 @@ class ApiAuthInterceptorTest {
         mockMvc.perform(get("/api/v1/auth/me"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.ok").value(true));
+    }
+
+    @Test
+    void authConfigIsPublicWithoutOperatorPrincipal() throws Exception {
+        MockMvc sessionMvc = mockMvc(ApiAuthTestSupport.sessionOperatorAuthService(), authProvider);
+
+        sessionMvc.perform(get("/api/v1/auth/config"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true));
+    }
+
+    @Test
+    void sessionModeRejectsImplicitAndHeaderOperatorTrust() throws Exception {
+        MockMvc sessionMvc = mockMvc(ApiAuthTestSupport.sessionOperatorAuthService(), authProvider);
+
+        sessionMvc.perform(get("/api/v1/auth/me"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(401));
+
+        sessionMvc.perform(get("/api/v1/runtime/queues")
+                        .header(ApiAuthService.USER_MODE_HEADER, "viewer"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(401));
+
+        sessionMvc.perform(get("/api/v1/runtime/config/projects")
+                        .header(ApiAuthService.USER_MODE_HEADER, "custom")
+                        .header(ApiAuthService.USER_ID_HEADER, "limited-user")
+                        .header(ApiAuthService.USER_PERMISSIONS_HEADER, ApiPermissionNames.WORKER_VIEW))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(401));
+    }
+
+    @Test
+    void sessionModeKeepsSdkCredentialBypassRoutesAvailable() throws Exception {
+        MockMvc sessionMvc = mockMvc(ApiAuthTestSupport.sessionOperatorAuthService(), authProvider);
+
+        sessionMvc.perform(get("/api/v1/tasks")
+                        .header("X-Mass-Api-Key", "sdk-key"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true));
+
+        sessionMvc.perform(get("/api/v1/projects")
+                        .header("X-Mass-Api-Key", "sdk-key"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true));
+    }
+
+    @Test
+    void sessionModeRequiresCsrfForMutatingOperatorRoutes() throws Exception {
+        OperatorSessionService sessionService = sessionService();
+        OperatorSessionRecord session = sessionService.createSession("ops-admin");
+        Cookie cookie = new Cookie(OperatorSessionService.COOKIE_NAME, session.sessionId());
+        MockMvc sessionMvc = mockMvc(ApiAuthTestSupport.sessionOperatorAuthService(sessionService), authProvider);
+
+        sessionMvc.perform(post("/api/v1/runtime/workers/worker-001/commands")
+                        .cookie(cookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"commandType\":\"DRAIN\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(403));
+
+        sessionMvc.perform(post("/api/v1/runtime/workers/worker-001/commands")
+                        .cookie(cookie)
+                        .header(OperatorSessionService.CSRF_HEADER_NAME, session.csrfToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"commandType\":\"DRAIN\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true));
+    }
+
+    @Test
+    void sessionModeRequiresCsrfForLogout() throws Exception {
+        OperatorSessionService sessionService = sessionService();
+        OperatorSessionRecord session = sessionService.createSession("ops-admin");
+        Cookie cookie = new Cookie(OperatorSessionService.COOKIE_NAME, session.sessionId());
+        MockMvc sessionMvc = mockMvc(ApiAuthTestSupport.sessionOperatorAuthService(sessionService), authProvider);
+
+        sessionMvc.perform(post("/api/v1/auth/logout")
+                        .cookie(cookie))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(403));
+
+        sessionMvc.perform(post("/api/v1/auth/logout")
+                        .cookie(cookie)
+                        .header(OperatorSessionService.CSRF_HEADER_NAME, session.csrfToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true));
+    }
+
+    @Test
+    void sessionModeDoesNotRequireCsrfForSdkCredentialBypassPost() throws Exception {
+        MockMvc sessionMvc = mockMvc(ApiAuthTestSupport.sessionOperatorAuthService(sessionService()), authProvider);
+
+        sessionMvc.perform(post("/api/v1/tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("X-Mass-Api-Key", "sdk-key")
+                        .content("""
+                                {
+                                  "project":"crawlerApp",
+                                  "userId":"sdk-user",
+                                  "sourceRef":"sdk-task",
+                                  "executionSpec":{"batchSize":1}
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true));
+    }
+
+    @Test
+    void disabledModeFailsOperatorRoutesClosed() throws Exception {
+        MockMvc disabledMvc = mockMvc(ApiAuthTestSupport.disabledOperatorAuthService(), authProvider);
+
+        disabledMvc.perform(get("/api/v1/auth/me")
+                        .header(ApiAuthService.USER_MODE_HEADER, "admin"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(401));
     }
 
     @Test
@@ -405,6 +530,18 @@ class ApiAuthInterceptorTest {
             return Map.of("ok", true);
         }
 
+        @GetMapping("/api/v1/auth/config")
+        @ResponseBody
+        public Map<String, Object> authConfig() {
+            return Map.of("ok", true);
+        }
+
+        @PostMapping("/api/v1/auth/logout")
+        @ResponseBody
+        public Map<String, Object> logout() {
+            return Map.of("ok", true);
+        }
+
         @GetMapping("/api/v1/runtime/config/projects")
         @ResponseBody
         public Map<String, Object> projects() {
@@ -493,5 +630,14 @@ class ApiAuthInterceptorTest {
         public Map<String, Object> legacyProbe(@RequestBody Map<String, Object> body) {
             return Map.of("ok", true, "body", body);
         }
+    }
+
+    private OperatorSessionService sessionService() {
+        return new OperatorSessionService(
+                new InMemoryOperatorSessionStore(),
+                OperatorAuthProperties.sessionForTests(),
+                "8h",
+                "false"
+        );
     }
 }

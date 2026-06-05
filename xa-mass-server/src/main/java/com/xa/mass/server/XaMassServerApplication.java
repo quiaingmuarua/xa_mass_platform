@@ -405,7 +405,7 @@ public class XaMassServerApplication {
 
     @Bean
     @Profile({"dev", "prod"})
-    @Order(0)
+    @Order(2)
     public CommandLineRunner fullStackStarter(MassSdkApplication app, JdbcStorageRuntime jdbcStorageRuntime) {
         return args -> {
             log.info("Starting embedded transport runtime + engine");
@@ -445,7 +445,7 @@ public class XaMassServerApplication {
 
     @Bean
     @Profile({"dev", "prod"})
-    @Order(1)
+    @Order(4)
     public CommandLineRunner taskReviewReadModelFinalityListener(MassSdkApplication app,
                                                                  @Qualifier("taskReviewReadModelWriter")
                                                                  TaskReviewReadModelWriter writer) {
@@ -465,7 +465,7 @@ public class XaMassServerApplication {
 
     @Bean
     @Profile({"dev", "prod"})
-    @Order(1)
+    @Order(4)
     public CommandLineRunner taskReviewReadModelAttemptClosedListener(MassSdkApplication app,
                                                                       @Qualifier("taskReviewReadModelWriter")
                                                                       TaskReviewReadModelWriter writer) {

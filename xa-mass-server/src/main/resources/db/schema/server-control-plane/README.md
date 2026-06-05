@@ -8,6 +8,7 @@ control-plane stores:
 - API-key applications
 - API-key lifecycle records
 - operator IAM users, roles, permissions, and bindings
+- operator password credential lifecycle
 - low-volume API usage ledger rows
 
 It is not a historical migration ledger. During the current pre-release stage,
@@ -96,6 +97,23 @@ Main shape:
 
 Built-in operator IAM defaults are seed-if-missing only. They must not
 overwrite existing operator rows.
+
+### `xa_operator_credential`
+
+Owner: `OperatorCredentialStore`.
+
+Purpose: durable operator password credential lifecycle for server-owned
+operator session login. This table is separate from IAM profile / role /
+permission truth and password hashes must not be stored in
+`UserRecord.attributes`.
+
+Main shape:
+
+- `user_id` primary key linked to operator IAM user identity
+- `password_hash` containing the encoded password hash
+- optional `hash_algorithm` when the encoded hash does not carry algorithm
+  metadata
+- credential status and created/updated timestamps
 
 ### `xa_api_usage_ledger`
 

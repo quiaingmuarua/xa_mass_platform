@@ -18,6 +18,7 @@ public class ApiAuthInterceptor implements HandlerInterceptor {
     static final String SDK_CREDENTIAL_BYPASS = "__SDK_CREDENTIAL_BYPASS__";
     static final String SDK_OR_OPERATOR_ROUTE = "__SDK_OR_OPERATOR_ROUTE__";
     static final String OPERATOR_AUTH_ONLY = "__OPERATOR_AUTH_ONLY__";
+    static final String PUBLIC_ROUTE = "__PUBLIC_ROUTE__";
     public static final String AUTHENTICATED_PRINCIPAL_ATTR =
             ApiAuthInterceptor.class.getName() + ".authenticatedPrincipal";
 
@@ -46,7 +47,8 @@ public class ApiAuthInterceptor implements HandlerInterceptor {
         ApiRouteAuthorizationCatalog.RouteAuthorization routeAuthorization =
                 routeAuthorizationCatalog.resolve(request, hasSdkCredentialAttempt(request));
         boolean requiresAuthenticationOnly = requiresAuthenticationOnly(request);
-        if (routeAuthorization != null && SDK_CREDENTIAL_BYPASS.equals(routeAuthorization.requiredPermission())) {
+        if (routeAuthorization != null && (SDK_CREDENTIAL_BYPASS.equals(routeAuthorization.requiredPermission())
+                || PUBLIC_ROUTE.equals(routeAuthorization.requiredPermission()))) {
             return true;
         }
         if (routeAuthorization == null && !requiresAuthenticationOnly) {
@@ -72,6 +74,7 @@ public class ApiAuthInterceptor implements HandlerInterceptor {
                     }
                 }
                 PrincipalContext principal = apiAuthService.requireAuthenticated(request);
+                apiAuthService.requireCsrf(request);
                 request.setAttribute(AUTHENTICATED_PRINCIPAL_ATTR, principal);
                 if (OPERATOR_AUTH_ONLY.equals(routeAuthorization.requiredPermission())) {
                     return true;
@@ -89,6 +92,7 @@ public class ApiAuthInterceptor implements HandlerInterceptor {
                 );
             } else {
                 apiAuthService.requireAuthenticated(request);
+                apiAuthService.requireCsrf(request);
             }
             return true;
         } catch (ApiUnauthenticatedException ex) {

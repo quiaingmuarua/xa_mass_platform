@@ -10,6 +10,9 @@ import com.xa.mass.api.auth.apikey.JdbcApiKeyCredentialStore;
 import com.xa.mass.api.auth.iam.InMemoryUserRolePermissionStore;
 import com.xa.mass.api.auth.iam.JdbcUserRolePermissionStore;
 import com.xa.mass.api.auth.iam.UserRolePermissionStore;
+import com.xa.mass.api.auth.operator.InMemoryOperatorCredentialStore;
+import com.xa.mass.api.auth.operator.JdbcOperatorCredentialStore;
+import com.xa.mass.api.auth.operator.OperatorCredentialStore;
 import com.xa.mass.api.auth.session.InMemorySubmitterViewerSessionStore;
 import com.xa.mass.api.auth.session.SubmitterViewerSessionStore;
 import com.xa.mass.api.auth.usage.ApiUsageLedgerStore;
@@ -41,6 +44,7 @@ class ServerControlPlaneStoreConfigurationTest {
             assertSingleBean(context, ApiKeyApplicationStore.class, InMemoryApiKeyApplicationStore.class);
             assertSingleBean(context, ApiKeyCredentialStore.class, InMemoryApiKeyCredentialStore.class);
             assertSingleBean(context, UserRolePermissionStore.class, InMemoryUserRolePermissionStore.class);
+            assertSingleBean(context, OperatorCredentialStore.class, InMemoryOperatorCredentialStore.class);
             assertSingleBean(context, SubmitterViewerSessionStore.class, InMemorySubmitterViewerSessionStore.class);
             assertSingleBean(context, ApiUsageLedgerStore.class, InMemoryApiUsageLedgerStore.class);
 
@@ -87,6 +91,7 @@ class ServerControlPlaneStoreConfigurationTest {
             assertSingleBean(context, ApiKeyApplicationStore.class, JdbcApiKeyApplicationStore.class);
             assertSingleBean(context, ApiKeyCredentialStore.class, JdbcApiKeyCredentialStore.class);
             assertSingleBean(context, UserRolePermissionStore.class, JdbcUserRolePermissionStore.class);
+            assertSingleBean(context, OperatorCredentialStore.class, JdbcOperatorCredentialStore.class);
             assertSingleBean(context, ApiUsageLedgerStore.class, JdbcApiUsageLedgerStore.class);
             assertSingleBean(context, SubmitterViewerSessionStore.class, InMemorySubmitterViewerSessionStore.class);
 

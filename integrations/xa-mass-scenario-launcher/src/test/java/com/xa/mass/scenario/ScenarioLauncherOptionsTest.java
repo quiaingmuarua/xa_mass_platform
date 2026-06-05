@@ -1,5 +1,6 @@
 package com.xa.mass.scenario;
 
+import com.xa.mass.client.http.exception.MassHttpException;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
@@ -55,5 +56,25 @@ class ScenarioLauncherOptionsTest {
 
         assertTrue(options.help());
         assertFalse(options.registerOnly());
+    }
+
+    @Test
+    void diagnosesScenarioCatalogMismatchForUnsupportedWorkerEvent() {
+        ScenarioLauncherOptions options = ScenarioLauncherOptions.parse(new String[]{
+                "--scenario-dir", "integrations/samples/dev/scenario"
+        });
+
+        String message = ScenarioLauncherMain.diagnoseHttpFailure(options, new MassHttpException(
+                "POST",
+                "/worker-api/v1/worker-groups",
+                400,
+                "{\"code\":400,\"msg\":\"Unsupported worker event: crawler.fetch-page\",\"data\":null}"
+        ));
+
+        assertTrue(message.contains("server catalog does not contain an event"));
+        assertTrue(message.contains("integrations/samples/dev/scenario/workers.json"));
+        assertTrue(message.contains("--mass.control-plane.seed.enabled=true"));
+        assertTrue(message.contains("file:integrations/samples/dev/scenario/bootstrap.json"));
+        assertTrue(message.contains("file:integrations/samples/dev/scenario/rules.json"));
     }
 }

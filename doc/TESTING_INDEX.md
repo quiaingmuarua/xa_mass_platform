@@ -16,7 +16,10 @@ Read this section first if you only need the testing-system intent.
   - mainline scheduling / dispatch / retry / release mechanisms
   - core policy behavior that changes who may run work or when work is admitted
   - cross-boundary public contracts such as HTTP, SDK, transport, external worker, and trace
-  - integrated abnormal behavior under concurrency, timing, process, transport, or distributed-runtime edges
+- integrated abnormal behavior under concurrency, timing, process, transport, or distributed-runtime edges
+- server startup and profile wiring when behavior depends on Spring assembly,
+  profile properties, `@Configuration`, component scanning, `@Value` injection,
+  startup guards, seed/import, or fail-closed infra mode checks
 - highest-value proof surface: `engine scheduling correctness`
 - representative real wiring proof: `server E2E / external worker parity`
 - distributed edge proof: `chaos / perf / black-box`
@@ -97,6 +100,16 @@ review-row-first lifecycle proof. A mainline E2E scenario should start the real
 `xa-mass-server` entry, use real HTTP, use the real active transport when
 dispatch/result write-back is the risk, and assert runtime/task state rather
 than mocks or listener calls.
+
+Startup/context proof is mandatory when a change touches server profile
+assembly rather than just business logic. Any roadmap or code change that
+modifies profile defaults, `@Configuration`, component-scanned
+`@Component`/`@Service` beans, constructor `@Value`/`Environment` injection,
+startup guards, seed/import wiring, fail-closed infra mode checks, or
+`XaMassServerApplication` assembly must include at least one focused Spring
+context or Boot-shell smoke with the relevant profile active. Direct
+constructor tests are useful support coverage, but they do not prove that
+Spring can instantiate the production bean graph.
 
 Use with:
 
@@ -254,16 +267,21 @@ Does not prove:
 Objects:
 
 - the full chain from project boundary to terminal convergence
+- the server host assembly when startup/profile wiring is the risk
 
 Purpose:
 
 - representative integrated proof for the real product mainline
 - preferred home for wiring-sensitive behavior that must survive real host/runtime integration
 - not the sole or highest-value proof surface for worker/task scheduling correctness
+- catch profile, Spring component scan, startup guard, and infra fail-closed
+  regressions that unit tests or direct constructors can miss
 
 Preferred surfaces:
 
 - `xa-mass-server` integration tests
+- focused Spring context smoke tests with the relevant profile active when a
+  full Boot-shell scenario would require unavailable external infra
 - cross-language external worker black-box tests
 - pair with `xa-mass-trace` when the scenario claims trace coverage for the
   integrated lifecycle path
@@ -272,6 +290,8 @@ Does not prove:
 
 - hot-path throughput regression
 - chaos/recovery robustness beyond the scenario under test
+- full production readiness when external Redis, DB files, or operator seed
+  credentials are mocked or disabled only to isolate startup wiring
 
 ### 2.6 Perf / Chaos / Distributed-readiness
 

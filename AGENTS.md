@@ -205,6 +205,12 @@ Planning rule for multi-file or core changes:
 - during the current pre-release stage, DB schema changes may require
   deleting/recreating local/prod DBs; prove clean DB creation and current-schema
   restart behavior, not historical upgrade compatibility
+- server profile, startup, auth, or infra assembly changes must include a
+  startup-level proof, not only unit/service tests. If a change touches
+  `@Configuration`, component-scanned `@Component`/`@Service` beans,
+  constructor `@Value` injection, startup guards, profile defaults, seed/import,
+  fail-closed infra mode checks, or `XaMassServerApplication` assembly, verify a
+  Spring context or Boot-shell path with the relevant profile active.
 - bias transport and lifecycle writes toward idempotent operations and retry safety
 - for SDK or integrations changes, read
   [doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md](doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md)
@@ -218,6 +224,10 @@ Planning rule for multi-file or core changes:
 - judge refactors by visibility, owner clarity, dependency surface, and whether the mainline becomes easier to reason about; a large internal orchestrator is acceptable when ownership stays explicit and splitting it would only fragment the mainline
 - prefer logs, traces, and bounded diagnostics over model-coupled realtime observability
 - prefer E2E or integration coverage for lifecycle changes
+- prefer startup/context smoke coverage for server wiring changes. Direct
+  constructor tests are support coverage only when the production caller is
+  Spring; add a Spring instantiation/context test for new component-scanned
+  beans with `@Value`, `Environment`, profile, or startup-order behavior.
 - when lifecycle semantics change, update
   [doc/TASK_LIFECYCLE_BASELINE.md](doc/TASK_LIFECYCLE_BASELINE.md),
   [doc/TRACE_CONTRACT.md](doc/TRACE_CONTRACT.md), and
