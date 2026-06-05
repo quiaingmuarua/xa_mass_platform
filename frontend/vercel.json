@@ -1,0 +1,11 @@
+{
+    "buildCommand": "node scripts/vercel-build.mjs",
+    "ignoreCommand": "git diff HEAD^ HEAD --quiet .",
+    "outputDirectory": "dist",
+    "rewrites": [
+        {
+            "source": "/(.*)",
+            "destination": "/"
+        }
+    ]
+}
