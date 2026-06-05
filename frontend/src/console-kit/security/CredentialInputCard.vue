@@ -80,14 +80,14 @@ function submit(): void {
 
 .credential-description {
   margin: 0 0 16px;
-  color: #667085;
+  color: var(--color-text-muted);
   font-size: 14px;
   line-height: 1.5;
 }
 
 .field-hint {
   margin-top: 8px;
-  color: #667085;
+  color: var(--color-text-muted);
   font-size: 13px;
   line-height: 1.5;
 }

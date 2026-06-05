@@ -6,7 +6,9 @@ import {
     getCurrentSubmitterViewerSession,
     getSubmitterProfileWithCredential,
     getSubmitterUsageWithCredential,
+    logoutSubmitterViewerSession,
 } from '@/api/submitter-sessions'
+import {ApiError} from '@/api/http'
 
 vi.mock('@/api/submitter-sessions', () => ({
     createSubmitterViewerSession: vi.fn(),
@@ -23,6 +25,7 @@ describe('SubmitterViewerPage', () => {
         vi.mocked(getCurrentSubmitterViewerSession).mockReset()
         vi.mocked(getSubmitterProfileWithCredential).mockReset()
         vi.mocked(getSubmitterUsageWithCredential).mockReset()
+        vi.mocked(logoutSubmitterViewerSession).mockReset()
     })
 
     it('presents API-key viewer semantics without exposing session token concepts', async () => {
@@ -102,6 +105,71 @@ describe('SubmitterViewerPage', () => {
         expect(wrapper.text()).not.toContain('mass_sess_internal_secret')
         expect(wrapper.text()).not.toContain('mass_sess_abc...')
         expect(wrapper.text()).not.toContain('mass_sk_source_secret')
+    })
+
+    it('clears the internal viewer credential when refresh is unauthorized', async () => {
+        window.sessionStorage.setItem(
+            'xa.mass.apiKeyViewerCredential',
+            'mass_sess_expired_secret',
+        )
+        vi.mocked(getCurrentSubmitterViewerSession).mockRejectedValue(
+            new ApiError('Invalid or missing submitter credential', 401, null),
+        )
+
+        const wrapper = mount(SubmitterViewerPage, {
+            global: {
+                plugins: [ElementPlus],
+                stubs: {
+                    teleport: true,
+                },
+            },
+        })
+
+        await flushPromises()
+
+        expect(getCurrentSubmitterViewerSession).toHaveBeenCalledWith(
+            'mass_sess_expired_secret',
+        )
+        expect(window.sessionStorage.getItem('xa.mass.apiKeyViewerCredential'))
+            .toBeNull()
+        expect(wrapper.text()).not.toContain('mass_sess_expired_secret')
+        expect(wrapper.text()).toContain('Invalid or missing submitter credential')
+    })
+
+    it('clears the internal viewer credential on explicit exit', async () => {
+        const wrapper = mount(SubmitterViewerPage, {
+            global: {
+                plugins: [ElementPlus],
+                stubs: {
+                    teleport: true,
+                },
+            },
+        })
+
+        const setupState = (
+            wrapper.vm.$ as unknown as {
+                setupState: {
+                    viewerCredential: string
+                    exitViewer: () => Promise<void>
+                }
+            }
+        ).setupState
+
+        setupState.viewerCredential = 'mass_sess_internal_secret'
+        window.sessionStorage.setItem(
+            'xa.mass.apiKeyViewerCredential',
+            'mass_sess_internal_secret',
+        )
+
+        await setupState.exitViewer()
+        await flushPromises()
+
+        expect(logoutSubmitterViewerSession).toHaveBeenCalledWith(
+            'mass_sess_internal_secret',
+        )
+        expect(window.sessionStorage.getItem('xa.mass.apiKeyViewerCredential'))
+            .toBeNull()
+        expect(wrapper.text()).not.toContain('mass_sess_internal_secret')
     })
 })
 

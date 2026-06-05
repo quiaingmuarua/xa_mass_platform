@@ -295,7 +295,7 @@ onMounted(() => {
 
 .card-header p {
   margin: 4px 0 0;
-  color: #667085;
+  color: var(--color-text-muted);
   font-size: 13px;
   line-height: 1.5;
 }

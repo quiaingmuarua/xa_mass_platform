@@ -33,6 +33,34 @@ describe('AppShell', () => {
         expect(wrapper.text()).toContain('Overview')
     })
 
+    it('toggles the operator sidebar collapsed state from the navbar', async () => {
+        setMockCurrentUser(mockAdminUser)
+
+        const router = createRouter({
+            history: createMemoryHistory(),
+            routes: appRoutes as unknown as RouteRecordRaw[],
+        })
+
+        await router.push('/')
+        await router.isReady()
+
+        const wrapper = mount(AppShell, {
+            global: {
+                plugins: [router, ElementPlus],
+            },
+        })
+
+        expect(wrapper.get('.sidebar').classes()).not.toContain(
+            'sidebar--collapsed',
+        )
+
+        await wrapper.get('.header-icon-button').trigger('click')
+
+        expect(wrapper.get('.sidebar').classes()).toContain(
+            'sidebar--collapsed',
+        )
+    })
+
     it('does not wrap submitter viewer with the operator sidebar', async () => {
         const router = createRouter({
             history: createMemoryHistory(),

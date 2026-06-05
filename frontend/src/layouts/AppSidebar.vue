@@ -1,8 +1,8 @@
 <template>
-  <aside class="sidebar">
+  <aside class="sidebar" :class="{ 'sidebar--collapsed': collapsed }">
     <div class="sidebar-brand">
       <div class="brand-mark">XA</div>
-      <div>
+      <div v-if="!collapsed" class="brand-copy">
         <div class="brand-title">Mass Console</div>
         <div class="brand-subtitle">Worker Orchestration</div>
       </div>
@@ -11,6 +11,7 @@
     <el-menu
       :default-active="activePath"
       class="sidebar-menu"
+      :collapse="collapsed"
       :collapse-transition="false"
       router
     >
@@ -45,6 +46,10 @@ import {resolveMenuIcon} from '@/layouts/icons'
 import {buildMenuModel} from '@/router/menu-model'
 import {appRoutes} from '@/router/routes'
 
+defineProps<{
+  collapsed: boolean
+}>()
+
 const route = useRoute()
 
 const menuItems = computed(() => {
@@ -61,15 +66,22 @@ const activePath = computed(() => route.path)
 .sidebar {
   display: flex;
   flex-direction: column;
-  width: 280px;
+  width: var(--sidebar-width);
   min-height: 100vh;
   padding: 20px 16px;
+  flex-shrink: 0;
   background: linear-gradient(
     180deg,
-    rgba(10, 22, 41, 0.96),
-    rgba(17, 36, 64, 0.94)
+    var(--sidebar-bg-start),
+    var(--sidebar-bg-end)
   );
-  color: #f8fbff;
+  color: var(--sidebar-text);
+  transition: width 0.2s ease, padding 0.2s ease;
+}
+
+.sidebar--collapsed {
+  width: var(--sidebar-width-collapsed);
+  padding: 20px 8px;
 }
 
 .sidebar-brand {
@@ -77,6 +89,12 @@ const activePath = computed(() => route.path)
   align-items: center;
   gap: 14px;
   padding: 8px 8px 20px;
+  min-height: 72px;
+}
+
+.sidebar--collapsed .sidebar-brand {
+  justify-content: center;
+  padding: 8px 0 20px;
 }
 
 .brand-mark {
@@ -84,10 +102,19 @@ const activePath = computed(() => route.path)
   place-items: center;
   width: 44px;
   height: 44px;
-  border-radius: 14px;
-  background: linear-gradient(135deg, #2f7cff, #79a7ff);
+  border-radius: var(--radius-card);
+  background: linear-gradient(
+    135deg,
+    var(--sidebar-brand-start),
+    var(--sidebar-brand-end)
+  );
   font-weight: 800;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
+  flex-shrink: 0;
+}
+
+.brand-copy {
+  min-width: 0;
 }
 
 .brand-title {
@@ -98,23 +125,24 @@ const activePath = computed(() => route.path)
 .brand-subtitle {
   margin-top: 4px;
   font-size: 12px;
-  color: rgba(248, 251, 255, 0.72);
+  color: var(--sidebar-text-muted);
 }
 
 :deep(.sidebar-menu) {
   border-right: none;
   background: transparent;
   --el-menu-bg-color: transparent;
-  --el-menu-text-color: rgba(248, 251, 255, 0.88);
-  --el-menu-hover-bg-color: rgba(121, 167, 255, 0.12);
-  --el-menu-active-color: #ffffff;
+  --el-menu-text-color: var(--sidebar-text-menu);
+  --el-menu-hover-bg-color: var(--sidebar-hover-bg);
+  --el-menu-active-color: var(--sidebar-text);
   --el-menu-item-height: 48px;
+  width: 100%;
 }
 
 :deep(.sidebar-menu .el-menu-item),
 :deep(.sidebar-menu .el-sub-menu__title) {
-  border-radius: 12px;
-  color: rgba(248, 251, 255, 0.88);
+  border-radius: var(--radius-card);
+  color: var(--sidebar-text-menu);
 }
 
 :deep(.sidebar-menu .el-sub-menu .el-menu) {
@@ -124,21 +152,21 @@ const activePath = computed(() => route.path)
 :deep(.sidebar-menu .el-sub-menu .el-menu-item) {
   margin-top: 6px;
   padding-left: 44px !important;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--sidebar-child-bg);
 }
 
 :deep(.sidebar-menu .el-menu-item:hover),
 :deep(.sidebar-menu .el-sub-menu__title:hover) {
-  background: rgba(121, 167, 255, 0.12);
+  background: var(--sidebar-hover-bg);
 }
 
 :deep(.sidebar-menu .el-sub-menu.is-opened > .el-sub-menu__title) {
-  background: rgba(255, 255, 255, 0.08);
-  color: #ffffff;
+  background: var(--sidebar-open-bg);
+  color: var(--sidebar-text);
 }
 
 :deep(.sidebar-menu .el-menu-item.is-active) {
-  background: rgba(47, 124, 255, 0.2);
-  color: #ffffff;
+  background: var(--sidebar-active-bg);
+  color: var(--sidebar-text);
 }
 </style>

@@ -1,13 +1,19 @@
 <template>
-  <section class="app-page">
-    <header class="page-header">
-      <div>
-        <h2 class="page-title">Task Detail</h2>
-        <p class="page-subtitle">
-          Runtime-centric detail page shaped around task shell and aggregate
-          state.
-        </p>
-      </div>
+  <ConsolePage
+    title="Task Detail"
+    eyebrow="Task runtime"
+    subtitle="Runtime-centric detail page shaped around task shell, lifecycle, aggregate state, and result rows."
+    width="wide"
+    tone="operator"
+  >
+    <template #badge>
+      <StatusBadge
+        v-if="detail"
+        :status="detail.task.status"
+        :type="taskStatusTag(detail.task.status)"
+      />
+    </template>
+    <template #actions>
       <div class="actions">
         <el-button @click="goBack">Back</el-button>
         <el-button
@@ -85,7 +91,7 @@
           Terminate
         </el-button>
       </div>
-    </header>
+    </template>
 
     <PageSectionSkeleton v-if="loading" />
 
@@ -101,43 +107,41 @@
     />
 
     <template v-else>
-      <section class="metric-grid">
-        <div class="metric-tile">
-          <div class="metric-label">Status</div>
-          <div class="metric-value">{{ detail.task.status }}</div>
-        </div>
-        <div class="metric-tile">
-          <div class="metric-label">Terminal reason</div>
-          <div class="metric-value">
-            {{ detail.task.terminalReason ?? '-' }}
-          </div>
-        </div>
-        <div class="metric-tile">
-          <div class="metric-label">Eligible / success</div>
-          <div class="metric-value">
-            {{ detail.task.taskEligibleNumber }} /
-            {{ detail.task.taskSuccessNumber }}
-          </div>
-        </div>
-        <div class="metric-tile">
-          <div class="metric-label">Peak assigned workers</div>
-          <div class="metric-value">
-            {{ detail.task.peakAssignedWorkerCount }}
-          </div>
-        </div>
-        <div v-if="review" class="metric-tile">
-          <div class="metric-label">Processing / failed</div>
-          <div class="metric-value">
-            {{ review.summary.processingItems }} / {{ review.summary.failedItems }}
-          </div>
-        </div>
-        <div v-if="review" class="metric-tile">
-          <div class="metric-label">Preview rows</div>
-          <div class="metric-value">
-            {{ review.summary.previewCount }}
-          </div>
-        </div>
-      </section>
+      <MetricGrid :columns="4">
+        <MetricCard
+          label="Status"
+          :value="detail.task.status"
+          tone="primary"
+          compact
+        />
+        <MetricCard
+          label="Terminal reason"
+          :value="detail.task.terminalReason ?? '-'"
+          compact
+        />
+        <MetricCard
+          label="Eligible / success"
+          :value="`${detail.task.taskEligibleNumber} / ${detail.task.taskSuccessNumber}`"
+          tone="success"
+          compact
+        />
+        <MetricCard
+          label="Peak assigned workers"
+          :value="detail.task.peakAssignedWorkerCount"
+        />
+        <MetricCard
+          v-if="review"
+          label="Processing / failed"
+          :value="`${review.summary.processingItems} / ${review.summary.failedItems}`"
+          tone="warning"
+          compact
+        />
+        <MetricCard
+          v-if="review"
+          label="Preview rows"
+          :value="review.summary.previewCount"
+        />
+      </MetricGrid>
 
       <el-row :gutter="20">
         <el-col :span="12">
@@ -256,18 +260,18 @@
               <div class="result-expand-grid">
                 <div>
                   <div class="expand-label">Output</div>
-                  <pre class="json-block review-json">{{ formatJson(row.output) }}</pre>
+                  <ResultPayloadViewer :value="row.output" />
                 </div>
                 <div>
                   <div class="expand-label">Dispatch metadata</div>
-                  <pre class="json-block review-json">{{ formatJson({
+                  <ResultPayloadViewer :value="{
                     workerId: row.workerId,
                     batchId: row.batchId,
                     attemptId: row.attemptId,
                     errorCode: row.errorCode,
                     errorMessage: row.errorMessage,
                     finalReason: row.finalReason,
-                  }) }}</pre>
+                  }" />
                 </div>
               </div>
             </template>
@@ -292,7 +296,7 @@
         </el-table>
       </el-card>
     </template>
-  </section>
+  </ConsolePage>
 </template>
 
 <script setup lang="ts">
@@ -313,8 +317,13 @@ import {
 import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
+import MetricCard from '@/console-kit/data/MetricCard.vue'
+import MetricGrid from '@/console-kit/data/MetricGrid.vue'
+import StatusBadge from '@/console-kit/data/StatusBadge.vue'
+import ConsolePage from '@/console-kit/layout/ConsolePage.vue'
 import type {TaskDetailResponse, TaskReviewResponse} from '@/types/tasks'
 import {toErrorMessage} from '@/utils/errors'
+import ResultPayloadViewer from '@/console-kit/data/ResultPayloadViewer.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -428,6 +437,21 @@ function canPause(status: TaskDetailResponse['task']['status']): boolean {
 
 function canBlock(status: TaskDetailResponse['task']['status']): boolean {
   return status === 'READY' || status === 'RUNNING'
+}
+
+function taskStatusTag(
+  status: TaskDetailResponse['task']['status'],
+): 'success' | 'warning' | 'danger' | 'primary' | 'info' {
+  if (status === 'TERMINAL') {
+    return 'success'
+  }
+  if (status === 'READY' || status === 'RUNNING') {
+    return 'primary'
+  }
+  if (status === 'PAUSED' || status === 'BLOCKED' || status === 'NEW') {
+    return 'warning'
+  }
+  return 'danger'
 }
 
 async function handleAudit(approved: boolean): Promise<void> {
@@ -572,7 +596,7 @@ onBeforeUnmount(() => {
 }
 
 .review-caption {
-  color: #6b7a90;
+  color: var(--color-text-subtle);
   font-size: 13px;
 }
 
@@ -582,8 +606,8 @@ onBeforeUnmount(() => {
 
 .review-json {
   padding: 12px 14px;
-  border-radius: 10px;
-  background: #f7f9fc;
+  border-radius: var(--radius-card);
+  background: var(--color-surface-muted);
 }
 
 .result-expand-grid {
@@ -594,7 +618,7 @@ onBeforeUnmount(() => {
 
 .expand-label {
   margin-bottom: 8px;
-  color: #6b7a90;
+  color: var(--color-text-subtle);
   font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
@@ -608,7 +632,7 @@ onBeforeUnmount(() => {
     monospace;
   white-space: pre-wrap;
   word-break: break-word;
-  color: #445168;
+  color: var(--color-text-muted);
 }
 
 .json-inline {
