@@ -36,7 +36,8 @@ public final class ScenarioLauncherMain {
 
     static String diagnoseHttpFailure(ScenarioLauncherOptions options, MassHttpException failure) {
         if (failure.statusCode() == 400
-                && "/worker-api/v1/worker-groups".equals(failure.path())
+                && failure.path() != null
+                && failure.path().endsWith("/worker-groups")
                 && failure.responseBody() != null
                 && failure.responseBody().contains("Unsupported worker event")) {
             String scenarioDir = options.scenarioDir().toString().replace('\\', '/');

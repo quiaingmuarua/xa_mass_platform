@@ -5,7 +5,10 @@ import {
     updateUser,
 } from '@/api/users'
 import {createRole, updateRole} from '@/api/roles'
-import {setRuntimeConfigOverrides} from '@/app/config'
+import {
+    resetRuntimeConfigOverrides,
+    setRuntimeConfigOverrides,
+} from '@/app/config'
 
 function jsonResponse(body: unknown): Response {
     return new Response(JSON.stringify(body), {
@@ -17,9 +20,15 @@ function jsonResponse(body: unknown): Response {
 }
 
 describe('identity access API clients', () => {
+    afterEach(() => {
+        resetRuntimeConfigOverrides()
+        vi.unstubAllGlobals()
+    })
+
     it('calls user and role mutation endpoints', async () => {
         setRuntimeConfigOverrides({
             apiBaseUrl: '/backend',
+            useMockApi: false,
             useMockAuth: false,
         })
         const fetchMock = vi.fn().mockImplementation(() =>

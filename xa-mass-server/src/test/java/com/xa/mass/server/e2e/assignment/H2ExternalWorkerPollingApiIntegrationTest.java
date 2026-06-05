@@ -118,7 +118,10 @@ class H2ExternalWorkerPollingApiIntegrationTest extends ReviewReadModelSampleE2e
         createBody.put("project", "crawlerApp");
         createBody.put("userId", "crawler-agent");
         createBody.put("sourceRef", "crawler-fetch-page-h2");
-        createBody.put("sharedConfig", Map.of("routingCode", "us"));
+        createBody.put("sharedConfig", Map.of(
+                "routingCode", "us",
+                "reviewMaterializationMode", "terminal"
+        ));
         createBody.put("executionSpec", Map.of("batchSize", 1));
         Map<String, Object> createResponse = createTaskShell(createBody, submitterHeaders);
         assertApiOk(createResponse);

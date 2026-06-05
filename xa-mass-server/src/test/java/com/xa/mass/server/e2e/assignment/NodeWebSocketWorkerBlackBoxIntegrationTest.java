@@ -96,6 +96,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2
                 "project", "crawlerApp",
                 "userId", "crawler-agent",
                 "sourceRef", "cross-language-node-worker",
+                "sharedConfig", Map.of("reviewMaterializationMode", "terminal"),
                 "executionSpec", Map.of("batchSize", 1)
         ));
         assertApiOk(createResponse);
@@ -184,7 +185,11 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2
         createBody.put("project", "crawlerApp");
         createBody.put("userId", "stock-agent");
         createBody.put("sourceRef", "stock-quote-stream");
-        createBody.put("sharedConfig", Map.of("routingCode", "us", "sourceUrl", sourceUrl));
+        createBody.put("sharedConfig", Map.of(
+                "routingCode", "us",
+                "sourceUrl", sourceUrl,
+                "reviewMaterializationMode", "diagnostic"
+        ));
         createBody.put("executionSpec", Map.of(
                 "batchSize", 1,
                 "workloadClass", "INTERACTIVE"

@@ -85,16 +85,16 @@ function handleVisibilityChange(value: boolean): void {
 
 .field-hint {
   margin-top: 14px;
-  color: #667085;
+  color: var(--color-text-muted);
   line-height: 1.5;
 }
 
 .secret-block {
   margin: 16px 0 0;
   padding: 14px;
-  border-radius: 14px;
-  background: #101828;
-  color: #ecfdf3;
+  border-radius: var(--radius-card);
+  background: var(--color-text-strong);
+  color: var(--color-success-bg);
   white-space: pre-wrap;
   word-break: break-all;
 }

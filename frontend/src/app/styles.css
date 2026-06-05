@@ -1,4 +1,45 @@
 :root {
+    --color-page-bg-start: #f3f7fb;
+    --color-page-bg-end: #eef3f8;
+    --color-surface: rgba(255, 255, 255, 0.92);
+    --color-surface-strong: rgba(255, 255, 255, 0.96);
+    --color-surface-muted: rgba(248, 250, 252, 0.96);
+    --color-text: #122033;
+    --color-text-strong: #101828;
+    --color-text-muted: #56647a;
+    --color-text-subtle: #6e7b8f;
+    --color-border: rgba(18, 32, 51, 0.08);
+    --color-border-strong: rgba(18, 32, 51, 0.1);
+    --color-primary: #2457c5;
+    --color-primary-accent: #2f7cff;
+    --color-primary-soft: #edf4ff;
+    --color-success-text: #11663a;
+    --color-success-bg: #e7f7ee;
+    --color-warning-text: #8b5a00;
+    --color-warning-bg: #fff4dc;
+    --color-danger-text: #9f1239;
+    --color-danger-bg: #fff1f3;
+    --color-info-text: #475467;
+    --color-info-bg: #f2f4f7;
+    --shadow-card: 0 18px 44px rgba(15, 23, 42, 0.08);
+    --shadow-card-strong: 0 24px 56px rgba(15, 23, 42, 0.1);
+    --radius-card: 8px;
+    --radius-panel: 8px;
+    --shell-content-padding: 24px;
+    --shell-public-padding: 32px 20px;
+    --sidebar-width: 280px;
+    --sidebar-width-collapsed: 64px;
+    --sidebar-bg-start: rgba(10, 22, 41, 0.96);
+    --sidebar-bg-end: rgba(17, 36, 64, 0.94);
+    --sidebar-text: #f8fbff;
+    --sidebar-text-muted: rgba(248, 251, 255, 0.72);
+    --sidebar-text-menu: rgba(248, 251, 255, 0.88);
+    --sidebar-hover-bg: rgba(121, 167, 255, 0.12);
+    --sidebar-open-bg: rgba(255, 255, 255, 0.08);
+    --sidebar-child-bg: rgba(255, 255, 255, 0.04);
+    --sidebar-active-bg: rgba(47, 124, 255, 0.2);
+    --sidebar-brand-start: #2f7cff;
+    --sidebar-brand-end: #79a7ff;
     color-scheme: light;
     font-family:
         'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
@@ -11,8 +52,12 @@
             rgba(59, 130, 246, 0.12),
             transparent 32%
         ),
-        linear-gradient(180deg, #f3f7fb 0%, #eef3f8 100%);
-    color: #122033;
+        linear-gradient(
+            180deg,
+            var(--color-page-bg-start) 0%,
+            var(--color-page-bg-end) 100%
+        );
+    color: var(--color-text);
     text-rendering: optimizeLegibility;
     font-synthesis: none;
     -webkit-font-smoothing: antialiased;
@@ -63,20 +108,20 @@ select {
     margin: 0;
     font-size: 28px;
     font-weight: 700;
-    color: #122033;
+    color: var(--color-text);
 }
 
 .page-subtitle {
     margin: 8px 0 0;
-    color: #56647a;
+    color: var(--color-text-muted);
     max-width: 860px;
 }
 
 .page-card {
-    border-radius: 20px;
-    border: 1px solid rgba(18, 32, 51, 0.08);
-    background: rgba(255, 255, 255, 0.92);
-    box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
+    border-radius: var(--radius-card);
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-card);
 }
 
 .metric-grid {
@@ -87,25 +132,22 @@ select {
 
 .metric-tile {
     padding: 20px;
-    border-radius: 18px;
-    background: linear-gradient(
-        180deg,
-        rgba(255, 255, 255, 0.96),
-        rgba(248, 250, 252, 0.96)
-    );
-    border: 1px solid rgba(18, 32, 51, 0.08);
+    border-radius: var(--radius-card);
+    background: var(--color-surface-strong);
+    border: 1px solid var(--color-border);
+    box-shadow: var(--shadow-card);
 }
 
 .metric-label {
     font-size: 13px;
-    color: #6b7a90;
+    color: var(--color-text-subtle);
 }
 
 .metric-value {
     margin-top: 10px;
     font-size: 30px;
     font-weight: 700;
-    color: #122033;
+    color: var(--color-text);
 }
 
 .mono {
@@ -120,8 +162,8 @@ select {
     gap: 6px;
     padding: 4px 10px;
     border-radius: 999px;
-    background: #edf4ff;
-    color: #2457c5;
+    background: var(--color-primary-soft);
+    color: var(--color-primary);
     font-size: 12px;
     font-weight: 600;
 }
@@ -137,10 +179,10 @@ select {
 .startup-error-card {
     width: min(680px, 100%);
     padding: 28px 32px;
-    border: 1px solid rgba(18, 32, 51, 0.1);
-    border-radius: 24px;
-    background: rgba(255, 255, 255, 0.96);
-    box-shadow: 0 24px 56px rgba(15, 23, 42, 0.1);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-panel);
+    background: var(--color-surface-strong);
+    box-shadow: var(--shadow-card-strong);
 }
 
 .startup-error-eyebrow {
@@ -149,22 +191,22 @@ select {
     font-weight: 700;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: #6e7b8f;
+    color: var(--color-text-subtle);
 }
 
 .startup-error-card h1 {
     margin: 0;
     font-size: 30px;
-    color: #122033;
+    color: var(--color-text);
 }
 
 .startup-error-message {
     margin: 16px 0 0;
-    color: #9f1239;
+    color: var(--color-danger-text);
     font-weight: 600;
 }
 
 .startup-error-hint {
     margin: 12px 0 0;
-    color: #56647a;
+    color: var(--color-text-muted);
 }

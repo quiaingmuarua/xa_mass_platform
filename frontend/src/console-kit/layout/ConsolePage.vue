@@ -49,7 +49,7 @@ const widthClass = computed(() => `console-page--${props.width}`)
   display: flex;
   flex-direction: column;
   width: 100%;
-  gap: 22px;
+  gap: 18px;
 }
 
 .console-page--normal {
@@ -65,47 +65,22 @@ const widthClass = computed(() => `console-page--${props.width}`)
 }
 
 .console-page-hero {
-  position: relative;
   display: flex;
   justify-content: space-between;
   gap: 24px;
-  overflow: hidden;
-  padding: 28px 30px;
-  border: 1px solid rgba(18, 32, 51, 0.08);
-  border-radius: 28px;
-  background:
-    radial-gradient(
-      circle at 88% 12%,
-      rgba(47, 124, 255, 0.2),
-      transparent 30%
-    ),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(244, 248, 252, 0.94));
-  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.1);
+  padding: 18px 20px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  background: var(--color-surface-strong);
+  box-shadow: var(--shadow-card);
 }
 
 .console-page--security .console-page-hero {
-  background:
-    radial-gradient(
-      circle at 88% 18%,
-      rgba(17, 102, 58, 0.2),
-      transparent 28%
-    ),
-    radial-gradient(
-      circle at 12% 0%,
-      rgba(47, 124, 255, 0.16),
-      transparent 34%
-    ),
-    linear-gradient(135deg, #ffffff, #f5fbf8);
+  border-left: 3px solid var(--color-danger-text);
 }
 
 .console-page--operator .console-page-hero {
-  background:
-    radial-gradient(
-      circle at 85% 12%,
-      rgba(121, 167, 255, 0.22),
-      transparent 30%
-    ),
-    linear-gradient(135deg, #ffffff, #f7f9ff);
+  border-left: 3px solid var(--color-primary);
 }
 
 .console-page-hero-copy {
@@ -113,11 +88,11 @@ const widthClass = computed(() => `console-page--${props.width}`)
 }
 
 .console-page-eyebrow {
-  margin: 0 0 10px;
-  color: #2457c5;
+  margin: 0 0 8px;
+  color: var(--color-primary);
   font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.16em;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
@@ -130,19 +105,19 @@ const widthClass = computed(() => `console-page--${props.width}`)
 
 .console-page-title {
   margin: 0;
-  color: #101828;
-  font-size: clamp(30px, 4vw, 44px);
-  font-weight: 800;
-  letter-spacing: -0.04em;
-  line-height: 1.02;
+  color: var(--color-text-strong);
+  font-size: 24px;
+  font-weight: 760;
+  letter-spacing: 0;
+  line-height: 1.2;
 }
 
 .console-page-subtitle {
   max-width: 760px;
-  margin: 14px 0 0;
-  color: #56647a;
+  margin: 10px 0 0;
+  color: var(--color-text-muted);
   font-size: 15px;
-  line-height: 1.7;
+  line-height: 1.55;
 }
 
 .console-page-actions {
@@ -155,7 +130,7 @@ const widthClass = computed(() => `console-page--${props.width}`)
 @media (max-width: 900px) {
   .console-page-hero {
     flex-direction: column;
-    padding: 24px;
+    padding: 18px;
   }
 
   .console-page-actions {

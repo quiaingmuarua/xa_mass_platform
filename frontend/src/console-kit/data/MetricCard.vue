@@ -28,61 +28,43 @@ withDefaults(
 <style scoped>
 .metric-card {
   min-width: 0;
-  padding: 20px;
-  border: 1px solid rgba(18, 32, 51, 0.08);
-  border-radius: 18px;
-  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  padding: 16px 18px;
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--metric-accent, var(--color-border-strong));
+  border-radius: var(--radius-card);
+  background: var(--color-surface-strong);
+  box-shadow: var(--shadow-card);
 }
 
 .metric-card--primary {
-  background:
-    radial-gradient(
-      circle at top right,
-      rgba(47, 124, 255, 0.18),
-      transparent 40%
-    ),
-    linear-gradient(180deg, #ffffff, #f5f8ff);
+  --metric-accent: var(--color-primary);
+  background: var(--color-primary-soft);
 }
 
 .metric-card--success {
-  background:
-    radial-gradient(
-      circle at top right,
-      rgba(17, 102, 58, 0.16),
-      transparent 40%
-    ),
-    linear-gradient(180deg, #ffffff, #f4fbf7);
+  --metric-accent: var(--color-success-text);
+  background: var(--color-success-bg);
 }
 
 .metric-card--warning {
-  background:
-    radial-gradient(
-      circle at top right,
-      rgba(217, 119, 6, 0.16),
-      transparent 40%
-    ),
-    linear-gradient(180deg, #ffffff, #fff9ed);
+  --metric-accent: var(--color-warning-text);
+  background: var(--color-warning-bg);
 }
 
 .metric-card--danger {
-  background:
-    radial-gradient(
-      circle at top right,
-      rgba(190, 18, 60, 0.14),
-      transparent 40%
-    ),
-    linear-gradient(180deg, #ffffff, #fff5f6);
+  --metric-accent: var(--color-danger-text);
+  background: var(--color-danger-bg);
 }
 
 .metric-card-label {
-  color: #6b7a90;
+  color: var(--color-text-subtle);
   font-size: 13px;
 }
 
 .metric-card-value {
   min-width: 0;
   margin-top: 10px;
-  color: #122033;
+  color: var(--color-text-strong);
   font-size: 30px;
   font-weight: 760;
   line-height: 1.12;
@@ -97,7 +79,7 @@ withDefaults(
 
 .metric-card-hint {
   margin-top: 8px;
-  color: #667085;
+  color: var(--color-text-muted);
   font-size: 12px;
 }
 </style>

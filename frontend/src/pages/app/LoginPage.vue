@@ -120,15 +120,15 @@ function loginErrorMessage(error: unknown): string {
   margin: 0 0 8px;
   font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
   text-transform: uppercase;
-  color: #64748b;
+  color: var(--color-text-subtle);
 }
 
 .login-panel h1 {
   margin: 0 0 22px;
   font-size: 28px;
-  color: #122033;
+  color: var(--color-text);
 }
 
 .login-form {

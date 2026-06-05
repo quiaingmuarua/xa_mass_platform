@@ -75,7 +75,10 @@ class NodePollingWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2eT
             Map<String, Object> createBody = new LinkedHashMap<>();
             createBody.put("project", "crawlerApp");
             createBody.put("userId", "crawler-agent");
-            createBody.put("sharedConfig", Map.of("routingCode", "us"));
+            createBody.put("sharedConfig", Map.of(
+                    "routingCode", "us",
+                    "reviewMaterializationMode", "terminal"
+            ));
             createBody.put("executionSpec", Map.of("batchSize", 1));
 
             Map<String, Object> createResponse = createTaskShell(createBody, submitterCredentialHeaders(SUBMITTER_KEY));

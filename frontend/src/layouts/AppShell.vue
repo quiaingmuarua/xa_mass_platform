@@ -1,8 +1,12 @@
 <template>
   <div class="shell" :class="`shell--${currentShell}`">
-    <AppSidebar v-if="currentShell === 'operator'" />
+    <AppSidebar v-if="currentShell === 'operator'" :collapsed="sidebarCollapsed" />
     <div class="shell-main">
-      <AppHeader v-if="currentShell === 'operator'" />
+      <AppHeader
+        v-if="currentShell === 'operator'"
+        :sidebar-collapsed="sidebarCollapsed"
+        @toggle-sidebar="toggleSidebar"
+      />
       <main class="shell-content">
         <RouterView v-slot="{ Component, route }">
           <KeepAlive>
@@ -24,13 +28,18 @@
 </template>
 
 <script setup lang="ts">
-import {computed} from 'vue'
+import {computed, ref} from 'vue'
 import {RouterView, useRoute} from 'vue-router'
 import AppHeader from '@/layouts/AppHeader.vue'
 import AppSidebar from '@/layouts/AppSidebar.vue'
 
 const route = useRoute()
 const currentShell = computed(() => route.meta.shell)
+const sidebarCollapsed = ref(false)
+
+function toggleSidebar(): void {
+  sidebarCollapsed.value = !sidebarCollapsed.value
+}
 </script>
 
 <style scoped>
@@ -48,13 +57,13 @@ const currentShell = computed(() => route.meta.shell)
 
 .shell-content {
   flex: 1;
-  padding: 24px;
+  padding: var(--shell-content-padding);
 }
 
 .shell--submitter-viewer .shell-content,
 .shell--public .shell-content {
   display: flex;
   justify-content: center;
-  padding: 32px 20px;
+  padding: var(--shell-public-padding);
 }
 </style>

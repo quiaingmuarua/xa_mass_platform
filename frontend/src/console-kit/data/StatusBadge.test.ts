@@ -15,5 +15,7 @@ describe('StatusBadge', () => {
         })
 
         expect(wrapper.text()).toContain('RUNNING')
+        expect(wrapper.find('.status-badge').exists()).toBe(true)
+        expect(wrapper.find('.status-badge').classes()).toContain('status-badge--primary')
     })
 })

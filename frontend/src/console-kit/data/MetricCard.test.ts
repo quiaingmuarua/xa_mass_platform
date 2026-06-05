@@ -17,4 +17,18 @@ describe('MetricCard', () => {
         expect(wrapper.text()).toContain('visible records')
         expect(wrapper.classes()).toContain('metric-card--primary')
     })
+
+    it('keeps compact values in the same fixed card surface', () => {
+        const wrapper = mount(MetricCard, {
+            props: {
+                label: 'Longest active task',
+                value: 'task-with-a-very-long-runtime-id',
+                compact: true,
+                tone: 'warning',
+            },
+        })
+
+        expect(wrapper.classes()).toContain('metric-card--warning')
+        expect(wrapper.find('.metric-card-value').classes()).toContain('is-compact')
+    })
 })

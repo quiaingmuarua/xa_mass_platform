@@ -1,9 +1,11 @@
 # Console Frontend Productionization Roadmap
 
-Status: active roadmap; operator auth/login, route/menu model, and part of
-console-kit are already implemented. Shell token convergence, operator chrome,
-console-kit visual convergence, product-page maturity, and bundle baseline
-remain open.
+Status: implemented mainline on 2026-06-05. Operator auth/login, route/menu
+model, shell token convergence, operator chrome, console-kit visual
+convergence, product-page maturity, and bundle baseline decision are complete.
+The remaining bundle-size debt is explicitly accepted in
+`CONSOLE_FRONTEND_PRODUCTIONIZATION_INVENTORY.md` and should become a separate
+Element Plus on-demand import/registration track if prioritized.
 
 This roadmap is frontend-only. It must not drive server, SDK, engine,
 transport, runtime, trace, or backend authorization ownership changes.
@@ -31,6 +33,16 @@ admin-template clone.
 ## Reference Policy
 
 The reference projects are inputs, not dependencies.
+
+Reference isolation rule:
+
+- do not introduce names, directory structures, config conventions, route
+  schemas, wrapper components, or state/runtime models because they exist in a
+  reference project
+- any similar UI pattern must be renamed and shaped around this repository's
+  owner vocabulary, route metadata, auth boundary, and domain pages
+- code review should reject reference-project leakage even when no dependency
+  was added
 
 Primary engineering reference:
 
@@ -88,18 +100,13 @@ Already implemented:
 - Submitter Viewer and API Keys tests cover API-key terminology and source
   secret persistence rules.
 
-Open debt:
+Post-implementation residue:
 
-- `src/layouts/AppHeader.vue` is still a dev-demo page header.
-- `src/layouts/AppSidebar.vue` is fixed-width and not collapsible.
-- `src/app/styles.css`, layouts, LoginPage, and console-kit components still
-  contain raw colors and parallel visual choices.
-- `ConsolePage.vue` currently leans toward hero/marketing composition instead
-  of a restrained admin page container.
-- `submitter-viewer` and `public` shell modes are lightweight by current design
-  and must not accidentally inherit operator navbar/sidebar.
-- `bootstrap.ts` globally installs Element Plus. The build currently passes but
-  emits a large main-chunk warning.
+- `submitter-viewer` and `public` shell modes remain lightweight by current
+  design and must not accidentally inherit operator navbar/sidebar.
+- `bootstrap.ts` globally installs Element Plus. The build passes but still
+  emits a large main-chunk warning; this warning is accepted for this roadmap
+  instead of hidden by `chunkSizeWarningLimit`.
 
 ## Ownership Boundaries
 
@@ -206,9 +213,11 @@ Acceptance:
 2. token debt is classified by owner
 3. console-kit current consumers are listed
 4. submitter-viewer shell boundary is explicit
-5. build/chunk baseline is recorded in the inventory so later changes can be
+5. auth mode discovery is confirmed through src/auth/backend-auth.ts and
+   src/auth/provider.backend.ts, including /api/v1/auth/config
+6. build/chunk baseline is recorded in the inventory so later changes can be
    compared mechanically
-6. next slice is FRONT-1, not page redesign
+7. next slice is FRONT-1, not page redesign
 ```
 
 Suggested verification:
@@ -216,6 +225,7 @@ Suggested verification:
 ```powershell
 cd frontend
 corepack pnpm test:run
+corepack pnpm typecheck
 corepack pnpm build
 ```
 
@@ -275,7 +285,8 @@ Scope:
 Acceptance:
 
 ```text
-1. sidebar toggles between 280px and 64px without layout overflow
+1. sidebar toggles between --sidebar-width and --sidebar-width-collapsed without
+   layout overflow
 2. navbar shows breadcrumb and operator identity
 3. logout calls existing logout() from @/auth/use-auth and routes to /login
 4. session auth mode hides operator mode switch
@@ -346,7 +357,10 @@ Acceptance:
 2. ConsolePage feels like an admin page container, not a landing hero
 3. existing consumer pages still render
 4. no route/auth/API behavior changes
-5. build and tests pass
+5. ConsolePage, MetricCard, and StatusBadge focused tests cover core slots,
+   token class/state binding, and quiet status/metric states without adding a
+   screenshot suite
+6. build and tests pass
 ```
 
 ### FRONT-5 Product Page Maturity
@@ -366,6 +380,9 @@ Credential and IAM:
 Task and Result:
   1. refactor Task Detail around summary, lifecycle, shared config, and results
   2. add ResultPayloadViewer for JSON-safe result rows
+     - JSON-safe means formatted plain-text rendering only
+     - do not use v-html, innerHTML, or HTML-producing payload render paths
+     - large payloads must be truncated, folded, or bounded before display
   3. keep create/append/control actions explicit
   4. use public task/result APIs; do not reintroduce projection truth
 
@@ -383,7 +400,11 @@ Acceptance:
 2. permission-aware actions remain explicit
 3. runtime/worker/trace pages do not imply frontend runtime ownership
 4. no generic CRUD page builder is introduced
-5. build and tests pass
+5. SubmitterViewer tests cover credential clear on 401/failed refresh and
+   explicit exit
+6. ResultPayloadViewer tests prove payload rendering is plain text, bounded,
+   and does not use HTML injection paths
+7. build and tests pass
 ```
 
 ### FRONT-6 Frontend Runtime Baseline
@@ -427,12 +448,13 @@ Use focused tests:
 Manual checks:
 
 ```text
-1. corepack pnpm build
-2. corepack pnpm test:run
-3. backend-hosted http://localhost:8088/
-4. backend-hosted http://localhost:8088/submitter-viewer
-5. operator admin mode vs viewer mode menu visibility
-6. API-key create/approve one-time secret dialog
+1. corepack pnpm test:run
+2. corepack pnpm typecheck
+3. corepack pnpm build
+4. backend-hosted http://localhost:8088/
+5. backend-hosted http://localhost:8088/submitter-viewer
+6. operator admin mode vs viewer mode menu visibility
+7. API-key create/approve one-time secret dialog
 ```
 
 ## Non-Goals

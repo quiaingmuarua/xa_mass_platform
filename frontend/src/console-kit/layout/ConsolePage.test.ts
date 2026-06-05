@@ -2,7 +2,7 @@ import {mount} from '@vue/test-utils'
 import ConsolePage from '@/console-kit/layout/ConsolePage.vue'
 
 describe('ConsolePage', () => {
-    it('renders hero copy, badge, actions, and default content', () => {
+    it('renders admin page shell copy, badge, actions, and default content', () => {
         const wrapper = mount(ConsolePage, {
             props: {
                 eyebrow: 'Submitter access',
@@ -24,5 +24,6 @@ describe('ConsolePage', () => {
         expect(wrapper.text()).toContain('Refresh')
         expect(wrapper.text()).toContain('Viewer content')
         expect(wrapper.classes()).toContain('console-page--security')
+        expect(wrapper.find('.console-page-hero').exists()).toBe(true)
     })
 })

@@ -43,6 +43,28 @@ Default mode behavior:
 - `corepack pnpm dev` defaults to mock API + mock auth unless you override `VITE_USE_MOCK_*`
 - `corepack pnpm build` defaults to real backend API + backend auth so the backend-hosted shell on `http://localhost:8088/` uses live server data
 
+## Vercel Preview
+
+Use Vercel as a frontend-only review surface. This is for UI / route / mock data
+review, not for hosting the Java server, SQLite control-plane storage, Redis
+runtime, or external worker registration.
+
+Recommended Vercel project setup:
+
+- Root Directory: `frontend`
+- Build Command: read from `frontend/vercel.json`
+- Output Directory: `dist`
+- Preview env:
+  - `VITE_USE_MOCK_API=true`
+  - `VITE_USE_MOCK_AUTH=true`
+
+`frontend/vercel.json` defaults preview builds to mock API + mock auth and adds
+an SPA rewrite so direct links such as `/resources/projects` load correctly. It
+also uses `ignoreCommand` to skip Git-triggered builds when the frontend has no
+changes.
+For a real backend-connected deployment, set `VITE_API_BASE_URL` to the backend
+origin and override both mock flags to `false`.
+
 ## Real Backend Mode
 
 Use mock mode for independent frontend CI. For local backend integration, set:
