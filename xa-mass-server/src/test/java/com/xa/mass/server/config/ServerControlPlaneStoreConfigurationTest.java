@@ -22,9 +22,11 @@ import org.springframework.context.annotation.AnnotationConfigApplicationContext
 
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ServerControlPlaneStoreConfigurationTest {
 
@@ -32,6 +34,7 @@ class ServerControlPlaneStoreConfigurationTest {
     void devProfileCreatesOneExplicitBeanForEachServerControlPlaneStoreContract() {
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
             context.getEnvironment().setActiveProfiles("dev");
+            context.registerBean(JdbcStorageRuntime.class, () -> JdbcStorageRuntime.disabled());
             context.register(ServerControlPlaneStoreConfiguration.class);
             context.refresh();
 
@@ -43,6 +46,29 @@ class ServerControlPlaneStoreConfigurationTest {
 
             DefaultOperatorPrincipalDirectory directory = context.getBean(DefaultOperatorPrincipalDirectory.class);
             assertNotNull(directory.getPrincipal("ops-admin"));
+        }
+    }
+
+    @Test
+    void prodProfileFailsWhenJdbcRuntimeBeanIsMissing() {
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.getEnvironment().setActiveProfiles("prod");
+            context.register(ServerControlPlaneStoreConfiguration.class);
+
+            RuntimeException error = assertThrows(RuntimeException.class, context::refresh);
+            assertFailureContains(error, "JdbcStorageRuntime");
+        }
+    }
+
+    @Test
+    void prodProfileFailsWhenStorageRuntimeIsDisabled() {
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.getEnvironment().setActiveProfiles("prod");
+            context.registerBean(JdbcStorageRuntime.class, () -> JdbcStorageRuntime.disabled());
+            context.register(ServerControlPlaneStoreConfiguration.class);
+
+            RuntimeException error = assertThrows(RuntimeException.class, context::refresh);
+            assertFailureContains(error, "prod requires mass.storage.mode to be JDBC-enabled");
         }
     }
 
@@ -69,11 +95,37 @@ class ServerControlPlaneStoreConfigurationTest {
         }
     }
 
+    @Test
+    void prodProfileAllowsJdbcEnabledRuntime() {
+        String url = "jdbc:h2:mem:" + UUID.randomUUID()
+                + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false";
+        try (JdbcStorageRuntime runtime = JdbcStorageRuntime.create(JdbcStorageMode.JDBC_H2, url, "sa", "");
+             AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.getEnvironment().setActiveProfiles("prod");
+            context.registerBean(JdbcStorageRuntime.class, () -> runtime);
+            context.register(ServerControlPlaneMigrationConfiguration.class);
+            context.register(ServerControlPlaneStoreConfiguration.class);
+
+            assertDoesNotThrow(context::refresh);
+        }
+    }
+
     private <T> void assertSingleBean(AnnotationConfigApplicationContext context,
                                       Class<T> contract,
                                       Class<? extends T> implementation) {
         String[] names = context.getBeanNamesForType(contract);
         assertEquals(1, names.length, contract.getSimpleName() + " bean count");
         assertInstanceOf(implementation, context.getBean(contract));
+    }
+
+    private void assertFailureContains(Throwable error, String expected) {
+        Throwable current = error;
+        while (current != null) {
+            if (current.getMessage() != null && current.getMessage().contains(expected)) {
+                return;
+            }
+            current = current.getCause();
+        }
+        throw new AssertionError("Expected failure message to contain [" + expected + "] but was: " + error, error);
     }
 }

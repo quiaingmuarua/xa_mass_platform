@@ -380,8 +380,10 @@ JDBC storage scope:
 - `prod` is the current single-node inspectable production baseline. It uses
   SQLite for control-plane storage and Redis for runtime work/result, worker
   registry, transport delivery, and transport presence.
-- `prod` requires Redis. A local startup without Redis should fail visibly
-  instead of falling back to process memory.
+- `prod` is fail-closed for infra mode selection: control-plane storage must be
+  JDBC-enabled, runtime must be Redis, and transport delivery/presence must be
+  Redis. Misconfiguration must fail startup instead of falling back to process
+  memory.
 - PostgreSQL remains a manual property override path with
   `mass.storage.mode=jdbc-postgres`; it is not one of the normal server
   profiles after profile convergence.
@@ -451,6 +453,11 @@ Server control-plane store hard rules:
 - submitter-viewer sessions remain memory-only in the current phase; future
   cross-process sharing belongs to runtime/Redis session design, not SQLite or
   JDBC control-plane storage
+- prod profile must not synthesize memory fallbacks for control-plane storage,
+  task work/result runtime, transport delivery, or transport presence. The only
+  current explicit memory exception in prod-facing server auth/session assembly
+  is `SubmitterViewerSessionStore`, because it is volatile viewer session state
+  and not durable control-plane truth.
 - DB schema changes may require deleting/recreating local/prod DBs in this
   pre-release phase; validation proves clean DB creation and current-schema
   restart behavior, not historical upgrade compatibility

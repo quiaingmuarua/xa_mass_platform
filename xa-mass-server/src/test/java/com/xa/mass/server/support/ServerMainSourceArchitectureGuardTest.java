@@ -259,6 +259,41 @@ class ServerMainSourceArchitectureGuardTest {
     }
 
     @Test
+    void prodInfraAssemblyFailsClosedInsteadOfFallingBackToMemory() throws IOException {
+        Path application = SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/server/XaMassServerApplication.java");
+        String applicationSource = Files.readString(application, StandardCharsets.UTF_8);
+        Path storeConfiguration = SERVER_MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/server/config/ServerControlPlaneStoreConfiguration.java");
+        String storeConfigurationSource = Files.readString(storeConfiguration, StandardCharsets.UTF_8);
+        String disabledJdbcFallback = "JdbcStorageRuntime" + "::disabled";
+        String taskWorkFallback = "getIfAvailable(" + "InMemoryTaskWorkRuntime::new)";
+        String taskResultFallback = "getIfAvailable(" + "InMemoryTaskResultRuntime::new)";
+        String memoryNullSwitch = "case \"\", \"memory\" -> " + "null";
+        String memoryRuntimeSwitch = "case \"\", \"memory\" -> " + "new InMemory";
+
+        assertTrue(!storeConfigurationSource.contains("ObjectProvider<JdbcStorageRuntime>"),
+                "server control-plane stores must require JdbcStorageRuntime directly");
+        assertTrue(!storeConfigurationSource.contains(disabledJdbcFallback),
+                "server control-plane stores must not synthesize a disabled JDBC runtime fallback");
+        assertTrue(!applicationSource.contains(taskWorkFallback),
+                "prod runtime assembly must not fallback to in-memory task work runtime when the bean is missing");
+        assertTrue(!applicationSource.contains(taskResultFallback),
+                "prod runtime assembly must not fallback to in-memory task result runtime when the bean is missing");
+        assertTrue(!applicationSource.contains(memoryNullSwitch),
+                "prod transport resolver must not encode memory as a null/default factory fallback");
+        assertTrue(!applicationSource.contains(memoryRuntimeSwitch),
+                "prod runtime resolver must not encode memory as the default runtime branch");
+        assertTrue(applicationSource.contains("prod requires mass.storage.mode to be JDBC-enabled"),
+                "prod storage mode must fail closed when it is memory or disabled");
+        assertTrue(applicationSource.contains("requireNonProdMode(\"mass.runtime.mode\", \"redis\""),
+                "prod runtime mode must fail closed unless Redis is selected");
+        assertTrue(applicationSource.contains("requireNonProdMode(\"mass.transport.delivery.store\", \"redis\""),
+                "prod transport delivery must fail closed unless Redis is selected");
+        assertTrue(applicationSource.contains("requireNonProdMode(\"mass.transport.presence.store\", \"redis\""),
+                "prod transport presence must fail closed unless Redis is selected");
+    }
+
+    @Test
     void sampleBootstrapHttpIsNotActiveServerApi() throws IOException {
         Path repoRoot = Path.of("..").toAbsolutePath().normalize();
         Path serverController = SERVER_MAIN_SOURCE_ROOT.resolve(

@@ -92,7 +92,9 @@ Mode behavior:
   - allowed in dev and tests
   - keeps the existing `X-Mass-User-Mode` and custom-header identity fixture
   - keeps integration tests cheap
-  - must be rejected in `prod` unless a deliberately named override is set
+  - must be rejected in `prod` unless
+    `mass.auth.operator.allow-unsafe-dev-header-in-prod=true` is deliberately
+    set
 - `session`
   - default target for `prod`
   - protected operator routes require a valid operator session cookie
@@ -102,6 +104,9 @@ Mode behavior:
 - `disabled`
   - no operator console authentication surface
   - operator console routes fail closed
+  - `GET /api/v1/auth/config` returns `disabled` so the frontend can render a
+    closed state
+  - login, `/auth/me`, and logout fail closed
   - SDK API-key routes and worker data-plane routes keep their existing owners
 
 Session cookie target:
@@ -111,7 +116,7 @@ HttpOnly
 SameSite=Lax
 Secure when HTTPS / explicit secure-cookie property is enabled
 Path=/
-bounded TTL
+bounded TTL configured by mass.auth.operator.session.ttl, default 8h
 ```
 
 First-slice credential verification target:
@@ -133,8 +138,10 @@ First-slice credential verification target:
 
 Backend auth mode discovery target:
 
-- expose the active operator auth mode to the frontend through
-  `/api/v1/auth/me` metadata or a small public `/api/v1/auth/config` endpoint
+- expose the active operator auth mode to the frontend through a small public
+  `GET /api/v1/auth/config` endpoint
+- response shape should be minimal: `authMode`, session cookie support flags,
+  and CSRF header name when applicable
 - AUTH-2 depends on this signal to decide whether to send `X-Mass-User-Mode`
   or rely on cookie-backed session auth
 - do not require the frontend to infer backend trust mode from `useMockAuth`
@@ -167,6 +174,8 @@ Backend auth mode discovery target:
     exchange route in the first slice.
 14. Cookie-backed session requests need an explicit CSRF decision before the
     route is considered production-shaped.
+15. `prod` unsafe overrides must have deliberately named properties and focused
+    startup-guard tests.
 
 ## Non-Goals
 
@@ -223,20 +232,34 @@ Tasks:
      operator-credential table
    - lifecycle fields needed for first-slice verification
    - no password material in `UserRecord.attributes`
-7. Decide the bootstrap import path for the first active login-capable
+7. Use this concrete bootstrap path for the first active login-capable
    operator:
-   - extend the existing control-plane seed importer with an operator
-     credential location, or
-   - add a separate documented bootstrap import command/property
-   - in either case, the runtime import contract accepts `passwordHash` only
-8. Decide how local developers generate hashes:
+   - `mass.control-plane.seed.enabled=true`
+   - `mass.control-plane.seed.mode=apply`
+   - `mass.control-plane.seed.operator-credentials-location=<resource>`
+   - optional one-shot unlock:
+     `mass.auth.operator.bootstrap.allow-empty-before-seed=true`
+   - the unlock is accepted only in `prod + session` when an operator
+     credential seed location is configured and the seed mode is `apply`
+   - the seed/import contract accepts `passwordHash` only
+   - startup must run the seed import before the final prod auth readiness
+     guard, then re-check that at least one active login-capable operator
+     exists
+   - if the post-seed re-check fails, the server exits instead of running with
+     an empty operator set
+8. Decide session lifecycle defaults:
+   - `mass.auth.operator.session.ttl=8h`
+   - `mass.auth.operator.session.cookie-secure` defaults to `false` in dev and
+     `true` in prod unless explicitly configured
+   - `mass.auth.operator.csrf.enabled=true` by default in `session` mode
+   - local-only bypass property, if implemented:
+     `mass.auth.operator.csrf.allow-local-bypass=true`
+9. Decide how local developers generate hashes:
    - documented helper command
    - test utility
    - or explicit sample hash checked into a dev-only seed file
-9. Decide backend auth mode discovery:
-   - include `authMode` in `/api/v1/auth/me`, or
-   - add a small public `/api/v1/auth/config` endpoint
-10. Confirm that dev/prod runtime seed import rejects plaintext `password`.
+10. Use `GET /api/v1/auth/config` as the backend auth mode discovery endpoint.
+11. Confirm that dev/prod runtime seed import rejects plaintext `password`.
 
 Acceptance:
 
@@ -248,6 +271,12 @@ Acceptance:
 - The login public-route strategy is explicit before AUTH-1 starts.
 - The bootstrap import path for the first hashed operator is explicit before
   prod fail-closed startup guards are implemented.
+- AUTH-1 must deliver `GET /api/v1/auth/config`; AUTH-2 must not start until
+  that endpoint is available.
+- Session TTL and any cookie/CSRF configuration keys are explicit before
+  `OperatorSessionService` is implemented.
+- Prod unsafe override property names are explicit before startup guards are
+  implemented.
 
 ## AUTH-1 Backend Trust Mode And Fail-Closed Session Contract
 
@@ -268,6 +297,7 @@ Implementation shape:
    - resolve session
    - revoke session
    - enforce TTL
+   - read TTL from `mass.auth.operator.session.ttl`, default `8h`
 5. Add `OperatorCredentialStore` and first implementation:
    - server-owned control-plane table such as `xa_operator_credential`
    - in-memory implementation for dev/test when JDBC is unavailable
@@ -281,11 +311,12 @@ Implementation shape:
    - rejects operators without a credential hash in `session` mode
 7. Extend `AuthController`:
    - `POST /api/v1/auth/login`
+   - `GET /api/v1/auth/config`
    - `GET /api/v1/auth/me`
    - `POST /api/v1/auth/logout`
 8. Mark login/config route access explicitly:
    - `POST /api/v1/auth/login` is public
-   - optional `GET /api/v1/auth/config` is public if used
+   - `GET /api/v1/auth/config` is public
    - `/api/v1/auth/me` and `/api/v1/auth/logout` continue to require a valid
      authenticated session in `session` mode
 9. Update `ApiAuthService` so:
@@ -293,23 +324,32 @@ Implementation shape:
    - `X-Mass-User-Mode` in `session` mode is ignored or rejected
    - `dev-header` retains current behavior
 10. Add operator credential seed/import support:
+   - extends control-plane seed import with
+     `mass.control-plane.seed.operator-credentials-location`
    - reads only `passwordHash`
    - rejects plaintext `password`
    - can validate-only before applying
    - can prove at least one active login-capable operator for `prod + session`
 11. Add prod startup guard:
-   - `prod + dev-header` fails unless an explicitly named unsafe override is
-     set
+   - `prod + dev-header` fails unless
+     `mass.auth.operator.allow-unsafe-dev-header-in-prod=true` is set
    - `prod + session + missing operator password verifier` fails closed
-   - `prod + session + no active login-capable operator` fails closed unless a
-     documented bootstrap import is being run
+   - `prod + session + no active login-capable operator` is allowed only before
+     seed import when all bootstrap conditions from AUTH-0 item 7 are true
+   - the guard re-checks after seed import and fails startup if no active
+     login-capable operator exists
+   - seed/import must run before the final auth readiness guard; HTTP exposure
+     must not be treated as production-ready until the guard passes
 12. Add cookie and CSRF policy:
    - dev HTTP session cookies do not set `Secure`
    - prod cookies set `Secure` by default or require an explicit secure-cookie
      property
-   - first slice either validates a CSRF token on mutating cookie-backed
-     operator routes or records a deliberately named temporary local-only
-     bypass that is rejected in `prod`
+   - login returns or exposes a session-bound CSRF token for browser callers
+   - mutating cookie-backed operator routes require `X-Mass-Csrf-Token`
+   - `GET /api/v1/auth/config` and `POST /api/v1/auth/login` are CSRF-exempt
+     because they do not require an existing session
+   - a deliberately named local-only bypass, if implemented, is rejected in
+     `prod`
 
 Acceptance:
 
@@ -326,6 +366,10 @@ Acceptance:
   - role/permission changes are reflected by resolving the current
     `PrincipalContext` from IAM on `/auth/me` or session refresh; permissions
     are not snapshotted permanently into the session token
+- `GET /api/v1/auth/config` is public and returns the active operator auth
+  mode without exposing credential, session token, or password policy material.
+- `disabled` mode returns a closed auth config and fails login, `/auth/me`, and
+  logout closed.
 - `dev-header` mode:
   - existing header-based tests remain cheap
   - admin/viewer/custom fixtures still work
@@ -333,11 +377,21 @@ Acceptance:
 - dev/prod seed import accepts `passwordHash` and rejects plaintext `password`.
 - dev HTTP can complete a browser login flow; prod defaults to secure cookie
   behavior.
+- `prod + session` rejects any temporary CSRF bypass property; a local-only
+  bypass must be impossible to enable in prod.
+- Mutating cookie-backed operator routes reject missing or invalid CSRF tokens.
+- `OperatorCredentialStoreContractTest` proves shared behavior for in-memory
+  and JDBC implementations.
+- The prod bootstrap path is a one-shot seed/import allowance, not a long-term
+  empty-operator runtime mode.
+- `prod + dev-header` requires
+  `mass.auth.operator.allow-unsafe-dev-header-in-prod=true`; the property name
+  appears in the failing startup message.
 
 Suggested verification:
 
 ```powershell
-.\mvnw.cmd -q -pl xa-mass-server -am "-Dtest=AuthControllerTest,ApiAuthInterceptorTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
+.\mvnw.cmd -q -pl xa-mass-server -am "-Dtest=AuthControllerTest,ApiAuthInterceptorTest,InMemoryOperatorCredentialStoreContractTest,JdbcOperatorCredentialStoreContractTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 .\mvnw.cmd -q -pl xa-mass-server -am "-Dtest=ServerMainSourceArchitectureGuardTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
 ```
 
@@ -351,7 +405,11 @@ Implementation shape:
 1. Add `/login` public route.
 2. Implement backend `AuthProvider.login()` against
    `POST /api/v1/auth/login`.
-3. Update `requestJson` to include credentials for cookie-backed requests.
+3. Update `requestJson` so operator-console requests include credentials only
+   in `session` mode.
+   - requests with `submitterCredential` keep SDK API-key auth only
+   - requests with `includeOperatorAuth=false` must not attach browser session
+     credentials
 4. Stop sending `X-Mass-User-Mode` when backend auth mode is `session`.
 5. Keep operator-mode select only for `dev-header` mode.
 6. Add logout action in the header that calls `/api/v1/auth/logout` and clears
@@ -359,9 +417,8 @@ Implementation shape:
 7. Update router guard:
    - unauthenticated protected route redirects to `/login`
    - authenticated user visiting `/login` returns to main console
-8. Add a small backend auth-mode endpoint or include auth-mode metadata in
-   `/api/v1/auth/me`. This is required unless AUTH-1 introduces an equivalent
-   runtime frontend config field.
+8. Load backend auth mode from `GET /api/v1/auth/config`; AUTH-2 depends on
+   AUTH-1 delivering this endpoint.
 
 Acceptance:
 
@@ -373,6 +430,10 @@ Acceptance:
 - Dev-header mode keeps the admin/viewer switch for local verification.
 - Session mode hides the admin/viewer dev-header switch and does not send
   operator identity headers.
+- SDK API-key and submitter-viewer routes keep their existing credential
+  behavior and do not gain browser session credentials by default.
+- `includeOperatorAuth=false` and `submitterCredential` calls do not attach
+  operator cookies or CSRF headers.
 - Frontend tests cover backend login provider and route guard transitions.
 
 Suggested verification:
@@ -394,7 +455,10 @@ Test policy:
 - Existing header-based permission tests remain valid as dev-header tests.
 - Add a focused backend session suite for login / me / logout / prod header
   rejection.
-- Add one Boot-shell session-flow E2E if startup cost is acceptable.
+- Add one Boot-shell session-flow E2E only if the existing Boot-shell E2E
+  harness can inject `session` auth mode, operator seed credentials, and cookie
+  assertions without adding a new slow fixture. Otherwise prove the same flow
+  with a focused `@SpringBootTest` / MockMvc session test.
 - Do not retrofit every task, worker, API-key, and console E2E to perform
   login.
 
@@ -411,8 +475,13 @@ Proof cases:
    - `X-Mass-User-Mode=admin` alone does not authenticate
 3. `prod` profile guard:
    - unsafe dev-header mode fails startup
+   - unsafe dev-header mode starts only with
+     `mass.auth.operator.allow-unsafe-dev-header-in-prod=true`
    - configured session mode with at least one active hashed operator
      credential starts
+   - one-shot bootstrap import starts only when the explicit AUTH-0 bootstrap
+     properties are set and exits/fails if the post-seed operator check fails
+   - CSRF local bypass fails startup in `prod + session`
    - seed with plaintext `password` fails in dev/prod
 
 Suggested verification:
@@ -484,3 +553,9 @@ The roadmap is complete only when:
     is not hidden in IAM user attributes.
 11. Public login/config route access, cookie security, and CSRF behavior are
     documented and covered by focused tests.
+12. `OperatorCredentialStore` memory/JDBC behavior is covered by a shared
+    contract test.
+13. `requestJson` credential inclusion is scoped to operator-console session
+    mode and does not alter SDK API-key route behavior.
+14. Prod bootstrap and unsafe override properties are deliberately named,
+    guarded, and visible in startup failure messages.

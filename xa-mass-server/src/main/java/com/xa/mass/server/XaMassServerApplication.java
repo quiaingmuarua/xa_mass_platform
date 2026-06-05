@@ -47,6 +47,7 @@ import com.xa.mass.trace.sink.ExecutionEventSink;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -168,6 +169,13 @@ public class XaMassServerApplication {
     @Value("${spring.redis.password:}")
     private String redisPassword;
 
+    private Environment environment;
+
+    @Autowired
+    void setEnvironment(Environment environment) {
+        this.environment = environment;
+    }
+
     public static void main(String[] args) {
         log.info("Starting XA Mass server");
 
@@ -195,8 +203,12 @@ public class XaMassServerApplication {
     @Bean(destroyMethod = "close")
     @Profile({"dev", "prod"})
     public JdbcStorageRuntime jdbcStorageRuntime() {
+        JdbcStorageMode mode = JdbcStorageMode.parse(storageMode);
+        if (isProdProfile() && !mode.isJdbc()) {
+            throw new IllegalStateException("prod requires mass.storage.mode to be JDBC-enabled");
+        }
         return JdbcStorageRuntime.create(
-                JdbcStorageMode.parse(storageMode),
+                mode,
                 storageJdbcUrl,
                 storageJdbcUsername,
                 storageJdbcPassword
@@ -271,23 +283,29 @@ public class XaMassServerApplication {
     @Bean(destroyMethod = "shutdown")
     @Profile({"dev", "prod"})
     public TaskWorkRuntime taskWorkRuntime() {
-        String normalizedMode = runtimeMode == null ? "memory" : runtimeMode.trim().toLowerCase(Locale.ROOT);
-        return switch (normalizedMode) {
-            case "", "memory" -> new InMemoryTaskWorkRuntime();
-            case "redis" -> new RedisTaskWorkRuntime(redisUri(), runtimeRedisNamespace, runtimeRedisMaxQueuedItems);
-            default -> throw new IllegalArgumentException("Unsupported mass.runtime.mode: " + runtimeMode);
-        };
+        String normalizedMode = normalizeInfraMode(runtimeMode, "memory");
+        if ("redis".equals(normalizedMode)) {
+            return new RedisTaskWorkRuntime(redisUri(), runtimeRedisNamespace, runtimeRedisMaxQueuedItems);
+        }
+        requireNonProdMode("mass.runtime.mode", "redis", normalizedMode);
+        if ("memory".equals(normalizedMode)) {
+            return new InMemoryTaskWorkRuntime();
+        }
+        throw new IllegalArgumentException("Unsupported mass.runtime.mode: " + runtimeMode);
     }
 
     @Bean(destroyMethod = "shutdown")
     @Profile({"dev", "prod"})
     public TaskResultRuntime taskResultRuntime() {
-        String normalizedMode = runtimeMode == null ? "memory" : runtimeMode.trim().toLowerCase(Locale.ROOT);
-        return switch (normalizedMode) {
-            case "", "memory" -> new InMemoryTaskResultRuntime();
-            case "redis" -> new RedisTaskResultRuntime(redisUri(), runtimeRedisNamespace + ":result");
-            default -> throw new IllegalArgumentException("Unsupported mass.runtime.mode: " + runtimeMode);
-        };
+        String normalizedMode = normalizeInfraMode(runtimeMode, "memory");
+        if ("redis".equals(normalizedMode)) {
+            return new RedisTaskResultRuntime(redisUri(), runtimeRedisNamespace + ":result");
+        }
+        requireNonProdMode("mass.runtime.mode", "redis", normalizedMode);
+        if ("memory".equals(normalizedMode)) {
+            return new InMemoryTaskResultRuntime();
+        }
+        throw new IllegalArgumentException("Unsupported mass.runtime.mode: " + runtimeMode);
     }
 
     @Bean(destroyMethod = "stop")
@@ -296,8 +314,8 @@ public class XaMassServerApplication {
                                                           JdbcStorageRuntime jdbcStorageRuntime,
                                                           CatalogMetadataStore catalogMetadataStore,
                                                           TaskShellStore taskShellStore,
-                                                          ObjectProvider<TaskWorkRuntime> taskWorkRuntimeProvider,
-                                                          ObjectProvider<TaskResultRuntime> taskResultRuntimeProvider,
+                                                          TaskWorkRuntime taskWorkRuntime,
+                                                          TaskResultRuntime taskResultRuntime,
                                                           ObjectProvider<ExecutionEventSink> executionEventSinkProvider) {
         MassSdk.Builder builder = MassSdk.builder();
         if (jdbcStorageRuntime.isEnabled()) {
@@ -346,9 +364,7 @@ public class XaMassServerApplication {
                             .leaseWatchdogIntervalSeconds(leaseWatchdogIntervalSeconds)
                             .taskMessageLeaseSeconds(taskMessageLeaseSeconds)
                             .taskShellStore(taskShellStore);
-                    TaskWorkRuntime taskWorkRuntime = taskWorkRuntimeProvider.getIfAvailable(InMemoryTaskWorkRuntime::new);
                     engine.taskWorkRuntime(taskWorkRuntime);
-                    TaskResultRuntime taskResultRuntime = taskResultRuntimeProvider.getIfAvailable(InMemoryTaskResultRuntime::new);
                     engine.taskResultRuntime(taskResultRuntime);
                     WorkerRegistry workerRegistry = workerRegistry();
                     if (workerRegistry != null) {
@@ -372,16 +388,19 @@ public class XaMassServerApplication {
     }
 
     private WorkerRegistry workerRegistry() {
-        String normalizedMode = runtimeMode == null ? "memory" : runtimeMode.trim().toLowerCase(Locale.ROOT);
-        return switch (normalizedMode) {
-            case "", "memory" -> null;
-            case "redis" -> new RedisWorkerRegistry(
+        String normalizedMode = normalizeInfraMode(runtimeMode, "memory");
+        if ("redis".equals(normalizedMode)) {
+            return new RedisWorkerRegistry(
                     redisUri(),
                     runtimeRedisNamespace + ":worker",
                     WorkerRouteBucketPolicies.defaultPolicy()
             );
-            default -> throw new IllegalArgumentException("Unsupported mass.runtime.mode: " + runtimeMode);
-        };
+        }
+        requireNonProdMode("mass.runtime.mode", "redis", normalizedMode);
+        if ("memory".equals(normalizedMode)) {
+            return null;
+        }
+        throw new IllegalArgumentException("Unsupported mass.runtime.mode: " + runtimeMode);
     }
 
     @Bean
@@ -534,39 +553,62 @@ public class XaMassServerApplication {
     }
 
     private java.util.function.Supplier<TransportDeliveryStore> resolveTransportDeliveryStoreFactory() {
-        String normalizedMode = transportDeliveryStore == null
-                ? "memory"
-                : transportDeliveryStore.trim().toLowerCase(Locale.ROOT);
-        return switch (normalizedMode) {
-            case "", "memory" -> null;
-            case "redis" -> () -> new RedisTransportDeliveryStore(
+        String normalizedMode = normalizeInfraMode(transportDeliveryStore, "memory");
+        if ("redis".equals(normalizedMode)) {
+            return () -> new RedisTransportDeliveryStore(
                     redisUri(),
                     transportDeliveryRedisNamespace,
                     transportDeliveryMaxQueuedItems,
                     transportDeliveryMaxItemsPerRoute
             );
-            default -> throw new IllegalArgumentException(
-                    "Unsupported mass.transport.delivery.store: " + transportDeliveryStore
-            );
-        };
+        }
+        requireNonProdMode("mass.transport.delivery.store", "redis", normalizedMode);
+        if ("memory".equals(normalizedMode)) {
+            return null;
+        }
+        throw new IllegalArgumentException(
+                "Unsupported mass.transport.delivery.store: " + transportDeliveryStore
+        );
     }
 
     private java.util.function.Supplier<WorkerPresenceStore> resolveTransportPresenceStoreFactory() {
-        String normalizedMode = transportPresenceStore == null
-                ? "memory"
-                : transportPresenceStore.trim().toLowerCase(Locale.ROOT);
-        return switch (normalizedMode) {
-            case "", "memory" -> null;
-            case "redis" -> () -> new RedisWorkerPresenceStore(
+        String normalizedMode = normalizeInfraMode(transportPresenceStore, "memory");
+        if ("redis".equals(normalizedMode)) {
+            return () -> new RedisWorkerPresenceStore(
                     redisUri(),
                     transportPresenceRedisNamespace,
                     transportPresenceLeaseMillis,
                     transportNodeId
             );
-            default -> throw new IllegalArgumentException(
-                    "Unsupported mass.transport.presence.store: " + transportPresenceStore
-            );
-        };
+        }
+        requireNonProdMode("mass.transport.presence.store", "redis", normalizedMode);
+        if ("memory".equals(normalizedMode)) {
+            return null;
+        }
+        throw new IllegalArgumentException(
+                "Unsupported mass.transport.presence.store: " + transportPresenceStore
+        );
+    }
+
+    private String normalizeInfraMode(String rawValue, String defaultValue) {
+        if (rawValue == null || rawValue.isBlank()) {
+            return defaultValue;
+        }
+        return rawValue.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private void requireNonProdMode(String property, String requiredValue, String actualValue) {
+        if (isProdProfile()) {
+            throw new IllegalStateException("prod requires " + property + "=" + requiredValue
+                    + " (was " + actualValue + ")");
+        }
+    }
+
+    private boolean isProdProfile() {
+        if (environment == null) {
+            return false;
+        }
+        return Arrays.asList(effectiveProfiles(environment)).contains("prod");
     }
 
 }

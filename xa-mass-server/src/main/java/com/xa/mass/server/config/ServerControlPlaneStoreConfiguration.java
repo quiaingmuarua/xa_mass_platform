@@ -20,41 +20,50 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.springframework.core.env.Environment;
+
+import java.util.Arrays;
 
 @Configuration
 @Profile({"dev", "prod"})
 public class ServerControlPlaneStoreConfiguration {
 
+    private final Environment environment;
+
+    public ServerControlPlaneStoreConfiguration(Environment environment) {
+        this.environment = environment;
+    }
+
     @Bean
-    public ApiKeyApplicationStore apiKeyApplicationStore(ObjectProvider<JdbcStorageRuntime> jdbcStorageRuntimeProvider,
+    public ApiKeyApplicationStore apiKeyApplicationStore(JdbcStorageRuntime jdbcStorageRuntime,
                                                          ObjectProvider<ServerControlPlaneMigrationRunner> migrationRunnerProvider) {
-        JdbcStorageRuntime jdbcStorageRuntime = jdbcStorageRuntimeProvider.getIfAvailable(JdbcStorageRuntime::disabled);
         if (jdbcStorageRuntime.isEnabled()) {
             migrationRunnerProvider.getObject();
             return new JdbcApiKeyApplicationStore(jdbcStorageRuntime.dataSource());
         }
+        requireNonProdMemoryStore();
         return new InMemoryApiKeyApplicationStore();
     }
 
     @Bean
-    public ApiKeyCredentialStore apiKeyCredentialStore(ObjectProvider<JdbcStorageRuntime> jdbcStorageRuntimeProvider,
+    public ApiKeyCredentialStore apiKeyCredentialStore(JdbcStorageRuntime jdbcStorageRuntime,
                                                        ObjectProvider<ServerControlPlaneMigrationRunner> migrationRunnerProvider) {
-        JdbcStorageRuntime jdbcStorageRuntime = jdbcStorageRuntimeProvider.getIfAvailable(JdbcStorageRuntime::disabled);
         if (jdbcStorageRuntime.isEnabled()) {
             migrationRunnerProvider.getObject();
             return new JdbcApiKeyCredentialStore(jdbcStorageRuntime.dataSource());
         }
+        requireNonProdMemoryStore();
         return new InMemoryApiKeyCredentialStore();
     }
 
     @Bean
-    public UserRolePermissionStore userRolePermissionStore(ObjectProvider<JdbcStorageRuntime> jdbcStorageRuntimeProvider,
+    public UserRolePermissionStore userRolePermissionStore(JdbcStorageRuntime jdbcStorageRuntime,
                                                            ObjectProvider<ServerControlPlaneMigrationRunner> migrationRunnerProvider) {
-        JdbcStorageRuntime jdbcStorageRuntime = jdbcStorageRuntimeProvider.getIfAvailable(JdbcStorageRuntime::disabled);
         if (jdbcStorageRuntime.isEnabled()) {
             migrationRunnerProvider.getObject();
             return new JdbcUserRolePermissionStore(jdbcStorageRuntime.dataSource());
         }
+        requireNonProdMemoryStore();
         return InMemoryUserRolePermissionStore.bootstrapDefaults();
     }
 
@@ -69,13 +78,25 @@ public class ServerControlPlaneStoreConfiguration {
     }
 
     @Bean
-    public ApiUsageLedgerStore apiUsageLedgerStore(ObjectProvider<JdbcStorageRuntime> jdbcStorageRuntimeProvider,
+    public ApiUsageLedgerStore apiUsageLedgerStore(JdbcStorageRuntime jdbcStorageRuntime,
                                                    ObjectProvider<ServerControlPlaneMigrationRunner> migrationRunnerProvider) {
-        JdbcStorageRuntime jdbcStorageRuntime = jdbcStorageRuntimeProvider.getIfAvailable(JdbcStorageRuntime::disabled);
         if (jdbcStorageRuntime.isEnabled()) {
             migrationRunnerProvider.getObject();
             return new JdbcApiUsageLedgerStore(jdbcStorageRuntime.dataSource());
         }
+        requireNonProdMemoryStore();
         return new InMemoryApiUsageLedgerStore();
+    }
+
+    private void requireNonProdMemoryStore() {
+        if (isProdProfile()) {
+            throw new IllegalStateException("prod requires mass.storage.mode to be JDBC-enabled");
+        }
+    }
+
+    private boolean isProdProfile() {
+        String[] activeProfiles = environment.getActiveProfiles();
+        String[] effectiveProfiles = activeProfiles.length == 0 ? environment.getDefaultProfiles() : activeProfiles;
+        return Arrays.asList(effectiveProfiles).contains("prod");
     }
 }
