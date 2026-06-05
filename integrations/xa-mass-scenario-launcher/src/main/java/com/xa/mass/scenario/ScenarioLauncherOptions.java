@@ -8,39 +8,29 @@ record ScenarioLauncherOptions(
         String baseUrl,
         URI webSocketUrl,
         String taskApiKey,
-        String taskCommandApiKey,
         String workerApiKey,
         Path scenarioDir,
-        long idleTimeoutMs,
         int maxPollingWorkers,
-        boolean registerOnly,
         boolean help
 ) {
     private static final String DEFAULT_BASE_URL = "http://127.0.0.1:8088";
     private static final String DEFAULT_TASK_API_KEY = "crawler-submitter-key";
-    private static final String DEFAULT_TASK_COMMAND_API_KEY = "public-probe-ops-key";
     private static final Path DEFAULT_SCENARIO_DIR = Path.of("integrations/samples/dev/scenario");
-    private static final long DEFAULT_IDLE_TIMEOUT_MS = 60_000L;
     private static final int DEFAULT_MAX_POLLING_WORKERS = 25;
 
     static ScenarioLauncherOptions parse(String[] args) {
         String baseUrl = envOrDefault("MASS_BASE_URL", DEFAULT_BASE_URL);
         URI webSocketUrl = optionalUri(System.getenv("MASS_WEBSOCKET_URL"), "MASS_WEBSOCKET_URL");
         String taskApiKey = envOrDefault("MASS_TASK_SUBMITTER_KEY", DEFAULT_TASK_API_KEY);
-        String taskCommandApiKey = envOrDefault("MASS_TASK_COMMAND_KEY", DEFAULT_TASK_COMMAND_API_KEY);
         String workerApiKey = System.getenv("MASS_WORKER_API_KEY");
         Path scenarioDir = DEFAULT_SCENARIO_DIR;
-        long idleTimeoutMs = longEnvOrDefault("MASS_SCENARIO_IDLE_TIMEOUT_MS", DEFAULT_IDLE_TIMEOUT_MS);
         int maxPollingWorkers = intEnvOrDefault("MASS_SCENARIO_MAX_POLLING_WORKERS", DEFAULT_MAX_POLLING_WORKERS);
-        boolean registerOnly = false;
         boolean help = false;
 
         for (int index = 0; index < args.length; index++) {
             String arg = args[index];
             if ("--help".equals(arg) || "-h".equals(arg)) {
                 help = true;
-            } else if ("--register-only".equals(arg)) {
-                registerOnly = true;
             } else if ("--base-url".equals(arg)) {
                 baseUrl = requiredArg(args, index, arg);
                 index++;
@@ -56,11 +46,6 @@ record ScenarioLauncherOptions(
                 index++;
             } else if (arg.startsWith("--task-api-key=")) {
                 taskApiKey = arg.substring("--task-api-key=".length());
-            } else if ("--task-command-api-key".equals(arg)) {
-                taskCommandApiKey = requiredArg(args, index, arg);
-                index++;
-            } else if (arg.startsWith("--task-command-api-key=")) {
-                taskCommandApiKey = arg.substring("--task-command-api-key=".length());
             } else if ("--worker-api-key".equals(arg)) {
                 workerApiKey = requiredArg(args, index, arg);
                 index++;
@@ -71,11 +56,6 @@ record ScenarioLauncherOptions(
                 index++;
             } else if (arg.startsWith("--scenario-dir=")) {
                 scenarioDir = Path.of(arg.substring("--scenario-dir=".length()));
-            } else if ("--idle-timeout-ms".equals(arg)) {
-                idleTimeoutMs = parseLong(requiredArg(args, index, arg), arg);
-                index++;
-            } else if (arg.startsWith("--idle-timeout-ms=")) {
-                idleTimeoutMs = parseLong(arg.substring("--idle-timeout-ms=".length()), "--idle-timeout-ms");
             } else if ("--max-polling-workers".equals(arg)) {
                 maxPollingWorkers = parseInt(requiredArg(args, index, arg), arg);
                 index++;
@@ -85,9 +65,6 @@ record ScenarioLauncherOptions(
                 throw new IllegalArgumentException("unknown argument: " + arg);
             }
         }
-        if (idleTimeoutMs < 0) {
-            throw new IllegalArgumentException("idleTimeoutMs must be >= 0");
-        }
         if (maxPollingWorkers < 0) {
             throw new IllegalArgumentException("maxPollingWorkers must be >= 0");
         }
@@ -95,31 +72,47 @@ record ScenarioLauncherOptions(
                 normalizeBaseUrl(baseUrl),
                 webSocketUrl,
                 requireNonBlank(taskApiKey, "taskApiKey"),
-                requireNonBlank(taskCommandApiKey, "taskCommandApiKey"),
                 normalizeOptional(workerApiKey),
                 scenarioDir,
-                idleTimeoutMs,
                 maxPollingWorkers,
-                registerOnly,
                 help
         );
     }
 
-    static String helpText() {
+    static String taskHelpText() {
         return """
                 Usage:
-                  java -jar integrations/xa-mass-scenario-launcher/target/xa-mass-scenario-launcher.jar [options]
+                  java -jar integrations/xa-mass-scenario-launcher/target/xa-mass-scenario-task-launcher.jar [options]
+
+                Starts the task-producer side only: create scenario tasks and
+                append items according to tasks.json.
 
                 Options:
-                  --register-only              Register workers and tasks, then exit without polling workers.
+                %s
+                """.formatted(commonOptionsText());
+    }
+
+    static String workerHelpText() {
+        return """
+                Usage:
+                  java -jar integrations/xa-mass-scenario-launcher/target/xa-mass-scenario-worker-launcher.jar [options]
+
+                Starts the worker side only: register worker topology and start
+                Java SDK worker sessions according to workers.json.
+
+                Options:
+                %s
+                """.formatted(commonOptionsText());
+    }
+
+    static String commonOptionsText() {
+        return """
                   --base-url <url>             Server HTTP base URL. Default: MASS_BASE_URL or http://127.0.0.1:8088
                   --websocket-url <url>        Optional server WebSocket URL for realtime launcher workers. Default: MASS_WEBSOCKET_URL
                   --task-api-key <key>         Default task API key. Default: MASS_TASK_SUBMITTER_KEY or crawler-submitter-key
-                  --task-command-api-key <key> Task command API key for seal/approve. Default: MASS_TASK_COMMAND_KEY or public-probe-ops-key
                   --worker-api-key <key>       Optional worker API key override. Default: each worker spec's workerKey
                   --scenario-dir <path>        Scenario JSON directory. Default: integrations/samples/dev/scenario
-                  --idle-timeout-ms <ms>       Exit after this much continuous idle time in launch mode. Default: 60000. Use 0 to disable.
-                  --max-polling-workers <n>    Max polling workers to start in launch mode. Default: 25. Use 0 for no cap.
+                  --max-polling-workers <n>    Max polling workers to start in worker launcher. Default: 25. Use 0 for no cap.
                   -h, --help                   Show this help.
                 """;
     }
@@ -136,22 +129,9 @@ record ScenarioLauncherOptions(
         return value == null || value.isBlank() ? defaultValue : value;
     }
 
-    private static long longEnvOrDefault(String name, long defaultValue) {
-        String value = System.getenv(name);
-        return value == null || value.isBlank() ? defaultValue : parseLong(value, name);
-    }
-
     private static int intEnvOrDefault(String name, int defaultValue) {
         String value = System.getenv(name);
         return value == null || value.isBlank() ? defaultValue : parseInt(value, name);
-    }
-
-    private static long parseLong(String value, String name) {
-        try {
-            return Long.parseLong(value);
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException(name + " must be a number: " + value, e);
-        }
     }
 
     private static int parseInt(String value, String name) {

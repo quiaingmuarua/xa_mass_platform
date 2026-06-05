@@ -18,7 +18,7 @@ Global boundary guard:
 
 | Module | Artifact | Role |
 | --- | --- | --- |
-| [`xa-mass-scenario-launcher`](./xa-mass-scenario-launcher/README.md) | `xa-mass-scenario-launcher` | primary Java external SDK adopter for registering topology, starting polling workers, and submitting scenario tasks to an explicitly initialized server |
+| [`xa-mass-scenario-launcher`](./xa-mass-scenario-launcher/README.md) | `xa-mass-scenario-task-launcher`, `xa-mass-scenario-worker-launcher` | primary Java external SDK adopter split into task-producer and worker-process launchers against an explicitly initialized server |
 | [`xa-mass-worker-pack`](./xa-mass-worker-pack/README.md) | `xa-mass-worker-pack` | worker capability pack and active server E2E harness support |
 | [`samples`](./samples/README.md) | none | historical/dev fixtures only; not a long-term public SDK product surface |
 
@@ -41,7 +41,8 @@ Global boundary guard:
 
 ## Current Role
 
-- Scenario launcher is the primary Java SDK adopter.
+- Scenario launcher is the primary Java SDK adopter, split into two executable
+  process roles: task producer and worker process.
 - Scenario launcher runs require catalog/rules and API keys to be prepared by
   server-owned seed/import, real control-plane setup, or test fixtures; its
   WorkerGroup, AdapterNode, Worker, and task flows remain SDK-backed external

@@ -1,6 +1,5 @@
 [
   {
-    "approve": true,
     "body": {
       "project": "crawlerApp",
       "userId": "sample-launcher",
@@ -20,11 +19,9 @@
     }
   },
   {
-    "approve": true,
     "body": {
       "project": "crawlerApp",
       "userId": "sample-launcher",
-      "keepIntakeOpen": true,
       "sourceRef": "sample-stock-quote-stream",
       "sharedConfig": {
         "routingCode": "us",
@@ -46,7 +43,6 @@
   },
   {
     "apiKey": "public-probe-ops-key",
-    "approve": false,
     "body": {
       "project": "deviceProbe",
       "userId": "sample-launcher",
@@ -65,8 +61,7 @@
         "defaultMaxRetryCount": 1,
         "maxRuntimeSeconds": 1800
       },
-      "eventCode": "probe.phone.metadata",
-      "keepIntakeOpen": false
+      "eventCode": "probe.phone.metadata"
     },
     "generatedItems": {
       "count": 1000,

@@ -27,8 +27,9 @@ Global boundary guard:
   that need to distinguish shell, runtime/current, execution, timestamp, and
   compatibility fields.
 - Real external worker/task proof is expected to use public SDK calls against a
-  running server. Server-owned dev bootstrap endpoints are fixtures, not SDK
-  prerequisites.
+  running server. `integrations/xa-mass-scenario-launcher` keeps task-producer
+  and worker-process launchers separate. Server-owned dev bootstrap endpoints
+  are fixtures, not SDK prerequisites.
 - In-process JVM embedding callers should start from `xa-mass-embedded-sdk`.
 - Public HTTP wire DTOs belong in `xa-mass-public-contract` only when the owning
   Controller method and route role are documented by

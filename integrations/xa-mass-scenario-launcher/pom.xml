@@ -45,18 +45,39 @@
                 <version>3.7.1</version>
                 <executions>
                     <execution>
+                        <id>task-launcher-jar</id>
                         <phase>package</phase>
                         <goals>
                             <goal>single</goal>
                         </goals>
                         <configuration>
+                            <finalName>xa-mass-scenario-task-launcher</finalName>
                             <appendAssemblyId>false</appendAssemblyId>
                             <descriptorRefs>
                                 <descriptorRef>jar-with-dependencies</descriptorRef>
                             </descriptorRefs>
                             <archive>
                                 <manifest>
-                                    <mainClass>com.xa.mass.scenario.ScenarioLauncherMain</mainClass>
+                                    <mainClass>com.xa.mass.scenario.ScenarioTaskLauncherMain</mainClass>
+                                </manifest>
+                            </archive>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>worker-launcher-jar</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                        <configuration>
+                            <finalName>xa-mass-scenario-worker-launcher</finalName>
+                            <appendAssemblyId>false</appendAssemblyId>
+                            <descriptorRefs>
+                                <descriptorRef>jar-with-dependencies</descriptorRef>
+                            </descriptorRefs>
+                            <archive>
+                                <manifest>
+                                    <mainClass>com.xa.mass.scenario.ScenarioWorkerLauncherMain</mainClass>
                                 </manifest>
                             </archive>
                         </configuration>

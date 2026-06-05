@@ -24,7 +24,6 @@ class WorkerScenarioRegistrarTest {
         List<RecordedRequest> requests = new ArrayList<>();
         try (RecordingServer server = RecordingServer.start(requests)) {
             ScenarioLauncherOptions options = ScenarioLauncherOptions.parse(new String[]{
-                    "--register-only",
                     "--base-url", server.baseUrl(),
                     "--worker-api-key", "override-worker-key"
             });

@@ -1,7 +1,6 @@
 package com.xa.mass.scenario;
 
 import com.xa.mass.client.MassPlatform;
-import com.xa.mass.client.task.TaskGetResult;
 import com.xa.mass.client.worker.WorkerEventBindingSpec;
 import com.xa.mass.client.worker.handler.DispatchContext;
 import com.xa.mass.client.worker.session.PollingWorkerSession;
@@ -21,7 +20,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 final class ScenarioWorkerRuntime implements AutoCloseable {
@@ -33,7 +31,6 @@ final class ScenarioWorkerRuntime implements AutoCloseable {
     private final ScenarioClientFactory clientFactory;
     private final ScenarioIdleTracker idleTracker;
     private final List<AutoCloseable> sessions = new ArrayList<>();
-    private final List<String> startedWorkerGroupIds = new ArrayList<>();
     private final CountDownLatch shutdownLatch = new CountDownLatch(1);
     private final AtomicBoolean closing = new AtomicBoolean(false);
 
@@ -49,17 +46,9 @@ final class ScenarioWorkerRuntime implements AutoCloseable {
         List<WorkerScenarioSpec> launchable = launchablePollingSpecs(workerSpecs, options.maxPollingWorkers());
         for (WorkerScenarioSpec spec : launchable) {
             sessions.add(startPollingSession(spec));
-            if (spec.workerGroupId() != null && !spec.workerGroupId().isBlank()
-                    && !startedWorkerGroupIds.contains(spec.workerGroupId())) {
-                startedWorkerGroupIds.add(spec.workerGroupId());
-            }
         }
         for (WorkerScenarioSpec spec : launchableWebSocketSpecs(workerSpecs, options.webSocketUrl() != null)) {
             sessions.add(startWebSocketSession(spec));
-            if (spec.workerGroupId() != null && !spec.workerGroupId().isBlank()
-                    && !startedWorkerGroupIds.contains(spec.workerGroupId())) {
-                startedWorkerGroupIds.add(spec.workerGroupId());
-            }
         }
         if (!sessions.isEmpty()) {
             Runtime.getRuntime().addShutdownHook(new Thread(this::close, "java-scenario-launcher-shutdown"));
@@ -67,59 +56,8 @@ final class ScenarioWorkerRuntime implements AutoCloseable {
         return sessions.size();
     }
 
-    List<String> startedWorkerGroupIds() {
-        return List.copyOf(startedWorkerGroupIds);
-    }
-
-    void awaitShutdownOrIdle(List<TaskScenarioSeeder.SeededTask> seededTasks) throws InterruptedException {
-        List<TaskScenarioSeeder.SeededTask> managedTasks = managedTasks(seededTasks);
-        if (options.idleTimeoutMs() == 0) {
-            shutdownLatch.await();
-            return;
-        }
-        while (!closing.get()) {
-            if (idleTracker.isIdleFor(options.idleTimeoutMs()) && allManagedTasksTerminal(managedTasks)) {
-                System.out.printf("[java-scenario-launcher] idle timeout reached idleMs=%d%n",
-                        idleTracker.idleMillis());
-                return;
-            }
-            if (shutdownLatch.await(500L, TimeUnit.MILLISECONDS)) {
-                return;
-            }
-        }
-    }
-
-    private List<TaskScenarioSeeder.SeededTask> managedTasks(List<TaskScenarioSeeder.SeededTask> seededTasks) {
-        if (seededTasks == null || seededTasks.isEmpty()) {
-            return List.of();
-        }
-        return seededTasks.stream()
-                .filter(TaskScenarioSeeder.SeededTask::managedByLauncherWorkers)
-                .toList();
-    }
-
-    private boolean allManagedTasksTerminal(List<TaskScenarioSeeder.SeededTask> managedTasks) {
-        if (managedTasks.isEmpty()) {
-            return true;
-        }
-        for (TaskScenarioSeeder.SeededTask task : managedTasks) {
-            try {
-                TaskGetResult result = clientFactory.forApiKey(task.taskApiKey()).tasks().get(task.taskId());
-                String status = result == null || result.task() == null ? null : result.task().status();
-                if (!"TERMINAL".equalsIgnoreCase(status)) {
-                    System.out.printf("[java-scenario-launcher] idle observed but managed task still %s taskId=%s%n",
-                            status == null ? "UNKNOWN" : status, task.taskId());
-                    idleTracker.markActivity();
-                    return false;
-                }
-            } catch (RuntimeException e) {
-                System.err.printf("[java-scenario-launcher] failed to check task status taskId=%s error=%s%n",
-                        task.taskId(), e.getMessage());
-                idleTracker.markActivity();
-                return false;
-            }
-        }
-        return true;
+    void awaitShutdown() throws InterruptedException {
+        shutdownLatch.await();
     }
 
     @Override

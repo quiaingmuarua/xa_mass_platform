@@ -2,9 +2,11 @@
 
 Status: Java SDK scenario launcher.
 
-This module is the formal Java SDK based launcher for registering dev scenario
-worker topology, starting HTTP/polling sample workers, and creating scenario
-tasks against a running `xa-mass-server`.
+This module is the formal Java SDK based launcher for the two external
+scenario roles against a running `xa-mass-server`:
+
+- task producer: create scenario tasks and append items
+- worker process: register worker topology and run Java SDK worker sessions
 
 It composes `sdk/xa-mass-java-sdk`; it does not redefine server,
 engine, worker-pack, or transport ownership.
@@ -14,38 +16,36 @@ engine, worker-pack, or transport ownership.
 - reads the existing scenario JSON files under `integrations/samples/dev/scenario`
 - assumes catalog, rules, and submitter credentials already exist through
   explicit server seed/import or test fixtures
-- registers WorkerGroups, AdapterNodes, NodeGroupBindings, and Workers through
+- worker launcher registers WorkerGroups, AdapterNodes, NodeGroupBindings, and Workers through
   public worker APIs via `xa-mass-java-sdk`
-- creates tasks, appends items, seals, and approves through public task APIs via
+- task launcher creates tasks and appends items through public task APIs via
   `xa-mass-java-sdk`
-- default launch mode starts Java SDK `PollingWorkerSession` workers for polling
-  scenario specs and keeps running until shutdown or until the launcher has been
-  idle and its managed polling tasks have reached terminal state
-- launch mode auto-approves staged tasks whose `sharedConfig.workerGroupId`
-  matches a started polling worker group, so the default command can execute
-  the polling scenario
-- `--register-only` registers worker topology and tasks, then exits without
-  starting worker sessions
+- worker launcher starts Java SDK `PollingWorkerSession` workers for polling
+  scenario specs and WebSocket sessions when `--websocket-url` is provided
+- worker launcher keeps running until the process is interrupted
+- task launcher does not register workers or start worker sessions
+- worker launcher does not create tasks
 
 ## Usage
 
 ```bash
 ./mvnw -pl integrations/xa-mass-scenario-launcher -am -DskipTests package
 
-java -jar integrations/xa-mass-scenario-launcher/target/xa-mass-scenario-launcher.jar \
+java -jar integrations/xa-mass-scenario-launcher/target/xa-mass-scenario-worker-launcher.jar \
+  --base-url http://127.0.0.1:8088
+
+java -jar integrations/xa-mass-scenario-launcher/target/xa-mass-scenario-task-launcher.jar \
   --base-url http://127.0.0.1:8088
 ```
 
 Options:
 
 - `--base-url`: server HTTP base URL. Default: `MASS_BASE_URL` or `http://127.0.0.1:8088`
+- `--websocket-url`: optional server WebSocket URL for realtime launcher workers. Default: `MASS_WEBSOCKET_URL`
 - `--task-api-key`: default task API key. Default: `MASS_TASK_SUBMITTER_KEY` or `crawler-submitter-key`
-- `--task-command-api-key`: task command API key for seal/approve. Default: `MASS_TASK_COMMAND_KEY` or `public-probe-ops-key`
 - `--worker-api-key`: optional worker API key override. Default: each worker spec's `workerKey`
 - `--scenario-dir`: scenario JSON directory. Default: `integrations/samples/dev/scenario`
-- `--idle-timeout-ms`: exit launch mode after continuous idle time once launcher-managed polling tasks are terminal. Default: `60000`; `0` disables idle exit
-- `--max-polling-workers`: maximum polling workers to start in launch mode. Default: `25`; `0` disables the cap
-- `--register-only`: register catalog/rules/topology/tasks and exit without polling sessions
+- `--max-polling-workers`: maximum polling workers to start in worker launcher. Default: `25`; `0` disables the cap
 
 ## Boundary
 
@@ -54,3 +54,9 @@ Options:
   server-owned seed/import or real control-plane setup before running it.
 - `xa-mass-worker-pack` owns worker capabilities, not task creation or scenario
   orchestration.
+- task and worker launchers are separate process roles. Do not reintroduce a
+  single main that registers workers, starts sessions, and creates tasks in one
+  flow.
+- task lifecycle commands such as seal/approve are operator/server-console
+  behavior. The task launcher deliberately does not send `/commands` requests
+  with submitter API-key credentials.

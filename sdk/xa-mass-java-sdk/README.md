@@ -96,11 +96,13 @@ for advanced or internal wiring.
 
 Task append ergonomics stay identity-preserving: do not add a Java SDK bulk
 append helper while `TaskAppendResult` lacks per-item message identity or an
-equivalent append receipt identity. Use `TaskHandle` to create or bind one task,
-approve when needed, append or sync-append items, and read results through task
-result APIs. A future chunking helper must return identity-preserving receipts,
-must work against one existing task, and must not create one task per item or
-auto-seal unless the method name explicitly says it seals.
+equivalent append receipt identity. Use `TaskHandle` to bind one task, append or
+sync-append items when the task lifecycle already allows it, and read results
+through task result APIs. Task lifecycle governance commands are operator/server
+control-plane behavior, not scenario task-launcher behavior. A future chunking
+helper must return identity-preserving receipts, must work against one existing
+task, and must not create one task per item or auto-seal unless the method name
+explicitly says it seals.
 
 Realtime session hardening current truth:
 
@@ -141,8 +143,8 @@ The internal executable adopter is
 [../../integrations/xa-mass-scenario-launcher](../../integrations/xa-mass-scenario-launcher),
 not standalone Java sample apps. It assumes catalog, rules, and credentials are
 prepared by server-owned seed/import, real control-plane setup, or test
-fixtures before it registers worker topology and tasks through SDK-backed
-external calls.
+fixtures before its worker launcher registers worker topology and its task
+launcher submits scenario tasks through SDK-backed external calls.
 
 For the short task-producer plus worker-session onboarding path, use
 [EXTERNAL_SDK_QUICKSTART.md](./EXTERNAL_SDK_QUICKSTART.md).
@@ -173,27 +175,12 @@ handle.appendItems(TaskItemBatch.builder()
         .eventCode("crawler.fetch-page")
         .item(Map.of("url", "https://example.com"))
         .build());
-
-handle.seal();
 ```
 
 Task-scoped interactive invocation:
 
 ```java
-var task = mass.tasks().create(TaskCreateRequest.builder()
-        .project("crawlerApp")
-        .userId("agent")
-        .contract(TaskContract.SESSION)
-        .workerGroupId("crawler-workers")
-        .targetWorkerAttribute("region", "us")
-        .executionSpec(TaskExecutionSpec.builder()
-                .workloadClass("INTERACTIVE")
-                .batchSize(1)
-                .build())
-        .build());
-
-TaskHandle handle = mass.tasks().forTask(task.taskId());
-handle.approve();
+TaskHandle handle = mass.tasks().forTask("existing-ready-session-task-id");
 
 TaskSyncAppendResult result = handle.appendItemSync(TaskItemSyncRequest.builder()
         .eventCode("crawler.fetch-page")
