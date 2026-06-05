@@ -508,7 +508,7 @@ class ServerMainSourceArchitectureGuardTest {
 
     @Test
     void serverApiRoutesStayClassifiedByApiSurfaceInventory() throws IOException {
-        Path inventory = REPO_ROOT.resolve("roadmap/SERVER_API_SURFACE_CONVERGENCE_INVENTORY.md");
+        Path inventory = REPO_ROOT.resolve("xa-mass-server/doc/API_SURFACE_INVENTORY.md");
         Map<String, String> inventoryRoutes = readRouteInventory(inventory);
         Set<String> controllerRoutes = collectControllerApiRoutes();
         List<String> violations = new ArrayList<>();

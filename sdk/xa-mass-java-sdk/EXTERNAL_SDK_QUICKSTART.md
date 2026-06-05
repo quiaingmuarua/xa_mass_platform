@@ -93,6 +93,9 @@ Keep these rules:
   append
 - task producers read stable-final result rows through task result APIs, not
   server-local review rows
+- do not add or depend on a bulk append helper until append receipts expose
+  per-item message identity or equivalent append identity; task-scoped SDK
+  usage should keep using `TaskHandle`
 
 ## 3. Worker Path
 
@@ -184,8 +187,13 @@ For realtime paths:
   `onPollFailure(...)`
 - `onSubmitFailure(...)` is an attempt-level signal; queued-result abandonment
   is the terminal signal for results that cannot be retained or delivered
+- send-failure requeue failure is a queued-result terminal outcome reported as
+  `REQUEUE_FAILED` through `onQueuedResultAbandoned(...)`
 - frame/protocol failures expose bounded `framePreview` plus `frameLength`, not
   the complete raw frame; previews can still contain payload fragments
+- WebSocket result idempotency under reconnect, malformed frame flood ceilings,
+  socket session ownership, and Android host support remain open hardening
+  topics rather than stable public protocol promises
 
 ## 6. Local Validation Entry
 

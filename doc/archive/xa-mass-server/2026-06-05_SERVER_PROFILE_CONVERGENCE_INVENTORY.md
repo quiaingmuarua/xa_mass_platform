@@ -1,6 +1,21 @@
 # Server Profile Convergence Inventory
 
-Status: current code inventory for `SERVER_PROFILE_CONVERGENCE_ROADMAP.md`.
+Archived on 2026-06-05 with the server profile convergence roadmap.
+
+Current truth owners:
+
+- `xa-mass-server/README.md` for server profile meanings and run commands.
+- `xa-mass-server/src/main/resources/application-dev.yml` for the normal
+  developer profile.
+- `xa-mass-server/src/main/resources/application-prod.yml` for the
+  production-like SQLite plus Redis profile.
+- `compose.yaml` for local distributed verification wiring.
+
+This document is historical context only. Do not use it as proof of current
+implementation behavior; verify against current code, tests, owner READMEs,
+and active profile config.
+
+Status: archived code inventory for server profile convergence.
 
 ## Profile Sites
 
@@ -10,9 +25,9 @@ Status: current code inventory for `SERVER_PROFILE_CONVERGENCE_ROADMAP.md`.
 | `xa-mass-server/src/main/resources/application-local.yml` | deleted during implementation | profile residue | removed |
 | `xa-mass-server/src/main/resources/application-dev.yml` | runnable server shape, but depends on optional backend overlay profiles for H2/Redis/Postgres | server bootstrap | own complete developer shape: H2 control-plane storage plus memory runtime/transport |
 | `xa-mass-server/src/main/resources/application-prod.yml` | production-like resource sizing only | server bootstrap | own complete prod shape: SQLite control-plane storage plus Redis runtime/transport |
-| `xa-mass-server/src/main/resources/application-h2.yml` | legacy compose overlay for file H2 storage | compose residue | keep until compose startup is converged or explicitly broken |
+| `xa-mass-server/src/main/resources/application-h2.yml` | deleted during implementation | compose residue | removed; compose now uses `prod` plus SQLite |
 | `xa-mass-server/src/main/resources/application-postgres.yml` | deleted during implementation | backend override residue | removed; PostgreSQL remains a manual property path |
-| `xa-mass-server/src/main/resources/application-redis-runtime.yml` | legacy compose overlay for Redis runtime, transport delivery, and presence | compose residue | keep until compose startup is converged or explicitly broken |
+| `xa-mass-server/src/main/resources/application-redis-runtime.yml` | deleted during implementation | compose residue | removed; compose now uses `prod` plus Redis |
 | `XaMassServerApplication.main(...)` | starts Spring without setting `spring.profiles.active`; logs effective active/default profiles | server bootstrap | current default owner |
 | `XaMassServerApplication` `@Profile({"dev", "prod"})` beans | gates JDBC storage, review materialization, runtime, embedded SDK app, starters, catalog, principal directory, diagnostics | server bootstrap | current runnable server profile guard |
 | `ControlConsoleScenarioBootstrapConfiguration` `@Profile("dev")` | enables dev control-console sample bootstrap | sample/dev bootstrap | stay dev-only unless a property explicitly enables it |
@@ -32,10 +47,10 @@ Status: current code inventory for `SERVER_PROFILE_CONVERGENCE_ROADMAP.md`.
 
 | Site | Current Use | Classification | Target |
 | --- | --- | --- | --- |
-| `README.md` | says compose runs `dev,redis-runtime,h2` | compose/runbook | leave compose cleanup out of current implementation scope |
-| `xa-mass-testing/VERIFIED_RUNBOOK.md` | says compose runs `dev,redis-runtime,h2` | compose/runbook | leave compose cleanup out of current implementation scope |
+| `README.md` | documents compose running `prod` | compose/runbook | current compose entry |
+| `xa-mass-testing/VERIFIED_RUNBOOK.md` | documents compose running `prod` | compose/runbook | current compose entry |
 | `xa-mass-server/README.md` | documents `dev` and `prod` normal profile meanings plus compose legacy notes | server docs | current server profile owner doc |
-| `platform_infra/mass-runtime-redis/README.md` | mentions the server `redis-runtime` profile | runtime docs | update after overlay removal |
+| `platform_infra/mass-runtime-redis/README.md` | documents `prod` and property override Redis selection | runtime docs | current runtime docs |
 
 ## Storage Runtime Sites
 
@@ -57,4 +72,5 @@ Status: current code inventory for `SERVER_PROFILE_CONVERGENCE_ROADMAP.md`.
 - PostgreSQL remains manually selectable through `mass.storage.mode=jdbc-postgres`; it no longer has a normal server profile overlay.
 - Redis runtime is an inspectable offline-analysis surface; profile convergence does not require runtime-to-SQLite duplication.
 - Trace queue-to-DB ingestion is a future trace-owned roadmap, not part of this implementation.
-- H2 and Redis overlay files are compose legacy only. Removing them would change compose behavior while compose is out of scope.
+- H2 and Redis overlay files were removed. Compose now runs the normal `prod`
+  profile with SQLite control-plane storage and Redis runtime.

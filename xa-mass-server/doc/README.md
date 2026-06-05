@@ -8,6 +8,8 @@ planning context until verified against code, tests, and public contracts.
 
 ## Current References
 
+- [API_SURFACE_INVENTORY.md](API_SURFACE_INVENTORY.md): current
+  route-category owner truth used by server route boundary guards.
 - [INTERNAL_API_REFERENCE.md](INTERNAL_API_REFERENCE.md): current internal HTTP
   reference for active controller routes.
 

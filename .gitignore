@@ -65,3 +65,4 @@ __pycache__/
 *.keystore
 /tmp/
 /data/
+/identifier.sqlite

@@ -6,9 +6,9 @@ import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
  * Worker resource declaration mutation surface.
  *
  * <p>Current methods still accept {@link WorkerResourceRecord} as the
- * compatibility resource shape. TWH-3B is responsible for moving declaration
- * writes to {@link WorkerDeclarationRecord} so runtime state no longer crosses
- * the persistence boundary.</p>
+ * compatibility resource shape. Implementations must project writes to
+ * {@link WorkerDeclarationRecord} before persistence so runtime state no
+ * longer crosses the declaration boundary.</p>
  */
 public interface WorkerResourceDeclarationRuntime {
 

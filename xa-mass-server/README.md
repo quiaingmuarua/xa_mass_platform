@@ -396,8 +396,8 @@ JDBC storage scope:
   build the jar first with
   `./mvnw -pl xa-mass-server -am -DskipTests package`, then
   `docker compose up redis server` starts Redis and runs that server jar with
-  `dev,redis-runtime,h2`; it is a validation harness, not a production image
-  contract
+  `prod`; it is a validation harness with SQLite control-plane storage and
+  Redis runtime, not a production image contract
 - backend-parity tests should share one scenario body and vary only
   `mass.runtime.mode` plus backend-specific connection properties; do not copy
   the same runtime semantics into backend-specific duplicate tests

@@ -2,7 +2,20 @@
 
 Last updated: 2026-06-02
 
-Status: active deferred xa-mass-testing decision.
+Archived on 2026-06-05 after the current infra-fault proof restrictions were
+moved into `xa-mass-testing/README.md` and `doc/TESTING_INDEX.md`.
+
+Current truth owners:
+
+- `xa-mass-testing/README.md` for worker-fault matrix proof scope.
+- `doc/TESTING_INDEX.md` for cross-module verification selection.
+- `doc/PROOF_REGISTRY.md` for proof routing and coverage claims.
+
+This document is historical context only. Do not use it as proof of current
+implementation behavior; verify against current code, tests, testing README,
+and the testing index.
+
+Status: archived deferred xa-mass-testing decision.
 
 The implemented worker-fault matrix roadmap left the active reading path on
 2026-06-02. Its implementation record is archived at

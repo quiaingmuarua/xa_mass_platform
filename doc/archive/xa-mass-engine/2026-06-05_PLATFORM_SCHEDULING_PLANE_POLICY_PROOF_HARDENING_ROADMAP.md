@@ -1,8 +1,25 @@
 # Platform Scheduling Plane Policy Proof Hardening Roadmap
 
-Status: implemented proof-hardening roadmap; PP-0 through PP-5 are complete
-for current computed-default policy proof, and the successor policy product
+Archived on 2026-06-05 after PP-0 through PP-5 landed for current
+computed-default Scheduling Plane policy proof. The successor policy product
 gate remains closed.
+
+Current truth owners:
+
+- `xa-mass-engine/doc/baseline/PLATFORM_SCHEDULING_PLANE_POLICY_PROOF_INVENTORY.md`
+  for current proof inventory.
+- `xa-mass-engine/doc/baseline/SCHEDULING_CORRECTNESS_MATRIX.md` for current
+  scheduling proof coverage.
+- `xa-mass-engine/doc/baseline/PLATFORM_SCHEDULING_PLANE_RUNTIME_SELECTION_BOUNDARY.md`
+  for runtime selection ownership.
+- `doc/PROOF_REGISTRY.md` for cross-module proof routing.
+
+This document is historical context only. Do not use it as proof of current
+implementation behavior; verify against current code, tests, owner READMEs,
+and active baseline docs.
+
+Status: completed and archived Scheduling Plane policy proof hardening
+roadmap.
 
 Related records:
 

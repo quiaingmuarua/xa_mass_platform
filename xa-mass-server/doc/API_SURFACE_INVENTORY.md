@@ -1,7 +1,10 @@
 # Server API Surface Convergence Inventory
 
-Status: API-0 current route inventory for
-[`SERVER_API_SURFACE_CONVERGENCE_ROADMAP.md`](./SERVER_API_SURFACE_CONVERGENCE_ROADMAP.md).
+Status: current route-category owner truth for `xa-mass-server` API surfaces.
+
+The implementation roadmap has been archived. Use this inventory, current
+server code, and `xa-mass-server/doc/INTERNAL_API_REFERENCE.md` as current API
+surface truth.
 
 Current code snapshot date: 2026-06-04.
 

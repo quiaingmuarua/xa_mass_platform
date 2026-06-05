@@ -1,7 +1,19 @@
 # Submitter Auth Model Convergence Inventory
 
-Status: implemented code inventory for
-`SUBMITTER_AUTH_MODEL_CONVERGENCE_ROADMAP.md`.
+Archived on 2026-06-05 with the submitter/auth model convergence roadmap.
+
+Current truth owners:
+
+- `sdk/README.md` for SDK/public-contract placement.
+- `xa-mass-server/README.md` for server auth and control-plane store status.
+- `xa-mass-server/src/main/resources/db/schema/server-control-plane/README.md`
+  for server SQL schema ownership.
+
+This document is historical context only. Do not use it as proof of current
+implementation behavior; verify against current code, tests, owner READMEs,
+and active schema docs.
+
+Status: archived code inventory for submitter/auth model convergence.
 
 ## Scope
 

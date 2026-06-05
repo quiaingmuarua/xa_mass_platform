@@ -1,7 +1,11 @@
 # Platform Scheduling Plane Policy Proof Inventory
 
-Status: current PP-0 through PP-5 inventory for
-`roadmap/PLATFORM_SCHEDULING_PLANE_POLICY_PROOF_HARDENING_ROADMAP.md`.
+Status: current PP-0 through PP-5 proof inventory for computed-default
+Scheduling Plane policy behavior.
+
+The implementation hardening roadmap has been archived. Use this inventory,
+current engine tests, `SCHEDULING_CORRECTNESS_MATRIX.md`, and
+`doc/PROOF_REGISTRY.md` as current proof truth.
 
 This inventory classifies current computed-default Scheduling Plane facts. It
 does not create a policy product, does not treat resolved records as writable

@@ -1,8 +1,22 @@
 # Server API Surface Convergence Roadmap
 
-Status: implemented mainline; keep
-[`SERVER_API_SURFACE_CONVERGENCE_INVENTORY.md`](./SERVER_API_SURFACE_CONVERGENCE_INVENTORY.md)
-as the active route-category owner truth.
+Archived on 2026-06-05 after the server API surface convergence mainline
+landed. The active route-category owner truth remains
+`roadmap/SERVER_API_SURFACE_CONVERGENCE_INVENTORY.md`.
+
+Current truth owners:
+
+- `roadmap/SERVER_API_SURFACE_CONVERGENCE_INVENTORY.md` for route categories
+  and guard-owned route inventory.
+- `xa-mass-server/doc/INTERNAL_API_REFERENCE.md` for current server API
+  reference.
+- `xa-mass-server/README.md` for server module ownership and store/API status.
+
+This document is historical context only. Do not use it as proof of current
+implementation behavior; verify against current code, tests, owner READMEs,
+and active API docs.
+
+Status: completed and archived server API surface convergence roadmap.
 
 Scope: `xa-mass-server` HTTP endpoint design, public/internal/console boundary,
 runtime snapshot exposure, and route-contract guards.
@@ -166,8 +180,8 @@ are follow-up concerns after the endpoint surface is narrowed.
 
 ## API-0: Route Inventory And Value Classification
 
-Status: implemented. Current output:
-[`SERVER_API_SURFACE_CONVERGENCE_INVENTORY.md`](./SERVER_API_SURFACE_CONVERGENCE_INVENTORY.md).
+Status: implemented. Current output moved to
+`roadmap/SERVER_API_SURFACE_CONVERGENCE_INVENTORY.md`.
 
 Goal: produce an executable route inventory from current code.
 

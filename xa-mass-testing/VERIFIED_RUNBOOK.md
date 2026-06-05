@@ -56,10 +56,9 @@ Compose verification entry:
 docker compose up redis server
 ```
 
-The compose entry runs the already-built server jar with `dev,redis-runtime,h2`
-profiles:
+The compose entry runs the already-built server jar with the `prod` profile:
 
-- H2 file storage stores control-plane task/worker/rule truth in a compose
+- SQLite file storage keeps control-plane task/worker/rule truth in a compose
   volume.
 - Redis stores engine work/result runtime plus transport delivery and presence
   runtime truth.
@@ -75,7 +74,7 @@ state:
 docker compose down
 ```
 
-Reset compose runtime state:
+Reset compose storage and runtime state:
 
 ```bash
 docker compose down -v

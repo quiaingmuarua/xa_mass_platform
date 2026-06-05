@@ -1,6 +1,23 @@
 # Server Profile Convergence Roadmap
 
-Status: active implementation.
+Archived on 2026-06-05 after server profile convergence landed and the old
+`local`, `postgres`, `h2`, and `redis-runtime` overlay profile files were
+removed.
+
+Current truth owners:
+
+- `xa-mass-server/README.md` for server profile meanings and run commands.
+- `xa-mass-server/src/main/resources/application-dev.yml` for the normal
+  developer profile.
+- `xa-mass-server/src/main/resources/application-prod.yml` for the
+  production-like SQLite plus Redis profile.
+- `compose.yaml` for local distributed verification wiring.
+
+This document is historical context only. Do not use it as proof of current
+implementation behavior; verify against current code, tests, owner READMEs,
+and active profile config.
+
+Status: completed and archived server profile convergence roadmap.
 
 ## Current Code Observations
 
@@ -17,13 +34,11 @@ Status: active implementation.
   - `mass.runtime.mode=memory | redis`
   - `mass.transport.delivery.store=memory | redis`
   - `mass.transport.presence.store=memory | redis`
-- Existing profile files mix two concepts:
-  - runnable shape: `dev`, `prod`
-  - compose legacy backend overlays: `h2`, `redis-runtime`
-  - removed backend/profile residue: `local`, `postgres`
-- `compose.yaml` currently runs the packaged server jar with
-  `dev,redis-runtime,h2`, Redis namespaces, and file-backed H2 storage, but
-  Docker/compose startup is outside this roadmap's implementation scope.
+- Existing profile files now expose only the runnable shapes `dev` and `prod`.
+  Removed backend/profile residue: `local`, `postgres`, `h2`, and
+  `redis-runtime`.
+- `compose.yaml` now runs the packaged server jar with `prod`, Redis
+  namespaces, and SQLite control-plane storage.
 - Spring Boot E2E tests start the server through
   `@SpringBootTest(webEnvironment = RANDOM_PORT)` and `@ActiveProfiles("dev")`.
   Those servers exit because the JUnit-managed Spring context closes, not
@@ -76,9 +91,8 @@ Converge the public server profile matrix to two top-level profiles:
 
 The old `local` runnable-shape ambiguity is removed. Backend properties remain
 overrideable for tests and manual diagnosis, but operators do not need to
-compose `dev,redis-runtime,h2` for the normal paths. The remaining `h2` and
-`redis-runtime` overlays are compose legacy residue until compose startup is
-converged separately or explicitly broken.
+compose backend overlay profiles for normal paths. The old `h2` and
+`redis-runtime` overlays were removed; compose now uses `prod`.
 
 ## Target Shape
 
@@ -126,13 +140,10 @@ converged separately or explicitly broken.
 
 ## Do Not Start With
 
-Do not delete compose-owned overlays first. Start by making `dev` and `prod`
-selection explicit, making `dev` fully assemble, and moving `prod` to complete
-startup only after SQLite and Redis assembly exist. Then migrate non-compose
-docs and tests, then remove `application-local.yml`, remove the unused
-`postgres` profile overlay, and leave `application-h2.yml` /
-`application-redis-runtime.yml` only as compose legacy until a compose-specific
-decision is made.
+Implementation started by making `dev` and `prod` selection explicit, making
+`dev` fully assemble, and moving `prod` to SQLite plus Redis only after both
+backends existed. The retired `local`, `postgres`, `h2`, and `redis-runtime`
+profile overlays are now removed.
 
 ## SP-0 Inventory And Decision Check
 
@@ -326,8 +337,8 @@ Scope:
 Acceptance:
 
 - `rg` finds no active non-compose runbook or server test dependency on
-  `local`, `dev,h2`, `dev,postgres`, or `dev,redis-runtime`; `compose.yaml` is
-  excluded while compose is out of scope.
+  `local`, `dev,h2`, `dev,postgres`, `dev,redis-runtime`, `h2`, or
+  `redis-runtime`.
 - Remaining backend selection docs describe properties, not required overlay
   profile combinations.
 - The two profile meanings are documented in one server-owned place.
@@ -354,10 +365,8 @@ rg -n "application-local|spring.profiles.active=local|@ActiveProfiles\\(\"local\
 
 - PostgreSQL now remains as a manually supported storage property path through
   `mass.storage.mode=jdbc-postgres`; the `postgres` overlay profile is removed.
-- `application-h2.yml` and `application-redis-runtime.yml` are now only
-  compose legacy overlays. Deleting them would silently change current compose
-  behavior while compose startup is out of scope, so final removal needs either
-  a compose-specific follow-up or an explicit decision to break that harness.
+- `application-h2.yml` and `application-redis-runtime.yml` were removed.
+  Compose now runs `prod` with SQLite plus Redis.
 
 ## Verification Summary
 

@@ -49,8 +49,8 @@ Local distributed verification:
 docker compose up redis server
 ```
 
-Compose runs the already-built server jar with `dev,redis-runtime,h2`: H2 file
-storage for control-plane truth and Redis for engine/transport runtime truth.
+Compose runs the already-built server jar with `prod`: SQLite file storage for
+control-plane truth and Redis for engine/transport runtime truth.
 See [xa-mass-testing/VERIFIED_RUNBOOK.md](./xa-mass-testing/VERIFIED_RUNBOOK.md) for reset and smoke
 commands.
 

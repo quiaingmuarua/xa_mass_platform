@@ -1,6 +1,20 @@
 # Submitter Auth Model Convergence Roadmap
 
-Status: implemented; archive candidate after owner handoff.
+Archived on 2026-06-05 after submitter/auth model convergence landed and the
+server store-infra work took over current storage truth.
+
+Current truth owners:
+
+- `sdk/README.md` for SDK/public-contract placement.
+- `xa-mass-server/README.md` for server auth and control-plane store status.
+- `xa-mass-server/src/main/resources/db/schema/server-control-plane/README.md`
+  for server SQL schema ownership.
+
+This document is historical context only. Do not use it as proof of current
+implementation behavior; verify against current code, tests, owner READMEs,
+and active schema docs.
+
+Status: completed and archived submitter/auth model convergence roadmap.
 
 ## Current Code Observations
 

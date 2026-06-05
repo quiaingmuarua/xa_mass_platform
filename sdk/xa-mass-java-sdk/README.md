@@ -91,8 +91,41 @@ Use `MassPlatform.workerSessions()` as the stable session factory. Direct
 `new WorkerSessions(...)` construction is marked `@UnstableApi` and is reserved
 for advanced or internal wiring.
 
-Realtime protocol hardening decisions are tracked in
-[../../roadmap/JAVA_EXTERNAL_SDK_REALTIME_SESSION_HARDENING_DECISION.md](../../roadmap/JAVA_EXTERNAL_SDK_REALTIME_SESSION_HARDENING_DECISION.md).
+Task append ergonomics stay identity-preserving: do not add a Java SDK bulk
+append helper while `TaskAppendResult` lacks per-item message identity or an
+equivalent append receipt identity. Use `TaskHandle` to create or bind one task,
+approve when needed, append or sync-append items, and read results through task
+result APIs. A future chunking helper must return identity-preserving receipts,
+must work against one existing task, and must not create one task per item or
+auto-seal unless the method name explicitly says it seals.
+
+Realtime session hardening current truth:
+
+- polling remains the stable first external worker session
+- Java SDK WebSocket is an implemented JVM session and internal staging
+  validation path; socket is not yet a first-class Java SDK session
+- Android host support is not part of the pure Java SDK
+- do not introduce a shared `RealtimeWorkerSession` abstraction until at least
+  two realtime transports share a proven public lifecycle
+- frame/protocol failures report through listener callbacks and do not
+  increment connection-failure counters
+- frame/protocol failure callbacks expose bounded `framePreview` plus
+  `frameLength`, not the complete raw frame
+- successful reconnect reports `onConnectionRecovered(workerId)`
+- queued-result close, reconnect exhaustion, and send-failure requeue failure
+  terminal outcomes report through `onQueuedResultAbandoned(...)`; requeue
+  failure uses `REQUEUE_FAILED`
+- `onSubmitFailure(...)` is an attempt-level callback; a queued result may
+  still later report a terminal `onQueuedResultAbandoned(...)`
+- queue-full outcomes report through `onQueuedResultDropped(...)`
+- close sends a best-effort WebSocket close frame before terminal result
+  abandonment
+- platform `connectTimeout`, `HttpClient`, and `ObjectMapper` defaults flow
+  into WebSocket session builders unless explicitly overridden
+
+Open realtime hardening topics remain WebSocket result idempotency under
+reconnect, malformed frame flood ceilings, socket session ownership, and
+worker-pack convergence as an SDK consumer rather than an SDK dependency.
 
 Public readiness is current for local/internal staging. Public registry
 publication is outside the current module scope.

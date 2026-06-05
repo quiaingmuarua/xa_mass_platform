@@ -15,8 +15,8 @@ selection.
 ## Current Truth
 
 - Redis-backed runtime is the current `prod` runtime backend and remains the
-  compose/local distributed verification path while compose still uses the
-  legacy `redis-runtime` profile
+  compose/local distributed verification path through the server `prod`
+  profile or explicit property overrides
 - embedded/server bootstrap still defaults to memory unless Redis is selected by
   the `prod` profile, property override, or builder wiring
 - this module now provides a real Redis-backed `TaskWorkRuntime`
