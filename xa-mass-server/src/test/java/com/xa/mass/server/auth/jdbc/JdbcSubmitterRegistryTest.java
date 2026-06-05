@@ -2,6 +2,7 @@ package com.xa.mass.server.auth.jdbc;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import com.xa.mass.sdk.auth.CredentialAuthProjectionWriter;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.storage.jdbc.JdbcStorageMode;
@@ -33,6 +34,7 @@ class JdbcSubmitterRegistryTest {
 
     private void assertPrincipalPersistence(StorageFixture fixture, JdbcStorageMode mode) {
         JdbcSubmitterRegistry registry = new JdbcSubmitterRegistry(fixture.dataSource(), mode);
+        CredentialAuthProjectionWriter projectionWriter = registry;
         registry.register(SubmitterRegistration.builder()
                 .principalId("crawler-submitter")
                 .credential("crawler-submit-secret")
@@ -46,6 +48,7 @@ class JdbcSubmitterRegistryTest {
         PrincipalContext authenticated = registry.authenticate("crawler-submit-secret");
         assertThat(authenticated).isNotNull();
         assertThat(authenticated.getPrincipalId()).isEqualTo("crawler-submitter");
+        assertThat(projectionWriter.hasProjectedCredential("crawler-submitter")).isTrue();
         assertThat(registry.getSubmitter("crawler-submitter")).isNotNull();
         assertThat(registry.listSubmitters()).hasSize(1);
 

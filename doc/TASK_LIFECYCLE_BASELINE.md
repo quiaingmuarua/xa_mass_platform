@@ -244,6 +244,9 @@ Current materialization entry points:
 
 - review items accepted: materializes `INIT`
 - result-side review report: materializes `SUCCESS` / `FAILED` / `EXPIRED`
+- server review materialization is task opt-in by `sharedConfig.reviewMaterializationMode`;
+  the server default is `OFF`, so review DB rows are not written unless a task
+  explicitly selects `TERMINAL` or `DIAGNOSTIC`
 - terminal task review overlay for stop reasons (`MANUAL_CANCELLED`, `MAX_RUNTIME_REACHED`, `SUCCESS_RATE_REACHED`, `RETRY_BUDGET_EXHAUSTED`):
   - bounded reads project `INIT -> FAILED`
   - bounded reads project `ASSIGNED/RUNNING -> EXPIRED`

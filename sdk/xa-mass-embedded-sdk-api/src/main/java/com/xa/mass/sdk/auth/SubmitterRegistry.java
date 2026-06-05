@@ -3,10 +3,14 @@ package com.xa.mass.sdk.auth;
 import java.util.List;
 
 /**
- * Unified principal credential registry used by submitter resource operations and
- * server-side credential authentication.
+ * Submitter credential resource registry.
+ *
+ * <p>Authentication, auth projection writes, and principal lookup are separate
+ * owner contracts. A backend may implement those contracts alongside this
+ * resource registry, but callers should depend on the narrow contract they
+ * actually need.
  */
-public interface SubmitterRegistry extends AuthProvider, PrincipalDirectory {
+public interface SubmitterRegistry {
 
     void register(SubmitterRegistration submitterRegistration);
 

@@ -246,10 +246,12 @@ and only then decide whether any scheduler is redundant or wasteful.
   GSL-2/GSL-3 touch `EngineRuntimeKernel`, `TaskResultRepairPump`, and result
   convergence lifecycle. GSL must not reopen EKC owner decisions or introduce
   new SDK-facing engine internals.
-- [`JAVA_EXTERNAL_SDK_REALTIME_SESSION_HARDENING_DECISION.md`](./JAVA_EXTERNAL_SDK_REALTIME_SESSION_HARDENING_DECISION.md):
-  Java SDK worker-session lifecycle and GSL transport/session lifecycle overlap.
-  GSL-4 should record any public worker-session lifecycle assumptions before
-  changing transport presence or session stop behavior.
+- Java SDK worker-session lifecycle, documented in
+  `sdk/xa-mass-java-sdk/README.md` and
+  `sdk/xa-mass-java-sdk/EXTERNAL_SDK_QUICKSTART.md`, overlaps with GSL
+  transport/session lifecycle. GSL-4 should record any public worker-session
+  lifecycle assumptions before changing transport presence or session stop
+  behavior.
 - [`INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md`](../doc/archive/integrations/2026-06-01_INTEGRATIONS_JAVA_SDK_ADOPTION_ROADMAP.md):
   SDK adoption and worker-pack runs may depend on current polling/WebSocket
   worker session stop behavior. GSL tests should avoid breaking those black-box

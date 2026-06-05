@@ -9,10 +9,47 @@ Use this skill to turn vague or drifting roadmap work into an executable,
 code-grounded plan. Default to owner review: validate the real code path first,
 then refine the roadmap.
 
+Roadmaps are not one-turn plan-mode checklists. Treat a roadmap as a
+goal-mode convergence artifact that may be reviewed and implemented across
+multiple turns, sessions, and phases. A roadmap should preserve the full
+problem boundary while making the next executable slice clear.
+
 Do not use this skill as a fixed template for early exploration. If the user is
 brainstorming, asking "what could this be?", or explicitly wants free-form
 architecture discussion, stay in normal reasoning mode until they ask to
 converge on a roadmap, review, proof plan, or implementation plan.
+
+## Roadmap Semantics
+
+Roadmaps describe a multi-phase convergence path, not a promise that all
+related problems will be solved in one implementation pass.
+
+Use this distinction:
+
+- **roadmap**: records the whole owner boundary, known debt, deferred
+  decisions, phases, proof surfaces, and completion criteria
+- **current slice**: the next independently verifiable implementation unit
+- **goal-mode progress**: repeated review and implementation turns that advance
+  the roadmap without pretending deferred phases are complete
+
+When a roadmap contains a large related concern, do not delete or hide it just
+because it is not part of the first slice. Keep it visible as a later phase,
+deferred decision, residual risk, or non-goal with a follow-up owner. The
+roadmap should avoid both extremes: it should not demand all related problems
+in the first slice, and it should not create the illusion that unsolved phases
+are complete.
+
+Status wording should be honest:
+
+- `proposed direction document`: target path exists, implementation not started
+- `active roadmap`: at least one slice is in progress or landed, more remains
+- `slice complete, roadmap active`: current slice landed but later phases remain
+- `mainline unblocked, residual phases remain`: prerequisite work is enough for
+  a dependent roadmap, but the roadmap is not complete
+- `complete`: all stated completion criteria are satisfied, residue scanned,
+  and current facts were moved to owning docs or archive as needed
+
+Avoid using `complete` when only the current slice is done.
 
 ## Mode Rule
 
@@ -41,6 +78,9 @@ asks for a full review.
 - Keep each slice independently verifiable: compilation and the relevant test
   set should pass after the slice lands.
 - Do not create "break now, fix later" intermediate roadmap states.
+- Do not remove later-phase debt from a roadmap merely to make the current slice
+  look smaller or complete.
+- Do not mark a roadmap complete because one executable slice landed.
 - Separate production dependencies from test fixtures.
 - Separate owner boundaries from implementation convenience.
 - Prefer deleting stale parallel narratives over preserving old and new tracks.
@@ -72,6 +112,10 @@ prevent regression.
 
 Do not jump to Phase 3 before Phase 2 is complete. No slice should require a
 later slice to restore compilation or runtime correctness.
+
+Phases may be intentionally uneven. Some phases only unblock a dependent
+roadmap; others retire residue or tighten semantics later. Record this
+explicitly instead of forcing every related concern into the first phase.
 
 Every boundary roadmap should include a "Do Not Start With" note that names
 the most tempting wrong-order shortcut, such as deleting dependencies before
@@ -148,6 +192,8 @@ Use this taxonomy:
 | --- | --- | --- |
 | proposed | target direction exists, no meaningful implementation has landed | review/refine before execution |
 | active | implementation is in progress and slices remain | continue from the current slice |
+| slice-complete | one or more slices landed, but roadmap completion criteria are not all satisfied | keep roadmap active; advance to next slice |
+| mainline-unblocked | prerequisite slice is enough for a dependent roadmap, but residual phases remain | unblock dependency while tracking remaining phases |
 | implemented | acceptance appears satisfied in code/tests/docs | update status and proof; consider archive |
 | implemented-with-residue | mainline is done but old names/imports/docs/aliases remain | run residue scan before archive |
 | superseded | a newer roadmap owns the direction | mark pointer to replacement; archive when safe |
@@ -308,6 +354,10 @@ Keep slices executable. Each slice should have:
 - no hidden behavior changes unless explicitly stated
 - a stable verification point
 
+Also include a roadmap-level completion section when the topic spans multiple
+phases. Slice acceptance proves only that slice. Roadmap completion criteria
+prove the whole convergence path.
+
 Include a "Do Not Start With" note for boundary roadmaps that are likely to
 tempt agents into the wrong order.
 
@@ -335,9 +385,23 @@ Do not start by deleting dependencies. First prove what owns the contract, move
 callers, then remove the dependency. Each step should be commit-sized or
 phase-sized and independently verifiable.
 
+When review finds a later phase is too large for the current implementation
+pass, reclassify it as a later phase or deferred decision instead of removing
+it from the roadmap. The current slice should narrow execution; the roadmap
+should keep the full convergence context.
+
 ### 9. Acceptance Criteria
 
 Acceptance must be testable in code review.
+
+Write acceptance at two levels when needed:
+
+- slice acceptance: what must be true after this implementation unit
+- roadmap completion criteria: what must be true before the roadmap can be
+  marked complete or archived
+
+Do not treat slice acceptance as roadmap completion unless the roadmap is truly
+single-slice.
 
 Good:
 
@@ -440,6 +504,8 @@ Use conclusion formulas:
 
 - `Fix F1/F2 before implementation.`
 - `Executable after the named Medium findings are clarified.`
+- `Executable for the next slice; roadmap remains active for later phases.`
+- `Mainline can proceed after Slice N; residual phases remain tracked.`
 - `No blocking findings; remaining items can be handled during implementation.`
 - `Too broad; split into separate roadmaps before executing.`
 
@@ -457,6 +523,8 @@ State whether the roadmap is:
 
 - executable
 - executable after named decisions
+- executable for the next slice while later phases remain
+- mainline unblocked but residual phases remain
 - blocked
 - too broad and should be split
 
@@ -475,6 +543,12 @@ changed.
 - Hiding production dependency removal under a documentation-only slice.
 - Writing acceptance criteria that cannot fail.
 - Starting with a large rename before call sites and owner decisions are known.
+- Deleting later-phase debt from a roadmap so the current slice appears done.
+- Calling a roadmap complete when only the current slice or prerequisite
+  unblocking work is complete.
+- Treating a roadmap like plan mode, where the plan ends when the next action
+  is described, instead of goal mode, where the artifact carries state across
+  multiple review and implementation turns.
 
 ## Quick Checklist
 
@@ -495,7 +569,11 @@ Before finishing a roadmap refinement:
 - Non-goals prevent scope creep.
 - First slice inventories ambiguous caller/dependency sets.
 - Each slice has scope and acceptance.
+- Multi-phase roadmaps distinguish slice acceptance from roadmap completion
+  criteria.
 - Each slice is independently verifiable; no break-now-fix-later state exists.
+- Later-phase debt and deferred decisions remain visible instead of being
+  removed to make the roadmap look complete.
 - A "Do Not Start With" warning exists for boundary roadmaps with tempting
   wrong-order shortcuts.
 - Merge/split decision is justified by owner boundary and proof set.

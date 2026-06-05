@@ -1,7 +1,5 @@
 package com.xa.mass.api.auth.usage;
 
-import org.springframework.stereotype.Component;
-
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -9,7 +7,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-@Component
 public class InMemoryApiUsageLedgerStore implements ApiUsageLedgerStore {
 
     private final Map<String, ApiUsageLedgerRecord> byUsageId = new LinkedHashMap<>();

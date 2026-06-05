@@ -1,7 +1,5 @@
 package com.xa.mass.api.auth.apikey;
 
-import org.springframework.stereotype.Component;
-
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -10,7 +8,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-@Component
 public class InMemoryApiKeyCredentialStore implements ApiKeyCredentialStore {
 
     private final Map<String, ApiKeyCredentialRecord> byKeyId = new LinkedHashMap<>();

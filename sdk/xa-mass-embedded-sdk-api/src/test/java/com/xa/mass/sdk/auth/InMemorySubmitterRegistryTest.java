@@ -31,6 +31,22 @@ class InMemorySubmitterRegistryTest {
     }
 
     @Test
+    void projectionWriterPublishesCredentialWithoutResourceFacadeRead() {
+        CredentialAuthProjectionWriter projectionWriter = new InMemorySubmitterRegistry();
+
+        projectionWriter.projectCredential(SubmitterRegistration.builder()
+                .principalId("api-key-principal")
+                .credential("api-secret")
+                .userId("ops-user")
+                .permissions(List.of(PrincipalContext.TASK_CREATE_PERMISSION))
+                .projectScopes(List.of("opsApp"))
+                .eventScopes(List.of("tool.ops.run"))
+                .build());
+
+        assertThat(projectionWriter.hasProjectedCredential("api-key-principal")).isTrue();
+    }
+
+    @Test
     void loadDurableRestoresAuthenticationWithoutPlainCredential() {
         InMemorySubmitterRegistry registry = new InMemorySubmitterRegistry();
         SubmitterRegistration registration = SubmitterRegistration.builder()

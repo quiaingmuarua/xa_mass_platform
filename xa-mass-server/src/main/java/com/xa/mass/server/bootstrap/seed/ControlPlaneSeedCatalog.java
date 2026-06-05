@@ -1,5 +1,9 @@
 <<<<<<<< HEAD:xa-mass-server/src/main/java/com/xa/mass/api/sample/SampleCatalogBootstrapRequest.java
+<<<<<<<< HEAD:xa-mass-server/src/main/java/com/xa/mass/api/sample/SampleCatalogBootstrapRequest.java
 package com.xa.mass.api.sample;
+========
+package com.xa.mass.server.bootstrap.seed;
+>>>>>>>> origin/main:xa-mass-server/src/main/java/com/xa/mass/server/bootstrap/seed/ControlPlaneSeedCatalog.java
 ========
 package com.xa.mass.server.bootstrap.seed;
 >>>>>>>> origin/main:xa-mass-server/src/main/java/com/xa/mass/server/bootstrap/seed/ControlPlaneSeedCatalog.java

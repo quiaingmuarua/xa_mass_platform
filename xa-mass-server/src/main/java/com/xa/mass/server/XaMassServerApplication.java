@@ -150,7 +150,7 @@ public class XaMassServerApplication {
     @Value("${mass.storage.jdbc.password:}")
     private String storageJdbcPassword;
 
-    @Value("${mass.review.materialization.mode:TERMINAL}")
+    @Value("${mass.review.materialization.mode:OFF}")
     private String taskReviewMaterializationMode;
 
     @Value("${spring.redis.host:localhost}")

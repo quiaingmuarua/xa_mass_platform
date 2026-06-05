@@ -5,12 +5,9 @@ import com.xa.mass.api.auth.iam.UserRecord;
 import com.xa.mass.api.auth.iam.UserRoleBindingRecord;
 import com.xa.mass.api.auth.iam.UserRolePermissionStore;
 import com.xa.mass.api.auth.iam.UserStatus;
-import com.xa.mass.api.auth.iam.InMemoryUserRolePermissionStore;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.auth.PrincipalDirectory;
 import com.xa.mass.sdk.auth.PrincipalType;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -19,7 +16,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-@Component
 public class DefaultOperatorPrincipalDirectory implements PrincipalDirectory {
 
     private static final String ATTR_DISPLAY_NAME = "displayName";
@@ -28,11 +24,6 @@ public class DefaultOperatorPrincipalDirectory implements PrincipalDirectory {
 
     private final UserRolePermissionStore store;
 
-    public DefaultOperatorPrincipalDirectory() {
-        this(InMemoryUserRolePermissionStore.bootstrapDefaults());
-    }
-
-    @Autowired
     public DefaultOperatorPrincipalDirectory(UserRolePermissionStore store) {
         this.store = Objects.requireNonNull(store, "store");
     }

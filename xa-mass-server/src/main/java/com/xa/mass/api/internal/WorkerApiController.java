@@ -2,18 +2,12 @@ package com.xa.mass.api.internal;
 
 import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.api.model.AbstractUnknownFieldRequest;
-import com.xa.mass.api.model.worker.WorkerCapabilityReportApiRequest;
-import com.xa.mass.api.model.worker.WorkerCommandAcknowledgementApiRequest;
 import com.xa.mass.api.model.worker.WorkerCommandSubmitApiRequest;
-import com.xa.mass.api.model.worker.WorkerStateReportApiRequest;
 import com.xa.mass.sdk.RuntimeDiagnosticsOperations;
 import com.xa.mass.sdk.WorkerControlOperations;
 import com.xa.mass.sdk.WorkerQueryOperations;
 import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
-import com.xa.mass.sdk.model.WorkerCapabilityReportRequest;
-import com.xa.mass.sdk.model.WorkerCommandAcknowledgementRequest;
 import com.xa.mass.sdk.model.WorkerCommandSubmitRequest;
-import com.xa.mass.sdk.model.WorkerStateReportRequest;
 import com.xa.mass.sdk.model.WorkerSnapshot;
 import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,6 +24,8 @@ import java.util.*;
 @RequestMapping("/api/v1/runtime")
 public class WorkerApiController {
 
+    private static final int DEFAULT_DIAGNOSTIC_LIMIT = 200;
+    private static final int MAX_DIAGNOSTIC_LIMIT = 500;
     private static final DateTimeFormatter DATE_TIME_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -81,11 +77,15 @@ public class WorkerApiController {
             summary = "List runtime worker read models",
             description = "Returns composite current-state worker rows. The fieldSources map labels declaration, runtime, transport, and compatibility projection fields."
     )
-    public ApiResponse<Map<String, Object>> listWorkers() {
+    public ApiResponse<Map<String, Object>> listWorkers(
+            @RequestParam(required = false) Integer limit) {
+        int resolvedLimit = resolveDiagnosticLimit(limit);
         Map<String, List<Map<String, Object>>> connectionsByWorker =
                 WorkerCapabilityViewSupport.groupConnectionsByWorker(runtimeDiagnostics);
-        List<Map<String, Object>> items = workerQueries.getAllWorkers().stream()
+        List<WorkerSnapshot> allWorkers = workerQueries.getAllWorkers();
+        List<Map<String, Object>> items = allWorkers.stream()
                 .sorted(Comparator.comparing(WorkerSnapshot::getWorkerId, Comparator.nullsLast(String::compareTo)))
+                .limit(resolvedLimit)
                 .map(worker -> {
                     List<Map<String, Object>> connections =
                             connectionsByWorker.getOrDefault(worker.getWorkerId(), List.of());
@@ -117,49 +117,9 @@ public class WorkerApiController {
                 .toList();
         return ApiResponse.success(Map.of(
                 "items", items,
-                "total", items.size()
+                "total", allWorkers.size(),
+                "limit", resolvedLimit
         ));
-    }
-
-    @PostMapping("/workers/{workerId}/capability-reports")
-    @Operation(
-            summary = "Report worker capability",
-            description = "Owner-backed runtime ingress for worker capability self-report. This is not worker CRUD."
-    )
-    public ResponseEntity<ApiResponse<?>> reportWorkerCapability(@PathVariable String workerId,
-                                                                 @RequestBody WorkerCapabilityReportApiRequest requestBody) {
-        validateKnownFields(requestBody, "worker capability report");
-        String resolvedWorkerId = resolveWorkerId(workerId, requestBody.getWorkerId());
-        return ResponseEntity.ok(ApiResponse.success(requireWorkerControl().reportWorkerCapability(
-                new WorkerCapabilityReportRequest(
-                        resolvedWorkerId,
-                        requestBody.getCapabilityVersion(),
-                        requestBody.getAvailableEventCodes(),
-                        requestBody.getSchedulingAttributes(),
-                        requestBody.getAgentVersion()
-                )
-        )));
-    }
-
-    @PostMapping("/workers/{workerId}/state-reports")
-    @Operation(
-            summary = "Report worker state",
-            description = "Owner-backed runtime ingress for bounded worker state projection."
-    )
-    public ResponseEntity<ApiResponse<?>> reportWorkerState(@PathVariable String workerId,
-                                                            @RequestBody WorkerStateReportApiRequest requestBody) {
-        validateKnownFields(requestBody, "worker state report");
-        String resolvedWorkerId = resolveWorkerId(workerId, requestBody.getWorkerId());
-        return ResponseEntity.ok(ApiResponse.success(requireWorkerControl().reportWorkerState(
-                new WorkerStateReportRequest(
-                        resolvedWorkerId,
-                        requestBody.getStateVersion(),
-                        requestBody.getState(),
-                        requestBody.getReason(),
-                        requestBody.getObservedAt(),
-                        requestBody.getAttributes()
-                )
-        )));
     }
 
     @GetMapping("/workers/{workerId}/state")
@@ -170,9 +130,17 @@ public class WorkerApiController {
 
     @GetMapping("/workers/states")
     @Operation(summary = "List worker state projections")
-    public ResponseEntity<ApiResponse<?>> listWorkerStateProjections() {
+    public ResponseEntity<ApiResponse<?>> listWorkerStateProjections(
+            @RequestParam(required = false) Integer limit) {
+        int resolvedLimit = resolveDiagnosticLimit(limit);
+        List<?> allItems = requireWorkerControl().listWorkerStateProjections();
+        List<?> items = allItems.stream()
+                .limit(resolvedLimit)
+                .toList();
         return ResponseEntity.ok(ApiResponse.success(Map.of(
-                "items", requireWorkerControl().listWorkerStateProjections()
+                "items", items,
+                "total", allItems.size(),
+                "limit", resolvedLimit
         )));
     }
 
@@ -199,24 +167,19 @@ public class WorkerApiController {
         )));
     }
 
-    @PostMapping("/workers/{workerId}/commands/{commandId}/ack")
-    @Operation(summary = "Acknowledge worker command")
-    public ResponseEntity<ApiResponse<?>> acknowledgeWorkerCommand(@PathVariable String workerId,
-                                                                   @PathVariable String commandId,
-                                                                   @RequestBody WorkerCommandAcknowledgementApiRequest requestBody) {
-        validateKnownFields(requestBody, "worker command acknowledgement");
-        return ResponseEntity.ok(ApiResponse.success(requireWorkerControl().acknowledgeWorkerCommand(
-                new WorkerCommandAcknowledgementRequest(commandId, requestBody.getStatus(), requestBody.getReason())
-        )));
-    }
-
     @GetMapping("/workers/{workerId}/commands")
     @Operation(summary = "List worker commands")
-    public ResponseEntity<ApiResponse<?>> listWorkerCommands(@PathVariable String workerId) {
-        List<?> items = requireWorkerControl().listWorkerCommandsForWorker(workerId);
+    public ResponseEntity<ApiResponse<?>> listWorkerCommands(@PathVariable String workerId,
+                                                             @RequestParam(required = false) Integer limit) {
+        int resolvedLimit = resolveDiagnosticLimit(limit);
+        List<?> allItems = requireWorkerControl().listWorkerCommandsForWorker(workerId);
+        List<?> items = allItems.stream()
+                .limit(resolvedLimit)
+                .toList();
         return ResponseEntity.ok(ApiResponse.success(Map.of(
                 "items", items,
-                "total", items.size()
+                "total", allItems.size(),
+                "limit", resolvedLimit
         )));
     }
 
@@ -253,6 +216,13 @@ public class WorkerApiController {
             throw new IllegalArgumentException(operationName + " contains unsupported fields: "
                     + String.join(", ", requestBody.getUnknownFieldNames()));
         }
+    }
+
+    private int resolveDiagnosticLimit(Integer limit) {
+        if (limit == null || limit <= 0) {
+            return DEFAULT_DIAGNOSTIC_LIMIT;
+        }
+        return Math.min(limit, MAX_DIAGNOSTIC_LIMIT);
     }
 
     private String trimToNull(String value) {

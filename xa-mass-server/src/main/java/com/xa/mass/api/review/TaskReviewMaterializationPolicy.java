@@ -16,6 +16,10 @@ public final class TaskReviewMaterializationPolicy {
         this.defaultMode = Objects.requireNonNull(defaultMode, "defaultMode");
     }
 
+    public static TaskReviewMaterializationPolicy offDefault() {
+        return new TaskReviewMaterializationPolicy(TaskReviewMaterializationMode.OFF);
+    }
+
     public static TaskReviewMaterializationPolicy terminalDefault() {
         return new TaskReviewMaterializationPolicy(TaskReviewMaterializationMode.TERMINAL);
     }

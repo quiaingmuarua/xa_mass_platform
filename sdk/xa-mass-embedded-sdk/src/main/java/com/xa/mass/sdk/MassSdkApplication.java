@@ -77,7 +77,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         WorkerTopologyOperations,
         WorkerClientOperations, WorkerAdminOperations,
         WorkerControlOperations, TaskStageEvidenceOperations,
-        ResourceOperations, AuthProvider, PrincipalDirectory,
+        ResourceOperations, CredentialAuthProjectionWriter, AuthProvider, PrincipalDirectory,
         ExternalWorkerOperations, AuthorizationPolicy,
         RuleOperations {
 
@@ -90,6 +90,9 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     private final MassApplication delegate;
     private final ProjectEventCatalogRegistry bootstrapProjectCatalogRegistry;
     private final SubmitterRegistry submitterRegistry;
+    private final CredentialAuthProjectionWriter credentialProjectionWriter;
+    private final AuthProvider authProvider;
+    private final PrincipalDirectory principalDirectory;
     private final EventPermissionService eventPermissionService;
     private final AuthorizationPolicy authorizationPolicy;
     private final MassEventRuntime eventRuntime;
@@ -120,6 +123,12 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 "bootstrapProjectCatalogRegistry"
         );
         this.submitterRegistry = Objects.requireNonNull(submitterRegistry, "submitterRegistry");
+        this.credentialProjectionWriter = requireSubmitterCapability(
+                submitterRegistry,
+                CredentialAuthProjectionWriter.class
+        );
+        this.authProvider = requireSubmitterCapability(submitterRegistry, AuthProvider.class);
+        this.principalDirectory = requireSubmitterCapability(submitterRegistry, PrincipalDirectory.class);
         this.eventRuntime = delegate.getEventRuntime() != null ? delegate.getEventRuntime() : new InMemoryMassEventRuntime();
         this.eventDefinitionRegistry = new EventDefinitionRegistry();
         this.eventHandlerCache = new LinkedHashMap<>();
@@ -819,6 +828,16 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     @Override
+    public void projectCredential(SubmitterRegistration submitterRegistration) {
+        credentialProjectionWriter.projectCredential(submitterRegistration);
+    }
+
+    @Override
+    public boolean hasProjectedCredential(String principalId) {
+        return credentialProjectionWriter.hasProjectedCredential(principalId);
+    }
+
+    @Override
     public List<SubmitterProfile> listSubmitters() {
         return submitterRegistry.listSubmitters();
     }
@@ -830,17 +849,24 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     @Override
     public PrincipalContext authenticateSubmitter(String credential) {
-        return submitterRegistry.authenticate(credential);
+        return authProvider.authenticate(credential);
     }
 
     @Override
     public PrincipalContext getPrincipal(String principalId) {
-        return submitterRegistry.getPrincipal(principalId);
+        return principalDirectory.getPrincipal(principalId);
     }
 
     @Override
     public PrincipalContext authenticate(String credential) {
         return authenticateSubmitter(credential);
+    }
+
+    private static <T> T requireSubmitterCapability(SubmitterRegistry submitterRegistry, Class<T> type) {
+        if (type.isInstance(submitterRegistry)) {
+            return type.cast(submitterRegistry);
+        }
+        throw new IllegalArgumentException("submitterRegistry must implement " + type.getSimpleName());
     }
 
     @Override

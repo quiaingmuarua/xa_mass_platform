@@ -9,7 +9,8 @@ import java.util.Objects;
 /**
  * Minimal in-memory submitter registry used by the SDK facade.
  */
-public final class InMemorySubmitterRegistry implements SubmitterRegistry {
+public final class InMemorySubmitterRegistry
+        implements SubmitterRegistry, CredentialAuthProjectionWriter, AuthProvider, PrincipalDirectory {
 
     private final Map<String, StoredBinding> byPrincipalId = new LinkedHashMap<>();
     private final Map<String, StoredBinding> byCredentialHash = new LinkedHashMap<>();
@@ -31,6 +32,16 @@ public final class InMemorySubmitterRegistry implements SubmitterRegistry {
             byCredentialHash.remove(previous.credentialHash());
         }
         byCredentialHash.put(credentialHash, binding);
+    }
+
+    @Override
+    public void projectCredential(SubmitterRegistration submitterRegistration) {
+        register(submitterRegistration);
+    }
+
+    @Override
+    public synchronized boolean hasProjectedCredential(String principalId) {
+        return byPrincipalId.containsKey(principalId);
     }
 
     public synchronized void loadDurable(SubmitterProfile profile, String credentialHash) {

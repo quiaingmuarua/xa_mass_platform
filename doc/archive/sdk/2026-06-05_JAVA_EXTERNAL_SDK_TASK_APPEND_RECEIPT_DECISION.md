@@ -1,6 +1,19 @@
 # Java External SDK Task Append Receipt Decision
 
-Status: active deferred SDK decision.
+Archived on 2026-06-05 after the current append receipt constraint was moved
+into `sdk/xa-mass-java-sdk/README.md` and
+`sdk/xa-mass-java-sdk/EXTERNAL_SDK_QUICKSTART.md`.
+
+Current truth owners:
+
+- `sdk/xa-mass-java-sdk/README.md` for Java SDK public surface rules.
+- `sdk/xa-mass-java-sdk/EXTERNAL_SDK_QUICKSTART.md` for task producer usage.
+
+This document is historical context only. Do not use it as proof of current
+implementation behavior; verify against current code, tests, SDK README, and
+the external SDK quickstart.
+
+Status: archived deferred SDK decision.
 
 This short decision note replaces the implemented task-scoped invocation
 roadmap in the active roadmap directory. The implemented record is archived at

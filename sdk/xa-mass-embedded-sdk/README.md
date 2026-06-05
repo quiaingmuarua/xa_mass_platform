@@ -287,6 +287,12 @@ the credential back to callers. Registering the same credential for a different
 principal is rejected. A single `userId` can own multiple credentials; each
 credential keeps its own permissions, project scopes, and event scopes.
 
+`Submitter*` remains acceptable embedded resource vocabulary for this facade.
+Server API-key lifecycle code must not use this resource facade to publish auth
+state; it uses the narrower `CredentialAuthProjectionWriter` contract from
+`xa-mass-embedded-sdk-api`. That split keeps future durable API-key schemas from
+being named or shaped after the historical submitter resource facade.
+
 The returned `MassSdkApplication` exposes:
 
 - lifecycle: `start()`, `stop()`, `isRunning()`
@@ -306,7 +312,7 @@ Current SDK contracts:
 | --- | --- |
 | task create | mainline SDK flow is `MassTaskShellCreateRequest` plus explicit `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)` and `executeTaskCommand(taskId, MassTaskCommandRequest)` for lifecycle/governance; `taskName` is server-derived, and capability `eventCode` belongs on append batches or per-item ingress rather than task shell truth |
 | worker resources | `WorkerGroupDeclaration.eventBindings` declares capability truth; `WorkerRegistration` declares worker execution identity plus group/node membership. Transport liveness owns online state, and `isWorkerOnline(...)` reads transport presence when available (`STALE`/`OFFLINE` both surface as not online). WorkerContext registration/snapshot contracts have been removed from the SDK |
-| resources | `ResourceOperations` owns project/event/submitter resources; project is a first-class control-plane binding and enabled projects also bind into engine task creation and worker capability checks |
+| resources | `ResourceOperations` owns project/event/submitter resources; project is a first-class control-plane binding and enabled projects also bind into engine task creation and worker capability checks. Submitter resource names are embedded facade vocabulary, not the server API-key lifecycle/auth projection owner. |
 | business events | default catalog ships no business task events; embedding apps or dev fixtures register event codes explicitly |
 | submitters | in-memory principal/API-key binding only, not a full user subsystem; queries return `SubmitterProfile`, not credentials |
 | diagnostics/detail | bounded runtime validation/resolution stays behind `app.taskDiagnostics()` instead of the default `MassSdkApplication` task mainline. SDK mainline no longer exposes task-item or attempt detail query APIs; production detail belongs in logs, trace, audit sinks, or async persistence |
@@ -438,7 +444,8 @@ direct runtime handlers in bounded virtual-thread execution; timeout returns an
 remain interrupt-aware and use bounded I/O.
 Runtime executor diagnostics for transport and optional event-handler execution
 are surfaced through the explicit operator/runtime `app.runtimeDiagnostics().getQueueDetail()`
-view and the Boot-shell `/api/v1/runtime/queues` response. Delivery-store diagnostics also expose
+view and the Boot-shell `/api/v1/runtime/queues` response. That HTTP route is
+operator/console diagnostics, not an external public SDK contract. Delivery-store diagnostics also expose
 `app.runtimeDiagnostics().getQueueDetail().deliveryDiagnostics.queueByAdapter`, which is the adapter-neutral
 per-`adapterId` queue breakdown and is not tied to one store implementation.
 Realtime direct-send counters are intentionally separate under

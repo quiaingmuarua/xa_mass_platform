@@ -20,15 +20,32 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 class QueueBackedTaskReviewReadModelWriterTest {
 
     @Test
-    void recordItemsAcceptedSubmitsAcceptedEvent() {
+    void recordItemsAcceptedSkipsAcceptedEventByDefault() {
         CapturingQueue queue = new CapturingQueue(true);
         QueueBackedTaskReviewReadModelWriter writer = new QueueBackedTaskReviewReadModelWriter(
                 queue,
-                TaskReviewMaterializationPolicy.terminalDefault());
+                TaskReviewMaterializationPolicy.offDefault());
 
         writer.recordItemsAccepted(
                 "task-001",
                 Map.of(),
+                List.of(Map.of("eventCode", "probe.weather")),
+                new TaskItemBatchAppendReceipt("task-001", 1, List.of("msg-001")),
+                3);
+
+        assertEquals(0, queue.events.size());
+    }
+
+    @Test
+    void taskSharedConfigCanOptIntoTerminalItemMaterialization() {
+        CapturingQueue queue = new CapturingQueue(true);
+        QueueBackedTaskReviewReadModelWriter writer = new QueueBackedTaskReviewReadModelWriter(
+                queue,
+                TaskReviewMaterializationPolicy.offDefault());
+
+        writer.recordItemsAccepted(
+                "task-001",
+                Map.of(TaskReviewMaterializationPolicy.SHARED_CONFIG_KEY, "terminal"),
                 List.of(Map.of("eventCode", "probe.weather")),
                 new TaskItemBatchAppendReceipt("task-001", 1, List.of("msg-001")),
                 3);
@@ -41,15 +58,49 @@ class QueueBackedTaskReviewReadModelWriterTest {
     }
 
     @Test
-    void recordWorkFinalSubmitsTerminalEvent() {
+    void recordWorkFinalSkipsTerminalEventByDefault() {
         CapturingQueue queue = new CapturingQueue(true);
         QueueBackedTaskReviewReadModelWriter writer = new QueueBackedTaskReviewReadModelWriter(
                 queue,
-                TaskReviewMaterializationPolicy.terminalDefault());
+                TaskReviewMaterializationPolicy.offDefault());
 
         writer.recordWorkFinal(new TaskWorkFinalNotification(
                 "task-001",
                 Map.of(),
+                new TaskWorkFinalSnapshot(
+                        "task-001",
+                        "msg-001",
+                        "SUCCESS",
+                        "BUSINESS_SUCCESS",
+                        1,
+                        3,
+                        "probe.weather",
+                        "worker-001",
+                        "batch-001",
+                        "attempt-002",
+                        null,
+                        null,
+                        "payload://result/msg-001",
+                        Instant.parse("2026-05-29T02:00:00Z"),
+                        Instant.parse("2026-05-29T02:01:00Z"),
+                        Instant.parse("2026-05-29T02:01:05Z"),
+                        Instant.parse("2026-05-29T02:01:12Z"),
+                        Instant.parse("2026-05-29T02:01:12Z"),
+                        Map.of("ok", true))));
+
+        assertEquals(0, queue.events.size());
+    }
+
+    @Test
+    void taskSharedConfigCanOptIntoTerminalWorkFinalMaterialization() {
+        CapturingQueue queue = new CapturingQueue(true);
+        QueueBackedTaskReviewReadModelWriter writer = new QueueBackedTaskReviewReadModelWriter(
+                queue,
+                TaskReviewMaterializationPolicy.offDefault());
+
+        writer.recordWorkFinal(new TaskWorkFinalNotification(
+                "task-001",
+                Map.of(TaskReviewMaterializationPolicy.SHARED_CONFIG_KEY, "terminal"),
                 new TaskWorkFinalSnapshot(
                         "task-001",
                         "msg-001",
@@ -136,7 +187,7 @@ class QueueBackedTaskReviewReadModelWriterTest {
         CapturingQueue queue = new CapturingQueue(true);
         QueueBackedTaskReviewReadModelWriter writer = new QueueBackedTaskReviewReadModelWriter(
                 queue,
-                TaskReviewMaterializationPolicy.terminalDefault());
+                TaskReviewMaterializationPolicy.offDefault());
 
         writer.recordAttemptClosed(new TaskWorkAttemptClosedNotification(
                 "task-001",

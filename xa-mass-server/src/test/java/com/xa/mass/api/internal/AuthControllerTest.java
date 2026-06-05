@@ -1,5 +1,6 @@
 package com.xa.mass.api.internal;
 
+import com.xa.mass.api.auth.ApiAuthTestSupport;
 import com.xa.mass.api.auth.ApiAuthService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,7 +18,8 @@ class AuthControllerTest {
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(new AuthController(new ApiAuthService())).build();
+        mockMvc = MockMvcBuilders.standaloneSetup(
+                new AuthController(ApiAuthTestSupport.defaultOperatorAuthService())).build();
     }
 
     @Test

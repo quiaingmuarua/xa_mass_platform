@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xa.mass.api.auth.ApiAuthInterceptor;
 import com.xa.mass.api.auth.ApiAuthService;
+import com.xa.mass.api.auth.ApiAuthTestSupport;
 import com.xa.mass.api.auth.ApiAuthorizationService;
 import com.xa.mass.api.auth.ApiPermissionNames;
 import com.xa.mass.api.auth.ApiRouteAuthorizationCatalog;
@@ -42,7 +43,7 @@ class ApiKeyApplicationControllerTest {
                 submitters
         );
         ApiAuthInterceptor interceptor = new ApiAuthInterceptor(
-                new ApiAuthService(),
+                ApiAuthTestSupport.defaultOperatorAuthService(),
                 objectMapper,
                 new ApiAuthorizationService(),
                 new ApiRouteAuthorizationCatalog()

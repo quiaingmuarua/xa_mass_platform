@@ -7,8 +7,13 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -16,6 +21,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ServerMainSourceArchitectureGuardTest {
 
     private static final Path SERVER_MAIN_SOURCE_ROOT = Path.of("src/main/java");
+    private static final Path REPO_ROOT = Path.of("..").toAbsolutePath().normalize();
+    private static final Pattern TABLE_ROW = Pattern.compile("^\\|\\s*([^|]+?)\\s*\\|\\s*([^|]+?)\\s*\\|\\s*([^|]+?)\\s*\\|\\s*([^|]+?)\\s*\\|.*$");
+    private static final Pattern CLASS_REQUEST_MAPPING = Pattern.compile("@RequestMapping\\((?:value\\s*=\\s*)?\"([^\"]*)\"\\)");
+    private static final Pattern METHOD_MAPPING = Pattern.compile("@(GetMapping|PostMapping|PatchMapping|DeleteMapping)(?:\\(([^)]*)\\))?");
+    private static final Pattern FIRST_QUOTED_VALUE = Pattern.compile("\"([^\"]*)\"");
+    private static final Set<String> API_ROUTE_CATEGORIES = Set.of(
+            "public-sdk-ingress",
+            "public-sdk-read",
+            "operator-command",
+            "console-diagnostics",
+            "internal-debug",
+            "remove-or-merge"
+    );
 
     private static final Map<String, String> FORBIDDEN_IMPORT_FRAGMENTS = Map.of(
             "base", "import com.xa.mass.base.",
@@ -283,6 +301,179 @@ class ServerMainSourceArchitectureGuardTest {
     }
 
     @Test
+    void apiKeyLifecycleDoesNotDependOnBroadSubmitterResourceOperations() throws IOException {
+        Path service = SERVER_MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/api/auth/apikey/ApiKeyCredentialService.java");
+        String source = Files.readString(service, StandardCharsets.UTF_8);
+
+        assertTrue(!source.contains("import com.xa.mass.sdk.SubmitterOperations"),
+                "ApiKeyCredentialService must write auth projection through a narrow projection port, "
+                        + "not broad SubmitterOperations");
+        assertTrue(source.contains("CredentialAuthProjectionWriter"),
+                "ApiKeyCredentialService must depend on CredentialAuthProjectionWriter for auth projection writes");
+    }
+
+    @Test
+    void submitterRegistryInterfaceDoesNotOwnWriteAuthAndDirectoryTogether() throws IOException {
+        Path registry = REPO_ROOT.resolve(
+                "sdk/xa-mass-embedded-sdk-api/src/main/java/com/xa/mass/sdk/auth/SubmitterRegistry.java");
+        String source = Files.readString(registry, StandardCharsets.UTF_8);
+
+        assertTrue(!source.contains("extends AuthProvider")
+                        && !source.contains("extends PrincipalDirectory")
+                        && !source.contains("AuthProvider, PrincipalDirectory"),
+                "SubmitterRegistry must stay a resource registry; auth provider, principal directory, "
+                        + "and auth projection writes are separate contracts");
+    }
+
+    @Test
+    void submitterViewerSessionsAreNotJdbcControlPlaneStores() throws IOException {
+        List<String> violations = new ArrayList<>();
+        try (Stream<Path> paths = Files.walk(SERVER_MAIN_SOURCE_ROOT)) {
+            paths.filter(Files::isRegularFile)
+                    .filter(path -> path.toString().endsWith(".java"))
+                    .forEach(path -> {
+                        try {
+                            String source = Files.readString(path, StandardCharsets.UTF_8);
+                            if (source.contains("JdbcSubmitterViewerSessionStore")
+                                    || source.contains("SubmitterViewerSessionStore") && source.contains("xa_submitter_viewer_session")
+                                    || source.contains("SubmitterViewerSessionStore") && source.contains("submitter_viewer_session")) {
+                                violations.add(path + " treats SubmitterViewerSessionStore as JDBC/control-plane storage");
+                            }
+                        } catch (IOException e) {
+                            violations.add(path + " could not be read: " + e.getMessage());
+                        }
+                    });
+        }
+
+        assertTrue(violations.isEmpty(),
+                "submitter-viewer sessions must remain volatile session state, not JDBC stores:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void stableServerControlPlaneMemoryStoresAreExplicitlyAssembled() throws IOException {
+        Map<String, String> storeFiles = Map.of(
+                "InMemoryApiKeyApplicationStore", "com/xa/mass/api/auth/apikey/InMemoryApiKeyApplicationStore.java",
+                "InMemoryApiKeyCredentialStore", "com/xa/mass/api/auth/apikey/InMemoryApiKeyCredentialStore.java",
+                "InMemoryUserRolePermissionStore", "com/xa/mass/api/auth/iam/InMemoryUserRolePermissionStore.java",
+                "InMemorySubmitterViewerSessionStore", "com/xa/mass/api/auth/session/InMemorySubmitterViewerSessionStore.java",
+                "InMemoryApiUsageLedgerStore", "com/xa/mass/api/auth/usage/InMemoryApiUsageLedgerStore.java"
+        );
+        List<String> violations = new ArrayList<>();
+        storeFiles.forEach((symbol, relativePath) -> {
+            try {
+                String source = Files.readString(SERVER_MAIN_SOURCE_ROOT.resolve(relativePath), StandardCharsets.UTF_8);
+                if (source.contains("@Component") || source.contains("org.springframework.stereotype.Component")) {
+                    violations.add(symbol + " is component-scanned instead of assembled by ServerControlPlaneStoreConfiguration");
+                }
+            } catch (IOException e) {
+                violations.add(relativePath + " could not be read: " + e.getMessage());
+            }
+        });
+
+        Path configuration = SERVER_MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/server/config/ServerControlPlaneStoreConfiguration.java");
+        String configSource = Files.readString(configuration, StandardCharsets.UTF_8);
+        storeFiles.keySet().forEach(symbol -> {
+            if (!configSource.contains("new " + symbol + "(")
+                    && !configSource.contains(symbol + ".bootstrapDefaults()")) {
+                violations.add("ServerControlPlaneStoreConfiguration does not explicitly assemble " + symbol);
+            }
+        });
+
+        assertTrue(violations.isEmpty(),
+                "stable server control-plane memory stores must be explicit beans, not component-selected:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void serverOwnedControlPlaneMigrationsStayInServerResources() throws IOException {
+        Path runner = SERVER_MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/server/config/ServerControlPlaneMigrationRunner.java");
+        String runnerSource = Files.readString(runner, StandardCharsets.UTF_8);
+
+        assertTrue(runnerSource.contains("classpath:db/migration/server-control-plane"),
+                "server API-key/IAM/usage migration runner must load server-owned migration resources");
+        assertTrue(runnerSource.contains("flyway_server_control_plane_schema_history"),
+                "server-owned migrations must use a separate Flyway history table");
+        assertTrue(!runnerSource.contains("classpath:db/migration/control-plane"),
+                "server-owned API/IAM/usage migrations must not reuse platform_infra control-plane migration location");
+    }
+
+    @Test
+    void serverApiIamUsageSchemaDoesNotMoveToPlatformInfraMigrations() throws IOException {
+        List<String> violations = new ArrayList<>();
+        Path platformMigrations = REPO_ROOT.resolve(
+                "platform_infra/mass-storage-jdbc/src/main/resources/db/migration");
+        try (Stream<Path> paths = Files.walk(platformMigrations)) {
+            paths.filter(Files::isRegularFile)
+                    .forEach(path -> {
+                        try {
+                            String source = Files.readString(path, StandardCharsets.UTF_8);
+                            if (source.contains("xa_api_key_")
+                                    || source.contains("xa_iam_")
+                                    || source.contains("xa_api_usage_")
+                                    || source.contains("submitter_viewer_session")) {
+                                violations.add(path + " contains server-owned API/IAM/session/usage schema");
+                            }
+                        } catch (IOException e) {
+                            violations.add(path + " could not be read: " + e.getMessage());
+                        }
+                    });
+        }
+
+        Path serverMigrations = REPO_ROOT.resolve(
+                "xa-mass-server/src/main/resources/db/migration/server-control-plane");
+        try (Stream<Path> paths = Files.walk(serverMigrations)) {
+            paths.filter(Files::isRegularFile)
+                    .forEach(path -> {
+                        try {
+                            String source = Files.readString(path, StandardCharsets.UTF_8);
+                            if (source.contains("submitter_viewer_session")) {
+                                violations.add(path + " persists submitter-viewer sessions in JDBC");
+                            }
+                        } catch (IOException e) {
+                            violations.add(path + " could not be read: " + e.getMessage());
+                        }
+                    });
+        }
+
+        assertTrue(violations.isEmpty(),
+                "server-owned API-key/IAM/usage schema must stay in xa-mass-server and "
+                        + "submitter-viewer sessions must stay out of JDBC:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void productionAuthAssemblyDoesNotCreateImplicitOperatorMemoryFallbacks() throws IOException {
+        Path allowedAssembly = SERVER_MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/server/config/ServerControlPlaneStoreConfiguration.java");
+        List<String> violations = new ArrayList<>();
+        try (Stream<Path> paths = Files.walk(SERVER_MAIN_SOURCE_ROOT)) {
+            paths.filter(Files::isRegularFile)
+                    .filter(path -> path.toString().endsWith(".java"))
+                    .filter(path -> !path.equals(allowedAssembly))
+                    .forEach(path -> {
+                        try {
+                            String source = Files.readString(path, StandardCharsets.UTF_8);
+                            if (source.contains("new DefaultOperatorPrincipalDirectory(")
+                                    || source.contains("new ApiAuthService(")
+                                    || source.contains("InMemoryUserRolePermissionStore.bootstrapDefaults()")) {
+                                violations.add(path + " bypasses explicit server auth/store assembly");
+                            }
+                        } catch (IOException e) {
+                            violations.add(path + " could not be read: " + e.getMessage());
+                        }
+                    });
+        }
+
+        assertTrue(violations.isEmpty(),
+                "production auth wiring must not create implicit operator memory fallbacks outside explicit assembly:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void reviewQueueApiDoesNotGrowRuntimeDecisionVocabulary() throws IOException {
         Path reviewRoot = SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/api/review");
         List<String> violations = new ArrayList<>();
@@ -315,6 +506,51 @@ class ServerMainSourceArchitectureGuardTest {
                         + String.join("\n", violations));
     }
 
+    @Test
+    void serverApiRoutesStayClassifiedByApiSurfaceInventory() throws IOException {
+        Path inventory = REPO_ROOT.resolve("xa-mass-server/doc/API_SURFACE_INVENTORY.md");
+        Map<String, String> inventoryRoutes = readRouteInventory(inventory);
+        Set<String> controllerRoutes = collectControllerApiRoutes();
+        List<String> violations = new ArrayList<>();
+
+        controllerRoutes.forEach(route -> {
+            if (!inventoryRoutes.containsKey(route)) {
+                violations.add(route + " is missing from " + REPO_ROOT.relativize(inventory));
+            }
+        });
+        inventoryRoutes.keySet().forEach(route -> {
+            if (!controllerRoutes.contains(route)) {
+                violations.add(route + " is listed in " + REPO_ROOT.relativize(inventory)
+                        + " but has no matching controller route");
+            }
+        });
+        inventoryRoutes.forEach((route, category) -> {
+            if (!API_ROUTE_CATEGORIES.contains(category)) {
+                violations.add(route + " uses unknown API route category " + category);
+            }
+            String path = route.substring(route.indexOf(' ') + 1);
+            if (path.startsWith("/api/v1/runtime/")
+                    && !Set.of("console-diagnostics", "operator-command", "remove-or-merge").contains(category)) {
+                violations.add(route + " is a runtime route but is categorized as " + category);
+            }
+            if (path.startsWith("/internal/v1/")
+                    && !Set.of("internal-debug", "console-diagnostics").contains(category)) {
+                violations.add(route + " is an internal route but is categorized as " + category);
+            }
+            if (path.startsWith("/api/v1/runtime/workers/")
+                    && (path.endsWith("/capability-reports")
+                    || path.endsWith("/state-reports")
+                    || path.matches("^/api/v1/runtime/workers/\\{workerId}/commands/\\{commandId}/ack$"))
+                    && !"remove-or-merge".equals(category)) {
+                violations.add(route + " duplicates worker data-plane ingress and must stay remove-or-merge");
+            }
+        });
+
+        assertTrue(violations.isEmpty(),
+                "server API routes must stay classified by the active API surface inventory:\n"
+                        + String.join("\n", violations));
+    }
+
     private static void collectViolations(Path path, List<String> violations) {
         String source;
         try {
@@ -329,5 +565,113 @@ class ServerMainSourceArchitectureGuardTest {
                 violations.add(path + " imports forbidden " + label + " type");
             }
         });
+    }
+
+    private static Map<String, String> readRouteInventory(Path inventory) throws IOException {
+        String source = Files.readString(inventory, StandardCharsets.UTF_8);
+        Map<String, String> routes = new LinkedHashMap<>();
+        boolean inRouteInventory = false;
+        for (String line : source.split("\\R")) {
+            if (line.equals("## Route Inventory")) {
+                inRouteInventory = true;
+                continue;
+            }
+            if (inRouteInventory && line.startsWith("## ")) {
+                break;
+            }
+            if (!inRouteInventory || !line.startsWith("|")) {
+                continue;
+            }
+            Matcher matcher = TABLE_ROW.matcher(line);
+            if (!matcher.matches()) {
+                continue;
+            }
+            String method = matcher.group(1).trim();
+            String route = matcher.group(2).trim();
+            String category = matcher.group(4).trim();
+            if ("Method".equals(method) || "---".equals(method)) {
+                continue;
+            }
+            routes.put(method + " " + route, category);
+        }
+        return routes;
+    }
+
+    private static Set<String> collectControllerApiRoutes() throws IOException {
+        Set<String> routes = new LinkedHashSet<>();
+        Path controllerRoot = SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/api/internal");
+        try (Stream<Path> paths = Files.walk(controllerRoot)) {
+            paths.filter(Files::isRegularFile)
+                    .filter(path -> path.toString().endsWith("Controller.java"))
+                    .filter(path -> !path.getFileName().toString().equals("FrontendConsoleController.java"))
+                    .forEach(path -> collectControllerApiRoutes(path, routes));
+        }
+        return routes;
+    }
+
+    private static void collectControllerApiRoutes(Path path, Set<String> routes) {
+        String source;
+        try {
+            source = Files.readString(path, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new IllegalStateException("could not read " + path + ": " + e.getMessage(), e);
+        }
+        String basePath = "";
+        Matcher classMapping = CLASS_REQUEST_MAPPING.matcher(source);
+        if (classMapping.find()) {
+            basePath = classMapping.group(1);
+        }
+        Matcher methodMapping = METHOD_MAPPING.matcher(source);
+        while (methodMapping.find()) {
+            String annotation = methodMapping.group(1);
+            String mappingArguments = methodMapping.group(2);
+            String methodPath = extractMethodPath(mappingArguments);
+            if (methodPath == null) {
+                continue;
+            }
+            String route = joinPaths(basePath, methodPath);
+            if (route.startsWith("/api/v1/")
+                    || route.startsWith("/internal/v1/")
+                    || route.startsWith("/worker-api/v1/")) {
+                routes.add(httpMethod(annotation) + " " + route);
+            }
+        }
+    }
+
+    private static String extractMethodPath(String mappingArguments) {
+        if (mappingArguments == null || mappingArguments.isBlank()) {
+            return "";
+        }
+        Matcher matcher = FIRST_QUOTED_VALUE.matcher(mappingArguments);
+        if (!matcher.find()) {
+            return "";
+        }
+        return matcher.group(1);
+    }
+
+    private static String joinPaths(String basePath, String methodPath) {
+        if (methodPath == null || methodPath.isBlank()) {
+            return basePath;
+        }
+        if (basePath == null || basePath.isBlank()) {
+            return methodPath;
+        }
+        if (basePath.endsWith("/") && methodPath.startsWith("/")) {
+            return basePath + methodPath.substring(1);
+        }
+        if (!basePath.endsWith("/") && !methodPath.startsWith("/")) {
+            return basePath + "/" + methodPath;
+        }
+        return basePath + methodPath;
+    }
+
+    private static String httpMethod(String annotation) {
+        return switch (annotation) {
+            case "GetMapping" -> "GET";
+            case "PostMapping" -> "POST";
+            case "PatchMapping" -> "PATCH";
+            case "DeleteMapping" -> "DELETE";
+            default -> throw new IllegalArgumentException("Unsupported mapping annotation: " + annotation);
+        };
     }
 }

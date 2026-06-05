@@ -82,7 +82,7 @@ design and must not be implied by result ingress or review materialization.
 | Area | Current code truth | Interpretation |
 | --- | --- | --- |
 | `platform_infra/mass-storage-jdbc` | persists task shell/rule/principal truth; no JDBC worker declaration implementation currently exists | correct control-plane role |
-| SQLite control-plane storage | target lightweight persistence direction for new-environment control-plane setup; not yet a runtime backend | may host stable project/rule/catalog/credential truth when implemented; not a queue, lease, heartbeat, result-convergence, or trace store |
+| SQLite control-plane storage | lightweight persistence direction for new-environment control-plane setup; currently backs generic control-plane tables plus server API-key lifecycle, operator IAM, and low-volume usage evidence in JDBC modes; not a runtime backend | may host stable project/rule/catalog/credential truth; not a queue, lease, heartbeat, result-convergence, or trace store |
 | JDBC-local worker lock residue | process-local runtime residue | not durable worker-runtime truth; worker locks/capacity must not become control-plane storage truth |
 | `platform_infra/mass-storage-memory` | in-memory task shell, worker declaration adapter, and rule definition storage | current embedded/test implementation |
 | `mass-runtime-*` modules | queue/lease/counter semantics | canonical runtime-state home |
@@ -90,7 +90,7 @@ design and must not be implied by result ingress or review materialization.
 | Redis transport dispatch handoff | post-claim assignment queue between engine and transport JVMs; node-targeted inboxes are keyed by `transportNodeId` | runtime-state handoff, not ready queue ownership and not task lifecycle truth |
 | Redis worker presence / route-owner view | shared transport-owned reachability state | queryable runtime view for matching and dispatch routing, not a queue and not control-plane worker declaration |
 | Redis transport result / dispatch-failure inboxes | transport-to-engine runtime ingress | bounded cross-JVM channels drained into engine-owned result ingest and compensation ports, not server endpoints |
-| server review materialization | server-local review store populated from the review report queue | operator/read-model materialization, not engine runtime truth |
+| server review materialization | task opt-in server-local review store populated from the review report queue; default mode is `OFF` | operator/read-model materialization, not engine runtime truth |
 | engine assembly | wires kernel SPI task-shell ports and worker-runtime `WorkerDeclarationStore` explicitly | prevents shell/declaration truth from silently redefining review/export or runtime ownership |
 | `doc/TRACE_CONTRACT.md` plus `platform_infra/mass-trace-sink` | required trace semantics plus the current canonical sink/module implementation | trace remains analysis/debug ownership, not lifecycle/runtime truth |
 
@@ -154,14 +154,31 @@ Current product-stage DB rules:
 
 - SQLite is the preferred lightweight control-plane DB direction; PostgreSQL is
   not a required mainline dependency at this stage.
+- Server-owned API-key lifecycle, IAM/user-role, API usage ledger, and
+  submitter-viewer session store decisions belong to `xa-mass-server`.
+  `platform_infra` may own generic storage primitives and generic task/rule/
+  principal migrations, but it must not grow server API/IAM table concepts.
+- Server-owned schema notes belong under
+  `xa-mass-server/src/main/resources/db/schema/server-control-plane`, and
+  executable server-owned Flyway SQL belongs under
+  `xa-mass-server/src/main/resources/db/migration/server-control-plane`.
+  Generic platform storage SQL remains under
+  `platform_infra/mass-storage-jdbc`.
+- Submitter-viewer sessions are runtime/session convenience state. They must
+  not be persisted in SQLite/JDBC as control-plane truth; future cross-process
+  sharing belongs to a runtime/Redis session design.
+- Server API-key lifecycle schema must keep auth projection separate from
+  lifecycle truth and must distinguish omitted, wildcard, and bounded
+  project/event scopes before persisting scope fields.
 - Initial data loading is an explicit environment bootstrap import, not a
   public API and not an automatic migration path.
 - Seed/import is off by default and should be enabled only for a new
   environment or an explicit local/test fixture.
 - The project does not currently promise commercial-history migration or
-  backwards-compatible schema evolution. A future schema-version check should
-  fail fast with a clear "recreate or reseed this environment" message instead
-  of half-running against stale local data.
+  backwards-compatible schema evolution. Schema changes may require deleting
+  and recreating local/prod DBs in the current pre-release phase. A future
+  schema-version check should fail fast with a clear "recreate or reseed this
+  environment" message instead of half-running against stale local data.
 
 ## 6. Temporary Residue Rules
 

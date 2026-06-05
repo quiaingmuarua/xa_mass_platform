@@ -24,9 +24,7 @@ public class ApiRouteAuthorizationCatalog {
             };
         }
         if (uri.equals("/internal/v1/debug/task-invocations:sync") && "POST".equals(method)) {
-            return sdkCredentialAttempt
-                    ? route(PlatformResourceType.TASK, PlatformAction.CREATE, ApiAuthInterceptor.SDK_CREDENTIAL_BYPASS)
-                    : route(PlatformResourceType.TASK, PlatformAction.CREATE, ApiPermissionNames.TASK_CREATE);
+            return route(PlatformResourceType.TASK, PlatformAction.CREATE, ApiAuthInterceptor.OPERATOR_AUTH_ONLY);
         }
         if (uri.matches("^/api/v1/tasks/[^/:]+$")) {
             return switch (method) {
@@ -218,12 +216,6 @@ public class ApiRouteAuthorizationCatalog {
         if (uri.equals("/api/v1/runtime/workers") && "GET".equals(method)) {
             return route(PlatformResourceType.WORKER, PlatformAction.VIEW, ApiPermissionNames.WORKER_VIEW);
         }
-        if (uri.matches("^/api/v1/runtime/workers/[^/]+/capability-reports$") && "POST".equals(method)) {
-            return route(PlatformResourceType.WORKER, PlatformAction.EDIT, ApiPermissionNames.WORKER_EDIT);
-        }
-        if (uri.matches("^/api/v1/runtime/workers/[^/]+/state-reports$") && "POST".equals(method)) {
-            return route(PlatformResourceType.WORKER, PlatformAction.EDIT, ApiPermissionNames.WORKER_EDIT);
-        }
         if (uri.matches("^/api/v1/runtime/workers/[^/]+/state$") && "GET".equals(method)) {
             return route(PlatformResourceType.WORKER, PlatformAction.VIEW, ApiPermissionNames.WORKER_VIEW);
         }
@@ -239,9 +231,6 @@ public class ApiRouteAuthorizationCatalog {
         }
         if (uri.matches("^/api/v1/runtime/workers/commands/[^/]+$") && "GET".equals(method)) {
             return route(PlatformResourceType.WORKER, PlatformAction.VIEW, ApiPermissionNames.WORKER_VIEW);
-        }
-        if (uri.matches("^/api/v1/runtime/workers/[^/]+/commands/[^/]+/ack$") && "POST".equals(method)) {
-            return route(PlatformResourceType.WORKER, PlatformAction.EDIT, ApiPermissionNames.WORKER_EDIT);
         }
         if (uri.equals("/api/v1/admin/rules") && "GET".equals(method)) {
             return route(PlatformResourceType.RULE, PlatformAction.VIEW, ApiPermissionNames.RULE_VIEW);

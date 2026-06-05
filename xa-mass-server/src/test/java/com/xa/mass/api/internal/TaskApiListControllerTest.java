@@ -1,7 +1,11 @@
 package com.xa.mass.api.internal;
 
+import com.xa.mass.api.auth.ApiAuthTestSupport;
+import com.xa.mass.api.auth.ApiAuthorizationService;
+import com.xa.mass.api.auth.TaskSecurityViewSupport;
 import com.xa.mass.sdk.TaskAdminOperations;
 import com.xa.mass.sdk.TaskQueryOperations;
+import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
 import com.xa.mass.sdk.model.TaskSummarySnapshot;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,7 +37,18 @@ class TaskApiListControllerTest {
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(new TaskApiController(taskQueries, taskAdmin)).build();
+        mockMvc = MockMvcBuilders.standaloneSetup(new TaskApiController(
+                taskQueries,
+                null,
+                taskAdmin,
+                DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(),
+                ApiAuthTestSupport.defaultOperatorAuthService(),
+                new ApiAuthorizationService(),
+                new TaskSecurityViewSupport(),
+                null,
+                null,
+                null
+        )).build();
     }
 
     @Test

@@ -473,11 +473,12 @@ Proves:
   engine/server/trace convergence lanes.
 - scheduled/manual infra chaos now includes Redis-backed runtime owner
   restart/reconnect recovery for the existing `sched.retry-redispatch`
-  invariant. Redis process kill, partition/failover, and lease-clock skew are
-  not current proof rows and need
-  `../roadmap/WORKER_FAULT_MATRIX_INFRA_FAULT_DECISION.md` to resolve the
-  required environment/seam decision before they can become worker-fault matrix
-  proof.
+  invariant. Redis process kill, partition/failover, lease-clock skew, and
+  multi-node presence flap are not current proof rows. They require a
+  deterministic infra-fault harness, explicit runtime clock seam where
+  relevant, and proof-registry ownership before they can become worker-fault
+  matrix proof. Do not fake those failures through worker-pack local state,
+  capability attributes, or test-only runtime hooks.
 - `fault.dropped-result-retry` is a current scenario-ledger alias over the
   polling lease-expiry redispatch chaos runner. It makes the dropped-result /
   retry shape report-visible, but it is not a fourth `chaos-smokes` PR bundle
@@ -567,7 +568,7 @@ Use first when:
 | retry / expiry / finality / result ingest | engine acceptance/concurrency + Boot-shell E2E | chaos for late replay / disconnect / lease expiry |
 | trace schema / event emission / operator trace query | sink or emitter tests + `xa-mass-trace` integration tests against canonical output | Boot-shell or chaos trace-observed scenario when integrated lifecycle visibility changed |
 | `TaskResultRuntime` / stable-final result rows / repair barriers / result read window | runtime contract tests for memory + Redis implementations, plus engine result convergence coverage | Boot-shell `/results` or archive E2E when public result/API shape changes |
-| runtime backend parity (`memory` vs `redis`) | shared runtime contract tests plus one shared Boot-shell scenario with backend-specific subclasses; Redis tests must use isolated namespace prefixes and explicit fixture cleanup, not `shutdown()` cleanup | add backend-specific tests only for implementation-only keyspace/script behavior, namespace isolation, or restart recovery tied to an existing invariant such as `sched.retry-redispatch`; Redis-backed runtime owner restart/reconnect has scheduled/manual chaos coverage, while process kill and partition/failover require `../roadmap/WORKER_FAULT_MATRIX_INFRA_FAULT_DECISION.md` before proof claims |
+| runtime backend parity (`memory` vs `redis`) | shared runtime contract tests plus one shared Boot-shell scenario with backend-specific subclasses; Redis tests must use isolated namespace prefixes and explicit fixture cleanup, not `shutdown()` cleanup | add backend-specific tests only for implementation-only keyspace/script behavior, namespace isolation, or restart recovery tied to an existing invariant such as `sched.retry-redispatch`; Redis-backed runtime owner restart/reconnect has scheduled/manual chaos coverage, while process kill, partition/failover, lease-clock skew, and multi-node presence flap require a deterministic infra-fault harness before proof claims |
 | transport runtime / adapter / routing / result ingress | transport module tests + Boot-shell E2E | chaos for recovery behavior |
 | host page / filter / shell read model | server integration tests or frontend tests | one Boot-shell smoke if host behavior can drift into mainline |
 | hot-path performance / runtime counters | perf smoke + targeted engine acceptance | Boot-shell smoke if external behavior can drift |

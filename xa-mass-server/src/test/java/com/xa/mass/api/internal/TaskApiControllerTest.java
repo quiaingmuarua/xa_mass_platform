@@ -1,6 +1,9 @@
 package com.xa.mass.api.internal;
 
 import com.xa.mass.api.auth.ApiAuthInterceptor;
+import com.xa.mass.api.auth.ApiAuthTestSupport;
+import com.xa.mass.api.auth.ApiAuthorizationService;
+import com.xa.mass.api.auth.TaskSecurityViewSupport;
 import com.xa.mass.api.auth.apikey.ApiKeyCredentialService;
 import com.xa.mass.api.auth.usage.ApiUsageLedgerRecord;
 import com.xa.mass.api.auth.usage.ApiUsageLedgerService;
@@ -123,7 +126,8 @@ class TaskApiControllerTest {
         usageStore = new InMemoryApiUsageLedgerStore();
         taskReviewStore = new InMemoryTaskReviewStore();
         controller = new TaskApiController(taskQueries, taskResultQueries, taskAdmin, createTaskCatalog(),
-                authProvider, syncTaskResultBridge, taskSyncRequestSupervisor, taskStageEvidence);
+                ApiAuthTestSupport.defaultOperatorAuthService(), new ApiAuthorizationService(authProvider, null),
+                new TaskSecurityViewSupport(), syncTaskResultBridge, taskSyncRequestSupervisor, taskStageEvidence);
         controller.setApiUsageLedgerService(new ApiUsageLedgerService(usageStore));
         controller.setTaskReviewReadModelWriter(directReviewWriter());
         mockMvc = MockMvcBuilders.standaloneSetup(
@@ -679,6 +683,52 @@ class TaskApiControllerTest {
     }
 
     @Test
+    void appendTaskItemSyncUsesItemEventCodeForAppendAndReview() throws Exception {
+        when(taskQueries.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
+        when(taskQueries.getTaskState(TASK_ID)).thenReturn(taskState("READY", "OPEN"));
+        when(taskAdmin.appendTaskItemsWithReceipt(any(), any(MassTaskItemBatchAppendRequest.class)))
+                .thenReturn(new TaskItemBatchAppendReceipt(TASK_ID, 1, List.of("msg-item-event")));
+        CompletableFuture<TaskWorkFinalSnapshot> future = new CompletableFuture<>();
+        when(syncTaskResultBridge.register(TASK_ID, "msg-item-event")).thenReturn(future);
+        when(syncTaskResultBridge.getExistingFinal(TASK_ID, "msg-item-event")).thenReturn(Optional.empty());
+
+        org.springframework.test.web.servlet.MvcResult mvcResult = mockMvc.perform(post("/api/v1/tasks/{taskId}/items:sync", TASK_ID)
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "item":{"eventCode":"chatbot.reply","text":"hello"},
+                                  "timeoutMs":2000
+                                }
+                                """))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        future.complete(new TaskWorkFinalSnapshot(
+                TASK_ID,
+                "msg-item-event",
+                "SUCCESS",
+                "BUSINESS_SUCCESS",
+                0,
+                null,
+                null,
+                null,
+                Map.of("ok", true)
+        ));
+        mvcResult.getAsyncResult(2000);
+
+        mockMvc.perform(asyncDispatch(mvcResult))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.messageId").value("msg-item-event"));
+
+        ArgumentCaptor<MassTaskItemBatchAppendRequest> appendCaptor =
+                ArgumentCaptor.forClass(MassTaskItemBatchAppendRequest.class);
+        verify(taskAdmin).appendTaskItemsWithReceipt(eq(TASK_ID), appendCaptor.capture());
+        assertEquals("chatbot.reply", appendCaptor.getValue().getEventCode());
+        assertEquals("chatbot.reply",
+                taskReviewStore.findItem(TASK_ID, "msg-item-event").orElseThrow().eventCode());
+    }
+
+    @Test
     void appendTaskItemSyncReturnsTimeoutWithoutCancellingAppend() throws Exception {
         when(taskQueries.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
         when(taskQueries.getTaskState(TASK_ID)).thenReturn(taskState("RUNNING", "OPEN"));
@@ -854,7 +904,8 @@ class TaskApiControllerTest {
         zeroCapacitySupervisor.acquire("demoApp", TASK_ID);
         MockMvc capacityMvc = MockMvcBuilders.standaloneSetup(
                 new TaskApiController(taskQueries, taskResultQueries, taskAdmin, createTaskCatalog(),
-                        authProvider, syncTaskResultBridge, zeroCapacitySupervisor),
+                        ApiAuthTestSupport.defaultOperatorAuthService(), new ApiAuthorizationService(authProvider, null),
+                        new TaskSecurityViewSupport(), syncTaskResultBridge, zeroCapacitySupervisor, null),
                 new InternalTaskReviewController(taskQueries, reviewReadModel())
         ).build();
 

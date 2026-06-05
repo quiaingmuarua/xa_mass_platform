@@ -97,70 +97,6 @@ public class TaskApiController {
     private ApiUsageLedgerService apiUsageLedgerService;
     private TaskReviewReadModelWriter taskReviewReadModelWriter;
 
-    public TaskApiController(TaskQueryOperations taskQueries,
-                             TaskAdminOperations taskAdmin) {
-        this(taskQueries, null, taskAdmin, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(),
-                new ApiAuthService(), new ApiAuthorizationService(), new TaskSecurityViewSupport(), null, null, null);
-    }
-
-    public TaskApiController(TaskQueryOperations taskQueries,
-                             TaskAdminOperations taskAdmin,
-                             ControlPlaneCatalog catalog) {
-        this(taskQueries, null, taskAdmin, catalog, new ApiAuthService(), new ApiAuthorizationService(),
-                new TaskSecurityViewSupport(), null, null, null);
-    }
-
-    public TaskApiController(TaskQueryOperations taskQueries,
-                             TaskResultQueryOperations taskResultQueries,
-                             TaskAdminOperations taskAdmin,
-                             ControlPlaneCatalog catalog,
-                             com.xa.mass.sdk.auth.AuthProvider authProvider) {
-        this(taskQueries, taskResultQueries, taskAdmin, catalog, new ApiAuthService(),
-                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), null, null, null);
-    }
-
-    public TaskApiController(TaskQueryOperations taskQueries,
-                             TaskResultQueryOperations taskResultQueries,
-                             TaskAdminOperations taskAdmin,
-                             ControlPlaneCatalog catalog,
-                             com.xa.mass.sdk.auth.AuthProvider authProvider,
-                             SyncTaskResultBridge syncTaskResultBridge) {
-        this(taskQueries, taskResultQueries, taskAdmin, catalog, authProvider, syncTaskResultBridge, null);
-    }
-
-    public TaskApiController(TaskQueryOperations taskQueries,
-                             TaskResultQueryOperations taskResultQueries,
-                             TaskAdminOperations taskAdmin,
-                             ControlPlaneCatalog catalog,
-                             com.xa.mass.sdk.auth.AuthProvider authProvider,
-                             SyncTaskResultBridge syncTaskResultBridge,
-                             TaskSyncRequestSupervisor taskSyncRequestSupervisor) {
-        this(taskQueries, taskResultQueries, taskAdmin, catalog, new ApiAuthService(),
-                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), syncTaskResultBridge,
-                taskSyncRequestSupervisor, null);
-    }
-
-    public TaskApiController(TaskQueryOperations taskQueries,
-                             TaskResultQueryOperations taskResultQueries,
-                             TaskAdminOperations taskAdmin,
-                             ControlPlaneCatalog catalog,
-                             com.xa.mass.sdk.auth.AuthProvider authProvider,
-                             SyncTaskResultBridge syncTaskResultBridge,
-                             TaskSyncRequestSupervisor taskSyncRequestSupervisor,
-                             TaskStageEvidenceOperations taskStageEvidence) {
-        this(taskQueries, taskResultQueries, taskAdmin, catalog, new ApiAuthService(),
-                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), syncTaskResultBridge,
-                taskSyncRequestSupervisor, taskStageEvidence);
-    }
-
-    public TaskApiController(TaskQueryOperations taskQueries,
-                             TaskAdminOperations taskAdmin,
-                             ControlPlaneCatalog catalog,
-                             com.xa.mass.sdk.auth.AuthProvider authProvider) {
-        this(taskQueries, null, taskAdmin, catalog, new ApiAuthService(),
-                new ApiAuthorizationService(authProvider, null), new TaskSecurityViewSupport(), null, null, null);
-    }
-
     @Autowired
     public TaskApiController(TaskQueryOperations taskQueries,
                              TaskAdminOperations taskAdmin,
@@ -183,25 +119,25 @@ public class TaskApiController {
                 taskStageEvidenceProvider == null ? null : taskStageEvidenceProvider.getIfAvailable());
     }
 
-    private TaskApiController(TaskQueryOperations taskQueries,
-                              TaskResultQueryOperations taskResultQueries,
-                              TaskAdminOperations taskAdmin,
-                              ControlPlaneCatalog catalog,
-                              ApiAuthService apiAuthService,
-                              ApiAuthorizationService apiAuthorizationService,
-                              TaskSecurityViewSupport taskSecurityViewSupport,
-                              SyncTaskResultBridge syncTaskResultBridge,
-                              TaskSyncRequestSupervisor taskSyncRequestSupervisor,
-                              TaskStageEvidenceOperations taskStageEvidence) {
+    public TaskApiController(TaskQueryOperations taskQueries,
+                             TaskResultQueryOperations taskResultQueries,
+                             TaskAdminOperations taskAdmin,
+                             ControlPlaneCatalog catalog,
+                             ApiAuthService apiAuthService,
+                             ApiAuthorizationService apiAuthorizationService,
+                             TaskSecurityViewSupport taskSecurityViewSupport,
+                             SyncTaskResultBridge syncTaskResultBridge,
+                             TaskSyncRequestSupervisor taskSyncRequestSupervisor,
+                             TaskStageEvidenceOperations taskStageEvidence) {
         this.taskQueries = taskQueries;
         this.taskResultQueries = taskResultQueries != null
                 ? taskResultQueries
                 : taskQueries instanceof TaskResultQueryOperations resultQueries ? resultQueries : null;
         this.taskAdmin = taskAdmin;
-        this.catalog = catalog;
-        this.apiAuthService = apiAuthService == null ? new ApiAuthService() : apiAuthService;
-        this.apiAuthorizationService = apiAuthorizationService == null ? new ApiAuthorizationService() : apiAuthorizationService;
-        this.taskSecurityViewSupport = taskSecurityViewSupport == null ? new TaskSecurityViewSupport() : taskSecurityViewSupport;
+        this.catalog = catalog == null ? DefaultProjectEventCatalogFactory.createDefaultProjectRegistry() : catalog;
+        this.apiAuthService = Objects.requireNonNull(apiAuthService, "apiAuthService");
+        this.apiAuthorizationService = Objects.requireNonNull(apiAuthorizationService, "apiAuthorizationService");
+        this.taskSecurityViewSupport = Objects.requireNonNull(taskSecurityViewSupport, "taskSecurityViewSupport");
         this.taskApiContractAssembler = new TaskApiContractAssembler(DATE_TIME_FORMATTER);
         this.syncTaskResultBridge = syncTaskResultBridge;
         this.taskSyncRequestSupervisor = taskSyncRequestSupervisor == null
@@ -446,13 +382,13 @@ public class TaskApiController {
             TaskSyncRequestSupervisor.SyncLease acquiredLease = syncLease;
 
             TaskItemBatchAppendReceipt receipt = taskAdmin.appendTaskItemsWithReceipt(taskId, MassTaskItemBatchAppendRequest.builder()
-                    .eventCode(requestBody.getEventCode())
+                    .eventCode(eventCode)
                     .items(items)
                     .build());
             String messageId = requireSingleMessageId(receipt);
             recordReviewItemsAccepted(taskId,
                     task.getSharedConfig(),
-                    normalizeAppendItemsForReview(items, requestBody.getEventCode()),
+                    normalizeAppendItemsForReview(items, eventCode),
                     receipt,
                     resolveDefaultMaxRetryCount(taskId));
             usage = recordApiUsage(

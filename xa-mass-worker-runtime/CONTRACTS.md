@@ -237,8 +237,9 @@ Worker registration may create or refresh a registry slot so the runtime can
 route current work, but declaration persistence is not the source of active
 online state. Online state comes from transport reachability, heartbeat
 freshness in current registry metadata, dispatch gates, and admission evidence.
-TWH-3B must remove declaration-store writes that persist heartbeat or
-online/offline churn as durable worker truth.
+Declaration-store writes must keep projecting to `WorkerDeclarationRecord`
+before persistence so heartbeat or online/offline churn never becomes durable
+worker declaration truth.
 
 ## Registry SPI Below This Boundary
 

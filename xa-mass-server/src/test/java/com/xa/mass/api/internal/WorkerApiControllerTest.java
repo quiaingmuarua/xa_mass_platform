@@ -9,15 +9,10 @@ import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
 import com.xa.mass.sdk.event.EventDefinition;
-import com.xa.mass.sdk.model.WorkerCapabilityReportRequest;
-import com.xa.mass.sdk.model.WorkerCapabilityReportSnapshot;
-import com.xa.mass.sdk.model.WorkerCommandAcknowledgementRequest;
 import com.xa.mass.sdk.model.WorkerCommandResultSnapshot;
 import com.xa.mass.sdk.model.WorkerCommandSnapshot;
 import com.xa.mass.sdk.model.WorkerCommandSubmitRequest;
 import com.xa.mass.sdk.model.WorkerStateProjectionSnapshot;
-import com.xa.mass.sdk.model.WorkerStateReportRequest;
-import com.xa.mass.sdk.model.WorkerStateReportSnapshot;
 import com.xa.mass.sdk.model.WorkerSnapshot;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,7 +30,6 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -140,32 +134,19 @@ class WorkerApiControllerTest {
     }
 
     @Test
-    void reportWorkerCapabilityDelegatesToSdkWorkerControl() throws Exception {
-        when(workerControl.reportWorkerCapability(any())).thenReturn(new WorkerCapabilityReportSnapshot(
-                "ACCEPTED", "worker-001", 7, true, true, "updated"
-        ));
+    void listWorkersAppliesDiagnosticResponseLimit() throws Exception {
+        WorkerSnapshot worker1 = workerSnapshot("worker-001");
+        WorkerSnapshot worker2 = workerSnapshot("worker-002");
+        when(workerQueries.getAllWorkers()).thenReturn(List.of(worker1, worker2));
+        when(workerQueries.isWorkerOnline("worker-001")).thenReturn(true);
+        when(runtimeDiagnostics.listSessions()).thenReturn(List.of());
 
-        mockMvc.perform(post("/api/v1/runtime/workers/{workerId}/capability-reports", "worker-001")
-                        .contentType("application/json")
-                        .content("""
-                                {
-                                  "capabilityVersion":7,
-                                  "availableEventCodes":["demo.dispatch"],
-                                  "schedulingAttributes":{"country":"us"},
-                                  "agentVersion":"1.2.3"
-                                }
-                                """))
+        mockMvc.perform(get("/api/v1/runtime/workers").param("limit", "1"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.workerId").value("worker-001"))
-                .andExpect(jsonPath("$.data.accepted").value(true));
-
-        ArgumentCaptor<WorkerCapabilityReportRequest> captor =
-                ArgumentCaptor.forClass(WorkerCapabilityReportRequest.class);
-        verify(workerControl).reportWorkerCapability(captor.capture());
-        assertEquals("worker-001", captor.getValue().workerId());
-        assertEquals(List.of("demo.dispatch"), captor.getValue().availableEventCodes());
-        assertEquals("us", captor.getValue().schedulingAttributes().get("country"));
+                .andExpect(jsonPath("$.data.total").value(2))
+                .andExpect(jsonPath("$.data.limit").value(1))
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].workerId").value("worker-001"));
     }
 
     @Test
@@ -174,31 +155,8 @@ class WorkerApiControllerTest {
         WorkerStateProjectionSnapshot projection = new WorkerStateProjectionSnapshot(
                 "worker-001", 3, "DRAINING", "maintenance", observedAt, observedAt
         );
-        when(workerControl.reportWorkerState(any())).thenReturn(new WorkerStateReportSnapshot(
-                "ACCEPTED", "worker-001", 3, true, true, "updated", projection
-        ));
         when(workerControl.getWorkerStateProjection("worker-001")).thenReturn(projection);
         when(workerControl.listWorkerStateProjections()).thenReturn(List.of(projection));
-
-        mockMvc.perform(post("/api/v1/runtime/workers/{workerId}/state-reports", "worker-001")
-                        .contentType("application/json")
-                        .content("""
-                                {
-                                  "stateVersion":3,
-                                  "state":"DRAINING",
-                                  "reason":"maintenance",
-                                  "observedAt":"2026-05-18T10:00:00Z",
-                                  "attributes":{"source":"operator"}
-                                }
-                                """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.projection.state").value("DRAINING"));
-
-        ArgumentCaptor<WorkerStateReportRequest> captor =
-                ArgumentCaptor.forClass(WorkerStateReportRequest.class);
-        verify(workerControl).reportWorkerState(captor.capture());
-        assertEquals("worker-001", captor.getValue().workerId());
-        assertEquals("operator", captor.getValue().attributes().get("source"));
 
         mockMvc.perform(get("/api/v1/runtime/workers/{workerId}/state", "worker-001"))
                 .andExpect(status().isOk())
@@ -206,6 +164,27 @@ class WorkerApiControllerTest {
 
         mockMvc.perform(get("/api/v1/runtime/workers/states"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].workerId").value("worker-001"))
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.limit").value(200));
+    }
+
+    @Test
+    void listWorkerStatesAppliesDiagnosticResponseLimit() throws Exception {
+        Instant observedAt = Instant.parse("2026-05-18T10:00:00Z");
+        WorkerStateProjectionSnapshot projection1 = new WorkerStateProjectionSnapshot(
+                "worker-001", 3, "DRAINING", "maintenance", observedAt, observedAt
+        );
+        WorkerStateProjectionSnapshot projection2 = new WorkerStateProjectionSnapshot(
+                "worker-002", 1, "ACTIVE", null, observedAt, observedAt
+        );
+        when(workerControl.listWorkerStateProjections()).thenReturn(List.of(projection1, projection2));
+
+        mockMvc.perform(get("/api/v1/runtime/workers/states").param("limit", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(2))
+                .andExpect(jsonPath("$.data.limit").value(1))
+                .andExpect(jsonPath("$.data.items.length()").value(1))
                 .andExpect(jsonPath("$.data.items[0].workerId").value("worker-001"));
     }
 
@@ -230,9 +209,6 @@ class WorkerApiControllerTest {
         );
         when(workerControl.requestWorkerCommand(any())).thenReturn(new WorkerCommandResultSnapshot(
                 "ACCEPTED", true, null, "REQUESTED", "created", command
-        ));
-        when(workerControl.acknowledgeWorkerCommand(any())).thenReturn(new WorkerCommandResultSnapshot(
-                "ACCEPTED", true, "REQUESTED", "ACKED", "acked", command
         ));
         when(workerControl.getWorkerCommand("cmd-001")).thenReturn(command);
         when(workerControl.listWorkerCommandsForWorker("worker-001")).thenReturn(List.of(command));
@@ -259,21 +235,6 @@ class WorkerApiControllerTest {
         assertEquals("worker-001", submitCaptor.getValue().workerId());
         assertEquals("DRAIN", submitCaptor.getValue().commandType());
 
-        mockMvc.perform(post("/api/v1/runtime/workers/{workerId}/commands/{commandId}/ack", "worker-001", "cmd-001")
-                        .contentType("application/json")
-                        .content("""
-                                {
-                                  "status":"ACKED",
-                                  "reason":"accepted"
-                                }
-                                """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.currentStatus").value("ACKED"));
-
-        verify(workerControl).acknowledgeWorkerCommand(eq(new WorkerCommandAcknowledgementRequest(
-                "cmd-001", "ACKED", "accepted"
-        )));
-
         mockMvc.perform(get("/api/v1/runtime/workers/commands/{commandId}", "cmd-001"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.commandId").value("cmd-001"));
@@ -281,6 +242,61 @@ class WorkerApiControllerTest {
         mockMvc.perform(get("/api/v1/runtime/workers/{workerId}/commands", "worker-001"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.limit").value(200))
                 .andExpect(jsonPath("$.data.items[0].commandId").value("cmd-001"));
+    }
+
+    @Test
+    void listWorkerCommandsAppliesDiagnosticResponseLimit() throws Exception {
+        Instant now = Instant.parse("2026-05-18T10:05:00Z");
+        WorkerCommandSnapshot command1 = workerCommand("cmd-001", now);
+        WorkerCommandSnapshot command2 = workerCommand("cmd-002", now);
+        when(workerControl.listWorkerCommandsForWorker("worker-001")).thenReturn(List.of(command1, command2));
+
+        mockMvc.perform(get("/api/v1/runtime/workers/{workerId}/commands", "worker-001")
+                        .param("limit", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(2))
+                .andExpect(jsonPath("$.data.limit").value(1))
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].commandId").value("cmd-001"));
+    }
+
+    private WorkerSnapshot workerSnapshot(String workerId) {
+        return new WorkerSnapshot(
+                workerId,
+                "ONLINE",
+                "1.2.3",
+                LocalDateTime.of(2026, 4, 21, 10, 15),
+                List.of("demoApp"),
+                List.of("demo.dispatch"),
+                List.of(),
+                "group-a",
+                "websocket",
+                "realtime",
+                3,
+                Map.of("region", "us"),
+                null,
+                LocalDateTime.of(2026, 4, 21, 10, 16)
+        );
+    }
+
+    private WorkerCommandSnapshot workerCommand(String commandId, Instant now) {
+        return new WorkerCommandSnapshot(
+                commandId,
+                "worker-001",
+                "DRAIN",
+                "REQUESTED",
+                "operator",
+                "maintenance",
+                commandId,
+                1770000000000L,
+                Map.of("mode", "soft"),
+                null,
+                0,
+                null,
+                now,
+                now
+        );
     }
 }

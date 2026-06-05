@@ -559,9 +559,9 @@ Scope:
 
 Acceptance:
 
-- A follow-up trace/archive design note exists before any durable task/worker
-  history store is introduced. Current note:
-  [TASK_WORKER_TRACE_ARCHIVE_DIRECTION.md](./TASK_WORKER_TRACE_ARCHIVE_DIRECTION.md).
+- Follow-up trace/archive history requirements must update
+  [`TRACE_CONTRACT.md`](../doc/TRACE_CONTRACT.md) before any durable
+  task/worker history store is introduced.
 - Runtime hot-path writes are not blocked on archive/analytics availability.
 - Analytics requirements are expressed against trace/archive read models, not
   engine/runtime or control-plane storage APIs.
