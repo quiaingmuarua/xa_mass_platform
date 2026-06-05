@@ -163,6 +163,15 @@ baseline and token debt, then stabilize the shell.
 Goal: produce the first executable inventory so later phases do not repeat
 already-landed route/menu/auth/console-kit work.
 
+Output:
+
+```text
+Create or update frontend/CONSOLE_FRONTEND_PRODUCTIONIZATION_INVENTORY.md.
+The inventory is the durable handoff for this roadmap. Do not leave token debt,
+console-kit consumer lists, shell-mode findings, or build/chunk baseline only in
+chat or temporary notes.
+```
+
 Scope:
 
 ```text
@@ -184,6 +193,10 @@ Scope:
 6. classify existing console-kit primitives as mainline, visual debt, or
    rollback candidate
 7. record current build and test status, including any chunk warning
+8. record the current build output baseline:
+   - main chunk filename and raw/gzip size when Vite reports it
+   - exact warning text if chunk-size warning appears
+   - whether Element Plus global registration is the likely contributor
 ```
 
 Acceptance:
@@ -193,7 +206,9 @@ Acceptance:
 2. token debt is classified by owner
 3. console-kit current consumers are listed
 4. submitter-viewer shell boundary is explicit
-5. next slice is FRONT-1, not page redesign
+5. build/chunk baseline is recorded in the inventory so later changes can be
+   compared mechanically
+6. next slice is FRONT-1, not page redesign
 ```
 
 Suggested verification:
@@ -206,7 +221,8 @@ corepack pnpm build
 
 ### FRONT-1 Shell Token Foundation
 
-Goal: introduce global shell tokens without changing visible output.
+Goal: introduce global shell tokens without changing shell behavior or DOM
+ownership.
 
 Scope:
 
@@ -223,9 +239,19 @@ Acceptance:
 
 ```text
 1. global and shell styles use tokens outside token declarations
-2. rendered output is visually unchanged
-3. console-kit token debt remains visible for FRONT-4
-4. build and tests pass
+2. route/menu/auth behavior is unchanged
+3. AppShell/AppHeader/AppSidebar DOM ownership remains unchanged except for
+   token class/style substitutions
+4. console-kit token debt remains visible for FRONT-4
+5. build and tests pass
+```
+
+Manual check:
+
+```text
+The shell should look materially the same after tokenization, but this roadmap
+does not require broad screenshot baselines. Treat visual review as a manual
+sanity check, not the hard pass/fail proof for FRONT-1.
 ```
 
 ### FRONT-2 Operator Shell
@@ -254,7 +280,9 @@ Acceptance:
 3. logout calls existing logout() from @/auth/use-auth and routes to /login
 4. session auth mode hides operator mode switch
 5. submitter-viewer/public shell behavior is unchanged
-6. build and tests pass
+6. AppShell/AppHeader focused tests cover sidebar collapse, breadcrumb,
+   logout, and session-mode operator selector hiding
+7. build and tests pass
 ```
 
 ### FRONT-3 Login/Auth Surface Polish
@@ -377,7 +405,8 @@ Acceptance:
 ```text
 1. build still passes
 2. chunk warning is resolved or explicitly accepted
-3. shell/console-kit changes do not increase the main chunk without review
+3. shell/console-kit changes do not increase the FRONT-0 recorded main chunk
+   baseline without review
 ```
 
 ## Test Strategy
@@ -417,7 +446,9 @@ Manual checks:
 6. implement billing, quota, or worker earnings UI
 7. make API-key viewer a full login product
 8. clone or vendor a third-party admin template
-9. add mobile/responsive layout before a separate decision accepts the scope
+9. build a full mobile product layout before a separate decision accepts the
+   scope; keep necessary overflow and responsive safety for existing desktop
+   shell/components
 ```
 
 ## Completion Criteria
