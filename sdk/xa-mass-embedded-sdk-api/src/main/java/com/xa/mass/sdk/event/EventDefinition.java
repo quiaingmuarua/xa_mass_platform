@@ -13,6 +13,7 @@ import java.util.Collections;
 import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 
 /**
@@ -240,9 +241,17 @@ public final class EventDefinition {
             return this;
         }
 
+        public Builder priorityClassName(String priorityClass) {
+            return priorityClass(parseEnum(priorityClass, PriorityClass.class));
+        }
+
         public Builder responseMode(ResponseMode responseMode) {
             this.responseMode = responseMode != null ? responseMode : ResponseMode.FINAL_RESULT;
             return this;
+        }
+
+        public Builder responseModeName(String responseMode) {
+            return responseMode(parseEnum(responseMode, ResponseMode.class));
         }
 
         public Builder deliveryAcknowledgementMode(DeliveryAcknowledgementMode deliveryAcknowledgementMode) {
@@ -250,14 +259,28 @@ public final class EventDefinition {
             return this;
         }
 
+        public Builder deliveryAcknowledgementModeName(String deliveryAcknowledgementMode) {
+            return deliveryAcknowledgementMode(parseEnum(
+                    deliveryAcknowledgementMode,
+                    DeliveryAcknowledgementMode.class));
+        }
+
         public Builder convergenceMode(EventConvergenceMode convergenceMode) {
             this.convergenceMode = convergenceMode;
             return this;
         }
 
+        public Builder convergenceModeName(String convergenceMode) {
+            return convergenceMode(parseEnum(convergenceMode, EventConvergenceMode.class));
+        }
+
         public Builder targetScope(TargetScope targetScope) {
             this.targetScope = targetScope != null ? targetScope : TargetScope.WORKER;
             return this;
+        }
+
+        public Builder targetScopeName(String targetScope) {
+            return targetScope(parseEnum(targetScope, TargetScope.class));
         }
 
         public Builder handler(EventHandler handler) {
@@ -267,6 +290,13 @@ public final class EventDefinition {
 
         public EventDefinition build() {
             return new EventDefinition(this);
+        }
+
+        private static <E extends Enum<E>> E parseEnum(String value, Class<E> type) {
+            if (value == null || value.isBlank()) {
+                return null;
+            }
+            return Enum.valueOf(type, value.trim().toUpperCase(Locale.ROOT));
         }
     }
 }

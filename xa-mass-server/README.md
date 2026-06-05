@@ -175,6 +175,12 @@ control-plane seed/import runner:
 - `mass.control-plane.seed.mode=apply` writes metadata; `validate` parses and
   counts without writing
 
+Project/event catalog seed data is validated against event references and
+written to the platform-infra `CatalogMetadataStore` before being projected into
+the embedded SDK runtime. In JDBC storage modes, later restarts restore
+project/event catalog metadata from the durable store without rerunning
+seed/import.
+
 Example local seed:
 
 ```bash
@@ -408,11 +414,12 @@ JDBC storage scope:
   line arguments, and normal Spring config
 - integration tests should keep using isolated in-memory H2 JDBC URLs so DB
   assertions are repeatable and do not depend on a developer's persisted data
-- JDBC storage currently persists task shell truth, rule definitions, the
-  low-frequency principal auth projection used by submitter and external worker
-  API-key authentication, server-owned API-key application/credential lifecycle
-  rows, operator IAM users/roles/bindings, and low-volume API usage ledger
-  rows. `SubmitterViewerSessionStore` remains memory-only by design.
+- JDBC storage currently persists task shell truth, rule definitions,
+  project/event catalog metadata, the low-frequency principal auth projection
+  used by submitter and external worker API-key authentication, server-owned
+  API-key application/credential lifecycle rows, operator IAM
+  users/roles/bindings, and low-volume API usage ledger rows.
+  `SubmitterViewerSessionStore` remains memory-only by design.
 - task review DB rows are task opt-in. To write terminal review rows, set
   `sharedConfig.reviewMaterializationMode` to `terminal`; to include
   attempt-level diagnostic rows, set it to `diagnostic`. Leaving the key absent
@@ -424,6 +431,10 @@ Server control-plane store hard rules:
   submitter-viewer session store decisions stay in `xa-mass-server`
 - do not add server API-key, IAM, submitter-viewer session, or usage tables or
   schema concepts to `platform_infra/mass-storage-jdbc`
+- project/event catalog metadata schema belongs to
+  `platform_infra/mass-storage-jdbc`; `xa-mass-server` owns wiring,
+  seed/import, startup restore, and HTTP route exposure, not a parallel
+  server-owned catalog migration family
 - server-owned schema notes live under
   `src/main/resources/db/schema/server-control-plane`, and executable
   server-owned Flyway SQL lives under
@@ -443,6 +454,9 @@ Server control-plane store hard rules:
 - DB schema changes may require deleting/recreating local/prod DBs in this
   pre-release phase; validation proves clean DB creation and current-schema
   restart behavior, not historical upgrade compatibility
+- server dev/prod catalog reads must not be satisfied by the default/demo
+  catalog fallback. The fallback remains explicit local/embedded/test bootstrap
+  behavior only.
 - server API-key lifecycle storage must project authentication state through
   the embedded SDK's narrow `CredentialAuthProjectionWriter` contract, not
   broad submitter resource operations; API-key lifecycle schema must distinguish
@@ -554,6 +568,12 @@ Covered areas:
 - `WorkerPackGeoLookupExternalSdkIntegrationTest`: worker-pack `tool.geo.lookup`
   capability registered and executed through the Java SDK/public HTTP path,
   without preseeded worker JSON
+- `CatalogMetadataSQLiteRestartIntegrationTest`: SQLite-backed project/event
+  catalog metadata is restored without rerunning seed/import or default catalog
+  fallback
+- `CatalogRestoreWorkerCapabilityViewIntegrationTest`: restored catalog
+  metadata enriches worker capability/read views while worker topology remains
+  explicitly registered runtime/control-plane truth outside catalog tables
 - `e2e/audit`: diagnostic task-state validation and terminal metadata consistency through the real runtime path
 - `e2e/assignment`: targeted worker debug, adapter-ambiguity, and storage-compat
   support coverage

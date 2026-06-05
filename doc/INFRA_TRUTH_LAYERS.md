@@ -42,6 +42,7 @@ more implemented than another.
 | task shell truth (`Task` id/project/status/sharedConfig/terminal reason) | control-plane storage | restart recovery and operator task truth depend on it | none beyond caches | trace-only logs or hot queue state |
 | worker declaration | control-plane storage | stable worker identity plus explicit group/node membership | runtime cache/projection for lookup speed | transient transport events or active scheduling truth |
 | worker group capability | control-plane storage | `WorkerGroup.eventBindings` is the declared capability truth used to build candidate-source views | immutable runtime snapshot/index for lookup speed | worker declaration rows, transport events, or active scheduling state |
+| project/event catalog metadata | control-plane storage | stable project identities, global event capability definitions, and project-event authorization bindings must survive restart | SDK in-memory bootstrap registry for embedded/test/local use | runtime worker topology, worker presence, or trace rows |
 | worker runtime route-owner view | runtime state | volatile online/reachability truth owned by transport adapters and nodes | Redis/in-memory presence records with lease expiry | control-plane worker declaration or dispatch queues |
 | rule definitions | control-plane storage | stable policy input | in-process evaluator cache | engine-only hidden defaults inside storage modules |
 | principal / submitter credential truth | control-plane storage | stable auth binding truth | in-process auth cache | infra module exporting SDK surface |
@@ -81,8 +82,8 @@ design and must not be implied by result ingress or review materialization.
 
 | Area | Current code truth | Interpretation |
 | --- | --- | --- |
-| `platform_infra/mass-storage-jdbc` | persists task shell/rule/principal truth; no JDBC worker declaration implementation currently exists | correct control-plane role |
-| SQLite control-plane storage | lightweight persistence direction for new-environment control-plane setup; currently backs generic control-plane tables plus server API-key lifecycle, operator IAM, and low-volume usage evidence in JDBC modes; not a runtime backend | may host stable project/rule/catalog/credential truth; not a queue, lease, heartbeat, result-convergence, or trace store |
+| `platform_infra/mass-storage-jdbc` | persists task shell/rule/principal/catalog truth; no JDBC worker declaration implementation currently exists | correct control-plane role |
+| SQLite control-plane storage | lightweight persistence direction for new-environment control-plane setup; currently backs generic control-plane tables including project/event catalog metadata plus server API-key lifecycle, operator IAM, and low-volume usage evidence in JDBC modes; not a runtime backend | may host stable project/rule/catalog/credential truth; not a queue, lease, heartbeat, result-convergence, or trace store |
 | JDBC-local worker lock residue | process-local runtime residue | not durable worker-runtime truth; worker locks/capacity must not become control-plane storage truth |
 | `platform_infra/mass-storage-memory` | in-memory task shell, worker declaration adapter, and rule definition storage | current embedded/test implementation |
 | `mass-runtime-*` modules | queue/lease/counter semantics | canonical runtime-state home |
@@ -133,6 +134,8 @@ Current DB scope:
   adapter/transport hint, and static worker attributes
 - worker group capability truth: supported projects, event codes, and
   group-level capability metadata
+- project/event catalog metadata: project identities, global event capability
+  definitions, and project-event bindings
 - rule definitions
 - principal credential truth
 - explicit environment seed/import metadata for new control-plane setup
@@ -157,12 +160,14 @@ Current product-stage DB rules:
 - Server-owned API-key lifecycle, IAM/user-role, API usage ledger, and
   submitter-viewer session store decisions belong to `xa-mass-server`.
   `platform_infra` may own generic storage primitives and generic task/rule/
-  principal migrations, but it must not grow server API/IAM table concepts.
+  principal/catalog migrations, but it must not grow server API/IAM table
+  concepts.
 - Server-owned schema notes belong under
   `xa-mass-server/src/main/resources/db/schema/server-control-plane`, and
   executable server-owned Flyway SQL belongs under
   `xa-mass-server/src/main/resources/db/migration/server-control-plane`.
-  Generic platform storage SQL remains under
+  Generic platform storage SQL, including project/event catalog metadata,
+  remains under
   `platform_infra/mass-storage-jdbc`.
 - Submitter-viewer sessions are runtime/session convenience state. They must
   not be persisted in SQLite/JDBC as control-plane truth; future cross-process

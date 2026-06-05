@@ -25,9 +25,12 @@ import com.xa.mass.api.review.TaskReviewReportQueue;
 import com.xa.mass.api.review.TaskReviewStore;
 import com.xa.mass.api.review.TaskReviewStoreMaterializer;
 import com.xa.mass.api.review.TaskReviewStoreTaskReviewReadModel;
+import com.xa.mass.server.catalog.CatalogMetadataProjection;
+import com.xa.mass.storage.api.CatalogMetadataStore;
 import com.xa.mass.storage.api.TaskShellStore;
 import com.xa.mass.storage.jdbc.JdbcStorageMode;
 import com.xa.mass.storage.jdbc.JdbcStorageRuntime;
+import com.xa.mass.storage.memory.InMemoryCatalogMetadataStore;
 import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassSdk;
@@ -211,6 +214,15 @@ public class XaMassServerApplication {
 
     @Bean
     @Profile({"dev", "prod"})
+    public CatalogMetadataStore catalogMetadataStore(JdbcStorageRuntime jdbcStorageRuntime) {
+        if (jdbcStorageRuntime.isEnabled()) {
+            return jdbcStorageRuntime.catalogMetadataStore();
+        }
+        return new InMemoryCatalogMetadataStore();
+    }
+
+    @Bean
+    @Profile({"dev", "prod"})
     public TaskReviewStore taskReviewStore(JdbcStorageRuntime jdbcStorageRuntime) {
         if (jdbcStorageRuntime.isEnabled()) {
             return new JdbcTaskReviewStore(jdbcStorageRuntime.dataSource());
@@ -282,6 +294,7 @@ public class XaMassServerApplication {
     @Profile({"dev", "prod"})
     public MassSdkApplication fullStackRuntimeApplication(ObjectProvider<MassBootstrapDataProvider> bootstrapDataProvider,
                                                           JdbcStorageRuntime jdbcStorageRuntime,
+                                                          CatalogMetadataStore catalogMetadataStore,
                                                           TaskShellStore taskShellStore,
                                                           ObjectProvider<TaskWorkRuntime> taskWorkRuntimeProvider,
                                                           ObjectProvider<TaskResultRuntime> taskResultRuntimeProvider,
@@ -293,7 +306,7 @@ public class XaMassServerApplication {
                     JdbcStorageMode.parse(storageMode)
             ));
         }
-        return builder
+        MassSdkApplication app = builder
                 .projectCatalogBootstrap(new ProjectEventCatalogRegistry())
                 .transport(transport -> {
                     java.util.function.Supplier<TransportDeliveryStore> deliveryStoreFactory =
@@ -354,6 +367,8 @@ public class XaMassServerApplication {
                     }
                 })
                 .build();
+        CatalogMetadataProjection.restoreIntoApplication(catalogMetadataStore, app);
+        return app;
     }
 
     private WorkerRegistry workerRegistry() {

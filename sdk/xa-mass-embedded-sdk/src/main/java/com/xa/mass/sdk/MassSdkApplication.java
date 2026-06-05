@@ -1002,6 +1002,8 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 .projectCodes(mergeProjectCodes(resolveProjectCodesForEvent(normalized.getCode()), normalized.getProjectCodes()))
                 .priorityClass(normalized.getPriorityClass())
                 .responseMode(normalized.getResponseMode())
+                .deliveryAcknowledgementMode(normalized.getDeliveryAcknowledgementMode())
+                .convergenceMode(normalized.getConvergenceMode())
                 .targetScope(normalized.getTargetScope())
                 .handler(resolveDefinitionHandler(normalized))
                 .build();
@@ -1039,6 +1041,8 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                             .projectCodes(mergeProjectCodes(existing.getProjectCodes(), List.of(projectDefinition.getCode())))
                             .priorityClass(existing.getPriorityClass())
                             .responseMode(existing.getResponseMode())
+                            .deliveryAcknowledgementMode(existing.getDeliveryAcknowledgementMode())
+                            .convergenceMode(existing.getConvergenceMode())
                             .targetScope(existing.getTargetScope())
                             .handler(existingHandler)
                             .build()),

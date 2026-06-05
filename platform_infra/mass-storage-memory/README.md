@@ -11,6 +11,7 @@ Current scope:
 - `InMemoryTaskShellStore`
 - `InMemoryWorkerDeclarationStore`
 - `InMemoryRuleStorage`
+- `InMemoryCatalogMetadataStore`
 
 These classes provide in-memory task/rule storage plus the current in-memory
 worker declaration store used by engine defaults, focused tests, and storage
@@ -26,6 +27,9 @@ Current code truth:
   as worker runtime scheduling truth
 - `InMemoryRuleStorage` is definition storage only; rule-evaluator ownership
   belongs to engine rule-runtime assembly
+- `InMemoryCatalogMetadataStore` is the process-local implementation of
+  project/event catalog metadata for embedded, dev fallback, and focused
+  contract tests; it is not a durable restart proof for server JDBC modes
 - SDK auth helpers such as `InMemorySubmitterRegistry` no longer live here; do
   not reintroduce SDK-surface packaging into this module
 - other modules should not reintroduce rule evaluator lifecycle into this

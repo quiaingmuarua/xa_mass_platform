@@ -9,6 +9,7 @@ root [AGENTS.md](../../AGENTS.md) and [../README.md](../README.md) first.
 
 - owns JDBC task truth persistence
 - owns JDBC rule-definition persistence
+- owns JDBC project/event catalog metadata persistence
 - owns H2/PostgreSQL dialect wiring and migrations
 - does not own worker runtime registry, worker locks, dispatch gates, or
   worker registration churn
@@ -29,6 +30,10 @@ Current implementation facts:
 
 - `JdbcTaskShellStore` persists durable task shell truth but keeps `TaskMsg` and
   `TaskMsgAttempt` compatibility reads in-process
+- `JdbcCatalogMetadataStore` persists restart-readable project/event catalog
+  metadata through the shared `CatalogMetadataStore` contract; it does not
+  persist WorkerGroup, adapter-node, worker presence, heartbeat, or runtime
+  topology truth
 - `JdbcStorageRuntime` is currently more than a storage factory: it wires
   datasource, Flyway, and adapter construction, and it is the
   first file to re-check when boundary drift is suspected
@@ -52,6 +57,8 @@ update this README in the same change.
 - `src/main/java/com/xa/mass/storage/jdbc/JdbcStorageRuntime.java`
 - `src/main/java/com/xa/mass/storage/jdbc/JdbcTaskShellStore.java`
 - `src/main/java/com/xa/mass/storage/jdbc/JdbcRuleStorage.java`
+- `src/main/java/com/xa/mass/storage/jdbc/JdbcCatalogMetadataStore.java`
+- `src/main/resources/db/migration/control-plane/V4__create_catalog_tables.sql`
 
 ## Fast Verification
 
@@ -60,6 +67,7 @@ Prefer these checks after changing this module:
 ```bash
 ./mvnw -q -pl platform_infra/mass-storage-jdbc -am test -Dtest=JdbcStorageH2Test -Dsurefire.failIfNoSpecifiedTests=false
 ./mvnw -q -pl platform_infra/mass-storage-jdbc -am test -Dtest=JdbcStoragePostgresTest -Dsurefire.failIfNoSpecifiedTests=false
+./mvnw -q -pl platform_infra/mass-storage-jdbc -am test -Dtest=JdbcH2CatalogMetadataStoreContractTest,JdbcSQLiteCatalogMetadataStoreContractTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
 `JdbcStoragePostgresTest` requires a working Docker/Testcontainers environment.

@@ -1,6 +1,7 @@
 package com.xa.mass.server.bootstrap.seed;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xa.mass.server.catalog.CatalogMetadataProjection;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
@@ -8,6 +9,7 @@ import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.event.EventDefinition;
+import com.xa.mass.storage.api.CatalogMetadataStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.Resource;
@@ -24,11 +26,16 @@ final class ControlPlaneSeedImporter {
     private static final Logger log = LoggerFactory.getLogger(ControlPlaneSeedImporter.class);
 
     private final MassSdkApplication app;
+    private final CatalogMetadataStore catalogMetadataStore;
     private final ObjectMapper objectMapper;
     private final ResourceLoader resourceLoader;
 
-    ControlPlaneSeedImporter(MassSdkApplication app, ObjectMapper objectMapper, ResourceLoader resourceLoader) {
+    ControlPlaneSeedImporter(MassSdkApplication app,
+                             CatalogMetadataStore catalogMetadataStore,
+                             ObjectMapper objectMapper,
+                             ResourceLoader resourceLoader) {
         this.app = Objects.requireNonNull(app, "app is required");
+        this.catalogMetadataStore = Objects.requireNonNull(catalogMetadataStore, "catalogMetadataStore is required");
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper is required");
         this.resourceLoader = Objects.requireNonNull(resourceLoader, "resourceLoader is required");
     }
@@ -51,12 +58,14 @@ final class ControlPlaneSeedImporter {
         List<RuleDefinition> ruleDefinitions = List.copyOf(rules.getRules());
 
         SeedImportResult result = new SeedImportResult(events.size(), projects.size(), submitters.size(), ruleDefinitions.size());
+        CatalogMetadataProjection.validateUpsert(catalogMetadataStore, events, projects);
         if (request.validateOnly()) {
             log.info("Validated control-plane seed catalogLocation={} rulesLocation={} result={}",
                     request.catalogLocation(), request.rulesLocation(), result);
             return result;
         }
 
+        CatalogMetadataProjection.upsertCatalog(catalogMetadataStore, events, projects);
         events.forEach(app::registerEventDefinition);
         projects.forEach(app::registerProject);
         submitters.forEach(app::registerSubmitter);

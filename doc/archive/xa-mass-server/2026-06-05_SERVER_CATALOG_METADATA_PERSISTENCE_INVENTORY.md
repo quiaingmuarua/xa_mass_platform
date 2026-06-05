@@ -1,7 +1,20 @@
 # Server Catalog Metadata Persistence Inventory
 
-Status: proposed inventory for
-`SERVER_CATALOG_METADATA_PERSISTENCE_ROADMAP.md`.
+Archived: 2026-06-05.
+
+Status: implemented and archived historical inventory for
+`2026-06-05_SERVER_CATALOG_METADATA_PERSISTENCE_ROADMAP.md`.
+
+Current truth owners:
+
+- `platform_infra/mass-storage-api/README.md`
+- `platform_infra/mass-storage-memory/README.md`
+- `platform_infra/mass-storage-jdbc/README.md`
+- `xa-mass-server/README.md`
+- `doc/INFRA_TRUTH_LAYERS.md`
+
+Do not use this archived inventory as proof of current behavior. Verify against
+current code, tests, and owner README files.
 
 ## Scope
 
@@ -34,6 +47,10 @@ or high-volume task/item history.
 | `ControlPlaneSeedImportConfiguration` | `xa-mass-server` | optional startup import | explicit operator/new-env action | Keep default-off; no hidden dev/prod seed path. |
 | `CatalogController` / `ProjectApiController` | `xa-mass-server` | reads `ControlPlaneCatalog` | HTTP read surface | Continue reading projected catalog truth; route shape is out of scope unless existing routes cannot expose persisted state. |
 | `WorkerCapabilityViewSupport` | `xa-mass-server` | reads `ControlPlaneCatalog` to enrich event binding views | catalog-backed read projection | Add proof that restored durable catalog drives worker capability/read views without storing worker topology in catalog tables. |
+| `CatalogMetadataStore` | `platform_infra/mass-storage-api` | storage contract | durable catalog metadata port | Owns restart-readable project/event catalog metadata. |
+| `InMemoryCatalogMetadataStore` | `platform_infra/mass-storage-memory` | in-memory maps | process-local implementation | Embedded/dev fallback and contract proof implementation, not durable server proof. |
+| `JdbcCatalogMetadataStore` | `platform_infra/mass-storage-jdbc` | JDBC tables from control-plane Flyway migration | durable implementation | SQLite/H2 contract proof and server JDBC-mode restart source. |
+| `CatalogMetadataProjection` | `xa-mass-server` | projection helper over store + embedded SDK | server assembly/projection | Restores durable store rows into `MassSdkApplication` and validates seed/import writes. |
 
 ## Current Code Observations
 
@@ -58,6 +75,9 @@ or high-volume task/item history.
 - Existing `RuleStorage` already has JDBC backing through
   `JdbcStorageRuntime.ruleStorage()` and is not the primary gap in this
   roadmap.
+- `CatalogMetadataStore` now has memory and JDBC implementations; JDBC schema
+  is owned by the platform-infra control-plane migration path, not by
+  server-owned API/IAM migrations.
 - `ControlPlaneSeedImporter` currently calls
   `registerEventDefinition(...)`, `registerProject(...)`,
   `registerSubmitter(...)`, and `replaceDefaultRules(...)`. This proves the
@@ -93,11 +113,23 @@ or high-volume task/item history.
    - project events into runtime event definition descriptors;
    - then allow route handlers, seed/import, and worker registration proof to
      run.
-6. Decide seed/import idempotency semantics for existing rows:
-   insert-only, replace-by-code, or explicit `--replace` style behavior.
-7. Decide seed/import reference-integrity behavior for unknown event codes in
-   project seeds. Target: reject or report explicit failure before writing
-   partial project metadata.
+6. Seed/import idempotency semantics for existing rows: replace-by-code.
+   Re-importing a project or event with the same code replaces that catalog
+   record and its project-event bindings; it does not create duplicates.
+   This decision is CAT-1/CAT-3 contract input and must not remain implicit in
+   implementation code.
+7. Seed/import reference-integrity behavior for unknown event codes in project
+   seeds: reject before writing project metadata. A failed import must not
+   leave partially persisted project catalog rows.
+   This decision is CAT-1/CAT-3 contract input and must not remain implicit in
+   implementation code.
+8. Catalog migration SQL belongs under
+   `platform_infra/mass-storage-jdbc/src/main/resources/db/migration/control-plane/`.
+   `xa-mass-server` consumes it through classpath assembly and must not add a
+   parallel catalog migration under `db/migration/server-control-plane`.
+9. SQLite is the restart/durable product proof. In-memory H2 remains a CI
+   schema/contract proof for the same migration shape, not a separate server
+   profile file or product durability target.
 
 ## Non-Store / Out-of-Scope Memory
 
@@ -118,23 +150,24 @@ or high-volume task/item history.
 | `CleanServerStartupIntegrationTest` | proves clean startup has no hidden sample/task/worker seed | Keep: durable catalog restore must not become hidden sample bootstrap. |
 | `ServerControlPlaneStoreConfigurationTest` | proves server-owned store assembly for API-key/IAM/usage | Use as pattern if catalog store becomes server-owned. |
 | `ServerMainSourceArchitectureGuardTest` | source guard for server boundaries | Add guard for catalog schema placement and no hidden in-memory catalog fallback if needed. |
-| New catalog store contract test | missing | Required for memory/JDBC parity if a store contract is introduced. |
-| New SQLite restart proof | missing | Required to prove project/event catalog metadata survives process/store restart without repeated import. |
-| New default-fallback absence proof | missing | Required to prove server dev/prod durable catalog mode does not satisfy route reads through `DefaultProjectEventCatalogFactory`. |
-| Worker capability catalog restore proof | missing | Required to prove restored catalog enriches worker capability/read views without catalog tables storing worker topology/runtime state. |
+| `CatalogMetadataStoreContractTest` | landed | Required for memory/JDBC parity if a store contract is introduced. |
+| `CatalogMetadataSQLiteRestartIntegrationTest` | landed | Proves project/event catalog metadata survives SQLite restart without repeated import. |
+| New default-fallback runtime proof | landed through restart proof | CAT-2 integration proof: server dev/prod durable catalog mode does not satisfy route reads through `DefaultProjectEventCatalogFactory` when durable rows exist. |
+| New default-fallback source guard | landed in `ServerMainSourceArchitectureGuardTest` | CAT-4 static/source guard: durable server assembly cannot regress to route-visible `DefaultProjectEventCatalogFactory` fallback truth. |
+| `CatalogRestoreWorkerCapabilityViewIntegrationTest` | landed | Proves restored catalog enriches worker capability/read views without catalog tables storing worker topology/runtime state. |
+| New catalog restore ordering proof | partially covered by restart/route proof | Restore is verified before route reads in server startup; a stricter failure-injection proof is optional follow-up if startup ordering becomes indirect. |
 
-## Immediate Gaps
+## Resolved Mainline Gaps
 
-1. Durable catalog store contract and schema do not exist.
-2. Server dev/prod assembly still uses `new ProjectEventCatalogRegistry()` as
-   the only catalog bootstrap registry.
-3. Route-visible default catalog fallback can still appear through
-   `CatalogConfiguration` when no `ControlPlaneCatalog` bean exists.
-4. Task route constructors still create default catalog fallbacks on null
-   catalog input.
-5. Seed/import does not yet prove project-event reference integrity before
-   project metadata is written.
-6. No SQLite restart proof proves catalog metadata is restored without
-   seed/import replay.
-7. No guard currently prevents default/demo catalog fallback from masking a
-   missing durable catalog restore in server dev/prod mode.
+1. Durable catalog store contract and schema now exist under `platform_infra`.
+2. Server dev/prod assembly now restores catalog rows from `CatalogMetadataStore`
+   into the embedded SDK projection.
+3. Route-visible default catalog fallback is excluded from dev/prod profile
+   assembly.
+4. Task route constructors require an injected `ControlPlaneCatalog` and no
+   longer create constructor-level default catalog fallbacks.
+5. Seed/import validates project-event references before durable project
+   metadata write.
+6. SQLite restart proof covers catalog restore without seed/import replay.
+7. Source guard prevents default/demo catalog fallback from masking durable
+   dev/prod catalog truth.

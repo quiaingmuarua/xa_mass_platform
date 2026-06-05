@@ -1,9 +1,22 @@
 # Server Catalog Metadata Persistence Roadmap
 
-Status: proposed roadmap.
+Archived: 2026-06-05.
+
+Status: implemented and archived historical roadmap.
+
+Current truth owners:
+
+- `platform_infra/mass-storage-api/README.md`
+- `platform_infra/mass-storage-memory/README.md`
+- `platform_infra/mass-storage-jdbc/README.md`
+- `xa-mass-server/README.md`
+- `doc/INFRA_TRUTH_LAYERS.md`
+
+Do not use this archived roadmap as proof of current behavior. Verify against
+current code, tests, and owner README files.
 
 Related inventory:
-`roadmap/SERVER_CATALOG_METADATA_PERSISTENCE_INVENTORY.md`.
+`doc/archive/xa-mass-server/2026-06-05_SERVER_CATALOG_METADATA_PERSISTENCE_INVENTORY.md`.
 
 ## Current Code Observations
 
@@ -15,9 +28,8 @@ Related inventory:
   `MassSdkApplication`, but without a durable catalog store the data must be
   imported again for a new process/clean in-memory catalog.
 - Existing JDBC-backed control-plane storage covers task shell, rules,
-  principal/auth projection, API-key lifecycle, operator IAM, API usage ledger,
-  and opt-in task review materialization. It does not yet make project/event
-  catalog metadata restart-readable by itself.
+  project/event catalog metadata, principal/auth projection, API-key lifecycle,
+  operator IAM, API usage ledger, and opt-in task review materialization.
 - `RuleStorage` already has JDBC backing. The project/event catalog gap should
   not absorb rule storage ownership.
 - `ProjectRegistry` and SDK event definition registries are runtime/catalog
@@ -148,6 +160,10 @@ Acceptance:
 - The inventory lists all current catalog write paths and read paths.
 - The inventory lists all current default catalog fallback paths and their
   target disposition.
+- Seed/import conflict semantics and project-event reference integrity semantics
+  are explicitly recorded in inventory `Placement Decisions` items 6 and 7.
+  CAT-1 and CAT-3 must treat those recorded decisions as contract input rather
+  than making implicit local choices.
 - The first implementation slice has a predetermined module owner and target
   package.
 - The first implementation slice can prove restored catalog metadata comes from
@@ -180,12 +196,18 @@ Scope:
 - Keep rule definitions in `RuleStorage`; only reference or coordinate with
   rules if seed/import ordering requires it.
 - Add schema notes in the owner module's DB/schema directory.
-- Add Flyway SQL in the owner module's migration directory.
+- Add Flyway SQL under
+  `platform_infra/mass-storage-jdbc/src/main/resources/db/migration/control-plane/`.
+  Server assembly consumes this through the classpath; do not add a parallel
+  server-owned catalog migration under
+  `xa-mass-server/src/main/resources/db/migration/server-control-plane/`.
 
 Acceptance:
 
 - Memory and JDBC implementations pass the same store contract test.
-- SQLite and H2 can create the schema from a clean DB.
+- SQLite can create the schema from a clean DB and restore data across restart.
+- In-memory H2 remains a CI schema/contract proof for the same migration
+  shape; it is not a separate server profile file or a product durable target.
 - The schema can represent disabled projects/events, project-event binding, and
   event capability metadata required by current controllers.
 - No worker topology, runtime state, trace, or task item history is added to
@@ -202,6 +224,12 @@ Verification:
 The contract and storage tests should run in the owning `platform_infra`
 modules; the server test command remains the route/restore proof.
 
+Owner-module verification:
+
+```bash
+./mvnw -pl platform_infra/mass-storage-memory,platform_infra/mass-storage-jdbc -am -Dtest=*CatalogMetadataStoreContractTest -Dsurefire.failIfNoSpecifiedTests=false test
+```
+
 ## CAT-2 - Startup Restore And Runtime Projection
 
 Goal:
@@ -217,6 +245,10 @@ Scope:
 - Project events into SDK/runtime event-definition views.
 - Keep `ControlPlaneCatalog` as the controller read surface.
 - Preserve the SDK in-memory bootstrap path for embedded/test scenarios.
+- Add runtime/integration proof that route-visible catalog state comes from
+  durable restore when rows exist, not from default fallback.
+- Add focused worker capability view proof under the server test owner. Target
+  test name: `CatalogRestoreWorkerCapabilityViewIntegrationTest`.
 
 Acceptance:
 
@@ -224,8 +256,8 @@ Acceptance:
   metadata without rerunning seed/import.
 - `CatalogController`, `ProjectApiController`, `TaskApiController`, and worker
   capability views read restored catalog state.
-- Startup does not silently fall back to default demo catalog when durable
-  catalog rows exist.
+- Runtime proof shows startup does not silently fall back to default demo
+  catalog when durable catalog rows exist.
 - Server dev/prod durable catalog mode does not use
   `DefaultProjectEventCatalogFactory` as route-visible catalog truth.
 - Clean startup with no seed/import remains clean; no sample projects/events are
@@ -233,11 +265,15 @@ Acceptance:
 - Restored catalog metadata drives worker capability/read views without
   persisting WorkerGroup, adapter-node, worker, heartbeat, or topology data in
   catalog tables.
+- A focused ordering proof shows catalog restore is enforced before
+  catalog-validation-dependent route proof. The proof must fail or observe a
+  clear startup/route failure if restore is skipped or ordered after route
+  initialization; default catalog fallback must not make this proof pass.
 
 Verification:
 
 ```bash
-./mvnw -pl xa-mass-server -am -Dtest=CleanServerStartupIntegrationTest,*Catalog*Restart*Test,*SeedImport*Test -Dsurefire.failIfNoSpecifiedTests=false test
+./mvnw -pl xa-mass-server -am -Dtest=CleanServerStartupIntegrationTest,*Catalog*Restart*Test,CatalogRestoreWorkerCapabilityViewIntegrationTest,*SeedImport*Test -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 ## CAT-3 - Seed/Import Idempotency
@@ -285,9 +321,10 @@ Scope:
 - Add source guards for schema placement.
 - Add guard or focused test proving server JDBC mode does not assemble only
   `new ProjectEventCatalogRegistry()` as durable catalog truth.
-- Add guard or focused test proving server dev/prod durable catalog mode does
+- Add static/source guard proving server dev/prod durable catalog assembly does
   not expose `DefaultProjectEventCatalogFactory` fallback catalog as current
-  route truth.
+  route truth. CAT-2 owns the runtime behavior proof; CAT-4 owns regression
+  prevention through source-level checks.
 - Update owner docs:
   - `xa-mass-server/README.md`
   - `platform_infra/mass-storage-jdbc/README.md`
@@ -301,8 +338,9 @@ Acceptance:
 
 - Active docs state project/event catalog restart behavior precisely.
 - Guards prevent catalog DB schema from being placed in the wrong module.
-- Guards prevent default/demo catalog fallback from satisfying durable
-  dev/prod catalog proof.
+- Static guards prevent default/demo catalog fallback from satisfying durable
+  dev/prod catalog proof. Runtime fallback behavior remains covered by CAT-2
+  integration tests.
 - No active README treats archived roadmap prose as current truth.
 - Residue scan finds no stale "must rerun import every startup" language for
   persisted catalog metadata.
