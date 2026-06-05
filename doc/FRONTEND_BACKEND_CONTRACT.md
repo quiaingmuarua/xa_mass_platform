@@ -11,6 +11,15 @@ current code, and the live server docs exposed at `/doc.html#/home`.
 
 The project remains server + SDK first.
 
+- kernel/core owns correctness, lifecycle semantics, scheduling correctness,
+  and runtime truth boundaries
+- server owns the reference host, product shell, auth/session/CSRF, API
+  boundary, server-local control-plane resources, API docs exposure, and
+  backend-hosted console assembly
+- SDK owns the main external edit, integration, and automation surface for
+  task producers, worker registration/session, and typed platform access
+- frontend owns observation, validation, presentation, and a lightweight
+  operator console over server-owned contracts
 - backend owns HTTP behavior, authorization, control-plane storage semantics,
   worker/task/resource truth, and public contract DTO shape
 - SDK and public-contract modules own stable external integration surfaces
@@ -18,6 +27,20 @@ The project remains server + SDK first.
   adapters, and browser-side auth state
 - frontend consumes backend contracts; it must not invent replacement kernel,
   permission, worker, task, catalog, or auth truth
+
+Frontend is not the main editing surface. Its primary optimization target is:
+
+- clear information architecture
+- accurate task, worker, runtime, auth, and product-shell state presentation
+- explicit mock/backend mode behavior
+- closed auth/session/CSRF UX loops
+- meaningful dashboard metrics
+- task and worker detail pages that help operators debug current behavior
+- audit, API-key, user, and role pages that demonstrate server product-shell
+  maturity
+- professional loading, empty, error, retry, and unavailable states
+- API documentation/static snapshot presentation as a contract review surface,
+  not as a frontend-maintained API dictionary
 
 Current primary local integration URL:
 
