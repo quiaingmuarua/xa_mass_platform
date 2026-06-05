@@ -294,6 +294,110 @@ class ServerMainSourceArchitectureGuardTest {
     }
 
     @Test
+    void serverApiObservabilityUsesActiveLogbackAndDedicatedFailureLane() throws IOException {
+        Path activeLogback = Path.of("src/main/resources/logback.xml");
+        String activeConfig = Files.readString(activeLogback, StandardCharsets.UTF_8);
+        Path inactiveJsonLogback = Path.of("src/main/resources/logback-json.xml");
+
+        assertTrue(!Files.exists(inactiveJsonLogback),
+                "inactive logback-json.xml must not remain as an editable server logging config");
+        assertTrue(activeConfig.contains("SERVER_API_FAILURE_FILE"),
+                "active logback.xml must route SERVER_API_FAILURE events to a dedicated appender");
+        assertTrue(activeConfig.contains("xa-mass-server-api-failure.log"),
+                "active logback.xml must name the API failure log file");
+        assertTrue(activeConfig.contains("com.xa.mass.api.observability.ServerApiFailureLogger"),
+                "active logback.xml must bind the dedicated API failure logger");
+        assertTrue(activeConfig.contains("SizeAndTimeBasedRollingPolicy"),
+                "active logback.xml must use size-and-time rolling retention");
+        assertTrue(!activeConfig.contains("SizeAndTimeBasedFNATP"),
+                "active logback.xml must not use deprecated SizeAndTimeBasedFNATP");
+        assertTrue(activeConfig.contains("<totalSizeCap>"),
+                "rolling file appenders must set totalSizeCap so logs do not grow without bound");
+    }
+
+    @Test
+    void serverApiFailureObservabilityDoesNotReadSensitiveRequestInputs() throws IOException {
+        Path observabilityRoot = SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/api/observability");
+        List<String> violations = new ArrayList<>();
+        try (Stream<Path> paths = Files.walk(observabilityRoot)) {
+            paths.filter(Files::isRegularFile)
+                    .filter(path -> path.toString().endsWith(".java"))
+                    .forEach(path -> {
+                        try {
+                            String source = Files.readString(path, StandardCharsets.UTF_8);
+                            if (source.contains("getHeader(\"Authorization\")")
+                                    || source.contains("getInputStream(")
+                                    || source.contains("getReader(")
+                                    || source.contains("getQueryString(")
+                                    || source.contains("getParameter(")
+                                    || source.contains("getParameterMap(")) {
+                                violations.add(path + " reads sensitive request input in the failure logging lane");
+                            }
+                        } catch (IOException e) {
+                            violations.add(path + " could not be read: " + e.getMessage());
+                        }
+                    });
+        }
+
+        assertTrue(violations.isEmpty(),
+                "server API failure observability must use request attributes/final status, not raw "
+                        + "authorization headers, request body, query string, or parameters:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void endpointMetricsUseActuatorWithoutHandRolledHighCardinalityMeters() throws IOException {
+        String pom = Files.readString(Path.of("pom.xml"), StandardCharsets.UTF_8);
+        String devConfig = Files.readString(Path.of("src/main/resources/application-dev.yml"), StandardCharsets.UTF_8);
+        String prodConfig = Files.readString(Path.of("src/main/resources/application-prod.yml"), StandardCharsets.UTF_8);
+        List<String> violations = new ArrayList<>();
+
+        if (!pom.contains("spring-boot-starter-actuator")) {
+            violations.add("xa-mass-server pom.xml does not include spring-boot-starter-actuator");
+        }
+        if (pom.contains("micrometer-registry-prometheus")) {
+            violations.add("Prometheus registry must remain a later operator-deployment decision");
+        }
+        if (!devConfig.contains("include: health,metrics")) {
+            violations.add("dev profile must expose health and metrics actuator endpoints");
+        }
+        if (!prodConfig.contains("include: health") || prodConfig.contains("include: health,metrics")) {
+            violations.add("prod profile must expose health only by default");
+        }
+
+        try (Stream<Path> paths = Files.walk(SERVER_MAIN_SOURCE_ROOT)) {
+            paths.filter(Files::isRegularFile)
+                    .filter(path -> path.toString().endsWith(".java"))
+                    .forEach(path -> {
+                        try {
+                            String source = Files.readString(path, StandardCharsets.UTF_8);
+                            if ((source.contains("MeterRegistry")
+                                    || source.contains("Timer.builder")
+                                    || source.contains("Counter.builder"))
+                                    && Stream.of("http.server.requests",
+                                                    ".tag(\"principalId\"",
+                                                    ".tag(\"traceId\"",
+                                                    ".tag(\"taskId\"",
+                                                    ".tag(\"workerId\"",
+                                                    ".tag(\"rawUrl\"",
+                                                    ".tag(\"query\"")
+                                            .anyMatch(source::contains)) {
+                                violations.add(path
+                                        + " defines hand-rolled/high-cardinality endpoint metrics");
+                            }
+                        } catch (IOException e) {
+                            violations.add(path + " could not be read: " + e.getMessage());
+                        }
+                    });
+        }
+
+        assertTrue(violations.isEmpty(),
+                "endpoint success/latency metrics must use actuator http.server.requests first pass, "
+                        + "without hand-rolled high-cardinality endpoint meters:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void sampleBootstrapHttpIsNotActiveServerApi() throws IOException {
         Path repoRoot = Path.of("..").toAbsolutePath().normalize();
         Path serverController = SERVER_MAIN_SOURCE_ROOT.resolve(

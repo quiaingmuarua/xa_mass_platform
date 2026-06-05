@@ -3,6 +3,7 @@ package com.xa.mass.api.auth;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xa.mass.api.internal.SdkCredentialAuthSupport;
 import com.xa.mass.api.model.ApiResponse;
+import com.xa.mass.api.observability.ServerApiFailureAttributes;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -44,14 +45,21 @@ public class ApiAuthInterceptor implements HandlerInterceptor {
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+        boolean sdkCredentialAttempt = hasSdkCredentialAttempt(request);
+        ServerApiFailureAttributes.markSdkCredentialAttempt(request, sdkCredentialAttempt);
         ApiRouteAuthorizationCatalog.RouteAuthorization routeAuthorization =
-                routeAuthorizationCatalog.resolve(request, hasSdkCredentialAttempt(request));
+                routeAuthorizationCatalog.resolve(request, sdkCredentialAttempt);
         boolean requiresAuthenticationOnly = requiresAuthenticationOnly(request);
         if (routeAuthorization != null && (SDK_CREDENTIAL_BYPASS.equals(routeAuthorization.requiredPermission())
                 || PUBLIC_ROUTE.equals(routeAuthorization.requiredPermission()))) {
             return true;
         }
         if (routeAuthorization == null && !requiresAuthenticationOnly) {
+            ServerApiFailureAttributes.markFailure(
+                    request,
+                    ServerApiFailureAttributes.AUTHORIZATION,
+                    "API route is not enabled for anonymous or implicit access"
+            );
             writeError(response, HttpServletResponse.SC_FORBIDDEN,
                     "API route is not enabled for anonymous or implicit access: " + request.getRequestURI());
             return false;
@@ -59,6 +67,11 @@ public class ApiAuthInterceptor implements HandlerInterceptor {
 
         try {
             if (routeAuthorization != null) {
+                ServerApiFailureAttributes.markRouteAuthorization(
+                        request,
+                        routeAuthorization.requiredPermission(),
+                        routeAuthorization.requiredPermission()
+                );
                 if (SDK_OR_OPERATOR_ROUTE.equals(routeAuthorization.requiredPermission())) {
                     PrincipalContext submitter = apiAuthorizationService.resolveTaskViewerCredential(
                             request.getHeader(SdkCredentialAuthSupport.API_KEY_HEADER),
@@ -96,12 +109,15 @@ public class ApiAuthInterceptor implements HandlerInterceptor {
             }
             return true;
         } catch (ApiUnauthenticatedException ex) {
+            ServerApiFailureAttributes.markFailure(request, ServerApiFailureAttributes.AUTHENTICATION, ex.getMessage());
             writeError(response, HttpServletResponse.SC_UNAUTHORIZED, ex.getMessage());
             return false;
         } catch (ApiForbiddenException ex) {
+            ServerApiFailureAttributes.markFailure(request, ServerApiFailureAttributes.AUTHORIZATION, ex.getMessage());
             writeError(response, HttpServletResponse.SC_FORBIDDEN, ex.getMessage());
             return false;
         } catch (IllegalArgumentException ex) {
+            ServerApiFailureAttributes.markFailure(request, ServerApiFailureAttributes.BAD_REQUEST, ex.getMessage());
             writeError(response, HttpServletResponse.SC_BAD_REQUEST, ex.getMessage());
             return false;
         }

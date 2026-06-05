@@ -30,6 +30,12 @@ mass:
 server:
   port: 8088
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics
+
 logging:
   level:
     com.xa.mass: DEBUG
