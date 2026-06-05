@@ -362,7 +362,8 @@ class JavaScenarioLauncherBlackBoxIntegrationTest extends ReviewReadModelSampleE
                       "sourceRef": "ijs-scenario-launcher-black-box",
                       "sharedConfig": {
                         "routingCode": "us",
-                        "workerGroupId": "ijs-scenario-group"
+                        "workerGroupId": "ijs-scenario-group",
+                        "reviewMaterializationMode": "terminal"
                       },
                       "executionSpec": {
                         "batchSize": 1
@@ -483,7 +484,8 @@ class JavaScenarioLauncherBlackBoxIntegrationTest extends ReviewReadModelSampleE
                       "sourceRef": "ijs-scenario-launcher-websocket-black-box",
                       "sharedConfig": {
                         "routingCode": "us",
-                        "workerGroupId": "ijs-scenario-ws-group"
+                        "workerGroupId": "ijs-scenario-ws-group",
+                        "reviewMaterializationMode": "terminal"
                       },
                       "executionSpec": {
                         "batchSize": 1

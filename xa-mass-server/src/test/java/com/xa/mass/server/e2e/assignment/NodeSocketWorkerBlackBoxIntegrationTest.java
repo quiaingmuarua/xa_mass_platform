@@ -87,6 +87,7 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2eTe
                 "project", "crawlerApp",
                 "userId", "crawler-agent",
                 "sourceRef", "cross-language-node-socket-worker",
+                "sharedConfig", Map.of("reviewMaterializationMode", "terminal"),
                 "executionSpec", Map.of("batchSize", 1)
         ));
         assertApiOk(createResponse);
@@ -247,6 +248,7 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2eTe
                 "project", project,
                 "userId", "integration-agent",
                 "sourceRef", "task-" + eventCode,
+                "sharedConfig", Map.of("reviewMaterializationMode", "terminal"),
                 "executionSpec", Map.of("batchSize", 1)
         ));
         assertApiOk(createResponse);
