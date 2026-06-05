@@ -30,9 +30,9 @@ ownership is summarized in `../../integrations/README.md`.
 
 ## 2. Task Producer Path
 
-Task producers create one task shell, append work items, optionally seal the
-intake window, and read stable-final results. They do not register workers and
-they do not own scheduling decisions.
+Task producers create one task shell, append work items, and read stable-final
+results. They do not register workers, issue operator lifecycle commands, or own
+scheduling decisions.
 
 Java SDK entry:
 
@@ -57,8 +57,6 @@ handle.appendItems(TaskItemBatch.builder()
         .item(Map.of("url", "https://example.com"))
         .build());
 
-handle.seal();
-
 TaskResultWindow results = handle.results(TaskResultReadRequest.builder()
         .limit(100)
         .build());
@@ -67,19 +65,7 @@ TaskResultWindow results = handle.results(TaskResultReadRequest.builder()
 Interactive task-scoped invocation is also task-producer behavior:
 
 ```java
-var task = mass.tasks().create(TaskCreateRequest.builder()
-        .project("crawlerApp")
-        .userId("crawler-agent")
-        .contract(TaskContract.SESSION)
-        .workerGroupId("crawler-workers")
-        .executionSpec(TaskExecutionSpec.builder()
-                .workloadClass("INTERACTIVE")
-                .batchSize(1)
-                .build())
-        .build());
-
-TaskHandle handle = mass.tasks().forTask(task.taskId());
-handle.approve();
+TaskHandle handle = mass.tasks().forTask("existing-ready-session-task-id");
 
 TaskSyncAppendResult result = handle.appendItemSync(TaskItemSyncRequest.builder()
         .eventCode("crawler.fetch-page")
@@ -92,6 +78,8 @@ Keep these rules:
 
 - `SESSION` + `items:sync` requires the task to be `READY` or `RUNNING` with
   intake `OPEN`
+- task lifecycle commands such as seal/approve are operator/server-control
+  behavior and are outside the scenario task-producer path
 - sealed `BATCH` tasks are not valid sync-append targets
 - WorkerGroup selectors belong on task create; `eventCode` belongs on item
   append
@@ -173,7 +161,7 @@ today and Boot-shell E2E proves them:
 | `integrations/samples/node/worker-polling` | `polling` | `polling` | polling protocol validation fixture |
 | `integrations/samples/node/worker-websocket` | `websocket` | `realtime` | adapter validation fixture |
 | `integrations/samples/node/worker-socket` | `socket` | `realtime` | adapter validation fixture |
-| `integrations/xa-mass-scenario-launcher` | `polling`, `websocket` | `polling`, `realtime` | Java SDK registration and worker-session proof |
+| `integrations/xa-mass-scenario-launcher` | `polling`, `websocket` | `polling`, `realtime` | Java SDK proof split into task-producer and worker-process launchers |
 
 For realtime paths:
 
@@ -208,7 +196,12 @@ Use the real Boot shell plus the sample/launcher READMEs:
 - sample matrix and black-box role: [../../integrations/samples/README.md](../../integrations/samples/README.md)
 - per-sample commands: `integrations/samples/node/*/README.md`
 - external Java SDK: [README.md](./README.md)
-- Java SDK launcher: [../../integrations/xa-mass-scenario-launcher/README.md](../../integrations/xa-mass-scenario-launcher/README.md)
+- Java SDK task/worker launchers: [../../integrations/xa-mass-scenario-launcher/README.md](../../integrations/xa-mass-scenario-launcher/README.md)
+
+For real external-registration proof, prepare catalog, rules, and API keys
+through server-owned seed/import or the normal host setup, then run the Java SDK
+launcher. The launcher does not own server metadata preparation; it proves
+SDK-backed WorkerGroup, AdapterNode, Worker, task, and worker-session paths.
 
 For real external-registration proof, prepare catalog, rules, and API keys
 through server-owned seed/import or the normal host setup, then run the Java SDK

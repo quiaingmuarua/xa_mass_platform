@@ -40,7 +40,6 @@ class ScenarioExpanderTest {
     @Test
     void expandsGeneratedTaskItems() {
         List<TaskScenarioSpec> tasks = ScenarioExpander.expandTaskSpecs(List.of(Map.of(
-                "approve", true,
                 "body", Map.of(
                         "project", "deviceProbe",
                         "userId", "sample",

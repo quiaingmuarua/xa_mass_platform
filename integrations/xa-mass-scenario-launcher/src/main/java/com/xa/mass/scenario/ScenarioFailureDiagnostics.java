@@ -1,37 +1,9 @@
 package com.xa.mass.scenario;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xa.mass.client.http.exception.MassHttpException;
 
-import java.net.http.HttpClient;
-
-public final class ScenarioLauncherMain {
-    private ScenarioLauncherMain() {
-    }
-
-    public static void main(String[] args) throws Exception {
-        ScenarioLauncherOptions options = ScenarioLauncherOptions.parse(args);
-        if (options.help()) {
-            System.out.println(ScenarioLauncherOptions.helpText());
-            return;
-        }
-        ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
-        ScenarioFiles files = ScenarioFiles.load(options.scenarioDir(), objectMapper);
-        HttpClient httpClient = HttpClient.newHttpClient();
-        ScenarioLauncher launcher = new ScenarioLauncher(
-                options,
-                objectMapper,
-                new ScenarioClientFactory(options.baseUrl(), httpClient, objectMapper)
-        );
-        try {
-            if (options.registerOnly()) {
-                launcher.registerOnly(files);
-            } else {
-                launcher.launch(files);
-            }
-        } catch (MassHttpException e) {
-            throw new IllegalStateException(diagnoseHttpFailure(options, e), e);
-        }
+final class ScenarioFailureDiagnostics {
+    private ScenarioFailureDiagnostics() {
     }
 
     static String diagnoseHttpFailure(ScenarioLauncherOptions options, MassHttpException failure) {

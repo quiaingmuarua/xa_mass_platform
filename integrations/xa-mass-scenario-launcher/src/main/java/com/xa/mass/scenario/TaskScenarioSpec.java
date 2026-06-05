@@ -6,12 +6,8 @@ import java.util.Map;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 record TaskScenarioSpec(
-        Boolean approve,
         String apiKey,
         Integer itemBatchSize,
         Map<String, Object> body
 ) {
-    boolean shouldApprove() {
-        return Boolean.TRUE.equals(approve);
-    }
 }
