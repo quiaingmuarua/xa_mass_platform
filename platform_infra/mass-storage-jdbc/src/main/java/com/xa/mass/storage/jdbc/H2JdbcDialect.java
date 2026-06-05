@@ -26,4 +26,20 @@ final class H2JdbcDialect implements JdbcDialect {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """;
     }
+
+    @Override
+    public String catalogEventUpsertSql() {
+        return """
+                MERGE INTO xa_catalog_event KEY(event_code)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """;
+    }
+
+    @Override
+    public String catalogProjectUpsertSql() {
+        return """
+                MERGE INTO xa_catalog_project KEY(project_code)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """;
+    }
 }

@@ -37,7 +37,6 @@ import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.authz.PlatformAction;
 import com.xa.mass.sdk.authz.PlatformResourceType;
 import com.xa.mass.sdk.authz.TaskOwnershipSupport;
-import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
 import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
 import com.xa.mass.sdk.model.*;
@@ -134,7 +133,7 @@ public class TaskApiController {
                 ? taskResultQueries
                 : taskQueries instanceof TaskResultQueryOperations resultQueries ? resultQueries : null;
         this.taskAdmin = taskAdmin;
-        this.catalog = catalog == null ? DefaultProjectEventCatalogFactory.createDefaultProjectRegistry() : catalog;
+        this.catalog = Objects.requireNonNull(catalog, "catalog");
         this.apiAuthService = Objects.requireNonNull(apiAuthService, "apiAuthService");
         this.apiAuthorizationService = Objects.requireNonNull(apiAuthorizationService, "apiAuthorizationService");
         this.taskSecurityViewSupport = Objects.requireNonNull(taskSecurityViewSupport, "taskSecurityViewSupport");

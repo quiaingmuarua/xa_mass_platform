@@ -12,6 +12,7 @@ Current scope:
 - `TaskShellStore`
 - `TaskShellLifecycleQuery`
 - `RuleStorage`
+- `CatalogMetadataStore`
 
 Contract split inside this module:
 
@@ -24,6 +25,9 @@ Contract split inside this module:
 - `RuleStorage` persists rule definitions using the shared
   `xa-mass-kernel-spi` rule value contracts. Rule CRUD remains storage/control
   plane; matching consumes rule sets through engine matching-time providers.
+- `CatalogMetadataStore` persists project/event catalog metadata. Event codes
+  stay globally unique capability identities; project-event bindings are stored
+  separately from event definitions and from worker topology.
 
 Worker declaration contracts are owned by `xa-mass-worker-runtime`.
 `mass-storage-api` must not reintroduce `WorkerDeclarationStore` or
@@ -40,4 +44,5 @@ Non-goals for this slice:
 - no queue/lease/runtime ownership
 - no storage implementation wiring
 - no JDBC or memory behavior
+- no worker topology, worker presence, or WorkerGroup runtime ownership
 - no review/export materialization ownership

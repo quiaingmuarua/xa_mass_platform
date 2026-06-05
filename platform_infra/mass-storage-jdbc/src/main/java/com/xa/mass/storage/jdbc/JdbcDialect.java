@@ -7,4 +7,8 @@ interface JdbcDialect {
     String ruleUpsertSql();
 
     String principalUpsertSql();
+
+    String catalogEventUpsertSql();
+
+    String catalogProjectUpsertSql();
 }

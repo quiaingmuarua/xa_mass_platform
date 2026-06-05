@@ -446,6 +446,87 @@ class ServerMainSourceArchitectureGuardTest {
     }
 
     @Test
+    void catalogMetadataSchemaStaysInPlatformInfraMigrations() throws IOException {
+        List<String> violations = new ArrayList<>();
+        Path serverMigrations = REPO_ROOT.resolve(
+                "xa-mass-server/src/main/resources/db/migration/server-control-plane");
+        try (Stream<Path> paths = Files.walk(serverMigrations)) {
+            paths.filter(Files::isRegularFile)
+                    .filter(path -> path.toString().endsWith(".sql"))
+                    .forEach(path -> {
+                        try {
+                            String source = Files.readString(path, StandardCharsets.UTF_8);
+                            if (source.contains("xa_catalog_")) {
+                                violations.add(path + " contains catalog metadata schema");
+                            }
+                        } catch (IOException e) {
+                            violations.add(path + " could not be read: " + e.getMessage());
+                        }
+                    });
+        }
+
+        Path platformCatalogMigration = REPO_ROOT.resolve(
+                "platform_infra/mass-storage-jdbc/src/main/resources/db/migration/control-plane/"
+                        + "V4__create_catalog_tables.sql");
+        String platformSource = Files.readString(platformCatalogMigration, StandardCharsets.UTF_8);
+        for (String table : List.of("xa_catalog_event", "xa_catalog_project", "xa_catalog_project_event")) {
+            if (!platformSource.contains(table)) {
+                violations.add(platformCatalogMigration + " does not define " + table);
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "catalog metadata schema must belong to platform_infra/mass-storage-jdbc, "
+                        + "not server-owned migrations:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void durableCatalogAssemblyDoesNotExposeDefaultCatalogFallbackForDevOrProd() throws IOException {
+        List<String> violations = new ArrayList<>();
+        Path application = SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/server/XaMassServerApplication.java");
+        String applicationSource = Files.readString(application, StandardCharsets.UTF_8);
+        if (!applicationSource.contains("CatalogMetadataProjection.restoreIntoApplication(catalogMetadataStore, app)")) {
+            violations.add("XaMassServerApplication does not restore durable catalog metadata into MassSdkApplication");
+        }
+        if (!applicationSource.contains("jdbcStorageRuntime.catalogMetadataStore()")) {
+            violations.add("XaMassServerApplication does not assemble the JDBC catalog metadata store");
+        }
+        if (!applicationSource.contains("new InMemoryCatalogMetadataStore()")) {
+            violations.add("XaMassServerApplication does not explicitly assemble the in-memory catalog metadata store");
+        }
+
+        Path catalogConfig = SERVER_MAIN_SOURCE_ROOT.resolve("com/xa/mass/api/config/CatalogConfiguration.java");
+        String catalogConfigSource = Files.readString(catalogConfig, StandardCharsets.UTF_8);
+        if (!catalogConfigSource.contains("@Profile(\"!dev & !prod\")")) {
+            violations.add("CatalogConfiguration default fallback must be excluded from dev/prod profiles");
+        }
+
+        Map<String, String> routeControllers = Map.of(
+                "TaskApiController",
+                "com/xa/mass/api/internal/TaskApiController.java",
+                "InternalDebugTaskInvocationController",
+                "com/xa/mass/api/internal/InternalDebugTaskInvocationController.java"
+        );
+        routeControllers.forEach((name, relativePath) -> {
+            try {
+                String source = Files.readString(SERVER_MAIN_SOURCE_ROOT.resolve(relativePath), StandardCharsets.UTF_8);
+                if (source.contains("DefaultProjectEventCatalogFactory")
+                        || source.contains("catalog == null")
+                        || !source.contains("Objects.requireNonNull(catalog, \"catalog\")")) {
+                    violations.add(name + " must require an injected ControlPlaneCatalog instead of creating a fallback");
+                }
+            } catch (IOException e) {
+                violations.add(relativePath + " could not be read: " + e.getMessage());
+            }
+        });
+
+        assertTrue(violations.isEmpty(),
+                "server dev/prod durable catalog truth must not be masked by default/demo catalog fallback:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void productionAuthAssemblyDoesNotCreateImplicitOperatorMemoryFallbacks() throws IOException {
         Path allowedAssembly = SERVER_MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/server/config/ServerControlPlaneStoreConfiguration.java");

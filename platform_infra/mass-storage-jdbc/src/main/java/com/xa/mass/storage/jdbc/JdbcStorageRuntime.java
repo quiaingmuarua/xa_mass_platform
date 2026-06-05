@@ -2,6 +2,7 @@ package com.xa.mass.storage.jdbc;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import com.xa.mass.storage.api.CatalogMetadataStore;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.TaskShellStore;
 import org.flywaydb.core.Flyway;
@@ -18,21 +19,24 @@ public final class JdbcStorageRuntime implements AutoCloseable {
     private final JdbcDialect dialect;
     private final TaskShellStore taskShellStore;
     private final RuleStorage ruleStorage;
+    private final CatalogMetadataStore catalogMetadataStore;
 
     private JdbcStorageRuntime(JdbcStorageMode mode,
                                HikariDataSource dataSource,
                                JdbcDialect dialect,
                                TaskShellStore taskShellStore,
-                               RuleStorage ruleStorage) {
+                               RuleStorage ruleStorage,
+                               CatalogMetadataStore catalogMetadataStore) {
         this.mode = mode;
         this.dataSource = dataSource;
         this.dialect = dialect;
         this.taskShellStore = taskShellStore;
         this.ruleStorage = ruleStorage;
+        this.catalogMetadataStore = catalogMetadataStore;
     }
 
     public static JdbcStorageRuntime disabled() {
-        return new JdbcStorageRuntime(JdbcStorageMode.MEMORY, null, null, null, null);
+        return new JdbcStorageRuntime(JdbcStorageMode.MEMORY, null, null, null, null, null);
     }
 
     public static JdbcStorageRuntime create(JdbcStorageMode mode, String jdbcUrl, String username, String password) {
@@ -50,7 +54,8 @@ public final class JdbcStorageRuntime implements AutoCloseable {
         JdbcDialect dialect = mode.dialect();
         JdbcTaskShellStore taskShellStore = new JdbcTaskShellStore(dataSource, dialect);
         JdbcRuleStorage ruleStorage = new JdbcRuleStorage(dataSource, dialect);
-        return new JdbcStorageRuntime(mode, dataSource, dialect, taskShellStore, ruleStorage);
+        JdbcCatalogMetadataStore catalogMetadataStore = new JdbcCatalogMetadataStore(dataSource, dialect);
+        return new JdbcStorageRuntime(mode, dataSource, dialect, taskShellStore, ruleStorage, catalogMetadataStore);
     }
 
     private static HikariDataSource createDataSource(String jdbcUrl, String username, String password) {
@@ -112,6 +117,10 @@ public final class JdbcStorageRuntime implements AutoCloseable {
 
     public RuleStorage ruleStorage() {
         return ruleStorage;
+    }
+
+    public CatalogMetadataStore catalogMetadataStore() {
+        return catalogMetadataStore;
     }
 
     @Override

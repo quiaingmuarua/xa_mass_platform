@@ -11,7 +11,6 @@ import com.xa.mass.api.sync.SyncTaskResultBridge;
 import com.xa.mass.sdk.TaskAdminOperations;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.authz.TaskOwnershipSupport;
-import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
 import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
 import com.xa.mass.sdk.catalog.TaskMode;
@@ -62,7 +61,7 @@ public class InternalDebugTaskInvocationController {
                                                  TaskSecurityViewSupport taskSecurityViewSupport,
                                                  SyncTaskResultBridge syncBridge) {
         this.taskAdmin = taskAdmin;
-        this.catalog = catalog == null ? DefaultProjectEventCatalogFactory.createDefaultProjectRegistry() : catalog;
+        this.catalog = Objects.requireNonNull(catalog, "catalog");
         this.apiAuthService = Objects.requireNonNull(apiAuthService, "apiAuthService");
         this.taskSecurityViewSupport = taskSecurityViewSupport == null ? new TaskSecurityViewSupport() : taskSecurityViewSupport;
         this.syncBridge = syncBridge;

@@ -43,4 +43,39 @@ final class PostgresJdbcDialect implements JdbcDialect {
                   json = EXCLUDED.json
                 """;
     }
+
+    @Override
+    public String catalogEventUpsertSql() {
+        return """
+                INSERT INTO xa_catalog_event(event_code, name, description, payload_types_json, task_modes_json, enabled,
+                  default_routing_code, priority_class, response_mode, delivery_acknowledgement_mode, convergence_mode, target_scope)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (event_code) DO UPDATE SET
+                  name = EXCLUDED.name,
+                  description = EXCLUDED.description,
+                  payload_types_json = EXCLUDED.payload_types_json,
+                  task_modes_json = EXCLUDED.task_modes_json,
+                  enabled = EXCLUDED.enabled,
+                  default_routing_code = EXCLUDED.default_routing_code,
+                  priority_class = EXCLUDED.priority_class,
+                  response_mode = EXCLUDED.response_mode,
+                  delivery_acknowledgement_mode = EXCLUDED.delivery_acknowledgement_mode,
+                  convergence_mode = EXCLUDED.convergence_mode,
+                  target_scope = EXCLUDED.target_scope
+                """;
+    }
+
+    @Override
+    public String catalogProjectUpsertSql() {
+        return """
+                INSERT INTO xa_catalog_project(project_code, tenant_id, name, description, enabled, owner_principal_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT (project_code) DO UPDATE SET
+                  tenant_id = EXCLUDED.tenant_id,
+                  name = EXCLUDED.name,
+                  description = EXCLUDED.description,
+                  enabled = EXCLUDED.enabled,
+                  owner_principal_id = EXCLUDED.owner_principal_id
+                """;
+    }
 }

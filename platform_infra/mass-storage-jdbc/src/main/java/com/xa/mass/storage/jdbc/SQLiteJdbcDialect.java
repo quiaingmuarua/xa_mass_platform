@@ -43,4 +43,39 @@ final class SQLiteJdbcDialect implements JdbcDialect {
                   json = excluded.json
                 """;
     }
+
+    @Override
+    public String catalogEventUpsertSql() {
+        return """
+                INSERT INTO xa_catalog_event(event_code, name, description, payload_types_json, task_modes_json, enabled,
+                  default_routing_code, priority_class, response_mode, delivery_acknowledgement_mode, convergence_mode, target_scope)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(event_code) DO UPDATE SET
+                  name = excluded.name,
+                  description = excluded.description,
+                  payload_types_json = excluded.payload_types_json,
+                  task_modes_json = excluded.task_modes_json,
+                  enabled = excluded.enabled,
+                  default_routing_code = excluded.default_routing_code,
+                  priority_class = excluded.priority_class,
+                  response_mode = excluded.response_mode,
+                  delivery_acknowledgement_mode = excluded.delivery_acknowledgement_mode,
+                  convergence_mode = excluded.convergence_mode,
+                  target_scope = excluded.target_scope
+                """;
+    }
+
+    @Override
+    public String catalogProjectUpsertSql() {
+        return """
+                INSERT INTO xa_catalog_project(project_code, tenant_id, name, description, enabled, owner_principal_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(project_code) DO UPDATE SET
+                  tenant_id = excluded.tenant_id,
+                  name = excluded.name,
+                  description = excluded.description,
+                  enabled = excluded.enabled,
+                  owner_principal_id = excluded.owner_principal_id
+                """;
+    }
 }
