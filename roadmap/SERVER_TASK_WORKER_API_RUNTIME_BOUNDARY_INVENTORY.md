@@ -1,10 +1,11 @@
 # Server Task Worker API Runtime Boundary Inventory
 
-Status: initial inventory scaffold for
+Status: initial inventory exists; TWA-0 owner review and completion pending for
 [SERVER_TASK_WORKER_API_RUNTIME_BOUNDARY_ROADMAP.md](./SERVER_TASK_WORKER_API_RUNTIME_BOUNDARY_ROADMAP.md).
 
 This inventory is intentionally current-code-first. Update it during TWA-0
-before implementing route or DTO changes.
+before implementing route or DTO changes. The tables below are the initial
+classification scaffold, not the final TWA-0 acceptance artifact.
 
 ## Route Inventory
 
@@ -72,9 +73,15 @@ before implementing route or DTO changes.
 | worker pages | worker list/detail | composite worker row | display source-aware facts |
 | dashboard/project pages | task and worker summaries | aggregate console reads | avoid turning diagnostics into public entity truth |
 
+## Documentation Drift
+
+| Document | Current Drift | Target |
+| --- | --- | --- |
+| `xa-mass-server/doc/INTERNAL_API_REFERENCE.md` | says Task API is already explicitly split while `ApiTask` remains a mixed shell/lifecycle/counter/timestamp/compatibility response | repair wording during TWA-1A/TWA-2 so current docs do not present target split as implemented |
+
 ## Worker Registration DB Observation Decision Queue
 
-Open decisions for TWA-1:
+Open decisions for TWA-1B:
 
 - current table only, ledger table only, or both
 - required versus best-effort DB write in dev/test/prod
@@ -89,4 +96,19 @@ Hard initial decision:
 - DB registration observation rows must not be loaded into runtime on startup.
 - DB registration observation rows must not drive matching, scheduling,
   transport routing, presence, heartbeat, or command delivery.
+- DB registration observation rows must not implement or replace
+  `WorkerDeclarationStore`; that owner remains in `xa-mass-worker-runtime`.
 
+## Deferred Frontend Consumer Follow-Up
+
+Server API split remains the main roadmap owner. Frontend source-aware worker
+consumption may be deferred to a frontend-local follow-up if it would make the
+server slice too broad.
+
+Known frontend follow-up candidates:
+
+| File | Current Gap | Target |
+| --- | --- | --- |
+| `frontend/src/types/workers.ts` | `WorkerListItem` does not model `fieldSources` | add source-aware type if `/api/v1/runtime/workers` remains composite |
+| `frontend/src/api/workers.real.ts` | consumes `/api/v1/runtime/workers` as base `WorkerListResponse` | preserve composite diagnostic semantics in adapter |
+| worker/dashboard/project pages | display mixed worker fields without owner source | show or internally preserve source-aware facts |

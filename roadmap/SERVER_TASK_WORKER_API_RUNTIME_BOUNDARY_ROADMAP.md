@@ -55,10 +55,14 @@ Read with:
   WorkerGroup, AdapterNode, NodeGroupBinding, worker registration, presence,
   polling, result submit, capability report, state report, command poll, and
   command ack.
-- `WorkerDeclarationStore` exists as a worker declaration/control-plane
-  abstraction, but current production storage is still memory-shaped; no JDBC
-  worker declaration or registration ledger implementation is present in the
-  current inventory.
+- `WorkerDeclarationStore` exists as the worker-runtime-owned declaration
+  abstraction. It must not be pulled into server-owned registration observation
+  storage. Current inventory found no JDBC worker declaration implementation,
+  but this roadmap does not ask server to implement one.
+- `xa-mass-server/doc/INTERNAL_API_REFERENCE.md` currently overstates the task
+  split by saying the Task API is already explicitly split while `ApiTask`
+  remains a mixed shell/lifecycle/counter/timestamp/compatibility response
+  object. Treat that API reference as doc drift to repair, not as proof.
 - Frontend callers use `/api/v1/tasks`, `/api/v1/runtime/workers`, and
   `/internal/v1/review/tasks/**` through `frontend/src/api/*`. That is the
   correct caller location, but the API shapes still blur owner boundaries.
@@ -82,6 +86,9 @@ Worker ownership:
 - Worker registration ingress belongs to `/worker-api/v1/**` and SDK worker
   session/registration flows.
 - Worker declaration facts belong to worker-runtime declaration owner surfaces.
+  `WorkerDeclarationStore` remains owned by `xa-mass-worker-runtime`; server
+  registration observation tables must not become its JDBC implementation or a
+  second declaration owner.
 - Worker availability, online/offline, heartbeat, locks, current load,
   candidate availability, dispatch gates, and transport sessions are runtime
   truth, not DB truth.
@@ -177,6 +184,10 @@ owner and does not become a public SDK or runtime decision contract.
 11. Runtime current-state UI refresh should converge toward SSE-backed bounded
     streams in a later roadmap. Do not freeze task/worker polling/list routes
     as the long-term realtime mechanism while doing this API split.
+12. Server-owned worker registration observation rows must not be named,
+    wired, or implemented as `WorkerDeclarationStore`. They are audit/analysis
+    output from public registration ingress, not worker-runtime declaration
+    storage.
 
 ## Non-Goals
 
@@ -228,12 +239,14 @@ callers, then define the target response surfaces and proof order.
 Artifact:
 [SERVER_TASK_WORKER_API_RUNTIME_BOUNDARY_INVENTORY.md](./SERVER_TASK_WORKER_API_RUNTIME_BOUNDARY_INVENTORY.md)
 
-Goal: make the current mixed task/worker route and model ownership visible
-before changing code.
+Goal: complete owner review for the existing initial inventory and freeze it as
+the contract input for TWA-1A/TWA-1B. The inventory file already exists with an
+initial route inventory, field classification worklist, frontend caller
+inventory, and worker registration decision queue. Do not restart from zero.
 
 Scope:
 
-- Inventory task routes:
+- Review and complete task route classification for:
   - `/api/v1/tasks`
   - `/api/v1/tasks/{taskId}`
   - `/api/v1/tasks/{taskId}/items`
@@ -242,7 +255,7 @@ Scope:
   - `/api/v1/tasks/{taskId}/results`
   - `/api/v1/tasks/{taskId}/results/archive`
   - `/internal/v1/review/tasks/**`
-- Inventory worker routes:
+- Review and complete worker route classification for:
   - `/worker-api/v1/**`
   - `/api/v1/runtime/workers`
   - `/api/v1/runtime/workers/{workerId}/state`
@@ -250,7 +263,8 @@ Scope:
   - `/api/v1/runtime/workers/{workerId}/commands`
   - `/api/v1/runtime/workers/commands/{commandId}`
   - catalog worker capability routes
-- Classify every response field used by frontend and SDK-facing server APIs as:
+- Complete field classification for every response field used by frontend and
+  SDK-facing server APIs as:
   - `control-plane storage`
   - `runtime current truth`
   - `result-runtime`
@@ -260,7 +274,7 @@ Scope:
   - `registration observation`
   - `compatibility alias`
   - `composite diagnostic`
-- Inventory frontend callers in `frontend/src/api/*` and pages that depend on
+- Confirm frontend callers in `frontend/src/api/*` and pages that depend on
   task/worker mixed shapes.
 - Identify whether each route is `public-sdk-read`, `public-sdk-ingress`,
   `operator-command`, `console-diagnostics`, or `internal-debug`.
@@ -275,6 +289,8 @@ Acceptance:
 - Inventory explicitly marks worker registration DB rows as observation/audit
   output and states they do not restore runtime state.
 - Inventory identifies which frontend adapters must change in later slices.
+- Inventory records `INTERNAL_API_REFERENCE.md` task-split wording as doc drift
+  if it still describes target split as already implemented.
 - No behavior change is required in TWA-0.
 
 Verification:
@@ -284,9 +300,10 @@ rg -n "ApiTask|ApiTaskResultWindow|/api/v1/runtime/workers|/internal/v1/review/t
 git diff --check
 ```
 
-## TWA-1 Target API Contract Decision
+## TWA-1A API Route And DTO Boundary Decision
 
-Goal: record the target route/DTO split before implementation.
+Goal: record the target task/worker route and DTO/source-label split before
+implementation. This slice does not decide worker registration DB table shape.
 
 Scope:
 
@@ -297,19 +314,10 @@ Scope:
   - task review/export
   - worker declaration/read surface, if any
   - worker runtime diagnostic surface
-  - worker registration observation DB surface, if any
 - Decide whether current `/api/v1/tasks` remains shell-oriented public read or
   is split into public shell plus console runtime detail.
 - Decide whether `ApiTask` is retained only as compatibility output,
   superseded by narrower response records, or split immediately.
-- Decide whether worker registration observation uses:
-  - current-only table
-  - append-only ledger table
-  - both current and ledger tables
-- Decide DB write semantics:
-  - dev/test best-effort versus required
-  - prod required versus best-effort
-  - what error response is returned if the observation write fails
 
 Acceptance:
 
@@ -318,14 +326,62 @@ Acceptance:
   entity truth.
 - `doc/FRONTEND_BACKEND_CONTRACT.md` records that API docs expose current
   routes but route models must label owner boundaries where composite.
-- `frontend/AGENTS.md` or `frontend/README.md` points frontend API changes to
-  the chosen split instead of raw route discovery.
+- Frontend `fieldSources` / source-aware worker consumption is either scoped
+  into this roadmap's later frontend adapter work or explicitly deferred to a
+  frontend-local follow-up document.
 - No new route is introduced before the target split is recorded.
 
 Verification:
 
 ```powershell
 rg -n "composite diagnostic|registration observation|Task shell|Task runtime|Worker declaration" xa-mass-server/doc doc frontend
+git diff --check
+```
+
+## TWA-1B Worker Registration Observation DB Decision
+
+Goal: decide server-owned worker registration observation storage independently
+from the task/worker route DTO split.
+
+Scope:
+
+- Decide whether worker registration observation uses:
+  - current-only table
+  - append-only ledger table
+  - both current and ledger tables
+- Decide DB write semantics:
+  - dev/test best-effort versus required
+  - prod required versus best-effort
+  - what error response is returned if the observation write fails
+- Decide which public registration ingress events are recorded:
+  - WorkerGroup declaration
+  - AdapterNode declaration
+  - NodeGroupBinding declaration
+  - Worker registration
+- Decide payload storage policy:
+  - bounded JSON payload
+  - selected fields only
+  - request hash only
+  - selected fields plus request hash
+- Decide whether observation rows are exposed through a console read route now
+  or only stored for future analysis.
+
+Acceptance:
+
+- Decision explicitly says server does not implement JDBC
+  `WorkerDeclarationStore`.
+- Decision explicitly says observation rows are not loaded into runtime on
+  startup and do not drive scheduling, matching, transport routing, presence,
+  heartbeat, command delivery, or worker registry projection.
+- Schema owner path is recorded as server-owned if the rows contain server API
+  audit/analysis concepts.
+- TWA-4 has enough detail to implement without revisiting route/DTO split
+  decisions.
+
+Verification:
+
+```powershell
+rg -n "WorkerDeclarationStore|registration observation|xa_worker_registration|runtime restore" roadmap xa-mass-server/doc doc platform_infra
 git diff --check
 ```
 
@@ -336,8 +392,9 @@ without breaking current SDK/frontend callers.
 
 Scope:
 
-- Introduce narrower task response records or explicitly source-labeled task
-  response sections.
+- Introduce narrower task response records or source-labeled sections. Prefer
+  actual narrower records where a caller only needs shell fields; do not use
+  source labels as a cosmetic wrapper around the same all-purpose response.
 - Keep `/api/v1/tasks` bounded and shell-oriented unless TWA-1 chooses a new
   route.
 - Keep result windows on `/api/v1/tasks/{taskId}/results`.
@@ -353,6 +410,14 @@ Acceptance:
 
 - Task list/detail no longer present unlabeled runtime/review/result fields as
   generic task shell fields.
+- Shell responses are not forced to carry empty runtime/counter/timestamp
+  containers only to satisfy a mixed `ApiTask` shape.
+- Compatibility aliases such as `id`, `tid`, flat counter aliases, or duplicate
+  execution fields are retained only when the inventory names a current caller.
+- Any new task response field is classified as shell, runtime, result-runtime,
+  review-materialization, or compatibility before it is added.
+- No new all-purpose `ApiTask` field is added without inventory classification
+  and caller evidence.
 - Frontend task list/detail still works through `frontend/src/api/tasks*`.
 - Result window tests prove `/results` does not depend on review
   materialization.
@@ -388,7 +453,9 @@ Scope:
   - compatibility alias
   - composite diagnostic
 - Update frontend worker adapters/pages to display source-aware worker facts
-  instead of treating all fields as a single entity model.
+  instead of treating all fields as a single entity model. If frontend work is
+  deferred, record a frontend-local follow-up document and keep this roadmap's
+  server scope honest.
 - Do not add worker history analytics.
 
 Acceptance:
@@ -400,6 +467,10 @@ Acceptance:
   fields only.
 - No SDK/public worker read contract depends on console composite rows unless
   TWA-1 explicitly accepts it.
+- If frontend source-aware consumption is deferred, a frontend-local follow-up
+  document identifies `frontend/src/api/workers.real.ts`,
+  `frontend/src/types/workers.ts`, and affected worker/dashboard/project pages
+  as the next consumer update.
 
 Verification candidates:
 
@@ -438,6 +509,8 @@ Scope:
   load, lease, route bucket, dispatch, result, or command delivery transient
   truth.
 - Do not load rows into runtime on startup.
+- Do not implement or wire JDBC `WorkerDeclarationStore`; that owner remains in
+  worker-runtime and is separate from server registration observation rows.
 - Decide and test write failure behavior according to TWA-1.
 
 Acceptance:
@@ -503,15 +576,16 @@ git diff --check
 ## Suggested Implementation Order
 
 1. TWA-0 inventory and field classification.
-2. TWA-1 target route/DTO/DB observation decision.
-3. TWA-2 task read surface split.
-4. TWA-3 worker read surface split.
-5. TWA-4 worker registration DB observation.
-6. TWA-5 guards, residue scan, and owner-doc sync.
+2. TWA-1A target route/DTO/source-label decision.
+3. TWA-1B worker registration observation DB decision.
+4. TWA-2 task read surface split.
+5. TWA-3 worker read surface split.
+6. TWA-4 worker registration DB observation.
+7. TWA-5 guards, residue scan, and owner-doc sync.
 
-TWA-4 can start after TWA-1 if task/worker API split work is delayed, but it
+TWA-4 can start after TWA-1B if task/worker API split work is delayed, but it
 must still obey the hard rule that DB registration rows do not restore runtime
-state.
+state or implement `WorkerDeclarationStore`.
 
 ## Completion Criteria
 
