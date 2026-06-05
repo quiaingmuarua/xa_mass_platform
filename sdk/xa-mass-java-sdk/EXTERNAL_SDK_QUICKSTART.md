@@ -23,6 +23,10 @@ ownership is summarized in `../../integrations/README.md`.
 - `adapterId` is concrete routing truth. `transportHint` is only the coarse family hint.
 - `eventCode` is the global capability identity.
 - Task shell creation enters through `POST /api/v1/tasks`, then work items are appended through `POST /api/v1/tasks/{taskId}/items`.
+- Task list/detail reads may return composite task rows. Java `TaskView`
+  exposes `fieldSources` so callers can tell shell, runtime/current,
+  execution, timestamp, and compatibility fields apart instead of treating the
+  row as one database entity.
 
 ## 2. Task Producer Path
 

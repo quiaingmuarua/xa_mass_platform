@@ -8,6 +8,7 @@ export interface TaskListItem {
     eligibleCount: number
     batchSize: number
     updatedAt: string
+    fieldSources?: Record<string, string>
 }
 
 export interface TaskDetailRecord {
@@ -28,6 +29,7 @@ export interface TaskDetailRecord {
     peakAssignedWorkerCount: number
     createTime: string
     updateTime: string
+    fieldSources?: Record<string, string>
 }
 
 export interface TaskDetailResponse {

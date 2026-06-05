@@ -159,7 +159,11 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.data.task.execution.workloadClass").value("INTERACTIVE"))
                 .andExpect(jsonPath("$.data.task.execution.batchSize").value(2))
                 .andExpect(jsonPath("$.data.task.execution.foreground").value(false))
-                .andExpect(jsonPath("$.data.task.counters.successCount").value(0));
+                .andExpect(jsonPath("$.data.task.fieldSources.taskId").value("controlPlaneShell"))
+                .andExpect(jsonPath("$.data.task.fieldSources.executionSpec").value("compatibilityAlias"))
+                .andExpect(jsonPath("$.data.task.counters").doesNotExist())
+                .andExpect(jsonPath("$.data.task.timestamps").doesNotExist())
+                .andExpect(jsonPath("$.data.task.status").doesNotExist());
 
         ArgumentCaptor<MassTaskShellCreateRequest> captor = ArgumentCaptor.forClass(MassTaskShellCreateRequest.class);
         verify(taskAdmin).createTaskShell(captor.capture());
@@ -461,6 +465,9 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.data.task.timestamps.updatedAt").value(""))
                 .andExpect(jsonPath("$.data.task.sharedConfig.routingCode").value("us"))
                 .andExpect(jsonPath("$.data.task.sharedConfig._massSecurity").doesNotExist())
+                .andExpect(jsonPath("$.data.task.fieldSources.taskId").value("controlPlaneShell"))
+                .andExpect(jsonPath("$.data.task.fieldSources.status").value("runtimeCurrent"))
+                .andExpect(jsonPath("$.data.task.fieldSources.sharedConfig").value("controlPlaneShell"))
                 .andExpect(jsonPath("$.data.security.createdByPrincipalId").value("agent"))
                 .andExpect(jsonPath("$.data.security.createdByPrincipalType").value("SERVICE"))
                 .andExpect(jsonPath("$.data.stateValidation").doesNotExist())

@@ -22,6 +22,10 @@ Global boundary guard:
 - External callers that talk to a running server should start from
   `xa-mass-java-sdk` and its
   [`EXTERNAL_SDK_QUICKSTART.md`](./xa-mass-java-sdk/EXTERNAL_SDK_QUICKSTART.md).
+- External task reads exposed through `xa-mass-java-sdk` may be source-labeled
+  composites. `TaskView.fieldSources` is the current boundary hint for callers
+  that need to distinguish shell, runtime/current, execution, timestamp, and
+  compatibility fields.
 - Real external worker/task proof is expected to use public SDK calls against a
   running server. Server-owned dev bootstrap endpoints are fixtures, not SDK
   prerequisites.

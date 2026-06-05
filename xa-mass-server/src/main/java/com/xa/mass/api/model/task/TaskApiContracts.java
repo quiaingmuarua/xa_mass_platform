@@ -84,7 +84,40 @@ public final class TaskApiContracts {
             @Schema(description = "Compatibility ended timestamp alias", example = "2026-05-13 12:10:00")
             String endTime,
             @Schema(description = "List-friendly updated timestamp alias", example = "2026-05-13 12:05:00")
-            String updatedAt
+            String updatedAt,
+            @Schema(description = "Field-to-owner labels for this composite task response")
+            Map<String, String> fieldSources
+    ) {
+    }
+
+    @Schema(name = "ApiTaskShell", description = "Task shell fields returned by task creation")
+    public record ApiTaskShell(
+            @Schema(description = "Compatibility alias for taskId", example = "task-uuid")
+            String id,
+            @Schema(description = "Stable task identifier", example = "task-uuid")
+            String taskId,
+            @Schema(description = "Compatibility alias for taskId", example = "task-uuid")
+            String tid,
+            @Schema(description = "Server-derived display name", example = "demoApp-BATCH-task-uuid")
+            String taskName,
+            @Schema(description = "Tenant id. Current runtime is single-tenant with tenant-aware semantics.", example = "default")
+            String tenantId,
+            @Schema(description = "Project code that owns the task", example = "demoApp")
+            String project,
+            @Schema(description = "Task owner user id", example = "agent")
+            String userId,
+            @Schema(description = "Task runtime contract", allowableValues = {"SESSION", "BATCH"}, example = "BATCH")
+            String contract,
+            @Schema(description = "External source reference for the task shell", example = "import://demo/seed.ndjson")
+            String sourceRef,
+            @Schema(description = "Public task shared config with framework-owned security metadata stripped")
+            Map<String, Object> sharedConfig,
+            @Schema(description = "Resolved task execution policy")
+            ApiTaskExecution execution,
+            @Schema(description = "Compatibility alias for execution")
+            ApiTaskExecution executionSpec,
+            @Schema(description = "Field-to-owner labels for this shell response")
+            Map<String, String> fieldSources
     ) {
     }
 
@@ -257,7 +290,7 @@ public final class TaskApiContracts {
     @Schema(name = "ApiTaskCreateOutcome", description = "Task shell create response body")
     public record ApiTaskCreateOutcome(
             @Schema(description = "Created task object")
-            ApiTask task,
+            ApiTaskShell task,
             @Schema(description = "Created task id", example = "task-uuid")
             String taskId,
             @Schema(description = "Server-derived task display name")

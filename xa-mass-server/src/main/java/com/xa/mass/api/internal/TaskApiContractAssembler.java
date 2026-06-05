@@ -11,6 +11,7 @@ import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskListResult;
 import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskResultArchive;
 import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskResultItem;
 import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskResultWindow;
+import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskShell;
 import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskSyncAppendOutcome;
 import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskTimestamps;
 import com.xa.mass.api.model.task.TaskApiContracts.ApiTaskUpdateOutcome;
@@ -33,6 +34,59 @@ import java.util.Map;
 
 final class TaskApiContractAssembler {
 
+    private static final Map<String, String> TASK_FIELD_SOURCES = Map.ofEntries(
+            Map.entry("id", "compatibilityAlias"),
+            Map.entry("taskId", "controlPlaneShell"),
+            Map.entry("tid", "compatibilityAlias"),
+            Map.entry("taskName", "controlPlaneShell"),
+            Map.entry("tenantId", "controlPlaneShell"),
+            Map.entry("project", "controlPlaneShell"),
+            Map.entry("userId", "controlPlaneShell"),
+            Map.entry("contract", "controlPlaneShell"),
+            Map.entry("status", "runtimeCurrent"),
+            Map.entry("intakeStatus", "runtimeCurrent"),
+            Map.entry("terminalReason", "runtimeCurrent"),
+            Map.entry("holdReason", "runtimeCurrent"),
+            Map.entry("sourceRef", "controlPlaneShell"),
+            Map.entry("sharedConfig", "controlPlaneShell"),
+            Map.entry("execution", "executionPolicy"),
+            Map.entry("executionSpec", "compatibilityAlias"),
+            Map.entry("counters", "runtimeCurrent"),
+            Map.entry("timestamps", "lifecycleTimestamp"),
+            Map.entry("taskTargetNumber", "compatibilityAlias"),
+            Map.entry("taskEligibleNumber", "compatibilityAlias"),
+            Map.entry("taskSuccessNumber", "compatibilityAlias"),
+            Map.entry("taskNonSuccessNumber", "compatibilityAlias"),
+            Map.entry("minRequiredWorkerCount", "compatibilityAlias"),
+            Map.entry("peakAssignedWorkerCount", "compatibilityAlias"),
+            Map.entry("successCount", "compatibilityAlias"),
+            Map.entry("eligibleCount", "compatibilityAlias"),
+            Map.entry("executionProfile", "compatibilityAlias"),
+            Map.entry("workloadClass", "compatibilityAlias"),
+            Map.entry("batchSize", "compatibilityAlias"),
+            Map.entry("maxRuntimeSeconds", "compatibilityAlias"),
+            Map.entry("defaultMaxRetryCount", "compatibilityAlias"),
+            Map.entry("createTime", "compatibilityAlias"),
+            Map.entry("updateTime", "compatibilityAlias"),
+            Map.entry("startTime", "compatibilityAlias"),
+            Map.entry("endTime", "compatibilityAlias"),
+            Map.entry("updatedAt", "compatibilityAlias")
+    );
+    private static final Map<String, String> TASK_SHELL_FIELD_SOURCES = Map.ofEntries(
+            Map.entry("id", "compatibilityAlias"),
+            Map.entry("taskId", "controlPlaneShell"),
+            Map.entry("tid", "compatibilityAlias"),
+            Map.entry("taskName", "controlPlaneShell"),
+            Map.entry("tenantId", "controlPlaneShell"),
+            Map.entry("project", "controlPlaneShell"),
+            Map.entry("userId", "controlPlaneShell"),
+            Map.entry("contract", "controlPlaneShell"),
+            Map.entry("sourceRef", "controlPlaneShell"),
+            Map.entry("sharedConfig", "controlPlaneShell"),
+            Map.entry("execution", "executionPolicy"),
+            Map.entry("executionSpec", "compatibilityAlias")
+    );
+
     private final DateTimeFormatter dateTimeFormatter;
 
     TaskApiContractAssembler(DateTimeFormatter dateTimeFormatter) {
@@ -48,7 +102,7 @@ final class TaskApiContractAssembler {
                                          TaskExecutionOptions executionOptions,
                                          String principalId,
                                          String message) {
-        ApiTask apiTask = toApiTask(task, executionOptions);
+        ApiTaskShell apiTask = toApiTaskShell(task, executionOptions);
         return new ApiTaskCreateOutcome(
                 apiTask,
                 task != null ? task.getTaskId() : null,
@@ -202,7 +256,8 @@ final class TaskApiContractAssembler {
                 updatedAt,
                 null,
                 null,
-                updatedAt
+                updatedAt,
+                TASK_FIELD_SOURCES
         );
     }
 
@@ -260,22 +315,17 @@ final class TaskApiContractAssembler {
                 updatedAt,
                 startedAt,
                 endedAt,
-                updatedAt
+                updatedAt,
+                TASK_FIELD_SOURCES
         );
     }
 
-    ApiTask toApiTask(TaskShellSnapshot task) {
-        return toApiTask(task, null);
-    }
-
-    ApiTask toApiTask(TaskShellSnapshot task, TaskExecutionOptions executionOptions) {
+    ApiTaskShell toApiTaskShell(TaskShellSnapshot task, TaskExecutionOptions executionOptions) {
         if (task == null) {
             return null;
         }
         ApiTaskExecution execution = toExecution(executionOptions);
-        ApiTaskCounters counters = new ApiTaskCounters(0, 0, 0, 0, 0, 0);
-        ApiTaskTimestamps timestamps = new ApiTaskTimestamps(null, null, null, null);
-        return new ApiTask(
+        return new ApiTaskShell(
                 task.getTaskId(),
                 task.getTaskId(),
                 task.getTaskId(),
@@ -284,34 +334,11 @@ final class TaskApiContractAssembler {
                 task.getProject(),
                 task.getUserId(),
                 task.getContract(),
-                null,
-                null,
-                null,
-                null,
                 task.getSourceRef(),
                 null,
                 execution,
                 execution,
-                counters,
-                timestamps,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                execution.profile(),
-                execution.workloadClass(),
-                execution.batchSize(),
-                execution.maxRuntimeSeconds(),
-                execution.defaultMaxRetryCount(),
-                null,
-                null,
-                null,
-                null,
-                null
+                TASK_SHELL_FIELD_SOURCES
         );
     }
 

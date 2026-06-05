@@ -19,6 +19,7 @@ public record TaskView(
         Map<String, Object> sharedConfig,
         TaskExecutionView execution,
         TaskCounters counters,
-        TaskTimestamps timestamps
+        TaskTimestamps timestamps,
+        Map<String, String> fieldSources
 ) {
 }

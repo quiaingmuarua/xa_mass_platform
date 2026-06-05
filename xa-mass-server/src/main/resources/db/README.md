@@ -3,7 +3,8 @@
 Status: current server-owned DB resource boundary.
 
 `xa-mass-server` owns server product/control-plane schema for API-key
-lifecycle, IAM/user-role state, and low-volume API usage evidence.
+lifecycle, IAM/user-role state, low-volume API usage evidence, and worker
+registration observation rows used for audit/future analysis.
 
 Use these directories:
 
@@ -12,9 +13,10 @@ Use these directories:
 - `migration/server-control-plane/`: executable Flyway SQL for the current
   server-owned control-plane schema generation.
 
-Do not put server API-key, IAM, usage, or submitter-viewer session schema under
-`platform_infra/mass-storage-jdbc`. That module owns generic storage schema
-such as task shell, rule storage, and generic principal projection support.
+Do not put server API-key, IAM, usage, worker registration observation, or
+submitter-viewer session schema under `platform_infra/mass-storage-jdbc`. That
+module owns generic storage schema such as task shell, rule storage, and
+generic principal projection support.
 
 Current project stage:
 
@@ -28,3 +30,7 @@ Current project stage:
 Submitter-viewer sessions are not server control-plane DB truth. They remain
 memory-only unless a future runtime/Redis session design explicitly changes
 that owner.
+
+Worker registration observation rows are not worker runtime truth. They must
+not restore workers, transport presence, heartbeat, locks, dispatch routing, or
+scheduling candidates on startup.

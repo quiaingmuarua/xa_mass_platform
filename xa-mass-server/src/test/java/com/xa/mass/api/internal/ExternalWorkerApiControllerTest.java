@@ -1,6 +1,8 @@
 package com.xa.mass.api.internal;
 
 import com.xa.mass.api.auth.ApiAuthorizationService;
+import com.xa.mass.api.worker.registration.InMemoryWorkerRegistrationObservationStore;
+import com.xa.mass.api.worker.registration.WorkerRegistrationObservationService;
 import com.xa.mass.sdk.WorkerControlOperations;
 import com.xa.mass.sdk.WorkerClientOperations;
 import com.xa.mass.sdk.WorkerRegistryOperations;
@@ -32,6 +34,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -59,6 +62,7 @@ class ExternalWorkerApiControllerTest {
 
     private MockMvc mockMvc;
     private PrincipalContext workerSubmitter;
+    private InMemoryWorkerRegistrationObservationStore registrationObservationStore;
 
     @BeforeEach
     void setUp() {
@@ -76,12 +80,14 @@ class ExternalWorkerApiControllerTest {
                 .thenReturn(WorkerTransportHints.POLLING);
         lenient().when(workerClient.getWorkerTransportHint("node-worker-1"))
                 .thenReturn(WorkerTransportHints.POLLING);
+        registrationObservationStore = new InMemoryWorkerRegistrationObservationStore();
         mockMvc = MockMvcBuilders
                 .standaloneSetup(new ExternalWorkerApiController(
                         workerRegistry,
                         workerClient,
                         workerControl,
-                        new ApiAuthorizationService(authProvider, null)))
+                        new ApiAuthorizationService(authProvider, null),
+                        new WorkerRegistrationObservationService(registrationObservationStore)))
                 .setControllerAdvice(new com.xa.mass.api.aop.GlobalExceptionHandler())
                 .build();
     }
@@ -286,6 +292,65 @@ class ExternalWorkerApiControllerTest {
                         && "node-a".equals(request.getAdapterNodeId())
                         && "node-runtime".equals(request.getWorkerGroupId())
         ));
+    }
+
+    @Test
+    void successfulRegistrationIngressWritesObservationLedger() throws Exception {
+        mockMvc.perform(post("/worker-api/v1/adapter-nodes")
+                        .contentType("application/json")
+                        .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
+                        .content("""
+                                {
+                                  "adapterNodeId": "node-a",
+                                  "adapterType": "polling",
+                                  "endpointId": "runtime-a"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/worker-api/v1/worker-groups")
+                        .contentType("application/json")
+                        .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
+                        .content("""
+                                {
+                                  "groupId": "node-runtime",
+                                  "eventBindings": [
+                                    {
+                                      "eventCode": "crawler.fetch-page",
+                                      "projectCodes": ["crawlerApp"]
+                                    }
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/worker-api/v1/node-group-bindings")
+                        .contentType("application/json")
+                        .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
+                        .content("""
+                                {
+                                  "adapterNodeId": "node-a",
+                                  "workerGroupId": "node-runtime"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/worker-api/v1/workers")
+                        .contentType("application/json")
+                        .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
+                        .content("""
+                                {
+                                  "workerId": "node-worker-1",
+                                  "adapterNodeId": "node-a",
+                                  "workerGroupId": "node-runtime"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        assertObservation("ADAPTER_NODE", "node-a", "REGISTER");
+        assertObservation("WORKER_GROUP", "node-runtime", "DECLARE");
+        assertObservation("NODE_GROUP_BINDING", "node-a:node-runtime", "BIND");
+        assertObservation("WORKER", "node-worker-1", "REGISTER");
     }
 
     @Test
@@ -777,5 +842,16 @@ class ExternalWorkerApiControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.msg").value("worker command does not belong to worker node-worker-1"));
+    }
+
+    private void assertObservation(String resourceType, String resourceId, String action) {
+        var records = registrationObservationStore.listByResource(resourceType, resourceId);
+        assertEquals(1, records.size());
+        var record = records.getFirst();
+        assertEquals(action, record.action());
+        assertEquals("node-worker-1", record.principalId());
+        assertEquals("SERVICE", record.principalType());
+        org.junit.jupiter.api.Assertions.assertNotNull(record.requestHash());
+        org.junit.jupiter.api.Assertions.assertTrue(record.payloadJson().contains(resourceId.split(":")[0]));
     }
 }

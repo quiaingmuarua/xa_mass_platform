@@ -5,6 +5,7 @@ import com.xa.mass.api.auth.ApiForbiddenException;
 import com.xa.mass.api.auth.ApiSecurityScenario;
 import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.api.model.worker.*;
+import com.xa.mass.api.worker.registration.WorkerRegistrationObservationService;
 import com.xa.mass.sdk.WorkerControlOperations;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.WorkerClientOperations;
@@ -56,15 +57,25 @@ public class ExternalWorkerApiController {
     private final WorkerClientOperations workerClient;
     private final WorkerControlOperations workerControl;
     private final ApiAuthorizationService apiAuthorizationService;
+    private final WorkerRegistrationObservationService registrationObservationService;
 
     public ExternalWorkerApiController(WorkerRegistryOperations workerRegistry,
                                        WorkerClientOperations workerClient,
                                        WorkerControlOperations workerControl,
                                        ApiAuthorizationService apiAuthorizationService) {
+        this(workerRegistry, workerClient, workerControl, apiAuthorizationService, null);
+    }
+
+    public ExternalWorkerApiController(WorkerRegistryOperations workerRegistry,
+                                       WorkerClientOperations workerClient,
+                                       WorkerControlOperations workerControl,
+                                       ApiAuthorizationService apiAuthorizationService,
+                                       WorkerRegistrationObservationService registrationObservationService) {
         this.workerRegistry = workerRegistry;
         this.workerClient = workerClient;
         this.workerControl = workerControl;
         this.apiAuthorizationService = apiAuthorizationService == null ? new ApiAuthorizationService() : apiAuthorizationService;
+        this.registrationObservationService = registrationObservationService;
     }
 
     public ExternalWorkerApiController(WorkerRegistryOperations workerRegistry,
@@ -77,12 +88,16 @@ public class ExternalWorkerApiController {
     public ExternalWorkerApiController(WorkerRegistryOperations workerRegistry,
                                        WorkerClientOperations workerClient,
                                        ObjectProvider<WorkerControlOperations> workerControlProvider,
+                                       ObjectProvider<WorkerRegistrationObservationService> registrationObservationServiceProvider,
                                        ApiAuthorizationService apiAuthorizationService) {
         this(
                 workerRegistry,
                 workerClient,
                 workerControlProvider == null ? null : workerControlProvider.getIfAvailable(),
-                apiAuthorizationService
+                apiAuthorizationService,
+                registrationObservationServiceProvider == null
+                        ? null
+                        : registrationObservationServiceProvider.getIfAvailable()
         );
     }
 
@@ -93,7 +108,7 @@ public class ExternalWorkerApiController {
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
             @RequestBody ExternalAdapterNodeRegisterApiRequest requestBody) {
         validateAdapterNodeRegisterRequest(requestBody);
-        requireAuthorizedWorkerSubmitter(
+        PrincipalContext submitter = requireAuthorizedWorkerSubmitter(
                 apiKeyHeader,
                 authorizationHeader,
                 ApiSecurityScenario.WORKER_REGISTER,
@@ -120,6 +135,7 @@ public class ExternalWorkerApiController {
         response.put("enabled", request.isEnabled());
         response.put("online", request.isOnline());
         response.put("attributes", request.getAttributes());
+        observeRegistration("ADAPTER_NODE", request.getAdapterNodeId(), "REGISTER", submitter, response);
         return ApiResponse.success(response);
     }
 
@@ -131,7 +147,7 @@ public class ExternalWorkerApiController {
             @RequestBody ExternalWorkerGroupDeclareApiRequest requestBody) {
         validateWorkerGroupDeclareRequest(requestBody);
         List<WorkerEventBinding> eventBindings = toEventBindings(requestBody.getEventBindings());
-        requireAuthorizedWorkerSubmitter(
+        PrincipalContext submitter = requireAuthorizedWorkerSubmitter(
                 apiKeyHeader,
                 authorizationHeader,
                 ApiSecurityScenario.WORKER_REGISTER,
@@ -154,6 +170,7 @@ public class ExternalWorkerApiController {
         response.put("eventBindings", request.getEventBindings());
         response.put("defaultAttributes", request.getDefaultAttributes());
         response.put("defaultMaxConcurrentWork", request.getDefaultMaxConcurrentWork());
+        observeRegistration("WORKER_GROUP", request.getGroupId(), "DECLARE", submitter, response);
         return ApiResponse.success(response);
     }
 
@@ -164,7 +181,7 @@ public class ExternalWorkerApiController {
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
             @RequestBody ExternalNodeGroupBindingApiRequest requestBody) {
         validateNodeGroupBindingRequest(requestBody);
-        requireAuthorizedWorkerSubmitter(
+        PrincipalContext submitter = requireAuthorizedWorkerSubmitter(
                 apiKeyHeader,
                 authorizationHeader,
                 ApiSecurityScenario.WORKER_REGISTER,
@@ -191,6 +208,11 @@ public class ExternalWorkerApiController {
         response.put("enabled", request.isEnabled());
         response.put("draining", request.isDraining());
         response.put("attributes", request.getAttributes());
+        observeRegistration("NODE_GROUP_BINDING",
+                request.getAdapterNodeId() + ":" + request.getWorkerGroupId(),
+                "BIND",
+                submitter,
+                response);
         return ApiResponse.success(response);
     }
 
@@ -227,6 +249,7 @@ public class ExternalWorkerApiController {
         response.put("workerGroupId", request.getWorkerGroupId());
         response.put("adapterId", effectiveAdapterId);
         response.put("transportHint", transportHint);
+        observeRegistration("WORKER", request.getWorkerId(), "REGISTER", submitter, response);
         return ApiResponse.success(response);
     }
 
@@ -699,6 +722,23 @@ public class ExternalWorkerApiController {
                         "workerId", String.valueOf(workerId),
                         "scenario", scenario.name()
                 )
+        );
+    }
+
+    private void observeRegistration(String resourceType,
+                                     String resourceId,
+                                     String action,
+                                     PrincipalContext principal,
+                                     Map<String, Object> payload) {
+        if (registrationObservationService == null) {
+            return;
+        }
+        registrationObservationService.observeSuccessfulRegistration(
+                resourceType,
+                resourceId,
+                action,
+                principal,
+                payload == null ? Map.of() : new LinkedHashMap<>(payload)
         );
     }
 
