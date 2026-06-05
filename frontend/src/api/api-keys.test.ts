@@ -10,7 +10,10 @@ import {
     rejectApiKeyApplication,
     revokeApiKey,
 } from '@/api/api-keys'
-import {setRuntimeConfigOverrides} from '@/app/config'
+import {
+    resetRuntimeConfigOverrides,
+    setRuntimeConfigOverrides,
+} from '@/app/config'
 
 function jsonResponse(body: unknown): Response {
     return new Response(JSON.stringify(body), {
@@ -22,9 +25,15 @@ function jsonResponse(body: unknown): Response {
 }
 
 describe('api-key API client', () => {
+    afterEach(() => {
+        resetRuntimeConfigOverrides()
+        vi.unstubAllGlobals()
+    })
+
     it('uses the server IAM API-key routes', async () => {
         setRuntimeConfigOverrides({
             apiBaseUrl: '/backend',
+            useMockApi: false,
             useMockAuth: false,
         })
         const fetchMock = vi.fn().mockImplementation(() =>
@@ -52,6 +61,7 @@ describe('api-key API client', () => {
     })
 
     it('creates, revokes, applies, approves, and rejects through explicit endpoints', async () => {
+        setRuntimeConfigOverrides({useMockApi: false})
         const fetchMock = vi.fn().mockImplementation(() =>
             Promise.resolve(jsonResponse({
                 code: 0,
