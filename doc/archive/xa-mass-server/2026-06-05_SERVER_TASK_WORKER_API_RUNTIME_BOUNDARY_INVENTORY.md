@@ -1,19 +1,27 @@
 # Server Task Worker API Runtime Boundary Inventory
 
-Status: initial inventory exists; TWA-0 owner review and completion pending for
-[SERVER_TASK_WORKER_API_RUNTIME_BOUNDARY_ROADMAP.md](./SERVER_TASK_WORKER_API_RUNTIME_BOUNDARY_ROADMAP.md).
+Archive status: archived on 2026-06-05 with its parent roadmap after mainline
+implementation. Current truth owners:
+`xa-mass-server/doc/INTERNAL_API_REFERENCE.md`,
+`xa-mass-server/doc/API_SURFACE_INVENTORY.md`,
+`frontend/README.md`, `sdk/README.md`,
+`sdk/xa-mass-java-sdk/README.md`, and current code/tests.
+Do not use this archived inventory as proof of current behavior.
 
-This inventory is intentionally current-code-first. Update it during TWA-0
-before implementing route or DTO changes. The tables below are the initial
-classification scaffold, not the final TWA-0 acceptance artifact.
+Status: implemented mainline with
+[2026-06-05_SERVER_TASK_WORKER_API_RUNTIME_BOUNDARY_ROADMAP.md](./2026-06-05_SERVER_TASK_WORKER_API_RUNTIME_BOUNDARY_ROADMAP.md).
+
+This inventory is intentionally current-code-first. TWA-0 owner review is
+complete; the tables below are the current classification baseline and must
+stay current as later slices land.
 
 ## Route Inventory
 
 | Method | Route | Current Owner | Current Shape | Classification | Target |
 | --- | --- | --- | --- | --- | --- |
-| GET | `/api/v1/tasks` | `TaskApiController` | `ApiTaskListResult` of `ApiTask` | mixed task shell/current aggregate | classify fields; narrow or source-label |
-| POST | `/api/v1/tasks` | `TaskApiController` | `ApiTaskCreateOutcome` | task shell ingress | keep shell create |
-| GET | `/api/v1/tasks/{taskId}` | `TaskApiController` | `ApiTaskGetResult` with `ApiTask` | mixed task shell/current aggregate/security | classify fields; narrow or source-label |
+| GET | `/api/v1/tasks` | `TaskApiController` | `ApiTaskListResult` of source-labeled `ApiTask` | source-labeled shell/current aggregate composite | keep bounded public read; source labels are current first-pass split |
+| POST | `/api/v1/tasks` | `TaskApiController` | `ApiTaskCreateOutcome` with `ApiTaskShell` | task shell ingress | keep shell create; no empty runtime counters/timestamps |
+| GET | `/api/v1/tasks/{taskId}` | `TaskApiController` | `ApiTaskGetResult` with source-labeled `ApiTask` | source-labeled task shell/current aggregate/security composite | keep current route; source labels are current first-pass split |
 | PATCH | `/api/v1/tasks/{taskId}` | `TaskApiController` | `ApiTaskUpdateOutcome` | operator task shell command | keep bounded command |
 | POST | `/api/v1/tasks/{taskId}/items` | `TaskApiController` | `ApiTaskAppendOutcome` | item ingest | keep public ingress |
 | POST | `/api/v1/tasks/{taskId}/items:sync` | `TaskApiController` | `ApiTaskSyncAppendOutcome` | item ingest plus result wait | keep SDK ingress/result wait |
@@ -48,11 +56,12 @@ classification scaffold, not the final TWA-0 acceptance artifact.
 
 | Shape | Fields / Groups | Initial Classification | Target |
 | --- | --- | --- | --- |
-| `ApiTask` | `taskId`, `taskName`, `tenantId`, `project`, `userId`, `contract`, `sourceRef`, sanitized `sharedConfig` | control-plane shell | keep shell section |
-| `ApiTask` | `status`, `intakeStatus`, `terminalReason`, `holdReason` | task lifecycle/current state | decide shell/current-state section split |
-| `ApiTask` | `taskTargetNumber`, `taskEligibleNumber`, `taskSuccessNumber`, `taskNonSuccessNumber`, worker counters | runtime/current aggregate counters | source-label or move to runtime view |
-| `ApiTask` | `execution`, `executionSpec`, flat execution aliases | compatibility + execution policy view | reduce alias growth |
-| `ApiTask` | `id`, `tid`, flat count aliases, flat timestamp aliases | compatibility alias | keep only if caller evidence requires |
+| `ApiTaskShell` | `taskId`, `taskName`, `tenantId`, `project`, `userId`, `contract`, `sourceRef`, sanitized `sharedConfig`, `execution` | control-plane shell + execution policy | create response shell object; no counters/timestamps/status |
+| `ApiTask` | `taskId`, `taskName`, `tenantId`, `project`, `userId`, `contract`, `sourceRef`, sanitized `sharedConfig` | control-plane shell | keep with `fieldSources=controlPlaneShell` |
+| `ApiTask` | `status`, `intakeStatus`, `terminalReason`, `holdReason` | runtime/current task lifecycle state | keep on list/detail as source-labeled current-state fields because current frontend filters and detail pages need them |
+| `ApiTask` | `taskTargetNumber`, `taskEligibleNumber`, `taskSuccessNumber`, `taskNonSuccessNumber`, worker counters | runtime/current aggregate counters | keep on list/detail as source-labeled runtime counters; future route split may move them to runtime detail |
+| `ApiTask` | `execution`, `executionSpec`, flat execution aliases | execution policy + compatibility | keep `execution`; mark `executionSpec` and flat aliases as compatibility |
+| `ApiTask` | `id`, `tid`, flat count aliases, flat timestamp aliases | compatibility alias | keep only as current caller compatibility; do not add more aliases |
 | `ApiTaskResultWindow` | `items`, `nextAfterSeq`, `hasMore`, archive flags | result-runtime | keep separate |
 | review response | seed/result preview, exports | review-materialization | keep internal/server-local |
 | worker runtime row | `workerId`, `workerGroupId`, `adapterNodeId`, `adapterId`, attributes, declared capacity | declaration-ish field group | source-label as declaration |
@@ -65,10 +74,10 @@ classification scaffold, not the final TWA-0 acceptance artifact.
 
 | Caller | Route | Current Use | Target |
 | --- | --- | --- | --- |
-| `frontend/src/api/tasks.real.ts` | `/api/v1/tasks` | task list | update after task split/source labels |
-| `frontend/src/api/tasks.real.ts` | `/api/v1/tasks/{taskId}` | task detail | update after task split/source labels |
+| `frontend/src/api/tasks.real.ts` | `/api/v1/tasks` | task list | preserves source-labeled task rows through typed response |
+| `frontend/src/api/tasks.real.ts` | `/api/v1/tasks/{taskId}` | task detail | preserves source-labeled task detail through typed response |
 | `frontend/src/api/tasks.real.ts` | `/internal/v1/review/tasks/{taskId}` | task review preview/export | keep separate |
-| `frontend/src/api/workers.real.ts` | `/api/v1/runtime/workers` | worker list | keep as composite diagnostic or retarget after worker split |
+| `frontend/src/api/workers.real.ts` | `/api/v1/runtime/workers` | worker list | keep as composite diagnostic and preserve `fieldSources` in type/adapter tests |
 | task pages | task list/detail/review | mixed task API + review API | preserve separation in page model |
 | worker pages | worker list/detail | composite worker row | display source-aware facts |
 | dashboard/project pages | task and worker summaries | aggregate console reads | avoid turning diagnostics into public entity truth |
@@ -77,19 +86,26 @@ classification scaffold, not the final TWA-0 acceptance artifact.
 
 | Document | Current Drift | Target |
 | --- | --- | --- |
-| `xa-mass-server/doc/INTERNAL_API_REFERENCE.md` | says Task API is already explicitly split while `ApiTask` remains a mixed shell/lifecycle/counter/timestamp/compatibility response | repair wording during TWA-1A/TWA-2 so current docs do not present target split as implemented |
+| `xa-mass-server/doc/INTERNAL_API_REFERENCE.md` | previously said Task API was already explicitly split while `ApiTask` remained mixed | repaired during TWA-1A/TWA-2 to say route families are split while list/detail `ApiTask` remains source-labeled composite |
 
-## Worker Registration DB Observation Decision Queue
+## Worker Registration DB Observation Decision
 
-Open decisions for TWA-1B:
+TWA-1B current decision:
 
-- current table only, ledger table only, or both
-- required versus best-effort DB write in dev/test/prod
-- whether WorkerGroup/AdapterNode/Binding declarations are recorded before
-  worker rows, and whether failed runtime registration records anything
-- payload storage policy: full bounded JSON, selected fields, request hash, or
-  mixed
-- retention/cleanup policy, if any
+- Use a server-owned append-only ledger table:
+  `xa_worker_registration_observation`.
+- Record only successful public registration ingress after the runtime owner
+  accepts the operation:
+  WorkerGroup declaration, AdapterNode registration, NodeGroupBinding, and
+  Worker registration.
+- Writes are best-effort and happen after successful runtime registration.
+  Observation write failure is logged and must not flip the public registration
+  response from success to failure.
+- Store selected response facts as bounded JSON plus request hash, principal id
+  and type, resource type/id, action, and occurred timestamp.
+- Do not record failed runtime registration attempts in this slice.
+- Retention/cleanup is deferred; the table is low-volume analysis/audit output
+  at the current project stage.
 
 Hard initial decision:
 
@@ -98,17 +114,27 @@ Hard initial decision:
   transport routing, presence, heartbeat, or command delivery.
 - DB registration observation rows must not implement or replace
   `WorkerDeclarationStore`; that owner remains in `xa-mass-worker-runtime`.
+- DB registration observation rows live in
+  `xa-mass-server/src/main/resources/db/schema/server-control-plane` for schema
+  notes and `xa-mass-server/src/main/resources/db/migration/server-control-plane`
+  for executable Flyway SQL, not in `platform_infra/mass-storage-jdbc`.
 
 ## Deferred Frontend Consumer Follow-Up
 
-Server API split remains the main roadmap owner. Frontend source-aware worker
-consumption may be deferred to a frontend-local follow-up if it would make the
-server slice too broad.
+Server API split remains the main roadmap owner. Frontend source-aware page
+presentation is deferred to
+[`../frontend/WORKER_SOURCE_AWARE_PRESENTATION_FOLLOWUP.md`](../frontend/WORKER_SOURCE_AWARE_PRESENTATION_FOLLOWUP.md).
+No backend route/response-shape contract changes are deferred there; frontend
+real adapters, type files, and affected tests are updated in this roadmap.
+
+If deferred, only source-aware page presentation can move to a frontend-local
+follow-up. Frontend real adapters, type files, and affected tests must be
+updated in the same slice as any backend route or response-shape change.
 
 Known frontend follow-up candidates:
 
 | File | Current Gap | Target |
 | --- | --- | --- |
-| `frontend/src/types/workers.ts` | `WorkerListItem` does not model `fieldSources` | add source-aware type if `/api/v1/runtime/workers` remains composite |
-| `frontend/src/api/workers.real.ts` | consumes `/api/v1/runtime/workers` as base `WorkerListResponse` | preserve composite diagnostic semantics in adapter |
-| worker/dashboard/project pages | display mixed worker fields without owner source | show or internally preserve source-aware facts |
+| `frontend/src/types/workers.ts` | `WorkerListItem` now models `fieldSources`; page presentation still does not surface source labels | optional UI presentation follow-up only |
+| `frontend/src/api/workers.real.ts` | consumes `/api/v1/runtime/workers` as source-labeled `WorkerListResponse` | adapter contract preserved; optional page presentation follow-up |
+| worker/dashboard/project pages | display mixed worker fields without owner source | handled by the named frontend follow-up |

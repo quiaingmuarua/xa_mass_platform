@@ -393,7 +393,9 @@ class ServerMainSourceArchitectureGuardTest {
                 "InMemoryApiKeyCredentialStore", "com/xa/mass/api/auth/apikey/InMemoryApiKeyCredentialStore.java",
                 "InMemoryUserRolePermissionStore", "com/xa/mass/api/auth/iam/InMemoryUserRolePermissionStore.java",
                 "InMemorySubmitterViewerSessionStore", "com/xa/mass/api/auth/session/InMemorySubmitterViewerSessionStore.java",
-                "InMemoryApiUsageLedgerStore", "com/xa/mass/api/auth/usage/InMemoryApiUsageLedgerStore.java"
+                "InMemoryApiUsageLedgerStore", "com/xa/mass/api/auth/usage/InMemoryApiUsageLedgerStore.java",
+                "InMemoryWorkerRegistrationObservationStore",
+                "com/xa/mass/api/worker/registration/InMemoryWorkerRegistrationObservationStore.java"
         );
         List<String> violations = new ArrayList<>();
         storeFiles.forEach((symbol, relativePath) -> {
@@ -490,8 +492,10 @@ class ServerMainSourceArchitectureGuardTest {
                                     || source.contains("xa_iam_")
                                     || source.contains("xa_operator_credential")
                                     || source.contains("xa_api_usage_")
+                                    || source.contains("xa_worker_registration_")
                                     || source.contains("submitter_viewer_session")) {
-                                violations.add(path + " contains server-owned API/IAM/operator/session/usage schema");
+                                violations.add(path
+                                        + " contains server-owned API/IAM/operator/session/usage/worker-observation schema");
                             }
                         } catch (IOException e) {
                             violations.add(path + " could not be read: " + e.getMessage());
@@ -509,6 +513,15 @@ class ServerMainSourceArchitectureGuardTest {
                             if (source.contains("submitter_viewer_session")) {
                                 violations.add(path + " persists submitter-viewer sessions in JDBC");
                             }
+                            if (source.contains("xa_worker_registration_")
+                                    && (source.contains("heartbeat")
+                                    || source.contains("online")
+                                    || source.contains("lock")
+                                    || source.contains("lease")
+                                    || source.contains("route_bucket")
+                                    || source.contains("dispatch"))) {
+                                violations.add(path + " stores runtime worker truth in registration observation schema");
+                            }
                         } catch (IOException e) {
                             violations.add(path + " could not be read: " + e.getMessage());
                         }
@@ -516,7 +529,7 @@ class ServerMainSourceArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "server-owned API-key/IAM/operator/usage schema must stay in xa-mass-server and "
+                "server-owned API-key/IAM/operator/usage/worker-observation schema must stay in xa-mass-server and "
                         + "submitter-viewer sessions must stay out of JDBC:\n"
                         + String.join("\n", violations));
     }

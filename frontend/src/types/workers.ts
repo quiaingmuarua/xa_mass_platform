@@ -17,6 +17,7 @@ export interface WorkerListItem {
     connections?: WorkerConnectionItem[]
     hasActiveEndpoint?: boolean
     updateTime: string
+    fieldSources?: Record<string, string>
 }
 
 export interface WorkerEventBindingItem {
@@ -27,7 +28,9 @@ export interface WorkerEventBindingItem {
 export interface WorkerConnectionItem {
     active: boolean
     endpointId: string | null
-    transport: string | null
+    routeKey?: string | null
+    adapterId?: string | null
+    transport?: string | null
 }
 
 export interface WorkerListResponse {

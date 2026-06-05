@@ -40,6 +40,11 @@ describe('tasks.real', () => {
                             eligibleCount: 10,
                             batchSize: 2,
                             updatedAt: '2026-04-21 09:30:00',
+                            fieldSources: {
+                                taskId: 'controlPlaneShell',
+                                status: 'runtimeCurrent',
+                                successCount: 'compatibilityAlias',
+                            },
                         },
                     ],
                     total: 1,
@@ -60,6 +65,7 @@ describe('tasks.real', () => {
         )
         expect(response.total).toBe(1)
         expect(response.items[0].id).toBe('task-001')
+        expect(response.items[0].fieldSources?.status).toBe('runtimeCurrent')
     })
 
     it('loads task detail from the v1 task detail endpoint only', async () => {
@@ -84,6 +90,10 @@ describe('tasks.real', () => {
                         peakAssignedWorkerCount: 4,
                         createTime: [2026, 4, 21, 9, 0, 0],
                         updateTime: [2026, 4, 21, 9, 30, 0],
+                        fieldSources: {
+                            taskId: 'controlPlaneShell',
+                            status: 'runtimeCurrent',
+                        },
                     },
                 },
             }),
@@ -95,6 +105,7 @@ describe('tasks.real', () => {
         expect(fetchMock).toHaveBeenCalledTimes(1)
         expect(detail.task.user.name).toBe('-')
         expect(detail.task.createTime).toBe('2026-04-21 09:00:00')
+        expect(detail.task.fieldSources?.taskId).toBe('controlPlaneShell')
     })
 
     it('loads task review preview from the explicit review endpoint', async () => {

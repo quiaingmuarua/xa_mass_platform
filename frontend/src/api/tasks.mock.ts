@@ -12,6 +12,19 @@ import type {
     TaskShellCreateResult,
 } from '@/types/tasks'
 
+const mockTaskFieldSources = {
+    id: 'compatibilityAlias',
+    tid: 'compatibilityAlias',
+    taskName: 'controlPlaneShell',
+    project: 'controlPlaneShell',
+    status: 'runtimeCurrent',
+    terminalReason: 'runtimeCurrent',
+    successCount: 'compatibilityAlias',
+    eligibleCount: 'compatibilityAlias',
+    batchSize: 'compatibilityAlias',
+    updatedAt: 'compatibilityAlias',
+}
+
 const mockTaskList: TaskListItem[] = [
     {
         id: 'task-001',
@@ -23,6 +36,7 @@ const mockTaskList: TaskListItem[] = [
         eligibleCount: 240,
         batchSize: 20,
         updatedAt: '2026-04-20 11:24:00',
+        fieldSources: mockTaskFieldSources,
     },
     {
         id: 'task-002',
@@ -34,6 +48,7 @@ const mockTaskList: TaskListItem[] = [
         eligibleCount: 180,
         batchSize: 10,
         updatedAt: '2026-04-20 10:51:00',
+        fieldSources: mockTaskFieldSources,
     },
     {
         id: 'task-003',
@@ -45,6 +60,7 @@ const mockTaskList: TaskListItem[] = [
         eligibleCount: 620,
         batchSize: 25,
         updatedAt: '2026-04-20 09:18:00',
+        fieldSources: mockTaskFieldSources,
     },
 ]
 
@@ -71,6 +87,7 @@ const mockTaskDetails: Record<string, TaskDetailResponse> = {
             peakAssignedWorkerCount: 0,
             createTime: '2026-04-20 08:30:00',
             updateTime: '2026-04-20 11:24:00',
+            fieldSources: mockTaskFieldSources,
         },
     },
     'task-002': {
@@ -97,6 +114,7 @@ const mockTaskDetails: Record<string, TaskDetailResponse> = {
             peakAssignedWorkerCount: 0,
             createTime: '2026-04-19 23:10:00',
             updateTime: '2026-04-20 10:51:00',
+            fieldSources: mockTaskFieldSources,
         },
     },
     'task-003': {
@@ -121,6 +139,7 @@ const mockTaskDetails: Record<string, TaskDetailResponse> = {
             peakAssignedWorkerCount: 0,
             createTime: '2026-04-20 05:00:00',
             updateTime: '2026-04-20 09:18:00',
+            fieldSources: mockTaskFieldSources,
         },
     },
 }
@@ -329,6 +348,7 @@ export async function createTaskShellMock(
         eligibleCount: 0,
         batchSize,
         updatedAt: createdAt,
+        fieldSources: mockTaskFieldSources,
     }
 
     mockTaskList.unshift(listItem)
@@ -351,6 +371,7 @@ export async function createTaskShellMock(
             peakAssignedWorkerCount: 0,
             createTime: createdAt,
             updateTime: createdAt,
+            fieldSources: mockTaskFieldSources,
         },
     }
     mockTaskReviews[taskId] = {

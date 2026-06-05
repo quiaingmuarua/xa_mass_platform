@@ -229,9 +229,9 @@ Notes:
 
 Base path: `/api/v1/tasks`
 
-Task API is now explicitly split into:
+Task API route families are split into:
 
-- shell lifecycle
+- shell lifecycle and shell create
 - item ingest
 - command routes
 - result reads
@@ -240,9 +240,16 @@ Public create no longer accepts `inputs` and no longer mixes create with
 dispatch.
 
 Public task responses use the shared `ApiResponse<T>` envelope and server-owned
-canonical task objects rather than anonymous controller maps. The canonical
-objects intentionally keep a few redundant aliases for caller ergonomics:
+canonical task objects rather than anonymous controller maps. List/detail task
+responses are still source-labeled composite rows: `ApiTask` carries shell,
+current-state, execution, counter, timestamp, and compatibility fields, with
+`fieldSources` identifying each top-level field owner. Do not treat the
+list/detail `ApiTask` shape as a pure shell object.
 
+The current task response objects are:
+
+- `ApiTaskShell`: shell-only object returned by task create; it does not carry
+  empty runtime counter or timestamp containers
 - `ApiTask`: task shell, state, intake, execution, counters, and timestamps
 - `ApiTaskExecution`: `profile`, `workloadClass`, `batchSize`,
   `maxRuntimeSeconds`, `defaultMaxRetryCount`
@@ -251,6 +258,10 @@ objects intentionally keep a few redundant aliases for caller ergonomics:
 - `ApiTaskCommandOutcome`: unified command result
 - `ApiTaskResultWindow`: live ordered result read window
 - `ApiTaskResultArchive`: terminal archive manifest
+
+`fieldSources` labels use values such as `controlPlaneShell`,
+`runtimeCurrent`, `executionPolicy`, `lifecycleTimestamp`, and
+`compatibilityAlias`.
 
 ### 4.1 List Tasks
 
@@ -275,6 +286,9 @@ Notes:
   `eventCode` filtering
 - response `data` is `ApiTaskListResult` with `items` and `total`
 - each item is an `ApiTask`
+- each item includes `fieldSources`; `status`, `intakeStatus`,
+  `terminalReason`, and `holdReason` are current-state fields, not pure shell
+  fields
 
 ### 4.2 Create Task Shell
 
@@ -357,13 +371,12 @@ Example response:
         "maxRuntimeSeconds": 60,
         "defaultMaxRetryCount": 0
       },
-      "counters": {
-        "targetCount": 0,
-        "eligibleCount": 0,
-        "successCount": 0,
-        "nonSuccessCount": 0,
-        "minRequiredWorkerCount": 0,
-        "peakAssignedWorkerCount": 0
+      "fieldSources": {
+        "taskId": "controlPlaneShell",
+        "taskName": "controlPlaneShell",
+        "project": "controlPlaneShell",
+        "userId": "controlPlaneShell",
+        "execution": "executionPolicy"
       }
     },
     "message": "Task shell created"
@@ -387,6 +400,8 @@ Response notes:
 - response `data` is `ApiTaskGetResult`
 - `data.task` is `ApiTask`
 - `data.security` is the server-owned security/config view
+- `data.task.fieldSources` labels shell/current-state/execution/counter/
+  timestamp/compatibility owners
 
 ### 4.4 Update Task Shell
 

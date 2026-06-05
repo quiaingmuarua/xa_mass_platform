@@ -30,4 +30,6 @@ Current executable migrations:
 V1__server_api_key_lifecycle.sql
 V2__server_operator_iam.sql
 V3__server_api_usage_ledger.sql
+V4__server_operator_credentials.sql
+V5__server_worker_registration_observation.sql
 ```

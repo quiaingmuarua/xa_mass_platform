@@ -10,6 +10,7 @@ control-plane stores:
 - operator IAM users, roles, permissions, and bindings
 - operator password credential lifecycle
 - low-volume API usage ledger rows
+- worker registration observation rows
 
 It is not a historical migration ledger. During the current pre-release stage,
 schema changes may rewrite the current table design and require deleting or
@@ -131,6 +132,31 @@ Main shape:
 - optional failure reason/status
 - created timestamp
 
+### `xa_worker_registration_observation`
+
+Owner: `WorkerRegistrationObservationStore`.
+
+Purpose: append-only, low-volume observation output for successful public
+worker registration ingress. This table is for audit and future analysis only;
+it must not restore workers, presence, heartbeat, transport sessions, dispatch
+routing, or scheduling candidates.
+
+Main shape:
+
+- `observation_id` primary key
+- `resource_type`, `resource_id`, and `action` for the accepted registration
+  event
+- authenticated principal id/type
+- `request_hash` for the stored bounded payload representation
+- bounded `payload_json` for selected registration facts
+- `occurred_at` timestamp
+
+Recorded events are WorkerGroup declaration, AdapterNode registration,
+NodeGroupBinding, and Worker registration after the runtime owner accepts the
+operation. Heartbeat, online/offline, poll, result, command delivery,
+capability report, and state report are not worker registration observation
+truth in the current schema.
+
 When adding schema notes or DDL baselines here:
 
 - keep API-key lifecycle truth separate from the auth projection in
@@ -138,6 +164,8 @@ When adding schema notes or DDL baselines here:
 - represent project/event scopes with explicit omitted, wildcard, and bounded
   modes before persisting them
 - keep submitter-viewer sessions out of SQLite/JDBC
+- keep worker registration observation rows out of runtime restore,
+  scheduling, matching, presence, heartbeat, and transport routing
 - avoid runtime queues, leases, worker presence, dispatch streams, trace
   events, and high-volume history
 - prefer portable SQL shapes that can be validated on SQLite now and adapted to

@@ -1,6 +1,16 @@
 # Server Task Worker API Runtime Boundary Roadmap
 
-Status: proposed convergence roadmap.
+Archive status: archived on 2026-06-05 after mainline implementation.
+Current truth owners:
+`xa-mass-server/doc/INTERNAL_API_REFERENCE.md`,
+`xa-mass-server/doc/API_SURFACE_INVENTORY.md`,
+`frontend/README.md`, `sdk/README.md`,
+`sdk/xa-mass-java-sdk/README.md`, and current code/tests.
+Do not use this archived roadmap as proof of current behavior.
+
+Status: implemented mainline; optional worker source-aware page presentation is
+tracked by
+[`../../../frontend/WORKER_SOURCE_AWARE_PRESENTATION_FOLLOWUP.md`](../../../frontend/WORKER_SOURCE_AWARE_PRESENTATION_FOLLOWUP.md).
 
 This roadmap converges the server-facing task and worker HTTP/read-model
 surfaces so callers can distinguish:
@@ -22,13 +32,13 @@ Read with:
 
 - [TASK_WORKER_RUNTIME_HISTORY_BOUNDARY_ROADMAP.md](./TASK_WORKER_RUNTIME_HISTORY_BOUNDARY_ROADMAP.md)
 - [TASK_WORKER_RUNTIME_HISTORY_BOUNDARY_INVENTORY.md](./TASK_WORKER_RUNTIME_HISTORY_BOUNDARY_INVENTORY.md)
-- [SERVER_TASK_WORKER_API_RUNTIME_BOUNDARY_INVENTORY.md](./SERVER_TASK_WORKER_API_RUNTIME_BOUNDARY_INVENTORY.md)
-- [../doc/INFRA_TRUTH_LAYERS.md](../doc/INFRA_TRUTH_LAYERS.md)
-- [../doc/FRONTEND_BACKEND_CONTRACT.md](../doc/FRONTEND_BACKEND_CONTRACT.md)
-- [../xa-mass-server/doc/API_SURFACE_INVENTORY.md](../xa-mass-server/doc/API_SURFACE_INVENTORY.md)
-- [../xa-mass-server/doc/INTERNAL_API_REFERENCE.md](../xa-mass-server/doc/INTERNAL_API_REFERENCE.md)
-- [../xa-mass-server/README.md](../xa-mass-server/README.md)
-- [../frontend/AGENTS.md](../frontend/AGENTS.md)
+- [2026-06-05_SERVER_TASK_WORKER_API_RUNTIME_BOUNDARY_INVENTORY.md](./2026-06-05_SERVER_TASK_WORKER_API_RUNTIME_BOUNDARY_INVENTORY.md)
+- [../../../doc/INFRA_TRUTH_LAYERS.md](../../../doc/INFRA_TRUTH_LAYERS.md)
+- [../../../doc/FRONTEND_BACKEND_CONTRACT.md](../../../doc/FRONTEND_BACKEND_CONTRACT.md)
+- [../../../xa-mass-server/doc/API_SURFACE_INVENTORY.md](../../../xa-mass-server/doc/API_SURFACE_INVENTORY.md)
+- [../../../xa-mass-server/doc/INTERNAL_API_REFERENCE.md](../../../xa-mass-server/doc/INTERNAL_API_REFERENCE.md)
+- [../../../xa-mass-server/README.md](../../../xa-mass-server/README.md)
+- [../../../frontend/AGENTS.md](../../../frontend/AGENTS.md)
 
 ## Current Code Observations
 
@@ -49,8 +59,8 @@ Read with:
   console diagnostic row. It joins worker declaration snapshots, WorkerGroup
   capability-derived event bindings, transport connection evidence, runtime
   lock state, and reachability facts into one map.
-- `WorkerApiController` already labels `fieldSources`, but the route and
-  frontend adapter still treat the response as the main worker list.
+- `WorkerApiController` already labels `fieldSources`; frontend real adapter
+  and type files must preserve those labels when backend contracts change.
 - `ExternalWorkerApiController` is the public worker data-plane ingress for
   WorkerGroup, AdapterNode, NodeGroupBinding, worker registration, presence,
   polling, result submit, capability report, state report, command poll, and
@@ -179,12 +189,12 @@ owner and does not become a public SDK or runtime decision contract.
    rows may refer to group ids but must not become a second project/event
    binding owner.
 10. Any server/frontend API boundary change must update
-    `doc/FRONTEND_BACKEND_CONTRACT.md`, frontend `src/api/*`, and the relevant
-    frontend adapter/page tests.
-11. Runtime current-state UI refresh should converge toward SSE-backed bounded
-    streams in a later roadmap. Do not freeze task/worker polling/list routes
-    as the long-term realtime mechanism while doing this API split.
-12. Server-owned worker registration observation rows must not be named,
+    `doc/FRONTEND_BACKEND_CONTRACT.md`, frontend `src/api/*`, frontend type
+    files, and the relevant frontend adapter/page tests in the same slice.
+    Backend route, response-shape, auth, or permission changes cannot be
+    deferred to a frontend follow-up. Only display/presentation enhancements
+    that do not change the real adapter contract may be deferred.
+11. Server-owned worker registration observation rows must not be named,
     wired, or implemented as `WorkerDeclarationStore`. They are audit/analysis
     output from public registration ingress, not worker-runtime declaration
     storage.
@@ -200,6 +210,9 @@ owner and does not become a public SDK or runtime decision contract.
 - Do not freeze internal engine/base task or worker models as public contracts.
 - Do not introduce backend-driven frontend menu/page schemas.
 - Do not implement SSE in this roadmap.
+- Do not freeze task/worker polling/list routes as the long-term realtime
+  mechanism while doing this API split. Runtime current-state UI refresh should
+  converge toward SSE-backed bounded streams in a later roadmap.
 
 ## Deferred Runtime Realtime Direction
 
@@ -237,7 +250,7 @@ callers, then define the target response surfaces and proof order.
 ## TWA-0 Inventory And Field Classification
 
 Artifact:
-[SERVER_TASK_WORKER_API_RUNTIME_BOUNDARY_INVENTORY.md](./SERVER_TASK_WORKER_API_RUNTIME_BOUNDARY_INVENTORY.md)
+[2026-06-05_SERVER_TASK_WORKER_API_RUNTIME_BOUNDARY_INVENTORY.md](./2026-06-05_SERVER_TASK_WORKER_API_RUNTIME_BOUNDARY_INVENTORY.md)
 
 Goal: complete owner review for the existing initial inventory and freeze it as
 the contract input for TWA-1A/TWA-1B. The inventory file already exists with an
@@ -274,6 +287,11 @@ Scope:
   - `registration observation`
   - `compatibility alias`
   - `composite diagnostic`
+- Close the task lifecycle field classification for `status`, `intakeStatus`,
+  `terminalReason`, and `holdReason` before TWA-1A starts. The inventory must
+  replace the pending note with actual conclusions stating whether each field
+  belongs in shell responses, runtime/current-state sections, or a
+  source-labeled composite view.
 - Confirm frontend callers in `frontend/src/api/*` and pages that depend on
   task/worker mixed shapes.
 - Identify whether each route is `public-sdk-read`, `public-sdk-ingress`,
@@ -288,6 +306,9 @@ Acceptance:
   not declaration truth.
 - Inventory explicitly marks worker registration DB rows as observation/audit
   output and states they do not restore runtime state.
+- Inventory closes the shell versus current-state classification for `status`,
+  `intakeStatus`, `terminalReason`, and `holdReason` with concrete field-level
+  conclusions; these cannot remain open inputs to TWA-1A.
 - Inventory identifies which frontend adapters must change in later slices.
 - Inventory records `INTERNAL_API_REFERENCE.md` task-split wording as doc drift
   if it still describes target split as already implemented.
@@ -318,17 +339,26 @@ Scope:
   is split into public shell plus console runtime detail.
 - Decide whether `ApiTask` is retained only as compatibility output,
   superseded by narrower response records, or split immediately.
+- Decide the first-pass field split strategy for task and worker responses:
+  source-labeled composite sections, narrower records, or a staged mix. The
+  decision must name which route/caller gets which strategy.
 
 Acceptance:
 
 - `xa-mass-server/doc/API_SURFACE_INVENTORY.md` is updated with the chosen
-  target categories and no longer implies mixed task/worker rows are base
-  entity truth.
+  target/planned categories and no longer implies mixed task/worker rows are
+  base entity truth. Until TWA-2/TWA-3 implement the split, these updates must
+  not be written as current implementation state.
+- `xa-mass-server/doc/INTERNAL_API_REFERENCE.md` is updated early if it still
+  presents the task split as already implemented; it must distinguish current
+  mixed responses from the target split instead of waiting for TWA-5.
 - `doc/FRONTEND_BACKEND_CONTRACT.md` records that API docs expose current
   routes but route models must label owner boundaries where composite.
-- Frontend `fieldSources` / source-aware worker consumption is either scoped
-  into this roadmap's later frontend adapter work or explicitly deferred to a
-  frontend-local follow-up document.
+- Frontend impact is classified. If a later slice changes backend route or
+  response contract shape, the matching frontend real adapter, type file, and
+  adapter/page test are in that same slice. Only source-aware visual
+  presentation beyond adapter correctness may be deferred to a frontend-local
+  follow-up.
 - No new route is introduced before the target split is recorded.
 
 Verification:
@@ -395,10 +425,16 @@ Scope:
 - Introduce narrower task response records or source-labeled sections. Prefer
   actual narrower records where a caller only needs shell fields; do not use
   source labels as a cosmetic wrapper around the same all-purpose response.
+- Field split strategy follows the TWA-1A decision. Prefer source-labels for
+  the first pass when narrower records would force broad caller contract
+  changes before the owner split is proven.
 - Keep `/api/v1/tasks` bounded and shell-oriented unless TWA-1 chooses a new
   route.
 - Keep result windows on `/api/v1/tasks/{taskId}/results`.
 - Keep review/export on `/internal/v1/review/tasks/**`.
+- Update frontend task adapters, types, and affected tests in the same slice
+  when task route or response contracts change. Page presentation changes only
+  count as deferrable when the real adapter contract remains unchanged.
 - Update frontend task adapters and pages to consume the correct surface for:
   - task list shell fields
   - runtime/current progress fields
@@ -418,6 +454,8 @@ Acceptance:
   review-materialization, or compatibility before it is added.
 - No new all-purpose `ApiTask` field is added without inventory classification
   and caller evidence.
+- Frontend task real adapters, types, and affected tests match any changed
+  backend task response shape.
 - Frontend task list/detail still works through `frontend/src/api/tasks*`.
 - Result window tests prove `/results` does not depend on review
   materialization.
@@ -428,7 +466,8 @@ Acceptance:
 Verification candidates:
 
 ```powershell
-./mvnw -pl xa-mass-server -am "-Dtest=TaskApiControllerTest,TaskApiListControllerTest,InternalTaskReviewControllerTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
+./mvnw -pl xa-mass-server -am "-Dtest=TaskApiControllerTest,TaskApiListControllerTest,TaskReviewStoreTaskReviewReadModelTest,TaskReviewStoreMaterializerTest,QueueBackedTaskReviewReadModelWriterTest,QueueBackedTaskReviewMaterializationIntegrationTest" test
+# This slice must add/update focused tests for any new task response record or source-label contract.
 cd frontend
 corepack pnpm test:run -- tasks
 corepack pnpm typecheck
@@ -452,30 +491,37 @@ Scope:
   - WorkerGroup capability
   - compatibility alias
   - composite diagnostic
-- Update frontend worker adapters/pages to display source-aware worker facts
-  instead of treating all fields as a single entity model. If frontend work is
-  deferred, record a frontend-local follow-up document and keep this roadmap's
-  server scope honest.
+- Update frontend worker real adapters, types, and affected tests in the same
+  slice when worker route or response contracts change. Source-aware page
+  presentation can be deferred only if the adapter already preserves the real
+  backend contract and source fields.
+- Update frontend worker pages to display source-aware worker facts instead of
+  treating all fields as a single entity model. If page presentation work is
+  deferred, record a named frontend-local follow-up document and mark TWA-3 as
+  server-side plus adapter-contract complete only; full UI presentation
+  completion then depends on that follow-up.
 - Do not add worker history analytics.
 
 Acceptance:
 
-- Worker list/detail UI can still show registered/current workers, but the API
-  adapter preserves source distinctions.
+- Worker real adapter/type preserves source distinctions whenever the backend
+  route exposes source-labeled fields.
+- Worker list/detail UI can still show registered/current workers.
 - `Worker.eventBindings` / WorkerGroup capability remains capability truth.
 - `supportedEventCodes` and `supportedProjects` stay derived display/filter
   fields only.
 - No SDK/public worker read contract depends on console composite rows unless
   TWA-1 explicitly accepts it.
-- If frontend source-aware consumption is deferred, a frontend-local follow-up
-  document identifies `frontend/src/api/workers.real.ts`,
-  `frontend/src/types/workers.ts`, and affected worker/dashboard/project pages
-  as the next consumer update.
+- If source-aware page presentation is deferred, a frontend-local follow-up
+  document identifies affected worker/dashboard/project pages as the next UI
+  update. `frontend/src/api/workers.real.ts` and `frontend/src/types/workers.ts`
+  cannot be deferred when the backend response contract changes.
 
 Verification candidates:
 
 ```powershell
-./mvnw -pl xa-mass-server -am "-Dtest=WorkerApiControllerTest,CatalogControllerTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
+./mvnw -pl xa-mass-server -am "-Dtest=WorkerApiControllerTest,CatalogControllerTest" test
+# This slice must add/update focused tests for worker source labels if backend response shape changes.
 cd frontend
 corepack pnpm test:run -- workers
 corepack pnpm typecheck
@@ -511,7 +557,7 @@ Scope:
 - Do not load rows into runtime on startup.
 - Do not implement or wire JDBC `WorkerDeclarationStore`; that owner remains in
   worker-runtime and is separate from server registration observation rows.
-- Decide and test write failure behavior according to TWA-1.
+- Implement and test write failure behavior according to the TWA-1B decision.
 
 Acceptance:
 
@@ -521,16 +567,18 @@ Acceptance:
   indexes.
 - Clearing Redis/runtime still requires workers to reconnect/re-register;
   DB rows do not resurrect runtime state.
-- Schema SQL lives in the correct owner directory based on the final decision:
-  server-owned observation schema under
-  `xa-mass-server/src/main/resources/db/schema/server-control-plane` and
-  `xa-mass-server/src/main/resources/db/migration/server-control-plane`;
-  generic platform storage schema must not absorb server API/audit concepts.
+- Schema notes and executable SQL live in the server-owned observation
+  directories decided in TWA-1B:
+  `xa-mass-server/src/main/resources/db/schema/server-control-plane` for the
+  current table-shape catalog and
+  `xa-mass-server/src/main/resources/db/migration/server-control-plane` for
+  Flyway migrations; generic platform storage schema must not absorb server
+  API/audit concepts.
 
 Verification candidates:
 
 ```powershell
-./mvnw -pl xa-mass-server -am "-Dtest=ExternalWorker*IntegrationTest,*WorkerRegistration*Test,*ArchitectureGuardTest" "-Dsurefire.failIfNoSpecifiedTests=false" test
+./mvnw -pl xa-mass-server -am "-Dtest=ExternalWorkerApiControllerTest,ExternalWorkerPollingApiIntegrationTest,ExternalWorkerRealtimeRegistrationIntegrationTest,JdbcWorkerRegistrationObservationStoreTest,ServerMainSourceArchitectureGuardTest" test
 rg -n "worker registration.*restore|load.*worker.*registration|xa_worker_registration" xa-mass-server platform_infra -g "*.java" -g "*.sql" -g "*.md"
 ```
 
@@ -552,20 +600,21 @@ Scope:
   - worker declaration DB rows do not carry online/heartbeat/lock/load fields
 - Run residue scans for old mixed vocabulary if TWA-2/TWA-3 rename response
   records.
-- Update `INTERNAL_API_REFERENCE.md`, `API_SURFACE_INVENTORY.md`,
-  `FRONTEND_BACKEND_CONTRACT.md`, frontend README/AGENTS if behavior changed.
+- Update `API_SURFACE_INVENTORY.md`, `FRONTEND_BACKEND_CONTRACT.md`, frontend
+  README/AGENTS if behavior changed. `INTERNAL_API_REFERENCE.md` drift should
+  already be corrected or marked target/current during TWA-1A; TWA-5 verifies
+  it still matches the implemented behavior.
 
 Acceptance:
 
 - Guards fail on new runtime restore from worker registration DB.
 - Guards fail on frontend inline task/worker `fetch` calls outside API modules.
 - Docs describe current behavior, not target state.
-- Roadmap remains active unless all completion criteria below are satisfied.
 
 Verification candidates:
 
 ```powershell
-./mvnw -pl xa-mass-server -am "-Dtest=*ArchitectureGuardTest,*Api*Test,*Worker*Test,*Task*Test" "-Dsurefire.failIfNoSpecifiedTests=false" test
+./mvnw -pl xa-mass-server -am "-Dtest=*ArchitectureGuardTest,*Api*Test,*Worker*Test,*Task*Test" test
 cd frontend
 corepack pnpm test:run
 corepack pnpm typecheck
@@ -592,13 +641,17 @@ state or implement `WorkerDeclarationStore`.
 This roadmap can be marked complete only when:
 
 - task shell/runtime/result/review fields are split or source-labeled in API
-  contracts and frontend adapters
+  contracts, and any changed backend response shape is consumed by matching
+  frontend real adapters, type files, and affected tests
 - worker declaration/runtime/transport/capability/composite fields are split or
-  source-labeled in API contracts and frontend adapters
+  source-labeled in API contracts, and any changed backend response shape is
+  consumed by matching frontend real adapters, type files, and affected tests
 - worker registration observation DB writes, if implemented, are proven not to
   restore runtime state or drive scheduling
 - server route inventory and API reference reflect current behavior
-- frontend adapters and tests consume the chosen route contracts
+- frontend adapter status is explicit: adapter/type/test updates are completed
+  for backend contract changes; only source-aware page presentation may be
+  deferred to a named frontend-local successor
 - architecture guards prevent the main boundary regressions
 - residue scan finds no active docs claiming mixed composite routes are base
   entity truth

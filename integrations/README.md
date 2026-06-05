@@ -46,6 +46,9 @@ Global boundary guard:
   server-owned seed/import, real control-plane setup, or test fixtures; its
   WorkerGroup, AdapterNode, Worker, and task flows remain SDK-backed external
   calls.
+- Scenario launcher and worker-pack should treat SDK task read models as
+  source-labeled composites when `fieldSources` is present; integrations must
+  not turn those labels into new kernel truth or frontend-only models.
 - Worker-pack owns reusable capabilities plus separated dev/E2E harness code.
 - Samples remain protocol/dev fixtures and should not grow into a second SDK
   product surface.

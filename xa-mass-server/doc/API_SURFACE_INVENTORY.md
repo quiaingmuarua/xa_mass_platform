@@ -60,8 +60,8 @@ Deferred decisions:
 | GET | /api/v1/catalog/worker-capabilities | CatalogController | console-diagnostics | SDK credential bypass | capability diagnostics | bound; joins declaration/runtime/transport facts | frontend | keep as diagnostics |
 | GET | /api/v1/catalog/worker-group-capabilities | CatalogController | public-sdk-read | SDK credential bypass | WorkerGroup capability owner | keep; bounded capability read | frontend, SDK users | keep |
 | GET | /api/v1/tasks | TaskApiController | public-sdk-read | SDK credential bypass or TASK_VIEW | task shell owner | bounded list window and filters | TaskClient, frontend | keep; future split needs caller decision |
-| POST | /api/v1/tasks | TaskApiController | public-sdk-ingress | SDK credential bypass or TASK_CREATE | task shell owner | keep; shell create intent | TaskClient, frontend | keep |
-| GET | /api/v1/tasks/{taskId} | TaskApiController | public-sdk-read | SDK credential bypass or TASK_VIEW | task shell owner | keep shell-oriented detail; no item payload snapshots | TaskClient, frontend | keep; future console-detail split needs caller decision |
+| POST | /api/v1/tasks | TaskApiController | public-sdk-ingress | SDK credential bypass or TASK_CREATE | task shell owner | keep; shell create intent | TaskClient, frontend | keep; response uses shell-only task object |
+| GET | /api/v1/tasks/{taskId} | TaskApiController | public-sdk-read | SDK credential bypass or TASK_VIEW | task shell + current-state composite read | keep source-labeled detail; no item payload snapshots | TaskClient, frontend | keep; future console-detail split needs caller decision |
 | PATCH | /api/v1/tasks/{taskId} | TaskApiController | operator-command | TASK_EDIT | task shell owner | keep only bounded pre-dispatch definition patch | TaskClient advanced path | keep bounded |
 | POST | /api/v1/tasks/{taskId}/items | TaskApiController | public-sdk-ingress | SDK credential bypass or TASK_EDIT | task item ingest owner | keep; bounded item ingress | TaskClient, frontend | keep |
 | POST | /api/v1/tasks/{taskId}/items:sync | TaskApiController | public-sdk-ingress | SDK credential bypass or TASK_EDIT | task item ingest/result wait owner | resolved event contract fixed; keep bounded sync ingest | TaskClient | keep |
@@ -143,9 +143,10 @@ Deferred decisions:
 
 ## Model Shape Notes
 
-- `TaskApiContracts` is the current task public contract owner. Do not create
-  new task `View`/`Viewer` variants unless API-5 proves a different caller
-  contract.
+- `TaskApiContracts` is the current task public contract owner. Task create
+  returns `ApiTaskShell`; task list/detail currently return source-labeled
+  `ApiTask` composite rows. Do not add more all-purpose task fields without
+  source classification and caller evidence.
 - Runtime diagnostics may use response maps for now. They are diagnostics, not
   durable history or public domain objects. Any future unbounded scan removal
   belongs in the diagnostics owner interface rather than public route expansion.

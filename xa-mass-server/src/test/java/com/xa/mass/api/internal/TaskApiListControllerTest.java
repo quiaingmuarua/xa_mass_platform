@@ -102,6 +102,9 @@ class TaskApiListControllerTest {
                 .andExpect(jsonPath("$.data.items[0].execution.foreground").value(true))
                 .andExpect(jsonPath("$.data.items[0].counters.successCount").value(6))
                 .andExpect(jsonPath("$.data.items[0].timestamps.updatedAt").value("2026-04-21 09:30:00"))
+                .andExpect(jsonPath("$.data.items[0].fieldSources.taskId").value("controlPlaneShell"))
+                .andExpect(jsonPath("$.data.items[0].fieldSources.status").value("runtimeCurrent"))
+                .andExpect(jsonPath("$.data.items[0].fieldSources.successCount").value("compatibilityAlias"))
                 .andExpect(jsonPath("$.data.items[0].successCount").value(6))
                 .andExpect(jsonPath("$.data.items[0].eligibleCount").value(10))
                 .andExpect(jsonPath("$.data.items[0].updatedAt").value("2026-04-21 09:30:00"));

@@ -47,6 +47,9 @@ Current implemented surface:
 - Jackson-based `ApiResponse<T>` envelope handling
 - typed client exceptions
 - task shell, item ingest, command, result window, and archive clients
+- source-labeled task read model fields through `TaskView.fieldSources` so
+  callers can distinguish shell, runtime/current, execution, timestamp, and
+  compatibility fields in composite task reads
 - typed task-create routing helpers for WorkerGroup selectors, routing code,
   route attributes, and target worker attributes
 - task-scoped `TaskHandle` for repeated operations against one existing task

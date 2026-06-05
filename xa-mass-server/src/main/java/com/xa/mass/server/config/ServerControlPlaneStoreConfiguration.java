@@ -18,6 +18,10 @@ import com.xa.mass.api.auth.session.SubmitterViewerSessionStore;
 import com.xa.mass.api.auth.usage.ApiUsageLedgerStore;
 import com.xa.mass.api.auth.usage.InMemoryApiUsageLedgerStore;
 import com.xa.mass.api.auth.usage.JdbcApiUsageLedgerStore;
+import com.xa.mass.api.worker.registration.InMemoryWorkerRegistrationObservationStore;
+import com.xa.mass.api.worker.registration.JdbcWorkerRegistrationObservationStore;
+import com.xa.mass.api.worker.registration.WorkerRegistrationObservationService;
+import com.xa.mass.api.worker.registration.WorkerRegistrationObservationStore;
 import com.xa.mass.storage.jdbc.JdbcStorageRuntime;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
@@ -100,6 +104,24 @@ public class ServerControlPlaneStoreConfiguration {
         }
         requireNonProdMemoryStore();
         return new InMemoryApiUsageLedgerStore();
+    }
+
+    @Bean
+    public WorkerRegistrationObservationStore workerRegistrationObservationStore(
+            JdbcStorageRuntime jdbcStorageRuntime,
+            ObjectProvider<ServerControlPlaneMigrationRunner> migrationRunnerProvider) {
+        if (jdbcStorageRuntime.isEnabled()) {
+            migrationRunnerProvider.getObject();
+            return new JdbcWorkerRegistrationObservationStore(jdbcStorageRuntime.dataSource());
+        }
+        requireNonProdMemoryStore();
+        return new InMemoryWorkerRegistrationObservationStore();
+    }
+
+    @Bean
+    public WorkerRegistrationObservationService workerRegistrationObservationService(
+            WorkerRegistrationObservationStore store) {
+        return new WorkerRegistrationObservationService(store);
     }
 
     private void requireNonProdMemoryStore() {
