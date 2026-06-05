@@ -10,6 +10,13 @@ when the task touches frontend console shell, UX, page maturity, or
 productionization direction. Treat it as frontend-local planning context, not
 server, SDK, engine, transport, runtime, or trace truth.
 
+Use
+[../doc/FRONTEND_BACKEND_CONTRACT.md](../doc/FRONTEND_BACKEND_CONTRACT.md)
+when the task touches backend API calls, auth mode handling, permissions,
+server DTO shapes, submitter viewer credentials, or frontend mock/real adapter
+alignment. The project is server + SDK first; frontend consumes backend
+contracts and does not define replacement platform truth.
+
 ## Rules
 
 - Add new pages under domain folders in `src/pages`.
@@ -27,6 +34,10 @@ server, SDK, engine, transport, runtime, or trace truth.
 - Keep page-level view logic inside page SFCs. Do not introduce schema-driven page DSLs or generic CRUD wrappers.
 - Extract reusable UI into `src/components` only after repetition is clear.
 - Frontend permission checks are UX only. Backend authorization remains the real enforcement boundary.
+- If a page needs data or an action that the backend does not expose, stop and
+  define the backend contract requirement first. Do not add frontend-only route
+  aliases, permission names, production mock behavior, or inline `fetch`
+  workarounds.
 
 ## Adding A Page
 

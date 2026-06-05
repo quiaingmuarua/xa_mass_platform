@@ -12,6 +12,7 @@ function readBooleanEnv(
 export interface AppConfig {
     appTitle: string
     apiBaseUrl: string
+    apiDocsUrl: string
     useMockApi: boolean
     useMockAuth: boolean
     wsBaseUrl: string
@@ -20,6 +21,7 @@ export interface AppConfig {
 const envConfig: AppConfig = {
     appTitle: import.meta.env.VITE_APP_TITLE ?? 'XA Mass Control Console',
     apiBaseUrl: import.meta.env.VITE_API_BASE_URL ?? '',
+    apiDocsUrl: import.meta.env.VITE_API_DOCS_URL ?? '/doc.html#/home',
     // Default to mock mode in `vite dev`, but use the real backend when serving a production build.
     useMockApi: readBooleanEnv(import.meta.env.VITE_USE_MOCK_API, import.meta.env.DEV),
     useMockAuth: readBooleanEnv(import.meta.env.VITE_USE_MOCK_AUTH, import.meta.env.DEV),

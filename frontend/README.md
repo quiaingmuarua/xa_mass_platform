@@ -64,12 +64,15 @@ also uses `ignoreCommand` to skip Git-triggered builds when the frontend has no
 changes.
 For a real backend-connected deployment, set `VITE_API_BASE_URL` to the backend
 origin and override both mock flags to `false`.
+Set `VITE_API_DOCS_URL` when the preview should link to a reachable backend
+`doc.html` endpoint.
 
 ## Real Backend Mode
 
 Use mock mode for independent frontend CI. For local backend integration, set:
 
 - `VITE_API_BASE_URL=""`
+- `VITE_API_DOCS_URL="/doc.html#/home"`
 - `VITE_DEV_PROXY_TARGET="http://localhost:8088"`
 - `VITE_USE_MOCK_API="false"`
 - `VITE_USE_MOCK_AUTH="false"`
@@ -79,6 +82,13 @@ and `/internal/v1/**`. For local `vite dev`, prefer the proxy target above so
 browser CORS does not block backend integration. For deployed environments,
 leave `VITE_DEV_PROXY_TARGET` unset and configure `VITE_API_BASE_URL` for the
 served origin as needed.
+
+The operator console exposes `System -> API Reference`, which embeds
+`VITE_API_DOCS_URL`. In the backend-hosted shell this defaults to the same-origin
+server docs at `/doc.html#/home`. In Vercel/mock preview, configure
+`VITE_API_DOCS_URL` to an externally reachable backend docs URL or the page will
+show an unavailable state instead of copying API documentation into frontend
+source.
 
 ## Important Paths
 

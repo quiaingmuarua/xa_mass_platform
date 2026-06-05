@@ -19,6 +19,7 @@ Read the fewest files possible:
 | [TESTING_INDEX.md](./TESTING_INDEX.md) | current proof lanes, E2E boundary, CI truth, and minimum verification map |
 | [PROOF_REGISTRY.md](./PROOF_REGISTRY.md) | authoritative proof ownership and representative trace pairing |
 | [SDK_INTEGRATIONS_BOUNDARY_GUARD.md](./SDK_INTEGRATIONS_BOUNDARY_GUARD.md) | guardrails for SDK modules, public-contract DTOs, integrations, worker-pack, samples, and server startup registration |
+| [FRONTEND_BACKEND_CONTRACT.md](./FRONTEND_BACKEND_CONTRACT.md) | cross-owner server/frontend integration contract and boundary rules |
 
 ## 2. Owner Docs
 
@@ -32,6 +33,8 @@ Use owner docs for module-local truth:
   [../xa-mass-worker-runtime/CONTRACTS.md](../xa-mass-worker-runtime/CONTRACTS.md)
 - testing: [../xa-mass-testing/README.md](../xa-mass-testing/README.md)
 - server: [../xa-mass-server/README.md](../xa-mass-server/README.md)
+- frontend: [../frontend/README.md](../frontend/README.md),
+  [../frontend/AGENTS.md](../frontend/AGENTS.md)
 - SDK directory: [../sdk/README.md](../sdk/README.md)
 - integrations directory: [../integrations/README.md](../integrations/README.md)
 - worker pack: [../integrations/xa-mass-worker-pack/README.md](../integrations/xa-mass-worker-pack/README.md)

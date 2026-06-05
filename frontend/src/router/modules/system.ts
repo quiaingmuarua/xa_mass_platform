@@ -86,6 +86,26 @@ export const systemRoutes: AppRouteRecordRaw[] = [
                     menuVisible: true,
                 },
             },
+            {
+                path: 'api-reference',
+                name: 'api-reference',
+                component: () =>
+                    import(
+                        '@/pages/system/api-reference/ApiReferencePage.vue'
+                    ),
+                meta: {
+                    shell: 'operator',
+                    navGroup: 'system',
+                    title: 'API Reference',
+                    icon: 'Document',
+                    order: 55,
+                    hidden: false,
+                    keepAlive: true,
+                    requiresAuth: true,
+                    permissions: [],
+                    menuVisible: true,
+                },
+            },
         ],
     },
 ]
