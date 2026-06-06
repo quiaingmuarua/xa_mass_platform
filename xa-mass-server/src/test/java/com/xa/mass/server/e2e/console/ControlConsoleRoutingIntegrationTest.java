@@ -47,17 +47,23 @@ class ControlConsoleRoutingIntegrationTest extends AbstractSampleE2eTest {
     void backendHostedConsoleRoutesServeTheBuiltShell() throws Exception {
         HttpResponse<String> root = get("/");
         HttpResponse<String> tasks = get("/tasks");
+        HttpResponse<String> taskDetailWithSlash = get("/tasks/task-001/");
         HttpResponse<String> workers = get("/resources/workers");
         HttpResponse<String> workerDetail = get("/resources/workers/worker-001");
+        HttpResponse<String> workerDetailWithSlash = get("/resources/workers/worker-001/");
 
         assertEquals(200, root.statusCode());
         assertEquals(200, tasks.statusCode());
+        assertEquals(200, taskDetailWithSlash.statusCode());
         assertEquals(200, workers.statusCode());
         assertEquals(200, workerDetail.statusCode());
+        assertEquals(200, workerDetailWithSlash.statusCode());
         assertTrue(root.body().contains("integration-console-shell"));
         assertTrue(tasks.body().contains("<div id=\"app\"></div>"));
+        assertTrue(taskDetailWithSlash.body().contains("<div id=\"app\"></div>"));
         assertTrue(workers.body().contains("<div id=\"app\"></div>"));
         assertTrue(workerDetail.body().contains("<div id=\"app\"></div>"));
+        assertTrue(workerDetailWithSlash.body().contains("<div id=\"app\"></div>"));
     }
 
     @Test
