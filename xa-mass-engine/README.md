@@ -248,20 +248,23 @@ Keep these facts fixed unless the owning global baselines change:
   - `Task.contract`
   - `Task.intakeStatus`
   - `TaskWorkRuntime`
-- task classification is now two-axis, not ingress-shaped:
-  - `Task.contract`: kernel lifecycle/dispatch/terminal contract
-  - `Task.workloadClass`: runtime tuning intent only
+- task classification is now explicit-policy driven, not ingress-shaped:
+  - `Task.contract`: current public/runtime preset input
+  - `Task.workloadClass`: runtime tuning input and read evidence
+  - `ResolvedTaskSchedulingPolicy`: engine-consumed terminal, dispatch cadence,
+    retry/finality, claim/backpressure, and resource-mode inputs
   - ingress form such as inline append, file import, or streaming source is not a persisted kernel type axis
 - current mainstream combinations are:
   - `SESSION + INTERACTIVE`
   - `BATCH + BULK`
 - `sealTask(...)` is a contract-neutral intake close action:
-  `OPEN -> SEALED` applies to both `SESSION` and `BATCH`, but only `BATCH`
-  uses `SEALED + all final` as an automatic terminal condition
-- `BATCH` lease expiry is attempt loss, not a stable per-item timeout contract:
+  `OPEN -> SEALED` applies to both `SESSION` and `BATCH`; automatic all-final
+  terminal closure is driven by resolved idle-close policy
+- batch-style lease expiry is attempt loss, not a stable per-item timeout contract:
   runtime retry budget decides `retry reset` vs `FAILED + RETRY_EXHAUSTED`
-- `Task.workloadClass` is the explicit workload tuning input; scheduling
-  semantics must not drift back into free-form `sharedConfig`
+- `Task.workloadClass` is a workload tuning input; scheduling semantics must
+  consume resolved task policy and must not drift back into free-form
+  `sharedConfig`
 - worker selection is task-level orchestration; do not fall back to per-message
   matching on the hot path
 - fixed scheduling mainlines are documented in
@@ -310,8 +313,8 @@ Keep these facts fixed unless the owning global baselines change:
   Worker selection, assignment listener cleanup, binder compensation, and
   resource release consume this decision instead of each re-deriving foreground
   behavior. WorkerContext identity is no longer a resource policy input; only
-  `foreground=true` keeps the long-lived lock, while `foreground=false` relies
-  on capacity reservation.
+  resolved `WorkerResourceMode.EXCLUSIVE` keeps the long-lived lock, while
+  `WorkerResourceMode.CAPACITY` relies on capacity reservation.
 - `WorkerDispatchResourceReleaser` owns the repeated dispatch cleanup mechanism:
   releasing worker reservations, conditionally unlocking exclusive worker
   locks, and emitting `WORKER_LOCK_RELEASED` trace for assignment cleanup and
@@ -325,10 +328,9 @@ Keep these facts fixed unless the owning global baselines change:
   directly to check projection-proof leakage, dispatch cleanup primitive
   residue, WorkerContext runtime state mutation residue, and retired matching
   handoff types.
-- `ExecutionSpec.foreground` is currently a scheduling-mode declaration carried
-  through task model/API/trace surfaces; `foreground=true` is the default
-  exclusive worker-lock path, while `foreground=false` skips the long-lived
-  worker lock and relies on capacity reservation for stateless workers
+- `ExecutionSpec.foreground` is currently a public/read preset input carried
+  through task model/API/trace surfaces; resolved `WorkerResourceMode` is the
+  engine resource-mode truth
 - worker match trace rows include reservation-time load snapshots so canonical
   assignment trace can prove the current process-local capacity guard
 - `TaskWorkRuntime` owns ready work, active lease, retry scheduling, expiry, and

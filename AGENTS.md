@@ -41,7 +41,7 @@ Fast entry only. Use module owner READMEs and `doc/` contracts for detail.
 - `Matching` is the current worker-selection mechanism inside Scheduling Plane,
   not a top-level owner.
 - Kernel truth is currently split across:
-  - `Task.contract` for runtime contract
+  - `Task.contract` as the current public/runtime preset input
   - `Task.intakeStatus` for intake-window truth
   - `TaskWorkRuntime` for ready/delayed/lease/counter truth
   - `TaskResultRuntime` for stable-final result rows and result-side barriers
@@ -49,8 +49,9 @@ Fast entry only. Use module owner READMEs and `doc/` contracts for detail.
   verified from `doc/TASK_LIFECYCLE_BASELINE.md` plus current engine/runtime
   code rather than inferred from historical `TaskWorkRuntime` wording alone
 - Transport is three explicit channels: task dispatch, result ingest, and system events.
-- Runtime entry is SDK-first; server HTTP/UI surfaces provide a lightweight
-  backend product shell and validation host without redefining kernel ownership.
+- Runtime entry is SDK-first; server HTTP/UI surfaces provide the backend
+  product/API host, control-console support, and validation surface without
+  redefining kernel ownership.
 - Infra truth is three-layered: control-plane storage, runtime state, and
   trace/audit stream. SQLite-first means control-plane storage only; Redis is
   runtime truth; trace DB materialization is trace-owned and deferred.
@@ -190,8 +191,9 @@ Planning rule for multi-file or core changes:
   workload binding owns allowed/default policy selection and config, task
   dispatch intent selects or inherits policies, and runtime worker selection
   owns live evidence/rank/reserve/admission. This is not fully implemented yet;
-  current policy is still distributed across task runtime profile, group
-  selectors, matching rules, assignment policy, backpressure, and admission
+  current policy is still distributed across resolved task policy, task runtime
+  profile residue, group selectors, matching rules, assignment policy,
+  backpressure, and admission
 - do not add scan-heavy observability or reconciliation loops to hot paths
 - trace and query concerns must not reverse-drive runtime ownership or mainline lifecycle design
 - SQLite/control-plane storage must not absorb runtime queue, lease, heartbeat,

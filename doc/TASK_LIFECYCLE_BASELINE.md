@@ -90,7 +90,7 @@ task shell create
 ## 2. Global Rules
 
 1. `TaskStatus`, `TaskHoldReason`, `TaskIntakeStatus`, and `TaskTerminalReason` are the current task lifecycle vocabulary. Per-item runtime state lives in `TaskWorkRuntime`; server review item/attempt statuses are materialized read-model strings, not engine lifecycle truth.
-2. `Task.contract` is the runtime contract truth (`SESSION | BATCH`), and ingress form must not redefine lifecycle, terminal, or retry semantics.
+2. `Task.contract` is the current public/runtime preset input (`SESSION | BATCH`). Engine behavior must consume resolved task scheduling policy values derived from it; ingress form must not redefine lifecycle, terminal, or retry semantics.
 3. Worker capability truth is declared through WorkerGroup/event bindings. Worker scheduling evidence participates in runtime selection inside the selected group, but worker rows must not become a second project/event capability source.
 4. Scheduling and worker selection are task-level orchestration decisions, but item payload is not a worker-selection policy source. Do not reintroduce per-message rule matching, worker-context lifecycle ownership, or item-level worker capability scans on the hot path.
 5. No lifecycle change is complete without:
@@ -105,7 +105,7 @@ task shell create
 10. Policy changes must preserve ownership boundaries across matching, assignment, attempt, release, refill, intake, control, and terminal decisions.
 11. `TaskWorkRuntime` in `platform_infra/mass-runtime-api` is the current hot-path owner for ready work, active leases, retry scheduling, retry budget, and lease expiry indexes.
 12. `TaskResultRuntime` is the runtime-owned public result read truth for stable-final result rows, repair staging, and result-side attempt-closed/event/progress barriers. Server review/export rows are lagging materialized views and must not drive lifecycle decisions.
-13. `Task.workloadClass` is the explicit task-level runtime optimization field; current engine truth is `INTERACTIVE` or `BULK`, and assignment signal routing resolves from that field rather than free-form `sharedConfig` semantics.
+13. `Task.workloadClass` is the explicit task-level runtime optimization input; current engine truth is `INTERACTIVE` or `BULK`, and assignment signal routing consumes resolved task scheduling policy rather than free-form `sharedConfig` semantics.
 14. Result callbacks follow the result-side lifecycle mainline: runtime apply truth comes from `TaskWorkRuntime.applyResultWithContext(...)`; stable-final public result rows are committed into `TaskResultRuntime`; server review reports are emitted best-effort after runtime acceptance and are not the result commit point or a public result read source.
 15. `eventCode` is handler/capability identity. It validates that the selected WorkerGroup supports the item's handler and tells the worker which local handler to invoke. It is not a worker selector.
 16. The architecture boundary is: task scheduling policy decides competition admission/cadence/priority/fairness/budget; worker scheduling policy decides resource-universe and pool constraints; RuntimeWorkerSelection chooses a concrete worker from live evidence/admission. Project/workload binding selects and configures allowed/default policies, task dispatch intent narrows selected policies/route/target constraints, WorkerGroup capability constrains project/event eligibility, and item decides only the event handler plus payload.
@@ -162,7 +162,7 @@ Current entry points:
 
 Must hold:
 
-- automatic message-driven terminal closure only happens for `BATCH` tasks after intake has been sealed
+- automatic message-driven terminal closure is controlled by resolved idle-close policy; the current `BATCH` preset enables sealed/all-final closure
 - `SESSION` tasks may close intake explicitly without becoming terminal; draining current work is not sufficient for automatic terminal closure
 - every terminal task must have `intakeStatus=SEALED`
 - `intakeStatus` is the active append-window lifecycle truth for both `SESSION` and `BATCH`
@@ -230,7 +230,7 @@ States:
 - `RUNNING`: executing
 - `SUCCESS`: final success
 - `FAILED`: final non-success
-- `EXPIRED`: final non-success caused by timeout/cancel after assignment; this remains the stable logical outcome mainly for `SESSION` work and terminal-control overlays, not for `BATCH` lease-retry exhaustion
+- `EXPIRED`: final non-success caused by timeout/cancel after assignment; this remains the stable logical outcome mainly for session-style result-finality policy and terminal-control overlays, not for batch-style lease-retry exhaustion
 
 Allowed transitions:
 
@@ -238,7 +238,7 @@ Allowed transitions:
 - `ASSIGNED -> RUNNING/FAILED/EXPIRED`
 - `RUNNING -> SUCCESS/FAILED/EXPIRED`
 - `FAILED -> INIT` (retry reset only; `SUCCESS` is never reset)
-- `EXPIRED -> INIT` (`SESSION`-style retry reset only; `BATCH` lease expiry does not use `EXPIRED` as its logical retry base)
+- `EXPIRED -> INIT` (session-style result-finality retry reset only; batch-style lease expiry does not use `EXPIRED` as its logical retry base)
 
 Current materialization entry points:
 
@@ -250,7 +250,7 @@ Current materialization entry points:
 - terminal task review overlay for stop reasons (`MANUAL_CANCELLED`, `MAX_RUNTIME_REACHED`, `SUCCESS_RATE_REACHED`, `RETRY_BUDGET_EXHAUSTED`):
   - bounded reads project `INIT -> FAILED`
   - bounded reads project `ASSIGNED/RUNNING -> EXPIRED`
-- retry reset: logical work returns to `INIT` when retry budget remains; this is usually `FAILED -> INIT` for retryable failures and `SESSION` expiry, while `BATCH` lease expiry resets directly from live runtime truth without treating `EXPIRED` as the logical mainline state
+- retry reset: logical work returns to `INIT` when retry budget remains; this is usually `FAILED -> INIT` for retryable failures and session-style expiry, while batch-style lease expiry resets directly from live runtime truth without treating `EXPIRED` as the logical mainline state
 
 Must hold:
 
@@ -262,7 +262,7 @@ Must hold:
 - `taskWorkAttemptClosed` must fire whenever an execution attempt ends, including retryable failure
 - `taskWorkLogicallyFinal` must only fire when the logical message view is stably final and will not be reset for retry
 - retryable failure must close the current attempt and reset the logical message view to `INIT`; it must not publish logically-final semantics
-- `BATCH` lease expiry has no stable logical timeout meaning while the task is still live: it either resets `INIT` when runtime retry budget remains or finalizes as `FAILED + RETRY_EXHAUSTED` when the budget is exhausted
+- batch-style lease expiry has no stable logical timeout meaning while the task is still live: it either resets `INIT` when runtime retry budget remains or finalizes as `FAILED + RETRY_EXHAUSTED` when the budget is exhausted
 - worker/adapter callbacks must resolve an active runtime lease before result application; server review row absence must not block engine result handling
 - callbacks without an active runtime lease are rejected and traced as `CALLBACK_REJECTED_NO_ACTIVE_LEASE`
 - result handling applies against the runtime active lease and runtime retry budget before submitting server review reports
@@ -394,4 +394,3 @@ Must hold:
 5. resource release must target the exact active worker/attempt/resource binding
 6. review item final reason must match review item status when materialized
 7. active attempt and final logical message must not coexist
-

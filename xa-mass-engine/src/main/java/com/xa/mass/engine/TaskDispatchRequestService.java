@@ -1,9 +1,11 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy.DispatchCadence;
+import com.xa.mass.engine.runtime.scheduling.SchedulingPlaneResolver;
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 
+import java.util.Objects;
 import java.util.concurrent.RejectedExecutionException;
 
 /**
@@ -20,20 +22,23 @@ class TaskDispatchRequestService {
     private final TaskManager taskManager;
     private final RuntimeTaskExecutor retryWakeupExecutor;
     private final DelayedDispatchSchedule delayedDispatchSchedule;
+    private final SchedulingPlaneResolver schedulingPlaneResolver;
 
     TaskDispatchRequestService(TaskManager taskManager,
                                RuntimeTaskExecutor retryWakeupExecutor,
-                               DelayedDispatchSchedule delayedDispatchSchedule) {
+                               DelayedDispatchSchedule delayedDispatchSchedule,
+                               SchedulingPlaneResolver schedulingPlaneResolver) {
         this.taskManager = taskManager;
         this.retryWakeupExecutor = retryWakeupExecutor;
         this.delayedDispatchSchedule = delayedDispatchSchedule;
+        this.schedulingPlaneResolver = Objects.requireNonNull(schedulingPlaneResolver, "schedulingPlaneResolver");
     }
 
     void requestImmediate(Task task) {
         if (!isUsable(task)) {
             return;
         }
-        if (task.getContract() == TaskContract.BATCH) {
+        if (!usesSignalDrivenDelayedDispatch(task)) {
             return;
         }
         delayedDispatchSchedule.remove(task.getTid());
@@ -44,7 +49,7 @@ class TaskDispatchRequestService {
         if (!isUsable(task)) {
             return;
         }
-        if (task.getContract() == TaskContract.BATCH) {
+        if (!usesSignalDrivenDelayedDispatch(task)) {
             return;
         }
         if (delayMillis <= 0L) {
@@ -116,5 +121,10 @@ class TaskDispatchRequestService {
 
     private boolean isUsable(Task task) {
         return task != null && task.getTid() != null && !task.getTid().isBlank();
+    }
+
+    private boolean usesSignalDrivenDelayedDispatch(Task task) {
+        return schedulingPlaneResolver.resolve(task).taskSchedulingPolicy().dispatchCadence()
+                == DispatchCadence.SIGNAL_DRIVEN_DELAYED;
     }
 }

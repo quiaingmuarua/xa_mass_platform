@@ -1,10 +1,13 @@
 package com.xa.mass.engine.strategy;
 
+import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.engine.runtime.TaskRuntimeProfile;
 import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy;
+import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy.DispatchCadence;
+import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy.WorkerResourceMode;
 import com.xa.mass.engine.runtime.scheduling.ResolvedWorkerSchedulingPolicy;
 import com.xa.mass.engine.runtime.scheduling.SchedulingPlaneResolution;
 import org.junit.jupiter.api.Test;
@@ -45,9 +48,56 @@ public class DefaultSchedulingPlaneResolverTest {
         assertEquals(TaskRuntimeProfile.BatchPolicy.SMALL, taskPolicy.batchPolicy());
         assertEquals(TaskRuntimeProfile.LeaseProfile.SHORT, taskPolicy.leaseProfile());
         assertEquals(TaskRuntimeProfile.BackpressureClass.INTERACTIVE, taskPolicy.backpressureClass());
+        assertEquals("BATCH", taskPolicy.taskPolicyPreset());
+        assertEquals(DispatchCadence.RUNTIME_READY_POLLING, taskPolicy.dispatchCadence());
+        assertEquals(WorkerResourceMode.EXCLUSIVE, taskPolicy.workerResourceMode());
+        assertEquals(true, taskPolicy.idleClosePolicy().enabled());
+        assertEquals(true, taskPolicy.idleClosePolicy().requireIntakeSealed());
+        assertEquals(TaskRuntimeProfile.BatchPolicy.SMALL, taskPolicy.claimPolicy().batchPolicy());
+        assertEquals(TaskRuntimeProfile.LeaseProfile.SHORT, taskPolicy.claimPolicy().leaseProfile());
+        assertEquals(1, taskPolicy.claimPolicy().smallPerWorkerCapacityLimit());
+        assertEquals(30L, taskPolicy.claimPolicy().shortLeaseSeconds());
+        assertEquals(TaskWorkloadClass.INTERACTIVE, taskPolicy.retryPolicy().workloadClass());
+        assertEquals(100L, taskPolicy.retryPolicy().interactiveAssignmentRetryDelayMillis());
+        assertEquals(100L, taskPolicy.retryPolicy().interactiveWorkRetryDelayMillis());
+        assertEquals(0L, taskPolicy.retryPolicy().bulkWorkRetryDelayMillis());
+        assertEquals(true, taskPolicy.resultFinalityPolicy().retryExpiredLeaseFromAnyActiveState());
+        assertEquals(true, taskPolicy.resultFinalityPolicy().expiredLeaseFinalizesAsFailure());
+        assertEquals(TaskRuntimeProfile.BackpressureClass.INTERACTIVE,
+                taskPolicy.backpressurePolicy().backpressureClass());
+        assertEquals(10_000, taskPolicy.backpressurePolicy().maxReadyItemsPerTask());
         assertEquals(3, taskPolicy.batchSize());
         assertEquals(2, taskPolicy.defaultMaxRetryCount());
         assertEquals(4, taskPolicy.minRequiredWorkerCount());
+    }
+
+    @Test
+    void resolvesSessionPresetAsSignalDrivenAndNonExclusiveWhenForegroundIsFalse() {
+        Task task = task();
+        task.setContract(TaskContract.SESSION);
+        task.getExecutionSpec().setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
+        task.getExecutionSpec().setForeground(false);
+
+        ResolvedTaskSchedulingPolicy taskPolicy = resolver.resolve(task).taskSchedulingPolicy();
+
+        assertEquals("SESSION", taskPolicy.taskPolicyPreset());
+        assertEquals(DispatchCadence.SIGNAL_DRIVEN_DELAYED, taskPolicy.dispatchCadence());
+        assertEquals(WorkerResourceMode.CAPACITY, taskPolicy.workerResourceMode());
+        assertEquals(false, taskPolicy.idleClosePolicy().enabled());
+        assertEquals(false, taskPolicy.idleClosePolicy().requireIntakeSealed());
+        assertEquals(TaskRuntimeProfile.BatchPolicy.SMALL, taskPolicy.claimPolicy().batchPolicy());
+        assertEquals(TaskRuntimeProfile.LeaseProfile.SHORT, taskPolicy.claimPolicy().leaseProfile());
+        assertEquals(1, taskPolicy.claimPolicy().smallPerWorkerCapacityLimit());
+        assertEquals(30L, taskPolicy.claimPolicy().shortLeaseSeconds());
+        assertEquals(TaskWorkloadClass.INTERACTIVE, taskPolicy.retryPolicy().workloadClass());
+        assertEquals(100L, taskPolicy.retryPolicy().interactiveAssignmentRetryDelayMillis());
+        assertEquals(100L, taskPolicy.retryPolicy().interactiveWorkRetryDelayMillis());
+        assertEquals(0L, taskPolicy.retryPolicy().bulkWorkRetryDelayMillis());
+        assertEquals(false, taskPolicy.resultFinalityPolicy().retryExpiredLeaseFromAnyActiveState());
+        assertEquals(false, taskPolicy.resultFinalityPolicy().expiredLeaseFinalizesAsFailure());
+        assertEquals(TaskRuntimeProfile.BackpressureClass.INTERACTIVE,
+                taskPolicy.backpressurePolicy().backpressureClass());
+        assertEquals(10_000, taskPolicy.backpressurePolicy().maxReadyItemsPerTask());
     }
 
     @Test

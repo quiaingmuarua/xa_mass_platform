@@ -488,6 +488,156 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
+    void legacyTaskContractBehaviorReadsStayBehindPresetSemantics() throws IOException {
+        Set<String> allowedRelativePaths = Set.of(
+                "com/xa/mass/engine/policy/TaskPolicyPresetSemantics.java",
+                "com/xa/mass/engine/runtime/scheduling/TaskPolicyPresetResolution.java",
+                "com/xa/mass/engine/TaskManager.java"
+        );
+        Pattern directContractBehaviorRead = Pattern.compile("\\bTaskContract\\s*\\.|\\.getContract\\s*\\(");
+
+        List<String> violations = new ArrayList<>();
+        for (Path path : javaSourceFiles(MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine"))) {
+            String relativePath = MAIN_SOURCE_ROOT.relativize(path).toString().replace('\\', '/');
+            if (allowedRelativePaths.contains(relativePath)) {
+                continue;
+            }
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            if (directContractBehaviorRead.matcher(source).find()) {
+                violations.add(relativePath);
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "TaskContract behavior interpretation must stay behind preset resolution "
+                        + "during TPC convergence. Public/read/default shell handling is allowed in "
+                        + "TaskManager only until later phases shrink the allowlist:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void terminalPolicyConsumesIdleClosePolicyNotLegacyPresetSemantics() throws IOException {
+        List<Path> terminalPolicySources = List.of(
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/policy/ContractAwareTaskTerminalPolicy.java"),
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/policy/AllWorkFinalTaskTerminalPolicy.java")
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Path sourcePath : terminalPolicySources) {
+            String source = Files.readString(sourcePath, StandardCharsets.UTF_8);
+            if (source.contains("TaskPolicyPresetSemantics")
+                    || Pattern.compile("\\bTaskContract\\s*\\.|\\.getContract\\s*\\(").matcher(source).find()) {
+                violations.add(sourcePath + " reads legacy preset semantics for terminal behavior");
+            }
+            if (!source.contains("IdleClosePolicy")) {
+                violations.add(sourcePath + " does not consume explicit IdleClosePolicy");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Terminal policy must consume resolved IdleClosePolicy; TaskContract and temporary "
+                        + "TaskPolicyPresetSemantics are no longer terminal behavior truth:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void dispatchCadenceConsumersUseResolvedPolicyNotLegacyPresetSemantics() throws IOException {
+        List<Path> dispatchSources = List.of(
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/TaskDispatchRequestService.java"),
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/watchdog/RuntimeReadyDispatchPump.java"),
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/EngineRuntimeKernel.java")
+        );
+
+        List<String> violations = new ArrayList<>();
+        for (Path sourcePath : dispatchSources) {
+            String source = Files.readString(sourcePath, StandardCharsets.UTF_8);
+            if (source.contains("TaskPolicyPresetSemantics")
+                    || Pattern.compile("\\bTaskContract\\s*\\.|\\.getContract\\s*\\(").matcher(source).find()) {
+                violations.add(sourcePath + " reads legacy preset semantics for dispatch cadence");
+            }
+            if (!source.contains("DispatchCadence")) {
+                violations.add(sourcePath + " does not consume resolved DispatchCadence");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Dispatch cadence owners must consume resolved DispatchCadence; TaskContract and temporary "
+                        + "TaskPolicyPresetSemantics are no longer dispatch behavior truth:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void workerResourcePolicyConsumesResolvedResourceModeNotLegacyForeground() throws IOException {
+        Path policyPath = MAIN_SOURCE_ROOT.resolve(
+                "com/xa/mass/engine/resource/DefaultWorkerDispatchResourcePolicy.java");
+        String source = Files.readString(policyPath, StandardCharsets.UTF_8);
+
+        List<String> violations = new ArrayList<>();
+        if (source.contains("TaskPolicyPresetSemantics")
+                || Pattern.compile("\\.isForeground\\s*\\(|\\.getExecutionSpec\\s*\\(\\)\\.isForeground\\s*\\(")
+                .matcher(source)
+                .find()) {
+            violations.add(policyPath + " reads legacy foreground preset semantics for resource mode");
+        }
+        if (!source.contains("WorkerResourceMode")) {
+            violations.add(policyPath + " does not consume resolved WorkerResourceMode");
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Worker resource policy must consume resolved WorkerResourceMode; foreground and temporary "
+                        + "TaskPolicyPresetSemantics are no longer resource-mode truth:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
+    void runtimeClaimRetryAndBackpressureConsumersUseResolvedPolicy() throws IOException {
+        Path binderPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/listener/SimpleTaskDispatchBinder.java");
+        Path assignWorkerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/listener/TaskAssignWorker.java");
+        Path resultServicePath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/TaskResultService.java");
+        Path taskManagerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/TaskManager.java");
+        Path lifecyclePath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/TaskLifecycleService.java");
+        String binderSource = Files.readString(binderPath, StandardCharsets.UTF_8);
+        String assignWorkerSource = Files.readString(assignWorkerPath, StandardCharsets.UTF_8);
+        String resultServiceSource = Files.readString(resultServicePath, StandardCharsets.UTF_8);
+        String taskManagerSource = Files.readString(taskManagerPath, StandardCharsets.UTF_8);
+        String lifecycleSource = Files.readString(lifecyclePath, StandardCharsets.UTF_8);
+
+        List<String> violations = new ArrayList<>();
+        if (!binderSource.contains("ResolvedTaskSchedulingPolicy taskPolicy")
+                || !binderSource.contains("TASK_RUNTIME_CLAIM_OPTIONS_RESOLVER.resolve(\n                task,\n                taskPolicy,")) {
+            violations.add(binderPath + " must pass resolved ClaimPolicy through ResolvedTaskSchedulingPolicy");
+        }
+        if (Pattern.compile("taskRuntimeRetryPolicyResolver\\.resolve\\s*\\(\\s*task\\s*,")
+                .matcher(assignWorkerSource)
+                .find()) {
+            violations.add(assignWorkerPath + " resolves retry from raw Task instead of resolved task policy");
+        }
+        if (Pattern.compile("taskRuntimeRetryPolicyResolver\\.resolve\\s*\\(\\s*task\\s*,")
+                .matcher(resultServiceSource)
+                .find()) {
+            violations.add(resultServicePath + " resolves retry from raw Task instead of resolved task policy");
+        }
+        if (resultServiceSource.contains("TaskPolicyPresetSemantics")) {
+            violations.add(resultServicePath + " reads temporary preset semantics for result finality");
+        }
+        if (Pattern.compile("enqueueOptionsResolver\\.resolve\\s*\\(\\s*task\\s*\\)")
+                .matcher(taskManagerSource)
+                .find()) {
+            violations.add(taskManagerPath + " resolves enqueue backpressure from raw Task");
+        }
+        if (Pattern.compile("enqueueOptionsResolver\\(\\)\\.resolve\\s*\\(\\s*task\\s*\\)")
+                .matcher(lifecycleSource)
+                .find()) {
+            violations.add(lifecyclePath + " resolves enqueue admission from raw Task");
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Claim, retry, result finality, and backpressure consumers must use resolved task "
+                        + "policy fields instead of raw preset/profile semantics:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void computedSchedulingPlaneDoesNotIntroduceWritablePolicyTruth() throws IOException {
         List<String> forbiddenTypes = List.of(
                 "ProjectSchedulingPolicy",

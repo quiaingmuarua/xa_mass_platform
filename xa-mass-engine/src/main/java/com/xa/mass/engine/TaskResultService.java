@@ -1,6 +1,5 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
@@ -10,6 +9,7 @@ import com.xa.mass.engine.TaskWorkLifecycleState.MessageFinalReason;
 import com.xa.mass.engine.TaskWorkLifecycleState.MessageStatus;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicy;
 import com.xa.mass.engine.runtime.TaskRuntimeRetryPolicyResolver;
+import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy.ResultFinalityPolicy;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.engine.TraceEventLogger;
 import com.xa.mass.engine.TraceEventLogger.TaskWorkTraceView;
@@ -780,10 +780,9 @@ class TaskResultService {
     private RuntimeWorkSummary summarizeLeaseExpiryFinal(Task task,
                                                          RuntimeWorkSummary base,
                                                          String detail) {
-        return switch (resultContractMode(task)) {
-            case BATCH -> summarizeBatchLeaseExpiryFinal(base, detail);
-            case SESSION -> summarizeSessionLeaseExpiryFinal(base, detail);
-        };
+        return resultFinalityPolicy(task).expiredLeaseFinalizesAsFailure()
+                ? summarizeBatchLeaseExpiryFinal(base, detail)
+                : summarizeSessionLeaseExpiryFinal(base, detail);
     }
 
     private RuntimeWorkSummary summarizeRetryReset(RuntimeWorkSummary failedView) {
@@ -915,21 +914,19 @@ class TaskResultService {
         if (!retryable) {
             return 0L;
         }
-        TaskRuntimeRetryPolicy retryPolicy = taskRuntimeRetryPolicyResolver.resolve(task, 1L);
+        TaskRuntimeRetryPolicy retryPolicy = taskRuntimeRetryPolicyResolver.resolve(
+                taskManager.resolveTaskSchedulingPolicy(task),
+                1L);
         return retryPolicy.workRetryDelayMillis();
     }
 
     private boolean shouldRetryExpiredLease(Task task, MessageStatus fromStatus) {
-        return switch (resultContractMode(task)) {
-            case BATCH -> true;
-            case SESSION -> fromStatus == MessageStatus.ASSIGNED;
-        };
+        ResultFinalityPolicy policy = resultFinalityPolicy(task);
+        return policy.retryExpiredLeaseFromAnyActiveState() || fromStatus == MessageStatus.ASSIGNED;
     }
 
-    private ResultContractMode resultContractMode(Task task) {
-        return task != null && task.getContract() == TaskContract.BATCH
-                ? ResultContractMode.BATCH
-                : ResultContractMode.SESSION;
+    private ResultFinalityPolicy resultFinalityPolicy(Task task) {
+        return taskManager.resolveTaskSchedulingPolicy(task).resultFinalityPolicy();
     }
 
     private boolean isManualOrPolicyTerminalStop(Task task) {
@@ -945,7 +942,7 @@ class TaskResultService {
             return null;
         }
         return taskManager.getRecentFinalReceipt(taskId, messageId)
-                .map(receipt -> RuntimeWorkSummary.fromRecentFinalReceipt(task, receipt))
+                .map(receipt -> RuntimeWorkSummary.fromRecentFinalReceipt(task, receipt, resultFinalityPolicy(task)))
                 .orElse(null);
     }
 
@@ -1208,7 +1205,8 @@ class TaskResultService {
         if (draft == null || receipt == null) {
             return null;
         }
-        RuntimeWorkSummary receiptSummary = RuntimeWorkSummary.fromRecentFinalReceipt(task, receipt);
+        RuntimeWorkSummary receiptSummary = RuntimeWorkSummary.fromRecentFinalReceipt(task, receipt,
+                resultFinalityPolicy(task));
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime createTime = draft.createTime() == null
                 ? now
@@ -1247,7 +1245,8 @@ class TaskResultService {
         if (row == null || receipt == null) {
             return null;
         }
-        RuntimeWorkSummary receiptSummary = RuntimeWorkSummary.fromRecentFinalReceipt(task, receipt);
+        RuntimeWorkSummary receiptSummary = RuntimeWorkSummary.fromRecentFinalReceipt(task, receipt,
+                resultFinalityPolicy(task));
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime createTime = row.createTime() == null
                 ? now
@@ -1410,12 +1409,11 @@ class TaskResultService {
                                                              String errorCode,
                                                              Map<String, Object> output,
                                                              TaskResultCallbackDraft stagedDraft) {
-        return switch (resultContractMode(task)) {
-            case BATCH -> handleBatchRuntimeAcceptedFailure(
-                    task, taskId, workSummary, activeAttempt, applyStatus, detail, errorCode, output, stagedDraft);
-            case SESSION -> handleSessionRuntimeAcceptedFailure(
-                    task, taskId, workSummary, activeAttempt, applyStatus, detail, errorCode, output, stagedDraft);
-        };
+        return resultFinalityPolicy(task).expiredLeaseFinalizesAsFailure()
+                ? handleBatchRuntimeAcceptedFailure(
+                task, taskId, workSummary, activeAttempt, applyStatus, detail, errorCode, output, stagedDraft)
+                : handleSessionRuntimeAcceptedFailure(
+                task, taskId, workSummary, activeAttempt, applyStatus, detail, errorCode, output, stagedDraft);
     }
 
     private ResultMutationOutcome handleBatchRuntimeAcceptedFailure(Task task,
@@ -1454,11 +1452,6 @@ class TaskResultService {
 
     private RuntimeWorkSummary summarizeSessionLeaseExpiryFinal(RuntimeWorkSummary base, String detail) {
         return summarizeExpired(base, detail);
-    }
-
-    private enum ResultContractMode {
-        SESSION,
-        BATCH
     }
 
     static final class ResultMutationOutcome {
@@ -1747,15 +1740,19 @@ class TaskResultService {
             );
         }
 
-        static RuntimeWorkSummary fromRecentFinalReceipt(Task task, RecentFinalWorkReceipt receipt) {
+        static RuntimeWorkSummary fromRecentFinalReceipt(Task task,
+                                                         RecentFinalWorkReceipt receipt,
+                                                         ResultFinalityPolicy resultFinalityPolicy) {
             if (receipt == null) {
                 return null;
             }
             LocalDateTime completedAt = receipt.completedAt() == null
                     ? LocalDateTime.now()
                     : LocalDateTime.ofInstant(receipt.completedAt(), java.time.ZoneId.systemDefault());
-            boolean batchLeaseExpiryFinalizedAsFailure = task != null
-                    && task.getContract() == TaskContract.BATCH
+            ResultFinalityPolicy resolvedPolicy = resultFinalityPolicy == null
+                    ? ResultFinalityPolicy.batch()
+                    : resultFinalityPolicy;
+            boolean batchLeaseExpiryFinalizedAsFailure = resolvedPolicy.expiredLeaseFinalizesAsFailure()
                     && receipt.status() == com.xa.mass.runtime.api.TaskWorkFinalStatus.EXPIRED;
             MessageStatus status = switch (receipt.status()) {
                 case SUCCESS -> MessageStatus.SUCCESS;

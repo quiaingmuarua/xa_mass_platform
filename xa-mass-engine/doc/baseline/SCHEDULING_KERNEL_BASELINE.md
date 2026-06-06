@@ -91,11 +91,12 @@ Retired scheduling proof must not return:
 - context lifecycle state transitions
 - context-first matched-resource handoff types
 
-`ExecutionSpec.foreground=true` keeps the long-lived exclusive worker-lock
-path. `foreground=false` uses declared worker capacity without the long-lived
-lock. `WorkerDispatchResourcePolicy` owns that resource-usage decision;
-listeners and binders consume it instead of deriving their own foreground
-rules.
+`ExecutionSpec.foreground` is the current public/read preset input for worker
+resource mode. Resolved `WorkerResourceMode.EXCLUSIVE` keeps the long-lived
+exclusive worker-lock path, while `WorkerResourceMode.CAPACITY` uses declared
+worker capacity without the long-lived lock. `WorkerDispatchResourcePolicy`
+consumes the resolved resource-mode decision; listeners and binders consume
+that policy instead of deriving their own foreground rules.
 
 ## Policy Precedence
 

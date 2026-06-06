@@ -38,8 +38,8 @@ Completed convergence that should be treated as current baseline:
   read snapshots
 - event owner surfaces now route through owner-backed services and SDK
   contracts rather than event handlers or concrete owner internals
-- server is a validation shell / SDK adapter; it must not redefine engine
-  semantics
+- server is the backend product/API host and validation surface; it must not
+  redefine engine semantics
 
 That is enough to call the current shape a scheduling kernel baseline. It is
 not enough to call it a production-grade adaptive scheduler.

@@ -1,9 +1,9 @@
 package com.xa.mass.engine.policy;
 
-import com.xa.mass.base.enums.task.TaskContract;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
+import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy.IdleClosePolicy;
 import com.xa.mass.runtime.api.TaskWorkStats;
 
 /**
@@ -13,14 +13,14 @@ import com.xa.mass.runtime.api.TaskWorkStats;
 public class AllWorkFinalTaskTerminalPolicy implements TaskTerminalPolicy {
 
     @Override
-    public TaskTerminalPolicyDecision evaluate(Task task, TaskWorkStats stats) {
-        if (task == null || task.getContract() != TaskContract.BATCH) {
+    public TaskTerminalPolicyDecision evaluate(Task task, TaskWorkStats stats, IdleClosePolicy idleClosePolicy) {
+        if (task == null || idleClosePolicy == null || !idleClosePolicy.enabled()) {
             return TaskTerminalPolicyDecision.keepRunning();
         }
         if (stats.totalCount() <= 0) {
             return TaskTerminalPolicyDecision.keepRunning();
         }
-        if (!task.isIntakeSealed()) {
+        if (idleClosePolicy.requireIntakeSealed() && !task.isIntakeSealed()) {
             return TaskTerminalPolicyDecision.keepRunning();
         }
         if (stats.finalCount() != stats.totalCount()) {
@@ -39,4 +39,3 @@ public class AllWorkFinalTaskTerminalPolicy implements TaskTerminalPolicy {
         return TaskTerminalReason.MIXED_MESSAGE_RESULTS;
     }
 }
-
